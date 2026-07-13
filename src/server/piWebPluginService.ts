@@ -335,10 +335,12 @@ function isWithin(root: string, candidate: string): boolean {
 }
 
 function contentTypeFor(path: string): string {
-  if (path.endsWith(".js")) return "application/javascript; charset=utf-8";
-  if (path.endsWith(".json")) return "application/json; charset=utf-8";
-  if (path.endsWith(".css")) return "text/css; charset=utf-8";
-  if (path.endsWith(".html")) return "text/html; charset=utf-8";
+  const lowerPath = path.toLowerCase();
+  if (lowerPath.endsWith(".js")) return "application/javascript; charset=utf-8";
+  if (lowerPath.endsWith(".json")) return "application/json; charset=utf-8";
+  if (lowerPath.endsWith(".css")) return "text/css; charset=utf-8";
+  if (lowerPath.endsWith(".html")) return "text/html; charset=utf-8";
+  if (lowerPath.endsWith(".svg")) return "image/svg+xml";
   return "application/octet-stream";
 }
 

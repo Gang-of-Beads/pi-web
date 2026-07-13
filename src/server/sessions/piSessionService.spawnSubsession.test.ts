@@ -55,16 +55,18 @@ describe("PiSessionService", () => {
       await service.dispose();
     });
 
-    it("uses the parent session's model as the tracked child's initial model", async () => {
+    it("uses the parent model and disables delegation before creating the tracked child runtime", async () => {
       const parent = fakeRuntime("parent-1", { sessionFile: "/tmp/parent-1.jsonl" });
       const child = fakeRuntime("child-1", { sessionFile: "/tmp/child-1.jsonl", sessionManager: fakeSessionManager("/workspace-feature") });
       const model = testModel();
       const initialModels: PiAgentSession["model"][] = [];
+      const delegationCapabilities: boolean[] = [];
       const runtimes = [parent.runtime, child.runtime];
       let index = 0;
       const createAgentRuntime: RuntimeCreator = async (_createRuntime, options) => {
         await Promise.resolve();
         initialModels.push(options.initialModel);
+        delegationCapabilities.push(options.delegationToolsEnabled);
         const runtime = runtimes[index] ?? child.runtime;
         index += 1;
         return runtime;
@@ -81,6 +83,7 @@ describe("PiSessionService", () => {
       await service.spawnSubsession({ spawningCwd: "/workspace", parentSessionId: "parent-1", parentSessionFile: "/tmp/parent-1.jsonl", prompt: "do the slice", cwd: "/workspace-feature", model });
 
       expect(initialModels).toEqual([undefined, model]);
+      expect(delegationCapabilities).toEqual([true, false]);
       await service.dispose();
     });
 
@@ -306,19 +309,25 @@ describe("PiSessionService", () => {
 
       try {
         const childManager = fakeSessionManager("/workspace-feature", {
+          getSessionId: () => "child-1",
+          getSessionFile: () => childFile,
           getHeader: () => ({ parentSession: parentFile }),
           getEntries: () => [{ type: "custom", customType: "pi-web.subsession.spawned", data: { version: 1, spawnedBySessionId: "parent-1", spawnedSessionId: "child-1" } }],
         });
         const parentManager = fakeSessionManager("/workspace", {
+          getSessionId: () => "parent-1",
+          getSessionFile: () => parentFile,
           getEntries: () => [{ type: "custom", customType: "pi-web.subsession.link", data: { version: 1, spawnedBySessionId: "parent-1", spawnedSessionId: "child-1", spawnedSessionFile: childFile, cwd: "/workspace-feature" } }],
         });
         const child = fakeRuntime("child-1", { sessionFile: childFile, sessionManager: childManager });
         const parent = fakeRuntime("parent-1", { sessionFile: parentFile, sessionManager: parentManager });
         const runtimes = [child.runtime, parent.runtime];
+        const delegationCapabilities: boolean[] = [];
         let index = 0;
         const open = vi.fn((path: string) => path === parentFile ? parentManager : childManager);
         const service = new PiSessionService(new CapturingSessionEventHub(), {
-          createAgentRuntime: () => {
+          createAgentRuntime: (_createRuntime, options) => {
+            delegationCapabilities.push(options.delegationToolsEnabled);
             const runtime = runtimes[index] ?? parent.runtime;
             index += 1;
             return Promise.resolve(runtime);
@@ -342,6 +351,7 @@ describe("PiSessionService", () => {
 
         expect(parent.calls.sendCustomMessage).toHaveLength(1);
         expect(parent.calls.sendCustomMessage[0]?.message.content).toContain("Subsession child-1 stopped working");
+        expect(delegationCapabilities).toEqual([false, true]);
         expect(open).toHaveBeenCalledWith(parentFile);
         await service.dispose();
       } finally {

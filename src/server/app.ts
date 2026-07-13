@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from "fastify";
+import fastifyCompress from "@fastify/compress";
 import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
 import { ProjectStore } from "./storage/projectStore.js";
@@ -22,7 +23,7 @@ import { createFilePiWebConfigService, registerConfigRoutes, registerLocalMachin
 import { PiWebPluginService } from "./piWebPluginService.js";
 import { createDefaultPiPackageService, type PiPackageService } from "./piPackageService.js";
 import { registerPiPackageRoutes } from "./piPackageRoutes.js";
-import { createPiWebStatusCache } from "./piWebStatusCache.js";
+import { createPiWebStatusCache, type PiWebStatusCache } from "./piWebStatusCache.js";
 import { getPiWebRuntime, getPiWebStatus, getPiWebVersionStatus } from "./piWebStatus.js";
 import { MachineService } from "./machines/machineService.js";
 import { registerMachineRoutes } from "./machines/machineRoutes.js";
@@ -39,6 +40,7 @@ export interface AppDependencies {
   sessionDaemon?: SessionProxyDaemon;
   piWebPlugins?: Pick<PiWebPluginService, "manifest" | "plugins" | "readAsset">;
   piPackages?: PiPackageService;
+  piWebStatusCache?: PiWebStatusCache;
   config?: PiWebConfigService;
   safeTunnel?: SafeTunnelBridgeService;
   clientDist?: string | false;
@@ -123,6 +125,13 @@ function registerLocalFileSuggestionRoutes(app: FastifyInstance, projects: Proje
 
 export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInstance> {
   const app = Fastify({ logger: deps.logger ?? true, ...(deps.bodyLimit === undefined ? {} : { bodyLimit: deps.bodyLimit }) });
+  // Vite proxies development API requests here, while production and machine-scoped
+  // API requests already terminate here, so this is the shared browser HTTP edge.
+  await app.register(fastifyCompress, {
+    globalCompression: true,
+    globalDecompression: false,
+    threshold: 1024,
+  });
   await app.register(fastifyWebsocket);
 
   const projects = deps.projects ?? new ProjectService(new ProjectStore());
@@ -132,9 +141,10 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
   const configService = deps.config ?? createFilePiWebConfigService();
   const sessionDaemon = deps.sessionDaemon ?? new SessionDaemonClient();
   const safeTunnel = deps.safeTunnel;
-  const piWebStatusCache = createPiWebStatusCache(() => getPiWebStatus(sessionDaemon), {
-    onError: (error) => { app.log.warn({ err: error }, "failed to refresh PI WEB status cache"); },
-  });
+  const piWebStatusCache = deps.piWebStatusCache ?? createPiWebStatusCache(
+    ({ force }) => getPiWebStatus(sessionDaemon, { forceReleaseCheck: force }),
+    { onError: (error) => { app.log.warn({ err: error }, "failed to refresh PI WEB status cache"); } },
+  );
   const machines = deps.machines ?? new MachineService(undefined, {
     localRuntime: () => getPiWebRuntime(sessionDaemon),
   });
@@ -149,7 +159,9 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
     return reply.type(asset.contentType).send(asset.content);
   });
 
-  app.get("/api/pi-web/status", async () => piWebStatusCache.get());
+  app.get<{ Querystring: { refresh?: string } }>("/api/pi-web/status", async (request) => request.query.refresh === "1"
+    ? piWebStatusCache.refresh({ force: true })
+    : piWebStatusCache.get());
   app.get("/api/pi-web/version", async () => getPiWebVersionStatus(sessionDaemon));
   app.get("/api/pi-web/runtime", async () => getPiWebRuntime(sessionDaemon));
   app.get("/api/plugins", async () => piWebPlugins.plugins());

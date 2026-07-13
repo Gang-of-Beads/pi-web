@@ -8,28 +8,42 @@ export interface PiWebStatusCacheOptions {
   onError?: (error: unknown) => void;
 }
 
-export interface PiWebStatusCache {
-  get(): Promise<PiWebStatusResponse>;
-  refresh(): Promise<PiWebStatusResponse>;
+export interface PiWebStatusCacheLoadOptions {
+  force: boolean;
 }
 
-export function createPiWebStatusCache(load: () => Promise<PiWebStatusResponse>, options: PiWebStatusCacheOptions = {}): PiWebStatusCache {
+export interface PiWebStatusCacheRefreshOptions {
+  force?: boolean;
+}
+
+export interface PiWebStatusCache {
+  get(): Promise<PiWebStatusResponse>;
+  refresh(options?: PiWebStatusCacheRefreshOptions): Promise<PiWebStatusResponse>;
+}
+
+export function createPiWebStatusCache(load: (options: PiWebStatusCacheLoadOptions) => Promise<PiWebStatusResponse>, options: PiWebStatusCacheOptions = {}): PiWebStatusCache {
   const ttlMs = options.ttlMs ?? DEFAULT_PI_WEB_STATUS_CACHE_TTL_MS;
   const now = options.now ?? Date.now;
   let cached: { status: PiWebStatusResponse; expiresAt: number } | undefined;
-  let pending: Promise<PiWebStatusResponse> | undefined;
+  let pending: { promise: Promise<PiWebStatusResponse>; force: boolean; sequence: number } | undefined;
+  let loadSequence = 0;
 
-  const refresh = (): Promise<PiWebStatusResponse> => {
-    pending ??= Promise.resolve()
-      .then(load)
+  const refresh = (refreshOptions: PiWebStatusCacheRefreshOptions = {}): Promise<PiWebStatusResponse> => {
+    const force = refreshOptions.force === true;
+    if (pending !== undefined && (!force || pending.force)) return pending.promise;
+
+    const sequence = ++loadSequence;
+    const promise = Promise.resolve()
+      .then(() => load({ force }))
       .then((status) => {
-        cached = { status, expiresAt: now() + ttlMs };
+        if (sequence === loadSequence) cached = { status, expiresAt: now() + ttlMs };
         return status;
       })
       .finally(() => {
-        pending = undefined;
+        if (pending?.sequence === sequence) pending = undefined;
       });
-    return pending;
+    pending = { promise, force, sequence };
+    return promise;
   };
 
   return {

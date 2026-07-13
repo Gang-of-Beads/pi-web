@@ -391,18 +391,24 @@ export class ChatView extends LitElement {
           <b class="label">${defaultOpen ? "live events" : "events"}</b>
           <span>${summarizeChatGroup(messages)}</span>
         </summary>
-        <div class="group-body">
-          ${messages.map((message, offset) => {
-            const toolOnly = this.isToolExecutionOnlyMessage(message);
-            return html`
-              <section class=${toolOnly ? "group-msg tool-execution-shell" : `group-msg ${message.role}`} data-index=${startIndex + offset} data-scroll-anchor-id=${this.eventAnchorKey(startIndex + offset)}>
-                ${toolOnly ? null : this.renderMessageHeader(message, `${String(startIndex)}:${String(offset)}`)}
-                ${message.parts.map((part) => this.renderPart(part, message))}
-              </section>
-            `;
-          })}
-        </div>
+        ${open ? this.renderMessageGroupBody(messages, startIndex) : null}
       </details>
+    `;
+  }
+
+  private renderMessageGroupBody(messages: ChatLine[], startIndex: number) {
+    return html`
+      <div class="group-body">
+        ${messages.map((message, offset) => {
+          const toolOnly = this.isToolExecutionOnlyMessage(message);
+          return html`
+            <section class=${toolOnly ? "group-msg tool-execution-shell" : `group-msg ${message.role}`} data-index=${startIndex + offset} data-scroll-anchor-id=${this.eventAnchorKey(startIndex + offset)}>
+              ${toolOnly ? null : this.renderMessageHeader(message, `${String(startIndex)}:${String(offset)}`)}
+              ${message.parts.map((part) => this.renderPart(part, message))}
+            </section>
+          `;
+        })}
+      </div>
     `;
   }
 

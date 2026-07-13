@@ -1,10 +1,13 @@
 import { css, html, LitElement, type PropertyValues } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
+import { styleMap, type StyleInfo } from "lit/directives/style-map.js";
 import { Terminal, type ITerminalOptions, type ITheme } from "@xterm/xterm";
 import { FitAddon, type ITerminalDimensions } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { terminalSocket, terminalsApi, type TerminalCommandRun, type TerminalInfo, type Workspace } from "../api";
+import { writeClipboardText } from "../clipboard";
 import { selectFallbackTerminal, selectPreferredTerminal } from "../controllers/terminalSelection";
+import { createTerminalCopySnapshot, DEFAULT_TERMINAL_ANSI_THEME, type TerminalCopyRunStyle, type TerminalCopySnapshot } from "../terminalCopySnapshot";
 import { createTerminalSoftKeysDefaultEnvironmentMedia, hasTerminalSoftKeysPreference, initialTerminalSoftKeysEnabled, isTerminalSoftKeysDefaultEnvironment, writeTerminalSoftKeysPreference } from "../terminalSoftKeysPreference";
 import "./TerminalSoftKeys";
 import type { TerminalSoftKeyInputOptions } from "./TerminalSoftKeys";
@@ -27,6 +30,8 @@ export class TerminalPanel extends LitElement {
   @property({ type: Boolean }) autoStart = false;
   @property({ attribute: false }) onSelectTerminal: (terminalId: string | undefined, options?: { replace?: boolean | undefined }) => void = () => undefined;
   @query(".terminal-host") private terminalHost?: HTMLDivElement | null;
+  @query(".terminal-copy-content") private terminalCopyContent?: HTMLPreElement | null;
+  @query(".terminal-copy-selector") private terminalCopySelector?: HTMLTextAreaElement | null;
   @state() private terminals: TerminalInfo[] = [];
   @state() private commandRuns: TerminalCommandRun[] = [];
   @state() private selectedId: string | undefined;
@@ -37,6 +42,8 @@ export class TerminalPanel extends LitElement {
   @state() private continuingTerminalIds: string[] = [];
   @state() private defaultSoftKeysEnvironment = false;
   @state() private softKeysEnabled = initialTerminalSoftKeysEnabled();
+  @state() private copySnapshot: TerminalCopySnapshot | undefined;
+  @state() private copyStatus: string | undefined;
 
   private terminal: Terminal | undefined;
   private fitAddon: FitAddon | undefined;
@@ -311,7 +318,7 @@ export class TerminalPanel extends LitElement {
     this.resizeObserver = new ResizeObserver(() => { this.fitAndNotify(); });
     this.resizeObserver.observe(terminalHost);
     terminal.onData((data) => {
-      if (this.suppressTerminalInput) return;
+      if (this.suppressTerminalInput || this.copySnapshot !== undefined) return;
       this.sendTerminalInput(data);
     });
     const initialSize = this.fitTerminal();
@@ -406,6 +413,7 @@ export class TerminalPanel extends LitElement {
   }
 
   private sendSoftKeyInput(data: string, options: TerminalSoftKeyInputOptions): void {
+    if (this.copySnapshot !== undefined) return;
     this.sendTerminalInput(data);
     if (options.refocus) this.focusTerminal();
   }
@@ -429,6 +437,8 @@ export class TerminalPanel extends LitElement {
     this.terminal?.dispose();
     this.terminal = undefined;
     this.fitAddon = undefined;
+    this.copySnapshot = undefined;
+    this.copyStatus = undefined;
   }
 
   private renderCommandRunNotice() {
@@ -464,9 +474,135 @@ export class TerminalPanel extends LitElement {
     return null;
   }
 
+  private enterCopyMode(): void {
+    if (this.copySnapshot !== undefined) return;
+    this.captureCopySnapshot();
+  }
+
+  private refreshCopyMode(): void {
+    if (this.copySnapshot === undefined) return;
+    this.captureCopySnapshot();
+  }
+
+  private captureCopySnapshot(): void {
+    const terminal = this.terminal;
+    if (terminal === undefined) return;
+    const snapshot = createTerminalCopySnapshot(terminal.buffer.active, terminal.cols, {
+      theme: terminal.options.theme,
+      drawBoldTextInBrightColors: terminal.options.drawBoldTextInBrightColors,
+    });
+    this.copySnapshot = snapshot;
+    this.copyStatus = undefined;
+    terminal.blur();
+    void this.updateComplete.then(() => {
+      const selector = this.terminalCopySelector;
+      if (selector === null || selector === undefined) return;
+      const sourceScrollRange = Math.max(0, snapshot.physicalLineCount - terminal.rows);
+      const sourceScrollTop = Math.min(sourceScrollRange, snapshot.viewportLine);
+      const scrollRatio = sourceScrollRange === 0 ? 0 : sourceScrollTop / sourceScrollRange;
+      selector.scrollTop = scrollRatio * Math.max(0, selector.scrollHeight - selector.clientHeight);
+      this.syncCopySnapshotScroll();
+    });
+  }
+
+  private exitCopyMode(): void {
+    if (this.copySnapshot === undefined) return;
+    this.copySnapshot = undefined;
+    this.copyStatus = undefined;
+  }
+
+  // iOS WebKit offsets native selection hit-testing in a scrolled generic
+  // overflow container. A textarea owns selection and scrolling while the
+  // synchronized, noninteractive pre preserves the terminal's ANSI styling.
+  // Keep its caret visible: iOS hides native selection handles with the caret.
+  private syncCopySnapshotScroll(): void {
+    const selector = this.terminalCopySelector;
+    const content = this.terminalCopyContent;
+    if (selector === null || selector === undefined || content === null || content === undefined) return;
+    const selectorVerticalRange = Math.max(0, selector.scrollHeight - selector.clientHeight);
+    const contentVerticalRange = Math.max(0, content.scrollHeight - content.clientHeight);
+    const selectorHorizontalRange = Math.max(0, selector.scrollWidth - selector.clientWidth);
+    const contentHorizontalRange = Math.max(0, content.scrollWidth - content.clientWidth);
+    content.scrollTop = normalizedScrollOffset(selector.scrollTop, selectorVerticalRange, contentVerticalRange);
+    content.scrollLeft = normalizedScrollOffset(selector.scrollLeft, selectorHorizontalRange, contentHorizontalRange);
+  }
+
+  private async copyAllSnapshotText(): Promise<void> {
+    const text = this.copySnapshot?.text ?? "";
+    if (text === "") {
+      this.copyStatus = "No terminal output to copy.";
+      return;
+    }
+    this.copyStatus = await writeClipboardText(text) ? "Copied all terminal output." : "Unable to copy terminal output.";
+  }
+
+  private renderCopyModeToggle() {
+    if (this.selectedId === undefined) return null;
+    const active = this.copySnapshot !== undefined;
+    return html`
+      <button
+        type="button"
+        class=${active ? "copy-mode-toggle selected" : "copy-mode-toggle"}
+        title=${active ? "Return to the interactive terminal" : "Select and copy terminal output"}
+        aria-label=${active ? "Close terminal copy mode" : "Open terminal copy mode"}
+        aria-pressed=${String(active)}
+        @click=${() => { if (active) this.exitCopyMode(); else this.enterCopyMode(); }}
+      >
+        <span>${active ? "Done" : "Select"}</span>
+      </button>
+    `;
+  }
+
+  private renderCopyModeToolbar() {
+    const snapshot = this.copySnapshot;
+    if (snapshot === undefined) return null;
+    return html`
+      <div class="terminal-copy-toolbar" role="toolbar" aria-label="Terminal copy controls">
+        <span aria-live="polite">${this.copyStatus ?? "Snapshot · long-press and select text"}</span>
+        <small>${snapshot.physicalLineCount} ${snapshot.physicalLineCount === 1 ? "row" : "rows"}</small>
+        <button type="button" @click=${() => { this.refreshCopyMode(); }}>Refresh</button>
+        <button type="button" @click=${() => { void this.copyAllSnapshotText(); }}>Copy all</button>
+      </div>
+    `;
+  }
+
+  private renderCopyMode() {
+    const snapshot = this.copySnapshot;
+    if (snapshot === undefined) return null;
+    return html`
+      <section class="terminal-copy-view" aria-label="Terminal copy mode">
+        ${this.copyToolbarReplacesSoftKeys() ? null : this.renderCopyModeToolbar()}
+        <div class="terminal-copy-layers">
+          <pre class="terminal-copy-content" aria-hidden="true">${snapshot.lines.map((line, index) => html`${index === 0 ? null : "\n"}${line.runs.map((run) => html`<span style=${styleMap(terminalCopyRunStyle(run.style))}>${run.text}</span>`)}`)}</pre>
+          <textarea
+            class="terminal-copy-selector"
+            readonly
+            inputmode="none"
+            wrap="soft"
+            spellcheck="false"
+            autocapitalize="off"
+            autocomplete="off"
+            aria-label="Selectable terminal output"
+            .value=${snapshot.text}
+            @scroll=${() => { this.syncCopySnapshotScroll(); }}
+          ></textarea>
+        </div>
+      </section>
+    `;
+  }
+
   private selectedTerminalAcceptsInput(): boolean {
     const terminal = this.selectedTerminalInfo();
     return terminal !== undefined && !terminal.exited;
+  }
+
+  private copyToolbarReplacesSoftKeys(): boolean {
+    return this.copySnapshot !== undefined && this.selectedTerminalAcceptsInput() && this.softKeysEnabled;
+  }
+
+  private renderTerminalAccessoryBar() {
+    if (this.copySnapshot !== undefined) return this.copyToolbarReplacesSoftKeys() ? this.renderCopyModeToolbar() : null;
+    return this.shouldShowSoftKeys() ? this.renderSoftKeys() : null;
   }
 
   private shouldShowSoftKeys(): boolean {
@@ -474,10 +610,11 @@ export class TerminalPanel extends LitElement {
   }
 
   private shouldShowSoftKeysToggle(): boolean {
-    return this.selectedTerminalAcceptsInput();
+    return this.copySnapshot === undefined && this.selectedTerminalAcceptsInput();
   }
 
   private toggleSoftKeys(): void {
+    if (this.copySnapshot !== undefined) return;
     this.softKeysEnabled = !this.softKeysEnabled;
     this.softKeysPreferenceStored = true;
     writeTerminalSoftKeysPreference(this.softKeysEnabled);
@@ -518,6 +655,7 @@ export class TerminalPanel extends LitElement {
     return html`
       <section class="terminal-shell">
         <div class="terminal-tabs">
+          ${this.renderCopyModeToggle()}
           ${this.renderSoftKeysToggle()}
           ${this.terminals.map((terminal) => html`
             <button class=${this.selectedId === terminal.id ? "selected" : ""} @click=${() => { this.selectTerminal(terminal.id); }}>
@@ -529,9 +667,12 @@ export class TerminalPanel extends LitElement {
         </div>
         ${this.error === undefined ? null : html`<p class="error">${this.error}</p>`}
         ${this.renderCommandRunNotice()}
-        ${this.shouldShowSoftKeys() ? this.renderSoftKeys() : null}
+        ${this.renderTerminalAccessoryBar()}
         ${this.loading ? html`<p class="muted">Loading terminals…</p>` : null}
-        <div class="terminal-host"></div>
+        <div class="terminal-stage">
+          <div class=${this.copySnapshot === undefined ? "terminal-host" : "terminal-host copying"} ?inert=${this.copySnapshot !== undefined}></div>
+          ${this.renderCopyMode()}
+        </div>
       </section>
     `;
   }
@@ -540,11 +681,19 @@ export class TerminalPanel extends LitElement {
     :host { flex: 1 1 auto; min-height: 0; display: flex; }
     .terminal-shell { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--pi-terminal-bg); }
     .terminal-tabs { flex: 0 0 auto; display: flex; gap: 6px; align-items: center; padding: 6px; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); overflow: auto; }
+    .terminal-tabs > button { box-sizing: border-box; height: 30px; line-height: 16px; }
+    /* Desktop xterm already has mouse selection and hardware keys; keep touch controls to touch/narrow layouts. */
+    .copy-mode-toggle, .soft-keys-toggle, terminal-soft-keys { display: none; }
+    .copy-mode-toggle.selected { display: inline-flex; }
+    @media (pointer: coarse), (max-width: 760px) {
+      .copy-mode-toggle, .soft-keys-toggle { display: inline-flex; }
+      terminal-soft-keys { display: block; }
+    }
     button { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 180px; border: 1px solid var(--pi-border); border-radius: 7px; background: var(--pi-surface); color: var(--pi-text); padding: 5px 7px; cursor: pointer; }
     button.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     button.new { flex: 0 0 auto; color: var(--pi-muted); }
     .soft-keys-toggle { flex: 0 0 auto; }
-    .soft-keys-toggle .keyboard-icon { flex: 0 0 auto; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+    .soft-keys-toggle .keyboard-icon { display: block; flex: 0 0 auto; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
     button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     button small { color: var(--pi-muted); font-size: 14px; line-height: 1; }
     button small:hover { color: var(--pi-danger); }
@@ -558,7 +707,20 @@ export class TerminalPanel extends LitElement {
     .command-run-notice code { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-text-secondary); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .command-run-notice kbd { border: 1px solid var(--pi-border); border-radius: 4px; background: var(--pi-bg); padding: 0 4px; font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .command-run-notice button { justify-self: end; max-width: none; }
-    .terminal-host { flex: 1 1 auto; min-height: 0; padding: 6px; box-sizing: border-box; overflow: hidden; }
+    .terminal-stage { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; background: var(--pi-terminal-bg); }
+    .terminal-host { position: absolute; inset: 0; padding: 6px; box-sizing: border-box; overflow: hidden; }
+    .terminal-host.copying { visibility: hidden; pointer-events: none; }
+    .terminal-copy-view { position: absolute; inset: 0; display: flex; flex-direction: column; min-height: 0; background: var(--pi-terminal-bg); color: var(--pi-terminal-text); }
+    .terminal-copy-toolbar { box-sizing: border-box; flex: 0 0 auto; display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 47px; padding: 6px; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); color: var(--pi-muted); font: 12px system-ui, sans-serif; }
+    .terminal-copy-toolbar > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .terminal-copy-toolbar small { margin-left: auto; white-space: nowrap; color: var(--pi-dim); }
+    .terminal-copy-toolbar button { flex: 0 0 auto; width: auto; min-height: 34px; padding: 6px 9px; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .terminal-copy-layers { flex: 1 1 auto; min-height: 0; display: grid; overflow: hidden; background: var(--pi-terminal-bg); }
+    /* xterm renders the configured 13px terminal font in 17px-high cells. */
+    .terminal-copy-content, .terminal-copy-selector { grid-area: 1 / 1; box-sizing: border-box; min-width: 0; min-height: 0; width: 100%; height: 100%; margin: 0; padding: 6px; border: 0; border-radius: 0; font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; line-height: 17px; letter-spacing: normal; font-variant-ligatures: none; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-all; }
+    .terminal-copy-content { overflow: auto; pointer-events: none; background: var(--pi-terminal-bg); color: var(--pi-terminal-text); -webkit-user-select: none; user-select: none; }
+    .terminal-copy-selector { z-index: 1; overflow: auto; resize: none; outline: none; appearance: none; background: transparent; color: transparent; caret-color: var(--pi-accent); -webkit-text-fill-color: transparent; cursor: text; -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; touch-action: auto; }
+    .terminal-copy-selector::selection { background: var(--pi-terminal-selection); color: transparent; -webkit-text-fill-color: transparent; }
     .terminal-host .xterm { height: 100%; cursor: text; position: relative; user-select: none; }
     .terminal-host .xterm.focus, .terminal-host .xterm:focus { outline: none; }
     .terminal-host .xterm-helpers { position: absolute; top: 0; z-index: 5; }
@@ -580,6 +742,30 @@ export class TerminalPanel extends LitElement {
     .muted { margin: 10px; color: var(--pi-muted); }
     .xterm { height: 100%; }
   `;
+}
+
+function normalizedScrollOffset(sourceOffset: number, sourceRange: number, targetRange: number): number {
+  if (sourceRange <= 0 || targetRange <= 0) return 0;
+  return Math.min(1, Math.max(0, sourceOffset / sourceRange)) * targetRange;
+}
+
+function dimTerminalCopyColor(color: string): string {
+  return /^#[\da-f]{6}$/i.test(color) ? `${color}80` : `color-mix(in srgb, ${color} 50%, transparent)`;
+}
+
+function terminalCopyRunStyle(style: TerminalCopyRunStyle): StyleInfo {
+  const decorations = [
+    style.underline ? "underline" : undefined,
+    style.strikethrough ? "line-through" : undefined,
+    style.overline ? "overline" : undefined,
+  ].filter((decoration): decoration is string => decoration !== undefined).join(" ");
+  return {
+    color: style.invisible ? "transparent" : style.dim ? dimTerminalCopyColor(style.foreground) : style.foreground,
+    backgroundColor: style.background,
+    fontWeight: style.bold ? "700" : undefined,
+    fontStyle: style.italic ? "italic" : undefined,
+    textDecorationLine: decorations === "" ? undefined : decorations,
+  };
 }
 
 interface TerminalSize {
@@ -631,6 +817,7 @@ function terminalOptions(element: HTMLElement): ITerminalOptions {
 
 function terminalTheme(element: HTMLElement): ITheme {
   return {
+    ...DEFAULT_TERMINAL_ANSI_THEME,
     background: themeColor(element, "--pi-terminal-bg", "#05070a"),
     foreground: themeColor(element, "--pi-terminal-text", "#e6edf3"),
     cursor: themeColor(element, "--pi-accent", "#58a6ff"),

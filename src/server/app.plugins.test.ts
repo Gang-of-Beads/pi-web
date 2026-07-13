@@ -24,6 +24,11 @@ describe("buildApp PI WEB plugin routes", () => {
     expect(assetResponse.headers["content-type"]).toContain("application/javascript");
     expect(assetResponse.body).toBe("export default {};");
 
+    const svgResponse = await appTestContext.app.inject({ method: "GET", url: "/pi-web-plugins/fake/assets/icon.svg" });
+    expect(svgResponse.statusCode).toBe(200);
+    expect(svgResponse.headers["content-type"]).toContain("image/svg+xml");
+    expect(svgResponse.body).toContain("<svg");
+
     const missingResponse = await appTestContext.app.inject({ method: "GET", url: "/pi-web-plugins/fake/missing.js" });
     expect(missingResponse.statusCode).toBe(404);
   });

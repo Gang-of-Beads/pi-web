@@ -69,6 +69,33 @@ describe("PI WEB status", () => {
     expect(runtime.capabilities).toEqual(expect.arrayContaining([PI_WEB_CAPABILITIES.piPackagesManage, PI_WEB_CAPABILITIES.selectedMachineSettings]));
   });
 
+  it("bypasses cached npm release data for a forced check", async () => {
+    Reflect.deleteProperty(process.env, "PI_WEB_SKIP_VERSION_CHECK");
+    process.env["PI_WEB_DOCKER_RUNTIME"] = "1";
+    process.env["PI_WEB_DOCKER_MODE"] = "runtime";
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(npmVersionResponse("1.202607.1"))
+      .mockResolvedValueOnce(npmVersionResponse("1.202607.2"));
+    const daemon = daemonWithComponent({
+      component: "sessiond",
+      label: "Session daemon",
+      runtimeVersion: "1.202607.0",
+      installedVersion: "1.202607.0",
+      stale: false,
+      available: true,
+      installation: { kind: "docker", dockerMode: "runtime" },
+    });
+
+    const first = await getPiWebStatus(daemon, { forceReleaseCheck: true });
+    const cached = await getPiWebStatus(daemon);
+    const forced = await getPiWebStatus(daemon, { forceReleaseCheck: true });
+
+    expect(first.release.latestVersion).toBe("1.202607.1");
+    expect(cached.release.latestVersion).toBe("1.202607.1");
+    expect(forced.release.latestVersion).toBe("1.202607.2");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("reports stale session daemon versions as messages", async () => {
     process.env["PI_WEB_SKIP_VERSION_CHECK"] = "1";
     disableDockerRuntimeEnv();
@@ -82,7 +109,7 @@ describe("PI WEB status", () => {
       installation: { kind: "pi-package", source: "npm:@jmfederico/pi-web", scope: "user", path: "/tmp/pi-web" },
     });
 
-    const status = await getPiWebStatus(daemon);
+    const status = await getPiWebStatus(daemon, { forceReleaseCheck: true });
 
     expect(status.release.skipped).toBe(true);
     expect(status.components.sessiond.stale).toBe(true);
@@ -191,6 +218,10 @@ describe("PI WEB status", () => {
     }
   });
 });
+
+function npmVersionResponse(version: string): Response {
+  return new Response(JSON.stringify({ version }), { status: 200, headers: { "content-type": "application/json" } });
+}
 
 function daemonWithComponent(component: PiWebComponentStatus): SessionDaemonClient {
   const daemon = new SessionDaemonClient();

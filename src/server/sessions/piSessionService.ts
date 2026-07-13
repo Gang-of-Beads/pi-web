@@ -31,7 +31,7 @@ import { attachmentsToInlineImages, saveAttachmentsToWorkspace } from "./attachm
 import { parsePromptAttachments } from "../../shared/promptAttachments.js";
 import type { SavedPromptAttachment, SessionBulkArchiveResponse, SessionBulkDeleteArchivedResponse, SessionBulkFailure, SessionBulkMutationRef } from "../../shared/apiTypes.js";
 
-import { cwdPathsEqual } from "../workingDirectory.js";
+import { canonicalizeStoredCwd, cwdPathsEqual } from "../workingDirectory.js";
 import type { WorkspaceActivityService } from "../activity/workspaceActivityService.js";
 import { createSpawnSessionToolDefinition, type SpawnSessionInvocation, type SpawnSessionResult } from "./spawnSessionTool.js";
 import { createSubsessionToolDefinitions, type SpawnSubsessionInvocation, type SpawnSubsessionResult, type SubsessionCheckResult, type SubsessionReadQuery, type SubsessionReadResult, type SubsessionStatus, type SubsessionSummary, type SubsessionToolDeps } from "./spawnSubsessionTool.js";
@@ -104,9 +104,15 @@ interface PersistedChildSubsessionLink {
   spawnedSessionId: string;
 }
 
+type SessionCreationProvenance = "tracked-subsession";
+
 interface StartSessionOptions {
   parentSession?: string;
   initialModel?: AgentModel;
+}
+
+interface InternalStartSessionOptions extends StartSessionOptions {
+  creationProvenance?: SessionCreationProvenance;
 }
 
 function requirePromptText(value: unknown): string {
@@ -167,6 +173,8 @@ type ModelRegistryInstance = ReturnType<typeof ModelRegistry.create>;
 
 export interface PiSessionManager {
   getCwd(): string;
+  getSessionId(): string;
+  getSessionFile(): string | undefined;
   getBranch(): unknown[];
   getEntries?(): readonly unknown[];
   getLeafId(): string | null;
@@ -253,22 +261,33 @@ export interface PiSessionRuntime {
   dispose(): Promise<void>;
 }
 
+interface PendingSessionOpen {
+  sessionId: string;
+  promise: Promise<ActiveSession<PiSessionRuntime>>;
+}
+
 interface CreateAgentRuntimeOptions {
   cwd: string;
   agentDir: string;
   sessionManager: PiSessionManager;
+  delegationToolsEnabled: boolean;
   initialModel?: AgentModel;
 }
 
+type PiWebRuntimeFactoryOptions = Parameters<CreateAgentSessionRuntimeFactory>[0] & {
+  delegationToolsEnabled?: boolean;
+  initialModel?: AgentModel;
+};
+
 type PiWebCreateAgentSessionRuntimeFactory = (
-  options: Parameters<CreateAgentSessionRuntimeFactory>[0] & { initialModel?: AgentModel }
+  options: PiWebRuntimeFactoryOptions
 ) => ReturnType<CreateAgentSessionRuntimeFactory>;
 
 type CreateAgentRuntime = (createRuntime: PiWebCreateAgentSessionRuntimeFactory, options: CreateAgentRuntimeOptions) => Promise<PiSessionRuntime>;
 
 function defaultCreateAgentRuntime(createRuntime: PiWebCreateAgentSessionRuntimeFactory, options: CreateAgentRuntimeOptions): Promise<PiSessionRuntime> {
   if (!(options.sessionManager instanceof SessionManager)) throw new Error("Default runtime creation requires an SDK SessionManager");
-  const runtimeFactory = createRuntimeWithOneShotInitialModel(createRuntime, options.initialModel);
+  const runtimeFactory = createRuntimeWithOneShotSessionOptions(createRuntime, options.initialModel, options.delegationToolsEnabled);
   return createAgentSessionRuntime(runtimeFactory, {
     cwd: options.cwd,
     agentDir: options.agentDir,
@@ -276,30 +295,55 @@ function defaultCreateAgentRuntime(createRuntime: PiWebCreateAgentSessionRuntime
   });
 }
 
-function createRuntimeWithOneShotInitialModel(createRuntime: PiWebCreateAgentSessionRuntimeFactory, initialModel: AgentModel | undefined): CreateAgentSessionRuntimeFactory {
-  // The inherited model belongs only to the session being spawned. Do not keep
-  // reapplying it if that runtime later creates/forks/switches sessions itself.
+function createRuntimeWithOneShotSessionOptions(
+  createRuntime: PiWebCreateAgentSessionRuntimeFactory,
+  initialModel: AgentModel | undefined,
+  delegationToolsEnabled: boolean,
+): CreateAgentSessionRuntimeFactory {
+  // These inputs belong only to the session being opened. A later runtime
+  // replacement resolves its own model and delegation capability.
   let pendingInitialModel = initialModel;
+  let pendingDelegationToolsEnabled: boolean | undefined = delegationToolsEnabled;
   return async (options) => {
     const model = pendingInitialModel;
+    const toolsEnabled = pendingDelegationToolsEnabled;
     pendingInitialModel = undefined;
+    pendingDelegationToolsEnabled = undefined;
     return createRuntime({
       ...options,
       ...(model === undefined ? {} : { initialModel: model }),
+      ...(toolsEnabled === undefined ? {} : { delegationToolsEnabled: toolsEnabled }),
     });
   };
 }
 
 type SpawnSessionFn = (input: SpawnSessionInvocation) => Promise<SpawnSessionResult>;
 
-function createDefaultRuntimeFactory(authStorage: AuthStorage, modelRegistry: ModelRegistryInstance, spawn?: SpawnSessionFn, subsessions?: SubsessionToolDeps): PiWebCreateAgentSessionRuntimeFactory {
-  return async ({ cwd, agentDir, sessionManager, sessionStartEvent, initialModel }) => {
+export function createPiWebCustomToolDefinitions(
+  cwd: string,
+  delegationEnabled: boolean,
+  spawn?: SpawnSessionFn,
+  subsessions?: SubsessionToolDeps,
+) {
+  return [
+    createPiWebEditToolDefinition(cwd),
+    ...(delegationEnabled && spawn !== undefined ? [createSpawnSessionToolDefinition(cwd, { spawn })] : []),
+    ...(delegationEnabled && subsessions !== undefined ? createSubsessionToolDefinitions(cwd, subsessions) : []),
+  ];
+}
+
+function createDefaultRuntimeFactory(
+  authStorage: AuthStorage,
+  modelRegistry: ModelRegistryInstance,
+  sessionManagers: Pick<PiSessionManagerGateway, "open">,
+  spawn?: SpawnSessionFn,
+  subsessions?: SubsessionToolDeps,
+): PiWebCreateAgentSessionRuntimeFactory {
+  return async ({ cwd, agentDir, sessionManager, sessionStartEvent, initialModel, delegationToolsEnabled }) => {
     const services = await createAgentSessionServices({ cwd, agentDir, authStorage, modelRegistry });
-    const customTools = [
-      createPiWebEditToolDefinition(cwd),
-      ...(spawn === undefined ? [] : [createSpawnSessionToolDefinition(cwd, { spawn })]),
-      ...(subsessions === undefined ? [] : createSubsessionToolDefinitions(cwd, subsessions)),
-    ];
+    const resolvedDelegationToolsEnabled = delegationToolsEnabled
+      ?? await sessionAllowsDelegationTools(sessionManager, sessionManagers);
+    const customTools = createPiWebCustomToolDefinitions(cwd, resolvedDelegationToolsEnabled, spawn, subsessions);
     const result = await createAgentSessionFromServices({
       services,
       sessionManager,
@@ -345,17 +389,16 @@ export interface PiSessionServiceDependencies {
   heartbeatIntervalMs?: number;
   workspaceActivity?: Pick<WorkspaceActivityService, "applySessionStatus" | "applySessionActivity" | "removeSession" | "reconcileSessionActivity">;
   /**
-   * When provided, the `spawn_session` tool is registered on every session,
-   * letting the LLM start new sessions scoped to its project's workspaces.
-   * Omit to keep the capability disabled (the tool is never registered).
+   * When provided, `spawn_session` is available to sessions whose creation
+   * provenance permits delegation, scoped to the project's workspaces.
+   * Omit to keep the capability disabled.
    */
   spawnTargets?: SpawnTargetResolver;
   /**
    * Beta: when true (and `spawnTargets` is provided), the tracked-subsession
-   * tools (`spawn_subsession`, `list_subsessions`, `check_subsession`,
-   * `read_subsession`) are
-   * registered on every session. Off by default so the capability can ship in
-   * main without being exposed in releases.
+   * tools are available to sessions whose creation provenance permits
+   * delegation. Off by default so the capability can ship in main without
+   * being exposed in releases.
    */
   subsessionsEnabled?: boolean;
   /** Structured logger for notable runtime events (e.g. spawns). */
@@ -366,6 +409,7 @@ export interface PiSessionServiceDependencies {
 
 export class PiSessionService {
   private readonly active = new Map<string, ActiveSession<PiSessionRuntime>>();
+  private readonly pendingSessionOpens = new Map<string, PendingSessionOpen>();
   private readonly activities = new Map<string, { phase: "active" | "idle" | "error"; label: string; detail?: string; at: string }>();
   private readonly heartbeat: NodeJS.Timeout;
   private readonly commandService: SessionCommandService<PiAgentSession>;
@@ -411,6 +455,7 @@ export class PiSessionService {
     this.createRuntime = deps.createRuntime ?? createDefaultRuntimeFactory(
       this.modelRegistry.authStorage,
       this.modelRegistry,
+      this.sessionManager,
       this.spawnTargets === undefined ? undefined : (input) => this.spawnSession(input),
       !subsessionsActive ? undefined : {
         spawn: (input) => this.spawnSubsession(input),
@@ -494,8 +539,11 @@ export class PiSessionService {
   async dispose(): Promise<void> {
     clearInterval(this.heartbeat);
     this.clearCompactionDrainTimers();
+    const pendingOpens = this.pendingSessionOpenPromises();
+    if (pendingOpens.length > 0) await Promise.allSettled(pendingOpens);
     const activeSessions = Array.from(new Set(this.active.values()));
     this.active.clear();
+    this.pendingSessionOpens.clear();
     this.activities.clear();
     this.compactionPromptQueues.clear();
     this.authLossWarnings.clear();
@@ -507,8 +555,11 @@ export class PiSessionService {
     await Promise.all(activeSessions.map(async (active) => {
       active.unsubscribe();
       this.workspaceActivity?.removeSession(active.runtime.session.sessionId, active.runtime.session.sessionManager.getCwd());
-      await active.runtime.session.abort();
-      await active.runtime.dispose();
+      try {
+        await active.runtime.session.abort();
+      } finally {
+        await active.runtime.dispose();
+      }
     }));
   }
 
@@ -531,10 +582,17 @@ export class PiSessionService {
   }
 
   async start(cwd: string, options: StartSessionOptions = {}): Promise<ClientSession> {
+    return this.startSession(cwd, options);
+  }
+
+  private async startSession(cwd: string, options: InternalStartSessionOptions): Promise<ClientSession> {
     const active = await this.create(
       this.sessionManager.create(cwd, options.parentSession === undefined ? undefined : { parentSession: options.parentSession }),
       cwd,
-      options.initialModel === undefined ? {} : { initialModel: options.initialModel },
+      {
+        ...(options.initialModel === undefined ? {} : { initialModel: options.initialModel }),
+        ...(options.creationProvenance === undefined ? {} : { creationProvenance: options.creationProvenance }),
+      },
     );
     const { session } = active.runtime;
     const created: ClientSession = {
@@ -584,9 +642,10 @@ export class PiSessionService {
     if (this.spawnTargets === undefined) throw new Error("Spawning sessions is disabled");
     const decision = await this.spawnTargets.resolveSpawnTarget(input.spawningCwd, input.cwd);
     if (!decision.allowed) throw spawnTargetError(decision);
-    const created = await this.start(decision.cwd, {
+    const created = await this.startSession(decision.cwd, {
       ...(input.parentSessionFile === undefined ? {} : { parentSession: input.parentSessionFile }),
       ...(input.model === undefined ? {} : { initialModel: input.model }),
+      creationProvenance: "tracked-subsession",
     });
     const parentSessionFile = nonEmptyString(input.parentSessionFile);
     const link: TrackedSubsessionLink = {
@@ -795,53 +854,13 @@ export class PiSessionService {
     this.registerVerifiedSubsession(link);
   }
 
-  private async verifiedSubsessionLinkFromOpenedChild(session: PiAgentSession): Promise<TrackedSubsessionLink | undefined> {
-    // Child markers are only hints; the current child header and reciprocal
-    // parent custom link must agree on the exact ids and files before relinking.
-    const entries = session.sessionManager.getEntries?.() ?? session.sessionManager.getBranch();
-    let marker: PersistedChildSubsessionLink | undefined;
-    for (const entry of entries) {
-      const parsed = parsePersistedChildSubsessionLink(entry);
-      if (parsed?.spawnedSessionId === session.sessionId) marker = parsed;
-    }
-    if (marker === undefined) return undefined;
-
-    const childSessionFile = nonEmptyString(session.sessionFile);
-    if (childSessionFile === undefined) return undefined;
-    const childHeader = await readSessionHeaderSummary(childSessionFile);
-    if (childHeader?.id !== session.sessionId) return undefined;
-    const parentSessionFile = nonEmptyString(childHeader.parentSession);
-    if (parentSessionFile === undefined) return undefined;
-    const parentHeader = await readSessionHeaderSummary(parentSessionFile);
-    if (parentHeader?.id !== marker.spawnedBySessionId) return undefined;
-
-    const parentLink = this.findReciprocalParentSubsessionLink(parentSessionFile, marker.spawnedBySessionId, session.sessionId, childSessionFile);
-    if (parentLink === undefined) return undefined;
-    return {
-      parentSessionId: marker.spawnedBySessionId,
-      childSessionId: session.sessionId,
-      childSessionFile,
-      parentSessionFile,
-      cwd: parentLink.cwd ?? session.sessionManager.getCwd(),
-    };
-  }
-
-  private findReciprocalParentSubsessionLink(parentSessionFile: string, parentSessionId: string, childSessionId: string, childSessionFile: string): PersistedParentSubsessionLink | undefined {
-    let parentManager: PiSessionManager;
-    try {
-      parentManager = this.sessionManager.open(parentSessionFile);
-    } catch {
-      return undefined;
-    }
-    const entries = parentManager.getEntries?.() ?? parentManager.getBranch();
-    for (const entry of entries) {
-      const link = parsePersistedParentSubsessionLink(entry);
-      if (link === undefined) continue;
-      if (link.spawnedBySessionId !== parentSessionId || link.spawnedSessionId !== childSessionId) continue;
-      if (link.spawnedSessionFile === undefined || !sessionPathsEqual(link.spawnedSessionFile, childSessionFile)) continue;
-      return link;
-    }
-    return undefined;
+  private verifiedSubsessionLinkFromOpenedChild(session: PiAgentSession): Promise<TrackedSubsessionLink | undefined> {
+    return verifiedTrackedSubsessionLink(this.sessionManager, {
+      sessionId: session.sessionId,
+      sessionFile: session.sessionFile,
+      sessionManager: session.sessionManager,
+      cwd: session.sessionManager.getCwd(),
+    });
   }
 
   private async getOrOpenTrackedSubsession(sessionId: string): Promise<PiAgentSession> {
@@ -898,7 +917,7 @@ export class PiSessionService {
     const status: SubsessionStatus = this.activities.get(childId)?.phase === "error" ? "error" : "idle";
     const finalText = finalAssistantText(historyMessages(session));
     const preview = finalText === "" ? "(no output)" : truncateForNotification(finalText);
-    const text = `Subsession ${childId} stopped working (status: ${status}). Latest output:\n\n${preview}\n\nUse check_subsession with sessionId "${childId}" for its status and latest output, or read_subsession to look through its full transcript.`;
+    const text = `Subsession ${childId} stopped working (status: ${status}). Latest output:\n\n${preview}\n\nStatus and latest output are available through check_subsession with sessionId "${childId}"; its full transcript is available through read_subsession.`;
     void this.notifyParentOfSubsession(link.parentSessionId, childId, text);
   }
 
@@ -1533,6 +1552,8 @@ export class PiSessionService {
   }
 
   private async closeActive(sessionId: string): Promise<void> {
+    const pendingOpens = this.pendingSessionOpenPromises(sessionId);
+    if (pendingOpens.length > 0) await Promise.allSettled(pendingOpens);
     const active = this.active.get(sessionId);
     if (!active) return;
     this.active.delete(sessionId);
@@ -1566,13 +1587,49 @@ export class PiSessionService {
     if (active !== undefined) return active;
 
     const archived = await this.getArchived(ref);
-    if (archived?.archivePath !== undefined) return this.create(this.sessionManager.open(archived.archivePath), archived.cwd);
+    if (archived?.archivePath !== undefined) {
+      const { archivePath } = archived;
+      return this.openExistingSession(
+        archived.sessionId,
+        archived.cwd,
+        () => this.sessionManager.open(archivePath),
+      );
+    }
 
     const match = isPiSessionRef(ref)
       ? (await this.sessionManager.list(ref.cwd)).find((s) => s.id === ref.id || s.id.startsWith(ref.id))
       : (await this.sessionManager.listAll?.() ?? []).find((s) => s.id === ref || s.id.startsWith(ref));
     if (!match) throw new Error("Session not found");
-    return this.create(this.sessionManager.open(match.path), match.cwd);
+    return this.openExistingSession(match.id, match.cwd, () => this.sessionManager.open(match.path));
+  }
+
+  private openExistingSession(
+    sessionId: string,
+    cwd: string,
+    openSessionManager: () => PiSessionManager,
+  ): Promise<ActiveSession<PiSessionRuntime>> {
+    const active = this.activeForLookup({ id: sessionId, cwd });
+    if (active !== undefined) return Promise.resolve(active);
+
+    const key = JSON.stringify([canonicalizeStoredCwd(cwd), sessionId]);
+    const existing = this.pendingSessionOpens.get(key);
+    if (existing !== undefined) return existing.promise;
+
+    const pending: PendingSessionOpen = {
+      sessionId,
+      promise: this.create(openSessionManager(), cwd),
+    };
+    pending.promise = pending.promise.finally(() => {
+      if (this.pendingSessionOpens.get(key) === pending) this.pendingSessionOpens.delete(key);
+    });
+    this.pendingSessionOpens.set(key, pending);
+    return pending.promise;
+  }
+
+  private pendingSessionOpenPromises(sessionId?: string): Promise<ActiveSession<PiSessionRuntime>>[] {
+    return [...this.pendingSessionOpens.values()]
+      .filter((pending) => sessionId === undefined || pending.sessionId === sessionId)
+      .map((pending) => pending.promise);
   }
 
   private async getArchived(ref: PiSessionLookup): Promise<ArchivedSessionRecord | undefined> {
@@ -1592,25 +1649,54 @@ export class PiSessionService {
     return undefined;
   }
 
-  private async create(sessionManager: PiSessionManager, cwd: string, options: Pick<StartSessionOptions, "initialModel"> = {}): Promise<ActiveSession<PiSessionRuntime>> {
+  private async create(
+    sessionManager: PiSessionManager,
+    cwd: string,
+    options: Pick<InternalStartSessionOptions, "initialModel" | "creationProvenance"> = {},
+  ): Promise<ActiveSession<PiSessionRuntime>> {
+    const delegationToolsEnabled = options.creationProvenance !== "tracked-subsession"
+      && await sessionAllowsDelegationTools(sessionManager, this.sessionManager);
     const runtime = await this.createAgentRuntime(this.createRuntime, {
       cwd,
       agentDir: this.agentDir,
       sessionManager,
+      delegationToolsEnabled,
       ...(options.initialModel === undefined ? {} : { initialModel: options.initialModel }),
     });
-    await this.bindSessionExtensions(runtime.session);
     const active: ActiveSession<PiSessionRuntime> = { runtime, unsubscribe: noop };
-    this.bindRuntime(active);
-    runtime.setRebindSession(async (session) => {
-      await this.bindSessionExtensions(session);
+    try {
+      await this.bindSessionExtensions(runtime.session);
       this.bindRuntime(active);
-      await this.recoverSubsessionTrackingForOpenedSession(session);
-    });
-    this.active.set(runtime.session.sessionId, active);
-    await this.recoverSubsessionTrackingForOpenedSession(runtime.session);
-    this.publishStatus(runtime.session);
-    return active;
+      runtime.setRebindSession(async (session) => {
+        await this.bindSessionExtensions(session);
+        this.bindRuntime(active);
+        await this.recoverSubsessionTrackingForOpenedSession(session);
+      });
+      this.active.set(runtime.session.sessionId, active);
+      await this.recoverSubsessionTrackingForOpenedSession(runtime.session);
+      this.publishStatus(runtime.session);
+      return active;
+    } catch (error: unknown) {
+      active.unsubscribe();
+      let removedActive = false;
+      for (const [sessionId, candidate] of this.active.entries()) {
+        if (candidate !== active) continue;
+        this.active.delete(sessionId);
+        this.activities.delete(sessionId);
+        this.clearAuthLossWarningsForSession(sessionId);
+        this.clearCompactionPromptQueue(sessionId);
+        removedActive = true;
+      }
+      if (removedActive) {
+        this.workspaceActivity?.removeSession(runtime.session.sessionId, runtime.session.sessionManager.getCwd());
+      }
+      try {
+        await runtime.session.abort();
+      } finally {
+        await runtime.dispose();
+      }
+      throw error;
+    }
   }
 
   private async bindSessionExtensions(session: PiAgentSession): Promise<void> {
@@ -2093,6 +2179,95 @@ function archivedTimestamp(record: ArchivedSessionRecord): number {
 
 function isDefined<T>(value: T | undefined): value is T {
   return value !== undefined;
+}
+
+interface TrackedSubsessionSessionIdentity {
+  sessionId: string;
+  sessionFile: string | undefined;
+  sessionManager: PiSessionManager;
+  cwd: string;
+}
+
+/**
+ * Resolve the delegation capability from server-owned, persisted session
+ * provenance. A copied marker is not enough: the child header and reciprocal
+ * parent link must identify the exact same session files.
+ */
+export async function sessionAllowsDelegationTools(
+  sessionManager: PiSessionManager,
+  managers: Pick<PiSessionManagerGateway, "open">,
+): Promise<boolean> {
+  const trackedLink = await verifiedTrackedSubsessionLink(managers, {
+    sessionId: sessionManager.getSessionId(),
+    sessionFile: sessionManager.getSessionFile(),
+    sessionManager,
+    cwd: sessionManager.getCwd(),
+  });
+  return trackedLink === undefined;
+}
+
+async function verifiedTrackedSubsessionLink(
+  managers: Pick<PiSessionManagerGateway, "open">,
+  session: TrackedSubsessionSessionIdentity,
+): Promise<TrackedSubsessionLink | undefined> {
+  // Child markers are only hints; the current child header and reciprocal
+  // parent custom link must agree on the exact ids and files before relinking.
+  const entries = session.sessionManager.getEntries?.() ?? session.sessionManager.getBranch();
+  let marker: PersistedChildSubsessionLink | undefined;
+  for (const entry of entries) {
+    const parsed = parsePersistedChildSubsessionLink(entry);
+    if (parsed?.spawnedSessionId === session.sessionId) marker = parsed;
+  }
+  if (marker === undefined) return undefined;
+
+  const childSessionFile = nonEmptyString(session.sessionFile);
+  if (childSessionFile === undefined) return undefined;
+  const childHeader = await readSessionHeaderSummary(childSessionFile);
+  if (childHeader?.id !== session.sessionId) return undefined;
+  const parentSessionFile = nonEmptyString(childHeader.parentSession);
+  if (parentSessionFile === undefined) return undefined;
+  const parentHeader = await readSessionHeaderSummary(parentSessionFile);
+  if (parentHeader?.id !== marker.spawnedBySessionId) return undefined;
+
+  const parentLink = findReciprocalParentSubsessionLink(
+    managers,
+    parentSessionFile,
+    marker.spawnedBySessionId,
+    session.sessionId,
+    childSessionFile,
+  );
+  if (parentLink === undefined) return undefined;
+  return {
+    parentSessionId: marker.spawnedBySessionId,
+    childSessionId: session.sessionId,
+    childSessionFile,
+    parentSessionFile,
+    cwd: parentLink.cwd ?? session.cwd,
+  };
+}
+
+function findReciprocalParentSubsessionLink(
+  managers: Pick<PiSessionManagerGateway, "open">,
+  parentSessionFile: string,
+  parentSessionId: string,
+  childSessionId: string,
+  childSessionFile: string,
+): PersistedParentSubsessionLink | undefined {
+  let parentManager: PiSessionManager;
+  try {
+    parentManager = managers.open(parentSessionFile);
+  } catch {
+    return undefined;
+  }
+  const entries = parentManager.getEntries?.() ?? parentManager.getBranch();
+  for (const entry of entries) {
+    const link = parsePersistedParentSubsessionLink(entry);
+    if (link === undefined) continue;
+    if (link.spawnedBySessionId !== parentSessionId || link.spawnedSessionId !== childSessionId) continue;
+    if (link.spawnedSessionFile === undefined || !sessionPathsEqual(link.spawnedSessionFile, childSessionFile)) continue;
+    return link;
+  }
+  return undefined;
 }
 
 function trackedSubsessionLinkFromParentLink(parentSessionId: string, link: PersistedParentSubsessionLink, parentSessionFile: string): TrackedSubsessionLink {

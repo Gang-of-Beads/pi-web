@@ -28,6 +28,8 @@ export interface MachineClient {
 export const DEFAULT_REMOTE_REQUEST_TIMEOUT_MS = 30_000;
 export const DEFAULT_REMOTE_HEALTH_TIMEOUT_MS = 3_000;
 
+const REMOTE_RESPONSE_ACCEPT_ENCODING = "gzip, deflate";
+
 const BLOCKED_CONFIGURED_HEADER_NAMES = new Set([
   "host",
   "connection",
@@ -57,7 +59,7 @@ export class RemoteMachineClient implements MachineClient {
     const response = await this.fetchResponse(method, path, body, options);
     return {
       statusCode: response.status,
-      headers: headersToRecord(response.headers),
+      headers: decodedResponseHeaders(response.headers),
       ...(response.body === null ? {} : { body: readableFromWebResponseBody(response.body) }),
     };
   }
@@ -68,7 +70,7 @@ export class RemoteMachineClient implements MachineClient {
     const parsed: unknown = text === "" ? undefined : JSON.parse(text);
     return {
       statusCode: response.status,
-      headers: headersToRecord(response.headers),
+      headers: decodedResponseHeaders(response.headers),
       body: parsed,
     };
   }
@@ -100,12 +102,12 @@ export class RemoteMachineClient implements MachineClient {
     }
   }
 
-  private requestHeaders(body: unknown, options: MachineRequestOptions): HeadersInit {
-    return {
-      ...this.remoteHeaders(),
-      accept: "*/*",
-      ...(body === undefined ? {} : { "content-type": options.contentType ?? defaultContentTypeForBody(body) }),
-    };
+  private requestHeaders(body: unknown, options: MachineRequestOptions): Headers {
+    const headers = new Headers(this.remoteHeaders());
+    headers.set("accept", "*/*");
+    headers.set("accept-encoding", REMOTE_RESPONSE_ACCEPT_ENCODING);
+    if (body !== undefined) headers.set("content-type", options.contentType ?? defaultContentTypeForBody(body));
+    return headers;
   }
 
   private remoteHeaders(): Record<string, string> {
@@ -145,8 +147,16 @@ function filterConfiguredHeaders(headers: Record<string, string> | undefined): R
   return Object.fromEntries(Object.entries(headers).filter(([key]) => !BLOCKED_CONFIGURED_HEADER_NAMES.has(key.toLowerCase())));
 }
 
-function headersToRecord(headers: Headers): Record<string, string> {
-  return Object.fromEntries(headers.entries());
+function decodedResponseHeaders(headers: Headers): Record<string, string> {
+  const values: Record<string, string> = Object.fromEntries(headers.entries());
+  const contentEncoding = values["content-encoding"];
+  if (contentEncoding !== undefined && contentEncoding !== "identity") {
+    // Fetch decodes response bodies but retains headers for the encoded wire
+    // representation. The outer HTTP edge must negotiate and frame the decoded body.
+    delete values["content-encoding"];
+    delete values["content-length"];
+  }
+  return values;
 }
 
 function serializeRequestBody(method: string, body: unknown): NonNullable<RequestInit["body"]> | undefined {

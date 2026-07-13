@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { SessionBulkMutationRequest, SessionBulkMutationRef, SessionCleanupRequest } from "../../shared/apiTypes.js";
+import { projectBrowserMessageResponse } from "../browserMessageProjection.js";
 import { normalizeRequestCwd } from "../workingDirectory.js";
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
 import type { PiSessionRef, PiSessionService } from "./piSessionService.js";
@@ -83,7 +84,8 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: PiSessionS
   app.get<{ Params: { sessionId: string }; Querystring: MessageQuery }>(`${prefix}/sessions/:sessionId/messages`, async (request, reply) => {
     try {
       const page = { ...optionalField("before", optionalNumber(request.query.before)), ...optionalField("limit", optionalNumber(request.query.limit)) };
-      return await sessions.messages(sessionLookupFromQuery(request.params.sessionId, request.query), page);
+      const messages = await sessions.messages(sessionLookupFromQuery(request.params.sessionId, request.query), page);
+      return projectBrowserMessageResponse(messages);
     } catch (error) {
       return reply.code(404).send({ error: errorMessage(error) });
     }

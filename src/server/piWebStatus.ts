@@ -11,11 +11,11 @@ import { effectivePiWebCapabilities, WEB_RUNTIME_CAPABILITIES } from "../shared/
 import { piWebDockerCommand } from "../docker/piWebDockerCommandPlan.js";
 import { parsePiWebComponentStatus, parsePiWebRuntimeComponent } from "../shared/piWebStatusParsing.js";
 import { SessionDaemonClient } from "../sessiond/sessionDaemonClient.js";
+import { createPiWebReleaseLookupCache, type PiWebReleaseLookup } from "./piWebReleaseLookupCache.js";
 
 const PI_WEB_PACKAGE_NAME = "@jmfederico/pi-web";
 const PI_WEB_NPM_SOURCE = `npm:${PI_WEB_PACKAGE_NAME}`;
 const DEFAULT_VERSION = "0.0.0-dev";
-const LATEST_RELEASE_CACHE_MS = 6 * 60 * 60 * 1000;
 const VERSION_CHECK_TIMEOUT_MS = 5000;
 
 type ServiceId = "sessiond" | "web" | "uiDev";
@@ -74,8 +74,11 @@ interface PiWebStatusDaemon {
   request(method: string, path: string, body?: unknown): Promise<{ statusCode: number; headers: Record<string, string>; body: string }>;
 }
 
-let latestReleaseCache: { checkedAtMs: number; latestVersion?: string; error?: string } | undefined;
+export interface PiWebStatusOptions {
+  forceReleaseCheck?: boolean;
+}
 
+const latestReleaseLookupCache = createPiWebReleaseLookupCache(fetchLatestNpmVersion);
 const runtimePackageInfo = readPackageInfoSync();
 
 export function getPiWebRuntimeComponent(component: PiWebServiceComponent, capabilities: readonly PiWebCapability[] = []): PiWebRuntimeComponent {
@@ -129,10 +132,10 @@ export async function getPiWebVersionStatus(daemon: PiWebStatusDaemon = new Sess
   };
 }
 
-export async function getPiWebStatus(daemon: PiWebStatusDaemon = new SessionDaemonClient()): Promise<PiWebStatusResponse> {
+export async function getPiWebStatus(daemon: PiWebStatusDaemon = new SessionDaemonClient(), options: PiWebStatusOptions = {}): Promise<PiWebStatusResponse> {
   const versionStatus = await getPiWebVersionStatus(daemon);
   const { web, sessiond } = versionStatus.components;
-  const release = await getLatestReleaseStatus(web.installedVersion ?? web.runtimeVersion ?? DEFAULT_VERSION);
+  const release = await getLatestReleaseStatus(web.installedVersion ?? web.runtimeVersion ?? DEFAULT_VERSION, options.forceReleaseCheck === true);
   const components = { web, sessiond };
   const commands = await commandsFor(components);
   const messages = buildMessages(components, release, commands);
@@ -375,25 +378,16 @@ function unavailableSessiond(error: string): PiWebComponentStatus {
   };
 }
 
-async function getLatestReleaseStatus(currentVersion: string): Promise<PiWebReleaseStatus> {
+async function getLatestReleaseStatus(currentVersion: string, force: boolean): Promise<PiWebReleaseStatus> {
   const checkedAtMs = Date.now();
   if (skipVersionCheck()) {
     return { packageName: PI_WEB_PACKAGE_NAME, updateAvailable: false, checkedAt: new Date(checkedAtMs).toISOString(), skipped: true };
   }
 
-  if (latestReleaseCache !== undefined && checkedAtMs - latestReleaseCache.checkedAtMs < LATEST_RELEASE_CACHE_MS) {
-    return releaseStatusFromCache(latestReleaseCache, currentVersion);
-  }
-
-  try {
-    latestReleaseCache = { checkedAtMs, latestVersion: await fetchLatestNpmVersion(currentVersion) };
-  } catch (error) {
-    latestReleaseCache = { checkedAtMs, error: error instanceof Error ? error.message : String(error) };
-  }
-  return releaseStatusFromCache(latestReleaseCache, currentVersion);
+  return releaseStatusFromCache(await latestReleaseLookupCache.get(currentVersion, { force }), currentVersion);
 }
 
-function releaseStatusFromCache(cache: { checkedAtMs: number; latestVersion?: string; error?: string }, currentVersion: string): PiWebReleaseStatus {
+function releaseStatusFromCache(cache: PiWebReleaseLookup, currentVersion: string): PiWebReleaseStatus {
   return {
     packageName: PI_WEB_PACKAGE_NAME,
     ...(cache.latestVersion === undefined ? {} : { latestVersion: cache.latestVersion }),

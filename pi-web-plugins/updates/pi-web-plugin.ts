@@ -143,6 +143,7 @@ function renderUpdatesPanel(html: HtmlTemplateTag, terminal: WorkspacePanelTermi
       <section class="updates-meta">
         <span>Generated ${status.generatedAt}</span>
         ${status.release.latestVersion === undefined ? null : html`<span>Latest npm release ${status.release.latestVersion}</span>`}
+        ${status.release.checkedAt === undefined || status.release.skipped === true ? null : html`<span>Release checked ${status.release.checkedAt}</span>`}
         ${status.release.skipped === true ? html`<span>Remote version check skipped.</span>` : null}
         ${status.release.error === undefined ? null : html`<span>Remote version check failed: ${status.release.error}</span>`}
       </section>
@@ -155,6 +156,17 @@ const plugin: PiWebPlugin = {
   name: "Updates",
   activate: ({ html, svg }) => ({
     contributions: {
+      actions: [
+        {
+          id: "check",
+          title: "Check for PI WEB Updates",
+          description: "Bypass cached release data and check the selected machine now",
+          group: "Updates",
+          enabled: (context) => context.checkForPiWebUpdates !== undefined,
+          disabledReason: () => "Update checks require a newer PI WEB gateway",
+          run: (context) => context.checkForPiWebUpdates?.(),
+        },
+      ],
       workspacePanels: [
         {
           id: "workspace.updates",

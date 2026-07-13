@@ -12,6 +12,13 @@ function snapshot(...workspaces: WorkspaceActivity[]): WorkspaceActivityResponse
   return { workspaces, generatedAt: "now" };
 }
 
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolveDeferred: ((value: T) => void) | undefined;
+  const promise = new Promise<T>((resolve) => { resolveDeferred = resolve; });
+  if (resolveDeferred === undefined) throw new Error("Deferred promise was not initialized");
+  return { promise, resolve: resolveDeferred };
+}
+
 describe("ActivityController", () => {
   it("stores workspace activity under the requested machine", async () => {
     let state: AppState = { ...initialAppState(), selectedMachine: { id: "remote", name: "Remote", kind: "remote", createdAt: "now", updatedAt: "now" } };
@@ -27,6 +34,42 @@ describe("ActivityController", () => {
       remote: { "/remote": activity("/remote") },
       local: { "/local": activity("/local") },
     });
+  });
+
+  it("shares duplicate requests and runs one trailing refresh requested during the active fetch", async () => {
+    const firstSnapshot = deferred<WorkspaceActivityResponse>();
+    const trailingSnapshot = deferred<WorkspaceActivityResponse>();
+    const trailingStarted = deferred<undefined>();
+    let calls = 0;
+    let state: AppState = { ...initialAppState(), selectedMachine: { id: "local", name: "Local", kind: "local", createdAt: "now", updatedAt: "now" } };
+    const controller = new ActivityController(() => state, (patch) => { state = { ...state, ...patch }; }, {
+      api: {
+        workspaceActivity: () => {
+          calls += 1;
+          if (calls === 2) trailingStarted.resolve(undefined);
+          return calls === 1 ? firstSnapshot.promise : trailingSnapshot.promise;
+        },
+      },
+    });
+
+    const first = controller.refresh("local");
+    const duplicate = controller.refresh("local");
+    await Promise.resolve();
+
+    expect(calls).toBe(1);
+
+    const later = controller.refresh("local");
+    const laterDuplicate = controller.refresh("local");
+    firstSnapshot.resolve(snapshot(activity("/stale")));
+    await trailingStarted.promise;
+
+    expect(calls).toBe(2);
+
+    trailingSnapshot.resolve(snapshot(activity("/fresh")));
+    await Promise.all([first, duplicate, later, laterDuplicate]);
+
+    expect(calls).toBe(2);
+    expect(state.workspaceActivities).toEqual({ "/fresh": activity("/fresh") });
   });
 
   it("applies live activity updates to the owning machine only", () => {

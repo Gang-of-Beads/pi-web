@@ -2,8 +2,18 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { PiSessionService, type PiAgentSession } from "./piSessionService.js";
-import { CapturingSessionEventHub, fakeRuntime, fakeSessionManager, runtimeCreator, sessionGateway, sessionRecord, sessionRef, type RuntimeCreator } from "./piSessionService.testSupport.js";
+import { PiSessionService, type PiAgentSession, type PiSessionRuntime } from "./piSessionService.js";
+import { CapturingSessionEventHub, emptyArchiveStore, fakeRuntime, fakeSessionManager, runtimeCreator, sessionGateway, sessionRecord, sessionRef, type RuntimeCreator } from "./piSessionService.testSupport.js";
+
+function deferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
+}
 
 describe("PiSessionService lifecycle, listing, and reload", () => {
   it("starts sessions through an injected runtime creator", async () => {
@@ -83,6 +93,156 @@ describe("PiSessionService lifecycle, listing, and reload", () => {
     expect(open).toHaveBeenCalledWith("/sessions/legacy-session.jsonl");
 
     await service.dispose();
+  });
+
+  it("shares one runtime when concurrent cold lookups resolve to the same session", async () => {
+    const sessionId = "single-flight-session";
+    const createStarted = deferred();
+    const releaseCreate = deferred();
+    const winnerUnsubscribe = vi.fn();
+    const loserUnsubscribe = vi.fn();
+    const winnerSubscribe = vi.fn(() => winnerUnsubscribe);
+    const loserSubscribe = vi.fn(() => loserUnsubscribe);
+    const winner = fakeRuntime(sessionId, {
+      sessionManager: fakeSessionManager("/workspace", {
+        getSessionId: () => sessionId,
+        getBranch: () => [{ type: "message", message: { role: "user", content: "shared runtime" } }],
+      }),
+      subscribe: winnerSubscribe,
+    });
+    const loser = fakeRuntime(sessionId, {
+      sessionManager: fakeSessionManager("/workspace", { getSessionId: () => sessionId }),
+      subscribe: loserSubscribe,
+    });
+    const runtimes = [winner.runtime, loser.runtime];
+    let createCalls = 0;
+    const createAgentRuntime: RuntimeCreator = async () => {
+      const runtime = runtimes[createCalls];
+      createCalls += 1;
+      createStarted.resolve();
+      await releaseCreate.promise;
+      if (runtime === undefined) throw new Error("unexpected runtime creation");
+      return runtime;
+    };
+    const gateway = sessionGateway([sessionRecord(sessionId)]);
+    const open = vi.spyOn(gateway, "open");
+    const service = new PiSessionService(new CapturingSessionEventHub(), {
+      archiveStore: emptyArchiveStore(),
+      createAgentRuntime,
+      sessionManager: gateway,
+      heartbeatIntervalMs: 60_000,
+    });
+
+    const messagesPromise = service.messages(sessionRef(sessionId));
+    await createStarted.promise;
+    const statusPromise = service.status(sessionRef("single-flight"));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const callsWhileOpening = createCalls;
+    releaseCreate.resolve();
+
+    const [messages, status] = await Promise.all([messagesPromise, statusPromise]);
+    const activeCount = service.activeCount();
+    await service.dispose();
+
+    expect(callsWhileOpening).toBe(1);
+    expect(createCalls).toBe(1);
+    expect(open).toHaveBeenCalledOnce();
+    expect(activeCount).toBe(1);
+    expect(messages).toEqual([{ role: "user", content: "shared runtime" }]);
+    expect(status).toMatchObject({ sessionId });
+    expect(winnerSubscribe).toHaveBeenCalledOnce();
+    expect(winnerUnsubscribe).toHaveBeenCalledOnce();
+    expect(winner.calls.dispose).toBe(1);
+    expect(loserSubscribe).not.toHaveBeenCalled();
+    expect(loserUnsubscribe).not.toHaveBeenCalled();
+    expect(loser.calls.dispose).toBe(0);
+  });
+
+  it("clears a failed pending open so the session can be retried", async () => {
+    const sessionId = "retry-open-session";
+    const bindStarted = deferred();
+    const bindResult = deferred();
+    const openingError = new Error("extension binding failed");
+    const failed = fakeRuntime(sessionId, {
+      bindExtensions: () => {
+        bindStarted.resolve();
+        return bindResult.promise;
+      },
+    });
+    const retried = fakeRuntime(sessionId);
+    const runtimes = [failed.runtime, retried.runtime];
+    let createCalls = 0;
+    const createAgentRuntime: RuntimeCreator = () => {
+      const runtime = runtimes[createCalls];
+      createCalls += 1;
+      return runtime === undefined
+        ? Promise.reject(new Error("unexpected runtime creation"))
+        : Promise.resolve(runtime);
+    };
+    const service = new PiSessionService(new CapturingSessionEventHub(), {
+      archiveStore: emptyArchiveStore(),
+      createAgentRuntime,
+      sessionManager: sessionGateway([sessionRecord(sessionId)]),
+      heartbeatIntervalMs: 60_000,
+    });
+
+    const messagesPromise = service.messages(sessionRef(sessionId));
+    await bindStarted.promise;
+    const statusPromise = service.status(sessionRef("retry-open"));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const callsWhileOpening = createCalls;
+    const failedLookups = Promise.allSettled([messagesPromise, statusPromise]);
+    bindResult.reject(openingError);
+
+    const outcomes = await failedLookups;
+    expect(callsWhileOpening).toBe(1);
+    expect(outcomes).toHaveLength(2);
+    for (const outcome of outcomes) {
+      expect(outcome.status).toBe("rejected");
+      if (outcome.status === "rejected") expect(outcome.reason).toBe(openingError);
+    }
+    expect(service.activeCount()).toBe(0);
+    expect(failed.calls.abort).toBe(1);
+    expect(failed.calls.dispose).toBe(1);
+
+    await expect(service.status(sessionRef(sessionId))).resolves.toMatchObject({ sessionId });
+    expect(createCalls).toBe(2);
+    expect(service.activeCount()).toBe(1);
+
+    await service.dispose();
+    expect(retried.calls.dispose).toBe(1);
+  });
+
+  it("waits for an in-flight open before disposing the service", async () => {
+    const sessionId = "dispose-opening-session";
+    const createStarted = deferred();
+    const runtimeResult = deferred<PiSessionRuntime>();
+    const fake = fakeRuntime(sessionId);
+    const service = new PiSessionService(new CapturingSessionEventHub(), {
+      archiveStore: emptyArchiveStore(),
+      createAgentRuntime: () => {
+        createStarted.resolve();
+        return runtimeResult.promise;
+      },
+      sessionManager: sessionGateway([sessionRecord(sessionId)]),
+      heartbeatIntervalMs: 60_000,
+    });
+
+    const statusPromise = service.status(sessionRef(sessionId));
+    await createStarted.promise;
+    let disposeSettled = false;
+    const disposePromise = service.dispose().then(() => { disposeSettled = true; });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const settledWhileOpening = disposeSettled;
+    runtimeResult.resolve(fake.runtime);
+
+    await expect(statusPromise).resolves.toMatchObject({ sessionId });
+    await disposePromise;
+
+    expect(settledWhileOpening).toBe(false);
+    expect(service.activeCount()).toBe(0);
+    expect(fake.calls.abort).toBe(1);
+    expect(fake.calls.dispose).toBe(1);
   });
 
   it("binds extensions again when the SDK runtime replaces the active session", async () => {

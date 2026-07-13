@@ -250,11 +250,14 @@ After editing, check the manifest endpoint and browser-console failure cases.</c
               <h3>Updates</h3>
               <p>
                 <strong>Updates</strong> adds a conditional <strong>Updates</strong> workspace tab with PI WEB update,
-                restart, and installed-service guidance. It is built into PI WEB, enabled by default, and uses the
-                selected machine's plugin copy when machine federation is active.
+                restart, and installed-service guidance, plus a <strong>Check for PI WEB Updates</strong> action. It is
+                built into PI WEB, enabled by default, and uses the selected machine's plugin copy when machine
+                federation is active.
               </p>
               <ul>
                 <li>Plugin id: <code>updates</code></li>
+                <li>Selected-machine status refreshes every 15 minutes while a browser tab is connected.</li>
+                <li>Automatic npm release lookups are cached for six hours; the action bypasses the caches and checks immediately.</li>
               </ul>
               <div class="code-card">
                 <div class="copy-row">

@@ -41,7 +41,7 @@ export function createSpawnSessionToolDefinition(spawningCwd: string, deps: Spaw
   return defineTool<typeof SpawnSessionParams, SpawnSessionToolDetails>({
     name: "spawn_session",
     label: "Spawn session",
-    description: "Start a new, independent pi-web session and send it an initial prompt. Use this to dispatch a fresh agent to continue work or follow a plan. The new session runs on its own and a human can interact with it; you do not receive its output.",
+    description: "Start a new independent pi-web session and send it an initial prompt. The session is not tracked by the caller, can be opened by a human, and runs without returning its later output to the caller.",
     promptSnippet: "spawn_session: start a new independent session with a first prompt",
     parameters: SpawnSessionParams,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -55,7 +55,7 @@ export function createSpawnSessionToolDefinition(spawningCwd: string, deps: Spaw
         ...(ctx.model === undefined ? {} : { model: ctx.model }),
       });
       return {
-        content: [{ type: "text", text: `Started session ${result.sessionId} in ${result.cwd}.` }],
+        content: [{ type: "text", text: `Started independent session ${result.sessionId} in ${result.cwd}.` }],
         details: result,
       };
     },

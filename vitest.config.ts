@@ -12,6 +12,6 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["src/**/*.test.ts", "pi-web-plugins/**/*.test.ts", "packages/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "pi-web-plugins/**/*.test.ts", "packages/**/*.test.ts", "scripts/**/*.test.mjs"],
   },
 });

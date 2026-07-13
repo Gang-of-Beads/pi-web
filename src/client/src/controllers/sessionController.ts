@@ -14,6 +14,7 @@ import { PI_WEB_CAPABILITIES, supportsPiWebCapability } from "../../../shared/ca
 import type { PromptAttachmentDelivery } from "../../../shared/apiTypes";
 import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchived, selectPreferredSession, selectionAfterArchivingSession, selectionAfterArchivingSessions, shouldDeselectAfterArchivedCollapse, type SessionSelectionMemory } from "./sessionSelection";
 import { selectedMachineId, type GetState, type SetState, type UpdateUrl } from "./types";
+import { TrailingRefreshCoordinator } from "./trailingRefreshCoordinator";
 
 const MESSAGE_PAGE_SIZE = 100;
 const BULK_FALLBACK_CONCURRENCY = 4;
@@ -60,6 +61,12 @@ interface SuppressedCreatedSession {
   machineId: string;
 }
 
+interface SelectedSessionRefreshTarget {
+  session: SessionInfo;
+  machineId: string;
+  selectionSeq: number;
+}
+
 export class SessionController {
   private readonly socket: SessionEventSocket;
   private readonly api: typeof defaultApi;
@@ -74,6 +81,7 @@ export class SessionController {
   private pendingQueuedSendSeq = 0;
   private readonly pendingSessionStarts = new Map<string, PendingSessionStart>();
   private readonly suppressedCreatedSessions = new Map<string, SuppressedCreatedSession>();
+  private readonly selectedSessionRefreshes = new TrailingRefreshCoordinator<string>();
 
   constructor(
     private readonly getState: GetState,
@@ -95,6 +103,7 @@ export class SessionController {
   }
 
   dispose() {
+    this.selectionSeq += 1;
     this.socket.close();
     this.clearPendingUpdates();
   }
@@ -163,6 +172,7 @@ export class SessionController {
       isReceivingPartialStream: false,
       status: session.archived === true ? undefined : this.getState().sessionStatuses[session.id],
       activity: session.archived === true ? undefined : this.getState().sessionActivities[session.id],
+      availableThinkingLevels: [],
     });
     try {
       if (session.archived === true) {
@@ -180,11 +190,9 @@ export class SessionController {
         () => { void this.refreshSelectedSession(session.id); },
         selectedMachineId(this.getState()),
       );
-      const [page, status] = await Promise.all([this.api.messages(session, { limit: MESSAGE_PAGE_SIZE }, selectedMachineId(this.getState())), this.api.status(session, selectedMachineId(this.getState()))]);
-      if (seq !== this.selectionSeq || this.getState().selectedSession?.id !== session.id) return;
-      const history = this.transcripts.mergeHistory(transcriptKey, page);
-      this.setState({ ...history, isLoadingEarlierMessages: false, ...this.setStreamCatchup(status.isStreaming ? session.id : undefined), status, activity: this.getState().sessionActivities[session.id], availableThinkingLevels: [] });
-      this.applyStatus(status);
+      const machineId = selectedMachineId(this.getState());
+      await this.requestSelectedSessionRefresh({ session, machineId, selectionSeq: seq });
+      if (!this.isCurrentRefreshTarget({ session, machineId, selectionSeq: seq })) return;
       void this.refreshAvailableThinkingLevels();
       for (const event of buffered) this.applyEvent(event);
       this.socket.setHandler((event) => { this.applyEvent(event); });
@@ -725,24 +733,48 @@ export class SessionController {
     }
   }
 
-  async refreshSelectedSession(sessionId = this.getState().selectedSession?.id): Promise<void> {
+  refreshSelectedSession(sessionId = this.getState().selectedSession?.id): Promise<void> {
     const session = this.getState().selectedSession;
-    if (sessionId === undefined || session?.id !== sessionId || session.archived === true || isClientPendingStartSessionInfo(session)) return;
-    try {
+    if (sessionId === undefined || session?.id !== sessionId || session.archived === true || isClientPendingStartSessionInfo(session)) return Promise.resolve();
+    const target: SelectedSessionRefreshTarget = {
+      session,
+      machineId: selectedMachineId(this.getState()),
+      selectionSeq: this.selectionSeq,
+    };
+    return this.requestSelectedSessionRefresh(target).catch((error: unknown) => {
+      if (this.isCurrentRefreshTarget(target)) this.setState({ error: String(error) });
+    });
+  }
+
+  private requestSelectedSessionRefresh(target: SelectedSessionRefreshTarget): Promise<void> {
+    const key = machineSessionKey(target.machineId, target.session.id);
+    return this.selectedSessionRefreshes.request(key, async () => {
+      if (!this.isCurrentRefreshTarget(target)) return;
       this.flushPendingUpdates();
-      const [page, status] = await Promise.all([this.api.messages(session, { limit: MESSAGE_PAGE_SIZE }, selectedMachineId(this.getState())), this.api.status(session, selectedMachineId(this.getState()))]);
-      if (this.getState().selectedSession?.id !== sessionId) return;
-      const history = this.transcripts.mergeHistory(this.sessionCacheKey(sessionId), page);
+      const [page, status] = await Promise.all([
+        this.api.messages(target.session, { limit: MESSAGE_PAGE_SIZE }, target.machineId),
+        this.api.status(target.session, target.machineId),
+      ]);
+      if (!this.isCurrentRefreshTarget(target)) return;
+      const history = this.transcripts.mergeHistory(key, page);
       this.setState({
         ...history,
         status,
-        activity: this.getState().sessionActivities[sessionId],
-        ...this.setStreamCatchup(status.isStreaming ? sessionId : undefined),
+        activity: this.getState().sessionActivities[target.session.id],
+        ...this.setStreamCatchup(status.isStreaming ? target.session.id : undefined),
       });
       this.applyStatus(status);
-    } catch (error) {
-      if (this.getState().selectedSession?.id === sessionId) this.setState({ error: String(error) });
-    }
+    });
+  }
+
+  private isCurrentRefreshTarget(target: SelectedSessionRefreshTarget): boolean {
+    const state = this.getState();
+    const selected = state.selectedSession;
+    return target.selectionSeq === this.selectionSeq
+      && selectedMachineId(state) === target.machineId
+      && selected?.id === target.session.id
+      && selected.archived !== true
+      && !isClientPendingStartSessionInfo(selected);
   }
 
   private applyBulkSessionFailures(action: string, failures: readonly string[]): void {

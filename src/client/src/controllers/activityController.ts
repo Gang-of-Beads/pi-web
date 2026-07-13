@@ -1,6 +1,7 @@
 import { activityApi as defaultApi, type WorkspaceActivity, type WorkspaceActivityResponse } from "../api";
 import { isWorkspaceActivityActive } from "../../../shared/activity";
 import { selectedMachineId, type GetState, type SetState } from "./types";
+import { TrailingRefreshCoordinator } from "./trailingRefreshCoordinator";
 
 export interface ActivityControllerDependencies {
   api?: Pick<typeof defaultApi, "workspaceActivity">;
@@ -8,13 +9,16 @@ export interface ActivityControllerDependencies {
 
 export class ActivityController {
   private readonly api: Pick<typeof defaultApi, "workspaceActivity">;
+  private readonly refreshes = new TrailingRefreshCoordinator<string>();
 
   constructor(private readonly getState: GetState, private readonly setState: SetState, deps: ActivityControllerDependencies = {}) {
     this.api = deps.api ?? defaultApi;
   }
 
-  async refresh(machineId = selectedMachineId(this.getState())): Promise<void> {
-    this.applyMachineActivitySnapshot(machineId, indexWorkspaceActivities(await this.api.workspaceActivity(machineId)));
+  refresh(machineId = selectedMachineId(this.getState())): Promise<void> {
+    return this.refreshes.request(machineId, async () => {
+      this.applyMachineActivitySnapshot(machineId, indexWorkspaceActivities(await this.api.workspaceActivity(machineId)));
+    });
   }
 
   applyWorkspaceActivity(activity: WorkspaceActivity, machineId = selectedMachineId(this.getState())): void {

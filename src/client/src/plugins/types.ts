@@ -112,6 +112,7 @@ export interface PluginRuntimeContext {
   refreshFiles: () => void | Promise<void>;
   refreshGit: () => void | Promise<void>;
   refreshAppData: () => void | Promise<void>;
+  checkForPiWebUpdates?: () => void | Promise<void>;
   reloadPage: () => void;
   deleteWorkspace: (workspace?: Workspace) => void | Promise<void>;
   startSession: () => void | Promise<void>;

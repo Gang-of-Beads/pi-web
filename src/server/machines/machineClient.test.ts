@@ -29,6 +29,38 @@ describe("RemoteMachineClient", () => {
     expect(new Headers(init.headers).get("content-type")).toBe("application/json");
     expect(init.body).toBe(JSON.stringify({ cwd: "/repo" }));
   });
+
+  it("requests compression for the remote hop even when configured headers use different casing", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(new Response("ok", { status: 200 })));
+    const client = new RemoteMachineClient({
+      baseUrl: "https://remote.example.test/",
+      headers: { "Accept-Encoding": "identity" },
+    }, fetchImpl);
+
+    await client.request("GET", "/api/projects");
+
+    const { init } = onlyFetchCall(fetchImpl);
+    expect(new Headers(init.headers).get("accept-encoding")).toBe("gzip, deflate");
+  });
+
+  it("removes stale representation headers after Fetch decodes a compressed response", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "content-encoding": "gzip",
+        "content-length": "31",
+      },
+    })));
+    const client = new RemoteMachineClient({ baseUrl: "https://remote.example.test/" }, fetchImpl);
+
+    const response = await client.requestJson("GET", "/api/projects");
+
+    expect(response.body).toEqual({ ok: true });
+    expect(response.headers["content-type"]).toBe("application/json");
+    expect(response.headers["content-encoding"]).toBeUndefined();
+    expect(response.headers["content-length"]).toBeUndefined();
+  });
 });
 
 function fetchInputUrl(input: RequestInfo | URL): string {

@@ -28,6 +28,7 @@ describe("federated route contract", () => {
 
     await Promise.all([
       ignoreParseFailure(piWebApi.piWebStatus(machineId)),
+      ignoreParseFailure(piWebApi.checkForUpdates(machineId)),
       ignoreParseFailure(configApi.config(machineId)),
       ignoreParseFailure(configApi.saveConfig({ spawnSessions: true }, machineId)),
       ignoreParseFailure(pluginsApi.plugins(machineId)),

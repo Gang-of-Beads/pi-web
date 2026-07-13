@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
 import fastifyWebsocket from "@fastify/websocket";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { SessionBulkArchiveResponse, SessionBulkDeleteArchivedResponse, SessionBulkMutationRef, SessionCleanupExecuteResponse, SessionCleanupPreviewResponse } from "../../shared/apiTypes.js";
+import type { MessagePage, SessionBulkArchiveResponse, SessionBulkDeleteArchivedResponse, SessionBulkMutationRef, SessionCleanupExecuteResponse, SessionCleanupPreviewResponse } from "../../shared/apiTypes.js";
 import { SessionEventHub } from "../realtime/sessionEventHub.js";
 import { PiSessionService, type PiSessionManagerGateway, type PiSessionRef } from "./piSessionService.js";
 import { registerSessionRoutes } from "./sessionRoutes.js";
@@ -49,6 +49,32 @@ describe("session routes", () => {
       expect(statusResponse.statusCode).toBe(200);
       expect(promptResponse.statusCode).toBe(200);
       expect(routeService.calls).toEqual(["session-1", { lookup: "session-1", text: "hello" }]);
+    } finally {
+      await routeService.dispose();
+      await routeApp.close();
+    }
+  });
+
+  it("omits thinking signatures from browser history without mutating service messages", async () => {
+    const routeApp = Fastify({ logger: false });
+    await routeApp.register(fastifyWebsocket);
+    const eventHub = new SessionEventHub();
+    const routeService = new CapturingRouteSessionService(eventHub);
+    const thinkingBlock = { type: "thinking", thinking: "private chain", thinkingSignature: "opaque-provider-payload", redacted: true };
+    const message = { role: "assistant", content: [thinkingBlock, { type: "text", text: "visible answer" }] };
+    routeService.messagesResponse = { messages: [message], start: 0, total: 1 };
+    registerSessionRoutes(routeApp, routeService, eventHub);
+
+    try {
+      const response = await routeApp.inject({ method: "GET", url: "/sessions/session-1/messages?limit=20" });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({
+        messages: [{ role: "assistant", content: [{ type: "thinking", thinking: "private chain", redacted: true }, { type: "text", text: "visible answer" }] }],
+        start: 0,
+        total: 1,
+      });
+      expect(thinkingBlock.thinkingSignature).toBe("opaque-provider-payload");
     } finally {
       await routeService.dispose();
       await routeApp.close();
@@ -226,6 +252,7 @@ describe("session routes", () => {
 class CapturingRouteSessionService extends PiSessionService {
   readonly calls: unknown[] = [];
   readonly reloadCalls: (string | PiSessionRef)[] = [];
+  messagesResponse: unknown[] | MessagePage = [];
   readonly cleanupPreviewCalls: NormalizedSessionCleanupRequest[] = [];
   readonly cleanupCalls: NormalizedSessionCleanupRequest[] = [];
   readonly bulkArchiveCalls: SessionBulkMutationRef[][] = [];
@@ -260,6 +287,10 @@ class CapturingRouteSessionService extends PiSessionService {
     this.reloadCalls.push(lookup);
     if (this.reloadError !== undefined) return Promise.reject(this.reloadError);
     return Promise.resolve();
+  }
+
+  override messages(): Promise<unknown[] | MessagePage> {
+    return Promise.resolve(this.messagesResponse);
   }
 
   override status(lookup: string | PiSessionRef) {

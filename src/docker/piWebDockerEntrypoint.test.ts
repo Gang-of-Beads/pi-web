@@ -10,7 +10,10 @@ const execFile = promisify(execFileCallback);
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 describe("pi-web-docker entrypoint", () => {
-  it("streams detached helper logs inline after scheduling runtime updates", async () => {
+  // The entrypoint intentionally supports POSIX hosts, so Windows CI cannot execute it directly.
+  const posixHostIt = it.skipIf(process.platform === "win32");
+
+  posixHostIt("streams detached helper logs inline after scheduling runtime updates", async () => {
     const tempDir = await mkdtemp(join(tmpdir(), "pi-web-docker-entrypoint-"));
     try {
       const runtimeRoot = join(tempDir, "runtime");

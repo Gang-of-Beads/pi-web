@@ -104,8 +104,13 @@ function sessionBulkMutationRef(session: SessionLookup): SessionBulkMutationRef 
   return cwd === undefined || cwd === "" ? { id } : { id, cwd };
 }
 
+function piWebStatusUrl(machineId: string): string {
+  return machineId === "local" ? "/api/pi-web/status" : `${machinePrefix(machineId)}/pi-web/status`;
+}
+
 export const piWebApi = {
-  piWebStatus: (machineId = "local") => request(machineId === "local" ? "/api/pi-web/status" : `${machinePrefix(machineId)}/pi-web/status`, parsePiWebStatusResponse),
+  piWebStatus: (machineId = "local") => request(piWebStatusUrl(machineId), parsePiWebStatusResponse),
+  checkForUpdates: (machineId = "local") => request(`${piWebStatusUrl(machineId)}?refresh=1`, parsePiWebStatusResponse, { cache: "no-store" }),
   piWebRuntime: () => request("/api/pi-web/runtime", parsePiWebRuntimeResponse),
 };
 

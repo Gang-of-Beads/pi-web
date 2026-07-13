@@ -22,6 +22,22 @@ describe("SessionEventHub", () => {
     expect(otherSocket.send).not.toHaveBeenCalled();
   });
 
+  it("omits thinking signatures from final-message payloads without mutating source events", () => {
+    const hub = new SessionEventHub();
+    const socket = new FakeSocket();
+    hub.add("s1", socket);
+    const thinkingBlock = { type: "thinking", thinking: "private chain", thinkingSignature: "opaque-provider-payload", redacted: true };
+    const message = { role: "assistant", content: [thinkingBlock, { type: "text", text: "visible answer" }] };
+
+    hub.publish("s1", { type: "message.end", message });
+
+    expect(socket.send).toHaveBeenCalledWith(JSON.stringify({
+      type: "message.end",
+      message: { role: "assistant", content: [{ type: "thinking", thinking: "private chain", redacted: true }, { type: "text", text: "visible answer" }] },
+    }));
+    expect(thinkingBlock.thinkingSignature).toBe("opaque-provider-payload");
+  });
+
   it("removes session sockets on close and skips non-open sockets", () => {
     const hub = new SessionEventHub();
     const closed = new FakeSocket();

@@ -1,4 +1,5 @@
 import type { GlobalSessionEvent, RealtimeEvent, SessionUiEvent } from "../../shared/apiTypes.js";
+import { projectBrowserSessionEvent } from "../browserMessageProjection.js";
 
 export interface RealtimeSocket {
   readonly OPEN: number;
@@ -29,7 +30,7 @@ export class SessionEventHub {
   }
 
   publish(sessionId: string, event: SessionUiEvent): void {
-    const payload = JSON.stringify(event);
+    const payload = JSON.stringify(projectBrowserSessionEvent(event));
     for (const socket of this.socketsBySession.get(sessionId) ?? []) {
       if (socket.readyState === socket.OPEN) socket.send(payload);
     }

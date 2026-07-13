@@ -33,9 +33,11 @@ describe("PiSessionService", () => {
       const fake = fakeRuntime("spawned-1", { sessionFile: "/tmp/spawned-1.jsonl" });
       const model = testModel();
       let initialModel: PiAgentSession["model"];
+      let delegationToolsEnabled: boolean | undefined;
       const createAgentRuntime: RuntimeCreator = async (_createRuntime, options) => {
         await Promise.resolve();
         initialModel = options.initialModel;
+        delegationToolsEnabled = options.delegationToolsEnabled;
         return fake.runtime;
       };
       const service = new PiSessionService(new CapturingSessionEventHub(), {
@@ -48,6 +50,7 @@ describe("PiSessionService", () => {
       await service.spawnSession({ spawningCwd: "/workspace", prompt: "continue", cwd: "/workspace-feature", model });
 
       expect(initialModel).toBe(model);
+      expect(delegationToolsEnabled).toBe(true);
       await service.dispose();
     });
 

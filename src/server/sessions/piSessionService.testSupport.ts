@@ -33,6 +33,8 @@ export interface TestSession extends PiAgentSession {
 export function fakeSessionManager(cwd = "/workspace", patch: Partial<PiSessionManager> = {}): PiSessionManager {
   return {
     getCwd: () => cwd,
+    getSessionId: () => "session-1",
+    getSessionFile: () => undefined,
     getBranch: () => [],
     getLeafId: () => "leaf-1",
     ...patch,

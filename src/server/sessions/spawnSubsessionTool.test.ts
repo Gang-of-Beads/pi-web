@@ -49,7 +49,30 @@ describe("createSubsessionToolDefinitions", () => {
       model: dispatchModel,
     });
     expect(result.details).toEqual({ sessionId: "child-1", cwd: "/repos/a-feature" });
-    expect(firstText(result.content)).toContain("Started subsession child-1");
+    expect(firstText(result.content)).toContain("Started tracked subsession child-1");
+  });
+
+  it("guides the parent to join all required subsessions without polling", async () => {
+    const { spawn: spawnTool } = tools({
+      spawn: vi.fn(() => Promise.resolve({ sessionId: "child-1", cwd: "/repos/a-feature" })),
+    });
+
+    expect(spawnTool.description).toBe("Start a tracked child and return after dispatch. Track required children as pending: continue independent work, then yield at a join point until all have notified completion. Notifications queue while the parent is busy; do not poll for completion.");
+    expect(spawnTool.promptSnippet).toBe("spawn_subsession: delegate parallel work; yield at a join point until all required children complete.");
+
+    const result = await spawnTool.execute("call-contract", { prompt: "do it" }, undefined, undefined, ctxFor("parent-1", undefined));
+    expect(firstText(result.content)).toBe("Started tracked subsession child-1 in /repos/a-feature. Track it as pending and, before finalizing dependent work, yield until all required children have notified completion.");
+  });
+
+  it("keeps subsession inspection tool descriptions capability-oriented", () => {
+    const definitions = tools({});
+
+    expect(definitions.list.description).toBe("List tracked child sessions owned by the calling session, with each child's current status (working, idle, error, or unknown).");
+    expect(definitions.check.description).toBe("Return a tracked subsession's current status, message count, and most recent assistant output.");
+    expect(definitions.read.description).toBe("Return a filtered, paginated transcript of a tracked subsession. Filters select message roles and content kinds, search full message content, optionally include raw tool arguments, and cap or page the returned entries.");
+    for (const definition of [definitions.list, definitions.check, definitions.read]) {
+      expect(definition.description).not.toMatch(/use this|do not poll|continue working|start narrow|for just the final|relay/i);
+    }
   });
 
   it("spawn_subsession omits the inherited model when the dispatching session has no current model", async () => {
@@ -87,7 +110,7 @@ describe("createSubsessionToolDefinitions", () => {
   it("list_subsessions reports an empty state", async () => {
     const { list: listTool } = tools({ list: vi.fn(() => Promise.resolve([])) });
     const result = await listTool.execute("call-3", {}, undefined, undefined, ctxFor("parent-1", undefined));
-    expect(result.content[0]).toMatchObject({ type: "text", text: "You have not spawned any subsessions." });
+    expect(result.content[0]).toMatchObject({ type: "text", text: "No tracked subsessions." });
   });
 
   it("check_subsession scopes by parent and returns the final result", async () => {
