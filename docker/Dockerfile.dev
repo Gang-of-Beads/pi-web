@@ -35,6 +35,8 @@ RUN chmod 0755 /usr/local/sbin/install-pi-web-opensuse-base \
 WORKDIR /workspace
 
 COPY package.json package-lock.json ./
+COPY packages/tunnel-connector/package.json packages/tunnel-connector/package.json
+COPY packages/tunnel-frp-engine/package.json packages/tunnel-frp-engine/package.json
 COPY scripts/install-git-hooks.mjs scripts/install-git-hooks.mjs
 # Keep an immutable dependency seed outside /workspace, which is hidden by the
 # checkout bind mount at runtime. A cached generation is added after custom

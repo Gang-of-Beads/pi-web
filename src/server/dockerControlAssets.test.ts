@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { copyFile, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -66,6 +66,11 @@ describe("Docker command assets", () => {
     expect(dockerfile).not.toContain("@earendil-works/pi-coding-agent@");
     expect(devDockerfile).toContain("COPY docker/pi-web-docker /usr/local/bin/pi-web-docker");
     expect(devDockerfile).toContain("COPY docker/internal/bin/hostexec /usr/local/bin/hostexec");
+    const workspaceDirectories = (await readdir(join(repoRoot, "packages"), { withFileTypes: true })).filter((entry) => entry.isDirectory());
+    for (const workspaceDirectory of workspaceDirectories) {
+      const manifest = `packages/${workspaceDirectory.name}/package.json`;
+      expect(devDockerfile).toContain(`COPY ${manifest} ${manifest}`);
+    }
     expect(devDockerfile).toContain("COPY --chmod=0755 docker/internal/dev/sync-node-modules /usr/local/sbin/pi-web-dev-sync-node-modules");
     expect(devDockerfile).toContain("/opt/pi-web-dev-dependencies/node_modules");
     // Hooks can mutate the dependency seed, so its cache generation must be finalized afterward.
