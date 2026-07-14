@@ -1,31 +1,56 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { homedir, userInfo } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { defaultPiWebConfigPath, defaultPiWebDataDir, examplePiWebConfig } from "./config.js";
+import { defaultPiWebConfigPath, defaultPiWebDataDir, effectivePiWebConfig, examplePiWebConfig } from "./config.js";
 import { packageVersion, printPiWebVersionReport } from "./piWebVersionReport.js";
 import { checkNodePtyDarwinSpawnHelper, formatNodePtyDarwinSpawnHelperCheck } from "./server/diagnostics/nodePtySpawnHelper.js";
+import {
+  installNativeServiceCandidate,
+  nativeServiceInstallFailureNeedsPathAdvice,
+  type NativeServiceInstallCandidate,
+  type NativeServiceInstallFailure,
+} from "./nativeServices/serviceInstall.js";
+import {
+  nativeServiceManagerRefs,
+  productionNativeServiceIds,
+  type NativeServiceBackend,
+  type NativeServiceId,
+  type NativeServiceManagerRef,
+  type NativeServicePlan,
+  type NativeServiceShell,
+  type ProductionNativeServicePlanInput,
+} from "./nativeServices/servicePlan.js";
+import {
+  formatNativeServiceDoctorResult,
+  inferInstalledNativeServiceMode,
+  inspectInstalledDevelopmentServiceInput,
+  inspectInstalledProductionServiceContext,
+  runNativeServiceDoctor,
+  type InstalledNativeServiceDefinition,
+  type NativeServiceDoctorReport,
+  type NativeServiceDoctorTarget,
+} from "./nativeServices/serviceDoctor.js";
+import {
+  createNativeServiceAuthoritativeProbe,
+  nativeServicePrerequisiteShellCheck,
+} from "./nativeServices/serviceProbe.js";
+import { renderLaunchdPlist, renderSystemdUnit } from "./nativeServices/serviceRendering.js";
 
 const PI_WEB_PACKAGE_NAME = "@jmfederico/pi-web";
 
 const systemdServiceDir = join(homedir(), ".config", "systemd", "user");
 const launchdServiceDir = join(homedir(), "Library", "LaunchAgents");
 const logDir = join(defaultPiWebDataDir(), "logs");
-
-const sessiondServiceName = "pi-web-sessiond.service";
-const webServiceName = "pi-web.service";
-const uiDevServiceName = "pi-web-ui-dev.service";
 const safeTunnelConnectorCommandEnvVar = "PI_WEB_SAFE_TUNNEL_CONNECTOR_COMMAND";
 
 type InstallMode = "production" | "dev";
-type ServiceBackendKind = "systemd" | "launchd";
-type ServiceId = "sessiond" | "web" | "uiDev";
+type ServiceId = NativeServiceId;
+type ServiceBackend = NativeServiceBackend;
 type Check = [string, string[]];
-type SupportedShell = "bash" | "zsh" | "fish";
-type RestartPolicy = "on-failure" | "never";
 
 interface InstallOptions {
   host: string;
@@ -34,44 +59,8 @@ interface InstallOptions {
   config?: string;
 }
 
-interface ServiceBackend {
-  kind: ServiceBackendKind;
-  label: string;
-}
-
-interface ServiceRef {
+interface ServiceRef extends NativeServiceManagerRef {
   id: ServiceId;
-  systemdName: string;
-  launchdLabel: string;
-  launchdPlistName: string;
-  logName: string;
-}
-
-interface ServiceDefinition extends ServiceRef {
-  description: string;
-  shellCommand: string;
-  restart: RestartPolicy;
-  environment: Record<string, string>;
-  after?: ServiceId[];
-  wants?: ServiceId[];
-  workingDirectory?: string;
-}
-
-interface ServiceShell {
-  name: SupportedShell;
-  executable: string;
-  detected?: string;
-  fallback: boolean;
-}
-
-interface ServiceExecutable {
-  command: string;
-  checks: Check[];
-}
-
-interface ServiceExecutables {
-  sessiond: ServiceExecutable;
-  web: ServiceExecutable;
 }
 
 type ServiceHealth = "running" | "stopped" | "not-installed" | "unknown";
@@ -86,30 +75,12 @@ interface ServiceRuntimeStatus {
 }
 
 const serviceRefs: Record<ServiceId, ServiceRef> = {
-  sessiond: {
-    id: "sessiond",
-    systemdName: sessiondServiceName,
-    launchdLabel: "com.pi-web.sessiond",
-    launchdPlistName: "com.pi-web.sessiond.plist",
-    logName: "sessiond.log",
-  },
-  web: {
-    id: "web",
-    systemdName: webServiceName,
-    launchdLabel: "com.pi-web.web",
-    launchdPlistName: "com.pi-web.web.plist",
-    logName: "web.log",
-  },
-  uiDev: {
-    id: "uiDev",
-    systemdName: uiDevServiceName,
-    launchdLabel: "com.pi-web.ui-dev",
-    launchdPlistName: "com.pi-web.ui-dev.plist",
-    logName: "ui-dev.log",
-  },
+  sessiond: { id: "sessiond", ...nativeServiceManagerRefs.sessiond },
+  web: { id: "web", ...nativeServiceManagerRefs.web },
+  uiDev: { id: "uiDev", ...nativeServiceManagerRefs.uiDev },
 };
 
-const productionServiceIds: ServiceId[] = ["sessiond", "web"];
+const productionServiceIds: ServiceId[] = [...productionNativeServiceIds];
 const startServiceOrder: ServiceId[] = ["sessiond", "web", "uiDev"];
 const stopServiceOrder: ServiceId[] = ["web", "uiDev", "sessiond"];
 // Restart web/UI before sessiond: when `pi-web restart` runs in a pi-web
@@ -124,10 +95,14 @@ function platformLabel(): string {
   return process.platform;
 }
 
-function currentServiceBackend(): ServiceBackend | undefined {
-  if (process.platform === "linux") return { kind: "systemd", label: "systemd user services" };
-  if (process.platform === "darwin") return { kind: "launchd", label: "LaunchAgents" };
+export function serviceBackendForPlatform(platform: NodeJS.Platform): ServiceBackend | undefined {
+  if (platform === "linux") return { kind: "systemd", label: "systemd user services" };
+  if (platform === "darwin") return { kind: "launchd", label: "LaunchAgents" };
   return undefined;
+}
+
+function currentServiceBackend(): ServiceBackend | undefined {
+  return serviceBackendForPlatform(process.platform);
 }
 
 function requireServiceBackend(command: string): ServiceBackend {
@@ -179,7 +154,7 @@ function runQuiet(command: string, args: string[]): number {
 }
 
 function hasCommand(command: string): boolean {
-  return capture("/usr/bin/env", ["sh", "-c", `command -v ${command}`]).status === 0;
+  return capture("/usr/bin/env", ["sh", "-c", `command -v ${shellSingleQuote(command)}`]).status === 0;
 }
 
 function isLingerEnabled(): boolean | undefined {
@@ -237,23 +212,6 @@ function fishSingleQuote(value: string): string {
   return `'${value.replaceAll("\\", "\\\\").replaceAll("'", "\\'")}'`;
 }
 
-function systemdEscape(value: string): string {
-  return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
-}
-
-function systemdQuotedValue(value: string): string {
-  return `"${systemdEscape(value)}"`;
-}
-
-function xmlEscape(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
-}
-
 function packageRootPath(): string {
   return dirname(dirname(fileURLToPath(import.meta.url)));
 }
@@ -262,15 +220,29 @@ function packageEntrypointPath(name: "server" | "sessiond"): string {
   return join(packageRootPath(), "dist", "server", name === "server" ? "index.js" : "sessiond.js");
 }
 
-function detectServiceShell(): ServiceShell {
+export function regularFileExists(path: string): boolean {
+  return existsSync(path) && statSync(path).isFile();
+}
+
+function detectServiceShell(): NativeServiceShell {
   const userShell = userInfo().shell ?? undefined;
   const envShell = process.env["SHELL"]?.trim();
   const detected = envShell === undefined || envShell === "" ? userShell : envShell;
   const name = basename(detected ?? "").replace(/^-/, "");
   if (name === "bash" || name === "zsh" || name === "fish") {
-    return { name, executable: detected ?? name, detected: detected ?? name, fallback: false };
+    return {
+      name,
+      executable: detected ?? name,
+      source: "detected",
+      detectedExecutable: detected ?? name,
+    };
   }
-  return { name: "bash", executable: "bash", ...(detected === undefined ? {} : { detected }), fallback: true };
+  return {
+    name: "bash",
+    executable: "bash",
+    source: "fallback",
+    detectedExecutable: detected ?? null,
+  };
 }
 
 function serviceShellCommand(command: string, cwd?: string): string[] {
@@ -278,76 +250,18 @@ function serviceShellCommand(command: string, cwd?: string): string[] {
   return ["/usr/bin/env", detectServiceShell().executable, "-lc", fullCommand];
 }
 
-function serviceShellExecPrefix(): string {
-  return `/usr/bin/env ${detectServiceShell().executable} -lc`;
-}
-
 function serviceShellQuote(value: string): string {
   return detectServiceShell().name === "fish" ? fishSingleQuote(value) : shellSingleQuote(value);
 }
 
-function systemdServiceShellQuote(value: string): string {
-  return serviceShellQuote(value.replaceAll("%", "%%").replaceAll("$", "$$"));
-}
-
-function checkSucceeds(command: string[]): boolean {
-  const [bin, ...args] = command;
-  return bin !== undefined && capture(bin, args).status === 0;
-}
-
-function serviceShellCanFindCommand(command: string, backend: ServiceBackend): boolean {
-  if (!checkSucceeds(serviceShellCommand(commandCheck(command)))) return false;
-  if (backend.kind === "systemd") return checkSucceeds(systemdUserServiceShellCommand(commandCheck(command)));
-  return true;
-}
-
-function readableFileCheck(path: string): string {
-  const quoted = serviceShellQuote(path);
-  return `test -r ${quoted} && printf '%s\\n' ${quoted}`;
-}
-
-function commandExecutable(command: string, backend: ServiceBackend): ServiceExecutable {
-  const shell = serviceShellLabel();
-  const checks: Check[] = [[`${shell} can find ${command}`, serviceShellCommand(commandCheck(command))]];
-  if (backend.kind === "systemd") {
-    checks.push([`systemd user ${shell} can find ${command}`, systemdUserServiceShellCommand(commandCheck(command))]);
-  }
-  return { command, checks };
-}
-
-function bundledExecutable(command: string, entrypointPath: string, backend: ServiceBackend): ServiceExecutable {
-  const shell = serviceShellLabel();
-  const check = readableFileCheck(entrypointPath);
-  const checks: Check[] = [[`${shell} can access bundled ${command} entrypoint`, serviceShellCommand(check)]];
-  if (backend.kind === "systemd") {
-    checks.push([`systemd user ${shell} can access bundled ${command} entrypoint`, systemdUserServiceShellCommand(check)]);
-  }
-  return { command: `node ${serviceShellQuote(entrypointPath)}`, checks };
-}
-
-function serviceExecutable(envName: "PI_WEB_SERVER_EXEC" | "PI_WEB_SESSIOND_EXEC", command: string, entrypointPath: string, backend: ServiceBackend): ServiceExecutable {
-  const configured = process.env[envName]?.trim();
-  if (configured !== undefined && configured !== "") return { command: configured, checks: [] };
-  if (serviceShellCanFindCommand(command, backend)) return commandExecutable(command, backend);
-  if (existsSync(entrypointPath)) return bundledExecutable(command, entrypointPath, backend);
-  return commandExecutable(command, backend);
-}
-
-function resolveServiceExecutables(backend: ServiceBackend): ServiceExecutables {
-  return {
-    sessiond: serviceExecutable("PI_WEB_SESSIOND_EXEC", "pi-web-sessiond", packageEntrypointPath("sessiond"), backend),
-    web: serviceExecutable("PI_WEB_SERVER_EXEC", "pi-web-server", packageEntrypointPath("server"), backend),
-  };
-}
-
 function describeServiceShell(): string {
   const shell = detectServiceShell();
-  if (shell.fallback) {
-    return shell.detected === undefined
+  if (shell.source === "fallback") {
+    return shell.detectedExecutable === null
       ? "could not detect a supported login shell; using bash"
-      : `detected ${shell.detected}; using bash because PI WEB currently supports bash, zsh, and fish`;
+      : `detected ${shell.detectedExecutable}; using bash because PI WEB currently supports bash, zsh, and fish`;
   }
-  return shell.detected === undefined ? shell.name : `${shell.name} (${shell.detected})`;
+  return shell.detectedExecutable === null ? shell.name : `${shell.name} (${shell.detectedExecutable})`;
 }
 
 function configEnvironment(options: InstallOptions, configPath: string): Record<string, string> {
@@ -403,28 +317,6 @@ function restartOrder(refs: ServiceRef[]): ServiceRef[] {
   return orderServiceRefs(refs, restartServiceOrder);
 }
 
-function productionServiceDefinitions(options: InstallOptions, configPath: string, executables: ServiceExecutables): ServiceDefinition[] {
-  const environment = configEnvironment(options, configPath);
-  return [
-    {
-      ...serviceRefs.sessiond,
-      description: "PI WEB session daemon",
-      shellCommand: `exec ${executables.sessiond.command}`,
-      restart: "on-failure",
-      environment,
-    },
-    {
-      ...serviceRefs.web,
-      description: "PI WEB server",
-      shellCommand: `exec ${executables.web.command}`,
-      restart: "on-failure",
-      environment,
-      after: ["sessiond"],
-      wants: ["sessiond"],
-    },
-  ];
-}
-
 function devRootPath(): string {
   return resolve(process.cwd());
 }
@@ -439,104 +331,21 @@ function validateDevCheckout(root: string): void {
   if (!isRecord(parsed) || parsed["name"] !== PI_WEB_PACKAGE_NAME) {
     throw new Error(`Development mode must be installed from a PI WEB checkout. ${packageJsonPath} is not ${PI_WEB_PACKAGE_NAME}.`);
   }
-
-  const scripts = parsed["scripts"];
-  if (!isRecord(scripts)) throw new Error(`Development mode requires npm scripts in ${packageJsonPath}.`);
-  const requiredScripts = ["start:sessiond", "dev:web", "dev:client"];
-  const missing = requiredScripts.filter((script) => typeof scripts[script] !== "string");
-  if (missing.length > 0) throw new Error(`Development mode requires missing npm scripts: ${missing.join(", ")}.`);
-}
-
-function devServiceDefinitions(options: InstallOptions, configPath: string, root: string): ServiceDefinition[] {
-  const environment = devServiceEnvironment(options, configPath, root);
-  return [
-    {
-      ...serviceRefs.sessiond,
-      description: "PI WEB session daemon (dev)",
-      shellCommand: "exec npm run start:sessiond",
-      restart: "never",
-      environment,
-      workingDirectory: root,
-    },
-    {
-      ...serviceRefs.uiDev,
-      description: "PI WEB UI dev server",
-      shellCommand: `exec /usr/bin/env bash -c ${serviceShellQuote('trap "kill 0" EXIT; npm run dev:web & npm run dev:client & wait')}`,
-      restart: "never",
-      environment,
-      after: ["sessiond"],
-      wants: ["sessiond"],
-      workingDirectory: root,
-    },
-  ];
-}
-
-function dependencyLine(name: "After" | "Wants", ids: ServiceId[] | undefined): string {
-  if (ids === undefined || ids.length === 0) return "";
-  return `${name}=${ids.map((id) => serviceRefs[id].systemdName).join(" ")}\n`;
-}
-
-function environmentLines(environment: Record<string, string>): string {
-  return Object.entries(environment)
-    .map(([key, value]) => `Environment="${key}=${systemdEscape(value)}"\n`)
-    .join("");
-}
-
-function systemdUnit(service: ServiceDefinition): string {
-  const workingDirectory = service.workingDirectory === undefined ? "" : `WorkingDirectory=${systemdQuotedValue(service.workingDirectory)}\n`;
-  const restart = service.restart === "on-failure" ? "Restart=on-failure\nRestartSec=2\n" : "Restart=no\n";
-  return `[Unit]
-Description=${service.description}
-${dependencyLine("After", service.after)}${dependencyLine("Wants", service.wants)}
-[Service]
-Type=simple
-${workingDirectory}${environmentLines(service.environment)}ExecStart=${serviceShellExecPrefix()} ${systemdServiceShellQuote(service.shellCommand)}
-${restart}
-[Install]
-WantedBy=default.target
-`;
-}
-
-function plistString(key: string, value: string, indent = "  "): string {
-  return `${indent}<key>${xmlEscape(key)}</key>\n${indent}<string>${xmlEscape(value)}</string>\n`;
-}
-
-function plistProgramArguments(service: ServiceDefinition): string {
-  const args = ["/usr/bin/env", detectServiceShell().executable, "-lc", service.shellCommand];
-  return `  <key>ProgramArguments</key>\n  <array>\n${args.map((arg) => `    <string>${xmlEscape(arg)}</string>`).join("\n")}\n  </array>\n`;
-}
-
-function plistEnvironment(environment: Record<string, string>): string {
-  const entries = Object.entries(environment);
-  if (entries.length === 0) return "";
-  return `  <key>EnvironmentVariables</key>\n  <dict>\n${entries.map(([key, value]) => plistString(key, value, "    ")).join("")}  </dict>\n`;
 }
 
 function launchdLogPath(ref: ServiceRef): string {
   return join(logDir, ref.logName);
 }
 
-function launchdPlist(service: ServiceDefinition): string {
-  const workingDirectory = service.workingDirectory === undefined ? "" : plistString("WorkingDirectory", service.workingDirectory);
-  const keepAlive = service.restart === "on-failure" ? "  <key>KeepAlive</key>\n  <dict>\n    <key>SuccessfulExit</key>\n    <false/>\n  </dict>\n" : "";
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-${plistString("Label", service.launchdLabel)}${plistProgramArguments(service)}${workingDirectory}${plistEnvironment(service.environment)}  <key>RunAtLoad</key>
-  <true/>
-${keepAlive}${plistString("StandardOutPath", launchdLogPath(service))}${plistString("StandardErrorPath", launchdLogPath(service))}</dict>
-</plist>
-`;
+function installConfigPath(options: InstallOptions): string {
+  return options.config === undefined ? defaultPiWebConfigPath() : resolve(options.config);
 }
 
-async function writeInitialConfig(options: InstallOptions): Promise<string> {
-  const configPath = options.config === undefined ? defaultPiWebConfigPath() : resolve(options.config);
+async function writeInitialConfig(options: InstallOptions, configPath: string): Promise<void> {
   await mkdir(dirname(configPath), { recursive: true });
   if (!existsSync(configPath)) {
     await writeFile(configPath, examplePiWebConfig({ host: options.host, port: Number(options.port) }));
   }
-  return configPath;
 }
 
 function systemdServicePath(ref: ServiceRef): string {
@@ -564,8 +373,8 @@ function installedServiceRefs(backend: ServiceBackend): ServiceRef[] {
   return installed.length === 0 ? productionServiceRefs() : installed;
 }
 
-async function installSystemdServices(services: ServiceDefinition[]): Promise<void> {
-  const selected = new Set<ServiceId>(services.map((service) => service.id));
+async function installSystemdServices(plan: NativeServicePlan): Promise<void> {
+  const selected = new Set<ServiceId>(plan.services.map((service) => service.id));
   const obsolete = stopOrder(allServiceRefs().filter((ref) => !selected.has(ref.id)));
 
   for (const ref of obsolete) {
@@ -574,11 +383,11 @@ async function installSystemdServices(services: ServiceDefinition[]): Promise<vo
   }
 
   await mkdir(systemdServiceDir, { recursive: true });
-  for (const service of services) {
-    await writeFile(systemdServicePath(service), systemdUnit(service));
+  for (const service of plan.services) {
+    await writeFile(join(systemdServiceDir, service.manager.systemdName), renderSystemdUnit(plan, service));
   }
 
-  const names = services.map((service) => service.systemdName);
+  const names = plan.services.map((service) => service.manager.systemdName);
   run("systemctl", ["--user", "daemon-reload"], { check: true });
   run("systemctl", ["--user", "enable", ...names], { check: true });
   run("systemctl", ["--user", "restart", ...names], { check: true });
@@ -610,8 +419,8 @@ function launchdStart(ref: ServiceRef): void {
   run("launchctl", ["kickstart", launchdServiceTarget(ref)], { check: true });
 }
 
-async function installLaunchdServices(services: ServiceDefinition[]): Promise<void> {
-  const selected = new Set<ServiceId>(services.map((service) => service.id));
+async function installLaunchdServices(plan: NativeServicePlan): Promise<void> {
+  const selected = new Set<ServiceId>(plan.services.map((service) => service.id));
 
   await mkdir(launchdServiceDir, { recursive: true });
   await mkdir(logDir, { recursive: true });
@@ -622,16 +431,21 @@ async function installLaunchdServices(services: ServiceDefinition[]): Promise<vo
     await rm(launchdPlistPath(ref), { force: true });
   }
 
-  for (const service of services) {
-    await writeFile(launchdPlistPath(service), launchdPlist(service));
+  for (const service of plan.services) {
+    const plistPath = join(launchdServiceDir, service.manager.launchdPlistName);
+    await writeFile(plistPath, renderLaunchdPlist(plan, service, logDir));
   }
 
-  for (const service of services) launchdStart(service);
+  for (const service of plan.services) launchdStart(serviceRefFromPlan(service.id, service.manager));
 }
 
-async function installNativeServices(backend: ServiceBackend, services: ServiceDefinition[]): Promise<void> {
-  if (backend.kind === "systemd") await installSystemdServices(services);
-  else await installLaunchdServices(services);
+async function installNativeServices(plan: NativeServicePlan): Promise<void> {
+  if (plan.backend.kind === "systemd") await installSystemdServices(plan);
+  else await installLaunchdServices(plan);
+}
+
+function serviceRefFromPlan(id: ServiceId, manager: NativeServiceManagerRef): ServiceRef {
+  return { id, ...manager };
 }
 
 async function uninstallSystemdServices(): Promise<void> {
@@ -723,6 +537,16 @@ function parseLaunchdField(output: string, field: string): string | undefined {
   return match?.[1]?.trim();
 }
 
+export function launchdRuntimeDetails(output: string): { state: string; detail: string; pid: string | undefined } {
+  const state = parseLaunchdField(output, "state") ?? "unknown";
+  const pid = parseLaunchdField(output, "pid");
+  const lastExitCode = parseLaunchdField(output, "last exit code");
+  const detail = state === "running"
+    ? "running"
+    : lastExitCode === undefined ? state : `${state} (last exit code ${lastExitCode})`;
+  return { state, detail, pid };
+}
+
 function launchdRuntimeStatus(backend: ServiceBackend, ref: ServiceRef): ServiceRuntimeStatus {
   const target = launchdServiceTarget(ref);
   const filePath = serviceFilePath(backend, ref);
@@ -733,10 +557,9 @@ function launchdRuntimeStatus(backend: ServiceBackend, ref: ServiceRef): Service
     return makeServiceRuntimeStatus(ref, "stopped", firstOutputLine(result.stderr, result.stdout) ?? "not loaded", target, filePath);
   }
 
-  const state = parseLaunchdField(result.stdout, "state") ?? "unknown";
-  const pid = parseLaunchdField(result.stdout, "pid");
-  const health: ServiceHealth = state === "running" ? "running" : state === "unknown" ? "unknown" : "stopped";
-  return makeServiceRuntimeStatus(ref, health, state === "running" ? "running" : state, target, filePath, pid);
+  const details = launchdRuntimeDetails(result.stdout);
+  const health: ServiceHealth = details.state === "running" ? "running" : details.state === "unknown" ? "unknown" : "stopped";
+  return makeServiceRuntimeStatus(ref, health, details.detail, target, filePath, details.pid);
 }
 
 function runtimeStatus(backend: ServiceBackend, ref: ServiceRef): ServiceRuntimeStatus {
@@ -765,40 +588,86 @@ function printServiceStatusReport(backend: ServiceBackend): boolean {
   return statuses.every((status) => status.health === "running");
 }
 
-function backendAvailabilityChecks(backend: ServiceBackend): Check[] {
-  if (backend.kind === "systemd") return [["systemctl --user", ["systemctl", "--user", "--version"]]];
-  return [[`launchctl ${launchdDomain()}`, ["launchctl", "print", launchdDomain()]]];
+function configuredServiceCommand(name: "PI_WEB_SERVER_EXEC" | "PI_WEB_SESSIOND_EXEC"): string | undefined {
+  const value = process.env[name];
+  return value === undefined || value.trim() === "" ? undefined : value;
 }
 
-function baseShellChecks(backend: ServiceBackend): Check[] {
-  const shell = serviceShellLabel();
-  const checks: Check[] = [[`${shell} can find node >= 22`, serviceShellCommand(nodeVersionCheck())]];
-  if (backend.kind === "systemd") checks.push([`systemd user ${shell} can find node >= 22`, systemdUserServiceShellCommand(nodeVersionCheck())]);
-  return checks;
+function productionNativeServicePlanInput(
+  backend: ServiceBackend,
+  shell: NativeServiceShell,
+  environment: Readonly<Record<string, string>>,
+): ProductionNativeServicePlanInput {
+  return {
+    backend,
+    shell,
+    environment,
+    executables: {
+      sessiond: {
+        configuredCommand: configuredServiceCommand("PI_WEB_SESSIOND_EXEC"),
+        namedCommand: "pi-web-sessiond",
+        bundledEntrypointPath: packageEntrypointPath("sessiond"),
+      },
+      web: {
+        configuredCommand: configuredServiceCommand("PI_WEB_SERVER_EXEC"),
+        namedCommand: "pi-web-server",
+        bundledEntrypointPath: packageEntrypointPath("server"),
+      },
+    },
+  };
 }
 
-function devInstallChecks(backend: ServiceBackend, root: string): Check[] {
-  const shell = serviceShellLabel();
-  const checks: Check[] = [
-    [`${shell} can find npm`, serviceShellCommand(commandCheck("npm"), root)],
-    [`${shell} can find bash`, serviceShellCommand(commandCheck("bash"), root)],
-  ];
-  if (backend.kind === "systemd") {
-    checks.push(
-      [`systemd user ${shell} can find npm`, systemdUserServiceShellCommand(commandCheck("npm"), root)],
-      [`systemd user ${shell} can find bash`, systemdUserServiceShellCommand(commandCheck("bash"), root)],
-    );
+function nativeServiceInstallCandidate(
+  options: InstallOptions,
+  backend: ServiceBackend,
+  configPath: string,
+  devRoot: string | undefined,
+): NativeServiceInstallCandidate {
+  const shell = detectServiceShell();
+  const environment = configEnvironment(options, configPath);
+  if (options.mode === "production") {
+    return {
+      mode: "production",
+      input: productionNativeServicePlanInput(backend, shell, environment),
+    };
   }
-  return checks;
+
+  const root = devRoot ?? devRootPath();
+  return {
+    mode: "development",
+    input: {
+      backend,
+      shell,
+      environment: devServiceEnvironment(options, configPath, root),
+      workingDirectory: root,
+      packageJsonPath: join(root, "package.json"),
+    },
+  };
 }
 
-function installPreflightChecks(backend: ServiceBackend, mode: InstallMode, executables: ServiceExecutables | undefined, devRoot: string | undefined): Check[] {
-  return [
-    ...backendAvailabilityChecks(backend),
-    ...baseShellChecks(backend),
-    ...(mode === "dev" && devRoot !== undefined ? devInstallChecks(backend, devRoot) : []),
-    ...(mode === "production" && executables !== undefined ? [...executables.web.checks, ...executables.sessiond.checks] : []),
-  ];
+function printNativeServiceInstallFailure(failure: NativeServiceInstallFailure): void {
+  if (failure.kind === "plan-resolution") {
+    for (const item of failure.failures) {
+      if (item.kind === "probe-infrastructure") {
+        console.log(`✗ Service-manager probe infrastructure failure (${item.reason}): ${item.message}`);
+      } else if (item.kind === "entrypoint-inspection-failure") {
+        console.log(`✗ Could not inspect bundled ${item.serviceId} entrypoint ${item.entrypointPath}: ${item.message}`);
+      } else {
+        console.log(`✗ ${item.namedCommand} is unavailable to the service manager, and bundled entrypoint ${item.bundledEntrypointPath} is missing.`);
+        if (item.namedCommandFailure !== null) console.log(`  ${item.namedCommandFailure}`);
+      }
+    }
+    return;
+  }
+
+  for (const item of failure.failures) {
+    if (item.kind === "probe-infrastructure") {
+      console.log(`✗ Service-manager probe infrastructure failure (${item.reason}): ${item.message}`);
+    } else {
+      console.log(`✗ ${item.prerequisite.description}`);
+      if (item.detail !== null && item.detail !== item.prerequisite.description) console.log(`  ${item.detail}`);
+    }
+  }
 }
 
 async function install(args: string[]): Promise<void> {
@@ -806,22 +675,26 @@ async function install(args: string[]): Promise<void> {
   const options = parseInstallOptions(args);
   const devRoot = options.mode === "dev" ? devRootPath() : undefined;
   if (devRoot !== undefined) validateDevCheckout(devRoot);
+  const configPath = installConfigPath(options);
+  const candidate = nativeServiceInstallCandidate(options, backend, configPath, devRoot);
 
-  const executables = options.mode === "production" ? resolveServiceExecutables(backend) : undefined;
   console.log(`Running PI WEB ${options.mode} install preflight checks...`);
   console.log(`Service backend: ${backend.label}`);
   console.log(`Service shell: ${describeServiceShell()}`);
-  if (!runChecks(installPreflightChecks(backend, options.mode, executables, devRoot))) {
-    printPathSetupAdvice();
-    throw new Error("Install preflight checks failed. Fix the failed checks above, then run `pi-web doctor` for more detail.");
+  const result = await installNativeServiceCandidate(candidate, {
+    probe: createNativeServiceAuthoritativeProbe(),
+    fileExists: regularFileExists,
+    writeInitialConfig: () => writeInitialConfig(options, configPath),
+    replaceServices: installNativeServices,
+  });
+  if (!result.ok) {
+    printNativeServiceInstallFailure(result.failure);
+    if (nativeServiceInstallFailureNeedsPathAdvice(result.failure)) printPathSetupAdvice();
+    throw new Error("Install preflight checks failed without changing config or services. Fix the failure above, then run `pi-web doctor` for more detail.");
   }
-
-  const configPath = await writeInitialConfig(options);
-  const services = options.mode === "dev"
-    ? devServiceDefinitions(options, configPath, devRoot ?? devRootPath())
-    : productionServiceDefinitions(options, configPath, executables ?? resolveServiceExecutables(backend));
-
-  await installNativeServices(backend, services);
+  for (const service of result.plan.services.filter((item) => item.strategy.kind === "configured-override")) {
+    console.log(`! ${service.description} uses a configured command override; preflight did not execute that arbitrary command.`);
+  }
 
   console.log(`\nPI WEB ${options.mode} services are installed and starting.`);
   console.log(`Config: ${configPath}`);
@@ -904,28 +777,17 @@ function serviceShellLabel(): string {
   return `${detectServiceShell().name} -lc`;
 }
 
-function systemdUserServiceShellCommand(command: string, cwd?: string): string[] {
-  return [
-    "systemd-run",
-    "--user",
-    "--wait",
-    "--collect",
-    "--pipe",
-    "--quiet",
-    ...serviceShellCommand(command, cwd),
-  ];
-}
-
 function commandCheck(command: string): string {
-  return `command -v ${command}`;
+  return `command -v ${serviceShellQuote(command)}`;
 }
 
 export function commandWithVersionCheck(command: string): string {
   const found = commandCheck(command);
+  const commandWord = serviceShellQuote(command);
   if (detectServiceShell().name === "fish") {
-    return `${found} && begin; ${command} --version 2>&1 || true; end`;
+    return `${found} && begin; ${commandWord} --version 2>&1 || true; end`;
   }
-  return `${found} && (${command} --version 2>&1 || true)`;
+  return `${found} && (${commandWord} --version 2>&1 || true)`;
 }
 
 function nodeVersionCheck(): string {
@@ -935,29 +797,18 @@ function nodeVersionCheck(): string {
   ].join(" && ");
 }
 
-function doctorChecks(): Check[] {
-  const shell = serviceShellLabel();
-  const backend = currentServiceBackend();
-  if (backend === undefined) {
-    return [
-      [`${shell} can find node >= 22`, serviceShellCommand(nodeVersionCheck())],
-      [`${shell} can find npm`, serviceShellCommand(commandWithVersionCheck("npm"))],
-      [`${shell} can find pi`, serviceShellCommand(commandWithVersionCheck("pi"))],
-    ];
-  }
+export function agentCommandForChecks(env: NodeJS.ProcessEnv = process.env): string {
+  return effectivePiWebConfig({ env }).config.agent.command;
+}
 
-  const checks: Check[] = [
-    ...backendAvailabilityChecks(backend),
-    ...baseShellChecks(backend),
-    [`${shell} can find npm`, serviceShellCommand(commandWithVersionCheck("npm"))],
-    [`${shell} can find pi`, serviceShellCommand(commandWithVersionCheck("pi"))],
+function generalDoctorChecks(): Check[] {
+  const shell = serviceShellLabel();
+  const agentCommand = agentCommandForChecks();
+  return [
+    [`Caller login ${shell} can find node >= 22`, serviceShellCommand(nodeVersionCheck())],
+    [`Caller login ${shell} can find npm`, serviceShellCommand(commandWithVersionCheck("npm"))],
+    [`Caller login ${shell} can find ${agentCommand}`, serviceShellCommand(commandWithVersionCheck(agentCommand))],
   ];
-  const executables = resolveServiceExecutables(backend);
-  checks.push(...executables.web.checks, ...executables.sessiond.checks);
-  if (backend.kind === "systemd") {
-    checks.push([`systemd user ${shell} can find pi`, systemdUserServiceShellCommand(commandWithVersionCheck("pi"))]);
-  }
-  return checks;
 }
 
 function runChecks(checks: Check[]): boolean {
@@ -984,10 +835,7 @@ function printCheckOutput(output: string): void {
 
 function optionalDoctorChecks(): Check[] {
   const shell = serviceShellLabel();
-  const backend = currentServiceBackend();
-  const checks: Check[] = [[`${shell} can find optional ripgrep (rg)`, serviceShellCommand(commandCheck("rg"))]];
-  if (backend?.kind === "systemd") checks.push([`systemd user ${shell} can find optional ripgrep (rg)`, systemdUserServiceShellCommand(commandCheck("rg"))]);
-  return checks;
+  return [[`Caller login ${shell} can find optional ripgrep (rg)`, serviceShellCommand(commandCheck("rg"))]];
 }
 
 function printOptionalDoctorChecks(): void {
@@ -1007,8 +855,115 @@ function printOptionalDoctorChecks(): void {
   }
 }
 
-function printPathSetupAdvice(): void {
-  const shell = detectServiceShell();
+function installedServiceDefinitions(
+  backend: ServiceBackend,
+  ids: readonly ServiceId[],
+): InstalledNativeServiceDefinition[] {
+  return ids.map((id) => ({
+    id,
+    contents: readFileSync(serviceFilePath(backend, serviceRefs[id]), "utf8"),
+  }));
+}
+
+function nativeServiceDoctorTarget(backend: ServiceBackend): NativeServiceDoctorTarget {
+  const ids = installedServiceIds(backend);
+  const mode = inferInstalledNativeServiceMode(ids);
+  if (mode === "ambiguous") {
+    return {
+      kind: "inspection-failure",
+      message: `installed service IDs do not identify one mode (${[...ids].join(", ") || "none"}).`,
+    };
+  }
+  if (mode === "none") {
+    return {
+      kind: "prospective-production",
+      input: productionNativeServicePlanInput(backend, detectServiceShell(), {}),
+      reason: "no installed service strategy is available",
+    };
+  }
+  const expectedIds = mode === "production"
+    ? productionNativeServiceIds
+    : (["sessiond", "uiDev"] as const);
+  const missingId = expectedIds.find((id) => !ids.has(id));
+  if (missingId !== undefined) {
+    return {
+      kind: "inspection-failure",
+      message: `installed ${mode} service set is incomplete; ${missingId} is missing.`,
+    };
+  }
+
+  let definitions: InstalledNativeServiceDefinition[];
+  try {
+    definitions = installedServiceDefinitions(
+      backend,
+      expectedIds,
+    );
+  } catch (error: unknown) {
+    return {
+      kind: "inspection-failure",
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  if (mode === "development") {
+    const inspection = inspectInstalledDevelopmentServiceInput(backend, definitions);
+    return inspection.ok
+      ? { kind: "installed-development", input: inspection.value }
+      : { kind: "inspection-failure", message: inspection.message };
+  }
+
+  const inspection = inspectInstalledProductionServiceContext(backend, definitions);
+  return inspection.ok
+    ? {
+        kind: "prospective-production",
+        input: productionNativeServicePlanInput(backend, inspection.value.shell, inspection.value.environment),
+        reason: "installed executable strategy is not recorded",
+      }
+    : { kind: "inspection-failure", message: inspection.message };
+}
+
+async function printNativeServiceDoctorChecks(backend: ServiceBackend): Promise<NativeServiceDoctorReport> {
+  const result = await runNativeServiceDoctor(nativeServiceDoctorTarget(backend), {
+    probe: createNativeServiceAuthoritativeProbe(),
+    fileExists: regularFileExists,
+  });
+  const report = formatNativeServiceDoctorResult(result);
+  for (const line of report.lines) console.log(line);
+  printCallerContextComparisons(report);
+  return report;
+}
+
+function printCallerContextComparisons(report: NativeServiceDoctorReport): void {
+  if (report.plan === null || report.failedPrerequisites.length === 0) return;
+  const seen = new Set<string>();
+  for (const prerequisite of report.failedPrerequisites) {
+    if (seen.has(prerequisite.id)) continue;
+    seen.add(prerequisite.id);
+    const service = report.plan.services.find((candidate) => candidate.prerequisites.some((item) => item.id === prerequisite.id));
+    const command = nativeServicePrerequisiteShellCheck(report.plan.shell.name, prerequisite);
+    const result = captureServiceShell(report.plan.shell, command, service?.workingDirectory ?? null);
+    console.log(
+      `  Caller-invoked ${report.plan.shell.name} -lc ${result.status === 0 ? "satisfies" : "also does not satisfy"} ${prerequisite.description}; the service-manager result is authoritative.`,
+    );
+  }
+}
+
+function captureServiceShell(
+  shell: NativeServiceShell,
+  command: string,
+  workingDirectory: string | null,
+): { status: number; stdout: string; stderr: string } {
+  const fullCommand = workingDirectory === null
+    ? command
+    : `cd ${shellQuoteFor(shell.name, workingDirectory)} && ${command}`;
+  return capture("/usr/bin/env", [shell.executable, "-lc", fullCommand]);
+}
+
+function shellQuoteFor(shell: NativeServiceShell["name"], value: string): string {
+  return shell === "fish" ? fishSingleQuote(value) : shellSingleQuote(value);
+}
+
+function printPathSetupAdvice(shell: NativeServiceShell = detectServiceShell()): void {
   console.log("\nPATH setup advice:");
   if (shell.name === "bash") {
     console.log("  Detected bash. Put PATH setup for node/version managers/tools in ~/.bash_profile or ~/.profile.");
@@ -1023,20 +978,35 @@ function printPathSetupAdvice(): void {
   }
 }
 
+export function doctorExitCode(
+  generalReadinessOk: boolean,
+  nativeServicePlanOk: boolean,
+  nodePtySpawnHelperOk: boolean,
+): 0 | 1 {
+  return generalReadinessOk && nativeServicePlanOk && nodePtySpawnHelperOk ? 0 : 1;
+}
+
 async function doctor(): Promise<void> {
   const backend = currentServiceBackend();
   console.log(`Platform: ${platformLabel()}`);
   console.log(`Service backend: ${backend?.label ?? "manual run only"}`);
   console.log(`Service shell: ${describeServiceShell()}`);
   if (backend === undefined) {
-    console.log(`- Native user service checks skipped on ${platformLabel()}`);
+    console.log(`- Native user service plan checks skipped on ${platformLabel()}; no native-service drift is reported.`);
   }
   console.log("");
   await printPiWebVersionReport();
-  console.log("\nDoctor checks:");
-  const ok = runChecks(doctorChecks());
+
+  console.log("\nGeneral login-shell readiness (separate from native-service requirements):");
+  const generalReadinessOk = runChecks(generalDoctorChecks());
   printOptionalDoctorChecks();
   const nodePtySpawnHelperOk = printNodePtyDarwinSpawnHelperCheck();
+
+  let nativeServiceReport: NativeServiceDoctorReport | null = null;
+  if (backend !== undefined) {
+    console.log("\nNative service plan checks (service-manager context):");
+    nativeServiceReport = await printNativeServiceDoctorChecks(backend);
+  }
 
   if (supportsSystemdUserServices()) {
     const linger = isLingerEnabled();
@@ -1055,17 +1025,21 @@ async function doctor(): Promise<void> {
     console.log(`- systemd user lingering skipped on ${platformLabel()}`);
   }
 
-  if (!ok) {
-    console.log("\nIf a command works in your terminal but fails here, make sure your service shell login files set PATH the same way.");
-    if (backend?.kind === "systemd") console.log("If a bundled entrypoint is not accessible, reinstall or update the PI WEB package.");
-    printPathSetupAdvice();
+  const nativeServicePlanOk = nativeServiceReport?.ok ?? true;
+  const pathFailure = !generalReadinessOk || nativeServiceReport?.pathAdviceRecommended === true;
+  if (pathFailure) {
+    console.log("\nIf a command works in your terminal but fails in the service-manager check, compare the caller and manager contexts above.");
+    const adviceShell = nativeServiceReport?.pathAdviceRecommended === true && nativeServiceReport.adviceShell !== null
+      ? nativeServiceReport.adviceShell
+      : detectServiceShell();
+    printPathSetupAdvice(adviceShell);
   }
 
-  if (ok && backend === undefined) {
+  if (generalReadinessOk && backend === undefined) {
     console.log(`\n${manualRunAdvice()}`);
   }
 
-  if (!ok || !nodePtySpawnHelperOk) process.exitCode = 1;
+  if (doctorExitCode(generalReadinessOk, nativeServicePlanOk, nodePtySpawnHelperOk) !== 0) process.exitCode = 1;
 }
 
 function printNodePtyDarwinSpawnHelperCheck(): boolean {

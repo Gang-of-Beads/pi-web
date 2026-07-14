@@ -10,7 +10,7 @@ function FakeWebSocket(url: string): void {
 beforeEach(() => {
   webSocketUrls.length = 0;
   vi.stubGlobal("WebSocket", FakeWebSocket);
-  vi.stubGlobal("location", { protocol: "https:", host: "pi.example.test" });
+  vi.stubGlobal("document", { baseURI: "https://pi.example.test/" });
 });
 
 afterEach(() => {

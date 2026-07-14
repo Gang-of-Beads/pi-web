@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   effectiveWorkspaceUploadFolder,
   uploadWorkspaceFile,
@@ -11,6 +11,14 @@ import {
   type WorkspaceFileUploadProgress,
   type WorkspaceUploadXhr,
 } from "./workspaceUploads";
+
+beforeEach(() => {
+  vi.stubGlobal("document", { baseURI: "https://pi.example.test/" });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("workspace upload helpers", () => {
   it("resolves effective upload defaults and workspace-relative paths", () => {
@@ -40,7 +48,7 @@ describe("workspace upload helpers", () => {
 
     const xhr = xhrs.only();
     expect(xhr.method).toBe("PUT");
-    expect(xhr.url).toBe("/api/machines/remote%20a/projects/p%201/workspaces/w%2F1/file?path=manual%2Fhello.txt&overwrite=false");
+    expect(xhr.url).toBe("https://pi.example.test/api/machines/remote%20a/projects/p%201/workspaces/w%2F1/file?path=manual%2Fhello.txt&overwrite=false");
     expect(xhr.headers.get("content-type")).toBe("text/plain");
     expect(xhr.body).toBe(file);
 
@@ -78,13 +86,13 @@ describe("workspace upload helpers", () => {
     });
 
     const first = xhrs.at(0);
-    expect(first.url).toBe("/api/machines/remote%20a/projects/p%201/workspaces/w%2F1/file?path=uploads%2Fmanual%2Fa.txt");
+    expect(first.url).toBe("https://pi.example.test/api/machines/remote%20a/projects/p%201/workspaces/w%2F1/file?path=uploads%2Fmanual%2Fa.txt");
     first.emitUploadProgress(1, 2);
     first.respondJson(200, { path: "uploads/manual/a.txt", size: 2, modifiedAt: "2026-06-25T00:00:00.000Z", created: true });
     await Promise.resolve();
 
     const second = xhrs.at(1);
-    expect(second.url).toBe("/api/machines/remote%20a/projects/p%201/workspaces/w%2F1/file?path=uploads%2Fmanual%2Fb.txt");
+    expect(second.url).toBe("https://pi.example.test/api/machines/remote%20a/projects/p%201/workspaces/w%2F1/file?path=uploads%2Fmanual%2Fb.txt");
     second.emitUploadProgress(3, 3);
     second.respondJson(200, { path: "uploads/manual/b.txt", size: 3, modifiedAt: "2026-06-25T00:00:01.000Z", created: true });
 
@@ -111,7 +119,7 @@ describe("workspace upload helpers", () => {
     });
 
     const xhr = xhrs.only();
-    expect(xhr.url).toBe("/api/machines/local/projects/p1/workspaces/w1/file?path=uploads%2Fnested.txt&createDirs=false");
+    expect(xhr.url).toBe("https://pi.example.test/api/machines/local/projects/p1/workspaces/w1/file?path=uploads%2Fnested.txt&createDirs=false");
     xhr.respondJson(200, { path: "uploads/nested.txt", size: 5, modifiedAt: "2026-06-25T00:00:00.000Z", created: true });
 
     await expect(task.promise).resolves.toEqual([

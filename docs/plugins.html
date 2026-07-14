@@ -395,6 +395,14 @@ After editing, check the manifest endpoint and browser-console failure cases.</c
                 the remote machine exposes its own copy.
               </p>
               <p>
+                Current PI WEB manifests publish leading application-root module references. The browser keeps them
+                inside the current application base, so local and federated plugins follow root or nested reverse-proxy
+                deployments without a prefix-specific build while remaining compatible with existing gateways.
+                Federated gateways also accept manifest-relative references such as
+                <code>./&lt;plugin-id&gt;/plugin.js</code> and legacy plugin-root-relative references such as
+                <code>nested/plugin.js</code> from remote machines.
+              </p>
+              <p>
                 For portable plugin assets, prefer URLs relative to the plugin module, such as
                 <code>new URL("./asset.json", import.meta.url)</code>. If a remote plugin constructs absolute asset URLs,
                 it should use the <code>pluginId</code> from <code>activate()</code>; hard-coded

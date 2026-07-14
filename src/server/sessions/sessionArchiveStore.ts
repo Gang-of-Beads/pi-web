@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { access, copyFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import { homedir } from "node:os";
+import { piWebDataDir } from "../../config.js";
 import { canonicalizeStoredCwd } from "../workingDirectory.js";
 
 export interface ArchiveSessionInput {
@@ -31,15 +31,19 @@ export interface ArchivedSessionRecord {
   parentSessionPath?: string;
 }
 
-interface ArchiveFile {
+export interface SessionArchiveFile {
   sessions: ArchivedSessionRecord[];
+}
+
+export function defaultSessionArchiveFilePath(env: NodeJS.ProcessEnv = process.env, cwd = process.cwd()): string {
+  return join(piWebDataDir(env, cwd), "archived-sessions.json");
 }
 
 export class SessionArchiveStore {
   private operationQueue: Promise<void> = Promise.resolve();
 
   constructor(
-    private readonly filePath = join(homedir(), ".pi-web", "archived-sessions.json"),
+    private readonly filePath = defaultSessionArchiveFilePath(),
     private readonly archiveDir = join(dirname(filePath), "archived-sessions"),
   ) {}
 
@@ -149,17 +153,17 @@ export class SessionArchiveStore {
     }
   }
 
-  private async read(): Promise<ArchiveFile> {
+  private async read(): Promise<SessionArchiveFile> {
     try {
       const value: unknown = JSON.parse(await readFile(this.filePath, "utf8"));
-      return parseArchiveFile(value);
+      return parseSessionArchiveFile(value);
     } catch (error: unknown) {
       if (isNodeErrorWithCode(error, "ENOENT")) return { sessions: [] };
       throw error;
     }
   }
 
-  private async write(data: ArchiveFile): Promise<void> {
+  private async write(data: SessionArchiveFile): Promise<void> {
     await mkdir(dirname(this.filePath), { recursive: true });
     const tempPath = join(dirname(this.filePath), `.${basename(this.filePath)}.${String(process.pid)}.${Date.now().toString()}.${randomUUID()}.tmp`);
     try {
@@ -227,7 +231,7 @@ async function pathExists(path: string): Promise<boolean> {
   }
 }
 
-function parseArchiveFile(value: unknown): ArchiveFile {
+export function parseSessionArchiveFile(value: unknown): SessionArchiveFile {
   if (!isRecord(value) || !Array.isArray(value["sessions"])) throw new Error("Invalid archive file");
   return { sessions: value["sessions"].map(parseArchivedSessionRecord) };
 }

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Workspace } from "../../../shared/apiTypes";
 import { FEDERATED_HTTP_ROUTES, FEDERATED_WEBSOCKET_ROUTES, type FederatedHttpRouteSpec } from "../../../shared/federatedRoutes";
 import { activityApi, configApi, filesApi, gitApi, piPackagesApi, piWebApi, pluginsApi, projectsApi, sessionsApi, terminalsApi, workspacesApi } from "./clients";
@@ -16,6 +16,10 @@ const workspace: Workspace = {
   isGitWorktree: true,
 };
 const session = { id: "s 1", cwd: workspace.path };
+
+beforeEach(() => {
+  vi.stubGlobal("document", { baseURI: "https://pi.example.test/" });
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -60,6 +64,7 @@ describe("federated route contract", () => {
       ignoreParseFailure(sessionsApi.deleteArchivedMany([session], machineId)),
       ignoreParseFailure(sessionsApi.messages(session, { limit: 20, before: 10 }, machineId)),
       ignoreParseFailure(sessionsApi.status(session, machineId)),
+      ignoreParseFailure(sessionsApi.clearQueue(session, machineId)),
       ignoreParseFailure(sessionsApi.models(session, machineId)),
       ignoreParseFailure(sessionsApi.setModel(session, "openai", "gpt", machineId)),
       ignoreParseFailure(sessionsApi.cycleModel(session, "forward", machineId)),
@@ -113,7 +118,6 @@ describe("federated route contract", () => {
       webSocketUrls.push(url);
     }
     vi.stubGlobal("WebSocket", FakeWebSocket);
-    vi.stubGlobal("location", { protocol: "https:", host: "pi.example.test" });
 
     sessionEvents(session, machineId);
     globalSessionEvents(machineId);
@@ -146,8 +150,9 @@ function fetchCallToRoute(call: Parameters<FetchLike>, scopedMachineId: string):
 function routeFromMachineUrl(method: string, input: string | URL | Request, scopedMachineId: string): ObservedHttpRoute {
   const url = toUrl(input);
   const prefix = `/api/machines/${encodeURIComponent(scopedMachineId)}`;
-  if (!url.pathname.startsWith(prefix)) throw new Error(`Expected machine-scoped URL, got ${url.pathname}`);
-  return { method, path: url.pathname.slice(prefix.length) || "/" };
+  const prefixIndex = url.pathname.lastIndexOf(prefix);
+  if (prefixIndex === -1) throw new Error(`Expected machine-scoped URL, got ${url.pathname}`);
+  return { method, path: url.pathname.slice(prefixIndex + prefix.length) || "/" };
 }
 
 function toUrl(input: string | URL | Request): URL {

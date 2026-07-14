@@ -5,10 +5,13 @@ import { describe, expect, it, vi } from "vitest";
 import { PiSessionService } from "./piSessionService.js";
 import { CapturingSessionEventHub, fakeRuntime, runtimeCreator, sessionGateway, sessionRecord, sessionRef, TEST_MODEL_ID, TEST_MODEL_PROVIDER, testModel, type RuntimeCreator } from "./piSessionService.testSupport.js";
 
+const TEST_AGENT_DIR = "/tmp/pi-web-test-agent";
+
 describe("PiSessionService prompt, queue, and auth warnings", () => {
   it("sends prompts to an injected runtime without touching the SDK runtime", async () => {
     const fake = fakeRuntime("prompt-session");
     const service = new PiSessionService(new CapturingSessionEventHub(), {
+      agentDir: TEST_AGENT_DIR,
       createAgentRuntime: runtimeCreator(fake.runtime),
       sessionManager: sessionGateway([sessionRecord("prompt-session")]),
       heartbeatIntervalMs: 60_000,
@@ -26,6 +29,7 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
     });
     const hub = new CapturingSessionEventHub();
     const service = new PiSessionService(hub, {
+      agentDir: TEST_AGENT_DIR,
       createAgentRuntime: runtimeCreator(fake.runtime),
       sessionManager: sessionGateway([sessionRecord("echo-session")]),
       heartbeatIntervalMs: 60_000,
@@ -55,6 +59,7 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
       return fake.runtime;
     };
     const service = new PiSessionService(new CapturingSessionEventHub(), {
+      agentDir: TEST_AGENT_DIR,
       createAgentRuntime,
       sessionManager: sessionGateway([sessionRecord("prompt-session")]),
       heartbeatIntervalMs: 60_000,
@@ -90,6 +95,7 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
     const hub = new CapturingSessionEventHub();
     const fake = fakeRuntime("name-session", { model, agent: { streamFn } });
     const service = new PiSessionService(hub, {
+      agentDir: TEST_AGENT_DIR,
       createAgentRuntime: runtimeCreator(fake.runtime),
       sessionManager: sessionGateway([sessionRecord("name-session")]),
       heartbeatIntervalMs: 60_000,
@@ -111,6 +117,7 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
       getFollowUpMessages: () => ["then do this"],
     });
     const service = new PiSessionService(new CapturingSessionEventHub(), {
+      agentDir: TEST_AGENT_DIR,
       createAgentRuntime: runtimeCreator(fake.runtime),
       sessionManager: sessionGateway([sessionRecord("status-session")]),
       heartbeatIntervalMs: 60_000,
@@ -131,6 +138,7 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
       getFollowUpMessages: () => ["already queued"],
     });
     const service = new PiSessionService(new CapturingSessionEventHub(), {
+      agentDir: TEST_AGENT_DIR,
       createAgentRuntime: runtimeCreator(fake.runtime),
       sessionManager: sessionGateway([sessionRecord("dedupe-session")]),
       heartbeatIntervalMs: 60_000,
@@ -146,6 +154,7 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
     const hub = new CapturingSessionEventHub();
     const fake = fakeRuntime("queued-session", { isStreaming: true });
     const service = new PiSessionService(hub, {
+      agentDir: TEST_AGENT_DIR,
       createAgentRuntime: runtimeCreator(fake.runtime),
       sessionManager: sessionGateway([sessionRecord("queued-session")]),
       heartbeatIntervalMs: 60_000,
@@ -171,6 +180,7 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
       return Promise.resolve();
     };
     const service = new PiSessionService(hub, {
+      agentDir: TEST_AGENT_DIR,
       createAgentRuntime: runtimeCreator(fake.runtime),
       sessionManager: sessionGateway([sessionRecord("compacting-session")]),
       heartbeatIntervalMs: 60_000,
@@ -212,9 +222,88 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
     await service.dispose();
   });
 
+  it("clears runtime and compaction queues without interrupting active work", async () => {
+    const steeringMessages = ["adjust this turn"];
+    const followUpMessages = ["then do this"];
+    const transcript = [{ role: "user", content: "keep this history" }];
+    const hub = new CapturingSessionEventHub();
+    const fake = fakeRuntime("clear-queue-session", {
+      messages: transcript,
+      isStreaming: true,
+      isCompacting: true,
+      pendingMessageCount: 2,
+      getSteeringMessages: () => steeringMessages,
+      getFollowUpMessages: () => followUpMessages,
+    });
+    const clearRuntimeQueue = vi.fn(() => {
+      const cleared = { steering: [...steeringMessages], followUp: [...followUpMessages] };
+      steeringMessages.length = 0;
+      followUpMessages.length = 0;
+      fake.session.pendingMessageCount = 0;
+      return cleared;
+    });
+    fake.session.clearQueue = clearRuntimeQueue;
+    const service = new PiSessionService(hub, {
+      agentDir: TEST_AGENT_DIR,
+      createAgentRuntime: runtimeCreator(fake.runtime),
+      sessionManager: sessionGateway([sessionRecord("clear-queue-session")]),
+      heartbeatIntervalMs: 60_000,
+    });
+
+    await service.prompt(sessionRef("clear-queue-session"), "queued during compaction", "followUp");
+    await expect(service.status(sessionRef("clear-queue-session"))).resolves.toMatchObject({
+      isStreaming: true,
+      isCompacting: true,
+      pendingMessageCount: 3,
+      queuedMessages: [
+        { kind: "steer", text: "adjust this turn" },
+        { kind: "followUp", text: "then do this" },
+        { kind: "followUp", text: "queued during compaction" },
+      ],
+    });
+
+    const status = await service.clearQueue(sessionRef("clear-queue-session"));
+
+    expect(clearRuntimeQueue).toHaveBeenCalledOnce();
+    expect(status).toMatchObject({
+      isStreaming: true,
+      isCompacting: true,
+      pendingMessageCount: 0,
+      queuedMessages: [],
+      messageCount: 1,
+    });
+    expect(fake.session.messages).toBe(transcript);
+    expect(fake.calls.prompt).toEqual([]);
+    expect(fake.calls.abort).toBe(0);
+    expect(fake.calls.dispose).toBe(0);
+    const publishedStatuses = hub.sessionEvents.filter(({ event }) => event.type === "status.update");
+    expect(publishedStatuses.at(-1)?.event).toEqual({ type: "status.update", status });
+    await service.dispose();
+  });
+
+  it("clears an already-empty queue idempotently", async () => {
+    const fake = fakeRuntime("clear-empty-queue-session");
+    const service = new PiSessionService(new CapturingSessionEventHub(), {
+      agentDir: TEST_AGENT_DIR,
+      createAgentRuntime: runtimeCreator(fake.runtime),
+      sessionManager: sessionGateway([sessionRecord("clear-empty-queue-session")]),
+      heartbeatIntervalMs: 60_000,
+    });
+
+    const firstStatus = await service.clearQueue(sessionRef("clear-empty-queue-session"));
+    const secondStatus = await service.clearQueue(sessionRef("clear-empty-queue-session"));
+
+    expect(fake.calls.clearQueue).toBe(2);
+    expect(fake.calls.abort).toBe(0);
+    expect(firstStatus).toMatchObject({ pendingMessageCount: 0, queuedMessages: [] });
+    expect(secondStatus).toMatchObject({ pendingMessageCount: 0, queuedMessages: [] });
+    await service.dispose();
+  });
+
   it("clears queued messages when aborting active work", async () => {
     const fake = fakeRuntime("abort-session");
     const service = new PiSessionService(new CapturingSessionEventHub(), {
+      agentDir: TEST_AGENT_DIR,
       createAgentRuntime: runtimeCreator(fake.runtime),
       sessionManager: sessionGateway([sessionRecord("abort-session")]),
       heartbeatIntervalMs: 60_000,
@@ -231,6 +320,7 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
   it("clears prompts queued during compaction when aborting active work", async () => {
     const fake = fakeRuntime("abort-compaction-session", { isCompacting: true });
     const service = new PiSessionService(new CapturingSessionEventHub(), {
+      agentDir: TEST_AGENT_DIR,
       createAgentRuntime: runtimeCreator(fake.runtime),
       sessionManager: sessionGateway([sessionRecord("abort-compaction-session")]),
       heartbeatIntervalMs: 60_000,
@@ -255,6 +345,7 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
     const fake = fakeRuntime("auth-session", { model, modelRegistry });
 
     const service = new PiSessionService(hub, {
+      agentDir: TEST_AGENT_DIR,
       modelRegistry,
       createAgentRuntime: runtimeCreator(fake.runtime),
       sessionManager: sessionGateway([sessionRecord("auth-session")]),
@@ -285,6 +376,7 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
   it("clears queued messages when stopping a session runtime", async () => {
     const fake = fakeRuntime("stop-session");
     const service = new PiSessionService(new CapturingSessionEventHub(), {
+      agentDir: TEST_AGENT_DIR,
       createAgentRuntime: runtimeCreator(fake.runtime),
       sessionManager: sessionGateway([sessionRecord("stop-session")]),
       heartbeatIntervalMs: 60_000,

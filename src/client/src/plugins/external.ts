@@ -1,4 +1,5 @@
 import { machineScopedPluginId } from "../../../shared/machinePluginIds";
+import { resolveAppUrl, type AppUrlContext } from "../appUrl";
 import type { PiWebPlugin, PiWebPluginRegistration } from "./types";
 
 export interface PluginManifestEntry {
@@ -14,18 +15,20 @@ interface PluginManifest {
 export interface LoadExternalPluginsOptions {
   machineId?: string;
   shouldLoadPlugin?: (entry: PluginManifestEntry) => boolean;
+  moduleLoader?: (moduleUrl: string) => Promise<unknown>;
 }
 
-export async function loadExternalPlugins(manifestUrl = "/pi-web-plugins/manifest.json", options: LoadExternalPluginsOptions = {}): Promise<PiWebPluginRegistration[]> {
-  const manifest = await fetchPluginManifest(manifestUrl);
+export async function loadExternalPlugins(manifestUrl = "pi-web-plugins/manifest.json", options: LoadExternalPluginsOptions = {}): Promise<PiWebPluginRegistration[]> {
+  const resolvedManifestUrl = resolveAppUrl(manifestUrl);
+  const manifest = await fetchPluginManifest(resolvedManifestUrl);
   if (manifest === undefined) return [];
 
   const registrations: PiWebPluginRegistration[] = [];
   for (const entry of manifest.plugins) {
     if (options.shouldLoadPlugin?.(entry) === false) continue;
     try {
-      const moduleUrl = new URL(entry.module, new URL(manifestUrl, window.location.href)).toString();
-      const module: unknown = await import(/* @vite-ignore */ moduleUrl);
+      const moduleUrl = resolvePluginModuleUrl(entry.module, resolvedManifestUrl);
+      const module = await (options.moduleLoader ?? importPluginModule)(moduleUrl);
       const plugin = parsePluginModule(module, moduleUrl);
       registrations.push({
         id: options.machineId === undefined ? entry.id : machineScopedPluginId(options.machineId, entry.id),
@@ -38,6 +41,15 @@ export async function loadExternalPlugins(manifestUrl = "/pi-web-plugins/manifes
     }
   }
   return registrations;
+}
+
+export function resolvePluginModuleUrl(moduleReference: string, manifestUrl: string, appUrlContext?: AppUrlContext): string {
+  if (!moduleReference.startsWith("/")) return new URL(moduleReference, manifestUrl).toString();
+  return appUrlContext === undefined ? resolveAppUrl(moduleReference) : resolveAppUrl(moduleReference, appUrlContext);
+}
+
+async function importPluginModule(moduleUrl: string): Promise<unknown> {
+  return import(/* @vite-ignore */ moduleUrl);
 }
 
 async function fetchPluginManifest(manifestUrl: string): Promise<PluginManifest | undefined> {

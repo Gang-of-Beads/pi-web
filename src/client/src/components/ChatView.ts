@@ -39,6 +39,7 @@ function clampNumber(value: number, min: number, max: number): number {
 }
 
 export interface QueuedMessageSection {
+  source: "client" | "server";
   heading: string;
   detail: string;
   messages: QueuedSessionMessage[];
@@ -46,8 +47,8 @@ export interface QueuedMessageSection {
 
 export function chatQueuedMessageSections(clientQueued: QueuedSessionMessage[], serverQueued: QueuedSessionMessage[]): QueuedMessageSection[] {
   return [
-    clientQueued.length === 0 ? undefined : { heading: "Queued until session starts", detail: "Will send once the backend session is ready", messages: clientQueued },
-    serverQueued.length === 0 ? undefined : { heading: "Queued messages", detail: `${String(serverQueued.length)} pending · Stop clears the queue`, messages: serverQueued },
+    clientQueued.length === 0 ? undefined : { source: "client", heading: "Queued until session starts", detail: "Will send once the backend session is ready", messages: clientQueued },
+    serverQueued.length === 0 ? undefined : { source: "server", heading: "Queued messages", detail: `${String(serverQueued.length)} pending`, messages: serverQueued },
   ].filter((section): section is QueuedMessageSection => section !== undefined);
 }
 
@@ -89,6 +90,8 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) clientQueuedMessages: QueuedSessionMessage[] = [];
   @property({ attribute: false }) status?: SessionStatus;
   @property({ attribute: false }) activity?: SessionActivity;
+  @property({ type: Boolean }) canClearServerQueue = false;
+  @property({ attribute: false }) onClearServerQueue?: () => void;
   @property({ attribute: false }) onLoadMore?: () => void;
   @query(".chat") private chat?: HTMLDivElement;
   @state() private pinnedToBottom = true;
@@ -120,8 +123,14 @@ export class ChatView extends LitElement {
     if (this.pinnedToBottom) this.scrollToBottom();
     else this.lastClientHeight = this.chat?.clientHeight ?? 0;
   };
+  private readonly onImageLoad = (): void => {
+    if (this.pinnedToBottom) this.scrollToBottom();
+  };
   private readonly onPageHide = () => {
     this.saveScrollPosition();
+  };
+  private readonly handleClearServerQueue = (): void => {
+    this.onClearServerQueue?.();
   };
 
   override connectedCallback(): void {
@@ -202,10 +211,12 @@ export class ChatView extends LitElement {
           ${this.renderHistoryBoundary()}
           ${repeat(
             groups,
-            (group) => group.kind === "message" ? this.messageAnchorKey(group.index) : this.groupRenderKey(group.startIndex),
-            (group, index) => group.kind === "message"
-              ? this.renderMessage(group.message, group.index)
-              : this.renderMessageGroup(group.messages, group.startIndex, group.endIndex, this.isLiveTailGroup(groups, index)),
+            (group) => group.kind === "group" ? this.groupRenderKey(group.startIndex) : this.messageAnchorKey(group.index),
+            (group, index) => {
+              if (group.kind === "group") return this.renderMessageGroup(group.messages, group.startIndex, group.endIndex, this.isLiveTailGroup(groups, index));
+              if (group.kind === "tool-image") return this.renderToolImageOutput(group.message, group.index, group.toolName);
+              return this.renderMessage(group.message, group.index);
+            },
           )}
           ${this.renderQueuedMessages()}
           ${this.renderSessionActivity()}
@@ -261,11 +272,17 @@ export class ChatView extends LitElement {
   }
 
   private renderQueuedMessageList(section: QueuedMessageSection) {
+    const canClear = section.source === "server" && this.canClearServerQueue && this.onClearServerQueue !== undefined;
     return html`
       <aside class="queued-messages" aria-live="polite">
         <div class="queued-header">
-          <strong>${section.heading}</strong>
-          <small>${section.detail}</small>
+          <div class="queued-heading">
+            <strong>${section.heading}</strong>
+            <small>${section.detail}</small>
+          </div>
+          ${canClear ? html`
+            <button type="button" class="queued-clear-button" title="Clear queued messages without stopping active work" @click=${this.handleClearServerQueue}>Clear queue</button>
+          ` : null}
         </div>
         ${section.messages.map((message, index) => html`
           <div class="queued-message">
@@ -377,6 +394,17 @@ export class ChatView extends LitElement {
     `;
   }
 
+  private renderToolImageOutput(message: ChatLine, index: number, toolName?: string) {
+    const label = toolName === undefined || toolName === "" ? "tool output" : `${toolName} output`;
+    return html`
+      ${this.renderScrollMarker(this.messageScrollMarkerId(index))}
+      <article class="msg tool-image-output" data-index=${index} data-scroll-anchor-id=${this.messageAnchorKey(index)}>
+        ${this.renderMessageHeader(message, String(index), label)}
+        ${message.parts.map((part) => this.renderPart(part, message))}
+      </article>
+    `;
+  }
+
   private isToolExecutionOnlyMessage(message: ChatLine): boolean {
     return message.role === "tool" && message.parts.length > 0 && message.parts.every((part) => part.type === "toolExecution");
   }
@@ -416,12 +444,12 @@ export class ChatView extends LitElement {
     return html`<span class="scroll-marker" data-marker-id=${markerId} aria-hidden="true"></span>`;
   }
 
-  private renderMessageHeader(message: ChatLine, key: string) {
+  private renderMessageHeader(message: ChatLine, key: string, label: string = message.role) {
     const meta = this.messageMetaLabel(message);
     const expanded = this.expandedMetaKey === key;
     return html`
       <div class="msg-header">
-        <b class="label">${message.role}</b>
+        <b class="label">${label}</b>
         <div class="msg-header-trailing">
           ${this.renderMessageActions(message, key)}
           <span class=${expanded ? "msg-meta expanded" : "msg-meta"} role="button" tabindex="0" title=${meta} aria-label=${meta} aria-expanded=${String(expanded)} @click=${() => { this.expandedMetaKey = expanded ? undefined : key; }} @keydown=${(event: KeyboardEvent) => { this.onMetaKeydown(event, key, expanded); }}>${meta}</span>
@@ -500,7 +528,7 @@ export class ChatView extends LitElement {
         <small>read ${part.path}</small>
       </div>
     `;
-    if (part.type === "image") return html`<img class="part chat-image" src=${`data:${part.mimeType};base64,${part.data}`} alt="attached image" loading="lazy" />`;
+    if (part.type === "image") return html`<img class="part chat-image" src=${`data:${part.mimeType};base64,${part.data}`} alt="attached image" loading="lazy" @load=${this.onImageLoad} />`;
     if (part.type === "toolCall") return html`<div class="part tool-line">▶ ${part.toolName}<span class="summary">${part.summary}</span></div>`;
     if (part.type === "toolExecution") return html`<tool-execution-view class="part" .execution=${part}></tool-execution-view>`;
     if (part.type === "toolResult") return html`

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeEach, afterEach, describe, expect, it } from "vitest";
+import { sanitizedGitEnv } from "./git/gitEnv.js";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const dockerEntrypoint = join(repoRoot, "docker", "pi-web-docker");
@@ -737,7 +738,7 @@ async function withUnixSocket<T>(socketPath: string, callback: () => Promise<T>)
 }
 
 function cleanProcessEnv(): NodeJS.ProcessEnv {
-  const env = { ...process.env };
+  const env = sanitizedGitEnv(process.env);
   for (const key of Object.keys(env)) {
     if (key === "COMPOSE_PROJECT_NAME" || key === "DOCKER_GID" || key === "HOSTEXEC_IMAGE" || key === "XDG_DATA_HOME" || key.startsWith("PI_WEB_")) {
       Reflect.deleteProperty(env, key);

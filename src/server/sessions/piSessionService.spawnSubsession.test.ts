@@ -6,12 +6,19 @@ import { PiSessionService, type PiAgentSession } from "./piSessionService.js";
 import type { SpawnTargetDecision } from "./spawnTargetResolver.js";
 import { CapturingSessionEventHub, emptyArchiveStore, fakeRuntime, fakeSessionManager, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModel, type RuntimeCreator } from "./piSessionService.testSupport.js";
 
+const TEST_AGENT_DIR = "/tmp/pi-web-test-agent";
+
 describe("PiSessionService", () => {
   describe("spawnSubsession", () => {
-    function subsessionService(decision: SpawnTargetDecision, heartbeatIntervalMs = 60_000) {
+    function subsessionService(decision: SpawnTargetDecision, heartbeatIntervalMs = 60_000, childIds = ["child-1"]) {
       const parent = fakeRuntime("parent-1", { sessionFile: "/tmp/parent-1.jsonl" });
-      const child = fakeRuntime("child-1", { sessionFile: "/tmp/child-1.jsonl", sessionManager: fakeSessionManager("/workspace-feature") });
-      const created = [parent.runtime, child.runtime];
+      const children = childIds.map((childId) => fakeRuntime(childId, {
+        sessionFile: `/tmp/${childId}.jsonl`,
+        sessionManager: fakeSessionManager("/workspace-feature"),
+      }));
+      const child = children[0];
+      if (child === undefined) throw new Error("At least one child fixture is required");
+      const created = [parent.runtime, ...children.map(({ runtime }) => runtime)];
       let index = 0;
       const createAgentRuntime: RuntimeCreator = async () => {
         await Promise.resolve();
@@ -32,13 +39,14 @@ describe("PiSessionService", () => {
         isArchived: (sessionId: string) => Promise.resolve(archived.has(sessionId)),
       };
       const service = new PiSessionService(new CapturingSessionEventHub(), {
+        agentDir: TEST_AGENT_DIR,
         createAgentRuntime,
         sessionManager: sessionGateway([]),
         archiveStore,
         spawnTargets: { resolveSpawnTarget: () => Promise.resolve(decision) },
         heartbeatIntervalMs,
       });
-      return { parent, child, service };
+      return { parent, child, children, service };
     }
 
     it("records the parent, delivers the prompt, and lists the tracked child", async () => {
@@ -72,6 +80,7 @@ describe("PiSessionService", () => {
         return runtime;
       };
       const service = new PiSessionService(new CapturingSessionEventHub(), {
+        agentDir: TEST_AGENT_DIR,
         createAgentRuntime,
         sessionManager: sessionGateway([]),
         archiveStore: emptyArchiveStore(),
@@ -111,6 +120,7 @@ describe("PiSessionService", () => {
       const runtimes = [parent.runtime, child.runtime];
       let index = 0;
       const service = new PiSessionService(new CapturingSessionEventHub(), {
+        agentDir: TEST_AGENT_DIR,
         createAgentRuntime: () => {
           const runtime = runtimes[index] ?? child.runtime;
           index += 1;
@@ -162,6 +172,7 @@ describe("PiSessionService", () => {
         let index = 0;
         const open = vi.fn(() => childManager);
         const service = new PiSessionService(new CapturingSessionEventHub(), {
+          agentDir: TEST_AGENT_DIR,
           createAgentRuntime: () => {
             const runtime = runtimes[index] ?? child.runtime;
             index += 1;
@@ -203,6 +214,7 @@ describe("PiSessionService", () => {
           }),
         });
         const service = new PiSessionService(new CapturingSessionEventHub(), {
+          agentDir: TEST_AGENT_DIR,
           createAgentRuntime: runtimeCreator(parent.runtime),
           sessionManager: { create: () => parent.session.sessionManager, list: () => Promise.resolve([]), listAll: () => Promise.resolve([]), open: () => fakeSessionManager() },
           archiveStore: emptyArchiveStore(),
@@ -227,6 +239,7 @@ describe("PiSessionService", () => {
         }),
       });
       const service = new PiSessionService(new CapturingSessionEventHub(), {
+        agentDir: TEST_AGENT_DIR,
         createAgentRuntime: runtimeCreator(parent.runtime),
         sessionManager: { create: () => parent.session.sessionManager, list: () => Promise.resolve([]), listAll: () => Promise.resolve([]), open: () => fakeSessionManager() },
         archiveStore: emptyArchiveStore(),
@@ -248,6 +261,7 @@ describe("PiSessionService", () => {
         }),
       });
       const service = new PiSessionService(new CapturingSessionEventHub(), {
+        agentDir: TEST_AGENT_DIR,
         createAgentRuntime: runtimeCreator(parent.runtime),
         sessionManager: { create: () => parent.session.sessionManager, list: () => Promise.resolve([]), listAll: () => Promise.resolve([]), open: () => fakeSessionManager() },
         archiveStore: emptyArchiveStore(),
@@ -268,6 +282,7 @@ describe("PiSessionService", () => {
         sessionManager: fakeSessionManager("/workspace", { getEntries: () => [] }),
       });
       const service = new PiSessionService(new CapturingSessionEventHub(), {
+        agentDir: TEST_AGENT_DIR,
         createAgentRuntime: runtimeCreator(parent.runtime),
         sessionManager: { create: () => parent.session.sessionManager, list: () => Promise.resolve([]), listAll: () => Promise.resolve([childRecord]), open: () => fakeSessionManager() },
         archiveStore: emptyArchiveStore(),
@@ -288,6 +303,7 @@ describe("PiSessionService", () => {
         }),
       });
       const service = new PiSessionService(new CapturingSessionEventHub(), {
+        agentDir: TEST_AGENT_DIR,
         createAgentRuntime: runtimeCreator(forkedParent.runtime),
         sessionManager: { create: () => forkedParent.session.sessionManager, list: () => Promise.resolve([]), listAll: () => Promise.resolve([]), open: () => fakeSessionManager() },
         archiveStore: emptyArchiveStore(),
@@ -326,6 +342,7 @@ describe("PiSessionService", () => {
         let index = 0;
         const open = vi.fn((path: string) => path === parentFile ? parentManager : childManager);
         const service = new PiSessionService(new CapturingSessionEventHub(), {
+          agentDir: TEST_AGENT_DIR,
           createAgentRuntime: (_createRuntime, options) => {
             delegationCapabilities.push(options.delegationToolsEnabled);
             const runtime = runtimes[index] ?? parent.runtime;
@@ -388,6 +405,7 @@ describe("PiSessionService", () => {
           return childManager;
         });
         const service = new PiSessionService(new CapturingSessionEventHub(), {
+          agentDir: TEST_AGENT_DIR,
           createAgentRuntime: () => {
             const runtime = runtimes[index] ?? parent.runtime;
             index += 1;
@@ -445,6 +463,7 @@ describe("PiSessionService", () => {
         let index = 0;
         const open = vi.fn((path: string) => path === parentFile ? parentManager : childManager);
         const service = new PiSessionService(new CapturingSessionEventHub(), {
+          agentDir: TEST_AGENT_DIR,
           createAgentRuntime: () => {
             const runtime = runtimes[index] ?? parent.runtime;
             index += 1;
@@ -509,6 +528,7 @@ describe("PiSessionService", () => {
           throw new Error(`unexpected open path ${path}`);
         });
         const service = new PiSessionService(new CapturingSessionEventHub(), {
+          agentDir: TEST_AGENT_DIR,
           createAgentRuntime,
           sessionManager: {
             create: () => parentManager,
@@ -584,6 +604,7 @@ describe("PiSessionService", () => {
           throw new Error(`unexpected open path ${path}`);
         });
         const service = new PiSessionService(new CapturingSessionEventHub(), {
+          agentDir: TEST_AGENT_DIR,
           createAgentRuntime,
           sessionManager: {
             create: () => copiedParentManager,
@@ -641,6 +662,7 @@ describe("PiSessionService", () => {
         let index = 0;
         const open = vi.fn((path: string) => path === parentFile ? parentManager : childManager);
         const service = new PiSessionService(new CapturingSessionEventHub(), {
+          agentDir: TEST_AGENT_DIR,
           createAgentRuntime: () => {
             const runtime = runtimes[index] ?? parent.runtime;
             index += 1;
@@ -693,6 +715,7 @@ describe("PiSessionService", () => {
         let index = 0;
         const open = vi.fn((path: string) => path === actualParentFile ? parent.session.sessionManager : childManager);
         const service = new PiSessionService(new CapturingSessionEventHub(), {
+          agentDir: TEST_AGENT_DIR,
           createAgentRuntime: () => {
             const runtime = runtimes[index] ?? parent.runtime;
             index += 1;
@@ -733,6 +756,7 @@ describe("PiSessionService", () => {
       const child = fakeRuntime("child-fork-1", { sessionFile: childFile, sessionManager: childManager });
       const open = vi.fn(() => childManager);
       const service = new PiSessionService(new CapturingSessionEventHub(), {
+        agentDir: TEST_AGENT_DIR,
         createAgentRuntime: runtimeCreator(child.runtime),
         sessionManager: {
           create: () => childManager,
@@ -774,6 +798,41 @@ describe("PiSessionService", () => {
       expect(parent.calls.sendCustomMessage[0]?.message.customType).toBe("subsession.completion");
       expect(parent.calls.sendCustomMessage[0]?.options).toEqual({ triggerTurn: true, deliverAs: "followUp" });
       expect(parent.calls.prompt).toHaveLength(0); // not a user-authored message
+      await service.dispose();
+    });
+
+    it("reports other working children in each completion notice", async () => {
+      const { parent, children, service } = subsessionService(
+        { allowed: true, cwd: "/workspace-feature" },
+        60_000,
+        ["child-1", "child-2"],
+      );
+      const [first, second] = children;
+      if (first === undefined || second === undefined) throw new Error("Expected two child fixtures");
+      await service.start("/workspace");
+      await service.spawnSubsession({ spawningCwd: "/workspace", parentSessionId: "parent-1", parentSessionFile: "/tmp/parent-1.jsonl", prompt: "first", cwd: "/workspace-feature" });
+      await service.spawnSubsession({ spawningCwd: "/workspace", parentSessionId: "parent-1", parentSessionFile: "/tmp/parent-1.jsonl", prompt: "second", cwd: "/workspace-feature" });
+
+      first.session.isStreaming = true;
+      first.emit({ type: "agent_start" });
+      second.session.isStreaming = true;
+      second.emit({ type: "agent_start" });
+
+      first.session.isStreaming = false;
+      first.emit({ type: "agent_end" });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(parent.calls.sendCustomMessage[0]?.message.content).toBe(
+        "Subsession child-1 stopped working (idle).\nStill working: child-2. Continue working, or call yield_to_subsessions alone and last at the next join point. Further completion notices arrive automatically; do not poll.\n\n--- SUBSESSION OUTPUT: child-1 ---\n(no output)",
+      );
+
+      second.session.isStreaming = false;
+      second.emit({ type: "agent_end" });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(parent.calls.sendCustomMessage[1]?.message.content).toBe(
+        "Subsession child-2 stopped working (idle).\nNo other tracked subsessions are working.\n\n--- SUBSESSION OUTPUT: child-2 ---\n(no output)",
+      );
       await service.dispose();
     });
 
@@ -842,6 +901,7 @@ describe("PiSessionService", () => {
     it("is disabled when no spawn target resolver is configured", async () => {
       const fake = fakeRuntime("nope");
       const service = new PiSessionService(new CapturingSessionEventHub(), {
+        agentDir: TEST_AGENT_DIR,
         createAgentRuntime: runtimeCreator(fake.runtime),
         sessionManager: sessionGateway([]),
         heartbeatIntervalMs: 60_000,

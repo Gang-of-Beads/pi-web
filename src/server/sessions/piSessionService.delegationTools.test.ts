@@ -46,6 +46,7 @@ describe("delegation tool capability boundary", () => {
       "list_subsessions",
       "check_subsession",
       "read_subsession",
+      "yield_to_subsessions",
     ]);
   });
 

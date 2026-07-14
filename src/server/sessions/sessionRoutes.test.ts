@@ -2,11 +2,14 @@ import { resolve } from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
 import fastifyWebsocket from "@fastify/websocket";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { MessagePage, SessionBulkArchiveResponse, SessionBulkDeleteArchivedResponse, SessionBulkMutationRef, SessionCleanupExecuteResponse, SessionCleanupPreviewResponse } from "../../shared/apiTypes.js";
+import type { MessagePage, SessionBulkArchiveResponse, SessionBulkDeleteArchivedResponse, SessionBulkMutationRef, SessionCleanupExecuteResponse, SessionCleanupPreviewResponse, SessionStatus } from "../../shared/apiTypes.js";
 import { SessionEventHub } from "../realtime/sessionEventHub.js";
-import { PiSessionService, type PiSessionManagerGateway, type PiSessionRef } from "./piSessionService.js";
+import { PiSessionService, type PiSessionManagerGateway } from "./piSessionService.js";
+import type { SessionRouteLookup, SessionRouteService } from "./sessionService.js";
 import { registerSessionRoutes } from "./sessionRoutes.js";
 import type { NormalizedSessionCleanupRequest } from "./sessionCleanup.js";
+
+const TEST_AGENT_DIR = "/tmp/pi-web-test-agent";
 
 let app: FastifyInstance;
 let service: PiSessionService;
@@ -17,7 +20,7 @@ beforeEach(async () => {
   await app.register(fastifyWebsocket);
   sessionManager = new RejectingSessionManager();
   const eventHub = new SessionEventHub();
-  service = new PiSessionService(eventHub, { sessionManager, heartbeatIntervalMs: 60_000 });
+  service = new PiSessionService(eventHub, { agentDir: TEST_AGENT_DIR, sessionManager, heartbeatIntervalMs: 60_000 });
   registerSessionRoutes(app, service, eventHub);
 });
 
@@ -39,7 +42,7 @@ describe("session routes", () => {
     const routeApp = Fastify({ logger: false });
     await routeApp.register(fastifyWebsocket);
     const eventHub = new SessionEventHub();
-    const routeService = new CapturingRouteSessionService(eventHub);
+    const routeService = new CapturingRouteSessionService();
     registerSessionRoutes(routeApp, routeService, eventHub);
 
     try {
@@ -59,7 +62,7 @@ describe("session routes", () => {
     const routeApp = Fastify({ logger: false });
     await routeApp.register(fastifyWebsocket);
     const eventHub = new SessionEventHub();
-    const routeService = new CapturingRouteSessionService(eventHub);
+    const routeService = new CapturingRouteSessionService();
     const thinkingBlock = { type: "thinking", thinking: "private chain", thinkingSignature: "opaque-provider-payload", redacted: true };
     const message = { role: "assistant", content: [thinkingBlock, { type: "text", text: "visible answer" }] };
     routeService.messagesResponse = { messages: [message], start: 0, total: 1 };
@@ -85,7 +88,7 @@ describe("session routes", () => {
     const routeApp = Fastify({ logger: false });
     await routeApp.register(fastifyWebsocket);
     const eventHub = new SessionEventHub();
-    const routeService = new CapturingRouteSessionService(eventHub);
+    const routeService = new CapturingRouteSessionService();
     registerSessionRoutes(routeApp, routeService, eventHub);
 
     const attachments = [{ kind: "image", mimeType: "image/png", data: "QUJD", name: "shot.png" }];
@@ -107,7 +110,7 @@ describe("session routes", () => {
     const routeApp = Fastify({ logger: false });
     await routeApp.register(fastifyWebsocket);
     const eventHub = new SessionEventHub();
-    const routeService = new CapturingRouteSessionService(eventHub);
+    const routeService = new CapturingRouteSessionService();
     registerSessionRoutes(routeApp, routeService, eventHub);
 
     try {
@@ -130,7 +133,7 @@ describe("session routes", () => {
     const routeApp = Fastify({ logger: false });
     await routeApp.register(fastifyWebsocket);
     const eventHub = new SessionEventHub();
-    const routeService = new CapturingRouteSessionService(eventHub);
+    const routeService = new CapturingRouteSessionService();
     registerSessionRoutes(routeApp, routeService, eventHub);
 
     try {
@@ -150,7 +153,7 @@ describe("session routes", () => {
     const routeApp = Fastify({ logger: false });
     await routeApp.register(fastifyWebsocket);
     const eventHub = new SessionEventHub();
-    const routeService = new CapturingRouteSessionService(eventHub);
+    const routeService = new CapturingRouteSessionService();
     routeService.reloadError = new Error("Stop current session activity before reloading");
     registerSessionRoutes(routeApp, routeService, eventHub);
 
@@ -165,11 +168,60 @@ describe("session routes", () => {
     }
   });
 
+  it("clears a session queue with workspace context and returns fresh status", async () => {
+    const routeApp = Fastify({ logger: false });
+    await routeApp.register(fastifyWebsocket);
+    const eventHub = new SessionEventHub();
+    const routeService = new CapturingRouteSessionService();
+    registerSessionRoutes(routeApp, routeService, eventHub);
+
+    try {
+      const requestCwd = resolve("/repo");
+      const response = await routeApp.inject({ method: "POST", url: "/sessions/session-1/queue/clear", payload: { cwd: requestCwd } });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({
+        sessionId: "session-1",
+        isStreaming: true,
+        isCompacting: false,
+        isBashRunning: false,
+        pendingMessageCount: 0,
+        queuedMessages: [],
+        tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        cost: 0,
+      });
+      expect(routeService.clearQueueCalls).toEqual([{ id: "session-1", cwd: requestCwd }]);
+    } finally {
+      await routeService.dispose();
+      await routeApp.close();
+    }
+  });
+
+  it("maps archived queue-clear failures to a mutation error without requiring a body", async () => {
+    const routeApp = Fastify({ logger: false });
+    await routeApp.register(fastifyWebsocket);
+    const eventHub = new SessionEventHub();
+    const routeService = new CapturingRouteSessionService();
+    routeService.clearQueueError = new Error("Archived sessions are read-only. Restore the session to continue.");
+    registerSessionRoutes(routeApp, routeService, eventHub);
+
+    try {
+      const response = await routeApp.inject({ method: "POST", url: "/sessions/session-1/queue/clear" });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toEqual({ error: "Archived sessions are read-only. Restore the session to continue." });
+      expect(routeService.clearQueueCalls).toEqual(["session-1"]);
+    } finally {
+      await routeService.dispose();
+      await routeApp.close();
+    }
+  });
+
   it("normalizes cleanup requests for preview and execute routes", async () => {
     const routeApp = Fastify({ logger: false });
     await routeApp.register(fastifyWebsocket);
     const eventHub = new SessionEventHub();
-    const routeService = new CapturingRouteSessionService(eventHub);
+    const routeService = new CapturingRouteSessionService();
     registerSessionRoutes(routeApp, routeService, eventHub);
 
     try {
@@ -190,7 +242,7 @@ describe("session routes", () => {
     const routeApp = Fastify({ logger: false });
     await routeApp.register(fastifyWebsocket);
     const eventHub = new SessionEventHub();
-    const routeService = new CapturingRouteSessionService(eventHub);
+    const routeService = new CapturingRouteSessionService();
     registerSessionRoutes(routeApp, routeService, eventHub);
 
     try {
@@ -209,7 +261,7 @@ describe("session routes", () => {
     const routeApp = Fastify({ logger: false });
     await routeApp.register(fastifyWebsocket);
     const eventHub = new SessionEventHub();
-    const routeService = new CapturingRouteSessionService(eventHub);
+    const routeService = new CapturingRouteSessionService();
     registerSessionRoutes(routeApp, routeService, eventHub);
 
     try {
@@ -233,7 +285,7 @@ describe("session routes", () => {
     const routeApp = Fastify({ logger: false });
     await routeApp.register(fastifyWebsocket);
     const eventHub = new SessionEventHub();
-    const routeService = new CapturingRouteSessionService(eventHub);
+    const routeService = new CapturingRouteSessionService();
     registerSessionRoutes(routeApp, routeService, eventHub);
 
     try {
@@ -249,51 +301,71 @@ describe("session routes", () => {
   });
 });
 
-class CapturingRouteSessionService extends PiSessionService {
+class CapturingRouteSessionService implements SessionRouteService {
   readonly calls: unknown[] = [];
-  readonly reloadCalls: (string | PiSessionRef)[] = [];
+  readonly reloadCalls: SessionRouteLookup[] = [];
+  readonly clearQueueCalls: SessionRouteLookup[] = [];
   messagesResponse: unknown[] | MessagePage = [];
   readonly cleanupPreviewCalls: NormalizedSessionCleanupRequest[] = [];
   readonly cleanupCalls: NormalizedSessionCleanupRequest[] = [];
   readonly bulkArchiveCalls: SessionBulkMutationRef[][] = [];
   readonly bulkDeleteCalls: SessionBulkMutationRef[][] = [];
   reloadError: Error | undefined;
+  clearQueueError: Error | undefined;
 
-  constructor(eventHub: SessionEventHub) {
-    super(eventHub, { sessionManager: new RejectingSessionManager(), heartbeatIntervalMs: 60_000 });
-  }
-
-  override cleanupPreview(request: NormalizedSessionCleanupRequest): Promise<SessionCleanupPreviewResponse> {
+  cleanupPreview(request: NormalizedSessionCleanupRequest): Promise<SessionCleanupPreviewResponse> {
     this.cleanupPreviewCalls.push(request);
     return Promise.resolve({ generatedAt: "2026-06-25T00:00:00.000Z", thresholds: request.thresholds, projects: [], totals: { archiveCount: 0, deleteCount: 0 } });
   }
 
-  override cleanup(request: NormalizedSessionCleanupRequest): Promise<SessionCleanupExecuteResponse> {
+  cleanup(request: NormalizedSessionCleanupRequest): Promise<SessionCleanupExecuteResponse> {
     this.cleanupCalls.push(request);
     return Promise.resolve({ generatedAt: "2026-06-25T00:00:00.000Z", thresholds: request.thresholds, projects: [], totals: { archiveCount: 0, deleteCount: 0 }, archivedSessionIds: [], deletedSessionIds: [] });
   }
 
-  override archiveMany(refs: readonly SessionBulkMutationRef[]): Promise<SessionBulkArchiveResponse> {
+  archiveMany(refs: readonly SessionBulkMutationRef[]): Promise<SessionBulkArchiveResponse> {
     this.bulkArchiveCalls.push([...refs]);
     return Promise.resolve({ archived: true, archivedSessionIds: refs.map((ref) => ref.id), failures: [], generatedAt: "2026-06-25T00:00:00.000Z" });
   }
 
-  override deleteArchivedMany(refs: readonly SessionBulkMutationRef[]): Promise<SessionBulkDeleteArchivedResponse> {
+  deleteArchivedMany(refs: readonly SessionBulkMutationRef[]): Promise<SessionBulkDeleteArchivedResponse> {
     this.bulkDeleteCalls.push([...refs]);
     return Promise.resolve({ deleted: true, deletedSessionIds: refs.map((ref) => ref.id), failures: [], generatedAt: "2026-06-25T00:00:00.000Z" });
   }
 
-  override reload(lookup: string | PiSessionRef): Promise<void> {
+  reload(lookup: SessionRouteLookup): Promise<void> {
     this.reloadCalls.push(lookup);
     if (this.reloadError !== undefined) return Promise.reject(this.reloadError);
     return Promise.resolve();
   }
 
-  override messages(): Promise<unknown[] | MessagePage> {
+  dispose(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  list(): never { throw unusedRouteMethod("list"); }
+  start(): never { throw unusedRouteMethod("start"); }
+
+  clearQueue(lookup: SessionRouteLookup): Promise<SessionStatus> {
+    this.clearQueueCalls.push(lookup);
+    if (this.clearQueueError !== undefined) return Promise.reject(this.clearQueueError);
+    return Promise.resolve({
+      sessionId: sessionIdFromLookup(lookup),
+      isStreaming: true,
+      isCompacting: false,
+      isBashRunning: false,
+      pendingMessageCount: 0,
+      queuedMessages: [],
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      cost: 0,
+    });
+  }
+
+  messages(): Promise<unknown[] | MessagePage> {
     return Promise.resolve(this.messagesResponse);
   }
 
-  override status(lookup: string | PiSessionRef) {
+  status(lookup: SessionRouteLookup) {
     this.calls.push(lookup);
     return Promise.resolve({
       sessionId: sessionIdFromLookup(lookup),
@@ -307,12 +379,20 @@ class CapturingRouteSessionService extends PiSessionService {
     });
   }
 
-  override prompt(lookup: string | PiSessionRef, text: unknown, _streamingBehavior?: unknown, attachments?: unknown): Promise<void> {
+  availableModels(): Promise<[]> { return Promise.resolve([]); }
+  setModel(): never { throw unusedRouteMethod("setModel"); }
+  cycleModel(): never { throw unusedRouteMethod("cycleModel"); }
+  availableThinkingLevels(): Promise<[]> { return Promise.resolve([]); }
+  setThinkingLevel(): never { throw unusedRouteMethod("setThinkingLevel"); }
+  cycleThinkingLevel(): never { throw unusedRouteMethod("cycleThinkingLevel"); }
+  commands(): Promise<[]> { return Promise.resolve([]); }
+
+  prompt(lookup: SessionRouteLookup, text: unknown, _streamingBehavior?: unknown, attachments?: unknown): Promise<void> {
     this.calls.push(attachments === undefined ? { lookup, text } : { lookup, text, attachments });
     return Promise.resolve();
   }
 
-  override saveAttachments(_lookup: string | PiSessionRef, attachments: unknown, folder?: string) {
+  saveAttachments(_lookup: SessionRouteLookup, attachments: unknown, folder?: string) {
     const list = Array.isArray(attachments) ? attachments : [];
     return Promise.resolve(list.map((attachment: { mimeType: string; data: string; name?: string }) => ({
       path: `${folder ?? ".pi-web/attachments"}/${attachment.name ?? "file.png"}`,
@@ -320,6 +400,19 @@ class CapturingRouteSessionService extends PiSessionService {
       size: Buffer.from(attachment.data, "base64").byteLength,
     })));
   }
+
+  shell(): never { throw unusedRouteMethod("shell"); }
+  runCommand(): never { throw unusedRouteMethod("runCommand"); }
+  respondToCommand(): never { throw unusedRouteMethod("respondToCommand"); }
+  abort(): never { throw unusedRouteMethod("abort"); }
+  stop(): never { throw unusedRouteMethod("stop"); }
+  archive(): never { throw unusedRouteMethod("archive"); }
+  archiveTree(): never { throw unusedRouteMethod("archiveTree"); }
+  restore(): never { throw unusedRouteMethod("restore"); }
+  deleteArchived(): never { throw unusedRouteMethod("deleteArchived"); }
+
+
+  detachParent(): never { throw unusedRouteMethod("detachParent"); }
 }
 
 class RejectingSessionManager implements PiSessionManagerGateway {
@@ -346,6 +439,10 @@ class RejectingSessionManager implements PiSessionManagerGateway {
   }
 }
 
-function sessionIdFromLookup(lookup: string | PiSessionRef): string {
+function sessionIdFromLookup(lookup: SessionRouteLookup): string {
   return typeof lookup === "string" ? lookup : lookup.id;
+}
+
+function unusedRouteMethod(name: string): Error {
+  return new Error(`Route test did not expect ${name} to be called`);
 }

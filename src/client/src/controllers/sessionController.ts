@@ -723,6 +723,20 @@ export class SessionController {
     }
   }
 
+  async clearServerQueue() {
+    const state = this.getState();
+    const session = state.selectedSession;
+    if (session === undefined || session.archived === true || isClientPendingStartSessionInfo(session)) return;
+    const machineId = selectedMachineId(state);
+    const selectionSeq = this.selectionSeq;
+    try {
+      const status = await this.api.clearQueue(session, machineId);
+      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.applyStatus(status);
+    } catch (error) {
+      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState({ error: String(error) });
+    }
+  }
+
   async stopActiveWork() {
     const session = this.getState().selectedSession;
     if (!session) return;
@@ -768,11 +782,15 @@ export class SessionController {
   }
 
   private isCurrentRefreshTarget(target: SelectedSessionRefreshTarget): boolean {
+    return this.isCurrentSessionSelection(target.session.id, target.machineId, target.selectionSeq);
+  }
+
+  private isCurrentSessionSelection(sessionId: string, machineId: string, selectionSeq: number): boolean {
     const state = this.getState();
     const selected = state.selectedSession;
-    return target.selectionSeq === this.selectionSeq
-      && selectedMachineId(state) === target.machineId
-      && selected?.id === target.session.id
+    return selectionSeq === this.selectionSeq
+      && selectedMachineId(state) === machineId
+      && selected?.id === sessionId
       && selected.archived !== true
       && !isClientPendingStartSessionInfo(selected);
   }

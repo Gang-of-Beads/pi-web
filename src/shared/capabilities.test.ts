@@ -5,13 +5,15 @@ describe("PI WEB capabilities", () => {
   it("advertises web-only capabilities without requiring session daemon support", () => {
     expect(WEB_RUNTIME_CAPABILITIES).toContain(PI_WEB_CAPABILITIES.piPackagesManage);
     expect(WEB_RUNTIME_CAPABILITIES).toContain(PI_WEB_CAPABILITIES.selectedMachineSettings);
+    expect(WEB_RUNTIME_CAPABILITIES).toContain(PI_WEB_CAPABILITIES.agentProfileConfig);
     expect(SESSIOND_RUNTIME_CAPABILITIES).not.toContain(PI_WEB_CAPABILITIES.piPackagesManage);
     expect(SESSIOND_RUNTIME_CAPABILITIES).not.toContain(PI_WEB_CAPABILITIES.selectedMachineSettings);
+    expect(SESSIOND_RUNTIME_CAPABILITIES).not.toContain(PI_WEB_CAPABILITIES.agentProfileConfig);
 
     expect(effectivePiWebCapabilities({
-      web: { available: true, capabilities: [PI_WEB_CAPABILITIES.piPackagesManage, PI_WEB_CAPABILITIES.selectedMachineSettings] },
+      web: { available: true, capabilities: [PI_WEB_CAPABILITIES.piPackagesManage, PI_WEB_CAPABILITIES.selectedMachineSettings, PI_WEB_CAPABILITIES.agentProfileConfig] },
       sessiond: { available: false, capabilities: [] },
-    })).toEqual([PI_WEB_CAPABILITIES.piPackagesManage, PI_WEB_CAPABILITIES.selectedMachineSettings]);
+    })).toEqual([PI_WEB_CAPABILITIES.piPackagesManage, PI_WEB_CAPABILITIES.selectedMachineSettings, PI_WEB_CAPABILITIES.agentProfileConfig]);
   });
 
   it("requires web and session daemon support for authoritative session persistence", () => {
@@ -26,6 +28,26 @@ describe("PI WEB capabilities", () => {
       web: { available: true, capabilities: [PI_WEB_CAPABILITIES.sessionsPersistedState] },
       sessiond: { available: true, capabilities: [PI_WEB_CAPABILITIES.sessionsPersistedState] },
     })).toContain(PI_WEB_CAPABILITIES.sessionsPersistedState);
+  });
+
+  it("requires web and session daemon support for server-side queue clearing", () => {
+    const clearQueue = PI_WEB_CAPABILITIES.sessionsClearQueue;
+    expect(WEB_RUNTIME_CAPABILITIES).toContain(clearQueue);
+    expect(SESSIOND_RUNTIME_CAPABILITIES).toContain(clearQueue);
+    expect(parseKnownPiWebCapabilities([clearQueue, "future.capability"])).toEqual([clearQueue]);
+
+    expect(effectivePiWebCapabilities({
+      web: { available: true, capabilities: [clearQueue] },
+      sessiond: { available: true, capabilities: [] },
+    })).not.toContain(clearQueue);
+    expect(effectivePiWebCapabilities({
+      web: { available: true, capabilities: [] },
+      sessiond: { available: true, capabilities: [clearQueue] },
+    })).not.toContain(clearQueue);
+    expect(effectivePiWebCapabilities({
+      web: { available: true, capabilities: [clearQueue] },
+      sessiond: { available: true, capabilities: [clearQueue] },
+    })).toContain(clearQueue);
   });
 
   it("keeps only known string capabilities when parsing runtime data", () => {

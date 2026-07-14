@@ -3,13 +3,40 @@ import type { ChatLine, ToolExecutionPart } from "./components/shared";
 import { appendShellChunk, finalizeShellMessage, shellStartMessage } from "./shellMessages";
 import type { SessionUiEvent } from "./sessionSocket";
 
+type ToolResultImage = Extract<ChatLine["parts"][number], { type: "image" }>;
+
+interface ToolResultPresentation {
+  images: ToolResultImage[];
+  meta?: ChatLine["meta"];
+}
+
+interface ToolResultUpdate {
+  toolCallId?: string;
+  toolName: string;
+  text: string;
+  isError: boolean;
+  content: unknown;
+  details: unknown;
+  presentation: ToolResultPresentation;
+}
+
 export function applyTranscriptEvent(messages: ChatLine[], event: SessionUiEvent): ChatLine[] | undefined {
   if (event.type === "message.append") return appendNewMessage(messages, event.message);
   if (event.type === "assistant.delta") return appendText(messages, "assistant", event.text);
   if (event.type === "assistant.thinking.delta") return appendThinking(messages, event.text);
   if (event.type === "tool.start") return appendToolExecutionStart(messages, event);
   if (event.type === "tool.update") return updateToolExecution(messages, event.toolCallId, (part) => mergeToolExecutionUpdate(part, event));
-  if (event.type === "tool.end") return finalizeToolExecution(messages, event.toolCallId, event.toolName, summarizeArgs(event.content), event.text, event.isError, event.content, event.details);
+  if (event.type === "tool.end") {
+    return finalizeToolExecution(messages, {
+      toolCallId: event.toolCallId,
+      toolName: event.toolName,
+      text: event.text,
+      isError: event.isError,
+      content: event.content,
+      details: event.details,
+      presentation: toolResultPresentation({ role: "toolResult", content: event.content }),
+    });
+  }
   if (event.type === "shell.start") return [...messages, shellStartMessage(event.command, event.excludeFromContext)];
   if (event.type === "shell.chunk") return appendShellChunk(messages, event.chunk);
   if (event.type === "shell.end") return finalizeShellMessage(messages, event);
@@ -21,9 +48,7 @@ export function applyTranscriptEvent(messages: ChatLine[], event: SessionUiEvent
 
 function applyFinalMessage(messages: ChatLine[], rawMessage: unknown): ChatLine[] | undefined {
   const rawToolResult = toolResultFromRawMessage(rawMessage);
-  if (rawToolResult !== undefined) {
-    return finalizeToolExecution(messages, rawToolResult.toolCallId, rawToolResult.toolName, summarizeArgs(rawToolResult.content), rawToolResult.text, rawToolResult.isError, rawToolResult.content, rawToolResult.details);
-  }
+  if (rawToolResult !== undefined) return finalizeToolExecution(messages, rawToolResult);
 
   const ended = normalizeMessage(rawMessage);
   if (ended.length === 0) return undefined;
@@ -85,7 +110,8 @@ function mergeToolExecutionUpdate(part: ToolExecutionPart, event: Extract<Sessio
   };
 }
 
-function finalizeToolExecution(messages: ChatLine[], toolCallId: string | undefined, toolName: string, fallbackSummary: string, text: string, isError: boolean, content: unknown, details: unknown): ChatLine[] {
+function finalizeToolExecution(messages: ChatLine[], result: ToolResultUpdate): ChatLine[] {
+  const { toolCallId, toolName, text, isError, content, details, presentation } = result;
   const updated = updateToolExecution(messages, toolCallId, (part) => {
     const preview = previewFromDetails(details) ?? part.preview;
     return {
@@ -96,7 +122,7 @@ function finalizeToolExecution(messages: ChatLine[], toolCallId: string | undefi
       ...(details === undefined ? {} : { details }),
       ...(preview === undefined ? {} : { preview }),
     };
-  });
+  }, (line) => reconcileToolResultPresentation(line, presentation));
   if (updated !== messages) return updated;
 
   const preview = previewFromDetails(details);
@@ -104,17 +130,22 @@ function finalizeToolExecution(messages: ChatLine[], toolCallId: string | undefi
     type: "toolExecution",
     ...(toolCallId === undefined || toolCallId === "" ? {} : { toolCallId }),
     toolName,
-    summary: fallbackSummary,
+    summary: summarizeArgs(content),
     status: isError ? "error" : "success",
     resultText: text,
     ...(content === undefined ? {} : { content }),
     ...(details === undefined ? {} : { details }),
     ...(preview === undefined ? {} : { preview }),
   };
-  return [...messages, { role: "tool", parts: [part] }];
+  return [...messages, reconcileToolResultPresentation({ role: "tool", parts: [part] }, presentation)];
 }
 
-function updateToolExecution(messages: ChatLine[], toolCallId: string | undefined, update: (part: ToolExecutionPart) => ToolExecutionPart): ChatLine[] {
+function updateToolExecution(
+  messages: ChatLine[],
+  toolCallId: string | undefined,
+  update: (part: ToolExecutionPart) => ToolExecutionPart,
+  reconcileLine: (line: ChatLine) => ChatLine = (line) => line,
+): ChatLine[] {
   if (toolCallId === undefined || toolCallId === "") return messages;
   for (let lineIndex = messages.length - 1; lineIndex >= 0; lineIndex--) {
     const line = messages[lineIndex];
@@ -123,13 +154,26 @@ function updateToolExecution(messages: ChatLine[], toolCallId: string | undefine
     if (partIndex < 0) continue;
     const part = line.parts[partIndex];
     if (part?.type !== "toolExecution") continue;
-    const nextLine = { ...line, parts: [...line.parts.slice(0, partIndex), update(part), ...line.parts.slice(partIndex + 1)] };
+    const updatedLine = { ...line, parts: [...line.parts.slice(0, partIndex), update(part), ...line.parts.slice(partIndex + 1)] };
+    const nextLine = reconcileLine(updatedLine);
     return [...messages.slice(0, lineIndex), nextLine, ...messages.slice(lineIndex + 1)];
   }
   return messages;
 }
 
-function toolResultFromRawMessage(message: unknown): { toolCallId?: string; toolName: string; text: string; isError: boolean; content: unknown; details: unknown } | undefined {
+function reconcileToolResultPresentation(line: ChatLine, presentation: ToolResultPresentation): ChatLine {
+  const next = { ...line, parts: [...line.parts.filter((part) => part.type !== "image"), ...presentation.images] };
+  return presentation.meta === undefined ? next : { ...next, meta: presentation.meta };
+}
+
+function toolResultPresentation(message: unknown): ToolResultPresentation {
+  const normalized = normalizeMessage(message);
+  const images = normalized.flatMap((line) => line.parts.filter((part): part is ToolResultImage => part.type === "image"));
+  const meta = normalized.find((line) => line.meta !== undefined)?.meta;
+  return { images, ...(meta === undefined ? {} : { meta }) };
+}
+
+function toolResultFromRawMessage(message: unknown): ToolResultUpdate | undefined {
   if (getString(message, "role") !== "toolResult") return undefined;
   const toolCallId = getString(message, "toolCallId");
   const content = getProperty(message, "content");
@@ -140,6 +184,7 @@ function toolResultFromRawMessage(message: unknown): { toolCallId?: string; tool
     isError: getBoolean(message, "isError") === true,
     content,
     details: getProperty(message, "details"),
+    presentation: toolResultPresentation(message),
   };
 }
 

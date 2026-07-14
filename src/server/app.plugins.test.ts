@@ -6,7 +6,7 @@ import { appTestContext, fakeRemoteClient, registerAppTestHooks } from "./app.te
 registerAppTestHooks();
 
 describe("buildApp PI WEB plugin routes", () => {
-  it("serves the PI WEB plugin manifest and plugin assets", async () => {
+  it("serves application-root plugin modules through the manifest and plugin-list APIs", async () => {
     const manifestResponse = await appTestContext.app.inject({ method: "GET", url: "/pi-web-plugins/manifest.json" });
     expect(manifestResponse.statusCode).toBe(200);
     expect(manifestResponse.json()).toEqual({ plugins: [{ id: "fake", module: "/pi-web-plugins/fake/plugin.js?v=1", source: "test", scope: "local", machineSpecific: false }] });
@@ -51,7 +51,7 @@ describe("buildApp PI WEB plugin routes", () => {
     expect(request).toHaveBeenCalledWith("GET", "/api/plugins", undefined);
   });
 
-  it("rewrites and proxies remote machine plugin manifests and assets", async () => {
+  it("rewrites existing root-style remote plugin manifests and proxies their assets", async () => {
     const addResponse = await appTestContext.app.inject({ method: "POST", url: "/api/machines", payload: { name: "Remote", baseUrl: "https://remote.example.test/" } });
     const remote = addResponse.json<{ id: string }>();
     const requestJson = vi.fn(() => Promise.resolve({
@@ -68,10 +68,15 @@ describe("buildApp PI WEB plugin routes", () => {
 
     const manifestResponse = await appTestContext.app.inject({ method: "GET", url: `/api/machines/${remote.id}/pi-web-plugins/manifest.json` });
     const scopedPluginId = machineScopedPluginId(remote.id, "remote-tools");
+    const rewrittenModule = `../../../../pi-web-plugins/${scopedPluginId}/pi-web-plugin.js?v=123`;
     expect(manifestResponse.statusCode).toBe(200);
     expect(manifestResponse.json()).toEqual({
-      plugins: [{ id: "remote-tools", module: `/pi-web-plugins/${scopedPluginId}/pi-web-plugin.js?v=123`, source: "local", scope: "local", machineSpecific: true }],
+      plugins: [{ id: "remote-tools", module: rewrittenModule, source: "local", scope: "local", machineSpecific: true }],
     });
+    expect(new URL(rewrittenModule, `https://gateway.example.test/api/machines/${remote.id}/pi-web-plugins/manifest.json`).toString())
+      .toBe(`https://gateway.example.test/pi-web-plugins/${scopedPluginId}/pi-web-plugin.js?v=123`);
+    expect(new URL(rewrittenModule, `https://gateway.example.test/test/ai/api/machines/${remote.id}/pi-web-plugins/manifest.json`).toString())
+      .toBe(`https://gateway.example.test/test/ai/pi-web-plugins/${scopedPluginId}/pi-web-plugin.js?v=123`);
     expect(requestJson).toHaveBeenCalledWith("GET", "/pi-web-plugins/manifest.json", undefined, { timeoutMs: 10000 });
 
     const assetResponse = await appTestContext.app.inject({ method: "GET", url: `/pi-web-plugins/${scopedPluginId}/pi-web-plugin.js?v=123` });
@@ -82,7 +87,7 @@ describe("buildApp PI WEB plugin routes", () => {
     expect(request).toHaveBeenCalledWith("GET", "/pi-web-plugins/remote-tools/pi-web-plugin.js?v=123");
   });
 
-  it("drops unsafe remote machine plugin manifest modules", async () => {
+  it("accepts manifest-relative and legacy plugin-root-relative modules while dropping unsafe remote modules", async () => {
     const addResponse = await appTestContext.app.inject({ method: "POST", url: "/api/machines", payload: { name: "Remote", baseUrl: "https://remote.example.test/" } });
     const remote = addResponse.json<{ id: string }>();
     appTestContext.remoteClient = fakeRemoteClient({
@@ -91,9 +96,12 @@ describe("buildApp PI WEB plugin routes", () => {
         headers: { "content-type": "application/json" },
         body: {
           plugins: [
-            { id: "safe-tools", module: "nested/pi-web-plugin.js?v=1", source: "local", scope: "local" },
-            { id: "traversal-tools", module: "..%2F..%2Fapi%2Fconfig", source: "local", scope: "local" },
+            { id: "safe-tools", module: "./safe-tools/nested/pi-web-plugin.js?v=1", source: "local", scope: "local" },
+            { id: "legacy-tools", module: "nested/pi-web-plugin.js?v=2", source: "local", scope: "local" },
+            { id: "traversal-tools", module: "./traversal-tools/..%2F..%2Fapi%2Fconfig", source: "local", scope: "local" },
             { id: "wrong-root", module: "/pi-web-plugins/other/pi-web-plugin.js", source: "local", scope: "local" },
+            { id: "cross-origin", module: "https://plugins.example.test/pi-web-plugin.js", source: "local", scope: "local" },
+            { id: "malformed", module: "nested/%E0%A4%A.js", source: "local", scope: "local" },
           ],
         },
       })),
@@ -103,7 +111,10 @@ describe("buildApp PI WEB plugin routes", () => {
 
     expect(manifestResponse.statusCode).toBe(200);
     expect(manifestResponse.json()).toEqual({
-      plugins: [{ id: "safe-tools", module: `/pi-web-plugins/${machineScopedPluginId(remote.id, "safe-tools")}/nested/pi-web-plugin.js?v=1`, source: "local", scope: "local" }],
+      plugins: [
+        { id: "safe-tools", module: `../../../../pi-web-plugins/${machineScopedPluginId(remote.id, "safe-tools")}/nested/pi-web-plugin.js?v=1`, source: "local", scope: "local" },
+        { id: "legacy-tools", module: `../../../../pi-web-plugins/${machineScopedPluginId(remote.id, "legacy-tools")}/nested/pi-web-plugin.js?v=2`, source: "local", scope: "local" },
+      ],
     });
   });
 

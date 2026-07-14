@@ -163,7 +163,7 @@ export class TerminalService {
       cwd: record.cwd,
       cols: 100,
       rows: 30,
-      env: { ...process.env, TERM: "xterm-256color" },
+      env: { ...process.env, TERM: "xterm-256color", PI_WEB_TERMINAL: "1" },
     });
     this.attachPtyEvents(record);
     const info = toInfo(record);
@@ -196,7 +196,7 @@ export class TerminalService {
       cwd: options.cwd,
       cols: options.cols ?? 100,
       rows: options.rows ?? 30,
-      env: { ...process.env, TERM: "xterm-256color" },
+      env: { ...process.env, TERM: "xterm-256color", PI_WEB_TERMINAL: "1" },
     });
     const requestedName = options.name?.trim();
     const record: TerminalRecord = {

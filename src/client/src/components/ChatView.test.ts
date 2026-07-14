@@ -1,5 +1,6 @@
 import type { TemplateResult } from "lit";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { QueuedSessionMessage, SessionStatus } from "../api";
 import type { ChatLine } from "./shared";
 import { ChatView, chatMessageMetadataLabel, chatQueuedMessageSections } from "./ChatView";
 
@@ -12,16 +13,58 @@ describe("chatQueuedMessageSections", () => {
 
     expect(sections).toEqual([
       {
+        source: "client",
         heading: "Queued until session starts",
         detail: "Will send once the backend session is ready",
         messages: [{ kind: "followUp", text: "queued before start" }],
       },
       {
+        source: "server",
         heading: "Queued messages",
-        detail: "1 pending · Stop clears the queue",
+        detail: "1 pending",
         messages: [{ kind: "steer", text: "server queued" }],
       },
     ]);
+  });
+});
+
+describe("ChatView queued-message clear action", () => {
+  // Direct handler extraction keeps this node-environment test focused on the
+  // Clear queue template wiring without introducing a component-wide DOM shim.
+  it("renders an accessible server-queue action and invokes its callback", () => {
+    const view = new ChatView();
+    const onClearServerQueue = vi.fn();
+    view.status = queuedStatus([{ kind: "steer", text: "server queued" }]);
+    view.canClearServerQueue = true;
+    view.onClearServerQueue = onClearServerQueue;
+
+    const rendered = renderQueuedMessages(view);
+    const markup = templateStaticMarkup(rendered);
+
+    expect(markup).toContain('type="button"');
+    expect(markup).toContain('title="Clear queued messages without stopping active work"');
+    expect(markup).toContain(">Clear queue</button>");
+    templateEventHandler(rendered, "Clear queue")(new Event("click"));
+    expect(onClearServerQueue).toHaveBeenCalledOnce();
+  });
+
+  it("hides the action when the selected runtime does not support clearing", () => {
+    const view = new ChatView();
+    view.status = queuedStatus([{ kind: "followUp", text: "server queued" }]);
+    view.canClearServerQueue = false;
+    view.onClearServerQueue = vi.fn();
+
+    expect(templateStaticMarkup(renderQueuedMessages(view))).not.toContain("Clear queue");
+  });
+
+  it("does not expose the server action for the separate client pending-start queue", () => {
+    const view = new ChatView();
+    view.status = queuedStatus([]);
+    view.clientQueuedMessages = [{ kind: "followUp", text: "waiting for session start" }];
+    view.canClearServerQueue = true;
+    view.onClearServerQueue = vi.fn();
+
+    expect(templateStaticMarkup(renderQueuedMessages(view))).not.toContain("Clear queue");
   });
 });
 
@@ -103,9 +146,16 @@ interface GroupBodyRenderCall {
   startIndex: number;
 }
 
+type RenderQueuedMessages = (this: ChatView) => TemplateResult;
 type RenderMessageGroup = (this: ChatView, messages: ChatLine[], startIndex: number, endIndex: number, defaultOpen: boolean) => TemplateResult;
 type RenderMessageGroupBody = (this: ChatView, messages: ChatLine[], startIndex: number) => TemplateResult;
 type TemplateEventHandler = (event: Event) => void;
+
+function renderQueuedMessages(view: ChatView): TemplateResult {
+  const method: unknown = Reflect.get(view, "renderQueuedMessages");
+  if (!isRenderQueuedMessages(method)) throw new Error("ChatView.renderQueuedMessages is not callable");
+  return method.call(view);
+}
 
 function renderMessageGroup(view: ChatView, messages: ChatLine[], startIndex: number, endIndex: number, defaultOpen: boolean): TemplateResult {
   const method: unknown = Reflect.get(view, "renderMessageGroup");
@@ -125,6 +175,10 @@ function observeGroupBodyRenders(view: ChatView): GroupBodyRenderCall[] {
   return calls;
 }
 
+function isRenderQueuedMessages(value: unknown): value is RenderQueuedMessages {
+  return typeof value === "function";
+}
+
 function isRenderMessageGroup(value: unknown): value is RenderMessageGroup {
   return typeof value === "function";
 }
@@ -134,13 +188,30 @@ function isRenderMessageGroupBody(value: unknown): value is RenderMessageGroupBo
 }
 
 function templateEventHandler(template: TemplateResult, marker: string): TemplateEventHandler {
-  const strings = templateStrings(template);
-  const values = templateValues(template);
-  for (let index = 0; index < values.length; index += 1) {
-    const value = values[index];
-    if (strings[index]?.includes(marker) === true && isTemplateEventHandler(value)) return value;
+  let handler: TemplateEventHandler | undefined;
+  visit(template);
+  if (handler === undefined) throw new Error(`Expected template event handler near ${marker}`);
+  return handler;
+
+  function visit(value: unknown): void {
+    if (handler !== undefined) return;
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+    if (!isTemplateResult(value)) return;
+    const strings = templateStrings(value);
+    const values = templateValues(value);
+    for (let index = 0; index < values.length; index += 1) {
+      const candidate = values[index];
+      const isNearMarker = strings[index]?.includes(marker) === true || strings[index + 1]?.includes(marker) === true;
+      if (isNearMarker && isTemplateEventHandler(candidate)) {
+        handler = candidate;
+        return;
+      }
+      visit(candidate);
+    }
   }
-  throw new Error(`Expected template event handler after ${marker}`);
 }
 
 function isTemplateEventHandler(value: unknown): value is TemplateEventHandler {
@@ -220,4 +291,17 @@ function isTemplateResult(value: unknown): value is TemplateResult {
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item: unknown) => typeof item === "string");
+}
+
+function queuedStatus(queuedMessages: QueuedSessionMessage[]): SessionStatus {
+  return {
+    sessionId: "session-1",
+    isStreaming: true,
+    isCompacting: false,
+    isBashRunning: false,
+    pendingMessageCount: queuedMessages.length,
+    queuedMessages,
+    tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    cost: 0,
+  };
 }

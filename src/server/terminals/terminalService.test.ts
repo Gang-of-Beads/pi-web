@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { RealtimeEvent, TerminalInfo } from "../../shared/apiTypes.js";
 import type { WorkspaceActivityService } from "../activity/workspaceActivityService.js";
 import { SessionEventHub } from "../realtime/sessionEventHub.js";
@@ -20,6 +20,73 @@ describe.skipIf(process.platform === "win32")("TerminalService command runs", ()
     } finally {
       service.dispose();
     }
+  });
+
+  describe("PI_WEB_TERMINAL propagation", () => {
+    let originalPiWebTerminal: string | undefined;
+
+    beforeEach(() => {
+      originalPiWebTerminal = process.env["PI_WEB_TERMINAL"];
+      process.env["PI_WEB_TERMINAL"] = "conflicting-parent-value";
+    });
+
+    afterEach(() => {
+      if (originalPiWebTerminal === undefined) {
+        delete process.env["PI_WEB_TERMINAL"];
+      } else {
+        process.env["PI_WEB_TERMINAL"] = originalPiWebTerminal;
+      }
+    });
+
+    it("sets PI_WEB_TERMINAL for terminal commands", async () => {
+      const service = new TerminalService();
+      try {
+        const frame = "__PI_WEB_RUN_ENV_7F3A9C__";
+        const run = service.runCommand({
+          origin: "core",
+          projectId: "p1",
+          workspaceId: "w1",
+          cwd: process.cwd(),
+          title: "Environment check",
+          command: `printf '${frame}%s${frame}\\n' "$PI_WEB_TERMINAL"`,
+        });
+
+        expect(await terminalExit(service, run.terminalId)).toContain(`${frame}1${frame}`);
+      } finally {
+        service.dispose();
+      }
+    });
+
+    it("sets PI_WEB_TERMINAL in a continued interactive shell", async () => {
+      const service = new TerminalService();
+      try {
+        const run = service.runCommand({
+          origin: "core",
+          projectId: "p1",
+          workspaceId: "w1",
+          cwd: process.cwd(),
+          title: "Done command",
+          command: "true",
+        });
+        await terminalExit(service, run.terminalId);
+
+        const continued = service.continue(run.terminalId);
+
+        expect(continued).toMatchObject({ id: run.terminalId, exited: false });
+        expect(continued.commandRunId).toBeUndefined();
+        expect(service.get(run.terminalId)?.commandRunId).toBeUndefined();
+
+        const frame = "__PI_WEB_CONTINUE_ENV_42D8B1__";
+        const exit = terminalExit(service, run.terminalId);
+        service.write(run.terminalId, `printf '${frame}%s${frame}\\n' "$PI_WEB_TERMINAL"\nexit\n`);
+
+        const output = await exit;
+        expect(output).toContain("[continued in interactive shell]");
+        expect(output).toContain(`${frame}1${frame}`);
+      } finally {
+        service.dispose();
+      }
+    });
   });
 
   it("tracks dedicated terminal command runs through completion", async () => {
@@ -45,30 +112,6 @@ describe.skipIf(process.platform === "win32")("TerminalService command runs", ()
       expect(output).toContain("hello");
       expect(service.getCommandRun(run.id)).toMatchObject({ status: "succeeded", exitCode: 0, terminalId: run.terminalId });
       expect(service.listCommandRuns({ statuses: ["succeeded"] }).map((candidate) => candidate.id)).toEqual([run.id]);
-    } finally {
-      service.dispose();
-    }
-  });
-
-  it("continues an exited command-run terminal as an interactive shell", async () => {
-    const service = new TerminalService();
-    try {
-      const run = service.runCommand({
-        origin: "core",
-        projectId: "p1",
-        workspaceId: "w1",
-        cwd: process.cwd(),
-        title: "Done command",
-        command: "true",
-      });
-      await terminalExit(service, run.terminalId);
-
-      const continued = service.continue(run.terminalId);
-
-      expect(continued).toMatchObject({ id: run.terminalId, exited: false });
-      expect(continued.commandRunId).toBeUndefined();
-      expect(service.get(run.terminalId)?.commandRunId).toBeUndefined();
-      expect(await terminalReplay(service, run.terminalId)).toContain("[continued in interactive shell]");
     } finally {
       service.dispose();
     }
@@ -178,16 +221,6 @@ function requireTerminal(service: TerminalService, terminalId: string): Terminal
   const terminal = service.get(terminalId);
   if (terminal === undefined) throw new Error(`Expected terminal ${terminalId} to exist`);
   return terminal;
-}
-
-function terminalReplay(service: TerminalService, terminalId: string): Promise<string> {
-  let output = "";
-  const detach = service.attach(terminalId, {
-    output: (data) => { output += data; },
-    exit: () => undefined,
-  });
-  detach();
-  return Promise.resolve(output);
 }
 
 function terminalExit(service: TerminalService, terminalId: string): Promise<string> {

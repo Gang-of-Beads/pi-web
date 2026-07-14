@@ -86,7 +86,7 @@ function rewriteRemotePluginManifest(machineId: string, manifest: RemotePluginMa
       if (modulePath === undefined) return [];
       return [{
         ...plugin,
-        module: `/pi-web-plugins/${encodeURIComponent(machineScopedPluginId(machineId, plugin.id))}/${modulePath.path}${modulePath.query}`,
+        module: `../../../../pi-web-plugins/${encodeURIComponent(machineScopedPluginId(machineId, plugin.id))}/${modulePath.path}${modulePath.query}`,
       }];
     }),
   };
@@ -95,10 +95,13 @@ function rewriteRemotePluginManifest(machineId: string, manifest: RemotePluginMa
 function remotePluginModulePath(pluginId: string, module: string): { path: string; query: string } | undefined {
   if (!isPiWebPluginId(pluginId)) return undefined;
   const prefix = `/pi-web-plugins/${encodeURIComponent(pluginId)}/`;
-  const base = new URL(prefix, "http://pi-web.local");
+  const pluginRootUrl = new URL(prefix, "http://pi-web.local");
+  const manifestUrl = new URL("/pi-web-plugins/manifest.json", pluginRootUrl);
   try {
-    const url = new URL(module, base);
-    if (url.origin !== base.origin || !url.pathname.startsWith(prefix)) return undefined;
+    // An explicit ./<plugin-id>/ prefix is manifest-relative; bare paths retain the legacy plugin-root-relative contract.
+    const baseUrl = module.startsWith("./") ? manifestUrl : pluginRootUrl;
+    const url = new URL(module, baseUrl);
+    if (url.origin !== pluginRootUrl.origin || !url.pathname.startsWith(prefix)) return undefined;
     const path = safeRemotePluginAssetPath(url.pathname.slice(prefix.length));
     return path === undefined ? undefined : { path, query: url.search };
   } catch {
