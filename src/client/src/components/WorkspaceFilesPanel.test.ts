@@ -1,10 +1,15 @@
-import type { TemplateResult } from "lit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FileContentResponse, FileTreeEntry } from "../api";
 import { initialAppState } from "../appState";
 import type { WorkspacePanelContext } from "../plugins/types";
 import type { WorkspaceUploadBatchState } from "../workspaceUploadState";
-import { WorkspaceFilesPanel, startDirectWorkspaceUpload, uploadBatchProgressValue, uploadBatchStatusLabel, workspaceUploadBatchesForScope, workspaceUploadReviewDefaults, workspaceUploadReviewError } from "./WorkspaceFilesPanel";
+// Genuine Lit event-wiring extraction (upload input/form submit and file-tree
+// row clicks) routes through the shared, type-guarded template-inspection escape
+// hatch; see ../templateInspection.testSupport for the proportionality
+// rationale. Viewer content messaging is asserted via the public
+// workspaceFileViewerStatusLabel seam instead of scraping Lit markup.
+import { findOptionalTemplateEventHandlerAfterMarker, templateClickHandlerForText, templateEventHandlerAfterMarker } from "../templateInspection.testSupport";
+import { WorkspaceFilesPanel, startDirectWorkspaceUpload, uploadBatchProgressValue, uploadBatchStatusLabel, workspaceFileViewerStatusLabel, workspaceUploadBatchesForScope, workspaceUploadReviewDefaults, workspaceUploadReviewError } from "./WorkspaceFilesPanel";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -18,14 +23,14 @@ describe("workspace-files-panel upload review", () => {
     const panel = new WorkspaceFilesPanel();
     panel.context = workspacePanelContext({ workspaceUploadDefaultFolder: "project/uploads", onStartWorkspaceUpload });
 
-    const inputChange = findTemplateEventHandler<Event>(panel.render(), `id="workspace-upload-input"`);
+    const inputChange = templateEventHandlerAfterMarker(panel.render(), `id="workspace-upload-input"`);
     const input = new FakeHTMLInputElement(files);
     inputChange(new EventWithCurrentTarget("change", input));
 
     expect(input.value).toBe("");
     expect(onStartWorkspaceUpload).not.toHaveBeenCalled();
 
-    const submit = findTemplateEventHandler<SubmitEvent>(panel.render(), "<form @submit=");
+    const submit = templateEventHandlerAfterMarker<SubmitEvent>(panel.render(), "<form @submit=");
     const submitEvent = new FakeSubmitEvent("submit", { cancelable: true });
     submit(submitEvent);
 
@@ -36,7 +41,7 @@ describe("workspace-files-panel upload review", () => {
       overwrite: false,
       selectUploadedFile: true,
     });
-    expect(findOptionalTemplateEventHandler<SubmitEvent>(panel.render(), "<form @submit=")).toBeUndefined();
+    expect(findOptionalTemplateEventHandlerAfterMarker<SubmitEvent>(panel.render(), "<form @submit=")).toBeUndefined();
   });
 });
 
@@ -55,20 +60,36 @@ describe("workspace-files-panel file tree boundary", () => {
     });
 
     const rendered = panel.render();
-    const text = collectTemplateText(rendered);
 
-    expect(text).toContain("▾");
-    expect(text).toContain("src");
-    expect(text).toContain("main.ts");
-    expect(text).toContain("README.md");
-    expect(text).toContain("Binary file: README.md · 4.0 KB");
-    expect(text).not.toContain("Select a file.");
-
-    findTemplateClickHandlerForText<Event>(rendered, "src")(new Event("click"));
-    findTemplateClickHandlerForText<Event>(rendered, "README.md")(new Event("click"));
+    // The nested child (main.ts) is only reachable when the expanded directory
+    // actually renders its children, so a working click handler on it proves the
+    // expanded-tree structure without scraping markup for the row text.
+    templateClickHandlerForText(rendered, "main.ts")(new Event("click"));
+    templateClickHandlerForText(rendered, "src")(new Event("click"));
+    templateClickHandlerForText(rendered, "README.md")(new Event("click"));
 
     expect(onExpandDir).toHaveBeenCalledWith("src");
+    expect(onSelectFile).toHaveBeenCalledWith("src/main.ts");
     expect(onSelectFile).toHaveBeenCalledWith("README.md");
+
+    // Viewer messaging (selected binary file) is a content concern; assert it
+    // through the public seam rather than the rendered template.
+    expect(workspaceFileViewerStatusLabel(workspacePanelContext({
+      selectedFilePath: "README.md",
+      selectedFileContent: binaryFileContent("README.md", 4096),
+    }))).toBe("Binary file: README.md · 4.0 KB");
+  });
+});
+
+describe("workspaceFileViewerStatusLabel", () => {
+  it("messages empty, loading, and binary viewer states while deferring to real viewers", () => {
+    expect(workspaceFileViewerStatusLabel(workspacePanelContext({ selectedFilePath: undefined }))).toBe("Select a file.");
+    expect(workspaceFileViewerStatusLabel(workspacePanelContext({ selectedFilePath: "" }))).toBe("Select a file.");
+    expect(workspaceFileViewerStatusLabel(workspacePanelContext({ selectedFilePath: "notes.md", selectedFileContent: undefined }))).toBe("Loading notes.md…");
+    expect(workspaceFileViewerStatusLabel(workspacePanelContext({
+      selectedFilePath: "logo.png",
+      selectedFileContent: { ...binaryFileContent("logo.png", 10), mediaType: "image" },
+    }))).toBeUndefined();
   });
 });
 
@@ -149,111 +170,6 @@ describe("workspaceUploadReviewError", () => {
     expect(workspaceUploadReviewError([new File(["a"], "a.txt")], "../outside")).toContain("path traversal");
   });
 });
-
-type TemplateEventHandler<E extends Event> = (event: E) => void;
-
-function findTemplateEventHandler<E extends Event>(template: TemplateResult, marker: string): TemplateEventHandler<E> {
-  const handler = findOptionalTemplateEventHandler<E>(template, marker);
-  if (handler === undefined) throw new Error(`Expected template event handler after ${marker}`);
-  return handler;
-}
-
-function findOptionalTemplateEventHandler<E extends Event>(template: TemplateResult, marker: string): TemplateEventHandler<E> | undefined {
-  return findInTemplate(template);
-
-  function findInTemplate(current: TemplateResult): TemplateEventHandler<E> | undefined {
-    const strings = templateStrings(current);
-    const values = templateValues(current);
-    for (let index = 0; index < values.length; index += 1) {
-      const staticChunk = strings[index];
-      const value = values[index];
-      if (staticChunk !== undefined && staticChunk.includes(marker) && isTemplateEventHandler<E>(value)) return value;
-      const nestedHandler = findInValue(value);
-      if (nestedHandler !== undefined) return nestedHandler;
-    }
-    return undefined;
-  }
-
-  function findInValue(value: unknown): TemplateEventHandler<E> | undefined {
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        const nestedHandler = findInValue(item);
-        if (nestedHandler !== undefined) return nestedHandler;
-      }
-      return undefined;
-    }
-    if (isTemplateResult(value)) return findInTemplate(value);
-    return undefined;
-  }
-}
-
-// Node-based Lit tests cannot click shadow DOM here; keep direct handler extraction
-// anchored to rendered file labels and assert the observable context callbacks.
-function findTemplateClickHandlerForText<E extends Event>(template: TemplateResult, text: string): TemplateEventHandler<E> {
-  const handler = findOptionalTemplateClickHandlerForText<E>(template, text);
-  if (handler === undefined) throw new Error(`Expected click handler near ${text}`);
-  return handler;
-}
-
-function findOptionalTemplateClickHandlerForText<E extends Event>(value: unknown, text: string): TemplateEventHandler<E> | undefined {
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const nestedHandler = findOptionalTemplateClickHandlerForText<E>(item, text);
-      if (nestedHandler !== undefined) return nestedHandler;
-    }
-    return undefined;
-  }
-  if (!isTemplateResult(value)) return undefined;
-
-  for (const item of templateValues(value)) {
-    const nestedHandler = findOptionalTemplateClickHandlerForText<E>(item, text);
-    if (nestedHandler !== undefined) return nestedHandler;
-  }
-  if (!collectTemplateText(value).includes(text)) return undefined;
-
-  const strings = templateStrings(value);
-  const values = templateValues(value);
-  for (let index = 0; index < values.length; index += 1) {
-    const staticChunk = strings[index];
-    const candidate = values[index];
-    if (staticChunk !== undefined && staticChunk.includes("@click") && isTemplateEventHandler<E>(candidate)) return candidate;
-  }
-  return undefined;
-}
-
-function collectTemplateText(value: unknown): string {
-  if (Array.isArray(value)) return value.map((item) => collectTemplateText(item)).join("");
-  if (isTemplateResult(value)) {
-    const strings = templateStrings(value);
-    const values = templateValues(value);
-    return strings.map((part, index) => `${part}${index < values.length ? collectTemplateText(values[index]) : ""}`).join("");
-  }
-  return typeof value === "string" || typeof value === "number" ? String(value) : "";
-}
-
-function templateStrings(template: TemplateResult): readonly string[] {
-  const strings = Reflect.get(template, "strings");
-  if (!isStringArray(strings)) throw new Error("TemplateResult strings were unavailable");
-  return strings;
-}
-
-function templateValues(template: TemplateResult): readonly unknown[] {
-  const values = Reflect.get(template, "values");
-  if (!Array.isArray(values)) throw new Error("TemplateResult values were unavailable");
-  return values.map((value: unknown) => value);
-}
-
-function isTemplateResult(value: unknown): value is TemplateResult {
-  return typeof value === "object" && value !== null && isStringArray(Reflect.get(value, "strings")) && Array.isArray(Reflect.get(value, "values"));
-}
-
-function isTemplateEventHandler<E extends Event>(value: unknown): value is TemplateEventHandler<E> {
-  return typeof value === "function";
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item: unknown) => typeof item === "string");
-}
 
 class FakeFileList implements FileList {
   readonly length: number;

@@ -95,11 +95,13 @@ export class WorkspaceFilesPanel extends LitElement {
   }
 
   private renderFileViewer(context: WorkspacePanelContext): TemplateResult {
+    const status = workspaceFileViewerStatusLabel(context);
+    if (status !== undefined) return html`<p class="muted">${status}</p>`;
     const file = context.selectedFileContent;
-    if (context.selectedFilePath === undefined || context.selectedFilePath === "") return html`<p class="muted">Select a file.</p>`;
-    if (file === undefined) return html`<p class="muted">Loading ${context.selectedFilePath}…</p>`;
+    // workspaceFileViewerStatusLabel already returned for the undefined/binary
+    // cases above; this guard only narrows the type for the code viewer path.
+    if (file === undefined) return html`<p class="muted">Select a file.</p>`;
     if (file.mediaType === "image") return this.renderImageViewer(context, file);
-    if (file.binary) return html`<p class="muted">Binary file: ${file.path} · ${formatFileSize(file.size)}</p>`;
     loadCodeViewer();
     return html`
       <div class="viewer-header"><strong>${file.path}</strong><small>${file.language ?? "text"}${file.truncated ? " · truncated" : ""}</small></div>
@@ -397,6 +399,22 @@ export function workspaceUploadReviewError(files: readonly File[], destinationFo
 
 export function workspaceUploadReviewDefaults(destinationFolder: string): { destinationFolder: string; createDirs: boolean; overwrite: boolean } {
   return { destinationFolder, createDirs: true, overwrite: false };
+}
+
+/**
+ * The muted status message the file viewer shows instead of file content, or
+ * `undefined` when a real image/code viewer renders. Pure seam so tests can
+ * assert viewer messaging (empty/loading/binary) without scraping Lit markup.
+ */
+export function workspaceFileViewerStatusLabel(
+  context: Pick<WorkspacePanelContext, "selectedFilePath" | "selectedFileContent">,
+): string | undefined {
+  const file = context.selectedFileContent;
+  if (context.selectedFilePath === undefined || context.selectedFilePath === "") return "Select a file.";
+  if (file === undefined) return `Loading ${context.selectedFilePath}…`;
+  if (file.mediaType === "image") return undefined;
+  if (file.binary) return `Binary file: ${file.path} · ${formatFileSize(file.size)}`;
+  return undefined;
 }
 
 export function startDirectWorkspaceUpload(

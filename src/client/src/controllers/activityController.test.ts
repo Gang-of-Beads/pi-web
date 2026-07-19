@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { AppState } from "../appState";
 import { initialAppState } from "../appState";
 import type { WorkspaceActivity, WorkspaceActivityResponse } from "../api";
@@ -82,5 +82,27 @@ describe("ActivityController", () => {
     expect(state.workspaceActivities).toEqual({ "/local": activity("/local") });
     expect(state.machineActivities["remote"]).toEqual({ "/remote": activity("/remote") });
     expect(state.machineActivities["local"]).toEqual({ "/local": activity("/local") });
+  });
+
+  it("notifies ownership discovery after snapshots and live updates are applied", async () => {
+    let state: AppState = { ...initialAppState(), selectedMachine: { id: "local", name: "Local", kind: "local", createdAt: "now", updatedAt: "now" } };
+    const observedActivities: Record<string, WorkspaceActivity>[] = [];
+    const onActivityApplied = vi.fn((machineId: string) => {
+      expect(machineId).toBe("local");
+      observedActivities.push(state.workspaceActivities);
+    });
+    const controller = new ActivityController(() => state, (patch) => { state = { ...state, ...patch }; }, {
+      api: { workspaceActivity: () => Promise.resolve(snapshot(activity("/snapshot"))) },
+      onActivityApplied,
+    });
+
+    await controller.refresh("local");
+    controller.applyWorkspaceActivity(activity("/live"), "local");
+
+    expect(onActivityApplied).toHaveBeenCalledTimes(2);
+    expect(observedActivities).toEqual([
+      { "/snapshot": activity("/snapshot") },
+      { "/snapshot": activity("/snapshot"), "/live": activity("/live") },
+    ]);
   });
 });

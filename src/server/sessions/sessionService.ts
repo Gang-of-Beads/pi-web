@@ -3,6 +3,10 @@ import type {
   SessionBulkArchiveResponse,
   SessionBulkDeleteArchivedResponse,
   SessionBulkMutationRef,
+  SessionNotificationCatalogSnapshot,
+  SessionNotificationDismissAllRequest,
+  SessionNotificationDismissRequest,
+  SessionNotificationInboxSnapshot,
 } from "../../shared/apiTypes.js";
 import type {
   ClientArchiveSessionsResponse,
@@ -16,6 +20,7 @@ import type {
   ClientSessionRef,
   ClientSessionStatus,
   ClientThinkingLevel,
+  SessionStreamSnapshot,
 } from "../types.js";
 import type { NormalizedSessionCleanupRequest } from "./sessionCleanup.js";
 
@@ -34,7 +39,13 @@ export interface SessionRouteService {
   start(cwd: string): Promise<ClientSession>;
   messages(ref: SessionRouteLookup, page?: { before?: number; limit?: number }): Promise<unknown[] | ClientMessagePage>;
   status(ref: SessionRouteLookup): Promise<ClientSessionStatus>;
+  streamSnapshot(ref: SessionRouteLookup): Promise<SessionStreamSnapshot>;
+  notificationCatalog(): SessionNotificationCatalogSnapshot | Promise<SessionNotificationCatalogSnapshot>;
+  notificationInbox(ref: SessionRouteRef): SessionNotificationInboxSnapshot | Promise<SessionNotificationInboxSnapshot>;
+  dismissNotification(ref: SessionRouteRef, request: Omit<SessionNotificationDismissRequest, "cwd">): SessionNotificationInboxSnapshot | Promise<SessionNotificationInboxSnapshot>;
+  dismissAllNotifications(ref: SessionRouteRef, request: Omit<SessionNotificationDismissAllRequest, "cwd">): SessionNotificationInboxSnapshot | Promise<SessionNotificationInboxSnapshot>;
   clearQueue(ref: SessionRouteLookup): Promise<ClientSessionStatus>;
+  dismissWarning(ref: SessionRouteLookup, dismissId: string): Promise<ClientSessionStatus>;
   availableModels(ref: SessionRouteLookup): Promise<ClientSessionModel[]>;
   setModel(ref: SessionRouteLookup, provider: string, modelId: string): Promise<ClientSessionStatus>;
   cycleModel(ref: SessionRouteLookup, direction: "forward" | "backward"): Promise<ClientSessionStatus>;

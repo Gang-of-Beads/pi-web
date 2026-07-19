@@ -132,7 +132,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     if (!this.collapsible) {
       return html`
         <h2>
-          Sessions
+          <span class="plain-heading">Sessions</span>
           ${this.renderCurrentSelectionButton(currentSessions)}
           ${this.renderCleanupButton()}
           ${this.renderStartButton()}
@@ -250,7 +250,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
       >
         <div class="action-main ${selectionActive ? "selecting" : ""}">
           ${showsCheckbox ? html`<input class="session-checkbox" type="checkbox" aria-label=${`Select ${sessionLabel(session)}`} .checked=${bulkSelected} @click=${(event: MouseEvent) => { event.stopPropagation(); }} @change=${() => { this.toggleSelected(session.id); }}>` : null}
-          <span class="action-name" dir="auto">${row.depth > 0 ? html`<span class="tree-marker">↳</span>` : null}${sessionLabel(session)}${row.depth > 2 ? html` <span class="badge">depth ${row.depth}</span>` : null}${row.hasMissingParent ? html` <span class="badge">parent unavailable</span>` : null}</span><small>${this.renderSessionMetaPrefix(session, status, activity)}${String(session.messageCount)} messages</small>
+          <span class="action-name-line"><span class="action-name" dir="auto">${row.depth > 0 ? html`<span class="tree-marker">↳</span>` : null}${sessionLabel(session)}${row.depth > 2 ? html` <span class="badge">depth ${row.depth}</span>` : null}${row.hasMissingParent ? html` <span class="badge">parent unavailable</span>` : null}</span></span><small>${this.renderSessionMetaPrefix(session, status, activity)}${String(session.messageCount)} messages</small>
           ${this.renderActivity(session)}
         </div>
         <div class="action-menu">
@@ -425,6 +425,9 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .bulk-row button { padding: 5px 7px; font-size: 12px; }
     .bulk-row small { display: inline; min-width: 0; color: var(--pi-muted); }
     .action-name, .section-selected { text-align: start; unicode-bidi: plaintext; }
+    .plain-heading { min-width: 0; }
+    .action-name-line { min-width: 0; display: flex; align-items: flex-start; gap: 6px; }
+    .action-name-line .action-name { flex: 1 1 auto; min-width: 0; }
     .bulk-row .capability-hint { flex: 1 0 100%; color: var(--pi-warning); }
     .bulk-row.selecting { padding: 6px; border: 1px solid var(--pi-border-muted); border-radius: 8px; background: color-mix(in srgb, var(--pi-surface) 65%, transparent); }
     button.danger, .action-menu-panel button.danger { color: var(--pi-danger); }

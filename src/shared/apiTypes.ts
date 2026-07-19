@@ -8,6 +8,7 @@ export const PI_WEB_CAPABILITIES = {
   sessionsReload: "sessions.reload",
   sessionsClearQueue: "sessions.clearQueue",
   sessionsPersistedState: "sessions.persistedState",
+  sessionsNotifications: "sessions.notifications",
   promptAttachments: "prompt.attachments",
   workspaceFileSuggestions: "workspace.fileSuggestions",
   piPackagesManage: "piPackages.manage",
@@ -318,6 +319,93 @@ export interface SessionRef {
   cwd: string;
 }
 
+export const SESSION_NOTIFICATION_LIMIT = 100;
+export const SESSION_NOTIFICATION_MESSAGE_BYTES = 8 * 1024;
+
+export type SessionNotificationSeverity = "info" | "warning" | "error";
+
+export interface SessionNotification {
+  id: string;
+  message: string;
+  truncated: boolean;
+  severity: SessionNotificationSeverity;
+  receivedAt: string;
+  order: number;
+}
+
+export interface SessionNotificationSummary {
+  sessionId: string;
+  cwd: string;
+  inboxRevision: number;
+  retainedCount: number;
+  discardedCount: number;
+  highestSeverity?: SessionNotificationSeverity;
+}
+
+export interface SessionNotificationDismissThrough {
+  order: number;
+  overflowWatermark: number;
+}
+
+export interface SessionNotificationInboxSnapshot {
+  daemonInstanceId: string;
+  catalogRevision: number;
+  summary: SessionNotificationSummary;
+  notifications: SessionNotification[];
+  dismissThrough: SessionNotificationDismissThrough;
+}
+
+export interface SessionNotificationCatalogSnapshot {
+  daemonInstanceId: string;
+  catalogRevision: number;
+  sessions: SessionNotificationSummary[];
+}
+
+export interface SessionNotificationDismissRequest {
+  cwd: string;
+  daemonInstanceId: string;
+  notificationId: string;
+}
+
+export interface SessionNotificationDismissAllRequest {
+  cwd: string;
+  daemonInstanceId: string;
+  throughOrder: number;
+  throughOverflowWatermark: number;
+}
+
+export type SessionNotificationClearReason =
+  | "runtime-close"
+  | "archive"
+  | "delete"
+  | "restore"
+  | "archive-reconcile"
+  | "replacement"
+  | "initialization-failed"
+  | "service-dispose";
+
+export type SessionNotificationInboxDelta =
+  | { kind: "added"; notification: SessionNotification; evictedNotificationId?: string }
+  | { kind: "dismissed"; notificationIds: string[] }
+  | { kind: "cleared"; reason: SessionNotificationClearReason }
+  | { kind: "resync" };
+
+export interface SessionNotificationInboxEvent {
+  type: "notifications.inbox";
+  daemonInstanceId: string;
+  catalogRevision: number;
+  summary: SessionNotificationSummary;
+  dismissThrough: SessionNotificationDismissThrough;
+  delta: SessionNotificationInboxDelta;
+}
+
+export interface SessionNotificationSummaryEvent {
+  type: "notifications.summary";
+  daemonInstanceId: string;
+  catalogRevision: number;
+  summary: SessionNotificationSummary;
+}
+
 export interface SessionInfo extends SessionRef {
   path: string;
   /** True when the server has verified a backing session file exists; false when known transient. */
@@ -488,6 +576,8 @@ export interface AuthProviderOption {
   name: string;
   authType: AuthType;
   status: AuthProviderStatus;
+  /** Additive hint: use the generic AuthInteraction transport instead of the legacy one-secret form. */
+  loginFlow?: "interactive";
 }
 
 export interface AuthProvidersResponse {
@@ -499,10 +589,23 @@ export interface OAuthFlowState {
   providerId: string;
   providerName: string;
   status: "running" | "complete" | "error" | "cancelled";
-  auth?: { url: string; instructions?: string };
-  prompt?: { requestId: string; message: string; placeholder?: string; allowEmpty?: boolean; kind: "prompt" | "manual" };
+  auth?: {
+    url: string;
+    instructions?: string;
+    deviceCode?: { userCode: string; intervalSeconds?: number; expiresInSeconds?: number };
+  };
+  prompt?: {
+    requestId: string;
+    message: string;
+    placeholder?: string;
+    allowEmpty?: boolean;
+    /** Additive semantic detail; legacy peers continue to use `kind`. */
+    promptType?: "text" | "secret" | "manual_code";
+    kind: "prompt" | "manual";
+  };
   select?: { requestId: string; message: string; options: CommandOption[] };
   progress: string[];
+  info?: { message: string; links?: { url: string; label?: string }[] }[];
   error?: string;
 }
 
@@ -512,6 +615,30 @@ export interface ModelSelectionResponse {
 
 export interface ThinkingLevelsResponse {
   levels: string[];
+}
+
+export type SessionWarningSeverity = "info" | "warning" | "error";
+
+/**
+ * A live, runtime-scoped warning surfaced to the browser (skill/resource
+ * diagnostics, extension load errors, subscription-auth billing notice, etc.).
+ *
+ * Warnings are recomputed whenever the runtime is (re)built inside sessiond and
+ * are not persisted chat messages. `source` is an optional short origin label
+ * (e.g. `"skill"`, `"extension"`, `"anthropic"`); `path` carries a related file
+ * path when the warning came from a resource diagnostic.
+ *
+ * `dismiss` is present only when the warning has a durable, first-class
+ * off-switch in the underlying `pi` agent (not a UI-only hide). Its `id` is the
+ * opaque token the server maps back to that suppression; the client renders a
+ * dismiss control for any warning carrying it, without knowing what it means.
+ */
+export interface SessionWarning {
+  severity: SessionWarningSeverity;
+  message: string;
+  source?: string;
+  path?: string;
+  dismiss?: { id: string };
 }
 
 export interface SessionStatus {
@@ -529,6 +656,13 @@ export interface SessionStatus {
   tokens: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number };
   cost: number;
   contextUsage?: { tokens: number | null; contextWindow: number; percent: number | null };
+  /**
+   * Live, runtime-scoped warnings for this session (skill/resource diagnostics,
+   * extension load errors, Anthropic subscription-auth billing notice, etc.).
+   * Recomputed on each status read from the current runtime; absent/empty when
+   * there are none. See {@link SessionWarning}.
+   */
+  warnings?: SessionWarning[];
 }
 
 export interface WorkspaceActivity {
@@ -804,12 +938,34 @@ export interface MessagePage {
   total: number;
 }
 
+/**
+ * Join-time snapshot of a session's in-flight assistant stream. `seq` is the
+ * `SessionEventHub` watermark captured together with `partial` in a single tick,
+ * so a joining client can seed `partial` and then apply only buffered live events
+ * with `seq > snapshot.seq` (exactly-once). `partial` is a browser-projected
+ * in-flight `AssistantMessage` (thinking signatures stripped), or `null` when the
+ * session is not mid assistant-message stream.
+ */
+export interface SessionStreamSnapshot {
+  seq: number;
+  /** Browser-projected in-flight `AssistantMessage`, or `null` when idle. */
+  partial: unknown;
+}
+
 export type CommandResult =
   | { type: "done"; message?: string; session?: SessionInfo; promptDraft?: string }
   | { type: "select"; requestId: string; title: string; options: CommandOption[] }
   | { type: "unsupported"; message: string };
 
-export type SessionUiEvent =
+/**
+ * Transport-level per-session sequence stamp. `SessionEventHub.publish` assigns a
+ * monotonic `seq` to every per-session event as it is serialized to the socket.
+ * Clients use it as a watermark against the join-time stream snapshot so buffered
+ * live events are applied exactly once. Existing consumers may ignore it.
+ */
+export type SessionUiEvent = SessionUiEventBody & { seq?: number };
+
+type SessionUiEventBody =
   | { type: "message.append"; message: unknown }
   | { type: "assistant.delta"; text: string }
   | { type: "assistant.thinking.delta"; text: string }
@@ -824,11 +980,14 @@ export type SessionUiEvent =
   | { type: "message.end"; message?: unknown }
   | { type: "status.update"; status: SessionStatus }
   | { type: "activity.update"; activity: SessionActivity }
-  | { type: "command.output"; level: "info" | "success" | "error"; message: string }
+  | { type: "command.output"; level: "info" | "success" | "error"; message: string; notificationId?: string }
+  | SessionNotificationInboxEvent
   | { type: "session.error"; message: string }
   | { type: "session.name"; sessionId: string; name?: string }
   | { type: "session.created"; session: SessionInfo }
   | { type: "pi.event"; eventType: string };
 
-export type GlobalSessionEvent = Extract<SessionUiEvent, { type: "status.update" | "activity.update" | "session.name" | "session.created" }>;
+export type GlobalSessionEvent =
+  | Extract<SessionUiEventBody, { type: "status.update" | "activity.update" | "session.name" | "session.created" }>
+  | SessionNotificationSummaryEvent;
 export type RealtimeEvent = GlobalSessionEvent | TerminalUiEvent | WorkspaceActivityUiEvent;

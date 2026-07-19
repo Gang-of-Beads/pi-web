@@ -131,6 +131,9 @@ export class SettingsDialog extends LitElement {
   }
 
   private renderActiveSection(): TemplateResult {
+    // Keep the section -> panel routing in sync with the public
+    // `activeSettingsPanelTag` seam below, which tests assert against instead of
+    // scraping this template's markup.
     if (this.section === "sessiond") {
       return html`
         <settings-sessiond-panel
@@ -679,4 +682,37 @@ export class SettingsDialog extends LitElement {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+export type SettingsPanelTag =
+  | "settings-general-panel"
+  | "settings-sessiond-panel"
+  | "settings-packages-panel"
+  | "settings-plugins-panel"
+  | "settings-shortcuts-panel"
+  | "settings-safe-tunnel-panel";
+
+/**
+ * The single custom-element panel the settings dialog renders for a section.
+ *
+ * This is the public routing contract behind `renderActiveSection`: each section
+ * maps to exactly one panel element and nothing else (no per-tab "scope note"
+ * wrapper). Tests assert this mapping instead of inspecting the rendered
+ * `TemplateResult`'s markup.
+ */
+export function activeSettingsPanelTag(section: SettingsSection): SettingsPanelTag {
+  switch (section) {
+    case "sessiond":
+      return "settings-sessiond-panel";
+    case "packages":
+      return "settings-packages-panel";
+    case "plugins":
+      return "settings-plugins-panel";
+    case "shortcuts":
+      return "settings-shortcuts-panel";
+    case "safe-tunnel":
+      return "settings-safe-tunnel-panel";
+    case "general":
+      return "settings-general-panel";
+  }
 }

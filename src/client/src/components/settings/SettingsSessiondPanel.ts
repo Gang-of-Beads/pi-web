@@ -159,25 +159,13 @@ export class SettingsSessiondPanel extends LitElement {
   }
 
   private panelNotices(config: PiWebConfigResponse | undefined): readonly SettingsNotice[] {
-    const notices: SettingsNotice[] = [];
-    const error = this.agentLocalError || this.error;
-    if (error !== "") notices.push({ type: "error", content: error });
-    if (this.savedMessage !== "") notices.push({ type: "success", content: this.savedMessage });
-    const activation = agentProfileActivationState(config, this.activeAgentProfile);
-    if (activation === "restart-required") {
-      notices.push({
-        type: "warning",
-        title: `Pi-compatible agent profile restart required on ${this.targetLabel}`,
-        content: html`The desired profile differs from the active session-daemon profile. Run <code>pi-web restart</code> on that machine (or restart its session daemon service) to apply the command and state directory together.`,
-      });
-    } else if (config !== undefined && activation === "unavailable" && this.agentProfileSupport.state === "supported") {
-      notices.push({
-        type: "info",
-        title: `Active Pi-compatible agent profile unavailable on ${this.targetLabel}`,
-        content: "PI WEB cannot compare the desired profile with the running session daemon. Reload after the daemon is available.",
-      });
-    }
-    return notices;
+    return sessiondPanelNotices(config, {
+      error: this.agentLocalError || this.error,
+      savedMessage: this.savedMessage,
+      activeProfile: this.activeAgentProfile,
+      targetLabel: this.targetLabel,
+      profileEditingSupported: this.agentProfileSupport.state === "supported",
+    });
   }
 
   private renderUnavailableConfigState(): TemplateResult {
@@ -273,6 +261,44 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function sessiondDescription(targetLabel: string): string {
+export function sessiondDescription(targetLabel: string): string {
   return `Select the Pi-compatible agent profile and companion CLI for ${targetLabel}. Changes are saved immediately but only take effect after the session daemon on that machine restarts.`;
+}
+
+export interface SessiondPanelNoticeContext {
+  readonly error: string;
+  readonly savedMessage: string;
+  readonly activeProfile: ActiveAgentProfileDescriptor | undefined;
+  readonly targetLabel: string;
+  readonly profileEditingSupported: boolean;
+}
+
+/**
+ * Compute the session-daemon panel's notice stack (error, saved, and
+ * profile-activation guidance) as a pure, publicly testable seam so tests assert
+ * the dynamic notice logic and ordering here instead of scraping rendered
+ * `TemplateResult` internals.
+ */
+export function sessiondPanelNotices(
+  config: PiWebConfigResponse | undefined,
+  context: SessiondPanelNoticeContext,
+): readonly SettingsNotice[] {
+  const notices: SettingsNotice[] = [];
+  if (context.error !== "") notices.push({ type: "error", content: context.error });
+  if (context.savedMessage !== "") notices.push({ type: "success", content: context.savedMessage });
+  const activation = agentProfileActivationState(config, context.activeProfile);
+  if (activation === "restart-required") {
+    notices.push({
+      type: "warning",
+      title: `Pi-compatible agent profile restart required on ${context.targetLabel}`,
+      content: html`The desired profile differs from the active session-daemon profile. Run <code>pi-web restart</code> on that machine (or restart its session daemon service) to apply the command and state directory together.`,
+    });
+  } else if (config !== undefined && activation === "unavailable" && context.profileEditingSupported) {
+    notices.push({
+      type: "info",
+      title: `Active Pi-compatible agent profile unavailable on ${context.targetLabel}`,
+      content: "PI WEB cannot compare the desired profile with the running session daemon. Reload after the daemon is available.",
+    });
+  }
+  return notices;
 }

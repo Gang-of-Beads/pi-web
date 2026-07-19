@@ -4,6 +4,10 @@ import type { MachineRuntime, SessionInfo, SessionStatus } from "../api";
 import { initialAppState, type AppState } from "../appState";
 import { SessionController } from "../controllers/sessionController";
 import { PI_WEB_CAPABILITIES } from "../../../shared/capabilities";
+// Template inspection here is the escape hatch for verifying the Clear-queue
+// callback wiring in a node environment (no DOM harness). See
+// templateInspection.testSupport for the proportionality rationale.
+import { templateValueAfterMarker } from "../templateInspection.testSupport";
 import { PiWebApp } from "./PiWebApp";
 
 afterEach(() => {
@@ -124,28 +128,4 @@ function templateCallbackAfterMarker(template: TemplateResult, marker: string): 
 
 function isClearServerQueueCallback(value: unknown): value is ClearServerQueueCallback {
   return typeof value === "function";
-}
-
-function templateValueAfterMarker(template: TemplateResult, marker: string): unknown {
-  const strings = templateStrings(template);
-  const values = templateValues(template);
-  const index = strings.findIndex((part) => part.includes(marker));
-  if (index < 0) throw new Error(`Expected template marker ${marker}`);
-  return values[index];
-}
-
-function templateStrings(template: TemplateResult): readonly string[] {
-  const strings = Reflect.get(template, "strings");
-  if (!isStringArray(strings)) throw new Error("TemplateResult strings were unavailable");
-  return strings;
-}
-
-function templateValues(template: TemplateResult): readonly unknown[] {
-  const values = Reflect.get(template, "values");
-  if (!Array.isArray(values)) throw new Error("TemplateResult values were unavailable");
-  return values.map((value: unknown) => value);
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item: unknown) => typeof item === "string");
 }

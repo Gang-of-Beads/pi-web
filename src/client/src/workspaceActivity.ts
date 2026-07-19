@@ -15,6 +15,12 @@ export function projectActivityIndicator(project: Project, knownWorkspaces: Work
   return workspaceActivitiesIndicator(matchedProjectActivities(project, knownWorkspaces, activities));
 }
 
+export function projectOwnsWorkspacePath(project: Project, knownWorkspaces: readonly Workspace[], cwd: string): boolean {
+  return knownWorkspaces.some((workspace) => workspace.projectId === project.id && workspace.path === cwd)
+    || cwd === project.path
+    || cwd.startsWith(`${project.path}/`);
+}
+
 export function machineActivityIndicator(activities: Record<string, WorkspaceActivity> | undefined): ActivityIndicatorKind | undefined {
   return workspaceActivitiesIndicator(Object.values(activities ?? {}));
 }
@@ -26,14 +32,5 @@ function workspaceActivitiesIndicator(activities: WorkspaceActivity[]): Activity
 }
 
 function matchedProjectActivities(project: Project, knownWorkspaces: Workspace[], activities: Record<string, WorkspaceActivity>): WorkspaceActivity[] {
-  const knownWorkspacePaths = new Set(knownWorkspaces.filter((workspace) => workspace.projectId === project.id).map((workspace) => workspace.path));
-  const matched = new Map<string, WorkspaceActivity>();
-  for (const path of knownWorkspacePaths) {
-    const activity = activities[path];
-    if (activity !== undefined) matched.set(activity.cwd, activity);
-  }
-  for (const activity of Object.values(activities)) {
-    if (activity.cwd === project.path || activity.cwd.startsWith(`${project.path}/`)) matched.set(activity.cwd, activity);
-  }
-  return [...matched.values()];
+  return Object.values(activities).filter((activity) => projectOwnsWorkspacePath(project, knownWorkspaces, activity.cwd));
 }

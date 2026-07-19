@@ -1,66 +1,77 @@
 import { describe, expect, it, vi } from "vitest";
-import type { TemplateResult } from "lit";
 import type { ActiveAgentProfileDescriptor, PiWebConfigResponse, PiWebConfigValues } from "../../api";
-import { SettingsSessiondPanel } from "./SettingsSessiondPanel";
-import type { SettingsNotice } from "./SettingsPanelFrame";
+import { SettingsSessiondPanel, sessiondDescription, sessiondPanelNotices, type SessiondPanelNoticeContext } from "./SettingsSessiondPanel";
 
-describe("settings-sessiond-panel layout", () => {
-  it("names the selected machine in the scope and restart notice when config is available", () => {
-    const panel = new SettingsSessiondPanel();
-    panel.targetLabel = "Lab Mac (remote machine)";
-    setPanelConfig(panel, configResponse({
+// This suite asserts the session-daemon panel's dynamic behavior through public
+// seams rather than by inspecting rendered Lit `TemplateResult` internals:
+// notice composition/ordering and the description string come from the exported
+// `sessiondPanelNotices`/`sessiondDescription` helpers, and profile-save and
+// draft-preservation behavior are observed via injected callbacks and public
+// state. Static labels and layout are intentionally not asserted here (no DOM
+// harness); per the testing-guide skill those are not verified by scraping
+// template internals.
+
+describe("session daemon panel notices", () => {
+  it("names the selected machine in the scope description and restart notice", () => {
+    const targetLabel = "Lab Mac (remote machine)";
+    const config = configResponse({
       agent: { command: "agent-lab", dir: "/srv/agent-lab" },
       spawnSessions: true,
       subsessions: false,
+    });
+
+    expect(sessiondDescription(targetLabel)).toContain("Lab Mac (remote machine)");
+
+    const notices = sessiondPanelNotices(config, noticeContext({
+      activeProfile: activeProfile("pi", "/srv/pi"),
+      targetLabel,
     }));
-    panel.activeAgentProfile = activeProfile("pi", "/srv/pi");
 
-    const rendered = flattenTemplateContent(panel.render());
+    expect(notices).toHaveLength(1);
+    expect(notices[0]?.type).toBe("warning");
+    expect(notices[0]?.title).toBe("Pi-compatible agent profile restart required on Lab Mac (remote machine)");
+    expect(notices[0]?.content).not.toBe("");
+  });
 
-    expectTextOrder(rendered, [
-      "Session daemon",
-      "Select the Pi-compatible agent profile and companion CLI for Lab Mac (remote machine).",
-      "Reload",
-      "Pi-compatible agent profile restart required on Lab Mac (remote machine)",
-      "Run <code>pi-web restart</code> on that machine",
-      "Config file",
-      "Companion CLI command",
-      "agent-lab",
-      "Profile state directory",
-      "/srv/agent-lab",
-      "Allow agents to start sessions",
+  it("orders save/load notices before the restart notice", () => {
+    const config = configResponse({ agent: { command: "agent-lab", dir: "/srv/agent-lab" }, spawnSessions: false });
+
+    const notices = sessiondPanelNotices(config, noticeContext({
+      activeProfile: activeProfile("pi", "/srv/pi"),
+      error: "Failed to save session-daemon config.",
+      savedMessage: "Session daemon settings saved.",
+    }));
+
+    expect(notices.map((notice) => notice.type)).toEqual(["error", "success", "warning"]);
+    expect(notices[0]?.content).toBe("Failed to save session-daemon config.");
+    expect(notices[1]?.content).toBe("Session daemon settings saved.");
+    expect(notices[2]?.title).toBe("Pi-compatible agent profile restart required on local (local gateway)");
+  });
+
+  it("adds no restart or activation guidance when the desired and active profiles match", () => {
+    const config = configResponse({ agent: { command: "agent-lab", dir: "/srv/agent-lab" } });
+
+    const notices = sessiondPanelNotices(config, noticeContext({
+      activeProfile: activeProfile("agent-lab", "/srv/agent-lab"),
+    }));
+
+    expect(notices).toEqual([]);
+  });
+
+  it("reports only the blocking error and no activation guidance when config is unavailable", () => {
+    const notices = sessiondPanelNotices(undefined, noticeContext({
+      activeProfile: undefined,
+      error: "Selected-machine settings are not available on Lab Mac.",
+      targetLabel: "Lab Mac (remote machine)",
+    }));
+
+    expect(notices).toEqual([
+      { type: "error", content: "Selected-machine settings are not available on Lab Mac." },
     ]);
   });
+});
 
-  it("orders save/load notices before the restart notice and settings content", () => {
-    const panel = new SettingsSessiondPanel();
-    setPanelConfig(panel, configResponse({ agent: { command: "agent-lab", dir: "/srv/agent-lab" }, spawnSessions: false }));
-    panel.activeAgentProfile = activeProfile("pi", "/srv/pi");
-    panel.error = "Failed to save session-daemon config.";
-    panel.savedMessage = "Session daemon settings saved.";
-
-    const rendered = flattenTemplateContent(panel.render());
-
-    expectTextOrder(rendered, [
-      "Failed to save session-daemon config.",
-      "Session daemon settings saved.",
-      "Pi-compatible agent profile restart required on local (local gateway)",
-      "Config file",
-    ]);
-  });
-
-  it("shows the profile as active without restart guidance when desired and active match", () => {
-    const panel = new SettingsSessiondPanel();
-    setPanelConfig(panel, configResponse({ agent: { command: "agent-lab", dir: "/srv/agent-lab" } }));
-    panel.activeAgentProfile = activeProfile("agent-lab", "/srv/agent-lab");
-
-    const rendered = flattenTemplateContent(panel.render());
-
-    expect(rendered).toContain("Profile status");
-    expect(rendered).toContain("Active");
-    expect(rendered).not.toContain("restart required on");
-  });
-
+describe("session daemon panel save behavior", () => {
   it("submits command and directory together as one profile save", async () => {
     const panel = new SettingsSessiondPanel();
     const onSave = vi.fn();
@@ -92,24 +103,18 @@ describe("settings-sessiond-panel layout", () => {
     callPanelMethod(panel, "willUpdate", new Map([["configResponse", toggled]]));
     expect(Reflect.get(panel, "agentDraftDirty")).toBe(false);
   });
-
-  it("shows one blocked content state without restart guidance or toggles when config is unavailable", () => {
-    const panel = new SettingsSessiondPanel();
-    panel.targetLabel = "Lab Mac (remote machine)";
-    panel.error = "Selected-machine settings are not available on Lab Mac.";
-
-    const rendered = flattenTemplateContent(panel.render());
-
-    expectTextOrder(rendered, [
-      "Selected-machine settings are not available on Lab Mac.",
-      "Configuration is unavailable. Reload to try again.",
-    ]);
-    expect(countOccurrences(rendered, "Configuration is unavailable. Reload to try again.")).toBe(1);
-    expect(rendered).not.toContain("Restart required on");
-    expect(rendered).not.toContain("Allow agents to start sessions");
-    expect(rendered).not.toContain("Effective after environment overrides");
-  });
 });
+
+function noticeContext(overrides: Partial<SessiondPanelNoticeContext>): SessiondPanelNoticeContext {
+  return {
+    error: "",
+    savedMessage: "",
+    activeProfile: undefined,
+    targetLabel: "local (local gateway)",
+    profileEditingSupported: true,
+    ...overrides,
+  };
+}
 
 function activeProfile(command: string, dir: string): ActiveAgentProfileDescriptor {
   return {
@@ -140,81 +145,6 @@ function callPanelMethod(panel: SettingsSessiondPanel, methodName: string, ...ar
   const method: unknown = Reflect.get(panel, methodName);
   if (typeof method !== "function") throw new Error(`SettingsSessiondPanel.${methodName} is not callable`);
   return Reflect.apply(method, panel, args);
-}
-
-function flattenTemplateContent(template: TemplateResult): string {
-  const chunks: string[] = [];
-  visitTemplate(template);
-  return chunks.join("");
-
-  function visitTemplate(current: TemplateResult): void {
-    const strings = templateStrings(current);
-    const values = templateValues(current);
-    for (let index = 0; index < values.length; index += 1) {
-      const staticChunk = strings[index];
-      if (staticChunk !== undefined) chunks.push(staticChunk);
-      visitValue(values[index]);
-    }
-    const finalChunk = strings[values.length];
-    if (finalChunk !== undefined) chunks.push(finalChunk);
-  }
-
-  function visitValue(value: unknown): void {
-    if (Array.isArray(value)) {
-      for (const item of value) visitValue(item);
-      return;
-    }
-    if (isSettingsNotice(value)) {
-      visitValue(value.title);
-      visitValue(value.content);
-      return;
-    }
-    if (isTemplateResult(value)) {
-      visitTemplate(value);
-      return;
-    }
-    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-      chunks.push(String(value));
-    }
-  }
-}
-
-function expectTextOrder(content: string, labels: readonly string[]): void {
-  let previousIndex = -1;
-  for (const label of labels) {
-    const currentIndex = content.indexOf(label, previousIndex + 1);
-    if (currentIndex === -1) throw new Error(`Expected rendered content to include ${label}`);
-    expect(currentIndex).toBeGreaterThan(previousIndex);
-    previousIndex = currentIndex;
-  }
-}
-
-function countOccurrences(content: string, needle: string): number {
-  return content.split(needle).length - 1;
-}
-
-function templateStrings(template: TemplateResult): readonly string[] {
-  const strings = Reflect.get(template, "strings");
-  if (!isStringArray(strings)) throw new Error("TemplateResult strings were unavailable");
-  return strings;
-}
-
-function templateValues(template: TemplateResult): readonly unknown[] {
-  const values = Reflect.get(template, "values");
-  if (!Array.isArray(values)) throw new Error("TemplateResult values were unavailable");
-  return values.map((value: unknown) => value);
-}
-
-function isTemplateResult(value: unknown): value is TemplateResult {
-  return typeof value === "object" && value !== null && isStringArray(Reflect.get(value, "strings")) && Array.isArray(Reflect.get(value, "values"));
-}
-
-function isSettingsNotice(value: unknown): value is SettingsNotice {
-  return typeof value === "object" && value !== null && typeof Reflect.get(value, "type") === "string" && Reflect.has(value, "content");
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item: unknown) => typeof item === "string");
 }
 
 function configResponse(config: PiWebConfigValues): PiWebConfigResponse {

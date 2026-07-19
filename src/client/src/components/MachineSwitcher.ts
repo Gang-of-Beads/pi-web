@@ -60,7 +60,7 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
           type="button"
           class="machine-switcher-button"
           title=${machineTitle(selected)}
-          aria-label=${`Machine: ${label}. Switch machine.`}
+          aria-label=${this.machineSwitcherAriaLabel(selected)}
           aria-expanded=${String(this.open)}
           @click=${(event: MouseEvent) => { this.toggleMenu(event.currentTarget); }}
           @keydown=${(event: KeyboardEvent) => { this.handleSwitcherButtonKeydown(event); }}
@@ -130,6 +130,10 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
 
   private selectedMachine(): Machine | undefined {
     return this.selected ?? this.machines.find((machine) => machine.id === "local") ?? this.machines[0];
+  }
+
+  private machineSwitcherAriaLabel(machine: Machine): string {
+    return `Machine: ${machine.name}. Switch machine.`;
   }
 
   private switcherButton(): HTMLElement | null {

@@ -26,6 +26,16 @@ afterEach(() => {
 });
 
 describe("federated route contract", () => {
+  it("allowlists notification HTTP routes without adding a notification WebSocket", () => {
+    expect(FEDERATED_HTTP_ROUTES.filter((route) => route.path.includes("notifications"))).toEqual([
+      { method: "GET", path: "/sessions/notifications" },
+      { method: "GET", path: "/sessions/:sessionId/notifications" },
+      { method: "POST", path: "/sessions/:sessionId/notifications/dismiss" },
+      { method: "POST", path: "/sessions/:sessionId/notifications/dismiss-all" },
+    ]);
+    expect(FEDERATED_WEBSOCKET_ROUTES.some((path) => path.includes("notifications"))).toBe(false);
+  });
+
   it("covers machine-scoped client HTTP calls with remote proxy routes", async () => {
     const fetchMock = vi.fn<FetchLike>(() => Promise.resolve(jsonResponse({})));
     vi.stubGlobal("fetch", fetchMock);
@@ -64,6 +74,7 @@ describe("federated route contract", () => {
       ignoreParseFailure(sessionsApi.deleteArchivedMany([session], machineId)),
       ignoreParseFailure(sessionsApi.messages(session, { limit: 20, before: 10 }, machineId)),
       ignoreParseFailure(sessionsApi.status(session, machineId)),
+      ignoreParseFailure(sessionsApi.streamSnapshot(session, machineId)),
       ignoreParseFailure(sessionsApi.clearQueue(session, machineId)),
       ignoreParseFailure(sessionsApi.models(session, machineId)),
       ignoreParseFailure(sessionsApi.setModel(session, "openai", "gpt", machineId)),
@@ -87,6 +98,7 @@ describe("federated route contract", () => {
       ignoreParseFailure(sessionsApi.detachParent(session, machineId)),
       ignoreParseFailure(sessionsApi.authProviders({ mode: "login", authType: "oauth", machineId })),
       ignoreParseFailure(sessionsApi.saveApiKey("openai", "key", machineId)),
+      ignoreParseFailure(sessionsApi.startInteractiveApiKeyLogin("amazon-bedrock", machineId)),
       ignoreParseFailure(sessionsApi.logoutProvider("openai", machineId)),
       ignoreParseFailure(sessionsApi.startOAuthLogin("openai", machineId)),
       ignoreParseFailure(sessionsApi.oauthFlow("flow 1", machineId)),

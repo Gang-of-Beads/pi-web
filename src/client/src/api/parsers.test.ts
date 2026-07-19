@@ -1,8 +1,60 @@
 import { describe, expect, it } from "vitest";
 import { PI_WEB_CAPABILITIES } from "../../../shared/capabilities";
-import { parseCommandResult, parseFileContentResponse, parseFileSuggestion, parseGitStatusResponse, parseMachineRuntime, parseMessagePage, parsePiPackageMutationResponse, parsePiPackagesResponse, parsePiWebConfigResponse, parsePiWebPluginsResponse, parsePiWebRuntimeResponse, parsePiWebStatusResponse, parseSafeTunnelLoginResponse, parseSafeTunnelOperationResponse, parseSafeTunnelStartResponse, parseSafeTunnelStatusResponse, parseSafeTunnelStopResponse, parseSessionBulkArchiveResponse, parseSessionBulkDeleteArchivedResponse, parseSessionCleanupExecuteResponse, parseSessionCleanupPreviewResponse, parseSessionInfo, parseSessionStatus, parseSlashCommand, parseTerminalCommandRun, parseTerminalInfo, parseWorkspace, parseWorkspaceActivityResponse } from "./parsers";
+import { SESSION_NOTIFICATION_LIMIT, SESSION_NOTIFICATION_MESSAGE_BYTES } from "../../../shared/apiTypes";
+import { parseAuthProvidersResponse, parseCommandResult, parseFileContentResponse, parseFileSuggestion, parseGitStatusResponse, parseMachineRuntime, parseMessagePage, parseOAuthFlowState, parsePiPackageMutationResponse, parsePiPackagesResponse, parsePiWebConfigResponse, parsePiWebPluginsResponse, parsePiWebRuntimeResponse, parsePiWebStatusResponse, parseSafeTunnelLoginResponse, parseSafeTunnelOperationResponse, parseSafeTunnelStartResponse, parseSafeTunnelStatusResponse, parseSafeTunnelStopResponse, parseSessionBulkArchiveResponse, parseSessionBulkDeleteArchivedResponse, parseSessionCleanupExecuteResponse, parseSessionCleanupPreviewResponse, parseSessionInfo, parseSessionNotificationInboxEvent, parseSessionNotificationInboxSnapshot, parseSessionStatus, parseSessionStreamSnapshot, parseSlashCommand, parseTerminalCommandRun, parseTerminalInfo, parseWorkspace, parseWorkspaceActivityResponse } from "./parsers";
 
 describe("API parsers", () => {
+  it("preserves additive interactive API-key flow hints and defaults legacy options", () => {
+    const base = { id: "openai", name: "OpenAI", authType: "api_key", status: { configured: false } };
+
+    expect(parseAuthProvidersResponse({ providers: [{ ...base, loginFlow: "interactive" }, base] }).providers).toEqual([
+      { ...base, loginFlow: "interactive" },
+      base,
+    ]);
+  });
+
+  it("preserves additive OAuth interaction semantics", () => {
+    expect(parseOAuthFlowState({
+      flowId: "flow-1",
+      providerId: "provider",
+      providerName: "Provider",
+      status: "running",
+      auth: {
+        url: "https://example.test/device",
+        instructions: "Enter code",
+        deviceCode: { userCode: "ABCD", intervalSeconds: 5, expiresInSeconds: 900 },
+      },
+      prompt: { requestId: "prompt-1", message: "Secret", kind: "prompt", promptType: "secret", allowEmpty: false, placeholder: "token" },
+      select: { requestId: "select-1", message: "Choose", options: [{ value: "work", label: "Work", description: "Company account" }] },
+      progress: ["Read the guide"],
+      info: [{ message: "Read the guide", links: [{ url: "https://example.test/docs", label: "Guide" }] }],
+    })).toMatchObject({
+      auth: { deviceCode: { userCode: "ABCD", intervalSeconds: 5, expiresInSeconds: 900 } },
+      prompt: { kind: "prompt", promptType: "secret", allowEmpty: false },
+      select: { options: [{ value: "work", description: "Company account" }] },
+      info: [{ links: [{ url: "https://example.test/docs", label: "Guide" }] }],
+    });
+  });
+
+  it("defaults semantic prompt types from legacy OAuth wire kinds", () => {
+    const flow = {
+      flowId: "flow-1",
+      providerId: "provider",
+      providerName: "Provider",
+      status: "running",
+      progress: [],
+    };
+
+    expect(parseOAuthFlowState({ ...flow, prompt: { requestId: "text", message: "Value", kind: "prompt" } }).prompt).toMatchObject({
+      kind: "prompt",
+      promptType: "text",
+    });
+    expect(parseOAuthFlowState({ ...flow, prompt: { requestId: "manual", message: "Code", kind: "manual" } }).prompt).toMatchObject({
+      kind: "manual",
+      promptType: "manual_code",
+    });
+  });
+
   it("parses PI WEB config responses", () => {
     expect(parsePiWebConfigResponse({
       path: "/tmp/config.json",
@@ -224,6 +276,19 @@ describe("API parsers", () => {
     expect(parseMessagePage({ messages: ["c"], start: 3, total: 9 })).toEqual({ messages: ["c"], start: 3, total: 9 });
   });
 
+  it("parses a session stream snapshot, defaulting a missing partial to null", () => {
+    expect(parseSessionStreamSnapshot({ seq: 7, partial: { role: "assistant", content: [{ type: "text", text: "hi" }] } })).toEqual({
+      seq: 7,
+      partial: { role: "assistant", content: [{ type: "text", text: "hi" }] },
+    });
+    expect(parseSessionStreamSnapshot({ seq: 0, partial: null })).toEqual({ seq: 0, partial: null });
+    expect(parseSessionStreamSnapshot({ seq: 3 })).toEqual({ seq: 3, partial: null });
+  });
+
+  it("rejects a session stream snapshot without a numeric seq", () => {
+    expect(() => parseSessionStreamSnapshot({ partial: null })).toThrow("Expected number field: seq");
+  });
+
   it("parses session cleanup preview and execute responses", () => {
     const preview = {
       generatedAt: "2026-06-25T12:00:00.000Z",
@@ -325,6 +390,59 @@ describe("API parsers", () => {
       contextUsage: { tokens: null, contextWindow: 100, percent: 0.5 },
       thinkingLevel: "medium",
     });
+  });
+
+  it("parses live session warnings including optional source and path", () => {
+    const parsed = parseSessionStatus({
+      sessionId: "s1",
+      isStreaming: false,
+      isCompacting: false,
+      isBashRunning: false,
+      pendingMessageCount: 0,
+      queuedMessages: [],
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      cost: 0,
+      warnings: [
+        { severity: "error", message: "bad skill", source: "skill", path: "/skills/a.md" },
+        { severity: "warning", message: "subscription active", source: "anthropic", dismiss: { id: "anthropicExtraUsage" } },
+        { severity: "info", message: "heads up", source: "runtime" },
+      ],
+    });
+
+    expect(parsed.warnings).toEqual([
+      { severity: "error", message: "bad skill", source: "skill", path: "/skills/a.md" },
+      { severity: "warning", message: "subscription active", source: "anthropic", dismiss: { id: "anthropicExtraUsage" } },
+      { severity: "info", message: "heads up", source: "runtime" },
+    ]);
+  });
+
+  it("omits warnings entirely when the field is absent", () => {
+    const parsed = parseSessionStatus({
+      sessionId: "s1",
+      isStreaming: false,
+      isCompacting: false,
+      isBashRunning: false,
+      pendingMessageCount: 0,
+      queuedMessages: [],
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      cost: 0,
+    });
+
+    expect(parsed.warnings).toBeUndefined();
+  });
+
+  it("rejects a warning with an invalid severity", () => {
+    expect(() => parseSessionStatus({
+      sessionId: "s1",
+      isStreaming: false,
+      isCompacting: false,
+      isBashRunning: false,
+      pendingMessageCount: 0,
+      queuedMessages: [],
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      cost: 0,
+      warnings: [{ severity: "fatal", message: "nope" }],
+    })).toThrow("Invalid session warning severity");
   });
 
   it("parses workspace effective upload config when present", () => {
@@ -467,4 +585,75 @@ describe("API parsers", () => {
     expect(parseCommandResult({ type: "done", message: "ok", promptDraft: "resend me" })).toEqual({ type: "done", message: "ok", promptDraft: "resend me" });
     expect(() => parseCommandResult({ type: "later" })).toThrow("Invalid command result type");
   });
+
+  it("strictly parses selected notification snapshots and realtime events", () => {
+    const inbox = notificationInboxWire();
+
+    expect(parseSessionNotificationInboxSnapshot(inbox)).toEqual(inbox);
+    expect(parseSessionNotificationInboxEvent({
+      type: "notifications.inbox",
+      daemonInstanceId: "daemon-a",
+      catalogRevision: 2,
+      summary: { ...inbox.summary, inboxRevision: 2, retainedCount: 2, highestSeverity: "warning" },
+      dismissThrough: { order: 2, overflowWatermark: 0 },
+      delta: { kind: "added", notification: notificationWire(2, "warning") },
+    })).toMatchObject({ type: "notifications.inbox", delta: { kind: "added", notification: { severity: "warning" } } });
+  });
+
+  it("rejects malformed, unsafe, over-cap, and oversized notification payloads", () => {
+    const inbox = notificationInboxWire();
+    expect(() => parseSessionNotificationInboxSnapshot({
+      ...inbox,
+      notifications: [{ ...notificationWire(1), severity: "fatal" }],
+    })).toThrow("Invalid notification severity");
+    expect(() => parseSessionNotificationInboxSnapshot({
+      ...inbox,
+      catalogRevision: Number.MAX_SAFE_INTEGER + 1,
+    })).toThrow("safe integer");
+    expect(() => parseSessionNotificationInboxSnapshot({
+      ...inbox,
+      summary: { ...inbox.summary, retainedCount: SESSION_NOTIFICATION_LIMIT },
+      notifications: Array.from({ length: SESSION_NOTIFICATION_LIMIT + 1 }, (_, index) => notificationWire(SESSION_NOTIFICATION_LIMIT + 1 - index)),
+    })).toThrow("exceeds limit");
+    expect(() => parseSessionNotificationInboxSnapshot({
+      ...inbox,
+      notifications: [{ ...notificationWire(1), message: "x".repeat(SESSION_NOTIFICATION_MESSAGE_BYTES + 1) }],
+    })).toThrow("message exceeds byte limit");
+    expect(() => parseSessionNotificationInboxEvent({
+      type: "notifications.inbox",
+      daemonInstanceId: "daemon-a",
+      catalogRevision: 2,
+      summary: { ...inbox.summary, inboxRevision: 2 },
+      dismissThrough: { order: 1, overflowWatermark: 0 },
+      delta: { kind: "cleared", reason: "future-reason" },
+    })).toThrow("Invalid notification clear reason");
+  });
 });
+
+function notificationWire(order: number, severity: "info" | "warning" | "error" = "info") {
+  return {
+    id: `daemon-a:${String(order)}`,
+    message: `notice ${String(order)}`,
+    truncated: false,
+    severity,
+    receivedAt: "2026-07-18T00:00:00.000Z",
+    order,
+  };
+}
+
+function notificationInboxWire() {
+  return {
+    daemonInstanceId: "daemon-a",
+    catalogRevision: 1,
+    summary: {
+      sessionId: "session-1",
+      cwd: "/repo",
+      inboxRevision: 1,
+      retainedCount: 1,
+      discardedCount: 0,
+      highestSeverity: "info" as const,
+    },
+    notifications: [notificationWire(1)],
+    dismissThrough: { order: 1, overflowWatermark: 0 },
+  };
+}

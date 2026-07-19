@@ -629,15 +629,17 @@
                 A completion notice wakes an idle parent or queues behind in-flight work. Each notice lists any other
                 tracked children still working, so the parent can continue work or call
                 <code>yield_to_subsessions</code> again at the next join point. Further notices arrive automatically; do
-                not poll.
+                not poll. The notice includes the child's final output when it fits. If that output is too long, PI WEB
+                omits it entirely instead of adding a truncated duplicate to the parent's context and directs the parent
+                to retrieve it with <code>check_subsession</code>.
               </p>
               <p>
                 <code>list_subsessions</code>, <code>check_subsession</code>, and <code>read_subsession</code> never yield
                 or change control flow. They are for deliberate inspection or recovery, not completion polling. While a
                 child works, agent-facing <code>check_subsession</code> and <code>read_subsession</code> withhold partial
                 output and direct the parent to continue independent work or yield at the join point. Output becomes
-                available when the child stops. In notices and inspection results, PI WEB guidance precedes a labeled
-                marker and the child output or transcript always comes last.
+                available when the child stops. Included output and transcripts follow a labeled marker and come last,
+                after PI WEB guidance.
               </p>
               <p>
                 In <strong>Settings → Session daemon</strong>, these keys are saved on the selected machine. Restart the

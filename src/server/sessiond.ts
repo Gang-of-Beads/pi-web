@@ -11,6 +11,7 @@ import { registerAuthRoutes } from "./sessions/authRoutes.js";
 import { PiSessionService } from "./sessions/piSessionService.js";
 import { createPiSessionManagerGateway } from "./sessions/piSessionManagerGateway.js";
 import { registerSessionRoutes } from "./sessions/sessionRoutes.js";
+import { SessionNotificationStore } from "./sessions/sessionNotificationStore.js";
 import { ProjectScopedSpawnTargetResolver } from "./sessions/spawnTargetResolver.js";
 import { ProjectService } from "./projects/projectService.js";
 import { ProjectStore } from "./storage/projectStore.js";
@@ -36,20 +37,22 @@ await app.register(fastifyWebsocket);
 
 await runSessionDaemonStartup({
   logger: app.log,
-  createRuntime() {
+  async createRuntime() {
     const eventHub = new SessionEventHub();
+    const notificationStore = new SessionNotificationStore();
     const workspaceActivity = new WorkspaceActivityService(eventHub);
-    const auth = new AuthService({ agentDir: activeAgentProfile.dir });
+    const auth = await AuthService.create({ agentDir: activeAgentProfile.dir, logger: app.log });
     const spawnTargets = config.spawnSessions
       ? new ProjectScopedSpawnTargetResolver({ projects: new ProjectService(new ProjectStore()), workspaces: new WorkspaceService() })
       : undefined;
     const sessions = new PiSessionService(eventHub, {
-      modelRegistry: auth.modelRegistry,
+      modelRuntime: auth.runtime,
       agentDir: activeAgentProfile.dir,
       workspaceActivity,
       logger: app.log,
       ...(spawnTargets === undefined ? {} : { spawnTargets }),
       subsessionsEnabled: spawnTargets !== undefined && config.subsessions,
+      notificationStore,
       sessionManager: createPiSessionManagerGateway({
         agentDir: activeAgentProfile.dir,
         env: daemonEnvironment,

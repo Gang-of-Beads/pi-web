@@ -1,14 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { SettingsDialog } from "./SettingsDialog";
-import { collectTemplateStrings } from "./SettingsDialog.testSupport";
+import { activeSettingsPanelTag } from "./SettingsDialog";
 
 describe("settings-dialog Safe Tunnel section", () => {
-  it("renders the Safe Tunnel settings panel", () => {
-    const dialog = new SettingsDialog();
-    dialog.section = "safe-tunnel";
-
-    const strings = collectTemplateStrings(dialog.render()).join("");
-
-    expect(strings).toContain("<settings-safe-tunnel-panel");
+  it("routes to the Safe Tunnel settings panel", () => {
+    expect(activeSettingsPanelTag("safe-tunnel")).toBe("settings-safe-tunnel-panel");
   });
 });
