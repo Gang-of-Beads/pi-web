@@ -3,12 +3,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { InMemoryCredentialStore, type AuthPrompt, type Credential } from "@earendil-works/pi-ai";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OAuthFlowState } from "../../shared/apiTypes.js";
 import { AuthService, createModelRuntimeForAgentDir, type AuthChange, type AuthServiceLogger } from "./authService.js";
 import { OAuthLoginFlowService } from "./oauthLoginFlowService.js";
 
 const tempDirs: string[] = [];
+
+beforeEach(() => {
+  // Pi 0.82 uses PI_OFFLINE for refreshes after runtime creation. Auth tests
+  // exercise local credential behavior and must never fetch provider catalogs.
+  vi.stubEnv("PI_OFFLINE", "1");
+});
 
 afterEach(async () => {
   vi.unstubAllEnvs();
@@ -18,14 +24,14 @@ afterEach(async () => {
 describe("AuthService", () => {
   it("saves API keys and emits a global auth change after the runtime refreshes", async () => {
     const { auth, runtime, credentials, changes } = await createAuthService();
-    const reloadConfig = vi.spyOn(runtime, "reloadConfig").mockResolvedValue(undefined);
+    // Pi 0.82 merged reloadConfig() into refresh(), so the provider lookup and
+    // the post-login refresh both land on refresh(): one call each.
     const refresh = vi.spyOn(runtime, "refresh");
 
     await expect(auth.saveApiKey("anthropic", "sk-test")).resolves.toEqual({ accepted: true });
 
     await expect(credentials.read("anthropic")).resolves.toEqual({ type: "api_key", key: "sk-test" });
-    expect(reloadConfig).toHaveBeenCalledOnce();
-    expect(refresh).toHaveBeenCalledOnce();
+    expect(refresh).toHaveBeenCalledTimes(2);
     expect(changes).toEqual([{}]);
     auth.dispose();
   });
@@ -356,7 +362,7 @@ describe("AuthService", () => {
 
   it("stores credentials in the configured agent directory", async () => {
     const agentDir = await tempAgentDir();
-    const runtime = await createModelRuntimeForAgentDir(agentDir, false);
+    const runtime = await createModelRuntimeForAgentDir(agentDir);
     const auth = await AuthService.create({ runtime });
 
     await auth.saveApiKey("anthropic", "sk-test");
@@ -376,10 +382,16 @@ describe("AuthService", () => {
       expires: Date.now() + 60_000,
     };
     vi.spyOn(provider.auth.oauth, "login").mockResolvedValue(credential);
-    vi.spyOn(runtime, "reloadConfig").mockResolvedValue(undefined);
     const refreshStarted = deferred<undefined>();
     const finishRefresh = deferred<undefined>();
+    // Pi 0.82 merged reloadConfig() into refresh(), so the provider lookup now
+    // shares this seam with the post-login refresh. Only the post-login call
+    // (the second) is held open; deferring the lookup would stall the flow
+    // before it starts.
+    let refreshCalls = 0;
     const refresh = vi.spyOn(runtime, "refresh").mockImplementation(async () => {
+      refreshCalls += 1;
+      if (refreshCalls < 2) return { aborted: false, errors: new Map() };
       refreshStarted.resolve(undefined);
       await finishRefresh.promise;
       return { aborted: false, errors: new Map() };
@@ -399,7 +411,7 @@ describe("AuthService", () => {
     expect(auth.oauthFlow(state.flowId)).not.toHaveProperty("error");
     await expect(credentials.read(provider.id)).resolves.toEqual(credential);
     expect(changes).toEqual([{}]);
-    expect(refresh).toHaveBeenCalledOnce();
+    expect(refresh).toHaveBeenCalledTimes(2);
     auth.dispose();
   });
 
@@ -464,6 +476,70 @@ describe("AuthService", () => {
   });
 });
 
+describe("createModelRuntimeForAgentDir", () => {
+  it("keeps runtime-owned refreshes local so request paths cannot stall", async () => {
+    // Runtime-owned mutations refresh with allowNetwork = the construction-time
+    // network flag and no abort signal; that is what regressed. Pi 0.82 removed
+    // reloadConfig(), so removeRuntimeApiKey() is the surviving public seam that
+    // still forwards that flag explicitly and can be observed on refresh().
+    // The ambient PI_OFFLINE=1 stub has to go, or the runtime would be offline
+    // whether or not the helper forces it and this would assert nothing.
+    vi.stubEnv("PI_OFFLINE", undefined);
+    const agentDir = await tempAgentDir();
+    const runtime = await createModelRuntimeForAgentDir(agentDir);
+    const refresh = vi.spyOn(runtime, "refresh");
+
+    await runtime.removeRuntimeApiKey("anthropic");
+
+    expect(refresh).toHaveBeenCalledWith({ allowNetwork: false });
+  });
+
+  it("restores a previously set PI_OFFLINE after runtime creation", async () => {
+    // The file-level beforeEach stubs PI_OFFLINE=1.
+    const agentDir = await tempAgentDir();
+    await createModelRuntimeForAgentDir(agentDir);
+    expect(process.env["PI_OFFLINE"]).toBe("1");
+  });
+
+  it("restores a previously unset PI_OFFLINE after runtime creation", async () => {
+    vi.unstubAllEnvs();
+    const previous = process.env["PI_OFFLINE"];
+    delete process.env["PI_OFFLINE"];
+    try {
+      const agentDir = await tempAgentDir();
+      const runtime = await createModelRuntimeForAgentDir(agentDir);
+      const refresh = vi.spyOn(runtime, "refresh");
+
+      await runtime.removeRuntimeApiKey("anthropic");
+
+      expect(refresh).toHaveBeenCalledWith({ allowNetwork: false });
+      expect(process.env["PI_OFFLINE"]).toBeUndefined();
+    } finally {
+      if (previous !== undefined) process.env["PI_OFFLINE"] = previous;
+    }
+  });
+
+  it("restores PI_OFFLINE when creations overlap, because the env windows are serialized", async () => {
+    vi.unstubAllEnvs();
+    const previous = process.env["PI_OFFLINE"];
+    delete process.env["PI_OFFLINE"];
+    try {
+      const dirs = await Promise.all([tempAgentDir(), tempAgentDir(), tempAgentDir()]);
+      const runtimes = await Promise.all(dirs.map((dir) => createModelRuntimeForAgentDir(dir)));
+
+      // Interleaved save/restore pairs would leave PI_OFFLINE set process-wide.
+      expect(process.env["PI_OFFLINE"]).toBeUndefined();
+      for (const runtime of runtimes) {
+        const refresh = vi.spyOn(runtime, "refresh");
+        await runtime.removeRuntimeApiKey("anthropic");
+        expect(refresh).toHaveBeenCalledWith({ allowNetwork: false });
+      }
+    } finally {
+      if (previous !== undefined) process.env["PI_OFFLINE"] = previous;
+    }
+  });
+});
+
 async function createAuthService(seed: Record<string, Credential> = {}, logger?: AuthServiceLogger) {
   const credentials = new InMemoryCredentialStore();
   for (const [providerId, credential] of Object.entries(seed)) {
@@ -480,7 +556,7 @@ async function createFileBackedAuthService(seed: Record<string, Credential>) {
   const agentDir = await tempAgentDir();
   const authPath = join(agentDir, "auth.json");
   await writeFile(authPath, JSON.stringify(seed, null, 2));
-  const runtime = await createModelRuntimeForAgentDir(agentDir, false);
+  const runtime = await createModelRuntimeForAgentDir(agentDir);
   const auth = await AuthService.create({ runtime });
   const changes: AuthChange[] = [];
   auth.subscribe((change) => { changes.push(change); });

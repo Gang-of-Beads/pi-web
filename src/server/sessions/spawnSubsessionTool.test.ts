@@ -35,7 +35,7 @@ function tools(deps: Partial<SubsessionToolDeps>) {
 }
 
 function workingGuidance(sessionId: string): string {
-  return `Subsession ${sessionId} is working; partial output is withheld. Continue independent work, or call yield_to_subsessions alone and last at the join point. Completion notices wake you; do not poll.`;
+  return `Subsession ${sessionId} is working; partial output is withheld. Continue other work, or call yield_to_subsessions alone and last at the join point. Completion notices wake you; do not poll.`;
 }
 
 function firstText(content: readonly (TextContent | ImageContent)[]): string {
@@ -62,16 +62,17 @@ describe("createSubsessionToolDefinitions", () => {
     expect(firstText(result.content)).toContain("Started tracked subsession child-1");
   });
 
-  it("guides the parent to continue independent work and use the explicit join action", async () => {
+  it("describes tracked child work whose result remains available to the parent", async () => {
     const { spawn: spawnTool } = tools({
       spawn: vi.fn(() => Promise.resolve({ sessionId: "child-1", cwd: "/repos/a-feature" })),
     });
 
-    expect(spawnTool.description).toBe("Start a tracked child and return immediately. Continue independent work, then use yield_to_subsessions at the join point. Completion notices wake you; do not poll.");
-    expect(spawnTool.promptSnippet).toBe("spawn_subsession: tracked parallel work; continue, then join with yield_to_subsessions");
+    expect(spawnTool.description).toBe("Start a tracked child session to carry out part of the current task and return immediately. Its transcript and result are available here after it finishes.");
+    expect(spawnTool.promptSnippet).toBe("spawn_subsession: tracked child work for the current task; result available after completion");
+    expect(spawnTool.description).not.toMatch(/spawn_session|fully independent/i);
 
     const result = await spawnTool.execute("call-contract", { prompt: "do it" }, undefined, undefined, ctxFor("parent-1", undefined));
-    expect(firstText(result.content)).toBe("Started tracked subsession child-1 in /repos/a-feature. Continue independent work, then join with yield_to_subsessions; do not poll.");
+    expect(firstText(result.content)).toBe("Started tracked subsession child-1 in /repos/a-feature. Continue other work, then join with yield_to_subsessions; do not poll.");
   });
 
   it("distinguishes status inspection from yielding in tool metadata", () => {
@@ -92,9 +93,7 @@ describe("createSubsessionToolDefinitions", () => {
     expect(yieldTool.description).toBe("At a join point, end this run while tracked children work; completion notices wake you. If none work, continue. Call alone and last; do not poll.");
     expect(yieldTool.promptSnippet).toBe("yield_to_subsessions: end the run at a join point; call alone and last");
     expect(yieldTool.promptGuidelines).toEqual([
-      "After independent work, yield only at a join point; use spawn_session for fire-and-forget work.",
-      "Call alone and last; a mixed tool batch may continue the run.",
-      "Completion notices wake you; do not poll inspection tools.",
+      "After calling spawn_subsession, you can continue with other work. At the join point, call yield_to_subsessions alone and last; completion notices wake you, so do not poll.",
     ]);
   });
 

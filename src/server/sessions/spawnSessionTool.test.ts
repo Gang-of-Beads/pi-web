@@ -20,11 +20,12 @@ describe("createSpawnSessionToolDefinition", () => {
     expect(result.content[0]).toMatchObject({ type: "text", text: "Started independent session new-1 in /repos/a-feature." });
   });
 
-  it("describes the independent-session capability without workflow policy", () => {
+  it("describes a fully independent session and restricts it to explicit requests", () => {
     const tool = createSpawnSessionToolDefinition("/repos/a", { spawn: vi.fn() });
 
-    expect(tool.description).toBe("Start a new independent pi-web session and send it an initial prompt. The session is not tracked by the caller, can be opened by a human, and runs without returning its later output to the caller.");
-    expect(tool.description).not.toMatch(/use this|continue work|follow a plan|relay/i);
+    expect(tool.description).toBe("Start a fully independent session; its transcript and results are unavailable here. Use only when the user or active workflow explicitly requests a separate session.");
+    expect(tool.promptSnippet).toBe("spawn_session: independent session; results unavailable here; explicit requests only");
+    expect(tool.description).not.toMatch(/subsession|child|parent/i);
   });
 
   it("forwards omitted cwd as undefined and omits a missing dispatching model", async () => {

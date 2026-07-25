@@ -7,6 +7,8 @@ import type {
   SessionNotificationDismissAllRequest,
   SessionNotificationDismissRequest,
   SessionNotificationInboxSnapshot,
+  SessionUnreadAcknowledgeRequest,
+  SessionUnreadCatalogSnapshot,
 } from "../../shared/apiTypes.js";
 import type {
   ClientArchiveSessionsResponse,
@@ -19,6 +21,8 @@ import type {
   ClientSessionModel,
   ClientSessionRef,
   ClientSessionStatus,
+  ClientSessionTreeNavigateRequest,
+  ClientSessionTreeNavigateResult,
   ClientThinkingLevel,
   SessionStreamSnapshot,
 } from "../types.js";
@@ -41,6 +45,8 @@ export interface SessionRouteService {
   status(ref: SessionRouteLookup): Promise<ClientSessionStatus>;
   streamSnapshot(ref: SessionRouteLookup): Promise<SessionStreamSnapshot>;
   notificationCatalog(): SessionNotificationCatalogSnapshot | Promise<SessionNotificationCatalogSnapshot>;
+  unreadCatalog(): Promise<SessionUnreadCatalogSnapshot>;
+  acknowledgeUnread(sessionId: string, request: SessionUnreadAcknowledgeRequest): Promise<SessionUnreadCatalogSnapshot>;
   notificationInbox(ref: SessionRouteRef): SessionNotificationInboxSnapshot | Promise<SessionNotificationInboxSnapshot>;
   dismissNotification(ref: SessionRouteRef, request: Omit<SessionNotificationDismissRequest, "cwd">): SessionNotificationInboxSnapshot | Promise<SessionNotificationInboxSnapshot>;
   dismissAllNotifications(ref: SessionRouteRef, request: Omit<SessionNotificationDismissAllRequest, "cwd">): SessionNotificationInboxSnapshot | Promise<SessionNotificationInboxSnapshot>;
@@ -62,6 +68,7 @@ export interface SessionRouteService {
   shell(ref: SessionRouteLookup, text: string): Promise<void>;
   runCommand(ref: SessionRouteLookup, text: string): Promise<ClientCommandResult>;
   respondToCommand(ref: SessionRouteLookup, requestId: string, value: string): Promise<ClientCommandResult>;
+  navigateTree(ref: SessionRouteLookup, request: ClientSessionTreeNavigateRequest): Promise<ClientSessionTreeNavigateResult>;
   abort(ref: SessionRouteLookup): Promise<void>;
   stop(ref: SessionRouteLookup): void | Promise<void>;
   archive(ref: SessionRouteLookup): Promise<void>;

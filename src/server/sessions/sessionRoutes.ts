@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import type { SessionBulkMutationRequest, SessionBulkMutationRef, SessionCleanupRequest } from "../../shared/apiTypes.js";
+import { SESSION_TREE_CUSTOM_INSTRUCTIONS_MAX_LENGTH, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH, SESSION_UNREAD_CWD_MAX_LENGTH, SESSION_UNREAD_SESSION_ID_MAX_LENGTH, type SessionBulkMutationRequest, type SessionBulkMutationRef, type SessionCleanupRequest, type SessionTreeNavigateRequest, type SessionTreeSummaryChoice, type SessionUnreadAcknowledgeRequest } from "../../shared/apiTypes.js";
 import { projectBrowserMessageResponse } from "../browserMessageProjection.js";
 import { normalizeRequestCwd } from "../workingDirectory.js";
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
@@ -59,6 +59,35 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
       return await sessions.notificationCatalog();
     } catch (error) {
       return reply.code(400).send({ error: errorMessage(error) });
+    }
+  });
+
+  app.get(`${prefix}/sessions/unread`, async (_request, reply) => {
+    try {
+      return await sessions.unreadCatalog();
+    } catch (error) {
+      return reply.code(503).send({ error: errorMessage(error) });
+    }
+  });
+
+  app.post<{ Params: { sessionId: string }; Body: Record<string, unknown> | undefined }>(`${prefix}/sessions/:sessionId/unread/acknowledge`, async (request, reply) => {
+    let sessionId: string;
+    let acknowledgement: SessionUnreadAcknowledgeRequest;
+    try {
+      const body = requireRecord(request.body);
+      sessionId = requireNonEmptyBoundedString(request.params.sessionId, "sessionId", SESSION_UNREAD_SESSION_ID_MAX_LENGTH);
+      acknowledgement = {
+        cwd: normalizeRequestCwd(requireNonEmptyBoundedString(body["cwd"], "cwd", SESSION_UNREAD_CWD_MAX_LENGTH)),
+        catalogId: requireNonEmptyBoundedString(body["catalogId"], "catalogId", SESSION_UNREAD_CATALOG_ID_MAX_LENGTH),
+        throughCompletionOrder: requirePositiveSafeInteger(body["throughCompletionOrder"], "throughCompletionOrder"),
+      };
+    } catch (error) {
+      return reply.code(400).send({ error: errorMessage(error) });
+    }
+    try {
+      return await sessions.acknowledgeUnread(sessionId, acknowledgement);
+    } catch (error) {
+      return reply.code(503).send({ error: errorMessage(error) });
     }
   });
 
@@ -286,6 +315,15 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
     }
   });
 
+  app.post<{ Params: { sessionId: string }; Body: unknown }>(`${prefix}/sessions/:sessionId/tree/navigate`, async (request, reply) => {
+    try {
+      const body = requireRecord(request.body);
+      return await sessions.navigateTree(sessionLookupFromBody(request.params.sessionId, body), sessionTreeNavigateRequestFromBody(body));
+    } catch (error) {
+      return reply.code(mutationErrorStatus(error)).send({ error: errorMessage(error) });
+    }
+  });
+
   app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/abort`, async (request, reply) => {
     try {
       await sessions.abort(sessionLookupFromBody(request.params.sessionId, optionalRecord(request.body)));
@@ -423,6 +461,38 @@ function sessionLookupFromCwd(id: string, cwd: string | undefined): SessionLooku
   return cwd === undefined || cwd === "" ? id : { id, cwd: normalizeRequestCwd(cwd) };
 }
 
+function sessionTreeNavigateRequestFromBody(body: Record<string, unknown>): SessionTreeNavigateRequest {
+  const targetId = requireNonEmptyString(body, "targetId");
+  const expectedLeafId = requireNullableString(body, "expectedLeafId");
+  return { targetId, expectedLeafId, summary: sessionTreeSummaryChoice(body["summary"]) };
+}
+
+function sessionTreeSummaryChoice(value: unknown): SessionTreeSummaryChoice {
+  const summary = requireRecord(value);
+  const mode = requireString(summary, "mode");
+  if (mode === "none" || mode === "default") {
+    if (Object.hasOwn(summary, "instructions")) throw new Error(`instructions field is not valid for ${mode} summary mode`);
+    requireExactFields(summary, ["mode"], "summary");
+    return { mode };
+  }
+  if (mode === "custom") {
+    requireExactFields(summary, ["mode", "instructions"], "summary");
+    const instructions = requireString(summary, "instructions");
+    if (instructions.trim() === "") throw new Error("instructions field must not be blank");
+    if (instructions.length > SESSION_TREE_CUSTOM_INSTRUCTIONS_MAX_LENGTH) {
+      throw new Error(`instructions field must be at most ${String(SESSION_TREE_CUSTOM_INSTRUCTIONS_MAX_LENGTH)} characters`);
+    }
+    return { mode, instructions: instructions.trim() };
+  }
+  throw new Error("summary mode is invalid");
+}
+
+function requireExactFields(record: Record<string, unknown>, fields: readonly string[], label: string): void {
+  const allowed = new Set(fields);
+  const unexpected = Object.keys(record).find((field) => !allowed.has(field));
+  if (unexpected !== undefined) throw new Error(`${label} field contains unsupported property: ${unexpected}`);
+}
+
 function optionalRecord(value: unknown): Record<string, unknown> {
   if (value === undefined || value === null) return {};
   return requireRecord(value);
@@ -439,6 +509,21 @@ function requireString(record: Record<string, unknown>, field: string): string {
   return value;
 }
 
+function requireNonEmptyString(record: Record<string, unknown>, field: string): string {
+  const value = requireString(record, field);
+  if (value.trim() === "") throw new Error(`${field} field must not be empty`);
+  return value;
+}
+
+function requireNullableString(record: Record<string, unknown>, field: string): string | null {
+  if (!Object.hasOwn(record, field)) throw new Error(`${field} field is required`);
+  const value = record[field];
+  if (value === null) return null;
+  if (typeof value !== "string") throw new Error(`${field} field must be a string or null`);
+  if (value.trim() === "") throw new Error(`${field} field must not be empty`);
+  return value;
+}
+
 function requireNonEmptyBoundedString(value: unknown, field: string, maxLength: number): string {
   if (typeof value !== "string") throw new Error(`${field} field must be a string`);
   if (value === "") throw new Error(`${field} field must not be empty`);
@@ -451,6 +536,12 @@ function requireNonNegativeSafeInteger(value: unknown, field: string): number {
     throw new Error(`${field} field must be a non-negative safe integer`);
   }
   return value;
+}
+
+function requirePositiveSafeInteger(value: unknown, field: string): number {
+  const parsed = requireNonNegativeSafeInteger(value, field);
+  if (parsed === 0) throw new Error(`${field} field must be positive`);
+  return parsed;
 }
 
 function requireThinkingLevel(value: unknown): string {

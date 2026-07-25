@@ -41,8 +41,8 @@ export function createSpawnSessionToolDefinition(spawningCwd: string, deps: Spaw
   return defineTool<typeof SpawnSessionParams, SpawnSessionToolDetails>({
     name: "spawn_session",
     label: "Spawn session",
-    description: "Start a new independent pi-web session and send it an initial prompt. The session is not tracked by the caller, can be opened by a human, and runs without returning its later output to the caller.",
-    promptSnippet: "spawn_session: start a new independent session with a first prompt",
+    description: "Start a fully independent session; its transcript and results are unavailable here. Use only when the user or active workflow explicitly requests a separate session.",
+    promptSnippet: "spawn_session: independent session; results unavailable here; explicit requests only",
     parameters: SpawnSessionParams,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       // Failures throw: the agent loop turns the thrown message into an error

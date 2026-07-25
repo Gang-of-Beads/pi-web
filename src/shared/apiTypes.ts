@@ -9,6 +9,7 @@ export const PI_WEB_CAPABILITIES = {
   sessionsClearQueue: "sessions.clearQueue",
   sessionsPersistedState: "sessions.persistedState",
   sessionsNotifications: "sessions.notifications",
+  sessionsUnread: "sessions.unread",
   promptAttachments: "prompt.attachments",
   workspaceFileSuggestions: "workspace.fileSuggestions",
   piPackagesManage: "piPackages.manage",
@@ -317,6 +318,47 @@ export interface Workspace {
 export interface SessionRef {
   id: string;
   cwd: string;
+}
+
+export const SESSION_UNREAD_LIMIT = 1_000;
+export const SESSION_UNREAD_SESSION_ID_MAX_LENGTH = 512;
+export const SESSION_UNREAD_CWD_MAX_LENGTH = 32 * 1024;
+export const SESSION_UNREAD_CATALOG_ID_MAX_LENGTH = 512;
+export const SESSION_UNREAD_COMPLETED_AT_MAX_LENGTH = 64;
+
+export interface SessionUnreadSummary {
+  sessionId: string;
+  cwd: string;
+  /** Monotonic within a catalog and never greater than its containing revision. */
+  completionOrder: number;
+  completedAt: string;
+}
+
+export interface SessionUnreadCatalogSnapshot {
+  /** Stable for one persisted catalog epoch; changes when unread state is reset. */
+  catalogId: string;
+  /** Monotonic catalog mutation revision; at least every contained completion order. */
+  catalogRevision: number;
+  /** Bounded by `SESSION_UNREAD_LIMIT` and ordered newest completion first. */
+  sessions: SessionUnreadSummary[];
+}
+
+export interface SessionUnreadAcknowledgeRequest {
+  cwd: string;
+  /** The catalog epoch in which `throughCompletionOrder` was observed. */
+  catalogId: string;
+  throughCompletionOrder: number;
+}
+
+/** Authoritative delta for one session in the daemon-owned unread catalog. */
+export interface SessionUnreadEvent {
+  type: "sessions.unread";
+  catalogId: string;
+  /** At least `unread.completionOrder` when carrying an unread summary. */
+  catalogRevision: number;
+  sessionId: string;
+  cwd: string;
+  unread: SessionUnreadSummary | null;
 }
 
 export const SESSION_NOTIFICATION_LIMIT = 100;
@@ -754,6 +796,10 @@ export interface GitStatusFile {
   oldPath?: string;
   index: GitFileState;
   workingTree: GitFileState;
+  // Set only on a submodule commit-pointer entry (path equals the submodule's
+  // superproject-relative path). Short SHAs of the recorded and current commit.
+  submoduleFromCommit?: string;
+  submoduleToCommit?: string;
 }
 
 export interface GitStatusResponse {
@@ -764,6 +810,11 @@ export interface GitStatusResponse {
   ahead?: number;
   behind?: number;
   files: GitStatusFile[];
+  // Superproject-relative paths of submodules that carry a change. Files inside
+  // a submodule appear in `files` under `<submodule>/<inner path>`; the client
+  // uses this list to group and label them and to distinguish a submodule root
+  // from an ordinary directory with the same name.
+  submodules: string[];
 }
 
 export interface GitDiffResponse {
@@ -932,6 +983,56 @@ export interface CommandOption {
   description?: string;
 }
 
+export type SessionTreeNodeKind =
+  | "user"
+  | "assistant"
+  | "tool-result"
+  | "bash"
+  | "custom-message"
+  | "compaction"
+  | "branch-summary"
+  | "model-change"
+  | "thinking-level-change"
+  | "session-info"
+  | "label"
+  | "custom"
+  | "other";
+
+export interface SessionTreeNode {
+  id: string;
+  parentId: string | null;
+  kind: SessionTreeNodeKind;
+  summary: string;
+  timestamp?: string;
+  label?: string;
+}
+
+export interface SessionTreeSnapshot {
+  /** Pre-order, parent-linked projection of all retained roots and descendants. */
+  nodes: SessionTreeNode[];
+  activeLeafId: string | null;
+  /** Root-to-leaf IDs for explicit, non-color-only active-path rendering. */
+  activePathIds: string[];
+}
+
+export const SESSION_TREE_CUSTOM_INSTRUCTIONS_MAX_LENGTH = 10_000;
+
+export type SessionTreeSummaryChoice =
+  | { mode: "none" }
+  | { mode: "default" }
+  | { mode: "custom"; instructions: string };
+
+export interface SessionTreeNavigateRequest {
+  targetId: string;
+  /** Leaf shown when the navigator opened; null is valid for an empty/root position. */
+  expectedLeafId: string | null;
+  summary: SessionTreeSummaryChoice;
+}
+
+export type SessionTreeNavigateResult =
+  | { cancelled: false; editorText?: string }
+  | { cancelled: true; aborted?: boolean };
+
 export interface MessagePage {
   messages: unknown[];
   start: number;
@@ -955,6 +1056,7 @@ export interface SessionStreamSnapshot {
 export type CommandResult =
   | { type: "done"; message?: string; session?: SessionInfo; promptDraft?: string }
   | { type: "select"; requestId: string; title: string; options: CommandOption[] }
+  | { type: "tree"; tree: SessionTreeSnapshot }
   | { type: "unsupported"; message: string };
 
 /**
@@ -989,5 +1091,6 @@ type SessionUiEventBody =
 
 export type GlobalSessionEvent =
   | Extract<SessionUiEventBody, { type: "status.update" | "activity.update" | "session.name" | "session.created" }>
-  | SessionNotificationSummaryEvent;
+  | SessionNotificationSummaryEvent
+  | SessionUnreadEvent;
 export type RealtimeEvent = GlobalSessionEvent | TerminalUiEvent | WorkspaceActivityUiEvent;

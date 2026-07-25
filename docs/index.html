@@ -38,7 +38,7 @@
         "downloadUrl": "https://www.npmjs.com/package/@jmfederico/pi-web",
         "codeRepository": "https://github.com/jmfederico/pi-web",
         "description": "PI WEB is a web UI for Pi Coding Agent that keeps persistent agent sessions running in real workspaces on your machine or server.",
-        "softwareRequirements": "Node.js 22.19.0 or newer and Pi Coding Agent >=0.80.8 <0.81",
+        "softwareRequirements": "Node.js 22.19.0 or newer and Pi Coding Agent >=0.82.1 <0.83",
         "license": "https://github.com/jmfederico/pi-web/blob/main/LICENSE"
       }
     </script>
@@ -337,7 +337,7 @@
               <strong>User service install</strong>
               <button class="copy-button" data-copy="#home-install">Copy</button>
             </div>
-            <pre id="home-install"><code><span class="prompt">$</span> npm install -g @jmfederico/pi-web
+            <pre id="home-install"><code><span class="prompt">$</span> npm install -g @jmfederico/pi-web --allow-scripts=node-pty
 <span class="prompt">$</span> pi-web install
 <span class="prompt">$</span> pi-web doctor
 <span class="prompt">$</span> pi-web version

@@ -1,6 +1,7 @@
 export type FederatedHttpMethod = "GET" | "POST" | "PUT" | "DELETE";
 
 export const PI_PACKAGE_MUTATION_PROXY_TIMEOUT_MS = 5 * 60_000;
+export const SESSION_TREE_NAVIGATION_PROXY_TIMEOUT_MS = 5 * 60_000;
 
 export interface FederatedHttpRouteSpec {
   method: FederatedHttpMethod;
@@ -45,6 +46,7 @@ export const FEDERATED_HTTP_ROUTES = [
   { method: "GET", path: "/activity" },
   { method: "GET", path: "/sessions" },
   { method: "POST", path: "/sessions" },
+  { method: "GET", path: "/sessions/unread" },
   { method: "GET", path: "/sessions/notifications" },
   { method: "POST", path: "/sessions/cleanup/preview" },
   { method: "POST", path: "/sessions/cleanup" },
@@ -54,6 +56,7 @@ export const FEDERATED_HTTP_ROUTES = [
   { method: "GET", path: "/sessions/:sessionId/notifications" },
   { method: "POST", path: "/sessions/:sessionId/notifications/dismiss" },
   { method: "POST", path: "/sessions/:sessionId/notifications/dismiss-all" },
+  { method: "POST", path: "/sessions/:sessionId/unread/acknowledge" },
   { method: "GET", path: "/sessions/:sessionId/status" },
   { method: "GET", path: "/sessions/:sessionId/stream-snapshot" },
   { method: "GET", path: "/sessions/:sessionId/models" },
@@ -70,6 +73,7 @@ export const FEDERATED_HTTP_ROUTES = [
   { method: "POST", path: "/sessions/:sessionId/shell" },
   { method: "POST", path: "/sessions/:sessionId/commands/run" },
   { method: "POST", path: "/sessions/:sessionId/commands/respond" },
+  { method: "POST", path: "/sessions/:sessionId/tree/navigate", timeoutMs: SESSION_TREE_NAVIGATION_PROXY_TIMEOUT_MS },
   { method: "POST", path: "/sessions/:sessionId/abort" },
   { method: "POST", path: "/sessions/:sessionId/stop" },
   { method: "POST", path: "/sessions/:sessionId/archive" },

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { PI_WEB_CAPABILITIES } from "../../../shared/capabilities";
-import { SESSION_NOTIFICATION_LIMIT, SESSION_NOTIFICATION_MESSAGE_BYTES } from "../../../shared/apiTypes";
-import { parseAuthProvidersResponse, parseCommandResult, parseFileContentResponse, parseFileSuggestion, parseGitStatusResponse, parseMachineRuntime, parseMessagePage, parseOAuthFlowState, parsePiPackageMutationResponse, parsePiPackagesResponse, parsePiWebConfigResponse, parsePiWebPluginsResponse, parsePiWebRuntimeResponse, parsePiWebStatusResponse, parseSafeTunnelLoginResponse, parseSafeTunnelOperationResponse, parseSafeTunnelStartResponse, parseSafeTunnelStatusResponse, parseSafeTunnelStopResponse, parseSessionBulkArchiveResponse, parseSessionBulkDeleteArchivedResponse, parseSessionCleanupExecuteResponse, parseSessionCleanupPreviewResponse, parseSessionInfo, parseSessionNotificationInboxEvent, parseSessionNotificationInboxSnapshot, parseSessionStatus, parseSessionStreamSnapshot, parseSlashCommand, parseTerminalCommandRun, parseTerminalInfo, parseWorkspace, parseWorkspaceActivityResponse } from "./parsers";
+import { SESSION_NOTIFICATION_LIMIT, SESSION_NOTIFICATION_MESSAGE_BYTES, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH } from "../../../shared/apiTypes";
+import { parseAuthProvidersResponse, parseCommandResult, parseFileContentResponse, parseFileSuggestion, parseGitStatusResponse, parseMachineRuntime, parseMessagePage, parseOAuthFlowState, parsePiPackageMutationResponse, parsePiPackagesResponse, parsePiWebConfigResponse, parsePiWebPluginsResponse, parsePiWebRuntimeResponse, parsePiWebStatusResponse, parseSessionBulkArchiveResponse, parseSessionBulkDeleteArchivedResponse, parseSessionCleanupExecuteResponse, parseSessionCleanupPreviewResponse, parseSessionInfo, parseSessionNotificationInboxEvent, parseSessionNotificationInboxSnapshot, parseSessionStatus, parseSessionStreamSnapshot, parseSessionTreeNavigateResult, parseSessionTreeSnapshot, parseSessionUnreadCatalogSnapshot, parseSessionUnreadEvent, parseSlashCommand, parseTerminalCommandRun, parseTerminalInfo, parseWorkspace, parseWorkspaceActivityResponse } from "./parsers";
+import { parseSafeTunnelLoginResponse, parseSafeTunnelOperationResponse, parseSafeTunnelStartResponse, parseSafeTunnelStatusResponse, parseSafeTunnelStopResponse } from "./parsers";
 
 describe("API parsers", () => {
   it("preserves additive interactive API-key flow hints and defaults legacy options", () => {
@@ -289,6 +290,78 @@ describe("API parsers", () => {
     expect(() => parseSessionStreamSnapshot({ partial: null })).toThrow("Expected number field: seq");
   });
 
+  it("strictly parses unread snapshots and identity-matched deltas", () => {
+    const newest = { sessionId: "session-2", cwd: "/repo", completionOrder: 2, completedAt: "2026-07-20T00:00:02.000Z" };
+    const oldest = { sessionId: "session-1", cwd: "/repo", completionOrder: 1, completedAt: "2026-07-20T00:00:01.000Z" };
+    expect(parseSessionUnreadCatalogSnapshot({ catalogId: "catalog-a", catalogRevision: 2, sessions: [newest, oldest] })).toEqual({
+      catalogId: "catalog-a",
+      catalogRevision: 2,
+      sessions: [newest, oldest],
+    });
+    expect(parseSessionUnreadEvent({
+      type: "sessions.unread",
+      catalogId: "catalog-a",
+      catalogRevision: 3,
+      sessionId: newest.sessionId,
+      cwd: newest.cwd,
+      unread: newest,
+    })).toMatchObject({ type: "sessions.unread", unread: newest });
+    expect(parseSessionUnreadEvent({
+      type: "sessions.unread",
+      catalogId: "catalog-a",
+      catalogRevision: 4,
+      sessionId: newest.sessionId,
+      cwd: newest.cwd,
+      unread: null,
+    })).toMatchObject({ type: "sessions.unread", unread: null });
+  });
+
+  it("rejects malformed, duplicate, unsorted, and mismatched unread payloads", () => {
+    const summary = { sessionId: "session-1", cwd: "/repo", completionOrder: 1, completedAt: "2026-07-20T00:00:01.000Z" };
+    expect(() => parseSessionUnreadCatalogSnapshot({ catalogId: "catalog-a", catalogRevision: 2, sessions: [summary, summary] })).toThrow("Duplicate session unread identity");
+    expect(() => parseSessionUnreadCatalogSnapshot({
+      catalogId: "catalog-a",
+      catalogRevision: 2,
+      sessions: [summary, { ...summary, sessionId: "session-2", completionOrder: 2 }],
+    })).toThrow("not newest-first");
+    expect(() => parseSessionUnreadCatalogSnapshot({ catalogId: "catalog-a", catalogRevision: 1, sessions: [{ ...summary, completedAt: "never" }] })).toThrow("Invalid canonical session unread completion time");
+    expect(() => parseSessionUnreadCatalogSnapshot({ catalogId: "catalog-a", catalogRevision: 1, sessions: [{ ...summary, completedAt: "2026-07-20" }] })).toThrow("Invalid canonical session unread completion time");
+    expect(() => parseSessionUnreadCatalogSnapshot({
+      catalogId: "x".repeat(SESSION_UNREAD_CATALOG_ID_MAX_LENGTH + 1),
+      catalogRevision: 0,
+      sessions: [],
+    })).toThrow("String field exceeds limit: catalogId");
+    expect(() => parseSessionUnreadCatalogSnapshot({
+      catalogId: "catalog-a",
+      catalogRevision: 0,
+      sessions: [summary],
+    })).toThrow("completion order exceeds catalog revision");
+    expect(() => parseSessionUnreadEvent({
+      type: "sessions.unread",
+      catalogId: "catalog-a",
+      catalogRevision: 1,
+      sessionId: "session-1",
+      cwd: "/repo",
+      unread: { ...summary, completionOrder: 2 },
+    })).toThrow("completion order exceeds catalog revision");
+    expect(() => parseSessionUnreadEvent({
+      type: "sessions.unread",
+      catalogId: "catalog-a",
+      catalogRevision: 1,
+      sessionId: "other-session",
+      cwd: "/repo",
+      unread: summary,
+    })).toThrow("identity mismatch");
+    expect(() => parseSessionUnreadEvent({
+      type: "sessions.unread",
+      catalogId: "catalog-a",
+      catalogRevision: 0,
+      sessionId: "session-1",
+      cwd: "/repo",
+      unread: null,
+    })).toThrow("positive safe integer");
+  });
+
   it("parses session cleanup preview and execute responses", () => {
     const preview = {
       generatedAt: "2026-06-25T12:00:00.000Z",
@@ -505,6 +578,28 @@ describe("API parsers", () => {
     expect(() => parseGitStatusResponse({ isGitRepo: true, hash: "h", files: [{ path: "a", index: "weird", workingTree: "modified" }] })).toThrow("Invalid git file state");
   });
 
+  it("parses submodule paths and pointer commit fields", () => {
+    const parsed = parseGitStatusResponse({
+      isGitRepo: true,
+      hash: "h",
+      branch: "main",
+      files: [
+        { path: "HARL", index: "unmodified", workingTree: "modified", submoduleFromCommit: "1111111", submoduleToCommit: "2222222" },
+        { path: "HARL/inner.txt", index: "modified", workingTree: "modified" },
+      ],
+      submodules: ["HARL"],
+    });
+    expect(parsed.submodules).toEqual(["HARL"]);
+    expect(parsed.files[0]?.submoduleFromCommit).toBe("1111111");
+    expect(parsed.files[0]?.submoduleToCommit).toBe("2222222");
+    expect(parsed.files[1]?.submoduleFromCommit).toBeUndefined();
+  });
+
+  it("defaults submodules to an empty list when absent", () => {
+    const parsed = parseGitStatusResponse({ isGitRepo: true, hash: "h", files: [] });
+    expect(parsed.submodules).toEqual([]);
+  });
+
   it("validates file content responses", () => {
     const textFile = {
       path: "README.md",
@@ -580,10 +675,41 @@ describe("API parsers", () => {
   });
 
   it("parses command result variants", () => {
+    const tree = sessionTreeWire();
     expect(parseCommandResult({ type: "unsupported", message: "nope" })).toEqual({ type: "unsupported", message: "nope" });
     expect(parseCommandResult({ type: "select", requestId: "r1", title: "Pick", options: [{ value: "v", label: "Label", description: "desc" }] })).toEqual({ type: "select", requestId: "r1", title: "Pick", options: [{ value: "v", label: "Label", description: "desc" }] });
+    expect(parseCommandResult({ type: "tree", tree })).toEqual({ type: "tree", tree });
     expect(parseCommandResult({ type: "done", message: "ok", promptDraft: "resend me" })).toEqual({ type: "done", message: "ok", promptDraft: "resend me" });
     expect(() => parseCommandResult({ type: "later" })).toThrow("Invalid command result type");
+  });
+
+  it("strictly parses session tree snapshots and navigation results", () => {
+    const tree = sessionTreeWire();
+    expect(parseSessionTreeSnapshot(tree)).toEqual(tree);
+    expect(parseSessionTreeNavigateResult({ cancelled: false, editorText: "edit this" })).toEqual({ cancelled: false, editorText: "edit this" });
+    expect(parseSessionTreeNavigateResult({ cancelled: false })).toEqual({ cancelled: false });
+    expect(parseSessionTreeNavigateResult({ cancelled: true, aborted: true })).toEqual({ cancelled: true, aborted: true });
+    expect(parseSessionTreeNavigateResult({ cancelled: true })).toEqual({ cancelled: true });
+    expect(parseSessionTreeNavigateResult({ cancelled: false, editorText: "edit this", operationId: "future-metadata" })).toEqual({ cancelled: false, editorText: "edit this" });
+    expect(parseSessionTreeNavigateResult({ cancelled: true, aborted: true, operationId: "future-metadata" })).toEqual({ cancelled: true, aborted: true });
+
+    expect(() => parseSessionTreeSnapshot({ ...tree, activeLeafId: undefined })).toThrow("activeLeafId");
+    expect(() => parseSessionTreeSnapshot({ ...tree, activeLeafId: "missing" })).toThrow("activeLeafId");
+    expect(() => parseSessionTreeSnapshot({ ...tree, activeLeafId: "   " })).toThrow("activeLeafId");
+    expect(() => parseSessionTreeSnapshot({ ...tree, activePathIds: ["root", 2] })).toThrow("activePathIds");
+    expect(() => parseSessionTreeSnapshot({ ...tree, activePathIds: ["   "] })).toThrow("activePathIds");
+    expect(() => parseSessionTreeSnapshot({ ...tree, nodes: [{ ...tree.nodes[0], id: "   " }] })).toThrow("id");
+    expect(() => parseSessionTreeSnapshot({ ...tree, nodes: [{ ...tree.nodes[0], parentId: undefined }] })).toThrow("parentId");
+    expect(() => parseSessionTreeSnapshot({ ...tree, nodes: [{ ...tree.nodes[0], parentId: "   " }] })).toThrow("parentId");
+    expect(() => parseSessionTreeSnapshot({ ...tree, nodes: [tree.nodes[0], tree.nodes[0]] })).toThrow("Duplicate session tree node id");
+    expect(() => parseSessionTreeSnapshot({ ...tree, nodes: [{ ...tree.nodes[0], kind: "future-kind" }] })).toThrow("Invalid session tree node kind");
+    expect(() => parseSessionTreeNavigateResult({ cancelled: true, editorText: "wrong branch" })).toThrow("editorText");
+    expect(() => parseSessionTreeNavigateResult({ cancelled: false, aborted: true })).toThrow("aborted");
+    expect(() => parseSessionTreeNavigateResult({ cancelled: false, editorText: 42 })).toThrow("editorText");
+    expect(() => parseSessionTreeNavigateResult({ cancelled: true, aborted: "yes" })).toThrow("aborted");
+    expect(() => parseSessionTreeNavigateResult({ cancelled: false, summaryEntry: { raw: true } })).toThrow("summaryEntry");
+    expect(() => parseSessionTreeNavigateResult({ cancelled: true, summaryEntry: { raw: true } })).toThrow("summaryEntry");
+    expect(() => parseSessionTreeNavigateResult({ editorText: "missing discriminator" })).toThrow("cancelled");
   });
 
   it("strictly parses selected notification snapshots and realtime events", () => {
@@ -629,6 +755,36 @@ describe("API parsers", () => {
     })).toThrow("Invalid notification clear reason");
   });
 });
+
+function sessionTreeWire() {
+  const kinds = [
+    "user",
+    "assistant",
+    "tool-result",
+    "bash",
+    "custom-message",
+    "compaction",
+    "branch-summary",
+    "model-change",
+    "thinking-level-change",
+    "session-info",
+    "label",
+    "custom",
+    "other",
+  ] as const;
+  const nodes = kinds.map((kind, index) => ({
+    id: `entry-${String(index)}`,
+    parentId: index === 0 ? null : `entry-${String(index - 1)}`,
+    kind,
+    summary: `${kind} summary`,
+    ...(index === 0 ? { timestamp: "2026-07-20T00:00:00.000Z", label: "root label" } : {}),
+  }));
+  return {
+    nodes,
+    activeLeafId: nodes.at(-1)?.id ?? null,
+    activePathIds: nodes.map((node) => node.id),
+  };
+}
 
 function notificationWire(order: number, severity: "info" | "warning" | "error" = "info") {
   return {

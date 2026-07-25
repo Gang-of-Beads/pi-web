@@ -46,6 +46,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 describe("machine-scoped runtime API", () => {
@@ -227,6 +228,29 @@ describe("Pi package API", () => {
 });
 
 describe("session API compatibility", () => {
+  it("reads and acknowledges daemon-owned unread state through encoded machine routes", async () => {
+    const unread = {
+      catalogId: "catalog-a",
+      catalogRevision: 1,
+      sessions: [{ sessionId: "s /?", cwd: "/repo", completionOrder: 1, completedAt: "2026-07-20T00:00:01.000Z" }],
+    };
+    const cleared = { catalogId: "catalog-a", catalogRevision: 2, sessions: [] };
+    const fetchMock = stubSequenceFetch([jsonResponse(unread), jsonResponse(cleared)]);
+
+    await expect(sessionsApi.unreadCatalog("remote a")).resolves.toEqual(unread);
+    await expect(sessionsApi.acknowledgeUnread({ id: "s /?", cwd: "/repo" }, "catalog-a", 1, "remote a")).resolves.toEqual(cleared);
+
+    expect(fetchCall(fetchMock, 0)[0]).toBe("https://pi.example.test/api/machines/remote%20a/sessions/unread");
+    expect(fetchCall(fetchMock, 0)[1]?.cache).toBe("no-store");
+    expect(fetchCall(fetchMock, 1)[0]).toBe("https://pi.example.test/api/machines/remote%20a/sessions/s%20%2F%3F/unread/acknowledge");
+    expect(fetchCall(fetchMock, 1)[1]?.method).toBe("POST");
+    expect(JSON.parse(requestBody(fetchCall(fetchMock, 1)[1]))).toEqual({
+      cwd: "/repo",
+      catalogId: "catalog-a",
+      throughCompletionOrder: 1,
+    });
+  });
+
   it("posts session cleanup preview and execute requests through the selected machine", async () => {
     const preview = { generatedAt: "2026-06-25T12:00:00.000Z", thresholds: { archiveIdleDays: 7 }, projects: [{ cwd: "/repo", archiveCount: 2, deleteCount: 0 }], totals: { archiveCount: 2, deleteCount: 0 } };
     const executed = { ...preview, archivedSessionIds: ["s1", "s2"], deletedSessionIds: [] };
@@ -311,6 +335,34 @@ describe("session API compatibility", () => {
     expect(url).toBe("https://pi.example.test/api/machines/remote%20%2F%3F/sessions/s%20%2F%3F/queue/clear");
     expect(init?.method).toBe("POST");
     expect(JSON.parse(requestBody(init))).toEqual({ cwd: "/repo with spaces" });
+  });
+
+  it("posts session tree navigation through an encoded cwd-scoped machine route", async () => {
+    const fetchMock = stubJsonFetch({ cancelled: false, editorText: "edit this" });
+    const navigation = { targetId: "entry /?", expectedLeafId: "leaf-1", summary: { mode: "custom" as const, instructions: "focus on tests" } };
+
+    await expect(sessionsApi.navigateTree({ id: "s /?", cwd: "/repo with spaces" }, navigation, "remote /?")).resolves.toEqual({ cancelled: false, editorText: "edit this" });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, init] = fetchCall(fetchMock, 0);
+    expect(url).toBe("https://pi.example.test/api/machines/remote%20%2F%3F/sessions/s%20%2F%3F/tree/navigate");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(requestBody(init))).toEqual({ cwd: "/repo with spaces", ...navigation });
+  });
+
+  it("keeps session tree navigation under a canonical nested deployment base", async () => {
+    vi.stubEnv("BASE_URL", "./");
+    vi.stubGlobal("document", { baseURI: "https://pi.example.test/nested/pi-web/" });
+    const fetchMock = stubJsonFetch({ cancelled: false });
+
+    await sessionsApi.navigateTree(
+      { id: "session /?", cwd: "/nested/repo" },
+      { targetId: "entry-1", expectedLeafId: "leaf-1", summary: { mode: "none" } },
+      "remote /?",
+    );
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchCall(fetchMock, 0)[0]).toBe("https://pi.example.test/nested/pi-web/api/machines/remote%20%2F%3F/sessions/session%20%2F%3F/tree/navigate");
   });
 
   it("reads a session stream snapshot through an encoded machine route with cwd context", async () => {

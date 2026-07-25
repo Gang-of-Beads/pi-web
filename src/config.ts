@@ -266,6 +266,21 @@ export function subsessionsEnabled(env: NodeJS.ProcessEnv = process.env, config:
   return config.subsessions ?? false;
 }
 
+const OFFLINE_ENV_KEYS = ["PI_WEB_OFFLINE", "PI_OFFLINE"] as const;
+
+/**
+ * Whether the operator asked PI WEB (or pi itself) to stay offline, meaning
+ * background network access must be skipped. Matches the "set and non-empty"
+ * semantics used for the other runtime-only env switches.
+ *
+ * Deliberately narrower than `piWebStatus`'s update-check suppression: the
+ * `*_SKIP_VERSION_CHECK` keys only silence release lookups, while these keys ask
+ * for no background network at all.
+ */
+export function offlineModeEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return OFFLINE_ENV_KEYS.some((key) => isEnvSet(env[key]));
+}
+
 function parseString(value: unknown, key: string, path: string): string {
   if (typeof value !== "string" || value === "") throw new Error(`PI WEB config ${key} must be a non-empty string: ${path}`);
   return value;

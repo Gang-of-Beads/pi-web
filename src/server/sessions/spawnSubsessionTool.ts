@@ -120,7 +120,7 @@ function statusLine(summary: SubsessionSummary): string {
 }
 
 function workingInspectionGuidance(sessionId: string): string {
-  return `Subsession ${sessionId} is working; partial output is withheld. Continue independent work, or call yield_to_subsessions alone and last at the join point. Completion notices wake you; do not poll.`;
+  return `Subsession ${sessionId} is working; partial output is withheld. Continue other work, or call yield_to_subsessions alone and last at the join point. Completion notices wake you; do not poll.`;
 }
 
 function renderEntry(entry: TranscriptEntry): string {
@@ -174,18 +174,18 @@ function renderTranscript(result: SubsessionReadResult): string {
  * Tools that let an agent spawn *tracked* child sessions, inspect them, and
  * explicitly yield at a join point.
  *
- * Unlike `spawn_session` (fire-and-forget peers), a subsession records its
- * parent in its session header, the parent is notified when it stops working,
- * and the parent may read its transcript/result. The tools are constructed
- * per-session, carrying the spawning cwd for project-scope validation; the
- * parent's identity is taken from the live extension context at call time.
+ * A subsession records its parent in its session header, the parent is notified
+ * when it stops working, and the parent may read its transcript/result. The
+ * tools are constructed per-session, carrying the spawning cwd for
+ * project-scope validation; the parent's identity is taken from the live
+ * extension context at call time.
  */
 export function createSubsessionToolDefinitions(spawningCwd: string, deps: SubsessionToolDeps) {
   const spawnTool = defineTool<typeof SpawnSubsessionParams, SpawnSubsessionResult>({
     name: "spawn_subsession",
     label: "Spawn subsession",
-    description: "Start a tracked child and return immediately. Continue independent work, then use yield_to_subsessions at the join point. Completion notices wake you; do not poll.",
-    promptSnippet: "spawn_subsession: tracked parallel work; continue, then join with yield_to_subsessions",
+    description: "Start a tracked child session to carry out part of the current task and return immediately. Its transcript and result are available here after it finishes.",
+    promptSnippet: "spawn_subsession: tracked child work for the current task; result available after completion",
     parameters: SpawnSubsessionParams,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const parentSessionId = ctx.sessionManager.getSessionId();
@@ -199,7 +199,7 @@ export function createSubsessionToolDefinitions(spawningCwd: string, deps: Subse
         ...(ctx.model === undefined ? {} : { model: ctx.model }),
       });
       return {
-        content: [{ type: "text", text: `Started tracked subsession ${result.sessionId} in ${result.cwd}. Continue independent work, then join with yield_to_subsessions; do not poll.` }],
+        content: [{ type: "text", text: `Started tracked subsession ${result.sessionId} in ${result.cwd}. Continue other work, then join with yield_to_subsessions; do not poll.` }],
         details: result,
       };
     },
@@ -270,9 +270,7 @@ export function createSubsessionToolDefinitions(spawningCwd: string, deps: Subse
     description: "At a join point, end this run while tracked children work; completion notices wake you. If none work, continue. Call alone and last; do not poll.",
     promptSnippet: "yield_to_subsessions: end the run at a join point; call alone and last",
     promptGuidelines: [
-      "After independent work, yield only at a join point; use spawn_session for fire-and-forget work.",
-      "Call alone and last; a mixed tool batch may continue the run.",
-      "Completion notices wake you; do not poll inspection tools.",
+      "After calling spawn_subsession, you can continue with other work. At the join point, call yield_to_subsessions alone and last; completion notices wake you, so do not poll.",
     ],
     parameters: YieldToSubsessionsParams,
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
