@@ -19,6 +19,7 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
   @property({ attribute: false }) workspaceLabelItems: (workspace: Workspace) => WorkspaceLabelItem[] = () => [];
   @property({ attribute: false }) activities: Record<string, WorkspaceActivity> = {};
   @property({ attribute: false }) deletingWorkspaceIds: string[] = [];
+  @property({ attribute: false }) unreadWorkspaceIds: ReadonlySet<string> = new Set();
   @property({ attribute: false }) onSelect?: (workspace: Workspace) => void;
   @property({ attribute: false }) onDelete?: (workspace: Workspace) => void;
   @property({ attribute: false }) onToggleCollapsed?: () => void;
@@ -46,7 +47,19 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
   protected override updated(changed: PropertyValues<this>): void {
     if (changed.has("workspaces") && this.openMenuWorkspaceId !== undefined && !this.workspaces.some((workspace) => workspace.id === this.openMenuWorkspaceId)) this.openMenuWorkspaceId = undefined;
     if (changed.has("collapsed") && this.collapsed) this.openMenuWorkspaceId = undefined;
-    if ((changed.has("selected") || changed.has("workspaces") || changed.has("collapsed")) && !this.collapsed) this.scrollSelectedIntoView();
+    if (this.shouldRevealSelectedRow(changed)) this.scrollSelectedIntoView();
+  }
+
+  /**
+   * Positive reveal triggers only: topology refreshes replace `workspaces`
+   * with a new array for the same selection and must never re-scroll. Reveal
+   * the selected row only when the selection moves to a different row (first
+   * render with a selection included) or when the section expands.
+   */
+  private shouldRevealSelectedRow(changed: PropertyValues<this>): boolean {
+    if (this.collapsed) return false;
+    if (changed.has("collapsed")) return true;
+    return changed.has("selected") && changed.get("selected")?.id !== this.selected?.id;
   }
 
   async focusSelectedOrFirst(): Promise<boolean> {
@@ -93,7 +106,8 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
 
   private renderActivity(workspace: Workspace): TemplateResult | undefined {
     const kind = workspaceActivityIndicator(workspaceActivityFor(workspace, this.activities));
-    return renderActionActivityIndicator(kind, kind === "terminal" ? "Workspace terminal active" : "Workspace active");
+    const unreadLabel = this.unreadWorkspaceIds.has(workspace.id) ? "Unread sessions in this workspace" : undefined;
+    return renderActionActivityIndicator(kind, kind === "terminal" ? "Workspace terminal active" : "Workspace active", unreadLabel);
   }
 
   private renderWorkspaceMain(label: string, items: WorkspaceLabelItem[], workspace: Workspace): TemplateResult {

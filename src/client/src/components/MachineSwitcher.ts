@@ -13,6 +13,7 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
   @property({ attribute: false }) selected?: Machine;
   @property({ attribute: false }) statuses: Record<string, MachineHealth> = {};
   @property({ attribute: false }) activities: Record<string, Record<string, WorkspaceActivity>> = {};
+  @property({ attribute: false }) unreadMachineIds: ReadonlySet<string> = new Set();
   @property({ attribute: false }) onSelect?: (machine: Machine) => void | Promise<void>;
   @property({ attribute: false }) onRemove?: (machine: Machine) => void | Promise<void>;
   @property({ attribute: false }) onFocusNextSection?: () => void | Promise<void>;
@@ -123,9 +124,11 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
 
   private renderActivity(machine: Machine): TemplateResult | undefined {
     const status = machineStatus(machine, this.statuses);
-    if (status === "offline" || status === "error") return undefined;
-    const kind = machineActivityIndicator(this.activities[machine.id]);
-    return renderActivityIndicator(kind, kind === "terminal" ? "Machine terminal active" : "Machine active");
+    // Unread survives offline: an offline machine keeps its last-known unread
+    // state (stale-but-present still counts), so only the work dot is gated.
+    const kind = status === "offline" || status === "error" ? undefined : machineActivityIndicator(this.activities[machine.id]);
+    const unreadLabel = this.unreadMachineIds.has(machine.id) ? "Unread sessions on this machine" : undefined;
+    return renderActivityIndicator(kind, kind === "terminal" ? "Machine terminal active" : "Machine active", unreadLabel);
   }
 
   private selectedMachine(): Machine | undefined {
@@ -287,6 +290,9 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     .activity-indicator.session { border-radius: 50%; background: var(--pi-success); }
     .activity-indicator.terminal { border-radius: 2px; background: var(--pi-accent); }
     .activity-indicator.sending { border-radius: 50%; background: var(--pi-warning); }
+    .activity-indicator.unread { border-radius: 50%; background: var(--pi-accent); animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--pi-accent) 20%, transparent); }
+    .unread-ring { flex: 0 0 auto; box-sizing: border-box; display: inline-grid; place-items: center; width: 9px; height: 9px; border: 1.5px solid var(--pi-accent); border-radius: 50%; }
+    .unread-ring .activity-indicator { width: 5px; height: 5px; }
     .machine-switcher-menu { position: fixed; z-index: 10000; box-sizing: border-box; min-width: min(280px, calc(100vw - 16px)); overflow: auto; padding: 4px; border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-surface); box-shadow: 0 8px 24px var(--pi-shadow); }
     .machine-option { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px; align-items: stretch; margin: 2px 0; }
     .machine-option.no-actions { grid-template-columns: minmax(0, 1fr); }

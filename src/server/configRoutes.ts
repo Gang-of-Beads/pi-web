@@ -15,6 +15,7 @@ export const SELECTED_MACHINE_CONFIG_KEYS = [
   "maxUploadBytes",
   "spawnSessions",
   "subsessions",
+  "askUser",
   "agent",
 ] as const satisfies readonly (keyof PiWebConfigValues)[];
 
@@ -131,6 +132,7 @@ function parseConfigRequest(value: unknown, agentPathHost: AgentPathHost = "curr
   const maxUploadBytes = value["maxUploadBytes"];
   const spawnSessions = value["spawnSessions"];
   const subsessions = value["subsessions"];
+  const askUser = value["askUser"];
   const agent = value["agent"];
   if (host !== undefined) {
     if (typeof host !== "string") throw new Error("PI WEB config host must be a string");
@@ -154,6 +156,10 @@ function parseConfigRequest(value: unknown, agentPathHost: AgentPathHost = "curr
     if (typeof subsessions !== "boolean") throw new Error("PI WEB config subsessions must be a boolean");
     config.subsessions = subsessions;
   }
+  if (askUser !== undefined) {
+    if (typeof askUser !== "boolean") throw new Error("PI WEB config askUser must be a boolean");
+    config.askUser = askUser;
+  }
   if (agent !== undefined) config.agent = parseAgentRequest(agent, agentPathHost);
   return config;
 }
@@ -166,6 +172,7 @@ function pickSelectedMachineConfig(config: PiWebConfigValues): PiWebConfig {
     ...(config.maxUploadBytes !== undefined ? { maxUploadBytes: config.maxUploadBytes } : {}),
     ...(config.spawnSessions !== undefined ? { spawnSessions: config.spawnSessions } : {}),
     ...(config.subsessions !== undefined ? { subsessions: config.subsessions } : {}),
+    ...(config.askUser !== undefined ? { askUser: config.askUser } : {}),
     ...(config.agent !== undefined ? { agent: config.agent } : {}),
   };
 }
@@ -241,6 +248,8 @@ function parsePiWebConfigEnvOverridesResponse(value: unknown, source: string): P
     allowedHosts: requireResponseBoolean(record, "allowedHosts", source),
     spawnSessions: requireResponseBoolean(record, "spawnSessions", source),
     subsessions: requireResponseBoolean(record, "subsessions", source),
+    // Older responses predate the ask_user tool; treat a missing flag as "not overridden".
+    askUser: optionalResponseBoolean(record, "askUser", source) ?? false,
     agentCommand: optionalResponseBoolean(record, "agentCommand", source) ?? false,
     agentDir: optionalResponseBoolean(record, "agentDir", source) ?? false,
     ...optionalAgentDirSource(record, source),
@@ -288,6 +297,7 @@ function piWebConfigEnvOverrides(env: NodeJS.ProcessEnv, config: PiWebConfig = {
     allowedHosts: isEnvSet(env["PI_WEB_ALLOWED_HOSTS"]),
     spawnSessions: isEnvSet(env["PI_WEB_SPAWN_SESSIONS"]),
     subsessions: isEnvSet(env["PI_WEB_SUBSESSIONS"]),
+    askUser: isEnvSet(env["PI_WEB_ASK_USER"]),
     agentCommand: isEnvSet(env["PI_WEB_AGENT_COMMAND"]),
     agentDir: hasAgentDirEnvOverride(env, command),
     ...(dirEnvSource === undefined ? {} : { agentDirSource: dirEnvSource }),

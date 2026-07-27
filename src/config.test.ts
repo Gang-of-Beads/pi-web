@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { DEFAULT_MAX_UPLOAD_BYTES, DEFAULT_UPLOADS_FOLDER, agentDirEnvSource, agentSessionDirEnvKeys, effectiveAgentConfig, effectivePiWebConfig, hasAgentDirEnvOverride, hasAgentSessionDirEnvOverride, loadPiWebConfig, maxUploadBytes, offlineModeEnabled, savePiWebConfig, spawnSessionsEnabled, subsessionsEnabled } from "./config.js";
+import { DEFAULT_MAX_UPLOAD_BYTES, DEFAULT_UPLOADS_FOLDER, agentDirEnvSource, agentSessionDirEnvKeys, askUserEnabled, effectiveAgentConfig, effectivePiWebConfig, hasAgentDirEnvOverride, hasAgentSessionDirEnvOverride, loadPiWebConfig, maxUploadBytes, offlineModeEnabled, savePiWebConfig, spawnSessionsEnabled, subsessionsEnabled } from "./config.js";
 
 let tempDir: string;
 let configPath: string;
@@ -182,6 +182,26 @@ describe("PI WEB config persistence", () => {
     expect(effectivePiWebConfig(testOptions()).config.uploads).toEqual({ defaultFolder: DEFAULT_UPLOADS_FOLDER });
   });
 
+  it("resolves askUser in the effective config so the runtime has a single source of truth", async () => {
+    expect(effectivePiWebConfig(testOptions()).config.askUser).toBe(true);
+
+    await writeFile(configPath, `${JSON.stringify({ askUser: false }, null, 2)}\n`, "utf8");
+
+    expect(effectivePiWebConfig(testOptions()).config.askUser).toBe(false);
+    expect(effectivePiWebConfig({ ...testOptions(), env: { ...testOptions().env, PI_WEB_ASK_USER: "1" } }).config.askUser).toBe(true);
+  });
+
+  it("round-trips the askUser key through save and load", () => {
+    expect(savePiWebConfig({ askUser: false }, testOptions()).config).toEqual({ askUser: false });
+    expect(loadPiWebConfig(testOptions()).config).toEqual({ askUser: false });
+  });
+
+  it("rejects a non-boolean askUser key", async () => {
+    await writeFile(configPath, `${JSON.stringify({ askUser: "yes" }, null, 2)}\n`, "utf8");
+
+    expect(() => loadPiWebConfig(testOptions())).toThrow("PI WEB config askUser must be a boolean");
+  });
+
   it("rejects upload defaults that are not workspace-relative", async () => {
     await writeFile(configPath, `${JSON.stringify({ uploads: { defaultFolder: "../outside" } }, null, 2)}\n`, "utf8");
 
@@ -230,6 +250,25 @@ describe("subsessionsEnabled", () => {
   it("lets the env var override the config in both directions", () => {
     expect(subsessionsEnabled({ PI_WEB_SUBSESSIONS: "1" }, { subsessions: false })).toBe(true);
     expect(subsessionsEnabled({ PI_WEB_SUBSESSIONS: "0" }, { subsessions: true })).toBe(false);
+  });
+});
+
+describe("askUserEnabled", () => {
+  it("is on by default because the user is present for every ask", () => {
+    expect(askUserEnabled({}, {})).toBe(true);
+  });
+
+  it("honors an explicit config opt-out", () => {
+    expect(askUserEnabled({}, { askUser: false })).toBe(false);
+  });
+
+  it("lets the env var override the config in both directions", () => {
+    expect(askUserEnabled({ PI_WEB_ASK_USER: "0" }, { askUser: true })).toBe(false);
+    expect(askUserEnabled({ PI_WEB_ASK_USER: "true" }, { askUser: false })).toBe(true);
+  });
+
+  it("treats an empty env value as unset", () => {
+    expect(askUserEnabled({ PI_WEB_ASK_USER: "" }, { askUser: false })).toBe(false);
   });
 });
 

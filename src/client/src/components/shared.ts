@@ -1,4 +1,5 @@
 import { css, svg, type TemplateResult } from "lit";
+import type { AskUserOutcome } from "../../../shared/apiTypes";
 import type { SessionWarningSeverity } from "../api";
 
 export function renderSessionWarningIcon(severity: SessionWarningSeverity, className: string): TemplateResult {
@@ -54,6 +55,7 @@ export type ChatPart =
   | { type: "thinking"; text: string }
   | { type: "skillInvocation"; name: string; location: string; content: string }
   | { type: "skillRead"; name: string; path: string; toolCallId?: string }
+  | { type: "askUserRecord"; outcome: AskUserOutcome }
   | { type: "toolCall"; toolCallId?: string; toolName: string; summary: string; args?: unknown }
   | ToolExecutionPart
   | { type: "toolResult"; toolCallId?: string; toolName: string; text: string; isError: boolean; content?: unknown; details?: unknown }
@@ -275,13 +277,17 @@ export const listStyles = css`
   .badge { display: inline-block; margin-left: 5px; border: 1px solid var(--pi-border); border-radius: 999px; color: var(--pi-muted); padding: 0 5px; font-size: 11px; font-weight: 400; }
   .action-activity { position: absolute; top: 5px; right: 6px; z-index: 1; display: grid; place-items: center; width: 10px; height: 10px; }
   .action-activity .activity-indicator { margin: 0; vertical-align: 0; }
-  .activity-indicator { display: inline-block; width: 7px; height: 7px; margin-right: 6px; background: var(--pi-success); animation: pulse 1s ease-in-out infinite; vertical-align: 1px; }
+  .activity-indicator { flex: 0 0 auto; display: inline-block; width: 7px; height: 7px; margin-right: 6px; background: var(--pi-success); animation: pulse 1s ease-in-out infinite; vertical-align: 1px; }
   .activity-indicator.session { border-radius: 50%; background: var(--pi-success); }
   .activity-indicator.terminal { border-radius: 2px; background: var(--pi-accent); }
   /* Client-side sending (upload in flight); distinct from server activity, which propagates to workspace/machine rows. */
   .activity-indicator.sending { border-radius: 50%; background: var(--pi-warning); }
   /* Unread is a stable state, not ongoing work: keep it static and accent-colored. */
   .activity-indicator.unread { border-radius: 50%; background: var(--pi-accent); animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--pi-accent) 20%, transparent); }
+  /* Unread + ongoing work: a static accent ring wraps the still-pulsing work dot. */
+  .unread-ring { flex: 0 0 auto; box-sizing: border-box; display: inline-grid; place-items: center; width: 9px; height: 9px; margin-right: 6px; border: 1.5px solid var(--pi-accent); border-radius: 50%; vertical-align: 1px; }
+  .unread-ring .activity-indicator { width: 5px; height: 5px; margin: 0; vertical-align: 0; }
+  .action-activity .unread-ring { margin: 0; vertical-align: 0; }
   .action-menu { position: relative; align-self: stretch; }
   .action-menu-toggle { display: grid; place-items: center; height: 100%; min-width: 32px; padding: 0; color: var(--pi-muted); border-left: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; }
   .action-menu-toggle:hover { color: var(--pi-text); background: var(--pi-surface-hover); }
@@ -363,7 +369,7 @@ export const chatStyles = css`
     .notification-header { gap: 4px; padding-inline: 8px; }
     .notification-list { padding-inline: 8px; }
   }
-  .chat { height: 100%; min-height: 0; overflow: auto; overflow-anchor: none; padding: 26px 16px 64px; box-sizing: border-box; }
+  .chat { --pi-chat-sticky-top: -26px; height: 100%; min-height: 0; overflow: auto; overflow-anchor: none; padding: 26px 16px 64px; box-sizing: border-box; }
   .scroll-marker { display: block; height: 0; overflow: hidden; pointer-events: none; }
   .activity-dock { position: absolute; left: 16px; right: 16px; bottom: 12px; z-index: 20; display: flex; align-items: center; gap: 8px; min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: 999px; background: var(--pi-bg-overlay); color: var(--pi-muted); padding: 8px 12px; font-size: 13px; pointer-events: none; box-shadow: 0 8px 28px var(--pi-shadow); backdrop-filter: blur(6px); }
   .activity-dock.active { border-color: var(--pi-success-border); color: var(--pi-success); background: var(--pi-success-bg-overlay); }
@@ -374,7 +380,8 @@ export const chatStyles = css`
   .msg.assistant, .msg.tool-image-output { background: var(--pi-surface); }
   .msg.user { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
   .msg.tool { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); color: var(--pi-warning); }
-  .msg.tool-execution-shell { padding: 0; border: 0; background: transparent; color: var(--pi-text); }
+  .msg.tool-execution-shell, .msg.ask-user-record-shell { padding: 0; border: 0; background: transparent; color: var(--pi-text); }
+  .msg.ask-user-record-shell ask-user-card { margin: 0 auto; }
   .msg.system { color: var(--pi-danger); }
   .msg.bash { border-color: var(--pi-success); background: var(--pi-success-bg); }
   .msg.skill { border-color: var(--pi-purple-border); background: var(--pi-purple-surface); }
@@ -465,8 +472,8 @@ export const chatStyles = css`
 export const formattedTextStyles = css`
   :host { display: block; }
   .formatted { white-space: normal; overflow-wrap: anywhere; line-height: 1.45; text-align: start; unicode-bidi: plaintext; }
-  p, ul, ol, pre, blockquote, table, .code-block-wrapper { margin: 0 0 10px; }
-  :is(p, ul, ol, pre, blockquote, table, .code-block-wrapper):last-child { margin-bottom: 0; }
+  p, ul, ol, pre, blockquote, .table-scroll, .code-block-wrapper { margin: 0 0 10px; }
+  :is(p, ul, ol, pre, blockquote, .table-scroll, .code-block-wrapper):last-child { margin-bottom: 0; }
   ul, ol { padding-left: 22px; }
   li + li { margin-top: 3px; }
   code { border: 1px solid var(--pi-border); border-radius: 4px; background: var(--pi-bg); padding: 1px 4px; font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; direction: ltr; text-align: left; unicode-bidi: isolate; }
@@ -484,8 +491,10 @@ export const formattedTextStyles = css`
   h2 { font-size: 17px; }
   h3 { font-size: 15px; }
   h4 { font-size: 14px; }
-  table { border-collapse: collapse; display: block; overflow-x: auto; overflow-y: hidden; }
-  th, td { border: 1px solid var(--pi-border); padding: 4px 8px; }
+  .table-scroll { max-width: 100%; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
+  .table-scroll:focus-visible { outline: 1px solid var(--pi-accent); outline-offset: 2px; }
+  table { border-collapse: collapse; width: max-content; min-width: 100%; max-width: none; }
+  th, td { border: 1px solid var(--pi-border); padding: 4px 8px; max-width: 48ch; overflow-wrap: anywhere; }
   th { background: var(--pi-surface); }
 `;
 

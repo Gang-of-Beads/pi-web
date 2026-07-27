@@ -14,6 +14,7 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
   @property({ attribute: false }) selected?: Machine;
   @property({ attribute: false }) statuses: Record<string, MachineHealth> = {};
   @property({ attribute: false }) activities: Record<string, Record<string, WorkspaceActivity>> = {};
+  @property({ attribute: false }) unreadMachineIds: ReadonlySet<string> = new Set();
   @property({ type: Boolean, reflect: true }) collapsible = false;
   @property({ type: Boolean, reflect: true }) collapsed = false;
   @property({ attribute: false }) onSelect?: (machine: Machine) => void;
@@ -85,9 +86,11 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
 
   private renderActivity(machine: Machine) {
     const status = this.statuses[machine.id]?.status ?? machine.status;
-    if (status === "offline" || status === "error") return undefined;
-    const kind = machineActivityIndicator(this.activities[machine.id]);
-    return renderActionActivityIndicator(kind, kind === "terminal" ? "Machine terminal active" : "Machine active");
+    // Unread survives offline: an offline machine keeps its last-known unread
+    // state (stale-but-present still counts), so only the work dot is gated.
+    const kind = status === "offline" || status === "error" ? undefined : machineActivityIndicator(this.activities[machine.id]);
+    const unreadLabel = this.unreadMachineIds.has(machine.id) ? "Unread sessions on this machine" : undefined;
+    return renderActionActivityIndicator(kind, kind === "terminal" ? "Machine terminal active" : "Machine active", unreadLabel);
   }
 
   private renderMachineMenu(machine: Machine) {

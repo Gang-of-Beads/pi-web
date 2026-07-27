@@ -101,6 +101,7 @@
             <a href="#remote-machines">How do remote machines work?</a>
             <a href="#laptop-or-server">Laptop or server?</a>
             <a href="#plugins">Can I use local plugins?</a>
+            <a href="#worktree-list-out-of-date">A worktree I created is missing</a>
             <a href="#sessions-stop">Sessions stop unexpectedly</a>
             <a href="#logs">Where are logs?</a>
           </aside>
@@ -291,6 +292,25 @@
                 <code>$PI_WEB_DATA_DIR/plugins</code> instead.
               </p>
               <p><a href="plugins">Read the plugin guide →</a></p>
+            </article>
+
+            <article id="worktree-list-out-of-date" class="faq-item">
+              <h2>A worktree I created or deleted outside PI WEB is missing or still listed</h2>
+              <p>
+                PI WEB does not register worktrees. It lists the git worktrees of the selected project on demand, so
+                worktrees you create or delete with <code>git worktree</code>, a terminal, or another tool are picked up
+                without any adopt or import step. This works the same way on remote machines.
+              </p>
+              <p>
+                The workspace list is re-read when the PI WEB tab regains focus or becomes visible again, not
+                continuously. If a worktree appeared while you were already looking at PI WEB, switch to another window
+                or tab and back, and the list updates. Your selected workspace, session, and scroll position are kept.
+              </p>
+              <p>
+                Worktrees whose checkout directory no longer exists are hidden, so a directory you removed with
+                <code>rm -rf</code> instead of <code>git worktree remove</code> stops appearing as a selectable
+                workspace. Git still tracks it until you run <code>git worktree prune</code>.
+              </p>
             </article>
 
             <article id="sessions-stop" class="faq-item">

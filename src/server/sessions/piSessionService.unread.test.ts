@@ -588,6 +588,237 @@ describe("PiSessionService daemon-owned unread state", () => {
       await service.dispose();
     }
   });
+
+  it("clears unread on bulk archive for listed, active, and already-archived sessions while busy failures keep unread", async () => {
+    const unreadStore = new SessionUnreadStore({ createCatalogId: () => "catalog-test" });
+    for (const sessionId of ["listed-idle", "active-idle", "busy", "already-archived"]) {
+      completeStoreWork(unreadStore, sessionId, WORKSPACE_CWD);
+    }
+    const archivedRecord = { sessionId: "already-archived", cwd: "/workspace", archivedAt: "2026-01-02T00:00:00.000Z", archivePath: "/archive/already-archived.jsonl" };
+    const activeIdle = fakeRuntime("active-idle");
+    const busy = fakeRuntime("busy", { isStreaming: true });
+    const runtimes = new Map([["active-idle", activeIdle.runtime], ["busy", busy.runtime]]);
+    const service = new PiSessionService(new CapturingSessionEventHub(), {
+      agentDir: TEST_AGENT_DIR,
+      modelRuntime: testModelRuntime,
+      createAgentRuntime: (_createRuntime, options) => {
+        const runtime = runtimes.get(options.sessionManager.getSessionId());
+        if (runtime === undefined) throw new Error("Unexpected runtime creation");
+        return Promise.resolve(runtime);
+      },
+      sessionManager: {
+        create: () => fakeSessionManager(),
+        list: () => Promise.resolve([sessionRecord("listed-idle"), sessionRecord("active-idle"), sessionRecord("busy")]),
+        open: (path) => fakeSessionManager("/workspace", { getSessionId: () => path.replace(/^\/sessions\/|\.jsonl$/g, "") }),
+      },
+      archiveStore: {
+        list: () => Promise.resolve([archivedRecord]),
+        get: (sessionId) => Promise.resolve(sessionId === "already-archived" ? archivedRecord : undefined),
+        archive: () => Promise.reject(new Error("bulk archive should use archiveMany")),
+        archiveMany: (inputs: readonly { sessionId: string; cwd: string }[]) => Promise.resolve(inputs.map((input) => ({ sessionId: input.sessionId, cwd: input.cwd, archivedAt: "2026-01-03T00:00:00.000Z" }))),
+        restore: () => Promise.resolve(),
+        isArchived: (sessionId) => Promise.resolve(sessionId === "already-archived"),
+      },
+      heartbeatIntervalMs: 60_000,
+      unreadStore,
+    });
+
+    try {
+      await service.status(sessionRef("active-idle"));
+      await service.status(sessionRef("busy"));
+      const result = await service.archiveMany([
+        { id: "already-archived", cwd: "/workspace" },
+        { id: "listed-idle", cwd: "/workspace" },
+        { id: "active-idle", cwd: "/workspace" },
+        { id: "busy", cwd: "/workspace" },
+      ]);
+
+      expect(result.archivedSessionIds).toEqual(["already-archived", "listed-idle", "active-idle"]);
+      expect(result.failures).toEqual([{ sessionId: "busy", error: "Stop current session activity before archiving" }]);
+      expect(activeIdle.calls.dispose).toBe(1);
+      expect(busy.calls.abort).toBe(0);
+      expect((await service.unreadCatalog()).sessions).toMatchObject([{ sessionId: "busy", cwd: WORKSPACE_CWD }]);
+    } finally {
+      await service.dispose();
+    }
+  });
+
+  it("clears unread for the whole subtree when archiving with descendants", async () => {
+    const unreadStore = new SessionUnreadStore({ createCatalogId: () => "catalog-test" });
+    for (const sessionId of ["root", "direct-child", "archived-child", "grandchild"]) {
+      completeStoreWork(unreadStore, sessionId, WORKSPACE_CWD);
+    }
+    const root = sessionRecord("root");
+    const directChild = { ...sessionRecord("direct-child"), parentSessionPath: root.path };
+    const archivedChild = { ...sessionRecord("archived-child"), parentSessionPath: root.path };
+    const grandchild = { ...sessionRecord("grandchild"), parentSessionPath: archivedChild.path };
+    const archivedChildRecord = {
+      sessionId: "archived-child",
+      cwd: "/workspace",
+      archivedAt: "2026-01-02T00:00:00.000Z",
+      originalPath: archivedChild.path,
+      archivePath: "/archive/archived-child.jsonl",
+      parentSessionPath: root.path,
+    };
+    const fake = fakeRuntime("root", { sessionFile: root.path });
+    const service = new PiSessionService(new CapturingSessionEventHub(), {
+      agentDir: TEST_AGENT_DIR,
+      modelRuntime: testModelRuntime,
+      createAgentRuntime: runtimeCreator(fake.runtime),
+      sessionManager: {
+        create: () => fakeSessionManager(),
+        list: () => Promise.resolve([root, directChild, archivedChild, grandchild]),
+        open: () => fakeSessionManager(),
+      },
+      archiveStore: {
+        list: () => Promise.resolve([archivedChildRecord]),
+        get: () => Promise.resolve(undefined),
+        archive: (input: { sessionId: string; cwd: string }) => Promise.resolve({ sessionId: input.sessionId, cwd: input.cwd, archivedAt: "2026-01-03T00:00:00.000Z" }),
+        restore: () => Promise.resolve(),
+        isArchived: () => Promise.resolve(false),
+      },
+      heartbeatIntervalMs: 60_000,
+      unreadStore,
+    });
+
+    try {
+      const result = await service.archiveTree(sessionRef("root"));
+
+      expect(result.sessionIds).toEqual(["root", "direct-child", "grandchild"]);
+      expect(result.skippedAlreadyArchivedCount).toBe(1);
+      expect((await service.unreadCatalog()).sessions).toEqual([]);
+    } finally {
+      await service.dispose();
+    }
+  });
+
+  it("clears unread for sessions archived and deleted by cleanup", async () => {
+    const unreadStore = new SessionUnreadStore({ createCatalogId: () => "catalog-test" });
+    completeStoreWork(unreadStore, "cleanup-archive", "/old-project");
+    completeStoreWork(unreadStore, "cleanup-delete", "/old-project");
+    const archivedRecord = { sessionId: "cleanup-delete", cwd: "/old-project", archivedAt: "2026-04-01T00:00:00.000Z", archivePath: "/archive/cleanup-delete.jsonl" };
+    const service = new PiSessionService(new CapturingSessionEventHub(), {
+      agentDir: TEST_AGENT_DIR,
+      modelRuntime: testModelRuntime,
+      now: () => new Date("2026-06-25T00:00:00.000Z"),
+      createAgentRuntime: () => Promise.reject(new Error("cleanup should not open runtimes")),
+      sessionManager: {
+        create: () => fakeSessionManager(),
+        list: () => Promise.resolve([]),
+        listAll: () => Promise.resolve([sessionRecord("cleanup-archive", "/old-project")]),
+        open: () => fakeSessionManager(),
+      },
+      archiveStore: {
+        list: () => Promise.resolve([archivedRecord]),
+        get: () => Promise.resolve(undefined),
+        archive: () => Promise.reject(new Error("cleanup should use archiveMany")),
+        archiveMany: (inputs: readonly { sessionId: string; cwd: string }[]) => Promise.resolve(inputs.map((input) => ({ sessionId: input.sessionId, cwd: input.cwd, archivedAt: "2026-06-25T00:00:00.000Z" }))),
+        restore: () => Promise.resolve(),
+        isArchived: () => Promise.resolve(false),
+        deleteArchived: () => Promise.reject(new Error("cleanup should use deleteArchivedMany")),
+        deleteArchivedMany: (sessionIds: readonly string[]) => Promise.resolve([...sessionIds]),
+      },
+      heartbeatIntervalMs: 60_000,
+      unreadStore,
+    });
+
+    try {
+      const result = await service.cleanup({ thresholds: { archiveIdleDays: 30, deleteArchivedDays: 30 } });
+
+      expect(result.archivedSessionIds).toEqual(["cleanup-archive"]);
+      expect(result.deletedSessionIds).toEqual(["cleanup-delete"]);
+      expect((await service.unreadCatalog()).sessions).toEqual([]);
+    } finally {
+      await service.dispose();
+    }
+  });
+
+  it("clears unread only for archived records actually removed by bulk delete", async () => {
+    const unreadStore = new SessionUnreadStore({ createCatalogId: () => "catalog-test" });
+    completeStoreWork(unreadStore, "busy-archived", WORKSPACE_CWD);
+    completeStoreWork(unreadStore, "idle-archived", WORKSPACE_CWD);
+    const busyRecord = { sessionId: "busy-archived", cwd: "/workspace", archivedAt: "2026-01-02T00:00:00.000Z", archivePath: "/archive/busy.jsonl" };
+    const idleRecord = { sessionId: "idle-archived", cwd: "/workspace", archivedAt: "2026-01-02T00:00:00.000Z", archivePath: "/archive/idle.jsonl" };
+    const busy = fakeRuntime("busy-archived", { isStreaming: true });
+    const service = new PiSessionService(new CapturingSessionEventHub(), {
+      agentDir: TEST_AGENT_DIR,
+      modelRuntime: testModelRuntime,
+      createAgentRuntime: runtimeCreator(busy.runtime),
+      sessionManager: sessionGateway([]),
+      archiveStore: {
+        list: () => Promise.resolve([busyRecord, idleRecord]),
+        get: (sessionId) => Promise.resolve(sessionId === "busy-archived" ? busyRecord : undefined),
+        archive: () => Promise.reject(new Error("archive should not be called")),
+        restore: () => Promise.resolve(),
+        isArchived: () => Promise.resolve(false),
+        deleteArchived: () => Promise.reject(new Error("bulk delete should use deleteArchivedMany")),
+        deleteArchivedMany: (sessionIds: readonly string[]) => Promise.resolve([...sessionIds]),
+      },
+      heartbeatIntervalMs: 60_000,
+      unreadStore,
+    });
+
+    try {
+      await service.status(sessionRef("busy-archived"));
+      const result = await service.deleteArchivedMany([
+        { id: "busy-archived", cwd: "/workspace" },
+        { id: "idle-archived", cwd: "/workspace" },
+      ]);
+
+      expect(result).toMatchObject({
+        deletedSessionIds: ["idle-archived"],
+        failures: [{ sessionId: "busy-archived", error: "Stop current session activity before deleting archived session" }],
+      });
+      expect((await service.unreadCatalog()).sessions).toMatchObject([{ sessionId: "busy-archived", cwd: WORKSPACE_CWD }]);
+    } finally {
+      await service.dispose();
+    }
+  });
+
+  it("does not resurrect unread when archiving an active session with a pending activity latch", async () => {
+    const unreadStore = new SessionUnreadStore({ createCatalogId: () => "catalog-test" });
+    const hub = new CapturingSessionEventHub();
+    const fake = fakeRuntime("archive-active");
+    const service = new PiSessionService(hub, {
+      agentDir: TEST_AGENT_DIR,
+      modelRuntime: testModelRuntime,
+      createAgentRuntime: runtimeCreator(fake.runtime),
+      sessionManager: sessionGateway([sessionRecord("archive-active")]),
+      archiveStore: {
+        ...emptyArchiveStore(),
+        archive: (input: { sessionId: string; cwd: string }) => Promise.resolve({ sessionId: input.sessionId, cwd: input.cwd, archivedAt: "2026-01-03T00:00:00.000Z" }),
+      },
+      heartbeatIntervalMs: 60_000,
+      unreadStore,
+    });
+
+    try {
+      await service.status(sessionRef("archive-active"));
+      completeRuntimeWork(fake);
+      expect((await service.unreadCatalog()).sessions).toMatchObject([{ sessionId: "archive-active", completionOrder: 1 }]);
+
+      // Leave a set activity latch behind: work started, then stopped without an
+      // observable end event. The archive path must not let that latch record a
+      // completion after the forget clears unread state.
+      fake.session.isStreaming = true;
+      fake.emit({ type: "agent_start" });
+      fake.session.isStreaming = false;
+
+      await service.archive(sessionRef("archive-active"));
+      expect((await service.unreadCatalog()).sessions).toEqual([]);
+      expect(unreadEvents(hub).at(-1)).toMatchObject({ sessionId: "archive-active", unread: null });
+
+      // The disposed runtime is unsubscribed before the forget, so late events
+      // cannot re-latch and manufacture a completion for the archived session.
+      fake.emit({ type: "agent_start" });
+      fake.emit({ type: "turn_end" });
+      await drainMicrotasks();
+      expect((await service.unreadCatalog()).sessions).toEqual([]);
+      expect(unreadEvents(hub).at(-1)).toMatchObject({ sessionId: "archive-active", unread: null });
+    } finally {
+      await service.dispose();
+    }
+  });
 });
 
 function completeRuntimeWork(runtime: ReturnType<typeof fakeRuntime>): void {

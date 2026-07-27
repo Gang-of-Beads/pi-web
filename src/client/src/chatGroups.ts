@@ -67,6 +67,6 @@ function toolNameFromParts(parts: ChatPart[]): string | undefined {
 
 function isReadablePart(message: ChatLine, part: ChatPart): boolean {
   if (message.source === "compaction" || message.source === "branch_summary") return false;
-  if (part.type === "skillInvocation" || part.type === "skillRead" || part.type === "image") return true;
+  if (part.type === "skillInvocation" || part.type === "skillRead" || part.type === "image" || part.type === "askUserRecord") return true;
   return part.type === "text" && (message.role === "user" || message.role === "assistant" || message.role === "system" || message.role === "bash");
 }

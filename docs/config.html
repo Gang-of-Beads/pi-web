@@ -167,17 +167,17 @@
                 Environment overrides include <code>PI_WEB_HOST</code>, <code>PI_WEB_PORT</code> / <code>PORT</code>,
                 <code>PI_WEB_ALLOWED_HOSTS</code>, <code>PI_WEB_MAX_UPLOAD_BYTES</code>, <code>PI_WEB_AGENT_COMMAND</code>,
                 <code>PI_WEB_AGENT_DIR</code>, <code>PI_WEB_AGENT_SESSION_DIR</code>, <code>PI_CODING_AGENT_DIR</code> /
-                <code>PI_CODING_AGENT_SESSION_DIR</code> for Pi compatibility, <code>PI_WEB_SPAWN_SESSIONS</code>, and
-                <code>PI_WEB_SUBSESSIONS</code>.
+                <code>PI_CODING_AGENT_SESSION_DIR</code> for Pi compatibility, <code>PI_WEB_SPAWN_SESSIONS</code>,
+                <code>PI_WEB_SUBSESSIONS</code>, and <code>PI_WEB_ASK_USER</code>.
               </p>
               <ul>
                 <li><code>host</code> / <code>port</code>: restart the gateway web/API service or process.</li>
                 <li><code>maxUploadBytes</code>: restart both the web/API process and the session daemon on that machine.</li>
-                <li><code>agent.command</code> / <code>agent.dir</code> / <code>spawnSessions</code> / <code>subsessions</code>: restart the session daemon on that machine.</li>
+                <li><code>agent.command</code> / <code>agent.dir</code> / <code>spawnSessions</code> / <code>subsessions</code> / <code>askUser</code>: restart the session daemon on that machine.</li>
                 <li><code>pathAccess</code>: applies on the next request; existing file views may need a browser refresh.</li>
                 <li><code>uploads.defaultFolder</code>: applies to newly opened Files upload dialogs and new direct drag/drop batches after config/workspace refresh.</li>
                 <li><code>plugins</code>: reload the browser tab after changing PI WEB plugin enablement.</li>
-                <li>Pi package install/remove/update: not a PI WEB config key; after a mutation, type <code>/reload</code> in each idle PI WEB session on the target machine to refresh ordinary Pi resources such as extensions, skills, prompt templates, themes, and context/system prompt files. Reload the browser page separately for PI WEB browser plugin changes. If a global Pi extension adds, removes, or changes a provider, manually restart <code>pi-web-sessiond.service</code>; <code>/reload</code> cannot change the startup provider baseline. See <a href="#pi-extension-provider-baseline">Pi extension provider baseline</a>.</li>
+                <li>Pi package install/remove/update: not a PI WEB config key; after a mutation, type <code>/reload</code> in each idle PI WEB session on the target machine to refresh ordinary Pi resources such as extensions, skills, prompt templates, themes, and context/system prompt files. Reload the browser page separately for PI WEB browser plugin changes. If a global Pi extension adds or removes a provider, or changes a provider's connection settings, manually restart <code>pi-web-sessiond.service</code>; <code>/reload</code> cannot change the startup provider baseline. A known provider refreshing only its own model list is applied without a restart. See <a href="#pi-extension-provider-baseline">Pi extension provider baseline</a>.</li>
                 <li><code>shortcuts</code>: saved settings apply in the browser after config refresh/save.</li>
               </ul>
             </section>
@@ -212,6 +212,7 @@
   },
   "spawnSessions": true,
   "subsessions": false,
+  "askUser": true,
   "plugins": {
     "workspace-tasks": { "enabled": true },
     "updates": { "enabled": true },
@@ -269,7 +270,7 @@
                 it, and whether project-local config overrides or merges with global config. Rows with JSON key
                 <code>—</code> are runtime-only environment variables, not config-file keys. <code>Global</code> means
                 machine-global. In Settings, selected-machine-safe global keys (<code>pathAccess</code>, <code>uploads</code>,
-                <code>maxUploadBytes</code>, <code>agent</code>, <code>spawnSessions</code>, <code>subsessions</code>, and <code>plugins</code>)
+                <code>maxUploadBytes</code>, <code>agent</code>, <code>spawnSessions</code>, <code>subsessions</code>, <code>askUser</code>, and <code>plugins</code>)
                 are edited for the selected machine; gateway host/port/allowed-hosts, keyboard shortcuts, and machine
                 registry/tokens stay local.
               </p>
@@ -365,6 +366,14 @@
                       <td><code>PI_WEB_SUBSESSIONS</code></td>
                       <td>Global/session daemon</td>
                       <td>Not supported locally; also requires <code>spawnSessions</code></td>
+                      <td>Restart session daemon on that machine</td>
+                    </tr>
+                    <tr>
+                      <td>Agent can post question forms</td>
+                      <td><code>askUser</code></td>
+                      <td><code>PI_WEB_ASK_USER</code></td>
+                      <td>Global/session daemon</td>
+                      <td>Not supported locally</td>
                       <td>Restart session daemon on that machine</td>
                     </tr>
                     <tr>
@@ -628,18 +637,59 @@
                 providers from the active agent directory's <code>models.json</code>.
               </p>
               <p>
-                After startup capture, every later Pi extension provider registration, native registration, and
-                unregistration is a no-op, regardless of source or provider ID. This includes global extensions replayed
-                while sessions load, project extensions attempting to add or replace a provider, same-ID replacement or
-                unregistration, lifecycle callbacks such as <code>session_start</code>, and <code>/reload</code>. The
-                captured provider stays unchanged while non-provider Pi extension features continue to load and reload
-                normally.
+                After startup capture, a provider's connection settings are fixed for the daemon lifetime. Later
+                attempts to add a provider, replace an existing provider's configuration, register a native provider, or
+                unregister a provider are no-ops, regardless of source or provider ID. This includes project extensions
+                attempting to add or replace a provider, lifecycle callbacks such as <code>session_start</code>, and
+                <code>/reload</code>. Non-provider Pi extension features continue to load and reload normally.
+              </p>
+
+              <h3>Model list refresh for a known provider</h3>
+              <p>
+                One narrow update is applied after startup: a provider captured in the baseline may refresh
+                <strong>its own model list</strong>. Extensions that fetch an updated catalog typically re-send their
+                complete provider configuration, so PI WEB compares the incoming registration against the recorded
+                baseline and applies it only when both hold:
+              </p>
+              <ul>
+                <li>the provider ID is already in the startup baseline, and</li>
+                <li>
+                  every field except the model list is unchanged — <code>name</code>, <code>baseUrl</code>,
+                  <code>apiKey</code>, <code>api</code>, <code>streamSimple</code>, <code>headers</code>,
+                  <code>authHeader</code>, <code>oauth</code>, and <code>refreshModels</code>.
+                </li>
+              </ul>
+              <p>
+                Anything else stays a no-op, including a provider that was not in the baseline and a known provider
+                whose credentials, base URL, or API surface differ from startup. Function-valued fields cannot be
+                compared by value, so a registration that supplies a new <code>streamSimple</code>,
+                <code>refreshModels</code>, or <code>oauth</code> implementation is treated as a change and ignored.
               </p>
               <p>
-                Ignored mutations are written to the session-daemon log once per operation and provider ID. The log entry
-                contains no provider configuration or credentials, and PI WEB does not show a session warning or
-                notification. This prevents accidental provider, configuration, or credential contamination between
-                projects; it is not a security boundary because Pi extensions remain trusted daemon code.
+                An applied refresh becomes the new comparison point, so a provider can refresh repeatedly. Re-sending an
+                unchanged model list is a replay rather than an update and is ignored. Refreshed models are visible to
+                sessions immediately; no restart and no network request is involved, because the extension has already
+                produced the catalog.
+              </p>
+              <p>
+                Model lists are shared daemon-wide state. If extensions in two workspaces register different model lists
+                for the same provider ID, the last registration wins. A model entry may also carry its own
+                <code>baseUrl</code> and <code>headers</code>, which take precedence over the provider-level values for
+                that model, so an accepted refresh can change where requests for those models are sent. Both are
+                accepted trade-offs: a catalog is treated as a property of the provider rather than of the project, and
+                Pi extensions are trusted daemon code.
+              </p>
+
+              <h3>Provider decisions in the daemon log</h3>
+              <p>
+                Ignored mutations are written to the session-daemon log once per operation and provider ID, so a
+                replaying extension cannot flood the log. Applied model list refreshes are logged every time, with the
+                resulting model count, because each one changes shared runtime state. Neither entry contains provider
+                configuration or credentials, and PI WEB does not show a session warning or notification.
+              </p>
+              <p>
+                This prevents accidental provider, configuration, or credential contamination between projects; it is
+                not a security boundary because Pi extensions remain trusted daemon code.
               </p>
               <p>
                 Configure providers before the daemon starts: use the active agent directory's
@@ -658,9 +708,16 @@
               <h2>Background model catalog refresh</h2>
               <p>
                 PI WEB shares one model runtime across all sessions, and provider model catalogs are refreshed over the
-                network only on the session daemon's own background schedule. Nothing a browser or API request triggers
-                waits on a provider catalog fetch, so a slow or unreachable provider cannot stall opening the model
-                selector, starting a session, or the auth dialogs.
+                network only on the session daemon's own background schedule. Requests never start a catalog fetch of
+                their own, so a slow or unreachable provider cannot stall opening the model selector, starting a session,
+                or the auth dialogs on its own account.
+              </p>
+              <p>
+                A refresh that is <em>already</em> in flight can still briefly delay starting or opening a session,
+                because the shared runtime is read while that refresh is running. PI WEB says so while you wait: the
+                session's activity line names the startup step it is on and adds
+                <code>provider model lists are refreshing</code> when a background refresh is running at the same time.
+                That note reports what is happening concurrently, not a proven cause.
               </p>
               <p>The session daemon runs the refresh:</p>
               <ul>
@@ -743,6 +800,42 @@
                 session daemon on that machine after changing them.
               </p>
               <p>Environment override: <code>PI_WEB_SUBSESSIONS=0|1|true|false</code>.</p>
+
+              <h3><code>askUser</code> and <code>ask_user</code></h3>
+              <p>
+                <code>askUser</code> controls whether agents receive the core <code>ask_user</code> tool. It defaults to
+                <code>true</code>; set it to <code>false</code>, or set <code>PI_WEB_ASK_USER=false</code>, to remove the
+                tool. The environment override accepts <code>0|1|true|false</code> and takes precedence over the config file.
+              </p>
+              <p>
+                Use <strong>Settings → Session daemon → Allow agents to ask questions</strong> to change
+                <code>askUser</code> on the selected machine. An environment override makes the toggle read-only.
+              </p>
+              <p>
+                The tool accepts one set of 1–20 questions. Each question has a unique <code>id</code>, its
+                <code>question</code> text, optional supporting <code>detail</code>, up to 12 options with stable values and
+                user-facing labels, and an optional <code>multiple</code> flag. The browser always adds a
+                <strong>Custom</strong> free-text answer, including when the model supplies no options. No question is
+                required: the user may leave any of them unanswered.
+              </p>
+              <p>
+                Calling <code>ask_user</code> posts the whole set as one browser form and ends the current agent run
+                instead of waiting for the user. The open form is owned by the session daemon, so it survives a browser
+                disconnect, browser reload, or web/API restart while that daemon keeps running. When the user submits,
+                the answers arrive as a follow-up that wakes the session; each question is reported with its selected
+                option values or free text, or explicitly as unanswered.
+              </p>
+              <p>
+                PI WEB confirms a partial submission before sending it and names the unanswered questions. Only one ask
+                can be open per session: a later <code>ask_user</code> call supersedes the earlier one, reports that fact
+                and its unanswered questions to the model, and turns the earlier card into a read-only transcript record.
+                Submitted and cancelled asks likewise remain readable in the transcript.
+              </p>
+              <div class="callout warning">
+                <strong>Restart required:</strong> restart the session daemon after changing <code>askUser</code> or after
+                upgrading PI WEB to a version that introduces this tool. For the systemd user service, run
+                <code>systemctl --user restart pi-web-sessiond</code>.
+              </div>
             </section>
 
 

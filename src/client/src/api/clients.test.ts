@@ -285,6 +285,22 @@ describe("session API compatibility", () => {
     expect(JSON.parse(requestBody(fetchCall(fetchMock, 1)[1]))).toEqual({ sessions: [{ id: "s 1", cwd: "/repo" }] });
   });
 
+  it("carries a create's correlation token in the start request body when one is supplied", async () => {
+    const fetchMock = stubSequenceFetch([
+      jsonResponse(sessionInfoResponse("s 1")),
+      jsonResponse(sessionInfoResponse("s 2")),
+    ]);
+
+    await sessionsApi.startSession("/repo", "remote a", "pending-session-3-k2x9");
+    await sessionsApi.startSession("/repo", "remote a");
+
+    expect(fetchCall(fetchMock, 0)[0]).toBe("https://pi.example.test/api/machines/remote%20a/sessions");
+    expect(JSON.parse(requestBody(fetchCall(fetchMock, 0)[1]))).toEqual({ cwd: "/repo", startupToken: "pending-session-3-k2x9" });
+    // The token is optional, so a caller with no row to label sends none rather
+    // than an empty one.
+    expect(JSON.parse(requestBody(fetchCall(fetchMock, 1)[1]))).toEqual({ cwd: "/repo" });
+  });
+
   it("keeps legacy session-id calls free of cwd context", async () => {
     const fetchMock = stubJsonFetch({ accepted: true });
 
@@ -604,13 +620,17 @@ function requestBody(init: RequestInit | undefined): string {
   return init.body;
 }
 
+function sessionInfoResponse(id: string) {
+  return { id, path: `/tmp/${id}.jsonl`, cwd: "/repo", created: "now", modified: "now", messageCount: 0, firstMessage: "" };
+}
+
 function piWebConfigResponse(config: PiWebConfigValues) {
   return {
     path: "/tmp/pi-web/config.json",
     exists: true,
     config,
     effectiveConfig: config,
-    envOverrides: { host: false, port: false, allowedHosts: false, spawnSessions: false, subsessions: false, agentCommand: false, agentDir: false, agentSessionDir: false },
+    envOverrides: { host: false, port: false, allowedHosts: false, spawnSessions: false, subsessions: false, askUser: false, agentCommand: false, agentDir: false, agentSessionDir: false },
   };
 }
 

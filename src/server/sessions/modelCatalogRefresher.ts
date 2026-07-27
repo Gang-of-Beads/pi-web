@@ -138,6 +138,15 @@ export class ModelCatalogRefresher {
     this.queueRefresh("forced");
   }
 
+  /**
+   * Whether a network catalog refresh is running right now. Read-only: callers
+   * that report what a slow operation is concurrent with need this fact, and
+   * must not be able to change the refresh schedule by asking for it.
+   */
+  isRefreshInFlight(): boolean {
+    return this.inflight !== undefined;
+  }
+
   /** Terminal: stops the schedule, drops any queued follow-up, and aborts an in-flight run. */
   dispose(): void {
     this.disposed = true;

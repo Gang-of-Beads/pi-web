@@ -76,6 +76,24 @@ function providerRegistrationSource(providerId: string, variant = "baseline"): s
   return `pi.registerProvider(${JSON.stringify(providerId)}, ${JSON.stringify(providerConfig(providerId, variant))});`;
 }
 
+/**
+ * A catalog refresh as real provider extensions perform it: the *complete*
+ * provider config is re-sent with only `models` replaced, never a delta.
+ */
+function catalogRefreshSource(providerId: string, refreshedModelId: string, variant = "baseline"): string {
+  const config = providerConfig(providerId, variant);
+  const models = [{
+    id: refreshedModelId,
+    name: `${providerId} refreshed model`,
+    reasoning: false,
+    input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 1_000,
+    maxTokens: 100,
+  }];
+  return `pi.registerProvider(${JSON.stringify(providerId)}, ${JSON.stringify({ ...config, models })});`;
+}
+
 function nativeProviderRegistrationSource(providerId: string, variant = "baseline"): string {
   const baseUrl = providerBaseUrl(providerId, variant);
   const model = {
@@ -345,7 +363,52 @@ describe("immutable global provider bootstrap acceptance", () => {
     await expectNoProviderMutationFeedback(service, ref);
   });
 
-  it("keeps a tensorX-style startup provider while ignoring its session_start refresh", async () => {
+  it("applies a tensorX-style session_start catalog refresh from a known provider", async () => {
+    const providerId = "tensorx-style";
+    const refreshedModelId = "tensorx-style-refreshed-model";
+    const agentDir = await agentDirWithExtension(`
+      export default function (pi) {
+        ${providerRegistrationSource(providerId)}
+        pi.on("session_start", () => {
+          ${catalogRefreshSource(providerId, refreshedModelId)}
+        });
+      }
+    `);
+    const { service, runtime, logEntries } = await policyHarness({ agentDir });
+    const cwd = await tempDir("pi-web-policy-project-");
+
+    const session = await service.start(cwd);
+    const ref = { id: session.id, cwd };
+
+    expect(runtime.getModel(providerId, refreshedModelId)).toMatchObject({
+      provider: providerId,
+      baseUrl: providerBaseUrl(providerId, "baseline"),
+    });
+    expect(runtime.getModel(providerId, modelId(providerId, "baseline"))).toBeUndefined();
+    expect(runtime.getRegisteredProviderConfig(providerId)).toMatchObject({
+      baseUrl: providerBaseUrl(providerId, "baseline"),
+      apiKey: `sk-${providerId}-baseline-secret`,
+    });
+    expect(await service.availableModels(ref)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ provider: providerId, id: refreshedModelId }),
+    ]));
+    // The extension body replays its unchanged startup config when the session
+    // loads it; that is not a catalog change and stays an ignored no-op.
+    expectIgnoredMutations(logEntries, [{ operation: "registerProvider", providerId }]);
+    expect(logEntries).toContainEqual({
+      level: "info",
+      details: {
+        context: "global-provider-bootstrap",
+        operation: "registerProvider",
+        providerId,
+        modelCount: 1,
+      },
+      message: "applied models-only provider update after global bootstrap",
+    });
+    await expectNoProviderMutationFeedback(service, ref);
+  });
+
+  it("keeps a tensorX-style startup provider while ignoring a session_start config replacement", async () => {
     const providerId = "tensorx-style";
     const agentDir = await agentDirWithExtension(`
       export default function (pi) {

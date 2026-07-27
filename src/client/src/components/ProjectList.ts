@@ -14,6 +14,7 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
   @property({ attribute: false }) selected?: Project;
   @property({ attribute: false }) activities: Record<string, WorkspaceActivity> = {};
   @property({ attribute: false }) workspacesByProjectId: Record<string, Workspace[]> = {};
+  @property({ attribute: false }) unreadProjectIds: ReadonlySet<string> = new Set();
   @property({ type: Boolean, reflect: true }) collapsible = false;
   @property({ type: Boolean, reflect: true }) collapsed = false;
   @property({ attribute: false }) onSelect?: (project: Project) => void;
@@ -101,7 +102,8 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
 
   private renderActivity(project: Project) {
     const kind = projectActivityIndicator(project, this.workspacesByProjectId[project.id] ?? [], this.activities);
-    return renderActionActivityIndicator(kind, kind === "terminal" ? "Project terminal active" : "Project active");
+    const unreadLabel = this.unreadProjectIds.has(project.id) ? "Unread sessions in this project" : undefined;
+    return renderActionActivityIndicator(kind, kind === "terminal" ? "Project terminal active" : "Project active", unreadLabel);
   }
 
   private toggleMenu(projectId: string, target: EventTarget | null) {

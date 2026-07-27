@@ -1,17 +1,21 @@
 import { api as defaultApi, type Project, type Workspace } from "../api";
-import { resetWorkspaceScopedState } from "../appState";
+import { resetWorkspaceScopedState, type AppState } from "../appState";
 import { mergeCachedNewSessions } from "../cachedNewSessions";
 import { machineProjectKey } from "../machineKeys";
 import { selectedMachineId, type GetState, type RouteTarget, type SetState, type UpdateUrl } from "./types";
 import type { SessionController } from "./sessionController";
+import { TrailingRefreshCoordinator } from "./trailingRefreshCoordinator";
 import { InMemoryWorkspaceSelectionMemory, selectPreferredWorkspace, type WorkspaceSelectionMemory } from "./workspaceSelection";
 
 export interface WorkspaceControllerDependencies {
   api?: Pick<typeof defaultApi, "sessions" | "workspaces">;
+  onBackgroundError?: (message: string, error: unknown) => void;
 }
 
 export class WorkspaceController {
   private readonly api: Pick<typeof defaultApi, "sessions" | "workspaces">;
+  private readonly onBackgroundError: (message: string, error: unknown) => void;
+  private readonly topologyRefreshes = new TrailingRefreshCoordinator<string>();
 
   constructor(
     private readonly getState: GetState,
@@ -22,6 +26,7 @@ export class WorkspaceController {
     deps: WorkspaceControllerDependencies = {},
   ) {
     this.api = deps.api ?? defaultApi;
+    this.onBackgroundError = deps.onBackgroundError ?? ((message, error) => { console.warn(message, error); });
   }
 
   clearSelection(options?: { updateUrl?: boolean | undefined }) {
@@ -78,6 +83,40 @@ export class WorkspaceController {
     return workspaces;
   }
 
+  /**
+   * Re-lists the selected project's workspaces so worktrees created or removed outside
+   * PI WEB become visible, without disturbing the current selection.
+   *
+   * Deliberately never routes through `selectWorkspace`: that has no already-selected
+   * guard, so re-picking the same workspace would still call `clearActiveSession()` and
+   * `resetWorkspaceScopedState()`, closing the session socket and blanking chat, file
+   * tree, git status, and terminal selection. Callers run this on every browser resume,
+   * so applying the list through `applyProjectWorkspaces` alone is the invariant.
+   *
+   * If the selected workspace disappeared, the selection is left alone: the user is
+   * working there and the existing deletion path owns recovery.
+   */
+  async refreshSelectedProjectTopology(): Promise<void> {
+    const state = this.getState();
+    const project = state.selectedProject;
+    if (project === undefined) return;
+    const machineId = selectedMachineId(state);
+    // Callers are independent (browser resume and the plugin-facing app refresh), so two
+    // refreshes for the same machine+project can overlap. Sharing one request keeps a slow
+    // earlier response from landing last and overwriting a newer list, which would make a
+    // just-created worktree disappear again.
+    await this.topologyRefreshes.request(machineProjectKey(machineId, project.id), async () => {
+      try {
+        const workspaces = await this.api.workspaces(project.id, machineId);
+        const current = this.getState();
+        if (selectedMachineId(current) !== machineId || current.selectedProject?.id !== project.id) return;
+        this.applyProjectWorkspaces(project.id, workspaces);
+      } catch (error) {
+        this.onBackgroundError(`Failed to refresh workspaces for project ${project.id} on ${machineId}`, error);
+      }
+    });
+  }
+
   async refreshAfterWorkspaceDeleted(projectId: string, workspaceId: string): Promise<void> {
     const workspaces = await this.refreshProjectWorkspaces(projectId);
     const state = this.getState();
@@ -91,8 +130,26 @@ export class WorkspaceController {
   private applyProjectWorkspaces(projectId: string, workspaces: Workspace[]): void {
     const state = this.getState();
     const workspacesByProjectId = { ...state.workspacesByProjectId, [projectId]: workspaces };
-    if (state.selectedProject?.id === projectId) this.setState({ workspaces, workspacesByProjectId });
-    else this.setState({ workspacesByProjectId });
+    if (state.selectedProject?.id !== projectId) {
+      this.setState({ workspacesByProjectId });
+      return;
+    }
+    this.setState({ workspaces, workspacesByProjectId, ...this.refreshedSelection(state.selectedWorkspace, workspaces) });
+  }
+
+  /**
+   * Re-points `selectedWorkspace` at its refreshed entry when metadata changed outside PI WEB
+   * (a branch switched in the worktree, say), so the workspace list and the surfaces that read
+   * the selected workspace cannot disagree. Keyed by id, which is derived from the path, so
+   * this never changes *which* workspace is selected and never triggers the session/terminal
+   * teardown in `handleWorkspaceChange`. Returns nothing when the entry is gone or unchanged,
+   * so an unchanged refresh does not churn object identity into state.
+   */
+  private refreshedSelection(selected: Workspace | undefined, workspaces: Workspace[]): Pick<AppState, "selectedWorkspace"> | undefined {
+    if (selected === undefined) return undefined;
+    const refreshed = workspaces.find((candidate) => candidate.id === selected.id);
+    if (refreshed === undefined || sameWorkspaceMetadata(selected, refreshed)) return undefined;
+    return { selectedWorkspace: refreshed };
   }
 }
 
@@ -102,5 +159,14 @@ export function canDeleteWorkspace(workspace: Workspace | undefined): boolean {
 
 function selectFallbackWorkspace(workspaces: Workspace[]): Workspace | undefined {
   return workspaces.find((workspace) => workspace.isMain) ?? workspaces[0];
+}
+
+function sameWorkspaceMetadata(left: Workspace, right: Workspace): boolean {
+  return left.path === right.path
+    && left.label === right.label
+    && left.branch === right.branch
+    && left.isMain === right.isMain
+    && left.isGitRepo === right.isGitRepo
+    && left.isGitWorktree === right.isGitWorktree;
 }
 

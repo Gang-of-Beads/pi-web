@@ -1,5 +1,38 @@
 import { describe, expect, it } from "vitest";
+import { ASK_USER_ANSWERS_CUSTOM_TYPE, type AskUserOutcome } from "../../shared/apiTypes";
+import { groupChatMessages } from "./chatGroups";
 import { appendText, appendThinking, normalizeMessage, normalizeMessages, textMessage } from "./chatMessages";
+
+const askUserOutcome: AskUserOutcome = {
+  askId: "ask-1",
+  reason: "submitted",
+  askedAt: "2026-07-20T10:00:00.000Z",
+  closedAt: "2026-07-20T10:05:00.000Z",
+  questions: [
+    {
+      question: { id: "db", question: "Which database?", options: [{ value: "pg", label: "Postgres" }], allowOther: true },
+      answered: true,
+      values: ["pg"],
+    },
+    {
+      question: { id: "cache", question: "Which cache?", options: [{ value: "redis", label: "Redis" }], allowOther: true },
+      answered: false,
+      values: [],
+    },
+  ],
+  answeredCount: 1,
+  unansweredIds: ["cache"],
+  summary: "Answered 1 of 2; unanswered: cache",
+};
+
+const supersededAskUserOutcome: AskUserOutcome = {
+  ...askUserOutcome,
+  reason: "superseded",
+  questions: askUserOutcome.questions.map((record) => ({ question: record.question, answered: false, values: [] })),
+  answeredCount: 0,
+  unansweredIds: ["db", "cache"],
+  summary: "Answered 0 of 2; unanswered: db, cache",
+};
 
 describe("chat message normalization", () => {
   it("normalizes simple text messages and drops empty content", () => {
@@ -18,6 +51,45 @@ describe("chat message normalization", () => {
 
     expect(normalizeMessage(line)).toEqual([line]);
     expect(normalizeMessages([{ role: "user", content: "raw" }, line])).toEqual([textMessage("user", "raw"), line]);
+  });
+
+  it("projects ask_user answer messages into visible read-only record parts", () => {
+    const normalized = normalizeMessage({
+      role: "custom",
+      customType: ASK_USER_ANSWERS_CUSTOM_TYPE,
+      content: "model-facing answer text",
+      details: askUserOutcome,
+    });
+    const recordLine = { role: "system" as const, parts: [{ type: "askUserRecord" as const, outcome: askUserOutcome }] };
+
+    expect(normalized).toEqual([recordLine]);
+    expect(groupChatMessages(normalized)).toEqual([{ kind: "message", index: 0, message: recordLine }]);
+  });
+
+  it("falls back to model-facing text when an ask_user answer record is malformed", () => {
+    expect(normalizeMessage({
+      role: "custom",
+      customType: ASK_USER_ANSWERS_CUSTOM_TYPE,
+      content: "Answered 0 of 1; unanswered: db",
+      details: { askId: "missing-the-rest" },
+    })).toEqual([textMessage("system", "Answered 0 of 1; unanswered: db")]);
+  });
+
+  it("projects a superseded ask from the later ask_user tool result", () => {
+    const normalized = normalizeMessages([
+      { role: "assistant", content: [{ type: "toolCall", id: "ask-call", name: "ask_user", arguments: { questions: [] } }] },
+      {
+        role: "toolResult",
+        toolCallId: "ask-call",
+        toolName: "ask_user",
+        content: [{ type: "text", text: "Posted a newer question set." }],
+        details: { ask: { askId: "ask-2" }, superseded: supersededAskUserOutcome },
+        isError: false,
+      },
+    ]);
+
+    expect(normalized[1]).toEqual({ role: "tool", parts: [{ type: "askUserRecord", outcome: supersededAskUserOutcome }] });
+    expect(groupChatMessages(normalized).map((group) => group.kind)).toEqual(["group", "message"]);
   });
 
   it("normalizes tool calls and tool results", () => {

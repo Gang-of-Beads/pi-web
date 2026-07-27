@@ -15,10 +15,11 @@ export interface LoadedPiWebConfig {
   config: PiWebConfig;
 }
 
-export interface EffectivePiWebConfig extends Omit<PiWebConfig, "uploads" | "spawnSessions" | "subsessions" | "agent"> {
+export interface EffectivePiWebConfig extends Omit<PiWebConfig, "uploads" | "spawnSessions" | "subsessions" | "askUser" | "agent"> {
   uploads: NonNullable<PiWebConfig["uploads"]>;
   spawnSessions: boolean;
   subsessions: boolean;
+  askUser: boolean;
   agent: Required<NonNullable<PiWebConfig["agent"]>>;
 }
 
@@ -156,6 +157,8 @@ export function resolveEffectivePiWebConfig(loaded: LoadedPiWebConfig, options: 
       spawnSessions: spawnSessionsEnabled(env, loaded.config),
       // Beta capability, resolved off by default.
       subsessions: subsessionsEnabled(env, loaded.config),
+      // Always resolved (on by default); the user is present for every ask.
+      askUser: askUserEnabled(env, loaded.config),
       agent: { command: agent.command, dir: agent.dir },
     },
   };
@@ -178,6 +181,7 @@ export function savePiWebConfig(config: PiWebConfig, options: LoadOptions = {}):
   delete existing["maxUploadBytes"];
   delete existing["spawnSessions"];
   delete existing["subsessions"];
+  delete existing["askUser"];
   delete existing["agent"];
   const merged = { ...existing, ...piWebConfigRecord(normalized) };
   mkdirSync(dirname(path), { recursive: true });
@@ -204,6 +208,7 @@ function piWebConfigRecord(config: PiWebConfig): Record<string, unknown> {
     ...(config.maxUploadBytes !== undefined ? { maxUploadBytes: config.maxUploadBytes } : {}),
     ...(config.spawnSessions !== undefined ? { spawnSessions: config.spawnSessions } : {}),
     ...(config.subsessions !== undefined ? { subsessions: config.subsessions } : {}),
+    ...(config.askUser !== undefined ? { askUser: config.askUser } : {}),
     ...(config.agent !== undefined ? { agent: config.agent } : {}),
   };
 }
@@ -220,6 +225,7 @@ function parsePiWebConfig(value: Record<string, unknown>, path: string): PiWebCo
     ...(value["maxUploadBytes"] !== undefined ? { maxUploadBytes: parseMaxUploadBytes(value["maxUploadBytes"], "maxUploadBytes", path) } : {}),
     ...(value["spawnSessions"] !== undefined ? { spawnSessions: parseSpawnSessions(value["spawnSessions"], path) } : {}),
     ...(value["subsessions"] !== undefined ? { subsessions: parseSubsessions(value["subsessions"], path) } : {}),
+    ...(value["askUser"] !== undefined ? { askUser: parseAskUser(value["askUser"], path) } : {}),
     ...(value["agent"] !== undefined ? { agent: parseAgentConfig(value["agent"], path) } : {}),
   };
 }
@@ -264,6 +270,24 @@ export function subsessionsEnabled(env: NodeJS.ProcessEnv = process.env, config:
   const fromEnv = env["PI_WEB_SUBSESSIONS"];
   if (fromEnv !== undefined && fromEnv !== "") return fromEnv === "1" || fromEnv.toLowerCase() === "true";
   return config.subsessions ?? false;
+}
+
+function parseAskUser(value: unknown, path: string): boolean {
+  if (typeof value !== "boolean") throw new Error(`PI WEB config askUser must be a boolean: ${path}`);
+  return value;
+}
+
+/**
+ * Whether LLMs may post a question set to the browser via the ask_user tool. On
+ * by default: the questions land in the session the user is already watching and
+ * nothing happens without them acting. Set the env var `PI_WEB_ASK_USER` or the
+ * `askUser` config key to `false` to remove the tool. The env var takes
+ * precedence over the config file.
+ */
+export function askUserEnabled(env: NodeJS.ProcessEnv = process.env, config: PiWebConfig = {}): boolean {
+  const fromEnv = env["PI_WEB_ASK_USER"];
+  if (fromEnv !== undefined && fromEnv !== "") return fromEnv === "1" || fromEnv.toLowerCase() === "true";
+  return config.askUser ?? true;
 }
 
 const OFFLINE_ENV_KEYS = ["PI_WEB_OFFLINE", "PI_OFFLINE"] as const;

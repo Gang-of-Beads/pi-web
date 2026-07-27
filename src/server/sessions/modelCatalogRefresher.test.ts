@@ -329,6 +329,35 @@ describe("ModelCatalogRefresher", () => {
     refresher.dispose();
   });
 
+  it("reports an in-flight network refresh only while one is actually running", async () => {
+    const gate = deferred<RefreshResult>();
+    const refresh = vi.fn(() => gate.promise);
+    const refresher = new ModelCatalogRefresher({ runtime: { refresh } });
+
+    expect(refresher.isRefreshInFlight()).toBe(false);
+
+    refresher.requestRefresh();
+    expect(refresher.isRefreshInFlight()).toBe(true);
+
+    gate.resolve(okResult());
+    await flushMicrotasks();
+
+    expect(refresher.isRefreshInFlight()).toBe(false);
+    refresher.dispose();
+  });
+
+  it("never reports a refresh in flight in offline mode, where no refresh is ever run", async () => {
+    const runtime = createRuntime();
+    const refresher = new ModelCatalogRefresher({ runtime, offline: true, initialDelayMs: 1_000, intervalMs: 60_000 });
+
+    refresher.start();
+    refresher.requestRefresh();
+    await vi.advanceTimersByTimeAsync(300_000);
+
+    expect(refresher.isRefreshInFlight()).toBe(false);
+    refresher.dispose();
+  });
+
   it("never touches the network when offline mode is enabled", async () => {
     const runtime = createRuntime();
     const { logger, info } = createLogger();

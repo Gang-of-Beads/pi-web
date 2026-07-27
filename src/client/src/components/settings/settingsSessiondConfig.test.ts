@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { ActiveAgentProfileDescriptor, PiWebConfigResponse, PiWebConfigValues } from "../../api";
-import { agentDirFieldOverridden, agentProfileActivationState, mergeSelectedMachineSessiondConfig, spawnSessionsConfigPatch, subsessionsConfigPatch } from "./settingsSessiondConfig";
+import { agentDirFieldOverridden, agentProfileActivationState, askUserConfigPatch, mergeSelectedMachineSessiondConfig, spawnSessionsConfigPatch, subsessionsConfigPatch } from "./settingsSessiondConfig";
 
 describe("session daemon settings config helpers", () => {
   it("builds daemon-only save patches for the sessiond toggles", () => {
     expect(spawnSessionsConfigPatch(false)).toEqual({ spawnSessions: false });
     expect(subsessionsConfigPatch(true)).toEqual({ subsessions: true });
+    expect(askUserConfigPatch(false)).toEqual({ askUser: false });
   });
 
   it("compares the desired effective profile with the daemon-owned active profile", () => {
@@ -86,6 +87,7 @@ describe("session daemon settings config helpers", () => {
         allowedHosts: false,
         spawnSessions: true,
         subsessions: false,
+        askUser: false,
         agentCommand: true,
         agentDir: false,
         agentDirSource: "pi-compatibility",
@@ -121,6 +123,7 @@ function configResponse(
       allowedHosts: false,
       spawnSessions: false,
       subsessions: false,
+      askUser: false,
       agentCommand: false,
       agentDir: false,
       agentSessionDir: false,

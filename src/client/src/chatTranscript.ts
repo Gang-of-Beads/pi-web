@@ -1,4 +1,4 @@
-import { appendText, appendThinking, normalizeMessage, normalizeMessages, previewFromDetails, summarizeArgs, textMessage } from "./chatMessages";
+import { appendText, appendThinking, askUserRecordFromToolDetails, normalizeMessage, normalizeMessages, previewFromDetails, summarizeArgs, textMessage } from "./chatMessages";
 import type { ChatLine, ToolExecutionPart } from "./components/shared";
 import { appendShellChunk, finalizeShellMessage, shellStartMessage } from "./shellMessages";
 import type { SessionUiEvent } from "./sessionSocket";
@@ -82,9 +82,24 @@ function applyFinalMessage(messages: ChatLine[], rawMessage: unknown): ChatLine[
 function applyFinalLine(messages: ChatLine[], displayEnded: ChatLine): ChatLine[] {
   const skillReadIndexes = findMatchingSkillReadIndexes(messages, displayEnded);
   if (skillReadIndexes.length > 0) return replaceSkillReadLines(messages, skillReadIndexes, displayEnded);
+  const askUserRecord = displayEnded.parts.find((part) => part.type === "askUserRecord");
+  if (askUserRecord !== undefined) return reconcileFinalAskUserRecord(messages, displayEnded, askUserRecord);
   const last = messages.at(-1);
   if (last?.role !== displayEnded.role) return [...messages, displayEnded];
   if (displayEnded.role === "assistant" || sameMessageText(last, displayEnded)) return [...messages.slice(0, -1), displayEnded];
+  return [...messages, displayEnded];
+}
+
+function reconcileFinalAskUserRecord(
+  messages: ChatLine[],
+  displayEnded: ChatLine,
+  record: Extract<ChatLine["parts"][number], { type: "askUserRecord" }>,
+): ChatLine[] {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    if (lineHasAskUserRecord(messages[index], record)) {
+      return [...messages.slice(0, index), displayEnded, ...messages.slice(index + 1)];
+    }
+  }
   return [...messages, displayEnded];
 }
 
@@ -143,21 +158,45 @@ function finalizeToolExecution(messages: ChatLine[], result: ToolResultUpdate): 
       ...(preview === undefined ? {} : { preview }),
     };
   }, (line) => reconcileToolResultPresentation(line, presentation));
-  if (updated !== messages) return updated;
 
-  const preview = previewFromDetails(details);
-  const part: ToolExecutionPart = {
-    type: "toolExecution",
-    ...(toolCallId === undefined || toolCallId === "" ? {} : { toolCallId }),
-    toolName,
-    summary: summarizeArgs(content),
-    status: isError ? "error" : "success",
-    resultText: text,
-    ...(content === undefined ? {} : { content }),
-    ...(details === undefined ? {} : { details }),
-    ...(preview === undefined ? {} : { preview }),
-  };
-  return [...messages, reconcileToolResultPresentation({ role: "tool", parts: [part] }, presentation)];
+  let finalized = updated;
+  if (updated === messages) {
+    const preview = previewFromDetails(details);
+    const part: ToolExecutionPart = {
+      type: "toolExecution",
+      ...(toolCallId === undefined || toolCallId === "" ? {} : { toolCallId }),
+      toolName,
+      summary: summarizeArgs(content),
+      status: isError ? "error" : "success",
+      resultText: text,
+      ...(content === undefined ? {} : { content }),
+      ...(details === undefined ? {} : { details }),
+      ...(preview === undefined ? {} : { preview }),
+    };
+    finalized = [...messages, reconcileToolResultPresentation({ role: "tool", parts: [part] }, presentation)];
+  }
+  return reconcileAskUserToolRecord(finalized, toolName, details, presentation.meta);
+}
+
+function reconcileAskUserToolRecord(messages: ChatLine[], toolName: string, details: unknown, meta: ChatLine["meta"] | undefined): ChatLine[] {
+  const record = askUserRecordFromToolDetails(toolName, details);
+  if (record === undefined) return messages;
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const line = messages[index];
+    if (!lineHasAskUserRecord(line, record)) continue;
+    if (meta === undefined || line === undefined) return messages;
+    return [...messages.slice(0, index), { ...line, meta }, ...messages.slice(index + 1)];
+  }
+  return [...messages, { role: "tool", parts: [record], ...(meta === undefined ? {} : { meta }) }];
+}
+
+function lineHasAskUserRecord(
+  line: ChatLine | undefined,
+  record: Extract<ChatLine["parts"][number], { type: "askUserRecord" }>,
+): boolean {
+  return line?.parts.some((part) => part.type === "askUserRecord"
+    && part.outcome.askId === record.outcome.askId
+    && part.outcome.reason === record.outcome.reason) === true;
 }
 
 function updateToolExecution(

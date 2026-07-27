@@ -1,9 +1,10 @@
-import { api as defaultApi, type CommandResult, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionRef, type SessionStatus, type SessionStreamSnapshot, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Workspace } from "../api";
+import { api as defaultApi, type AskUserCloseResponse, type AskUserSubmission, type CommandResult, type PendingAskUser, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionRef, type SessionStatus, type SessionStreamSnapshot, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Workspace } from "../api";
 import type { AppState } from "../appState";
 import { forgetCachedNewSession, isCachedNewSessionInfo, markCachedNewSessionInfo, mergeCachedNewSessions, rememberCachedNewSession, stripCachedNewSessionMarker } from "../cachedNewSessions";
 import { textMessage } from "../chatMessages";
 import { machineSessionKey } from "../machineKeys";
 import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
+import { clearAskDraft } from "../askDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
 import { isShellInput } from "../inputModes";
 import { fileCompletionInsertText } from "../promptCompletions";
@@ -11,7 +12,7 @@ import { SessionSocket, type GlobalSessionEvent, type SessionUiEvent } from "../
 import { isArchivableSessionInfo, isTransientNewSessionInfo, sessionPersistenceOptionsForRuntime } from "../sessionPersistence";
 import { isSessionActive } from "../../../shared/activity";
 import { PI_WEB_CAPABILITIES, supportsPiWebCapability } from "../../../shared/capabilities";
-import type { PromptAttachmentDelivery, SessionNotificationInboxEvent } from "../../../shared/apiTypes";
+import type { PromptAttachmentDelivery, SessionNotificationInboxEvent, SessionStartupProgressEvent } from "../../../shared/apiTypes";
 import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchived, selectPreferredSession, selectionAfterArchivingSession, selectionAfterArchivingSessions, shouldDeselectAfterArchivedCollapse, type SessionSelectionMemory } from "./sessionSelection";
 import { selectedMachineId, type GetState, type SetState, type UpdateUrl } from "./types";
 import { TrailingRefreshCoordinator } from "./trailingRefreshCoordinator";
@@ -140,6 +141,7 @@ export class SessionController {
     else if (event.type === "activity.update") this.queueActivityUpdate(event.activity);
     else if (event.type === "session.created") this.applyCreatedSession(event.session);
     else if (event.type === "session.name") this.applySessionName(event.sessionId, event.name);
+    else if (event.type === "session.startup") this.queueStartupProgress(event);
   }
 
   dispose() {
@@ -159,7 +161,7 @@ export class SessionController {
     // session must not cancel the in-flight upload indicator of the session
     // that is still sending; the per-session entry is cleared by send()'s
     // finally block when the request settles.
-    this.setState({ selectedSession: undefined, messages: [], messagePageStart: 0, messagePageEnd: 0, messagePageTotal: 0, isLoadingEarlierMessages: false, status: undefined, activity: undefined, availableThinkingLevels: [], treeDialog: undefined });
+    this.setState({ selectedSession: undefined, messages: [], messagePageStart: 0, messagePageEnd: 0, messagePageTotal: 0, isLoadingEarlierMessages: false, status: undefined, activity: undefined, pendingAsk: undefined, availableThinkingLevels: [], treeDialog: undefined });
   }
 
   deselectSession(options?: { forgetRememberedSelection?: boolean | undefined; updateUrl?: boolean | undefined }) {
@@ -184,7 +186,7 @@ export class SessionController {
     this.pendingSessionStarts.set(pending.tempId, pending);
     this.insertAndSelectPendingSession(pending.session);
     try {
-      const session = await this.api.startSession(workspace.path, machineId);
+      const session = await this.api.startSession(workspace.path, machineId, pending.tempId);
       await this.resolvePendingSessionStart(pending.tempId, session);
     } catch (error) {
       this.failPendingSessionStart(pending.tempId, error);
@@ -217,6 +219,7 @@ export class SessionController {
       ...(options?.preserveTreeDialog === true ? {} : { treeDialog: undefined }),
       status: session.archived === true ? undefined : this.getState().sessionStatuses[session.id],
       activity: session.archived === true ? undefined : this.getState().sessionActivities[session.id],
+      pendingAsk: session.archived === true ? undefined : this.selectedPendingAsk(this.getState().sessionStatuses[session.id], machineId),
       availableThinkingLevels: [],
     });
     let buffered: SessionUiEvent[] | undefined;
@@ -225,7 +228,7 @@ export class SessionController {
         const page = await this.api.messages(session, { limit: MESSAGE_PAGE_SIZE }, selectedMachineId(this.getState()));
         if (seq !== this.selectionSeq || this.getState().selectedSession?.id !== session.id) return;
         const history = this.transcripts.mergeHistory(transcriptKey, page);
-        this.setState({ ...history, isLoadingEarlierMessages: false, status: undefined, activity: undefined });
+        this.setState({ ...history, isLoadingEarlierMessages: false, status: undefined, activity: undefined, pendingAsk: undefined });
         this.onSelectedSessionReady?.({ machineId, session });
         if (options?.updateUrl !== false) this.updateUrl();
         return;
@@ -662,7 +665,7 @@ export class SessionController {
         sessions: nextSessions,
         sessionStatuses: omitKeys(state.sessionStatuses, affectedIds),
         sessionActivities: omitKeys(state.sessionActivities, affectedIds),
-        ...(selectedAffected ? { status: undefined, activity: undefined } : {}),
+        ...(selectedAffected ? { status: undefined, activity: undefined, pendingAsk: undefined } : {}),
       });
 
       if (state.selectedSession !== undefined && deletedIdSet.has(state.selectedSession.id)) {
@@ -883,6 +886,36 @@ export class SessionController {
     }
   }
 
+  /** Send the answers the user entered for the session's open ask. */
+  submitAsk(askId: string, submission: AskUserSubmission): Promise<void> {
+    return this.closeOpenAsk(askId, (session, machineId) => this.api.submitAsk(session, askId, submission, machineId));
+  }
+
+  /** Close the session's open ask without answering it. */
+  cancelAsk(askId: string): Promise<void> {
+    return this.closeOpenAsk(askId, (session, machineId) => this.api.cancelAsk(session, askId, machineId));
+  }
+
+  private async closeOpenAsk(askId: string, close: (session: SessionInfo, machineId: string) => Promise<AskUserCloseResponse>): Promise<void> {
+    const state = this.getState();
+    const session = state.selectedSession;
+    if (session === undefined || session.archived === true || isClientPendingStartSessionInfo(session)) return;
+    const machineId = selectedMachineId(state);
+    const selectionSeq = this.selectionSeq;
+    try {
+      const response = await close(session, machineId);
+      // The ask is gone either way: this call closed it, or it was already
+      // closed elsewhere. Its draft has nothing left to protect, and the answers
+      // now live in the daemon-owned outcome.
+      clearAskDraft(machineSessionKey(machineId, session.id), askId);
+      // Both outcomes carry the recomputed status, so no follow-up status
+      // request is needed to learn what the session's open ask is now.
+      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.applyStatus(response.sessionStatus);
+    } catch (error) {
+      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState({ error: String(error) });
+    }
+  }
+
   async stopActiveWork() {
     const session = this.getState().selectedSession;
     if (!session) return;
@@ -1041,6 +1074,7 @@ export class SessionController {
       isLoadingEarlierMessages: false,
       status: undefined,
       activity,
+      pendingAsk: undefined,
       availableThinkingLevels: [],
       treeDialog: undefined,
       ...(activity === undefined ? {} : { sessionActivities: { ...state.sessionActivities, [session.id]: activity } }),
@@ -1081,7 +1115,7 @@ export class SessionController {
       sessionActivities: omitSessionActivity(state.sessionActivities, tempId),
       sendingPrompts: moveRecordKey(state.sendingPrompts, tempId, cachedSession.id),
       clientQueuedSessionMessages: moveRecordKey(state.clientQueuedSessionMessages, tempId, cachedSession.id),
-      ...(wasSelected ? { selectedSession: cachedSession, status: state.sessionStatuses[cachedSession.id], activity: state.sessionActivities[cachedSession.id] } : {}),
+      ...(wasSelected ? { selectedSession: cachedSession, status: state.sessionStatuses[cachedSession.id], activity: state.sessionActivities[cachedSession.id], pendingAsk: this.selectedPendingAsk(state.sessionStatuses[cachedSession.id], pending.machineId) } : {}),
       error: "",
     });
     this.applyReleasedCreatedSessions(releasedCreatedSessions, pending.machineId);
@@ -1224,14 +1258,49 @@ export class SessionController {
 
   private applyStatus(status: SessionStatus) {
     const state = this.getState();
+    const isSelected = state.selectedSession?.id === status.sessionId;
     const clearsStaleActivity = state.sessionActivities[status.sessionId]?.phase === "active" && !isSessionActive(status);
     this.setState({
       sessionStatuses: { ...state.sessionStatuses, [status.sessionId]: status },
       ...sessionMessageCountPatch(state, status.sessionId, status.messageCount),
       ...(clearsStaleActivity ? { sessionActivities: omitSessionActivity(state.sessionActivities, status.sessionId) } : {}),
-      status: state.selectedSession?.id === status.sessionId ? status : state.status,
-      activity: state.selectedSession?.id === status.sessionId && clearsStaleActivity ? undefined : state.activity,
+      status: isSelected ? status : state.status,
+      activity: isSelected && clearsStaleActivity ? undefined : state.activity,
+      // The daemon owns whether an ask is open, so every status it publishes is
+      // authoritative for the selected session's card, including its removal.
+      ...(isSelected ? { pendingAsk: this.selectedPendingAsk(status, selectedMachineId(state)) } : {}),
     });
+  }
+
+  private applyOpenedAsk(ask: PendingAskUser): void {
+    const state = this.getState();
+    if (state.selectedSession === undefined) return;
+    // A superseded ask keeps its draft: the read-only record of an ask the user
+    // never submitted must still be able to show what they had typed.
+    this.setState({ pendingAsk: this.selectedPendingAsk({ pendingAsk: ask }, selectedMachineId(state)) });
+  }
+
+  private applyClosedAsk(askId: string): void {
+    // A close for an ask that is not the one on screen is already reflected here
+    // (typically the supersede half of an open), so it must not clear the card.
+    if (this.getState().pendingAsk?.askId !== askId) return;
+    this.setState({ pendingAsk: undefined });
+  }
+
+  /**
+   * The open ask to show for the selected session, or `undefined` when there is
+   * none or the machine cannot serve it.
+   *
+   * COMPAT-CAP sessions.askUser: only a positive runtime answer without the
+   * capability drops an ask. A machine that reports no support cannot have posted
+   * one, so dropping it there is honest; while capability discovery is pending or
+   * failed, hiding questions the daemon says are open would strand the model.
+   */
+  private selectedPendingAsk(status: Pick<SessionStatus, "pendingAsk"> | undefined, machineId: string): PendingAskUser | undefined {
+    if (status?.pendingAsk === undefined) return undefined;
+    const runtime = this.getState().machineRuntimes[machineId];
+    if (runtime?.ok === true && !supportsPiWebCapability(runtime, PI_WEB_CAPABILITIES.sessionsAskUser)) return undefined;
+    return status.pendingAsk;
   }
 
   private applySessionName(sessionId: string, name: string | undefined) {
@@ -1284,6 +1353,16 @@ export class SessionController {
     }
 
     this.flushPendingUpdates();
+    // Ask frames are applied after the buffered status they were published with,
+    // so the card follows the daemon's own open/close order.
+    if (event.type === "ask.opened") {
+      this.applyOpenedAsk(event.ask);
+      return;
+    }
+    if (event.type === "ask.closed") {
+      this.applyClosedAsk(event.askId);
+      return;
+    }
     const transcript = this.transcripts.applyLiveEvent(this.getState().messages, event);
     if (transcript) {
       this.setState({ messages: transcript });
@@ -1305,6 +1384,29 @@ export class SessionController {
   private queueActivityUpdate(activity: SessionActivity): void {
     this.pendingActivityBySession.set(activity.sessionId, activity);
     this.schedulePendingFlush();
+  }
+
+  // Session startup progress arrives while the daemon is still constructing the
+  // session, so the target row is resolved by exact identity only: a session id
+  // the browser already knows (an open), else the correlation token this browser
+  // minted for its own create and the daemon echoed back. Matching neither means
+  // the row is not one this browser shows — an agent's or another tab's session is
+  // *deliberately* absent while a create is pending — so it is ignored rather than
+  // guessed at. A resolved row goes through the normal activity buffer, rendering
+  // like any other activity and staying batched per frame.
+  private queueStartupProgress(event: SessionStartupProgressEvent): void {
+    if (this.getState().sessions.some((session) => session.id === event.activity.sessionId)) {
+      this.queueActivityUpdate(event.activity);
+      return;
+    }
+    const pending = event.startupToken === undefined ? undefined : this.pendingSessionStarts.get(event.startupToken);
+    if (pending === undefined || pending.discarded) return;
+    // An idle startup phase means the daemon has nothing left to attribute, so
+    // restore this row's own generic wording rather than clearing the text of a
+    // creation request that has not returned yet.
+    this.queueActivityUpdate(event.activity.phase === "idle"
+      ? creatingPendingSessionActivity(pending.tempId, pending.queuedSends.length)
+      : pendingStartActivity(event.activity, pending.tempId));
   }
 
   private schedulePendingFlush(): void {
@@ -1403,6 +1505,24 @@ function replacePendingSessionInList(sessions: readonly SessionInfo[], pendingSe
 
 function isClientPendingStartSessionInfo(session: SessionInfo | undefined): session is ClientPendingStartSessionInfo {
   return session !== undefined && "clientPendingStart" in session && session.clientPendingStart === true;
+}
+
+/**
+ * Re-label a startup report onto the browser's own pending create row.
+ *
+ * The daemon's startup marker is dropped: this row stands for a create the user
+ * asked for and is waiting on, which the browser has always reported as active
+ * work in progress, rather than for a session the daemon is opening. Only the
+ * phase text is borrowed, so the row keeps its own `creating · ` appearance.
+ */
+function pendingStartActivity(activity: SessionActivity, sessionId: string): SessionActivity {
+  return {
+    sessionId,
+    phase: activity.phase,
+    label: activity.label,
+    ...(activity.detail === undefined ? {} : { detail: activity.detail }),
+    at: activity.at,
+  };
 }
 
 function creatingPendingSessionActivity(sessionId: string, queuedCount = 0): SessionActivity {

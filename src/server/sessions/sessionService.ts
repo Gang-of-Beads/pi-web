@@ -1,4 +1,6 @@
 import type {
+  AskUserCloseResponse,
+  AskUserSubmission,
   SavedPromptAttachment,
   SessionBulkArchiveResponse,
   SessionBulkDeleteArchivedResponse,
@@ -40,7 +42,12 @@ export type SessionRouteLookup = string | SessionRouteRef;
  */
 export interface SessionRouteService {
   list(cwd: string): Promise<ClientSession[]>;
-  start(cwd: string): Promise<ClientSession>;
+  /**
+   * Create a session. `startupToken` is an opaque label the caller supplies so
+   * it can recognise this construction's startup progress reports; the service
+   * echoes it and never interprets it.
+   */
+  start(cwd: string, options?: { startupToken?: string }): Promise<ClientSession>;
   messages(ref: SessionRouteLookup, page?: { before?: number; limit?: number }): Promise<unknown[] | ClientMessagePage>;
   status(ref: SessionRouteLookup): Promise<ClientSessionStatus>;
   streamSnapshot(ref: SessionRouteLookup): Promise<SessionStreamSnapshot>;
@@ -51,6 +58,8 @@ export interface SessionRouteService {
   dismissNotification(ref: SessionRouteRef, request: Omit<SessionNotificationDismissRequest, "cwd">): SessionNotificationInboxSnapshot | Promise<SessionNotificationInboxSnapshot>;
   dismissAllNotifications(ref: SessionRouteRef, request: Omit<SessionNotificationDismissAllRequest, "cwd">): SessionNotificationInboxSnapshot | Promise<SessionNotificationInboxSnapshot>;
   clearQueue(ref: SessionRouteLookup): Promise<ClientSessionStatus>;
+  submitAsk(ref: SessionRouteLookup, askId: string, submission: AskUserSubmission): Promise<AskUserCloseResponse>;
+  cancelAsk(ref: SessionRouteLookup, askId: string): Promise<AskUserCloseResponse>;
   dismissWarning(ref: SessionRouteLookup, dismissId: string): Promise<ClientSessionStatus>;
   availableModels(ref: SessionRouteLookup): Promise<ClientSessionModel[]>;
   setModel(ref: SessionRouteLookup, provider: string, modelId: string): Promise<ClientSessionStatus>;

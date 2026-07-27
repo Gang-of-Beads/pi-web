@@ -5,7 +5,7 @@ import "./SettingsPanelFrame";
 import type { SettingsNotice } from "./SettingsPanelFrame";
 import { agentProfileConfigPatchFromDraft, agentProfileDraftFromConfig, agentProfileDraftMatchesConfig, emptyAgentProfileConfigDraft, type AgentProfileConfigDraft } from "./settingsConfigDraft";
 import type { AgentProfileSettingsSupport } from "./settingsMachineTarget";
-import { agentDirFieldOverridden, agentProfileActivationState, spawnSessionsConfigPatch, subsessionsConfigPatch } from "./settingsSessiondConfig";
+import { agentDirFieldOverridden, agentProfileActivationState, askUserConfigPatch, spawnSessionsConfigPatch, subsessionsConfigPatch } from "./settingsSessiondConfig";
 
 @customElement("settings-sessiond-panel")
 export class SettingsSessiondPanel extends LitElement {
@@ -47,6 +47,11 @@ export class SettingsSessiondPanel extends LitElement {
     const subsessionsOverridden = config?.envOverrides.subsessions === true;
     // Beta, off by default; also requires spawn to be enabled.
     const effectiveSubsessions = config?.effectiveConfig.subsessions === true && effectiveSpawn;
+    // Current servers always resolve this on-by-default setting. Absence means
+    // an older selected machine cannot persist it yet.
+    const askUserSupported = config?.effectiveConfig.askUser !== undefined;
+    const askUserOverridden = config?.envOverrides.askUser === true;
+    const effectiveAskUser = config?.effectiveConfig.askUser === true;
     const agentCommandOverridden = config?.envOverrides.agentCommand === true;
     const profileEditingSupported = this.agentProfileSupport.state === "supported";
     const draftCommand = agentCommandOverridden ? (config.effectiveConfig.agent?.command ?? this.agentDraft.command) : this.agentDraft.command;
@@ -141,6 +146,25 @@ export class SettingsSessiondPanel extends LitElement {
             </label>
             <small>Beta: agents can start child sessions they stay attached to (<code>spawn_subsession</code>, <code>list_subsessions</code>, <code>check_subsession</code>, <code>read_subsession</code>) and are notified when a child finishes. Requires "Allow agents to start sessions". Off by default.</small>
           </div>
+          <div class="field">
+            <span class="field-heading">
+              <span>Allow agents to ask questions</span>
+              ${askUserOverridden ? html`<span class="override-badge">environment override</span>` : null}
+            </span>
+            <label class="toggle">
+              <input
+                type="checkbox"
+                aria-label="Enable Ask Questions"
+                .checked=${effectiveAskUser}
+                ?disabled=${this.loading || this.saving || askUserOverridden || !askUserSupported}
+                @change=${(event: Event) => { void this.toggleAskUser(event); }}
+              >
+              <span>Enable the <code>ask_user</code> tool</span>
+            </label>
+            <small>${askUserSupported
+              ? html`Agents can post a structured question form and pause until the user responds. On by default.`
+              : html`This machine does not expose the Ask Questions setting. Update and restart PI WEB on that machine to configure it.`}</small>
+          </div>
           <section class="effective-card" aria-label="Desired and active session daemon configuration summary">
             <h3>Desired after environment overrides</h3>
             <dl>
@@ -151,6 +175,7 @@ export class SettingsSessiondPanel extends LitElement {
               <div><dt>Profile status</dt><dd>${profileActivationLabel(profileActivation)}</dd></div>
               <div><dt>Spawn sessions</dt><dd>${effectiveSpawn ? "Enabled" : html`<span class="muted">Disabled</span>`}</dd></div>
               <div><dt>Subsessions</dt><dd>${effectiveSubsessions ? "Enabled" : html`<span class="muted">Disabled</span>`}</dd></div>
+              <div><dt>Ask questions</dt><dd>${!askUserSupported ? html`<span class="muted">Unavailable</span>` : effectiveAskUser ? "Enabled" : html`<span class="muted">Disabled</span>`}</dd></div>
             </dl>
           </section>
         `}
@@ -196,6 +221,11 @@ export class SettingsSessiondPanel extends LitElement {
   private async toggleSubsessions(event: Event): Promise<void> {
     const enabled = event.target instanceof HTMLInputElement && event.target.checked;
     await this.onSave?.(subsessionsConfigPatch(enabled));
+  }
+
+  private async toggleAskUser(event: Event): Promise<void> {
+    const enabled = event.target instanceof HTMLInputElement && event.target.checked;
+    await this.onSave?.(askUserConfigPatch(enabled));
   }
 
   static override styles = css`

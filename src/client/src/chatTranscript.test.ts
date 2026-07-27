@@ -1,8 +1,40 @@
 import { describe, expect, it } from "vitest";
+import { ASK_USER_ANSWERS_CUSTOM_TYPE, type AskUserOutcome } from "../../shared/apiTypes";
 import { groupChatMessages } from "./chatGroups";
 import { normalizeMessages, textMessage } from "./chatMessages";
 import { applyTranscriptEvent, seedStreamingPartial } from "./chatTranscript";
 import type { ChatLine } from "./components/shared";
+
+const askUserOutcome: AskUserOutcome = {
+  askId: "ask-1",
+  reason: "submitted",
+  askedAt: "2026-07-20T10:00:00.000Z",
+  closedAt: "2026-07-20T10:05:00.000Z",
+  questions: [
+    {
+      question: { id: "editor", question: "Which editor?", options: [{ value: "vim", label: "Vim" }], allowOther: true },
+      answered: true,
+      values: ["vim"],
+    },
+    {
+      question: { id: "region", question: "Which region?", options: [{ value: "eu", label: "Europe" }], allowOther: true },
+      answered: false,
+      values: [],
+    },
+  ],
+  answeredCount: 1,
+  unansweredIds: ["region"],
+  summary: "Answered 1 of 2; unanswered: region",
+};
+
+const supersededAskUserOutcome: AskUserOutcome = {
+  ...askUserOutcome,
+  reason: "superseded",
+  questions: askUserOutcome.questions.map((record) => ({ question: record.question, answered: false, values: [] })),
+  answeredCount: 0,
+  unansweredIds: ["editor", "region"],
+  summary: "Answered 0 of 2; unanswered: editor, region",
+};
 
 const finalAssistant = {
   role: "assistant",
@@ -25,6 +57,65 @@ describe("applyTranscriptEvent", () => {
     expect(messages).toEqual([
       { role: "assistant", parts: [{ type: "thinking", text: "plan" }, { type: "text", text: "answer" }] },
     ]);
+  });
+
+  it("projects finalized ask_user answers identically to rehydrated history", () => {
+    const rawMessage = {
+      role: "custom",
+      customType: ASK_USER_ANSWERS_CUSTOM_TYPE,
+      content: "The user submitted answers to your questions.",
+      details: askUserOutcome,
+    };
+    const hydrated = normalizeMessages([rawMessage]);
+    const live = applyTranscriptEvent([], { type: "message.end", message: rawMessage });
+
+    expect(live).toEqual(hydrated);
+    expect(live).toEqual([{
+      role: "system",
+      parts: [{ type: "askUserRecord", outcome: askUserOutcome }],
+    }]);
+    expect(applyTranscriptEvent(live ?? [], { type: "message.end", message: rawMessage })).toEqual(live);
+
+    const nextOutcome = { ...askUserOutcome, askId: "ask-2" };
+    const nextRawMessage = { ...rawMessage, details: nextOutcome };
+    expect(applyTranscriptEvent(live ?? [], { type: "message.end", message: nextRawMessage })).toEqual([
+      ...hydrated,
+      ...normalizeMessages([nextRawMessage]),
+    ]);
+  });
+
+  it("keeps superseded ask records identical across live tool events and hydrated history", () => {
+    const args = { questions: [{ id: "next", question: "Try again?", options: [] }] };
+    const details = { ask: { askId: "ask-2" }, superseded: supersededAskUserOutcome };
+    const finalResult = {
+      role: "toolResult",
+      toolCallId: "ask-call",
+      toolName: "ask_user",
+      content: [{ type: "text", text: "Posted a newer question set." }],
+      details,
+      isError: false,
+    };
+    const hydrated = normalizeMessages([
+      { role: "assistant", content: [{ type: "toolCall", id: "ask-call", name: "ask_user", arguments: args }] },
+      finalResult,
+    ]);
+    let live: ChatLine[] = [];
+
+    live = applyTranscriptEvent(live, { type: "tool.start", toolName: "ask_user", toolCallId: "ask-call", summary: "", args }) ?? live;
+    live = applyTranscriptEvent(live, {
+      type: "tool.end",
+      toolName: "ask_user",
+      toolCallId: "ask-call",
+      text: "Posted a newer question set.",
+      content: finalResult.content,
+      details,
+      isError: false,
+    }) ?? live;
+    live = applyTranscriptEvent(live, { type: "message.end", message: finalResult }) ?? live;
+
+    expect(live).toEqual(hydrated);
+    expect(live.filter((line) => line.parts.some((part) => part.type === "askUserRecord"))).toHaveLength(1);
+    expect(groupChatMessages(live).map((group) => group.kind)).toEqual(["group", "message"]);
   });
 
   it("replaces the streamed assistant message with the finalized history shape", () => {

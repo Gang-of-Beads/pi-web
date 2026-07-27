@@ -90,6 +90,47 @@ describe("notification socket guards", () => {
     })).toBeUndefined();
   });
 
+  it("carries the startup marker through the socket boundary, marker and all", () => {
+    const activity = { sessionId: "session-1", phase: "active", label: "Opening session", detail: "Starting the Pi session", at: "2026-07-20T00:00:01.000Z", startup: true };
+
+    // The marker is what stops an opening session being treated as a working
+    // one, so dropping it in transit would restore the defect for every frame,
+    // including those relayed from a remote machine.
+    expect(parseRealtimeSocketEvent({ type: "session.startup", activity })).toMatchObject({ type: "session.startup", activity: { startup: true } });
+    expect(parseRealtimeSocketEvent({ type: "session.startup", activity: { ...activity, startup: 1 } })).toBeUndefined();
+  });
+
+  it("accepts validated session startup progress and drops malformed frames", () => {
+    const activity = { sessionId: "session-1", phase: "active", label: "Creating session", detail: "Starting the Pi session", at: "2026-07-20T00:00:01.000Z" };
+
+    expect(parseRealtimeSocketEvent({ type: "session.startup", startupToken: "pending-session-1-abc", activity }))
+      .toMatchObject({ type: "session.startup", startupToken: "pending-session-1-abc", activity });
+    expect(parseRealtimeSocketEvent({ type: "session.startup", activity })).toMatchObject({ type: "session.startup", activity });
+    expect(parseRealtimeSocketEvent({ type: "session.startup", startupToken: "", activity })).toBeUndefined();
+    expect(parseRealtimeSocketEvent({ type: "session.startup" })).toBeUndefined();
+    expect(parseRealtimeSocketEvent({ type: "session.startup", activity: { ...activity, phase: "waiting" } })).toBeUndefined();
+    // Startup progress is global-only, so it must not be accepted as a
+    // per-session frame even when it is well formed.
+    expect(parseSessionSocketEvent({ type: "session.startup", activity })).toBeUndefined();
+  });
+
+  it("accepts validated ask frames and drops malformed ones", () => {
+    const ask = {
+      askId: "ask-1",
+      askedAt: "2026-07-20T00:00:00.000Z",
+      questions: [{ id: "q1", question: "Which database?", options: [{ value: "pg", label: "Postgres" }], allowOther: true }],
+    };
+
+    expect(parseSessionSocketEvent({ type: "ask.opened", ask })).toEqual({ type: "ask.opened", ask });
+    expect(parseSessionSocketEvent({ type: "ask.closed", askId: "ask-1", reason: "superseded" }))
+      .toEqual({ type: "ask.closed", askId: "ask-1", reason: "superseded" });
+    expect(parseSessionSocketEvent({ type: "ask.opened", ask: { ...ask, questions: [] } })).toBeUndefined();
+    expect(parseSessionSocketEvent({ type: "ask.opened" })).toBeUndefined();
+    expect(parseSessionSocketEvent({ type: "ask.closed", askId: "ask-1", reason: "ignored" })).toBeUndefined();
+    // Ask frames are per-session only, so they must not be accepted globally.
+    expect(parseRealtimeSocketEvent({ type: "ask.opened", ask })).toBeUndefined();
+  });
+
   it("preserves existing event acceptance without treating unknown types as realtime events", () => {
     expect(parseSessionSocketEvent({ type: "command.output", level: "info", message: "legacy" })).toMatchObject({ type: "command.output" });
     expect(parseRealtimeSocketEvent({ type: "future.notification", payload: {} })).toBeUndefined();

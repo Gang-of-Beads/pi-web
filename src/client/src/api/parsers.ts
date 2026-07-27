@@ -1,5 +1,5 @@
-import { SESSION_NOTIFICATION_LIMIT, SESSION_NOTIFICATION_MESSAGE_BYTES, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH, SESSION_UNREAD_COMPLETED_AT_MAX_LENGTH, SESSION_UNREAD_CWD_MAX_LENGTH, SESSION_UNREAD_LIMIT, SESSION_UNREAD_SESSION_ID_MAX_LENGTH, type ArchiveSessionsResponse, type AuthProviderOption, type AuthProviderStatus, type AuthProvidersResponse, type AuthStatusSource, type AuthType, type CommandOption, type CommandResult, type DeleteWorkspaceFileResponse, type FileContentResponse, type FileSuggestion, type FileTreeEntry, type FileTreeResponse, type GitDiffResponse, type GitFileState, type GitStatusFile, type GitStatusResponse, type Machine, type MachineHealth, type MachineKind, type MachineRuntime, type MachineStatus, type MessagePage, type ModelSelectionResponse, type MoveWorkspaceFileResponse, type OAuthFlowState, type PiWebAgentDirEnvSource, type PiWebCapability, type PiWebComponentStatus, type PiWebConfigEnvOverrides, type PiWebConfigResponse, type PiWebConfigValues, type PiWebInstallationInfo, type PiWebPluginConfigMap, type PiWebPluginInfo, type PiWebPluginsResponse, type PiWebPluginScope, type PiWebReleaseStatus, type PiWebRuntimeComponent, type PiWebRuntimeResponse, type PiWebServiceComponent, type PiWebShortcutConfig, type PiWebStatusMessage, type PiWebStatusResponse, type PiWebStatusSeverity, type Project, type QueuedSessionMessage, type SavedPromptAttachment, type SessionBulkArchiveResponse, type SessionBulkDeleteArchivedResponse, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupProjectSummary, type SessionCleanupThresholds, type SessionCleanupTotals, type SessionInfo, type SessionModel, type SessionNotification, type SessionNotificationClearReason, type SessionNotificationDismissThrough, type SessionNotificationInboxDelta, type SessionNotificationInboxEvent, type SessionNotificationInboxSnapshot, type SessionNotificationSeverity, type SessionNotificationSummary, type SessionStatus, type SessionStreamSnapshot, type SessionUnreadCatalogSnapshot, type SessionUnreadEvent, type SessionUnreadSummary, type SessionWarning, type SessionWarningSeverity, type SlashCommand, type TerminalCommandRun, type TerminalCommandRunStatus, type TerminalInfo, type ThinkingLevelsResponse, type WriteWorkspaceFileResponse, type Workspace, type WorkspaceActivity, type WorkspaceActivityResponse } from "../../../shared/apiTypes";
-import type { PiPackageInfo, PiPackageMutationAction, PiPackageMutationResponse, PiPackageScope, PiPackagesResponse, SessionTreeNavigateResult, SessionTreeNode, SessionTreeNodeKind, SessionTreeSnapshot } from "../../../shared/apiTypes";
+import { ASK_USER_ID_MAX_LENGTH, ASK_USER_OPTION_LIMIT, ASK_USER_OTHER_TEXT_MAX_LENGTH, ASK_USER_QUESTION_LIMIT, ASK_USER_TEXT_MAX_LENGTH, SESSION_NOTIFICATION_LIMIT, SESSION_NOTIFICATION_MESSAGE_BYTES, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH, SESSION_UNREAD_COMPLETED_AT_MAX_LENGTH, SESSION_UNREAD_CWD_MAX_LENGTH, SESSION_UNREAD_LIMIT, SESSION_UNREAD_SESSION_ID_MAX_LENGTH, type ArchiveSessionsResponse, type AskUserCloseReason, type AskUserCloseResponse, type AskUserOutcome, type AskUserQuestion, type AskUserQuestionOption, type AskUserQuestionRecord, type PendingAskUser, type AuthProviderOption, type AuthProviderStatus, type AuthProvidersResponse, type AuthStatusSource, type AuthType, type CommandOption, type CommandResult, type DeleteWorkspaceFileResponse, type FileContentResponse, type FileSuggestion, type FileTreeEntry, type FileTreeResponse, type GitDiffResponse, type GitFileState, type GitStatusFile, type GitStatusResponse, type Machine, type MachineHealth, type MachineKind, type MachineRuntime, type MachineStatus, type MessagePage, type ModelSelectionResponse, type MoveWorkspaceFileResponse, type OAuthFlowState, type PiWebAgentDirEnvSource, type PiWebCapability, type PiWebComponentStatus, type PiWebConfigEnvOverrides, type PiWebConfigResponse, type PiWebConfigValues, type PiWebInstallationInfo, type PiWebPluginConfigMap, type PiWebPluginInfo, type PiWebPluginsResponse, type PiWebPluginScope, type PiWebReleaseStatus, type PiWebRuntimeComponent, type PiWebRuntimeResponse, type PiWebServiceComponent, type PiWebShortcutConfig, type PiWebStatusMessage, type PiWebStatusResponse, type PiWebStatusSeverity, type Project, type QueuedSessionMessage, type SavedPromptAttachment, type SessionBulkArchiveResponse, type SessionBulkDeleteArchivedResponse, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupProjectSummary, type SessionCleanupThresholds, type SessionCleanupTotals, type SessionInfo, type SessionModel, type SessionNotification, type SessionNotificationClearReason, type SessionNotificationDismissThrough, type SessionNotificationInboxDelta, type SessionNotificationInboxEvent, type SessionNotificationInboxSnapshot, type SessionNotificationSeverity, type SessionNotificationSummary, type SessionStatus, type SessionStreamSnapshot, type SessionUnreadCatalogSnapshot, type SessionUnreadEvent, type SessionUnreadSummary, type SessionWarning, type SessionWarningSeverity, type SlashCommand, type TerminalCommandRun, type TerminalCommandRunStatus, type TerminalInfo, type ThinkingLevelsResponse, type WriteWorkspaceFileResponse, type Workspace, type WorkspaceActivity, type WorkspaceActivityResponse } from "../../../shared/apiTypes";
+import type { PiPackageInfo, PiPackageMutationAction, PiPackageMutationResponse, PiPackageScope, PiPackagesResponse, SessionActivity, SessionStartupProgressEvent, SessionTreeNavigateResult, SessionTreeNode, SessionTreeNodeKind, SessionTreeSnapshot } from "../../../shared/apiTypes";
 import type { SafeTunnelCommandOutput, SafeTunnelConfigState, SafeTunnelConfigStatus, SafeTunnelConnectorInstallStatus, SafeTunnelConnectorState, SafeTunnelConnectorStatus, SafeTunnelLoginResponse, SafeTunnelOperationResponse, SafeTunnelOperationStatus, SafeTunnelRuntimeState, SafeTunnelRuntimeStatus, SafeTunnelStartResponse, SafeTunnelStatusResponse, SafeTunnelStopResponse } from "../../../shared/apiTypes";
 import { parseActiveAgentProfileDescriptor } from "../../../shared/activeAgentProfile";
 import { parseKnownPiWebCapabilities } from "../../../shared/capabilities";
@@ -402,6 +402,131 @@ function optionalWarnings(value: unknown): Pick<SessionStatus, "warnings"> | obj
   return { warnings: arrayOf(parseSessionWarning)(value) };
 }
 
+function parseAskUserQuestionOption(value: unknown): AskUserQuestionOption {
+  const record = requireRecord(value);
+  return {
+    value: requireBoundedNonEmptyString(record, "value", ASK_USER_ID_MAX_LENGTH),
+    label: requireBoundedNonEmptyString(record, "label", ASK_USER_TEXT_MAX_LENGTH),
+    ...optionalField("detail", optionalBoundedNonEmptyString(record, "detail", ASK_USER_TEXT_MAX_LENGTH)),
+  };
+}
+
+function parseAskUserQuestion(value: unknown): AskUserQuestion {
+  const record = requireRecord(value);
+  const options = boundedArrayOf(record["options"], parseAskUserQuestionOption, ASK_USER_OPTION_LIMIT, "options");
+  assertUniqueStrings(options.map((option) => option.value), "ask option value");
+  // Validate the legacy wire field when present, but normalize every question to
+  // the current invariant: the browser always offers a custom answer.
+  parseOptionalBoolean(record["allowOther"], "allowOther");
+  const multiple = parseOptionalBoolean(record["multiple"], "multiple");
+  return {
+    id: requireBoundedNonEmptyString(record, "id", ASK_USER_ID_MAX_LENGTH),
+    question: requireBoundedNonEmptyString(record, "question", ASK_USER_TEXT_MAX_LENGTH),
+    ...optionalField("detail", optionalBoundedNonEmptyString(record, "detail", ASK_USER_TEXT_MAX_LENGTH)),
+    options,
+    allowOther: true,
+    ...(multiple === undefined ? {} : { multiple }),
+  };
+}
+
+/**
+ * Validate the session's open question set. A malformed ask must be dropped
+ * rather than rendered: the card asks the user to answer on the model's behalf,
+ * so questions or options the daemon did not really send must never appear.
+ */
+function parsePendingAskUser(value: unknown): PendingAskUser {
+  const record = requireRecord(value);
+  const questions = boundedArrayOf(record["questions"], parseAskUserQuestion, ASK_USER_QUESTION_LIMIT, "questions");
+  if (questions.length === 0) throw new Error("Pending ask has no questions");
+  assertUniqueStrings(questions.map((question) => question.id), "ask question id");
+  return {
+    askId: requireBoundedNonEmptyString(record, "askId", ASK_USER_ID_MAX_LENGTH),
+    askedAt: requireNonEmptyString(record, "askedAt"),
+    questions,
+  };
+}
+
+function optionalPendingAsk(value: unknown): Pick<SessionStatus, "pendingAsk"> | object {
+  if (value === undefined) return {};
+  return { pendingAsk: parsePendingAskUser(value) };
+}
+
+export function parseSessionAskOpenedEvent(value: unknown): { type: "ask.opened"; ask: PendingAskUser } {
+  const record = requireRecord(value);
+  if (record["type"] !== "ask.opened") throw new Error("Invalid ask opened event type");
+  return { type: "ask.opened", ask: parsePendingAskUser(record["ask"]) };
+}
+
+export function parseSessionAskClosedEvent(value: unknown): { type: "ask.closed"; askId: string; reason: AskUserCloseReason } {
+  const record = requireRecord(value);
+  if (record["type"] !== "ask.closed") throw new Error("Invalid ask closed event type");
+  return {
+    type: "ask.closed",
+    askId: requireBoundedNonEmptyString(record, "askId", ASK_USER_ID_MAX_LENGTH),
+    reason: parseAskUserCloseReason(record["reason"]),
+  };
+}
+
+function parseAskUserCloseReason(value: unknown): AskUserCloseReason {
+  if (value !== "submitted" && value !== "superseded" && value !== "cancelled") throw new Error("Invalid ask close reason");
+  return value;
+}
+
+function parseAskUserQuestionRecord(value: unknown): AskUserQuestionRecord {
+  const record = requireRecord(value);
+  const question = parseAskUserQuestion(record["question"]);
+  const values = boundedArrayOf(record["values"], parseNonEmptyString, ASK_USER_OPTION_LIMIT, "values");
+  const offered = new Set(question.options.map((option) => option.value));
+  if (values.some((selected) => !offered.has(selected))) throw new Error("Ask answer selected an option the question never offered");
+  const otherText = optionalBoundedNonEmptyString(record, "otherText", ASK_USER_OTHER_TEXT_MAX_LENGTH);
+  const answered = requireBoolean(record, "answered");
+  // The record is the one thing both the model and the user read, so a flag that
+  // disagrees with the answer it describes is rejected rather than displayed.
+  if (answered !== (values.length > 0 || otherText !== undefined)) throw new Error("Ask answer contradicts its answered flag");
+  return { question, answered, values, ...(otherText === undefined ? {} : { otherText }) };
+}
+
+export function parseAskUserOutcome(value: unknown): AskUserOutcome {
+  const record = requireRecord(value);
+  const questions = boundedArrayOf(record["questions"], parseAskUserQuestionRecord, ASK_USER_QUESTION_LIMIT, "questions");
+  const answeredCount = requireNonNegativeSafeInteger(record, "answeredCount");
+  const unansweredIds = arrayOfString(record["unansweredIds"], "unansweredIds");
+  const unanswered = questions.filter((entry) => !entry.answered).map((entry) => entry.question.id);
+  if (answeredCount !== questions.length - unanswered.length) throw new Error("Ask outcome answered count mismatch");
+  if (unansweredIds.length !== unanswered.length || unansweredIds.some((id, index) => id !== unanswered[index])) {
+    throw new Error("Ask outcome unanswered ids mismatch");
+  }
+  return {
+    askId: requireBoundedNonEmptyString(record, "askId", ASK_USER_ID_MAX_LENGTH),
+    reason: parseAskUserCloseReason(record["reason"]),
+    askedAt: requireNonEmptyString(record, "askedAt"),
+    closedAt: requireNonEmptyString(record, "closedAt"),
+    questions,
+    answeredCount,
+    unansweredIds,
+    summary: requireNonEmptyString(record, "summary"),
+  };
+}
+
+export function parseAskUserCloseResponse(value: unknown): AskUserCloseResponse {
+  const record = requireRecord(value);
+  const result = record["result"];
+  if (result !== "closed" && result !== "stale") throw new Error("Invalid ask close result");
+  const outcome = record["outcome"] === undefined ? undefined : parseAskUserOutcome(record["outcome"]);
+  // Only the call that actually closed the ask carries an outcome; a stale close
+  // reports none and is trusted for the session status alone.
+  if ((result === "closed") !== (outcome !== undefined)) throw new Error("Ask close response outcome mismatch");
+  return {
+    result,
+    ...(outcome === undefined ? {} : { outcome }),
+    sessionStatus: parseSessionStatus(record["sessionStatus"]),
+  };
+}
+
+function assertUniqueStrings(values: readonly string[], label: string): void {
+  if (new Set(values).size !== values.length) throw new Error(`Duplicate ${label}`);
+}
+
 export function parseSessionStatus(value: unknown): SessionStatus {
   const record = requireRecord(value);
   return {
@@ -419,6 +544,7 @@ export function parseSessionStatus(value: unknown): SessionStatus {
     ...optionalContextUsage(record["contextUsage"]),
     ...optionalField("thinkingLevel", optionalString(record, "thinkingLevel")),
     ...optionalWarnings(record["warnings"]),
+    ...optionalPendingAsk(record["pendingAsk"]),
   };
 }
 
@@ -469,6 +595,56 @@ export function parseSessionUnreadEvent(value: unknown): SessionUnreadEvent {
   };
 }
 
+/**
+ * Validate a startup progress frame. The browser substitutes its own wording
+ * from this event, so a malformed frame must be dropped rather than rendered:
+ * `startupToken` is the routing key when present, and an activity missing its
+ * phase or label could otherwise blank out or freeze the text a user is reading
+ * while they wait. An absent token is valid — an open routes by session id — but
+ * a present empty one is not, since it could match no row honestly.
+ */
+export function parseSessionStartupProgressEvent(value: unknown): SessionStartupProgressEvent {
+  const record = requireRecord(value);
+  if (record["type"] !== "session.startup") throw new Error("Invalid session startup event type");
+  const startupToken = optionalString(record, "startupToken");
+  if (startupToken === "") throw new Error("Expected non-empty string field: startupToken");
+  return {
+    type: "session.startup",
+    ...optionalField("startupToken", startupToken),
+    activity: parseSessionActivity(record["activity"]),
+  };
+}
+
+function parseSessionActivity(value: unknown): SessionActivity {
+  const record = requireRecord(value);
+  return {
+    sessionId: requireNonEmptyString(record, "sessionId"),
+    phase: requireSessionActivityPhase(record, "phase"),
+    label: requireNonEmptyString(record, "label"),
+    ...optionalField("detail", optionalString(record, "detail")),
+    at: requireNonEmptyString(record, "at"),
+    ...optionalField("startup", optionalActivityStartupMarker(record)),
+  };
+}
+
+/**
+ * The startup marker says the activity is a session opening rather than work in
+ * progress, which decides whether "Stop Active Work" is offered and whether a
+ * reload is blocked. A malformed marker is rejected rather than guessed at.
+ */
+function optionalActivityStartupMarker(record: Record<string, unknown>): boolean | undefined {
+  const value = record["startup"];
+  if (value === undefined) return undefined;
+  if (typeof value !== "boolean") throw new Error("Expected optional boolean field: startup");
+  return value;
+}
+
+function requireSessionActivityPhase(record: Record<string, unknown>, key: string): SessionActivity["phase"] {
+  const value = requireString(record, key);
+  if (value !== "active" && value !== "idle" && value !== "error") throw new Error(`Expected session activity phase field: ${key}`);
+  return value;
+}
+
 function parseSessionUnreadSummary(value: unknown): SessionUnreadSummary {
   const record = requireRecord(value);
   const completedAt = requireBoundedNonEmptyString(
@@ -507,6 +683,14 @@ function assertUnreadNewestFirst(summaries: readonly SessionUnreadSummary[]): vo
 
 function requireBoundedNonEmptyString(record: Record<string, unknown>, key: string, maxLength: number): string {
   const value = requireNonEmptyString(record, key);
+  if (value.length > maxLength) throw new Error(`String field exceeds limit: ${key}`);
+  return value;
+}
+
+function optionalBoundedNonEmptyString(record: Record<string, unknown>, key: string, maxLength: number): string | undefined {
+  const value = optionalString(record, key);
+  if (value === undefined) return undefined;
+  if (value === "") throw new Error(`Expected non-empty string field: ${key}`);
   if (value.length > maxLength) throw new Error(`String field exceeds limit: ${key}`);
   return value;
 }
@@ -1122,6 +1306,7 @@ function parsePiWebConfigValues(value: unknown): PiWebConfigValues {
     ...optionalField("agent", optionalAgent(record["agent"])),
     ...optionalField("spawnSessions", optionalBoolean(record, "spawnSessions")),
     ...optionalField("subsessions", optionalBoolean(record, "subsessions")),
+    ...optionalField("askUser", optionalBoolean(record, "askUser")),
   };
 }
 
@@ -1202,6 +1387,8 @@ function parsePiWebConfigEnvOverrides(value: unknown): PiWebConfigEnvOverrides {
     allowedHosts: requireBoolean(record, "allowedHosts"),
     spawnSessions: requireBoolean(record, "spawnSessions"),
     subsessions: requireBoolean(record, "subsessions"),
+    // Older servers predate the ask_user tool; a missing flag means "not overridden".
+    askUser: optionalBoolean(record, "askUser") ?? false,
     agentCommand: optionalBoolean(record, "agentCommand") ?? false,
     agentDir: optionalBoolean(record, "agentDir") ?? false,
     ...optionalAgentDirSource(record),

@@ -7,7 +7,7 @@ import { writeClipboardText } from "../clipboard";
 import { capturePrependScrollAnchor, PREPEND_RESTORE_SETTLE_FRAMES, restorePrependScrollAnchor, type PrependScrollAnchor } from "../chatScrollAnchoring";
 import { shouldRequestEarlierMessages } from "../chatHistoryLoading";
 import { ChatScrollController, distanceFromScrollBottom, findFirstVisibleArticle, isNearScrollBottom, type ChatAnchorScrollPosition, type ChatScrollRestoreResult } from "../chatScrollPosition";
-import type { QueuedSessionMessage, SessionActivity, SessionStatus, SessionWarningSeverity } from "../api";
+import type { AskUserSubmission, PendingAskUser, QueuedSessionMessage, SessionActivity, SessionStatus, SessionWarningSeverity } from "../api";
 import {
   notificationAnnouncementLabel,
   notificationDismissLabel,
@@ -26,6 +26,7 @@ import {
 } from "../sessionNotifications";
 import type { ChatLine, ChatPart } from "./shared";
 import { chatStyles, renderSessionWarningIcon } from "./shared";
+import "./AskUserCard";
 import "./ConversationMeter";
 import "./FormattedText";
 import "./ToolExecutionView";
@@ -192,6 +193,9 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) clientQueuedMessages: QueuedSessionMessage[] = [];
   @property({ attribute: false }) status?: SessionStatus;
   @property({ attribute: false }) activity?: SessionActivity;
+  @property({ attribute: false }) pendingAsk?: PendingAskUser;
+  @property({ attribute: false }) askDraftSessionId = "";
+  @property({ attribute: false }) onSubmitAsk?: (askId: string, submission: AskUserSubmission) => void | Promise<void>;
   @property({ attribute: false }) notificationInbox?: SelectedSessionNotificationView;
   @property({ type: Boolean }) canClearServerQueue = false;
   @property({ attribute: false }) onClearServerQueue?: () => void;
@@ -217,6 +221,7 @@ export class ChatView extends LitElement {
   private suppressLoadMoreRequests = false;
   private loadMoreCheckFrame: number | undefined;
   private scrollToBottomFrame: number | undefined;
+  private scrollToOpenAskFrame: number | undefined;
   private conversationRailFrame: number | undefined;
   private groupedMessagesInput?: ChatLine[];
   private groupedMessagesStart = 0;
@@ -275,6 +280,10 @@ export class ChatView extends LitElement {
     if (this.restoreScrollFrame !== undefined) cancelAnimationFrame(this.restoreScrollFrame);
     if (this.loadMoreCheckFrame !== undefined) cancelAnimationFrame(this.loadMoreCheckFrame);
     if (this.scrollToBottomFrame !== undefined) cancelAnimationFrame(this.scrollToBottomFrame);
+    if (this.scrollToOpenAskFrame !== undefined) {
+      cancelAnimationFrame(this.scrollToOpenAskFrame);
+      this.scrollToOpenAskFrame = undefined;
+    }
     if (this.conversationRailFrame !== undefined) cancelAnimationFrame(this.conversationRailFrame);
     window.removeEventListener("resize", this.onViewportResize);
     window.removeEventListener("pagehide", this.onPageHide);
@@ -301,6 +310,10 @@ export class ChatView extends LitElement {
       cancelAnimationFrame(this.restoreScrollFrame);
       this.restoreScrollFrame = undefined;
     }
+    if (this.scrollToOpenAskFrame !== undefined) {
+      cancelAnimationFrame(this.scrollToOpenAskFrame);
+      this.scrollToOpenAskFrame = undefined;
+    }
   }
 
   protected override willUpdate(changed: Map<string, unknown>): void {
@@ -311,7 +324,7 @@ export class ChatView extends LitElement {
       this.pendingNotificationFocus = undefined;
       this.retainedEmptyNotificationTrayTargetKey = undefined;
     }
-    if (changed.has("messages")) this.pinnedToBottom = this.pinnedToBottom && (this.didChatHeightChange() || this.isNearBottom());
+    if (changed.has("messages") || changed.has("pendingAsk")) this.pinnedToBottom = this.pinnedToBottom && (this.didChatHeightChange() || this.isNearBottom());
   }
 
   protected override update(changed: Map<string, unknown>): void {
@@ -324,9 +337,13 @@ export class ChatView extends LitElement {
     if (changed.has("loadingMore") && !this.loadingMore) this.loadMoreRequested = false;
     if (changed.has("hasMore") && !this.hasMore) this.loadMoreRequested = false;
     if (changed.has("sessionId")) this.restoreScrollPosition();
-    if (!changed.has("sessionId") && changed.has("messages") && this.pinnedToBottom) this.scrollToBottom();
+    const openedAsk = changed.has("pendingAsk") && this.isNewPendingAsk(changed.get("pendingAsk"));
+    // The form uses the transcript scroller. Start a new long form at question
+    // one rather than applying the usual live-tail scroll and landing at its end.
+    if (!changed.has("sessionId") && openedAsk && this.pinnedToBottom) this.scrollToOpenAsk();
+    else if (!changed.has("sessionId") && (changed.has("messages") || changed.has("pendingAsk")) && this.pinnedToBottom) this.scrollToBottom();
     if (changed.has("messages") || changed.has("messageStart") || changed.has("messageTotal") || changed.has("hasMore") || changed.has("loadingMore")) this.scheduleConversationRailUpdate();
-    if (changed.has("messages") || changed.has("messageStart") || changed.has("hasMore") || changed.has("loadingMore")) this.continuePendingScrollRestore();
+    if (changed.has("messages") || changed.has("messageStart") || changed.has("hasMore") || changed.has("loadingMore") || changed.has("pendingAsk")) this.continuePendingScrollRestore();
     if (changed.has("messages") || changed.has("hasMore") || changed.has("loadingMore")) this.requestLoadMoreIfNeeded();
     if (changed.has("notificationInbox") && this.pendingNotificationFocus !== undefined) this.focusPendingNotificationTarget();
     if (changed.has("zoomedImage")) this.syncImageZoomDialog();
@@ -365,6 +382,7 @@ export class ChatView extends LitElement {
           )}
           ${this.renderQueuedMessages()}
           ${this.renderSessionActivity()}
+          ${this.renderOpenAsk()}
         </div>
         ${this.renderActivityDock()}
       </div>
@@ -638,6 +656,18 @@ export class ChatView extends LitElement {
     `;
   }
 
+  private renderOpenAsk() {
+    if (this.pendingAsk === undefined) return null;
+    return html`
+      <ask-user-card
+        data-scroll-anchor-id=${`ask:${this.pendingAsk.askId}`}
+        .ask=${this.pendingAsk}
+        .draftSessionId=${this.askDraftSessionId}
+        .onSubmit=${this.onSubmitAsk}
+      ></ask-user-card>
+    `;
+  }
+
   private renderSessionActivity() {
     if (!this.isCompacting) return null;
     return html`
@@ -714,10 +744,12 @@ export class ChatView extends LitElement {
 
   private renderMessage(message: ChatLine, index: number) {
     const toolOnly = this.isToolExecutionOnlyMessage(message);
+    const askUserRecordOnly = this.isAskUserRecordOnlyMessage(message);
+    const shellClass = toolOnly ? "msg tool-execution-shell" : "msg ask-user-record-shell";
     return html`
       ${this.renderScrollMarker(this.messageScrollMarkerId(index))}
-      <article class=${toolOnly ? "msg tool-execution-shell" : `msg ${message.role}`} data-index=${index} data-scroll-anchor-id=${this.messageAnchorKey(index)}>
-        ${toolOnly ? null : this.renderMessageHeader(message, String(index))}
+      <article class=${toolOnly || askUserRecordOnly ? shellClass : `msg ${message.role}`} data-index=${index} data-scroll-anchor-id=${this.messageAnchorKey(index)}>
+        ${toolOnly || askUserRecordOnly ? null : this.renderMessageHeader(message, String(index))}
         ${message.parts.map((part) => this.renderPart(part, message))}
       </article>
     `;
@@ -736,6 +768,10 @@ export class ChatView extends LitElement {
 
   private isToolExecutionOnlyMessage(message: ChatLine): boolean {
     return message.role === "tool" && message.parts.length > 0 && message.parts.every((part) => part.type === "toolExecution");
+  }
+
+  private isAskUserRecordOnlyMessage(message: ChatLine): boolean {
+    return message.parts.length > 0 && message.parts.every((part) => part.type === "askUserRecord");
   }
 
   private renderMessageGroup(messages: ChatLine[], startIndex: number, endIndex: number, defaultOpen: boolean) {
@@ -856,6 +892,13 @@ export class ChatView extends LitElement {
         <strong>Loaded ${part.name}</strong>
         <small>read ${part.path}</small>
       </div>
+    `;
+    if (part.type === "askUserRecord") return html`
+      <ask-user-card
+        class="part"
+        .outcome=${part.outcome}
+        .draftSessionId=${this.askDraftSessionId}
+      ></ask-user-card>
     `;
     if (part.type === "image") {
       const { src, alt } = chatImagePartSource(part);
@@ -982,6 +1025,33 @@ export class ChatView extends LitElement {
     });
   }
 
+  private isNewPendingAsk(previous: unknown): boolean {
+    return this.pendingAsk !== undefined
+      && (typeof previous !== "object" || previous === null || Reflect.get(previous, "askId") !== this.pendingAsk.askId);
+  }
+
+  private scrollToOpenAsk(): void {
+    if (this.scrollToOpenAskFrame !== undefined) return;
+    if (this.scrollToBottomFrame !== undefined) {
+      cancelAnimationFrame(this.scrollToBottomFrame);
+      this.scrollToBottomFrame = undefined;
+    }
+    this.scrollToOpenAskFrame = requestAnimationFrame(() => {
+      this.scrollToOpenAskFrame = undefined;
+      this.withSuppressedScrollSave(() => { this.alignOpenAskToTop(); });
+    });
+  }
+
+  private alignOpenAskToTop(): boolean {
+    const chat = this.chat;
+    const card = this.renderRoot.querySelector<HTMLElement>(".chat > ask-user-card");
+    if (chat === undefined || card === null) return false;
+    chat.scrollTop += card.getBoundingClientRect().top - chat.getBoundingClientRect().top;
+    this.syncScrollMetrics();
+    this.pinnedToBottom = this.isNearBottom();
+    return true;
+  }
+
   restoreScrollPosition() {
     const sessionId = this.sessionId;
     if (this.restoreScrollFrame !== undefined) cancelAnimationFrame(this.restoreScrollFrame);
@@ -989,6 +1059,7 @@ export class ChatView extends LitElement {
       this.restoreScrollFrame = undefined;
       if (this.sessionId !== sessionId) return;
       this.withSuppressedScrollSave(() => {
+        if (this.pendingAsk !== undefined && this.scrollController.readPosition(sessionId) === undefined && this.alignOpenAskToTop()) return;
         const result = this.scrollController.restorePosition(sessionId, this.chat, this.scrollAnchorElements(), { fallbackToBottom: this.shouldFallbackToBottomForMissingAnchor() });
         this.handleScrollRestoreResult(sessionId, result);
       });
