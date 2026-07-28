@@ -1,6 +1,7 @@
 import { LitElement, html, type PropertyValues, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { Workspace, WorkspaceActivity } from "../api";
+import { writeClipboardText } from "../clipboard";
 import type { WorkspaceLabelItem } from "../plugins/types";
 import { workspaceActivityFor, workspaceActivityIndicator } from "../workspaceActivity";
 import { actionMenuPanelStyle } from "./actionMenu";
@@ -28,6 +29,7 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
   @property({ attribute: false }) onCancelKeyboardNavigation?: () => void | Promise<void>;
   @state() private openMenuWorkspaceId: string | undefined;
   @state() private menuStyle = "";
+  @state() private copiedDetailKey: string | undefined;
 
   private readonly onDocumentClick = (event: MouseEvent) => {
     if (event.composedPath().includes(this)) return;
@@ -159,15 +161,16 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
   }
 
   private renderWorkspaceDetails(label: string, items: WorkspaceLabelItem[], workspace: Workspace): TemplateResult {
+    const branchCopyAction = workspace.branch === undefined ? "Copy workspace label" : "Copy branch";
     return html`
       <dl class="workspace-menu-details">
         <div class="workspace-detail-row">
           <dt>${workspace.branch === undefined ? "Workspace" : "Branch"}</dt>
-          <dd>${label}</dd>
+          <dd>${label}${this.renderDetailCopyButton(`${workspace.id}:branch`, workspace.branch ?? workspace.label, branchCopyAction)}</dd>
         </div>
         <div class="workspace-detail-row">
           <dt>Path</dt>
-          <dd title=${workspace.path}>${workspace.path}</dd>
+          <dd title=${workspace.path}>${workspace.path}${this.renderDetailCopyButton(`${workspace.id}:path`, workspace.path, "Copy path")}</dd>
         </div>
         ${items.length === 0 ? null : html`
           <div class="workspace-detail-row">
@@ -177,6 +180,25 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
         `}
       </dl>
     `;
+  }
+
+  private renderDetailCopyButton(key: string, value: string, action: string): TemplateResult {
+    const copied = this.copiedDetailKey === key;
+    const label = copied ? "Copied" : action;
+    return html`
+      <button type="button" class="detail-copy" title=${label} aria-label=${label} @click=${() => { void this.copyDetail(key, value); }}>
+        <span aria-hidden="true">${copied ? "✓" : "⧉"}</span>
+      </button>
+    `;
+  }
+
+  private async copyDetail(key: string, value: string): Promise<void> {
+    const copied = await writeClipboardText(value);
+    if (!copied) return;
+    this.copiedDetailKey = key;
+    window.setTimeout(() => {
+      if (this.copiedDetailKey === key) this.copiedDetailKey = undefined;
+    }, 1200);
   }
 
   private delete(workspace: Workspace): void {

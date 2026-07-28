@@ -1,10 +1,14 @@
 // @vitest-environment happy-dom
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import type { Workspace, WorkspaceActivity } from "../api";
 import { WorkspaceList } from "./WorkspaceList";
 
+let restoreClipboardStub: () => void = () => undefined;
+
 afterEach(() => {
+  restoreClipboardStub();
+  restoreClipboardStub = () => undefined;
   document.body.replaceChildren();
 });
 
@@ -40,6 +44,90 @@ describe("workspace unread indicator", () => {
     expect(row.querySelector(".activity-indicator.unread")).toBeNull();
   });
 });
+
+describe("workspace detail copy buttons", () => {
+  it("copies the workspace path from the menu details and keeps the menu open", async () => {
+    const writeText = stubClipboardWriteText(() => Promise.resolve());
+    const list = await mountWorkspaceList([workspace("ws-a")], new Set());
+    openMenu(list, "ws-a");
+    await list.updateComplete;
+
+    detailCopyButton(list, "Copy path").click();
+    await vi.waitFor(() => { expect(writeText).toHaveBeenCalledWith("/repo/ws-a"); });
+    await vi.waitFor(() => { expect(detailCopyButton(list, "Copied").textContent).toContain("✓"); });
+
+    expect(list.shadowRoot?.querySelector(".workspace-menu-panel")).not.toBeNull();
+  });
+
+  it("copies the bare branch name without the main suffix", async () => {
+    const writeText = stubClipboardWriteText(() => Promise.resolve());
+    const list = await mountWorkspaceList([{ ...workspace("ws-a"), branch: "feature-x" }], new Set());
+    openMenu(list, "feature-x");
+    await list.updateComplete;
+
+    detailCopyButton(list, "Copy branch").click();
+    await vi.waitFor(() => { expect(writeText).toHaveBeenCalledWith("feature-x"); });
+  });
+
+  it("offers to copy the workspace label when there is no branch", async () => {
+    const writeText = stubClipboardWriteText(() => Promise.resolve());
+    const list = await mountWorkspaceList([workspace("ws-a")], new Set());
+    openMenu(list, "ws-a");
+    await list.updateComplete;
+
+    detailCopyButton(list, "Copy workspace label").click();
+    await vi.waitFor(() => { expect(writeText).toHaveBeenCalledWith("ws-a"); });
+  });
+
+  it("keeps the copy action unchanged when the clipboard write fails", async () => {
+    const writeText = stubClipboardWriteText(() => Promise.reject(new Error("denied")));
+    const list = await mountWorkspaceList([workspace("ws-a")], new Set());
+    openMenu(list, "ws-a");
+    await list.updateComplete;
+
+    detailCopyButton(list, "Copy path").click();
+    await vi.waitFor(() => { expect(writeText).toHaveBeenCalled(); });
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
+    await list.updateComplete;
+
+    expect(detailCopyButton(list, "Copy path")).toBeDefined();
+    expect(list.shadowRoot?.querySelector(".workspace-menu-panel .detail-copy[aria-label='Copied']")).toBeNull();
+  });
+});
+
+function openMenu(list: WorkspaceList, workspaceLabel: string): void {
+  const toggle = rowFor(list, workspaceLabel).querySelector<HTMLButtonElement>(".action-menu-toggle");
+  if (toggle === null) throw new Error(`Expected a menu toggle for ${workspaceLabel}`);
+  toggle.click();
+}
+
+function detailCopyButton(list: WorkspaceList, label: string): HTMLButtonElement {
+  const buttons = [...(list.shadowRoot?.querySelectorAll<HTMLButtonElement>(".workspace-menu-panel .detail-copy") ?? [])];
+  const button = buttons.find((candidate) => candidate.getAttribute("aria-label") === label);
+  if (button === undefined) throw new Error(`Expected a detail copy button labeled ${label}`);
+  return button;
+}
+
+function stubClipboardWriteText(writeText: (text: string) => Promise<void>): Mock<(text: string) => Promise<void>> {
+  const mock = vi.fn<(text: string) => Promise<void>>(writeText);
+  const secureContext = Object.getOwnPropertyDescriptor(window, "isSecureContext");
+  const clipboard = Object.getOwnPropertyDescriptor(window.navigator, "clipboard");
+  Object.defineProperty(window, "isSecureContext", { value: true, configurable: true });
+  Object.defineProperty(window.navigator, "clipboard", { value: { writeText: mock }, configurable: true });
+  restoreClipboardStub = () => {
+    restoreStubbedProperty(window, "isSecureContext", secureContext);
+    restoreStubbedProperty(window.navigator, "clipboard", clipboard);
+  };
+  return mock;
+}
+
+function restoreStubbedProperty(target: object, key: string, descriptor: PropertyDescriptor | undefined): void {
+  if (descriptor === undefined) {
+    Reflect.deleteProperty(target, key);
+    return;
+  }
+  Object.defineProperty(target, key, descriptor);
+}
 
 async function mountWorkspaceList(workspaces: Workspace[], unreadWorkspaceIds: ReadonlySet<string>): Promise<WorkspaceList> {
   const list = new WorkspaceList();

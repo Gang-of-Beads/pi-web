@@ -16,6 +16,7 @@ import { registerSessionRoutes } from "./sessions/sessionRoutes.js";
 import { SessionNotificationStore } from "./sessions/sessionNotificationStore.js";
 import { FileSessionUnreadPersistence, SessionUnreadStore } from "./sessions/sessionUnreadStore.js";
 import { ProjectScopedSpawnTargetResolver } from "./sessions/spawnTargetResolver.js";
+import { RegisteredProjectWorkspaceCwds } from "./workspaces/projectWorkspaceCwds.js";
 import { ProjectService } from "./projects/projectService.js";
 import { ProjectStore } from "./storage/projectStore.js";
 import { WorkspaceService } from "./workspaces/workspaceService.js";
@@ -68,15 +69,19 @@ await runSessionDaemonStartup({
     });
     catalogRefresher.start();
     auth.subscribe(() => { catalogRefresher.requestRefresh(); });
-    const spawnTargets = config.spawnSessions
-      ? new ProjectScopedSpawnTargetResolver({ projects: new ProjectService(new ProjectStore()), workspaces: new WorkspaceService() })
-      : undefined;
+    // Cross-workspace session relationships are reported regardless of whether
+    // agents may spawn sessions: children can predate a config change, and the
+    // session tree should stay honest about them either way.
+    const projectWorkspaceDeps = { projects: new ProjectService(new ProjectStore()), workspaces: new WorkspaceService() };
+    const projectWorkspaces = new RegisteredProjectWorkspaceCwds(projectWorkspaceDeps);
+    const spawnTargets = config.spawnSessions ? new ProjectScopedSpawnTargetResolver(projectWorkspaceDeps) : undefined;
     const sessions = new PiSessionService(eventHub, sessionServiceDependencies({
       modelRuntime: auth.runtime,
       agentDir: activeAgentProfile.dir,
       workspaceActivity,
       logger: app.log,
       ...(spawnTargets === undefined ? {} : { spawnTargets }),
+      projectWorkspaces,
       subsessionsEnabled: config.subsessions,
       askUserEnabled: config.askUser,
       notificationStore,

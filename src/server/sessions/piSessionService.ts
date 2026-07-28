@@ -1,6 +1,6 @@
 import { statSync } from "node:fs";
 import { join } from "node:path";
-import { open, readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
@@ -56,6 +56,9 @@ import type { SessionRouteLookup, SessionRouteRef, SessionRouteService } from ".
 
 import { type AuthChange } from "./authService.js";
 import { canonicalizeStoredCwd, cwdPathsEqual } from "../workingDirectory.js";
+import { readSessionHeaderSummary, type SessionHeaderSummary } from "./sessionFileHeader.js";
+import { countOutOfListingChildren, locateOutOfListingParents, type SessionHeaderReader } from "./parentSessionLocator.js";
+import { siblingWorkspaceCwds, type ProjectWorkspaceCwds } from "../workspaces/projectWorkspaceCwds.js";
 import type { WorkspaceActivityService } from "../activity/workspaceActivityService.js";
 import { createAskUserToolDefinition, type AskUserInvocation, type AskUserToolDeps } from "./askUserTool.js";
 import { PendingAskStore, renderAskUserAnswersText, type PendingAskCloseResult, type PendingAskOpenResult } from "./pendingAskStore.js";
@@ -695,6 +698,13 @@ export interface PiSessionServiceDependencies {
    */
   spawnTargets?: SpawnTargetResolver;
   /**
+   * When provided, session listings report related sessions living in sibling
+   * workspaces of the same project: where an out-of-workspace parent is, and how
+   * many children a listed session has elsewhere. Omit to list each workspace in
+   * isolation.
+   */
+  projectWorkspaces?: ProjectWorkspaceCwds;
+  /**
    * Beta: when true (and `spawnTargets` is provided), the tracked-subsession
    * tools are available to sessions whose creation provenance permits
    * delegation. Off by default so the capability can ship in main without
@@ -752,6 +762,8 @@ export class PiSessionService implements SessionRouteService {
   private readonly subsessionLinks = new Map<string, TrackedSubsessionLink>();
   /** Parent id/file identities whose persisted links have already been loaded. */
   private readonly subsessionHydratedParents = new Set<string>();
+  /** Session file path -> its parsed header. Headers are written once, so successful reads are cached. */
+  private readonly sessionHeaderCache = new Map<string, SessionHeaderSummary>();
   /**
    * Tracked subsession id -> whether a completion notification is armed.
    * Armed when the child starts working; firing on completion disarms it so a
@@ -766,6 +778,7 @@ export class PiSessionService implements SessionRouteService {
   private readonly modelRuntime: ModelRuntime;
   private readonly workspaceActivity: Pick<WorkspaceActivityService, "applySessionStatus" | "applySessionActivity" | "removeSession" | "reconcileSessionActivity"> | undefined;
   private readonly spawnTargets: SpawnTargetResolver | undefined;
+  private readonly projectWorkspaces: ProjectWorkspaceCwds | undefined;
   private readonly logger: PiSessionLogger;
   private readonly now: () => Date;
   private readonly notificationStore: SessionNotificationStore;
@@ -788,6 +801,7 @@ export class PiSessionService implements SessionRouteService {
     this.sessionManager = deps.sessionManager;
     this.modelRuntime = deps.modelRuntime;
     this.spawnTargets = deps.spawnTargets;
+    this.projectWorkspaces = deps.projectWorkspaces;
     this.logger = deps.logger ?? noopLogger;
     this.now = deps.now ?? (() => new Date());
     this.notificationStore = deps.notificationStore ?? new SessionNotificationStore();
@@ -974,6 +988,7 @@ export class PiSessionService implements SessionRouteService {
     this.subsessionLinks.clear();
     this.subsessionHydratedParents.clear();
     this.subsessionNotifyArmed.clear();
+    this.sessionHeaderCache.clear();
     this.notificationStore.clearAll("service-dispose");
     await Promise.all(activeSessions.map(async (active) => {
       active.unsubscribe();
@@ -1008,8 +1023,77 @@ export class PiSessionService implements SessionRouteService {
       .sort(compareArchivedRecords)
       .map((record) => clientSessionFromArchivedRecord(record, sessionsById.get(record.sessionId)))
       .filter(isDefined);
-    return [...unarchivedSessions, ...archivedSessions];
+    return await this.withRelatedSessionsElsewhere([...unarchivedSessions, ...archivedSessions], cwd);
   }
+
+  /**
+   * Annotate a listing with the session relationships that cross workspace
+   * boundaries: where an out-of-listing parent lives, and how many children a
+   * listed session has in sibling workspaces.
+   *
+   * Both directions are best-effort. An unreadable parent header or a sibling
+   * workspace that cannot be listed leaves the session unannotated rather than
+   * failing the listing, and the browser falls back to its generic states.
+   */
+  private async withRelatedSessionsElsewhere(sessions: readonly ClientSession[], cwd: string): Promise<ClientSession[]> {
+    const [parentLocations, childCounts] = await Promise.all([
+      locateOutOfListingParents(sessions, cwd, this.readCachedSessionHeader),
+      this.countChildrenInSiblingWorkspaces(sessions, cwd),
+    ]);
+    return sessions.map((session) => {
+      const parent = session.parentSessionPath === undefined ? undefined : parentLocations.get(session.parentSessionPath);
+      const childrenElsewhere = childCounts.get(session.path);
+      if (parent === undefined && childrenElsewhere === undefined) return session;
+      const annotated = { ...session };
+      if (parent !== undefined) {
+        annotated.parentSessionId = parent.parentSessionId;
+        annotated.parentSessionCwd = parent.parentSessionCwd;
+      }
+      if (childrenElsewhere !== undefined) annotated.childSessionsElsewhere = childrenElsewhere;
+      return annotated;
+    });
+  }
+
+  /**
+   * Count children of the listed sessions that live in other workspaces of the
+   * same project.
+   *
+   * Only sibling workspaces are scanned: agents may only spawn into workspaces
+   * of the spawning session's own project, so that bounds where a child can be.
+   * Listing is skipped entirely when no project-workspace locator is configured
+   * or the cwd belongs to no registered project.
+   */
+  private async countChildrenInSiblingWorkspaces(sessions: readonly ClientSession[], cwd: string): Promise<Map<string, number>> {
+    if (this.projectWorkspaces === undefined || sessions.length === 0) return new Map();
+    try {
+      const siblingCwds = await siblingWorkspaceCwds(this.projectWorkspaces, cwd);
+      if (siblingCwds.length === 0) return new Map();
+      const listings = await Promise.all(siblingCwds.map(async (siblingCwd): Promise<string[]> => {
+        const entries = await this.sessionManager.list(siblingCwd);
+        return entries.flatMap((entry) => entry.parentSessionPath === undefined ? [] : [entry.parentSessionPath]);
+      }));
+      return countOutOfListingChildren(sessions, listings.flat());
+    } catch (error: unknown) {
+      this.logger.info(
+        { cwd, error: error instanceof Error ? error.message : String(error) },
+        "failed to count child sessions in sibling workspaces",
+      );
+      return new Map();
+    }
+  }
+
+  /**
+   * Read a session file header, memoized per path. Pi writes the header once at
+   * session creation, so a successful read stays valid for the process lifetime;
+   * failures are not cached so a session file that appears later is picked up.
+   */
+  private readonly readCachedSessionHeader: SessionHeaderReader = async (sessionFile) => {
+    const cached = this.sessionHeaderCache.get(sessionFile);
+    if (cached !== undefined) return cached;
+    const header = await readSessionHeaderSummary(sessionFile);
+    if (header !== undefined) this.sessionHeaderCache.set(sessionFile, header);
+    return header;
+  };
 
   async start(cwd: string, options: StartSessionOptions = {}): Promise<ClientSession> {
     return this.startSession(cwd, options);
@@ -3624,30 +3708,6 @@ function activeSessionFileMatches(active: ActiveSession<PiSessionRuntime>, expec
 
 function trackedLinkParentFileMatches(link: TrackedSubsessionLink, parentSessionFile: string): boolean {
   return link.parentSessionFile !== undefined && sessionPathsEqual(link.parentSessionFile, parentSessionFile);
-}
-
-interface SessionHeaderSummary {
-  id: string;
-  parentSession?: string;
-}
-
-async function readSessionHeaderSummary(sessionFile: string): Promise<SessionHeaderSummary | undefined> {
-  let file: Awaited<ReturnType<typeof open>> | undefined;
-  try {
-    file = await open(sessionFile, "r");
-    const buffer = Buffer.alloc(4096);
-    const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
-    const firstLine = buffer.toString("utf8", 0, bytesRead).split("\n", 1)[0];
-    if (firstLine === undefined || firstLine === "") return undefined;
-    const header: unknown = JSON.parse(firstLine);
-    if (!isRecord(header) || header["type"] !== "session" || typeof header["id"] !== "string") return undefined;
-    const parentSession = getString(header, "parentSession");
-    return { id: header["id"], ...(parentSession === undefined ? {} : { parentSession }) };
-  } catch {
-    return undefined;
-  } finally {
-    await file?.close().catch(() => undefined);
-  }
 }
 
 async function sessionFileHeaderMatches(sessionFile: string, expected: { sessionId: string; parentSessionFile?: string | undefined }): Promise<boolean> {

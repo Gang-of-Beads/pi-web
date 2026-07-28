@@ -465,6 +465,21 @@ export interface SessionInfo extends SessionRef {
   messageCount: number;
   firstMessage: string;
   parentSessionPath?: string;
+  /**
+   * Working directory of the parent session, read from the parent session file
+   * header. Only populated when the parent is outside this listing's cwd, so a
+   * child whose parent lives in another worktree can point at it instead of
+   * only reporting that the parent is unavailable here.
+   */
+  parentSessionCwd?: string;
+  /** Session id of an out-of-cwd parent, so the browser can select it after switching workspace. */
+  parentSessionId?: string;
+  /**
+   * Number of sessions in other workspaces of the same project that record this
+   * session as their parent. Only set when non-zero, so a parent can show that
+   * it has children which are not nested beneath it in this workspace.
+   */
+  childSessionsElsewhere?: number;
   archived?: boolean;
   archivedAt?: string;
 }

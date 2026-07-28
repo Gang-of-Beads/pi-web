@@ -178,6 +178,18 @@ describe("sessionRowsForCurrentTree", () => {
     ]);
   });
 
+  it("nests a child whose recorded parent path differs only by a trailing separator", () => {
+    // A session.created broadcast carries the live runtime's file path, while the
+    // listed parent's path comes from the session store enumeration.
+    const parent = session("parent");
+    const child = session("child", { parentSessionPath: `${parent.path}/` });
+
+    expect(rowSummaries(sessionRowsForCurrentTree([parent, child]))).toEqual([
+      { id: "parent", depth: 0, hasMissingParent: false },
+      { id: "child", depth: 1, hasMissingParent: false },
+    ]);
+  });
+
   it("still marks unavailable parents when the parent record is missing", () => {
     const child = session("child", { parentSessionPath: "/sessions/missing.jsonl" });
 

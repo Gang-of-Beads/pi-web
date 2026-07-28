@@ -90,7 +90,10 @@ Source files:
 ```text
 pi-web-plugins/info/package.json
 pi-web-plugins/info/pi-web-plugin.ts
+pi-web-plugins/info/infoInternals.ts
 ```
+
+`pi-web-plugin.ts` is the plugin skeleton: metadata plus contribution definitions. `infoInternals.ts` holds everything the bundled panel and action actually render, so you can ignore or replace it when copying the plugin.
 
 Built module:
 
@@ -129,6 +132,8 @@ export default {
 ```
 
 When copying the Info plugin, choose a new plugin id so it does not conflict with the bundled `info` plugin.
+
+The Info panel doubles as an always-available PI WEB status view: it renders the host-provided `context.state.piWebStatus` (versions, installation, release state, machine, and workspace details) without issuing its own requests, and its action copies a plain-text diagnostics summary suitable for bug reports.
 
 PI WEB also ships an `updates` plugin that demonstrates dynamic `visible` and `badge` callbacks for tabs that only appear when the host has status messages or needs extra install visibility.
 
@@ -433,14 +438,13 @@ Actions appear in the action palette. They can inspect app state and call UI/run
 ```js
 actions: [
   {
-    id: "workspace.show-path",
-    title: "Show Current Workspace Path",
-    description: "Display the selected workspace path",
-    shortcut: "mod+shift+p",
+    id: "copy-diagnostics",
+    title: "Copy PI WEB Diagnostics",
+    description: "Copy version, installation, and status details for this machine",
     group: "Info",
-    enabled: (context) => context.state.selectedWorkspace !== undefined,
-    run: (context) => {
-      window.alert(context.state.selectedWorkspace?.path ?? "No workspace selected");
+    run: async (context) => {
+      const version = context.state.piWebStatus?.components.web.runtimeVersion ?? "unknown";
+      await navigator.clipboard.writeText(`PI WEB ${version}`);
     },
   },
 ]
@@ -468,6 +472,7 @@ Stable runtime context fields:
 ```ts
 interface PluginRuntimeContext {
   state: {
+    selectedMachine?: PluginMachine;
     selectedWorkspace?: Workspace;
     selectedSession?: unknown;
     piWebStatus?: PiWebStatusResponse;
@@ -492,7 +497,7 @@ interface PluginRuntimeContext {
 Notes:
 
 - `state` is a snapshot of current UI state when actions are built.
-- The stable state fields are `state.selectedWorkspace`, `state.selectedSession`, and `state.piWebStatus`. `state.piWebStatus` describes the currently selected machine's PI WEB runtime, or the gateway/local runtime when the local machine is selected.
+- The stable state fields are `state.selectedMachine`, `state.selectedWorkspace`, `state.selectedSession`, and `state.piWebStatus`. `state.selectedMachine` identifies the currently selected machine. `state.piWebStatus` describes the currently selected machine's PI WEB runtime, or the gateway/local runtime when the local machine is selected.
 - Other `state` fields may exist at runtime, but they are private PI WEB internals that may graduate into stable helpers, change shape, or disappear.
 - `enabled` is evaluated when the action palette asks for actions.
 - `selectWorkspaceTool()` expects a qualified panel id such as `my-plugin:workspace.info`.
@@ -957,7 +962,7 @@ If you are an AI agent building or editing a PI WEB plugin, follow this checklis
 9. Add workspace panels for larger workspace UI.
 10. Add workspace labels for compact inline metadata.
 11. Return arrays from workspace label `items()`; return an empty array to render nothing.
-12. Use documented context helpers first: `files`, `terminal`, `host.requestRender`, `workspace`, `machine`, `state.selectedWorkspace`, `state.selectedSession`, `state.piWebStatus`, and `prompt`.
+12. Use documented context helpers first: `files`, `terminal`, `host.requestRender`, `workspace`, `machine`, `state.selectedMachine`, `state.selectedWorkspace`, `state.selectedSession`, `state.piWebStatus`, and `prompt`.
 13. Do not fetch PI WEB `/api/...` endpoints directly unless you intentionally accept private API churn; prefer documented helpers.
 14. Treat plugins as trusted code and avoid reading or displaying secrets unless intentional.
 15. After local edits, tell the user to hard reload the browser and check the console for plugin errors.

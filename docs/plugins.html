@@ -231,13 +231,17 @@ After editing, check the manifest endpoint and browser-console failure cases.</c
               </p>
               <ul>
                 <li><code>pi-web-plugins/info/package.json</code> shows the required metadata shape.</li>
-                <li><code>pi-web-plugins/info/pi-web-plugin.ts</code> shows the TypeScript source shape.</li>
+                <li><code>pi-web-plugins/info/pi-web-plugin.ts</code> is the skeleton: metadata and contribution definitions.</li>
+                <li><code>pi-web-plugins/info/infoInternals.ts</code> holds the bundled panel and action implementation, which you can ignore or replace when copying the plugin.</li>
                 <li><code>dist/pi-web-plugins/info/pi-web-plugin.js</code> is the built browser module in a checkout.</li>
               </ul>
               <p>
                 Read it on GitHub:
                 <a href="https://github.com/jmfederico/pi-web/tree/main/pi-web-plugins/info">pi-web-plugins/info</a>.
                 If you copy it, choose a new plugin id so it does not conflict with the bundled <code>info</code> plugin.
+                Its panel also doubles as an always-available PI WEB status view: it renders the host-provided
+                <code>context.state.piWebStatus</code> without issuing its own requests, and its action copies a
+                plain-text diagnostics summary suitable for bug reports.
               </p>
               <p>
                 The bundled <code>updates</code> plugin demonstrates dynamic <code>visible</code> and <code>badge</code>

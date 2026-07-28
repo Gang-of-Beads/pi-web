@@ -23,6 +23,7 @@ import { SessionStorageWorkspaceSelectionMemory } from "../controllers/workspace
 import { KeyboardShortcutDispatcher } from "../keyboardShortcuts";
 import { selectedMachineId } from "../controllers/types";
 import { machineSessionKey } from "../machineKeys";
+import { resolveParentSessionLocation, type ParentSessionLocation } from "../parentSessionLocation";
 import { sessionCleanupRequestKey, sessionCleanupUnavailableMessage } from "../sessionCleanupUi";
 import { selectedNotificationView } from "../sessionNotifications";
 import { hasAuthoritativeSessionPersistence as runtimeHasAuthoritativeSessionPersistence } from "../sessionPersistence";
@@ -1380,6 +1381,8 @@ export class PiWebApp extends LitElement {
         .onDeleteArchivedSession=${(session: SessionInfo) => this.sessions.deleteArchivedSessions([session])}
         .onDeleteArchivedSessions=${(sessions: SessionInfo[]) => this.sessions.deleteArchivedSessions(sessions)}
         .onDetachParentSession=${(session: SessionInfo) => this.sessions.detachParent(session)}
+        .parentSessionLocation=${this.parentSessionLocationFor}
+        .onGoToParentSession=${(session: SessionInfo, location: ParentSessionLocation) => this.goToParentSession(location)}
         .onReloadSession=${(session: SessionInfo) => this.sessions.reloadSession(session)}
         .onCleanupSessions=${() => { this.openSessionCleanupDialog(); }}
         .onFocusNavigationTarget=${(target: NavigationFocusTarget) => { void this.focusNavigationTarget(target); }}
@@ -1403,6 +1406,36 @@ export class PiWebApp extends LitElement {
 
     if (!isCurrentSelection()) return;
     await this.focusNavigationTarget(nextTarget);
+  }
+
+  /**
+   * Where a listed session's parent lives, when that parent is outside the
+   * selected workspace. Bound once so the session list receives a stable
+   * resolver identity across renders.
+   */
+  private readonly parentSessionLocationFor = (session: SessionInfo): ParentSessionLocation => resolveParentSessionLocation(session, {
+    workspaces: this.state.workspaces,
+    workspacesByProjectId: this.state.workspacesByProjectId,
+    projects: this.state.projects,
+  });
+
+  /**
+   * Select the workspace that owns an out-of-workspace parent session, and the
+   * parent session itself when its id is known. Cross-project parents go through
+   * `selectProject`, which loads that project's workspaces first.
+   */
+  private async goToParentSession(location: ParentSessionLocation): Promise<void> {
+    if (location.kind !== "workspace") return;
+    await this.selectNavigationItem("sessions", "chat", async () => {
+      const workspace = this.state.workspaces.find((candidate) => candidate.id === location.workspaceId);
+      if (workspace !== undefined) {
+        await this.workspaces.selectWorkspace(workspace, { sessionId: location.sessionId });
+        return;
+      }
+      const project = this.state.projects.find((candidate) => candidate.id === location.projectId);
+      if (project === undefined) return;
+      await this.workspaces.selectProject(project, { workspaceId: location.workspaceId, sessionId: location.sessionId });
+    });
   }
 
   private async startSessionFromNavigation(): Promise<void> {
