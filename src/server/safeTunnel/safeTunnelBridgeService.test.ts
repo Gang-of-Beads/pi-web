@@ -4,6 +4,10 @@ import type {
   SafeTunnelRuntimeStatus,
 } from "../../shared/apiTypes.js";
 import type {
+  SafeTunnelHeartbeatTunnelStatus,
+  SafeTunnelMachineHeartbeat,
+} from "./safeTunnelControlPlane.js";
+import type {
   SafeTunnelLoginInput,
   SafeTunnelLoginObserver,
   SafeTunnelLoginResult,
@@ -15,10 +19,10 @@ import {
   type SafeTunnelPersistedState,
 } from "./safeTunnelState.js";
 import type {
-  SafeTunnelFrpcRuntime,
   SafeTunnelFrpcStartInput,
   SafeTunnelFrpcStartResult,
 } from "./safeTunnelFrpcSupervisor.js";
+import type { SafeTunnelReconciledFrpcRuntime } from "./safeTunnelRuntimeReconciler.js";
 import {
   DefaultSafeTunnelBridgeService,
   type SafeTunnelApplicationService,
@@ -120,6 +124,7 @@ describe("DefaultSafeTunnelBridgeService", () => {
       exitCode: 0,
       publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
     });
+    expect(fixture.runtime.reconcileCalls).toBe(1);
   });
 
   it("persists enabled intent before starting direct supervision", async () => {
@@ -195,6 +200,14 @@ describe("DefaultSafeTunnelBridgeService", () => {
     expect(fixture.order).toEqual(["disable", "runtime.stop"]);
   });
 
+  it("delegates explicit startup reconciliation to the runtime lifecycle", async () => {
+    const fixture = createFixture();
+
+    await fixture.service.startup();
+
+    expect(fixture.runtime.startupCalls).toBe(1);
+  });
+
   it("shuts down the process runtime without erasing persisted enabled intent", async () => {
     const fixture = createFixture();
     fixture.application.loaded = registeredState({ desiredState: "enabled" });
@@ -235,9 +248,11 @@ function createFixture(): Fixture {
   };
 }
 
-class FakeFrpcRuntime implements SafeTunnelFrpcRuntime {
+class FakeFrpcRuntime implements SafeTunnelReconciledFrpcRuntime {
+  reconcileCalls = 0;
   shutdownCalls = 0;
   readonly startCalls: SafeTunnelFrpcStartInput[] = [];
+  startupCalls = 0;
   startResult: Promise<SafeTunnelFrpcStartResult> = Promise.resolve({
     output: "Using verified PI WEB-managed frpc v0.69.1 for linux-arm64.\n",
     pid: 1234,
@@ -252,8 +267,18 @@ class FakeFrpcRuntime implements SafeTunnelFrpcRuntime {
 
   constructor(private readonly order: string[]) {}
 
+  reconcile(): Promise<void> {
+    this.reconcileCalls += 1;
+    return Promise.resolve();
+  }
+
   shutdown(): Promise<void> {
     this.shutdownCalls += 1;
+    return Promise.resolve();
+  }
+
+  startup(): Promise<void> {
+    this.startupCalls += 1;
     return Promise.resolve();
   }
 
@@ -341,6 +366,17 @@ class FakeSafeTunnelApplicationService implements SafeTunnelApplicationService {
 
   getTunnelConfig(): Promise<SafeTunnelPreparedTunnelConfig> {
     return Promise.resolve(preparedConfig());
+  }
+
+  recordHeartbeat(input: {
+    readonly tunnelStatus: SafeTunnelHeartbeatTunnelStatus;
+    readonly errorMessage?: string;
+  }): Promise<SafeTunnelMachineHeartbeat> {
+    return Promise.resolve({
+      machineId: this.loaded.state.machine?.machineId ?? "machine_123",
+      lastSeenAt: "2026-07-29T00:00:00.000Z",
+      nextHeartbeatSeconds: input.tunnelStatus === "running" ? 30 : 10,
+    });
   }
 }
 

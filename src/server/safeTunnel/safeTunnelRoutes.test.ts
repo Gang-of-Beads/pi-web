@@ -27,9 +27,10 @@ afterEach(async () => {
 });
 
 describe("registerSafeTunnelRoutes", () => {
-  it("serves Safe Tunnel status", async () => {
+  it("starts reconciliation before serving Safe Tunnel status", async () => {
     const response = await app.inject({ method: "GET", url: "/api/safe-tunnel/status" });
 
+    expect(service.startup).toHaveBeenCalledOnce();
     expect(response.statusCode).toBe(200);
     expect(response.json<SafeTunnelStatusResponse>()).toEqual(service.statusResponse);
   });
@@ -138,6 +139,7 @@ class FakeSafeTunnelBridgeService implements SafeTunnelBridgeService {
   readonly login = vi.fn<(request: SafeTunnelLoginRequest) => Promise<SafeTunnelLoginResponse>>(() => Promise.resolve(this.loginResponse));
   readonly operation = vi.fn<(operationId: string) => SafeTunnelOperationResponse | undefined>((operationId) => (operationId === "op_1" ? this.operationResponse : undefined));
   readonly shutdown = vi.fn<() => Promise<void>>(() => Promise.resolve());
+  readonly startup = vi.fn<() => Promise<void>>(() => Promise.resolve());
   readonly start = vi.fn<(request: SafeTunnelStartRequest) => Promise<SafeTunnelStartResponse>>(() => Promise.resolve(this.startResponse));
   readonly status = vi.fn<() => Promise<SafeTunnelStatusResponse>>(() => Promise.resolve(this.statusResponse));
   readonly stop = vi.fn<() => Promise<SafeTunnelStopResponse>>(() => Promise.resolve(this.stopResponse));

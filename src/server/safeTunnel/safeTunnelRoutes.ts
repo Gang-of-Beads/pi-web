@@ -5,6 +5,9 @@ import { createDefaultSafeTunnelBridgeService, SafeTunnelBridgeError, type SafeT
 class SafeTunnelRequestValidationError extends Error {}
 
 export function registerSafeTunnelRoutes(app: FastifyInstance, service: SafeTunnelBridgeService = createDefaultSafeTunnelBridgeService()): void {
+  app.addHook("onReady", async () => {
+    await service.startup();
+  });
   app.addHook("onClose", async () => {
     await service.shutdown();
   });

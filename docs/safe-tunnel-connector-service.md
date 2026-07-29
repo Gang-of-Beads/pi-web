@@ -13,14 +13,16 @@ When the browser start route is used, PI WEB:
 3. uses the advanced `frpc` path when configured, otherwise selects/downloads/extracts and SHA-256 verifies the pinned managed artifact;
 4. atomically writes private generated TOML beneath `$PI_WEB_DATA_DIR/safe-tunnel/`;
 5. launches `frpc` directly and retains the exact child handle;
-6. restarts unexpected failures with bounded exponential backoff that resets only after stable operation; and
-7. cancels timers/listeners, gracefully stops that same handle, and removes generated TOML on disable or web/API shutdown.
+6. restarts unexpected child/preparation failures with bounded exponential backoff that resets only after stable operation;
+7. reconciles persisted enabled intent when the web/API process starts;
+8. sends server-scheduled heartbeats with bounded interval and failure recovery, stopping on rejected/revoked credentials; and
+9. cancels reconciliation/heartbeat/process timers and listeners, gracefully stops that same handle, and removes generated TOML on disable or web/API shutdown.
 
-No PID file participates in PI WEB-owned status or stop. Shutdown stops the process without changing enabled intent; startup reconciliation and heartbeat/revocation handling remain the next productization slice.
+No PID file participates in PI WEB-owned status or stop. Shutdown stops the process without changing enabled intent; the next web/API startup recovers that intent. Heartbeat work is aborted and awaited before child shutdown.
 
 ## Retained legacy package
 
-The `packages/tunnel-connector`, `packages/tunnel-frp-engine`, source wrapper, command-discovery/npm-installer module, and their old PID-file CLI behavior remain temporarily for development/recovery and historical tests. This leg deliberately does not remove that package shape. The dedicated cleanup leg will remove it after lifecycle reconciliation is complete.
+The `packages/tunnel-connector`, `packages/tunnel-frp-engine`, source wrapper, command-discovery/npm-installer module, and their old PID-file CLI behavior remain temporarily for development/recovery and historical tests. The dedicated cleanup leg will remove that package shape; this lifecycle slice does not begin that cleanup.
 
 Legacy connector environment variables are ignored by PI WEB's built-in runtime. Running the source wrapper directly can still use its own legacy config and PID-file behavior, but that is not the normal product path and must not own the PI WEB browser runtime's state.
 

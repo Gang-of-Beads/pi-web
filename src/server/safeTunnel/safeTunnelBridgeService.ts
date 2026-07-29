@@ -14,6 +14,8 @@ import type {
 import {
   HttpSafeTunnelControlPlane,
   type SafeTunnelDeviceAuthorization,
+  type SafeTunnelHeartbeatTunnelStatus,
+  type SafeTunnelMachineHeartbeat,
 } from "./safeTunnelControlPlane.js";
 import {
   defaultSafeTunnelFrpcInstallDirectory,
@@ -25,10 +27,14 @@ import {
   FileSafeTunnelFrpcRuntimeFiles,
 } from "./safeTunnelFrpcRuntimeFiles.js";
 import {
+  NodeSafeTunnelSupervisorClock,
   SafeTunnelFrpcSupervisor,
-  type SafeTunnelFrpcRuntime,
   type SafeTunnelFrpcStartResult,
 } from "./safeTunnelFrpcSupervisor.js";
+import {
+  SafeTunnelRuntimeReconciler,
+  type SafeTunnelReconciledFrpcRuntime,
+} from "./safeTunnelRuntimeReconciler.js";
 import {
   FileSafeTunnelStateStorage,
   defaultSafeTunnelStatePath,
@@ -50,6 +56,7 @@ export interface SafeTunnelBridgeService {
   login(request: SafeTunnelLoginRequest): Promise<SafeTunnelLoginResponse>;
   operation(operationId: string): SafeTunnelOperationResponse | undefined;
   shutdown(): Promise<void>;
+  startup(): Promise<void>;
   start(request: SafeTunnelStartRequest): Promise<SafeTunnelStartResponse>;
   status(): Promise<SafeTunnelStatusResponse>;
   stop(): Promise<SafeTunnelStopResponse>;
@@ -62,6 +69,13 @@ export interface SafeTunnelApplicationService {
   getTunnelConfig(options?: {
     readonly signal?: AbortSignal;
   }): Promise<SafeTunnelPreparedTunnelConfig>;
+  recordHeartbeat(
+    input: {
+      readonly tunnelStatus: SafeTunnelHeartbeatTunnelStatus;
+      readonly errorMessage?: string;
+    },
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<SafeTunnelMachineHeartbeat>;
   login(
     request: SafeTunnelLoginInput,
     observer?: SafeTunnelLoginObserver,
@@ -72,7 +86,7 @@ export interface SafeTunnelApplicationService {
 export interface SafeTunnelBridgeDependencies {
   readonly fileExists: (path: string) => boolean;
   readonly now: () => Date;
-  readonly runtime: SafeTunnelFrpcRuntime;
+  readonly runtime: SafeTunnelReconciledFrpcRuntime;
   readonly safeTunnel: SafeTunnelApplicationService;
 }
 
@@ -145,6 +159,7 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
         (result) => {
           finishLoginOperation(operation, result, this.dependencies.now());
           this.clearActiveOperation(operation);
+          void this.dependencies.runtime.reconcile().catch(() => undefined);
         },
         (error: unknown) => { this.failOperation(operation, error); },
       );
@@ -235,6 +250,10 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
     return this.dependencies.runtime.shutdown();
   }
 
+  startup(): Promise<void> {
+    return this.dependencies.runtime.startup();
+  }
+
   private assertNoActiveOperation(): void {
     if (this.operationStartInFlight || this.activeOperation?.status === "running") {
       throw new SafeTunnelBridgeError("A Safe Tunnel operation is already running.", 409);
@@ -307,11 +326,18 @@ export function createDefaultSafeTunnelBridgeService(): SafeTunnelBridgeService 
     artifactSource: new HttpSafeTunnelFrpcArtifactSource(),
     installDirectory: defaultSafeTunnelFrpcInstallDirectory(statePath),
   });
-  const runtime = new SafeTunnelFrpcSupervisor({
+  const clock = new NodeSafeTunnelSupervisorClock();
+  const supervisor = new SafeTunnelFrpcSupervisor({
+    clock,
     configProvider: safeTunnel,
     files: new FileSafeTunnelFrpcRuntimeFiles({ statePath }),
     launcher: new NodeSafeTunnelFrpcProcessLauncher(),
     managedFrpc,
+  });
+  const runtime = new SafeTunnelRuntimeReconciler({
+    clock,
+    runtime: supervisor,
+    safeTunnel,
   });
   return new DefaultSafeTunnelBridgeService({
     fileExists: existsSync,

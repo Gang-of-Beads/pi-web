@@ -57,6 +57,18 @@ function approvedAuthorization(): unknown {
   };
 }
 
+function heartbeatResponse(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    accepted: true,
+    machine: {
+      id: "machine_123",
+      lastSeenAt: "2026-07-29T12:05:00.000Z",
+    },
+    nextHeartbeatSeconds: 30,
+    ...overrides,
+  };
+}
+
 function registeredMachine(): Record<string, unknown> {
   return {
     machine: {
@@ -166,6 +178,80 @@ describe("HttpSafeTunnelControlPlane", () => {
         headers: { authorization: "Bearer piwt_mtok_v1_private" },
         signal: controller.signal,
       },
+    });
+  });
+
+  it("records and strictly parses normalized machine heartbeats", async () => {
+    const transport = sequencedFetch([jsonResponse(202, heartbeatResponse())]);
+    const controlPlane = new HttpSafeTunnelControlPlane({ fetch: transport.fetch });
+    const controller = new AbortController();
+
+    await expect(controlPlane.recordMachineHeartbeat({
+      controlApiBaseUrl: "https://control.example.test",
+      machineId: "machine_123",
+      machineToken: "piwt_mtok_v1_private",
+    }, {
+      clientVersion: safeTunnelClientVersion,
+      tunnelStatus: "error",
+      errorMessage: "PI WEB Safe Tunnel runtime is recovering.",
+    }, { signal: controller.signal })).resolves.toEqual({
+      machineId: "machine_123",
+      lastSeenAt: "2026-07-29T12:05:00.000Z",
+      nextHeartbeatSeconds: 30,
+    });
+    expect(transport.requests[0]).toMatchObject({
+      input: "https://control.example.test/v1/machines/machine_123/heartbeat",
+      init: {
+        method: "POST",
+        redirect: "error",
+        headers: {
+          accept: "application/json",
+          authorization: "Bearer piwt_mtok_v1_private",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          connectorVersion: safeTunnelClientVersion,
+          tunnelStatus: "error",
+          errorMessage: "PI WEB Safe Tunnel runtime is recovering.",
+        }),
+        signal: controller.signal,
+      },
+    });
+  });
+
+  it("rejects malformed heartbeat success and maps rejected credentials", async () => {
+    const malformed = new HttpSafeTunnelControlPlane({
+      fetch: () => Promise.resolve(jsonResponse(202, heartbeatResponse({
+        nextHeartbeatSeconds: 0,
+      }))),
+    });
+    await expect(malformed.recordMachineHeartbeat({
+      controlApiBaseUrl: "https://control.example.test",
+      machineId: "machine_123",
+      machineToken: "piwt_mtok_v1_private",
+    }, {
+      clientVersion: safeTunnelClientVersion,
+      tunnelStatus: "running",
+    })).rejects.toMatchObject({
+      code: "invalid_response",
+      operation: "record_heartbeat",
+    });
+
+    const revoked = new HttpSafeTunnelControlPlane({
+      fetch: () => Promise.resolve(jsonResponse(401, {
+        error: { code: "invalid_machine_token", message: "private provider detail" },
+      })),
+    });
+    await expect(revoked.recordMachineHeartbeat({
+      controlApiBaseUrl: "https://control.example.test",
+      machineId: "machine_123",
+      machineToken: "piwt_mtok_v1_private",
+    }, {
+      clientVersion: safeTunnelClientVersion,
+      tunnelStatus: "running",
+    })).rejects.toMatchObject({
+      code: "authentication_failed",
+      operation: "record_heartbeat",
     });
   });
 

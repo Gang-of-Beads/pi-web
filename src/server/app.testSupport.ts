@@ -14,8 +14,15 @@ import { WorkspaceService } from "./workspaces/workspaceService.js";
 import type { PiPackageService } from "./piPackageService.js";
 import type { SessionProxyDaemon } from "./sessiond/sessionProxyRoutes.js";
 import { PI_WEB_CAPABILITIES } from "../shared/capabilities.js";
-import type { ActiveAgentProfileDescriptor, PiPackageInfo, PiWebConfigResponse, PiWebConfigValues } from "../shared/apiTypes.js";
+import type {
+  ActiveAgentProfileDescriptor,
+  PiPackageInfo,
+  PiWebConfigResponse,
+  PiWebConfigValues,
+  SafeTunnelStatusResponse,
+} from "../shared/apiTypes.js";
 import type { SessionDaemonAgentProfileResult } from "../sessiond/sessionDaemonClient.js";
+import type { SafeTunnelBridgeService } from "./safeTunnel/safeTunnelBridgeService.js";
 
 interface AppTestContext {
   readonly app: FastifyInstance;
@@ -108,6 +115,7 @@ export function registerAppTestHooks(): void {
       agentProfileProvider: { getActiveAgentProfile: () => Promise.resolve(agentProfileResult) },
       config: fakeConfigService(),
       piPackages: fakePiPackageService(),
+      safeTunnel: fakeSafeTunnelBridgeService(),
       piWebPlugins: {
         manifest: () => Promise.resolve({ plugins: [{ id: "fake", module: "/pi-web-plugins/fake/plugin.js?v=1", source: "test", scope: "local", machineSpecific: false }] }),
         plugins: () => Promise.resolve({ plugins: [{ id: "fake", module: "/pi-web-plugins/fake/plugin.js?v=1", source: "test", scope: "local", machineSpecific: false, enabled: true }] }),
@@ -133,6 +141,31 @@ export function registerAppTestHooks(): void {
     if (appToClose !== undefined) await appToClose.close();
     if (tempDirToRemove !== undefined) await rm(tempDirToRemove, { recursive: true, force: true });
   });
+}
+
+export function fakeSafeTunnelBridgeService(): SafeTunnelBridgeService {
+  const status: SafeTunnelStatusResponse = {
+    connector: { command: "PI WEB built-in frpc supervisor", state: "available" },
+    config: {
+      exists: false,
+      path: "/test/pi-web/safe-tunnel/config.json",
+      state: "missing",
+    },
+    desiredState: "disabled",
+    runtime: { state: "stopped" },
+  };
+  return {
+    login: () => Promise.reject(new Error("Safe Tunnel login is not configured in this app test.")),
+    operation: () => undefined,
+    shutdown: () => Promise.resolve(),
+    startup: () => Promise.resolve(),
+    start: () => Promise.reject(new Error("Safe Tunnel start is not configured in this app test.")),
+    status: () => Promise.resolve(status),
+    stop: () => Promise.resolve({
+      command: { exitCode: 0, stderr: "", stdout: "No Safe Tunnel runtime in app test.\n" },
+      status,
+    }),
+  };
 }
 
 function fakePiWebPluginAsset(pluginId: string, assetPath: string): Promise<{ content: Buffer; contentType: string } | undefined> {

@@ -20,6 +20,7 @@ export type SafeTunnelControlPlaneErrorCode =
 export type SafeTunnelControlPlaneOperation =
   | "complete_device_authorization"
   | "get_tunnel_config"
+  | "record_heartbeat"
   | "register_machine"
   | "start_device_authorization";
 
@@ -75,6 +76,18 @@ export interface SafeTunnelMachineTunnelConfig {
   readonly frpcConfigToml: string;
 }
 
+export type SafeTunnelHeartbeatTunnelStatus =
+  | "error"
+  | "running"
+  | "starting"
+  | "stopping";
+
+export interface SafeTunnelMachineHeartbeat {
+  readonly machineId: string;
+  readonly lastSeenAt: string;
+  readonly nextHeartbeatSeconds: number;
+}
+
 export interface SafeTunnelControlPlane {
   startDeviceAuthorization(input: {
     readonly controlApiBaseUrl: string;
@@ -96,6 +109,15 @@ export interface SafeTunnelControlPlane {
     credentials: SafeTunnelMachineCredentials,
     options?: { readonly signal?: AbortSignal },
   ): Promise<SafeTunnelMachineTunnelConfig>;
+  recordMachineHeartbeat(
+    credentials: SafeTunnelMachineCredentials,
+    input: {
+      readonly clientVersion: string;
+      readonly tunnelStatus: SafeTunnelHeartbeatTunnelStatus;
+      readonly errorMessage?: string;
+    },
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<SafeTunnelMachineHeartbeat>;
 }
 
 export type SafeTunnelFetch = (input: string, init: RequestInit) => Promise<Response>;
@@ -222,6 +244,39 @@ export class HttpSafeTunnelControlPlane implements SafeTunnelControlPlane {
       await readSuccessJson(response, operation),
       operation,
       parseMachineTunnelConfig,
+    );
+  }
+
+  async recordMachineHeartbeat(
+    credentials: SafeTunnelMachineCredentials,
+    input: {
+      readonly clientVersion: string;
+      readonly tunnelStatus: SafeTunnelHeartbeatTunnelStatus;
+      readonly errorMessage?: string;
+    },
+    options: { readonly signal?: AbortSignal } = {},
+  ): Promise<SafeTunnelMachineHeartbeat> {
+    const operation = "record_heartbeat";
+    const response = await this.request(
+      endpoint(
+        credentials.controlApiBaseUrl,
+        `/v1/machines/${encodeURIComponent(credentials.machineId)}/heartbeat`,
+      ),
+      {
+        ...jsonPostRequest({
+          connectorVersion: input.clientVersion,
+          tunnelStatus: input.tunnelStatus,
+          ...(input.errorMessage === undefined ? {} : { errorMessage: input.errorMessage }),
+        }, credentials.machineToken),
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+      },
+      operation,
+    );
+    requireExpectedResponse(response, 202, operation);
+    return parseControlPlaneResponse(
+      await readSuccessJson(response, operation),
+      operation,
+      parseMachineHeartbeat,
     );
   }
 
@@ -382,6 +437,17 @@ function parseMachineTunnelConfig(body: unknown): SafeTunnelMachineTunnelConfig 
   };
 }
 
+function parseMachineHeartbeat(body: unknown): SafeTunnelMachineHeartbeat {
+  const record = requireResponseRecord(body);
+  const machine = requireResponseRecord(record["machine"]);
+  if (record["accepted"] !== true) throw invalidResponse();
+  return {
+    machineId: requireResponseString(machine["id"]),
+    lastSeenAt: requireCanonicalIsoDateTime(machine["lastSeenAt"]),
+    nextHeartbeatSeconds: requirePositiveInteger(record["nextHeartbeatSeconds"]),
+  };
+}
+
 function normalizeResponsePublicUrl(value: unknown): string {
   try {
     return normalizeSafeTunnelPublicUrl(value);
@@ -470,6 +536,8 @@ function operationLabel(operation: SafeTunnelControlPlaneOperation): string {
       return "Device authorization completion";
     case "get_tunnel_config":
       return "Tunnel configuration";
+    case "record_heartbeat":
+      return "Machine heartbeat";
     case "register_machine":
       return "Machine registration";
     case "start_device_authorization":

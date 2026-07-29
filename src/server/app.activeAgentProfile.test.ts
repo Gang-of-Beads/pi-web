@@ -6,6 +6,7 @@ import type { ActiveAgentProfileDescriptor, PiWebConfigResponse, PiWebPluginInfo
 import type { SessionDaemonAgentProfileResult } from "../sessiond/sessionDaemonClient.js";
 import type { ActiveAgentProfileProvider } from "./activeAgentProfileProvider.js";
 import { buildApp } from "./app.js";
+import { fakeSafeTunnelBridgeService } from "./app.testSupport.js";
 import type { PiWebConfigService } from "./configRoutes.js";
 
 let tempDir: string;
@@ -36,6 +37,7 @@ describe("buildApp active profile composition", () => {
     const app = await buildApp({
       agentProfileProvider: { getActiveAgentProfile },
       config: emptyConfigService(),
+      safeTunnel: fakeSafeTunnelBridgeService(),
       clientDist: false,
       logger: false,
     });
@@ -70,6 +72,7 @@ describe("buildApp active profile composition", () => {
     const app = await buildApp({
       agentProfileProvider: provider,
       config: emptyConfigService(),
+      safeTunnel: fakeSafeTunnelBridgeService(),
       clientDist: false,
       logger: false,
     });

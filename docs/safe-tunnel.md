@@ -20,7 +20,7 @@ $PI_WEB_DATA_DIR/safe-tunnel/config.json
 - private machine id/token and Control API location;
 - non-secret machine slug/public URL metadata.
 
-Desired intent is independent from observed runtime state. Start persists `enabled` before process preparation; disable attempts to persist `disabled` before cancelling retries and stopping the owned child. A state-write failure is reported but does not leave the exact owned child running. Web/API shutdown stops the child without changing enabled intent, leaving startup reconciliation to recover it in the next lifecycle slice. A stopped or failed runtime therefore does not silently erase what the user requested.
+Desired intent is independent from observed runtime state. Start persists `enabled` before process preparation; disable attempts to persist `disabled` before cancelling retries and stopping the owned child. A state-write failure is reported but does not leave the exact owned child running. Web/API shutdown stops the child without changing enabled intent. On the next web/API startup, PI WEB rereads that intent and re-arms direct supervision automatically. A stopped or failed runtime therefore does not silently erase what the user requested.
 
 On first read, if PI WEB state is absent and the former connector config exists (normally `~/.config/pi-web-tunnel/config.json`), PI WEB imports it into the private state file with **disabled** intent. The legacy source is left in place for safe rollback; PI WEB state is authoritative afterward.
 
@@ -37,7 +37,7 @@ On first read, if PI WEB state is absent and the former connector config exists 
 
 The concrete HTTP adapter alone knows Control API paths, Bearer headers, request/response DTOs, and HTTP statuses. It strictly parses success data and translates transport, authentication, rejection, rate-limit, service, and malformed-response failures into stable PI WEB errors without retaining provider bodies or token-bearing causes.
 
-The same PI WEB-owned boundary fetches per-machine tunnel configuration and applies the private local PI WEB URL to the returned TOML. The direct supervisor consumes only this normalized result; process code does not know Control API paths, Bearer headers, or external response DTOs.
+The same PI WEB-owned boundary fetches per-machine tunnel configuration, applies the private local PI WEB URL to the returned TOML, and records machine heartbeats. The direct supervisor and runtime reconciler consume only normalized application results; process/timer code does not know Control API paths, Bearer headers, or external response DTOs.
 
 ## Managed frpc acquisition
 
@@ -70,7 +70,13 @@ The supervisor stores the exact child handle returned by its launcher. It never 
 
 An unexpected exit or launch/preparation failure retries with exponential delays from one second up to 30 seconds. A child must run for 60 seconds before the failure count resets. Each retry obtains current normalized tunnel config, reselects/reverifies the executable, and atomically replaces the private TOML; there is no busy loop. Runtime and operation diagnostics retain only stable errors, public/local targets, version/target/outcome, exit code/signal, and capped sanitized output—not executable paths, artifact URLs/hashes, generated TOML, provider bodies, or transport causes.
 
-Startup reconciliation, heartbeat scheduling, and revocation recovery are intentionally not in this slice. A newly started PI WEB process does not yet act on persisted enabled intent; that is the next lifecycle leg.
+## Startup reconciliation and heartbeats
+
+Fastify startup explicitly invokes PI WEB's Safe Tunnel runtime reconciler. Disabled intent remains stopped. Enabled intent with private machine credentials re-arms the direct supervisor with the persisted advanced override, or managed `frpc` when no override exists. A state-read failure retries with exponential delays from one second to a 30-second cap; it does not expose filesystem causes. Re-registration while intent remains enabled triggers another reconciliation so rejected credentials can be replaced without restarting PI WEB.
+
+While supervision is armed—whether the exact child is running or the supervisor is between bounded child retries—PI WEB sends normalized `running`, `starting`, or `error` heartbeats. A successful Control API response supplies the next interval, which PI WEB clamps to a safe range of five seconds through five minutes. Transport, service, malformed-response, and rate-limit failures retry from one second through a 30-second cap without stopping an otherwise useful tunnel or entering a busy loop.
+
+If the Control API rejects the machine credential, including after hosted revocation, PI WEB treats that as terminal for the current credential: it cancels heartbeat/reconciliation timers, stops only its exact owned child, keeps enabled intent intact, and reports that re-registration is required. A successful replacement registration resumes reconciliation. Disable and web/API shutdown abort and await an in-flight heartbeat before stopping/shutting down the child runtime, so no late heartbeat can recreate timer work during cleanup.
 
 The `pi-web-tunnel` workspaces, command-discovery module, npm installer, and old PID-file CLI remain in the source tree only for legacy development/recovery until the dedicated cleanup leg. PI WEB's browser runtime does not invoke or configure them, and users should not install a separate connector service.
 
@@ -80,7 +86,7 @@ The browser-facing routes remain:
 
 | Method/path | Purpose |
 | --- | --- |
-| `GET /api/safe-tunnel/status` | Returns redacted PI WEB-owned registration, persisted desired state, direct-supervisor status/log tail, and an active operation when present. |
+| `GET /api/safe-tunnel/status` | Returns redacted PI WEB-owned registration, persisted desired state, reconciled direct-supervisor status/log tail, bounded heartbeat/recovery errors, and an active operation when present. |
 | `POST /api/safe-tunnel/login` | Starts PI WEB-owned device authorization and machine registration. |
 | `GET /api/safe-tunnel/operations/:operationId` | Polls a tracked login/start operation. |
 | `POST /api/safe-tunnel/start` | Persists enabled intent, prepares private config and verified `frpc`, and arms direct bounded supervision. |
@@ -98,4 +104,4 @@ npm run dev:web
 scripts/pi-web-tunnel-dev.sh status --json
 ```
 
-Safe Tunnel changes in this slice do not touch `sessiond`; no `pi-web-sessiond.service` restart is required.
+Safe Tunnel runs only in the web/API process. These lifecycle changes do not touch `sessiond`; no `pi-web-sessiond.service` restart is required.

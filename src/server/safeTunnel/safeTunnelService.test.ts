@@ -4,6 +4,8 @@ import type {
   SafeTunnelControlPlane,
   SafeTunnelDeviceAuthorization,
   SafeTunnelDeviceAuthorizationCompletion,
+  SafeTunnelHeartbeatTunnelStatus,
+  SafeTunnelMachineHeartbeat,
   SafeTunnelMachineTunnelConfig,
   SafeTunnelRegisteredMachine,
 } from "./safeTunnelControlPlane.js";
@@ -48,6 +50,7 @@ class FakeSafeTunnelControlPlane implements SafeTunnelControlPlane {
     kind: "approved",
     authorization: approvedAuthorization(),
   }];
+  heartbeat: SafeTunnelMachineHeartbeat = machineHeartbeat();
   registration: SafeTunnelRegisteredMachine = registeredMachine();
   tunnelConfig: SafeTunnelMachineTunnelConfig = machineTunnelConfig();
 
@@ -88,6 +91,18 @@ class FakeSafeTunnelControlPlane implements SafeTunnelControlPlane {
     this.calls.push({ method: "config", input: credentials });
     return Promise.resolve(this.tunnelConfig);
   }
+
+  recordMachineHeartbeat(
+    credentials: SafeTunnelMachineCredentials,
+    input: {
+      readonly clientVersion: string;
+      readonly tunnelStatus: SafeTunnelHeartbeatTunnelStatus;
+      readonly errorMessage?: string;
+    },
+  ): Promise<SafeTunnelMachineHeartbeat> {
+    this.calls.push({ method: "heartbeat", input: { credentials, heartbeat: input } });
+    return Promise.resolve(this.heartbeat);
+  }
 }
 
 function startedAuthorization(): SafeTunnelDeviceAuthorization {
@@ -120,6 +135,14 @@ function registeredMachine(): SafeTunnelRegisteredMachine {
     publicHostname: "dev-box.ns-abc123.tunnels.pi-web.dev",
     publicUrl: "https://dev-box.ns-abc123.tunnels.pi-web.dev",
     machineToken: "piwt_mtok_v1_private",
+  };
+}
+
+function machineHeartbeat(): SafeTunnelMachineHeartbeat {
+  return {
+    machineId: "machine_123",
+    lastSeenAt: "2026-07-29T12:05:00.000Z",
+    nextHeartbeatSeconds: 30,
   };
 }
 
@@ -255,7 +278,29 @@ describe("SafeTunnelService", () => {
     }]);
   });
 
-  it("fails closed when tunnel config identifies a different machine", async () => {
+  it("records normalized heartbeat state with private credentials", async () => {
+    const storage = new MemorySafeTunnelStateStorage(registeredState());
+    const controlPlane = new FakeSafeTunnelControlPlane();
+    const service = new SafeTunnelService({ controlPlane, stateStorage: storage });
+
+    await expect(service.recordHeartbeat({
+      tunnelStatus: "error",
+      errorMessage: "PI WEB Safe Tunnel runtime is recovering.",
+    })).resolves.toEqual(machineHeartbeat());
+    expect(controlPlane.calls).toEqual([{
+      method: "heartbeat",
+      input: {
+        credentials: registeredState().state.machine,
+        heartbeat: {
+          clientVersion: "pi-web-safe-tunnel/1",
+          tunnelStatus: "error",
+          errorMessage: "PI WEB Safe Tunnel runtime is recovering.",
+        },
+      },
+    }]);
+  });
+
+  it("fails closed when a machine-scoped response identifies a different machine", async () => {
     const storage = new MemorySafeTunnelStateStorage(registeredState());
     const controlPlane = new FakeSafeTunnelControlPlane();
     controlPlane.tunnelConfig = { ...machineTunnelConfig(), machineId: "machine_other" };
@@ -263,6 +308,11 @@ describe("SafeTunnelService", () => {
 
     await expect(service.getTunnelConfig()).rejects.toMatchObject({
       code: "invalid_tunnel_config",
+    });
+
+    controlPlane.heartbeat = { ...machineHeartbeat(), machineId: "machine_other" };
+    await expect(service.recordHeartbeat({ tunnelStatus: "running" })).rejects.toMatchObject({
+      code: "invalid_heartbeat",
     });
   });
 });

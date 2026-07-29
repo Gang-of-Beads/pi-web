@@ -2,6 +2,8 @@ import {
   safeTunnelClientVersion,
   type SafeTunnelControlPlane,
   type SafeTunnelDeviceAuthorization,
+  type SafeTunnelHeartbeatTunnelStatus,
+  type SafeTunnelMachineHeartbeat,
   type SafeTunnelMachineTunnelConfig,
   type SafeTunnelRegisteredMachine,
 } from "./safeTunnelControlPlane.js";
@@ -16,6 +18,7 @@ import {
 
 export type SafeTunnelServiceErrorCode =
   | "authorization_expired"
+  | "invalid_heartbeat"
   | "invalid_login"
   | "invalid_tunnel_config"
   | "not_registered";
@@ -174,6 +177,32 @@ export class SafeTunnelService {
       throw new SafeTunnelServiceError("invalid_tunnel_config");
     }
     return applySafeTunnelLocalTarget(tunnelConfig, loaded.state.localPiWebUrl);
+  }
+
+  async recordHeartbeat(
+    input: {
+      readonly tunnelStatus: SafeTunnelHeartbeatTunnelStatus;
+      readonly errorMessage?: string;
+    },
+    options: { readonly signal?: AbortSignal } = {},
+  ): Promise<SafeTunnelMachineHeartbeat> {
+    const loaded = await this.state();
+    const credentials = loaded.state.machine;
+    if (credentials === undefined) throw new SafeTunnelServiceError("not_registered");
+
+    const heartbeat = await this.dependencies.controlPlane.recordMachineHeartbeat(
+      credentials,
+      {
+        clientVersion: safeTunnelClientVersion,
+        tunnelStatus: input.tunnelStatus,
+        ...(input.errorMessage === undefined ? {} : { errorMessage: input.errorMessage }),
+      },
+      options,
+    );
+    if (heartbeat.machineId !== credentials.machineId) {
+      throw new SafeTunnelServiceError("invalid_heartbeat");
+    }
+    return heartbeat;
   }
 
   private async waitForApproval(
@@ -347,6 +376,8 @@ function safeTunnelServiceErrorMessage(code: SafeTunnelServiceErrorCode): string
   switch (code) {
     case "authorization_expired":
       return "Safe Tunnel device authorization expired before approval.";
+    case "invalid_heartbeat":
+      return "The Safe Tunnel service returned a heartbeat for an unexpected machine.";
     case "invalid_login":
       return "Safe Tunnel login settings are invalid.";
     case "invalid_tunnel_config":
