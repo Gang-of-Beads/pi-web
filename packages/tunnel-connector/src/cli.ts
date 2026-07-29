@@ -34,11 +34,13 @@ export const connectorConfigDirectoryName = "pi-web-tunnel";
 export const connectorConfigFileName = "config.json";
 export const connectorLogFileName = "connector.log";
 export const connectorStatusFormatVersion = 1;
+/** Temporary PI WEB-owned state-file override used by the in-package runtime compatibility path. */
+export const connectorConfigPathEnvVar = "PI_WEB_SAFE_TUNNEL_CONFIG_PATH";
 
 const maxStatusLogTailCharacters = 12_000;
 const ansiEscapePattern = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "gu");
 
-type PathApi = Pick<typeof posix, "join">;
+type PathApi = Pick<typeof posix, "dirname" | "isAbsolute" | "join" | "normalize">;
 
 export interface ConfigPathDependencies {
   readonly env: Readonly<Record<string, string | undefined>>;
@@ -178,9 +180,11 @@ export function createDefaultCliDependencies(argv: readonly string[]): CliDepend
 }
 
 export function discoverConnectorConfigDirectory(dependencies: ConfigPathDependencies): string {
-  const homeDirectory = requireHomeDirectory(dependencies.homeDirectory);
   const pathApi = pathApiForPlatform(dependencies.platform);
+  const configuredPath = configuredConnectorConfigPath(dependencies.env, pathApi);
+  if (configuredPath !== undefined) return pathApi.dirname(configuredPath);
 
+  const homeDirectory = requireHomeDirectory(dependencies.homeDirectory);
   if (dependencies.platform === "win32") {
     const configRoot = nonEmptyString(dependencies.env["APPDATA"]) ?? pathApi.join(homeDirectory, "AppData", "Roaming");
     return pathApi.join(configRoot, connectorConfigDirectoryName);
@@ -192,7 +196,8 @@ export function discoverConnectorConfigDirectory(dependencies: ConfigPathDepende
 
 export function discoverConnectorConfigPath(dependencies: ConfigPathDependencies): string {
   const pathApi = pathApiForPlatform(dependencies.platform);
-  return pathApi.join(discoverConnectorConfigDirectory(dependencies), connectorConfigFileName);
+  const configuredPath = configuredConnectorConfigPath(dependencies.env, pathApi);
+  return configuredPath ?? pathApi.join(discoverConnectorConfigDirectory(dependencies), connectorConfigFileName);
 }
 
 export function readConnectorStatus(dependencies: StatusDependencies): ConnectorStatus {
@@ -471,7 +476,7 @@ function readCliConnectorStatus(dependencies: CliDependencies): ConnectorStatus 
   const pathApi = pathApiForPlatform(dependencies.platform);
 
   return readConnectorStatus({
-    configPath: pathApi.join(configDirectory, connectorConfigFileName),
+    configPath: discoverConnectorConfigPath(dependencies),
     runtimePaths: resolveConnectorRuntimePaths(configDirectory, dependencies.platform),
     logPath: pathApi.join(configDirectory, connectorLogFileName),
     fileExists: dependencies.fileExists,
@@ -835,6 +840,18 @@ function defaultProcessExists(pid: number): boolean {
 
 function hasErrorCode(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === code;
+}
+
+function configuredConnectorConfigPath(
+  env: Readonly<Record<string, string | undefined>>,
+  pathApi: PathApi,
+): string | undefined {
+  const configured = nonEmptyString(env[connectorConfigPathEnvVar]);
+  if (configured === undefined) return undefined;
+  if (!pathApi.isAbsolute(configured)) {
+    throw new Error(`${connectorConfigPathEnvVar} must be an absolute path.`);
+  }
+  return pathApi.normalize(configured);
 }
 
 function nonEmptyString(value: string | undefined): string | undefined {

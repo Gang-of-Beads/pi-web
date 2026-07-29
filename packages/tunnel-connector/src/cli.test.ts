@@ -5,6 +5,7 @@ import { FrpcProcessManager } from "@jmfederico/pi-web-tunnel-frp-engine";
 import {
   type CliDependencies,
   type OutputSink,
+  connectorConfigPathEnvVar,
   discoverConnectorConfigPath,
   parseLoginArgs,
   parseRegisterMachineArgs,
@@ -95,6 +96,19 @@ describe("connector config-path discovery", () => {
       platform: "win32",
     })).toBe("C:\\Users\\pi\\AppData\\Roaming\\pi-web-tunnel\\config.json");
   });
+
+  it("uses PI WEB's absolute private state path for temporary runtime compatibility", () => {
+    expect(discoverConnectorConfigPath({
+      env: { [connectorConfigPathEnvVar]: "/data/pi-web/safe-tunnel/config.json" },
+      homeDirectory: "/home/pi",
+      platform: "linux",
+    })).toBe("/data/pi-web/safe-tunnel/config.json");
+    expect(() => discoverConnectorConfigPath({
+      env: { [connectorConfigPathEnvVar]: "relative/config.json" },
+      homeDirectory: "/home/pi",
+      platform: "linux",
+    })).toThrow(`${connectorConfigPathEnvVar} must be an absolute path.`);
+  });
 });
 
 describe("pi-web-tunnel CLI", () => {
@@ -141,6 +155,26 @@ describe("pi-web-tunnel CLI", () => {
     expect(stdout.output()).toContain("Status: not configured\n");
     expect(stdout.output()).toContain("Config path: /home/pi/.config/pi-web-tunnel/config.json\n");
     expect(stdout.output()).toContain("Runtime: stopped\n");
+  });
+
+  it("derives temporary runtime files beside PI WEB's overridden state path", async () => {
+    const stdout = createCapturedSink();
+
+    const exitCode = await runCli({
+      ...createCliDependencies(["status", "--json"]),
+      env: { [connectorConfigPathEnvVar]: "/data/pi-web/safe-tunnel/config.json" },
+      stdout: stdout.sink,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(stdout.output())).toMatchObject({
+      config: { path: "/data/pi-web/safe-tunnel/config.json" },
+      runtime: {
+        pidFilePath: "/data/pi-web/safe-tunnel/connector.pid",
+        frpcConfigPath: "/data/pi-web/safe-tunnel/frpc.toml",
+      },
+      log: { path: "/data/pi-web/safe-tunnel/connector.log" },
+    });
   });
 
   it("prints structured JSON status without exposing the machine token", async () => {

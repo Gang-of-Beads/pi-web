@@ -215,6 +215,7 @@ function safeTunnelStatus(options: SafeTunnelStatusOptions = {}): SafeTunnelStat
         publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
       },
     },
+    desiredState: "disabled",
     runtime: {
       pidFilePath: "/home/test/.config/pi-web-tunnel/connector.pid",
       state: options.runtimeState ?? "running",

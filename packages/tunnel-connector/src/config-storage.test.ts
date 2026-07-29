@@ -158,6 +158,28 @@ describe("connector config storage", () => {
     });
   });
 
+  it("reads PI WEB-owned state as a temporary schema-v2 runtime projection", () => {
+    expect(parseConnectorConfig(JSON.stringify({
+      stateVersion: 1,
+      schemaVersion: 2,
+      desiredState: "enabled",
+      localPiWebUrl: "http://127.0.0.1:8504",
+      machine: {
+        controlApiBaseUrl: "https://control.example.test",
+        machineId: "machine_abc",
+        machineToken: "piwt_mtok_v1_private",
+      },
+    }))).toEqual({
+      schemaVersion: 2,
+      localPiWebUrl: "http://127.0.0.1:8504",
+      machine: {
+        controlApiBaseUrl: "https://control.example.test",
+        machineId: "machine_abc",
+        machineToken: "piwt_mtok_v1_private",
+      },
+    });
+  });
+
   it("rejects malformed machine credentials", () => {
     expect(() => parseConnectorConfig(JSON.stringify({
       schemaVersion: 2,

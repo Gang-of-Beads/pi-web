@@ -3,6 +3,7 @@ export const connectorPackageName = "@jmfederico/pi-web-tunnel";
 export {
   connectorConfigDirectoryName,
   connectorConfigFileName,
+  connectorConfigPathEnvVar,
   createDefaultCliDependencies,
   discoverConnectorConfigDirectory,
   discoverConnectorConfigPath,

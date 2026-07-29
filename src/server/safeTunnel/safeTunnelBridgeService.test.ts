@@ -1,314 +1,202 @@
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { SafeTunnelLoginInput, SafeTunnelLoginObserver, SafeTunnelLoginResult } from "./safeTunnelService.js";
+import {
+  createDefaultSafeTunnelState,
+  safeTunnelConnectorConfigPathEnvVar,
+  type LoadedSafeTunnelState,
+  type SafeTunnelPersistedState,
+} from "./safeTunnelState.js";
 import {
   createNodeSafeTunnelCommandRunner,
   DefaultSafeTunnelBridgeService,
+  type SafeTunnelApplicationService,
   type SafeTunnelCommandRunner,
+  type SafeTunnelCommandRunOptions,
   type SafeTunnelCommandRunResult,
 } from "./safeTunnelBridgeService.js";
 
-let tempDir: string;
+let tempDirectory: string;
 let runner: FakeCommandRunner;
+let application: FakeSafeTunnelApplicationService;
 let service: DefaultSafeTunnelBridgeService;
 let nowIndex: number;
 
 beforeEach(async () => {
-  tempDir = await mkdtemp(join(tmpdir(), "pi-web-safe-tunnel-test-"));
+  tempDirectory = await mkdtemp(join(tmpdir(), "pi-web-safe-tunnel-bridge-"));
+  const statePath = join(tempDirectory, "safe-tunnel", "config.json");
   runner = new FakeCommandRunner();
-  runner.statusJson = connectorStatusJson({ configDirectory: join(tempDir, "pi-web-tunnel") });
+  runner.statusJson = connectorStatusJson(statePath);
+  application = new FakeSafeTunnelApplicationService(statePath);
   nowIndex = 0;
   service = new DefaultSafeTunnelBridgeService({
     commandRunner: runner,
+    connectorCommandEnvironment: { [safeTunnelConnectorConfigPathEnvVar]: statePath },
     cwd: process.cwd(),
-    env: { XDG_CONFIG_HOME: tempDir, PI_WEB_SAFE_TUNNEL_CONNECTOR_COMMAND: "/usr/local/bin/pi-web-tunnel" },
-    fileExists: (path) => runner.fileExists(path),
-    homeDirectory: tempDir,
-    now: () => new Date(`2026-07-03T00:00:0${(nowIndex += 1).toString()}.000Z`),
+    env: { PI_WEB_SAFE_TUNNEL_CONNECTOR_COMMAND: "/usr/local/bin/pi-web-tunnel" },
+    fileExists: existsSync,
+    homeDirectory: tempDirectory,
+    now: () => new Date(`2026-07-29T00:00:0${(nowIndex += 1).toString()}.000Z`),
     platform: "linux",
+    safeTunnel: application,
   });
 });
 
 afterEach(async () => {
-  await rm(tempDir, { recursive: true, force: true });
+  await rm(tempDirectory, { recursive: true, force: true });
 });
 
 describe("DefaultSafeTunnelBridgeService", () => {
-  it("reports connector availability, missing config, and stopped runtime without failing the status endpoint", async () => {
-    runner.nextRunError = new Error("spawn ENOENT");
-
-    const status = await service.status();
-
-    expect(status.connector).toEqual({ command: "/usr/local/bin/pi-web-tunnel", state: "unavailable", error: "spawn ENOENT" });
-    expect(status.config).toEqual({ exists: false, path: join(tempDir, "pi-web-tunnel", "config.json"), state: "missing" });
-    expect(status.runtime).toEqual({
-      pidFilePath: join(tempDir, "pi-web-tunnel", "connector.pid"),
-      state: "stopped",
-      logPath: join(tempDir, "pi-web-tunnel", "connector.log"),
-    });
-    expect(runner.runCalls).toEqual([{ command: "/usr/local/bin/pi-web-tunnel", args: ["status", "--json"] }]);
-  });
-
-  it("surfaces invalid connector status JSON without returning private config data", async () => {
-    runner.statusJson = "not-json";
-
-    const status = await service.status();
-
-    expect(status.connector).toEqual({ command: "/usr/local/bin/pi-web-tunnel", state: "available" });
-    expect(status.config.exists).toBe(false);
-    expect(status.config.path).toBe(join(tempDir, "pi-web-tunnel", "config.json"));
-    expect(status.config.state).toBe("invalid");
-    expect(status.config.error).toContain("Unable to parse pi-web-tunnel status --json");
-    expect(status.runtime.pidFilePath).toBe(join(tempDir, "pi-web-tunnel", "connector.pid"));
-    expect(status.runtime.state).toBe("unknown");
-    expect(status.runtime.error).toContain("Unable to parse pi-web-tunnel status --json");
-  });
-
-  it("uses the first-party source-tree connector wrapper when no command override is configured", async () => {
-    const defaultedService = new DefaultSafeTunnelBridgeService({
-      commandRunner: runner,
-      cwd: process.cwd(),
-      env: { XDG_CONFIG_HOME: tempDir },
-      fileExists: (path) => runner.fileExists(path),
-      homeDirectory: tempDir,
-      now: () => new Date("2026-07-03T00:00:01.000Z"),
-      platform: "linux",
-    });
-
-    const status = await defaultedService.status();
-    const expectedCommand = join(process.cwd(), "scripts", "pi-web-tunnel-dev.sh");
-
-    expect(status.connector).toEqual({ command: expectedCommand, state: "available" });
-    expect(runner.runCalls).toEqual([{ command: expectedCommand, args: ["status", "--json"] }]);
-  });
-
-  it("reports registered connector status without exposing the machine token", async () => {
-    const configDirectory = join(tempDir, "pi-web-tunnel");
-    runner.statusJson = connectorStatusJson({
-      configDirectory,
-      config: {
-        exists: true,
-        state: "registered",
-        localPiWebUrl: "http://127.0.0.1:8504",
-        frpcPathConfigured: true,
-        machine: {
-          controlApiBaseUrl: "https://control.example.test",
-          machineId: "mach_123",
-          machineToken: "piwt_mtok_v1_secret",
-        },
-      },
-      runtime: { frpcConfigExists: true, pid: 4242, state: "running" },
+  it("maps PI WEB-owned intent and redacted credentials into the stable status contract", async () => {
+    application.loaded = registeredState({ desiredState: "enabled", frpcPath: "/opt/frpc" });
+    runner.statusJson = connectorStatusJson(application.statePath, {
+      runtime: { state: "running", pid: 4242, frpcConfigExists: true },
     });
 
     const status = await service.status();
 
-    expect(status.connector).toEqual({ command: "/usr/local/bin/pi-web-tunnel", state: "available" });
+    expect(status.desiredState).toBe("enabled");
     expect(status.config).toEqual({
+      path: application.statePath,
       exists: true,
-      path: join(configDirectory, "config.json"),
       state: "registered",
       localPiWebUrl: "http://127.0.0.1:8504",
       frpcPathConfigured: true,
-      machine: { controlApiBaseUrl: "https://control.example.test", machineId: "mach_123" },
+      machine: {
+        controlApiBaseUrl: "https://control.example.test",
+        machineId: "machine_123",
+        machineSlug: "dev-box",
+        publicHostname: "dev-box.ns.tunnels.pi-web.dev",
+        publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
+      },
     });
-    expect(status.runtime).toEqual({
-      pid: 4242,
-      pidFilePath: join(configDirectory, "connector.pid"),
-      frpcConfigPath: join(configDirectory, "frpc.toml"),
-      frpcConfigExists: true,
-      state: "running",
-      logPath: join(configDirectory, "connector.log"),
-      logExists: false,
-      logTailMaxCharacters: 12_000,
+    expect(status.runtime).toMatchObject({ state: "running", pid: 4242 });
+    expect(JSON.stringify(status)).not.toContain("piwt_mtok_v1_private");
+    expect(runner.runOptions[0]?.environment).toEqual({
+      [safeTunnelConnectorConfigPathEnvVar]: application.statePath,
     });
-    expect(JSON.stringify(status)).not.toContain("piwt_mtok_v1_secret");
   });
 
-  it("reports current tunnel slug and URL from connector structured status without parsing frpc.toml", async () => {
-    const configDirectory = join(tempDir, "pi-web-tunnel");
-    await mkdir(configDirectory, { recursive: true });
-    await writeFile(join(configDirectory, "frpc.toml"), 'customDomains = ["wrong.ns-0e17b6ed7d8cbf18.tunnels.pi-web.dev"]\n');
-    runner.statusJson = connectorStatusJson({
-      configDirectory,
-      config: {
-        exists: true,
-        state: "registered",
-        localPiWebUrl: "http://127.0.0.1:8504",
-        frpcPathConfigured: true,
-        machine: {
-          controlApiBaseUrl: "https://control.example.test",
-          machineId: "mach_123",
-          machineSlug: "ipad5",
-          publicUrl: "https://ipad5.ns-0e17b6ed7d8cbf18.tunnels.pi-web.dev",
-        },
-      },
-      runtime: { frpcConfigExists: true, pid: 4242, state: "running" },
-    });
+  it("reports invalid PI WEB state without exposing a credential-bearing error cause", async () => {
+    application.stateError = new Error("Safe Tunnel desiredState must be enabled or disabled.");
 
     const status = await service.status();
 
-    expect(status.config.machine).toEqual({
-      controlApiBaseUrl: "https://control.example.test",
-      machineId: "mach_123",
-      machineSlug: "ipad5",
-      publicHostname: "ipad5.ns-0e17b6ed7d8cbf18.tunnels.pi-web.dev",
-      publicUrl: "https://ipad5.ns-0e17b6ed7d8cbf18.tunnels.pi-web.dev",
+    expect(status.desiredState).toBe("disabled");
+    expect(status.config).toMatchObject({
+      path: application.statePath,
+      state: "invalid",
+      error: "Unable to read PI WEB Safe Tunnel state: Safe Tunnel desiredState must be enabled or disabled.",
     });
   });
 
-  it("starts login as a tracked operation and extracts browser approval details from command output", async () => {
-    const loginDeferred = createDeferred<SafeTunnelCommandRunResult>();
-    runner.loginDeferred = loginDeferred;
+  it("runs login inside PI WEB, tracks approval directly, and never invokes connector login", async () => {
+    const loginDeferred = createDeferred<SafeTunnelLoginResult>();
+    application.loginResult = loginDeferred.promise;
 
     const response = await service.login({
       controlApiUrl: "https://control.example.test",
-      machineName: "My Dev Box",
-      machineSlug: "my-dev-box",
+      machineName: "Dev Box",
+      machineSlug: "dev-box",
       localPiWebUrl: "http://127.0.0.1:8504",
       frpcPath: "/opt/frpc",
     });
 
-    expect(runner.runCalls[1]).toEqual({
-      command: "/usr/local/bin/pi-web-tunnel",
-      args: [
-        "login",
-        "--control-api-url",
-        "https://control.example.test",
-        "--machine-name",
-        "My Dev Box",
-        "--machine-slug",
-        "my-dev-box",
-        "--local-pi-web-url",
-        "http://127.0.0.1:8504",
-        "--frpc-path",
-        "/opt/frpc",
-      ],
+    expect(application.loginInput).toEqual({
+      controlApiBaseUrl: "https://control.example.test",
+      machineName: "Dev Box",
+      machineSlug: "dev-box",
+      localPiWebUrl: "http://127.0.0.1:8504",
+      frpcPath: "/opt/frpc",
     });
     expect(response.operation.status).toBe("running");
-    expect(response.status.activeOperation?.id).toBe(response.operation.id);
+    expect(runner.runCalls.every(({ args }) => args[0] === "status")).toBe(true);
 
-    const loginOptions = runner.loginOptions;
-    if (loginOptions === undefined) throw new Error("Expected login command options");
-    loginOptions.onStdout?.("Starting PI WEB Safe Tunnel login.\nOpen this URL to authorize the connector:\nhttps://control.example.test/device?user_code=ABCD-EFGH\nUser code: ABCD-EFGH\n");
-
-    expect(service.operation(response.operation.id)).toMatchObject({
-      status: "running",
-      verificationUriComplete: "https://control.example.test/device?user_code=ABCD-EFGH",
+    application.loginObserver?.onDeviceAuthorization?.({
+      deviceCode: "private-device-code",
       userCode: "ABCD-EFGH",
+      verificationUri: "https://control.example.test/device",
+      verificationUriComplete: "https://control.example.test/device?user_code=ABCD-EFGH",
+      expiresAt: "2026-07-29T00:10:00.000Z",
+      intervalSeconds: 5,
     });
+    expect(service.operation(response.operation.id)).toMatchObject({
+      userCode: "ABCD-EFGH",
+      verificationUriComplete: "https://control.example.test/device?user_code=ABCD-EFGH",
+    });
+    expect(JSON.stringify(service.operation(response.operation.id))).not.toContain("private-device-code");
 
-    loginDeferred.resolve(commandResult({
-      stdout: "Starting PI WEB Safe Tunnel login.\nPublic URL: https://my-dev-box.ns.tunnels.example.test\n",
-    }));
+    loginDeferred.resolve(loginResult());
+    await Promise.resolve();
     await Promise.resolve();
 
     expect(service.operation(response.operation.id)).toMatchObject({
       status: "succeeded",
       exitCode: 0,
-      publicUrl: "https://my-dev-box.ns.tunnels.example.test",
+      publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
     });
   });
 
-  it("rejects starting the connector before a registered config exists", async () => {
-    await expect(service.start({ frpcPath: "/opt/frpc" })).rejects.toMatchObject({
-      message: "Register or log in to PI WEB Safe Tunnels before starting the connector.",
-      statusCode: 409,
-    });
-  });
-
-  it("starts the connector as a tracked operation with log capture", async () => {
-    const configDirectory = join(tempDir, "pi-web-tunnel");
+  it("persists enabled intent before using the temporary connector runtime", async () => {
+    application.loaded = registeredState({ frpcPath: "/opt/frpc" });
     const startDeferred = createDeferred<SafeTunnelCommandRunResult>();
     runner.startDeferred = startDeferred;
-    runner.statusJson = connectorStatusJson({
-      configDirectory,
-      config: {
-        exists: true,
-        state: "registered",
-        localPiWebUrl: "http://127.0.0.1:8504",
-        frpcPathConfigured: true,
-        machine: { controlApiBaseUrl: "https://control.example.test", machineId: "mach_123" },
-      },
-    });
     runner.startProcessId = 1234;
 
-    const response = await service.start({});
+    const response = await service.start({ frpcPath: "/advanced/frpc" });
 
-    expect(runner.runCalls[2]).toEqual({ command: "/usr/local/bin/pi-web-tunnel", args: ["start"] });
-    expect(runner.startOptions).toMatchObject({
-      detached: true,
-      logHeader: "\n=== 2026-07-03T00:00:01.000Z /usr/local/bin/pi-web-tunnel start ===\n",
-      logPath: join(configDirectory, "connector.log"),
-      timeoutMs: 0,
+    expect(application.enableCalls).toEqual(["/advanced/frpc"]);
+    expect(application.loaded.state.desiredState).toBe("enabled");
+    expect(runner.runCalls.find(({ args }) => args[0] === "start")).toEqual({
+      command: "/usr/local/bin/pi-web-tunnel",
+      args: ["start", "--frpc-path", "/advanced/frpc"],
     });
-    expect(response.accepted).toBe(true);
-    expect(response.connectorProcessId).toBe(1234);
-    expect(response.operation).toMatchObject({
-      connectorProcessId: 1234,
-      kind: "start",
-      logPath: join(configDirectory, "connector.log"),
-      status: "running",
+    expect(response).toMatchObject({ accepted: true, connectorProcessId: 1234 });
+    const startOptions = runner.startOptions;
+    expect(startOptions?.environment).toEqual({
+      [safeTunnelConnectorConfigPathEnvVar]: application.statePath,
     });
-    expect(response.status.activeOperation?.id).toBe(response.operation.id);
+    expect(startOptions?.logPath).toBe(join(tempDirectory, "safe-tunnel", "connector.log"));
 
-    if (runner.startOptions === undefined) throw new Error("Expected start command options");
-    runner.startOptions.onStdout?.("Starting PI WEB Safe Tunnel connector.\nPublic URL: https://dev-box.ns.tunnels.example.test\n");
-    runner.startOptions.onStderr?.("frpc failed to connect\n");
+    startOptions?.onStderr?.("\u001B[31mfrpc failed\u001B[0m\n");
+    expect(service.operation(response.operation.id)?.logTail).toContain("frpc failed");
+    expect(service.operation(response.operation.id)?.logTail).not.toContain("\u001B");
 
-    const runningOperation = service.operation(response.operation.id);
-    expect(runningOperation).toMatchObject({
-      publicUrl: "https://dev-box.ns.tunnels.example.test",
-      stderr: "frpc failed to connect\n",
-      stdout: "Starting PI WEB Safe Tunnel connector.\nPublic URL: https://dev-box.ns.tunnels.example.test\n",
-    });
-    expect(runningOperation?.logTail).toContain("frpc failed to connect");
-
-    startDeferred.resolve(commandResult({
-      exitCode: 1,
-      stdout: "Starting PI WEB Safe Tunnel connector.\nPublic URL: https://dev-box.ns.tunnels.example.test\n",
-      stderr: "frpc failed to connect\n",
-    }));
+    startDeferred.resolve(commandResult({ exitCode: 1, stderr: "frpc failed\n" }));
     await Promise.resolve();
-
     expect(service.operation(response.operation.id)).toMatchObject({
-      error: "Safe Tunnel start exited with code 1.",
-      exitCode: 1,
       status: "failed",
+      error: "Safe Tunnel start exited with code 1.",
     });
   });
 
-  it("reports the sanitized connector log tail from connector structured status", async () => {
-    const configDirectory = join(tempDir, "pi-web-tunnel");
-    runner.statusJson = connectorStatusJson({
-      configDirectory,
-      log: {
-        exists: true,
-        tail: `${"x".repeat(12_050)}\n\u001B[1;33mfrpc failed\u001B[0m\n`,
-      },
+  it("persists disabled intent before delegating the temporary runtime stop", async () => {
+    application.loaded = registeredState({ desiredState: "enabled" });
+    runner.stopResult = commandResult({ stdout: "Stopped\n" });
+
+    const response = await service.stop();
+
+    expect(application.disableCalls).toBe(1);
+    expect(application.loaded.state.desiredState).toBe("disabled");
+    expect(runner.runCalls.find(({ args }) => args[0] === "stop")).toEqual({
+      command: "/usr/local/bin/pi-web-tunnel",
+      args: ["stop"],
     });
-
-    const status = await service.status();
-
-    expect(status.runtime.pidFilePath).toBe(join(configDirectory, "connector.pid"));
-    expect(status.runtime.state).toBe("stopped");
-    expect(status.runtime.logPath).toBe(join(configDirectory, "connector.log"));
-    expect(status.runtime.logExists).toBe(true);
-    expect(status.runtime.logTail).toContain("frpc failed");
-    expect(status.runtime.logTail?.length).toBeLessThanOrEqual(12_000);
-    expect(status.runtime.logTail).not.toContain("\u001B");
+    expect(response.command).toEqual({ exitCode: 0, stdout: "Stopped\n", stderr: "" });
   });
 
-  it("truncates previous tracked connector logs while capturing current process output", async () => {
+  it("truncates temporary runtime logs and applies private file modes", async () => {
     const nodeRunner = createNodeSafeTunnelCommandRunner();
-    const logPath = join(tempDir, "pi-web-tunnel", "connector.log");
-    await mkdir(join(tempDir, "pi-web-tunnel"), { recursive: true });
-    await writeFile(logPath, "old connector output that should be replaced\n");
+    const logPath = join(tempDirectory, "safe-tunnel", "connector.log");
+    await mkdir(dirnameOf(logPath), { recursive: true });
+    await writeFile(logPath, "old output\n");
 
     const result = await nodeRunner.run({
       command: process.execPath,
-      args: ["-e", "console.log('frpc stdout'); console.error('frpc stderr');"],
+      args: ["-e", "console.log('stdout'); console.error('stderr');"],
     }, {
       logHeader: "header\n",
       logPath,
@@ -316,123 +204,161 @@ describe("DefaultSafeTunnelBridgeService", () => {
       timeoutMs: 15_000,
     });
 
-    const logContents = await readFileWhen(logPath, (contents) => contents.includes("frpc stdout") && contents.includes("frpc stderr"));
-
-    expect(result.stdout).toContain("frpc stdout");
-    expect(result.stderr).toContain("frpc stderr");
-    expect(logContents).toContain("header\n");
-    expect(logContents).toContain("frpc stdout");
-    expect(logContents).toContain("frpc stderr");
-    expect(logContents).not.toContain("old connector output");
-  });
-
-  it("runs stop through the connector command and returns redacted command output", async () => {
-    runner.stopResult = commandResult({ stdout: "No running PI WEB Safe Tunnel connector was found.\n" });
-
-    const response = await service.stop();
-
-    expect(runner.runCalls[1]).toEqual({ command: "/usr/local/bin/pi-web-tunnel", args: ["stop"] });
-    expect(response.command).toEqual({ exitCode: 0, stdout: "No running PI WEB Safe Tunnel connector was found.\n", stderr: "" });
+    const contents = await readFileWhen(logPath, (value) => value.includes("stdout") && value.includes("stderr"));
+    expect(result).toMatchObject({ exitCode: 0, timedOut: false });
+    expect(contents).toContain("header\n");
+    expect(contents).not.toContain("old output");
   });
 });
 
-type CommandInvocation = Parameters<SafeTunnelCommandRunner["run"]>[0];
-type CommandRunOptions = Parameters<SafeTunnelCommandRunner["run"]>[1];
-interface Deferred<T> {
-  readonly promise: Promise<T>;
-  readonly reject: (error: unknown) => void;
-  readonly resolve: (value: T) => void;
+class FakeSafeTunnelApplicationService implements SafeTunnelApplicationService {
+  disableCalls = 0;
+  enableCalls: (string | undefined)[] = [];
+  loaded: LoadedSafeTunnelState = { exists: false, state: createDefaultSafeTunnelState() };
+  loginInput: SafeTunnelLoginInput | undefined;
+  loginObserver: SafeTunnelLoginObserver | undefined;
+  loginResult: Promise<SafeTunnelLoginResult> = Promise.resolve(loginResult());
+  stateError: Error | undefined;
+
+  constructor(readonly statePath: string) {}
+
+  state(): Promise<LoadedSafeTunnelState> {
+    return this.stateError === undefined
+      ? Promise.resolve(structuredClone(this.loaded))
+      : Promise.reject(this.stateError);
+  }
+
+  login(input: SafeTunnelLoginInput, observer?: SafeTunnelLoginObserver): Promise<SafeTunnelLoginResult> {
+    this.loginInput = input;
+    this.loginObserver = observer;
+    return this.loginResult;
+  }
+
+  enable(frpcPath?: string): Promise<SafeTunnelPersistedState> {
+    this.enableCalls.push(frpcPath);
+    this.loaded = {
+      exists: true,
+      state: {
+        ...this.loaded.state,
+        desiredState: "enabled",
+        ...(frpcPath === undefined ? {} : { frpcPath }),
+      },
+    };
+    return Promise.resolve(this.loaded.state);
+  }
+
+  disable(): Promise<SafeTunnelPersistedState> {
+    this.disableCalls += 1;
+    this.loaded = { exists: true, state: { ...this.loaded.state, desiredState: "disabled" } };
+    return Promise.resolve(this.loaded.state);
+  }
 }
 
 class FakeCommandRunner implements SafeTunnelCommandRunner {
-  loginDeferred: Deferred<SafeTunnelCommandRunResult> | undefined;
-  loginOptions: CommandRunOptions | undefined;
-  nextRunError: Error | undefined;
-  runCalls: CommandInvocation[] = [];
+  readonly runCalls: { readonly args: readonly string[]; readonly command: string }[] = [];
+  readonly runOptions: SafeTunnelCommandRunOptions[] = [];
   startDeferred: Deferred<SafeTunnelCommandRunResult> | undefined;
-  startOptions: CommandRunOptions | undefined;
+  startOptions: SafeTunnelCommandRunOptions | undefined;
   startProcessId: number | undefined;
   statusJson = "";
-  stopResult: SafeTunnelCommandRunResult = commandResult({});
+  stopResult = commandResult({});
 
-  run(invocation: CommandInvocation, options: CommandRunOptions): Promise<SafeTunnelCommandRunResult> {
+  run(
+    invocation: { readonly args: readonly string[]; readonly command: string },
+    options: SafeTunnelCommandRunOptions,
+  ): Promise<SafeTunnelCommandRunResult> {
     this.runCalls.push(invocation);
-    if (this.nextRunError !== undefined) {
-      const error = this.nextRunError;
-      this.nextRunError = undefined;
-      return Promise.reject(error);
-    }
-
-    const command = invocation.args[0];
-    if (command === "status" && invocation.args[1] === "--json") return Promise.resolve(commandResult({ stdout: this.statusJson }));
-    if (command === "login") {
-      this.loginOptions = options;
-      return this.loginDeferred?.promise ?? Promise.resolve(commandResult({}));
-    }
-
-    if (command === "start") {
+    this.runOptions.push(options);
+    const kind = invocation.args[0];
+    if (kind === "status") return Promise.resolve(commandResult({ stdout: this.statusJson }));
+    if (kind === "start") {
       this.startOptions = options;
       if (this.startProcessId !== undefined) options.onProcessId?.(this.startProcessId);
       return this.startDeferred?.promise ?? Promise.resolve(commandResult({}));
     }
-
-    if (command === "stop") return Promise.resolve(this.stopResult);
+    if (kind === "stop") return Promise.resolve(this.stopResult);
     return Promise.resolve(commandResult({}));
-  }
-
-  fileExists(path: string): boolean {
-    return existsSync(path);
   }
 }
 
-function commandResult(overrides: Partial<SafeTunnelCommandRunResult>): SafeTunnelCommandRunResult {
+function registeredState(overrides: Partial<SafeTunnelPersistedState> = {}): LoadedSafeTunnelState {
   return {
-    exitCode: 0,
-    stdout: "",
-    stderr: "",
-    timedOut: false,
-    ...overrides,
+    exists: true,
+    state: {
+      ...createDefaultSafeTunnelState(),
+      machine: {
+        controlApiBaseUrl: "https://control.example.test",
+        machineId: "machine_123",
+        machineToken: "piwt_mtok_v1_private",
+        machineSlug: "dev-box",
+        publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
+      },
+      ...overrides,
+    },
   };
 }
 
-function connectorStatusJson(options: {
-  readonly configDirectory: string;
-  readonly config?: Record<string, unknown>;
-  readonly log?: Record<string, unknown>;
-  readonly runtime?: Record<string, unknown>;
-}): string {
-  const configPath = join(options.configDirectory, "config.json");
-  const frpcConfigPath = join(options.configDirectory, "frpc.toml");
-  const logPath = join(options.configDirectory, "connector.log");
-  const pidFilePath = join(options.configDirectory, "connector.pid");
+function loginResult(): SafeTunnelLoginResult {
+  return {
+    machineCredentials: registeredState().state.machine ?? missingMachineCredentials(),
+    registeredMachine: {
+      machine: { id: "machine_123", accountId: "account_123", name: "Dev Box", slug: "dev-box" },
+      publicHostname: "dev-box.ns.tunnels.pi-web.dev",
+      publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
+      machineToken: "piwt_mtok_v1_private",
+    },
+  };
+}
 
+function missingMachineCredentials(): never {
+  throw new Error("Registered fixture is missing machine credentials");
+}
+
+function connectorStatusJson(
+  statePath: string,
+  options: { readonly runtime?: Record<string, unknown> } = {},
+): string {
+  const directory = dirnameOf(statePath);
   return JSON.stringify({
     statusVersion: 1,
-    config: {
-      path: configPath,
-      exists: false,
-      state: "missing",
-      ...options.config,
-    },
+    config: { path: statePath, exists: true, state: "registered" },
     runtime: {
-      pidFilePath,
-      frpcConfigPath,
+      pidFilePath: join(directory, "connector.pid"),
+      frpcConfigPath: join(directory, "frpc.toml"),
       frpcConfigExists: false,
       state: "stopped",
       ...options.runtime,
     },
     log: {
-      path: logPath,
+      path: join(directory, "connector.log"),
       exists: false,
       tailMaxCharacters: 12_000,
-      ...options.log,
     },
   });
 }
 
+function commandResult(overrides: Partial<SafeTunnelCommandRunResult>): SafeTunnelCommandRunResult {
+  return { exitCode: 0, stdout: "", stderr: "", timedOut: false, ...overrides };
+}
+
+interface Deferred<T> {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T) => void;
+}
+
+function createDeferred<T>(): Deferred<T> {
+  let resolve: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((resolvePromise) => { resolve = resolvePromise; });
+  return { promise, resolve };
+}
+
+function dirnameOf(path: string): string {
+  const separator = path.lastIndexOf("/");
+  return separator < 0 ? "." : path.slice(0, separator);
+}
+
 async function readFileWhen(path: string, predicate: (contents: string) => boolean): Promise<string> {
   let contents = "";
-
   for (let attempt = 0; attempt < 50; attempt += 1) {
     if (existsSync(path)) {
       contents = readFileSync(path, "utf8");
@@ -440,20 +366,5 @@ async function readFileWhen(path: string, predicate: (contents: string) => boole
     }
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
-
   return contents;
-}
-
-function createDeferred<T>(): Deferred<T> {
-  let resolve: (value: T) => void = () => {
-    throw new Error("Deferred resolver was not initialized");
-  };
-  let reject: (error: unknown) => void = () => {
-    throw new Error("Deferred rejecter was not initialized");
-  };
-  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise;
-    reject = rejectPromise;
-  });
-  return { promise, reject, resolve };
 }

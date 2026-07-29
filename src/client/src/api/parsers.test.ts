@@ -170,6 +170,7 @@ describe("API parsers", () => {
           publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
         },
       },
+      desiredState: "enabled",
       runtime: {
         pidFilePath: "/home/test/.config/pi-web-tunnel/connector.pid",
         state: "running",
@@ -210,7 +211,8 @@ describe("API parsers", () => {
   });
 
   it("rejects malformed Safe Tunnel bridge responses", () => {
-    expect(() => parseSafeTunnelStatusResponse({ connector: { command: "pi-web-tunnel", state: "missing" }, config: { path: "/tmp/config", exists: false, state: "missing" }, runtime: { pidFilePath: "/tmp/pid", state: "stopped" } })).toThrow("Expected Safe Tunnel connector state field: state");
+    expect(() => parseSafeTunnelStatusResponse({ connector: { command: "pi-web-tunnel", state: "missing" }, config: { path: "/tmp/config", exists: false, state: "missing" }, desiredState: "disabled", runtime: { pidFilePath: "/tmp/pid", state: "stopped" } })).toThrow("Expected Safe Tunnel connector state field: state");
+    expect(() => parseSafeTunnelStatusResponse({ connector: { command: "pi-web-tunnel", state: "available" }, config: { path: "/tmp/config", exists: false, state: "missing" }, desiredState: "sometimes", runtime: { pidFilePath: "/tmp/pid", state: "stopped" } })).toThrow("Expected Safe Tunnel desired state field: desiredState");
     expect(() => parseSafeTunnelOperationResponse({ id: "op_1", kind: "login", status: "waiting", startedAt: "now", stdout: "", stderr: "" })).toThrow("Expected Safe Tunnel operation status field: status");
     expect(() => parseSafeTunnelStartResponse({ accepted: false, status: { connector: { command: "pi-web-tunnel", state: "available" }, config: { path: "/tmp/config", exists: false, state: "missing" }, runtime: { pidFilePath: "/tmp/pid", state: "stopped" } } })).toThrow("Expected Safe Tunnel start accepted response");
   });

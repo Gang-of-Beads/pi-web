@@ -98,7 +98,7 @@ Instead of tying agent work to your laptop session, run PI WEB on a machine that
 
 Use a private network, SSH tunnel, trusted reverse proxy, or federated PI WEB machine setup when accessing it remotely.
 
-Local builds also include a first-party **Expose Safely** action and **Settings → Safe Tunnel** panel backed by server-side bridge endpoints under `/api/safe-tunnel/*`. The UI calls the separate, optional `pi-web-tunnel` connector for status, login, start, and stop actions while keeping connector credentials in the connector's private config file. Source checkouts default to the local workspace connector wrapper at `scripts/pi-web-tunnel-dev.sh`; packaged installs use `pi-web-tunnel` on `PATH` when present, otherwise the bridge can install `@jmfederico/pi-web-tunnel` on demand the first time Safe Tunnel is used.
+Local builds also include a first-party **Expose Safely** action and **Settings → Safe Tunnel** panel backed by server-side endpoints under `/api/safe-tunnel/*`. PI WEB now owns device login, machine registration, private credentials, and durable enabled/disabled intent. The existing optional connector command remains only as temporary start/stop compatibility while managed `frpc` and direct supervision are completed.
 
 Safe Tunnel development notes: [docs/safe-tunnel.md](docs/safe-tunnel.md).
 

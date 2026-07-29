@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { chmodSync, closeSync, existsSync, mkdirSync, openSync, writeSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, posix, win32 } from "node:path";
-import { randomUUID } from "node:crypto";
+import { dirname, join } from "node:path";
 import type {
   SafeTunnelCommandOutput,
   SafeTunnelConfigStatus,
@@ -15,25 +15,35 @@ import type {
   SafeTunnelStatusResponse,
   SafeTunnelStopResponse,
 } from "../../shared/apiTypes.js";
+import {
+  HttpSafeTunnelControlPlane,
+  type SafeTunnelDeviceAuthorization,
+} from "./safeTunnelControlPlane.js";
 import { SafeTunnelConnectorManager } from "./safeTunnelConnectorManager.js";
+import {
+  FileSafeTunnelStateStorage,
+  defaultSafeTunnelStatePath,
+  safeTunnelConnectorConfigPathEnvVar,
+  type LoadedSafeTunnelState,
+  type SafeTunnelPersistedState,
+} from "./safeTunnelState.js";
+import {
+  SafeTunnelService,
+  type SafeTunnelLoginInput,
+  type SafeTunnelLoginObserver,
+  type SafeTunnelLoginResult,
+} from "./safeTunnelService.js";
 
-const connectorConfigDirectoryName = "pi-web-tunnel";
-const connectorConfigFileName = "config.json";
 const connectorPidFileName = "connector.pid";
+const connectorFrpcConfigFileName = "frpc.toml";
 const connectorLogFileName = "connector.log";
 const connectorLogDirectoryMode = 0o700;
 const connectorLogFileMode = 0o600;
 const stopCommandTimeoutMs = 15_000;
-const loginCommandTimeoutMs = 15 * 60_000;
 const startCommandTimeoutMs = 0;
 const maxCapturedOutputCharacters = 24_000;
 const maxConnectorLogTailCharacters = 12_000;
 const ansiEscapePattern = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "gu");
-
-interface PathApi {
-  dirname(path: string): string;
-  join(...paths: string[]): string;
-}
 
 export interface SafeTunnelCommandInvocation {
   readonly args: readonly string[];
@@ -44,6 +54,7 @@ export interface SafeTunnelCommandRunOptions {
   readonly maxOutputCharacters: number;
   readonly timeoutMs: number;
   readonly detached?: boolean;
+  readonly environment?: Readonly<Record<string, string | undefined>>;
   readonly logHeader?: string;
   readonly logPath?: string;
   readonly onProcessId?: (processId: number) => void;
@@ -67,14 +78,24 @@ export interface SafeTunnelBridgeService {
   stop(): Promise<SafeTunnelStopResponse>;
 }
 
+export interface SafeTunnelApplicationService {
+  readonly statePath: string;
+  state(): Promise<LoadedSafeTunnelState>;
+  login(request: SafeTunnelLoginInput, observer?: SafeTunnelLoginObserver): Promise<SafeTunnelLoginResult>;
+  enable(frpcPath?: string): Promise<SafeTunnelPersistedState>;
+  disable(): Promise<SafeTunnelPersistedState>;
+}
+
 export interface SafeTunnelBridgeDependencies {
   readonly commandRunner: SafeTunnelCommandRunner;
+  readonly connectorCommandEnvironment: Readonly<Record<string, string | undefined>>;
   readonly cwd: string;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly fileExists: (path: string) => boolean;
   readonly homeDirectory: string;
   readonly now: () => Date;
   readonly platform: NodeJS.Platform;
+  readonly safeTunnel: SafeTunnelApplicationService;
 }
 
 interface SafeTunnelOperationState {
@@ -103,15 +124,21 @@ export class SafeTunnelBridgeError extends Error {
   }
 }
 
+/** Browser contract + temporary connector-runtime compatibility around PI WEB's application service. */
 export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
   private activeOperation: SafeTunnelOperationState | undefined;
   private operationStartInFlight = false;
+  private readonly commandRunner: SafeTunnelCommandRunner;
   private readonly connectorManager: SafeTunnelConnectorManager;
   private readonly operations = new Map<string, SafeTunnelOperationState>();
 
   constructor(private readonly dependencies: SafeTunnelBridgeDependencies) {
+    this.commandRunner = commandRunnerWithEnvironment(
+      dependencies.commandRunner,
+      dependencies.connectorCommandEnvironment,
+    );
     this.connectorManager = new SafeTunnelConnectorManager({
-      commandRunner: dependencies.commandRunner,
+      commandRunner: this.commandRunner,
       cwd: dependencies.cwd,
       env: dependencies.env,
       fileExists: dependencies.fileExists,
@@ -121,52 +148,50 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
   }
 
   async status(): Promise<SafeTunnelStatusResponse> {
-    const connectorProbe = await this.connectorManager.probeStatus();
-    const connectorStatus = connectorProbe.statusJson === undefined
-      ? fallbackConnectorStatusData("Connector status JSON is unavailable.", this.dependencies)
-      : parseConnectorStatusData(connectorProbe.statusJson, this.dependencies);
-    const activeOperation = this.activeOperation === undefined ? undefined : snapshotOperation(this.activeOperation);
+    const [connectorProbe, ownedState] = await Promise.all([
+      this.connectorManager.probeStatus(),
+      this.readOwnedStateStatus(),
+    ]);
+    const runtime = connectorProbe.statusJson === undefined
+      ? fallbackRuntimeStatus(this.dependencies.safeTunnel.statePath, "Connector runtime status is unavailable.", this.dependencies.fileExists)
+      : parseConnectorRuntimeStatusOrFallback(
+        connectorProbe.statusJson,
+        this.dependencies.safeTunnel.statePath,
+        this.dependencies.fileExists,
+      );
+    const activeOperation = this.activeOperation === undefined
+      ? undefined
+      : snapshotOperation(this.activeOperation);
 
     return {
       connector: connectorProbe.connector,
-      config: connectorStatus.config,
-      runtime: connectorStatus.runtime,
+      config: ownedState.config,
+      desiredState: ownedState.desiredState,
+      runtime,
       ...(activeOperation === undefined ? {} : { activeOperation }),
     };
   }
 
   async login(request: SafeTunnelLoginRequest): Promise<SafeTunnelLoginResponse> {
-    if (this.operationStartInFlight || this.activeOperation?.status === "running") {
-      throw new SafeTunnelBridgeError("A Safe Tunnel operation is already running.", 409);
-    }
-
+    this.assertNoActiveOperation();
     this.operationStartInFlight = true;
     try {
-      const command = await this.connectorManager.ensureCommand();
-      const operation = this.createLoginOperation();
-      const invocation: SafeTunnelCommandInvocation = {
-        command,
-        args: loginArgs(request),
-      };
-
-      const completion = this.dependencies.commandRunner.run(invocation, {
-        maxOutputCharacters: maxCapturedOutputCharacters,
-        timeoutMs: loginCommandTimeoutMs,
-        onStdout: (chunk) => {
-          appendOperationStdout(operation, chunk);
-        },
-        onStderr: (chunk) => {
-          appendOperationStderr(operation, chunk);
-        },
-      }).then(
+      const operation = this.createOperation("login");
+      void this.dependencies.safeTunnel.login({
+        controlApiBaseUrl: request.controlApiUrl,
+        machineName: request.machineName,
+        machineSlug: request.machineSlug,
+        ...(request.localPiWebUrl === undefined ? {} : { localPiWebUrl: request.localPiWebUrl }),
+        ...(request.frpcPath === undefined ? {} : { frpcPath: request.frpcPath }),
+      }, loginObserver(operation)).then(
         (result) => {
-          this.finishOperation(operation, result);
+          finishLoginOperation(operation, result, this.dependencies.now());
+          this.clearActiveOperation(operation);
         },
         (error: unknown) => {
           this.failOperation(operation, error);
         },
       );
-      void completion;
 
       return {
         operation: snapshotOperation(operation),
@@ -183,37 +208,33 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
   }
 
   async start(request: SafeTunnelStartRequest): Promise<SafeTunnelStartResponse> {
-    if (this.operationStartInFlight || this.activeOperation?.status === "running") {
-      throw new SafeTunnelBridgeError("A Safe Tunnel operation is already running.", 409);
-    }
-
+    this.assertNoActiveOperation();
     this.operationStartInFlight = true;
     try {
       const currentStatus = await this.status();
-
       if (currentStatus.runtime.state === "running") {
         throw new SafeTunnelBridgeError("The PI WEB Safe Tunnel connector is already running.", 409);
       }
-
       if (currentStatus.config.state !== "registered") {
         throw new SafeTunnelBridgeError("Register or log in to PI WEB Safe Tunnels before starting the connector.", 409);
       }
-
       if (request.frpcPath === undefined && currentStatus.config.frpcPathConfigured !== true) {
         throw new SafeTunnelBridgeError("Configure an frpc executable path before starting the connector.", 400);
       }
 
       const command = await this.connectorManager.ensureCommand();
-      const configDirectory = discoverConnectorConfigDirectory(this.dependencies);
-      const invocation: SafeTunnelCommandInvocation = {
-        command,
-        args: startArgs(request),
-      };
+      await this.dependencies.safeTunnel.enable(request.frpcPath);
+      const invocation: SafeTunnelCommandInvocation = { command, args: startArgs(request) };
       const logHeader = createConnectorStartLogHeader(this.dependencies.now(), invocation);
-      const logPath = currentStatus.runtime.logPath ?? pathApiForPlatform(this.dependencies.platform).join(configDirectory, connectorLogFileName);
-      const operation = this.createStartOperation(logPath, logHeader);
+      const logPath = currentStatus.runtime.logPath
+        ?? runtimePath(this.dependencies.safeTunnel.statePath, connectorLogFileName);
+      const operation = this.createOperation("start", {
+        logPath,
+        logTail: tailText(sanitizeConnectorLog(logHeader), maxConnectorLogTailCharacters),
+        logTailMaxCharacters: maxConnectorLogTailCharacters,
+      });
 
-      const completion = this.dependencies.commandRunner.run(invocation, {
+      void this.commandRunner.run(invocation, {
         detached: true,
         logHeader,
         logPath,
@@ -232,13 +253,12 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
         },
       }).then(
         (result) => {
-          this.finishOperation(operation, result);
+          this.finishCommandOperation(operation, result);
         },
         (error: unknown) => {
           this.failOperation(operation, error);
         },
       );
-      void completion;
 
       return {
         accepted: true,
@@ -252,31 +272,25 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
   }
 
   async stop(): Promise<SafeTunnelStopResponse> {
+    await this.dependencies.safeTunnel.disable();
     const command = await this.connectorManager.ensureCommand();
-    const result = await this.dependencies.commandRunner.run({ command, args: ["stop"] }, {
+    const result = await this.commandRunner.run({ command, args: ["stop"] }, {
       maxOutputCharacters: maxCapturedOutputCharacters,
       timeoutMs: stopCommandTimeoutMs,
     });
-
-    return {
-      command: commandOutput(result),
-      status: await this.status(),
-    };
+    return { command: commandOutput(result), status: await this.status() };
   }
 
-  private createLoginOperation(): SafeTunnelOperationState {
-    return this.createOperation("login");
+  private assertNoActiveOperation(): void {
+    if (this.operationStartInFlight || this.activeOperation?.status === "running") {
+      throw new SafeTunnelBridgeError("A Safe Tunnel operation is already running.", 409);
+    }
   }
 
-  private createStartOperation(logPath: string, logHeader: string): SafeTunnelOperationState {
-    return this.createOperation("start", {
-      logPath,
-      logTail: tailText(sanitizeConnectorLog(logHeader), maxConnectorLogTailCharacters),
-      logTailMaxCharacters: maxConnectorLogTailCharacters,
-    });
-  }
-
-  private createOperation(kind: SafeTunnelOperationState["kind"], initial: Partial<SafeTunnelOperationState> = {}): SafeTunnelOperationState {
+  private createOperation(
+    kind: SafeTunnelOperationState["kind"],
+    initial: Partial<SafeTunnelOperationState> = {},
+  ): SafeTunnelOperationState {
     const operation: SafeTunnelOperationState = {
       id: randomUUID(),
       kind,
@@ -291,7 +305,10 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
     return operation;
   }
 
-  private finishOperation(operation: SafeTunnelOperationState, result: SafeTunnelCommandRunResult): void {
+  private finishCommandOperation(
+    operation: SafeTunnelOperationState,
+    result: SafeTunnelCommandRunResult,
+  ): void {
     operation.stdout = result.stdout;
     operation.stderr = result.stderr;
     operation.exitCode = result.exitCode;
@@ -302,46 +319,70 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
     if (result.exitCode === 0 && !result.timedOut) {
       operation.status = "succeeded";
     } else {
-      const label = operationErrorLabel(operation.kind);
       operation.status = "failed";
       operation.error = result.timedOut
-        ? `${label} timed out.`
-        : `${label} exited with code ${formatExitCode(result.exitCode)}.`;
+        ? "Safe Tunnel start timed out."
+        : `Safe Tunnel start exited with code ${formatExitCode(result.exitCode)}.`;
     }
-
-    if (this.activeOperation?.id === operation.id) {
-      this.activeOperation = undefined;
-    }
+    this.clearActiveOperation(operation);
   }
 
   private failOperation(operation: SafeTunnelOperationState, error: unknown): void {
     operation.status = "failed";
-    operation.error = errorMessage(error);
+    operation.error = safeErrorMessage(error);
     operation.finishedAt = this.dependencies.now().toISOString();
-    if (this.activeOperation?.id === operation.id) {
-      this.activeOperation = undefined;
+    this.clearActiveOperation(operation);
+  }
+
+  private clearActiveOperation(operation: SafeTunnelOperationState): void {
+    if (this.activeOperation?.id === operation.id) this.activeOperation = undefined;
+  }
+
+  private async readOwnedStateStatus(): Promise<{
+    readonly config: SafeTunnelConfigStatus;
+    readonly desiredState: SafeTunnelStatusResponse["desiredState"];
+  }> {
+    try {
+      const loaded = await this.dependencies.safeTunnel.state();
+      return {
+        config: configStatusFromOwnedState(this.dependencies.safeTunnel.statePath, loaded),
+        desiredState: loaded.state.desiredState,
+      };
+    } catch (error: unknown) {
+      return {
+        config: {
+          path: this.dependencies.safeTunnel.statePath,
+          exists: this.dependencies.fileExists(this.dependencies.safeTunnel.statePath),
+          state: "invalid",
+          error: `Unable to read PI WEB Safe Tunnel state: ${safeErrorMessage(error)}`,
+        },
+        desiredState: "disabled",
+      };
     }
   }
 }
 
 export function createDefaultSafeTunnelBridgeService(): SafeTunnelBridgeService {
+  const statePath = defaultSafeTunnelStatePath();
+  const safeTunnel = new SafeTunnelService({
+    controlPlane: new HttpSafeTunnelControlPlane(),
+    stateStorage: new FileSafeTunnelStateStorage({ filePath: statePath }),
+  });
   return new DefaultSafeTunnelBridgeService({
     commandRunner: createNodeSafeTunnelCommandRunner(),
+    connectorCommandEnvironment: { [safeTunnelConnectorConfigPathEnvVar]: statePath },
     cwd: process.cwd(),
     env: process.env,
     fileExists: existsSync,
     homeDirectory: homedir(),
     now: () => new Date(),
     platform: process.platform,
+    safeTunnel,
   });
 }
 
 export function createNodeSafeTunnelCommandRunner(): SafeTunnelCommandRunner {
-  return {
-    run(invocation, options) {
-      return runNodeCommand(invocation, options);
-    },
-  };
+  return { run: (invocation, options) => runNodeCommand(invocation, options) };
 }
 
 function runNodeCommand(
@@ -350,12 +391,11 @@ function runNodeCommand(
 ): Promise<SafeTunnelCommandRunResult> {
   return new Promise((resolve, reject) => {
     let logFileDescriptor: number | undefined;
-
     try {
       logFileDescriptor = openConnectorLogFile(options);
       const child = spawn(invocation.command, [...invocation.args], {
         detached: options.detached === true,
-        env: process.env,
+        env: mergedCommandEnvironment(options.environment),
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
       });
@@ -371,12 +411,10 @@ function runNodeCommand(
         : undefined;
 
       if (child.pid !== undefined) options.onProcessId?.(child.pid);
-
       const closeLog = (): void => {
         closeFileDescriptor(logFileDescriptor);
         logFileDescriptor = undefined;
       };
-
       const settle = (finish: () => void): void => {
         if (settled) return;
         settled = true;
@@ -384,7 +422,6 @@ function runNodeCommand(
         closeLog();
         finish();
       };
-
       const writeLogChunk = (chunk: string): void => {
         if (logFileDescriptor === undefined) return;
         try {
@@ -407,9 +444,7 @@ function runNodeCommand(
         options.onStderr?.(chunk);
       });
       child.once("error", (error) => {
-        settle(() => {
-          reject(error);
-        });
+        settle(() => { reject(error); });
       });
       child.once("close", (exitCode, signal) => {
         settle(() => {
@@ -422,317 +457,202 @@ function runNodeCommand(
           });
         });
       });
-    } catch (error) {
+    } catch (error: unknown) {
       closeFileDescriptor(logFileDescriptor);
       reject(error instanceof Error ? error : new Error(String(error)));
     }
   });
 }
 
-function loginArgs(request: SafeTunnelLoginRequest): string[] {
+function commandRunnerWithEnvironment(
+  commandRunner: SafeTunnelCommandRunner,
+  environment: Readonly<Record<string, string | undefined>>,
+): SafeTunnelCommandRunner {
+  return {
+    run(invocation, options) {
+      return commandRunner.run(invocation, { ...options, environment });
+    },
+  };
+}
+
+function mergedCommandEnvironment(
+  overrides: Readonly<Record<string, string | undefined>> | undefined,
+): NodeJS.ProcessEnv {
+  const entries = new Map(
+    Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+  );
+  for (const [key, value] of Object.entries(overrides ?? {})) {
+    if (value === undefined) entries.delete(key);
+    else entries.set(key, value);
+  }
+  return Object.fromEntries(entries);
+}
+
+function loginObserver(operation: SafeTunnelOperationState): SafeTunnelLoginObserver {
+  return {
+    onDeviceAuthorization(authorization) {
+      operation.verificationUriComplete = authorization.verificationUriComplete;
+      operation.userCode = authorization.userCode;
+      appendOperationStdout(operation, loginApprovalOutput(authorization));
+    },
+    onAuthorizationApproved(account) {
+      appendOperationStdout(
+        operation,
+        `Connector authorization approved.\nAccount namespace: ${account.publicNamespace}\nRegistering this machine...\n`,
+      );
+    },
+    onMachineRegistered(machine) {
+      operation.publicUrl = machine.publicUrl;
+    },
+  };
+}
+
+function loginApprovalOutput(authorization: SafeTunnelDeviceAuthorization): string {
   return [
-    "login",
-    "--control-api-url",
-    request.controlApiUrl,
-    "--machine-name",
-    request.machineName,
-    "--machine-slug",
-    request.machineSlug,
-    ...optionalFlag("--local-pi-web-url", request.localPiWebUrl),
-    ...optionalFlag("--frpc-path", request.frpcPath),
-  ];
+    "Starting PI WEB Safe Tunnel login.",
+    "Open this URL to authorize the connector:",
+    authorization.verificationUriComplete,
+    `User code: ${authorization.userCode}`,
+    `Waiting for approval until ${authorization.expiresAt}...`,
+    "",
+  ].join("\n");
+}
+
+function finishLoginOperation(
+  operation: SafeTunnelOperationState,
+  result: SafeTunnelLoginResult,
+  now: Date,
+): void {
+  operation.publicUrl = result.registeredMachine.publicUrl;
+  appendOperationStdout(
+    operation,
+    `Logged in and registered this machine for PI WEB Safe Tunnels.\nMachine id: ${result.registeredMachine.machine.id}\nPublic URL: ${result.registeredMachine.publicUrl}\n`,
+  );
+  operation.status = "succeeded";
+  operation.exitCode = 0;
+  operation.finishedAt = now.toISOString();
+}
+
+function configStatusFromOwnedState(
+  statePath: string,
+  loaded: LoadedSafeTunnelState,
+): SafeTunnelConfigStatus {
+  const state = loaded.state;
+  return {
+    path: statePath,
+    exists: loaded.exists,
+    state: state.machine === undefined ? (loaded.exists ? "unregistered" : "missing") : "registered",
+    localPiWebUrl: state.localPiWebUrl,
+    frpcPathConfigured: state.frpcPath !== undefined,
+    ...(state.machine === undefined ? {} : {
+      machine: {
+        controlApiBaseUrl: state.machine.controlApiBaseUrl,
+        machineId: state.machine.machineId,
+        ...(state.machine.machineSlug === undefined ? {} : { machineSlug: state.machine.machineSlug }),
+        ...(state.machine.publicUrl === undefined ? {} : {
+          publicHostname: publicHostnameFromUrl(state.machine.publicUrl),
+          publicUrl: state.machine.publicUrl,
+        }),
+      },
+    }),
+  };
+}
+
+function parseConnectorRuntimeStatusOrFallback(
+  statusJson: string,
+  statePath: string,
+  fileExists: (path: string) => boolean,
+): SafeTunnelRuntimeStatus {
+  try {
+    const record = requireRecord(JSON.parse(statusJson));
+    if (record["statusVersion"] !== 1) throw new Error("Unsupported connector status version");
+    return parseConnectorRuntimeStatus(record["runtime"], record["log"]);
+  } catch (error: unknown) {
+    return fallbackRuntimeStatus(
+      statePath,
+      `Unable to parse connector runtime status: ${safeErrorMessage(error)}`,
+      fileExists,
+      true,
+    );
+  }
+}
+
+function parseConnectorRuntimeStatus(runtimeValue: unknown, logValue: unknown): SafeTunnelRuntimeStatus {
+  const runtime = requireRecord(runtimeValue);
+  const log = requireRecord(logValue);
+  const state = requireRuntimeState(runtime["state"]);
+  const pid = optionalFiniteNumber(runtime["pid"]);
+  const runtimeError = optionalNonEmptyString(runtime["error"]);
+  const logTail = optionalString(log["tail"]);
+  const logError = optionalNonEmptyString(log["error"]);
+  return {
+    pidFilePath: requireNonEmptyString(runtime["pidFilePath"]),
+    frpcConfigPath: requireNonEmptyString(runtime["frpcConfigPath"]),
+    frpcConfigExists: requireBoolean(runtime["frpcConfigExists"]),
+    state,
+    ...(pid === undefined ? {} : { pid }),
+    ...(runtimeError === undefined ? {} : { error: runtimeError }),
+    logPath: requireNonEmptyString(log["path"]),
+    logExists: requireBoolean(log["exists"]),
+    logTailMaxCharacters: requireFiniteNumber(log["tailMaxCharacters"]),
+    ...(logError === undefined ? {} : { logError }),
+    ...(logTail === undefined || logTail === "" ? {} : {
+      logTail: tailText(sanitizeConnectorLog(logTail), maxConnectorLogTailCharacters),
+    }),
+  };
+}
+
+function fallbackRuntimeStatus(
+  statePath: string,
+  reason: string,
+  fileExists: (path: string) => boolean,
+  forceError = false,
+): SafeTunnelRuntimeStatus {
+  const pidFilePath = runtimePath(statePath, connectorPidFileName);
+  const logPath = runtimePath(statePath, connectorLogFileName);
+  const pidExists = fileExists(pidFilePath);
+  return {
+    pidFilePath,
+    frpcConfigPath: runtimePath(statePath, connectorFrpcConfigFileName),
+    frpcConfigExists: fileExists(runtimePath(statePath, connectorFrpcConfigFileName)),
+    state: pidExists || forceError ? "unknown" : "stopped",
+    ...(pidExists || forceError ? { error: reason } : {}),
+    logPath,
+    logExists: fileExists(logPath),
+    logTailMaxCharacters: maxConnectorLogTailCharacters,
+  };
 }
 
 function startArgs(request: SafeTunnelStartRequest): string[] {
-  return ["start", ...optionalFlag("--frpc-path", request.frpcPath)];
+  return ["start", ...(request.frpcPath === undefined ? [] : ["--frpc-path", request.frpcPath])];
 }
 
 function createConnectorStartLogHeader(now: Date, invocation: SafeTunnelCommandInvocation): string {
   return `\n=== ${now.toISOString()} ${invocation.command} ${invocation.args.join(" ")} ===\n`;
 }
 
-function openConnectorLogFile(options: Pick<SafeTunnelCommandRunOptions, "logHeader" | "logPath">): number | undefined {
+function openConnectorLogFile(
+  options: Pick<SafeTunnelCommandRunOptions, "logHeader" | "logPath">,
+): number | undefined {
   if (options.logPath === undefined) return undefined;
-
   mkdirSync(dirname(options.logPath), { mode: connectorLogDirectoryMode, recursive: true });
   if (process.platform !== "win32") chmodSync(dirname(options.logPath), connectorLogDirectoryMode);
-
-  // Start logs are per connector launch. Truncating here avoids an
-  // append-only connector.log growing forever across normal UI start/stop
-  // cycles while preserving current connector/frpc output for status tails.
   const fileDescriptor = openSync(options.logPath, "w", connectorLogFileMode);
   if (process.platform !== "win32") chmodSync(options.logPath, connectorLogFileMode);
-
-  if (options.logHeader !== undefined) {
-    writeSync(fileDescriptor, options.logHeader);
-  }
-
+  if (options.logHeader !== undefined) writeSync(fileDescriptor, options.logHeader);
   return fileDescriptor;
 }
 
 function closeFileDescriptor(fileDescriptor: number | undefined): void {
-  if (fileDescriptor === undefined) return;
-  closeSync(fileDescriptor);
+  if (fileDescriptor !== undefined) closeSync(fileDescriptor);
 }
 
-function optionalFlag(flag: string, value: string | undefined): string[] {
-  return value === undefined ? [] : [flag, value];
+function runtimePath(statePath: string, fileName: string): string {
+  return join(dirname(statePath), fileName);
 }
 
-function discoverConnectorConfigDirectory(dependencies: Pick<SafeTunnelBridgeDependencies, "env" | "homeDirectory" | "platform">): string {
-  const homeDirectory = requireHomeDirectory(dependencies.homeDirectory);
-  const pathApi = pathApiForPlatform(dependencies.platform);
-
-  if (dependencies.platform === "win32") {
-    const configRoot = nonEmptyString(dependencies.env["APPDATA"]) ?? pathApi.join(homeDirectory, "AppData", "Roaming");
-    return pathApi.join(configRoot, connectorConfigDirectoryName);
-  }
-
-  const configRoot = nonEmptyString(dependencies.env["XDG_CONFIG_HOME"]) ?? pathApi.join(homeDirectory, ".config");
-  return pathApi.join(configRoot, connectorConfigDirectoryName);
-}
-
-interface ConnectorStatusData {
-  readonly config: SafeTunnelConfigStatus;
-  readonly runtime: SafeTunnelRuntimeStatus;
-}
-
-interface ConnectorStatusPaths {
-  readonly configPath: string;
-  readonly logPath: string;
-  readonly pidFilePath: string;
-}
-
-interface ConnectorStructuredStatus {
-  readonly statusVersion: 1;
-  readonly config: ConnectorStructuredConfigStatus;
-  readonly runtime: ConnectorStructuredRuntimeStatus;
-  readonly log: ConnectorStructuredLogStatus;
-}
-
-interface ConnectorStructuredConfigStatus {
-  readonly path: string;
-  readonly exists: boolean;
-  readonly state: SafeTunnelConfigStatus["state"];
-  readonly localPiWebUrl?: string;
-  readonly frpcPathConfigured?: boolean;
-  readonly machine?: ConnectorStructuredMachineStatus;
-  readonly error?: string;
-}
-
-interface ConnectorStructuredMachineStatus {
-  readonly controlApiBaseUrl: string;
-  readonly machineId: string;
-  readonly machineSlug?: string;
-  readonly publicUrl?: string;
-}
-
-interface ConnectorStructuredRuntimeStatus {
-  readonly pidFilePath: string;
-  readonly frpcConfigPath: string;
-  readonly frpcConfigExists: boolean;
-  readonly state: SafeTunnelRuntimeStatus["state"];
-  readonly pid?: number;
-  readonly error?: string;
-}
-
-interface ConnectorStructuredLogStatus {
-  readonly path: string;
-  readonly exists: boolean;
-  readonly tailMaxCharacters: number;
-  readonly tail?: string;
-  readonly error?: string;
-}
-
-function parseConnectorStatusData(statusJson: string, dependencies: Pick<SafeTunnelBridgeDependencies, "env" | "fileExists" | "homeDirectory" | "platform">): ConnectorStatusData {
-  try {
-    return connectorStatusDataFromStructuredStatus(parseConnectorStructuredStatus(statusJson));
-  } catch (error) {
-    return fallbackConnectorStatusData(`Unable to parse pi-web-tunnel status --json: ${errorMessage(error)}`, dependencies, { forceError: true });
-  }
-}
-
-function connectorStatusDataFromStructuredStatus(status: ConnectorStructuredStatus): ConnectorStatusData {
-  return {
-    config: safeTunnelConfigStatusFromConnectorStatus(status.config),
-    runtime: safeTunnelRuntimeStatusFromConnectorStatus(status.runtime, status.log),
-  };
-}
-
-function safeTunnelConfigStatusFromConnectorStatus(status: ConnectorStructuredConfigStatus): SafeTunnelConfigStatus {
-  return {
-    path: status.path,
-    exists: status.exists,
-    state: status.state,
-    ...(status.localPiWebUrl === undefined ? {} : { localPiWebUrl: status.localPiWebUrl }),
-    ...(status.frpcPathConfigured === undefined ? {} : { frpcPathConfigured: status.frpcPathConfigured }),
-    ...(status.machine === undefined ? {} : { machine: safeTunnelMachineStatusFromConnectorStatus(status.machine) }),
-    ...(status.error === undefined ? {} : { error: status.error }),
-  };
-}
-
-function safeTunnelMachineStatusFromConnectorStatus(status: ConnectorStructuredMachineStatus): NonNullable<SafeTunnelConfigStatus["machine"]> {
-  const publicHostname = status.publicUrl === undefined ? undefined : publicHostnameFromPublicUrl(status.publicUrl);
-
-  return {
-    controlApiBaseUrl: status.controlApiBaseUrl,
-    machineId: status.machineId,
-    ...(status.machineSlug === undefined ? {} : { machineSlug: status.machineSlug }),
-    ...(publicHostname === undefined ? {} : { publicHostname }),
-    ...(status.publicUrl === undefined ? {} : { publicUrl: status.publicUrl }),
-  };
-}
-
-function publicHostnameFromPublicUrl(publicUrl: string): string | undefined {
-  try {
-    const parsed = new URL(publicUrl);
-    return parsed.hostname.length === 0 ? undefined : parsed.hostname;
-  } catch {
-    return undefined;
-  }
-}
-
-function safeTunnelRuntimeStatusFromConnectorStatus(
-  runtime: ConnectorStructuredRuntimeStatus,
-  log: ConnectorStructuredLogStatus,
-): SafeTunnelRuntimeStatus {
-  const logTail = log.tail === undefined
-    ? undefined
-    : tailText(sanitizeConnectorLog(log.tail), maxConnectorLogTailCharacters);
-
-  return {
-    pidFilePath: runtime.pidFilePath,
-    frpcConfigPath: runtime.frpcConfigPath,
-    frpcConfigExists: runtime.frpcConfigExists,
-    state: runtime.state,
-    ...(runtime.pid === undefined ? {} : { pid: runtime.pid }),
-    ...(runtime.error === undefined ? {} : { error: runtime.error }),
-    logPath: log.path,
-    logExists: log.exists,
-    logTailMaxCharacters: log.tailMaxCharacters,
-    ...(log.error === undefined ? {} : { logError: log.error }),
-    ...(logTail === undefined || logTail.length === 0 ? {} : { logTail }),
-  };
-}
-
-function fallbackConnectorStatusData(
-  reason: string,
-  dependencies: Pick<SafeTunnelBridgeDependencies, "env" | "fileExists" | "homeDirectory" | "platform">,
-  options: { readonly forceError?: boolean } = {},
-): ConnectorStatusData {
-  const paths = connectorStatusPaths(dependencies);
-  const configExists = dependencies.fileExists(paths.configPath);
-  const pidFileExists = dependencies.fileExists(paths.pidFilePath);
-  const forceError = options.forceError === true;
-
-  return {
-    config: configExists || forceError
-      ? { exists: configExists, path: paths.configPath, state: "invalid", error: reason }
-      : { exists: false, path: paths.configPath, state: "missing" },
-    runtime: {
-      pidFilePath: paths.pidFilePath,
-      state: pidFileExists || forceError ? "unknown" : "stopped",
-      ...(pidFileExists || forceError ? { error: reason } : {}),
-      logPath: paths.logPath,
-    },
-  };
-}
-
-function connectorStatusPaths(dependencies: Pick<SafeTunnelBridgeDependencies, "env" | "homeDirectory" | "platform">): ConnectorStatusPaths {
-  const configDirectory = discoverConnectorConfigDirectory(dependencies);
-  const pathApi = pathApiForPlatform(dependencies.platform);
-
-  return {
-    configPath: pathApi.join(configDirectory, connectorConfigFileName),
-    logPath: pathApi.join(configDirectory, connectorLogFileName),
-    pidFilePath: pathApi.join(configDirectory, connectorPidFileName),
-  };
-}
-
-function parseConnectorStructuredStatus(contents: string): ConnectorStructuredStatus {
-  const parsed: unknown = JSON.parse(contents);
-  const record = requireRecord(parsed, "Connector status");
-  const statusVersion = requireNumber(record, "statusVersion");
-
-  if (statusVersion !== 1) {
-    throw new Error(`Unsupported connector status version: ${statusVersion.toString()}.`);
-  }
-
-  return {
-    statusVersion: 1,
-    config: parseConnectorStructuredConfigStatus(record["config"]),
-    runtime: parseConnectorStructuredRuntimeStatus(record["runtime"]),
-    log: parseConnectorStructuredLogStatus(record["log"]),
-  };
-}
-
-function parseConnectorStructuredConfigStatus(value: unknown): ConnectorStructuredConfigStatus {
-  const record = requireRecord(value, "Connector status config");
-  const localPiWebUrl = optionalNonEmptyString(record["localPiWebUrl"], "Connector status config.localPiWebUrl");
-  const frpcPathConfigured = optionalBoolean(record["frpcPathConfigured"], "Connector status config.frpcPathConfigured");
-  const machine = record["machine"] === undefined ? undefined : parseConnectorStructuredMachineStatus(record["machine"]);
-  const error = optionalNonEmptyString(record["error"], "Connector status config.error");
-
-  return {
-    path: requireNonEmptyString(record["path"], "Connector status config.path"),
-    exists: requireBoolean(record, "exists"),
-    state: requireConnectorConfigState(record, "state"),
-    ...(localPiWebUrl === undefined ? {} : { localPiWebUrl }),
-    ...(frpcPathConfigured === undefined ? {} : { frpcPathConfigured }),
-    ...(machine === undefined ? {} : { machine }),
-    ...(error === undefined ? {} : { error }),
-  };
-}
-
-function parseConnectorStructuredMachineStatus(value: unknown): ConnectorStructuredMachineStatus {
-  const record = requireRecord(value, "Connector status machine");
-  const machineSlug = optionalNonEmptyString(record["machineSlug"], "Connector status machine.machineSlug");
-  const publicUrl = optionalNonEmptyString(record["publicUrl"], "Connector status machine.publicUrl");
-
-  return {
-    controlApiBaseUrl: requireNonEmptyString(record["controlApiBaseUrl"], "Connector status machine.controlApiBaseUrl"),
-    machineId: requireNonEmptyString(record["machineId"], "Connector status machine.machineId"),
-    ...(machineSlug === undefined ? {} : { machineSlug }),
-    ...(publicUrl === undefined ? {} : { publicUrl }),
-  };
-}
-
-function parseConnectorStructuredRuntimeStatus(value: unknown): ConnectorStructuredRuntimeStatus {
-  const record = requireRecord(value, "Connector status runtime");
-  const pid = optionalNumber(record["pid"], "Connector status runtime.pid");
-  const error = optionalNonEmptyString(record["error"], "Connector status runtime.error");
-
-  return {
-    pidFilePath: requireNonEmptyString(record["pidFilePath"], "Connector status runtime.pidFilePath"),
-    frpcConfigPath: requireNonEmptyString(record["frpcConfigPath"], "Connector status runtime.frpcConfigPath"),
-    frpcConfigExists: requireBoolean(record, "frpcConfigExists"),
-    state: requireConnectorRuntimeState(record, "state"),
-    ...(pid === undefined ? {} : { pid }),
-    ...(error === undefined ? {} : { error }),
-  };
-}
-
-function parseConnectorStructuredLogStatus(value: unknown): ConnectorStructuredLogStatus {
-  const record = requireRecord(value, "Connector status log");
-  const tail = optionalString(record["tail"], "Connector status log.tail");
-  const error = optionalNonEmptyString(record["error"], "Connector status log.error");
-
-  return {
-    path: requireNonEmptyString(record["path"], "Connector status log.path"),
-    exists: requireBoolean(record, "exists"),
-    tailMaxCharacters: requireNumber(record, "tailMaxCharacters"),
-    ...(tail === undefined ? {} : { tail }),
-    ...(error === undefined ? {} : { error }),
-  };
-}
-
-function sanitizeConnectorLog(contents: string): string {
-  return contents.replace(ansiEscapePattern, "");
-}
-
-function tailText(contents: string, maxCharacters: number): string {
-  if (contents.length <= maxCharacters) return contents;
-  return contents.slice(contents.length - maxCharacters);
+function publicHostnameFromUrl(publicUrl: string): string {
+  return new URL(publicUrl).hostname;
 }
 
 function snapshotOperation(operation: SafeTunnelOperationState): SafeTunnelOperationResponse {
@@ -748,7 +668,7 @@ function snapshotOperation(operation: SafeTunnelOperationState): SafeTunnelOpera
     ...(operation.exitCode === undefined ? {} : { exitCode: operation.exitCode }),
     ...(operation.finishedAt === undefined ? {} : { finishedAt: operation.finishedAt }),
     ...(operation.logPath === undefined ? {} : { logPath: operation.logPath }),
-    ...(operation.logTail === undefined || operation.logTail.length === 0 ? {} : { logTail: operation.logTail }),
+    ...(operation.logTail === undefined || operation.logTail === "" ? {} : { logTail: operation.logTail }),
     ...(operation.logTailMaxCharacters === undefined ? {} : { logTailMaxCharacters: operation.logTailMaxCharacters }),
     ...(operation.publicUrl === undefined ? {} : { publicUrl: operation.publicUrl }),
     ...(operation.signal === undefined ? {} : { signal: operation.signal }),
@@ -767,29 +687,18 @@ function appendOperationStderr(operation: SafeTunnelOperationState, chunk: strin
 }
 
 function appendOperationLogTail(operation: SafeTunnelOperationState, chunk: string): void {
-  operation.logTail = tailText(sanitizeConnectorLog(`${operation.logTail ?? ""}${chunk}`), maxConnectorLogTailCharacters);
+  operation.logTail = tailText(
+    sanitizeConnectorLog(`${operation.logTail ?? ""}${chunk}`),
+    maxConnectorLogTailCharacters,
+  );
   operation.logTailMaxCharacters = maxConnectorLogTailCharacters;
 }
 
 function updateOperationDerivedFields(operation: SafeTunnelOperationState): void {
-  const lines = operation.stdout.split(/\r?\n/u);
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index]?.trim() ?? "";
-    const previousLine = index === 0 ? "" : (lines[index - 1]?.trim() ?? "");
-
-    if (previousLine === "Open this URL to authorize the connector:" && line.length > 0) {
-      operation.verificationUriComplete = line;
-      continue;
-    }
-
-    if (line.startsWith("User code:")) {
-      operation.userCode = line.slice("User code:".length).trim();
-      continue;
-    }
-
-    if (line.startsWith("Public URL:")) {
-      operation.publicUrl = line.slice("Public URL:".length).trim();
+  for (const line of operation.stdout.split(/\r?\n/u)) {
+    const normalized = line.trim();
+    if (normalized.startsWith("Public URL:")) {
+      operation.publicUrl = normalized.slice("Public URL:".length).trim();
     }
   }
 }
@@ -805,115 +714,67 @@ function commandOutput(result: SafeTunnelCommandRunResult): SafeTunnelCommandOut
 
 function appendCapped(existing: string, chunk: string, maxCharacters: number): string {
   const next = `${existing}${chunk}`;
-  if (next.length <= maxCharacters) return next;
-  return next.slice(next.length - maxCharacters);
+  return next.length <= maxCharacters ? next : next.slice(next.length - maxCharacters);
 }
 
-function pathApiForPlatform(platform: NodeJS.Platform): PathApi {
-  return platform === "win32" ? win32 : posix;
+function sanitizeConnectorLog(contents: string): string {
+  return contents.replace(ansiEscapePattern, "");
 }
 
-function requireRecord(value: unknown, fieldName: string): Record<string, unknown> {
-  if (!isRecord(value)) {
-    throw new Error(`${fieldName} must be a JSON object.`);
-  }
+function tailText(contents: string, maxCharacters: number): string {
+  return contents.length <= maxCharacters ? contents : contents.slice(contents.length - maxCharacters);
+}
+
+function requireRecord(value: unknown): Readonly<Record<string, unknown>> {
+  if (!isRecord(value)) throw new Error("Expected a JSON object");
   return value;
 }
 
-function requireBoolean(record: Record<string, unknown>, key: string): boolean {
-  const value = record[key];
-  if (typeof value !== "boolean") {
-    throw new Error(`${key} must be a boolean.`);
-  }
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function requireNonEmptyString(value: unknown): string {
+  if (typeof value !== "string" || value.trim() === "") throw new Error("Expected a non-empty string");
   return value;
 }
 
-function optionalBoolean(value: unknown, fieldName: string): boolean | undefined {
+function optionalNonEmptyString(value: unknown): string | undefined {
   if (value === undefined) return undefined;
-  if (typeof value !== "boolean") {
-    throw new Error(`${fieldName} must be a boolean.`);
-  }
-  return value;
+  return requireNonEmptyString(value);
 }
 
-function requireNumber(record: Record<string, unknown>, key: string): number {
-  const value = record[key];
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new Error(`${key} must be a finite number.`);
-  }
-  return value;
-}
-
-function optionalNumber(value: unknown, fieldName: string): number | undefined {
+function optionalString(value: unknown): string | undefined {
   if (value === undefined) return undefined;
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new Error(`${fieldName} must be a finite number.`);
-  }
+  if (typeof value !== "string") throw new Error("Expected a string");
   return value;
 }
 
-function optionalString(value: unknown, fieldName: string): string | undefined {
-  if (value === undefined) return undefined;
-  if (typeof value !== "string") {
-    throw new Error(`${fieldName} must be a string.`);
-  }
+function requireBoolean(value: unknown): boolean {
+  if (typeof value !== "boolean") throw new Error("Expected a boolean");
   return value;
 }
 
-function requireConnectorConfigState(record: Record<string, unknown>, key: string): SafeTunnelConfigStatus["state"] {
-  const value = requireNonEmptyString(record[key], `Connector status config.${key}`);
-  if (value !== "missing" && value !== "unregistered" && value !== "registered" && value !== "invalid") {
-    throw new Error(`Connector status config.${key} is invalid.`);
-  }
+function requireFiniteNumber(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error("Expected a finite number");
   return value;
 }
 
-function requireConnectorRuntimeState(record: Record<string, unknown>, key: string): SafeTunnelRuntimeStatus["state"] {
-  const value = requireNonEmptyString(record[key], `Connector status runtime.${key}`);
+function optionalFiniteNumber(value: unknown): number | undefined {
+  return value === undefined ? undefined : requireFiniteNumber(value);
+}
+
+function requireRuntimeState(value: unknown): SafeTunnelRuntimeStatus["state"] {
   if (value !== "stopped" && value !== "running" && value !== "stale" && value !== "unknown") {
-    throw new Error(`Connector status runtime.${key} is invalid.`);
+    throw new Error("Invalid connector runtime state");
   }
   return value;
-}
-
-function optionalNonEmptyString(value: unknown, fieldName: string): string | undefined {
-  if (value === undefined) return undefined;
-  return requireNonEmptyString(value, fieldName);
-}
-
-function requireNonEmptyString(value: unknown, fieldName: string): string {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw new Error(`${fieldName} must be a non-empty string.`);
-  }
-  return value.trim();
-}
-
-function requireHomeDirectory(homeDirectory: string): string {
-  const normalized = nonEmptyString(homeDirectory);
-  if (normalized === undefined) {
-    throw new Error("Unable to discover a home directory for the PI WEB Safe Tunnel connector config.");
-  }
-  return normalized;
-}
-
-function nonEmptyString(value: string | undefined): string | undefined {
-  if (value === undefined) return undefined;
-  const trimmed = value.trim();
-  return trimmed.length === 0 ? undefined : trimmed;
 }
 
 function formatExitCode(exitCode: number | null): string {
   return exitCode === null ? "unknown" : exitCode.toString();
 }
 
-function operationErrorLabel(kind: SafeTunnelOperationState["kind"]): string {
-  return kind === "login" ? "Safe Tunnel login" : "Safe Tunnel start";
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function safeErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Unexpected Safe Tunnel failure";
 }

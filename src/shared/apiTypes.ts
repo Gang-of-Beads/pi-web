@@ -161,6 +161,7 @@ export interface PiPackageMutationResponse extends PiPackagesResponse {
 
 export type SafeTunnelConnectorState = "available" | "installable" | "unavailable";
 export type SafeTunnelConfigState = "missing" | "unregistered" | "registered" | "invalid";
+export type SafeTunnelDesiredState = "enabled" | "disabled";
 export type SafeTunnelRuntimeState = "stopped" | "running" | "stale" | "unknown";
 export type SafeTunnelOperationKind = "login" | "start";
 export type SafeTunnelOperationStatus = "running" | "succeeded" | "failed";
@@ -241,6 +242,8 @@ export interface SafeTunnelOperationResponse {
 export interface SafeTunnelStatusResponse {
   connector: SafeTunnelConnectorStatus;
   config: SafeTunnelConfigStatus;
+  /** Persisted user intent; deliberately independent from observed runtime state. */
+  desiredState: SafeTunnelDesiredState;
   runtime: SafeTunnelRuntimeStatus;
   activeOperation?: SafeTunnelOperationResponse;
 }

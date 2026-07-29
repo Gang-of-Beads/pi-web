@@ -141,11 +141,15 @@ Rows with JSON key `—` are runtime-only environment variables, not config-file
 | Safe Tunnel connector bin | — | `PI_WEB_SAFE_TUNNEL_CONNECTOR_BIN` | Web/API env | Not supported locally | Restart web/API; bin name under the managed install prefix, default `pi-web-tunnel` |
 | Safe Tunnel connector npm command | — | `PI_WEB_SAFE_TUNNEL_CONNECTOR_NPM_COMMAND` | Web/API env | Not supported locally | Restart web/API; npm executable used for managed connector install |
 
+The Safe Tunnel connector-command/install variables are temporary runtime compatibility settings.
+PI WEB-owned login, credentials, and desired intent do not depend on them; direct managed `frpc`
+supervision will remove these settings in a later productization step.
+
 ## Key details
 
 ### Managed data directory
 
-`PI_WEB_DATA_DIR` sets the root for PI WEB-managed runtime state and defaults to `~/.pi-web`. Unless a more specific path override is configured, PI WEB stores its project and machine registries, locally discovered plugins, default session-daemon socket, and session archives beneath this root.
+`PI_WEB_DATA_DIR` sets the root for PI WEB-managed runtime state and defaults to `~/.pi-web`. Unless a more specific path override is configured, PI WEB stores its project and machine registries, locally discovered plugins, default session-daemon socket, session archives, and private Safe Tunnel state (`safe-tunnel/config.json`) beneath this root.
 
 This setting does not change the PI WEB config file selected by `PI_WEB_CONFIG` or Pi-owned state such as the active session files selected by `PI_CODING_AGENT_SESSION_DIR`.
 

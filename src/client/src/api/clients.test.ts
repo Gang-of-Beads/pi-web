@@ -654,6 +654,7 @@ function safeTunnelStatusResponse() {
         publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
       },
     },
+    desiredState: "enabled",
     runtime: { pidFilePath: "/home/test/.config/pi-web-tunnel/connector.pid", state: "running", pid: 123 },
   };
 }

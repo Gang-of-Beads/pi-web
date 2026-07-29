@@ -53,7 +53,7 @@ export class SettingsSafeTunnelPanel extends LitElement {
           <div>
             <span class="eyebrow">Safe Tunnel</span>
             <h2>Expose this PI WEB safely</h2>
-            <p>Register this local PI WEB with PI WEB Safe Tunnels, then start or stop the connector from here.</p>
+            <p>Register this local PI WEB with PI WEB Safe Tunnels, then start or stop the temporary tunnel runtime from here.</p>
           </div>
           <button type="button" @click=${() => { void this.loadStatus(); }} ?disabled=${this.loading || this.mutating}>Refresh</button>
         </header>
@@ -118,7 +118,7 @@ export class SettingsSafeTunnelPanel extends LitElement {
           <div class="section-heading">
             <div>
               <h3 id="safe-tunnel-current-heading">Current tunnel</h3>
-              <p>Loading connector-owned tunnel metadata…</p>
+              <p>Loading PI WEB-owned tunnel metadata…</p>
             </div>
             <span class="status-pill muted">Loading</span>
           </div>
@@ -134,12 +134,12 @@ export class SettingsSafeTunnelPanel extends LitElement {
         <div class="section-heading">
           <div>
             <h3 id="safe-tunnel-current-heading">Current tunnel</h3>
-            <p>Read-only connector-owned registration and runtime metadata for this PI WEB.</p>
+            <p>Read-only PI WEB-owned registration and runtime metadata for this PI WEB.</p>
           </div>
           <span class=${`status-pill ${status.config.state === "registered" ? "good" : "muted"}`}>${configStateLabel(status.config.state)}</span>
         </div>
         ${machine === undefined ? html`
-          <p class="help empty-state">No registered tunnel is saved in the connector config yet. Use the login form below to register this PI WEB.</p>
+          <p class="help empty-state">No registered tunnel is saved in PI WEB state yet. Use the login form below to register this PI WEB.</p>
           <dl class="detail-list">
             ${this.renderDetailRow("Config path", status.config.path, { copyLabel: "Config path" })}
             ${this.renderDetailRow("Local PI WEB URL", localPiWebUrl, { copyLabel: "Local PI WEB URL", openUrl: localPiWebUrl })}
@@ -225,8 +225,8 @@ export class SettingsSafeTunnelPanel extends LitElement {
           <div>
             <h3>${hasCurrentMachine ? "New / re-register tunnel" : "Register this PI WEB"}</h3>
             <p>${hasCurrentMachine
-              ? "Start a fresh connector device login. After hosted approval, the connector saves the new registration and the Current tunnel card updates."
-              : "Starts the connector device flow. Approve it in the hosted Safe Tunnels page, then this panel will show the public URL when registration finishes."}</p>
+              ? "Start a fresh device login. After hosted approval, PI WEB saves the new registration and the Current tunnel card updates."
+              : "Starts PI WEB's device flow. Approve it in the hosted Safe Tunnels page, then this panel will show the public URL when registration finishes."}</p>
           </div>
         </div>
         ${this.renderRegistrationActionNotice(currentMachine)}

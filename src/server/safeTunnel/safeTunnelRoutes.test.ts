@@ -108,6 +108,7 @@ class FakeSafeTunnelBridgeService implements SafeTunnelBridgeService {
   readonly statusResponse: SafeTunnelStatusResponse = {
     connector: { command: "pi-web-tunnel", state: "available" },
     config: { exists: false, path: "/tmp/pi-web-tunnel/config.json", state: "missing" },
+    desiredState: "disabled",
     runtime: { pidFilePath: "/tmp/pi-web-tunnel/connector.pid", state: "stopped" },
   };
 
