@@ -1,80 +1,105 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
-import type { SafeTunnelLoginRequest, SafeTunnelStartRequest } from "../../shared/apiTypes.js";
-import { createDefaultSafeTunnelBridgeService, SafeTunnelBridgeError, type SafeTunnelBridgeService } from "./safeTunnelBridgeService.js";
+import type {
+  SafeTunnelAdvancedOverrides,
+  SafeTunnelEnableRequest,
+} from "../../shared/apiTypes.js";
+import {
+  createDefaultSafeTunnelBridgeService,
+  SafeTunnelBridgeError,
+  type SafeTunnelBridgeService,
+} from "./safeTunnelBridgeService.js";
 
 class SafeTunnelRequestValidationError extends Error {}
 
-export function registerSafeTunnelRoutes(app: FastifyInstance, service: SafeTunnelBridgeService = createDefaultSafeTunnelBridgeService()): void {
+const advancedOverrideKeys = new Set([
+  "controlApiUrl",
+  "frpcPath",
+  "localPiWebUrl",
+  "machineName",
+  "machineSlug",
+]);
+
+export function registerSafeTunnelRoutes(
+  app: FastifyInstance,
+  service?: SafeTunnelBridgeService,
+): void {
+  const bridge = service ?? createDefaultSafeTunnelBridgeService({
+    serverAddress: () => app.server.address(),
+  });
+
   app.addHook("onReady", async () => {
-    await service.startup();
+    await bridge.startup();
   });
   app.addHook("onClose", async () => {
-    await service.shutdown();
+    await bridge.shutdown();
   });
 
   app.get("/api/safe-tunnel/status", async (_request, reply) => {
     try {
-      return await service.status();
+      return await bridge.status();
     } catch (error) {
       return sendSafeTunnelError(reply, error);
     }
   });
 
-  app.post<{ Body: unknown }>("/api/safe-tunnel/login", async (request, reply) => {
+  app.post<{ Body: unknown }>("/api/safe-tunnel/enable", async (request, reply) => {
     try {
-      const response = await service.login(parseLoginRequest(request.body));
+      const response = await bridge.enable(parseEnableRequest(request.body));
       reply.code(202).send(response);
       return;
+    } catch (error) {
+      return sendSafeTunnelError(reply, error);
+    }
+  });
+
+  app.post("/api/safe-tunnel/disable", async (_request, reply) => {
+    try {
+      return await bridge.disable();
     } catch (error) {
       return sendSafeTunnelError(reply, error);
     }
   });
 
   app.get<{ Params: { operationId: string } }>("/api/safe-tunnel/operations/:operationId", async (request, reply) => {
-    const operation = service.operation(request.params.operationId);
-    if (operation === undefined) return reply.code(404).send({ error: "Safe Tunnel operation not found" });
+    const operation = bridge.operation(request.params.operationId);
+    if (operation === undefined) {
+      return reply.code(404).send({ error: "Safe Tunnel operation not found" });
+    }
     return operation;
   });
-
-  app.post<{ Body: unknown }>("/api/safe-tunnel/start", async (request, reply) => {
-    try {
-      const response = await service.start(parseStartRequest(request.body));
-      reply.code(202).send(response);
-      return;
-    } catch (error) {
-      return sendSafeTunnelError(reply, error);
-    }
-  });
-
-  app.post("/api/safe-tunnel/stop", async (_request, reply) => {
-    try {
-      return await service.stop();
-    } catch (error) {
-      return sendSafeTunnelError(reply, error);
-    }
-  });
 }
 
-function parseLoginRequest(body: unknown): SafeTunnelLoginRequest {
-  const request = requireRequestObject(body, "Safe Tunnel login request body must be an object");
-  const controlApiUrl = requireNonEmptyString(request["controlApiUrl"], "Safe Tunnel login controlApiUrl");
-  const machineName = requireNonEmptyString(request["machineName"], "Safe Tunnel login machineName");
-  const machineSlug = requireNonEmptyString(request["machineSlug"], "Safe Tunnel login machineSlug");
-  const localPiWebUrl = optionalNonEmptyString(request["localPiWebUrl"], "Safe Tunnel login localPiWebUrl");
-  const frpcPath = optionalNonEmptyString(request["frpcPath"], "Safe Tunnel login frpcPath");
-  const parsed: SafeTunnelLoginRequest = { controlApiUrl, machineName, machineSlug };
-
-  if (localPiWebUrl !== undefined && frpcPath !== undefined) return { ...parsed, localPiWebUrl, frpcPath };
-  if (localPiWebUrl !== undefined) return { ...parsed, localPiWebUrl };
-  if (frpcPath !== undefined) return { ...parsed, frpcPath };
-  return parsed;
-}
-
-function parseStartRequest(body: unknown): SafeTunnelStartRequest {
+function parseEnableRequest(body: unknown): SafeTunnelEnableRequest {
   if (body === undefined) return {};
-  const request = requireRequestObject(body, "Safe Tunnel start request body must be an object");
-  const frpcPath = optionalNonEmptyString(request["frpcPath"], "Safe Tunnel start frpcPath");
-  return frpcPath === undefined ? {} : { frpcPath };
+  const request = requireRequestObject(
+    body,
+    "Safe Tunnel enable request body must be an object",
+  );
+  assertOnlyKeys(request, new Set(["advanced"]), "Safe Tunnel enable request");
+  if (request["advanced"] === undefined) return {};
+
+  const advanced = requireRequestObject(
+    request["advanced"],
+    "Safe Tunnel advanced overrides must be an object",
+  );
+  assertOnlyKeys(advanced, advancedOverrideKeys, "Safe Tunnel advanced overrides");
+  const parsed: SafeTunnelAdvancedOverrides = {};
+  copyOptionalString(advanced, parsed, "controlApiUrl", "Safe Tunnel advanced controlApiUrl");
+  copyOptionalString(advanced, parsed, "machineName", "Safe Tunnel advanced machineName");
+  copyOptionalString(advanced, parsed, "machineSlug", "Safe Tunnel advanced machineSlug");
+  copyOptionalString(advanced, parsed, "localPiWebUrl", "Safe Tunnel advanced localPiWebUrl");
+  copyOptionalString(advanced, parsed, "frpcPath", "Safe Tunnel advanced frpcPath");
+  return Object.keys(parsed).length === 0 ? {} : { advanced: parsed };
+}
+
+function copyOptionalString(
+  source: Readonly<Record<string, unknown>>,
+  target: SafeTunnelAdvancedOverrides,
+  key: keyof SafeTunnelAdvancedOverrides,
+  fieldName: string,
+): void {
+  const value = optionalNonEmptyString(source[key], fieldName);
+  if (value !== undefined) target[key] = value;
 }
 
 function optionalNonEmptyString(value: unknown, fieldName: string): string | undefined {
@@ -89,9 +114,23 @@ function requireNonEmptyString(value: unknown, fieldName: string): string {
   return value.trim();
 }
 
-function requireRequestObject(value: unknown, message: string): Record<string, unknown> {
+function requireRequestObject(
+  value: unknown,
+  message: string,
+): Record<string, unknown> {
   if (!isRecord(value)) throw new SafeTunnelRequestValidationError(message);
   return value;
+}
+
+function assertOnlyKeys(
+  value: Readonly<Record<string, unknown>>,
+  allowedKeys: ReadonlySet<string>,
+  label: string,
+): void {
+  const unsupported = Object.keys(value).find((key) => !allowedKeys.has(key));
+  if (unsupported !== undefined) {
+    throw new SafeTunnelRequestValidationError(`${label} contains unsupported field: ${unsupported}`);
+  }
 }
 
 function sendSafeTunnelError(reply: FastifyReply, error: unknown): FastifyReply {

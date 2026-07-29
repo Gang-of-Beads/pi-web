@@ -1681,7 +1681,7 @@ export class PiWebApp extends LitElement {
       {
         id: "app.safe-tunnel.expose-safely",
         title: "Expose Safely",
-        description: "Register, start, stop, and copy the PI WEB Safe Tunnel URL",
+        description: "Enable, disable, and copy this PI WEB's Safe Tunnel URL",
         group: "Safe Tunnels",
         run: () => { this.openSettings("safe-tunnel"); },
       },

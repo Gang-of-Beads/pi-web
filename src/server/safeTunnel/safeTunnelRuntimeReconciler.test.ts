@@ -86,6 +86,7 @@ describe("SafeTunnelRuntimeReconciler", () => {
     ]);
     const retryingStatus = await fixture.reconciler.status();
     expect(retryingStatus.state).toBe("unknown");
+    expect(retryingStatus.diagnosticCode).toBe("heartbeat_retrying");
     expect(retryingStatus.error).toContain("Safe Tunnel heartbeat failed. Retrying in 40 ms.");
     expect(JSON.stringify(retryingStatus)).not.toContain("provider detail");
 
@@ -111,6 +112,7 @@ describe("SafeTunnelRuntimeReconciler", () => {
     expect(fixture.safeTunnel.loaded.state.desiredState).toBe("enabled");
     const revokedStatus = await fixture.reconciler.status();
     expect(revokedStatus.state).toBe("stopped");
+    expect(revokedStatus.diagnosticCode).toBe("credentials_rejected");
     expect(revokedStatus.error).toContain("rejected or revoked");
 
     fixture.safeTunnel.heartbeatResults = [() => Promise.resolve(heartbeatResult(30))];
@@ -135,6 +137,7 @@ describe("SafeTunnelRuntimeReconciler", () => {
     await fixture.reconciler.startup();
     expect(fixture.clock.scheduledDelays.at(-1)).toBe(10);
     await expect(fixture.reconciler.status()).resolves.toMatchObject({
+      diagnosticCode: "state_retrying",
       error: "PI WEB could not reconcile persisted Safe Tunnel intent. Retrying in 10 ms.",
     });
 
@@ -149,6 +152,28 @@ describe("SafeTunnelRuntimeReconciler", () => {
 
     expect(fixture.runtime.startCalls).toEqual([{}]);
     expect(JSON.stringify(await fixture.reconciler.status())).not.toContain("filesystem detail");
+  });
+
+  it("keeps durably rejected credentials stopped until a replacement registration", async () => {
+    const fixture = createFixture();
+    fixture.safeTunnel.loaded = registeredEnabledState();
+    const machine = fixture.safeTunnel.loaded.state.machine;
+    if (machine === undefined) throw new Error("registered fixture is missing a machine");
+    fixture.safeTunnel.loaded = {
+      ...fixture.safeTunnel.loaded,
+      state: {
+        ...fixture.safeTunnel.loaded.state,
+        machine: { ...machine, credentialStatus: "rejected" },
+      },
+    };
+
+    await fixture.reconciler.startup();
+
+    expect(fixture.runtime.startCalls).toEqual([]);
+    expect(fixture.runtime.stopCalls).toBe(1);
+    const status = await fixture.reconciler.status();
+    expect(status.diagnosticCode).toBe("credentials_rejected");
+    expect(status.error).toContain("approve it again");
   });
 
   it("aborts and finishes heartbeat work before child shutdown", async () => {

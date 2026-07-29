@@ -1,4 +1,5 @@
 import {
+  SafeTunnelControlPlaneError,
   safeTunnelClientVersion,
   type SafeTunnelControlPlane,
   type SafeTunnelDeviceAuthorization,
@@ -18,6 +19,7 @@ import {
 
 export type SafeTunnelServiceErrorCode =
   | "authorization_expired"
+  | "credentials_rejected"
   | "invalid_heartbeat"
   | "invalid_login"
   | "invalid_tunnel_config"
@@ -37,6 +39,11 @@ export interface SafeTunnelLoginInput {
   readonly frpcPath?: string;
 }
 
+export interface SafeTunnelEnableInput {
+  readonly frpcPath?: string;
+  readonly localPiWebUrl?: string;
+}
+
 export interface SafeTunnelLoginObserver {
   readonly onAuthorizationApproved?: (account: {
     readonly id: string;
@@ -47,6 +54,10 @@ export interface SafeTunnelLoginObserver {
     readonly id: string;
     readonly publicUrl: string;
   }) => void;
+}
+
+export interface SafeTunnelLoginOptions {
+  readonly signal?: AbortSignal;
 }
 
 export interface SafeTunnelLoginResult {
@@ -63,7 +74,7 @@ export interface SafeTunnelServiceDependencies {
   readonly controlPlane: SafeTunnelControlPlane;
   readonly stateStorage: SafeTunnelStateStorage;
   readonly now?: () => Date;
-  readonly sleep?: (milliseconds: number) => Promise<void>;
+  readonly sleep?: (milliseconds: number, signal?: AbortSignal) => Promise<void>;
 }
 
 /**
@@ -73,14 +84,12 @@ export interface SafeTunnelServiceDependencies {
  */
 export class SafeTunnelService {
   private readonly now: () => Date;
-  private readonly sleep: (milliseconds: number) => Promise<void>;
+  private readonly sleep: (milliseconds: number, signal?: AbortSignal) => Promise<void>;
   private mutationTail: Promise<void> = Promise.resolve();
 
   constructor(private readonly dependencies: SafeTunnelServiceDependencies) {
     this.now = dependencies.now ?? (() => new Date());
-    this.sleep = dependencies.sleep ?? ((milliseconds) => new Promise((resolve) => {
-      setTimeout(resolve, milliseconds);
-    }));
+    this.sleep = dependencies.sleep ?? abortableSleep;
   }
 
   get statePath(): string {
@@ -95,21 +104,29 @@ export class SafeTunnelService {
   async login(
     input: SafeTunnelLoginInput,
     observer: SafeTunnelLoginObserver = {},
+    options: SafeTunnelLoginOptions = {},
   ): Promise<SafeTunnelLoginResult> {
+    throwIfAborted(options.signal);
     const existing = await this.state();
     const login = normalizeLoginInput(input, existing.state);
     const started = await this.dependencies.controlPlane.startDeviceAuthorization({
       controlApiBaseUrl: login.controlApiBaseUrl,
       clientVersion: safeTunnelClientVersion,
-    });
+    }, options);
+    throwIfAborted(options.signal);
     observer.onDeviceAuthorization?.(started);
 
     const authorization = await this.waitForApproval(
       login.controlApiBaseUrl,
       started,
+      options.signal,
     );
     observer.onAuthorizationApproved?.(authorization.account);
+    throwIfAborted(options.signal);
 
+    // Once registration begins, let its one-time credential response finish and
+    // persist even if the user disables concurrently; the bridge will observe
+    // cancellation before it can arm supervision.
     const registeredMachine = await this.dependencies.controlPlane.registerMachine({
       controlApiBaseUrl: login.controlApiBaseUrl,
       connectorAccessToken: authorization.accessToken,
@@ -124,6 +141,7 @@ export class SafeTunnelService {
 
     const machineCredentials: SafeTunnelMachineCredentials = {
       controlApiBaseUrl: login.controlApiBaseUrl,
+      credentialStatus: "active",
       machineId: registeredMachine.machine.id,
       machineToken: registeredMachine.machineToken,
       machineSlug: registeredMachine.machine.slug,
@@ -144,15 +162,28 @@ export class SafeTunnelService {
     return { machineCredentials, registeredMachine };
   }
 
-  async enable(frpcPath?: string): Promise<SafeTunnelPersistedState> {
-    const normalizedFrpcPath = frpcPath === undefined
+  async enable(input: SafeTunnelEnableInput = {}): Promise<SafeTunnelPersistedState> {
+    const normalizedFrpcPath = input.frpcPath === undefined
       ? undefined
-      : requireNonEmptyString(frpcPath);
+      : requireNonEmptyString(input.frpcPath);
+    let normalizedLocalPiWebUrl: string | undefined;
+    try {
+      normalizedLocalPiWebUrl = input.localPiWebUrl === undefined
+        ? undefined
+        : normalizeSafeTunnelLocalPiWebUrl(input.localPiWebUrl);
+    } catch {
+      throw new SafeTunnelServiceError("invalid_login");
+    }
+
     return this.mutateState((current) => {
       if (current.machine === undefined) throw new SafeTunnelServiceError("not_registered");
+      if (current.machine.credentialStatus === "rejected") {
+        throw new SafeTunnelServiceError("credentials_rejected");
+      }
       return {
         ...current,
         desiredState: "enabled",
+        ...(normalizedLocalPiWebUrl === undefined ? {} : { localPiWebUrl: normalizedLocalPiWebUrl }),
         ...(normalizedFrpcPath === undefined ? {} : { frpcPath: normalizedFrpcPath }),
       };
     });
@@ -168,11 +199,20 @@ export class SafeTunnelService {
     const loaded = await this.state();
     const credentials = loaded.state.machine;
     if (credentials === undefined) throw new SafeTunnelServiceError("not_registered");
+    if (credentials.credentialStatus === "rejected") {
+      throw new SafeTunnelServiceError("credentials_rejected");
+    }
 
-    const tunnelConfig = await this.dependencies.controlPlane.getMachineTunnelConfig(
-      credentials,
-      options,
-    );
+    let tunnelConfig: SafeTunnelMachineTunnelConfig;
+    try {
+      tunnelConfig = await this.dependencies.controlPlane.getMachineTunnelConfig(
+        credentials,
+        options,
+      );
+    } catch (error: unknown) {
+      await this.rememberRejectedCredentials(credentials, error).catch(() => undefined);
+      throw error;
+    }
     if (tunnelConfig.machineId !== credentials.machineId) {
       throw new SafeTunnelServiceError("invalid_tunnel_config");
     }
@@ -189,16 +229,27 @@ export class SafeTunnelService {
     const loaded = await this.state();
     const credentials = loaded.state.machine;
     if (credentials === undefined) throw new SafeTunnelServiceError("not_registered");
+    if (credentials.credentialStatus === "rejected") {
+      throw new SafeTunnelServiceError("credentials_rejected");
+    }
 
-    const heartbeat = await this.dependencies.controlPlane.recordMachineHeartbeat(
-      credentials,
-      {
-        clientVersion: safeTunnelClientVersion,
-        tunnelStatus: input.tunnelStatus,
-        ...(input.errorMessage === undefined ? {} : { errorMessage: input.errorMessage }),
-      },
-      options,
-    );
+    let heartbeat: SafeTunnelMachineHeartbeat;
+    try {
+      heartbeat = await this.dependencies.controlPlane.recordMachineHeartbeat(
+        credentials,
+        {
+          clientVersion: safeTunnelClientVersion,
+          tunnelStatus: input.tunnelStatus,
+          ...(input.errorMessage === undefined ? {} : { errorMessage: input.errorMessage }),
+        },
+        options,
+      );
+    } catch (error: unknown) {
+      // Preserve the terminal authentication category even if recording the
+      // durable diagnostic itself fails; the runtime must still stop safely.
+      await this.rememberRejectedCredentials(credentials, error).catch(() => undefined);
+      throw error;
+    }
     if (heartbeat.machineId !== credentials.machineId) {
       throw new SafeTunnelServiceError("invalid_heartbeat");
     }
@@ -208,22 +259,47 @@ export class SafeTunnelService {
   private async waitForApproval(
     controlApiBaseUrl: string,
     started: SafeTunnelDeviceAuthorization,
+    signal?: AbortSignal,
   ) {
     const expiresAtMilliseconds = Date.parse(started.expiresAt);
 
     for (;;) {
+      throwIfAborted(signal);
       const completion = await this.dependencies.controlPlane.completeDeviceAuthorization({
         controlApiBaseUrl,
         deviceCode: started.deviceCode,
-      });
+      }, signal === undefined ? {} : { signal });
+      throwIfAborted(signal);
       if (completion.kind === "approved") return completion.authorization;
 
       const remainingMilliseconds = expiresAtMilliseconds - this.now().getTime();
       if (remainingMilliseconds <= 0) {
         throw new SafeTunnelServiceError("authorization_expired");
       }
-      await this.sleep(Math.min(started.intervalSeconds * 1000, remainingMilliseconds));
+      await this.sleep(
+        Math.min(started.intervalSeconds * 1000, remainingMilliseconds),
+        signal,
+      );
     }
+  }
+
+  private async rememberRejectedCredentials(
+    credentials: SafeTunnelMachineCredentials,
+    error: unknown,
+  ): Promise<void> {
+    if (!(error instanceof SafeTunnelControlPlaneError)
+      || error.code !== "authentication_failed") return;
+
+    await this.mutateState((current) => {
+      const currentMachine = current.machine;
+      if (currentMachine?.machineId !== credentials.machineId
+        || currentMachine.machineToken !== credentials.machineToken
+        || currentMachine.credentialStatus === "rejected") return current;
+      return {
+        ...current,
+        machine: { ...currentMachine, credentialStatus: "rejected" },
+      };
+    });
   }
 
   private mutateState(
@@ -321,7 +397,7 @@ function localPiWebTarget(value: string): LocalPiWebTarget {
   const url = normalizeSafeTunnelLocalPiWebUrl(value);
   const parsed = new URL(url);
   return {
-    localIP: parsed.hostname,
+    localIP: parsed.hostname.replace(/^\[|\]$/gu, ""),
     localPort: Number.parseInt(parsed.port, 10),
     url,
   };
@@ -372,10 +448,32 @@ function requireNonEmptyString(value: string): string {
   return normalized;
 }
 
+function abortableSleep(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  throwIfAborted(signal);
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, milliseconds);
+    const onAbort = (): void => {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", onAbort);
+      reject(new Error("Safe Tunnel enablement was cancelled."));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted === true) throw new Error("Safe Tunnel enablement was cancelled.");
+}
+
 function safeTunnelServiceErrorMessage(code: SafeTunnelServiceErrorCode): string {
   switch (code) {
     case "authorization_expired":
       return "Safe Tunnel device authorization expired before approval.";
+    case "credentials_rejected":
+      return "Safe Tunnel machine credentials were rejected or revoked.";
     case "invalid_heartbeat":
       return "The Safe Tunnel service returned a heartbeat for an unexpected machine.";
     case "invalid_login":

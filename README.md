@@ -98,7 +98,7 @@ Instead of tying agent work to your laptop session, run PI WEB on a machine that
 
 Use a private network, SSH tunnel, trusted reverse proxy, or federated PI WEB machine setup when accessing it remotely.
 
-Local builds also include a first-party **Expose Safely** action and **Settings → Safe Tunnel** panel backed by server-side endpoints under `/api/safe-tunnel/*`. PI WEB owns device login, machine registration, private credentials, durable enabled/disabled intent, pinned SHA-256-verified managed `frpc`, direct child supervision, restart recovery, heartbeats, and safe shutdown.
+Local builds include a first-party **Expose Safely** action and **Settings → Safe Tunnel** panel with one **Enable Safe Tunnel** / **Disable Safe Tunnel** flow. PI WEB infers the local target and machine identity, uses production defaults, carries hosted approval through managed `frpc` supervision, and keeps credentials private; development/self-hosting overrides stay under an advanced disclosure.
 
 Safe Tunnel development notes: [docs/safe-tunnel.md](docs/safe-tunnel.md).
 

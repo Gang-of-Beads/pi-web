@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
   SafeTunnelCommandOutput,
   SafeTunnelRuntimeStatus,
@@ -8,8 +8,10 @@ import type {
   SafeTunnelMachineHeartbeat,
 } from "./safeTunnelControlPlane.js";
 import type {
+  SafeTunnelEnableInput,
   SafeTunnelLoginInput,
   SafeTunnelLoginObserver,
+  SafeTunnelLoginOptions,
   SafeTunnelLoginResult,
   SafeTunnelPreparedTunnelConfig,
 } from "./safeTunnelService.js";
@@ -29,38 +31,187 @@ import {
 } from "./safeTunnelBridgeService.js";
 
 describe("DefaultSafeTunnelBridgeService", () => {
-  it("maps PI WEB-owned intent, credentials, and direct runtime into status", async () => {
+  it("maps private state and structured revocation diagnostics without credentials", async () => {
     const fixture = createFixture();
     fixture.application.loaded = registeredState({
       desiredState: "enabled",
-      frpcPath: "/opt/frpc",
+      machine: {
+        ...registeredState().state.machine ?? missingMachineCredentials(),
+        credentialStatus: "rejected",
+      },
     });
-    fixture.runtime.statusValue = runtimeStatus({ state: "running", pid: 4242 });
+    fixture.runtime.statusValue = runtimeStatus({
+      diagnosticCode: "credentials_rejected",
+      error: "Safe Tunnel access was revoked.",
+    });
 
     const status = await fixture.service.status();
 
-    expect(status.connector).toEqual({
-      command: "PI WEB built-in frpc supervisor",
-      state: "available",
-    });
+    expect(status.config.state).toBe("rejected");
     expect(status.desiredState).toBe("enabled");
-    expect(status.config).toEqual({
-      path: fixture.application.statePath,
-      exists: true,
-      state: "registered",
+    expect(status.runtime.diagnosticCode).toBe("credentials_rejected");
+    expect(status.config.machine).toMatchObject({
+      machineId: "machine_123",
+      publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
+    });
+    expect(JSON.stringify(status)).not.toContain("piwt_mtok_v1_private");
+  });
+
+  it("runs one inferred approval-through-supervision enable operation", async () => {
+    const fixture = createFixture();
+    const login = createDeferred<SafeTunnelLoginResult>();
+    fixture.application.loginResult = login.promise;
+
+    const response = await fixture.service.enable({});
+
+    expect(response.accepted).toBe(true);
+    expect(response.operation).toMatchObject({
+      kind: "enable",
+      phase: "preparing",
+      status: "running",
+    });
+    expect(fixture.application.loginInput).toEqual({
+      controlApiBaseUrl: "https://api.tunnels.pi-web.dev",
       localPiWebUrl: "http://127.0.0.1:8504",
-      frpcPathConfigured: true,
-      machine: {
-        controlApiBaseUrl: "https://control.example.test",
-        machineId: "machine_123",
-        machineSlug: "dev-box",
-        publicHostname: "dev-box.ns.tunnels.pi-web.dev",
-        publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
+      machineName: "dev-host",
+      machineSlug: "dev-host-a1b2c3d4",
+    });
+    expect(fixture.runtime.startCalls).toEqual([]);
+
+    fixture.application.loginObserver?.onDeviceAuthorization?.({
+      deviceCode: "private-device-code",
+      userCode: "ABCD-EFGH",
+      verificationUri: "https://api.tunnels.pi-web.dev/device",
+      verificationUriComplete: "https://api.tunnels.pi-web.dev/device?user_code=ABCD-EFGH",
+      expiresAt: "2026-07-29T00:10:00.000Z",
+      intervalSeconds: 5,
+    });
+    expect(fixture.service.operation(response.operation.id)).toMatchObject({
+      phase: "awaiting_approval",
+      userCode: "ABCD-EFGH",
+      verificationUriComplete: "https://api.tunnels.pi-web.dev/device?user_code=ABCD-EFGH",
+    });
+    expect(JSON.stringify(fixture.service.operation(response.operation.id)))
+      .not.toContain("private-device-code");
+
+    fixture.application.loginObserver?.onAuthorizationApproved?.({
+      id: "account_123",
+      publicNamespace: "ns",
+    });
+    expect(fixture.service.operation(response.operation.id)?.phase).toBe("registering");
+
+    login.resolve(loginResult());
+    await vi.waitFor(() => {
+      expect(fixture.service.operation(response.operation.id)?.status).toBe("succeeded");
+    });
+
+    expect(fixture.order).toEqual(["login", "enable", "runtime.start"]);
+    expect(fixture.application.enableCalls).toEqual([{
+      localPiWebUrl: "http://127.0.0.1:8504",
+    }]);
+    expect(fixture.runtime.startCalls).toEqual([{}]);
+    expect(fixture.service.operation(response.operation.id)).toMatchObject({
+      phase: "enabled",
+      status: "succeeded",
+      exitCode: 0,
+      publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
+    });
+  });
+
+  it("reuses an active registration while updating its inferred local listener", async () => {
+    const fixture = createFixture();
+    fixture.application.loaded = registeredState({
+      localPiWebUrl: "http://127.0.0.1:9999",
+      frpcPath: "/persisted/frpc",
+    });
+
+    await fixture.service.enable({});
+    await flushAsyncWork();
+
+    expect(fixture.application.loginCalls).toBe(0);
+    expect(fixture.application.enableCalls).toEqual([{
+      localPiWebUrl: "http://127.0.0.1:8504",
+    }]);
+    expect(fixture.runtime.startCalls).toEqual([{
+      advancedFrpcPath: "/persisted/frpc",
+    }]);
+  });
+
+  it("applies advanced self-hosting overrides only when supplied", async () => {
+    const fixture = createFixture();
+    const login = createDeferred<SafeTunnelLoginResult>();
+    fixture.application.loaded = registeredState();
+    fixture.application.loginResult = login.promise;
+
+    await fixture.service.enable({
+      advanced: {
+        controlApiUrl: "http://127.0.0.1:8787",
+        machineName: "Local Dev",
+        machineSlug: "local-dev",
+        localPiWebUrl: "http://127.0.0.1:9500",
+        frpcPath: "/opt/frpc",
       },
     });
-    expect(status.runtime).toMatchObject({ state: "running", pid: 4242 });
-    expect(status.runtime.pidFilePath).toBeUndefined();
-    expect(JSON.stringify(status)).not.toContain("piwt_mtok_v1_private");
+
+    expect(fixture.application.loginInput).toEqual({
+      controlApiBaseUrl: "http://127.0.0.1:8787",
+      machineName: "Local Dev",
+      machineSlug: "local-dev",
+      localPiWebUrl: "http://127.0.0.1:9500",
+      frpcPath: "/opt/frpc",
+    });
+    login.resolve(loginResult());
+    await flushAsyncWork();
+    expect(fixture.application.enableCalls).toEqual([{
+      localPiWebUrl: "http://127.0.0.1:9500",
+      frpcPath: "/opt/frpc",
+    }]);
+    expect(fixture.runtime.startCalls).toEqual([{ advancedFrpcPath: "/opt/frpc" }]);
+  });
+
+  it("prevents a concurrent Disable from being overtaken by Enable preflight", async () => {
+    const fixture = createFixture();
+    const state = createDeferred<LoadedSafeTunnelState>();
+    fixture.application.stateResult = state.promise;
+
+    const enabling = fixture.service.enable({});
+    await Promise.resolve();
+    const disabling = fixture.service.disable();
+    state.resolve({ exists: false, state: createDefaultSafeTunnelState() });
+
+    await expect(enabling).rejects.toThrow("cancelled");
+    await expect(disabling).resolves.toMatchObject({
+      status: { desiredState: "disabled" },
+    });
+    expect(fixture.runtime.startCalls).toEqual([]);
+    expect(fixture.order).toEqual(["disable", "runtime.stop"]);
+  });
+
+  it("cancels approval work and persists disabled intent before stopping", async () => {
+    const fixture = createFixture();
+    fixture.application.loginResult = new Promise(() => undefined);
+    const enable = await fixture.service.enable({});
+
+    const disabled = await fixture.service.disable();
+
+    expect(fixture.application.loginSignal?.aborted).toBe(true);
+    expect(fixture.order).toEqual(["login", "disable", "runtime.stop"]);
+    expect(fixture.service.operation(enable.operation.id)).toMatchObject({
+      status: "cancelled",
+      error: "Safe Tunnel enablement was cancelled.",
+    });
+    expect(disabled.status.desiredState).toBe("disabled");
+    expect(fixture.runtime.startCalls).toEqual([]);
+  });
+
+  it("still stops the owned child when disabled intent cannot be persisted", async () => {
+    const fixture = createFixture();
+    fixture.application.loaded = registeredState({ desiredState: "enabled" });
+    fixture.application.disableError = new Error("state write failed");
+
+    await expect(fixture.service.disable()).rejects.toThrow("state write failed");
+
+    expect(fixture.order).toEqual(["disable", "runtime.stop"]);
   });
 
   it("reports invalid PI WEB state without exposing credentials", async () => {
@@ -79,141 +230,14 @@ describe("DefaultSafeTunnelBridgeService", () => {
     });
   });
 
-  it("runs login inside PI WEB and never invokes the frpc runtime", async () => {
-    const fixture = createFixture();
-    const login = createDeferred<SafeTunnelLoginResult>();
-    fixture.application.loginResult = login.promise;
-
-    const response = await fixture.service.login({
-      controlApiUrl: "https://control.example.test",
-      machineName: "Dev Box",
-      machineSlug: "dev-box",
-      localPiWebUrl: "http://127.0.0.1:8504",
-      frpcPath: "/opt/frpc",
-    });
-
-    expect(fixture.application.loginInput).toEqual({
-      controlApiBaseUrl: "https://control.example.test",
-      machineName: "Dev Box",
-      machineSlug: "dev-box",
-      localPiWebUrl: "http://127.0.0.1:8504",
-      frpcPath: "/opt/frpc",
-    });
-    expect(response.operation.status).toBe("running");
-    expect(fixture.runtime.startCalls).toEqual([]);
-
-    fixture.application.loginObserver?.onDeviceAuthorization?.({
-      deviceCode: "private-device-code",
-      userCode: "ABCD-EFGH",
-      verificationUri: "https://control.example.test/device",
-      verificationUriComplete: "https://control.example.test/device?user_code=ABCD-EFGH",
-      expiresAt: "2026-07-29T00:10:00.000Z",
-      intervalSeconds: 5,
-    });
-    expect(fixture.service.operation(response.operation.id)).toMatchObject({
-      userCode: "ABCD-EFGH",
-      verificationUriComplete: "https://control.example.test/device?user_code=ABCD-EFGH",
-    });
-    expect(JSON.stringify(fixture.service.operation(response.operation.id)))
-      .not.toContain("private-device-code");
-
-    login.resolve(loginResult());
-    await flushAsyncWork();
-    expect(fixture.service.operation(response.operation.id)).toMatchObject({
-      status: "succeeded",
-      exitCode: 0,
-      publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
-    });
-    expect(fixture.runtime.reconcileCalls).toBe(1);
-  });
-
-  it("persists enabled intent before starting direct supervision", async () => {
-    const fixture = createFixture();
-    fixture.application.loaded = registeredState({ frpcPath: "/persisted/frpc" });
-    const started = createDeferred<SafeTunnelFrpcStartResult>();
-    fixture.runtime.startResult = started.promise;
-
-    const response = await fixture.service.start({ frpcPath: "/advanced/frpc" });
-
-    expect(fixture.order.slice(0, 2)).toEqual(["enable", "runtime.start"]);
-    expect(fixture.application.enableCalls).toEqual(["/advanced/frpc"]);
-    expect(fixture.runtime.startCalls).toEqual([{
-      advancedFrpcPath: "/advanced/frpc",
-    }]);
-    expect(response.operation.status).toBe("running");
-    expect(response.status.desiredState).toBe("enabled");
-
-    started.resolve({
-      output: "Using an advanced frpc path override.\nStarting PI WEB-owned Safe Tunnel frpc supervision.\n",
-      pid: 1234,
-      publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
-    });
-    await flushAsyncWork();
-
-    const operation = fixture.service.operation(response.operation.id);
-    expect(operation).toMatchObject({
-      connectorProcessId: 1234,
-      exitCode: 0,
-      publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
-      status: "succeeded",
-    });
-    expect(JSON.stringify(operation)).not.toContain("/advanced/frpc");
-  });
-
-  it("uses a persisted advanced path and otherwise selects managed frpc in the runtime", async () => {
-    const persisted = createFixture();
-    persisted.application.loaded = registeredState({ frpcPath: "/persisted/frpc" });
-    await persisted.service.start({});
-    expect(persisted.runtime.startCalls).toEqual([{
-      advancedFrpcPath: "/persisted/frpc",
-    }]);
-
-    const managed = createFixture();
-    managed.application.loaded = registeredState();
-    await managed.service.start({});
-    expect(managed.runtime.startCalls).toEqual([{}]);
-  });
-
-  it("persists disabled intent before stopping the owned process", async () => {
+  it("delegates startup and shuts down without erasing enabled intent", async () => {
     const fixture = createFixture();
     fixture.application.loaded = registeredState({ desiredState: "enabled" });
-    fixture.runtime.stopResult = Promise.resolve({
-      exitCode: 0,
-      stdout: "PI WEB stopped its owned Safe Tunnel frpc process.\n",
-      stderr: "",
-    });
-
-    const response = await fixture.service.stop();
-
-    expect(fixture.order.slice(0, 2)).toEqual(["disable", "runtime.stop"]);
-    expect(fixture.application.loaded.state.desiredState).toBe("disabled");
-    expect(response.command.stdout).toContain("owned Safe Tunnel frpc process");
-  });
-
-  it("still stops the owned child when disabled intent cannot be persisted", async () => {
-    const fixture = createFixture();
-    fixture.application.loaded = registeredState({ desiredState: "enabled" });
-    fixture.application.disableError = new Error("state write failed");
-
-    await expect(fixture.service.stop()).rejects.toThrow("state write failed");
-
-    expect(fixture.order).toEqual(["disable", "runtime.stop"]);
-  });
-
-  it("delegates explicit startup reconciliation to the runtime lifecycle", async () => {
-    const fixture = createFixture();
 
     await fixture.service.startup();
-
-    expect(fixture.runtime.startupCalls).toBe(1);
-  });
-
-  it("shuts down the process runtime without erasing persisted enabled intent", async () => {
-    const fixture = createFixture();
-    fixture.application.loaded = registeredState({ desiredState: "enabled" });
-
     await fixture.service.shutdown();
 
+    expect(fixture.runtime.startupCalls).toBe(1);
     expect(fixture.runtime.shutdownCalls).toBe(1);
     expect(fixture.application.disableCalls).toBe(0);
     expect(fixture.application.loaded.state.desiredState).toBe("enabled");
@@ -240,8 +264,14 @@ function createFixture(): Fixture {
     order,
     runtime,
     service: new DefaultSafeTunnelBridgeService({
+      enableDefaults: () => ({
+        controlApiBaseUrl: "https://api.tunnels.pi-web.dev",
+        localPiWebUrl: "http://127.0.0.1:8504",
+        machineName: "dev-host",
+        machineSlug: "dev-host-a1b2c3d4",
+      }),
       fileExists: () => false,
-      now: () => new Date(`2026-07-29T00:00:0${(nowIndex += 1).toString()}.000Z`),
+      now: () => new Date(`2026-07-29T00:00:${(nowIndex += 1).toString().padStart(2, "0")}.000Z`),
       runtime,
       safeTunnel: application,
     }),
@@ -249,7 +279,6 @@ function createFixture(): Fixture {
 }
 
 class FakeFrpcRuntime implements SafeTunnelReconciledFrpcRuntime {
-  reconcileCalls = 0;
   shutdownCalls = 0;
   readonly startCalls: SafeTunnelFrpcStartInput[] = [];
   startupCalls = 0;
@@ -268,7 +297,6 @@ class FakeFrpcRuntime implements SafeTunnelReconciledFrpcRuntime {
   constructor(private readonly order: string[]) {}
 
   reconcile(): Promise<void> {
-    this.reconcileCalls += 1;
     return Promise.resolve();
   }
 
@@ -285,7 +313,6 @@ class FakeFrpcRuntime implements SafeTunnelReconciledFrpcRuntime {
   start(input: SafeTunnelFrpcStartInput): Promise<SafeTunnelFrpcStartResult> {
     this.order.push("runtime.start");
     this.startCalls.push(input);
-    this.statusValue = runtimeStatus({ state: "unknown" });
     return this.startResult.then((result) => {
       this.statusValue = runtimeStatus({
         state: "running",
@@ -309,15 +336,18 @@ class FakeFrpcRuntime implements SafeTunnelReconciledFrpcRuntime {
 class FakeSafeTunnelApplicationService implements SafeTunnelApplicationService {
   disableCalls = 0;
   disableError: Error | undefined;
-  readonly enableCalls: (string | undefined)[] = [];
+  readonly enableCalls: SafeTunnelEnableInput[] = [];
   loaded: LoadedSafeTunnelState = {
     exists: false,
     state: createDefaultSafeTunnelState(),
   };
+  loginCalls = 0;
   loginInput: SafeTunnelLoginInput | undefined;
   loginObserver: SafeTunnelLoginObserver | undefined;
   loginResult: Promise<SafeTunnelLoginResult> = Promise.resolve(loginResult());
+  loginSignal: AbortSignal | undefined;
   stateError: Error | undefined;
+  stateResult: Promise<LoadedSafeTunnelState> | undefined;
 
   constructor(
     readonly statePath: string,
@@ -325,29 +355,48 @@ class FakeSafeTunnelApplicationService implements SafeTunnelApplicationService {
   ) {}
 
   state(): Promise<LoadedSafeTunnelState> {
-    return this.stateError === undefined
-      ? Promise.resolve(structuredClone(this.loaded))
-      : Promise.reject(this.stateError);
+    if (this.stateError !== undefined) return Promise.reject(this.stateError);
+    return this.stateResult ?? Promise.resolve(structuredClone(this.loaded));
   }
 
   login(
     input: SafeTunnelLoginInput,
     observer?: SafeTunnelLoginObserver,
+    options: SafeTunnelLoginOptions = {},
   ): Promise<SafeTunnelLoginResult> {
+    this.order.push("login");
+    this.loginCalls += 1;
     this.loginInput = input;
     this.loginObserver = observer;
-    return this.loginResult;
+    this.loginSignal = options.signal;
+    return abortable(this.loginResult, options.signal).then((result) => {
+      this.loaded = {
+        exists: true,
+        state: {
+          ...this.loaded.state,
+          localPiWebUrl: input.localPiWebUrl ?? this.loaded.state.localPiWebUrl,
+          machine: result.machineCredentials,
+          ...(input.frpcPath === undefined ? {} : { frpcPath: input.frpcPath }),
+        },
+      };
+      observer?.onMachineRegistered?.({
+        id: result.registeredMachine.machine.id,
+        publicUrl: result.registeredMachine.publicUrl,
+      });
+      return result;
+    });
   }
 
-  enable(frpcPath?: string): Promise<SafeTunnelPersistedState> {
+  enable(input: SafeTunnelEnableInput = {}): Promise<SafeTunnelPersistedState> {
     this.order.push("enable");
-    this.enableCalls.push(frpcPath);
+    this.enableCalls.push(input);
     this.loaded = {
       exists: true,
       state: {
         ...this.loaded.state,
         desiredState: "enabled",
-        ...(frpcPath === undefined ? {} : { frpcPath }),
+        ...(input.localPiWebUrl === undefined ? {} : { localPiWebUrl: input.localPiWebUrl }),
+        ...(input.frpcPath === undefined ? {} : { frpcPath: input.frpcPath }),
       },
     };
     return Promise.resolve(this.loaded.state);
@@ -403,6 +452,7 @@ function registeredState(
       ...createDefaultSafeTunnelState(),
       machine: {
         controlApiBaseUrl: "https://control.example.test",
+        credentialStatus: "active",
         machineId: "machine_123",
         machineToken: "piwt_mtok_v1_private",
         machineSlug: "dev-box",
@@ -445,7 +495,27 @@ function missingMachineCredentials(): never {
   throw new Error("Registered fixture is missing machine credentials");
 }
 
+function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (signal === undefined) return promise;
+  if (signal.aborted) return Promise.reject(new Error("cancelled"));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => { reject(new Error("cancelled")); };
+    signal.addEventListener("abort", onAbort, { once: true });
+    void promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      },
+    );
+  });
+}
+
 async function flushAsyncWork(): Promise<void> {
+  await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();

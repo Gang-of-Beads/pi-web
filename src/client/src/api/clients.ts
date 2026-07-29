@@ -1,5 +1,5 @@
 import type { AskUserSubmission, DeleteWorkspaceFileResponse, FileSuggestion, MoveWorkspaceFileOptions, PiPackageInstallRequest, PiPackageRemoveRequest, PiPackageScope, PiPackageUpdateRequest, PiWebConfigValues, PromptAttachment, RunTerminalCommandInput, SessionBulkMutationRef, SessionCleanupRequest, SessionNotificationDismissThrough, SessionRef, SessionTreeNavigateRequest, SessionUnreadAcknowledgeRequest, TerminalCommandRun, TerminalCommandRunFilter, WriteWorkspaceFileOptions } from "../../../shared/apiTypes";
-import type { SafeTunnelLoginRequest, SafeTunnelStartRequest } from "../../../shared/apiTypes";
+import type { SafeTunnelEnableRequest } from "../../../shared/apiTypes";
 import { resolveAppUrl } from "../appUrl";
 import { request } from "./http";
 import {
@@ -34,11 +34,10 @@ import {
   parsePiWebRuntimeResponse,
   parsePiWebStatusResponse,
   parseProject,
-  parseSafeTunnelLoginResponse,
+  parseSafeTunnelDisableResponse,
+  parseSafeTunnelEnableResponse,
   parseSafeTunnelOperationResponse,
-  parseSafeTunnelStartResponse,
   parseSafeTunnelStatusResponse,
-  parseSafeTunnelStopResponse,
   parseReloaded,
   parseRestored,
   parseSavedAttachments,
@@ -169,10 +168,9 @@ export const piPackagesApi = {
 
 export const safeTunnelApi = {
   status: () => request("api/safe-tunnel/status", parseSafeTunnelStatusResponse),
-  login: (input: SafeTunnelLoginRequest) => request("api/safe-tunnel/login", parseSafeTunnelLoginResponse, { method: "POST", body: JSON.stringify(input) }),
+  enable: (input: SafeTunnelEnableRequest = {}) => request("api/safe-tunnel/enable", parseSafeTunnelEnableResponse, { method: "POST", body: JSON.stringify(input) }),
+  disable: () => request("api/safe-tunnel/disable", parseSafeTunnelDisableResponse, { method: "POST" }),
   operation: (operationId: string) => request(`api/safe-tunnel/operations/${encodeURIComponent(operationId)}`, parseSafeTunnelOperationResponse),
-  start: (input: SafeTunnelStartRequest = {}) => request("api/safe-tunnel/start", parseSafeTunnelStartResponse, { method: "POST", body: JSON.stringify(input) }),
-  stop: () => request("api/safe-tunnel/stop", parseSafeTunnelStopResponse, { method: "POST" }),
 };
 
 export const activityApi = {

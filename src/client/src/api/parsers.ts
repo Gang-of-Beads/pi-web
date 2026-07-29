@@ -1,6 +1,6 @@
 import { ASK_USER_ID_MAX_LENGTH, ASK_USER_OPTION_LIMIT, ASK_USER_OTHER_TEXT_MAX_LENGTH, ASK_USER_QUESTION_LIMIT, ASK_USER_TEXT_MAX_LENGTH, SESSION_NOTIFICATION_LIMIT, SESSION_NOTIFICATION_MESSAGE_BYTES, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH, SESSION_UNREAD_COMPLETED_AT_MAX_LENGTH, SESSION_UNREAD_CWD_MAX_LENGTH, SESSION_UNREAD_LIMIT, SESSION_UNREAD_SESSION_ID_MAX_LENGTH, type ArchiveSessionsResponse, type AskUserCloseReason, type AskUserCloseResponse, type AskUserOutcome, type AskUserQuestion, type AskUserQuestionOption, type AskUserQuestionRecord, type PendingAskUser, type AuthProviderOption, type AuthProviderStatus, type AuthProvidersResponse, type AuthStatusSource, type AuthType, type CommandOption, type CommandResult, type DeleteWorkspaceFileResponse, type FileContentResponse, type FileSuggestion, type FileTreeEntry, type FileTreeResponse, type GitDiffResponse, type GitFileState, type GitStatusFile, type GitStatusResponse, type Machine, type MachineHealth, type MachineKind, type MachineRuntime, type MachineStatus, type MessagePage, type ModelSelectionResponse, type MoveWorkspaceFileResponse, type OAuthFlowState, type PiWebAgentDirEnvSource, type PiWebCapability, type PiWebComponentStatus, type PiWebConfigEnvOverrides, type PiWebConfigResponse, type PiWebConfigValues, type PiWebInstallationInfo, type PiWebPluginConfigMap, type PiWebPluginInfo, type PiWebPluginsResponse, type PiWebPluginScope, type PiWebReleaseStatus, type PiWebRuntimeComponent, type PiWebRuntimeResponse, type PiWebServiceComponent, type PiWebShortcutConfig, type PiWebStatusMessage, type PiWebStatusResponse, type PiWebStatusSeverity, type Project, type QueuedSessionMessage, type SavedPromptAttachment, type SessionBulkArchiveResponse, type SessionBulkDeleteArchivedResponse, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupProjectSummary, type SessionCleanupThresholds, type SessionCleanupTotals, type SessionInfo, type SessionModel, type SessionNotification, type SessionNotificationClearReason, type SessionNotificationDismissThrough, type SessionNotificationInboxDelta, type SessionNotificationInboxEvent, type SessionNotificationInboxSnapshot, type SessionNotificationSeverity, type SessionNotificationSummary, type SessionStatus, type SessionStreamSnapshot, type SessionUnreadCatalogSnapshot, type SessionUnreadEvent, type SessionUnreadSummary, type SessionWarning, type SessionWarningSeverity, type SlashCommand, type TerminalCommandRun, type TerminalCommandRunStatus, type TerminalInfo, type ThinkingLevelsResponse, type WriteWorkspaceFileResponse, type Workspace, type WorkspaceActivity, type WorkspaceActivityResponse } from "../../../shared/apiTypes";
 import type { PiPackageInfo, PiPackageMutationAction, PiPackageMutationResponse, PiPackageScope, PiPackagesResponse, SessionActivity, SessionStartupProgressEvent, SessionTreeNavigateResult, SessionTreeNode, SessionTreeNodeKind, SessionTreeSnapshot } from "../../../shared/apiTypes";
-import type { SafeTunnelCommandOutput, SafeTunnelConfigState, SafeTunnelConfigStatus, SafeTunnelConnectorInstallStatus, SafeTunnelConnectorState, SafeTunnelConnectorStatus, SafeTunnelDesiredState, SafeTunnelLoginResponse, SafeTunnelOperationResponse, SafeTunnelOperationStatus, SafeTunnelRuntimeState, SafeTunnelRuntimeStatus, SafeTunnelStartResponse, SafeTunnelStatusResponse, SafeTunnelStopResponse } from "../../../shared/apiTypes";
+import type { SafeTunnelConfigState, SafeTunnelConfigStatus, SafeTunnelConnectorInstallStatus, SafeTunnelConnectorState, SafeTunnelConnectorStatus, SafeTunnelDesiredState, SafeTunnelDisableResponse, SafeTunnelEnableResponse, SafeTunnelOperationPhase, SafeTunnelOperationResponse, SafeTunnelOperationStatus, SafeTunnelRuntimeDiagnosticCode, SafeTunnelRuntimeState, SafeTunnelRuntimeStatus, SafeTunnelStatusResponse } from "../../../shared/apiTypes";
 import { parseActiveAgentProfileDescriptor } from "../../../shared/activeAgentProfile";
 import { parseKnownPiWebCapabilities } from "../../../shared/capabilities";
 
@@ -126,9 +126,11 @@ export function parseSafeTunnelStatusResponse(value: unknown): SafeTunnelStatusR
   };
 }
 
-export function parseSafeTunnelLoginResponse(value: unknown): SafeTunnelLoginResponse {
+export function parseSafeTunnelEnableResponse(value: unknown): SafeTunnelEnableResponse {
   const record = requireRecord(value);
+  if (record["accepted"] !== true) throw new Error("Expected Safe Tunnel enable accepted response");
   return {
+    accepted: true,
     operation: parseSafeTunnelOperationResponse(record["operation"]),
     status: parseSafeTunnelStatusResponse(record["status"]),
   };
@@ -150,6 +152,7 @@ export function parseSafeTunnelOperationResponse(value: unknown): SafeTunnelOper
   return {
     id: requireString(record, "id"),
     kind: requireSafeTunnelOperationKind(record, "kind"),
+    phase: requireSafeTunnelOperationPhase(record, "phase"),
     status: requireSafeTunnelOperationStatus(record, "status"),
     startedAt: requireString(record, "startedAt"),
     stdout: requireString(record, "stdout"),
@@ -168,24 +171,9 @@ export function parseSafeTunnelOperationResponse(value: unknown): SafeTunnelOper
   };
 }
 
-export function parseSafeTunnelStartResponse(value: unknown): SafeTunnelStartResponse {
+export function parseSafeTunnelDisableResponse(value: unknown): SafeTunnelDisableResponse {
   const record = requireRecord(value);
-  const connectorProcessId = optionalNumber(record, "connectorProcessId");
-  if (record["accepted"] !== true) throw new Error("Expected Safe Tunnel start accepted response");
-  return {
-    accepted: true,
-    operation: parseSafeTunnelOperationResponse(record["operation"]),
-    ...(connectorProcessId === undefined ? {} : { connectorProcessId }),
-    status: parseSafeTunnelStatusResponse(record["status"]),
-  };
-}
-
-export function parseSafeTunnelStopResponse(value: unknown): SafeTunnelStopResponse {
-  const record = requireRecord(value);
-  return {
-    command: parseSafeTunnelCommandOutput(record["command"]),
-    status: parseSafeTunnelStatusResponse(record["status"]),
-  };
+  return { status: parseSafeTunnelStatusResponse(record["status"]) };
 }
 
 function parseSafeTunnelConnectorStatus(value: unknown): SafeTunnelConnectorStatus {
@@ -247,6 +235,7 @@ function parseSafeTunnelConfigMachine(value: unknown): NonNullable<SafeTunnelCon
 function parseSafeTunnelRuntimeStatus(value: unknown): SafeTunnelRuntimeStatus {
   const record = requireRecord(value);
   const pidFilePath = optionalString(record, "pidFilePath");
+  const diagnosticCode = optionalSafeTunnelRuntimeDiagnosticCode(record, "diagnosticCode");
   const frpcConfigExists = parseOptionalBoolean(record["frpcConfigExists"], "frpcConfigExists");
   const frpcConfigPath = optionalString(record, "frpcConfigPath");
   const pid = optionalNumber(record, "pid");
@@ -259,6 +248,7 @@ function parseSafeTunnelRuntimeStatus(value: unknown): SafeTunnelRuntimeStatus {
   return {
     ...(pidFilePath === undefined ? {} : { pidFilePath }),
     state: requireSafeTunnelRuntimeState(record, "state"),
+    ...(diagnosticCode === undefined ? {} : { diagnosticCode }),
     ...(frpcConfigExists === undefined ? {} : { frpcConfigExists }),
     ...(frpcConfigPath === undefined ? {} : { frpcConfigPath }),
     ...(pid === undefined ? {} : { pid }),
@@ -271,17 +261,6 @@ function parseSafeTunnelRuntimeStatus(value: unknown): SafeTunnelRuntimeStatus {
   };
 }
 
-function parseSafeTunnelCommandOutput(value: unknown): SafeTunnelCommandOutput {
-  const record = requireRecord(value);
-  const signal = optionalString(record, "signal");
-  return {
-    exitCode: numberOrNull(record, "exitCode"),
-    stdout: requireString(record, "stdout"),
-    stderr: requireString(record, "stderr"),
-    ...(signal === undefined ? {} : { signal }),
-  };
-}
-
 function requireSafeTunnelConnectorState(record: Record<string, unknown>, key: string): SafeTunnelConnectorState {
   const value = requireString(record, key);
   if (value !== "available" && value !== "installable" && value !== "unavailable") throw new Error(`Expected Safe Tunnel connector state field: ${key}`);
@@ -290,7 +269,7 @@ function requireSafeTunnelConnectorState(record: Record<string, unknown>, key: s
 
 function requireSafeTunnelConfigState(record: Record<string, unknown>, key: string): SafeTunnelConfigState {
   const value = requireString(record, key);
-  if (value !== "missing" && value !== "unregistered" && value !== "registered" && value !== "invalid") throw new Error(`Expected Safe Tunnel config state field: ${key}`);
+  if (value !== "missing" && value !== "unregistered" && value !== "registered" && value !== "rejected" && value !== "invalid") throw new Error(`Expected Safe Tunnel config state field: ${key}`);
   return value;
 }
 
@@ -306,15 +285,46 @@ function requireSafeTunnelRuntimeState(record: Record<string, unknown>, key: str
   return value;
 }
 
-function requireSafeTunnelOperationKind(record: Record<string, unknown>, key: string): "login" | "start" {
+function optionalSafeTunnelRuntimeDiagnosticCode(
+  record: Record<string, unknown>,
+  key: string,
+): SafeTunnelRuntimeDiagnosticCode | undefined {
+  const value = optionalString(record, key);
+  if (value === undefined) return undefined;
+  if (value !== "credentials_rejected"
+    && value !== "heartbeat_retrying"
+    && value !== "registration_required"
+    && value !== "runtime_recovery_failed"
+    && value !== "state_retrying") {
+    throw new Error(`Expected Safe Tunnel runtime diagnostic field: ${key}`);
+  }
+  return value;
+}
+
+function requireSafeTunnelOperationKind(record: Record<string, unknown>, key: string): "enable" {
   const value = requireString(record, key);
-  if (value !== "login" && value !== "start") throw new Error(`Expected Safe Tunnel operation kind field: ${key}`);
+  if (value !== "enable") throw new Error(`Expected Safe Tunnel operation kind field: ${key}`);
+  return value;
+}
+
+function requireSafeTunnelOperationPhase(
+  record: Record<string, unknown>,
+  key: string,
+): SafeTunnelOperationPhase {
+  const value = requireString(record, key);
+  if (value !== "preparing"
+    && value !== "awaiting_approval"
+    && value !== "registering"
+    && value !== "starting"
+    && value !== "enabled") {
+    throw new Error(`Expected Safe Tunnel operation phase field: ${key}`);
+  }
   return value;
 }
 
 function requireSafeTunnelOperationStatus(record: Record<string, unknown>, key: string): SafeTunnelOperationStatus {
   const value = requireString(record, key);
-  if (value !== "running" && value !== "succeeded" && value !== "failed") throw new Error(`Expected Safe Tunnel operation status field: ${key}`);
+  if (value !== "running" && value !== "succeeded" && value !== "failed" && value !== "cancelled") throw new Error(`Expected Safe Tunnel operation status field: ${key}`);
   return value;
 }
 

@@ -141,8 +141,8 @@ Rows with JSON key `—` are runtime-only environment variables, not config-file
 | Legacy Safe Tunnel connector bin | — | `PI_WEB_SAFE_TUNNEL_CONNECTOR_BIN` | Source recovery CLI only | Not supported locally | Ignored by PI WEB's built-in runtime |
 | Legacy Safe Tunnel connector npm command | — | `PI_WEB_SAFE_TUNNEL_CONNECTOR_NPM_COMMAND` | Source recovery CLI only | Not supported locally | Ignored by PI WEB's built-in runtime |
 
-PI WEB no longer uses the connector-command/install variables for browser start, status, stop, or
-shutdown. They remain only with the not-yet-removed source connector/recovery package and will be
+PI WEB no longer uses the connector-command/install variables for browser enable, status, disable,
+or shutdown. They remain only with the not-yet-removed source connector/recovery package and will be
 deleted during the dedicated connector-package cleanup.
 
 ## Key details

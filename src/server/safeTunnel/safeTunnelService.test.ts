@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
-import type {
-  SafeTunnelApprovedDeviceAuthorization,
-  SafeTunnelControlPlane,
+import { describe, expect, it, vi } from "vitest";
+import {
+  SafeTunnelControlPlaneError,
+  type SafeTunnelApprovedDeviceAuthorization,
+  type SafeTunnelControlPlane,
   SafeTunnelDeviceAuthorization,
   SafeTunnelDeviceAuthorizationCompletion,
   SafeTunnelHeartbeatTunnelStatus,
@@ -24,6 +25,7 @@ import {
 class MemorySafeTunnelStateStorage implements SafeTunnelStateStorage {
   readonly filePath = "/data/pi-web/safe-tunnel/config.json";
   readonly saves: SafeTunnelPersistedState[] = [];
+  saveError: Error | undefined;
 
   constructor(
     private current: LoadedSafeTunnelState = {
@@ -37,6 +39,7 @@ class MemorySafeTunnelStateStorage implements SafeTunnelStateStorage {
   }
 
   save(state: SafeTunnelPersistedState): Promise<void> {
+    if (this.saveError !== undefined) return Promise.reject(this.saveError);
     const snapshot = structuredClone(state);
     this.saves.push(snapshot);
     this.current = { exists: true, state: snapshot };
@@ -51,8 +54,10 @@ class FakeSafeTunnelControlPlane implements SafeTunnelControlPlane {
     authorization: approvedAuthorization(),
   }];
   heartbeat: SafeTunnelMachineHeartbeat = machineHeartbeat();
+  heartbeatError: Error | undefined;
   registration: SafeTunnelRegisteredMachine = registeredMachine();
   tunnelConfig: SafeTunnelMachineTunnelConfig = machineTunnelConfig();
+  tunnelConfigError: Error | undefined;
 
   startDeviceAuthorization(input: {
     readonly controlApiBaseUrl: string;
@@ -89,7 +94,9 @@ class FakeSafeTunnelControlPlane implements SafeTunnelControlPlane {
     credentials: SafeTunnelMachineCredentials,
   ): Promise<SafeTunnelMachineTunnelConfig> {
     this.calls.push({ method: "config", input: credentials });
-    return Promise.resolve(this.tunnelConfig);
+    return this.tunnelConfigError === undefined
+      ? Promise.resolve(this.tunnelConfig)
+      : Promise.reject(this.tunnelConfigError);
   }
 
   recordMachineHeartbeat(
@@ -101,7 +108,9 @@ class FakeSafeTunnelControlPlane implements SafeTunnelControlPlane {
     },
   ): Promise<SafeTunnelMachineHeartbeat> {
     this.calls.push({ method: "heartbeat", input: { credentials, heartbeat: input } });
-    return Promise.resolve(this.heartbeat);
+    return this.heartbeatError === undefined
+      ? Promise.resolve(this.heartbeat)
+      : Promise.reject(this.heartbeatError);
   }
 }
 
@@ -169,6 +178,7 @@ function registeredState(overrides: Partial<SafeTunnelPersistedState> = {}): Loa
       ...createDefaultSafeTunnelState(),
       machine: {
         controlApiBaseUrl: "https://control.example.test",
+        credentialStatus: "active",
         machineId: "machine_123",
         machineToken: "piwt_mtok_v1_private",
         machineSlug: "dev-box",
@@ -221,6 +231,7 @@ describe("SafeTunnelService", () => {
       frpcPath: "/opt/frpc",
       machine: {
         controlApiBaseUrl: "https://control.example.test",
+        credentialStatus: "active",
         machineId: "machine_123",
         machineToken: "piwt_mtok_v1_private",
         machineSlug: "dev-box",
@@ -249,9 +260,13 @@ describe("SafeTunnelService", () => {
       stateStorage: storage,
     });
 
-    await expect(service.enable("/advanced/frpc")).resolves.toMatchObject({
+    await expect(service.enable({
+      frpcPath: "/advanced/frpc",
+      localPiWebUrl: "http://127.0.0.1:9500",
+    })).resolves.toMatchObject({
       desiredState: "enabled",
       frpcPath: "/advanced/frpc",
+      localPiWebUrl: "http://127.0.0.1:9500",
       machine: { machineId: "machine_123" },
     });
     await expect(service.disable()).resolves.toMatchObject({
@@ -300,6 +315,70 @@ describe("SafeTunnelService", () => {
     }]);
   });
 
+  it("persists rejected credential state when the hosted service rejects a heartbeat", async () => {
+    const storage = new MemorySafeTunnelStateStorage(registeredState({ desiredState: "enabled" }));
+    const controlPlane = new FakeSafeTunnelControlPlane();
+    controlPlane.heartbeatError = new SafeTunnelControlPlaneError(
+      "authentication_failed",
+      "record_heartbeat",
+    );
+    const service = new SafeTunnelService({ controlPlane, stateStorage: storage });
+
+    await expect(service.recordHeartbeat({ tunnelStatus: "running" })).rejects.toMatchObject({
+      code: "authentication_failed",
+    });
+
+    expect(storage.saves.at(-1)).toMatchObject({
+      desiredState: "enabled",
+      machine: { credentialStatus: "rejected", machineId: "machine_123" },
+    });
+    await expect(service.enable()).rejects.toMatchObject({ code: "credentials_rejected" });
+  });
+
+  it("preserves terminal authentication failure when durable rejection recording fails", async () => {
+    const storage = new MemorySafeTunnelStateStorage(registeredState({ desiredState: "enabled" }));
+    storage.saveError = new Error("private filesystem failure");
+    const controlPlane = new FakeSafeTunnelControlPlane();
+    controlPlane.heartbeatError = new SafeTunnelControlPlaneError(
+      "authentication_failed",
+      "record_heartbeat",
+    );
+    const service = new SafeTunnelService({ controlPlane, stateStorage: storage });
+
+    await expect(service.recordHeartbeat({ tunnelStatus: "running" })).rejects.toMatchObject({
+      code: "authentication_failed",
+    });
+  });
+
+  it("cancels device polling before registration when Enable is disabled", async () => {
+    const storage = new MemorySafeTunnelStateStorage();
+    const controlPlane = new FakeSafeTunnelControlPlane();
+    controlPlane.completions = [{ kind: "pending" }];
+    const controller = new AbortController();
+    const service = new SafeTunnelService({
+      controlPlane,
+      stateStorage: storage,
+      now: () => new Date("2026-07-29T12:00:00.000Z"),
+      sleep: (_milliseconds, signal) => new Promise((_resolve, reject) => {
+        signal?.addEventListener("abort", () => { reject(new Error("cancelled")); }, { once: true });
+      }),
+    });
+
+    const login = service.login({
+      controlApiBaseUrl: "https://control.example.test",
+      machineName: "Dev Box",
+      machineSlug: "dev-box",
+    }, {}, { signal: controller.signal });
+    await vi.waitFor(() => {
+      expect(controlPlane.calls.map(({ method }) => method)).toContain("complete");
+    });
+    controller.abort();
+
+    await expect(login).rejects.toThrow("cancelled");
+    expect(controlPlane.calls.map(({ method }) => method)).toEqual(["start", "complete"]);
+    expect(storage.saves).toEqual([]);
+  });
+
   it("fails closed when a machine-scoped response identifies a different machine", async () => {
     const storage = new MemorySafeTunnelStateStorage(registeredState());
     const controlPlane = new FakeSafeTunnelControlPlane();
@@ -318,6 +397,17 @@ describe("SafeTunnelService", () => {
 });
 
 describe("applySafeTunnelLocalTarget", () => {
+  it("writes an IPv6 local target without URL brackets in frpc TOML", () => {
+    const config = applySafeTunnelLocalTarget(
+      machineTunnelConfig(),
+      "http://[::1]:19000",
+    );
+
+    expect(config.localPiWebUrl).toBe("http://[::1]:19000");
+    expect(config.frpcConfigToml).toContain('localIP = "::1"');
+    expect(config.frpcConfigToml).toContain("localPort = 19000");
+  });
+
   it("rejects config that does not contain the asserted hosted local target", () => {
     expect(() => applySafeTunnelLocalTarget({
       ...machineTunnelConfig(),

@@ -72,6 +72,7 @@ export class SafeTunnelRuntimeReconciler implements SafeTunnelReconciledFrpcRunt
   private heartbeatFailures = 0;
   private heartbeatInFlight: Promise<void> | undefined;
   private heartbeatTask: SafeTunnelScheduledTask | undefined;
+  private lifecycleDiagnosticCode: SafeTunnelRuntimeStatus["diagnosticCode"];
   private lifecycleError: string | undefined;
   private readonly policy: NormalizedSafeTunnelRuntimeReconcilerPolicy;
   private reconciliationFailures = 0;
@@ -116,13 +117,25 @@ export class SafeTunnelRuntimeReconciler implements SafeTunnelReconciledFrpcRunt
 
     this.reconciliationFailures = 0;
     if (loaded.state.desiredState === "disabled") {
-      this.lifecycleError = undefined;
+      this.clearLifecycleDiagnostic();
       await this.stopSupervision();
       return;
     }
 
     if (loaded.state.machine === undefined) {
-      this.lifecycleError = "Safe Tunnel is enabled but its machine registration is missing. Register this PI WEB to recover.";
+      this.setLifecycleDiagnostic(
+        "registration_required",
+        "Safe Tunnel is enabled but its machine registration is missing. Enable Safe Tunnel to approve this PI WEB.",
+      );
+      await this.stopSupervision();
+      return;
+    }
+
+    if (loaded.state.machine.credentialStatus === "rejected") {
+      this.setLifecycleDiagnostic(
+        "credentials_rejected",
+        "Safe Tunnel access for this PI WEB was rejected or revoked. Enable Safe Tunnel to approve it again.",
+      );
       await this.stopSupervision();
       return;
     }
@@ -132,7 +145,10 @@ export class SafeTunnelRuntimeReconciler implements SafeTunnelReconciledFrpcRunt
       try {
         await this.stopChild();
       } catch {
-        this.lifecycleError = "PI WEB could not safely restart Safe Tunnel supervision after registration changed.";
+        this.setLifecycleDiagnostic(
+          "runtime_recovery_failed",
+          "PI WEB could not safely restart Safe Tunnel supervision after registration changed.",
+        );
         return;
       }
     } else {
@@ -156,7 +172,7 @@ export class SafeTunnelRuntimeReconciler implements SafeTunnelReconciledFrpcRunt
       throw new SafeTunnelFrpcSupervisorError("start_cancelled");
     }
 
-    this.lifecycleError = undefined;
+    this.clearLifecycleDiagnostic();
     this.heartbeatFailures = 0;
     this.reconciliationFailures = 0;
     this.supervisionActive = true;
@@ -168,7 +184,7 @@ export class SafeTunnelRuntimeReconciler implements SafeTunnelReconciledFrpcRunt
   async stop(): Promise<SafeTunnelCommandOutput> {
     this.beginGeneration();
     await this.waitForHeartbeat();
-    this.lifecycleError = undefined;
+    this.clearLifecycleDiagnostic();
     this.heartbeatFailures = 0;
     this.reconciliationFailures = 0;
     this.supervisionActive = false;
@@ -195,12 +211,15 @@ export class SafeTunnelRuntimeReconciler implements SafeTunnelReconciledFrpcRunt
     if (this.lifecycleError === undefined) return status;
     return {
       ...status,
+      ...(this.lifecycleDiagnosticCode === undefined
+        ? {}
+        : { diagnosticCode: this.lifecycleDiagnosticCode }),
       error: joinErrors(this.lifecycleError, status.error),
     };
   }
 
   private armSupervision(input: SafeTunnelFrpcStartInput, generation: number): void {
-    this.lifecycleError = undefined;
+    this.clearLifecycleDiagnostic();
     this.heartbeatFailures = 0;
     this.supervisionActive = true;
     const starting = this.dependencies.runtime.start(input);
@@ -246,7 +265,7 @@ export class SafeTunnelRuntimeReconciler implements SafeTunnelReconciledFrpcRunt
   ): void {
     if (!this.isHeartbeatCurrent(generation)) return;
     this.heartbeatFailures = 0;
-    this.lifecycleError = undefined;
+    this.clearLifecycleDiagnostic();
     this.scheduleHeartbeat(
       generation,
       normalizeHeartbeatInterval(heartbeat.nextHeartbeatSeconds, this.policy),
@@ -263,18 +282,24 @@ export class SafeTunnelRuntimeReconciler implements SafeTunnelReconciledFrpcRunt
       this.cancelHeartbeatTask();
       this.cancelReconciliationTask();
       this.supervisionActive = false;
-      this.lifecycleError = "Safe Tunnel machine credentials were rejected or revoked. Re-register this PI WEB to recover enabled intent.";
+      this.setLifecycleDiagnostic(
+        "credentials_rejected",
+        "Safe Tunnel access for this PI WEB was rejected or revoked. Enable Safe Tunnel to approve it again.",
+      );
       try {
         await this.stopChild();
       } catch {
-        this.lifecycleError = `${this.lifecycleError} PI WEB could not confirm that its owned frpc process stopped.`;
+        this.lifecycleError = `${this.lifecycleError ?? ""} PI WEB could not confirm that its owned frpc process stopped.`.trim();
       }
       return;
     }
 
     this.heartbeatFailures += 1;
     const delayMs = recoveryDelay(this.heartbeatFailures, this.policy);
-    this.lifecycleError = `Safe Tunnel heartbeat failed. Retrying in ${formatDelay(delayMs)}.`;
+    this.setLifecycleDiagnostic(
+      "heartbeat_retrying",
+      `Safe Tunnel heartbeat failed. Retrying in ${formatDelay(delayMs)}.`,
+    );
     this.scheduleHeartbeat(generation, delayMs);
   }
 
@@ -282,13 +307,29 @@ export class SafeTunnelRuntimeReconciler implements SafeTunnelReconciledFrpcRunt
     if (!this.isCurrent(generation)) return;
     this.reconciliationFailures += 1;
     const delayMs = recoveryDelay(this.reconciliationFailures, this.policy);
-    this.lifecycleError = `PI WEB could not reconcile persisted Safe Tunnel intent. Retrying in ${formatDelay(delayMs)}.`;
+    this.setLifecycleDiagnostic(
+      "state_retrying",
+      `PI WEB could not reconcile persisted Safe Tunnel intent. Retrying in ${formatDelay(delayMs)}.`,
+    );
     this.cancelReconciliationTask();
     this.reconciliationTask = this.dependencies.clock.schedule(() => {
       this.reconciliationTask = undefined;
       if (!this.isCurrent(generation)) return;
       void this.reconcile();
     }, delayMs);
+  }
+
+  private clearLifecycleDiagnostic(): void {
+    this.lifecycleDiagnosticCode = undefined;
+    this.lifecycleError = undefined;
+  }
+
+  private setLifecycleDiagnostic(
+    code: NonNullable<SafeTunnelRuntimeStatus["diagnosticCode"]>,
+    message: string,
+  ): void {
+    this.lifecycleDiagnosticCode = code;
+    this.lifecycleError = message;
   }
 
   private async stopSupervision(): Promise<void> {

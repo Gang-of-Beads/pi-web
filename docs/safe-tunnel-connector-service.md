@@ -2,11 +2,11 @@
 
 Status: retained source/recovery code; not used by PI WEB's browser runtime.
 
-PI WEB now owns device login, machine registration, private persisted credentials, desired enabled/disabled intent, normalized tunnel configuration, pinned/verified managed `frpc`, and the exact supervised child process. Browser start/status/stop routes no longer discover, npm-install, or execute `pi-web-tunnel`.
+PI WEB now owns device approval, machine registration, private persisted credentials, desired enabled/disabled intent, normalized tunnel configuration, pinned/verified managed `frpc`, and the exact supervised child process. The browser's single enable/status/disable flow never discovers, npm-installs, or executes `pi-web-tunnel`.
 
 ## Current PI WEB runtime
 
-When the browser start route is used, PI WEB:
+When the browser enable route reaches runtime startup, PI WEB:
 
 1. verifies that PI WEB-owned machine state exists and persists desired state as `enabled`;
 2. fetches normalized tunnel config through its application-owned Control API boundary;

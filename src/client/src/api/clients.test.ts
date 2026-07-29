@@ -136,34 +136,41 @@ describe("settings config and plugin APIs", () => {
 });
 
 describe("Safe Tunnel API", () => {
-  it("calls the local Safe Tunnel bridge routes", async () => {
+  it("calls the local single enable/disable route flow", async () => {
     const status = safeTunnelStatusResponse();
     const operation = safeTunnelOperationResponse();
+    const enabled = { accepted: true, operation, status: { ...status, activeOperation: operation } };
     const fetchMock = stubSequenceFetch([
       jsonResponse(status),
-      jsonResponse({ operation, status: { ...status, activeOperation: operation } }),
+      jsonResponse(enabled),
+      jsonResponse({ status }),
       jsonResponse(operation),
-      jsonResponse({ accepted: true, operation: { ...operation, kind: "start", connectorProcessId: 321 }, connectorProcessId: 321, status }),
-      jsonResponse({ command: { exitCode: 0, stdout: "Stopped\n", stderr: "" }, status }),
     ]);
 
     await expect(safeTunnelApi.status()).resolves.toEqual(status);
-    await expect(safeTunnelApi.login({ controlApiUrl: "https://control.example.test", machineName: "Dev Box", machineSlug: "dev-box" })).resolves.toEqual({ operation, status: { ...status, activeOperation: operation } });
+    await expect(safeTunnelApi.enable({
+      advanced: {
+        controlApiUrl: "http://127.0.0.1:8787",
+        frpcPath: "/opt/frpc",
+      },
+    })).resolves.toEqual(enabled);
+    await expect(safeTunnelApi.disable()).resolves.toEqual({ status });
     await expect(safeTunnelApi.operation("op 1")).resolves.toEqual(operation);
-    await expect(safeTunnelApi.start({ frpcPath: "/opt/frpc" })).resolves.toEqual({ accepted: true, operation: { ...operation, kind: "start", connectorProcessId: 321 }, connectorProcessId: 321, status });
-    await expect(safeTunnelApi.stop()).resolves.toEqual({ command: { exitCode: 0, stdout: "Stopped\n", stderr: "" }, status });
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "https://pi.example.test/api/safe-tunnel/status",
-      "https://pi.example.test/api/safe-tunnel/login",
+      "https://pi.example.test/api/safe-tunnel/enable",
+      "https://pi.example.test/api/safe-tunnel/disable",
       "https://pi.example.test/api/safe-tunnel/operations/op%201",
-      "https://pi.example.test/api/safe-tunnel/start",
-      "https://pi.example.test/api/safe-tunnel/stop",
     ]);
     expect(fetchCall(fetchMock, 1)[1]?.method).toBe("POST");
-    expect(JSON.parse(requestBody(fetchCall(fetchMock, 1)[1]))).toEqual({ controlApiUrl: "https://control.example.test", machineName: "Dev Box", machineSlug: "dev-box" });
-    expect(JSON.parse(requestBody(fetchCall(fetchMock, 3)[1]))).toEqual({ frpcPath: "/opt/frpc" });
-    expect(fetchCall(fetchMock, 4)[1]?.method).toBe("POST");
+    expect(JSON.parse(requestBody(fetchCall(fetchMock, 1)[1]))).toEqual({
+      advanced: {
+        controlApiUrl: "http://127.0.0.1:8787",
+        frpcPath: "/opt/frpc",
+      },
+    });
+    expect(fetchCall(fetchMock, 2)[1]?.method).toBe("POST");
   });
 });
 
@@ -662,7 +669,8 @@ function safeTunnelStatusResponse() {
 function safeTunnelOperationResponse() {
   return {
     id: "op 1",
-    kind: "login",
+    kind: "enable",
+    phase: "awaiting_approval",
     status: "running",
     startedAt: "2026-07-03T00:00:00.000Z",
     stdout: "Open this URL to authorize the connector:\nhttps://control.example.test/device?userCode=ABCD-EFGH\nUser code: ABCD-EFGH\n",

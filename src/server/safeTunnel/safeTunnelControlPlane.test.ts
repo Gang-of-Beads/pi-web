@@ -93,15 +93,16 @@ describe("HttpSafeTunnelControlPlane", () => {
       jsonResponse(201, registeredMachine()),
     ]);
     const controlPlane = new HttpSafeTunnelControlPlane({ fetch: transport.fetch });
+    const controller = new AbortController();
 
     await expect(controlPlane.startDeviceAuthorization({
       controlApiBaseUrl: "https://control.example.test/",
       clientVersion: safeTunnelClientVersion,
-    })).resolves.toMatchObject({ userCode: "ABCD-EFGH", intervalSeconds: 5 });
+    }, { signal: controller.signal })).resolves.toMatchObject({ userCode: "ABCD-EFGH", intervalSeconds: 5 });
     await expect(controlPlane.completeDeviceAuthorization({
       controlApiBaseUrl: "https://control.example.test",
       deviceCode: "piwt_dcode_v1_device",
-    })).resolves.toEqual({ kind: "pending" });
+    }, { signal: controller.signal })).resolves.toEqual({ kind: "pending" });
     await expect(controlPlane.completeDeviceAuthorization({
       controlApiBaseUrl: "https://control.example.test",
       deviceCode: "piwt_dcode_v1_device",
@@ -131,7 +132,9 @@ describe("HttpSafeTunnelControlPlane", () => {
       method: "POST",
       redirect: "error",
       body: JSON.stringify({ connectorVersion: safeTunnelClientVersion }),
+      signal: controller.signal,
     });
+    expect(transport.requests[1]?.init.signal).toBe(controller.signal);
     expect(transport.requests[3]?.init).toMatchObject({
       headers: { authorization: "Bearer piwt_cat_v1_access" },
       body: JSON.stringify({

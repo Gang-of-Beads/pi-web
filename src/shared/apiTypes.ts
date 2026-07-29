@@ -160,11 +160,23 @@ export interface PiPackageMutationResponse extends PiPackagesResponse {
 }
 
 export type SafeTunnelConnectorState = "available" | "installable" | "unavailable";
-export type SafeTunnelConfigState = "missing" | "unregistered" | "registered" | "invalid";
+export type SafeTunnelConfigState = "missing" | "unregistered" | "registered" | "rejected" | "invalid";
 export type SafeTunnelDesiredState = "enabled" | "disabled";
 export type SafeTunnelRuntimeState = "stopped" | "running" | "stale" | "unknown";
-export type SafeTunnelOperationKind = "login" | "start";
-export type SafeTunnelOperationStatus = "running" | "succeeded" | "failed";
+export type SafeTunnelRuntimeDiagnosticCode =
+  | "credentials_rejected"
+  | "heartbeat_retrying"
+  | "registration_required"
+  | "runtime_recovery_failed"
+  | "state_retrying";
+export type SafeTunnelOperationKind = "enable";
+export type SafeTunnelOperationPhase =
+  | "preparing"
+  | "awaiting_approval"
+  | "registering"
+  | "starting"
+  | "enabled";
+export type SafeTunnelOperationStatus = "running" | "succeeded" | "failed" | "cancelled";
 
 export interface SafeTunnelConnectorInstallStatus {
   binName: string;
@@ -202,6 +214,8 @@ export interface SafeTunnelRuntimeStatus {
   /** Present only for legacy connector status; PI WEB-owned supervision keeps no PID file. */
   pidFilePath?: string;
   state: SafeTunnelRuntimeState;
+  /** Stable machine-readable category for recovery UI; raw external failures never cross this boundary. */
+  diagnosticCode?: SafeTunnelRuntimeDiagnosticCode;
   frpcConfigExists?: boolean;
   frpcConfigPath?: string;
   pid?: number;
@@ -223,6 +237,7 @@ export interface SafeTunnelCommandOutput {
 export interface SafeTunnelOperationResponse {
   id: string;
   kind: SafeTunnelOperationKind;
+  phase: SafeTunnelOperationPhase;
   status: SafeTunnelOperationStatus;
   startedAt: string;
   stdout: string;
@@ -249,32 +264,30 @@ export interface SafeTunnelStatusResponse {
   activeOperation?: SafeTunnelOperationResponse;
 }
 
-export interface SafeTunnelLoginRequest {
-  controlApiUrl: string;
-  machineName: string;
-  machineSlug: string;
+export interface SafeTunnelAdvancedOverrides {
+  /** Self-hosted/development Control API override; production is the server-owned default. */
+  controlApiUrl?: string;
+  /** Development override for the inferred OS hostname. */
+  machineName?: string;
+  /** Development override for the inferred collision-resistant DNS slug. */
+  machineSlug?: string;
+  /** Development override for the running PI WEB listener target. */
   localPiWebUrl?: string;
+  /** Advanced executable override; omission keeps a saved override, or uses managed frpc when none exists. */
   frpcPath?: string;
 }
 
-export interface SafeTunnelLoginResponse {
-  operation: SafeTunnelOperationResponse;
-  status: SafeTunnelStatusResponse;
+export interface SafeTunnelEnableRequest {
+  advanced?: SafeTunnelAdvancedOverrides;
 }
 
-export interface SafeTunnelStartRequest {
-  frpcPath?: string;
-}
-
-export interface SafeTunnelStartResponse {
+export interface SafeTunnelEnableResponse {
   accepted: true;
   operation: SafeTunnelOperationResponse;
-  connectorProcessId?: number;
   status: SafeTunnelStatusResponse;
 }
 
-export interface SafeTunnelStopResponse {
-  command: SafeTunnelCommandOutput;
+export interface SafeTunnelDisableResponse {
   status: SafeTunnelStatusResponse;
 }
 

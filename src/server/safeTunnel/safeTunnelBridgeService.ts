@@ -3,13 +3,11 @@ import { existsSync } from "node:fs";
 import type {
   SafeTunnelConfigStatus,
   SafeTunnelConnectorStatus,
-  SafeTunnelLoginRequest,
-  SafeTunnelLoginResponse,
+  SafeTunnelDisableResponse,
+  SafeTunnelEnableRequest,
+  SafeTunnelEnableResponse,
   SafeTunnelOperationResponse,
-  SafeTunnelStartRequest,
-  SafeTunnelStartResponse,
   SafeTunnelStatusResponse,
-  SafeTunnelStopResponse,
 } from "../../shared/apiTypes.js";
 import {
   HttpSafeTunnelControlPlane,
@@ -18,14 +16,17 @@ import {
   type SafeTunnelMachineHeartbeat,
 } from "./safeTunnelControlPlane.js";
 import {
+  createNodeSafeTunnelEnableDefaultsProvider,
+  type SafeTunnelEnableDefaults,
+  type SafeTunnelServerAddress,
+} from "./safeTunnelEnableDefaults.js";
+import {
   defaultSafeTunnelFrpcInstallDirectory,
   HttpSafeTunnelFrpcArtifactSource,
   SafeTunnelFrpcManager,
 } from "./safeTunnelFrpcManager.js";
 import { NodeSafeTunnelFrpcProcessLauncher } from "./safeTunnelFrpcProcess.js";
-import {
-  FileSafeTunnelFrpcRuntimeFiles,
-} from "./safeTunnelFrpcRuntimeFiles.js";
+import { FileSafeTunnelFrpcRuntimeFiles } from "./safeTunnelFrpcRuntimeFiles.js";
 import {
   NodeSafeTunnelSupervisorClock,
   SafeTunnelFrpcSupervisor,
@@ -43,29 +44,31 @@ import {
 } from "./safeTunnelState.js";
 import {
   SafeTunnelService,
+  type SafeTunnelEnableInput,
   type SafeTunnelLoginInput,
   type SafeTunnelLoginObserver,
+  type SafeTunnelLoginOptions,
   type SafeTunnelLoginResult,
   type SafeTunnelPreparedTunnelConfig,
 } from "./safeTunnelService.js";
 
 const maxCapturedOutputCharacters = 24_000;
 const maxFrpcLogTailCharacters = 12_000;
+const enableCancelledMessage = "Safe Tunnel enablement was cancelled.";
 
 export interface SafeTunnelBridgeService {
-  login(request: SafeTunnelLoginRequest): Promise<SafeTunnelLoginResponse>;
+  disable(): Promise<SafeTunnelDisableResponse>;
+  enable(request: SafeTunnelEnableRequest): Promise<SafeTunnelEnableResponse>;
   operation(operationId: string): SafeTunnelOperationResponse | undefined;
   shutdown(): Promise<void>;
   startup(): Promise<void>;
-  start(request: SafeTunnelStartRequest): Promise<SafeTunnelStartResponse>;
   status(): Promise<SafeTunnelStatusResponse>;
-  stop(): Promise<SafeTunnelStopResponse>;
 }
 
 export interface SafeTunnelApplicationService {
   readonly statePath: string;
   disable(): Promise<SafeTunnelPersistedState>;
-  enable(frpcPath?: string): Promise<SafeTunnelPersistedState>;
+  enable(input?: SafeTunnelEnableInput): Promise<SafeTunnelPersistedState>;
   getTunnelConfig(options?: {
     readonly signal?: AbortSignal;
   }): Promise<SafeTunnelPreparedTunnelConfig>;
@@ -79,11 +82,13 @@ export interface SafeTunnelApplicationService {
   login(
     request: SafeTunnelLoginInput,
     observer?: SafeTunnelLoginObserver,
+    options?: SafeTunnelLoginOptions,
   ): Promise<SafeTunnelLoginResult>;
   state(): Promise<LoadedSafeTunnelState>;
 }
 
 export interface SafeTunnelBridgeDependencies {
+  readonly enableDefaults: () => SafeTunnelEnableDefaults;
   readonly fileExists: (path: string) => boolean;
   readonly now: () => Date;
   readonly runtime: SafeTunnelReconciledFrpcRuntime;
@@ -92,9 +97,10 @@ export interface SafeTunnelBridgeDependencies {
 
 interface SafeTunnelOperationState {
   readonly id: string;
-  readonly kind: "login" | "start";
+  readonly kind: "enable";
   readonly startedAt: string;
-  status: "running" | "succeeded" | "failed";
+  phase: SafeTunnelOperationResponse["phase"];
+  status: SafeTunnelOperationResponse["status"];
   stdout: string;
   stderr: string;
   connectorProcessId?: number;
@@ -110,6 +116,12 @@ interface SafeTunnelOperationState {
   verificationUriComplete?: string;
 }
 
+interface ActiveEnableWorkflow {
+  readonly controller: AbortController;
+  readonly operation: SafeTunnelOperationState;
+  readonly promise: Promise<void>;
+}
+
 export class SafeTunnelBridgeError extends Error {
   constructor(message: string, readonly statusCode: number) {
     super(message);
@@ -119,6 +131,8 @@ export class SafeTunnelBridgeError extends Error {
 /** Browser contract around PI WEB-owned state, Control API, and direct frpc supervision. */
 export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
   private activeOperation: SafeTunnelOperationState | undefined;
+  private activeWorkflow: ActiveEnableWorkflow | undefined;
+  private enableRequestController: AbortController | undefined;
   private operationStartInFlight = false;
   private readonly operations = new Map<string, SafeTunnelOperationState>();
 
@@ -142,96 +156,56 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
     };
   }
 
-  async login(request: SafeTunnelLoginRequest): Promise<SafeTunnelLoginResponse> {
+  async enable(request: SafeTunnelEnableRequest): Promise<SafeTunnelEnableResponse> {
     this.assertNoActiveOperation();
     this.operationStartInFlight = true;
+    const controller = new AbortController();
+    this.enableRequestController = controller;
     try {
-      const operation = this.createOperation("login");
-      void this.dependencies.safeTunnel.login({
-        controlApiBaseUrl: request.controlApiUrl,
-        machineName: request.machineName,
-        machineSlug: request.machineSlug,
-        ...(request.localPiWebUrl === undefined
-          ? {}
-          : { localPiWebUrl: request.localPiWebUrl }),
-        ...(request.frpcPath === undefined ? {} : { frpcPath: request.frpcPath }),
-      }, loginObserver(operation)).then(
-        (result) => {
-          finishLoginOperation(operation, result, this.dependencies.now());
-          this.clearActiveOperation(operation);
-          void this.dependencies.runtime.reconcile().catch(() => undefined);
-        },
-        (error: unknown) => { this.failOperation(operation, error); },
-      );
+      const [currentStatus, loadedState] = await Promise.all([
+        this.status(),
+        this.dependencies.safeTunnel.state(),
+      ]);
+      throwIfEnableCancelled(controller.signal);
+      if (currentStatus.runtime.state === "running") {
+        throw new SafeTunnelBridgeError("Safe Tunnel is already enabled.", 409);
+      }
+
+      const defaults = this.dependencies.enableDefaults();
+      throwIfEnableCancelled(controller.signal);
+      const operation = this.createOperation();
+      const promise = this.runEnableWorkflow(
+        request,
+        loadedState,
+        currentStatus,
+        defaults,
+        operation,
+        controller.signal,
+      ).then(
+        (result) => { finishEnableOperation(operation, result, this.dependencies.now()); },
+        (error: unknown) => { this.failOperation(operation, error, controller.signal); },
+      ).finally(() => {
+        const active = this.activeWorkflow;
+        if (active?.operation.id === operation.id) this.activeWorkflow = undefined;
+        this.clearActiveOperation(operation);
+      });
+      this.activeWorkflow = { controller, operation, promise };
 
       return {
+        accepted: true,
         operation: snapshotOperation(operation),
         status: await this.status(),
       };
     } finally {
+      if (this.enableRequestController === controller) {
+        this.enableRequestController = undefined;
+      }
       this.operationStartInFlight = false;
     }
   }
 
-  operation(operationId: string): SafeTunnelOperationResponse | undefined {
-    const operation = this.operations.get(operationId);
-    return operation === undefined ? undefined : snapshotOperation(operation);
-  }
-
-  async start(request: SafeTunnelStartRequest): Promise<SafeTunnelStartResponse> {
-    this.assertNoActiveOperation();
-    this.operationStartInFlight = true;
-    try {
-      const currentStatus = await this.status();
-      if (currentStatus.runtime.state === "running") {
-        throw new SafeTunnelBridgeError(
-          "The PI WEB Safe Tunnel frpc process is already running.",
-          409,
-        );
-      }
-      if (currentStatus.config.state !== "registered") {
-        throw new SafeTunnelBridgeError(
-          "Register or log in to PI WEB Safe Tunnels before starting the tunnel.",
-          409,
-        );
-      }
-
-      const loadedState = await this.dependencies.safeTunnel.state();
-      const advancedFrpcPath = request.frpcPath ?? loadedState.state.frpcPath;
-      await this.dependencies.safeTunnel.enable(request.frpcPath);
-      const operation = this.createOperation("start", {
-        ...(currentStatus.runtime.logPath === undefined
-          ? {}
-          : { logPath: currentStatus.runtime.logPath }),
-        logTailMaxCharacters: maxFrpcLogTailCharacters,
-      });
-
-      void this.dependencies.runtime.start({
-        ...(advancedFrpcPath === undefined ? {} : { advancedFrpcPath }),
-      }).then(
-        (result) => {
-          finishStartOperation(operation, result, this.dependencies.now());
-          this.clearActiveOperation(operation);
-        },
-        (error: unknown) => { this.failOperation(operation, error); },
-      );
-
-      const status = await this.status();
-      const snapshot = snapshotOperation(operation);
-      return {
-        accepted: true,
-        operation: snapshot,
-        ...(snapshot.connectorProcessId === undefined
-          ? {}
-          : { connectorProcessId: snapshot.connectorProcessId }),
-        status,
-      };
-    } finally {
-      this.operationStartInFlight = false;
-    }
-  }
-
-  async stop(): Promise<SafeTunnelStopResponse> {
+  async disable(): Promise<SafeTunnelDisableResponse> {
+    const workflow = this.cancelActiveEnablement();
     let disableError: unknown;
     let disableFailed = false;
     try {
@@ -241,17 +215,75 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
       disableError = error;
     }
 
-    const result = await this.dependencies.runtime.stop();
+    await this.dependencies.runtime.stop();
+    await workflow?.promise.catch(() => undefined);
     if (disableFailed) throw disableError;
-    return { command: result, status: await this.status() };
+    return { status: await this.status() };
   }
 
-  shutdown(): Promise<void> {
-    return this.dependencies.runtime.shutdown();
+  operation(operationId: string): SafeTunnelOperationResponse | undefined {
+    const operation = this.operations.get(operationId);
+    return operation === undefined ? undefined : snapshotOperation(operation);
+  }
+
+  async shutdown(): Promise<void> {
+    const workflow = this.cancelActiveEnablement();
+    await this.dependencies.runtime.shutdown();
+    await workflow?.promise.catch(() => undefined);
   }
 
   startup(): Promise<void> {
     return this.dependencies.runtime.startup();
+  }
+
+  private async runEnableWorkflow(
+    request: SafeTunnelEnableRequest,
+    loadedState: LoadedSafeTunnelState,
+    currentStatus: SafeTunnelStatusResponse,
+    defaults: SafeTunnelEnableDefaults,
+    operation: SafeTunnelOperationState,
+    signal: AbortSignal,
+  ): Promise<SafeTunnelFrpcStartResult> {
+    const advanced = request.advanced;
+    const localPiWebUrl = advanced?.localPiWebUrl ?? defaults.localPiWebUrl;
+    const registrationRequired = shouldRegisterMachine(
+      loadedState,
+      currentStatus,
+      request,
+    );
+
+    if (registrationRequired) {
+      const controlApiBaseUrl = advanced?.controlApiUrl
+        ?? loadedState.state.machine?.controlApiBaseUrl
+        ?? defaults.controlApiBaseUrl;
+      await this.dependencies.safeTunnel.login({
+        controlApiBaseUrl,
+        machineName: advanced?.machineName ?? defaults.machineName,
+        machineSlug: advanced?.machineSlug ?? defaults.machineSlug,
+        localPiWebUrl,
+        ...(advanced?.frpcPath === undefined ? {} : { frpcPath: advanced.frpcPath }),
+      }, enableLoginObserver(operation), { signal });
+      throwIfEnableCancelled(signal);
+    }
+
+    operation.phase = "starting";
+    appendOperationStdout(
+      operation,
+      registrationRequired
+        ? "Registration complete. Preparing the managed Safe Tunnel runtime.\n"
+        : "Using the saved machine registration. Preparing the managed Safe Tunnel runtime.\n",
+    );
+    await this.dependencies.safeTunnel.enable({
+      localPiWebUrl,
+      ...(advanced?.frpcPath === undefined ? {} : { frpcPath: advanced.frpcPath }),
+    });
+    throwIfEnableCancelled(signal);
+
+    const enabledState = await this.dependencies.safeTunnel.state();
+    const advancedFrpcPath = enabledState.state.frpcPath;
+    return this.dependencies.runtime.start({
+      ...(advancedFrpcPath === undefined ? {} : { advancedFrpcPath }),
+    });
   }
 
   private assertNoActiveOperation(): void {
@@ -260,29 +292,50 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
     }
   }
 
-  private createOperation(
-    kind: SafeTunnelOperationState["kind"],
-    initial: Partial<SafeTunnelOperationState> = {},
-  ): SafeTunnelOperationState {
+  private createOperation(): SafeTunnelOperationState {
     const operation: SafeTunnelOperationState = {
       id: randomUUID(),
-      kind,
+      kind: "enable",
+      phase: "preparing",
       startedAt: this.dependencies.now().toISOString(),
       status: "running",
       stderr: "",
-      stdout: "",
-      ...initial,
+      stdout: "Preparing Safe Tunnel enablement with PI WEB-owned defaults.\n",
+      logTailMaxCharacters: maxFrpcLogTailCharacters,
     };
     this.activeOperation = operation;
     this.operations.set(operation.id, operation);
     return operation;
   }
 
-  private failOperation(operation: SafeTunnelOperationState, error: unknown): void {
-    operation.status = "failed";
-    operation.error = safeErrorMessage(error);
+  private cancelActiveEnablement(): ActiveEnableWorkflow | undefined {
+    this.enableRequestController?.abort();
+    const workflow = this.activeWorkflow;
+    if (workflow === undefined) return undefined;
+    workflow.controller.abort();
+    if (workflow.operation.status === "running") {
+      workflow.operation.status = "cancelled";
+      workflow.operation.error = enableCancelledMessage;
+      workflow.operation.finishedAt = this.dependencies.now().toISOString();
+    }
+    this.clearActiveOperation(workflow.operation);
+    return workflow;
+  }
+
+  private failOperation(
+    operation: SafeTunnelOperationState,
+    error: unknown,
+    signal: AbortSignal,
+  ): void {
+    if (operation.status === "cancelled") return;
+    if (signal.aborted) {
+      operation.status = "cancelled";
+      operation.error = enableCancelledMessage;
+    } else {
+      operation.status = "failed";
+      operation.error = safeErrorMessage(error);
+    }
     operation.finishedAt = this.dependencies.now().toISOString();
-    this.clearActiveOperation(operation);
   }
 
   private clearActiveOperation(operation: SafeTunnelOperationState): void {
@@ -316,7 +369,13 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
   }
 }
 
-export function createDefaultSafeTunnelBridgeService(): SafeTunnelBridgeService {
+export interface DefaultSafeTunnelBridgeServiceOptions {
+  readonly serverAddress: () => SafeTunnelServerAddress;
+}
+
+export function createDefaultSafeTunnelBridgeService(
+  options: DefaultSafeTunnelBridgeServiceOptions,
+): SafeTunnelBridgeService {
   const statePath = defaultSafeTunnelStatePath();
   const safeTunnel = new SafeTunnelService({
     controlPlane: new HttpSafeTunnelControlPlane(),
@@ -340,6 +399,9 @@ export function createDefaultSafeTunnelBridgeService(): SafeTunnelBridgeService 
     safeTunnel,
   });
   return new DefaultSafeTunnelBridgeService({
+    enableDefaults: createNodeSafeTunnelEnableDefaultsProvider({
+      serverAddress: options.serverAddress,
+    }),
     fileExists: existsSync,
     now: () => new Date(),
     runtime,
@@ -354,59 +416,63 @@ function builtInConnectorStatus(): SafeTunnelConnectorStatus {
   };
 }
 
-function loginObserver(operation: SafeTunnelOperationState): SafeTunnelLoginObserver {
+function shouldRegisterMachine(
+  loaded: LoadedSafeTunnelState,
+  status: SafeTunnelStatusResponse,
+  request: SafeTunnelEnableRequest,
+): boolean {
+  const machine = loaded.state.machine;
+  if (machine === undefined || machine.credentialStatus === "rejected") return true;
+  if (status.runtime.diagnosticCode === "credentials_rejected") return true;
+  const advanced = request.advanced;
+  return advanced?.controlApiUrl !== undefined
+    || advanced?.machineName !== undefined
+    || advanced?.machineSlug !== undefined;
+}
+
+function enableLoginObserver(operation: SafeTunnelOperationState): SafeTunnelLoginObserver {
   return {
     onDeviceAuthorization(authorization) {
+      operation.phase = "awaiting_approval";
       operation.verificationUriComplete = authorization.verificationUriComplete;
       operation.userCode = authorization.userCode;
-      appendOperationStdout(operation, loginApprovalOutput(authorization));
+      appendOperationStdout(operation, approvalOutput(authorization));
     },
     onAuthorizationApproved(account) {
+      operation.phase = "registering";
       appendOperationStdout(
         operation,
-        `Connector authorization approved.\nAccount namespace: ${account.publicNamespace}\nRegistering this machine...\n`,
+        `Approval received for account ${account.publicNamespace}. Registering this PI WEB.\n`,
       );
     },
     onMachineRegistered(machine) {
+      operation.phase = "starting";
       operation.publicUrl = machine.publicUrl;
+      appendOperationStdout(operation, "Machine registration saved privately.\n");
     },
   };
 }
 
-function loginApprovalOutput(authorization: SafeTunnelDeviceAuthorization): string {
+function approvalOutput(authorization: SafeTunnelDeviceAuthorization): string {
   return [
-    "Starting PI WEB Safe Tunnel login.",
-    "Open this URL to authorize the connector:",
-    authorization.verificationUriComplete,
+    "Approval is required before this PI WEB can be enabled.",
+    `Approval URL: ${authorization.verificationUriComplete}`,
     `User code: ${authorization.userCode}`,
-    `Waiting for approval until ${authorization.expiresAt}...`,
+    `Waiting for approval until ${authorization.expiresAt}.`,
     "",
   ].join("\n");
 }
 
-function finishLoginOperation(
-  operation: SafeTunnelOperationState,
-  result: SafeTunnelLoginResult,
-  now: Date,
-): void {
-  operation.publicUrl = result.registeredMachine.publicUrl;
-  appendOperationStdout(
-    operation,
-    `Logged in and registered this machine for PI WEB Safe Tunnels.\nMachine id: ${result.registeredMachine.machine.id}\nPublic URL: ${result.registeredMachine.publicUrl}\n`,
-  );
-  operation.status = "succeeded";
-  operation.exitCode = 0;
-  operation.finishedAt = now.toISOString();
-}
-
-function finishStartOperation(
+function finishEnableOperation(
   operation: SafeTunnelOperationState,
   result: SafeTunnelFrpcStartResult,
   now: Date,
 ): void {
-  appendOperationStdout(operation, result.output);
+  if (operation.status === "cancelled") return;
+  operation.phase = "enabled";
   operation.publicUrl = result.publicUrl;
   if (result.pid !== undefined) operation.connectorProcessId = result.pid;
+  appendOperationStdout(operation, result.output);
   operation.status = "succeeded";
   operation.exitCode = 0;
   operation.finishedAt = now.toISOString();
@@ -423,7 +489,9 @@ function configStatusFromOwnedState(
     exists: loaded.exists,
     state: state.machine === undefined
       ? (loaded.exists ? "unregistered" : "missing")
-      : "registered",
+      : state.machine.credentialStatus === "rejected"
+        ? "rejected"
+        : "registered",
     localPiWebUrl: state.localPiWebUrl,
     frpcPathConfigured: state.frpcPath !== undefined,
     ...(state.machine === undefined ? {} : {
@@ -450,6 +518,7 @@ function snapshotOperation(operation: SafeTunnelOperationState): SafeTunnelOpera
   return {
     id: operation.id,
     kind: operation.kind,
+    phase: operation.phase,
     startedAt: operation.startedAt,
     status: operation.status,
     stdout: operation.stdout,
@@ -495,6 +564,10 @@ function tailText(contents: string, maxCharacters: number): string {
   return contents.length <= maxCharacters
     ? contents
     : contents.slice(contents.length - maxCharacters);
+}
+
+function throwIfEnableCancelled(signal: AbortSignal): void {
+  if (signal.aborted) throw new Error(enableCancelledMessage);
 }
 
 function safeErrorMessage(error: unknown): string {

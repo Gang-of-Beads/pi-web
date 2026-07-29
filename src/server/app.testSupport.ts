@@ -155,16 +155,12 @@ export function fakeSafeTunnelBridgeService(): SafeTunnelBridgeService {
     runtime: { state: "stopped" },
   };
   return {
-    login: () => Promise.reject(new Error("Safe Tunnel login is not configured in this app test.")),
+    disable: () => Promise.resolve({ status }),
+    enable: () => Promise.reject(new Error("Safe Tunnel enablement is not configured in this app test.")),
     operation: () => undefined,
     shutdown: () => Promise.resolve(),
     startup: () => Promise.resolve(),
-    start: () => Promise.reject(new Error("Safe Tunnel start is not configured in this app test.")),
     status: () => Promise.resolve(status),
-    stop: () => Promise.resolve({
-      command: { exitCode: 0, stderr: "", stdout: "No Safe Tunnel runtime in app test.\n" },
-      status,
-    }),
   };
 }
 

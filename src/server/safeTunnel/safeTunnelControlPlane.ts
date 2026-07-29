@@ -92,11 +92,11 @@ export interface SafeTunnelControlPlane {
   startDeviceAuthorization(input: {
     readonly controlApiBaseUrl: string;
     readonly clientVersion: string;
-  }): Promise<SafeTunnelDeviceAuthorization>;
+  }, options?: { readonly signal?: AbortSignal }): Promise<SafeTunnelDeviceAuthorization>;
   completeDeviceAuthorization(input: {
     readonly controlApiBaseUrl: string;
     readonly deviceCode: string;
-  }): Promise<SafeTunnelDeviceAuthorizationCompletion>;
+  }, options?: { readonly signal?: AbortSignal }): Promise<SafeTunnelDeviceAuthorizationCompletion>;
   registerMachine(input: {
     readonly controlApiBaseUrl: string;
     readonly connectorAccessToken: string;
@@ -140,11 +140,14 @@ export class HttpSafeTunnelControlPlane implements SafeTunnelControlPlane {
   async startDeviceAuthorization(input: {
     readonly controlApiBaseUrl: string;
     readonly clientVersion: string;
-  }): Promise<SafeTunnelDeviceAuthorization> {
+  }, options: { readonly signal?: AbortSignal } = {}): Promise<SafeTunnelDeviceAuthorization> {
     const operation = "start_device_authorization";
     const response = await this.request(
       endpoint(input.controlApiBaseUrl, "/v1/device/start"),
-      jsonPostRequest({ connectorVersion: input.clientVersion }),
+      {
+        ...jsonPostRequest({ connectorVersion: input.clientVersion }),
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+      },
       operation,
     );
     requireExpectedResponse(response, 202, operation);
@@ -158,11 +161,14 @@ export class HttpSafeTunnelControlPlane implements SafeTunnelControlPlane {
   async completeDeviceAuthorization(input: {
     readonly controlApiBaseUrl: string;
     readonly deviceCode: string;
-  }): Promise<SafeTunnelDeviceAuthorizationCompletion> {
+  }, options: { readonly signal?: AbortSignal } = {}): Promise<SafeTunnelDeviceAuthorizationCompletion> {
     const operation = "complete_device_authorization";
     const response = await this.request(
       endpoint(input.controlApiBaseUrl, "/v1/device/complete"),
-      jsonPostRequest({ deviceCode: input.deviceCode }),
+      {
+        ...jsonPostRequest({ deviceCode: input.deviceCode }),
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+      },
       operation,
     );
 

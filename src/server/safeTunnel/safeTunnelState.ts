@@ -13,6 +13,8 @@ export const safeTunnelStateDirectoryMode = 0o700;
 export const safeTunnelStateFileMode = 0o600;
 export const defaultSafeTunnelLocalPiWebUrl = "http://127.0.0.1:8504";
 
+export type SafeTunnelMachineCredentialStatus = "active" | "rejected";
+
 interface PathApi {
   dirname(path: string): string;
   join(...paths: string[]): string;
@@ -20,6 +22,8 @@ interface PathApi {
 
 export interface SafeTunnelMachineCredentials {
   readonly controlApiBaseUrl: string;
+  /** Absent in legacy state and treated as active; new writes make it explicit. */
+  readonly credentialStatus?: SafeTunnelMachineCredentialStatus;
   readonly machineId: string;
   readonly machineToken: string;
   readonly machineSlug?: string;
@@ -233,11 +237,18 @@ function parseOptionalMachineCredentials(value: unknown): SafeTunnelMachineCrede
 
   return {
     controlApiBaseUrl: normalizeSafeTunnelControlApiBaseUrl(record["controlApiBaseUrl"]),
+    credentialStatus: parseMachineCredentialStatus(record["credentialStatus"]),
     machineId: requireNonEmptyString(record["machineId"], "machine.machineId"),
     machineToken: requireNonEmptyString(record["machineToken"], "machine.machineToken"),
     ...(machineSlug === undefined ? {} : { machineSlug }),
     ...(publicUrl === undefined ? {} : { publicUrl }),
   };
+}
+
+function parseMachineCredentialStatus(value: unknown): SafeTunnelMachineCredentialStatus {
+  if (value === undefined || value === "active") return "active";
+  if (value === "rejected") return "rejected";
+  throw new Error("Safe Tunnel machine.credentialStatus must be active or rejected.");
 }
 
 function isCurrentSafeTunnelStateRecord(value: unknown): boolean {

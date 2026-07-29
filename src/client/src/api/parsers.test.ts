@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PI_WEB_CAPABILITIES } from "../../../shared/capabilities";
 import { ASK_USER_TEXT_MAX_LENGTH, SESSION_NOTIFICATION_LIMIT, SESSION_NOTIFICATION_MESSAGE_BYTES, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH } from "../../../shared/apiTypes";
 import { parseAskUserCloseResponse, parseAuthProvidersResponse, parseCommandResult, parseFileContentResponse, parseFileSuggestion, parseGitStatusResponse, parseMachineRuntime, parseMessagePage, parseOAuthFlowState, parsePiPackageMutationResponse, parsePiPackagesResponse, parsePiWebConfigResponse, parsePiWebPluginsResponse, parsePiWebRuntimeResponse, parsePiWebStatusResponse, parseSessionBulkArchiveResponse, parseSessionBulkDeleteArchivedResponse, parseSessionCleanupExecuteResponse, parseSessionCleanupPreviewResponse, parseSessionInfo, parseSessionNotificationInboxEvent, parseSessionNotificationInboxSnapshot, parseSessionStartupProgressEvent, parseSessionStatus, parseSessionStreamSnapshot, parseSessionTreeNavigateResult, parseSessionTreeSnapshot, parseSessionUnreadCatalogSnapshot, parseSessionUnreadEvent, parseSlashCommand, parseTerminalCommandRun, parseTerminalInfo, parseWorkspace, parseWorkspaceActivityResponse } from "./parsers";
-import { parseSafeTunnelLoginResponse, parseSafeTunnelOperationResponse, parseSafeTunnelStartResponse, parseSafeTunnelStatusResponse, parseSafeTunnelStopResponse } from "./parsers";
+import { parseSafeTunnelDisableResponse, parseSafeTunnelEnableResponse, parseSafeTunnelOperationResponse, parseSafeTunnelStatusResponse } from "./parsers";
 
 describe("API parsers", () => {
   it("preserves additive interactive API-key flow hints and defaults legacy options", () => {
@@ -143,82 +143,70 @@ describe("API parsers", () => {
     })).toThrow("Invalid PI WEB agentDirSource field");
   });
 
-  it("parses Safe Tunnel bridge responses", () => {
+  it("parses Safe Tunnel enablement, revocation, and disable responses", () => {
     const operation = {
       id: "op_1",
-      kind: "login",
+      kind: "enable",
+      phase: "awaiting_approval",
       status: "running",
       startedAt: "2026-07-03T00:00:00.000Z",
-      stdout: "Open this URL to authorize the connector:\nhttps://control.example.test/device?userCode=ABCD-EFGH\nUser code: ABCD-EFGH\n",
+      stdout: "Waiting for approval.\n",
       stderr: "",
       userCode: "ABCD-EFGH",
-      verificationUriComplete: "https://control.example.test/device?userCode=ABCD-EFGH",
+      verificationUriComplete: "https://api.tunnels.pi-web.dev/device?user_code=ABCD-EFGH",
     };
     const status = {
-      connector: { command: "pi-web-tunnel", state: "available" },
+      connector: { command: "PI WEB built-in frpc supervisor", state: "available" },
       config: {
-        path: "/home/test/.config/pi-web-tunnel/config.json",
+        path: "/home/test/.pi-web/safe-tunnel/config.json",
         exists: true,
-        state: "registered",
+        state: "rejected",
         localPiWebUrl: "http://127.0.0.1:8504",
-        frpcPathConfigured: true,
+        frpcPathConfigured: false,
         machine: {
-          controlApiBaseUrl: "https://control.example.test",
+          controlApiBaseUrl: "https://api.tunnels.pi-web.dev",
           machineId: "machine_1",
-          machineSlug: "dev-box",
-          publicHostname: "dev-box.ns.tunnels.pi-web.dev",
-          publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
+          machineSlug: "dev-box-a1b2c3d4",
+          publicHostname: "dev-box-a1b2c3d4.ns.tunnels.pi-web.dev",
+          publicUrl: "https://dev-box-a1b2c3d4.ns.tunnels.pi-web.dev",
         },
       },
       desiredState: "enabled",
       runtime: {
-        pidFilePath: "/home/test/.config/pi-web-tunnel/connector.pid",
-        state: "running",
-        frpcConfigPath: "/home/test/.config/pi-web-tunnel/frpc.toml",
-        frpcConfigExists: true,
-        pid: 123,
-        logPath: "/home/test/.config/pi-web-tunnel/connector.log",
+        state: "stopped",
+        diagnosticCode: "credentials_rejected",
+        error: "Safe Tunnel access was revoked.",
+        logPath: "/home/test/.pi-web/safe-tunnel/frpc.log",
         logExists: true,
-        logTail: "frpc failed\n",
+        logTail: "frpc stopped\n",
         logTailMaxCharacters: 12_000,
       },
       activeOperation: operation,
     };
 
-    expect(parseSafeTunnelOperationResponse({ ...operation, status: "succeeded", exitCode: 0, finishedAt: "2026-07-03T00:01:00.000Z", publicUrl: "https://dev.example.test" })).toMatchObject({ status: "succeeded", exitCode: 0, publicUrl: "https://dev.example.test" });
-    const startOperation = { ...operation, kind: "start", connectorProcessId: 456, logPath: "/home/test/.config/pi-web-tunnel/connector.log", logTail: "frpc failed\n", logTailMaxCharacters: 12_000 };
-    expect(parseSafeTunnelOperationResponse(startOperation)).toMatchObject({ connectorProcessId: 456, kind: "start", logTail: "frpc failed\n" });
+    expect(parseSafeTunnelOperationResponse({
+      ...operation,
+      phase: "enabled",
+      status: "succeeded",
+      exitCode: 0,
+      finishedAt: "2026-07-03T00:01:00.000Z",
+      publicUrl: "https://dev.example.test",
+    })).toMatchObject({ phase: "enabled", status: "succeeded", exitCode: 0 });
     expect(parseSafeTunnelStatusResponse(status)).toEqual(status);
-    expect(parseSafeTunnelStatusResponse({
-      ...status,
-      runtime: { ...status.runtime, pidFilePath: undefined },
-    }).runtime.pidFilePath).toBeUndefined();
-    expect(parseSafeTunnelStatusResponse({
-      ...status,
-      connector: {
-        command: "/home/test/.local/share/pi-web/safe-tunnel-connector/node_modules/.bin/pi-web-tunnel",
-        state: "installable",
-        error: "spawn ENOENT",
-        install: {
-          binName: "pi-web-tunnel",
-          command: "/home/test/.local/share/pi-web/safe-tunnel-connector/node_modules/.bin/pi-web-tunnel",
-          enabled: true,
-          installDirectory: "/home/test/.local/share/pi-web/safe-tunnel-connector",
-          installerCommand: "npm",
-          packageSpec: "@jmfederico/pi-web-tunnel",
-        },
-      },
-    })).toMatchObject({ connector: { state: "installable", install: { packageSpec: "@jmfederico/pi-web-tunnel" } } });
-    expect(parseSafeTunnelLoginResponse({ operation, status })).toEqual({ operation, status });
-    expect(parseSafeTunnelStartResponse({ accepted: true, operation: startOperation, connectorProcessId: 456, status })).toEqual({ accepted: true, operation: startOperation, connectorProcessId: 456, status });
-    expect(parseSafeTunnelStopResponse({ command: { exitCode: null, stdout: "", stderr: "", signal: "SIGTERM" }, status })).toEqual({ command: { exitCode: null, stdout: "", stderr: "", signal: "SIGTERM" }, status });
+    expect(parseSafeTunnelEnableResponse({ accepted: true, operation, status })).toEqual({
+      accepted: true,
+      operation,
+      status,
+    });
+    expect(parseSafeTunnelDisableResponse({ status })).toEqual({ status });
   });
 
   it("rejects malformed Safe Tunnel bridge responses", () => {
-    expect(() => parseSafeTunnelStatusResponse({ connector: { command: "pi-web-tunnel", state: "missing" }, config: { path: "/tmp/config", exists: false, state: "missing" }, desiredState: "disabled", runtime: { pidFilePath: "/tmp/pid", state: "stopped" } })).toThrow("Expected Safe Tunnel connector state field: state");
-    expect(() => parseSafeTunnelStatusResponse({ connector: { command: "pi-web-tunnel", state: "available" }, config: { path: "/tmp/config", exists: false, state: "missing" }, desiredState: "sometimes", runtime: { pidFilePath: "/tmp/pid", state: "stopped" } })).toThrow("Expected Safe Tunnel desired state field: desiredState");
-    expect(() => parseSafeTunnelOperationResponse({ id: "op_1", kind: "login", status: "waiting", startedAt: "now", stdout: "", stderr: "" })).toThrow("Expected Safe Tunnel operation status field: status");
-    expect(() => parseSafeTunnelStartResponse({ accepted: false, status: { connector: { command: "pi-web-tunnel", state: "available" }, config: { path: "/tmp/config", exists: false, state: "missing" }, runtime: { pidFilePath: "/tmp/pid", state: "stopped" } } })).toThrow("Expected Safe Tunnel start accepted response");
+    expect(() => parseSafeTunnelStatusResponse({ connector: { command: "built-in", state: "missing" }, config: { path: "/tmp/config", exists: false, state: "missing" }, desiredState: "disabled", runtime: { state: "stopped" } })).toThrow("Expected Safe Tunnel connector state field: state");
+    expect(() => parseSafeTunnelStatusResponse({ connector: { command: "built-in", state: "available" }, config: { path: "/tmp/config", exists: false, state: "missing" }, desiredState: "sometimes", runtime: { state: "stopped" } })).toThrow("Expected Safe Tunnel desired state field: desiredState");
+    expect(() => parseSafeTunnelOperationResponse({ id: "op_1", kind: "enable", phase: "future", status: "running", startedAt: "now", stdout: "", stderr: "" })).toThrow("Expected Safe Tunnel operation phase field: phase");
+    expect(() => parseSafeTunnelEnableResponse({ accepted: false })).toThrow("Expected Safe Tunnel enable accepted response");
+    expect(() => parseSafeTunnelStatusResponse({ connector: { command: "built-in", state: "available" }, config: { path: "/tmp/config", exists: true, state: "rejected" }, desiredState: "enabled", runtime: { state: "stopped", diagnosticCode: "provider_secret" } })).toThrow("Expected Safe Tunnel runtime diagnostic field: diagnosticCode");
   });
 
   it("parses Pi package list and mutation responses", () => {

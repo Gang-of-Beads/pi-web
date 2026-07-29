@@ -72,6 +72,7 @@ describe("FileSafeTunnelStateStorage", () => {
         machine: {
           ...state.machine,
           controlApiBaseUrl: "https://control.example.test",
+          credentialStatus: "active",
         },
       },
     });
@@ -112,7 +113,11 @@ describe("FileSafeTunnelStateStorage", () => {
         stateVersion: 1,
         schemaVersion: 2,
         desiredState: "disabled",
-        machine: { machineId: "machine_legacy", machineToken: "piwt_mtok_v1_legacy" },
+        machine: {
+          credentialStatus: "active",
+          machineId: "machine_legacy",
+          machineToken: "piwt_mtok_v1_legacy",
+        },
       },
     });
     expect(await readFile(legacyPath, "utf8")).toContain("piwt_mtok_v1_legacy");
@@ -138,6 +143,33 @@ describe("FileSafeTunnelStateStorage", () => {
 
     expect(loaded.state.desiredState).toBe("enabled");
     expect(loaded.state.machine).toBeUndefined();
+  });
+
+  it("parses durable rejected-credential state and rejects unknown credential states", () => {
+    expect(parseSafeTunnelState({
+      stateVersion: 1,
+      schemaVersion: 2,
+      desiredState: "enabled",
+      localPiWebUrl: "http://127.0.0.1:8504",
+      machine: {
+        controlApiBaseUrl: "https://control.example.test",
+        credentialStatus: "rejected",
+        machineId: "machine_123",
+        machineToken: "private",
+      },
+    }).machine?.credentialStatus).toBe("rejected");
+    expect(() => parseSafeTunnelState({
+      stateVersion: 1,
+      schemaVersion: 2,
+      desiredState: "enabled",
+      localPiWebUrl: "http://127.0.0.1:8504",
+      machine: {
+        controlApiBaseUrl: "https://control.example.test",
+        credentialStatus: "unknown",
+        machineId: "machine_123",
+        machineToken: "private",
+      },
+    })).toThrow("credentialStatus");
   });
 
   it("reports malformed state without retaining credential contents in the error", () => {
