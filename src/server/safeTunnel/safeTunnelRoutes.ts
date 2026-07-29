@@ -45,8 +45,7 @@ export function registerSafeTunnelRoutes(
   app.post<{ Body: unknown }>("/api/safe-tunnel/enable", async (request, reply) => {
     try {
       const response = await bridge.enable(parseEnableRequest(request.body));
-      reply.code(202).send(response);
-      return;
+      return await reply.code(202).send(response);
     } catch (error) {
       return sendSafeTunnelError(reply, error);
     }

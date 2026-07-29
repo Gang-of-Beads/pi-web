@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -32,8 +32,8 @@ try {
     writeFile(join(npmToolDir, "package.json"), '{"private":true}\n'),
   ]);
 
-  const packOutput = await runNpm(npmExecPath, ["pack", "--ignore-scripts", "--json", "--pack-destination", packDir], repoRoot);
-  const tarballPath = join(packDir, packageTarballFilename(packOutput));
+  await runNpm(npmExecPath, ["pack", "--ignore-scripts", "--pack-destination", packDir], repoRoot);
+  const tarballPath = join(packDir, await packageTarballFilename(packDir));
 
   await runNpm(npmExecPath, [
     "install",
@@ -74,12 +74,12 @@ async function runNpm(npmCliPath, args, cwd) {
   return result.stdout;
 }
 
-function packageTarballFilename(output) {
-  const parsed = JSON.parse(output);
-  if (!Array.isArray(parsed) || parsed.length !== 1 || typeof parsed[0]?.filename !== "string") {
-    throw new Error("npm pack returned an unexpected result");
+async function packageTarballFilename(packDir) {
+  const tarballs = (await readdir(packDir)).filter((filename) => filename.endsWith(".tgz"));
+  if (tarballs.length !== 1) {
+    throw new Error("npm pack did not produce exactly one tarball");
   }
-  return parsed[0].filename;
+  return tarballs[0];
 }
 
 async function smokeInstalledTerminalService(packageRoot) {

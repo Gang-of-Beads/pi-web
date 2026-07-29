@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,8 +26,19 @@ describe("production build contents", () => {
     try {
       const fixtureDist = join(fixtureRoot, "dist", "server");
       await mkdir(fixtureDist, { recursive: true });
+      const packageManifest: unknown = JSON.parse(
+        await readFile(join(repoRoot, "package.json"), "utf8"),
+      );
+      if (!isRecord(packageManifest)) throw new Error("package manifest was not an object");
+      // This fixture isolates npm's files allowlist. Repository lifecycle scripts
+      // require source/build files that intentionally are not part of the fixture.
+      delete packageManifest["scripts"];
       await Promise.all([
-        copyFile(join(repoRoot, "package.json"), join(fixtureRoot, "package.json")),
+        writeFile(
+          join(fixtureRoot, "package.json"),
+          `${JSON.stringify(packageManifest, null, 2)}\n`,
+          "utf8",
+        ),
         writeFile(join(fixtureDist, "app.js"), "export {};\n", "utf8"),
         writeFile(join(fixtureDist, "app.testSupport.js"), "export {};\n", "utf8"),
         writeFile(join(fixtureDist, "app.testSupport.js.map"), "{}\n", "utf8"),

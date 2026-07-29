@@ -1,3 +1,5 @@
+import { gunzipSync } from "node:zlib";
+import fastifyCompress from "@fastify/compress";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -18,6 +20,11 @@ let service: FakeSafeTunnelBridgeService;
 
 beforeEach(async () => {
   app = Fastify({ logger: false });
+  await app.register(fastifyCompress, {
+    globalCompression: true,
+    globalDecompression: false,
+    threshold: 1024,
+  });
   service = new FakeSafeTunnelBridgeService();
   registerSafeTunnelRoutes(app, service);
   await app.ready();
@@ -46,6 +53,28 @@ describe("registerSafeTunnelRoutes", () => {
     expect(response.statusCode).toBe(202);
     expect(response.json<SafeTunnelEnableResponse>()).toEqual(service.enableResponse);
     expect(service.enable).toHaveBeenCalledWith({});
+  });
+
+  it("returns the complete enable response when HTTP compression is negotiated", async () => {
+    const enableResponse: SafeTunnelEnableResponse = {
+      ...service.enableResponse,
+      operation: {
+        ...service.enableResponse.operation,
+        stdout: "Safe Tunnel progress\n".repeat(100),
+      },
+    };
+    service.enable.mockResolvedValueOnce(enableResponse);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/safe-tunnel/enable",
+      headers: { "accept-encoding": "gzip" },
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.headers["content-encoding"]).toBe("gzip");
+    expect(JSON.parse(gunzipSync(response.rawPayload).toString("utf8"))).toEqual(enableResponse);
   });
 
   it("accepts only explicit advanced development/self-hosting overrides", async () => {
