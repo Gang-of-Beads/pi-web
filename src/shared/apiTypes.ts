@@ -199,7 +199,8 @@ export interface SafeTunnelConfigStatus {
 }
 
 export interface SafeTunnelRuntimeStatus {
-  pidFilePath: string;
+  /** Present only for legacy connector status; PI WEB-owned supervision keeps no PID file. */
+  pidFilePath?: string;
   state: SafeTunnelRuntimeState;
   frpcConfigExists?: boolean;
   frpcConfigPath?: string;

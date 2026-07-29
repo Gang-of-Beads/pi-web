@@ -6,13 +6,12 @@ import { piWebDataDir } from "../../config.js";
 import type { SafeTunnelDesiredState } from "../../shared/apiTypes.js";
 
 export const safeTunnelStateVersion = 1;
-// The temporary connector runtime can read this compatible projection while PI WEB
-// remains the sole writer/owner. The connector ignores PI WEB's additional fields.
+// Retained source/recovery connector tooling can read this compatible projection
+// while PI WEB remains the sole writer/owner. PI WEB's runtime no longer invokes it.
 export const safeTunnelConnectorConfigSchemaVersion = 2;
 export const safeTunnelStateDirectoryMode = 0o700;
 export const safeTunnelStateFileMode = 0o600;
 export const defaultSafeTunnelLocalPiWebUrl = "http://127.0.0.1:8504";
-export const safeTunnelConnectorConfigPathEnvVar = "PI_WEB_SAFE_TUNNEL_CONFIG_PATH";
 
 interface PathApi {
   dirname(path: string): string;

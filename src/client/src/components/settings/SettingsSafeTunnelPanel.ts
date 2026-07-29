@@ -53,7 +53,7 @@ export class SettingsSafeTunnelPanel extends LitElement {
           <div>
             <span class="eyebrow">Safe Tunnel</span>
             <h2>Expose this PI WEB safely</h2>
-            <p>Register this local PI WEB with PI WEB Safe Tunnels, then start or stop the temporary tunnel runtime from here.</p>
+            <p>Register this local PI WEB with PI WEB Safe Tunnels, then let PI WEB supervise the managed tunnel process.</p>
           </div>
           <button type="button" @click=${() => { void this.loadStatus(); }} ?disabled=${this.loading || this.mutating}>Refresh</button>
         </header>
@@ -102,9 +102,9 @@ export class SettingsSafeTunnelPanel extends LitElement {
         <article>
           <strong>Runtime</strong>
           <span class=${runtimeStateClass(status.runtime.state)}>${runtimeStateLabel(status.runtime.state)}</span>
-          <small>${status.runtime.pid === undefined ? status.runtime.pidFilePath : `PID ${String(status.runtime.pid)}`}</small>
+          <small>${status.runtime.pid === undefined ? "PI WEB-owned process" : `PID ${String(status.runtime.pid)}`}</small>
           ${status.runtime.error === undefined ? null : html`<small class="bad">${status.runtime.error}</small>`}
-          ${status.runtime.logError === undefined ? null : html`<small class="bad">Connector log: ${status.runtime.logError}</small>`}
+          ${status.runtime.logError === undefined ? null : html`<small class="bad">frpc log: ${status.runtime.logError}</small>`}
         </article>
       </div>
     `;
@@ -189,7 +189,7 @@ export class SettingsSafeTunnelPanel extends LitElement {
         <dt>Runtime</dt>
         <dd>
           <span class=${`detail-value ${runtimeStateClass(runtime.state)}`}>${safeTunnelRuntimeSummary(runtime)}</span>
-          <small>PID file ${runtime.pidFilePath}</small>
+          ${runtime.pidFilePath === undefined ? null : html`<small>Legacy PID file ${runtime.pidFilePath}</small>`}
           ${runtime.frpcConfigPath === undefined ? null : html`<small>frpc config ${runtime.frpcConfigPath}${runtime.frpcConfigExists === false ? " (missing)" : ""}</small>`}
         </dd>
       </div>
@@ -205,7 +205,7 @@ export class SettingsSafeTunnelPanel extends LitElement {
       <details class="runtime-diagnostics" ?open=${runtime.state === "stale" || runtime.state === "unknown" || runtime.error !== undefined || runtime.logError !== undefined}>
         <summary>Runtime diagnostics</summary>
         ${runtime.error === undefined ? null : html`<p class="bad">${runtime.error}</p>`}
-        ${runtime.logError === undefined ? null : html`<p class="bad">Connector log: ${runtime.logError}</p>`}
+        ${runtime.logError === undefined ? null : html`<p class="bad">frpc log: ${runtime.logError}</p>`}
         ${!showLogTail ? null : html`
           ${runtime.logPath === undefined ? null : html`<p class="help muted">${runtime.logPath}</p>`}
           <pre>${runtime.logTail}</pre>
@@ -335,7 +335,7 @@ export class SettingsSafeTunnelPanel extends LitElement {
         <div class="section-heading">
           <div>
             <h3>Connector runtime</h3>
-            <p>PI WEB downloads and verifies managed frpc on first start. Process ownership remains temporarily delegated to the connector runtime.</p>
+            <p>PI WEB downloads and verifies managed frpc on first start, owns the exact child process, and restarts unexpected exits with bounded backoff.</p>
           </div>
         </div>
         <label>
@@ -358,7 +358,7 @@ export class SettingsSafeTunnelPanel extends LitElement {
     const logTail = runtime?.logTail;
     if (runtime === undefined || logTail === undefined || logTail.trim() === "") return null;
 
-    const summary = runtime.state === "running" ? "Connector output" : "Last connector output";
+    const summary = runtime.state === "running" ? "frpc output" : "Last frpc output";
     return html`
       <details>
         <summary>${summary}</summary>

@@ -191,6 +191,10 @@ describe("API parsers", () => {
     expect(parseSafeTunnelStatusResponse(status)).toEqual(status);
     expect(parseSafeTunnelStatusResponse({
       ...status,
+      runtime: { ...status.runtime, pidFilePath: undefined },
+    }).runtime.pidFilePath).toBeUndefined();
+    expect(parseSafeTunnelStatusResponse({
+      ...status,
       connector: {
         command: "/home/test/.local/share/pi-web/safe-tunnel-connector/node_modules/.bin/pi-web-tunnel",
         state: "installable",

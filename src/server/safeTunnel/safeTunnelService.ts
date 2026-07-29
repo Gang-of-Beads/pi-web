@@ -159,12 +159,17 @@ export class SafeTunnelService {
     return this.mutateState((current) => ({ ...current, desiredState: "disabled" }));
   }
 
-  async getTunnelConfig(): Promise<SafeTunnelPreparedTunnelConfig> {
+  async getTunnelConfig(
+    options: { readonly signal?: AbortSignal } = {},
+  ): Promise<SafeTunnelPreparedTunnelConfig> {
     const loaded = await this.state();
     const credentials = loaded.state.machine;
     if (credentials === undefined) throw new SafeTunnelServiceError("not_registered");
 
-    const tunnelConfig = await this.dependencies.controlPlane.getMachineTunnelConfig(credentials);
+    const tunnelConfig = await this.dependencies.controlPlane.getMachineTunnelConfig(
+      credentials,
+      options,
+    );
     if (tunnelConfig.machineId !== credentials.machineId) {
       throw new SafeTunnelServiceError("invalid_tunnel_config");
     }

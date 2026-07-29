@@ -85,6 +85,12 @@ describe("registerSafeTunnelRoutes", () => {
     expect(stopResponse.json<SafeTunnelStopResponse>()).toEqual(service.stopResponse);
   });
 
+  it("shuts down direct supervision when Fastify closes", async () => {
+    await app.close();
+
+    expect(service.shutdown).toHaveBeenCalledOnce();
+  });
+
   it("maps bridge errors to their HTTP status", async () => {
     service.start.mockRejectedValueOnce(new SafeTunnelBridgeError("Already running", 409));
 
@@ -131,6 +137,7 @@ class FakeSafeTunnelBridgeService implements SafeTunnelBridgeService {
 
   readonly login = vi.fn<(request: SafeTunnelLoginRequest) => Promise<SafeTunnelLoginResponse>>(() => Promise.resolve(this.loginResponse));
   readonly operation = vi.fn<(operationId: string) => SafeTunnelOperationResponse | undefined>((operationId) => (operationId === "op_1" ? this.operationResponse : undefined));
+  readonly shutdown = vi.fn<() => Promise<void>>(() => Promise.resolve());
   readonly start = vi.fn<(request: SafeTunnelStartRequest) => Promise<SafeTunnelStartResponse>>(() => Promise.resolve(this.startResponse));
   readonly status = vi.fn<() => Promise<SafeTunnelStatusResponse>>(() => Promise.resolve(this.statusResponse));
   readonly stop = vi.fn<() => Promise<SafeTunnelStopResponse>>(() => Promise.resolve(this.stopResponse));

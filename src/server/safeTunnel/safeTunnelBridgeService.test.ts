@@ -1,73 +1,47 @@
-import { existsSync, readFileSync } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import type {
-  SafeTunnelManagedFrpc,
-  SafeTunnelManagedFrpcProvider,
-} from "./safeTunnelFrpcManager.js";
-import type { SafeTunnelLoginInput, SafeTunnelLoginObserver, SafeTunnelLoginResult } from "./safeTunnelService.js";
+  SafeTunnelCommandOutput,
+  SafeTunnelRuntimeStatus,
+} from "../../shared/apiTypes.js";
+import type {
+  SafeTunnelLoginInput,
+  SafeTunnelLoginObserver,
+  SafeTunnelLoginResult,
+  SafeTunnelPreparedTunnelConfig,
+} from "./safeTunnelService.js";
 import {
   createDefaultSafeTunnelState,
-  safeTunnelConnectorConfigPathEnvVar,
   type LoadedSafeTunnelState,
   type SafeTunnelPersistedState,
 } from "./safeTunnelState.js";
+import type {
+  SafeTunnelFrpcRuntime,
+  SafeTunnelFrpcStartInput,
+  SafeTunnelFrpcStartResult,
+} from "./safeTunnelFrpcSupervisor.js";
 import {
-  createNodeSafeTunnelCommandRunner,
   DefaultSafeTunnelBridgeService,
   type SafeTunnelApplicationService,
-  type SafeTunnelCommandRunner,
-  type SafeTunnelCommandRunOptions,
-  type SafeTunnelCommandRunResult,
 } from "./safeTunnelBridgeService.js";
 
-let tempDirectory: string;
-let runner: FakeCommandRunner;
-let application: FakeSafeTunnelApplicationService;
-let managedFrpc: FakeManagedFrpcProvider;
-let service: DefaultSafeTunnelBridgeService;
-let nowIndex: number;
-
-beforeEach(async () => {
-  tempDirectory = await mkdtemp(join(tmpdir(), "pi-web-safe-tunnel-bridge-"));
-  const statePath = join(tempDirectory, "safe-tunnel", "config.json");
-  runner = new FakeCommandRunner();
-  runner.statusJson = connectorStatusJson(statePath);
-  application = new FakeSafeTunnelApplicationService(statePath);
-  managedFrpc = new FakeManagedFrpcProvider(join(tempDirectory, "safe-tunnel", "frpc", "managed-frpc"));
-  nowIndex = 0;
-  service = new DefaultSafeTunnelBridgeService({
-    commandRunner: runner,
-    connectorCommandEnvironment: { [safeTunnelConnectorConfigPathEnvVar]: statePath },
-    cwd: process.cwd(),
-    env: { PI_WEB_SAFE_TUNNEL_CONNECTOR_COMMAND: "/usr/local/bin/pi-web-tunnel" },
-    fileExists: existsSync,
-    homeDirectory: tempDirectory,
-    managedFrpc,
-    now: () => new Date(`2026-07-29T00:00:0${(nowIndex += 1).toString()}.000Z`),
-    platform: "linux",
-    safeTunnel: application,
-  });
-});
-
-afterEach(async () => {
-  await rm(tempDirectory, { recursive: true, force: true });
-});
-
 describe("DefaultSafeTunnelBridgeService", () => {
-  it("maps PI WEB-owned intent and redacted credentials into the stable status contract", async () => {
-    application.loaded = registeredState({ desiredState: "enabled", frpcPath: "/opt/frpc" });
-    runner.statusJson = connectorStatusJson(application.statePath, {
-      runtime: { state: "running", pid: 4242, frpcConfigExists: true },
+  it("maps PI WEB-owned intent, credentials, and direct runtime into status", async () => {
+    const fixture = createFixture();
+    fixture.application.loaded = registeredState({
+      desiredState: "enabled",
+      frpcPath: "/opt/frpc",
     });
+    fixture.runtime.statusValue = runtimeStatus({ state: "running", pid: 4242 });
 
-    const status = await service.status();
+    const status = await fixture.service.status();
 
+    expect(status.connector).toEqual({
+      command: "PI WEB built-in frpc supervisor",
+      state: "available",
+    });
     expect(status.desiredState).toBe("enabled");
     expect(status.config).toEqual({
-      path: application.statePath,
+      path: fixture.application.statePath,
       exists: true,
       state: "registered",
       localPiWebUrl: "http://127.0.0.1:8504",
@@ -81,30 +55,32 @@ describe("DefaultSafeTunnelBridgeService", () => {
       },
     });
     expect(status.runtime).toMatchObject({ state: "running", pid: 4242 });
+    expect(status.runtime.pidFilePath).toBeUndefined();
     expect(JSON.stringify(status)).not.toContain("piwt_mtok_v1_private");
-    expect(runner.runOptions[0]?.environment).toEqual({
-      [safeTunnelConnectorConfigPathEnvVar]: application.statePath,
-    });
   });
 
-  it("reports invalid PI WEB state without exposing a credential-bearing error cause", async () => {
-    application.stateError = new Error("Safe Tunnel desiredState must be enabled or disabled.");
+  it("reports invalid PI WEB state without exposing credentials", async () => {
+    const fixture = createFixture();
+    fixture.application.stateError = new Error(
+      "Safe Tunnel desiredState must be enabled or disabled.",
+    );
 
-    const status = await service.status();
+    const status = await fixture.service.status();
 
     expect(status.desiredState).toBe("disabled");
     expect(status.config).toMatchObject({
-      path: application.statePath,
+      path: fixture.application.statePath,
       state: "invalid",
       error: "Unable to read PI WEB Safe Tunnel state: Safe Tunnel desiredState must be enabled or disabled.",
     });
   });
 
-  it("runs login inside PI WEB, tracks approval directly, and never invokes connector login", async () => {
-    const loginDeferred = createDeferred<SafeTunnelLoginResult>();
-    application.loginResult = loginDeferred.promise;
+  it("runs login inside PI WEB and never invokes the frpc runtime", async () => {
+    const fixture = createFixture();
+    const login = createDeferred<SafeTunnelLoginResult>();
+    fixture.application.loginResult = login.promise;
 
-    const response = await service.login({
+    const response = await fixture.service.login({
       controlApiUrl: "https://control.example.test",
       machineName: "Dev Box",
       machineSlug: "dev-box",
@@ -112,7 +88,7 @@ describe("DefaultSafeTunnelBridgeService", () => {
       frpcPath: "/opt/frpc",
     });
 
-    expect(application.loginInput).toEqual({
+    expect(fixture.application.loginInput).toEqual({
       controlApiBaseUrl: "https://control.example.test",
       machineName: "Dev Box",
       machineSlug: "dev-box",
@@ -120,9 +96,9 @@ describe("DefaultSafeTunnelBridgeService", () => {
       frpcPath: "/opt/frpc",
     });
     expect(response.operation.status).toBe("running");
-    expect(runner.runCalls.every(({ args }) => args[0] === "status")).toBe(true);
+    expect(fixture.runtime.startCalls).toEqual([]);
 
-    application.loginObserver?.onDeviceAuthorization?.({
+    fixture.application.loginObserver?.onDeviceAuthorization?.({
       deviceCode: "private-device-code",
       userCode: "ABCD-EFGH",
       verificationUri: "https://control.example.test/device",
@@ -130,162 +106,198 @@ describe("DefaultSafeTunnelBridgeService", () => {
       expiresAt: "2026-07-29T00:10:00.000Z",
       intervalSeconds: 5,
     });
-    expect(service.operation(response.operation.id)).toMatchObject({
+    expect(fixture.service.operation(response.operation.id)).toMatchObject({
       userCode: "ABCD-EFGH",
       verificationUriComplete: "https://control.example.test/device?user_code=ABCD-EFGH",
     });
-    expect(JSON.stringify(service.operation(response.operation.id))).not.toContain("private-device-code");
+    expect(JSON.stringify(fixture.service.operation(response.operation.id)))
+      .not.toContain("private-device-code");
 
-    loginDeferred.resolve(loginResult());
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(service.operation(response.operation.id)).toMatchObject({
+    login.resolve(loginResult());
+    await flushAsyncWork();
+    expect(fixture.service.operation(response.operation.id)).toMatchObject({
       status: "succeeded",
       exitCode: 0,
       publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
     });
   });
 
-  it("persists enabled intent before using the temporary connector runtime", async () => {
-    application.loaded = registeredState({ frpcPath: "/opt/frpc" });
-    const startDeferred = createDeferred<SafeTunnelCommandRunResult>();
-    runner.startDeferred = startDeferred;
-    runner.startProcessId = 1234;
+  it("persists enabled intent before starting direct supervision", async () => {
+    const fixture = createFixture();
+    fixture.application.loaded = registeredState({ frpcPath: "/persisted/frpc" });
+    const started = createDeferred<SafeTunnelFrpcStartResult>();
+    fixture.runtime.startResult = started.promise;
 
-    const response = await service.start({ frpcPath: "/advanced/frpc" });
+    const response = await fixture.service.start({ frpcPath: "/advanced/frpc" });
 
-    expect(application.enableCalls).toEqual(["/advanced/frpc"]);
-    expect(application.loaded.state.desiredState).toBe("enabled");
-    expect(managedFrpc.calls).toBe(0);
-    expect(runner.runCalls.find(({ args }) => args[0] === "start")).toEqual({
-      command: "/usr/local/bin/pi-web-tunnel",
-      args: ["start", "--frpc-path", "/advanced/frpc"],
+    expect(fixture.order.slice(0, 2)).toEqual(["enable", "runtime.start"]);
+    expect(fixture.application.enableCalls).toEqual(["/advanced/frpc"]);
+    expect(fixture.runtime.startCalls).toEqual([{
+      advancedFrpcPath: "/advanced/frpc",
+    }]);
+    expect(response.operation.status).toBe("running");
+    expect(response.status.desiredState).toBe("enabled");
+
+    started.resolve({
+      output: "Using an advanced frpc path override.\nStarting PI WEB-owned Safe Tunnel frpc supervision.\n",
+      pid: 1234,
+      publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
     });
-    expect(response).toMatchObject({ accepted: true, connectorProcessId: 1234 });
-    const startOptions = runner.startOptions;
-    expect(startOptions?.environment).toEqual({
-      [safeTunnelConnectorConfigPathEnvVar]: application.statePath,
-    });
-    expect(startOptions?.logPath).toBe(join(tempDirectory, "safe-tunnel", "connector.log"));
-    expect(startOptions?.logHeader).not.toContain("/advanced/frpc");
+    await flushAsyncWork();
 
-    startOptions?.onStderr?.("\u001B[31mfrpc failed\u001B[0m\n");
-    expect(service.operation(response.operation.id)?.logTail).toContain("frpc failed");
-    expect(service.operation(response.operation.id)?.logTail).not.toContain("\u001B");
-
-    startDeferred.resolve(commandResult({ exitCode: 1, stderr: "frpc failed\n" }));
-    await Promise.resolve();
-    expect(service.operation(response.operation.id)).toMatchObject({
-      status: "failed",
-      error: "Safe Tunnel start exited with code 1.",
+    const operation = fixture.service.operation(response.operation.id);
+    expect(operation).toMatchObject({
+      connectorProcessId: 1234,
+      exitCode: 0,
+      publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
+      status: "succeeded",
     });
+    expect(JSON.stringify(operation)).not.toContain("/advanced/frpc");
   });
 
-  it("acquires managed frpc by default and exposes only redacted version diagnostics", async () => {
-    application.loaded = registeredState();
-    const startDeferred = createDeferred<SafeTunnelCommandRunResult>();
-    runner.startDeferred = startDeferred;
-    managedFrpc.result = {
-      path: join(tempDirectory, "private-user", "frpc"),
-      version: "0.68.0",
-      desiredVersion: "0.69.1",
-      platform: "linux",
-      architecture: "arm64",
-      source: "fallback",
-      updateErrorCode: "download_failed",
-    };
+  it("uses a persisted advanced path and otherwise selects managed frpc in the runtime", async () => {
+    const persisted = createFixture();
+    persisted.application.loaded = registeredState({ frpcPath: "/persisted/frpc" });
+    await persisted.service.start({});
+    expect(persisted.runtime.startCalls).toEqual([{
+      advancedFrpcPath: "/persisted/frpc",
+    }]);
 
-    const response = await service.start({});
-
-    expect(application.enableCalls).toEqual([undefined]);
-    expect(application.loaded.state.desiredState).toBe("enabled");
-    expect(managedFrpc.calls).toBe(1);
-    expect(runner.runCalls.find(({ args }) => args[0] === "start")).toEqual({
-      command: "/usr/local/bin/pi-web-tunnel",
-      args: ["start", "--frpc-path", managedFrpc.result.path],
-    });
-    expect(response.operation.stdout).toContain(
-      "Managed frpc update was unavailable (download_failed); using verified fallback v0.68.0 for linux-arm64.",
-    );
-    expect(JSON.stringify(response.operation)).not.toContain(managedFrpc.result.path);
-    expect(JSON.stringify(response.operation)).not.toContain("github.com");
-    expect(response.operation.logTail).not.toContain(managedFrpc.result.path);
-
-    startDeferred.resolve(commandResult({ stdout: "Started\n" }));
-    await Promise.resolve();
-    expect(service.operation(response.operation.id)?.stdout).toContain("verified fallback v0.68.0");
+    const managed = createFixture();
+    managed.application.loaded = registeredState();
+    await managed.service.start({});
+    expect(managed.runtime.startCalls).toEqual([{}]);
   });
 
-  it("persists disabled intent before delegating the temporary runtime stop", async () => {
-    application.loaded = registeredState({ desiredState: "enabled" });
-    runner.stopResult = commandResult({ stdout: "Stopped\n" });
-
-    const response = await service.stop();
-
-    expect(application.disableCalls).toBe(1);
-    expect(application.loaded.state.desiredState).toBe("disabled");
-    expect(runner.runCalls.find(({ args }) => args[0] === "stop")).toEqual({
-      command: "/usr/local/bin/pi-web-tunnel",
-      args: ["stop"],
+  it("persists disabled intent before stopping the owned process", async () => {
+    const fixture = createFixture();
+    fixture.application.loaded = registeredState({ desiredState: "enabled" });
+    fixture.runtime.stopResult = Promise.resolve({
+      exitCode: 0,
+      stdout: "PI WEB stopped its owned Safe Tunnel frpc process.\n",
+      stderr: "",
     });
-    expect(response.command).toEqual({ exitCode: 0, stdout: "Stopped\n", stderr: "" });
+
+    const response = await fixture.service.stop();
+
+    expect(fixture.order.slice(0, 2)).toEqual(["disable", "runtime.stop"]);
+    expect(fixture.application.loaded.state.desiredState).toBe("disabled");
+    expect(response.command.stdout).toContain("owned Safe Tunnel frpc process");
   });
 
-  it("truncates temporary runtime logs and applies private file modes", async () => {
-    const nodeRunner = createNodeSafeTunnelCommandRunner();
-    const logPath = join(tempDirectory, "safe-tunnel", "connector.log");
-    await mkdir(dirnameOf(logPath), { recursive: true });
-    await writeFile(logPath, "old output\n");
+  it("still stops the owned child when disabled intent cannot be persisted", async () => {
+    const fixture = createFixture();
+    fixture.application.loaded = registeredState({ desiredState: "enabled" });
+    fixture.application.disableError = new Error("state write failed");
 
-    const result = await nodeRunner.run({
-      command: process.execPath,
-      args: ["-e", "console.log('stdout'); console.error('stderr');"],
-    }, {
-      logHeader: "header\n",
-      logPath,
-      maxOutputCharacters: 24_000,
-      timeoutMs: 15_000,
-    });
+    await expect(fixture.service.stop()).rejects.toThrow("state write failed");
 
-    const contents = await readFileWhen(logPath, (value) => value.includes("stdout") && value.includes("stderr"));
-    expect(result).toMatchObject({ exitCode: 0, timedOut: false });
-    expect(contents).toContain("header\n");
-    expect(contents).not.toContain("old output");
+    expect(fixture.order).toEqual(["disable", "runtime.stop"]);
+  });
+
+  it("shuts down the process runtime without erasing persisted enabled intent", async () => {
+    const fixture = createFixture();
+    fixture.application.loaded = registeredState({ desiredState: "enabled" });
+
+    await fixture.service.shutdown();
+
+    expect(fixture.runtime.shutdownCalls).toBe(1);
+    expect(fixture.application.disableCalls).toBe(0);
+    expect(fixture.application.loaded.state.desiredState).toBe("enabled");
   });
 });
 
-class FakeManagedFrpcProvider implements SafeTunnelManagedFrpcProvider {
-  calls = 0;
-  result: SafeTunnelManagedFrpc;
+interface Fixture {
+  readonly application: FakeSafeTunnelApplicationService;
+  readonly order: string[];
+  readonly runtime: FakeFrpcRuntime;
+  readonly service: DefaultSafeTunnelBridgeService;
+}
 
-  constructor(path: string) {
-    this.result = {
-      path,
-      version: "0.69.1",
-      desiredVersion: "0.69.1",
-      platform: "linux",
-      architecture: "arm64",
-      source: "installed",
-    };
+function createFixture(): Fixture {
+  const order: string[] = [];
+  const application = new FakeSafeTunnelApplicationService(
+    "/data/pi-web/safe-tunnel/config.json",
+    order,
+  );
+  const runtime = new FakeFrpcRuntime(order);
+  let nowIndex = 0;
+  return {
+    application,
+    order,
+    runtime,
+    service: new DefaultSafeTunnelBridgeService({
+      fileExists: () => false,
+      now: () => new Date(`2026-07-29T00:00:0${(nowIndex += 1).toString()}.000Z`),
+      runtime,
+      safeTunnel: application,
+    }),
+  };
+}
+
+class FakeFrpcRuntime implements SafeTunnelFrpcRuntime {
+  shutdownCalls = 0;
+  readonly startCalls: SafeTunnelFrpcStartInput[] = [];
+  startResult: Promise<SafeTunnelFrpcStartResult> = Promise.resolve({
+    output: "Using verified PI WEB-managed frpc v0.69.1 for linux-arm64.\n",
+    pid: 1234,
+    publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
+  });
+  statusValue: SafeTunnelRuntimeStatus = runtimeStatus();
+  stopResult: Promise<SafeTunnelCommandOutput> = Promise.resolve({
+    exitCode: 0,
+    stdout: "No running PI WEB Safe Tunnel frpc process was found.\n",
+    stderr: "",
+  });
+
+  constructor(private readonly order: string[]) {}
+
+  shutdown(): Promise<void> {
+    this.shutdownCalls += 1;
+    return Promise.resolve();
   }
 
-  ensureManagedFrpc(): Promise<SafeTunnelManagedFrpc> {
-    this.calls += 1;
-    return Promise.resolve(this.result);
+  start(input: SafeTunnelFrpcStartInput): Promise<SafeTunnelFrpcStartResult> {
+    this.order.push("runtime.start");
+    this.startCalls.push(input);
+    this.statusValue = runtimeStatus({ state: "unknown" });
+    return this.startResult.then((result) => {
+      this.statusValue = runtimeStatus({
+        state: "running",
+        ...(result.pid === undefined ? {} : { pid: result.pid }),
+      });
+      return result;
+    });
+  }
+
+  status(): Promise<SafeTunnelRuntimeStatus> {
+    return Promise.resolve(this.statusValue);
+  }
+
+  stop(): Promise<SafeTunnelCommandOutput> {
+    this.order.push("runtime.stop");
+    this.statusValue = runtimeStatus();
+    return this.stopResult;
   }
 }
 
 class FakeSafeTunnelApplicationService implements SafeTunnelApplicationService {
   disableCalls = 0;
-  enableCalls: (string | undefined)[] = [];
-  loaded: LoadedSafeTunnelState = { exists: false, state: createDefaultSafeTunnelState() };
+  disableError: Error | undefined;
+  readonly enableCalls: (string | undefined)[] = [];
+  loaded: LoadedSafeTunnelState = {
+    exists: false,
+    state: createDefaultSafeTunnelState(),
+  };
   loginInput: SafeTunnelLoginInput | undefined;
   loginObserver: SafeTunnelLoginObserver | undefined;
   loginResult: Promise<SafeTunnelLoginResult> = Promise.resolve(loginResult());
   stateError: Error | undefined;
 
-  constructor(readonly statePath: string) {}
+  constructor(
+    readonly statePath: string,
+    private readonly order: string[],
+  ) {}
 
   state(): Promise<LoadedSafeTunnelState> {
     return this.stateError === undefined
@@ -293,13 +305,17 @@ class FakeSafeTunnelApplicationService implements SafeTunnelApplicationService {
       : Promise.reject(this.stateError);
   }
 
-  login(input: SafeTunnelLoginInput, observer?: SafeTunnelLoginObserver): Promise<SafeTunnelLoginResult> {
+  login(
+    input: SafeTunnelLoginInput,
+    observer?: SafeTunnelLoginObserver,
+  ): Promise<SafeTunnelLoginResult> {
     this.loginInput = input;
     this.loginObserver = observer;
     return this.loginResult;
   }
 
   enable(frpcPath?: string): Promise<SafeTunnelPersistedState> {
+    this.order.push("enable");
     this.enableCalls.push(frpcPath);
     this.loaded = {
       exists: true,
@@ -313,40 +329,38 @@ class FakeSafeTunnelApplicationService implements SafeTunnelApplicationService {
   }
 
   disable(): Promise<SafeTunnelPersistedState> {
+    this.order.push("disable");
     this.disableCalls += 1;
-    this.loaded = { exists: true, state: { ...this.loaded.state, desiredState: "disabled" } };
+    if (this.disableError !== undefined) return Promise.reject(this.disableError);
+    this.loaded = {
+      exists: true,
+      state: { ...this.loaded.state, desiredState: "disabled" },
+    };
     return Promise.resolve(this.loaded.state);
   }
-}
 
-class FakeCommandRunner implements SafeTunnelCommandRunner {
-  readonly runCalls: { readonly args: readonly string[]; readonly command: string }[] = [];
-  readonly runOptions: SafeTunnelCommandRunOptions[] = [];
-  startDeferred: Deferred<SafeTunnelCommandRunResult> | undefined;
-  startOptions: SafeTunnelCommandRunOptions | undefined;
-  startProcessId: number | undefined;
-  statusJson = "";
-  stopResult = commandResult({});
-
-  run(
-    invocation: { readonly args: readonly string[]; readonly command: string },
-    options: SafeTunnelCommandRunOptions,
-  ): Promise<SafeTunnelCommandRunResult> {
-    this.runCalls.push(invocation);
-    this.runOptions.push(options);
-    const kind = invocation.args[0];
-    if (kind === "status") return Promise.resolve(commandResult({ stdout: this.statusJson }));
-    if (kind === "start") {
-      this.startOptions = options;
-      if (this.startProcessId !== undefined) options.onProcessId?.(this.startProcessId);
-      return this.startDeferred?.promise ?? Promise.resolve(commandResult({}));
-    }
-    if (kind === "stop") return Promise.resolve(this.stopResult);
-    return Promise.resolve(commandResult({}));
+  getTunnelConfig(): Promise<SafeTunnelPreparedTunnelConfig> {
+    return Promise.resolve(preparedConfig());
   }
 }
 
-function registeredState(overrides: Partial<SafeTunnelPersistedState> = {}): LoadedSafeTunnelState {
+function runtimeStatus(
+  overrides: Partial<SafeTunnelRuntimeStatus> = {},
+): SafeTunnelRuntimeStatus {
+  return {
+    state: "stopped",
+    frpcConfigPath: "/data/pi-web/safe-tunnel/frpc.toml",
+    frpcConfigExists: false,
+    logPath: "/data/pi-web/safe-tunnel/frpc.log",
+    logExists: false,
+    logTailMaxCharacters: 12_000,
+    ...overrides,
+  };
+}
+
+function registeredState(
+  overrides: Partial<SafeTunnelPersistedState> = {},
+): LoadedSafeTunnelState {
   return {
     exists: true,
     state: {
@@ -367,7 +381,12 @@ function loginResult(): SafeTunnelLoginResult {
   return {
     machineCredentials: registeredState().state.machine ?? missingMachineCredentials(),
     registeredMachine: {
-      machine: { id: "machine_123", accountId: "account_123", name: "Dev Box", slug: "dev-box" },
+      machine: {
+        id: "machine_123",
+        accountId: "account_123",
+        name: "Dev Box",
+        slug: "dev-box",
+      },
       publicHostname: "dev-box.ns.tunnels.pi-web.dev",
       publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
       machineToken: "piwt_mtok_v1_private",
@@ -375,35 +394,25 @@ function loginResult(): SafeTunnelLoginResult {
   };
 }
 
+function preparedConfig(): SafeTunnelPreparedTunnelConfig {
+  return {
+    machineId: "machine_123",
+    publicHostname: "dev-box.ns.tunnels.pi-web.dev",
+    publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
+    localPiWebUrl: "http://127.0.0.1:8504",
+    proxyName: "account-machine",
+    frpcConfigToml: "[[proxies]]\n",
+  };
+}
+
 function missingMachineCredentials(): never {
   throw new Error("Registered fixture is missing machine credentials");
 }
 
-function connectorStatusJson(
-  statePath: string,
-  options: { readonly runtime?: Record<string, unknown> } = {},
-): string {
-  const directory = dirnameOf(statePath);
-  return JSON.stringify({
-    statusVersion: 1,
-    config: { path: statePath, exists: true, state: "registered" },
-    runtime: {
-      pidFilePath: join(directory, "connector.pid"),
-      frpcConfigPath: join(directory, "frpc.toml"),
-      frpcConfigExists: false,
-      state: "stopped",
-      ...options.runtime,
-    },
-    log: {
-      path: join(directory, "connector.log"),
-      exists: false,
-      tailMaxCharacters: 12_000,
-    },
-  });
-}
-
-function commandResult(overrides: Partial<SafeTunnelCommandRunResult>): SafeTunnelCommandRunResult {
-  return { exitCode: 0, stdout: "", stderr: "", timedOut: false, ...overrides };
+async function flushAsyncWork(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
 }
 
 interface Deferred<T> {
@@ -415,21 +424,4 @@ function createDeferred<T>(): Deferred<T> {
   let resolve: (value: T) => void = () => undefined;
   const promise = new Promise<T>((resolvePromise) => { resolve = resolvePromise; });
   return { promise, resolve };
-}
-
-function dirnameOf(path: string): string {
-  const separator = path.lastIndexOf("/");
-  return separator < 0 ? "." : path.slice(0, separator);
-}
-
-async function readFileWhen(path: string, predicate: (contents: string) => boolean): Promise<string> {
-  let contents = "";
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    if (existsSync(path)) {
-      contents = readFileSync(path, "utf8");
-      if (predicate(contents)) return contents;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-  return contents;
 }

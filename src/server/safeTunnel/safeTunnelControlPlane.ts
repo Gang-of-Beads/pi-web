@@ -94,6 +94,7 @@ export interface SafeTunnelControlPlane {
   }): Promise<SafeTunnelRegisteredMachine>;
   getMachineTunnelConfig(
     credentials: SafeTunnelMachineCredentials,
+    options?: { readonly signal?: AbortSignal },
   ): Promise<SafeTunnelMachineTunnelConfig>;
 }
 
@@ -197,6 +198,7 @@ export class HttpSafeTunnelControlPlane implements SafeTunnelControlPlane {
 
   async getMachineTunnelConfig(
     credentials: SafeTunnelMachineCredentials,
+    options: { readonly signal?: AbortSignal } = {},
   ): Promise<SafeTunnelMachineTunnelConfig> {
     const operation = "get_tunnel_config";
     const response = await this.request(
@@ -211,6 +213,7 @@ export class HttpSafeTunnelControlPlane implements SafeTunnelControlPlane {
           authorization: `Bearer ${credentials.machineToken}`,
         },
         redirect: "error",
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
       },
       operation,
     );

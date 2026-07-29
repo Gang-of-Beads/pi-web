@@ -246,6 +246,7 @@ function parseSafeTunnelConfigMachine(value: unknown): NonNullable<SafeTunnelCon
 
 function parseSafeTunnelRuntimeStatus(value: unknown): SafeTunnelRuntimeStatus {
   const record = requireRecord(value);
+  const pidFilePath = optionalString(record, "pidFilePath");
   const frpcConfigExists = parseOptionalBoolean(record["frpcConfigExists"], "frpcConfigExists");
   const frpcConfigPath = optionalString(record, "frpcConfigPath");
   const pid = optionalNumber(record, "pid");
@@ -256,7 +257,7 @@ function parseSafeTunnelRuntimeStatus(value: unknown): SafeTunnelRuntimeStatus {
   const logTail = optionalString(record, "logTail");
   const logTailMaxCharacters = optionalNumber(record, "logTailMaxCharacters");
   return {
-    pidFilePath: requireString(record, "pidFilePath"),
+    ...(pidFilePath === undefined ? {} : { pidFilePath }),
     state: requireSafeTunnelRuntimeState(record, "state"),
     ...(frpcConfigExists === undefined ? {} : { frpcConfigExists }),
     ...(frpcConfigPath === undefined ? {} : { frpcConfigPath }),

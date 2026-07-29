@@ -1,27 +1,29 @@
-# Safe Tunnel connector runtime compatibility
+# Safe Tunnel connector package compatibility
 
-Status: temporary compatibility path during PI WEB-owned Safe Tunnel productization.
+Status: retained source/recovery code; not used by PI WEB's browser runtime.
 
-PI WEB now owns device login, machine registration, private persisted credentials, desired enabled/disabled intent, the Control API tunnel-configuration boundary, and pinned/verified managed `frpc` acquisition. The `pi-web-tunnel` workspace package remains only to preserve the existing start/stop process path until direct process supervision is implemented inside PI WEB.
+PI WEB now owns device login, machine registration, private persisted credentials, desired enabled/disabled intent, normalized tunnel configuration, pinned/verified managed `frpc`, and the exact supervised child process. Browser start/status/stop routes no longer discover, npm-install, or execute `pi-web-tunnel`.
 
-## Current behavior
+## Current PI WEB runtime
 
-When the existing browser start route is used, PI WEB:
+When the browser start route is used, PI WEB:
 
-1. verifies that PI WEB-owned machine state exists;
-2. persists desired state as `enabled`;
+1. verifies that PI WEB-owned machine state exists and persists desired state as `enabled`;
+2. fetches normalized tunnel config through its application-owned Control API boundary;
 3. uses the advanced `frpc` path when configured, otherwise selects/downloads/extracts and SHA-256 verifies the pinned managed artifact;
-4. passes `$PI_WEB_DATA_DIR/safe-tunnel/config.json` to the compatibility connector through an internal absolute-path environment override and supplies the verified executable path;
-5. starts the foreground connector command as a tracked child;
-6. captures capped stdout/stderr and a private per-launch log; and
-7. reports final exit status if the connector or `frpc` exits.
+4. atomically writes private generated TOML beneath `$PI_WEB_DATA_DIR/safe-tunnel/`;
+5. launches `frpc` directly and retains the exact child handle;
+6. restarts unexpected failures with bounded exponential backoff that resets only after stable operation; and
+7. cancels timers/listeners, gracefully stops that same handle, and removes generated TOML on disable or web/API shutdown.
 
-Disable persists `disabled` before delegating to the connector's current PID-file stop command. Credentials stay in PI WEB's private state file and are never placed in command arguments, service definitions, browser responses, or ordinary logs.
+No PID file participates in PI WEB-owned status or stop. Shutdown stops the process without changing enabled intent; startup reconciliation and heartbeat/revocation handling remain the next productization slice.
 
-The compatibility connector still fetches tunnel configuration itself at start. PI WEB's normalized, tested tunnel-configuration operation is now available for the direct supervisor leg, which will remove that duplicate transport path.
+## Retained legacy package
+
+The `packages/tunnel-connector`, `packages/tunnel-frp-engine`, source wrapper, command-discovery/npm-installer module, and their old PID-file CLI behavior remain temporarily for development/recovery and historical tests. This leg deliberately does not remove that package shape. The dedicated cleanup leg will remove it after lifecycle reconciliation is complete.
+
+Legacy connector environment variables are ignored by PI WEB's built-in runtime. Running the source wrapper directly can still use its own legacy config and PID-file behavior, but that is not the normal product path and must not own the PI WEB browser runtime's state.
 
 ## No service-install plan
 
-Do **not** install a separate systemd user unit, LaunchAgent, Windows service, npm package command, or other process manager for Safe Tunnel. The former service-install design is superseded by the product requirement that the main PI WEB process own startup reconciliation, child lifecycle, restart backoff, heartbeat, disable, and shutdown regardless of whether PI WEB itself runs under systemd, Docker, macOS, Windows, or a manual shell.
-
-The temporary connector package, npm auto-installer, PID-file signaling, and this compatibility document will be removed after PI WEB's direct supervisor is complete. The managed binary remains PI WEB-owned.
+Do **not** install a separate systemd user unit, LaunchAgent, Windows service, npm package command, or other process manager for Safe Tunnel. The main PI WEB web/API process owns child supervision whether PI WEB itself runs under systemd, Docker, macOS, Windows, or a manual shell. Fastify shutdown and web-process `SIGINT`/`SIGTERM` handling stop the owned child; no `sessiond` code is involved.

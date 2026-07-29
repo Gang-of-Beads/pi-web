@@ -144,12 +144,13 @@ describe("HttpSafeTunnelControlPlane", () => {
       },
     })]);
     const controlPlane = new HttpSafeTunnelControlPlane({ fetch: transport.fetch });
+    const controller = new AbortController();
 
     await expect(controlPlane.getMachineTunnelConfig({
       controlApiBaseUrl: "https://control.example.test",
       machineId: "machine_123",
       machineToken: "piwt_mtok_v1_private",
-    })).resolves.toEqual({
+    }, { signal: controller.signal })).resolves.toEqual({
       machineId: "machine_123",
       publicHostname: "dev-box.ns-abc123.tunnels.pi-web.dev",
       publicUrl: "https://dev-box.ns-abc123.tunnels.pi-web.dev",
@@ -163,6 +164,7 @@ describe("HttpSafeTunnelControlPlane", () => {
         method: "GET",
         redirect: "error",
         headers: { authorization: "Bearer piwt_mtok_v1_private" },
+        signal: controller.signal,
       },
     });
   });
