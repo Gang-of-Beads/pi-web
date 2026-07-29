@@ -3,6 +3,10 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type {
+  SafeTunnelManagedFrpc,
+  SafeTunnelManagedFrpcProvider,
+} from "./safeTunnelFrpcManager.js";
 import type { SafeTunnelLoginInput, SafeTunnelLoginObserver, SafeTunnelLoginResult } from "./safeTunnelService.js";
 import {
   createDefaultSafeTunnelState,
@@ -22,6 +26,7 @@ import {
 let tempDirectory: string;
 let runner: FakeCommandRunner;
 let application: FakeSafeTunnelApplicationService;
+let managedFrpc: FakeManagedFrpcProvider;
 let service: DefaultSafeTunnelBridgeService;
 let nowIndex: number;
 
@@ -31,6 +36,7 @@ beforeEach(async () => {
   runner = new FakeCommandRunner();
   runner.statusJson = connectorStatusJson(statePath);
   application = new FakeSafeTunnelApplicationService(statePath);
+  managedFrpc = new FakeManagedFrpcProvider(join(tempDirectory, "safe-tunnel", "frpc", "managed-frpc"));
   nowIndex = 0;
   service = new DefaultSafeTunnelBridgeService({
     commandRunner: runner,
@@ -39,6 +45,7 @@ beforeEach(async () => {
     env: { PI_WEB_SAFE_TUNNEL_CONNECTOR_COMMAND: "/usr/local/bin/pi-web-tunnel" },
     fileExists: existsSync,
     homeDirectory: tempDirectory,
+    managedFrpc,
     now: () => new Date(`2026-07-29T00:00:0${(nowIndex += 1).toString()}.000Z`),
     platform: "linux",
     safeTunnel: application,
@@ -150,6 +157,7 @@ describe("DefaultSafeTunnelBridgeService", () => {
 
     expect(application.enableCalls).toEqual(["/advanced/frpc"]);
     expect(application.loaded.state.desiredState).toBe("enabled");
+    expect(managedFrpc.calls).toBe(0);
     expect(runner.runCalls.find(({ args }) => args[0] === "start")).toEqual({
       command: "/usr/local/bin/pi-web-tunnel",
       args: ["start", "--frpc-path", "/advanced/frpc"],
@@ -160,6 +168,7 @@ describe("DefaultSafeTunnelBridgeService", () => {
       [safeTunnelConnectorConfigPathEnvVar]: application.statePath,
     });
     expect(startOptions?.logPath).toBe(join(tempDirectory, "safe-tunnel", "connector.log"));
+    expect(startOptions?.logHeader).not.toContain("/advanced/frpc");
 
     startOptions?.onStderr?.("\u001B[31mfrpc failed\u001B[0m\n");
     expect(service.operation(response.operation.id)?.logTail).toContain("frpc failed");
@@ -171,6 +180,41 @@ describe("DefaultSafeTunnelBridgeService", () => {
       status: "failed",
       error: "Safe Tunnel start exited with code 1.",
     });
+  });
+
+  it("acquires managed frpc by default and exposes only redacted version diagnostics", async () => {
+    application.loaded = registeredState();
+    const startDeferred = createDeferred<SafeTunnelCommandRunResult>();
+    runner.startDeferred = startDeferred;
+    managedFrpc.result = {
+      path: join(tempDirectory, "private-user", "frpc"),
+      version: "0.68.0",
+      desiredVersion: "0.69.1",
+      platform: "linux",
+      architecture: "arm64",
+      source: "fallback",
+      updateErrorCode: "download_failed",
+    };
+
+    const response = await service.start({});
+
+    expect(application.enableCalls).toEqual([undefined]);
+    expect(application.loaded.state.desiredState).toBe("enabled");
+    expect(managedFrpc.calls).toBe(1);
+    expect(runner.runCalls.find(({ args }) => args[0] === "start")).toEqual({
+      command: "/usr/local/bin/pi-web-tunnel",
+      args: ["start", "--frpc-path", managedFrpc.result.path],
+    });
+    expect(response.operation.stdout).toContain(
+      "Managed frpc update was unavailable (download_failed); using verified fallback v0.68.0 for linux-arm64.",
+    );
+    expect(JSON.stringify(response.operation)).not.toContain(managedFrpc.result.path);
+    expect(JSON.stringify(response.operation)).not.toContain("github.com");
+    expect(response.operation.logTail).not.toContain(managedFrpc.result.path);
+
+    startDeferred.resolve(commandResult({ stdout: "Started\n" }));
+    await Promise.resolve();
+    expect(service.operation(response.operation.id)?.stdout).toContain("verified fallback v0.68.0");
   });
 
   it("persists disabled intent before delegating the temporary runtime stop", async () => {
@@ -210,6 +254,27 @@ describe("DefaultSafeTunnelBridgeService", () => {
     expect(contents).not.toContain("old output");
   });
 });
+
+class FakeManagedFrpcProvider implements SafeTunnelManagedFrpcProvider {
+  calls = 0;
+  result: SafeTunnelManagedFrpc;
+
+  constructor(path: string) {
+    this.result = {
+      path,
+      version: "0.69.1",
+      desiredVersion: "0.69.1",
+      platform: "linux",
+      architecture: "arm64",
+      source: "installed",
+    };
+  }
+
+  ensureManagedFrpc(): Promise<SafeTunnelManagedFrpc> {
+    this.calls += 1;
+    return Promise.resolve(this.result);
+  }
+}
 
 class FakeSafeTunnelApplicationService implements SafeTunnelApplicationService {
   disableCalls = 0;

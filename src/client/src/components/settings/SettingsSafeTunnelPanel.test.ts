@@ -130,9 +130,9 @@ describe("settings-safe-tunnel-panel operations", () => {
     expect(getPanelProperty(panel, "mutating")).toBe(false);
   });
 
-  it("treats an installable connector as usable for Safe Tunnel actions", () => {
+  it("treats an installable connector and managed frpc default as usable for Safe Tunnel actions", () => {
     const panel = new SettingsSafeTunnelPanel();
-    setPanelProperty(panel, "status", safeTunnelStatus({ connectorState: "installable", runtimeState: "stopped", frpcPathConfigured: true }));
+    setPanelProperty(panel, "status", safeTunnelStatus({ connectorState: "installable", runtimeState: "stopped", frpcPathConfigured: false }));
 
     expect(callPanelMethod(panel, "loginDisabledReason", undefined)).toBeUndefined();
     expect(callPanelMethod(panel, "startDisabledReason")).toBeUndefined();

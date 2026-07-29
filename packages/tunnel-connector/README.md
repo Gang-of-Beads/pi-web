@@ -23,4 +23,4 @@ Source-tree development should use `scripts/pi-web-tunnel-dev.sh` or `npm run tu
 
 When PI WEB invokes the temporary runtime it supplies an internal absolute config-path override. The connector then reads PI WEB's authoritative `$PI_WEB_DATA_DIR/safe-tunnel/config.json`, writes runtime files beside it, and never includes `machineToken` in status output. Standalone commands without that override retain the legacy config discovery behavior for development/recovery compatibility.
 
-Managed `frpc` acquisition and direct PI WEB process supervision will replace this package path. See `../../docs/safe-tunnel.md` and `../../docs/safe-tunnel-connector-service.md`.
+PI WEB now supplies its verified managed `frpc` path to this compatibility command. Direct PI WEB process supervision will replace the package path itself. See `../../docs/safe-tunnel.md` and `../../docs/safe-tunnel-connector-service.md`.

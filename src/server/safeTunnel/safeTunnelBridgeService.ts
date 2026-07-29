@@ -21,6 +21,13 @@ import {
 } from "./safeTunnelControlPlane.js";
 import { SafeTunnelConnectorManager } from "./safeTunnelConnectorManager.js";
 import {
+  defaultSafeTunnelFrpcInstallDirectory,
+  HttpSafeTunnelFrpcArtifactSource,
+  SafeTunnelFrpcManager,
+  type SafeTunnelManagedFrpc,
+  type SafeTunnelManagedFrpcProvider,
+} from "./safeTunnelFrpcManager.js";
+import {
   FileSafeTunnelStateStorage,
   defaultSafeTunnelStatePath,
   safeTunnelConnectorConfigPathEnvVar,
@@ -93,6 +100,7 @@ export interface SafeTunnelBridgeDependencies {
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly fileExists: (path: string) => boolean;
   readonly homeDirectory: string;
+  readonly managedFrpc: SafeTunnelManagedFrpcProvider;
   readonly now: () => Date;
   readonly platform: NodeJS.Platform;
   readonly safeTunnel: SafeTunnelApplicationService;
@@ -105,6 +113,7 @@ interface SafeTunnelOperationState {
   status: "running" | "succeeded" | "failed";
   stdout: string;
   stderr: string;
+  stdoutPrefix?: string;
   connectorProcessId?: number;
   error?: string;
   exitCode?: number | null;
@@ -218,20 +227,29 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
       if (currentStatus.config.state !== "registered") {
         throw new SafeTunnelBridgeError("Register or log in to PI WEB Safe Tunnels before starting the connector.", 409);
       }
-      if (request.frpcPath === undefined && currentStatus.config.frpcPathConfigured !== true) {
-        throw new SafeTunnelBridgeError("Configure an frpc executable path before starting the connector.", 400);
-      }
 
+      const loadedState = await this.dependencies.safeTunnel.state();
+      const advancedFrpcPath = request.frpcPath ?? loadedState.state.frpcPath;
       const command = await this.connectorManager.ensureCommand();
       await this.dependencies.safeTunnel.enable(request.frpcPath);
-      const invocation: SafeTunnelCommandInvocation = { command, args: startArgs(request) };
-      const logHeader = createConnectorStartLogHeader(this.dependencies.now(), invocation);
+      const managedFrpc = advancedFrpcPath === undefined
+        ? await this.dependencies.managedFrpc.ensureManagedFrpc()
+        : undefined;
+      const frpcPath = advancedFrpcPath ?? requireManagedFrpcPath(managedFrpc);
+      const preparationOutput = frpcPreparationOutput(managedFrpc);
+      const invocation: SafeTunnelCommandInvocation = { command, args: startArgs(frpcPath) };
+      const logHeader = createConnectorStartLogHeader(this.dependencies.now());
       const logPath = currentStatus.runtime.logPath
         ?? runtimePath(this.dependencies.safeTunnel.statePath, connectorLogFileName);
       const operation = this.createOperation("start", {
         logPath,
-        logTail: tailText(sanitizeConnectorLog(logHeader), maxConnectorLogTailCharacters),
+        logTail: tailText(
+          sanitizeConnectorLog(`${logHeader}${preparationOutput}`),
+          maxConnectorLogTailCharacters,
+        ),
         logTailMaxCharacters: maxConnectorLogTailCharacters,
+        stdout: preparationOutput,
+        stdoutPrefix: preparationOutput,
       });
 
       void this.commandRunner.run(invocation, {
@@ -309,7 +327,11 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
     operation: SafeTunnelOperationState,
     result: SafeTunnelCommandRunResult,
   ): void {
-    operation.stdout = result.stdout;
+    operation.stdout = appendCapped(
+      operation.stdoutPrefix ?? "",
+      result.stdout,
+      maxCapturedOutputCharacters,
+    );
     operation.stderr = result.stderr;
     operation.exitCode = result.exitCode;
     operation.finishedAt = this.dependencies.now().toISOString();
@@ -368,6 +390,10 @@ export function createDefaultSafeTunnelBridgeService(): SafeTunnelBridgeService 
     controlPlane: new HttpSafeTunnelControlPlane(),
     stateStorage: new FileSafeTunnelStateStorage({ filePath: statePath }),
   });
+  const managedFrpc = new SafeTunnelFrpcManager({
+    artifactSource: new HttpSafeTunnelFrpcArtifactSource(),
+    installDirectory: defaultSafeTunnelFrpcInstallDirectory(statePath),
+  });
   return new DefaultSafeTunnelBridgeService({
     commandRunner: createNodeSafeTunnelCommandRunner(),
     connectorCommandEnvironment: { [safeTunnelConnectorConfigPathEnvVar]: statePath },
@@ -375,6 +401,7 @@ export function createDefaultSafeTunnelBridgeService(): SafeTunnelBridgeService 
     env: process.env,
     fileExists: existsSync,
     homeDirectory: homedir(),
+    managedFrpc,
     now: () => new Date(),
     platform: process.platform,
     safeTunnel,
@@ -623,12 +650,28 @@ function fallbackRuntimeStatus(
   };
 }
 
-function startArgs(request: SafeTunnelStartRequest): string[] {
-  return ["start", ...(request.frpcPath === undefined ? [] : ["--frpc-path", request.frpcPath])];
+function startArgs(frpcPath: string): string[] {
+  return ["start", "--frpc-path", frpcPath];
 }
 
-function createConnectorStartLogHeader(now: Date, invocation: SafeTunnelCommandInvocation): string {
-  return `\n=== ${now.toISOString()} ${invocation.command} ${invocation.args.join(" ")} ===\n`;
+function createConnectorStartLogHeader(now: Date): string {
+  return `\n=== ${now.toISOString()} PI WEB Safe Tunnel connector start ===\n`;
+}
+
+function frpcPreparationOutput(managedFrpc: SafeTunnelManagedFrpc | undefined): string {
+  if (managedFrpc === undefined) return "Using an advanced frpc path override.\n";
+  const target = `${managedFrpc.platform}-${managedFrpc.architecture}`;
+  if (managedFrpc.source === "fallback") {
+    const reason = managedFrpc.updateErrorCode ?? "install_failed";
+    return `Managed frpc update was unavailable (${reason}); using verified fallback v${managedFrpc.version} for ${target}.\n`;
+  }
+  const action = managedFrpc.source === "installed" ? "Installed" : "Using";
+  return `${action} verified PI WEB-managed frpc v${managedFrpc.version} for ${target}.\n`;
+}
+
+function requireManagedFrpcPath(managedFrpc: SafeTunnelManagedFrpc | undefined): string {
+  if (managedFrpc === undefined) throw new Error("Managed frpc acquisition returned no executable.");
+  return managedFrpc.path;
 }
 
 function openConnectorLogFile(

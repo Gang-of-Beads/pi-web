@@ -251,7 +251,7 @@ export class SettingsSafeTunnelPanel extends LitElement {
             <input .value=${this.localPiWebUrl} placeholder="http://127.0.0.1:8504" @input=${(event: Event) => { this.handleLocalPiWebUrlInput(event); }}>
           </label>
           <label>
-            frpc path <small>optional</small>
+            frpc path <small>advanced override; PI WEB manages it by default</small>
             <input .value=${this.loginFrpcPath} placeholder="/absolute/path/to/frpc" @input=${(event: Event) => { this.loginFrpcPath = inputValue(event); }}>
           </label>
           ${disabledReason === undefined ? null : html`<p class="help bad">${disabledReason}</p>`}
@@ -335,11 +335,11 @@ export class SettingsSafeTunnelPanel extends LitElement {
         <div class="section-heading">
           <div>
             <h3>Connector runtime</h3>
-            <p>Start keeps the tunnel process under the connector's PID-file supervision. Stop delegates to <code>pi-web-tunnel stop</code>.</p>
+            <p>PI WEB downloads and verifies managed frpc on first start. Process ownership remains temporarily delegated to the connector runtime.</p>
           </div>
         </div>
         <label>
-          frpc path override <small>optional for start</small>
+          frpc path override <small>advanced; skips the managed binary</small>
           <input .value=${this.startFrpcPath} placeholder="/absolute/path/to/frpc" @input=${(event: Event) => { this.startFrpcPath = inputValue(event); }}>
         </label>
         <div class="actions">
@@ -550,7 +550,6 @@ export class SettingsSafeTunnelPanel extends LitElement {
     if (!connectorCanRun(status)) return connectorUnavailableMessage(status);
     if (status.config.state !== "registered") return "register or log in first";
     if (status.runtime.state === "running") return "connector is already running";
-    if (normalizedOptionalString(this.startFrpcPath) === undefined && status.config.frpcPathConfigured !== true) return "configure an frpc path";
     return undefined;
   }
 
