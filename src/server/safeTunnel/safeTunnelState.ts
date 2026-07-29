@@ -5,10 +5,8 @@ import { dirname, join, posix, win32 } from "node:path";
 import { piWebDataDir } from "../../config.js";
 import type { SafeTunnelDesiredState } from "../../shared/apiTypes.js";
 
-export const safeTunnelStateVersion = 1;
-// Retained source/recovery connector tooling can read this compatible projection
-// while PI WEB remains the sole writer/owner. PI WEB's runtime no longer invokes it.
-export const safeTunnelConnectorConfigSchemaVersion = 2;
+export const safeTunnelStateVersion = 2;
+const previousSafeTunnelStateVersion = 1;
 export const safeTunnelStateDirectoryMode = 0o700;
 export const safeTunnelStateFileMode = 0o600;
 export const defaultSafeTunnelLocalPiWebUrl = "http://127.0.0.1:8504";
@@ -37,7 +35,6 @@ export interface SafeTunnelMachineCredentials {
  */
 export interface SafeTunnelPersistedState {
   readonly stateVersion: typeof safeTunnelStateVersion;
-  readonly schemaVersion: typeof safeTunnelConnectorConfigSchemaVersion;
   readonly desiredState: SafeTunnelDesiredState;
   readonly localPiWebUrl: string;
   readonly frpcPath?: string;
@@ -57,18 +54,18 @@ export interface SafeTunnelStateStorage {
 
 export interface FileSafeTunnelStateStorageOptions {
   readonly filePath?: string;
-  readonly legacyConnectorConfigPath?: string;
+  readonly legacyImportPath?: string;
   readonly platform?: NodeJS.Platform;
 }
 
 export class FileSafeTunnelStateStorage implements SafeTunnelStateStorage {
   readonly filePath: string;
-  private readonly legacyConnectorConfigPath: string;
+  private readonly legacyImportPath: string;
   private readonly platform: NodeJS.Platform;
 
   constructor(options: FileSafeTunnelStateStorageOptions = {}) {
     this.filePath = options.filePath ?? defaultSafeTunnelStatePath();
-    this.legacyConnectorConfigPath = options.legacyConnectorConfigPath ?? discoverLegacyConnectorConfigPath();
+    this.legacyImportPath = options.legacyImportPath ?? discoverLegacySafeTunnelStatePath();
     this.platform = options.platform ?? process.platform;
   }
 
@@ -81,9 +78,9 @@ export class FileSafeTunnelStateStorage implements SafeTunnelStateStorage {
       return { exists: true, state };
     }
 
-    const legacy = this.legacyConnectorConfigPath === this.filePath
+    const legacy = this.legacyImportPath === this.filePath
       ? undefined
-      : await readJsonFile(this.legacyConnectorConfigPath);
+      : await readJsonFile(this.legacyImportPath);
     if (legacy === undefined) return { exists: false, state: createDefaultSafeTunnelState() };
 
     const state = parseSafeTunnelState(legacy);
@@ -121,7 +118,6 @@ export class FileSafeTunnelStateStorage implements SafeTunnelStateStorage {
 export function createDefaultSafeTunnelState(): SafeTunnelPersistedState {
   return {
     stateVersion: safeTunnelStateVersion,
-    schemaVersion: safeTunnelConnectorConfigSchemaVersion,
     desiredState: "disabled",
     localPiWebUrl: defaultSafeTunnelLocalPiWebUrl,
   };
@@ -134,7 +130,7 @@ export function defaultSafeTunnelStatePath(
   return join(piWebDataDir(env, cwd), "safe-tunnel", "config.json");
 }
 
-export function discoverLegacyConnectorConfigPath(options: {
+export function discoverLegacySafeTunnelStatePath(options: {
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly homeDirectory?: string;
   readonly platform?: NodeJS.Platform;
@@ -158,13 +154,20 @@ export function discoverLegacyConnectorConfigPath(options: {
 export function parseSafeTunnelState(value: unknown): SafeTunnelPersistedState {
   const record = requireRecord(value, "Safe Tunnel state must be a JSON object.");
   const stateVersion = record["stateVersion"];
-  const connectorSchemaVersion = record["schemaVersion"];
+  const legacySchemaVersion = record["schemaVersion"];
 
-  if (stateVersion !== undefined && stateVersion !== safeTunnelStateVersion) {
+  if (stateVersion !== undefined
+    && stateVersion !== previousSafeTunnelStateVersion
+    && stateVersion !== safeTunnelStateVersion) {
     throw new Error("Unsupported Safe Tunnel state version.");
   }
-  if (connectorSchemaVersion !== 1 && connectorSchemaVersion !== safeTunnelConnectorConfigSchemaVersion) {
-    throw new Error("Unsupported Safe Tunnel connector config schema version.");
+  if ((stateVersion === undefined || stateVersion === previousSafeTunnelStateVersion)
+    && legacySchemaVersion !== 1
+    && legacySchemaVersion !== 2) {
+    throw new Error("Unsupported legacy Safe Tunnel config schema version.");
+  }
+  if (stateVersion === safeTunnelStateVersion && legacySchemaVersion !== undefined) {
+    throw new Error("PI WEB Safe Tunnel state must not include legacy schemaVersion.");
   }
 
   const desiredState = stateVersion === undefined
@@ -176,7 +179,6 @@ export function parseSafeTunnelState(value: unknown): SafeTunnelPersistedState {
 
   return {
     stateVersion: safeTunnelStateVersion,
-    schemaVersion: safeTunnelConnectorConfigSchemaVersion,
     desiredState,
     localPiWebUrl,
     ...(frpcPath === undefined ? {} : { frpcPath }),
@@ -254,7 +256,7 @@ function parseMachineCredentialStatus(value: unknown): SafeTunnelMachineCredenti
 function isCurrentSafeTunnelStateRecord(value: unknown): boolean {
   return isRecord(value)
     && value["stateVersion"] === safeTunnelStateVersion
-    && value["schemaVersion"] === safeTunnelConnectorConfigSchemaVersion
+    && value["schemaVersion"] === undefined
     && (value["desiredState"] === "enabled" || value["desiredState"] === "disabled");
 }
 

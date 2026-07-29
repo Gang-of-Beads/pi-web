@@ -647,9 +647,8 @@ function piWebPluginsResponse() {
 
 function safeTunnelStatusResponse() {
   return {
-    connector: { command: "pi-web-tunnel", state: "available" },
     config: {
-      path: "/home/test/.config/pi-web-tunnel/config.json",
+      path: "/home/test/.pi-web/safe-tunnel/config.json",
       exists: true,
       state: "registered",
       localPiWebUrl: "http://127.0.0.1:8504",
@@ -662,7 +661,7 @@ function safeTunnelStatusResponse() {
       },
     },
     desiredState: "enabled",
-    runtime: { pidFilePath: "/home/test/.config/pi-web-tunnel/connector.pid", state: "running", pid: 123 },
+    runtime: { state: "running", pid: 123 },
   };
 }
 
@@ -673,7 +672,7 @@ function safeTunnelOperationResponse() {
     phase: "awaiting_approval",
     status: "running",
     startedAt: "2026-07-03T00:00:00.000Z",
-    stdout: "Open this URL to authorize the connector:\nhttps://control.example.test/device?userCode=ABCD-EFGH\nUser code: ABCD-EFGH\n",
+    stdout: "Approve this PI WEB:\nhttps://control.example.test/device?userCode=ABCD-EFGH\nUser code: ABCD-EFGH\n",
     stderr: "",
     userCode: "ABCD-EFGH",
     verificationUriComplete: "https://control.example.test/device?userCode=ABCD-EFGH",

@@ -156,7 +156,6 @@ describe("API parsers", () => {
       verificationUriComplete: "https://api.tunnels.pi-web.dev/device?user_code=ABCD-EFGH",
     };
     const status = {
-      connector: { command: "PI WEB built-in frpc supervisor", state: "available" },
       config: {
         path: "/home/test/.pi-web/safe-tunnel/config.json",
         exists: true,
@@ -202,11 +201,11 @@ describe("API parsers", () => {
   });
 
   it("rejects malformed Safe Tunnel bridge responses", () => {
-    expect(() => parseSafeTunnelStatusResponse({ connector: { command: "built-in", state: "missing" }, config: { path: "/tmp/config", exists: false, state: "missing" }, desiredState: "disabled", runtime: { state: "stopped" } })).toThrow("Expected Safe Tunnel connector state field: state");
-    expect(() => parseSafeTunnelStatusResponse({ connector: { command: "built-in", state: "available" }, config: { path: "/tmp/config", exists: false, state: "missing" }, desiredState: "sometimes", runtime: { state: "stopped" } })).toThrow("Expected Safe Tunnel desired state field: desiredState");
+    expect(() => parseSafeTunnelStatusResponse({ config: { path: "/tmp/config", exists: false, state: "missing" }, desiredState: "disabled", runtime: { state: "stale" } })).toThrow("Expected Safe Tunnel runtime state field: state");
+    expect(() => parseSafeTunnelStatusResponse({ config: { path: "/tmp/config", exists: false, state: "missing" }, desiredState: "sometimes", runtime: { state: "stopped" } })).toThrow("Expected Safe Tunnel desired state field: desiredState");
     expect(() => parseSafeTunnelOperationResponse({ id: "op_1", kind: "enable", phase: "future", status: "running", startedAt: "now", stdout: "", stderr: "" })).toThrow("Expected Safe Tunnel operation phase field: phase");
     expect(() => parseSafeTunnelEnableResponse({ accepted: false })).toThrow("Expected Safe Tunnel enable accepted response");
-    expect(() => parseSafeTunnelStatusResponse({ connector: { command: "built-in", state: "available" }, config: { path: "/tmp/config", exists: true, state: "rejected" }, desiredState: "enabled", runtime: { state: "stopped", diagnosticCode: "provider_secret" } })).toThrow("Expected Safe Tunnel runtime diagnostic field: diagnosticCode");
+    expect(() => parseSafeTunnelStatusResponse({ config: { path: "/tmp/config", exists: true, state: "rejected" }, desiredState: "enabled", runtime: { state: "stopped", diagnosticCode: "provider_secret" } })).toThrow("Expected Safe Tunnel runtime diagnostic field: diagnosticCode");
   });
 
   it("parses Pi package list and mutation responses", () => {

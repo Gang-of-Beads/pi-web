@@ -47,7 +47,6 @@ const PI_WEB_PACKAGE_NAME = "@jmfederico/pi-web";
 const systemdServiceDir = join(homedir(), ".config", "systemd", "user");
 const launchdServiceDir = join(homedir(), "Library", "LaunchAgents");
 const logDir = join(defaultPiWebDataDir(), "logs");
-const safeTunnelConnectorCommandEnvVar = "PI_WEB_SAFE_TUNNEL_CONNECTOR_COMMAND";
 
 type InstallMode = "production" | "dev";
 type ServiceId = NativeServiceId;
@@ -268,23 +267,6 @@ function describeServiceShell(): string {
 
 function configEnvironment(options: InstallOptions, configPath: string): Record<string, string> {
   return options.config === undefined ? {} : { PI_WEB_CONFIG: configPath };
-}
-
-function devServiceEnvironment(options: InstallOptions, configPath: string, root: string): Record<string, string> {
-  const environment = configEnvironment(options, configPath);
-  const configuredConnectorCommand = process.env[safeTunnelConnectorCommandEnvVar]?.trim();
-  const connectorCommand = configuredConnectorCommand === undefined || configuredConnectorCommand === ""
-    ? developmentConnectorCommand(root)
-    : configuredConnectorCommand;
-
-  return connectorCommand === undefined
-    ? environment
-    : { ...environment, [safeTunnelConnectorCommandEnvVar]: connectorCommand };
-}
-
-function developmentConnectorCommand(root: string): string | undefined {
-  const command = join(root, "scripts", "pi-web-tunnel-dev.sh");
-  return existsSync(command) ? command : undefined;
 }
 
 function serviceRefList(ids: ServiceId[]): ServiceRef[] {
@@ -640,7 +622,7 @@ function nativeServiceInstallCandidate(
     input: {
       backend,
       shell,
-      environment: devServiceEnvironment(options, configPath, root),
+      environment,
       workingDirectory: root,
       packageJsonPath: join(root, "package.json"),
     },

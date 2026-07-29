@@ -159,10 +159,9 @@ export interface PiPackageMutationResponse extends PiPackagesResponse {
   removed?: boolean;
 }
 
-export type SafeTunnelConnectorState = "available" | "installable" | "unavailable";
 export type SafeTunnelConfigState = "missing" | "unregistered" | "registered" | "rejected" | "invalid";
 export type SafeTunnelDesiredState = "enabled" | "disabled";
-export type SafeTunnelRuntimeState = "stopped" | "running" | "stale" | "unknown";
+export type SafeTunnelRuntimeState = "stopped" | "running" | "unknown";
 export type SafeTunnelRuntimeDiagnosticCode =
   | "credentials_rejected"
   | "heartbeat_retrying"
@@ -177,22 +176,6 @@ export type SafeTunnelOperationPhase =
   | "starting"
   | "enabled";
 export type SafeTunnelOperationStatus = "running" | "succeeded" | "failed" | "cancelled";
-
-export interface SafeTunnelConnectorInstallStatus {
-  binName: string;
-  command: string;
-  enabled: true;
-  installDirectory: string;
-  installerCommand: string;
-  packageSpec: string;
-}
-
-export interface SafeTunnelConnectorStatus {
-  command: string;
-  state: SafeTunnelConnectorState;
-  install?: SafeTunnelConnectorInstallStatus;
-  error?: string;
-}
 
 export interface SafeTunnelConfigStatus {
   path: string;
@@ -211,8 +194,6 @@ export interface SafeTunnelConfigStatus {
 }
 
 export interface SafeTunnelRuntimeStatus {
-  /** Present only for legacy connector status; PI WEB-owned supervision keeps no PID file. */
-  pidFilePath?: string;
   state: SafeTunnelRuntimeState;
   /** Stable machine-readable category for recovery UI; raw external failures never cross this boundary. */
   diagnosticCode?: SafeTunnelRuntimeDiagnosticCode;
@@ -242,7 +223,6 @@ export interface SafeTunnelOperationResponse {
   startedAt: string;
   stdout: string;
   stderr: string;
-  connectorProcessId?: number;
   error?: string;
   exitCode?: number | null;
   finishedAt?: string;
@@ -256,7 +236,6 @@ export interface SafeTunnelOperationResponse {
 }
 
 export interface SafeTunnelStatusResponse {
-  connector: SafeTunnelConnectorStatus;
   config: SafeTunnelConfigStatus;
   /** Persisted user intent; deliberately independent from observed runtime state. */
   desiredState: SafeTunnelDesiredState;

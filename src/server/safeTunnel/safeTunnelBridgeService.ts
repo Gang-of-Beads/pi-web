@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import type {
   SafeTunnelConfigStatus,
-  SafeTunnelConnectorStatus,
   SafeTunnelDisableResponse,
   SafeTunnelEnableRequest,
   SafeTunnelEnableResponse,
@@ -103,7 +102,6 @@ interface SafeTunnelOperationState {
   status: SafeTunnelOperationResponse["status"];
   stdout: string;
   stderr: string;
-  connectorProcessId?: number;
   error?: string;
   exitCode?: number | null;
   finishedAt?: string;
@@ -148,7 +146,6 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
       : snapshotOperation(this.activeOperation);
 
     return {
-      connector: builtInConnectorStatus(),
       config: ownedState.config,
       desiredState: ownedState.desiredState,
       runtime,
@@ -409,13 +406,6 @@ export function createDefaultSafeTunnelBridgeService(
   });
 }
 
-function builtInConnectorStatus(): SafeTunnelConnectorStatus {
-  return {
-    command: "PI WEB built-in frpc supervisor",
-    state: "available",
-  };
-}
-
 function shouldRegisterMachine(
   loaded: LoadedSafeTunnelState,
   status: SafeTunnelStatusResponse,
@@ -471,7 +461,6 @@ function finishEnableOperation(
   if (operation.status === "cancelled") return;
   operation.phase = "enabled";
   operation.publicUrl = result.publicUrl;
-  if (result.pid !== undefined) operation.connectorProcessId = result.pid;
   appendOperationStdout(operation, result.output);
   operation.status = "succeeded";
   operation.exitCode = 0;
@@ -523,9 +512,6 @@ function snapshotOperation(operation: SafeTunnelOperationState): SafeTunnelOpera
     status: operation.status,
     stdout: operation.stdout,
     stderr: operation.stderr,
-    ...(operation.connectorProcessId === undefined
-      ? {}
-      : { connectorProcessId: operation.connectorProcessId }),
     ...(operation.error === undefined ? {} : { error: operation.error }),
     ...(operation.exitCode === undefined ? {} : { exitCode: operation.exitCode }),
     ...(operation.finishedAt === undefined ? {} : { finishedAt: operation.finishedAt }),

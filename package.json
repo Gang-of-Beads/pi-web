@@ -20,7 +20,6 @@
     "docs/plugins.md",
     "docs/config.md",
     "docs/safe-tunnel.md",
-    "docs/safe-tunnel-connector-service.md",
     "docs/assets",
     "plugin-api.d.ts",
     "plugin-api/unstable.d.ts"
@@ -39,7 +38,7 @@
     "typecheck": "tsc --noEmit",
     "typecheck:cached": "tsc --noEmit --incremental --tsBuildInfoFile node_modules/.cache/pi-web/typecheck.tsbuildinfo",
     "knip": "knip",
-    "lint": "eslint --no-error-on-unmatched-pattern \"src/**/*.ts\" \"extensions/**/*.ts\" \"pi-web-plugins/**/*.ts\" \"packages/**/*.ts\" vite.config.ts vitest.config.ts",
+    "lint": "eslint --no-error-on-unmatched-pattern \"src/**/*.ts\" \"extensions/**/*.ts\" \"pi-web-plugins/**/*.ts\" vite.config.ts vitest.config.ts",
     "test": "vitest run --config vitest.config.ts",
     "verify": "npm run typecheck && npm run lint && npm run knip && npm test",
     "verify:staged": "node scripts/verify-staged.mjs",
@@ -54,9 +53,7 @@
     "prepare": "node scripts/install-git-hooks.mjs",
     "changeset": "changeset",
     "release:version": "changeset version",
-    "changelog:status": "changeset status",
-    "tunnel:connector": "npm run connector --workspace @jmfederico/pi-web-tunnel --",
-    "build:tunnel-packages": "npm run build --workspace @jmfederico/pi-web-tunnel-frp-engine && npm run build --workspace @jmfederico/pi-web-tunnel"
+    "changelog:status": "changeset status"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.4",
@@ -146,8 +143,5 @@
       "./extensions"
     ],
     "image": "https://raw.githubusercontent.com/jmfederico/pi-web/main/docs/assets/pi-web-banner.png"
-  },
-  "workspaces": [
-    "packages/*"
-  ]
+  }
 }

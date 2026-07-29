@@ -164,7 +164,6 @@ class FakeSafeTunnelBridgeService implements SafeTunnelBridgeService {
   };
 
   readonly statusResponse: SafeTunnelStatusResponse = {
-    connector: { command: "PI WEB built-in frpc supervisor", state: "available" },
     config: { exists: false, path: "/tmp/pi-web/config.json", state: "missing" },
     desiredState: "disabled",
     runtime: { state: "stopped" },

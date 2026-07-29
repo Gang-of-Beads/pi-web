@@ -31,9 +31,6 @@
       ],
       "@jmfederico/pi-web/plugin-api/unstable": [
         "./src/plugin-api/unstable.ts"
-      ],
-      "@jmfederico/pi-web-tunnel-frp-engine": [
-        "./packages/tunnel-frp-engine/src/index.ts"
       ]
     }
   },
@@ -42,13 +39,11 @@
     "vite.config.ts",
     "vitest.config.ts",
     "extensions/**/*.ts",
-    "pi-web-plugins/**/*.ts",
-    "packages/**/*.ts"
+    "pi-web-plugins/**/*.ts"
   ],
   "exclude": [
     "coverage",
     "dist",
-    "node_modules",
-    "packages/*/dist"
+    "node_modules"
   ]
 }

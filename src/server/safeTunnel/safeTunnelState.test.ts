@@ -6,7 +6,7 @@ import {
   FileSafeTunnelStateStorage,
   createDefaultSafeTunnelState,
   defaultSafeTunnelStatePath,
-  discoverLegacyConnectorConfigPath,
+  discoverLegacySafeTunnelStatePath,
   parseSafeTunnelState,
   safeTunnelStateDirectoryMode,
   safeTunnelStateFileMode,
@@ -28,13 +28,13 @@ describe("Safe Tunnel state paths", () => {
       .toBe("/workspace/data/safe-tunnel/config.json");
   });
 
-  it("discovers the legacy connector config on POSIX and Windows", () => {
-    expect(discoverLegacyConnectorConfigPath({
+  it("discovers the read-only legacy state import on POSIX and Windows", () => {
+    expect(discoverLegacySafeTunnelStatePath({
       env: { XDG_CONFIG_HOME: "/config" },
       homeDirectory: "/home/pi",
       platform: "linux",
     })).toBe("/config/pi-web-tunnel/config.json");
-    expect(discoverLegacyConnectorConfigPath({
+    expect(discoverLegacySafeTunnelStatePath({
       env: { APPDATA: "C:\\Users\\pi\\AppData\\Roaming" },
       homeDirectory: "C:\\Users\\pi",
       platform: "win32",
@@ -47,7 +47,7 @@ describe("FileSafeTunnelStateStorage", () => {
     const filePath = join(tempDirectory, "data", "safe-tunnel", "config.json");
     const storage = new FileSafeTunnelStateStorage({
       filePath,
-      legacyConnectorConfigPath: join(tempDirectory, "missing-legacy.json"),
+      legacyImportPath: join(tempDirectory, "missing-legacy.json"),
       platform: "linux",
     });
     const state = {
@@ -83,7 +83,45 @@ describe("FileSafeTunnelStateStorage", () => {
     expect((await readFile(filePath, "utf8"))).toContain('"desiredState": "disabled"');
   });
 
-  it("safely imports a legacy connector config once without enabling it or deleting the source", async () => {
+  it("migrates PI WEB-owned v1 state without losing intent or credentials", async () => {
+    const filePath = join(tempDirectory, "data", "safe-tunnel", "config.json");
+    await mkdir(join(tempDirectory, "data", "safe-tunnel"), { recursive: true });
+    await writeFile(filePath, JSON.stringify({
+      stateVersion: 1,
+      schemaVersion: 2,
+      desiredState: "enabled",
+      localPiWebUrl: "http://127.0.0.1:9000",
+      machine: {
+        controlApiBaseUrl: "https://control.example.test",
+        credentialStatus: "rejected",
+        machineId: "machine_v1",
+        machineToken: "piwt_mtok_v1_preserved",
+      },
+    }));
+    const storage = new FileSafeTunnelStateStorage({
+      filePath,
+      legacyImportPath: join(tempDirectory, "missing-legacy.json"),
+      platform: "linux",
+    });
+
+    const loaded = await storage.load();
+
+    expect(loaded.state).toMatchObject({
+      stateVersion: 2,
+      desiredState: "enabled",
+      localPiWebUrl: "http://127.0.0.1:9000",
+      machine: {
+        credentialStatus: "rejected",
+        machineId: "machine_v1",
+        machineToken: "piwt_mtok_v1_preserved",
+      },
+    });
+    const migrated: unknown = JSON.parse(await readFile(filePath, "utf8"));
+    expect(migrated).toMatchObject({ stateVersion: 2 });
+    expect(migrated).not.toHaveProperty("schemaVersion");
+  });
+
+  it("safely imports legacy state once without enabling it or deleting the source", async () => {
     const filePath = join(tempDirectory, "data", "safe-tunnel", "config.json");
     const legacyPath = join(tempDirectory, "legacy", "config.json");
     await mkdir(join(tempDirectory, "legacy"), { recursive: true });
@@ -101,7 +139,7 @@ describe("FileSafeTunnelStateStorage", () => {
     }));
     const storage = new FileSafeTunnelStateStorage({
       filePath,
-      legacyConnectorConfigPath: legacyPath,
+      legacyImportPath: legacyPath,
       platform: "linux",
     });
 
@@ -110,8 +148,7 @@ describe("FileSafeTunnelStateStorage", () => {
     expect(loaded).toMatchObject({
       exists: true,
       state: {
-        stateVersion: 1,
-        schemaVersion: 2,
+        stateVersion: 2,
         desiredState: "disabled",
         machine: {
           credentialStatus: "active",
@@ -121,13 +158,14 @@ describe("FileSafeTunnelStateStorage", () => {
       },
     });
     expect(await readFile(legacyPath, "utf8")).toContain("piwt_mtok_v1_legacy");
-    expect(await readFile(filePath, "utf8")).toContain('"stateVersion": 1');
+    expect(await readFile(filePath, "utf8")).toContain('"stateVersion": 2');
+    expect(await readFile(filePath, "utf8")).not.toContain('"schemaVersion"');
   });
 
-  it("prefers existing PI WEB state over a legacy connector config", async () => {
+  it("prefers existing PI WEB state over the legacy import source", async () => {
     const filePath = join(tempDirectory, "data", "safe-tunnel", "config.json");
     const legacyPath = join(tempDirectory, "legacy.json");
-    const storage = new FileSafeTunnelStateStorage({ filePath, legacyConnectorConfigPath: legacyPath });
+    const storage = new FileSafeTunnelStateStorage({ filePath, legacyImportPath: legacyPath });
     await storage.save({ ...createDefaultSafeTunnelState(), desiredState: "enabled" });
     await writeFile(legacyPath, JSON.stringify({
       schemaVersion: 2,
@@ -147,8 +185,7 @@ describe("FileSafeTunnelStateStorage", () => {
 
   it("parses durable rejected-credential state and rejects unknown credential states", () => {
     expect(parseSafeTunnelState({
-      stateVersion: 1,
-      schemaVersion: 2,
+      stateVersion: 2,
       desiredState: "enabled",
       localPiWebUrl: "http://127.0.0.1:8504",
       machine: {
@@ -159,8 +196,7 @@ describe("FileSafeTunnelStateStorage", () => {
       },
     }).machine?.credentialStatus).toBe("rejected");
     expect(() => parseSafeTunnelState({
-      stateVersion: 1,
-      schemaVersion: 2,
+      stateVersion: 2,
       desiredState: "enabled",
       localPiWebUrl: "http://127.0.0.1:8504",
       machine: {
@@ -175,8 +211,7 @@ describe("FileSafeTunnelStateStorage", () => {
   it("reports malformed state without retaining credential contents in the error", () => {
     const secret = "piwt_mtok_v1_must_not_leak";
     expect(() => parseSafeTunnelState({
-      stateVersion: 1,
-      schemaVersion: 2,
+      stateVersion: 2,
       desiredState: "sometimes",
       localPiWebUrl: "http://127.0.0.1:8504",
       machine: {
@@ -188,8 +223,7 @@ describe("FileSafeTunnelStateStorage", () => {
 
     try {
       parseSafeTunnelState({
-        stateVersion: 1,
-        schemaVersion: 2,
+        stateVersion: 2,
         desiredState: "sometimes",
         localPiWebUrl: "http://127.0.0.1:8504",
         machine: { machineToken: secret },

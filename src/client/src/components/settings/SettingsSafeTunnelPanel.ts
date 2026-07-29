@@ -641,8 +641,6 @@ function runtimeStateLabel(state: SafeTunnelRuntimeStatus["state"]): string {
       return "Stopped";
     case "running":
       return "Running";
-    case "stale":
-      return "Stale legacy state";
     case "unknown":
       return "Starting or retrying";
   }

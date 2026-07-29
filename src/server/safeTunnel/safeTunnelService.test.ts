@@ -224,8 +224,7 @@ describe("SafeTunnelService", () => {
     expect(sleeps).toEqual([5000]);
     expect(result.machineCredentials.machineToken).toBe("piwt_mtok_v1_private");
     expect(storage.saves).toEqual([{
-      stateVersion: 1,
-      schemaVersion: 2,
+      stateVersion: 2,
       desiredState: "disabled",
       localPiWebUrl: "http://127.0.0.1:9000",
       frpcPath: "/opt/frpc",

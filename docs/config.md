@@ -134,16 +134,6 @@ Rows with JSON key `—` are runtime-only environment variables, not config-file
 | Agent profile state directory | — | `PI_WEB_AGENT_DIR` (`PI_CODING_AGENT_DIR` for Pi compatibility) | Web/API + session daemon env | Not supported locally | Restart services |
 | Skip update checks | — | `PI_WEB_SKIP_VERSION_CHECK`, `PI_WEB_OFFLINE`, `PI_SKIP_VERSION_CHECK`, `PI_OFFLINE` | Web/API env | Not supported locally | Restart web/API after env changes |
 | Offline mode | — | `PI_WEB_OFFLINE`, `PI_OFFLINE` | Web/API + session daemon env | Not supported locally | Restart session daemon and web/API after env changes; also disables the [background model catalog refresh](#background-model-catalog-refresh) |
-| Legacy Safe Tunnel connector command | — | `PI_WEB_SAFE_TUNNEL_CONNECTOR_COMMAND` | Source recovery CLI only | Not supported locally | Ignored by PI WEB's built-in runtime |
-| Legacy Safe Tunnel connector auto-install | — | `PI_WEB_SAFE_TUNNEL_CONNECTOR_AUTO_INSTALL` | Source recovery CLI only | Not supported locally | Ignored by PI WEB's built-in runtime |
-| Legacy Safe Tunnel connector install directory | — | `PI_WEB_SAFE_TUNNEL_CONNECTOR_INSTALL_DIR` | Source recovery CLI only | Not supported locally | Ignored by PI WEB's built-in runtime |
-| Legacy Safe Tunnel connector package | — | `PI_WEB_SAFE_TUNNEL_CONNECTOR_PACKAGE` | Source recovery CLI only | Not supported locally | Ignored by PI WEB's built-in runtime |
-| Legacy Safe Tunnel connector bin | — | `PI_WEB_SAFE_TUNNEL_CONNECTOR_BIN` | Source recovery CLI only | Not supported locally | Ignored by PI WEB's built-in runtime |
-| Legacy Safe Tunnel connector npm command | — | `PI_WEB_SAFE_TUNNEL_CONNECTOR_NPM_COMMAND` | Source recovery CLI only | Not supported locally | Ignored by PI WEB's built-in runtime |
-
-PI WEB no longer uses the connector-command/install variables for browser enable, status, disable,
-or shutdown. They remain only with the not-yet-removed source connector/recovery package and will be
-deleted during the dedicated connector-package cleanup.
 
 ## Key details
 

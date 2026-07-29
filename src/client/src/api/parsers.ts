@@ -1,6 +1,6 @@
 import { ASK_USER_ID_MAX_LENGTH, ASK_USER_OPTION_LIMIT, ASK_USER_OTHER_TEXT_MAX_LENGTH, ASK_USER_QUESTION_LIMIT, ASK_USER_TEXT_MAX_LENGTH, SESSION_NOTIFICATION_LIMIT, SESSION_NOTIFICATION_MESSAGE_BYTES, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH, SESSION_UNREAD_COMPLETED_AT_MAX_LENGTH, SESSION_UNREAD_CWD_MAX_LENGTH, SESSION_UNREAD_LIMIT, SESSION_UNREAD_SESSION_ID_MAX_LENGTH, type ArchiveSessionsResponse, type AskUserCloseReason, type AskUserCloseResponse, type AskUserOutcome, type AskUserQuestion, type AskUserQuestionOption, type AskUserQuestionRecord, type PendingAskUser, type AuthProviderOption, type AuthProviderStatus, type AuthProvidersResponse, type AuthStatusSource, type AuthType, type CommandOption, type CommandResult, type DeleteWorkspaceFileResponse, type FileContentResponse, type FileSuggestion, type FileTreeEntry, type FileTreeResponse, type GitDiffResponse, type GitFileState, type GitStatusFile, type GitStatusResponse, type Machine, type MachineHealth, type MachineKind, type MachineRuntime, type MachineStatus, type MessagePage, type ModelSelectionResponse, type MoveWorkspaceFileResponse, type OAuthFlowState, type PiWebAgentDirEnvSource, type PiWebCapability, type PiWebComponentStatus, type PiWebConfigEnvOverrides, type PiWebConfigResponse, type PiWebConfigValues, type PiWebInstallationInfo, type PiWebPluginConfigMap, type PiWebPluginInfo, type PiWebPluginsResponse, type PiWebPluginScope, type PiWebReleaseStatus, type PiWebRuntimeComponent, type PiWebRuntimeResponse, type PiWebServiceComponent, type PiWebShortcutConfig, type PiWebStatusMessage, type PiWebStatusResponse, type PiWebStatusSeverity, type Project, type QueuedSessionMessage, type SavedPromptAttachment, type SessionBulkArchiveResponse, type SessionBulkDeleteArchivedResponse, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupProjectSummary, type SessionCleanupThresholds, type SessionCleanupTotals, type SessionInfo, type SessionModel, type SessionNotification, type SessionNotificationClearReason, type SessionNotificationDismissThrough, type SessionNotificationInboxDelta, type SessionNotificationInboxEvent, type SessionNotificationInboxSnapshot, type SessionNotificationSeverity, type SessionNotificationSummary, type SessionStatus, type SessionStreamSnapshot, type SessionUnreadCatalogSnapshot, type SessionUnreadEvent, type SessionUnreadSummary, type SessionWarning, type SessionWarningSeverity, type SlashCommand, type TerminalCommandRun, type TerminalCommandRunStatus, type TerminalInfo, type ThinkingLevelsResponse, type WriteWorkspaceFileResponse, type Workspace, type WorkspaceActivity, type WorkspaceActivityResponse } from "../../../shared/apiTypes";
 import type { PiPackageInfo, PiPackageMutationAction, PiPackageMutationResponse, PiPackageScope, PiPackagesResponse, SessionActivity, SessionStartupProgressEvent, SessionTreeNavigateResult, SessionTreeNode, SessionTreeNodeKind, SessionTreeSnapshot } from "../../../shared/apiTypes";
-import type { SafeTunnelConfigState, SafeTunnelConfigStatus, SafeTunnelConnectorInstallStatus, SafeTunnelConnectorState, SafeTunnelConnectorStatus, SafeTunnelDesiredState, SafeTunnelDisableResponse, SafeTunnelEnableResponse, SafeTunnelOperationPhase, SafeTunnelOperationResponse, SafeTunnelOperationStatus, SafeTunnelRuntimeDiagnosticCode, SafeTunnelRuntimeState, SafeTunnelRuntimeStatus, SafeTunnelStatusResponse } from "../../../shared/apiTypes";
+import type { SafeTunnelConfigState, SafeTunnelConfigStatus, SafeTunnelDesiredState, SafeTunnelDisableResponse, SafeTunnelEnableResponse, SafeTunnelOperationPhase, SafeTunnelOperationResponse, SafeTunnelOperationStatus, SafeTunnelRuntimeDiagnosticCode, SafeTunnelRuntimeState, SafeTunnelRuntimeStatus, SafeTunnelStatusResponse } from "../../../shared/apiTypes";
 import { parseActiveAgentProfileDescriptor } from "../../../shared/activeAgentProfile";
 import { parseKnownPiWebCapabilities } from "../../../shared/capabilities";
 
@@ -118,7 +118,6 @@ export function parseSafeTunnelStatusResponse(value: unknown): SafeTunnelStatusR
   const record = requireRecord(value);
   const activeOperation = record["activeOperation"] === undefined ? undefined : parseSafeTunnelOperationResponse(record["activeOperation"]);
   return {
-    connector: parseSafeTunnelConnectorStatus(record["connector"]),
     config: parseSafeTunnelConfigStatus(record["config"]),
     desiredState: requireSafeTunnelDesiredState(record, "desiredState"),
     runtime: parseSafeTunnelRuntimeStatus(record["runtime"]),
@@ -138,7 +137,6 @@ export function parseSafeTunnelEnableResponse(value: unknown): SafeTunnelEnableR
 
 export function parseSafeTunnelOperationResponse(value: unknown): SafeTunnelOperationResponse {
   const record = requireRecord(value);
-  const connectorProcessId = optionalNumber(record, "connectorProcessId");
   const exitCode = optionalNumberOrNull(record, "exitCode");
   const finishedAt = optionalString(record, "finishedAt");
   const logPath = optionalString(record, "logPath");
@@ -157,7 +155,6 @@ export function parseSafeTunnelOperationResponse(value: unknown): SafeTunnelOper
     startedAt: requireString(record, "startedAt"),
     stdout: requireString(record, "stdout"),
     stderr: requireString(record, "stderr"),
-    ...(connectorProcessId === undefined ? {} : { connectorProcessId }),
     ...(error === undefined ? {} : { error }),
     ...(exitCode === undefined ? {} : { exitCode }),
     ...(finishedAt === undefined ? {} : { finishedAt }),
@@ -174,31 +171,6 @@ export function parseSafeTunnelOperationResponse(value: unknown): SafeTunnelOper
 export function parseSafeTunnelDisableResponse(value: unknown): SafeTunnelDisableResponse {
   const record = requireRecord(value);
   return { status: parseSafeTunnelStatusResponse(record["status"]) };
-}
-
-function parseSafeTunnelConnectorStatus(value: unknown): SafeTunnelConnectorStatus {
-  const record = requireRecord(value);
-  const install = record["install"] === undefined ? undefined : parseSafeTunnelConnectorInstallStatus(record["install"]);
-  const error = optionalString(record, "error");
-  return {
-    command: requireString(record, "command"),
-    state: requireSafeTunnelConnectorState(record, "state"),
-    ...(install === undefined ? {} : { install }),
-    ...(error === undefined ? {} : { error }),
-  };
-}
-
-function parseSafeTunnelConnectorInstallStatus(value: unknown): SafeTunnelConnectorInstallStatus {
-  const record = requireRecord(value);
-  if (record["enabled"] !== true) throw new Error("Expected Safe Tunnel connector install enabled field");
-  return {
-    binName: requireString(record, "binName"),
-    command: requireString(record, "command"),
-    enabled: true,
-    installDirectory: requireString(record, "installDirectory"),
-    installerCommand: requireString(record, "installerCommand"),
-    packageSpec: requireString(record, "packageSpec"),
-  };
 }
 
 function parseSafeTunnelConfigStatus(value: unknown): SafeTunnelConfigStatus {
@@ -234,7 +206,6 @@ function parseSafeTunnelConfigMachine(value: unknown): NonNullable<SafeTunnelCon
 
 function parseSafeTunnelRuntimeStatus(value: unknown): SafeTunnelRuntimeStatus {
   const record = requireRecord(value);
-  const pidFilePath = optionalString(record, "pidFilePath");
   const diagnosticCode = optionalSafeTunnelRuntimeDiagnosticCode(record, "diagnosticCode");
   const frpcConfigExists = parseOptionalBoolean(record["frpcConfigExists"], "frpcConfigExists");
   const frpcConfigPath = optionalString(record, "frpcConfigPath");
@@ -246,7 +217,6 @@ function parseSafeTunnelRuntimeStatus(value: unknown): SafeTunnelRuntimeStatus {
   const logTail = optionalString(record, "logTail");
   const logTailMaxCharacters = optionalNumber(record, "logTailMaxCharacters");
   return {
-    ...(pidFilePath === undefined ? {} : { pidFilePath }),
     state: requireSafeTunnelRuntimeState(record, "state"),
     ...(diagnosticCode === undefined ? {} : { diagnosticCode }),
     ...(frpcConfigExists === undefined ? {} : { frpcConfigExists }),
@@ -259,12 +229,6 @@ function parseSafeTunnelRuntimeStatus(value: unknown): SafeTunnelRuntimeStatus {
     ...(logTail === undefined ? {} : { logTail }),
     ...(logTailMaxCharacters === undefined ? {} : { logTailMaxCharacters }),
   };
-}
-
-function requireSafeTunnelConnectorState(record: Record<string, unknown>, key: string): SafeTunnelConnectorState {
-  const value = requireString(record, key);
-  if (value !== "available" && value !== "installable" && value !== "unavailable") throw new Error(`Expected Safe Tunnel connector state field: ${key}`);
-  return value;
 }
 
 function requireSafeTunnelConfigState(record: Record<string, unknown>, key: string): SafeTunnelConfigState {
@@ -281,7 +245,7 @@ function requireSafeTunnelDesiredState(record: Record<string, unknown>, key: str
 
 function requireSafeTunnelRuntimeState(record: Record<string, unknown>, key: string): SafeTunnelRuntimeState {
   const value = requireString(record, key);
-  if (value !== "stopped" && value !== "running" && value !== "stale" && value !== "unknown") throw new Error(`Expected Safe Tunnel runtime state field: ${key}`);
+  if (value !== "stopped" && value !== "running" && value !== "unknown") throw new Error(`Expected Safe Tunnel runtime state field: ${key}`);
   return value;
 }
 

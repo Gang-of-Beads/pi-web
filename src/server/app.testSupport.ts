@@ -145,7 +145,6 @@ export function registerAppTestHooks(): void {
 
 export function fakeSafeTunnelBridgeService(): SafeTunnelBridgeService {
   const status: SafeTunnelStatusResponse = {
-    connector: { command: "PI WEB built-in frpc supervisor", state: "available" },
     config: {
       exists: false,
       path: "/test/pi-web/safe-tunnel/config.json",

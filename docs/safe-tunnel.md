@@ -22,7 +22,7 @@ $PI_WEB_DATA_DIR/safe-tunnel/config.json
 
 Desired intent is independent from observed runtime state. Start persists `enabled` before process preparation; disable attempts to persist `disabled` before cancelling retries and stopping the owned child. A state-write failure is reported but does not leave the exact owned child running. Web/API shutdown stops the child without changing enabled intent. On the next web/API startup, PI WEB rereads that intent and re-arms direct supervision automatically. A stopped or failed runtime therefore does not silently erase what the user requested.
 
-On first read, if PI WEB state is absent and the former connector config exists (normally `~/.config/pi-web-tunnel/config.json`), PI WEB imports it into the private state file with **disabled** intent. The legacy source is left in place for safe rollback; PI WEB state is authoritative afterward.
+PI WEB writes its own state format (`stateVersion: 2`) without a connector-compatible schema projection. On first read only, if PI WEB state is absent and the former standalone config exists (normally `~/.config/pi-web-tunnel/config.json`), a bounded read-only migration imports it with **disabled** intent. The legacy source is left untouched for safe rollback; PI WEB state is authoritative afterward. Existing PI WEB-owned v1 state migrates in place without changing intent or credentials.
 
 ## Enable flow, inferred defaults, and Control API boundary
 
@@ -70,7 +70,7 @@ Tests exercise the concrete HTTP downloader through loopback responses, generate
 
 ## Direct frpc supervision
 
-Browser enable/status/disable no longer invokes the connector command. PI WEB fetches the normalized tunnel configuration, selects the verified managed executable (or the explicit advanced override), atomically writes `$PI_WEB_DATA_DIR/safe-tunnel/frpc.toml`, and launches `frpc -c <private-config>` directly. On POSIX the runtime directory is `0700` and generated TOML plus `frpc.log` are `0600`; config replacement uses a synced same-directory temporary file followed by rename. Disable and web/API shutdown remove the generated TOML after process cleanup.
+Browser enable/status/disable requires no connector npm package or command. PI WEB fetches the normalized tunnel configuration, selects the verified managed executable (or the explicit advanced override), atomically writes `$PI_WEB_DATA_DIR/safe-tunnel/frpc.toml`, and launches `frpc -c <private-config>` directly. On POSIX the runtime directory is `0700` and generated TOML plus `frpc.log` are `0600`; config replacement uses a synced same-directory temporary file followed by rename. Disable and web/API shutdown remove the generated TOML after process cleanup.
 
 The supervisor stores the exact child handle returned by its launcher. It never writes a PID file and never signals a numeric PID read from disk, so stale state cannot target an unrelated process. Disable and shutdown abort in-flight tunnel-config preparation, cancel restart/stability timers, stop only that handle with `SIGTERM`, escalate that same handle to `SIGKILL` after a bounded grace period, wait for bounded completion, and detach the listeners owned for that child. Fastify's close lifecycle invokes shutdown, and the web entrypoint closes Fastify on `SIGINT`/`SIGTERM`. Shutdown deliberately preserves enabled intent.
 
@@ -84,8 +84,6 @@ While supervision is armed—whether the exact child is running or the superviso
 
 If the Control API rejects the machine credential, including after hosted revocation, PI WEB treats that as terminal for the current credential: it durably marks that credential rejected, cancels heartbeat/reconciliation timers, stops only its exact owned child, keeps enabled intent intact, and reports the stable `credentials_rejected` diagnostic. This survives Disable and web/API restart, so the panel can offer Enable again for a replacement approval instead of retrying a known-revoked token. A successful replacement registration returns the durable credential state to active and resumes supervision. If writing the durable diagnostic itself fails, the original authentication failure still remains terminal so the child stops safely. Disable and web/API shutdown abort and await an in-flight heartbeat before stopping/shutting down the child runtime, so no late heartbeat can recreate timer work during cleanup.
 
-The `pi-web-tunnel` workspaces, command-discovery module, npm installer, and old PID-file CLI remain in the source tree only for legacy development/recovery until the dedicated cleanup leg. PI WEB's browser runtime does not invoke or configure them, and users should not install a separate connector service.
-
 ## Local browser API
 
 The browser-facing routes are:
@@ -97,16 +95,13 @@ The browser-facing routes are:
 | `POST /api/safe-tunnel/disable` | Cancels active enablement, persists disabled intent, cancels retries, and stops only PI WEB's owned child. |
 | `GET /api/safe-tunnel/operations/:operationId` | Polls tracked enablement phase, approval URL/code, terminal result, and public URL. |
 
-The old separate local `login`, `start`, and `stop` routes are no longer exposed. Retained connector source commands are legacy development/recovery tools only and are not called by this browser flow.
+The old separate local `login`, `start`, and `stop` routes are no longer exposed.
 
 ## Development
 
 ```bash
 # PI WEB web/API code (Safe Tunnel does not run in sessiond)
 npm run dev:web
-
-# The retained source connector is legacy recovery tooling only
-scripts/pi-web-tunnel-dev.sh status --json
 ```
 
-Safe Tunnel runs only in the web/API process. These lifecycle changes do not touch `sessiond`; no `pi-web-sessiond.service` restart is required.
+Use the Settings panel's advanced disclosure for a self-hosted Control API, unusual local target, explicit machine identity, or local `frpc` fixture. Safe Tunnel has no standalone connector workspace, source wrapper, npm installer, PID file, or connector-owned config path. It runs only in the web/API process. These lifecycle changes do not touch `sessiond`; no `pi-web-sessiond.service` restart is required.

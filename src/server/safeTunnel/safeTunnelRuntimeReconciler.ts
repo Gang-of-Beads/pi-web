@@ -405,7 +405,6 @@ function heartbeatInput(runtime: SafeTunnelRuntimeStatus): {
       return runtime.error === undefined
         ? { tunnelStatus: "starting" }
         : { tunnelStatus: "error", errorMessage: runtimeRecoveringMessage };
-    case "stale":
     case "stopped":
       return { tunnelStatus: "error", errorMessage: runtimeRecoveringMessage };
   }

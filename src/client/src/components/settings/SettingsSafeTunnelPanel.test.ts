@@ -238,10 +238,6 @@ function safeTunnelStatus(options: SafeTunnelStatusOptions = {}): SafeTunnelStat
   const registered = options.registered ?? true;
   const rejected = options.rejected ?? false;
   return {
-    connector: {
-      command: "PI WEB built-in frpc supervisor",
-      state: "available",
-    },
     config: {
       path: "/home/test/.pi-web/safe-tunnel/config.json",
       exists: registered,
