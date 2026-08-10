@@ -297,6 +297,36 @@ export interface PiPackageMutationResponse extends PiPackagesResponse {
   removed?: boolean;
 }
 
+export type SafeTunnelRuntimeState = "stopped" | "running" | "unknown";
+export type SafeTunnelRuntimeDiagnosticCode =
+  | "credentials_rejected"
+  | "heartbeat_retrying"
+  | "registration_required"
+  | "runtime_recovery_failed"
+  | "state_retrying";
+
+export interface SafeTunnelRuntimeStatus {
+  state: SafeTunnelRuntimeState;
+  /** Stable machine-readable category for recovery UI; raw external failures never cross this boundary. */
+  diagnosticCode?: SafeTunnelRuntimeDiagnosticCode;
+  frpcConfigExists?: boolean;
+  frpcConfigPath?: string;
+  pid?: number;
+  error?: string;
+  logError?: string;
+  logExists?: boolean;
+  logPath?: string;
+  logTail?: string;
+  logTailMaxCharacters?: number;
+}
+
+export interface SafeTunnelCommandOutput {
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  signal?: string;
+}
+
 export type PiWebAgentDirEnvSource = "pi-web" | "pi-compatibility";
 
 export interface PiWebConfigEnvOverrides {
