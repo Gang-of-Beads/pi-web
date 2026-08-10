@@ -81,6 +81,11 @@ export interface PiWebStatusOptions {
   hasCommand?: (command: string) => Promise<boolean>;
 }
 
+export interface PiWebRuntimeOptions {
+  /** Snapshot of capabilities active in this web/API process. */
+  webCapabilities?: readonly PiWebCapability[];
+}
+
 const latestReleaseLookupCache = createPiWebReleaseLookupCache(fetchLatestNpmVersion);
 const runtimePackageInfo = readPackageInfoSync();
 
@@ -94,8 +99,14 @@ export function getPiWebRuntimeComponent(component: PiWebServiceComponent, capab
   };
 }
 
-export async function getPiWebRuntime(daemon: PiWebStatusDaemon = new SessionDaemonClient()): Promise<PiWebRuntimeResponse> {
-  const web = getPiWebRuntimeComponent("web", WEB_RUNTIME_CAPABILITIES);
+export async function getPiWebRuntime(
+  daemon: PiWebStatusDaemon = new SessionDaemonClient(),
+  options: PiWebRuntimeOptions = {},
+): Promise<PiWebRuntimeResponse> {
+  const web = getPiWebRuntimeComponent(
+    "web",
+    options.webCapabilities ?? WEB_RUNTIME_CAPABILITIES,
+  );
   const sessiond = await getSessiondRuntimeComponent(daemon);
   return {
     packageName: PI_WEB_PACKAGE_NAME,

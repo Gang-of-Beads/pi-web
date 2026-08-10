@@ -24,6 +24,7 @@ import { createActiveProfilePiPackageService, type PiPackageService } from "./pi
 import { registerPiPackageRoutes } from "./piPackageRoutes.js";
 import { createPiWebStatusCache, type PiWebStatusCache } from "./piWebStatusCache.js";
 import { getPiWebRuntime, getPiWebStatus, getPiWebVersionStatus } from "./piWebStatus.js";
+import { PI_WEB_CAPABILITIES, WEB_RUNTIME_CAPABILITIES } from "../shared/capabilities.js";
 import {
   ActiveAgentProfileAccessError,
   requireActiveAgentProfile,
@@ -36,6 +37,7 @@ import { registerMachineProxyRoutes } from "./machines/machineProxyRoutes.js";
 import { registerPluginBackendProxyRoutes } from "./plugins/pluginBackendProxyRoutes.js";
 import { proxyMachinePluginAsset, registerMachinePluginProxyRoutes } from "./machines/machinePluginProxyRoutes.js";
 import type { Project, WorkspaceEffectiveConfig, WorkspaceProviderResolution } from "./types.js";
+import type { SafeTunnelBridgeService } from "./safeTunnel/safeTunnelBridgeService.js";
 
 export interface AppDependencies {
   projects?: ProjectService;
@@ -47,6 +49,8 @@ export interface AppDependencies {
   piPackages?: PiPackageService;
   piWebStatusCache?: PiWebStatusCache;
   config?: PiWebConfigService;
+  /** Present only when startup opted in and composed the web-owned Safe Tunnel graph. */
+  safeTunnel?: SafeTunnelBridgeService;
   clientDist?: string | false;
   logger?: FastifyServerOptions["logger"];
   /** Maximum accepted HTTP request body size in bytes. */
@@ -153,6 +157,20 @@ async function withProfileDependency<T>(reply: FastifyReply, operation: () => Pr
   }
 }
 
+async function registerSafeTunnelFeature(
+  app: FastifyInstance,
+  bridge: SafeTunnelBridgeService,
+): Promise<void> {
+  const { registerSafeTunnelRoutes } = await import("./safeTunnel/safeTunnelRoutes.js");
+  registerSafeTunnelRoutes(app, bridge);
+  app.addHook("onReady", async () => {
+    await bridge.startup();
+  });
+  app.addHook("onClose", async () => {
+    await bridge.shutdown();
+  });
+}
+
 export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInstance> {
   const app = Fastify({ logger: deps.logger ?? true, ...(deps.bodyLimit === undefined ? {} : { bodyLimit: deps.bodyLimit }) });
   // Vite proxies development API requests here, while production and machine-scoped
@@ -178,6 +196,11 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
     recoveryProvider: () => loadServerPluginRecoveryConfig(),
   });
   const piPackages = deps.piPackages ?? createActiveProfilePiPackageService(agentProfileProvider);
+  const safeTunnel = deps.safeTunnel;
+  const webRuntimeCapabilities = safeTunnel === undefined
+    ? WEB_RUNTIME_CAPABILITIES
+    : [...WEB_RUNTIME_CAPABILITIES, PI_WEB_CAPABILITIES.safeTunnel];
+  const localRuntime = () => getPiWebRuntime(sessionDaemon, { webCapabilities: webRuntimeCapabilities });
   const piWebStatusCache = deps.piWebStatusCache ?? createPiWebStatusCache(
     async ({ force }) => {
       const activeAgentProfile = await agentProfileProvider.getActiveAgentProfile();
@@ -188,9 +211,9 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
     },
     { onError: (error) => { app.log.warn({ err: error }, "failed to refresh PI WEB status cache"); } },
   );
-  const machines = deps.machines ?? new MachineService(undefined, {
-    localRuntime: () => getPiWebRuntime(sessionDaemon),
-  });
+  const machines = deps.machines ?? new MachineService(undefined, { localRuntime });
+
+  if (safeTunnel !== undefined) await registerSafeTunnelFeature(app, safeTunnel);
 
   app.get("/pi-web-plugins/manifest.json", async (_request, reply) => withProfileDependency(reply, () => piWebPlugins.manifest()));
 
@@ -215,7 +238,7 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
     const activeAgentProfile = await agentProfileProvider.getActiveAgentProfile();
     return getPiWebVersionStatus(sessionDaemon, activeAgentProfile.status === "available" ? { activeAgentProfile: activeAgentProfile.profile } : {});
   });
-  app.get("/api/pi-web/runtime", async () => getPiWebRuntime(sessionDaemon));
+  app.get("/api/pi-web/runtime", localRuntime);
   app.get("/api/plugins", async (_request, reply) => withProfileDependency(reply, () => piWebPlugins.plugins()));
   app.get("/api/machines/local/plugins", async (_request, reply) => withProfileDependency(reply, () => piWebPlugins.plugins()));
   registerPiPackageRoutes(app, piPackages);
@@ -246,7 +269,16 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
   const clientDist = deps.clientDist ?? (existsSync(packagedClientDist) ? packagedClientDist : join(process.cwd(), "dist", "client"));
   if (clientDist !== false && existsSync(clientDist)) {
     await app.register(fastifyStatic, { root: clientDist });
-    app.setNotFoundHandler((_request, reply) => reply.sendFile("index.html"));
+    app.setNotFoundHandler((request, reply) => {
+      if (request.url === "/api" || request.url.startsWith("/api/")) {
+        return reply.code(404).send({
+          message: `Route ${request.method}:${request.url} not found`,
+          error: "Not Found",
+          statusCode: 404,
+        });
+      }
+      return reply.sendFile("index.html");
+    });
   }
 
   return app;
