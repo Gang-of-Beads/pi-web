@@ -155,6 +155,8 @@ export interface PiWebConfigValues {
   uploads?: PiWebUploadsConfig;
   /** Maximum accepted HTTP request body size in bytes (uploads/attachments). */
   maxUploadBytes?: number;
+  /** Experimental, web/API-owned Safe Tunnel availability. Off by default and requires a web/API restart. */
+  safeTunnel?: boolean;
   /** When true, LLMs can start new sessions via the spawn_session tool. */
   spawnSessions?: boolean;
   /**
@@ -423,6 +425,7 @@ export interface PiWebConfigEnvOverrides {
   host: boolean;
   port: boolean;
   allowedHosts: boolean;
+  safeTunnel: boolean;
   spawnSessions: boolean;
   subsessions: boolean;
   askUser: boolean;
