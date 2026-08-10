@@ -1,4 +1,5 @@
 import type { MachineStatusUiEvent } from "./machineStatus.js";
+import type { SafeTunnelDesiredState } from "./safeTunnelTypes.js";
 import type {
   DeleteWorkspaceFileResponse,
   FileContentMediaType,
@@ -297,6 +298,12 @@ export interface PiPackageMutationResponse extends PiPackagesResponse {
   removed?: boolean;
 }
 
+export type SafeTunnelConfigState =
+  | "missing"
+  | "unregistered"
+  | "registered"
+  | "rejected"
+  | "invalid";
 export type SafeTunnelRuntimeState = "stopped" | "running" | "unknown";
 export type SafeTunnelRuntimeDiagnosticCode =
   | "credentials_rejected"
@@ -304,6 +311,34 @@ export type SafeTunnelRuntimeDiagnosticCode =
   | "registration_required"
   | "runtime_recovery_failed"
   | "state_retrying";
+export type SafeTunnelOperationKind = "enable";
+export type SafeTunnelOperationPhase =
+  | "preparing"
+  | "awaiting_approval"
+  | "registering"
+  | "starting"
+  | "enabled";
+export type SafeTunnelOperationStatus =
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "cancelled";
+
+export interface SafeTunnelConfigStatus {
+  path: string;
+  exists: boolean;
+  state: SafeTunnelConfigState;
+  localPiWebUrl?: string;
+  frpcPathConfigured?: boolean;
+  machine?: {
+    controlApiBaseUrl: string;
+    machineId: string;
+    machineSlug?: string;
+    publicHostname?: string;
+    publicUrl?: string;
+  };
+  error?: string;
+}
 
 export interface SafeTunnelRuntimeStatus {
   state: SafeTunnelRuntimeState;
@@ -325,6 +360,61 @@ export interface SafeTunnelCommandOutput {
   stdout: string;
   stderr: string;
   signal?: string;
+}
+
+export interface SafeTunnelOperationResponse {
+  id: string;
+  kind: SafeTunnelOperationKind;
+  phase: SafeTunnelOperationPhase;
+  status: SafeTunnelOperationStatus;
+  startedAt: string;
+  stdout: string;
+  stderr: string;
+  error?: string;
+  exitCode?: number | null;
+  finishedAt?: string;
+  logPath?: string;
+  logTail?: string;
+  logTailMaxCharacters?: number;
+  publicUrl?: string;
+  signal?: string;
+  userCode?: string;
+  verificationUriComplete?: string;
+}
+
+export interface SafeTunnelStatusResponse {
+  config: SafeTunnelConfigStatus;
+  /** Persisted user intent; deliberately independent from observed runtime state. */
+  desiredState: SafeTunnelDesiredState;
+  runtime: SafeTunnelRuntimeStatus;
+  activeOperation?: SafeTunnelOperationResponse;
+}
+
+export interface SafeTunnelAdvancedOverrides {
+  /** Self-hosted/development Control API override; production is the server-owned default. */
+  controlApiUrl?: string;
+  /** Development override for the inferred OS hostname. */
+  machineName?: string;
+  /** Development override for the inferred collision-resistant DNS slug. */
+  machineSlug?: string;
+  /** Development override for the running PI WEB listener target. */
+  localPiWebUrl?: string;
+  /** Advanced executable override; omission preserves a saved override or uses managed frpc. */
+  frpcPath?: string;
+}
+
+export interface SafeTunnelEnableRequest {
+  advanced?: SafeTunnelAdvancedOverrides;
+}
+
+export interface SafeTunnelEnableResponse {
+  accepted: true;
+  operation: SafeTunnelOperationResponse;
+  status: SafeTunnelStatusResponse;
+}
+
+export interface SafeTunnelDisableResponse {
+  status: SafeTunnelStatusResponse;
 }
 
 export type PiWebAgentDirEnvSource = "pi-web" | "pi-compatibility";
