@@ -12,6 +12,14 @@ import type {
   SafeTunnelStatusResponse,
 } from "../../../shared/apiTypes";
 import type { SafeTunnelDesiredState } from "../../../shared/safeTunnelTypes";
+import { isSafeTunnelControlApiTransportAllowed } from "../../../shared/safeTunnelUrlPolicy";
+
+const maximumDiagnosticCharacters = 2_000;
+const maximumIdentifierCharacters = 256;
+const maximumOutputCharacters = 24_000;
+const maximumPathCharacters = 4_096;
+const maximumLogTailCharacters = 12_000;
+const maximumUrlCharacters = 2_048;
 
 export function parseSafeTunnelStatusResponse(value: unknown): SafeTunnelStatusResponse {
   const record = requireRecord(value);
@@ -39,23 +47,26 @@ export function parseSafeTunnelEnableResponse(value: unknown): SafeTunnelEnableR
 export function parseSafeTunnelOperationResponse(value: unknown): SafeTunnelOperationResponse {
   const record = requireRecord(value);
   const exitCode = optionalNumberOrNull(record, "exitCode");
-  const finishedAt = optionalString(record, "finishedAt");
-  const logPath = optionalString(record, "logPath");
-  const logTail = optionalString(record, "logTail");
+  const finishedAt = optionalString(record, "finishedAt", maximumIdentifierCharacters);
+  const logPath = optionalString(record, "logPath", maximumPathCharacters);
+  const logTail = optionalString(record, "logTail", maximumLogTailCharacters);
   const logTailMaxCharacters = optionalNumber(record, "logTailMaxCharacters");
   const publicUrl = optionalHttpUrl(record, "publicUrl");
-  const signal = optionalString(record, "signal");
-  const userCode = optionalString(record, "userCode");
-  const verificationUriComplete = optionalHttpUrl(record, "verificationUriComplete");
-  const error = optionalString(record, "error");
+  const signal = optionalString(record, "signal", maximumIdentifierCharacters);
+  const userCode = optionalString(record, "userCode", maximumIdentifierCharacters);
+  const verificationUriComplete = optionalSafeControlApiUrl(
+    record,
+    "verificationUriComplete",
+  );
+  const error = optionalString(record, "error", maximumDiagnosticCharacters);
   return {
-    id: requireString(record, "id"),
+    id: requireString(record, "id", maximumIdentifierCharacters),
     kind: requireSafeTunnelOperationKind(record, "kind"),
     phase: requireSafeTunnelOperationPhase(record, "phase"),
     status: requireSafeTunnelOperationStatus(record, "status"),
-    startedAt: requireString(record, "startedAt"),
-    stdout: requireString(record, "stdout"),
-    stderr: requireString(record, "stderr"),
+    startedAt: requireString(record, "startedAt", maximumIdentifierCharacters),
+    stdout: requireString(record, "stdout", maximumOutputCharacters),
+    stderr: requireString(record, "stderr", maximumOutputCharacters),
     ...(error === undefined ? {} : { error }),
     ...(exitCode === undefined ? {} : { exitCode }),
     ...(finishedAt === undefined ? {} : { finishedAt }),
@@ -81,9 +92,9 @@ function parseSafeTunnelConfigStatus(value: unknown): SafeTunnelConfigStatus {
   const machine = record["machine"] === undefined
     ? undefined
     : parseSafeTunnelConfigMachine(record["machine"]);
-  const error = optionalString(record, "error");
+  const error = optionalString(record, "error", maximumDiagnosticCharacters);
   return {
-    path: requireString(record, "path"),
+    path: requireString(record, "path", maximumPathCharacters),
     exists: requireBoolean(record, "exists"),
     state: requireSafeTunnelConfigState(record, "state"),
     ...(localPiWebUrl === undefined ? {} : { localPiWebUrl }),
@@ -95,12 +106,12 @@ function parseSafeTunnelConfigStatus(value: unknown): SafeTunnelConfigStatus {
 
 function parseSafeTunnelConfigMachine(value: unknown): NonNullable<SafeTunnelConfigStatus["machine"]> {
   const record = requireRecord(value);
-  const machineSlug = optionalString(record, "machineSlug");
-  const publicHostname = optionalString(record, "publicHostname");
+  const machineSlug = optionalString(record, "machineSlug", maximumIdentifierCharacters);
+  const publicHostname = optionalString(record, "publicHostname", maximumIdentifierCharacters);
   const publicUrl = optionalHttpUrl(record, "publicUrl");
   return {
-    controlApiBaseUrl: requireHttpUrl(record, "controlApiBaseUrl"),
-    machineId: requireString(record, "machineId"),
+    controlApiBaseUrl: requireSafeControlApiUrl(record, "controlApiBaseUrl"),
+    machineId: requireString(record, "machineId", maximumIdentifierCharacters),
     ...(machineSlug === undefined ? {} : { machineSlug }),
     ...(publicHostname === undefined ? {} : { publicHostname }),
     ...(publicUrl === undefined ? {} : { publicUrl }),
@@ -111,13 +122,13 @@ function parseSafeTunnelRuntimeStatus(value: unknown): SafeTunnelRuntimeStatus {
   const record = requireRecord(value);
   const diagnosticCode = optionalSafeTunnelRuntimeDiagnosticCode(record, "diagnosticCode");
   const frpcConfigExists = optionalBoolean(record, "frpcConfigExists");
-  const frpcConfigPath = optionalString(record, "frpcConfigPath");
+  const frpcConfigPath = optionalString(record, "frpcConfigPath", maximumPathCharacters);
   const pid = optionalNumber(record, "pid");
-  const error = optionalString(record, "error");
-  const logError = optionalString(record, "logError");
+  const error = optionalString(record, "error", maximumDiagnosticCharacters);
+  const logError = optionalString(record, "logError", maximumDiagnosticCharacters);
   const logExists = optionalBoolean(record, "logExists");
-  const logPath = optionalString(record, "logPath");
-  const logTail = optionalString(record, "logTail");
+  const logPath = optionalString(record, "logPath", maximumPathCharacters);
+  const logTail = optionalString(record, "logTail", maximumLogTailCharacters);
   const logTailMaxCharacters = optionalNumber(record, "logTailMaxCharacters");
   return {
     state: requireSafeTunnelRuntimeState(record, "state"),
@@ -205,16 +216,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function requireString(record: Record<string, unknown>, key: string): string {
+function requireString(
+  record: Record<string, unknown>,
+  key: string,
+  maximumCharacters = maximumOutputCharacters,
+): string {
   const value = record[key];
-  if (typeof value !== "string") throw new Error(`Expected string field: ${key}`);
+  if (typeof value !== "string" || value.length > maximumCharacters) {
+    throw new Error(`Expected bounded string field: ${key}`);
+  }
   return value;
 }
 
-function optionalString(record: Record<string, unknown>, key: string): string | undefined {
+function optionalString(
+  record: Record<string, unknown>,
+  key: string,
+  maximumCharacters = maximumOutputCharacters,
+): string | undefined {
   const value = record[key];
   if (value === undefined) return undefined;
-  if (typeof value !== "string") throw new Error(`Expected optional string field: ${key}`);
+  if (typeof value !== "string" || value.length > maximumCharacters) {
+    throw new Error(`Expected bounded optional string field: ${key}`);
+  }
   return value;
 }
 
@@ -227,7 +250,29 @@ function optionalHttpUrl(record: Record<string, unknown>, key: string): string |
   return value === undefined ? undefined : requireSafeBrowserUrl(value, key);
 }
 
+function requireSafeControlApiUrl(record: Record<string, unknown>, key: string): string {
+  return requireSafeControlApiTransport(requireHttpUrl(record, key), key);
+}
+
+function optionalSafeControlApiUrl(
+  record: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = optionalHttpUrl(record, key);
+  return value === undefined ? undefined : requireSafeControlApiTransport(value, key);
+}
+
+function requireSafeControlApiTransport(value: string, key: string): string {
+  if (!isSafeTunnelControlApiTransportAllowed(new URL(value))) {
+    throw new Error(`Expected secure Control API URL field: ${key}`);
+  }
+  return value;
+}
+
 function requireSafeBrowserUrl(value: string, key: string): string {
+  if (value.length > maximumUrlCharacters) {
+    throw new Error(`Expected bounded HTTP(S) URL field: ${key}`);
+  }
   let url: URL;
   try {
     url = new URL(value);

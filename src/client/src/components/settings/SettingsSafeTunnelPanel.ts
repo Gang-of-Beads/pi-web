@@ -6,11 +6,14 @@ import type {
   SafeTunnelRuntimeStatus,
   SafeTunnelStatusResponse,
 } from "../../../../shared/apiTypes";
+import { isSafeTunnelControlApiTransportAllowed } from "../../../../shared/safeTunnelUrlPolicy";
 import { safeTunnelApi, type SafeTunnelApi } from "../../api/safeTunnelClient";
 import { writeClipboardText } from "../../clipboard";
 
 const operationPollIntervalMs = 2_000;
 const productionControlApiUrl = "https://api.tunnels.pi-web.dev";
+const maximumBrowserErrorCharacters = 2_000;
+const maximumUrlCharacters = 2_048;
 
 export interface SafeTunnelAdvancedFields {
   controlApiUrl: string;
@@ -719,6 +722,12 @@ function controlApiUrlValidationMessage(value: string): string | undefined {
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     return "Advanced Control API URL must use http:// or https://.";
   }
+  if (value.length > maximumUrlCharacters) {
+    return "Advanced Control API URL must be at most 2048 characters.";
+  }
+  if (!isSafeTunnelControlApiTransportAllowed(url)) {
+    return "Advanced Control API URL must use HTTPS unless it is a literal loopback development endpoint.";
+  }
   if (url.username !== "" || url.password !== "") {
     return "Advanced Control API URL must not include credentials.";
   }
@@ -751,5 +760,8 @@ function isValidMachineSlug(value: string): boolean {
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  const message = error instanceof Error ? error.message : String(error);
+  return message.length <= maximumBrowserErrorCharacters
+    ? message
+    : message.slice(0, maximumBrowserErrorCharacters);
 }

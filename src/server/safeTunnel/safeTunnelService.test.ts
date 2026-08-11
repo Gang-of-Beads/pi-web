@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   SafeTunnelControlPlaneError,
   type SafeTunnelApprovedDeviceAuthorization,
@@ -56,6 +56,7 @@ class FakeSafeTunnelControlPlane implements SafeTunnelControlPlane {
   heartbeat: SafeTunnelMachineHeartbeat = machineHeartbeat();
   heartbeatError: Error | undefined;
   registration: SafeTunnelRegisteredMachine = registeredMachine();
+  registrationResult: Promise<SafeTunnelRegisteredMachine> | undefined;
   tunnelConfig: SafeTunnelMachineTunnelConfig = machineTunnelConfig();
   tunnelConfigError: Error | undefined;
 
@@ -87,7 +88,7 @@ class FakeSafeTunnelControlPlane implements SafeTunnelControlPlane {
     readonly clientVersion: string;
   }): Promise<SafeTunnelRegisteredMachine> {
     this.calls.push({ method: "register", input });
-    return Promise.resolve(this.registration);
+    return this.registrationResult ?? Promise.resolve(this.registration);
   }
 
   getMachineTunnelConfig(
@@ -163,9 +164,18 @@ function machineTunnelConfig(): SafeTunnelMachineTunnelConfig {
     localPiWebUrl: "http://127.0.0.1:8504",
     proxyName: "account-machine",
     frpcConfigToml: [
+      'serverAddr = "relay.example.test"',
+      "serverPort = 7000",
+      'auth.method = "token"',
+      'auth.token = "private-relay-token"',
+      "transport.tls.enable = true",
+      "",
       "[[proxies]]",
-      "localIP = \"127.0.0.1\"",
+      'name = "account-machine"',
+      'type = "http"',
+      'localIP = "127.0.0.1"',
       "localPort = 8504",
+      'customDomains = ["dev-box.ns-abc123.tunnels.pi-web.dev"]',
       "",
     ].join("\n"),
   };
@@ -445,6 +455,41 @@ describe("SafeTunnelService", () => {
     expect(storage.saves).toEqual([]);
   });
 
+  it("persists a successfully returned one-time registration after concurrent cancellation", async () => {
+    const storage = new MemorySafeTunnelStateStorage();
+    const controlPlane = new FakeSafeTunnelControlPlane();
+    const registration = deferred<SafeTunnelRegisteredMachine>();
+    controlPlane.registrationResult = registration.promise;
+    const controller = new AbortController();
+    const service = new SafeTunnelService({
+      controlPlane,
+      stateStorage: storage,
+      now: () => new Date("2026-07-29T12:00:00.000Z"),
+    });
+
+    const login = service.login({
+      controlApiBaseUrl: "https://control.example.test",
+      machineName: "Dev Box",
+      machineSlug: "dev-box",
+    }, {}, { signal: controller.signal });
+    await vi.waitFor(() => {
+      expect(controlPlane.calls.map(({ method }) => method)).toContain("register");
+    });
+
+    controller.abort();
+    registration.resolve(registeredMachine());
+
+    await expect(login).resolves.toMatchObject({
+      machineCredentials: { machineId: "machine_123" },
+    });
+    expect(storage.saves.at(-1)).toMatchObject({
+      machine: {
+        machineId: "machine_123",
+        machineToken: "piwt_mtok_v1_private",
+      },
+    });
+  });
+
   it("fails closed when a machine-scoped response identifies a different machine", async () => {
     const storage = new MemorySafeTunnelStateStorage(registeredState());
     const controlPlane = new FakeSafeTunnelControlPlane();
@@ -477,7 +522,17 @@ describe("applySafeTunnelLocalTarget", () => {
   it("rejects config that does not contain the asserted hosted local target", () => {
     expect(() => applySafeTunnelLocalTarget({
       ...machineTunnelConfig(),
-      frpcConfigToml: "[[proxies]]\nlocalPort = 9999\n",
+      frpcConfigToml: machineTunnelConfig().frpcConfigToml.replace(
+        "localPort = 8504",
+        "localPort = 9999",
+      ),
+    }, "http://127.0.0.1:19000")).toThrow("unexpected local target");
+  });
+
+  it("rejects provider config that smuggles another proxy even when the first target is valid", () => {
+    expect(() => applySafeTunnelLocalTarget({
+      ...machineTunnelConfig(),
+      frpcConfigToml: `${machineTunnelConfig().frpcConfigToml}\n[[proxies]]\nname = "extra"\ntype = "tcp"\nlocalIP = "169.254.169.254"\nlocalPort = 80\n`,
     }, "http://127.0.0.1:19000")).toThrow("unexpected local target");
   });
 });

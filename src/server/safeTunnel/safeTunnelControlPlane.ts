@@ -1,10 +1,20 @@
+import { isSafeTunnelControlApiTransportAllowed } from "../../shared/safeTunnelUrlPolicy.js";
 import {
   normalizeSafeTunnelControlApiBaseUrl,
+  normalizeSafeTunnelLocalPiWebUrl,
   normalizeSafeTunnelPublicUrl,
   type SafeTunnelMachineCredentials,
 } from "./safeTunnelState.js";
 
 export const safeTunnelClientVersion = "pi-web-safe-tunnel/1";
+
+const defaultControlApiRequestTimeoutMs = 15_000;
+const maximumControlApiResponseBytes = 128 * 1_024;
+const maximumIdentifierCharacters = 256;
+const maximumNameCharacters = 256;
+const maximumTokenCharacters = 4_096;
+const maximumUrlCharacters = 2_048;
+const maximumFrpcConfigCharacters = 32_000;
 
 export type SafeTunnelControlPlaneErrorCode =
   | "authentication_failed"
@@ -104,7 +114,7 @@ export interface SafeTunnelControlPlane {
     readonly machineSlug: string;
     readonly localPiWebUrl: string;
     readonly clientVersion: string;
-  }): Promise<SafeTunnelRegisteredMachine>;
+  }, options?: { readonly signal?: AbortSignal }): Promise<SafeTunnelRegisteredMachine>;
   getMachineTunnelConfig(
     credentials: SafeTunnelMachineCredentials,
     options?: { readonly signal?: AbortSignal },
@@ -122,8 +132,19 @@ export interface SafeTunnelControlPlane {
 
 export type SafeTunnelFetch = (input: string, init: RequestInit) => Promise<Response>;
 
+export interface SafeTunnelControlPlaneScheduledTimeout {
+  cancel(): void;
+}
+
+export type SafeTunnelControlPlaneTimeoutScheduler = (
+  callback: () => void,
+  delayMs: number,
+) => SafeTunnelControlPlaneScheduledTimeout;
+
 export interface HttpSafeTunnelControlPlaneOptions {
   readonly fetch?: SafeTunnelFetch;
+  readonly requestTimeoutMs?: number;
+  readonly scheduleTimeout?: SafeTunnelControlPlaneTimeoutScheduler;
 }
 
 /**
@@ -132,9 +153,15 @@ export interface HttpSafeTunnelControlPlaneOptions {
  */
 export class HttpSafeTunnelControlPlane implements SafeTunnelControlPlane {
   private readonly fetch: SafeTunnelFetch;
+  private readonly requestTimeoutMs: number;
+  private readonly scheduleTimeout: SafeTunnelControlPlaneTimeoutScheduler;
 
   constructor(options: HttpSafeTunnelControlPlaneOptions = {}) {
     this.fetch = options.fetch ?? ((input, init) => fetch(input, init));
+    this.requestTimeoutMs = positiveInteger(
+      options.requestTimeoutMs ?? defaultControlApiRequestTimeoutMs,
+    );
+    this.scheduleTimeout = options.scheduleTimeout ?? scheduleNodeTimeout;
   }
 
   async startDeviceAuthorization(input: {
@@ -142,19 +169,21 @@ export class HttpSafeTunnelControlPlane implements SafeTunnelControlPlane {
     readonly clientVersion: string;
   }, options: { readonly signal?: AbortSignal } = {}): Promise<SafeTunnelDeviceAuthorization> {
     const operation = "start_device_authorization";
-    const response = await this.request(
+    return this.request(
       endpoint(input.controlApiBaseUrl, "/v1/device/start"),
       {
         ...jsonPostRequest({ connectorVersion: input.clientVersion }),
         ...(options.signal === undefined ? {} : { signal: options.signal }),
       },
       operation,
-    );
-    requireExpectedResponse(response, 202, operation);
-    return parseControlPlaneResponse(
-      await readSuccessJson(response, operation),
-      operation,
-      parseDeviceAuthorization,
+      async (response) => {
+        requireExpectedResponse(response, 202, operation);
+        return parseControlPlaneResponse(
+          await readSuccessJson(response, operation),
+          operation,
+          parseDeviceAuthorization,
+        );
+      },
     );
   }
 
@@ -163,38 +192,39 @@ export class HttpSafeTunnelControlPlane implements SafeTunnelControlPlane {
     readonly deviceCode: string;
   }, options: { readonly signal?: AbortSignal } = {}): Promise<SafeTunnelDeviceAuthorizationCompletion> {
     const operation = "complete_device_authorization";
-    const response = await this.request(
+    return this.request(
       endpoint(input.controlApiBaseUrl, "/v1/device/complete"),
       {
         ...jsonPostRequest({ deviceCode: input.deviceCode }),
         ...(options.signal === undefined ? {} : { signal: options.signal }),
       },
       operation,
+      async (response) => {
+        if (response.status === 409 || response.status === 403 || response.status === 410) {
+          const applicationCode = await readApplicationErrorCode(response);
+          if (response.status === 409 && applicationCode === "authorization_pending") {
+            return { kind: "pending" };
+          }
+          if (applicationCode === "authorization_denied") {
+            throw new SafeTunnelControlPlaneError("authorization_denied", operation);
+          }
+          if (applicationCode === "authorization_expired") {
+            throw new SafeTunnelControlPlaneError("authorization_expired", operation);
+          }
+          throw mappedHttpError(response.status, operation);
+        }
+
+        requireExpectedResponse(response, 200, operation);
+        return {
+          kind: "approved",
+          authorization: parseControlPlaneResponse(
+            await readSuccessJson(response, operation),
+            operation,
+            parseApprovedDeviceAuthorization,
+          ),
+        };
+      },
     );
-
-    if (response.status === 409 || response.status === 403 || response.status === 410) {
-      const applicationCode = await readApplicationErrorCode(response);
-      if (response.status === 409 && applicationCode === "authorization_pending") {
-        return { kind: "pending" };
-      }
-      if (applicationCode === "authorization_denied") {
-        throw new SafeTunnelControlPlaneError("authorization_denied", operation);
-      }
-      if (applicationCode === "authorization_expired") {
-        throw new SafeTunnelControlPlaneError("authorization_expired", operation);
-      }
-      throw mappedHttpError(response.status, operation);
-    }
-
-    requireExpectedResponse(response, 200, operation);
-    return {
-      kind: "approved",
-      authorization: parseControlPlaneResponse(
-        await readSuccessJson(response, operation),
-        operation,
-        parseApprovedDeviceAuthorization,
-      ),
-    };
   }
 
   async registerMachine(input: {
@@ -204,23 +234,28 @@ export class HttpSafeTunnelControlPlane implements SafeTunnelControlPlane {
     readonly machineSlug: string;
     readonly localPiWebUrl: string;
     readonly clientVersion: string;
-  }): Promise<SafeTunnelRegisteredMachine> {
+  }, options: { readonly signal?: AbortSignal } = {}): Promise<SafeTunnelRegisteredMachine> {
     const operation = "register_machine";
-    const response = await this.request(
+    return this.request(
       endpoint(input.controlApiBaseUrl, "/v1/machines"),
-      jsonPostRequest({
-        name: input.machineName,
-        slug: input.machineSlug,
-        localPiWebUrl: input.localPiWebUrl,
-        connectorVersion: input.clientVersion,
-      }, input.connectorAccessToken),
+      {
+        ...jsonPostRequest({
+          name: input.machineName,
+          slug: input.machineSlug,
+          localPiWebUrl: input.localPiWebUrl,
+          connectorVersion: input.clientVersion,
+        }, input.connectorAccessToken),
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+      },
       operation,
-    );
-    requireExpectedResponse(response, 201, operation);
-    return parseControlPlaneResponse(
-      await readSuccessJson(response, operation),
-      operation,
-      parseRegisteredMachine,
+      async (response) => {
+        requireExpectedResponse(response, 201, operation);
+        return parseControlPlaneResponse(
+          await readSuccessJson(response, operation),
+          operation,
+          parseRegisteredMachine,
+        );
+      },
     );
   }
 
@@ -229,7 +264,7 @@ export class HttpSafeTunnelControlPlane implements SafeTunnelControlPlane {
     options: { readonly signal?: AbortSignal } = {},
   ): Promise<SafeTunnelMachineTunnelConfig> {
     const operation = "get_tunnel_config";
-    const response = await this.request(
+    return this.request(
       endpoint(
         credentials.controlApiBaseUrl,
         `/v1/machines/${encodeURIComponent(credentials.machineId)}/tunnel-config`,
@@ -244,12 +279,14 @@ export class HttpSafeTunnelControlPlane implements SafeTunnelControlPlane {
         ...(options.signal === undefined ? {} : { signal: options.signal }),
       },
       operation,
-    );
-    requireExpectedResponse(response, 200, operation);
-    return parseControlPlaneResponse(
-      await readSuccessJson(response, operation),
-      operation,
-      parseMachineTunnelConfig,
+      async (response) => {
+        requireExpectedResponse(response, 200, operation);
+        return parseControlPlaneResponse(
+          await readSuccessJson(response, operation),
+          operation,
+          parseMachineTunnelConfig,
+        );
+      },
     );
   }
 
@@ -263,7 +300,7 @@ export class HttpSafeTunnelControlPlane implements SafeTunnelControlPlane {
     options: { readonly signal?: AbortSignal } = {},
   ): Promise<SafeTunnelMachineHeartbeat> {
     const operation = "record_heartbeat";
-    const response = await this.request(
+    return this.request(
       endpoint(
         credentials.controlApiBaseUrl,
         `/v1/machines/${encodeURIComponent(credentials.machineId)}/heartbeat`,
@@ -277,24 +314,45 @@ export class HttpSafeTunnelControlPlane implements SafeTunnelControlPlane {
         ...(options.signal === undefined ? {} : { signal: options.signal }),
       },
       operation,
-    );
-    requireExpectedResponse(response, 202, operation);
-    return parseControlPlaneResponse(
-      await readSuccessJson(response, operation),
-      operation,
-      parseMachineHeartbeat,
+      async (response) => {
+        requireExpectedResponse(response, 202, operation);
+        return parseControlPlaneResponse(
+          await readSuccessJson(response, operation),
+          operation,
+          parseMachineHeartbeat,
+        );
+      },
     );
   }
 
-  private async request(
+  private async request<T>(
     url: string,
     init: RequestInit,
     operation: SafeTunnelControlPlaneOperation,
-  ): Promise<Response> {
+    consume: (response: Response) => Promise<T>,
+  ): Promise<T> {
+    const callerSignal = init.signal ?? undefined;
+    const controller = new AbortController();
+    const abortFromCaller = (): void => { controller.abort(); };
+    callerSignal?.addEventListener("abort", abortFromCaller, { once: true });
+    if (callerSignal?.aborted === true) controller.abort();
+    const timeout = this.scheduleTimeout(() => { controller.abort(); }, this.requestTimeoutMs);
+
     try {
-      return await this.fetch(url, init);
-    } catch {
+      if (controller.signal.aborted) {
+        throw new Error("Safe Tunnel Control API request cancelled.");
+      }
+      const response = await abortable(
+        this.fetch(url, { ...init, signal: controller.signal }),
+        controller.signal,
+      );
+      return await abortable(consume(response), controller.signal);
+    } catch (error: unknown) {
+      if (error instanceof SafeTunnelControlPlaneError) throw error;
       throw new SafeTunnelControlPlaneError("transport_failed", operation);
+    } finally {
+      timeout.cancel();
+      callerSignal?.removeEventListener("abort", abortFromCaller);
     }
   }
 }
@@ -325,6 +383,7 @@ function requireExpectedResponse(
   operation: SafeTunnelControlPlaneOperation,
 ): void {
   if (response.status === expectedStatus) return;
+  void response.body?.cancel().catch(() => undefined);
   if (response.ok) throw new SafeTunnelControlPlaneError("invalid_response", operation);
   throw mappedHttpError(response.status, operation);
 }
@@ -347,8 +406,7 @@ async function readSuccessJson(
   operation: SafeTunnelControlPlaneOperation,
 ): Promise<unknown> {
   try {
-    const body: unknown = await response.json();
-    return body;
+    return await readBoundedJson(response);
   } catch {
     throw new SafeTunnelControlPlaneError("invalid_response", operation);
   }
@@ -357,7 +415,7 @@ async function readSuccessJson(
 async function readApplicationErrorCode(response: Response): Promise<string | undefined> {
   let body: unknown;
   try {
-    body = await response.json();
+    body = await readBoundedJson(response);
   } catch {
     return undefined;
   }
@@ -365,7 +423,53 @@ async function readApplicationErrorCode(response: Response): Promise<string | un
   const envelope = body["error"];
   const errorRecord = isRecord(envelope) ? envelope : body;
   const code = errorRecord["code"];
-  return typeof code === "string" && code.trim() !== "" ? code : undefined;
+  return typeof code === "string"
+    && code.length <= maximumIdentifierCharacters
+    && code.trim() !== ""
+    ? code
+    : undefined;
+}
+
+async function readBoundedJson(response: Response): Promise<unknown> {
+  const declaredLength = response.headers.get("content-length");
+  if (declaredLength !== null) {
+    const parsedLength = Number(declaredLength);
+    if (!Number.isSafeInteger(parsedLength)
+      || parsedLength < 0
+      || parsedLength > maximumControlApiResponseBytes) {
+      await response.body?.cancel().catch(() => undefined);
+      throw new Error("Invalid Safe Tunnel response body length.");
+    }
+  }
+  if (response.body === null) throw new Error("Missing Safe Tunnel response body.");
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      totalBytes += chunk.value.byteLength;
+      if (totalBytes > maximumControlApiResponseBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw new Error("Safe Tunnel response body is too large.");
+      }
+      chunks.push(chunk.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const body = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const source = new TextDecoder("utf-8", { fatal: true }).decode(body);
+  const parsed: unknown = JSON.parse(source);
+  return parsed;
 }
 
 class InvalidSafeTunnelControlPlaneResponseError extends Error {}
@@ -388,8 +492,8 @@ function parseControlPlaneResponse<T>(
 function parseDeviceAuthorization(body: unknown): SafeTunnelDeviceAuthorization {
   const record = requireResponseRecord(body);
   return {
-    deviceCode: requireResponseString(record["deviceCode"]),
-    userCode: requireResponseString(record["userCode"]),
+    deviceCode: requireResponseString(record["deviceCode"], maximumTokenCharacters),
+    userCode: requireResponseString(record["userCode"], maximumIdentifierCharacters),
     verificationUri: requireExternalHttpUrl(record["verificationUri"]),
     verificationUriComplete: requireExternalHttpUrl(record["verificationUriComplete"]),
     expiresAt: requireCanonicalIsoDateTime(record["expiresAt"]),
@@ -402,7 +506,7 @@ function parseApprovedDeviceAuthorization(body: unknown): SafeTunnelApprovedDevi
   const account = requireResponseRecord(record["account"]);
   if (record["tokenType"] !== "Bearer") throw invalidResponse();
   return {
-    accessToken: requireResponseString(record["accessToken"]),
+    accessToken: requireResponseString(record["accessToken"], maximumTokenCharacters),
     expiresAt: requireCanonicalIsoDateTime(record["expiresAt"]),
     account: {
       id: requireResponseString(account["id"]),
@@ -414,7 +518,13 @@ function parseApprovedDeviceAuthorization(body: unknown): SafeTunnelApprovedDevi
 function parseRegisteredMachine(body: unknown): SafeTunnelRegisteredMachine {
   const record = requireResponseRecord(body);
   const machine = requireResponseRecord(record["machine"]);
-  requireResponseString(record["tunnelConfigUrl"]);
+  requireResponseString(record["tunnelConfigUrl"], maximumUrlCharacters);
+  const publicHostname = requireResponseString(
+    record["publicHostname"],
+    maximumNameCharacters,
+  );
+  const publicUrl = normalizeResponsePublicUrl(record["publicUrl"]);
+  requireMatchingPublicHostname(publicHostname, publicUrl);
   return {
     machine: {
       id: requireResponseString(machine["id"]),
@@ -422,9 +532,9 @@ function parseRegisteredMachine(body: unknown): SafeTunnelRegisteredMachine {
       name: requireResponseString(machine["name"]),
       slug: requireResponseString(machine["slug"]),
     },
-    publicHostname: requireResponseString(record["publicHostname"]),
-    publicUrl: normalizeResponsePublicUrl(record["publicUrl"]),
-    machineToken: requireResponseString(record["machineToken"]),
+    publicHostname,
+    publicUrl,
+    machineToken: requireResponseString(record["machineToken"], maximumTokenCharacters),
   };
 }
 
@@ -433,13 +543,22 @@ function parseMachineTunnelConfig(body: unknown): SafeTunnelMachineTunnelConfig 
   const machine = requireResponseRecord(record["machine"]);
   const frp = requireResponseRecord(record["frp"]);
   if (frp["configFormat"] !== "toml") throw invalidResponse();
+  const publicHostname = requireResponseString(
+    record["publicHostname"],
+    maximumNameCharacters,
+  );
+  const publicUrl = normalizeResponsePublicUrl(record["publicUrl"]);
+  requireMatchingPublicHostname(publicHostname, publicUrl);
   return {
     machineId: requireResponseString(machine["id"]),
-    publicHostname: requireResponseString(record["publicHostname"]),
-    publicUrl: normalizeResponsePublicUrl(record["publicUrl"]),
-    localPiWebUrl: requireResponseString(record["localPiWebUrl"]),
+    publicHostname,
+    publicUrl,
+    localPiWebUrl: normalizeResponseLocalPiWebUrl(record["localPiWebUrl"]),
     proxyName: requireResponseString(frp["proxyName"]),
-    frpcConfigToml: requireResponseString(frp["frpcConfigToml"]),
+    frpcConfigToml: requireResponseString(
+      frp["frpcConfigToml"],
+      maximumFrpcConfigCharacters,
+    ),
   };
 }
 
@@ -462,11 +581,23 @@ function normalizeResponsePublicUrl(value: unknown): string {
   }
 }
 
+function normalizeResponseLocalPiWebUrl(value: unknown): string {
+  try {
+    return normalizeSafeTunnelLocalPiWebUrl(value);
+  } catch {
+    throw invalidResponse();
+  }
+}
+
+function requireMatchingPublicHostname(publicHostname: string, publicUrl: string): void {
+  if (new URL(publicUrl).hostname !== publicHostname) throw invalidResponse();
+}
+
 function requireExternalHttpUrl(value: unknown): string {
-  const source = requireResponseString(value);
+  const source = requireResponseString(value, maximumUrlCharacters);
   try {
     const url = new URL(source);
-    if ((url.protocol !== "http:" && url.protocol !== "https:")
+    if (!isSafeTunnelControlApiTransportAllowed(url)
       || url.username !== "" || url.password !== "") throw invalidResponse();
     return source;
   } catch (error: unknown) {
@@ -491,8 +622,13 @@ function requirePositiveInteger(value: unknown): number {
   return value;
 }
 
-function requireResponseString(value: unknown): string {
-  if (typeof value !== "string" || value.trim() === "") throw invalidResponse();
+function requireResponseString(
+  value: unknown,
+  maximumCharacters = maximumNameCharacters,
+): string {
+  if (typeof value !== "string"
+    || value.trim() === ""
+    || value.length > maximumCharacters) throw invalidResponse();
   return value;
 }
 
@@ -507,6 +643,48 @@ function invalidResponse(): InvalidSafeTunnelControlPlaneResponseError {
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function scheduleNodeTimeout(
+  callback: () => void,
+  delayMs: number,
+): SafeTunnelControlPlaneScheduledTimeout {
+  const timeout = setTimeout(callback, delayMs);
+  return { cancel: () => { clearTimeout(timeout); } };
+}
+
+function abortable<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const finish = (complete: () => void): void => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", onAbort);
+      complete();
+    };
+    const onAbort = (): void => {
+      finish(() => { reject(new Error("Safe Tunnel Control API request cancelled.")); });
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
+    void operation.then(
+      (value) => { finish(() => { resolve(value); }); },
+      (error: unknown) => {
+        finish(() => {
+          reject(error instanceof Error
+            ? error
+            : new Error("Unexpected Safe Tunnel Control API failure."));
+        });
+      },
+    );
+  });
+}
+
+function positiveInteger(value: number): number {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error("Safe Tunnel Control API request timeout must be a positive integer.");
+  }
+  return value;
 }
 
 function controlPlaneErrorMessage(

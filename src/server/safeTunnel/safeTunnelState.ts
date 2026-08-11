@@ -4,12 +4,18 @@ import { homedir } from "node:os";
 import { dirname, join, posix, win32 } from "node:path";
 import { piWebDataDir } from "../../config.js";
 import type { SafeTunnelDesiredState } from "../../shared/safeTunnelTypes.js";
+import { isSafeTunnelControlApiTransportAllowed } from "../../shared/safeTunnelUrlPolicy.js";
 
 export const safeTunnelStateVersion = 2;
 const previousSafeTunnelStateVersion = 1;
 export const safeTunnelStateDirectoryMode = 0o700;
 export const safeTunnelStateFileMode = 0o600;
 export const defaultSafeTunnelLocalPiWebUrl = "http://127.0.0.1:8504";
+
+const maximumUrlCharacters = 2_048;
+const maximumMachineIdCharacters = 256;
+const maximumMachineTokenCharacters = 4_096;
+const maximumPathCharacters = 4_096;
 
 export type SafeTunnelMachineCredentialStatus = "active" | "rejected";
 
@@ -174,7 +180,11 @@ export function parseSafeTunnelState(value: unknown): SafeTunnelPersistedState {
     ? "disabled"
     : requireDesiredState(record["desiredState"]);
   const localPiWebUrl = normalizeSafeTunnelLocalPiWebUrl(record["localPiWebUrl"]);
-  const frpcPath = optionalNonEmptyStateString(record["frpcPath"], "frpcPath");
+  const frpcPath = optionalBoundedStateString(
+    record["frpcPath"],
+    "frpcPath",
+    maximumPathCharacters,
+  );
   const machine = parseOptionalMachineCredentials(record["machine"]);
 
   return {
@@ -187,9 +197,17 @@ export function parseSafeTunnelState(value: unknown): SafeTunnelPersistedState {
 }
 
 export function normalizeSafeTunnelControlApiBaseUrl(value: unknown): string {
-  const source = requireNonEmptyString(value, "controlApiBaseUrl");
+  const source = requireBoundedString(
+    value,
+    "controlApiBaseUrl",
+    maximumUrlCharacters,
+  );
   const parsed = parseUrl(source, "controlApiBaseUrl");
-  requireHttpProtocol(parsed, "controlApiBaseUrl");
+  if (!isSafeTunnelControlApiTransportAllowed(parsed)) {
+    throw new Error(
+      "Safe Tunnel controlApiBaseUrl must use https, except for a literal loopback development endpoint.",
+    );
+  }
   requireUrlWithoutCredentials(parsed, "controlApiBaseUrl");
   if (parsed.search !== "" || parsed.hash !== "") {
     throw new Error("Safe Tunnel controlApiBaseUrl must not include a query or fragment.");
@@ -199,7 +217,7 @@ export function normalizeSafeTunnelControlApiBaseUrl(value: unknown): string {
 }
 
 export function normalizeSafeTunnelLocalPiWebUrl(value: unknown): string {
-  const source = requireNonEmptyString(value, "localPiWebUrl");
+  const source = requireBoundedString(value, "localPiWebUrl", maximumUrlCharacters);
   const parsed = parseUrl(source, "localPiWebUrl");
   if (parsed.protocol !== "http:") {
     throw new Error("Safe Tunnel localPiWebUrl must use http.");
@@ -215,7 +233,7 @@ export function normalizeSafeTunnelLocalPiWebUrl(value: unknown): string {
 }
 
 export function normalizeSafeTunnelPublicUrl(value: unknown): string {
-  const source = requireNonEmptyString(value, "publicUrl");
+  const source = requireBoundedString(value, "publicUrl", maximumUrlCharacters);
   const parsed = parseUrl(source, "publicUrl");
   requireHttpProtocol(parsed, "publicUrl");
   requireUrlWithoutCredentials(parsed, "publicUrl");
@@ -228,7 +246,11 @@ export function normalizeSafeTunnelPublicUrl(value: unknown): string {
 function parseOptionalMachineCredentials(value: unknown): SafeTunnelMachineCredentials | undefined {
   if (value === undefined) return undefined;
   const record = requireRecord(value, "Safe Tunnel machine credentials must be a JSON object.");
-  const machineSlug = optionalNonEmptyStateString(record["machineSlug"], "machine.machineSlug");
+  const machineSlug = optionalBoundedStateString(
+    record["machineSlug"],
+    "machine.machineSlug",
+    63,
+  );
   const publicUrl = record["publicUrl"] === undefined
     ? undefined
     : normalizeSafeTunnelPublicUrl(record["publicUrl"]);
@@ -240,8 +262,16 @@ function parseOptionalMachineCredentials(value: unknown): SafeTunnelMachineCrede
   return {
     controlApiBaseUrl: normalizeSafeTunnelControlApiBaseUrl(record["controlApiBaseUrl"]),
     credentialStatus: parseMachineCredentialStatus(record["credentialStatus"]),
-    machineId: requireNonEmptyString(record["machineId"], "machine.machineId"),
-    machineToken: requireNonEmptyString(record["machineToken"], "machine.machineToken"),
+    machineId: requireBoundedString(
+      record["machineId"],
+      "machine.machineId",
+      maximumMachineIdCharacters,
+    ),
+    machineToken: requireBoundedString(
+      record["machineToken"],
+      "machine.machineToken",
+      maximumMachineTokenCharacters,
+    ),
     ...(machineSlug === undefined ? {} : { machineSlug }),
     ...(publicUrl === undefined ? {} : { publicUrl }),
   };
@@ -289,9 +319,13 @@ function requireDesiredState(value: unknown): SafeTunnelDesiredState {
   return value;
 }
 
-function optionalNonEmptyStateString(value: unknown, fieldName: string): string | undefined {
+function optionalBoundedStateString(
+  value: unknown,
+  fieldName: string,
+  maximumCharacters: number,
+): string | undefined {
   if (value === undefined) return undefined;
-  return requireNonEmptyString(value, fieldName);
+  return requireBoundedString(value, fieldName, maximumCharacters);
 }
 
 function optionalNonEmptyString(value: string | undefined): string | undefined {
@@ -305,6 +339,18 @@ function requireNonEmptyString(value: unknown, fieldName: string): string {
     throw new Error(`Safe Tunnel ${fieldName} must be a non-empty string.`);
   }
   return value.trim();
+}
+
+function requireBoundedString(
+  value: unknown,
+  fieldName: string,
+  maximumCharacters: number,
+): string {
+  const source = requireNonEmptyString(value, fieldName);
+  if (source.length > maximumCharacters) {
+    throw new Error(`Safe Tunnel ${fieldName} is too long.`);
+  }
+  return source;
 }
 
 function parseUrl(value: string, fieldName: string): URL {

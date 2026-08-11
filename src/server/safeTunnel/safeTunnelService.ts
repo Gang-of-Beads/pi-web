@@ -8,6 +8,7 @@ import {
   type SafeTunnelMachineTunnelConfig,
   type SafeTunnelRegisteredMachine,
 } from "./safeTunnelControlPlane.js";
+import { prepareSafeTunnelFrpcConfig } from "./safeTunnelFrpcConfig.js";
 import {
   normalizeSafeTunnelControlApiBaseUrl,
   normalizeSafeTunnelLocalPiWebUrl,
@@ -344,6 +345,7 @@ function normalizeLoginInput(
   }
 
   const machineName = requireNonEmptyString(input.machineName);
+  if (machineName.length > 80) throw new SafeTunnelServiceError("invalid_login");
   const machineSlug = requireNonEmptyString(input.machineSlug);
   if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u.test(machineSlug)) {
     throw new SafeTunnelServiceError("invalid_login");
@@ -365,85 +367,20 @@ export function applySafeTunnelLocalTarget(
   tunnelConfig: SafeTunnelMachineTunnelConfig,
   localPiWebUrl: string,
 ): SafeTunnelPreparedTunnelConfig {
-  let desiredTarget: LocalPiWebTarget;
-  let controlPlaneTarget: LocalPiWebTarget;
+  let normalizedLocalPiWebUrl: string;
   try {
-    desiredTarget = localPiWebTarget(localPiWebUrl);
-    controlPlaneTarget = localPiWebTarget(tunnelConfig.localPiWebUrl);
-  } catch {
-    throw new SafeTunnelServiceError("invalid_tunnel_config");
-  }
-
-  if (desiredTarget.url === controlPlaneTarget.url) return tunnelConfig;
-
-  try {
+    normalizedLocalPiWebUrl = normalizeSafeTunnelLocalPiWebUrl(localPiWebUrl);
     return {
       ...tunnelConfig,
-      localPiWebUrl: desiredTarget.url,
-      frpcConfigToml: replaceFrpcLocalTarget(
-        tunnelConfig.frpcConfigToml,
-        controlPlaneTarget,
-        desiredTarget,
+      localPiWebUrl: normalizedLocalPiWebUrl,
+      frpcConfigToml: prepareSafeTunnelFrpcConfig(
+        tunnelConfig,
+        normalizedLocalPiWebUrl,
       ),
     };
   } catch {
     throw new SafeTunnelServiceError("invalid_tunnel_config");
   }
-}
-
-interface LocalPiWebTarget {
-  readonly localIP: string;
-  readonly localPort: number;
-  readonly url: string;
-}
-
-function localPiWebTarget(value: string): LocalPiWebTarget {
-  const url = normalizeSafeTunnelLocalPiWebUrl(value);
-  const parsed = new URL(url);
-  return {
-    localIP: parsed.hostname.replace(/^\[|\]$/gu, ""),
-    localPort: Number.parseInt(parsed.port, 10),
-    url,
-  };
-}
-
-function replaceFrpcLocalTarget(
-  toml: string,
-  from: LocalPiWebTarget,
-  to: LocalPiWebTarget,
-): string {
-  return replaceTomlScalar(
-    replaceTomlScalar(
-      toml,
-      "localIP",
-      JSON.stringify(from.localIP),
-      JSON.stringify(to.localIP),
-    ),
-    "localPort",
-    from.localPort.toString(),
-    to.localPort.toString(),
-  );
-}
-
-function replaceTomlScalar(
-  toml: string,
-  key: string,
-  oldValue: string,
-  newValue: string,
-): string {
-  const pattern = new RegExp(
-    `(^\\s*${escapeRegExp(key)}\\s*=\\s*)${escapeRegExp(oldValue)}(\\s*(?:\\r?\\n|$))`,
-    "mu",
-  );
-  if (!pattern.test(toml)) throw new Error("Missing local target scalar");
-  return toml.replace(
-    pattern,
-    (_match, prefix: string, suffix: string) => `${prefix}${newValue}${suffix}`,
-  );
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
 
 function requireNonEmptyString(value: string): string {

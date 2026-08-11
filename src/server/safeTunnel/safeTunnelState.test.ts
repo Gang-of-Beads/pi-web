@@ -7,6 +7,7 @@ import {
   createDefaultSafeTunnelState,
   defaultSafeTunnelStatePath,
   discoverLegacySafeTunnelStatePath,
+  normalizeSafeTunnelControlApiBaseUrl,
   parseSafeTunnelState,
   safeTunnelStateDirectoryMode,
   safeTunnelStateFileMode,
@@ -39,6 +40,27 @@ describe("Safe Tunnel state paths", () => {
       homeDirectory: "C:\\Users\\pi",
       platform: "win32",
     })).toBe("C:\\Users\\pi\\AppData\\Roaming\\pi-web-tunnel\\config.json");
+  });
+});
+
+describe("Safe Tunnel Control API URL policy", () => {
+  it.each([
+    ["production HTTPS", "https://control.example.test/", "https://control.example.test"],
+    ["IPv4 loopback development", "http://127.1:8787/", "http://127.0.0.1:8787"],
+    ["IPv6 loopback development", "http://[0:0:0:0:0:0:0:1]:8787", "http://[::1]:8787"],
+  ])("accepts %s endpoints", (_label, input, expected) => {
+    expect(normalizeSafeTunnelControlApiBaseUrl(input)).toBe(expected);
+  });
+
+  it.each([
+    "http://control.example.test",
+    "http://localhost:8787",
+    "http://127.example.test:8787",
+    "http://0.0.0.0:8787",
+    "http://192.168.1.10:8787",
+  ])("rejects non-HTTPS non-literal-loopback endpoint %s", (controlApiBaseUrl) => {
+    expect(() => normalizeSafeTunnelControlApiBaseUrl(controlApiBaseUrl))
+      .toThrow("must use https");
   });
 });
 
@@ -196,6 +218,19 @@ describe("FileSafeTunnelStateStorage", () => {
 
     expect(loaded.state.desiredState).toBe("enabled");
     expect(loaded.state.machine).toBeUndefined();
+  });
+
+  it("rejects legacy plaintext non-loopback credentials before they can be used", () => {
+    expect(() => parseSafeTunnelState({
+      stateVersion: 2,
+      desiredState: "enabled",
+      localPiWebUrl: "http://127.0.0.1:8504",
+      machine: {
+        controlApiBaseUrl: "http://provider.example.test",
+        machineId: "machine_123",
+        machineToken: "private",
+      },
+    })).toThrow("must use https");
   });
 
   it("parses durable rejected-credential state and rejects unknown credential states", () => {

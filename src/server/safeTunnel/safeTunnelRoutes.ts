@@ -48,6 +48,7 @@ export function registerSafeTunnelRoutes(
   service: SafeTunnelRouteService,
 ): void {
   app.get("/api/safe-tunnel/status", async (_request, reply) => {
+    markSafeTunnelResponsePrivate(reply);
     try {
       return await service.status();
     } catch (error) {
@@ -56,6 +57,7 @@ export function registerSafeTunnelRoutes(
   });
 
   app.post<{ Body: unknown }>("/api/safe-tunnel/enable", async (request, reply) => {
+    markSafeTunnelResponsePrivate(reply);
     try {
       const response = await service.enable(parseEnableRequest(request.body));
       return await reply.code(202).send(response);
@@ -65,6 +67,7 @@ export function registerSafeTunnelRoutes(
   });
 
   app.post("/api/safe-tunnel/disable", async (_request, reply) => {
+    markSafeTunnelResponsePrivate(reply);
     try {
       return await service.disable();
     } catch (error) {
@@ -75,6 +78,7 @@ export function registerSafeTunnelRoutes(
   app.get<{ Params: { operationId: string } }>(
     "/api/safe-tunnel/operations/:operationId",
     (request, reply) => {
+      markSafeTunnelResponsePrivate(reply);
       try {
         const operation = service.operation(request.params.operationId);
         if (operation === undefined) {
@@ -86,6 +90,10 @@ export function registerSafeTunnelRoutes(
       }
     },
   );
+}
+
+function markSafeTunnelResponsePrivate(reply: FastifyReply): void {
+  void reply.header("cache-control", "no-store");
 }
 
 class SafeTunnelRequestValidationError extends Error {}
@@ -111,30 +119,35 @@ function parseEnableRequest(body: unknown): SafeTunnelEnableRequest {
     parsed,
     "controlApiUrl",
     "Safe Tunnel advanced controlApiUrl",
+    2_048,
   );
   copyOptionalString(
     advanced,
     parsed,
     "machineName",
     "Safe Tunnel advanced machineName",
+    80,
   );
   copyOptionalString(
     advanced,
     parsed,
     "machineSlug",
     "Safe Tunnel advanced machineSlug",
+    63,
   );
   copyOptionalString(
     advanced,
     parsed,
     "localPiWebUrl",
     "Safe Tunnel advanced localPiWebUrl",
+    2_048,
   );
   copyOptionalString(
     advanced,
     parsed,
     "frpcPath",
     "Safe Tunnel advanced frpcPath",
+    4_096,
   );
   return Object.keys(parsed).length === 0 ? {} : { advanced: parsed };
 }
@@ -144,14 +157,16 @@ function copyOptionalString(
   target: SafeTunnelAdvancedOverrides,
   key: keyof SafeTunnelAdvancedOverrides,
   fieldName: string,
+  maximumCharacters: number,
 ): void {
-  const value = optionalNonEmptyString(source[key], fieldName);
+  const value = optionalNonEmptyString(source[key], fieldName, maximumCharacters);
   if (value !== undefined) target[key] = value;
 }
 
 function optionalNonEmptyString(
   value: unknown,
   fieldName: string,
+  maximumCharacters: number,
 ): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "string" || value.trim().length === 0) {
@@ -159,7 +174,11 @@ function optionalNonEmptyString(
       `${fieldName} must be a non-empty string`,
     );
   }
-  return value.trim();
+  const normalized = value.trim();
+  if (normalized.length > maximumCharacters) {
+    throw new SafeTunnelRequestValidationError(`${fieldName} is too long`);
+  }
+  return normalized;
 }
 
 function requireRequestObject(

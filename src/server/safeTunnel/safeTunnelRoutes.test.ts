@@ -42,6 +42,21 @@ describe("registerSafeTunnelRoutes", () => {
     expect(service.operation).not.toHaveBeenCalled();
   });
 
+  it("marks status, mutation, operation, and error responses no-store", async () => {
+    const responses = await Promise.all([
+      app.inject({ method: "GET", url: "/api/safe-tunnel/status" }),
+      app.inject({ method: "POST", url: "/api/safe-tunnel/enable", payload: {} }),
+      app.inject({ method: "POST", url: "/api/safe-tunnel/disable" }),
+      app.inject({ method: "GET", url: "/api/safe-tunnel/operations/op_1" }),
+      app.inject({ method: "GET", url: "/api/safe-tunnel/operations/missing" }),
+      app.inject({ method: "POST", url: "/api/safe-tunnel/enable", payload: [] }),
+    ]);
+
+    for (const response of responses) {
+      expect(response.headers["cache-control"]).toBe("no-store");
+    }
+  });
+
   it("serves the browser-safe status contract", async () => {
     const response = await app.inject({
       method: "GET",
@@ -132,6 +147,11 @@ describe("registerSafeTunnelRoutes", () => {
       url: "/api/safe-tunnel/enable",
       payload: { advanced: { machineSlug: "" } },
     });
+    const oversizedOverride = await app.inject({
+      method: "POST",
+      url: "/api/safe-tunnel/enable",
+      payload: { advanced: { machineName: "x".repeat(81) } },
+    });
 
     expect(legacy.statusCode).toBe(400);
     expect(legacy.json()).toEqual({
@@ -144,6 +164,10 @@ describe("registerSafeTunnelRoutes", () => {
     expect(malformedOverride.statusCode).toBe(400);
     expect(malformedOverride.json()).toEqual({
       error: "Safe Tunnel advanced machineSlug must be a non-empty string",
+    });
+    expect(oversizedOverride.statusCode).toBe(400);
+    expect(oversizedOverride.json()).toEqual({
+      error: "Safe Tunnel advanced machineName is too long",
     });
     expect(service.enable).not.toHaveBeenCalled();
   });

@@ -79,6 +79,27 @@ describe("DefaultSafeTunnelBridgeService", () => {
     expect(fixture.fileExistsPaths).toEqual([fixture.application.statePath]);
   });
 
+  it("bounds every runtime diagnostic field at the browser boundary", async () => {
+    const fixture = createFixture();
+    fixture.runtime.statusValue = runtimeStatus({
+      error: `error-${"e".repeat(3_000)}`,
+      frpcConfigPath: `/private/${"c".repeat(5_000)}`,
+      logError: `log-error-${"d".repeat(3_000)}`,
+      logPath: `/private/${"l".repeat(5_000)}`,
+      logTail: `${"old".repeat(5_000)}latest`,
+    });
+
+    const runtime = (await fixture.service.status()).runtime;
+
+    expect(runtime.error).toHaveLength(2_000);
+    expect(runtime.logError).toHaveLength(2_000);
+    expect(runtime.frpcConfigPath).toHaveLength(4_096);
+    expect(runtime.logPath).toHaveLength(4_096);
+    expect(runtime.logTail).toHaveLength(12_000);
+    expect(runtime.logTail).toMatch(/latest$/u);
+    expect(runtime.logTailMaxCharacters).toBe(12_000);
+  });
+
   it("runs one deterministic approval-through-supervision enable operation", async () => {
     const fixture = createFixture();
     const login = createDeferred<SafeTunnelLoginResult>();

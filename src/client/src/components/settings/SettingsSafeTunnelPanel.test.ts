@@ -36,6 +36,16 @@ describe("Safe Tunnel enable request helpers", () => {
     })).toBe("Advanced Control API URL must use http:// or https://.");
     expect(safeTunnelAdvancedValidationMessage({
       ...emptyAdvancedFields(),
+      controlApiUrl: "http://control.example.test",
+    })).toBe(
+      "Advanced Control API URL must use HTTPS unless it is a literal loopback development endpoint.",
+    );
+    expect(safeTunnelAdvancedValidationMessage({
+      ...emptyAdvancedFields(),
+      controlApiUrl: "http://localhost:8787",
+    })).toContain("literal loopback");
+    expect(safeTunnelAdvancedValidationMessage({
+      ...emptyAdvancedFields(),
       machineSlug: "Dev Box",
     })).toContain("lowercase DNS label");
     expect(safeTunnelAdvancedValidationMessage({

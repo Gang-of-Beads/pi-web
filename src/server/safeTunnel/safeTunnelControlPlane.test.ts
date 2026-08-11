@@ -3,6 +3,7 @@ import {
   HttpSafeTunnelControlPlane,
   SafeTunnelControlPlaneError,
   safeTunnelClientVersion,
+  type SafeTunnelControlPlaneTimeoutScheduler,
   type SafeTunnelFetch,
 } from "./safeTunnelControlPlane.js";
 
@@ -37,7 +38,29 @@ function sequencedFetch(responses: readonly Response[]): {
   };
 }
 
-function startedAuthorization(): unknown {
+function manualTimeoutScheduler(): {
+  readonly fire: (index?: number) => void;
+  readonly schedule: SafeTunnelControlPlaneTimeoutScheduler;
+  readonly tasks: readonly { readonly delayMs: number; active: boolean }[];
+} {
+  const tasks: { callback: () => void; delayMs: number; active: boolean }[] = [];
+  return {
+    tasks,
+    fire(index = 0) {
+      const task = tasks[index];
+      if (task?.active !== true) throw new Error("No active timeout to fire");
+      task.active = false;
+      task.callback();
+    },
+    schedule(callback, delayMs) {
+      const task = { callback, delayMs, active: true };
+      tasks.push(task);
+      return { cancel: () => { task.active = false; } };
+    },
+  };
+}
+
+function startedAuthorization(): Record<string, unknown> {
   return {
     deviceCode: "piwt_dcode_v1_device",
     userCode: "ABCD-EFGH",
@@ -92,7 +115,11 @@ describe("HttpSafeTunnelControlPlane", () => {
       jsonResponse(200, approvedAuthorization()),
       jsonResponse(201, registeredMachine()),
     ]);
-    const controlPlane = new HttpSafeTunnelControlPlane({ fetch: transport.fetch });
+    const timeouts = manualTimeoutScheduler();
+    const controlPlane = new HttpSafeTunnelControlPlane({
+      fetch: transport.fetch,
+      scheduleTimeout: timeouts.schedule,
+    });
     const controller = new AbortController();
 
     await expect(controlPlane.startDeviceAuthorization({
@@ -132,9 +159,11 @@ describe("HttpSafeTunnelControlPlane", () => {
       method: "POST",
       redirect: "error",
       body: JSON.stringify({ connectorVersion: safeTunnelClientVersion }),
-      signal: controller.signal,
     });
-    expect(transport.requests[1]?.init.signal).toBe(controller.signal);
+    expect(transport.requests[0]?.init.signal).toBeInstanceOf(AbortSignal);
+    expect(transport.requests[0]?.init.signal).not.toBe(controller.signal);
+    expect(transport.requests[1]?.init.signal).toBeInstanceOf(AbortSignal);
+    expect(transport.requests[1]?.init.signal).not.toBe(controller.signal);
     expect(transport.requests[3]?.init).toMatchObject({
       headers: { authorization: "Bearer piwt_cat_v1_access" },
       body: JSON.stringify({
@@ -144,6 +173,149 @@ describe("HttpSafeTunnelControlPlane", () => {
         connectorVersion: safeTunnelClientVersion,
       }),
     });
+    expect(timeouts.tasks).toHaveLength(4);
+    expect(timeouts.tasks.every(({ active }) => !active)).toBe(true);
+  });
+
+  it("aborts stalled registration at the injected whole-response timeout", async () => {
+    const timeouts = manualTimeoutScheduler();
+    let requestSignal: AbortSignal | undefined;
+    const controlPlane = new HttpSafeTunnelControlPlane({
+      fetch: (_input, init) => {
+        requestSignal = init.signal ?? undefined;
+        return new Promise(() => undefined);
+      },
+      requestTimeoutMs: 25,
+      scheduleTimeout: timeouts.schedule,
+    });
+
+    const registration = controlPlane.registerMachine({
+      controlApiBaseUrl: "https://control.example.test",
+      connectorAccessToken: "piwt_cat_v1_access",
+      machineName: "Dev Box",
+      machineSlug: "dev-box",
+      localPiWebUrl: "http://127.0.0.1:8504",
+      clientVersion: safeTunnelClientVersion,
+    });
+    await Promise.resolve();
+
+    expect(timeouts.tasks).toHaveLength(1);
+    expect(timeouts.tasks[0]).toMatchObject({ delayMs: 25, active: true });
+    expect(requestSignal?.aborted).toBe(false);
+    timeouts.fire();
+
+    await expect(registration).rejects.toMatchObject({
+      code: "transport_failed",
+      operation: "register_machine",
+    });
+    expect(requestSignal?.aborted).toBe(true);
+    expect(timeouts.tasks[0]?.active).toBe(false);
+  });
+
+  it("keeps the timeout active while a success response body is stalled", async () => {
+    const timeouts = manualTimeoutScheduler();
+    const controlPlane = new HttpSafeTunnelControlPlane({
+      fetch: () => Promise.resolve(new Response(new ReadableStream<Uint8Array>(), {
+        status: 202,
+      })),
+      requestTimeoutMs: 40,
+      scheduleTimeout: timeouts.schedule,
+    });
+
+    const request = controlPlane.startDeviceAuthorization({
+      controlApiBaseUrl: "https://control.example.test",
+      clientVersion: safeTunnelClientVersion,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(timeouts.tasks[0]).toMatchObject({ delayMs: 40, active: true });
+
+    timeouts.fire();
+
+    await expect(request).rejects.toMatchObject({
+      code: "transport_failed",
+      operation: "start_device_authorization",
+    });
+    expect(timeouts.tasks[0]?.active).toBe(false);
+  });
+
+  it("propagates caller cancellation through an internal request signal and clears its timeout", async () => {
+    const timeouts = manualTimeoutScheduler();
+    const caller = new AbortController();
+    let requestSignal: AbortSignal | undefined;
+    const controlPlane = new HttpSafeTunnelControlPlane({
+      fetch: (_input, init) => {
+        requestSignal = init.signal ?? undefined;
+        return new Promise(() => undefined);
+      },
+      scheduleTimeout: timeouts.schedule,
+    });
+
+    const request = controlPlane.getMachineTunnelConfig({
+      controlApiBaseUrl: "https://control.example.test",
+      machineId: "machine_123",
+      machineToken: "piwt_mtok_v1_private",
+    }, { signal: caller.signal });
+    await Promise.resolve();
+    expect(requestSignal).not.toBe(caller.signal);
+
+    caller.abort();
+
+    await expect(request).rejects.toMatchObject({
+      code: "transport_failed",
+      operation: "get_tunnel_config",
+    });
+    expect(requestSignal?.aborted).toBe(true);
+    expect(timeouts.tasks[0]?.active).toBe(false);
+  });
+
+  it("rejects non-loopback plaintext endpoints before sending bearer credentials", async () => {
+    let fetchCalls = 0;
+    const controlPlane = new HttpSafeTunnelControlPlane({
+      fetch: () => {
+        fetchCalls += 1;
+        return Promise.resolve(jsonResponse(201, registeredMachine()));
+      },
+    });
+
+    await expect(controlPlane.registerMachine({
+      controlApiBaseUrl: "http://control.example.test",
+      connectorAccessToken: "piwt_cat_v1_access",
+      machineName: "Dev Box",
+      machineSlug: "dev-box",
+      localPiWebUrl: "http://127.0.0.1:8504",
+      clientVersion: safeTunnelClientVersion,
+    })).rejects.toThrow("must use https");
+    await expect(controlPlane.getMachineTunnelConfig({
+      controlApiBaseUrl: "http://localhost:8787",
+      machineId: "machine_123",
+      machineToken: "piwt_mtok_v1_private",
+    })).rejects.toThrow("must use https");
+    expect(fetchCalls).toBe(0);
+  });
+
+  it("bounds success bodies and rejects insecure approval links", async () => {
+    const oversized = new HttpSafeTunnelControlPlane({
+      fetch: () => Promise.resolve(new Response("x", {
+        status: 202,
+        headers: { "content-length": (128 * 1_024 + 1).toString() },
+      })),
+    });
+    await expect(oversized.startDeviceAuthorization({
+      controlApiBaseUrl: "https://control.example.test",
+      clientVersion: safeTunnelClientVersion,
+    })).rejects.toMatchObject({ code: "invalid_response" });
+
+    const insecureApproval = new HttpSafeTunnelControlPlane({
+      fetch: () => Promise.resolve(jsonResponse(202, {
+        ...startedAuthorization(),
+        verificationUriComplete: "http://approval.example.test/device?secret=code",
+      })),
+    });
+    await expect(insecureApproval.startDeviceAuthorization({
+      controlApiBaseUrl: "https://control.example.test",
+      clientVersion: safeTunnelClientVersion,
+    })).rejects.toMatchObject({ code: "invalid_response" });
   });
 
   it("fetches and strictly parses tunnel config with private machine credentials", async () => {
@@ -179,9 +351,10 @@ describe("HttpSafeTunnelControlPlane", () => {
         method: "GET",
         redirect: "error",
         headers: { authorization: "Bearer piwt_mtok_v1_private" },
-        signal: controller.signal,
       },
     });
+    expect(transport.requests[0]?.init.signal).toBeInstanceOf(AbortSignal);
+    expect(transport.requests[0]?.init.signal).not.toBe(controller.signal);
   });
 
   it("records and strictly parses normalized machine heartbeats", async () => {
@@ -217,9 +390,10 @@ describe("HttpSafeTunnelControlPlane", () => {
           tunnelStatus: "error",
           errorMessage: "PI WEB Safe Tunnel runtime is recovering.",
         }),
-        signal: controller.signal,
       },
     });
+    expect(transport.requests[0]?.init.signal).toBeInstanceOf(AbortSignal);
+    expect(transport.requests[0]?.init.signal).not.toBe(controller.signal);
   });
 
   it("rejects malformed heartbeat success and maps rejected credentials", async () => {

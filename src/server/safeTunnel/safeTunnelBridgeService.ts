@@ -28,6 +28,10 @@ import type { SafeTunnelFrpcStartResult } from "./safeTunnelFrpcSupervisor.js";
 
 const maxCapturedOutputCharacters = 24_000;
 const maxFrpcLogTailCharacters = 12_000;
+const maxBrowserDiagnosticCharacters = 2_000;
+const maxBrowserIdentifierCharacters = 256;
+const maxBrowserPathCharacters = 4_096;
+const maxBrowserUrlCharacters = 2_048;
 const enableCancelledMessage = "Safe Tunnel enablement was cancelled.";
 const enableFailedMessage = "Safe Tunnel enablement failed.";
 const invalidStateMessage = "Unable to read PI WEB Safe Tunnel state.";
@@ -287,7 +291,9 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
 
   private createOperation(): SafeTunnelOperationState {
     const operationId = this.dependencies.createOperationId();
-    if (operationId.trim() === "" || this.operations.has(operationId)) {
+    if (operationId.trim() === ""
+      || operationId.length > maxBrowserIdentifierCharacters
+      || this.operations.has(operationId)) {
       throw new Error("Safe Tunnel operation IDs must be non-empty and unique.");
     }
     const operation: SafeTunnelOperationState = {
@@ -347,7 +353,10 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
     } catch {
       return {
         config: {
-          path: this.dependencies.safeTunnel.statePath,
+          path: headText(
+            this.dependencies.safeTunnel.statePath,
+            maxBrowserPathCharacters,
+          ),
           exists: this.fileExistsSafely(this.dependencies.safeTunnel.statePath),
           state: "invalid",
           error: invalidStateMessage,
@@ -457,7 +466,7 @@ function configStatusFromOwnedState(
 ): SafeTunnelConfigStatus {
   const state = loaded.state;
   return {
-    path: statePath,
+    path: headText(statePath, maxBrowserPathCharacters),
     exists: loaded.exists,
     state: state.machine === undefined
       ? (loaded.exists ? "unregistered" : "missing")
@@ -483,30 +492,67 @@ function configStatusFromOwnedState(
 }
 
 function snapshotRuntimeStatus(runtime: SafeTunnelRuntimeStatus): SafeTunnelRuntimeStatus {
-  return { ...runtime };
+  return {
+    state: runtime.state,
+    ...(runtime.diagnosticCode === undefined
+      ? {}
+      : { diagnosticCode: runtime.diagnosticCode }),
+    ...(runtime.frpcConfigExists === undefined
+      ? {}
+      : { frpcConfigExists: runtime.frpcConfigExists }),
+    ...(runtime.frpcConfigPath === undefined
+      ? {}
+      : { frpcConfigPath: headText(runtime.frpcConfigPath, maxBrowserPathCharacters) }),
+    ...(runtime.pid === undefined ? {} : { pid: runtime.pid }),
+    ...(runtime.error === undefined
+      ? {}
+      : { error: headText(runtime.error, maxBrowserDiagnosticCharacters) }),
+    ...(runtime.logError === undefined
+      ? {}
+      : { logError: headText(runtime.logError, maxBrowserDiagnosticCharacters) }),
+    ...(runtime.logExists === undefined ? {} : { logExists: runtime.logExists }),
+    ...(runtime.logPath === undefined
+      ? {}
+      : { logPath: headText(runtime.logPath, maxBrowserPathCharacters) }),
+    ...(runtime.logTail === undefined
+      ? {}
+      : { logTail: tailText(runtime.logTail, maxFrpcLogTailCharacters) }),
+    logTailMaxCharacters: maxFrpcLogTailCharacters,
+  };
 }
 
 function snapshotOperation(operation: SafeTunnelOperationState): SafeTunnelOperationResponse {
   return {
-    id: operation.id,
+    id: headText(operation.id, maxBrowserIdentifierCharacters),
     kind: operation.kind,
     phase: operation.phase,
     startedAt: operation.startedAt,
     status: operation.status,
-    stdout: operation.stdout,
-    stderr: operation.stderr,
-    ...(operation.error === undefined ? {} : { error: operation.error }),
+    stdout: tailText(operation.stdout, maxCapturedOutputCharacters),
+    stderr: tailText(operation.stderr, maxCapturedOutputCharacters),
+    ...(operation.error === undefined
+      ? {}
+      : { error: headText(operation.error, maxBrowserDiagnosticCharacters) }),
     ...(operation.exitCode === undefined ? {} : { exitCode: operation.exitCode }),
     ...(operation.finishedAt === undefined ? {} : { finishedAt: operation.finishedAt }),
     ...(operation.logTail === undefined || operation.logTail === ""
       ? {}
-      : { logTail: operation.logTail }),
+      : { logTail: tailText(operation.logTail, maxFrpcLogTailCharacters) }),
     logTailMaxCharacters: maxFrpcLogTailCharacters,
-    ...(operation.publicUrl === undefined ? {} : { publicUrl: operation.publicUrl }),
-    ...(operation.userCode === undefined ? {} : { userCode: operation.userCode }),
+    ...(operation.publicUrl === undefined
+      ? {}
+      : { publicUrl: headText(operation.publicUrl, maxBrowserUrlCharacters) }),
+    ...(operation.userCode === undefined
+      ? {}
+      : { userCode: headText(operation.userCode, maxBrowserIdentifierCharacters) }),
     ...(operation.verificationUriComplete === undefined
       ? {}
-      : { verificationUriComplete: operation.verificationUriComplete }),
+      : {
+          verificationUriComplete: headText(
+            operation.verificationUriComplete,
+            maxBrowserUrlCharacters,
+          ),
+        }),
   };
 }
 
@@ -523,6 +569,10 @@ function appendCapped(existing: string, chunk: string, maxCharacters: number): s
   return next.length <= maxCharacters
     ? next
     : next.slice(next.length - maxCharacters);
+}
+
+function headText(contents: string, maxCharacters: number): string {
+  return contents.length <= maxCharacters ? contents : contents.slice(0, maxCharacters);
 }
 
 function tailText(contents: string, maxCharacters: number): string {

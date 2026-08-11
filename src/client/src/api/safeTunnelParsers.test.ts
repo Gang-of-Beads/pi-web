@@ -42,6 +42,39 @@ describe("Safe Tunnel API parsers", () => {
     })).toThrow("Expected Safe Tunnel runtime diagnostic field: diagnosticCode");
   });
 
+  it("rejects oversized browser-visible diagnostics, logs, output, and URLs", () => {
+    expect(() => parseSafeTunnelOperationResponse({
+      ...operationResponse(),
+      stdout: "x".repeat(24_001),
+    })).toThrow("bounded string field: stdout");
+    expect(() => parseSafeTunnelStatusResponse({
+      ...statusResponse(),
+      runtime: { state: "stopped", logTail: "x".repeat(12_001) },
+    })).toThrow("bounded optional string field: logTail");
+    expect(() => parseSafeTunnelStatusResponse({
+      ...statusResponse(),
+      runtime: { state: "stopped", error: "x".repeat(2_001) },
+    })).toThrow("bounded optional string field: error");
+    expect(() => parseSafeTunnelOperationResponse({
+      ...operationResponse(),
+      verificationUriComplete: `https://control.example.test/${"x".repeat(2_100)}`,
+    })).toThrow("bounded HTTP(S) URL field");
+    expect(() => parseSafeTunnelOperationResponse({
+      ...operationResponse(),
+      verificationUriComplete: "http://approval.example.test/device",
+    })).toThrow("secure Control API URL field");
+    expect(() => parseSafeTunnelStatusResponse({
+      ...statusResponse(),
+      config: {
+        ...statusResponse().config,
+        machine: {
+          ...statusResponse().config.machine,
+          controlApiBaseUrl: "http://control.example.test",
+        },
+      },
+    })).toThrow("secure Control API URL field");
+  });
+
   it("requires accepted enable responses and typed optional fields", () => {
     expect(() => parseSafeTunnelEnableResponse({ accepted: false })).toThrow("Expected Safe Tunnel enable accepted response");
     expect(() => parseSafeTunnelStatusResponse({
