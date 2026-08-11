@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { dirname } from "node:path";
+import { dirname, isAbsolute } from "node:path";
 
 export interface SafeTunnelFrpcProcessRequest {
   readonly configPath: string;
@@ -62,6 +62,8 @@ export type SafeTunnelNodeProcessSpawner = (
   args: readonly string[],
   options: {
     readonly cwd: string;
+    readonly detached: false;
+    readonly shell: false;
     readonly stdio: ["ignore", "pipe", "pipe"];
     readonly windowsHide: true;
   },
@@ -83,10 +85,12 @@ export class NodeSafeTunnelFrpcProcessLauncher implements SafeTunnelFrpcProcessL
     request: SafeTunnelFrpcProcessRequest,
     observer: SafeTunnelFrpcProcessObserver,
   ): SafeTunnelFrpcProcessHandle {
-    const configPath = requireNonEmptyPath(request.configPath, "configPath");
-    const frpcPath = requireNonEmptyPath(request.frpcPath, "frpcPath");
+    const configPath = requireAbsolutePath(request.configPath, "configPath");
+    const frpcPath = requireAbsolutePath(request.frpcPath, "frpcPath");
     const child = this.spawnProcess(frpcPath, ["-c", configPath], {
       cwd: dirname(configPath),
+      detached: false,
+      shell: false,
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
     });
@@ -140,6 +144,8 @@ function spawnNodeFrpcProcess(
   args: readonly string[],
   options: {
     readonly cwd: string;
+    readonly detached: false;
+    readonly shell: false;
     readonly stdio: ["ignore", "pipe", "pipe"];
     readonly windowsHide: true;
   },
@@ -157,7 +163,8 @@ function spawnNodeFrpcProcess(
   };
 }
 
-function requireNonEmptyPath(value: string, fieldName: string): string {
+function requireAbsolutePath(value: string, fieldName: string): string {
   if (value.trim() === "") throw new Error(`${fieldName} must be a non-empty path.`);
+  if (!isAbsolute(value)) throw new Error(`${fieldName} must be an absolute path.`);
   return value;
 }

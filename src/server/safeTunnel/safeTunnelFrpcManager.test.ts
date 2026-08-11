@@ -35,11 +35,12 @@ afterEach(async () => {
 });
 
 describe("pinned Safe Tunnel frpc manifest", () => {
-  it("pins the independently verified official frp executable for the explicit supported target", () => {
+  it("pins independently verified official frp executables for the supported targets", () => {
     const release = findSafeTunnelFrpcRelease(safeTunnelFrpcManifest, "0.69.1");
     if (release === undefined) throw new Error("Pinned frp release is missing");
 
     expect(safeTunnelFrpcManifest.desiredVersion).toBe("0.69.1");
+    expect(release.artifacts).toHaveLength(2);
     expect(findSafeTunnelFrpcArtifact(release, "linux", "arm64")).toEqual({
       platform: "linux",
       architecture: "arm64",
@@ -51,13 +52,27 @@ describe("pinned Safe Tunnel frpc manifest", () => {
       executableSha256: "f93e758ea21099a8ac6b65791d1113e86ccb06bab03cc41575613726e375322d",
       executableSize: 15_007_928,
     });
-    expect(findSafeTunnelFrpcArtifact(release, "linux", "x64")).toBeUndefined();
+    expect(findSafeTunnelFrpcArtifact(release, "linux", "x64")).toEqual({
+      platform: "linux",
+      architecture: "x64",
+      archiveFormat: "tar.gz",
+      archiveSha256: "7be257b72dbbc60bcb3e0e25a5afd1dfac7b63f897084864d3c956dd3d5674e1",
+      archiveSize: 14_189_005,
+      archiveEntryPath: "frp_0.69.1_linux_amd64/frpc",
+      downloadUrl: "https://github.com/fatedier/frp/releases/download/v0.69.1/frp_0.69.1_linux_amd64.tar.gz",
+      executableSha256: "142f447f43fef286acc8da8a6852dda80631db631d604b2e63634b2db4d6848c",
+      executableSize: 16_806_072,
+    });
   });
 });
 
 describe("HttpSafeTunnelFrpcArtifactSource", () => {
-  it("downloads bounded bytes from a loopback fixture without exposing transport details", async () => {
+  it("downloads bytes within both the transport and pinned-artifact bounds without exposing details", async () => {
     const expected = Buffer.from("fixture archive bytes");
+    const baseArtifact = {
+      ...artifactFixture("1.0.0", expected).artifact,
+      archiveSize: expected.byteLength,
+    };
     const requests: { readonly accept: string | undefined; readonly path: string | undefined }[] = [];
     const server = await listen((request, response) => {
       requests.push({ accept: request.headers.accept, path: request.url });
@@ -73,24 +88,25 @@ describe("HttpSafeTunnelFrpcArtifactSource", () => {
       }
       if (request.url === "/stream-large") {
         response.writeHead(200);
-        response.end(Buffer.alloc(65));
+        response.end(Buffer.alloc(1_000));
         return;
       }
       response.writeHead(200, { "content-length": expected.byteLength.toString() });
       response.write(expected.subarray(0, 7));
       response.end(expected.subarray(7));
     });
-    const source = new HttpSafeTunnelFrpcArtifactSource({ maximumDownloadBytes: 64 });
+    const source = new HttpSafeTunnelFrpcArtifactSource({ maximumDownloadBytes: 1_024 });
 
-    await expect(source.download(artifactFixture("1.0.0", expected, `${server.origin}/artifact`).artifact))
-      .resolves.toEqual(Uint8Array.from(expected));
+    await expect(source.download({
+      ...baseArtifact,
+      downloadUrl: `${server.origin}/artifact`,
+    })).resolves.toEqual(Uint8Array.from(expected));
     expect(requests[0]).toEqual({ accept: "application/octet-stream", path: "/artifact" });
 
-    const failureArtifact = artifactFixture(
-      "1.0.0",
-      expected,
-      `${server.origin}/failure?access_token=private-url-token`,
-    ).artifact;
+    const failureArtifact = {
+      ...baseArtifact,
+      downloadUrl: `${server.origin}/failure?access_token=private-url-token`,
+    };
     const failure = await captureError(source.download(failureArtifact));
     expect(failure).toMatchObject({
       code: "download_failed",
@@ -99,14 +115,16 @@ describe("HttpSafeTunnelFrpcArtifactSource", () => {
     expect(errorDiagnostic(failure)).not.toContain("private-url-token");
     expect(errorDiagnostic(failure)).not.toContain("private-provider-response");
 
-    const declaredLarge = await captureError(source.download(
-      artifactFixture("1.0.0", expected, `${server.origin}/large`).artifact,
-    ));
+    const declaredLarge = await captureError(source.download({
+      ...baseArtifact,
+      downloadUrl: `${server.origin}/large`,
+    }));
     expect(declaredLarge).toMatchObject({ code: "download_too_large" });
 
-    const streamedLarge = await captureError(source.download(
-      artifactFixture("1.0.0", expected, `${server.origin}/stream-large`).artifact,
-    ));
+    const streamedLarge = await captureError(source.download({
+      ...baseArtifact,
+      downloadUrl: `${server.origin}/stream-large`,
+    }));
     expect(streamedLarge).toMatchObject({ code: "download_too_large" });
   });
 
@@ -344,20 +362,17 @@ describe("SafeTunnelFrpcManager", () => {
       .rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("fails closed for an unsupported target before making a download", async () => {
-    const fixture = artifactFixture("1.0.0", Buffer.from("arm64 only"));
-    const source = new FixtureArtifactSource([
-      [fixture.artifact.downloadUrl, fixture.archive],
-    ]);
+  it("fails closed for a target omitted from the production manifest before downloading", async () => {
+    const source = new FixtureArtifactSource([]);
     const manager = new SafeTunnelFrpcManager({
       archiveExtractor: new TarGzipSafeTunnelFrpcArchiveExtractor(),
       artifactSource: source,
       installationStore: new FileSafeTunnelFrpcInstallationStore({
         installDirectory: join(tempDirectory, "safe-tunnel", "frpc"),
-        platform: "linux",
+        platform: "darwin",
       }),
-      manifest: fixture.manifest,
-      platform: "linux",
+      manifest: safeTunnelFrpcManifest,
+      platform: "darwin",
       architecture: "x64",
     });
 

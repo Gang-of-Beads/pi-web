@@ -80,6 +80,8 @@ describe("NodeSafeTunnelFrpcProcessLauncher", () => {
       ["-c", "/data/pi-web/safe-tunnel/frpc.toml"],
       {
         cwd: "/data/pi-web/safe-tunnel",
+        detached: false,
+        shell: false,
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
       },
@@ -171,6 +173,23 @@ describe("NodeSafeTunnelFrpcProcessLauncher", () => {
 
     expect(() => launcher.launch(request, { onExit: () => undefined }))
       .toThrow(`${fieldName} must be a non-empty path.`);
+    expect(spawnCalls).toBe(0);
+  });
+
+  it.each([
+    ["configPath", { configPath: "relative/frpc.toml", frpcPath: "/opt/frpc" }],
+    ["frpcPath", { configPath: "/tmp/frpc.toml", frpcPath: "frpc" }],
+  ] as const)("rejects a relative %s before spawning", (fieldName, request) => {
+    let spawnCalls = 0;
+    const launcher = new NodeSafeTunnelFrpcProcessLauncher({
+      spawnProcess: () => {
+        spawnCalls += 1;
+        return new FakeNodeChild();
+      },
+    });
+
+    expect(() => launcher.launch(request, { onExit: () => undefined }))
+      .toThrow(`${fieldName} must be an absolute path.`);
     expect(spawnCalls).toBe(0);
   });
 });

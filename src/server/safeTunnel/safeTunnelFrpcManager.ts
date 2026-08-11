@@ -83,6 +83,10 @@ export class HttpSafeTunnelFrpcArtifactSource implements SafeTunnelFrpcArtifactS
   }
 
   async download(artifact: SafeTunnelFrpcArtifact): Promise<Uint8Array> {
+    const maximumBytes = Math.min(
+      this.maximumDownloadBytes,
+      positiveInteger(artifact.archiveSize),
+    );
     const controller = new AbortController();
     const timeout = setTimeout(() => { controller.abort(); }, this.timeoutMs);
     try {
@@ -103,7 +107,7 @@ export class HttpSafeTunnelFrpcArtifactSource implements SafeTunnelFrpcArtifactS
       }
 
       try {
-        return await readBoundedResponseBody(response, this.maximumDownloadBytes);
+        return await readBoundedResponseBody(response, maximumBytes);
       } catch (error: unknown) {
         if (error instanceof SafeTunnelFrpcAcquisitionError) throw error;
         throw new SafeTunnelFrpcAcquisitionError("download_failed");

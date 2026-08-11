@@ -33,6 +33,10 @@ const policy = {
 describe("SafeTunnelFrpcSupervisor", () => {
   it("prepares managed frpc, writes config, and owns the exact launched child", async () => {
     const fixture = createFixture();
+    fixture.managedFrpc.result = {
+      ...fixture.managedFrpc.result,
+      architecture: "x64",
+    };
 
     const result = await fixture.supervisor.start({});
 
@@ -47,7 +51,8 @@ describe("SafeTunnelFrpcSupervisor", () => {
       pid: 4000,
       publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
     });
-    expect(result.output).toContain("verified PI WEB-managed frpc v0.69.1 for linux-arm64");
+    expect(result.output).toContain("verified PI WEB-managed frpc v0.69.1 for linux-x64");
+    expect(result.output).not.toContain("linux-arm64");
     expect(result.output).not.toContain(fixture.managedFrpc.result.path);
     expect(result.output).not.toContain("private-relay-token");
 
