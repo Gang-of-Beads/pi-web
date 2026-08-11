@@ -22,6 +22,7 @@ import {
 } from "./webProcessLifecycle.js";
 
 const tempDirectories: string[] = [];
+const LONG_SHUTDOWN_RETRY_INTERVAL_MS = 60_000;
 
 const safeTunnelStatus: SafeTunnelStatusResponse = {
   config: { exists: false, path: "/tmp/config.json", state: "missing" },
@@ -208,6 +209,7 @@ describe("web-process lifecycle", () => {
         close,
         listen: readyWithoutListening,
         retryShutdown: () => fixture.bridge.shutdown(),
+        shutdownRetryIntervalMs: LONG_SHUTDOWN_RETRY_INTERVAL_MS,
         signalSource,
       });
 
@@ -239,6 +241,44 @@ describe("web-process lifecycle", () => {
       expect(signalSource.listenerCount("SIGTERM")).toBe(0);
     } finally {
       retryShutdown.resolve();
+      await signalSource.emit("SIGINT");
+      await app.close().catch(() => undefined);
+    }
+  });
+
+  it("retries incomplete signal cleanup on a referenced schedule", async () => {
+    const fixture = fakeBridge();
+    const signalSource = new FakeWebProcessSignalSource();
+    fixture.shutdown
+      .mockRejectedValueOnce(new Error("owned child stop was not confirmed"))
+      .mockResolvedValueOnce(undefined);
+    const app = await buildApp({
+      clientDist: false,
+      logger: false,
+      safeTunnel: fixture.bridge,
+      sessionDaemon: fakeSessionDaemon(),
+    });
+
+    try {
+      await runWebProcess(app, { port: 0 }, {
+        listen: readyWithoutListening,
+        retryShutdown: () => fixture.bridge.shutdown(),
+        shutdownRetryIntervalMs: 10,
+        signalSource,
+      });
+
+      await signalSource.emit("SIGTERM");
+      expect(fixture.shutdown).toHaveBeenCalledOnce();
+      expect(signalSource.listenerCount("SIGINT")).toBe(1);
+      expect(signalSource.listenerCount("SIGTERM")).toBe(1);
+
+      await vi.waitFor(() => {
+        expect(fixture.shutdown).toHaveBeenCalledTimes(2);
+        expect(signalSource.listenerCount("SIGINT")).toBe(0);
+        expect(signalSource.listenerCount("SIGTERM")).toBe(0);
+      });
+    } finally {
+      await signalSource.emit("SIGINT");
       await app.close().catch(() => undefined);
     }
   });
@@ -357,6 +397,7 @@ describe("web-process lifecycle", () => {
       const lifecycleResult = runWebProcess(app, { port: 8504 }, {
         close,
         retryShutdown: () => fixture.bridge.shutdown(),
+        shutdownRetryIntervalMs: LONG_SHUTDOWN_RETRY_INTERVAL_MS,
         signalSource,
         listen: async (readyApp) => {
           await readyApp.ready();
@@ -396,6 +437,7 @@ describe("web-process lifecycle", () => {
       expect(signalSource.listenerCount("SIGINT")).toBe(0);
       expect(signalSource.listenerCount("SIGTERM")).toBe(0);
     } finally {
+      await signalSource.emit("SIGINT");
       await app.close().catch(() => undefined);
     }
   });

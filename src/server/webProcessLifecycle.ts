@@ -1,3 +1,4 @@
+import { clearInterval, setInterval } from "node:timers";
 import type {
   FastifyInstance,
   FastifyListenOptions,
@@ -27,7 +28,11 @@ export interface WebProcessLifecycleDependencies {
    * Fastify does not rerun a rejected onClose hook on later close calls.
    */
   retryShutdown?: () => Promise<void>;
+  /** Delay between referenced retries while owned-resource cleanup is incomplete. */
+  shutdownRetryIntervalMs?: number;
 }
+
+const DEFAULT_SHUTDOWN_RETRY_INTERVAL_MS = 1_000;
 
 const nodeProcessSignalSource: WebProcessSignalSource = {
   subscribe(signal, listener) {
@@ -58,6 +63,8 @@ export async function runWebProcess(
   const close = dependencies.close ?? closeWithFastify;
   const listen = dependencies.listen ?? listenWithFastify;
   const retryShutdown = dependencies.retryShutdown;
+  const shutdownRetryIntervalMs = dependencies.shutdownRetryIntervalMs
+    ?? DEFAULT_SHUTDOWN_RETRY_INTERVAL_MS;
   const unsubscribeSignals: (() => void)[] = [];
   let resolveShutdownConfirmed: () => void = () => undefined;
   const shutdownConfirmed = new Promise<void>((resolve) => {
@@ -66,13 +73,37 @@ export async function runWebProcess(
   let fastifyCloseFailed = false;
   let signalsRemoved = false;
   let shutdownInFlight: Promise<void> | undefined;
+  let shutdownRetryTimer: NodeJS.Timeout | undefined;
 
   const removeSignalListeners = (): void => {
     if (signalsRemoved) return;
     signalsRemoved = true;
     for (const unsubscribe of unsubscribeSignals.splice(0)) unsubscribe();
   };
-  const requestShutdown = (): Promise<void> => {
+  const releaseShutdownOwnership = (): void => {
+    if (shutdownRetryTimer !== undefined) {
+      clearInterval(shutdownRetryTimer);
+      shutdownRetryTimer = undefined;
+    }
+    removeSignalListeners();
+    resolveShutdownConfirmed();
+  };
+  function retainShutdownOwnership(): void {
+    if (shutdownRetryTimer !== undefined || retryShutdown === undefined) return;
+    shutdownRetryTimer = setInterval(() => {
+      if (shutdownInFlight !== undefined) return;
+      void requestShutdown().catch((error: unknown) => {
+        app.log.error(
+          { err: error },
+          "failed to retry incomplete web server shutdown",
+        );
+      });
+    }, shutdownRetryIntervalMs);
+    // Signal listeners and pending Promises do not retain Node's event loop.
+    // Keep this retry schedule referenced until exact cleanup is confirmed.
+    shutdownRetryTimer.ref();
+  }
+  function requestShutdown(): Promise<void> {
     if (shutdownInFlight !== undefined) return shutdownInFlight;
 
     const retryingFailedClose = fastifyCloseFailed && retryShutdown !== undefined;
@@ -82,8 +113,7 @@ export async function runWebProcess(
     shutdownInFlight = shutdown;
     void shutdown.then(
       () => {
-        removeSignalListeners();
-        resolveShutdownConfirmed();
+        releaseShutdownOwnership();
       },
       () => {
         if (!retryingFailedClose) fastifyCloseFailed = true;
@@ -91,10 +121,11 @@ export async function runWebProcess(
         // Without direct retry cleanup, another app.close() cannot replay a
         // rejected Fastify onClose hook and retaining listeners cannot help.
         if (retryShutdown === undefined) removeSignalListeners();
+        else retainShutdownOwnership();
       },
     );
     return shutdown;
-  };
+  }
 
   app.addHook("onClose", () => {
     // Keep listeners through signal-owned shutdown so concurrent signals join
