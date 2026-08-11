@@ -7,7 +7,10 @@ import type {
   SafeTunnelRuntimeStatus,
   SafeTunnelStatusResponse,
 } from "../../shared/apiTypes.js";
-import { redactSafeTunnelDiagnostic } from "./safeTunnelDiagnostics.js";
+import {
+  redactSafeTunnelDiagnostic,
+  SafeTunnelCredentialBoundary,
+} from "./safeTunnelDiagnostics.js";
 import type { SafeTunnelEnableDefaults } from "./safeTunnelEnableDefaults.js";
 import {
   SafeTunnelOperationConflictError,
@@ -16,6 +19,7 @@ import {
 import type { SafeTunnelReconciledFrpcRuntime } from "./safeTunnelRuntimeReconciler.js";
 import type {
   SafeTunnelEnableInput,
+  SafeTunnelEnableOptions,
   SafeTunnelLoginInput,
   SafeTunnelLoginObserver,
   SafeTunnelLoginOptions,
@@ -37,6 +41,98 @@ const maxBrowserUrlCharacters = 2_048;
 const enableCancelledMessage = "Safe Tunnel enablement was cancelled.";
 const enableFailedMessage = "Safe Tunnel enablement failed.";
 const invalidStateMessage = "Unable to read PI WEB Safe Tunnel state.";
+const fixedBrowserProtocolValues = [
+  "enabled",
+  "disabled",
+  "missing",
+  "unregistered",
+  "registered",
+  "rejected",
+  "invalid",
+  "stopped",
+  "running",
+  "unknown",
+  "credentials_rejected",
+  "heartbeat_retrying",
+  "registration_required",
+  "runtime_recovery_failed",
+  "state_retrying",
+  "enable",
+  "preparing",
+  "awaiting_approval",
+  "registering",
+  "starting",
+  "succeeded",
+  "failed",
+  "cancelled",
+  "true",
+  "false",
+  "0",
+  "accepted",
+  "activeOperation",
+  "machine",
+  "controlApiBaseUrl",
+  "machineId",
+  "machineSlug",
+  "publicHostname",
+  "publicUrl",
+  "error",
+  "statusCode",
+  "code",
+  "message",
+  "400",
+  "403",
+  "404",
+  "409",
+  "500",
+  "Bad Request",
+  "Forbidden",
+  "Not Found",
+  "Conflict",
+  "Internal Server Error",
+  "pid",
+  "logTail",
+  "diagnosticCode",
+  "logError",
+  "signal",
+  "userCode",
+  "verificationUriComplete",
+  "exitCode",
+  "finishedAt",
+  "Safe Tunnel runtime started.\n",
+  "Approval is required before this PI WEB can be enabled.\n",
+  "Approval received. Registering this PI WEB.\n",
+  "Machine registration saved privately.\n",
+  "Registration complete. Preparing the managed Safe Tunnel runtime.\n",
+  "Using the saved machine registration. Preparing the managed Safe Tunnel runtime.\n",
+  enableCancelledMessage,
+  enableFailedMessage,
+  invalidStateMessage,
+  "Safe Tunnel request failed.",
+  "Safe Tunnel is already enabled.",
+  "A Safe Tunnel operation is already running.",
+  "Safe Tunnel operation not found",
+  "Request forbidden.",
+  "Safe Tunnel enable request body must be an object",
+  "Safe Tunnel enable request contains an unsupported field",
+  "Safe Tunnel advanced overrides must be an object",
+  "Safe Tunnel advanced overrides contains an unsupported field",
+  "Safe Tunnel advanced controlApiUrl must be a non-empty string",
+  "Safe Tunnel advanced controlApiUrl is too long",
+  "Safe Tunnel advanced machineName must be a non-empty string",
+  "Safe Tunnel advanced machineName is too long",
+  "Safe Tunnel advanced machineSlug must be a non-empty string",
+  "Safe Tunnel advanced machineSlug is too long",
+  "Safe Tunnel advanced localPiWebUrl must be a non-empty string",
+  "Safe Tunnel advanced localPiWebUrl is too long",
+  "Safe Tunnel advanced frpcPath must be a non-empty string",
+  "Safe Tunnel advanced frpcPath is too long",
+  "Safe Tunnel disable request body must be an object",
+  "Safe Tunnel disable request contains an unsupported field",
+] as const;
+const fixedBrowserClassificationValues = fixedBrowserProtocolValues.flatMap(
+  (value) => [value, JSON.stringify(value)],
+);
 
 export interface SafeTunnelBridgeService extends SafeTunnelRouteService {
   shutdown(): Promise<void>;
@@ -47,12 +143,16 @@ export interface SafeTunnelBridgeService extends SafeTunnelRouteService {
 export interface SafeTunnelApplicationService {
   readonly statePath: string;
   disable(): Promise<SafeTunnelPersistedState>;
-  enable(input?: SafeTunnelEnableInput): Promise<SafeTunnelPersistedState>;
+  enable(
+    input?: SafeTunnelEnableInput,
+    options?: SafeTunnelEnableOptions,
+  ): Promise<SafeTunnelPersistedState>;
   login(
     request: SafeTunnelLoginInput,
     observer?: SafeTunnelLoginObserver,
     options?: SafeTunnelLoginOptions,
   ): Promise<SafeTunnelLoginResult>;
+  persistCredentialBoundary(boundary: SafeTunnelCredentialBoundary): Promise<void>;
   state(): Promise<LoadedSafeTunnelState>;
 }
 
@@ -66,6 +166,7 @@ export interface SafeTunnelBridgeDependencies {
 }
 
 interface SafeTunnelOperationState {
+  readonly credentialBoundary: SafeTunnelCredentialBoundary;
   readonly diagnosticSecrets: string[];
   readonly id: string;
   readonly kind: "enable";
@@ -114,16 +215,23 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
       this.dependencies.runtime.status(),
       this.readOwnedStateStatus(),
     ]);
-    const activeOperation = this.activeOperation === undefined
+    const operation = this.activeOperation;
+    const activeOperation = operation === undefined
       ? undefined
-      : snapshotOperation(this.activeOperation);
-
-    return {
+      : snapshotOperation(operation);
+    const response = {
       config: ownedState.config,
       desiredState: ownedState.desiredState,
       runtime: snapshotRuntimeStatus(runtime, ownedState.diagnosticSecrets),
       ...(activeOperation === undefined ? {} : { activeOperation }),
     };
+    const credentialBoundary = operation?.credentialBoundary
+      ?? new SafeTunnelCredentialBoundary();
+    requireBrowserPayloadClassification(credentialBoundary, response);
+    await this.dependencies.safeTunnel.persistCredentialBoundary(
+      credentialBoundary,
+    );
+    return response;
   }
 
   async enable(request: SafeTunnelEnableRequest): Promise<SafeTunnelEnableResponse> {
@@ -149,7 +257,17 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
         runtime,
         loadedState,
       );
-      const operation = this.createOperation(loadedState);
+      const operation = this.createOperation(loadedState, initialStatus);
+      try {
+        await this.dependencies.safeTunnel.persistCredentialBoundary(
+          operation.credentialBoundary,
+        );
+        throwIfEnableCancelled(controller.signal);
+      } catch (error: unknown) {
+        this.operations.delete(operation.id);
+        this.clearActiveOperation(operation);
+        throw error;
+      }
       const promise = Promise.resolve()
         .then(() => this.runEnableWorkflow(
           request,
@@ -159,19 +277,41 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
           operation,
           controller.signal,
         ))
-        .then(
-          (result) => {
-            finishEnableOperation(operation, result, this.dependencies.now());
-          },
-          () => {
-            this.failOperation(operation, controller.signal);
-          },
-        )
+        .then(async (result) => {
+          const finishedAt = this.dependencies.now();
+          const preview: SafeTunnelOperationState = {
+            ...operation,
+            diagnosticSecrets: [...operation.diagnosticSecrets],
+          };
+          finishEnableOperation(preview, result, finishedAt);
+          recordBrowserPayload(preview, createOperationSnapshot(preview));
+          await this.dependencies.safeTunnel.persistCredentialBoundary(
+            preview.credentialBoundary,
+          );
+          finishEnableOperation(operation, result, finishedAt);
+        })
+        .catch(async () => {
+          this.failOperation(operation, controller.signal);
+          try {
+            recordBrowserPayload(operation, createOperationSnapshot(operation));
+            await this.dependencies.safeTunnel.persistCredentialBoundary(
+              operation.credentialBoundary,
+            );
+          } catch {
+            resetOperationToGenericFailure(operation);
+            await this.dependencies.safeTunnel.persistCredentialBoundary(
+              operation.credentialBoundary,
+            ).catch(() => undefined);
+          }
+        })
         .finally(() => {
-          sealOperation(operation);
-          const active = this.activeWorkflow;
-          if (active?.operation.id === operation.id) this.activeWorkflow = undefined;
-          this.clearActiveOperation(operation);
+          try {
+            sealOperation(operation);
+          } finally {
+            const active = this.activeWorkflow;
+            if (active?.operation.id === operation.id) this.activeWorkflow = undefined;
+            this.clearActiveOperation(operation);
+          }
         });
       this.activeWorkflow = { controller, operation, promise };
 
@@ -268,7 +408,10 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
         machineSlug: advanced?.machineSlug ?? defaults.machineSlug,
         localPiWebUrl,
         ...(advanced?.frpcPath === undefined ? {} : { frpcPath: advanced.frpcPath }),
-      }, enableLoginObserver(operation), { signal });
+      }, enableLoginObserver(operation), {
+        credentialBoundary: operation.credentialBoundary,
+        signal,
+      });
       registerOperationDiagnosticSecrets(
         operation,
         login.credentialRedactionValues,
@@ -286,7 +429,7 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
     await this.dependencies.safeTunnel.enable({
       localPiWebUrl,
       ...(advanced?.frpcPath === undefined ? {} : { frpcPath: advanced.frpcPath }),
-    });
+    }, { credentialBoundary: operation.credentialBoundary });
     throwIfEnableCancelled(signal);
 
     const enabledState = await this.dependencies.safeTunnel.state();
@@ -307,23 +450,45 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
     }
   }
 
-  private createOperation(loadedState: LoadedSafeTunnelState): SafeTunnelOperationState {
+  private createOperation(
+    loadedState: LoadedSafeTunnelState,
+    initialStatus: SafeTunnelStatusResponse,
+  ): SafeTunnelOperationState {
     const operationId = this.dependencies.createOperationId();
     if (operationId.trim() === ""
       || operationId.length > maxBrowserIdentifierCharacters
       || this.operations.has(operationId)) {
       throw new Error("Safe Tunnel operation IDs must be non-empty and unique.");
     }
+    const credentialBoundary = new SafeTunnelCredentialBoundary();
+    const diagnosticSecrets = diagnosticSecretsFromLoadedState(loadedState);
+    const startedAt = this.dependencies.now().toISOString();
+    const initialOutput = "Preparing Safe Tunnel enablement with PI WEB-owned defaults.\n";
+    if (!credentialBoundary.classify({ credentialValues: diagnosticSecrets })) {
+      throw new Error("Safe Tunnel credential classification is invalid.");
+    }
     const operation: SafeTunnelOperationState = {
-      diagnosticSecrets: diagnosticSecretsFromLoadedState(loadedState),
+      credentialBoundary,
+      diagnosticSecrets,
       id: operationId,
       kind: "enable",
       phase: "preparing",
-      startedAt: this.dependencies.now().toISOString(),
+      startedAt,
       status: "running",
       stderr: "",
-      stdout: "Preparing Safe Tunnel enablement with PI WEB-owned defaults.\n",
+      stdout: initialOutput,
     };
+    if (!credentialBoundary.classify({
+      publicValues: [
+        ...fixedBrowserClassificationValues,
+        ...browserClassificationValues({
+          operation: createOperationSnapshot(operation),
+          status: initialStatus,
+        }),
+      ],
+    })) {
+      throw new Error("Safe Tunnel credential classification is invalid.");
+    }
     this.activeOperation = operation;
     this.operations.set(operation.id, operation);
     return operation;
@@ -337,7 +502,7 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
     if (workflow.operation.status === "running") {
       workflow.operation.status = "cancelled";
       workflow.operation.error = enableCancelledMessage;
-      workflow.operation.finishedAt = this.dependencies.now().toISOString();
+      delete workflow.operation.finishedAt;
     }
     this.clearActiveOperation(workflow.operation);
     return workflow;
@@ -347,15 +512,16 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
     operation: SafeTunnelOperationState,
     signal: AbortSignal,
   ): void {
-    if (operation.status === "cancelled") return;
-    if (signal.aborted) {
-      operation.status = "cancelled";
-      operation.error = enableCancelledMessage;
-    } else {
-      operation.status = "failed";
-      operation.error = enableFailedMessage;
+    if (operation.status !== "cancelled") {
+      if (signal.aborted) {
+        operation.status = "cancelled";
+        operation.error = enableCancelledMessage;
+      } else {
+        operation.status = "failed";
+        operation.error = enableFailedMessage;
+      }
     }
-    operation.finishedAt = this.dependencies.now().toISOString();
+    setOperationFinishedAt(operation, this.dependencies.now());
   }
 
   private clearActiveOperation(operation: SafeTunnelOperationState): void {
@@ -422,9 +588,23 @@ function enableLoginObserver(operation: SafeTunnelOperationState): SafeTunnelLog
     },
     onDeviceAuthorization(authorization) {
       if (operation.status !== "running") return;
+      const browserMetadataAccepted = operation.credentialBoundary.classify({
+        publicValues: [
+          authorization.userCode,
+          authorization.verificationUri,
+          authorization.verificationUriComplete,
+          authorization.expiresAt,
+          authorization.intervalSeconds.toString(),
+        ],
+      });
       operation.phase = "awaiting_approval";
-      operation.verificationUriComplete = authorization.verificationUriComplete;
-      operation.userCode = authorization.userCode;
+      if (browserMetadataAccepted) {
+        operation.verificationUriComplete = authorization.verificationUriComplete;
+        operation.userCode = authorization.userCode;
+      } else {
+        delete operation.verificationUriComplete;
+        delete operation.userCode;
+      }
       appendOperationStdout(operation, approvalOutput());
     },
     onAuthorizationApproved() {
@@ -465,13 +645,38 @@ function finishEnableOperation(
     maxBrowserUrlCharacters,
     operation.diagnosticSecrets,
   );
-  if (publicUrl === undefined) delete operation.publicUrl;
-  else operation.publicUrl = publicUrl;
-  appendOperationStdout(operation, result.output);
+  if (publicUrl === undefined
+    || !operation.credentialBoundary.classify({ publicValues: [publicUrl] })) {
+    delete operation.publicUrl;
+  } else {
+    operation.publicUrl = publicUrl;
+  }
+  const output = redactSafeTunnelDiagnostic(
+    result.output,
+    operation.diagnosticSecrets,
+  );
+  if (operation.credentialBoundary.classify({ publicValues: [output] })) {
+    appendOperationStdout(operation, output);
+    operation.logTail = tailText(output, maxFrpcLogTailCharacters);
+  } else {
+    appendOperationStdout(operation, "Safe Tunnel runtime started.\n");
+    delete operation.logTail;
+  }
   operation.status = "succeeded";
   operation.exitCode = 0;
-  operation.finishedAt = now.toISOString();
-  operation.logTail = tailText(result.output, maxFrpcLogTailCharacters);
+  setOperationFinishedAt(operation, now);
+}
+
+function setOperationFinishedAt(
+  operation: SafeTunnelOperationState,
+  now: Date,
+): void {
+  const finishedAt = now.toISOString();
+  if (operation.credentialBoundary.classify({ publicValues: [finishedAt] })) {
+    operation.finishedAt = finishedAt;
+  } else {
+    delete operation.finishedAt;
+  }
 }
 
 function statusFromLoadedState(
@@ -638,9 +843,10 @@ function snapshotRuntimeStatus(
 }
 
 function snapshotOperation(operation: SafeTunnelOperationState): SafeTunnelOperationResponse {
-  return operation.sealedSnapshot === undefined
-    ? createOperationSnapshot(operation)
-    : { ...operation.sealedSnapshot };
+  if (operation.sealedSnapshot !== undefined) return { ...operation.sealedSnapshot };
+  const snapshot = createOperationSnapshot(operation);
+  recordBrowserPayload(operation, snapshot);
+  return snapshot;
 }
 
 function createOperationSnapshot(
@@ -723,17 +929,81 @@ function createOperationSnapshot(
   };
 }
 
+function recordBrowserPayload(
+  operation: SafeTunnelOperationState,
+  payload: unknown,
+): void {
+  requireBrowserPayloadClassification(operation.credentialBoundary, payload);
+}
+
+function requireBrowserPayloadClassification(
+  boundary: SafeTunnelCredentialBoundary,
+  payload: unknown,
+): void {
+  if (!boundary.classify({
+    publicValues: browserClassificationValues(payload),
+  })) {
+    throw new Error("Safe Tunnel credential crossed the browser boundary.");
+  }
+}
+
+function browserClassificationValues(payload: unknown): readonly string[] {
+  const values = new Set<string>();
+  const scalarValues: string[] = [];
+  const visited = new WeakSet();
+  const addString = (value: string, scalar: boolean): void => {
+    values.add(value);
+    values.add(JSON.stringify(value));
+    if (scalar) scalarValues.push(value);
+  };
+  const visit = (value: unknown): void => {
+    if (typeof value === "string") {
+      addString(value, true);
+      return;
+    }
+    if (typeof value === "number" || typeof value === "boolean") {
+      addString(value.toString(), true);
+      return;
+    }
+    if (value === null) {
+      addString("null", true);
+      return;
+    }
+    if (typeof value !== "object" || visited.has(value)) return;
+    visited.add(value);
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+    for (const [key, item] of Object.entries(value)) {
+      addString(key, false);
+      visit(item);
+    }
+  };
+  visit(payload);
+  if (scalarValues.length > 1) values.add(scalarValues.join(""));
+  const serialized: unknown = JSON.stringify(payload);
+  if (typeof serialized === "string") values.add(serialized);
+  return [...values];
+}
+
 function diagnosticSecretsFromLoadedState(
   loaded: LoadedSafeTunnelState,
 ): string[] {
   const machineToken = loaded.state.machine?.machineToken;
-  return machineToken === undefined ? [] : [machineToken];
+  return [
+    ...(loaded.state.credentialBoundaryPrivateValues ?? []),
+    ...(machineToken === undefined ? [] : [machineToken]),
+  ];
 }
 
 function registerOperationDiagnosticSecrets(
   operation: SafeTunnelOperationState,
   values: readonly string[],
 ): void {
+  if (!operation.credentialBoundary.classify({ credentialValues: values })) {
+    throw new Error("Safe Tunnel credential crossed the browser boundary.");
+  }
   for (const value of values) {
     if (value !== "" && !operation.diagnosticSecrets.includes(value)) {
       operation.diagnosticSecrets.push(value);
@@ -742,13 +1012,40 @@ function registerOperationDiagnosticSecrets(
   redactOperationDiagnostics(operation);
 }
 
+function resetOperationToGenericFailure(operation: SafeTunnelOperationState): void {
+  operation.stdout = "";
+  operation.stderr = "";
+  operation.error = operation.status === "cancelled"
+    ? enableCancelledMessage
+    : enableFailedMessage;
+  delete operation.exitCode;
+  delete operation.finishedAt;
+  delete operation.logTail;
+  delete operation.publicUrl;
+  delete operation.userCode;
+  delete operation.verificationUriComplete;
+  operation.credentialBoundary.clear();
+  if (!operation.credentialBoundary.classify({
+    credentialValues: operation.diagnosticSecrets,
+    publicValues: [
+      ...fixedBrowserClassificationValues,
+      ...browserClassificationValues(createOperationSnapshot(operation)),
+    ],
+  })) {
+    throw new Error("Safe Tunnel credential classification is invalid.");
+  }
+}
+
 function sealOperation(operation: SafeTunnelOperationState): void {
   redactOperationDiagnostics(operation);
-  operation.sealedSnapshot = createOperationSnapshot(operation);
+  const snapshot = createOperationSnapshot(operation);
+  recordBrowserPayload(operation, snapshot);
+  operation.sealedSnapshot = snapshot;
   delete operation.publicUrl;
   delete operation.userCode;
   delete operation.verificationUriComplete;
   operation.diagnosticSecrets.length = 0;
+  operation.credentialBoundary.clear();
 }
 
 function redactOperationDiagnostics(operation: SafeTunnelOperationState): void {

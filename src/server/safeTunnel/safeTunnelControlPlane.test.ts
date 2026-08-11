@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   HttpSafeTunnelControlPlane,
@@ -439,6 +441,124 @@ describe("HttpSafeTunnelControlPlane", () => {
     });
   });
 
+  it.each((() => {
+    const machineToken = "private-machine-token-1234567890";
+    const bytes = Buffer.from(machineToken, "utf8");
+    const base64url = bytes.toString("base64url");
+    return [
+      ["hex", bytes.toString("hex")],
+      ["base64", bytes.toString("base64")],
+      ["base64url", base64url],
+      ["dot-separated base64url", `${base64url.slice(0, 20)}.${base64url.slice(20)}`],
+      ["SHA-256 digest", createHash("sha256").update(bytes).digest("hex")],
+    ] as const;
+  })())("rejects a machine-token %s alias in provider browser metadata", async (
+    _label,
+    alias,
+  ) => {
+    const machineToken = "private-machine-token-1234567890";
+    const controlPlane = new HttpSafeTunnelControlPlane({
+      fetch: () => Promise.resolve(jsonResponse(201, {
+        ...registeredMachine(),
+        machine: {
+          id: alias,
+          accountId: "account_123",
+          name: "Dev Box",
+          slug: "dev-box",
+        },
+        machineToken,
+      })),
+    });
+
+    await expect(controlPlane.registerMachine({
+      controlApiBaseUrl: "https://control.example.test",
+      connectorAccessToken: "connector-token",
+      machineName: "Dev Box",
+      machineSlug: "dev-box",
+      localPiWebUrl: "http://127.0.0.1:8504",
+      clientVersion: safeTunnelClientVersion,
+    })).rejects.toMatchObject({
+      code: "invalid_response",
+      operation: "register_machine",
+    });
+  });
+
+  it("rejects credential hex split across three provider metadata fields", async () => {
+    const machineToken = "private-machine-token-1234567890-abcdefghijkl";
+    const hex = Buffer.from(machineToken, "utf8").toString("hex");
+    const chunkLength = Math.ceil(hex.length / 3);
+    const controlPlane = new HttpSafeTunnelControlPlane({
+      fetch: () => Promise.resolve(jsonResponse(201, {
+        ...registeredMachine(),
+        machine: {
+          id: hex.slice(0, chunkLength),
+          accountId: hex.slice(chunkLength, chunkLength * 2),
+          name: hex.slice(chunkLength * 2),
+          slug: "dev-box",
+        },
+        machineToken,
+      })),
+    });
+
+    await expect(controlPlane.registerMachine({
+      controlApiBaseUrl: "https://control.example.test",
+      connectorAccessToken: "connector-token",
+      machineName: "Dev Box",
+      machineSlug: "dev-box",
+      localPiWebUrl: "http://127.0.0.1:8504",
+      clientVersion: safeTunnelClientVersion,
+    })).rejects.toMatchObject({ code: "invalid_response" });
+  });
+
+  it("rejects dot-separated credential hex in a registered public hostname", async () => {
+    const machineToken = "private-machine-token-1234567890";
+    const hex = Buffer.from(machineToken, "utf8").toString("hex");
+    const publicHostname = `${hex.slice(0, 32)}.${hex.slice(32)}.example.test`;
+    const controlPlane = new HttpSafeTunnelControlPlane({
+      fetch: () => Promise.resolve(jsonResponse(201, {
+        ...registeredMachine(),
+        publicHostname,
+        publicUrl: `https://${publicHostname}`,
+        machineToken,
+      })),
+    });
+
+    await expect(controlPlane.registerMachine({
+      controlApiBaseUrl: "https://control.example.test",
+      connectorAccessToken: "connector-token",
+      machineName: "Dev Box",
+      machineSlug: "dev-box",
+      localPiWebUrl: "http://127.0.0.1:8504",
+      clientVersion: safeTunnelClientVersion,
+    })).rejects.toMatchObject({ code: "invalid_response" });
+  });
+
+  it("rejects a machine credential that encodes same-response public metadata", async () => {
+    const machineId = "public-machine-id";
+    const machineToken = Buffer.from(machineId, "utf8").toString("base64url");
+    const controlPlane = new HttpSafeTunnelControlPlane({
+      fetch: () => Promise.resolve(jsonResponse(201, {
+        ...registeredMachine(),
+        machine: {
+          id: machineId,
+          accountId: "account_123",
+          name: "Dev Box",
+          slug: "dev-box",
+        },
+        machineToken,
+      })),
+    });
+
+    await expect(controlPlane.registerMachine({
+      controlApiBaseUrl: "https://control.example.test",
+      connectorAccessToken: "connector-token",
+      machineName: "Dev Box",
+      machineSlug: "dev-box",
+      localPiWebUrl: "http://127.0.0.1:8504",
+      clientVersion: safeTunnelClientVersion,
+    })).rejects.toMatchObject({ code: "invalid_response" });
+  });
+
   it("fetches and strictly parses tunnel config with private machine credentials", async () => {
     const transport = sequencedFetch([jsonResponse(200, {
       machine: { id: "machine_123" },
@@ -515,6 +635,32 @@ describe("HttpSafeTunnelControlPlane", () => {
     });
     expect(transport.requests[0]?.init.signal).toBeInstanceOf(AbortSignal);
     expect(transport.requests[0]?.init.signal).not.toBe(controller.signal);
+  });
+
+  it("rejects a machine-token alias in heartbeat public metadata", async () => {
+    const machineToken = "private-machine-token";
+    const alias = Buffer.from(machineToken, "utf8").toString("base64url");
+    const separatedAlias = `${alias.slice(0, 12)}.${alias.slice(12)}`;
+    const controlPlane = new HttpSafeTunnelControlPlane({
+      fetch: () => Promise.resolve(jsonResponse(202, heartbeatResponse({
+        machine: {
+          id: separatedAlias,
+          lastSeenAt: "2026-07-29T12:05:00.000Z",
+        },
+      }))),
+    });
+
+    await expect(controlPlane.recordMachineHeartbeat({
+      controlApiBaseUrl: "https://control.example.test",
+      machineId: "machine_123",
+      machineToken,
+    }, {
+      clientVersion: safeTunnelClientVersion,
+      tunnelStatus: "running",
+    })).rejects.toMatchObject({
+      code: "invalid_response",
+      operation: "record_heartbeat",
+    });
   });
 
   it("rejects malformed heartbeat success and maps rejected credentials", async () => {

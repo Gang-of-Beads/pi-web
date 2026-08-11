@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
 import { parse } from "smol-toml";
 import { describe, expect, it } from "vitest";
 import {
@@ -254,6 +256,55 @@ describe("prepareSafeTunnelFrpcConfig", () => {
       input.localPiWebUrl,
     )).toThrow("provider frpc configuration is invalid");
   });
+
+  it.each((() => {
+    const credential = "private-relay-token-0123456789abcdef";
+    const hex = Buffer.from(credential, "utf8").toString("hex");
+    const digest = createHash("sha256").update(credential).digest("hex");
+    const sha224 = createHash("sha224").update(credential).digest("hex");
+    const base64url = Buffer.from(credential, "utf8").toString("base64url");
+    return [
+      ["direct credential", credential],
+      [
+        "dot-separated credential base64url",
+        `${base64url.slice(0, 24)}.${base64url.slice(24)}`,
+      ],
+      ["dot-separated credential hex", `${hex.slice(0, 40)}.${hex.slice(40)}`],
+      ["SHA-224 credential digest", sha224],
+      ["dot-separated credential digest", `${digest.slice(0, 32)}.${digest.slice(32)}`],
+    ] as const;
+  })())("rejects a generated relay/TLS identity containing a %s alias", (
+    _label,
+    serverAddr,
+  ) => {
+    const frpcConfigToml = providerConfig.replace(
+      "relay.example.test",
+      serverAddr,
+    );
+
+    expect(() => prepareSafeTunnelFrpcConfig(
+      { ...input, frpcConfigToml },
+      input.localPiWebUrl,
+    )).toThrow("provider frpc configuration is invalid");
+  });
+
+  it.each(["serverAddr", ""])(
+    "rejects a credential derived from generated frpc structure %j",
+    (publicValue) => {
+      const structuralCredential = createHash("sha256")
+        .update(publicValue)
+        .digest("hex");
+      const frpcConfigToml = providerConfig.replace(
+        JSON.stringify(frpcToken),
+        JSON.stringify(structuralCredential),
+      );
+
+      expect(() => prepareSafeTunnelFrpcConfig(
+        { ...input, frpcConfigToml },
+        input.localPiWebUrl,
+      )).toThrow("provider frpc configuration is invalid");
+    },
+  );
 
   it("revalidates PI WEB-owned trust at the child-process boundary", () => {
     const generated = prepareSafeTunnelFrpcConfig(input, input.localPiWebUrl);

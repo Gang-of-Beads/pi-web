@@ -1,8 +1,11 @@
+import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import type {
   SafeTunnelCommandOutput,
   SafeTunnelRuntimeStatus,
 } from "../../shared/apiTypes.js";
+import { SafeTunnelCredentialBoundary } from "./safeTunnelDiagnostics.js";
 import { SafeTunnelOperationConflictError } from "./safeTunnelRoutes.js";
 import type {
   SafeTunnelEnableInput,
@@ -205,6 +208,158 @@ describe("DefaultSafeTunnelBridgeService", () => {
     expect(browserPayload).not.toContain(serializedCredential);
     expect(browserPayload).not.toContain(uriCredential);
     expect(browserPayload).not.toContain(jsonCredential);
+  });
+
+  it.each((() => {
+    const credential = "DgOqUoxc~XpE";
+    const bytes = Buffer.from(credential, "utf8");
+    return [
+      ["hex", bytes.toString("hex")],
+      ["base64", bytes.toString("base64")],
+      ["base64url", bytes.toString("base64url")],
+      ["SHA-256 digest", createHash("sha256").update(bytes).digest("hex")],
+    ] as const;
+  })())("withholds a credential %s alias from every browser field", async (
+    _label,
+    alias,
+  ) => {
+    const fixture = createFixture();
+    const credential = "DgOqUoxc~XpE";
+    fixture.application.loaded = registeredState({
+      machine: {
+        ...registeredState().state.machine ?? missingMachineCredentials(),
+        machineId: alias,
+        machineToken: credential,
+      },
+    });
+    fixture.runtime.statusValue = runtimeStatus({
+      error: `provider retained ${alias}`,
+      logTail: `diagnostic retained ${alias}`,
+    });
+
+    const status = await fixture.service.status();
+    const payload = JSON.stringify(status);
+
+    expect(status.config.machine).toBeUndefined();
+    expect(payload).not.toContain(credential);
+    expect(payload).not.toContain(alias);
+  });
+
+  it("rejects a credential representation split across three browser fields", async () => {
+    const fixture = createFixture();
+    const machineToken = "private-machine-token-1234567890-abcdefghijkl";
+    const hex = Buffer.from(machineToken, "utf8").toString("hex");
+    const chunkLength = Math.ceil(hex.length / 3);
+    const machineId = hex.slice(0, chunkLength);
+    const machineSlug = hex.slice(chunkLength, chunkLength * 2);
+    const hostnameLabel = hex.slice(chunkLength * 2);
+    fixture.application.loaded = registeredState({
+      machine: {
+        controlApiBaseUrl: "https://control.example.test",
+        credentialStatus: "active",
+        machineId,
+        machineToken,
+        machineSlug,
+        publicUrl: `https://${hostnameLabel}.example.test`,
+      },
+    });
+
+    await expect(fixture.service.status()).rejects.toThrow(
+      "credential crossed the browser boundary",
+    );
+  });
+
+  it("durably records complete inactive browser status metadata", async () => {
+    const fixture = createFixture();
+    const status = await fixture.service.status();
+    const persistedBoundary = fixture.application.persistedCredentialBoundaries.at(-1);
+
+    const logPath = status.runtime.logPath;
+    const logTailMaxCharacters = status.runtime.logTailMaxCharacters;
+    expect(persistedBoundary).toBeDefined();
+    expect(logPath).toBeDefined();
+    expect(logTailMaxCharacters).toBeDefined();
+    if (logPath === undefined || logTailMaxCharacters === undefined) {
+      throw new Error("expected complete runtime status metadata");
+    }
+    expect(persistedBoundary?.classification().publicValues).toEqual(
+      expect.arrayContaining([
+        "config",
+        "desiredState",
+        "runtime",
+        status.desiredState,
+        logPath,
+        logTailMaxCharacters.toString(),
+      ]),
+    );
+    const laterCredential = Buffer.from(logPath, "utf8").toString("base64url");
+    expect(persistedBoundary?.classify({ credentialValues: [laterCredential] }))
+      .toBe(false);
+  });
+
+  it.each([
+    ["actual status value", "disabled"],
+    ["optional operation key", "userCode"],
+    [
+      "digest of an optional operation key",
+      createHash("sha256").update("finishedAt").digest("hex"),
+    ],
+    [
+      "base64url JSON serialization of an optional operation key",
+      Buffer.from(JSON.stringify("finishedAt"), "utf8").toString("base64url"),
+    ],
+    [
+      "serialized route validation response",
+      Buffer.from("Safe Tunnel enable request body must be an object", "utf8")
+        .toString("base64url"),
+    ],
+  ])("classifies every initial browser payload %s before later credentials", async (
+    _label,
+    accessToken,
+  ) => {
+    const fixture = createFixture();
+    const login = createDeferred<SafeTunnelLoginResult>();
+    fixture.application.loginResult = login.promise;
+
+    const response = await fixture.service.enable({});
+    await vi.waitFor(() => { expect(fixture.application.loginCalls).toBe(1); });
+    login.resolve(loginResult({ accessToken }));
+
+    await vi.waitFor(() => {
+      expect(fixture.service.operation(response.operation.id)?.status).toBe("failed");
+    });
+    expect(response.status.desiredState).toBe("disabled");
+    expect(fixture.runtime.startCalls).toEqual([]);
+  });
+
+  it("fails closed when an injected login returns a credential derived from prior browser metadata", async () => {
+    const fixture = createFixture();
+    const login = createDeferred<SafeTunnelLoginResult>();
+    const publicUserCode = "Approval~Code~Already~Public";
+    const accessToken = Buffer.from(publicUserCode, "utf8").toString("base64url");
+    fixture.application.loginResult = login.promise;
+
+    const response = await fixture.service.enable({});
+    await vi.waitFor(() => { expect(fixture.application.loginCalls).toBe(1); });
+    fixture.application.loginObserver?.onCredentialRedactionValues?.([
+      "private-device-code",
+    ]);
+    fixture.application.loginObserver?.onDeviceAuthorization?.({
+      userCode: publicUserCode,
+      verificationUri: "https://control.example.test/device",
+      verificationUriComplete: "https://control.example.test/device?code=public",
+      expiresAt: "2026-07-29T00:10:00.000Z",
+      intervalSeconds: 5,
+    });
+    fixture.application.loginObserver?.onAuthorizationApproved?.();
+    login.resolve(loginResult({ accessToken }));
+
+    await vi.waitFor(() => {
+      expect(fixture.service.operation(response.operation.id)?.status).toBe("failed");
+    });
+    expect(fixture.runtime.startCalls).toEqual([]);
+    expect(JSON.stringify(fixture.service.operation(response.operation.id)))
+      .not.toContain(accessToken);
   });
 
   it("scrubs approval aliases and seals credential-safe final operation snapshots", async () => {
@@ -765,6 +920,7 @@ class FakeSafeTunnelApplicationService implements SafeTunnelApplicationService {
   loginObserver: SafeTunnelLoginObserver | undefined;
   loginResult: Promise<SafeTunnelLoginResult> = Promise.resolve(loginResult());
   loginSignal: AbortSignal | undefined;
+  persistedCredentialBoundaries: SafeTunnelCredentialBoundary[] = [];
   stateError: Error | undefined;
   stateResult: Promise<LoadedSafeTunnelState> | undefined;
 
@@ -776,6 +932,33 @@ class FakeSafeTunnelApplicationService implements SafeTunnelApplicationService {
   state(): Promise<LoadedSafeTunnelState> {
     if (this.stateError !== undefined) return Promise.reject(this.stateError);
     return this.stateResult ?? Promise.resolve(structuredClone(this.loaded));
+  }
+
+  persistCredentialBoundary(
+    boundary: SafeTunnelCredentialBoundary,
+  ): Promise<void> {
+    const machineToken = this.loaded.state.machine?.machineToken;
+    if (!boundary.classify({
+      credentialValues: [
+        ...(this.loaded.state.credentialBoundaryPrivateValues ?? []),
+        ...(machineToken === undefined ? [] : [machineToken]),
+      ],
+    })) {
+      return Promise.reject(
+        new Error("Safe Tunnel credential crossed the browser boundary."),
+      );
+    }
+    this.persistedCredentialBoundaries.push(boundary.clone());
+    const classification = boundary.classification();
+    this.loaded = {
+      exists: true,
+      state: {
+        ...this.loaded.state,
+        credentialBoundaryPrivateValues: classification.credentialValues,
+        credentialBoundaryPublicValues: classification.publicValues,
+      },
+    };
+    return Promise.resolve();
   }
 
   login(

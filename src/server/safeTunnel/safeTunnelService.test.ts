@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import {
   SafeTunnelControlPlaneError,
@@ -10,6 +12,7 @@ import {
   type SafeTunnelMachineTunnelConfig,
   type SafeTunnelRegisteredMachine,
 } from "./safeTunnelControlPlane.js";
+import { SafeTunnelCredentialBoundary } from "./safeTunnelDiagnostics.js";
 import {
   createDefaultSafeTunnelState,
   type LoadedSafeTunnelState,
@@ -48,6 +51,15 @@ class MemorySafeTunnelStateStorage implements SafeTunnelStateStorage {
     this.current = { exists: true, state: snapshot };
     return Promise.resolve();
   }
+}
+
+function expectOnlyPublicHistorySaved(
+  storage: MemorySafeTunnelStateStorage,
+): void {
+  expect(storage.saves.length).toBeGreaterThan(0);
+  expect(storage.saves.every((state) => state.machine === undefined)).toBe(true);
+  expect(storage.saves.at(-1)?.credentialBoundaryPublicValues?.length)
+    .toBeGreaterThan(0);
 }
 
 class FakeSafeTunnelControlPlane implements SafeTunnelControlPlane {
@@ -266,7 +278,9 @@ describe("SafeTunnelService", () => {
       "piwt_cat_v1_access",
       "piwt_mtok_v1_private",
     ]);
-    expect(storage.saves).toEqual([{
+    expect(storage.saves).toHaveLength(4);
+    const persisted = storage.saves.at(-1);
+    expect(persisted).toMatchObject({
       stateVersion: 2,
       desiredState: "disabled",
       localPiWebUrl: "http://127.0.0.1:9000",
@@ -279,7 +293,22 @@ describe("SafeTunnelService", () => {
         machineSlug: "dev-box",
         publicUrl: "https://dev-box.ns-abc123.tunnels.pi-web.dev",
       },
-    }]);
+    });
+    expect(persisted?.credentialBoundaryPublicValues).toEqual(
+      expect.arrayContaining([
+        "ABCD-EFGH",
+        "account_123",
+        "machine_123",
+        "https://dev-box.ns-abc123.tunnels.pi-web.dev",
+      ]),
+    );
+    expect(persisted?.credentialBoundaryPrivateValues).toEqual(
+      expect.arrayContaining([
+        "piwt_dcode_v1_device",
+        "piwt_cat_v1_access",
+        "piwt_mtok_v1_private",
+      ]),
+    );
     expect(controlPlane.calls.map(({ method }) => method)).toEqual([
       "start",
       "complete",
@@ -335,10 +364,10 @@ describe("SafeTunnelService", () => {
     expect(onCredentialRedactionValues).not.toHaveBeenCalled();
     expect(onDeviceAuthorization).not.toHaveBeenCalled();
     expect(controlPlane.calls.map(({ method }) => method)).toEqual(["start"]);
-    expect(storage.saves).toEqual([]);
+    expectOnlyPublicHistorySaved(storage);
   });
 
-  it("rejects unsafe injected bearer credentials before use or persistence", async () => {
+  it("rejects unsafe injected bearer credentials before use or credential persistence", async () => {
     const unsafeAccessStorage = new MemorySafeTunnelStateStorage();
     const unsafeAccessControlPlane = new FakeSafeTunnelControlPlane();
     unsafeAccessControlPlane.completions = [{
@@ -360,7 +389,7 @@ describe("SafeTunnelService", () => {
       "start",
       "complete",
     ]);
-    expect(unsafeAccessStorage.saves).toEqual([]);
+    expectOnlyPublicHistorySaved(unsafeAccessStorage);
 
     const unsafeMachineStorage = new MemorySafeTunnelStateStorage();
     const unsafeMachineControlPlane = new FakeSafeTunnelControlPlane();
@@ -384,7 +413,7 @@ describe("SafeTunnelService", () => {
       "complete",
       "register",
     ]);
-    expect(unsafeMachineStorage.saves).toEqual([]);
+    expectOnlyPublicHistorySaved(unsafeMachineStorage);
 
     const aliasedMetadataStorage = new MemorySafeTunnelStateStorage();
     const aliasedMetadataControlPlane = new FakeSafeTunnelControlPlane();
@@ -411,10 +440,318 @@ describe("SafeTunnelService", () => {
       machineName: "Dev Box",
       machineSlug: "dev-box",
     })).rejects.toMatchObject({ code: "invalid_login" });
-    expect(aliasedMetadataStorage.saves).toEqual([]);
+    expectOnlyPublicHistorySaved(aliasedMetadataStorage);
   });
 
-  it("bounds authorization polling by expiry without registering or persisting", async () => {
+  it.each((() => {
+    const publicApprovalValue = "Approval~Code~Already~Public";
+    const bytes = Buffer.from(publicApprovalValue, "utf8");
+    return [
+      ["directly reuses", publicApprovalValue],
+      ["hex-encodes", bytes.toString("hex")],
+      ["base64-encodes", bytes.toString("base64")],
+      ["base64url-encodes", bytes.toString("base64url")],
+      ["wraps a base64url encoding", `-${bytes.toString("base64url")}-`],
+      ["SHA-256-digests", createHash("sha256").update(bytes).digest("hex")],
+      ["SHA-512/224-digests", createHash("sha512-224").update(bytes).digest("hex")],
+      ["SHA-512/256-digests", createHash("sha512-256").update(bytes).digest("hex")],
+    ] as const;
+  })())("rejects an access credential that %s prior browser metadata", async (
+    _label,
+    accessToken,
+  ) => {
+    const storage = new MemorySafeTunnelStateStorage();
+    const controlPlane = new FakeSafeTunnelControlPlane();
+    controlPlane.authorization = {
+      ...startedAuthorization(),
+      userCode: "Approval~Code~Already~Public",
+    };
+    controlPlane.completions = [{
+      kind: "approved",
+      authorization: { ...approvedAuthorization(), accessToken },
+    }];
+    const service = new SafeTunnelService({
+      controlPlane,
+      stateStorage: storage,
+      now: () => new Date("2026-07-29T12:00:00.000Z"),
+    });
+
+    await expect(service.login({
+      controlApiBaseUrl: "https://control.example.test",
+      machineName: "Dev Box",
+      machineSlug: "dev-box",
+    })).rejects.toMatchObject({ code: "invalid_login" });
+    expect(controlPlane.calls.map(({ method }) => method)).toEqual(["start", "complete"]);
+    expectOnlyPublicHistorySaved(storage);
+  });
+
+  it("absorbs browser classification that predates the service login phase", async () => {
+    const storage = new MemorySafeTunnelStateStorage();
+    const controlPlane = new FakeSafeTunnelControlPlane();
+    const browserValue = "operation-public-id";
+    const credentialBoundary = new SafeTunnelCredentialBoundary();
+    expect(credentialBoundary.classify({ publicValues: [browserValue] })).toBe(true);
+    controlPlane.completions = [{
+      kind: "approved",
+      authorization: {
+        ...approvedAuthorization(),
+        accessToken: Buffer.from(browserValue).toString("base64url"),
+      },
+    }];
+    const service = new SafeTunnelService({
+      controlPlane,
+      stateStorage: storage,
+      now: () => new Date("2026-07-29T12:00:00.000Z"),
+    });
+
+    await expect(service.login({
+      controlApiBaseUrl: "https://control.example.test",
+      machineName: "Dev Box",
+      machineSlug: "dev-box",
+    }, {}, { credentialBoundary })).rejects.toMatchObject({ code: "invalid_login" });
+    expect(controlPlane.calls.map(({ method }) => method)).toEqual(["start", "complete"]);
+    expectOnlyPublicHistorySaved(storage);
+  });
+
+  it("carries a reused-registration browser boundary into later frps classification", async () => {
+    const storage = new MemorySafeTunnelStateStorage(registeredState());
+    const controlPlane = new FakeSafeTunnelControlPlane();
+    const browserValue = "operation-public-identifier-1234";
+    const credentialBoundary = new SafeTunnelCredentialBoundary();
+    expect(credentialBoundary.classify({ publicValues: [browserValue] })).toBe(true);
+    const service = new SafeTunnelService({ controlPlane, stateStorage: storage });
+
+    await service.enable({}, { credentialBoundary });
+    const frpsCredential = Buffer.from(browserValue).toString("base64url");
+    controlPlane.tunnelConfig = {
+      ...machineTunnelConfig(),
+      frpcConfigToml: machineTunnelConfig().frpcConfigToml.replace(
+        frpcToken,
+        frpsCredential,
+      ),
+    };
+
+    await expect(service.getTunnelConfig()).rejects.toMatchObject({
+      code: "invalid_tunnel_config",
+    });
+  });
+
+  it("rejects a machine credential derived from prior browser approval metadata", async () => {
+    const storage = new MemorySafeTunnelStateStorage();
+    const controlPlane = new FakeSafeTunnelControlPlane();
+    const userCode = "Approval~Code~Already~Public";
+    controlPlane.authorization = { ...startedAuthorization(), userCode };
+    controlPlane.registration = {
+      ...registeredMachine(),
+      machineToken: createHash("sha256").update(userCode).digest("base64url"),
+    };
+    const service = new SafeTunnelService({
+      controlPlane,
+      stateStorage: storage,
+      now: () => new Date("2026-07-29T12:00:00.000Z"),
+    });
+
+    await expect(service.login({
+      controlApiBaseUrl: "https://control.example.test",
+      machineName: "Dev Box",
+      machineSlug: "dev-box",
+    })).rejects.toMatchObject({ code: "invalid_login" });
+    expect(controlPlane.calls.map(({ method }) => method)).toEqual([
+      "start",
+      "complete",
+      "register",
+    ]);
+    expectOnlyPublicHistorySaved(storage);
+  });
+
+  it("retains approval classification after failed registration and service restart", async () => {
+    const storage = new MemorySafeTunnelStateStorage();
+    const userCode = "Approval~Code~Survives~Failure";
+    const firstControlPlane = new FakeSafeTunnelControlPlane();
+    firstControlPlane.authorization = { ...startedAuthorization(), userCode };
+    firstControlPlane.registrationResult = Promise.reject(new Error("registration failed"));
+    const firstService = new SafeTunnelService({
+      controlPlane: firstControlPlane,
+      stateStorage: storage,
+      now: () => new Date("2026-07-29T12:00:00.000Z"),
+    });
+
+    await expect(firstService.login({
+      controlApiBaseUrl: "https://control.example.test",
+      machineName: "Dev Box",
+      machineSlug: "dev-box",
+    })).rejects.toThrow("registration failed");
+    expect(storage.saves.at(-1)?.machine).toBeUndefined();
+
+    const restartedControlPlane = new FakeSafeTunnelControlPlane();
+    restartedControlPlane.completions = [{
+      kind: "approved",
+      authorization: {
+        ...approvedAuthorization(),
+        accessToken: Buffer.from(userCode, "utf8").toString("base64url"),
+      },
+    }];
+    const restartedService = new SafeTunnelService({
+      controlPlane: restartedControlPlane,
+      stateStorage: storage,
+      now: () => new Date("2026-07-29T12:00:00.000Z"),
+    });
+
+    await expect(restartedService.login({
+      controlApiBaseUrl: "https://control.example.test",
+      machineName: "Dev Box",
+      machineSlug: "dev-box",
+    })).rejects.toMatchObject({ code: "invalid_login" });
+    expect(restartedControlPlane.calls.map(({ method }) => method)).toEqual([
+      "start",
+      "complete",
+    ]);
+  });
+
+  it("retains approval classification until a later frps credential is accepted", async () => {
+    const storage = new MemorySafeTunnelStateStorage();
+    const controlPlane = new FakeSafeTunnelControlPlane();
+    const userCode = "Approval~Code~Already~Public";
+    const frpsCredential = Buffer.from(userCode, "utf8").toString("base64url");
+    controlPlane.authorization = { ...startedAuthorization(), userCode };
+    const registrationService = new SafeTunnelService({
+      controlPlane,
+      stateStorage: storage,
+      now: () => new Date("2026-07-29T12:00:00.000Z"),
+    });
+    await registrationService.login({
+      controlApiBaseUrl: "https://control.example.test",
+      machineName: "Dev Box",
+      machineSlug: "dev-box",
+    });
+    controlPlane.tunnelConfig = {
+      ...machineTunnelConfig(),
+      frpcConfigToml: machineTunnelConfig().frpcConfigToml.replace(
+        frpcToken,
+        frpsCredential,
+      ),
+    };
+
+    const restartedService = new SafeTunnelService({ controlPlane, stateStorage: storage });
+    await expect(restartedService.getTunnelConfig()).rejects.toMatchObject({
+      code: "invalid_tunnel_config",
+    });
+  });
+
+  it("retains generated relay identity history across a service restart", async () => {
+    const relayIdentity = "relay-identity-that-was-public.example.test";
+    const storage = new MemorySafeTunnelStateStorage(registeredState());
+    const controlPlane = new FakeSafeTunnelControlPlane();
+    controlPlane.tunnelConfig = {
+      ...machineTunnelConfig(),
+      frpcConfigToml: machineTunnelConfig().frpcConfigToml.replace(
+        "relay.example.test",
+        relayIdentity,
+      ),
+    };
+    const firstService = new SafeTunnelService({ controlPlane, stateStorage: storage });
+    await firstService.getTunnelConfig();
+
+    const laterCredential = Buffer.from(relayIdentity, "utf8").toString("base64url");
+    controlPlane.tunnelConfig = {
+      ...machineTunnelConfig(),
+      frpcConfigToml: machineTunnelConfig().frpcConfigToml
+        .replace(frpcToken, laterCredential)
+        .replace("relay.example.test", "replacement-relay.example.test"),
+    };
+    const restartedService = new SafeTunnelService({ controlPlane, stateStorage: storage });
+
+    await expect(restartedService.getTunnelConfig()).rejects.toMatchObject({
+      code: "invalid_tunnel_config",
+    });
+  });
+
+  it("retains exact frps credential history across a service restart", async () => {
+    const storage = new MemorySafeTunnelStateStorage(registeredState());
+    const controlPlane = new FakeSafeTunnelControlPlane();
+    const frpsCredential = createHash("sha256").update("4242").digest("hex");
+    controlPlane.tunnelConfig = {
+      ...machineTunnelConfig(),
+      frpcConfigToml: machineTunnelConfig().frpcConfigToml.replace(
+        frpcToken,
+        frpsCredential,
+      ),
+    };
+    const firstService = new SafeTunnelService({ controlPlane, stateStorage: storage });
+    await firstService.getTunnelConfig();
+
+    const restartedService = new SafeTunnelService({ controlPlane, stateStorage: storage });
+    const leakedRuntimeBoundary = new SafeTunnelCredentialBoundary();
+    expect(leakedRuntimeBoundary.classify({
+      publicValues: [`runtime leaked ${frpsCredential} after restart`],
+    })).toBe(true);
+    await expect(restartedService.persistCredentialBoundary(leakedRuntimeBoundary))
+      .rejects.toMatchObject({ code: "invalid_tunnel_config" });
+
+    const derivedRuntimeBoundary = new SafeTunnelCredentialBoundary();
+    expect(derivedRuntimeBoundary.classify({ publicValues: ["4242"] })).toBe(true);
+    await expect(restartedService.persistCredentialBoundary(derivedRuntimeBoundary))
+      .rejects.toMatchObject({ code: "invalid_tunnel_config" });
+  });
+
+  it.each((() => {
+    const hostnameToken = "private-machine-token";
+    const hostnameHex = Buffer.from(hostnameToken, "utf8").toString("hex");
+    const ipv6Token = "0123456789abcdef";
+    const ipv6Hex = Buffer.from(ipv6Token, "utf8").toString("hex");
+    return [
+      {
+        label: "base32 relay hostname",
+        machineToken: hostnameToken,
+        relayAlias: "obzgs5tborss23lbmnugs3tffv2g623fny.relay.test",
+      },
+      {
+        label: "separator-inserted direct relay hostname",
+        machineToken: hostnameToken,
+        relayAlias: "pri-vate-ma-chine-to-ken.relay.test",
+      },
+      {
+        label: "hyphen-separated relay hostname",
+        machineToken: hostnameToken,
+        relayAlias: `${hostnameHex.match(/.{1,8}/gu)?.join("-") ?? hostnameHex}.relay.test`,
+      },
+      {
+        label: "colon-separated IPv6 relay address",
+        machineToken: ipv6Token,
+        relayAlias: ipv6Hex.match(/.{1,4}/gu)?.join(":") ?? ipv6Hex,
+      },
+    ] as const;
+  })())("rejects a machine credential encoded into a $label TLS identity", async ({
+    machineToken,
+    relayAlias,
+  }) => {
+    const storage = new MemorySafeTunnelStateStorage(registeredState({
+      machine: {
+        ...registeredState().state.machine ?? {
+          controlApiBaseUrl: "https://control.example.test",
+          credentialStatus: "active",
+          machineId: "machine_123",
+          machineToken,
+        },
+        machineToken,
+      },
+    }));
+    const controlPlane = new FakeSafeTunnelControlPlane();
+    controlPlane.tunnelConfig = {
+      ...machineTunnelConfig(),
+      frpcConfigToml: machineTunnelConfig().frpcConfigToml.replace(
+        "relay.example.test",
+        relayAlias,
+      ),
+    };
+    const service = new SafeTunnelService({ controlPlane, stateStorage: storage });
+
+    await expect(service.getTunnelConfig()).rejects.toMatchObject({
+      code: "invalid_tunnel_config",
+    });
+  });
+
+  it("bounds authorization polling by expiry without registering", async () => {
     const storage = new MemorySafeTunnelStateStorage();
     const controlPlane = new FakeSafeTunnelControlPlane();
     controlPlane.completions = [{ kind: "pending" }];
@@ -442,7 +779,7 @@ describe("SafeTunnelService", () => {
       "start",
       "complete",
     ]);
-    expect(storage.saves).toEqual([]);
+    expectOnlyPublicHistorySaved(storage);
   });
 
   it("rejects invalid login settings before network activity without exposing their contents", async () => {
@@ -612,7 +949,31 @@ describe("SafeTunnelService", () => {
         },
       },
     }]);
+    expect(storage.saves.at(-1)?.credentialBoundaryPublicValues).toEqual(
+      expect.arrayContaining([
+        "machine_123",
+        "2026-07-29T12:05:00.000Z",
+        "30",
+      ]),
+    );
   });
+
+  it("accepts ordinary heartbeat history without probabilistic exhaustion", async () => {
+    const storage = new MemorySafeTunnelStateStorage(registeredState());
+    const controlPlane = new FakeSafeTunnelControlPlane();
+    const service = new SafeTunnelService({ controlPlane, stateStorage: storage });
+
+    for (let index = 0; index < 550; index += 1) {
+      controlPlane.heartbeat = {
+        ...machineHeartbeat(),
+        lastSeenAt: new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString(),
+      };
+      await expect(service.recordHeartbeat({ tunnelStatus: "running" }))
+        .resolves.toEqual(controlPlane.heartbeat);
+    }
+    expect(storage.saves.at(-1)?.credentialBoundaryPublicValues)
+      .toContain("2026-01-01T00:09:09.000Z");
+  }, 20_000);
 
   it("persists rejected credential state when the hosted service rejects a heartbeat", async () => {
     const storage = new MemorySafeTunnelStateStorage(registeredState({ desiredState: "enabled" }));
@@ -676,7 +1037,7 @@ describe("SafeTunnelService", () => {
 
     await expect(login).rejects.toThrow("cancelled");
     expect(controlPlane.calls.map(({ method }) => method)).toEqual(["start", "complete"]);
-    expect(storage.saves).toEqual([]);
+    expectOnlyPublicHistorySaved(storage);
   });
 
   it("persists a successfully returned one-time registration after concurrent cancellation", async () => {

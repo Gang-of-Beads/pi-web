@@ -65,7 +65,7 @@ describe("SafeTunnelFrpcSupervisor", () => {
     expect(result.output).not.toContain(frpcToken);
 
     fixture.launcher.processes[0]?.stdout(`frpc ready: ${frpcToken.slice(0, 17)}`);
-    fixture.launcher.processes[0]?.stdout(`${frpcToken.slice(17)}\n${"x".repeat(300)}`);
+    fixture.launcher.processes[0]?.stdout(`${frpcToken.slice(17)}\n${"x".repeat(20_000)}`);
     const status = await fixture.supervisor.status();
     expect(status).toMatchObject({
       state: "running",
@@ -89,7 +89,7 @@ describe("SafeTunnelFrpcSupervisor", () => {
     child.stderr("\u001B[");
     child.stdout("31mB");
     child.stderr("\u001B[0m3");
-    child.stdout(`!${"q".repeat(28)} failed safely\n${"x".repeat(300)}`);
+    child.stdout(`!${"q".repeat(28)} failed safely\n${"x".repeat(20_000)}`);
 
     const status = await fixture.supervisor.status();
 
@@ -122,7 +122,7 @@ describe("SafeTunnelFrpcSupervisor", () => {
       }
       child.stdout(" safely withheld ");
     }
-    child.stderr("x".repeat(300));
+    child.stderr("x".repeat(20_000));
 
     const status = await fixture.supervisor.status();
 

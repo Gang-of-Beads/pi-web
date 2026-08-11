@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
 
 type TerminalSequenceState =
   | "control-string"
@@ -95,7 +96,7 @@ class SafeTunnelTerminalTextSanitizer {
   }
 }
 
-/** Detects direct or one-layer serialized credential aliases after terminal sanitization. */
+/** Detects supported credential aliases after terminal sanitization. */
 export function containsSafeTunnelSensitiveRepresentation(
   value: string,
   sensitiveValues: readonly string[],
@@ -104,6 +105,153 @@ export function containsSafeTunnelSensitiveRepresentation(
   const sanitized = `${sanitizer.write(value)}${sanitizer.flush()}`;
   return new SafeTunnelSensitiveRepresentationMatcher(sensitiveValues)
     .contains(sanitized);
+}
+
+/** Returns true only when the complete value is a supported sensitive alias. */
+function isSafeTunnelSensitiveRepresentation(
+  value: string,
+  sensitiveValues: readonly string[],
+): boolean {
+  const sanitizer = new SafeTunnelTerminalTextSanitizer();
+  const sanitized = `${sanitizer.write(value)}${sanitizer.flush()}`;
+  return new SafeTunnelSensitiveRepresentationMatcher(sensitiveValues)
+    .containsComplete(sanitized);
+}
+
+/**
+ * Enforces both directions of the public/private boundary: public fields may
+ * not contain a credential alias, and a later credential may not itself be an
+ * encoded or digested spelling of a value that was already public.
+ */
+export function areSafeTunnelPublicValuesSeparatedFromCredentials(
+  publicValues: readonly string[],
+  credentialValues: readonly string[],
+): boolean {
+  return !publicValues.some((value) => (
+    containsSafeTunnelSensitiveRepresentation(value, credentialValues)
+  )) && !credentialValues.some((credential) => (
+    isSafeTunnelSensitiveRepresentation(credential, publicValues)
+  ));
+}
+
+/**
+ * Adds one scalar stream whose substrings cover every contiguous recombination
+ * while avoiding quadratic persisted history.
+ */
+export function withSafeTunnelContiguousPublicComposite(
+  values: readonly string[],
+): readonly string[] {
+  const classified = new Set(values);
+  if (values.length > 1) classified.add(values.join(""));
+  return [...classified];
+}
+
+function arePublicValuesFreeOfCredentialAliases(
+  publicValues: readonly string[],
+  matcher: SafeTunnelSensitiveRepresentationMatcher,
+): boolean {
+  if (publicValues.length === 0 || matcher.values.length === 0) return true;
+  return !publicValues.some((value) => {
+    const sanitizer = new SafeTunnelTerminalTextSanitizer();
+    return matcher.contains(`${sanitizer.write(value)}${sanitizer.flush()}`);
+  });
+}
+
+export interface SafeTunnelCredentialClassification {
+  readonly credentialValues?: readonly string[];
+  readonly publicValues?: readonly string[];
+}
+
+const maximumClassifiedValues = 256;
+const maximumPublicValues = 262_144;
+const maximumClassifiedCharacters = 512 * 1_024;
+const maximumPublicCharacters = 16 * 1_024 * 1_024;
+const credentialAliasSeparators = ".:-[]";
+const maximumStreamingAliasSeparatorRun = 64;
+
+/**
+ * Bounded cross-phase classification for values whose private/public role is
+ * learned at different times. Updates are atomic and fail closed. Complete
+ * accepted public and private values are retained so persistence preserves both
+ * containment directions without probabilistic false positives.
+ */
+export class SafeTunnelCredentialBoundary {
+  private credentialMatcher = new SafeTunnelSensitiveRepresentationMatcher([]);
+  private credentialValues: readonly string[] = [];
+  private publicValues: readonly string[] = [];
+
+  classify(input: SafeTunnelCredentialClassification): boolean {
+    const addedPublicValues = newClassifiedValues(
+      this.publicValues,
+      input.publicValues ?? [],
+      true,
+    );
+    const addedCredentialValues = newClassifiedValues(
+      this.credentialValues,
+      input.credentialValues ?? [],
+      false,
+    );
+    const publicValues = [...this.publicValues, ...addedPublicValues];
+    const credentialValues = [...this.credentialValues, ...addedCredentialValues];
+    const credentialMatcher = addedCredentialValues.length === 0
+      ? this.credentialMatcher
+      : new SafeTunnelSensitiveRepresentationMatcher(credentialValues);
+    const addedCredentialMatcher = new SafeTunnelSensitiveRepresentationMatcher(
+      addedCredentialValues,
+    );
+    if (!classificationIsBounded(
+      credentialValues,
+      maximumClassifiedValues,
+      maximumClassifiedCharacters,
+    )
+      || !classificationIsBounded(
+        publicValues,
+        maximumPublicValues,
+        maximumPublicCharacters,
+      )
+      || !arePublicValuesFreeOfCredentialAliases(
+        addedPublicValues,
+        credentialMatcher,
+      )
+      || !arePublicValuesFreeOfCredentialAliases(
+        this.publicValues,
+        addedCredentialMatcher,
+      )
+      || !credentialValues.every((credential) => (
+        !isSafeTunnelSensitiveRepresentation(credential, addedPublicValues)
+      ))
+      || !addedCredentialValues.every((credential) => (
+        !isSafeTunnelSensitiveRepresentation(credential, publicValues)
+      ))) return false;
+
+    this.publicValues = publicValues;
+    this.credentialValues = credentialValues;
+    this.credentialMatcher = credentialMatcher;
+    return true;
+  }
+
+  clone(): SafeTunnelCredentialBoundary {
+    const clone = new SafeTunnelCredentialBoundary();
+    clone.publicValues = [...this.publicValues];
+    clone.credentialValues = [...this.credentialValues];
+    clone.credentialMatcher = new SafeTunnelSensitiveRepresentationMatcher(
+      clone.credentialValues,
+    );
+    return clone;
+  }
+
+  classification(): Required<SafeTunnelCredentialClassification> {
+    return {
+      credentialValues: [...this.credentialValues],
+      publicValues: [...this.publicValues],
+    };
+  }
+
+  clear(): void {
+    this.publicValues = [];
+    this.credentialValues = [];
+    this.credentialMatcher = new SafeTunnelSensitiveRepresentationMatcher([]);
+  }
 }
 
 /** Redacts known credentials from one complete diagnostic value. */
@@ -127,6 +275,7 @@ export class SafeTunnelStreamingDiagnosticRedactor {
   private carry = "";
   private readonly marker: string;
   private readonly matcher: SafeTunnelSensitiveRepresentationMatcher;
+  private readonly separatorLimiter = new SafeTunnelAliasSeparatorRunLimiter();
   private readonly sanitizer = new SafeTunnelTerminalTextSanitizer();
 
   constructor(sensitiveValues: readonly string[]) {
@@ -135,12 +284,11 @@ export class SafeTunnelStreamingDiagnosticRedactor {
   }
 
   write(chunk: string): string {
-    this.carry += this.sanitizer.write(chunk);
-    if (this.matcher.values.length === 0) {
-      const output = this.carry;
-      this.carry = "";
-      return output;
-    }
+    const sanitized = this.sanitizer.write(chunk);
+    if (this.matcher.values.length === 0) return sanitized;
+    const limited = this.separatorLimiter.write(sanitized);
+    if (limited === "") return "";
+    this.carry += limited;
 
     const retainedCharacters = this.matcher.maximumRepresentationCharacters - 1;
     const nominalBoundary = Math.max(0, this.carry.length - retainedCharacters);
@@ -157,14 +305,42 @@ export class SafeTunnelStreamingDiagnosticRedactor {
   }
 
   flush(): string {
-    this.carry += this.sanitizer.flush();
+    const sanitized = this.sanitizer.flush();
+    if (this.matcher.values.length === 0) return sanitized;
+    this.carry += this.separatorLimiter.write(sanitized);
+    this.separatorLimiter.flush();
     const output = this.matcher.redact(this.carry, this.marker);
     this.carry = "";
     return output;
   }
 }
 
-interface SensitiveValue {
+class SafeTunnelAliasSeparatorRunLimiter {
+  private runLength = 0;
+
+  write(value: string): string {
+    let output = "";
+    for (const character of value) {
+      if (credentialAliasSeparators.includes(character)) {
+        this.runLength += 1;
+        if (this.runLength <= maximumStreamingAliasSeparatorRun) output += character;
+      } else {
+        this.runLength = 0;
+        output += character;
+      }
+    }
+    return output;
+  }
+
+  flush(): void {
+    this.runLength = 0;
+  }
+}
+
+interface SensitiveRepresentation {
+  readonly asciiCaseInsensitive: boolean;
+  readonly ignoredSeparators: string;
+  readonly serializedAliasesAllowed: boolean;
   readonly text: string;
   readonly utf8: Buffer;
 }
@@ -187,28 +363,34 @@ interface DecodedText {
 }
 
 /**
- * Finds aliases by decoding the input once rather than enumerating every mixed
- * escaped spelling. That keeps setup and streaming carry linear in the bounded
- * secret size while covering arbitrary per-byte percent escapes and arbitrary
- * per-character JSON escapes.
+ * Finds direct values and bounded, deterministic aliases. Percent/form and
+ * JSON decoding is applied once to every alias; canonical UTF-8 hex,
+ * base64/base64url, and common digest spellings are generated explicitly.
  */
 class SafeTunnelSensitiveRepresentationMatcher {
   readonly maximumRepresentationCharacters: number;
   readonly values: readonly string[];
-  private readonly sensitiveValues: readonly SensitiveValue[];
+  private readonly compactedRepresentations: readonly SensitiveRepresentation[];
+  private readonly representations: readonly SensitiveRepresentation[];
 
   constructor(values: readonly string[]) {
     this.values = normalizeSensitiveValues(values);
-    this.sensitiveValues = this.values.map((text) => ({
-      text,
-      utf8: Buffer.from(text, "utf8"),
-    }));
-    this.maximumRepresentationCharacters = this.sensitiveValues.reduce(
-      (maximum, value) => Math.max(
+    this.representations = sensitiveRepresentations(this.values);
+    this.compactedRepresentations = compactSensitiveRepresentations(
+      this.representations,
+    );
+    this.maximumRepresentationCharacters = this.representations.reduce(
+      (maximum, representation) => Math.max(
         maximum,
-        value.text.length,
-        value.text.length * 6,
-        value.utf8.length * 3,
+        representation.ignoredSeparators === ""
+          ? representation.text.length
+          : Math.min(
+              64 * 1_024,
+              (representation.text.length * 128) + 128,
+            ),
+        ...(representation.serializedAliasesAllowed
+          ? [representation.text.length * 6, representation.utf8.length * 3]
+          : []),
       ),
       0,
     );
@@ -218,33 +400,44 @@ class SafeTunnelSensitiveRepresentationMatcher {
     return this.matches(value).length > 0;
   }
 
+  containsComplete(value: string): boolean {
+    return this.matches(value).some(({ start, end }) => (
+      isAliasSeparatorWrapper(value.slice(0, start))
+      && isAliasSeparatorWrapper(value.slice(end))
+    ));
+  }
+
   matches(value: string): readonly TextRange[] {
-    if (value === "" || this.sensitiveValues.length === 0) return [];
+    if (value === "" || this.representations.length === 0) return [];
 
     const matches: TextRange[] = [];
-    for (const sensitiveValue of this.sensitiveValues) {
-      addDirectMatches(value, sensitiveValue.text, matches);
-    }
+    addRepresentationMatches(value, this.representations, matches);
+    addSeparatorCompactedSerializedMatches(
+      value,
+      this.compactedRepresentations,
+      matches,
+    );
 
-    const uriDecoded = decodePercentEncodedBytes(value, false);
-    addDecodedByteMatches(uriDecoded, this.sensitiveValues, matches);
-    if (this.sensitiveValues.some(({ text }) => text.includes(" "))) {
-      addDecodedByteMatches(
-        decodePercentEncodedBytes(value, true),
-        this.sensitiveValues,
-        matches,
+    if (Array.from(credentialAliasSeparators).some(
+      (separator) => value.includes(separator),
+    )) {
+      const compacted = decodeTextWithoutSeparators(
+        value,
+        credentialAliasSeparators,
       );
-    }
-
-    const jsonDecoded = decodeJsonStringContents(value);
-    for (const sensitiveValue of this.sensitiveValues) {
-      addDecodedTextMatches(jsonDecoded, sensitiveValue.text, matches);
+      const compactedMatches: TextRange[] = [];
+      addRepresentationMatches(
+        compacted.text,
+        this.compactedRepresentations,
+        compactedMatches,
+      );
+      addMappedTextRanges(compacted, compactedMatches, matches);
     }
     return mergeRanges(matches);
   }
 
   redact(value: string, marker: string): string {
-    if (marker === "" && this.sensitiveValues.length > 0) return "";
+    if (marker === "" && this.representations.length > 0) return "";
     const matches = this.matches(value);
     if (matches.length === 0) return value;
 
@@ -258,27 +451,247 @@ class SafeTunnelSensitiveRepresentationMatcher {
   }
 }
 
+function isAliasSeparatorWrapper(value: string): boolean {
+  if (value === "") return true;
+  const decodedValues = [
+    value,
+    decodePercentEncodedBytes(value, false).bytes.toString("utf8"),
+    decodeJsonStringContents(value).text,
+  ];
+  return decodedValues.some((decoded) => decoded !== ""
+    && Array.from(decoded).every(
+      (character) => credentialAliasSeparators.includes(character),
+    ));
+}
+
 function normalizeSensitiveValues(values: readonly string[]): readonly string[] {
   const normalized = new Set<string>();
   for (const value of values) {
-    if (value === "") continue;
     const sanitizer = new SafeTunnelTerminalTextSanitizer();
     const sanitized = `${sanitizer.write(value)}${sanitizer.flush()}`;
-    if (sanitized !== "") normalized.add(sanitized);
+    if (sanitized !== "" || value === "") normalized.add(sanitized);
   }
   return [...normalized].sort((left, right) => right.length - left.length);
 }
 
-function addDirectMatches(
+function encodeBase32(bytes: Uint8Array): string {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = 0;
+  let bitCount = 0;
+  let encoded = "";
+  for (const byte of bytes) {
+    bits = (bits << 8) | byte;
+    bitCount += 8;
+    while (bitCount >= 5) {
+      bitCount -= 5;
+      encoded += alphabet[(bits >>> bitCount) & 0x1f] ?? "";
+    }
+  }
+  if (bitCount > 0) encoded += alphabet[(bits << (5 - bitCount)) & 0x1f] ?? "";
+  return encoded.padEnd(Math.ceil(encoded.length / 8) * 8, "=");
+}
+
+function sensitiveRepresentations(
+  values: readonly string[],
+): readonly SensitiveRepresentation[] {
+  const representations = new Map<string, SensitiveRepresentation>();
+  const add = (
+    text: string,
+    asciiCaseInsensitive = false,
+    ignoredSeparators = "",
+    serializedAliasesAllowed = false,
+  ): void => {
+    if (text === "") return;
+    const normalizedText = asciiCaseInsensitive ? text.toLowerCase() : text;
+    const key = `${asciiCaseInsensitive ? "i" : "s"}:${normalizedText}`;
+    const existing = representations.get(key);
+    representations.set(key, {
+      asciiCaseInsensitive,
+      ignoredSeparators: Array.from(new Set(
+        `${existing?.ignoredSeparators ?? ""}${ignoredSeparators}`,
+      )).join(""),
+      serializedAliasesAllowed: serializedAliasesAllowed
+        || existing?.serializedAliasesAllowed === true,
+      text: normalizedText,
+      utf8: Buffer.from(normalizedText, "utf8"),
+    });
+  };
+  const addEncodedBytes = (bytes: Buffer): void => {
+    add(bytes.toString("hex"), true, credentialAliasSeparators, true);
+    const base64 = bytes.toString("base64");
+    add(base64, false, credentialAliasSeparators, true);
+    add(
+      base64.replace(/=+$/u, ""),
+      false,
+      credentialAliasSeparators,
+      true,
+    );
+    const base64UrlPadded = base64.replaceAll("+", "-").replaceAll("/", "_");
+    add(base64UrlPadded, false, credentialAliasSeparators, true);
+    add(
+      base64UrlPadded.replace(/=+$/u, ""),
+      false,
+      credentialAliasSeparators,
+      true,
+    );
+    const base32 = encodeBase32(bytes);
+    add(base32, true, credentialAliasSeparators, true);
+    add(base32.replace(/=+$/u, ""), true, credentialAliasSeparators, true);
+  };
+
+  for (const value of values) {
+    add(value, false, credentialAliasSeparators, true);
+    const utf8 = Buffer.from(value, "utf8");
+    addEncodedBytes(utf8);
+    for (const algorithm of [
+      "md5",
+      "sha1",
+      "sha224",
+      "sha256",
+      "sha384",
+      "sha512",
+      "sha512-224",
+      "sha512-256",
+    ] as const) {
+      addEncodedBytes(createHash(algorithm).update(utf8).digest());
+    }
+  }
+  return [...representations.values()].sort((left, right) => (
+    right.text.length - left.text.length
+  ));
+}
+
+function compactSensitiveRepresentations(
+  representations: readonly SensitiveRepresentation[],
+): readonly SensitiveRepresentation[] {
+  const compacted = new Map<string, SensitiveRepresentation>();
+  for (const representation of representations) {
+    const text = Array.from(representation.text)
+      .filter((character) => !credentialAliasSeparators.includes(character))
+      .join("");
+    if (text === "") continue;
+    const key = `${representation.asciiCaseInsensitive ? "i" : "s"}:${text}`;
+    const existing = compacted.get(key);
+    compacted.set(key, {
+      asciiCaseInsensitive: representation.asciiCaseInsensitive,
+      ignoredSeparators: "",
+      serializedAliasesAllowed: representation.serializedAliasesAllowed
+        || existing?.serializedAliasesAllowed === true,
+      text,
+      utf8: Buffer.from(text, "utf8"),
+    });
+  }
+  return [...compacted.values()].sort((left, right) => (
+    right.text.length - left.text.length
+  ));
+}
+
+function addRepresentationMatches(
   value: string,
-  sensitiveValue: string,
+  representations: readonly SensitiveRepresentation[],
   matches: TextRange[],
 ): void {
+  for (const representation of representations) {
+    addDirectMatches(value, representation, matches);
+  }
+
+  const serialized = representations.filter(
+    ({ serializedAliasesAllowed }) => serializedAliasesAllowed,
+  );
+  addDecodedByteMatches(
+    decodePercentEncodedBytes(value, false),
+    serialized,
+    matches,
+  );
+  if (serialized.some(({ text }) => text.includes(" "))) {
+    addDecodedByteMatches(
+      decodePercentEncodedBytes(value, true),
+      serialized,
+      matches,
+    );
+  }
+
+  const jsonDecoded = decodeJsonStringContents(value);
+  for (const representation of serialized) {
+    addDecodedTextMatches(jsonDecoded, representation, matches);
+  }
+}
+
+function addSeparatorCompactedSerializedMatches(
+  value: string,
+  compactedRepresentations: readonly SensitiveRepresentation[],
+  matches: TextRange[],
+): void {
+  for (const formEncoded of [false, true]) {
+    addDecodedByteMatches(
+      decodedBytesWithoutSeparators(
+        decodePercentEncodedBytes(value, formEncoded),
+      ),
+      compactedRepresentations,
+      matches,
+    );
+  }
+
+  const jsonDecoded = decodedTextWithoutSeparators(
+    decodeJsonStringContents(value),
+  );
+  for (const representation of compactedRepresentations) {
+    addDecodedTextMatches(jsonDecoded, representation, matches);
+  }
+}
+
+function addMappedTextRanges(
+  decoded: DecodedText,
+  decodedRanges: readonly TextRange[],
+  matches: TextRange[],
+): void {
+  for (const range of decodedRanges) {
+    const start = decoded.starts[range.start];
+    const end = decoded.ends[range.end - 1];
+    if (start !== undefined && end !== undefined) matches.push({ start, end });
+  }
+}
+
+function newClassifiedValues(
+  current: readonly string[],
+  additions: readonly string[],
+  includeEmpty: boolean,
+): readonly string[] {
+  const known = new Set(current);
+  const added: string[] = [];
+  for (const value of additions) {
+    if ((!includeEmpty && value === "") || known.has(value)) continue;
+    known.add(value);
+    added.push(value);
+  }
+  return added;
+}
+
+function classificationIsBounded(
+  values: readonly string[],
+  maximumValues: number,
+  maximumCharacters: number,
+): boolean {
+  if (values.length > maximumValues) return false;
+  let characters = 0;
+  for (const value of values) {
+    characters += value.length;
+    if (characters > maximumCharacters) return false;
+  }
+  return true;
+}
+
+function addDirectMatches(
+  value: string,
+  representation: SensitiveRepresentation,
+  matches: TextRange[],
+): void {
+  const source = representation.asciiCaseInsensitive ? value.toLowerCase() : value;
   let offset = 0;
-  while (offset <= value.length - sensitiveValue.length) {
-    const start = value.indexOf(sensitiveValue, offset);
+  while (offset <= source.length - representation.text.length) {
+    const start = source.indexOf(representation.text, offset);
     if (start < 0) return;
-    matches.push({ start, end: start + sensitiveValue.length });
+    matches.push({ start, end: start + representation.text.length });
     offset = start + 1;
   }
 }
@@ -320,17 +733,34 @@ function decodePercentEncodedBytes(value: string, formEncoded: boolean): Decoded
   return { bytes: Buffer.from(bytes), starts, ends };
 }
 
+function decodedBytesWithoutSeparators(decoded: DecodedBytes): DecodedBytes {
+  const bytes: number[] = [];
+  const starts: number[] = [];
+  const ends: number[] = [];
+  for (let index = 0; index < decoded.bytes.length; index += 1) {
+    const byte = decoded.bytes[index];
+    if (byte === undefined
+      || credentialAliasSeparators.includes(String.fromCharCode(byte))) continue;
+    bytes.push(byte);
+    starts.push(decoded.starts[index] ?? 0);
+    ends.push(decoded.ends[index] ?? 0);
+  }
+  return { bytes: Buffer.from(bytes), starts, ends };
+}
+
 function addDecodedByteMatches(
   decoded: DecodedBytes,
-  sensitiveValues: readonly SensitiveValue[],
+  representations: readonly SensitiveRepresentation[],
   matches: TextRange[],
 ): void {
-  for (const sensitiveValue of sensitiveValues) {
+  for (const representation of representations) {
     let offset = 0;
-    while (offset <= decoded.bytes.length - sensitiveValue.utf8.length) {
-      const index = decoded.bytes.indexOf(sensitiveValue.utf8, offset);
+    while (offset <= decoded.bytes.length - representation.utf8.length) {
+      const index = representation.asciiCaseInsensitive
+        ? indexOfAsciiCaseInsensitive(decoded.bytes, representation.utf8, offset)
+        : decoded.bytes.indexOf(representation.utf8, offset);
       if (index < 0) break;
-      const lastIndex = index + sensitiveValue.utf8.length - 1;
+      const lastIndex = index + representation.utf8.length - 1;
       if (isDecodedByteBoundary(decoded, index, lastIndex)) {
         const start = decoded.starts[index];
         const end = decoded.ends[lastIndex];
@@ -339,6 +769,28 @@ function addDecodedByteMatches(
       offset = index + 1;
     }
   }
+}
+
+function indexOfAsciiCaseInsensitive(
+  value: Buffer,
+  expected: Buffer,
+  offset: number,
+): number {
+  for (let start = offset; start <= value.length - expected.length; start += 1) {
+    let matches = true;
+    for (let index = 0; index < expected.length; index += 1) {
+      if (asciiLowercase(value[start + index] ?? -1) !== (expected[index] ?? -2)) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) return start;
+  }
+  return -1;
+}
+
+function asciiLowercase(value: number): number {
+  return value >= 0x41 && value <= 0x5a ? value + 0x20 : value;
 }
 
 function isDecodedByteBoundary(
@@ -415,17 +867,50 @@ function decodeJsonStringContents(value: string): DecodedText {
   return { text, starts, ends };
 }
 
+function decodeTextWithoutSeparators(
+  value: string,
+  separators: string,
+): DecodedText {
+  let text = "";
+  const starts: number[] = [];
+  const ends: number[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    if (separators.includes(value[index] ?? "")) continue;
+    text += value[index] ?? "";
+    starts.push(index);
+    ends.push(index + 1);
+  }
+  return { text, starts, ends };
+}
+
+function decodedTextWithoutSeparators(decoded: DecodedText): DecodedText {
+  let text = "";
+  const starts: number[] = [];
+  const ends: number[] = [];
+  for (let index = 0; index < decoded.text.length; index += 1) {
+    const character = decoded.text[index] ?? "";
+    if (credentialAliasSeparators.includes(character)) continue;
+    text += character;
+    starts.push(decoded.starts[index] ?? 0);
+    ends.push(decoded.ends[index] ?? 0);
+  }
+  return { text, starts, ends };
+}
+
 function addDecodedTextMatches(
   decoded: DecodedText,
-  sensitiveValue: string,
+  representation: SensitiveRepresentation,
   matches: TextRange[],
 ): void {
+  const source = representation.asciiCaseInsensitive
+    ? decoded.text.toLowerCase()
+    : decoded.text;
   let offset = 0;
-  while (offset <= decoded.text.length - sensitiveValue.length) {
-    const index = decoded.text.indexOf(sensitiveValue, offset);
+  while (offset <= source.length - representation.text.length) {
+    const index = source.indexOf(representation.text, offset);
     if (index < 0) return;
     const start = decoded.starts[index];
-    const end = decoded.ends[index + sensitiveValue.length - 1];
+    const end = decoded.ends[index + representation.text.length - 1];
     if (start !== undefined && end !== undefined) matches.push({ start, end });
     offset = index + 1;
   }

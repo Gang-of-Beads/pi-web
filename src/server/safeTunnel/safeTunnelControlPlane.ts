@@ -1,5 +1,8 @@
 import { isSafeTunnelControlApiTransportAllowed } from "../../shared/safeTunnelUrlPolicy.js";
-import { containsSafeTunnelSensitiveRepresentation } from "./safeTunnelDiagnostics.js";
+import {
+  areSafeTunnelPublicValuesSeparatedFromCredentials,
+  withSafeTunnelContiguousPublicComposite as withContiguousPublicComposite,
+} from "./safeTunnelDiagnostics.js";
 import {
   normalizeSafeTunnelControlApiBaseUrl,
   normalizeSafeTunnelLocalPiWebUrl,
@@ -330,11 +333,17 @@ export class HttpSafeTunnelControlPlane implements SafeTunnelControlPlane {
       operation,
       async (response) => {
         requireExpectedResponse(response, 202, operation);
-        return parseControlPlaneResponse(
+        const heartbeat = parseControlPlaneResponse(
           await readSuccessJson(response, operation),
           operation,
           parseMachineHeartbeat,
         );
+        assertNoResponseSensitiveRepresentations(
+          heartbeatPublicMetadata(heartbeat),
+          [credentials.machineToken],
+          operation,
+        );
+        return heartbeat;
       },
     );
   }
@@ -519,12 +528,13 @@ function parseDeviceAuthorization(body: unknown): SafeTunnelDeviceAuthorization 
     expiresAt: requireCanonicalIsoDateTime(record["expiresAt"]),
     intervalSeconds: requirePositiveInteger(record["intervalSeconds"]),
   };
-  assertNoResponseSensitiveRepresentations([
+  assertNoResponseSensitiveRepresentations(withContiguousPublicComposite([
     authorization.userCode,
     authorization.verificationUri,
     authorization.verificationUriComplete,
     authorization.expiresAt,
-  ], [authorization.deviceCode]);
+    authorization.intervalSeconds.toString(),
+  ]), [authorization.deviceCode]);
   return authorization;
 }
 
@@ -540,11 +550,11 @@ function parseApprovedDeviceAuthorization(body: unknown): SafeTunnelApprovedDevi
       publicNamespace: requireResponseString(account["publicNamespace"]),
     },
   };
-  assertNoResponseSensitiveRepresentations([
+  assertNoResponseSensitiveRepresentations(withContiguousPublicComposite([
     authorization.expiresAt,
     authorization.account.id,
     authorization.account.publicNamespace,
-  ], [authorization.accessToken]);
+  ]), [authorization.accessToken]);
   return authorization;
 }
 
@@ -634,26 +644,36 @@ function requireMatchingPublicHostname(publicHostname: string, publicUrl: string
 function registeredMachinePublicMetadata(
   registeredMachine: SafeTunnelRegisteredMachine,
 ): readonly string[] {
-  return [
+  return withContiguousPublicComposite([
     registeredMachine.machine.id,
     registeredMachine.machine.accountId,
     registeredMachine.machine.name,
     registeredMachine.machine.slug,
     registeredMachine.publicHostname,
     registeredMachine.publicUrl,
-  ];
+  ]);
+}
+
+function heartbeatPublicMetadata(
+  heartbeat: SafeTunnelMachineHeartbeat,
+): readonly string[] {
+  return withContiguousPublicComposite([
+    heartbeat.machineId,
+    heartbeat.lastSeenAt,
+    heartbeat.nextHeartbeatSeconds.toString(),
+  ]);
 }
 
 function tunnelConfigPublicMetadata(
   tunnelConfig: SafeTunnelMachineTunnelConfig,
 ): readonly string[] {
-  return [
+  return withContiguousPublicComposite([
     tunnelConfig.machineId,
     tunnelConfig.publicHostname,
     tunnelConfig.publicUrl,
     tunnelConfig.localPiWebUrl,
     tunnelConfig.proxyName,
-  ];
+  ]);
 }
 
 function assertNoResponseSensitiveRepresentations(
@@ -661,9 +681,10 @@ function assertNoResponseSensitiveRepresentations(
   sensitiveValues: readonly string[],
   operation?: SafeTunnelControlPlaneOperation,
 ): void {
-  if (!values.some((value) => (
-    containsSafeTunnelSensitiveRepresentation(value, sensitiveValues)
-  ))) return;
+  if (areSafeTunnelPublicValuesSeparatedFromCredentials(
+    values,
+    sensitiveValues,
+  )) return;
   if (operation !== undefined) {
     throw new SafeTunnelControlPlaneError("invalid_response", operation);
   }
