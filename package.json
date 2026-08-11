@@ -38,6 +38,7 @@
     "examples/workspace-provider-plugin",
     "docs/plugins.md",
     "docs/config.md",
+    "docs/safe-tunnel.md",
     "docs/assets",
     "plugin-api.d.ts",
     "server-plugin-api.d.ts"
