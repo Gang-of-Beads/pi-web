@@ -269,7 +269,6 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
         login.credentialRedactionValues,
       );
       throwIfEnableCancelled(signal);
-      operation.publicUrl = login.registeredMachine.publicUrl;
     }
 
     operation.phase = "starting";
@@ -411,6 +410,9 @@ function shouldRegisterMachine(
 
 function enableLoginObserver(operation: SafeTunnelOperationState): SafeTunnelLoginObserver {
   return {
+    onCredentialRedactionValues(values) {
+      registerOperationDiagnosticSecrets(operation, values);
+    },
     onDeviceAuthorization(authorization) {
       if (operation.status !== "running") return;
       operation.phase = "awaiting_approval";
@@ -446,8 +448,18 @@ function finishEnableOperation(
   now: Date,
 ): void {
   if (operation.status === "cancelled") return;
+  registerOperationDiagnosticSecrets(
+    operation,
+    result.credentialRedactionValues,
+  );
   operation.phase = "enabled";
-  operation.publicUrl = result.publicUrl;
+  const publicUrl = browserSafeOptionalText(
+    result.publicUrl,
+    maxBrowserUrlCharacters,
+    operation.diagnosticSecrets,
+  );
+  if (publicUrl === undefined) delete operation.publicUrl;
+  else operation.publicUrl = publicUrl;
   appendOperationStdout(operation, result.output);
   operation.status = "succeeded";
   operation.exitCode = 0;
@@ -561,6 +573,20 @@ function snapshotRuntimeStatus(
   runtime: SafeTunnelRuntimeStatus,
   diagnosticSecrets: readonly string[],
 ): SafeTunnelRuntimeStatus {
+  const frpcConfigPath = runtime.frpcConfigPath === undefined
+    ? undefined
+    : browserSafeOptionalText(
+      runtime.frpcConfigPath,
+      maxBrowserPathCharacters,
+      diagnosticSecrets,
+    );
+  const logPath = runtime.logPath === undefined
+    ? undefined
+    : browserSafeOptionalText(
+      runtime.logPath,
+      maxBrowserPathCharacters,
+      diagnosticSecrets,
+    );
   return {
     state: runtime.state,
     ...(runtime.diagnosticCode === undefined
@@ -569,15 +595,7 @@ function snapshotRuntimeStatus(
     ...(runtime.frpcConfigExists === undefined
       ? {}
       : { frpcConfigExists: runtime.frpcConfigExists }),
-    ...(runtime.frpcConfigPath === undefined
-      ? {}
-      : {
-          frpcConfigPath: browserSafeText(
-            runtime.frpcConfigPath,
-            maxBrowserPathCharacters,
-            diagnosticSecrets,
-          ),
-        }),
+    ...(frpcConfigPath === undefined ? {} : { frpcConfigPath }),
     ...(runtime.pid === undefined ? {} : { pid: runtime.pid }),
     ...(runtime.error === undefined
       ? {}
@@ -598,15 +616,7 @@ function snapshotRuntimeStatus(
           ),
         }),
     ...(runtime.logExists === undefined ? {} : { logExists: runtime.logExists }),
-    ...(runtime.logPath === undefined
-      ? {}
-      : {
-          logPath: browserSafeText(
-            runtime.logPath,
-            maxBrowserPathCharacters,
-            diagnosticSecrets,
-          ),
-        }),
+    ...(logPath === undefined ? {} : { logPath }),
     ...(runtime.logTail === undefined
       ? {}
       : {

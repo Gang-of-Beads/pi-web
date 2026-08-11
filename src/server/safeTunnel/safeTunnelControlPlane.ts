@@ -1,4 +1,5 @@
 import { isSafeTunnelControlApiTransportAllowed } from "../../shared/safeTunnelUrlPolicy.js";
+import { containsSafeTunnelSensitiveRepresentation } from "./safeTunnelDiagnostics.js";
 import {
   normalizeSafeTunnelControlApiBaseUrl,
   normalizeSafeTunnelLocalPiWebUrl,
@@ -251,11 +252,17 @@ export class HttpSafeTunnelControlPlane implements SafeTunnelControlPlane {
       operation,
       async (response) => {
         requireExpectedResponse(response, 201, operation);
-        return parseControlPlaneResponse(
+        const registeredMachine = parseControlPlaneResponse(
           await readSuccessJson(response, operation),
           operation,
           parseRegisteredMachine,
         );
+        assertNoResponseSensitiveRepresentations(
+          registeredMachinePublicMetadata(registeredMachine),
+          [input.connectorAccessToken, registeredMachine.machineToken],
+          operation,
+        );
+        return registeredMachine;
       },
     );
   }
@@ -282,11 +289,17 @@ export class HttpSafeTunnelControlPlane implements SafeTunnelControlPlane {
       operation,
       async (response) => {
         requireExpectedResponse(response, 200, operation);
-        return parseControlPlaneResponse(
+        const tunnelConfig = parseControlPlaneResponse(
           await readSuccessJson(response, operation),
           operation,
           parseMachineTunnelConfig,
         );
+        assertNoResponseSensitiveRepresentations(
+          tunnelConfigPublicMetadata(tunnelConfig),
+          [credentials.machineToken],
+          operation,
+        );
+        return tunnelConfig;
       },
     );
   }
@@ -498,7 +511,7 @@ function parseControlPlaneResponse<T>(
 
 function parseDeviceAuthorization(body: unknown): SafeTunnelDeviceAuthorization {
   const record = requireResponseRecord(body);
-  return {
+  const authorization = {
     deviceCode: requireResponseString(record["deviceCode"], maximumOpaqueTokenCharacters),
     userCode: requireResponseString(record["userCode"], maximumIdentifierCharacters),
     verificationUri: requireExternalHttpUrl(record["verificationUri"]),
@@ -506,13 +519,20 @@ function parseDeviceAuthorization(body: unknown): SafeTunnelDeviceAuthorization 
     expiresAt: requireCanonicalIsoDateTime(record["expiresAt"]),
     intervalSeconds: requirePositiveInteger(record["intervalSeconds"]),
   };
+  assertNoResponseSensitiveRepresentations([
+    authorization.userCode,
+    authorization.verificationUri,
+    authorization.verificationUriComplete,
+    authorization.expiresAt,
+  ], [authorization.deviceCode]);
+  return authorization;
 }
 
 function parseApprovedDeviceAuthorization(body: unknown): SafeTunnelApprovedDeviceAuthorization {
   const record = requireResponseRecord(body);
   const account = requireResponseRecord(record["account"]);
   if (record["tokenType"] !== "Bearer") throw invalidResponse();
-  return {
+  const authorization = {
     accessToken: requireResponseBearerCredential(record["accessToken"], "accessToken"),
     expiresAt: requireCanonicalIsoDateTime(record["expiresAt"]),
     account: {
@@ -520,6 +540,12 @@ function parseApprovedDeviceAuthorization(body: unknown): SafeTunnelApprovedDevi
       publicNamespace: requireResponseString(account["publicNamespace"]),
     },
   };
+  assertNoResponseSensitiveRepresentations([
+    authorization.expiresAt,
+    authorization.account.id,
+    authorization.account.publicNamespace,
+  ], [authorization.accessToken]);
+  return authorization;
 }
 
 function parseRegisteredMachine(body: unknown): SafeTunnelRegisteredMachine {
@@ -532,7 +558,7 @@ function parseRegisteredMachine(body: unknown): SafeTunnelRegisteredMachine {
   );
   const publicUrl = normalizeResponsePublicUrl(record["publicUrl"]);
   requireMatchingPublicHostname(publicHostname, publicUrl);
-  return {
+  const registeredMachine = {
     machine: {
       id: requireResponseString(machine["id"]),
       accountId: requireResponseString(machine["accountId"]),
@@ -543,6 +569,11 @@ function parseRegisteredMachine(body: unknown): SafeTunnelRegisteredMachine {
     publicUrl,
     machineToken: requireResponseBearerCredential(record["machineToken"], "machineToken"),
   };
+  assertNoResponseSensitiveRepresentations(
+    registeredMachinePublicMetadata(registeredMachine),
+    [registeredMachine.machineToken],
+  );
+  return registeredMachine;
 }
 
 function parseMachineTunnelConfig(body: unknown): SafeTunnelMachineTunnelConfig {
@@ -598,6 +629,45 @@ function normalizeResponseLocalPiWebUrl(value: unknown): string {
 
 function requireMatchingPublicHostname(publicHostname: string, publicUrl: string): void {
   if (new URL(publicUrl).hostname !== publicHostname) throw invalidResponse();
+}
+
+function registeredMachinePublicMetadata(
+  registeredMachine: SafeTunnelRegisteredMachine,
+): readonly string[] {
+  return [
+    registeredMachine.machine.id,
+    registeredMachine.machine.accountId,
+    registeredMachine.machine.name,
+    registeredMachine.machine.slug,
+    registeredMachine.publicHostname,
+    registeredMachine.publicUrl,
+  ];
+}
+
+function tunnelConfigPublicMetadata(
+  tunnelConfig: SafeTunnelMachineTunnelConfig,
+): readonly string[] {
+  return [
+    tunnelConfig.machineId,
+    tunnelConfig.publicHostname,
+    tunnelConfig.publicUrl,
+    tunnelConfig.localPiWebUrl,
+    tunnelConfig.proxyName,
+  ];
+}
+
+function assertNoResponseSensitiveRepresentations(
+  values: readonly string[],
+  sensitiveValues: readonly string[],
+  operation?: SafeTunnelControlPlaneOperation,
+): void {
+  if (!values.some((value) => (
+    containsSafeTunnelSensitiveRepresentation(value, sensitiveValues)
+  ))) return;
+  if (operation !== undefined) {
+    throw new SafeTunnelControlPlaneError("invalid_response", operation);
+  }
+  throw invalidResponse();
 }
 
 function requireExternalHttpUrl(value: unknown): string {

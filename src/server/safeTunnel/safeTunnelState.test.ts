@@ -143,6 +143,32 @@ describe("FileSafeTunnelStateStorage", () => {
     expect(persisted).toMatchObject({ machine: { machineToken } });
   });
 
+  it.each([
+    ["mixed-case percent escapes", "%74ok%2b%2F%3d"],
+    ["percent-encoded unreserved bytes", "%74%6F%6b%2B%2f%3D"],
+    ["JSON Unicode escapes", "\\u0074\\u006F\\u006b\\u002B\\/\\u003d"],
+  ])("rejects a %s credential alias before state persistence", async (
+    _label,
+    machineId,
+  ) => {
+    const filePath = join(tempDirectory, "data", "safe-tunnel", "config.json");
+    const storage = new FileSafeTunnelStateStorage({
+      filePath,
+      legacyImportPath: join(tempDirectory, "missing-legacy.json"),
+      platform: "linux",
+    });
+
+    await expect(storage.save({
+      ...createDefaultSafeTunnelState(),
+      machine: {
+        controlApiBaseUrl: "https://control.example.test",
+        machineId,
+        machineToken: "tok+/=",
+      },
+    })).rejects.toThrow("must not contain credential material");
+    await expect(stat(filePath)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("migrates PI WEB-owned v1 state without losing intent or credentials", async () => {
     const filePath = join(tempDirectory, "data", "safe-tunnel", "config.json");
     await mkdir(join(tempDirectory, "data", "safe-tunnel"), { recursive: true });

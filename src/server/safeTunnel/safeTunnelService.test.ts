@@ -53,6 +53,7 @@ class FakeSafeTunnelControlPlane implements SafeTunnelControlPlane {
     kind: "approved",
     authorization: approvedAuthorization(),
   }];
+  authorization: SafeTunnelDeviceAuthorization = startedAuthorization();
   heartbeat: SafeTunnelMachineHeartbeat = machineHeartbeat();
   heartbeatError: Error | undefined;
   registration: SafeTunnelRegisteredMachine = registeredMachine();
@@ -65,7 +66,7 @@ class FakeSafeTunnelControlPlane implements SafeTunnelControlPlane {
     readonly clientVersion: string;
   }): Promise<SafeTunnelDeviceAuthorization> {
     this.calls.push({ method: "start", input });
-    return Promise.resolve(startedAuthorization());
+    return Promise.resolve(this.authorization);
   }
 
   completeDeviceAuthorization(input: {
@@ -237,6 +238,9 @@ describe("SafeTunnelService", () => {
       localPiWebUrl: "http://127.0.0.1:9000",
       frpcPath: "/opt/frpc",
     }, {
+      onCredentialRedactionValues: (values) => {
+        progress.push({ credentialRedactionValues: values });
+      },
       onDeviceAuthorization: (authorization) => { progress.push(authorization); },
       onAuthorizationApproved: () => { progress.push("approved"); },
       onMachineRegistered: () => { progress.push("registered"); },
@@ -245,6 +249,7 @@ describe("SafeTunnelService", () => {
     expect(sleeps).toEqual([5000]);
     expect(result.machineCredentials.machineToken).toBe("piwt_mtok_v1_private");
     expect(result.credentialRedactionValues).toEqual([
+      "piwt_dcode_v1_device",
       "piwt_cat_v1_access",
       "piwt_mtok_v1_private",
     ]);
@@ -273,8 +278,51 @@ describe("SafeTunnelService", () => {
       machineName: "Dev Box",
       localPiWebUrl: "http://127.0.0.1:9000",
     });
+    expect(progress[0]).toEqual({
+      credentialRedactionValues: ["piwt_dcode_v1_device"],
+    });
+    expect(progress[1]).toMatchObject({ userCode: "ABCD-EFGH" });
+    expect(JSON.stringify(progress[1])).not.toContain('"deviceCode"');
     expect(JSON.stringify(progress)).not.toContain("piwt_cat_v1_access");
     expect(JSON.stringify(progress)).not.toContain("piwt_mtok_v1_private");
+  });
+
+  it.each([
+    ["mixed-case percent escapes", "%74ok%2b%2F%3d"],
+    ["percent-encoded unreserved bytes", "%74%6F%6b%2B%2f%3D"],
+    ["JSON Unicode escapes", "\\u0074\\u006F\\u006b\\u002B\\/\\u003d"],
+  ])("classifies a private device code and rejects its %s reflection before observers", async (
+    _label,
+    reflectedCode,
+  ) => {
+    const storage = new MemorySafeTunnelStateStorage();
+    const controlPlane = new FakeSafeTunnelControlPlane();
+    controlPlane.authorization = {
+      ...startedAuthorization(),
+      deviceCode: "tok+/=",
+      userCode: reflectedCode,
+    };
+    const onCredentialRedactionValues = vi.fn();
+    const onDeviceAuthorization = vi.fn();
+    const service = new SafeTunnelService({
+      controlPlane,
+      stateStorage: storage,
+      now: () => new Date("2026-07-29T12:00:00.000Z"),
+    });
+
+    await expect(service.login({
+      controlApiBaseUrl: "https://control.example.test",
+      machineName: "Dev Box",
+      machineSlug: "dev-box",
+    }, {
+      onCredentialRedactionValues,
+      onDeviceAuthorization,
+    })).rejects.toMatchObject({ code: "invalid_login" });
+
+    expect(onCredentialRedactionValues).not.toHaveBeenCalled();
+    expect(onDeviceAuthorization).not.toHaveBeenCalled();
+    expect(controlPlane.calls.map(({ method }) => method)).toEqual(["start"]);
+    expect(storage.saves).toEqual([]);
   });
 
   it("rejects unsafe injected bearer credentials before use or persistence", async () => {
@@ -336,7 +384,7 @@ describe("SafeTunnelService", () => {
       ...registeredMachine(),
       machine: {
         ...registeredMachine().machine,
-        id: encodeURIComponent(accessToken),
+        id: "%41ccess-._~%2b%2F%3d",
       },
     };
     const aliasedMetadataService = new SafeTunnelService({
@@ -441,11 +489,33 @@ describe("SafeTunnelService", () => {
     const config = await service.getTunnelConfig();
 
     expect(config.localPiWebUrl).toBe("http://127.0.0.1:19000");
+    expect(config.credentialRedactionValues).toEqual(["private-relay-token"]);
     expect(config.frpcConfigToml).toContain("localPort = 19000\n");
     expect(controlPlane.calls).toEqual([{
       method: "config",
       input: registeredState().state.machine,
     }]);
+  });
+
+  it("rejects an frpc authentication value reused in public tunnel metadata", async () => {
+    const storage = new MemorySafeTunnelStateStorage(registeredState());
+    const controlPlane = new FakeSafeTunnelControlPlane();
+    const credential = "frpsecret";
+    const publicHostname = `${credential}.example.test`;
+    const config = machineTunnelConfig();
+    controlPlane.tunnelConfig = {
+      ...config,
+      publicHostname,
+      publicUrl: `https://${publicHostname}`,
+      frpcConfigToml: config.frpcConfigToml
+        .replace("private-relay-token", credential)
+        .replace("dev-box.ns-abc123.tunnels.pi-web.dev", publicHostname),
+    };
+    const service = new SafeTunnelService({ controlPlane, stateStorage: storage });
+
+    await expect(service.getTunnelConfig()).rejects.toMatchObject({
+      code: "invalid_tunnel_config",
+    });
   });
 
   it("records normalized heartbeat state with private credentials", async () => {

@@ -5,6 +5,7 @@ import { dirname, join, posix, win32 } from "node:path";
 import { piWebDataDir } from "../../config.js";
 import type { SafeTunnelDesiredState } from "../../shared/safeTunnelTypes.js";
 import { isSafeTunnelControlApiTransportAllowed } from "../../shared/safeTunnelUrlPolicy.js";
+import { containsSafeTunnelSensitiveRepresentation } from "./safeTunnelDiagnostics.js";
 
 export const safeTunnelStateVersion = 2;
 const previousSafeTunnelStateVersion = 1;
@@ -187,6 +188,19 @@ export function parseSafeTunnelState(value: unknown): SafeTunnelPersistedState {
     maximumPathCharacters,
   );
   const machine = parseOptionalMachineCredentials(record["machine"]);
+  if (machine !== undefined) {
+    assertNoStateCredentialAliases(
+      [
+        localPiWebUrl,
+        ...(frpcPath === undefined ? [] : [frpcPath]),
+        machine.controlApiBaseUrl,
+        machine.machineId,
+        ...(machine.machineSlug === undefined ? [] : [machine.machineSlug]),
+        ...(machine.publicUrl === undefined ? [] : [machine.publicUrl]),
+      ],
+      [machine.machineToken],
+    );
+  }
 
   return {
     stateVersion: safeTunnelStateVersion,
@@ -295,6 +309,17 @@ function parseOptionalMachineCredentials(value: unknown): SafeTunnelMachineCrede
     ...(machineSlug === undefined ? {} : { machineSlug }),
     ...(publicUrl === undefined ? {} : { publicUrl }),
   };
+}
+
+function assertNoStateCredentialAliases(
+  values: readonly string[],
+  credentials: readonly string[],
+): void {
+  if (values.some((value) => (
+    containsSafeTunnelSensitiveRepresentation(value, credentials)
+  ))) {
+    throw new Error("Safe Tunnel state public metadata must not contain credential material.");
+  }
 }
 
 function parseMachineCredentialStatus(value: unknown): SafeTunnelMachineCredentialStatus {

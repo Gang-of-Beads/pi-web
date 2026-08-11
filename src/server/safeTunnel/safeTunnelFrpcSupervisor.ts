@@ -4,6 +4,7 @@ import type {
 } from "../../shared/apiTypes.js";
 import { safeTunnelFrpcConfigCredentials } from "./safeTunnelFrpcConfig.js";
 import {
+  containsSafeTunnelSensitiveRepresentation,
   redactSafeTunnelDiagnostic,
   SafeTunnelStreamingDiagnosticRedactor,
 } from "./safeTunnelDiagnostics.js";
@@ -99,6 +100,8 @@ export interface SafeTunnelFrpcStartInput {
 }
 
 export interface SafeTunnelFrpcStartResult {
+  /** Private frpc authentication values carried only for browser-bound scrubbing. */
+  readonly credentialRedactionValues: readonly string[];
   readonly output: string;
   readonly pid?: number;
   readonly publicUrl: string;
@@ -157,6 +160,7 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
   private readonly clock: SafeTunnelSupervisorClock;
   private consecutiveFailures = 0;
   private readonly diagnosticRedactionValues = new Set<string>();
+  private readonly frpcCredentialRedactionValues = new Set<string>();
   private disposed = false;
   private generation = 0;
   private lastError: string | undefined;
@@ -189,6 +193,7 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
     this.cancelRestartTask();
     this.cancelStableRunTask();
     this.diagnosticRedactionValues.clear();
+    this.frpcCredentialRedactionValues.clear();
     this.generation += 1;
     const generation = this.generation;
     this.runRequested = true;
@@ -230,10 +235,19 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
     const files = await this.dependencies.files.status();
     const runtimeError = this.lastError ?? files.configError;
     const redactionValues = [...this.diagnosticRedactionValues];
+    const credentialValues = [...this.frpcCredentialRedactionValues];
+    const frpcConfigPath = credentialSafeStructuredValue(
+      this.dependencies.files.configPath,
+      credentialValues,
+    );
+    const logPath = credentialSafeStructuredValue(
+      this.dependencies.files.logPath,
+      credentialValues,
+    );
     return {
       state: runtimeStateFor(this.phase, this.activeProcess !== undefined),
       frpcConfigExists: files.configExists,
-      frpcConfigPath: this.dependencies.files.configPath,
+      ...(frpcConfigPath === undefined ? {} : { frpcConfigPath }),
       ...(this.activeProcess?.handle.pid === undefined
         ? {}
         : { pid: this.activeProcess.handle.pid }),
@@ -244,7 +258,7 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
         ? {}
         : { logError: redactSafeTunnelDiagnostic(files.logError, redactionValues) }),
       logExists: files.logExists,
-      logPath: this.dependencies.files.logPath,
+      ...(logPath === undefined ? {} : { logPath }),
       ...(files.logTail === undefined
         ? {}
         : { logTail: redactSafeTunnelDiagnostic(files.logTail, redactionValues) }),
@@ -327,6 +341,19 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
       );
     }
     this.registerDiagnosticRedactionValues(configCredentials);
+    for (const credential of configCredentials) {
+      this.frpcCredentialRedactionValues.add(credential);
+    }
+    if (!sameCredentialValues(
+      tunnelConfig.credentialRedactionValues,
+      configCredentials,
+    ) || tunnelConfigMetadataContainsCredential(tunnelConfig, configCredentials)) {
+      throw this.failAttempt(
+        generation,
+        input,
+        new SafeTunnelFrpcSupervisorError("tunnel_config_failed"),
+      );
+    }
 
     let managedFrpc: SafeTunnelManagedFrpc | undefined;
     let frpcPath = input.advancedFrpcPath;
@@ -424,6 +451,7 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
 
     this.scheduleStableRunReset(owned);
     return {
+      credentialRedactionValues: [...configCredentials],
       output,
       ...(handle.pid === undefined ? {} : { pid: handle.pid }),
       publicUrl: tunnelConfig.publicUrl,
@@ -707,6 +735,38 @@ function runtimeStateFor(
   if (phase === "running" || (phase === "stopping" && hasActiveProcess)) return "running";
   if (phase === "starting" || phase === "retrying") return "unknown";
   return "stopped";
+}
+
+function credentialSafeStructuredValue(
+  value: string,
+  credentials: readonly string[],
+): string | undefined {
+  return containsSafeTunnelSensitiveRepresentation(value, credentials)
+    ? undefined
+    : value;
+}
+
+function sameCredentialValues(
+  declared: readonly string[],
+  extracted: readonly string[],
+): boolean {
+  return declared.length === extracted.length
+    && declared.every((value, index) => value === extracted[index]);
+}
+
+function tunnelConfigMetadataContainsCredential(
+  config: SafeTunnelPreparedTunnelConfig,
+  credentials: readonly string[],
+): boolean {
+  return [
+    config.machineId,
+    config.publicHostname,
+    config.publicUrl,
+    config.localPiWebUrl,
+    config.proxyName,
+  ].some((value) => (
+    containsSafeTunnelSensitiveRepresentation(value, credentials)
+  ));
 }
 
 function startOutput(

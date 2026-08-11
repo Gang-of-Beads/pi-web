@@ -48,6 +48,7 @@ describe("SafeTunnelFrpcSupervisor", () => {
       frpcPath: fixture.managedFrpc.result.path,
     }]);
     expect(result).toMatchObject({
+      credentialRedactionValues: ["private-relay-token"],
       pid: 4000,
       publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
     });
@@ -57,7 +58,7 @@ describe("SafeTunnelFrpcSupervisor", () => {
     expect(result.output).not.toContain("private-relay-token");
 
     fixture.launcher.processes[0]?.stdout("frpc ready: private-relay-");
-    fixture.launcher.processes[0]?.stdout(`token\n${"x".repeat(100)}`);
+    fixture.launcher.processes[0]?.stdout(`token\n${"x".repeat(300)}`);
     const status = await fixture.supervisor.status();
     expect(status).toMatchObject({
       state: "running",
@@ -81,7 +82,7 @@ describe("SafeTunnelFrpcSupervisor", () => {
     child.stderr("\u001B[");
     child.stdout("31mB");
     child.stderr("\u001B[0m3");
-    child.stdout("! failed safely\n");
+    child.stdout(`! failed safely\n${"x".repeat(300)}`);
 
     const status = await fixture.supervisor.status();
 
@@ -91,6 +92,69 @@ describe("SafeTunnelFrpcSupervisor", () => {
     expect(fixture.files.log).not.toContain("\u001B");
     expect(status.logTail).not.toContain(credential);
     expect(fixture.files.logRedactionValues).toContain(credential);
+  });
+
+  it("redacts mixed percent and JSON aliases split across child chunks and streams", async () => {
+    const fixture = createFixture();
+    const credential = "tok+/=";
+    fixture.configProvider.result = Promise.resolve(preparedConfig(credential));
+    await fixture.supervisor.start({});
+    const child = fixture.launcher.processes[0];
+    if (child === undefined) throw new Error("missing fake child");
+
+    const aliases = [
+      "%74ok%2b%2F%3d",
+      "\\u0074\\u006F\\u006b\\u002B\\/\\u003d",
+    ];
+    let chunkIndex = 0;
+    for (const alias of aliases) {
+      for (const character of alias) {
+        if (chunkIndex % 2 === 0) child.stdout(character);
+        else child.stderr(character);
+        chunkIndex += 1;
+      }
+      child.stdout(" safely withheld ");
+    }
+    child.stderr("x".repeat(300));
+
+    const status = await fixture.supervisor.status();
+
+    for (const alias of aliases) {
+      expect(fixture.files.log).not.toContain(alias);
+      expect(status.logTail).not.toContain(alias);
+    }
+    expect(fixture.files.log).toContain("█");
+  });
+
+  it("rejects frpc authentication material reused as a public hostname", async () => {
+    const fixture = createFixture();
+    const credential = "frpsecret";
+    fixture.configProvider.result = Promise.resolve({
+      ...preparedConfig(credential),
+      publicHostname: `${credential}.example.test`,
+      publicUrl: `https://${credential}.example.test`,
+    });
+
+    await expect(fixture.supervisor.start({})).rejects.toEqual(
+      new SafeTunnelFrpcSupervisorError("tunnel_config_failed"),
+    );
+
+    expect(fixture.managedFrpc.calls).toBe(0);
+    expect(fixture.files.configWrites).toEqual([]);
+    expect(fixture.launcher.processes).toEqual([]);
+  });
+
+  it("omits structured runtime paths contaminated by an frpc credential", async () => {
+    const fixture = createFixture();
+    fixture.configProvider.result = Promise.resolve(preparedConfig("private"));
+
+    await fixture.supervisor.start({});
+    const status = await fixture.supervisor.status();
+
+    expect(status.frpcConfigPath).toBeUndefined();
+    expect(status.logPath).toBeUndefined();
+    expect(JSON.stringify(status)).not.toContain('"frpcConfigPath":"/private');
+    expect(JSON.stringify(status)).not.toContain('"logPath":"/private');
   });
 
   it("redacts accepted credentials from PI WEB-owned diagnostics too", async () => {
@@ -584,6 +648,7 @@ function preparedConfig(
   credential = "private-relay-token",
 ): SafeTunnelPreparedTunnelConfig {
   return {
+    credentialRedactionValues: [credential],
     machineId: "machine_123",
     publicHostname: "dev-box.ns.tunnels.pi-web.dev",
     publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",

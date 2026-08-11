@@ -9,7 +9,10 @@ import {
   type SafeTunnelRegisteredMachine,
 } from "./safeTunnelControlPlane.js";
 import { containsSafeTunnelSensitiveRepresentation } from "./safeTunnelDiagnostics.js";
-import { prepareSafeTunnelFrpcConfig } from "./safeTunnelFrpcConfig.js";
+import {
+  prepareSafeTunnelFrpcConfig,
+  safeTunnelFrpcConfigCredentials,
+} from "./safeTunnelFrpcConfig.js";
 import {
   normalizeSafeTunnelControlApiBaseUrl,
   normalizeSafeTunnelLocalPiWebUrl,
@@ -47,9 +50,18 @@ export interface SafeTunnelEnableInput {
   readonly localPiWebUrl?: string;
 }
 
+export type SafeTunnelPublicDeviceAuthorization = Omit<
+  SafeTunnelDeviceAuthorization,
+  "deviceCode"
+>;
+
 export interface SafeTunnelLoginObserver {
   readonly onAuthorizationApproved?: () => void;
-  readonly onDeviceAuthorization?: (authorization: SafeTunnelDeviceAuthorization) => void;
+  /** Called before public approval metadata so observers can scrub re-entrant views. */
+  readonly onCredentialRedactionValues?: (values: readonly string[]) => void;
+  readonly onDeviceAuthorization?: (
+    authorization: SafeTunnelPublicDeviceAuthorization,
+  ) => void;
   readonly onMachineRegistered?: () => void;
 }
 
@@ -65,6 +77,8 @@ export interface SafeTunnelLoginResult {
 }
 
 export interface SafeTunnelPreparedTunnelConfig extends SafeTunnelMachineTunnelConfig {
+  /** Private frpc authentication values carried only for downstream scrubbing. */
+  readonly credentialRedactionValues: readonly string[];
   readonly localPiWebUrl: string;
   readonly frpcConfigToml: string;
 }
@@ -108,12 +122,29 @@ export class SafeTunnelService {
     throwIfAborted(options.signal);
     const existing = await this.state();
     const login = normalizeLoginInput(input, existing.state);
-    const started = await this.dependencies.controlPlane.startDeviceAuthorization({
-      controlApiBaseUrl: login.controlApiBaseUrl,
-      clientVersion: safeTunnelClientVersion,
-    }, options);
+    const started = classifyDeviceAuthorization(
+      await this.dependencies.controlPlane.startDeviceAuthorization({
+        controlApiBaseUrl: login.controlApiBaseUrl,
+        clientVersion: safeTunnelClientVersion,
+      }, options),
+    );
+    assertNoPublicCredentialAliases([
+      this.statePath,
+      login.controlApiBaseUrl,
+      login.localPiWebUrl,
+      login.machineName,
+      login.machineSlug,
+      ...(login.frpcPath === undefined ? [] : [login.frpcPath]),
+    ], [started.deviceCode]);
     throwIfAborted(options.signal);
-    observer.onDeviceAuthorization?.(started);
+    observer.onCredentialRedactionValues?.([started.deviceCode]);
+    observer.onDeviceAuthorization?.({
+      userCode: started.userCode,
+      verificationUri: started.verificationUri,
+      verificationUriComplete: started.verificationUriComplete,
+      expiresAt: started.expiresAt,
+      intervalSeconds: started.intervalSeconds,
+    });
 
     const authorization = await this.waitForApproval(
       login.controlApiBaseUrl,
@@ -145,16 +176,18 @@ export class SafeTunnelService {
       registeredMachine.machineToken,
       "machineToken",
     );
-    assertNoPersistedCredentialAliases([
+    assertNoPublicCredentialAliases([
       this.statePath,
       login.controlApiBaseUrl,
       login.localPiWebUrl,
       ...(login.frpcPath === undefined ? [] : [login.frpcPath]),
       registeredMachine.machine.id,
+      registeredMachine.machine.accountId,
+      registeredMachine.machine.name,
       registeredMachine.machine.slug,
       registeredMachine.publicHostname,
       registeredMachine.publicUrl,
-    ], [connectorAccessToken, machineToken]);
+    ], [started.deviceCode, connectorAccessToken, machineToken]);
 
     const machineCredentials: SafeTunnelMachineCredentials = {
       controlApiBaseUrl: login.controlApiBaseUrl,
@@ -174,7 +207,11 @@ export class SafeTunnelService {
     observer.onMachineRegistered?.();
 
     return {
-      credentialRedactionValues: [connectorAccessToken, machineToken],
+      credentialRedactionValues: [
+        started.deviceCode,
+        connectorAccessToken,
+        machineToken,
+      ],
       machineCredentials,
       registeredMachine,
     };
@@ -234,7 +271,16 @@ export class SafeTunnelService {
     if (tunnelConfig.machineId !== credentials.machineId) {
       throw new SafeTunnelServiceError("invalid_tunnel_config");
     }
-    return applySafeTunnelLocalTarget(tunnelConfig, loaded.state.localPiWebUrl);
+    const prepared = applySafeTunnelLocalTarget(
+      tunnelConfig,
+      loaded.state.localPiWebUrl,
+    );
+    assertNoTunnelMetadataCredentialAliases(
+      prepared,
+      [credentials.machineToken, ...prepared.credentialRedactionValues],
+      credentials,
+    );
+    return prepared;
   }
 
   async recordHeartbeat(
@@ -387,20 +433,46 @@ export function applySafeTunnelLocalTarget(
   let normalizedLocalPiWebUrl: string;
   try {
     normalizedLocalPiWebUrl = normalizeSafeTunnelLocalPiWebUrl(localPiWebUrl);
-    return {
+    const frpcConfigToml = prepareSafeTunnelFrpcConfig(
+      tunnelConfig,
+      normalizedLocalPiWebUrl,
+    );
+    const credentialRedactionValues = safeTunnelFrpcConfigCredentials(frpcConfigToml);
+    const prepared = {
       ...tunnelConfig,
+      credentialRedactionValues,
       localPiWebUrl: normalizedLocalPiWebUrl,
-      frpcConfigToml: prepareSafeTunnelFrpcConfig(
-        tunnelConfig,
-        normalizedLocalPiWebUrl,
-      ),
+      frpcConfigToml,
     };
+    assertNoTunnelMetadataCredentialAliases(
+      prepared,
+      credentialRedactionValues,
+    );
+    return prepared;
   } catch {
     throw new SafeTunnelServiceError("invalid_tunnel_config");
   }
 }
 
-function assertNoPersistedCredentialAliases(
+function classifyDeviceAuthorization(
+  authorization: SafeTunnelDeviceAuthorization,
+): SafeTunnelDeviceAuthorization {
+  const deviceCode = authorization.deviceCode;
+  if (deviceCode === ""
+    || deviceCode.length > 4_096
+    || hasTerminalControl(deviceCode)) {
+    throw new SafeTunnelServiceError("invalid_login");
+  }
+  assertNoPublicCredentialAliases([
+    authorization.userCode,
+    authorization.verificationUri,
+    authorization.verificationUriComplete,
+    authorization.expiresAt,
+  ], [deviceCode]);
+  return { ...authorization, deviceCode };
+}
+
+function assertNoPublicCredentialAliases(
   values: readonly string[],
   credentials: readonly string[],
 ): void {
@@ -409,6 +481,48 @@ function assertNoPersistedCredentialAliases(
   ))) {
     throw new SafeTunnelServiceError("invalid_login");
   }
+}
+
+function assertNoTunnelMetadataCredentialAliases(
+  tunnelConfig: SafeTunnelPreparedTunnelConfig,
+  credentials: readonly string[],
+  machineCredentials?: SafeTunnelMachineCredentials,
+): void {
+  const machineMetadata = machineCredentials === undefined
+    ? []
+    : [
+        machineCredentials.controlApiBaseUrl,
+        machineCredentials.machineId,
+        ...(machineCredentials.machineSlug === undefined
+          ? []
+          : [machineCredentials.machineSlug]),
+        ...(machineCredentials.publicUrl === undefined
+          ? []
+          : [machineCredentials.publicUrl]),
+      ];
+  const publicMetadata = [
+    tunnelConfig.machineId,
+    tunnelConfig.publicHostname,
+    tunnelConfig.publicUrl,
+    tunnelConfig.localPiWebUrl,
+    tunnelConfig.proxyName,
+    ...machineMetadata,
+  ];
+  if (publicMetadata.some((value) => (
+    containsSafeTunnelSensitiveRepresentation(value, credentials)
+  ))) {
+    throw new SafeTunnelServiceError("invalid_tunnel_config");
+  }
+}
+
+function hasTerminalControl(value: string): boolean {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0);
+    if (codePoint === undefined
+      || codePoint <= 0x1f
+      || (codePoint >= 0x7f && codePoint <= 0x9f)) return true;
+  }
+  return false;
 }
 
 function requireNonEmptyString(value: string): string {

@@ -126,6 +126,7 @@ describe("DefaultSafeTunnelBridgeService", () => {
     expect(status.runtime.logTail).not.toContain("\u001B");
 
     fixture.runtime.startResult = Promise.resolve({
+      credentialRedactionValues: [],
       output: "useful start detail: a\u001B[31mbc was withheld\n",
       pid: 1234,
       publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
@@ -166,11 +167,8 @@ describe("DefaultSafeTunnelBridgeService", () => {
 
     const serialized = createFixture();
     const serializedCredential = "Machine-._~+/=";
-    const uriCredential = encodeURIComponent(serializedCredential);
-    const lowerCaseUriCredential = uriCredential.replace(
-      /%[0-9A-F]{2}/gu,
-      (escape) => escape.toLowerCase(),
-    );
+    const uriCredential = mixedPercentAlias(serializedCredential);
+    const jsonCredential = mixedJsonAlias(serializedCredential);
     serialized.application.loaded = registeredState({
       machine: {
         ...registeredState().state.machine ?? missingMachineCredentials(),
@@ -181,8 +179,8 @@ describe("DefaultSafeTunnelBridgeService", () => {
     serialized.runtime.statusValue = runtimeStatus({
       error: `runtime retained ${serializedCredential}`,
       frpcConfigPath: `/private/${uriCredential}/frpc.toml`,
-      logPath: `/private/${lowerCaseUriCredential}/frpc.log`,
-      logTail: `provider encoded ${uriCredential}`,
+      logPath: `/private/${jsonCredential}/frpc.log`,
+      logTail: `provider encoded ${uriCredential} and ${jsonCredential}`,
     });
 
     const serializedStatus = await serialized.service.status();
@@ -191,43 +189,53 @@ describe("DefaultSafeTunnelBridgeService", () => {
     expect(serializedStatus.config.machine).toBeUndefined();
     expect(browserPayload).not.toContain(serializedCredential);
     expect(browserPayload).not.toContain(uriCredential);
-    expect(browserPayload).not.toContain(lowerCaseUriCredential);
+    expect(browserPayload).not.toContain(jsonCredential);
   });
 
   it("scrubs approval aliases and seals credential-safe final operation snapshots", async () => {
     const fixture = createFixture();
     const login = createDeferred<SafeTunnelLoginResult>();
     const runtimeStart = createDeferred<SafeTunnelFrpcStartResult>();
+    const deviceCode = "Device-._~+/=";
     const accessToken = "Access-._~+/=";
     const machineToken = "Machine-._~+/=";
-    const encodedAccessToken = encodeURIComponent(accessToken);
-    const encodedMachineToken = encodeURIComponent(machineToken);
-    const lowerCaseEncodedMachineToken = encodedMachineToken.replace(
-      /%[0-9A-F]{2}/gu,
-      (escape) => escape.toLowerCase(),
-    );
-    const jsonEscapedMachineToken = machineToken.replaceAll("/", "\\/");
+    const frpcToken = "frpsecret";
+    const encodedAccessToken = mixedPercentAlias(accessToken);
+    const encodedMachineToken = mixedPercentAlias(machineToken);
+    const encodedDeviceCode = mixedPercentAlias(deviceCode);
+    const jsonEscapedDeviceCode = mixedJsonAlias(deviceCode);
+    const jsonEscapedMachineToken = mixedJsonAlias(machineToken);
     fixture.application.loginResult = login.promise;
     fixture.runtime.startResult = runtimeStart.promise;
 
     const response = await fixture.service.enable({});
     await vi.waitFor(() => { expect(fixture.application.loginCalls).toBe(1); });
+    fixture.application.loginObserver?.onCredentialRedactionValues?.([deviceCode]);
     fixture.application.loginObserver?.onDeviceAuthorization?.({
-      deviceCode: "private-device-code",
-      userCode: accessToken,
+      userCode: encodedDeviceCode,
       verificationUri: "https://control.example.test/device",
-      verificationUriComplete: `https://control.example.test/device?code=${encodedMachineToken}`,
+      verificationUriComplete: `https://control.example.test/device?code=${jsonEscapedDeviceCode}`,
       expiresAt: "2026-07-29T00:10:00.000Z",
       intervalSeconds: 5,
     });
-    fixture.application.loginObserver?.onAuthorizationApproved?.();
 
+    const awaitingPayload = JSON.stringify(
+      fixture.service.operation(response.operation.id),
+    );
+    expect(fixture.service.operation(response.operation.id)).toMatchObject({
+      phase: "awaiting_approval",
+    });
     expect(fixture.service.operation(response.operation.id)).not.toHaveProperty("userCode");
     expect(fixture.service.operation(response.operation.id))
       .not.toHaveProperty("verificationUriComplete");
+    expect(awaitingPayload).not.toContain(deviceCode);
+    expect(awaitingPayload).not.toContain(encodedDeviceCode);
+    expect(awaitingPayload).not.toContain(jsonEscapedDeviceCode);
 
+    fixture.application.loginObserver?.onAuthorizationApproved?.();
     login.resolve(loginResult({
       accessToken,
+      deviceCode,
       machineId: encodedMachineToken,
       machineToken,
       publicUrl: `https://public.example.test/?credential=${encodedMachineToken}`,
@@ -241,12 +249,13 @@ describe("DefaultSafeTunnelBridgeService", () => {
     expect(startingPayload).not.toContain(encodedMachineToken);
 
     runtimeStart.resolve({
+      credentialRedactionValues: [frpcToken],
       output: [
-        `started ${accessToken} with ${lowerCaseEncodedMachineToken}`,
-        `json retained ${jsonEscapedMachineToken}\n`,
+        `started ${encodedAccessToken} with ${encodedMachineToken}`,
+        `json retained ${jsonEscapedMachineToken} and ${mixedJsonAlias(frpcToken)}\n`,
       ].join("\n"),
       pid: 1234,
-      publicUrl: `https://public.example.test/?credential=${encodedAccessToken}`,
+      publicUrl: `https://${frpcToken}.example.test`,
     });
     await vi.waitFor(() => {
       expect(fixture.service.operation(response.operation.id)?.status).toBe("succeeded");
@@ -260,8 +269,9 @@ describe("DefaultSafeTunnelBridgeService", () => {
     expect(finalPayload).not.toContain(machineToken);
     expect(finalPayload).not.toContain(encodedAccessToken);
     expect(finalPayload).not.toContain(encodedMachineToken);
-    expect(finalPayload).not.toContain(lowerCaseEncodedMachineToken);
     expect(finalPayload).not.toContain(jsonEscapedMachineToken);
+    expect(finalPayload).not.toContain(frpcToken);
+    expect(finalPayload).not.toContain(mixedJsonAlias(frpcToken));
 
     if (finalSnapshot !== undefined) finalSnapshot.stdout = machineToken;
     expect(JSON.stringify(fixture.service.operation(response.operation.id)))
@@ -300,8 +310,10 @@ describe("DefaultSafeTunnelBridgeService", () => {
     });
     expect(fixture.runtime.startCalls).toEqual([]);
 
+    fixture.application.loginObserver?.onCredentialRedactionValues?.([
+      "private-device-code",
+    ]);
     fixture.application.loginObserver?.onDeviceAuthorization?.({
-      deviceCode: "private-device-code",
       userCode: "ABCD-EFGH",
       verificationUri: "https://api.tunnels.pi-web.dev/device",
       verificationUriComplete: "https://api.tunnels.pi-web.dev/device?user_code=ABCD-EFGH",
@@ -528,6 +540,7 @@ describe("DefaultSafeTunnelBridgeService", () => {
     const succeeded = createFixture();
     succeeded.application.loaded = registeredState();
     succeeded.runtime.startResult = Promise.resolve({
+      credentialRedactionValues: [],
       output: "x".repeat(30_000),
       pid: 1234,
       publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
@@ -636,6 +649,7 @@ class FakeFrpcRuntime implements SafeTunnelReconciledFrpcRuntime {
   readonly startCalls: SafeTunnelFrpcStartInput[] = [];
   startupCalls = 0;
   startResult: Promise<SafeTunnelFrpcStartResult> = Promise.resolve({
+    credentialRedactionValues: [],
     output: "Using verified PI WEB-managed frpc v0.69.1 for linux-arm64.\n",
     pid: 1234,
     publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
@@ -815,18 +829,20 @@ function registeredState(
 
 function loginResult(overrides: {
   readonly accessToken?: string;
+  readonly deviceCode?: string;
   readonly machineId?: string;
   readonly machineToken?: string;
   readonly publicUrl?: string;
 } = {}): SafeTunnelLoginResult {
   const accessToken = overrides.accessToken ?? "piwt_cat_v1_access";
+  const deviceCode = overrides.deviceCode ?? "private-device-code";
   const machineId = overrides.machineId ?? "machine_123";
   const machineToken = overrides.machineToken ?? "piwt_mtok_v1_private";
   const publicUrl = overrides.publicUrl ?? "https://dev-box.ns.tunnels.pi-web.dev";
   const machineCredentials = registeredState().state.machine
     ?? missingMachineCredentials();
   return {
-    credentialRedactionValues: [accessToken, machineToken],
+    credentialRedactionValues: [deviceCode, accessToken, machineToken],
     machineCredentials: {
       ...machineCredentials,
       machineId,
@@ -868,6 +884,24 @@ function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
       },
     );
   });
+}
+
+function mixedPercentAlias(value: string): string {
+  return Array.from(value).map((character, index) => {
+    if (index % 2 !== 0 && character !== "+" && character !== "/" && character !== "=") {
+      return character;
+    }
+    const hex = character.charCodeAt(0).toString(16).padStart(2, "0");
+    return `%${index % 3 === 0 ? hex.toUpperCase() : hex.toLowerCase()}`;
+  }).join("");
+}
+
+function mixedJsonAlias(value: string): string {
+  return Array.from(value).map((character, index) => {
+    if (character === "/") return "\\/";
+    if (index % 2 !== 0) return character;
+    return `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`;
+  }).join("");
 }
 
 async function flushAsyncWork(): Promise<void> {

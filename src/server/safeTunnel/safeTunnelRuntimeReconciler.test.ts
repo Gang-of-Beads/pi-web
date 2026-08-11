@@ -539,6 +539,7 @@ class FakeFrpcRuntime implements SafeTunnelFrpcRuntime {
     this.startCalls.push(input);
     this.statusValue = runtimeStatus({ state: "running", pid: 4100 });
     return Promise.resolve({
+      credentialRedactionValues: [],
       output: "PI WEB Safe Tunnel supervision started.\n",
       pid: 4100,
       publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",

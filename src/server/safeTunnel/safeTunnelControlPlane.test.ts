@@ -318,6 +318,83 @@ describe("HttpSafeTunnelControlPlane", () => {
     })).rejects.toMatchObject({ code: "invalid_response" });
   });
 
+  it.each([
+    ["mixed-case percent escapes", "%74ok%2b%2F%3d"],
+    ["percent-encoded unreserved bytes", "%74%6F%6b%2B%2f%3D"],
+    ["JSON Unicode escapes", "\\u0074\\u006F\\u006b\\u002B\\/\\u003d"],
+  ])("rejects device-code reflection through %s before returning approval metadata", async (
+    _label,
+    reflectedCode,
+  ) => {
+    const controlPlane = new HttpSafeTunnelControlPlane({
+      fetch: () => Promise.resolve(jsonResponse(202, {
+        ...startedAuthorization(),
+        deviceCode: "tok+/=",
+        userCode: reflectedCode,
+      })),
+    });
+
+    await expect(controlPlane.startDeviceAuthorization({
+      controlApiBaseUrl: "https://control.example.test",
+      clientVersion: safeTunnelClientVersion,
+    })).rejects.toMatchObject({
+      code: "invalid_response",
+      operation: "start_device_authorization",
+    });
+  });
+
+  it("rejects encoded bearer aliases in parsed provider metadata", async () => {
+    const machineToken = "tok+/=";
+    const registered = new HttpSafeTunnelControlPlane({
+      fetch: () => Promise.resolve(jsonResponse(201, {
+        ...registeredMachine(),
+        machine: {
+          id: "\\u0074\\u006F\\u006b\\u002B\\/\\u003d",
+          accountId: "account_123",
+          name: "Dev Box",
+          slug: "dev-box",
+        },
+        machineToken,
+      })),
+    });
+
+    await expect(registered.registerMachine({
+      controlApiBaseUrl: "https://control.example.test",
+      connectorAccessToken: "connector-token",
+      machineName: "Dev Box",
+      machineSlug: "dev-box",
+      localPiWebUrl: "http://127.0.0.1:8504",
+      clientVersion: safeTunnelClientVersion,
+    })).rejects.toMatchObject({
+      code: "invalid_response",
+      operation: "register_machine",
+    });
+
+    const connectorToken = "Access+/=";
+    const reflectedConnector = new HttpSafeTunnelControlPlane({
+      fetch: () => Promise.resolve(jsonResponse(201, {
+        ...registeredMachine(),
+        machine: {
+          id: "%41ccess%2b%2F%3d",
+          accountId: "account_123",
+          name: "Dev Box",
+          slug: "dev-box",
+        },
+      })),
+    });
+    await expect(reflectedConnector.registerMachine({
+      controlApiBaseUrl: "https://control.example.test",
+      connectorAccessToken: connectorToken,
+      machineName: "Dev Box",
+      machineSlug: "dev-box",
+      localPiWebUrl: "http://127.0.0.1:8504",
+      clientVersion: safeTunnelClientVersion,
+    })).rejects.toMatchObject({
+      code: "invalid_response",
+      operation: "register_machine",
+    });
+  });
+
   it("fetches and strictly parses tunnel config with private machine credentials", async () => {
     const transport = sequencedFetch([jsonResponse(200, {
       machine: { id: "machine_123" },
