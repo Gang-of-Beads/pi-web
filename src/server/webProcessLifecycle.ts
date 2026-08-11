@@ -59,6 +59,10 @@ export async function runWebProcess(
   const listen = dependencies.listen ?? listenWithFastify;
   const retryShutdown = dependencies.retryShutdown;
   const unsubscribeSignals: (() => void)[] = [];
+  let resolveShutdownConfirmed: () => void = () => undefined;
+  const shutdownConfirmed = new Promise<void>((resolve) => {
+    resolveShutdownConfirmed = resolve;
+  });
   let fastifyCloseFailed = false;
   let signalsRemoved = false;
   let shutdownInFlight: Promise<void> | undefined;
@@ -77,7 +81,10 @@ export async function runWebProcess(
     ));
     shutdownInFlight = shutdown;
     void shutdown.then(
-      () => { removeSignalListeners(); },
+      () => {
+        removeSignalListeners();
+        resolveShutdownConfirmed();
+      },
       () => {
         if (!retryingFailedClose) fastifyCloseFailed = true;
         if (shutdownInFlight === shutdown) shutdownInFlight = undefined;
@@ -127,15 +134,19 @@ export async function runWebProcess(
         }
       }
     }
-    // The web-process startup path is about to return, so no later signal
-    // retry can be assumed. Keep cleanup bounded and release both listeners.
-    removeSignalListeners();
     if (cleanupError !== undefined) {
       app.log.error(
         { err: cleanupError },
         "web server listen failed and shutdown was incomplete",
       );
+      if (retryShutdown !== undefined) {
+        // A failed Fastify hook cannot be replayed. Keep the startup boundary
+        // and process-signal owner alive until a later direct retry confirms
+        // that the exact owned resource was cleaned up.
+        await shutdownConfirmed;
+      }
     }
+    removeSignalListeners();
     throw error;
   }
 }

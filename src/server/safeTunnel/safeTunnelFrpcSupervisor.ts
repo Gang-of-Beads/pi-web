@@ -158,6 +158,8 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
   private readonly policy: NormalizedSupervisorPolicy;
   private restartTask: SafeTunnelScheduledTask | undefined;
   private runRequested = false;
+  private shutdownComplete = false;
+  private shutdownInFlight: Promise<void> | undefined;
   private stableRunTask: SafeTunnelScheduledTask | undefined;
   private stopInFlight: Promise<SafeTunnelCommandOutput> | undefined;
 
@@ -195,17 +197,26 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
     return this.stopRuntime();
   }
 
-  async shutdown(): Promise<void> {
-    if (!this.disposed) {
-      this.disposed = true;
-      await this.stopRuntime();
-      return;
-    }
-    if (this.stopInFlight !== undefined) {
-      await this.stopInFlight;
-      return;
-    }
-    if (this.activeProcess !== undefined) await this.stopRuntime();
+  shutdown(): Promise<void> {
+    if (this.shutdownComplete) return Promise.resolve();
+    if (this.shutdownInFlight !== undefined) return this.shutdownInFlight;
+
+    this.disposed = true;
+    const shutdown = this.stopRuntime().then(() => {
+      this.shutdownComplete = true;
+    });
+    this.shutdownInFlight = shutdown;
+    void shutdown.then(
+      () => {
+        if (this.shutdownInFlight === shutdown) this.shutdownInFlight = undefined;
+      },
+      () => {
+        // Keep shutdown retryable until both the exact child and its generated
+        // private configuration have been cleaned up successfully.
+        if (this.shutdownInFlight === shutdown) this.shutdownInFlight = undefined;
+      },
+    );
+    return shutdown;
   }
 
   async status(): Promise<SafeTunnelRuntimeStatus> {

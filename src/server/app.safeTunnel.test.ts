@@ -334,14 +334,15 @@ describe("web-process lifecycle", () => {
     }
   });
 
-  it("bounds direct Safe Tunnel cleanup retry after a listen failure", async () => {
+  it("retains signal ownership until repeated listen-failure cleanup succeeds", async () => {
     const fixture = fakeBridge();
     const signalSource = new FakeWebProcessSignalSource();
     const listenFailure = new Error("address already in use");
     const retryFailure = new Error("owned child still did not stop");
     fixture.shutdown
       .mockRejectedValueOnce(new Error("owned child stop was not confirmed"))
-      .mockRejectedValueOnce(retryFailure);
+      .mockRejectedValueOnce(retryFailure)
+      .mockResolvedValueOnce(undefined);
     const app = await buildApp({
       clientDist: false,
       logger: false,
@@ -352,7 +353,8 @@ describe("web-process lifecycle", () => {
     const logError = vi.spyOn(app.log, "error");
 
     try {
-      await expect(runWebProcess(app, { port: 8504 }, {
+      let lifecycleSettled = false;
+      const lifecycleResult = runWebProcess(app, { port: 8504 }, {
         close,
         retryShutdown: () => fixture.bridge.shutdown(),
         signalSource,
@@ -360,15 +362,37 @@ describe("web-process lifecycle", () => {
           await readyApp.ready();
           throw listenFailure;
         },
-      })).rejects.toBe(listenFailure);
-
-      expect(fixture.startup).toHaveBeenCalledOnce();
-      expect(fixture.shutdown).toHaveBeenCalledTimes(2);
-      expect(close).toHaveBeenCalledOnce();
-      expect(logError).toHaveBeenCalledWith(
-        { err: retryFailure },
-        "web server listen failed and shutdown was incomplete",
+      }).then(
+        () => {
+          lifecycleSettled = true;
+          return undefined;
+        },
+        (error: unknown) => {
+          lifecycleSettled = true;
+          return error;
+        },
       );
+
+      await vi.waitFor(() => {
+        expect(fixture.shutdown).toHaveBeenCalledTimes(2);
+        expect(logError).toHaveBeenCalledWith(
+          { err: retryFailure },
+          "web server listen failed and shutdown was incomplete",
+        );
+      });
+      expect(fixture.startup).toHaveBeenCalledOnce();
+      expect(close).toHaveBeenCalledOnce();
+      expect(lifecycleSettled).toBe(false);
+      expect(signalSource.listenerCount("SIGINT")).toBe(1);
+      expect(signalSource.listenerCount("SIGTERM")).toBe(1);
+
+      await Promise.all([
+        signalSource.emit("SIGINT"),
+        signalSource.emit("SIGTERM"),
+      ]);
+
+      expect(await lifecycleResult).toBe(listenFailure);
+      expect(fixture.shutdown).toHaveBeenCalledTimes(3);
       expect(signalSource.listenerCount("SIGINT")).toBe(0);
       expect(signalSource.listenerCount("SIGTERM")).toBe(0);
     } finally {

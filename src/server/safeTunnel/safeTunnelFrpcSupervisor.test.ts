@@ -219,6 +219,43 @@ describe("SafeTunnelFrpcSupervisor", () => {
     expect(status.error).toBeUndefined();
   });
 
+  it("retries no-child config cleanup and terminalizes only after success", async () => {
+    const fixture = createFixture();
+    await fixture.supervisor.start({});
+    const child = fixture.launcher.processes[0];
+    if (child === undefined) throw new Error("missing fake child");
+    child.exitOnTerminate = true;
+    fixture.files.removeResults.push(Promise.reject(new Error("remove failed")));
+
+    await expect(fixture.supervisor.shutdown()).rejects.toEqual(
+      new SafeTunnelFrpcSupervisorError("config_write_failed"),
+    );
+    expect(child.signals).toEqual(["SIGTERM"]);
+    expect(child.disposeCalls).toBe(1);
+    expect(fixture.files.removeCalls).toBe(1);
+    expect(fixture.files.configExists).toBe(true);
+
+    const removal = createDeferred<undefined>();
+    fixture.files.removeResults.push(removal.promise);
+    const retry = fixture.supervisor.shutdown();
+    const concurrentRetry = fixture.supervisor.shutdown();
+    expect(concurrentRetry).toBe(retry);
+    await flushAsyncWork();
+
+    expect(fixture.files.removeCalls).toBe(2);
+    expect(child.signals).toEqual(["SIGTERM"]);
+    expect(fixture.files.configExists).toBe(true);
+
+    removal.resolve(undefined);
+    await expect(Promise.all([retry, concurrentRetry])).resolves.toEqual([
+      undefined,
+      undefined,
+    ]);
+    expect(fixture.files.configExists).toBe(false);
+    await expect(fixture.supervisor.shutdown()).resolves.toBeUndefined();
+    expect(fixture.files.removeCalls).toBe(2);
+  });
+
   it("fails closed on false signal results and blocks replacement until close", async () => {
     const fixture = createFixture();
     await fixture.supervisor.start({});
@@ -353,6 +390,7 @@ class FakeRuntimeFiles implements SafeTunnelFrpcRuntimeFiles {
   configExists = false;
   log = "";
   removeCalls = 0;
+  readonly removeResults: Promise<void>[] = [];
 
   appendLog(chunk: string): void {
     this.log += chunk;
@@ -364,8 +402,8 @@ class FakeRuntimeFiles implements SafeTunnelFrpcRuntimeFiles {
 
   removeConfig(): Promise<void> {
     this.removeCalls += 1;
-    this.configExists = false;
-    return Promise.resolve();
+    const result = this.removeResults.shift() ?? Promise.resolve();
+    return result.then(() => { this.configExists = false; });
   }
 
   resetLog(header: string): Promise<void> {
