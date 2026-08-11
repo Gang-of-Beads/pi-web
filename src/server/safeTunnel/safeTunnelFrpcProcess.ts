@@ -64,6 +64,7 @@ export type SafeTunnelNodeProcessSpawner = (
   options: {
     readonly cwd: string;
     readonly detached: false;
+    readonly env: NodeJS.ProcessEnv;
     readonly shell: false;
     readonly stdio: ["ignore", "pipe", "pipe"];
     readonly windowsHide: true;
@@ -91,6 +92,9 @@ export class NodeSafeTunnelFrpcProcessLauncher implements SafeTunnelFrpcProcessL
     const child = this.spawnProcess(frpcPath, ["-c", configPath], {
       cwd: dirname(configPath),
       detached: false,
+      // frpc supports environment-backed Go templates. Never make the web
+      // process environment, including service credentials, visible to it.
+      env: {},
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
@@ -152,6 +156,7 @@ function spawnNodeFrpcProcess(
   options: {
     readonly cwd: string;
     readonly detached: false;
+    readonly env: NodeJS.ProcessEnv;
     readonly shell: false;
     readonly stdio: ["ignore", "pipe", "pipe"];
     readonly windowsHide: true;

@@ -87,6 +87,7 @@ describe("NodeSafeTunnelFrpcProcessLauncher", () => {
       {
         cwd: "/data/pi-web/safe-tunnel",
         detached: false,
+        env: {},
         shell: false,
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
@@ -109,6 +110,27 @@ describe("NodeSafeTunnelFrpcProcessLauncher", () => {
     expect(child.listenerCount("error")).toBe(0);
     expect(child.stdout.listenerCount("data")).toBe(0);
     expect(child.stderr.listenerCount("data")).toBe(0);
+  });
+
+  it("does not inherit the web-process environment into an advanced executable", () => {
+    const child = new FakeNodeChild();
+    let childEnvironment: NodeJS.ProcessEnv | undefined;
+    const launcher = new NodeSafeTunnelFrpcProcessLauncher({
+      spawnProcess: (_command, _args, options) => {
+        childEnvironment = options.env;
+        return child;
+      },
+    });
+
+    const handle = launcher.launch({
+      configPath: "/data/pi-web/safe-tunnel/frpc.toml",
+      frpcPath: "/advanced/frpc",
+    }, { onExit: () => undefined });
+
+    expect(childEnvironment).toEqual({});
+    expect(childEnvironment).not.toBe(process.env);
+    expect(Object.keys(childEnvironment ?? {})).toEqual([]);
+    handle.dispose();
   });
 
   it("reports a pre-spawn error only after the authoritative close", () => {

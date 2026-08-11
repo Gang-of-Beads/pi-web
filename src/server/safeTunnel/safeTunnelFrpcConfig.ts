@@ -37,6 +37,7 @@ export function prepareSafeTunnelFrpcConfig(
   desiredLocalPiWebUrl: string,
 ): string {
   if (input.frpcConfigToml.length > maximumFrpcConfigCharacters) throw invalidConfig();
+  assertNoFrpcTemplateActions(input.frpcConfigToml);
 
   let parsed: TomlTable;
   try {
@@ -86,7 +87,7 @@ export function prepareSafeTunnelFrpcConfig(
     || proxy["localPort"] !== providerTarget.localPort) throw invalidConfig();
   const desiredTarget = localTarget(desiredLocalPiWebUrl);
 
-  return stringify({
+  const prepared = stringify({
     serverAddr,
     serverPort,
     auth: {
@@ -104,11 +105,16 @@ export function prepareSafeTunnelFrpcConfig(
       customDomains: [publicHostname],
     }],
   });
+  // frpc renders Go templates before parsing TOML. Check the serialized output
+  // too, so TOML escapes cannot turn into executable template actions here.
+  assertNoFrpcTemplateActions(prepared);
+  return prepared;
 }
 
 /** Extracts credentials from PI WEB's prepared config for diagnostic redaction. */
 export function safeTunnelFrpcConfigCredentials(toml: string): readonly string[] {
   if (toml.length > maximumFrpcConfigCharacters) throw invalidConfig();
+  assertNoFrpcTemplateActions(toml);
 
   let parsed: TomlTable;
   try {
@@ -181,6 +187,10 @@ function requireFrpcCredential(value: unknown): string {
     || value.length > maximumFrpcSecretCharacters
     || hasTerminalControl(value)) throw invalidConfig();
   return value;
+}
+
+function assertNoFrpcTemplateActions(value: string): void {
+  if (value.includes("{{")) throw invalidConfig();
 }
 
 function hasTerminalControl(value: string): boolean {

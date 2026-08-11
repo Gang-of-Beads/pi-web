@@ -183,6 +183,25 @@ describe("SafeTunnelFrpcSupervisor", () => {
     expect(fixture.launcher.processes).toEqual([]);
   });
 
+  it("rejects template actions before launching an advanced executable", async () => {
+    const fixture = createFixture();
+    const config = preparedConfig();
+    fixture.configProvider.result = Promise.resolve({
+      ...config,
+      frpcConfigToml: config.frpcConfigToml.replace(
+        "relay.example.test",
+        "{{ .Envs.PI_WEB_SERVICE_CREDENTIAL }}",
+      ),
+    });
+
+    await expect(fixture.supervisor.start({ advancedFrpcPath: "/opt/private/frpc" }))
+      .rejects.toEqual(new SafeTunnelFrpcSupervisorError("tunnel_config_failed"));
+
+    expect(fixture.managedFrpc.calls).toBe(0);
+    expect(fixture.files.configWrites).toEqual([]);
+    expect(fixture.launcher.processes).toEqual([]);
+  });
+
   it("uses an advanced executable override without invoking managed acquisition", async () => {
     const fixture = createFixture();
 

@@ -71,7 +71,7 @@ A graceful web/API shutdown stops owned runtime work and removes generated runti
 
 - **Ingress authentication is an operator requirement.** The tunnel transport itself is not evidence that the resulting public endpoint is authenticated. Verify the actual ingress policy before exposing PI WEB.
 - **Control API credentials require protected transport.** Production and self-hosted Control API URLs must use HTTPS. Plain HTTP is accepted only for URL-parser-normalized literal loopback development endpoints in `127.0.0.0/8` or `[::1]`; names such as `localhost` are not exceptions.
-- **Provider tunnel configuration is constrained.** PI WEB accepts one expected HTTP proxy only, validates its public hostname and provider-declared local target, and regenerates the final local target from PI WEB-owned desired state. Extra proxies, arbitrary target changes, unknown fields, and disabled transport TLS are rejected.
+- **Provider tunnel configuration is constrained.** PI WEB accepts one expected HTTP proxy only, validates its public hostname and provider-declared local target, and regenerates the final local target from PI WEB-owned desired state. Extra proxies, arbitrary target changes, unknown fields, disabled transport TLS, and `frpc` Go-template actions are rejected.
 - **External requests are bounded and cancellable.** Control API and managed-artifact requests use bounded response sizes and timeouts. Disable/shutdown aborts work where safe; if one-time registration has already returned successfully, PI WEB saves that credential before completing cancellation so it is not lost.
 - **State and diagnostics stay private.** Safe Tunnel API responses are non-cacheable and redacted. Do not publish `$PI_WEB_DATA_DIR/safe-tunnel`, its generated runtime files, or an advanced executable path.
 
@@ -90,7 +90,7 @@ PI WEB performs a bounded HTTPS download only after Enable needs the artifact, v
 $PI_WEB_DATA_DIR/safe-tunnel/frpc/versions/0.69.1/<platform>-<architecture>/frpc
 ```
 
-Every other platform/architecture fails clearly as `unsupported_platform` before a managed download. To use one of those targets, provide a user-supplied **absolute** executable path under the advanced disclosure. An advanced path bypasses PI WEB's managed artifact download and integrity verification; the operator is responsible for the binary's provenance, compatibility, permissions, and updates. PI WEB still launches it directly without a shell and supervises only the exact returned child.
+Every other platform/architecture fails clearly as `unsupported_platform` before a managed download. To use one of those targets, provide a user-supplied **absolute** executable path under the advanced disclosure. An advanced path bypasses PI WEB's managed artifact download and integrity verification; the operator is responsible for the binary's provenance, compatibility, permissions, and updates. PI WEB still launches it directly without a shell, gives it no inherited web-process environment, and supervises only the exact returned child.
 
 ## Advanced development and self-hosting overrides
 
