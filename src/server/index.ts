@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { effectivePiWebConfig, maxUploadBytes } from "../config.js";
 import { buildApp } from "./app.js";
 import { loadSafeTunnelBridge } from "./safeTunnel/safeTunnelProductionLoader.js";
+import { runWebProcess } from "./webProcessLifecycle.js";
 
 const { config } = effectivePiWebConfig();
 const appRef: { current?: FastifyInstance } = {};
@@ -14,4 +15,7 @@ const app = await buildApp({
   ...(safeTunnel === undefined ? {} : { safeTunnel }),
 });
 appRef.current = app;
-await app.listen({ port: config.port ?? 8504, host: config.host ?? "127.0.0.1" });
+await runWebProcess(app, {
+  port: config.port ?? 8504,
+  host: config.host ?? "127.0.0.1",
+});
