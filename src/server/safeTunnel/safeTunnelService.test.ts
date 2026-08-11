@@ -218,6 +218,10 @@ describe("SafeTunnelService", () => {
   it("drives device approval and registration through the control boundary, then privately persists credentials", async () => {
     const storage = new MemorySafeTunnelStateStorage();
     const controlPlane = new FakeSafeTunnelControlPlane();
+    controlPlane.registration = {
+      ...registeredMachine(),
+      publicUrl: "https://DEV-BOX.NS-ABC123.TUNNELS.PI-WEB.DEV:443/",
+    };
     controlPlane.completions = [
       { kind: "pending" },
       { kind: "approved", authorization: approvedAuthorization() },
@@ -251,6 +255,12 @@ describe("SafeTunnelService", () => {
 
     expect(sleeps).toEqual([5000]);
     expect(result.machineCredentials.machineToken).toBe("piwt_mtok_v1_private");
+    expect(result.machineCredentials.publicUrl).toBe(
+      "https://dev-box.ns-abc123.tunnels.pi-web.dev",
+    );
+    expect(result.registeredMachine.publicUrl).toBe(
+      "https://dev-box.ns-abc123.tunnels.pi-web.dev",
+    );
     expect(result.credentialRedactionValues).toEqual([
       "piwt_dcode_v1_device",
       "piwt_cat_v1_access",
@@ -502,6 +512,63 @@ describe("SafeTunnelService", () => {
       method: "config",
       input: registeredState().state.machine,
     }]);
+  });
+
+  it.each([
+    {
+      label: "a provider-selected alternate ingress",
+      overrides: {
+        publicHostname: "other.ns-abc123.tunnels.pi-web.dev",
+        publicUrl: "https://other.ns-abc123.tunnels.pi-web.dev",
+      },
+    },
+    {
+      label: "an alternate scheme",
+      overrides: {
+        publicUrl: "http://dev-box.ns-abc123.tunnels.pi-web.dev",
+      },
+    },
+    {
+      label: "an alternate effective port",
+      overrides: {
+        publicUrl: "https://dev-box.ns-abc123.tunnels.pi-web.dev:9443",
+      },
+    },
+    {
+      label: "a hostname inconsistent with the registered origin",
+      overrides: {
+        publicHostname: "other.ns-abc123.tunnels.pi-web.dev",
+      },
+    },
+  ])("rejects tunnel config with $label", async ({ overrides }) => {
+    const storage = new MemorySafeTunnelStateStorage(registeredState());
+    const controlPlane = new FakeSafeTunnelControlPlane();
+    controlPlane.tunnelConfig = { ...machineTunnelConfig(), ...overrides };
+    const service = new SafeTunnelService({ controlPlane, stateStorage: storage });
+
+    await expect(service.getTunnelConfig()).rejects.toMatchObject({
+      code: "invalid_tunnel_config",
+    });
+  });
+
+  it("rejects tunnel config when legacy registration has no public-ingress identity", async () => {
+    const storage = new MemorySafeTunnelStateStorage(registeredState({
+      machine: {
+        controlApiBaseUrl: "https://control.example.test",
+        credentialStatus: "active",
+        machineId: "machine_123",
+        machineToken: "piwt_mtok_v1_private",
+        machineSlug: "dev-box",
+      },
+    }));
+    const service = new SafeTunnelService({
+      controlPlane: new FakeSafeTunnelControlPlane(),
+      stateStorage: storage,
+    });
+
+    await expect(service.getTunnelConfig()).rejects.toMatchObject({
+      code: "invalid_tunnel_config",
+    });
   });
 
   it("rejects an frpc authentication value reused in public tunnel metadata", async () => {

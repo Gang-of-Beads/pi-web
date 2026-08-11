@@ -98,7 +98,7 @@ describe("Safe Tunnel app composition", () => {
     }
   });
 
-  it("binds enabled mutations to the startup-snapshot trusted host config", async () => {
+  it("binds enabled API reads and mutations to startup-snapshot trusted hosts", async () => {
     const fixture = fakeBridge();
     const app = await buildApp({
       clientDist: false,
@@ -136,10 +136,23 @@ describe("Safe Tunnel app composition", () => {
         },
         payload: {},
       });
+      const trustedRead = await app.inject({
+        method: "GET",
+        url: "/api/safe-tunnel/status",
+        headers: { host: "gateway.example.test" },
+      });
+      const reboundRead = await app.inject({
+        method: "GET",
+        url: "/api/safe-tunnel/status",
+        headers: { host: "rebind.attacker.example:8504" },
+      });
 
       expect(trusted.statusCode).toBe(202);
       expect(rebound.statusCode).toBe(403);
       expect(rebound.json()).toEqual({ error: "Request forbidden." });
+      expect(trustedRead.statusCode).toBe(200);
+      expect(reboundRead.statusCode).toBe(403);
+      expect(reboundRead.json()).toEqual({ error: "Request forbidden." });
     } finally {
       await app.close();
     }
@@ -720,6 +733,7 @@ function fakeBridge() {
     disable: vi.fn(() => Promise.resolve(disableResponse)),
     enable: vi.fn(() => Promise.resolve(enableResponse)),
     operation: vi.fn(() => undefined),
+    registeredPublicOrigin: vi.fn(() => Promise.resolve(undefined)),
     shutdown,
     startup,
     status,

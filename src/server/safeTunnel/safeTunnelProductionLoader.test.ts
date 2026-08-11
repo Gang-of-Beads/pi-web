@@ -73,6 +73,7 @@ function fakeBridge() {
     disable: vi.fn(() => Promise.resolve(disableResponse)),
     enable: vi.fn(() => Promise.resolve(enableResponse)),
     operation: vi.fn(() => undefined),
+    registeredPublicOrigin: vi.fn(() => Promise.resolve(undefined)),
     shutdown,
     startup,
     status: vi.fn(() => Promise.resolve(status)),

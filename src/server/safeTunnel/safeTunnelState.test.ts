@@ -8,6 +8,7 @@ import {
   defaultSafeTunnelStatePath,
   discoverLegacySafeTunnelStatePath,
   normalizeSafeTunnelControlApiBaseUrl,
+  normalizeSafeTunnelPublicUrl,
   parseSafeTunnelState,
   safeTunnelStateDirectoryMode,
   safeTunnelStateFileMode,
@@ -61,6 +62,27 @@ describe("Safe Tunnel Control API URL policy", () => {
   ])("rejects non-HTTPS non-literal-loopback endpoint %s", (controlApiBaseUrl) => {
     expect(() => normalizeSafeTunnelControlApiBaseUrl(controlApiBaseUrl))
       .toThrow("must use https");
+  });
+});
+
+describe("Safe Tunnel public-ingress URL policy", () => {
+  it.each([
+    ["production HTTPS", "https://Ingress.Example.Test:443/", "https://ingress.example.test"],
+    ["non-default HTTPS port", "https://ingress.example.test:9443", "https://ingress.example.test:9443"],
+    ["IPv4 loopback development", "http://127.1:8787/", "http://127.0.0.1:8787"],
+    ["IPv6 loopback development", "http://[0:0:0:0:0:0:0:1]:8787", "http://[::1]:8787"],
+  ])("normalizes %s origins", (_label, input, expected) => {
+    expect(normalizeSafeTunnelPublicUrl(input)).toBe(expected);
+  });
+
+  it.each([
+    "http://ingress.example.test",
+    "http://localhost:8787",
+    "http://127.example.test:8787",
+    "http://0.0.0.0:8787",
+    "http://192.168.1.10:8787",
+  ])("rejects plaintext non-literal-loopback ingress %s", (publicUrl) => {
+    expect(() => normalizeSafeTunnelPublicUrl(publicUrl)).toThrow("must use https");
   });
 });
 

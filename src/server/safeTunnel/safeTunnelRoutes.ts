@@ -31,6 +31,8 @@ export interface SafeTunnelRouteService {
   disable(): Promise<SafeTunnelDisableResponse>;
   enable(request: SafeTunnelEnableRequest): Promise<SafeTunnelEnableResponse>;
   operation(operationId: string): SafeTunnelOperationResponse | undefined;
+  /** Reads only the persisted public ingress identity used by the request boundary. */
+  registeredPublicOrigin(): Promise<string | undefined>;
   status(): Promise<SafeTunnelStatusResponse>;
 }
 
@@ -57,19 +59,37 @@ export function registerSafeTunnelRoutes(
   service: SafeTunnelRouteService,
   mutationHostConfig: SafeTunnelMutationHostConfig = {},
 ): void {
-  const mutationHosts = createSafeTunnelMutationHostBoundary(mutationHostConfig);
+  const requestHosts = createSafeTunnelMutationHostBoundary(mutationHostConfig);
+  const registeredPublicOrigin = () => service.registeredPublicOrigin();
+  const requireReadRequest = (request: FastifyRequest, reply: FastifyReply) => (
+    requireSafeTunnelReadRequest(
+      request,
+      reply,
+      registeredPublicOrigin,
+      requestHosts,
+    )
+  );
   const requireMutationRequest = (request: FastifyRequest, reply: FastifyReply) => (
-    requireSafeTunnelMutationRequest(request, reply, service, mutationHosts)
+    requireSafeTunnelMutationRequest(
+      request,
+      reply,
+      registeredPublicOrigin,
+      requestHosts,
+    )
   );
 
-  app.get("/api/safe-tunnel/status", async (_request, reply) => {
-    markSafeTunnelResponsePrivate(reply);
-    try {
-      return await service.status();
-    } catch (error) {
-      return sendSafeTunnelError(reply, error);
-    }
-  });
+  app.get(
+    "/api/safe-tunnel/status",
+    { preValidation: requireReadRequest },
+    async (_request, reply) => {
+      markSafeTunnelResponsePrivate(reply);
+      try {
+        return await service.status();
+      } catch (error) {
+        return sendSafeTunnelError(reply, error);
+      }
+    },
+  );
 
   app.post<{ Body: unknown }>(
     "/api/safe-tunnel/enable",
@@ -101,6 +121,7 @@ export function registerSafeTunnelRoutes(
 
   app.get<{ Params: { operationId: string } }>(
     "/api/safe-tunnel/operations/:operationId",
+    { preValidation: requireReadRequest },
     (request, reply) => {
       markSafeTunnelResponsePrivate(reply);
       try {
@@ -120,11 +141,29 @@ function markSafeTunnelResponsePrivate(reply: FastifyReply): void {
   void reply.header("cache-control", "no-store");
 }
 
+async function requireSafeTunnelReadRequest(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  registeredPublicOrigin: () => Promise<string | undefined>,
+  requestHosts: ReturnType<typeof createSafeTunnelMutationHostBoundary>,
+): Promise<void> {
+  try {
+    if (await requestHosts.allowsRead(
+      { host: request.headers.host },
+      registeredPublicOrigin,
+    )) return;
+  } catch {
+    // The persisted registration could not establish trust. Fail closed and
+    // do not expose private state/transport details at the browser boundary.
+  }
+  await denySafeTunnelRequest(reply);
+}
+
 async function requireSafeTunnelMutationRequest(
   request: FastifyRequest,
   reply: FastifyReply,
-  service: SafeTunnelRouteService,
-  mutationHosts: ReturnType<typeof createSafeTunnelMutationHostBoundary>,
+  registeredPublicOrigin: () => Promise<string | undefined>,
+  requestHosts: ReturnType<typeof createSafeTunnelMutationHostBoundary>,
 ): Promise<void> {
   const fetchSite = request.headers["sec-fetch-site"];
   const isSameOriginWhenKnown = fetchSite === undefined || fetchSite === "same-origin";
@@ -134,19 +173,20 @@ async function requireSafeTunnelMutationRequest(
   const hasJsonBody = request.body !== undefined
     && hasJsonContentType(request.headers["content-type"]);
   if (isSameOriginWhenKnown && isMarkedBrowserRequest && hasJsonBody) {
-    let hasTrustedHost = false;
     try {
-      hasTrustedHost = await mutationHosts.allows(
+      if (await requestHosts.allowsMutation(
         { host: request.headers.host, origin: request.headers.origin },
-        async () => (await service.status()).config.machine?.publicHostname,
-      );
+        registeredPublicOrigin,
+      )) return;
     } catch {
       // The persisted registration could not establish trust. Fail closed and
       // do not expose private state/transport details at the browser boundary.
     }
-    if (hasTrustedHost) return;
   }
+  await denySafeTunnelRequest(reply);
+}
 
+async function denySafeTunnelRequest(reply: FastifyReply): Promise<void> {
   markSafeTunnelResponsePrivate(reply);
   await reply.code(403).send({ error: "Request forbidden." });
 }

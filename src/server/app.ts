@@ -56,7 +56,7 @@ export interface AppDependencies {
   config?: PiWebConfigService;
   /** Present only when startup opted in and composed the web-owned Safe Tunnel graph. */
   safeTunnel?: SafeTunnelBridgeService;
-  /** Startup-snapshot host trust inputs used only by Safe Tunnel mutations. */
+  /** Startup-snapshot host trust inputs used by Safe Tunnel reads and mutations. */
   safeTunnelMutationHosts?: SafeTunnelMutationHostConfig;
   clientDist?: string | false;
   logger?: FastifyServerOptions["logger"];

@@ -181,34 +181,176 @@ describe("registerSafeTunnelRoutes", () => {
     expect(service.enable).toHaveBeenCalledWith({});
   });
 
-  it("accepts Disable through the independently persisted public-ingress hostname", async () => {
-    service.status.mockResolvedValue({
-      ...service.statusResponse,
-      config: {
-        ...service.statusResponse.config,
-        state: "registered",
-        machine: {
-          controlApiBaseUrl: "https://api.tunnels.pi-web.dev",
-          machineId: "machine_1",
-          publicHostname: "registered.tunnels.pi-web.dev",
-          publicUrl: "https://registered.tunnels.pi-web.dev",
+  it("accepts the exact registered Origin with a direct or configured proxy-rewritten Host", async () => {
+    service.registeredPublicOriginValue = "https://registered.tunnels.pi-web.dev:9443";
+    await replaceRouteApp({ allowedHosts: ["pi-web-upstream.internal"] });
+
+    const responses = await Promise.all([
+      app.inject({
+        method: "POST",
+        url: "/api/safe-tunnel/disable",
+        headers: {
+          ...acceptedMutationHeaders,
+          host: "registered.tunnels.pi-web.dev:9443",
+          origin: "https://registered.tunnels.pi-web.dev:9443",
         },
-      },
+        payload: {},
+      }),
+      app.inject({
+        method: "POST",
+        url: "/api/safe-tunnel/disable",
+        headers: {
+          ...acceptedMutationHeaders,
+          host: "pi-web-upstream.internal:8504",
+          origin: "https://registered.tunnels.pi-web.dev:9443",
+        },
+        payload: {},
+      }),
+    ]);
+
+    expect(responses.map(({ statusCode }) => statusCode)).toEqual([200, 200]);
+    expect(service.disable).toHaveBeenCalledTimes(2);
+    expect(service.status).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["an HTTP downgrade", "registered.tunnels.pi-web.dev:9443", "http://registered.tunnels.pi-web.dev:9443"],
+    ["an alternate effective port", "registered.tunnels.pi-web.dev:9443", "https://registered.tunnels.pi-web.dev"],
+    ["an independently untrusted Host", "rebind.attacker.example:8504", "https://registered.tunnels.pi-web.dev:9443"],
+  ])("rejects registered-ingress mutation trust with %s", async (
+    _label,
+    host,
+    origin,
+  ) => {
+    service.registeredPublicOriginValue = "https://registered.tunnels.pi-web.dev:9443";
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/safe-tunnel/disable",
+      headers: { ...acceptedMutationHeaders, host, origin },
+      payload: {},
     });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({ error: "Request forbidden." });
+    expect(service.disable).not.toHaveBeenCalled();
+  });
+
+  it("does not combine automatic registered-Host trust with a different configured Origin", async () => {
+    service.registeredPublicOriginValue = "https://registered.tunnels.pi-web.dev:9443";
+    await replaceRouteApp({ allowedHosts: ["operator.example.test"] });
 
     const response = await app.inject({
       method: "POST",
       url: "/api/safe-tunnel/disable",
       headers: {
         ...acceptedMutationHeaders,
-        host: "registered.tunnels.pi-web.dev",
-        origin: "https://registered.tunnels.pi-web.dev",
+        host: "registered.tunnels.pi-web.dev:9443",
+        origin: "https://operator.example.test",
       },
       payload: {},
     });
 
-    expect(response.statusCode).toBe(200);
-    expect(service.disable).toHaveBeenCalledOnce();
+    expect(response.statusCode).toBe(403);
+    expect(service.disable).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      label: "localhost",
+      config: {},
+      host: "localhost:8504",
+    },
+    {
+      label: "a literal LAN address",
+      config: {},
+      host: "192.168.50.12:8504",
+    },
+    {
+      label: "the configured listener name",
+      config: { listenerHost: "pi-web.internal" },
+      host: "pi-web.internal:8504",
+    },
+    {
+      label: "a configured reverse-proxy Host rewrite",
+      config: { allowedHosts: ["pi-web-upstream.internal"] },
+      host: "pi-web-upstream.internal:8504",
+    },
+    {
+      label: "the persisted registered ingress",
+      config: {},
+      host: "registered.tunnels.pi-web.dev:9443",
+      registeredPublicOrigin: "https://registered.tunnels.pi-web.dev:9443",
+    },
+  ] satisfies {
+    label: string;
+    config: SafeTunnelMutationHostConfig;
+    host: string;
+    registeredPublicOrigin?: string;
+  }[])("serves protected reads through $label", async ({
+    config,
+    host,
+    registeredPublicOrigin,
+  }) => {
+    service.registeredPublicOriginValue = registeredPublicOrigin;
+    await replaceRouteApp(config);
+
+    const [status, operation] = await Promise.all([
+      app.inject({
+        method: "GET",
+        url: "/api/safe-tunnel/status",
+        headers: { host },
+      }),
+      app.inject({
+        method: "GET",
+        url: "/api/safe-tunnel/operations/op_1",
+        headers: { host },
+      }),
+    ]);
+
+    expect(status.statusCode).toBe(200);
+    expect(operation.statusCode).toBe(200);
+    expect(service.status).toHaveBeenCalledOnce();
+    expect(service.operation).toHaveBeenCalledOnce();
+  });
+
+  it("rejects DNS-rebound status and operation reads before private service calls", async () => {
+    await replaceRouteApp({ allowedHosts: true });
+    const headers = { host: "rebind.attacker.example:8504" };
+
+    const responses = await Promise.all([
+      app.inject({ method: "GET", url: "/api/safe-tunnel/status", headers }),
+      app.inject({
+        method: "GET",
+        url: "/api/safe-tunnel/operations/op_1",
+        headers,
+      }),
+    ]);
+
+    for (const response of responses) {
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toEqual({ error: "Request forbidden." });
+      expect(response.headers["cache-control"]).toBe("no-store");
+    }
+    expect(service.status).not.toHaveBeenCalled();
+    expect(service.operation).not.toHaveBeenCalled();
+  });
+
+  it("fails read trust closed when persisted registration lookup fails", async () => {
+    service.registeredPublicOrigin.mockRejectedValueOnce(
+      new Error("private persisted-state failure"),
+    );
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/safe-tunnel/status",
+      headers: { host: "registered.tunnels.pi-web.dev" },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({ error: "Request forbidden." });
+    expect(response.body).not.toContain("private persisted-state failure");
+    expect(service.status).not.toHaveBeenCalled();
   });
 
   it("rejects a trusted Host paired with an untrusted Origin", async () => {
@@ -497,6 +639,8 @@ async function replaceRouteApp(
 }
 
 class FakeSafeTunnelRouteService implements SafeTunnelRouteService {
+  registeredPublicOriginValue: string | undefined;
+
   readonly operationResponse: SafeTunnelOperationResponse = {
     id: "op_1",
     kind: "enable",
@@ -538,6 +682,8 @@ class FakeSafeTunnelRouteService implements SafeTunnelRouteService {
   readonly operation = vi.fn<
     (operationId: string) => SafeTunnelOperationResponse | undefined
   >((operationId) => operationId === "op_1" ? this.operationResponse : undefined);
+  readonly registeredPublicOrigin = vi.fn<() => Promise<string | undefined>>(() =>
+    Promise.resolve(this.registeredPublicOriginValue));
   readonly status = vi.fn<() => Promise<SafeTunnelStatusResponse>>(() =>
     Promise.resolve(this.statusResponse));
 }

@@ -4,7 +4,10 @@ import { homedir } from "node:os";
 import { dirname, join, posix, win32 } from "node:path";
 import { piWebDataDir } from "../../config.js";
 import type { SafeTunnelDesiredState } from "../../shared/safeTunnelTypes.js";
-import { isSafeTunnelControlApiTransportAllowed } from "../../shared/safeTunnelUrlPolicy.js";
+import {
+  isSafeTunnelControlApiTransportAllowed,
+  isSafeTunnelPublicIngressTransportAllowed,
+} from "../../shared/safeTunnelUrlPolicy.js";
 import { containsSafeTunnelSensitiveRepresentation } from "./safeTunnelDiagnostics.js";
 
 export const safeTunnelStateVersion = 2;
@@ -270,7 +273,11 @@ export function normalizeSafeTunnelLocalPiWebUrl(value: unknown): string {
 export function normalizeSafeTunnelPublicUrl(value: unknown): string {
   const source = requireBoundedString(value, "publicUrl", maximumUrlCharacters);
   const parsed = parseUrl(source, "publicUrl");
-  requireHttpProtocol(parsed, "publicUrl");
+  if (!isSafeTunnelPublicIngressTransportAllowed(parsed)) {
+    throw new Error(
+      "Safe Tunnel publicUrl must use https, except for a literal loopback development origin.",
+    );
+  }
   requireUrlWithoutCredentials(parsed, "publicUrl");
   if (parsed.pathname !== "/" || parsed.search !== "" || parsed.hash !== "") {
     throw new Error("Safe Tunnel publicUrl must not include a path, query, or fragment.");
@@ -403,12 +410,6 @@ function parseUrl(value: string, fieldName: string): URL {
     return new URL(value);
   } catch {
     throw new Error(`Safe Tunnel ${fieldName} must be a valid URL.`);
-  }
-}
-
-function requireHttpProtocol(url: URL, fieldName: string): void {
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error(`Safe Tunnel ${fieldName} must use http or https.`);
   }
 }
 

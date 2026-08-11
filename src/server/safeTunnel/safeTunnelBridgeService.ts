@@ -104,6 +104,11 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
 
   constructor(private readonly dependencies: SafeTunnelBridgeDependencies) {}
 
+  async registeredPublicOrigin(): Promise<string | undefined> {
+    const loaded = await this.dependencies.safeTunnel.state();
+    return loaded.state.machine?.publicUrl;
+  }
+
   async status(): Promise<SafeTunnelStatusResponse> {
     const [runtime, ownedState] = await Promise.all([
       this.dependencies.runtime.status(),
@@ -400,7 +405,9 @@ function shouldRegisterMachine(
   request: SafeTunnelEnableRequest,
 ): boolean {
   const machine = loaded.state.machine;
-  if (machine === undefined || machine.credentialStatus === "rejected") return true;
+  if (machine === undefined
+    || machine.credentialStatus === "rejected"
+    || machine.publicUrl === undefined) return true;
   if (runtime.diagnosticCode === "credentials_rejected") return true;
   const advanced = request.advanced;
   return advanced?.controlApiUrl !== undefined

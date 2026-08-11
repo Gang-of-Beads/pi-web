@@ -17,6 +17,7 @@ import { safeTunnelFrpcTrustedCaPath } from "./safeTunnelFrpcRuntimeFiles.js";
 import {
   normalizeSafeTunnelControlApiBaseUrl,
   normalizeSafeTunnelLocalPiWebUrl,
+  normalizeSafeTunnelPublicUrl,
   requireSafeTunnelBearerCredential,
   type LoadedSafeTunnelState,
   type SafeTunnelMachineCredentials,
@@ -166,14 +167,16 @@ export class SafeTunnelService {
     // Once registration begins, let its one-time credential response finish and
     // persist even if the user disables concurrently; the bridge will observe
     // cancellation before it can arm supervision.
-    const registeredMachine = await this.dependencies.controlPlane.registerMachine({
-      controlApiBaseUrl: login.controlApiBaseUrl,
-      connectorAccessToken,
-      machineName: login.machineName,
-      machineSlug: login.machineSlug,
-      localPiWebUrl: login.localPiWebUrl,
-      clientVersion: safeTunnelClientVersion,
-    });
+    const registeredMachine = normalizeRegisteredPublicIngress(
+      await this.dependencies.controlPlane.registerMachine({
+        controlApiBaseUrl: login.controlApiBaseUrl,
+        connectorAccessToken,
+        machineName: login.machineName,
+        machineSlug: login.machineSlug,
+        localPiWebUrl: login.localPiWebUrl,
+        clientVersion: safeTunnelClientVersion,
+      }),
+    );
     if (registeredMachine.machine.slug !== login.machineSlug) {
       throw new SafeTunnelServiceError("invalid_login");
     }
@@ -273,7 +276,8 @@ export class SafeTunnelService {
       await this.rememberRejectedCredentials(credentials, error).catch(() => undefined);
       throw error;
     }
-    if (tunnelConfig.machineId !== credentials.machineId) {
+    if (tunnelConfig.machineId !== credentials.machineId
+      || !matchesRegisteredPublicIngress(tunnelConfig, credentials.publicUrl)) {
       throw new SafeTunnelServiceError("invalid_tunnel_config");
     }
     const prepared = applySafeTunnelLocalTarget(
@@ -387,6 +391,36 @@ export class SafeTunnelService {
     });
     this.mutationTail = mutation.then(() => undefined, () => undefined);
     return mutation;
+  }
+}
+
+function normalizeRegisteredPublicIngress(
+  registeredMachine: SafeTunnelRegisteredMachine,
+): SafeTunnelRegisteredMachine {
+  let publicUrl: string;
+  try {
+    publicUrl = normalizeSafeTunnelPublicUrl(registeredMachine.publicUrl);
+  } catch {
+    throw new SafeTunnelServiceError("invalid_login");
+  }
+  if (new URL(publicUrl).hostname !== registeredMachine.publicHostname) {
+    throw new SafeTunnelServiceError("invalid_login");
+  }
+  return { ...registeredMachine, publicUrl };
+}
+
+function matchesRegisteredPublicIngress(
+  tunnelConfig: SafeTunnelMachineTunnelConfig,
+  registeredPublicUrl: string | undefined,
+): boolean {
+  if (registeredPublicUrl === undefined) return false;
+  try {
+    const registeredOrigin = normalizeSafeTunnelPublicUrl(registeredPublicUrl);
+    const configuredOrigin = normalizeSafeTunnelPublicUrl(tunnelConfig.publicUrl);
+    return configuredOrigin === registeredOrigin
+      && tunnelConfig.publicHostname === new URL(registeredOrigin).hostname;
+  } catch {
+    return false;
   }
 }
 

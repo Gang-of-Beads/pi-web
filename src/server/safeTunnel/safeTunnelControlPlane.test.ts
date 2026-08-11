@@ -294,6 +294,50 @@ describe("HttpSafeTunnelControlPlane", () => {
     expect(fetchCalls).toBe(0);
   });
 
+  it("rejects plaintext non-loopback public ingress identities from registration and config", async () => {
+    const insecureRegistration = new HttpSafeTunnelControlPlane({
+      fetch: () => Promise.resolve(jsonResponse(201, {
+        ...registeredMachine(),
+        publicUrl: "http://dev-box.ns-abc123.tunnels.pi-web.dev",
+      })),
+    });
+
+    await expect(insecureRegistration.registerMachine({
+      controlApiBaseUrl: "https://control.example.test",
+      connectorAccessToken: "piwt_cat_v1_access",
+      machineName: "Dev Box",
+      machineSlug: "dev-box",
+      localPiWebUrl: "http://127.0.0.1:8504",
+      clientVersion: safeTunnelClientVersion,
+    })).rejects.toMatchObject({
+      code: "invalid_response",
+      operation: "register_machine",
+    });
+
+    const insecureConfig = new HttpSafeTunnelControlPlane({
+      fetch: () => Promise.resolve(jsonResponse(200, {
+        machine: { id: "machine_123" },
+        publicHostname: "dev-box.ns-abc123.tunnels.pi-web.dev",
+        publicUrl: "http://dev-box.ns-abc123.tunnels.pi-web.dev",
+        localPiWebUrl: "http://127.0.0.1:8504",
+        frp: {
+          proxyName: "account-machine",
+          configFormat: "toml",
+          frpcConfigToml: "[[proxies]]\n",
+        },
+      })),
+    });
+
+    await expect(insecureConfig.getMachineTunnelConfig({
+      controlApiBaseUrl: "https://control.example.test",
+      machineId: "machine_123",
+      machineToken: "piwt_mtok_v1_private",
+    })).rejects.toMatchObject({
+      code: "invalid_response",
+      operation: "get_tunnel_config",
+    });
+  });
+
   it("bounds success bodies and rejects insecure approval links", async () => {
     const oversized = new HttpSafeTunnelControlPlane({
       fetch: () => Promise.resolve(new Response("x", {

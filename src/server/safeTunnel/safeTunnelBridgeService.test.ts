@@ -27,6 +27,21 @@ import {
 } from "./safeTunnelBridgeService.js";
 
 describe("DefaultSafeTunnelBridgeService", () => {
+  it("reads only persisted state when resolving the registered public origin", async () => {
+    const fixture = createFixture();
+    fixture.application.loaded = registeredState({
+      machine: {
+        ...registeredState().state.machine ?? missingMachineCredentials(),
+        publicUrl: "https://dev-box.ns.tunnels.pi-web.dev:9443",
+      },
+    });
+
+    await expect(fixture.service.registeredPublicOrigin()).resolves.toBe(
+      "https://dev-box.ns.tunnels.pi-web.dev:9443",
+    );
+    expect(fixture.runtime.statusCalls).toBe(0);
+  });
+
   it("maps private state and structured revocation diagnostics without credentials", async () => {
     const fixture = createFixture();
     fixture.application.loaded = registeredState({
@@ -375,6 +390,30 @@ describe("DefaultSafeTunnelBridgeService", () => {
     }]);
   });
 
+  it("replaces a legacy registration that has no bound public origin", async () => {
+    const fixture = createFixture();
+    fixture.application.loaded = registeredState({
+      machine: {
+        controlApiBaseUrl: "https://control.example.test",
+        credentialStatus: "active",
+        machineId: "machine_123",
+        machineToken: "piwt_mtok_v1_private",
+        machineSlug: "dev-box",
+      },
+    });
+
+    const response = await fixture.service.enable({});
+    await vi.waitFor(() => {
+      expect(fixture.service.operation(response.operation.id)?.status).toBe("succeeded");
+    });
+
+    expect(fixture.application.loginCalls).toBe(1);
+    expect(fixture.application.enableCalls).toEqual([{
+      localPiWebUrl: "http://127.0.0.1:8504",
+    }]);
+    expect(fixture.runtime.startCalls).toEqual([{}]);
+  });
+
   it("applies advanced self-hosting overrides only when supplied", async () => {
     const fixture = createFixture();
     const login = createDeferred<SafeTunnelLoginResult>();
@@ -654,6 +693,7 @@ class FakeFrpcRuntime implements SafeTunnelReconciledFrpcRuntime {
     pid: 1234,
     publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
   });
+  statusCalls = 0;
   statusValue: SafeTunnelRuntimeStatus = runtimeStatus();
   stopCalls = 0;
   stopError: Error | undefined;
@@ -696,6 +736,7 @@ class FakeFrpcRuntime implements SafeTunnelReconciledFrpcRuntime {
   }
 
   status(): Promise<SafeTunnelRuntimeStatus> {
+    this.statusCalls += 1;
     return Promise.resolve({ ...this.statusValue });
   }
 
