@@ -256,6 +256,25 @@ describe("SafeTunnelRuntimeReconciler", () => {
     expect(fixture.runtime.shutdownCalls).toBe(1);
   });
 
+  it("retries retained runtime ownership after an unconfirmed shutdown", async () => {
+    const fixture = createFixture();
+    const stopFailure = new Error("owned child stop was not confirmed");
+    fixture.runtime.shutdownResult = Promise.reject(stopFailure);
+
+    const firstShutdown = fixture.reconciler.shutdown();
+    const concurrentShutdown = fixture.reconciler.shutdown();
+    await expect(firstShutdown).rejects.toBe(stopFailure);
+    await expect(concurrentShutdown).rejects.toBe(stopFailure);
+    expect(fixture.runtime.shutdownCalls).toBe(1);
+
+    fixture.runtime.shutdownResult = Promise.resolve();
+    await expect(fixture.reconciler.shutdown()).resolves.toBeUndefined();
+    expect(fixture.runtime.shutdownCalls).toBe(2);
+
+    await expect(fixture.reconciler.shutdown()).resolves.toBeUndefined();
+    expect(fixture.runtime.shutdownCalls).toBe(2);
+  });
+
   it("leaves explicitly disabled intent stopped without scheduling heartbeats", async () => {
     const fixture = createFixture();
 

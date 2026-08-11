@@ -18,4 +18,8 @@ appRef.current = app;
 await runWebProcess(app, {
   port: config.port ?? 8504,
   host: config.host ?? "127.0.0.1",
+}, safeTunnel === undefined ? {} : {
+  // Fastify will not replay a rejected onClose hook. Keep a later process
+  // signal connected directly to the retained Safe Tunnel runtime owner.
+  retryShutdown: () => safeTunnel.shutdown(),
 });

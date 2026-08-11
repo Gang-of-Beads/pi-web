@@ -167,6 +167,7 @@ describe("web-process lifecycle", () => {
       try {
         await runWebProcess(app, { port: 0 }, {
           listen: readyWithoutListening,
+          retryShutdown: () => fixture.bridge.shutdown(),
           signalSource,
         });
         expect(fixture.startup).toHaveBeenCalledOnce();
@@ -184,6 +185,63 @@ describe("web-process lifecycle", () => {
       expect(fixture.shutdown).toHaveBeenCalledOnce();
     },
   );
+
+  it("coalesces later signals while retrying a retained enabled bridge", async () => {
+    const fixture = fakeBridge();
+    const signalSource = new FakeWebProcessSignalSource();
+    const stopFailure = new Error("owned child stop was not confirmed");
+    const retryShutdown = createDeferred();
+    fixture.shutdown
+      .mockRejectedValueOnce(stopFailure)
+      .mockImplementationOnce(() => retryShutdown.promise);
+    const app = await buildApp({
+      clientDist: false,
+      logger: false,
+      safeTunnel: fixture.bridge,
+      sessionDaemon: fakeSessionDaemon(),
+    });
+    const close = vi.fn((closingApp: FastifyInstance) => closingApp.close());
+    const logError = vi.spyOn(app.log, "error");
+
+    try {
+      await runWebProcess(app, { port: 0 }, {
+        close,
+        listen: readyWithoutListening,
+        retryShutdown: () => fixture.bridge.shutdown(),
+        signalSource,
+      });
+
+      await signalSource.emit("SIGTERM");
+
+      expect(close).toHaveBeenCalledOnce();
+      expect(fixture.shutdown).toHaveBeenCalledOnce();
+      expect(logError).toHaveBeenCalledWith(
+        { err: stopFailure, signal: "SIGTERM" },
+        "failed to close web server after shutdown signal",
+      );
+      expect(signalSource.listenerCount("SIGINT")).toBe(1);
+      expect(signalSource.listenerCount("SIGTERM")).toBe(1);
+
+      const retryRequests = [
+        signalSource.emit("SIGINT"),
+        signalSource.emit("SIGTERM"),
+      ];
+      await Promise.resolve();
+
+      expect(close).toHaveBeenCalledOnce();
+      expect(fixture.shutdown).toHaveBeenCalledTimes(2);
+      expect(signalSource.listenerCount("SIGINT")).toBe(1);
+      expect(signalSource.listenerCount("SIGTERM")).toBe(1);
+
+      retryShutdown.resolve();
+      await Promise.all(retryRequests);
+      expect(signalSource.listenerCount("SIGINT")).toBe(0);
+      expect(signalSource.listenerCount("SIGTERM")).toBe(0);
+    } finally {
+      retryShutdown.resolve();
+      await app.close().catch(() => undefined);
+    }
+  });
 
   it("removes both process listeners when the app is closed externally", async () => {
     const app = Fastify({ logger: false });
@@ -273,6 +331,48 @@ describe("web-process lifecycle", () => {
       expect(signalSource.listenerCount("SIGTERM")).toBe(0);
     } finally {
       await app.close();
+    }
+  });
+
+  it("bounds direct Safe Tunnel cleanup retry after a listen failure", async () => {
+    const fixture = fakeBridge();
+    const signalSource = new FakeWebProcessSignalSource();
+    const listenFailure = new Error("address already in use");
+    const retryFailure = new Error("owned child still did not stop");
+    fixture.shutdown
+      .mockRejectedValueOnce(new Error("owned child stop was not confirmed"))
+      .mockRejectedValueOnce(retryFailure);
+    const app = await buildApp({
+      clientDist: false,
+      logger: false,
+      safeTunnel: fixture.bridge,
+      sessionDaemon: fakeSessionDaemon(),
+    });
+    const close = vi.fn((closingApp: FastifyInstance) => closingApp.close());
+    const logError = vi.spyOn(app.log, "error");
+
+    try {
+      await expect(runWebProcess(app, { port: 8504 }, {
+        close,
+        retryShutdown: () => fixture.bridge.shutdown(),
+        signalSource,
+        listen: async (readyApp) => {
+          await readyApp.ready();
+          throw listenFailure;
+        },
+      })).rejects.toBe(listenFailure);
+
+      expect(fixture.startup).toHaveBeenCalledOnce();
+      expect(fixture.shutdown).toHaveBeenCalledTimes(2);
+      expect(close).toHaveBeenCalledOnce();
+      expect(logError).toHaveBeenCalledWith(
+        { err: retryFailure },
+        "web server listen failed and shutdown was incomplete",
+      );
+      expect(signalSource.listenerCount("SIGINT")).toBe(0);
+      expect(signalSource.listenerCount("SIGTERM")).toBe(0);
+    } finally {
+      await app.close().catch(() => undefined);
     }
   });
 

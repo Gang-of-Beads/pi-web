@@ -200,6 +200,14 @@ export class SafeTunnelRuntimeReconciler implements SafeTunnelReconciledFrpcRunt
     this.beginGeneration();
     const shutdown = this.performShutdown();
     this.shutdownInFlight = shutdown;
+    void shutdown.then(
+      () => undefined,
+      () => {
+        // The child supervisor retains an unconfirmed exact handle. Let a
+        // later shutdown attempt reach it again instead of memoizing failure.
+        if (this.shutdownInFlight === shutdown) this.shutdownInFlight = undefined;
+      },
+    );
     return shutdown;
   }
 

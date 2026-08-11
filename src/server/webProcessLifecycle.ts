@@ -22,6 +22,11 @@ export interface WebProcessLifecycleDependencies {
     app: FastifyInstance,
     options: FastifyListenOptions,
   ) => Promise<unknown>;
+  /**
+   * Retries owned-resource cleanup directly after Fastify close rejects.
+   * Fastify does not rerun a rejected onClose hook on later close calls.
+   */
+  retryShutdown?: () => Promise<void>;
 }
 
 const nodeProcessSignalSource: WebProcessSignalSource = {
@@ -41,8 +46,8 @@ const listenWithFastify = (
 
 /**
  * Owns web-process signal listeners and the startup failure boundary around a
- * composed Fastify app. Application services remain owned by Fastify hooks, so
- * every shutdown path converges on one app.close() operation.
+ * composed Fastify app. Application services remain owned by Fastify hooks;
+ * explicitly injected cleanup can retry when a rejected hook cannot be replayed.
  */
 export async function runWebProcess(
   app: FastifyInstance,
@@ -52,33 +57,50 @@ export async function runWebProcess(
   const signalSource = dependencies.signalSource ?? nodeProcessSignalSource;
   const close = dependencies.close ?? closeWithFastify;
   const listen = dependencies.listen ?? listenWithFastify;
+  const retryShutdown = dependencies.retryShutdown;
   const unsubscribeSignals: (() => void)[] = [];
+  let fastifyCloseFailed = false;
   let signalsRemoved = false;
-  let closePromise: Promise<void> | undefined;
+  let shutdownInFlight: Promise<void> | undefined;
 
   const removeSignalListeners = (): void => {
     if (signalsRemoved) return;
     signalsRemoved = true;
     for (const unsubscribe of unsubscribeSignals.splice(0)) unsubscribe();
   };
-  const closeOnce = (): Promise<void> => {
-    closePromise ??= Promise.resolve()
-      .then(() => close(app))
-      .finally(removeSignalListeners);
-    return closePromise;
+  const requestShutdown = (): Promise<void> => {
+    if (shutdownInFlight !== undefined) return shutdownInFlight;
+
+    const retryingFailedClose = fastifyCloseFailed && retryShutdown !== undefined;
+    const shutdown = Promise.resolve().then(() => (
+      retryingFailedClose ? retryShutdown() : close(app)
+    ));
+    shutdownInFlight = shutdown;
+    void shutdown.then(
+      () => { removeSignalListeners(); },
+      () => {
+        if (!retryingFailedClose) fastifyCloseFailed = true;
+        if (shutdownInFlight === shutdown) shutdownInFlight = undefined;
+        // Without direct retry cleanup, another app.close() cannot replay a
+        // rejected Fastify onClose hook and retaining listeners cannot help.
+        if (retryShutdown === undefined) removeSignalListeners();
+      },
+    );
+    return shutdown;
   };
 
   app.addHook("onClose", () => {
-    // Keep listeners through signal-owned shutdown so later signals join the
-    // same close promise. An external close has no such promise to finalize.
-    if (closePromise === undefined) removeSignalListeners();
+    // Keep listeners through signal-owned shutdown so concurrent signals join
+    // its attempt and a later signal can retry failed owned-resource cleanup.
+    // An external close has no lifecycle-owned promise to finalize.
+    if (shutdownInFlight === undefined) removeSignalListeners();
     return Promise.resolve();
   });
 
   for (const signal of WEB_PROCESS_SHUTDOWN_SIGNALS) {
     unsubscribeSignals.push(signalSource.subscribe(signal, async () => {
       try {
-        await closeOnce();
+        await requestShutdown();
       } catch (error: unknown) {
         app.log.error(
           { err: error, signal },
@@ -91,9 +113,24 @@ export async function runWebProcess(
   try {
     await listen(app, listenOptions);
   } catch (error: unknown) {
+    let cleanupError: unknown;
     try {
-      await closeOnce();
-    } catch (cleanupError: unknown) {
+      await requestShutdown();
+    } catch (initialCleanupError: unknown) {
+      cleanupError = initialCleanupError;
+      if (retryShutdown !== undefined) {
+        try {
+          await requestShutdown();
+          cleanupError = undefined;
+        } catch (retryCleanupError: unknown) {
+          cleanupError = retryCleanupError;
+        }
+      }
+    }
+    // The web-process startup path is about to return, so no later signal
+    // retry can be assumed. Keep cleanup bounded and release both listeners.
+    removeSignalListeners();
+    if (cleanupError !== undefined) {
       app.log.error(
         { err: cleanupError },
         "web server listen failed and shutdown was incomplete",
