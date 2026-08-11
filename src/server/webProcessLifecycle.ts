@@ -9,6 +9,8 @@ export const WEB_PROCESS_SHUTDOWN_SIGNALS = ["SIGINT", "SIGTERM"] as const;
 export type WebProcessShutdownSignal = typeof WEB_PROCESS_SHUTDOWN_SIGNALS[number];
 export type WebProcessSignalListener = () => void | Promise<void>;
 
+type FastifyCloseListener = () => void;
+
 export interface WebProcessSignalSource {
   subscribe(
     signal: WebProcessShutdownSignal,
@@ -71,6 +73,7 @@ export async function runWebProcess(
     resolveShutdownConfirmed = resolve;
   });
   let fastifyCloseFailed = false;
+  let lifecycleCloseCallInProgress = false;
   let signalsRemoved = false;
   let shutdownInFlight: Promise<void> | undefined;
   let shutdownRetryTimer: NodeJS.Timeout | undefined;
@@ -103,13 +106,38 @@ export async function runWebProcess(
     // Keep this retry schedule referenced until exact cleanup is confirmed.
     shutdownRetryTimer.ref();
   }
+  function observeFastifyClose(
+    closePromise: Promise<undefined>,
+  ): Promise<undefined> {
+    const lifecycleOwnsClose = shutdownInFlight !== undefined;
+    const observedClose = closePromise.then(
+      (result) => {
+        releaseShutdownOwnership();
+        return result;
+      },
+      (error: unknown) => {
+        fastifyCloseFailed = true;
+        if (!lifecycleOwnsClose) shutdownInFlight = undefined;
+        retainShutdownOwnership();
+        throw error;
+      },
+    );
+    if (!lifecycleOwnsClose) shutdownInFlight = observedClose;
+    return observedClose;
+  }
   function requestShutdown(): Promise<void> {
     if (shutdownInFlight !== undefined) return shutdownInFlight;
 
     const retryingFailedClose = fastifyCloseFailed && retryShutdown !== undefined;
-    const shutdown = Promise.resolve().then(() => (
-      retryingFailedClose ? retryShutdown() : close(app)
-    ));
+    const shutdown = Promise.resolve().then(() => {
+      if (retryingFailedClose) return retryShutdown();
+      lifecycleCloseCallInProgress = true;
+      try {
+        return close(app);
+      } finally {
+        lifecycleCloseCallInProgress = false;
+      }
+    });
     shutdownInFlight = shutdown;
     void shutdown.then(
       () => {
@@ -127,11 +155,46 @@ export async function runWebProcess(
     return shutdown;
   }
 
+  if (retryShutdown !== undefined) {
+    const closeFastify = app.close.bind(app);
+    const closeWithLifecycleOwnership = (): Promise<undefined> => {
+      if (!lifecycleCloseCallInProgress) {
+        if (shutdownInFlight !== undefined) {
+          return shutdownInFlight.then(() => undefined);
+        }
+        if (fastifyCloseFailed) {
+          return requestShutdown().then(() => undefined);
+        }
+      }
+      return observeFastifyClose(closeFastify());
+    };
+    function closeAndRetainOwnership(): Promise<undefined>;
+    function closeAndRetainOwnership(listener: FastifyCloseListener): undefined;
+    function closeAndRetainOwnership(
+      listener?: FastifyCloseListener,
+    ): Promise<undefined> | undefined {
+      const closePromise = closeWithLifecycleOwnership();
+      if (listener === undefined) return closePromise;
+      void closePromise.then(
+        () => { listener(); },
+        () => { listener(); },
+      );
+      return undefined;
+    }
+    // Observe direct Fastify closes as well as signal-owned closes. Fastify
+    // cannot replay a rejected onClose hook, so later calls must join or retry
+    // the exact injected resource cleanup instead of treating closure as done.
+    app.close = closeAndRetainOwnership;
+  }
+
   app.addHook("onClose", () => {
-    // Keep listeners through signal-owned shutdown so concurrent signals join
-    // its attempt and a later signal can retry failed owned-resource cleanup.
-    // An external close has no lifecycle-owned promise to finalize.
-    if (shutdownInFlight === undefined) removeSignalListeners();
+    if (retryShutdown !== undefined) {
+      // Retain the process while either a direct or signal-owned close runs.
+      // The observed close result releases this owner only after exact success.
+      retainShutdownOwnership();
+    } else if (shutdownInFlight === undefined) {
+      removeSignalListeners();
+    }
     return Promise.resolve();
   });
 

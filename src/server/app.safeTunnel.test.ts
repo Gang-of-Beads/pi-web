@@ -283,6 +283,85 @@ describe("web-process lifecycle", () => {
     }
   });
 
+  it("retains direct-close cleanup ownership until the injected bridge succeeds", async () => {
+    const fixture = fakeBridge();
+    const signalSource = new FakeWebProcessSignalSource();
+    const closeFailure = new Error("owned child stop was not confirmed");
+    const retryShutdown = createDeferred();
+    fixture.shutdown
+      .mockRejectedValueOnce(closeFailure)
+      .mockImplementationOnce(() => retryShutdown.promise);
+    const app = await buildApp({
+      clientDist: false,
+      logger: false,
+      safeTunnel: fixture.bridge,
+      sessionDaemon: fakeSessionDaemon(),
+    });
+
+    try {
+      await runWebProcess(app, { port: 0 }, {
+        listen: readyWithoutListening,
+        retryShutdown: () => fixture.bridge.shutdown(),
+        shutdownRetryIntervalMs: 25,
+        signalSource,
+      });
+
+      await expect(app.close()).rejects.toBe(closeFailure);
+      expect(fixture.shutdown).toHaveBeenCalledOnce();
+      expect(signalSource.listenerCount("SIGINT")).toBe(1);
+      expect(signalSource.listenerCount("SIGTERM")).toBe(1);
+
+      await vi.waitFor(() => {
+        expect(fixture.shutdown).toHaveBeenCalledTimes(2);
+      });
+      const joinedRetries = [
+        signalSource.emit("SIGINT"),
+        signalSource.emit("SIGTERM"),
+        app.close(),
+      ];
+      await Promise.resolve();
+      expect(fixture.shutdown).toHaveBeenCalledTimes(2);
+
+      retryShutdown.resolve();
+      await Promise.all(joinedRetries);
+      expect(signalSource.listenerCount("SIGINT")).toBe(0);
+      expect(signalSource.listenerCount("SIGTERM")).toBe(0);
+      expect(fixture.shutdown).toHaveBeenCalledTimes(2);
+    } finally {
+      retryShutdown.resolve();
+      await signalSource.emit("SIGINT");
+      await app.close().catch(() => undefined);
+    }
+  });
+
+  it("releases direct-close ownership after one successful enabled cleanup", async () => {
+    const fixture = fakeBridge();
+    const signalSource = new FakeWebProcessSignalSource();
+    const app = await buildApp({
+      clientDist: false,
+      logger: false,
+      safeTunnel: fixture.bridge,
+      sessionDaemon: fakeSessionDaemon(),
+    });
+
+    try {
+      await runWebProcess(app, { port: 0 }, {
+        listen: readyWithoutListening,
+        retryShutdown: () => fixture.bridge.shutdown(),
+        shutdownRetryIntervalMs: 10,
+        signalSource,
+      });
+
+      await app.close();
+
+      expect(fixture.shutdown).toHaveBeenCalledOnce();
+      expect(signalSource.listenerCount("SIGINT")).toBe(0);
+      expect(signalSource.listenerCount("SIGTERM")).toBe(0);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("removes both process listeners when the app is closed externally", async () => {
     const app = Fastify({ logger: false });
     const signalSource = new FakeWebProcessSignalSource();

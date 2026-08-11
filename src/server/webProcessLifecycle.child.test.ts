@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 type FixtureChild = ChildProcessByStdio<null, Readable, Readable>;
-type FixtureScenario = "listen-failure" | "signal-shutdown";
+type FixtureScenario = "direct-close" | "listen-failure" | "signal-shutdown";
 
 const tempRoots: string[] = [];
 const children = new Set<FixtureChild>();
@@ -67,6 +67,26 @@ describe("web-process lifecycle child process", () => {
     },
     30_000,
   );
+
+  it.skipIf(process.platform === "win32")(
+    "keeps a direct-close process alive until scheduled cleanup succeeds",
+    async () => {
+      const fixture = await spawnFixture("direct-close");
+
+      try {
+        await fixture.output.waitFor("DIRECT_CLOSE_ERROR", 15_000);
+        await expectStillRunning(fixture.child, fixture.output, 150);
+        await fixture.output.waitFor("SHUTDOWN:2", 5_000);
+
+        const exit = await waitForExit(fixture.child, fixture.output, 5_000);
+        children.delete(fixture.child);
+        expect(exit).toEqual({ code: 0, signal: null });
+      } finally {
+        fixture.output.dispose();
+      }
+    },
+    30_000,
+  );
 });
 
 async function spawnFixture(scenario: FixtureScenario): Promise<{
@@ -94,20 +114,23 @@ function lifecycleRunner(appUrl: string, lifecycleUrl: string): string {
     import { runWebProcess } from ${JSON.stringify(lifecycleUrl)};
 
     const scenario = process.argv[2];
-    if (scenario !== "listen-failure" && scenario !== "signal-shutdown") {
+    if (
+      scenario !== "direct-close"
+      && scenario !== "listen-failure"
+      && scenario !== "signal-shutdown"
+    ) {
       throw new Error("unknown lifecycle fixture scenario");
     }
 
     const failedShutdowns = scenario === "listen-failure" ? 2 : 1;
+    const shutdownFailure = new Error("fixture cleanup remains incomplete");
     let shutdownCalls = 0;
     const safeTunnel = {
       async startup() {},
       async shutdown() {
         shutdownCalls += 1;
         process.stdout.write("SHUTDOWN:" + String(shutdownCalls) + "\\n");
-        if (shutdownCalls <= failedShutdowns) {
-          throw new Error("fixture cleanup remains incomplete");
-        }
+        if (shutdownCalls <= failedShutdowns) throw shutdownFailure;
       },
       async status() { throw new Error("status must not be called"); },
       async enable() { throw new Error("enable must not be called"); },
@@ -137,9 +160,9 @@ function lifecycleRunner(appUrl: string, lifecycleUrl: string): string {
     });
     const dependencies = {
       retryShutdown: () => safeTunnel.shutdown(),
-      // A real referenced timer keeps this otherwise handle-free fixture alive;
-      // the parent sends the direct retry well before this fallback fires.
-      shutdownRetryIntervalMs: 60_000,
+      // A real referenced timer keeps each otherwise handle-free fixture alive.
+      // Signal scenarios retry directly; direct close exercises the schedule.
+      shutdownRetryIntervalMs: scenario === "direct-close" ? 1_000 : 60_000,
     };
 
     if (scenario === "listen-failure") {
@@ -166,6 +189,15 @@ function lifecycleRunner(appUrl: string, lifecycleUrl: string): string {
           process.stdout.write("READY\\n");
         },
       });
+      if (scenario === "direct-close") {
+        try {
+          await app.close();
+          throw new Error("direct close unexpectedly resolved");
+        } catch (error) {
+          if (error !== shutdownFailure) throw error;
+          process.stdout.write("DIRECT_CLOSE_ERROR\\n");
+        }
+      }
     }
   `;
 }
