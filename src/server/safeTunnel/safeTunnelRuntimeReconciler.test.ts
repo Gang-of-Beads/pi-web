@@ -31,6 +31,7 @@ const policy = {
   maximumRecoveryDelayMs: 40,
   minimumHeartbeatIntervalMs: 20_000,
 } as const;
+const credentialsRejectedMessageForTest = "Safe Tunnel access for this PI WEB was rejected or revoked. Enable Safe Tunnel to approve it again.";
 
 describe("SafeTunnelRuntimeReconciler", () => {
   it("recovers persisted enabled intent and clamps hosted heartbeat intervals", async () => {
@@ -97,27 +98,55 @@ describe("SafeTunnelRuntimeReconciler", () => {
     expect(fixture.runtime.stopCalls).toBe(0);
   });
 
-  it("stops on rejected or revoked credentials and resumes after re-registration", async () => {
+  it("retries revoked-child stops and requires an explicit re-registration start", async () => {
     const fixture = createFixture();
     fixture.safeTunnel.loaded = registeredEnabledState();
     fixture.safeTunnel.heartbeatResults = [() => Promise.reject(
       new SafeTunnelControlPlaneError("authentication_failed", "record_heartbeat"),
     )];
+    fixture.runtime.stopResults = [
+      () => Promise.reject(new Error("first unconfirmed stop")),
+      () => Promise.reject(new Error("second unconfirmed stop")),
+      () => Promise.resolve(runtimeStopOutput()),
+    ];
 
     await fixture.reconciler.startup();
     fixture.clock.advance(0);
-    await waitForCondition(() => fixture.runtime.stopCalls === 1);
+    await waitForCondition(() => fixture.clock.activeTaskCount() === 1);
 
     expect(fixture.runtime.stopCalls).toBe(1);
-    expect(fixture.clock.activeTaskCount()).toBe(0);
+    expect(fixture.runtime.startCalls).toHaveLength(1);
     expect(fixture.safeTunnel.loaded.state.desiredState).toBe("enabled");
-    const revokedStatus = await fixture.reconciler.status();
-    expect(revokedStatus.state).toBe("stopped");
-    expect(revokedStatus.diagnosticCode).toBe("credentials_rejected");
-    expect(revokedStatus.error).toContain("rejected or revoked");
+    const firstRetryStatus = await fixture.reconciler.status();
+    expect(firstRetryStatus).toMatchObject({
+      state: "running",
+      diagnosticCode: "credentials_rejected",
+    });
+    expect(firstRetryStatus.error).toContain("Retrying in 10 ms");
+
+    fixture.clock.advance(10);
+    await waitForCondition(() => fixture.runtime.stopCalls === 2
+      && fixture.clock.activeTaskCount() === 1);
+    expect(fixture.runtime.startCalls).toHaveLength(1);
+    const secondRetryStatus = await fixture.reconciler.status();
+    expect(secondRetryStatus.diagnosticCode).toBe("credentials_rejected");
+    expect(secondRetryStatus.error).toContain("Retrying in 20 ms");
+
+    fixture.clock.advance(20);
+    await waitForCondition(() => fixture.runtime.stopCalls === 3);
+    expect(fixture.runtime.startCalls).toHaveLength(1);
+    expect(fixture.clock.activeTaskCount()).toBe(0);
+    await expect(fixture.reconciler.status()).resolves.toMatchObject({
+      state: "stopped",
+      diagnosticCode: "credentials_rejected",
+      error: credentialsRejectedMessageForTest,
+    });
+
+    await fixture.reconciler.reconcile();
+    expect(fixture.runtime.startCalls).toHaveLength(1);
 
     fixture.safeTunnel.heartbeatResults = [() => Promise.resolve(heartbeatResult(30))];
-    await fixture.reconciler.reconcile();
+    await fixture.reconciler.start({});
     expect(fixture.runtime.startCalls).toHaveLength(2);
     fixture.clock.advance(0);
     await waitForCondition(() => fixture.safeTunnel.heartbeatCalls.length === 2);
@@ -173,22 +202,84 @@ describe("SafeTunnelRuntimeReconciler", () => {
     expect(JSON.stringify(await fixture.reconciler.status())).not.toContain("filesystem detail");
   });
 
-  it("keeps missing registration stopped and resumes after registration", async () => {
+  it("contains detached reconciliation failures while retrying a disabled-intent stop", async () => {
+    const fixture = createFixture();
+    fixture.runtime.statusValue = runtimeStatus({ state: "running", pid: 4100 });
+    fixture.safeTunnel.stateResults = [
+      Promise.reject(new Error("private state read failure")),
+      Promise.resolve({
+        exists: true,
+        state: createDefaultSafeTunnelState(),
+      }),
+    ];
+    fixture.runtime.stopResults = [
+      () => Promise.reject(new Error("first unconfirmed stop")),
+      () => Promise.reject(new Error("second unconfirmed stop")),
+      () => Promise.resolve(runtimeStopOutput()),
+    ];
+    const unhandledRejections: unknown[] = [];
+    const onUnhandledRejection = (error: unknown): void => {
+      unhandledRejections.push(error);
+    };
+    process.on("unhandledRejection", onUnhandledRejection);
+
+    try {
+      await fixture.reconciler.startup();
+      expect(fixture.clock.scheduledDelays.at(-1)).toBe(10);
+
+      fixture.clock.advance(10);
+      await waitForCondition(() => fixture.runtime.stopCalls === 1);
+      await nextEventLoopTurn();
+      expect(unhandledRejections).toEqual([]);
+      expect(fixture.runtime.startCalls).toEqual([]);
+      const firstRetryStatus = await fixture.reconciler.status();
+      expect(firstRetryStatus).toMatchObject({
+        state: "running",
+        diagnosticCode: "runtime_recovery_failed",
+      });
+      expect(firstRetryStatus.error).toContain("Retrying in 10 ms");
+
+      fixture.clock.advance(10);
+      await waitForCondition(() => fixture.runtime.stopCalls === 2);
+      expect(fixture.runtime.startCalls).toEqual([]);
+      fixture.clock.advance(20);
+      await waitForCondition(() => fixture.runtime.stopCalls === 3);
+      await nextEventLoopTurn();
+
+      expect(unhandledRejections).toEqual([]);
+      expect(fixture.runtime.startCalls).toEqual([]);
+      expect(fixture.clock.activeTaskCount()).toBe(0);
+      await expect(fixture.reconciler.status()).resolves.toMatchObject({ state: "stopped" });
+      await expect(fixture.reconciler.status()).resolves.not.toHaveProperty("error");
+    } finally {
+      process.off("unhandledRejection", onUnhandledRejection);
+    }
+  });
+
+  it("keeps missing registration stopped through stop recovery", async () => {
     const fixture = createFixture();
     fixture.safeTunnel.loaded = {
       exists: true,
       state: { ...createDefaultSafeTunnelState(), desiredState: "enabled" },
     };
+    fixture.runtime.stopResults = [
+      () => Promise.reject(new Error("unconfirmed stop")),
+      () => Promise.resolve(runtimeStopOutput()),
+    ];
 
     await fixture.reconciler.startup();
 
     expect(fixture.runtime.startCalls).toEqual([]);
     expect(fixture.runtime.stopCalls).toBe(1);
-    const unregisteredStatus = await fixture.reconciler.status();
-    expect(unregisteredStatus.diagnosticCode).toBe("registration_required");
-    expect(unregisteredStatus.error).toContain("registration is missing");
+    const retryingStatus = await fixture.reconciler.status();
+    expect(retryingStatus.diagnosticCode).toBe("registration_required");
+    expect(retryingStatus.error).toContain("Retrying in 10 ms");
 
     fixture.safeTunnel.loaded = registeredEnabledState();
+    fixture.clock.advance(10);
+    await waitForCondition(() => fixture.runtime.stopCalls === 2);
+    expect(fixture.runtime.startCalls).toEqual([]);
+
     await fixture.reconciler.reconcile();
     expect(fixture.runtime.startCalls).toEqual([{}]);
   });
@@ -206,13 +297,53 @@ describe("SafeTunnelRuntimeReconciler", () => {
       },
     };
 
+    fixture.runtime.stopResults = [
+      () => Promise.reject(new Error("unconfirmed stop")),
+      () => Promise.resolve(runtimeStopOutput()),
+    ];
     await fixture.reconciler.startup();
 
     expect(fixture.runtime.startCalls).toEqual([]);
     expect(fixture.runtime.stopCalls).toBe(1);
-    const status = await fixture.reconciler.status();
-    expect(status.diagnosticCode).toBe("credentials_rejected");
-    expect(status.error).toContain("approve it again");
+    const retryingStatus = await fixture.reconciler.status();
+    expect(retryingStatus.diagnosticCode).toBe("credentials_rejected");
+    expect(retryingStatus.error).toContain("Retrying in 10 ms");
+
+    fixture.clock.advance(10);
+    await waitForCondition(() => fixture.runtime.stopCalls === 2);
+    expect(fixture.runtime.startCalls).toEqual([]);
+    const stoppedStatus = await fixture.reconciler.status();
+    expect(stoppedStatus.diagnosticCode).toBe("credentials_rejected");
+    expect(stoppedStatus.error).toContain("approve it again");
+  });
+
+  it("does not replace supervision until a registration-change stop is confirmed", async () => {
+    const fixture = createFixture();
+    fixture.safeTunnel.loaded = registeredEnabledState();
+    fixture.runtime.stopResults = [
+      () => Promise.reject(new Error("first unconfirmed stop")),
+      () => Promise.reject(new Error("second unconfirmed stop")),
+      () => Promise.resolve(runtimeStopOutput()),
+    ];
+
+    await fixture.reconciler.startup();
+    expect(fixture.runtime.startCalls).toEqual([{}]);
+
+    await fixture.reconciler.reconcile();
+    expect(fixture.runtime.stopCalls).toBe(1);
+    expect(fixture.runtime.startCalls).toHaveLength(1);
+    const retryingStatus = await fixture.reconciler.status();
+    expect(retryingStatus.diagnosticCode).toBe("runtime_recovery_failed");
+    expect(retryingStatus.error).toContain("Retrying in 10 ms");
+
+    fixture.clock.advance(10);
+    await waitForCondition(() => fixture.runtime.stopCalls === 2);
+    expect(fixture.runtime.startCalls).toHaveLength(1);
+
+    fixture.clock.advance(20);
+    await waitForCondition(() => fixture.runtime.startCalls.length === 2);
+    expect(fixture.runtime.stopCalls).toBe(3);
+    await expect(fixture.reconciler.status()).resolves.not.toHaveProperty("error");
   });
 
   it("aborts and finishes heartbeat work before child shutdown", async () => {
@@ -234,6 +365,40 @@ describe("SafeTunnelRuntimeReconciler", () => {
       "heartbeat:abort",
       "runtime:shutdown",
     ]);
+    expect(fixture.clock.activeTaskCount()).toBe(0);
+  });
+
+  it("cancels and joins stop recovery before supervisor shutdown", async () => {
+    const fixture = createFixture();
+    fixture.safeTunnel.loaded = registeredEnabledState();
+    fixture.safeTunnel.heartbeatResults = [() => Promise.reject(
+      new SafeTunnelControlPlaneError("authentication_failed", "record_heartbeat"),
+    )];
+    let rejectRecoveryStop: (reason?: unknown) => void = () => undefined;
+    const recoveryStop = new Promise<SafeTunnelCommandOutput>((_resolve, reject) => {
+      rejectRecoveryStop = reject;
+    });
+    fixture.runtime.stopResults = [
+      () => Promise.reject(new Error("first unconfirmed stop")),
+      () => recoveryStop,
+    ];
+
+    await fixture.reconciler.startup();
+    fixture.clock.advance(0);
+    await waitForCondition(() => fixture.runtime.stopCalls === 1
+      && fixture.clock.activeTaskCount() === 1);
+
+    fixture.clock.advance(10);
+    await waitForCondition(() => fixture.runtime.stopCalls === 2);
+    const shutdown = fixture.reconciler.shutdown();
+    await flushAsyncWork();
+    expect(fixture.runtime.shutdownCalls).toBe(0);
+    expect(fixture.clock.activeTaskCount()).toBe(0);
+
+    rejectRecoveryStop(new Error("second unconfirmed stop"));
+    await expect(shutdown).resolves.toBeUndefined();
+    expect(fixture.runtime.stopCalls).toBe(2);
+    expect(fixture.runtime.shutdownCalls).toBe(1);
     expect(fixture.clock.activeTaskCount()).toBe(0);
   });
 
@@ -358,6 +523,7 @@ class FakeFrpcRuntime implements SafeTunnelFrpcRuntime {
   shutdownResult: Promise<void> = Promise.resolve();
   statusValue: SafeTunnelRuntimeStatus = runtimeStatus();
   stopCalls = 0;
+  stopResults: (() => Promise<SafeTunnelCommandOutput>)[] = [];
 
   constructor(private readonly order: string[]) {}
 
@@ -386,11 +552,11 @@ class FakeFrpcRuntime implements SafeTunnelFrpcRuntime {
   stop(): Promise<SafeTunnelCommandOutput> {
     this.order.push("runtime:stop");
     this.stopCalls += 1;
-    this.statusValue = runtimeStatus();
-    return Promise.resolve({
-      exitCode: 0,
-      stderr: "",
-      stdout: "PI WEB stopped its owned Safe Tunnel frpc process.\n",
+    const result = (this.stopResults.shift()
+      ?? (() => Promise.resolve(runtimeStopOutput())))();
+    return result.then((output) => {
+      this.statusValue = runtimeStatus();
+      return output;
     });
   }
 }
@@ -478,6 +644,14 @@ function runtimeStatus(
   };
 }
 
+function runtimeStopOutput(): SafeTunnelCommandOutput {
+  return {
+    exitCode: 0,
+    stderr: "",
+    stdout: "PI WEB stopped its owned Safe Tunnel frpc process.\n",
+  };
+}
+
 function pendingHeartbeatUntilAbort(): Promise<SafeTunnelMachineHeartbeat> {
   return new Promise(() => undefined);
 }
@@ -508,6 +682,10 @@ async function flushAsyncWork(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
+}
+
+async function nextEventLoopTurn(): Promise<void> {
+  await new Promise<void>((resolve) => { setImmediate(resolve); });
 }
 
 async function waitForCondition(condition: () => boolean): Promise<void> {
