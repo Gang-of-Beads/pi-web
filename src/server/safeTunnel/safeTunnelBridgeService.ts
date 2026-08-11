@@ -23,6 +23,7 @@ import type {
 } from "./safeTunnelService.js";
 import type {
   LoadedSafeTunnelState,
+  SafeTunnelMachineCredentials,
   SafeTunnelPersistedState,
 } from "./safeTunnelState.js";
 import type { SafeTunnelFrpcStartResult } from "./safeTunnelFrpcSupervisor.js";
@@ -78,6 +79,7 @@ interface SafeTunnelOperationState {
   finishedAt?: string;
   logTail?: string;
   publicUrl?: string;
+  sealedSnapshot?: SafeTunnelOperationResponse;
   userCode?: string;
   verificationUriComplete?: string;
 }
@@ -161,7 +163,7 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
           },
         )
         .finally(() => {
-          sealOperationDiagnostics(operation);
+          sealOperation(operation);
           const active = this.activeWorkflow;
           if (active?.operation.id === operation.id) this.activeWorkflow = undefined;
           this.clearActiveOperation(operation);
@@ -262,10 +264,12 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
         localPiWebUrl,
         ...(advanced?.frpcPath === undefined ? {} : { frpcPath: advanced.frpcPath }),
       }, enableLoginObserver(operation), { signal });
-      registerOperationDiagnosticSecrets(operation, [
-        login.machineCredentials.machineToken,
-      ]);
+      registerOperationDiagnosticSecrets(
+        operation,
+        login.credentialRedactionValues,
+      );
       throwIfEnableCancelled(signal);
+      operation.publicUrl = login.registeredMachine.publicUrl;
     }
 
     operation.phase = "starting";
@@ -417,15 +421,16 @@ function enableLoginObserver(operation: SafeTunnelOperationState): SafeTunnelLog
     onAuthorizationApproved() {
       if (operation.status !== "running") return;
       operation.phase = "registering";
+      delete operation.userCode;
+      delete operation.verificationUriComplete;
       appendOperationStdout(
         operation,
         "Approval received. Registering this PI WEB.\n",
       );
     },
-    onMachineRegistered(machine) {
+    onMachineRegistered() {
       if (operation.status !== "running") return;
       operation.phase = "starting";
-      operation.publicUrl = machine.publicUrl;
       appendOperationStdout(operation, "Machine registration saved privately.\n");
     },
   };
@@ -470,8 +475,9 @@ function ownedStateStatus(
   readonly config: SafeTunnelConfigStatus;
   readonly desiredState: SafeTunnelStatusResponse["desiredState"];
 } {
+  const credentialValues = diagnosticSecretsFromLoadedState(loaded);
   return {
-    config: configStatusFromOwnedState(statePath, loaded),
+    config: configStatusFromOwnedState(statePath, loaded, credentialValues),
     desiredState: loaded.state.desiredState,
   };
 }
@@ -479,31 +485,75 @@ function ownedStateStatus(
 function configStatusFromOwnedState(
   statePath: string,
   loaded: LoadedSafeTunnelState,
+  credentialValues: readonly string[],
 ): SafeTunnelConfigStatus {
   const state = loaded.state;
+  const localPiWebUrl = browserSafeOptionalText(
+    state.localPiWebUrl,
+    maxBrowserUrlCharacters,
+    credentialValues,
+  );
+  const machine = state.machine === undefined
+    ? undefined
+    : configMachineStatus(state.machine, credentialValues);
   return {
-    path: headText(statePath, maxBrowserPathCharacters),
+    path: browserSafeText(statePath, maxBrowserPathCharacters, credentialValues),
     exists: loaded.exists,
     state: state.machine === undefined
       ? (loaded.exists ? "unregistered" : "missing")
       : state.machine.credentialStatus === "rejected"
         ? "rejected"
         : "registered",
-    localPiWebUrl: state.localPiWebUrl,
+    ...(localPiWebUrl === undefined ? {} : { localPiWebUrl }),
     frpcPathConfigured: state.frpcPath !== undefined,
-    ...(state.machine === undefined ? {} : {
-      machine: {
-        controlApiBaseUrl: state.machine.controlApiBaseUrl,
-        machineId: state.machine.machineId,
-        ...(state.machine.machineSlug === undefined
-          ? {}
-          : { machineSlug: state.machine.machineSlug }),
-        ...(state.machine.publicUrl === undefined ? {} : {
-          publicHostname: new URL(state.machine.publicUrl).hostname,
-          publicUrl: state.machine.publicUrl,
-        }),
-      },
-    }),
+    ...(machine === undefined ? {} : { machine }),
+  };
+}
+
+function configMachineStatus(
+  machine: SafeTunnelMachineCredentials,
+  credentialValues: readonly string[],
+): SafeTunnelConfigStatus["machine"] | undefined {
+  const controlApiBaseUrl = browserSafeOptionalText(
+    machine.controlApiBaseUrl,
+    maxBrowserUrlCharacters,
+    credentialValues,
+  );
+  const machineId = browserSafeOptionalText(
+    machine.machineId,
+    maxBrowserIdentifierCharacters,
+    credentialValues,
+  );
+  if (controlApiBaseUrl === undefined || machineId === undefined) return undefined;
+
+  const machineSlug = machine.machineSlug === undefined
+    ? undefined
+    : browserSafeOptionalText(
+      machine.machineSlug,
+      maxBrowserIdentifierCharacters,
+      credentialValues,
+    );
+  const publicUrl = machine.publicUrl === undefined
+    ? undefined
+    : browserSafeOptionalText(
+      machine.publicUrl,
+      maxBrowserUrlCharacters,
+      credentialValues,
+    );
+  const publicHostname = machine.publicUrl === undefined
+    ? undefined
+    : browserSafeOptionalText(
+      new URL(machine.publicUrl).hostname,
+      maxBrowserIdentifierCharacters,
+      credentialValues,
+    );
+
+  return {
+    controlApiBaseUrl,
+    machineId,
+    ...(machineSlug === undefined ? {} : { machineSlug }),
+    ...(publicHostname === undefined ? {} : { publicHostname }),
+    ...(publicUrl === undefined ? {} : { publicUrl }),
   };
 }
 
@@ -521,34 +571,49 @@ function snapshotRuntimeStatus(
       : { frpcConfigExists: runtime.frpcConfigExists }),
     ...(runtime.frpcConfigPath === undefined
       ? {}
-      : { frpcConfigPath: headText(runtime.frpcConfigPath, maxBrowserPathCharacters) }),
+      : {
+          frpcConfigPath: browserSafeText(
+            runtime.frpcConfigPath,
+            maxBrowserPathCharacters,
+            diagnosticSecrets,
+          ),
+        }),
     ...(runtime.pid === undefined ? {} : { pid: runtime.pid }),
     ...(runtime.error === undefined
       ? {}
       : {
-          error: headText(
-            redactSafeTunnelDiagnostic(runtime.error, diagnosticSecrets),
+          error: browserSafeText(
+            runtime.error,
             maxBrowserDiagnosticCharacters,
+            diagnosticSecrets,
           ),
         }),
     ...(runtime.logError === undefined
       ? {}
       : {
-          logError: headText(
-            redactSafeTunnelDiagnostic(runtime.logError, diagnosticSecrets),
+          logError: browserSafeText(
+            runtime.logError,
             maxBrowserDiagnosticCharacters,
+            diagnosticSecrets,
           ),
         }),
     ...(runtime.logExists === undefined ? {} : { logExists: runtime.logExists }),
     ...(runtime.logPath === undefined
       ? {}
-      : { logPath: headText(runtime.logPath, maxBrowserPathCharacters) }),
+      : {
+          logPath: browserSafeText(
+            runtime.logPath,
+            maxBrowserPathCharacters,
+            diagnosticSecrets,
+          ),
+        }),
     ...(runtime.logTail === undefined
       ? {}
       : {
-          logTail: tailText(
-            redactSafeTunnelDiagnostic(runtime.logTail, diagnosticSecrets),
+          logTail: browserSafeTailText(
+            runtime.logTail,
             maxFrpcLogTailCharacters,
+            diagnosticSecrets,
           ),
         }),
     logTailMaxCharacters: maxFrpcLogTailCharacters,
@@ -556,40 +621,88 @@ function snapshotRuntimeStatus(
 }
 
 function snapshotOperation(operation: SafeTunnelOperationState): SafeTunnelOperationResponse {
-  const redact = (value: string): string => (
-    redactSafeTunnelDiagnostic(value, operation.diagnosticSecrets)
-  );
+  return operation.sealedSnapshot === undefined
+    ? createOperationSnapshot(operation)
+    : { ...operation.sealedSnapshot };
+}
+
+function createOperationSnapshot(
+  operation: SafeTunnelOperationState,
+): SafeTunnelOperationResponse {
+  const credentialValues = operation.diagnosticSecrets;
+  const finishedAt = operation.finishedAt === undefined
+    ? undefined
+    : browserSafeOptionalText(
+      operation.finishedAt,
+      maxBrowserIdentifierCharacters,
+      credentialValues,
+    );
+  const publicUrl = operation.publicUrl === undefined
+    ? undefined
+    : browserSafeOptionalText(
+      operation.publicUrl,
+      maxBrowserUrlCharacters,
+      credentialValues,
+    );
+  const userCode = operation.userCode === undefined
+    ? undefined
+    : browserSafeOptionalText(
+      operation.userCode,
+      maxBrowserIdentifierCharacters,
+      credentialValues,
+    );
+  const verificationUriComplete = operation.verificationUriComplete === undefined
+    ? undefined
+    : browserSafeOptionalText(
+      operation.verificationUriComplete,
+      maxBrowserUrlCharacters,
+      credentialValues,
+    );
+
   return {
-    id: headText(operation.id, maxBrowserIdentifierCharacters),
+    id: browserSafeText(operation.id, maxBrowserIdentifierCharacters, credentialValues),
     kind: operation.kind,
     phase: operation.phase,
-    startedAt: operation.startedAt,
+    startedAt: browserSafeText(
+      operation.startedAt,
+      maxBrowserIdentifierCharacters,
+      credentialValues,
+    ),
     status: operation.status,
-    stdout: tailText(redact(operation.stdout), maxCapturedOutputCharacters),
-    stderr: tailText(redact(operation.stderr), maxCapturedOutputCharacters),
+    stdout: browserSafeTailText(
+      operation.stdout,
+      maxCapturedOutputCharacters,
+      credentialValues,
+    ),
+    stderr: browserSafeTailText(
+      operation.stderr,
+      maxCapturedOutputCharacters,
+      credentialValues,
+    ),
     ...(operation.error === undefined
       ? {}
-      : { error: headText(redact(operation.error), maxBrowserDiagnosticCharacters) }),
-    ...(operation.exitCode === undefined ? {} : { exitCode: operation.exitCode }),
-    ...(operation.finishedAt === undefined ? {} : { finishedAt: operation.finishedAt }),
-    ...(operation.logTail === undefined || operation.logTail === ""
-      ? {}
-      : { logTail: tailText(redact(operation.logTail), maxFrpcLogTailCharacters) }),
-    logTailMaxCharacters: maxFrpcLogTailCharacters,
-    ...(operation.publicUrl === undefined
-      ? {}
-      : { publicUrl: headText(operation.publicUrl, maxBrowserUrlCharacters) }),
-    ...(operation.userCode === undefined
-      ? {}
-      : { userCode: headText(operation.userCode, maxBrowserIdentifierCharacters) }),
-    ...(operation.verificationUriComplete === undefined
-      ? {}
       : {
-          verificationUriComplete: headText(
-            operation.verificationUriComplete,
-            maxBrowserUrlCharacters,
+          error: browserSafeText(
+            operation.error,
+            maxBrowserDiagnosticCharacters,
+            credentialValues,
           ),
         }),
+    ...(operation.exitCode === undefined ? {} : { exitCode: operation.exitCode }),
+    ...(finishedAt === undefined ? {} : { finishedAt }),
+    ...(operation.logTail === undefined || operation.logTail === ""
+      ? {}
+      : {
+          logTail: browserSafeTailText(
+            operation.logTail,
+            maxFrpcLogTailCharacters,
+            credentialValues,
+          ),
+        }),
+    logTailMaxCharacters: maxFrpcLogTailCharacters,
+    ...(publicUrl === undefined ? {} : { publicUrl }),
+    ...(userCode === undefined ? {} : { userCode }),
+    ...(verificationUriComplete === undefined ? {} : { verificationUriComplete }),
   };
 }
 
@@ -612,8 +725,12 @@ function registerOperationDiagnosticSecrets(
   redactOperationDiagnostics(operation);
 }
 
-function sealOperationDiagnostics(operation: SafeTunnelOperationState): void {
+function sealOperation(operation: SafeTunnelOperationState): void {
   redactOperationDiagnostics(operation);
+  operation.sealedSnapshot = createOperationSnapshot(operation);
+  delete operation.publicUrl;
+  delete operation.userCode;
+  delete operation.verificationUriComplete;
   operation.diagnosticSecrets.length = 0;
 }
 
@@ -653,6 +770,37 @@ function appendCapped(existing: string, chunk: string, maxCharacters: number): s
   return next.length <= maxCharacters
     ? next
     : next.slice(next.length - maxCharacters);
+}
+
+function browserSafeOptionalText(
+  contents: string,
+  maxCharacters: number,
+  credentialValues: readonly string[],
+): string | undefined {
+  const redacted = redactSafeTunnelDiagnostic(contents, credentialValues);
+  return redacted === contents ? headText(redacted, maxCharacters) : undefined;
+}
+
+function browserSafeText(
+  contents: string,
+  maxCharacters: number,
+  credentialValues: readonly string[],
+): string {
+  return headText(
+    redactSafeTunnelDiagnostic(contents, credentialValues),
+    maxCharacters,
+  );
+}
+
+function browserSafeTailText(
+  contents: string,
+  maxCharacters: number,
+  credentialValues: readonly string[],
+): string {
+  return tailText(
+    redactSafeTunnelDiagnostic(contents, credentialValues),
+    maxCharacters,
+  );
 }
 
 function headText(contents: string, maxCharacters: number): string {

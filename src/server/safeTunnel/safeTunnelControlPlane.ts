@@ -3,6 +3,7 @@ import {
   normalizeSafeTunnelControlApiBaseUrl,
   normalizeSafeTunnelLocalPiWebUrl,
   normalizeSafeTunnelPublicUrl,
+  requireSafeTunnelBearerCredential,
   type SafeTunnelMachineCredentials,
 } from "./safeTunnelState.js";
 
@@ -12,7 +13,7 @@ const defaultControlApiRequestTimeoutMs = 15_000;
 const maximumControlApiResponseBytes = 128 * 1_024;
 const maximumIdentifierCharacters = 256;
 const maximumNameCharacters = 256;
-const maximumTokenCharacters = 4_096;
+const maximumOpaqueTokenCharacters = 4_096;
 const maximumUrlCharacters = 2_048;
 const maximumFrpcConfigCharacters = 32_000;
 
@@ -273,7 +274,7 @@ export class HttpSafeTunnelControlPlane implements SafeTunnelControlPlane {
         method: "GET",
         headers: {
           accept: "application/json",
-          authorization: `Bearer ${credentials.machineToken}`,
+          authorization: bearerAuthorization(credentials.machineToken),
         },
         redirect: "error",
         ...(options.signal === undefined ? {} : { signal: options.signal }),
@@ -366,11 +367,17 @@ function jsonPostRequest(
     headers: {
       accept: "application/json",
       "content-type": "application/json",
-      ...(bearerToken === undefined ? {} : { authorization: `Bearer ${bearerToken}` }),
+      ...(bearerToken === undefined ? {} : {
+        authorization: bearerAuthorization(bearerToken),
+      }),
     },
     body: JSON.stringify(body),
     redirect: "error",
   };
+}
+
+function bearerAuthorization(credential: string): string {
+  return `Bearer ${requireSafeTunnelBearerCredential(credential, "bearer credential")}`;
 }
 
 function endpoint(baseUrl: string, path: string): string {
@@ -492,7 +499,7 @@ function parseControlPlaneResponse<T>(
 function parseDeviceAuthorization(body: unknown): SafeTunnelDeviceAuthorization {
   const record = requireResponseRecord(body);
   return {
-    deviceCode: requireResponseString(record["deviceCode"], maximumTokenCharacters),
+    deviceCode: requireResponseString(record["deviceCode"], maximumOpaqueTokenCharacters),
     userCode: requireResponseString(record["userCode"], maximumIdentifierCharacters),
     verificationUri: requireExternalHttpUrl(record["verificationUri"]),
     verificationUriComplete: requireExternalHttpUrl(record["verificationUriComplete"]),
@@ -506,7 +513,7 @@ function parseApprovedDeviceAuthorization(body: unknown): SafeTunnelApprovedDevi
   const account = requireResponseRecord(record["account"]);
   if (record["tokenType"] !== "Bearer") throw invalidResponse();
   return {
-    accessToken: requireResponseString(record["accessToken"], maximumTokenCharacters),
+    accessToken: requireResponseBearerCredential(record["accessToken"], "accessToken"),
     expiresAt: requireCanonicalIsoDateTime(record["expiresAt"]),
     account: {
       id: requireResponseString(account["id"]),
@@ -534,7 +541,7 @@ function parseRegisteredMachine(body: unknown): SafeTunnelRegisteredMachine {
     },
     publicHostname,
     publicUrl,
-    machineToken: requireResponseString(record["machineToken"], maximumTokenCharacters),
+    machineToken: requireResponseBearerCredential(record["machineToken"], "machineToken"),
   };
 }
 
@@ -620,6 +627,14 @@ function requirePositiveInteger(value: unknown): number {
     throw invalidResponse();
   }
   return value;
+}
+
+function requireResponseBearerCredential(value: unknown, fieldName: string): string {
+  try {
+    return requireSafeTunnelBearerCredential(value, fieldName);
+  } catch {
+    throw invalidResponse();
+  }
 }
 
 function requireResponseString(

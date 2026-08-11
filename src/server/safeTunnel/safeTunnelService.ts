@@ -8,10 +8,12 @@ import {
   type SafeTunnelMachineTunnelConfig,
   type SafeTunnelRegisteredMachine,
 } from "./safeTunnelControlPlane.js";
+import { containsSafeTunnelSensitiveRepresentation } from "./safeTunnelDiagnostics.js";
 import { prepareSafeTunnelFrpcConfig } from "./safeTunnelFrpcConfig.js";
 import {
   normalizeSafeTunnelControlApiBaseUrl,
   normalizeSafeTunnelLocalPiWebUrl,
+  requireSafeTunnelBearerCredential,
   type LoadedSafeTunnelState,
   type SafeTunnelMachineCredentials,
   type SafeTunnelPersistedState,
@@ -46,15 +48,9 @@ export interface SafeTunnelEnableInput {
 }
 
 export interface SafeTunnelLoginObserver {
-  readonly onAuthorizationApproved?: (account: {
-    readonly id: string;
-    readonly publicNamespace: string;
-  }) => void;
+  readonly onAuthorizationApproved?: () => void;
   readonly onDeviceAuthorization?: (authorization: SafeTunnelDeviceAuthorization) => void;
-  readonly onMachineRegistered?: (machine: {
-    readonly id: string;
-    readonly publicUrl: string;
-  }) => void;
+  readonly onMachineRegistered?: () => void;
 }
 
 export interface SafeTunnelLoginOptions {
@@ -62,6 +58,8 @@ export interface SafeTunnelLoginOptions {
 }
 
 export interface SafeTunnelLoginResult {
+  /** Ephemeral values used only to scrub browser-bound operation snapshots. */
+  readonly credentialRedactionValues: readonly string[];
   readonly machineCredentials: SafeTunnelMachineCredentials;
   readonly registeredMachine: SafeTunnelRegisteredMachine;
 }
@@ -122,15 +120,19 @@ export class SafeTunnelService {
       started,
       options.signal,
     );
-    observer.onAuthorizationApproved?.(authorization.account);
+    observer.onAuthorizationApproved?.();
     throwIfAborted(options.signal);
+    const connectorAccessToken = requireSafeTunnelBearerCredential(
+      authorization.accessToken,
+      "accessToken",
+    );
 
     // Once registration begins, let its one-time credential response finish and
     // persist even if the user disables concurrently; the bridge will observe
     // cancellation before it can arm supervision.
     const registeredMachine = await this.dependencies.controlPlane.registerMachine({
       controlApiBaseUrl: login.controlApiBaseUrl,
-      connectorAccessToken: authorization.accessToken,
+      connectorAccessToken,
       machineName: login.machineName,
       machineSlug: login.machineSlug,
       localPiWebUrl: login.localPiWebUrl,
@@ -139,12 +141,26 @@ export class SafeTunnelService {
     if (registeredMachine.machine.slug !== login.machineSlug) {
       throw new SafeTunnelServiceError("invalid_login");
     }
+    const machineToken = requireSafeTunnelBearerCredential(
+      registeredMachine.machineToken,
+      "machineToken",
+    );
+    assertNoPersistedCredentialAliases([
+      this.statePath,
+      login.controlApiBaseUrl,
+      login.localPiWebUrl,
+      ...(login.frpcPath === undefined ? [] : [login.frpcPath]),
+      registeredMachine.machine.id,
+      registeredMachine.machine.slug,
+      registeredMachine.publicHostname,
+      registeredMachine.publicUrl,
+    ], [connectorAccessToken, machineToken]);
 
     const machineCredentials: SafeTunnelMachineCredentials = {
       controlApiBaseUrl: login.controlApiBaseUrl,
       credentialStatus: "active",
       machineId: registeredMachine.machine.id,
-      machineToken: registeredMachine.machineToken,
+      machineToken,
       machineSlug: registeredMachine.machine.slug,
       publicUrl: registeredMachine.publicUrl,
     };
@@ -155,12 +171,13 @@ export class SafeTunnelService {
       machine: machineCredentials,
       ...(login.frpcPath === undefined ? {} : { frpcPath: login.frpcPath }),
     }));
-    observer.onMachineRegistered?.({
-      id: registeredMachine.machine.id,
-      publicUrl: registeredMachine.publicUrl,
-    });
+    observer.onMachineRegistered?.();
 
-    return { machineCredentials, registeredMachine };
+    return {
+      credentialRedactionValues: [connectorAccessToken, machineToken],
+      machineCredentials,
+      registeredMachine,
+    };
   }
 
   async enable(input: SafeTunnelEnableInput = {}): Promise<SafeTunnelPersistedState> {
@@ -380,6 +397,17 @@ export function applySafeTunnelLocalTarget(
     };
   } catch {
     throw new SafeTunnelServiceError("invalid_tunnel_config");
+  }
+}
+
+function assertNoPersistedCredentialAliases(
+  values: readonly string[],
+  credentials: readonly string[],
+): void {
+  if (values.some((value) => (
+    containsSafeTunnelSensitiveRepresentation(value, credentials)
+  ))) {
+    throw new SafeTunnelServiceError("invalid_login");
   }
 }
 

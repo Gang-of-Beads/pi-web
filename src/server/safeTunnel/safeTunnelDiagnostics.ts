@@ -93,6 +93,17 @@ class SafeTunnelTerminalTextSanitizer {
   }
 }
 
+/** Detects direct or supported serialized credential aliases after terminal sanitization. */
+export function containsSafeTunnelSensitiveRepresentation(
+  value: string,
+  sensitiveValues: readonly string[],
+): boolean {
+  const sanitizer = new SafeTunnelTerminalTextSanitizer();
+  const sanitized = `${sanitizer.write(value)}${sanitizer.flush()}`;
+  return normalizeSensitiveValues(sensitiveValues)
+    .some((sensitiveValue) => sanitized.includes(sensitiveValue));
+}
+
 /** Redacts known credentials from one complete diagnostic value. */
 export function redactSafeTunnelDiagnostic(
   value: string,
@@ -148,9 +159,47 @@ function normalizeSensitiveValues(values: readonly string[]): readonly string[] 
     if (value === "") continue;
     const sanitizer = new SafeTunnelTerminalTextSanitizer();
     const sanitized = `${sanitizer.write(value)}${sanitizer.flush()}`;
-    if (sanitized !== "") normalized.add(sanitized);
+    if (sanitized === "") continue;
+    for (const representation of supportedSensitiveRepresentations(sanitized)) {
+      if (representation !== "") normalized.add(representation);
+    }
   }
   return [...normalized].sort((left, right) => right.length - left.length);
+}
+
+/**
+ * Covers the serializations PI WEB supports at HTTP/JSON/browser boundaries.
+ * Bearer credentials themselves are visible-ASCII token68 values, but provider
+ * metadata may still contain their URI-encoded representation.
+ */
+function supportedSensitiveRepresentations(value: string): readonly string[] {
+  const representations = new Set([value]);
+  const addUriRepresentation = (serialize: () => string): void => {
+    try {
+      const serialized = serialize();
+      representations.add(serialized);
+      representations.add(lowercasePercentEscapes(serialized));
+    } catch {
+      // Non-credential diagnostic values can contain malformed Unicode. Their
+      // exact sanitized representation is still redacted safely.
+    }
+  };
+
+  addUriRepresentation(() => encodeURI(value));
+  addUriRepresentation(() => encodeURIComponent(value));
+  addUriRepresentation(() => new URLSearchParams([["value", value]])
+    .toString()
+    .slice("value=".length));
+
+  const json = JSON.stringify(value);
+  const jsonContents = json.slice(1, -1);
+  representations.add(jsonContents);
+  representations.add(jsonContents.replaceAll("/", "\\/"));
+  return [...representations];
+}
+
+function lowercasePercentEscapes(value: string): string {
+  return value.replace(/%[0-9A-F]{2}/gu, (escape) => escape.toLowerCase());
 }
 
 function redactExactValues(

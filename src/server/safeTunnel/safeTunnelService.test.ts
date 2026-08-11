@@ -238,12 +238,16 @@ describe("SafeTunnelService", () => {
       frpcPath: "/opt/frpc",
     }, {
       onDeviceAuthorization: (authorization) => { progress.push(authorization); },
-      onAuthorizationApproved: (account) => { progress.push(account); },
-      onMachineRegistered: (machine) => { progress.push(machine); },
+      onAuthorizationApproved: () => { progress.push("approved"); },
+      onMachineRegistered: () => { progress.push("registered"); },
     });
 
     expect(sleeps).toEqual([5000]);
     expect(result.machineCredentials.machineToken).toBe("piwt_mtok_v1_private");
+    expect(result.credentialRedactionValues).toEqual([
+      "piwt_cat_v1_access",
+      "piwt_mtok_v1_private",
+    ]);
     expect(storage.saves).toEqual([{
       stateVersion: 2,
       desiredState: "disabled",
@@ -271,6 +275,82 @@ describe("SafeTunnelService", () => {
     });
     expect(JSON.stringify(progress)).not.toContain("piwt_cat_v1_access");
     expect(JSON.stringify(progress)).not.toContain("piwt_mtok_v1_private");
+  });
+
+  it("rejects unsafe injected bearer credentials before use or persistence", async () => {
+    const unsafeAccessStorage = new MemorySafeTunnelStateStorage();
+    const unsafeAccessControlPlane = new FakeSafeTunnelControlPlane();
+    unsafeAccessControlPlane.completions = [{
+      kind: "approved",
+      authorization: { ...approvedAuthorization(), accessToken: " access-token" },
+    }];
+    const unsafeAccessService = new SafeTunnelService({
+      controlPlane: unsafeAccessControlPlane,
+      stateStorage: unsafeAccessStorage,
+      now: () => new Date("2026-07-29T12:00:00.000Z"),
+    });
+
+    await expect(unsafeAccessService.login({
+      controlApiBaseUrl: "https://control.example.test",
+      machineName: "Dev Box",
+      machineSlug: "dev-box",
+    })).rejects.toThrow("HTTP-header-safe bearer credential");
+    expect(unsafeAccessControlPlane.calls.map(({ method }) => method)).toEqual([
+      "start",
+      "complete",
+    ]);
+    expect(unsafeAccessStorage.saves).toEqual([]);
+
+    const unsafeMachineStorage = new MemorySafeTunnelStateStorage();
+    const unsafeMachineControlPlane = new FakeSafeTunnelControlPlane();
+    unsafeMachineControlPlane.registration = {
+      ...registeredMachine(),
+      machineToken: "machine-token\nheader",
+    };
+    const unsafeMachineService = new SafeTunnelService({
+      controlPlane: unsafeMachineControlPlane,
+      stateStorage: unsafeMachineStorage,
+      now: () => new Date("2026-07-29T12:00:00.000Z"),
+    });
+
+    await expect(unsafeMachineService.login({
+      controlApiBaseUrl: "https://control.example.test",
+      machineName: "Dev Box",
+      machineSlug: "dev-box",
+    })).rejects.toThrow("HTTP-header-safe bearer credential");
+    expect(unsafeMachineControlPlane.calls.map(({ method }) => method)).toEqual([
+      "start",
+      "complete",
+      "register",
+    ]);
+    expect(unsafeMachineStorage.saves).toEqual([]);
+
+    const aliasedMetadataStorage = new MemorySafeTunnelStateStorage();
+    const aliasedMetadataControlPlane = new FakeSafeTunnelControlPlane();
+    const accessToken = "Access-._~+/=";
+    aliasedMetadataControlPlane.completions = [{
+      kind: "approved",
+      authorization: { ...approvedAuthorization(), accessToken },
+    }];
+    aliasedMetadataControlPlane.registration = {
+      ...registeredMachine(),
+      machine: {
+        ...registeredMachine().machine,
+        id: encodeURIComponent(accessToken),
+      },
+    };
+    const aliasedMetadataService = new SafeTunnelService({
+      controlPlane: aliasedMetadataControlPlane,
+      stateStorage: aliasedMetadataStorage,
+      now: () => new Date("2026-07-29T12:00:00.000Z"),
+    });
+
+    await expect(aliasedMetadataService.login({
+      controlApiBaseUrl: "https://control.example.test",
+      machineName: "Dev Box",
+      machineSlug: "dev-box",
+    })).rejects.toMatchObject({ code: "invalid_login" });
+    expect(aliasedMetadataStorage.saves).toEqual([]);
   });
 
   it("bounds authorization polling by expiry without registering or persisting", async () => {

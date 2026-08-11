@@ -14,8 +14,9 @@ export const defaultSafeTunnelLocalPiWebUrl = "http://127.0.0.1:8504";
 
 const maximumUrlCharacters = 2_048;
 const maximumMachineIdCharacters = 256;
-const maximumMachineTokenCharacters = 4_096;
+const maximumBearerCredentialCharacters = 4_096;
 const maximumPathCharacters = 4_096;
+const bearerCredentialPattern = /^[A-Za-z0-9._~+/-]+={0,}$/u;
 
 export type SafeTunnelMachineCredentialStatus = "active" | "rejected";
 
@@ -196,6 +197,26 @@ export function parseSafeTunnelState(value: unknown): SafeTunnelPersistedState {
   };
 }
 
+/**
+ * Accepts the RFC 6750 token68 transport domain used by Safe Tunnel bearer
+ * credentials. Accepted values are returned byte-for-byte; whitespace,
+ * controls, Unicode, and other header-unsafe representations are rejected.
+ */
+export function requireSafeTunnelBearerCredential(
+  value: unknown,
+  fieldName: string,
+): string {
+  if (typeof value !== "string"
+    || value.length === 0
+    || value.length > maximumBearerCredentialCharacters
+    || !bearerCredentialPattern.test(value)) {
+    throw new Error(
+      `Safe Tunnel ${fieldName} must be a bounded HTTP-header-safe bearer credential.`,
+    );
+  }
+  return value;
+}
+
 export function normalizeSafeTunnelControlApiBaseUrl(value: unknown): string {
   const source = requireBoundedString(
     value,
@@ -267,10 +288,9 @@ function parseOptionalMachineCredentials(value: unknown): SafeTunnelMachineCrede
       "machine.machineId",
       maximumMachineIdCharacters,
     ),
-    machineToken: requireBoundedString(
+    machineToken: requireSafeTunnelBearerCredential(
       record["machineToken"],
       "machine.machineToken",
-      maximumMachineTokenCharacters,
     ),
     ...(machineSlug === undefined ? {} : { machineSlug }),
     ...(publicUrl === undefined ? {} : { publicUrl }),

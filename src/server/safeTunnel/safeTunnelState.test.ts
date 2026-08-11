@@ -120,6 +120,29 @@ describe("FileSafeTunnelStateStorage", () => {
     expect((await readFile(filePath, "utf8"))).toContain('"desiredState": "disabled"');
   });
 
+  it("preserves accepted opaque bearer credentials byte-for-byte", async () => {
+    const filePath = join(tempDirectory, "data", "safe-tunnel", "config.json");
+    const storage = new FileSafeTunnelStateStorage({
+      filePath,
+      legacyImportPath: join(tempDirectory, "missing-legacy.json"),
+      platform: "linux",
+    });
+    const machineToken = "AbC-._~+/==";
+
+    await storage.save({
+      ...createDefaultSafeTunnelState(),
+      machine: {
+        controlApiBaseUrl: "https://control.example.test",
+        machineId: "machine_exact",
+        machineToken,
+      },
+    });
+
+    expect((await storage.load()).state.machine?.machineToken).toBe(machineToken);
+    const persisted: unknown = JSON.parse(await readFile(filePath, "utf8"));
+    expect(persisted).toMatchObject({ machine: { machineToken } });
+  });
+
   it("migrates PI WEB-owned v1 state without losing intent or credentials", async () => {
     const filePath = join(tempDirectory, "data", "safe-tunnel", "config.json");
     await mkdir(join(tempDirectory, "data", "safe-tunnel"), { recursive: true });
@@ -231,6 +254,30 @@ describe("FileSafeTunnelStateStorage", () => {
         machineToken: "private",
       },
     })).toThrow("must use https");
+  });
+
+  it.each([
+    ["empty", ""],
+    ["leading whitespace", " token"],
+    ["trailing whitespace", "token "],
+    ["embedded whitespace", "two words"],
+    ["line break", "line\nbreak"],
+    ["C0 control", `token${String.fromCharCode(0)}`],
+    ["DEL control", `token${String.fromCharCode(127)}`],
+    ["non-ASCII", "tóken"],
+    ["embedded padding", "token=value"],
+    ["oversized", "x".repeat(4_097)],
+  ])("rejects %s machine bearer credentials without normalization", (_label, machineToken) => {
+    expect(() => parseSafeTunnelState({
+      stateVersion: 2,
+      desiredState: "enabled",
+      localPiWebUrl: "http://127.0.0.1:8504",
+      machine: {
+        controlApiBaseUrl: "https://control.example.test",
+        machineId: "machine_123",
+        machineToken,
+      },
+    })).toThrow("HTTP-header-safe bearer credential");
   });
 
   it("parses durable rejected-credential state and rejects unknown credential states", () => {

@@ -71,7 +71,7 @@ function startedAuthorization(): Record<string, unknown> {
   };
 }
 
-function approvedAuthorization(): unknown {
+function approvedAuthorization(): Record<string, unknown> {
   return {
     accessToken: "piwt_cat_v1_access",
     tokenType: "Bearer",
@@ -459,6 +459,111 @@ describe("HttpSafeTunnelControlPlane", () => {
         });
       await expect(request).rejects.toMatchObject({ code: testCase.code });
     }
+  });
+
+  it("preserves valid token68 bearer credentials exactly across response and header boundaries", async () => {
+    const accessToken = "Access-._~+/==";
+    const machineToken = "Machine-._~+/=";
+    const transport = sequencedFetch([
+      jsonResponse(200, { ...approvedAuthorization(), accessToken }),
+      jsonResponse(201, { ...registeredMachine(), machineToken }),
+    ]);
+    const controlPlane = new HttpSafeTunnelControlPlane({ fetch: transport.fetch });
+
+    await expect(controlPlane.completeDeviceAuthorization({
+      controlApiBaseUrl: "https://control.example.test",
+      deviceCode: "device",
+    })).resolves.toMatchObject({
+      kind: "approved",
+      authorization: { accessToken },
+    });
+    await expect(controlPlane.registerMachine({
+      controlApiBaseUrl: "https://control.example.test",
+      connectorAccessToken: accessToken,
+      machineName: "Dev Box",
+      machineSlug: "dev-box",
+      localPiWebUrl: "http://127.0.0.1:8504",
+      clientVersion: safeTunnelClientVersion,
+    })).resolves.toMatchObject({ machineToken });
+    expect(transport.requests[1]?.init.headers).toMatchObject({
+      authorization: `Bearer ${accessToken}`,
+    });
+  });
+
+  it("rejects unsafe provider bearer credentials as invalid responses", async () => {
+    const unsafeResponses = [
+      {
+        operation: "complete_device_authorization",
+        response: jsonResponse(200, {
+          ...approvedAuthorization(),
+          accessToken: " access-token",
+        }),
+        request: (controlPlane: HttpSafeTunnelControlPlane) => (
+          controlPlane.completeDeviceAuthorization({
+            controlApiBaseUrl: "https://control.example.test",
+            deviceCode: "device",
+          })
+        ),
+      },
+      {
+        operation: "register_machine",
+        response: jsonResponse(201, {
+          ...registeredMachine(),
+          machineToken: "machine-token\nheader",
+        }),
+        request: (controlPlane: HttpSafeTunnelControlPlane) => controlPlane.registerMachine({
+          controlApiBaseUrl: "https://control.example.test",
+          connectorAccessToken: "safe-access-token",
+          machineName: "Dev Box",
+          machineSlug: "dev-box",
+          localPiWebUrl: "http://127.0.0.1:8504",
+          clientVersion: safeTunnelClientVersion,
+        }),
+      },
+    ] as const;
+
+    for (const testCase of unsafeResponses) {
+      const controlPlane = new HttpSafeTunnelControlPlane({
+        fetch: () => Promise.resolve(testCase.response),
+      });
+      await expect(testCase.request(controlPlane)).rejects.toMatchObject({
+        code: "invalid_response",
+        operation: testCase.operation,
+      });
+    }
+  });
+
+  it("rejects unsafe bearer credentials before constructing an HTTP request", async () => {
+    let fetchCalls = 0;
+    const controlPlane = new HttpSafeTunnelControlPlane({
+      fetch: () => {
+        fetchCalls += 1;
+        return Promise.resolve(jsonResponse(500, {}));
+      },
+    });
+
+    await expect(controlPlane.registerMachine({
+      controlApiBaseUrl: "https://control.example.test",
+      connectorAccessToken: "access token",
+      machineName: "Dev Box",
+      machineSlug: "dev-box",
+      localPiWebUrl: "http://127.0.0.1:8504",
+      clientVersion: safeTunnelClientVersion,
+    })).rejects.toThrow("HTTP-header-safe bearer credential");
+    await expect(controlPlane.getMachineTunnelConfig({
+      controlApiBaseUrl: "https://control.example.test",
+      machineId: "machine_123",
+      machineToken: "machine-token\r\nInjected: value",
+    })).rejects.toThrow("HTTP-header-safe bearer credential");
+    await expect(controlPlane.recordMachineHeartbeat({
+      controlApiBaseUrl: "https://control.example.test",
+      machineId: "machine_123",
+      machineToken: "tóken",
+    }, {
+      clientVersion: safeTunnelClientVersion,
+      tunnelStatus: "running",
+    })).rejects.toThrow("HTTP-header-safe bearer credential");
+    expect(fetchCalls).toBe(0);
   });
 
   it("rejects malformed success payloads as operation-specific application errors", async () => {
