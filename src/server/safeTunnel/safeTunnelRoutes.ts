@@ -11,6 +11,10 @@ import {
   SAFE_TUNNEL_MUTATION_HEADER_NAME,
   SAFE_TUNNEL_MUTATION_HEADER_VALUE,
 } from "../../shared/safeTunnelHttp.js";
+import {
+  createSafeTunnelMutationHostBoundary,
+  type SafeTunnelMutationHostConfig,
+} from "./safeTunnelMutationHosts.js";
 
 const enableRequestKeys = new Set(["advanced"]);
 const disableRequestKeys = new Set<string>();
@@ -51,7 +55,13 @@ export class SafeTunnelOperationConflictError extends Error {
 export function registerSafeTunnelRoutes(
   app: FastifyInstance,
   service: SafeTunnelRouteService,
+  mutationHostConfig: SafeTunnelMutationHostConfig = {},
 ): void {
+  const mutationHosts = createSafeTunnelMutationHostBoundary(mutationHostConfig);
+  const requireMutationRequest = (request: FastifyRequest, reply: FastifyReply) => (
+    requireSafeTunnelMutationRequest(request, reply, service, mutationHosts)
+  );
+
   app.get("/api/safe-tunnel/status", async (_request, reply) => {
     markSafeTunnelResponsePrivate(reply);
     try {
@@ -63,7 +73,7 @@ export function registerSafeTunnelRoutes(
 
   app.post<{ Body: unknown }>(
     "/api/safe-tunnel/enable",
-    { preValidation: requireSafeTunnelMutationRequest },
+    { preValidation: requireMutationRequest },
     async (request, reply) => {
       markSafeTunnelResponsePrivate(reply);
       try {
@@ -77,7 +87,7 @@ export function registerSafeTunnelRoutes(
 
   app.post<{ Body: unknown }>(
     "/api/safe-tunnel/disable",
-    { preValidation: requireSafeTunnelMutationRequest },
+    { preValidation: requireMutationRequest },
     async (request, reply) => {
       markSafeTunnelResponsePrivate(reply);
       try {
@@ -113,6 +123,8 @@ function markSafeTunnelResponsePrivate(reply: FastifyReply): void {
 async function requireSafeTunnelMutationRequest(
   request: FastifyRequest,
   reply: FastifyReply,
+  service: SafeTunnelRouteService,
+  mutationHosts: ReturnType<typeof createSafeTunnelMutationHostBoundary>,
 ): Promise<void> {
   const fetchSite = request.headers["sec-fetch-site"];
   const isSameOriginWhenKnown = fetchSite === undefined || fetchSite === "same-origin";
@@ -121,7 +133,19 @@ async function requireSafeTunnelMutationRequest(
       === SAFE_TUNNEL_MUTATION_HEADER_VALUE;
   const hasJsonBody = request.body !== undefined
     && hasJsonContentType(request.headers["content-type"]);
-  if (isSameOriginWhenKnown && isMarkedBrowserRequest && hasJsonBody) return;
+  if (isSameOriginWhenKnown && isMarkedBrowserRequest && hasJsonBody) {
+    let hasTrustedHost = false;
+    try {
+      hasTrustedHost = await mutationHosts.allows(
+        { host: request.headers.host, origin: request.headers.origin },
+        async () => (await service.status()).config.machine?.publicHostname,
+      );
+    } catch {
+      // The persisted registration could not establish trust. Fail closed and
+      // do not expose private state/transport details at the browser boundary.
+    }
+    if (hasTrustedHost) return;
+  }
 
   markSafeTunnelResponsePrivate(reply);
   await reply.code(403).send({ error: "Request forbidden." });

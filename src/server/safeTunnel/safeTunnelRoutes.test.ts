@@ -13,6 +13,7 @@ import {
   SAFE_TUNNEL_MUTATION_HEADER_NAME,
   SAFE_TUNNEL_MUTATION_HEADER_VALUE,
 } from "../../shared/safeTunnelHttp.js";
+import type { SafeTunnelMutationHostConfig } from "./safeTunnelMutationHosts.js";
 import {
   SafeTunnelOperationConflictError,
   registerSafeTunnelRoutes,
@@ -21,6 +22,8 @@ import {
 
 const acceptedMutationHeaders = {
   [SAFE_TUNNEL_MUTATION_HEADER_NAME]: SAFE_TUNNEL_MUTATION_HEADER_VALUE,
+  host: "localhost",
+  origin: "http://localhost",
   "sec-fetch-site": "same-origin",
 } as const;
 
@@ -28,15 +31,8 @@ let app: FastifyInstance;
 let service: FakeSafeTunnelRouteService;
 
 beforeEach(async () => {
-  app = Fastify({ logger: false });
-  await app.register(fastifyCompress, {
-    globalCompression: true,
-    globalDecompression: false,
-    threshold: 1024,
-  });
   service = new FakeSafeTunnelRouteService();
-  registerSafeTunnelRoutes(app, service);
-  await app.ready();
+  app = await createRouteApp();
 });
 
 afterEach(async () => {
@@ -105,7 +101,133 @@ describe("registerSafeTunnelRoutes", () => {
     expect(service.enable).toHaveBeenCalledWith({});
   });
 
-  it("rejects cross-site, simple, and bodyless mutations before service calls", async () => {
+  it("rejects an exact DNS-rebinding Enable/Disable probe despite same-origin metadata and the public marker", async () => {
+    await replaceRouteApp({ allowedHosts: true });
+    const reboundAuthority = "rebind.attacker.example:8504";
+    const headers = {
+      ...acceptedMutationHeaders,
+      host: reboundAuthority,
+      origin: `http://${reboundAuthority}`,
+    };
+
+    const enable = await app.inject({
+      method: "POST",
+      url: "/api/safe-tunnel/enable",
+      headers,
+      payload: {
+        advanced: { controlApiUrl: "https://control.attacker.example" },
+      },
+    });
+    const disable = await app.inject({
+      method: "POST",
+      url: "/api/safe-tunnel/disable",
+      headers,
+      payload: {},
+    });
+
+    for (const response of [enable, disable]) {
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toEqual({ error: "Request forbidden." });
+      expect(response.headers["cache-control"]).toBe("no-store");
+    }
+    expect(service.enable).not.toHaveBeenCalled();
+    expect(service.disable).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      label: "localhost",
+      config: {},
+      authority: "localhost:8504",
+    },
+    {
+      label: "a literal LAN address",
+      config: {},
+      authority: "192.168.50.12:8504",
+    },
+    {
+      label: "the configured listener name",
+      config: { listenerHost: "pi-web.internal" },
+      authority: "pi-web.internal:8504",
+    },
+    {
+      label: "an explicitly trusted reverse-proxy Host rewrite",
+      config: {
+        allowedHosts: ["gateway.example.test", "pi-web-upstream.internal"],
+      },
+      authority: "pi-web-upstream.internal",
+      origin: "https://gateway.example.test",
+    },
+  ] satisfies {
+    label: string;
+    config: SafeTunnelMutationHostConfig;
+    authority: string;
+    origin?: string;
+  }[])("accepts a mutation through $label", async ({ config, authority, origin }) => {
+    await replaceRouteApp(config);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/safe-tunnel/enable",
+      headers: {
+        ...acceptedMutationHeaders,
+        host: authority,
+        origin: origin ?? `http://${authority}`,
+      },
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(service.enable).toHaveBeenCalledWith({});
+  });
+
+  it("accepts Disable through the independently persisted public-ingress hostname", async () => {
+    service.status.mockResolvedValue({
+      ...service.statusResponse,
+      config: {
+        ...service.statusResponse.config,
+        state: "registered",
+        machine: {
+          controlApiBaseUrl: "https://api.tunnels.pi-web.dev",
+          machineId: "machine_1",
+          publicHostname: "registered.tunnels.pi-web.dev",
+          publicUrl: "https://registered.tunnels.pi-web.dev",
+        },
+      },
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/safe-tunnel/disable",
+      headers: {
+        ...acceptedMutationHeaders,
+        host: "registered.tunnels.pi-web.dev",
+        origin: "https://registered.tunnels.pi-web.dev",
+      },
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(service.disable).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a trusted Host paired with an untrusted Origin", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/safe-tunnel/enable",
+      headers: {
+        ...acceptedMutationHeaders,
+        host: "127.0.0.1:8504",
+        origin: "http://rebind.attacker.example:8504",
+      },
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(service.enable).not.toHaveBeenCalled();
+  });
+
+  it("rejects cross-site, originless, simple, and bodyless mutations before service calls", async () => {
     const hostileOrigin = "https://hostile.example.test";
     const responses = await Promise.all([
       app.inject({
@@ -126,6 +248,15 @@ describe("registerSafeTunnelRoutes", () => {
           "content-type": "application/json",
           origin: hostileOrigin,
           "sec-fetch-site": "cross-site",
+        },
+        payload: {},
+      }),
+      app.inject({
+        method: "POST",
+        url: "/api/safe-tunnel/disable",
+        headers: {
+          [SAFE_TUNNEL_MUTATION_HEADER_NAME]: SAFE_TUNNEL_MUTATION_HEADER_VALUE,
+          "sec-fetch-site": "same-origin",
         },
         payload: {},
       }),
@@ -343,6 +474,27 @@ describe("registerSafeTunnelRoutes", () => {
     }
   });
 });
+
+async function createRouteApp(
+  mutationHostConfig: SafeTunnelMutationHostConfig = {},
+): Promise<FastifyInstance> {
+  const routeApp = Fastify({ logger: false });
+  await routeApp.register(fastifyCompress, {
+    globalCompression: true,
+    globalDecompression: false,
+    threshold: 1024,
+  });
+  registerSafeTunnelRoutes(routeApp, service, mutationHostConfig);
+  await routeApp.ready();
+  return routeApp;
+}
+
+async function replaceRouteApp(
+  mutationHostConfig: SafeTunnelMutationHostConfig,
+): Promise<void> {
+  await app.close();
+  app = await createRouteApp(mutationHostConfig);
+}
 
 class FakeSafeTunnelRouteService implements SafeTunnelRouteService {
   readonly operationResponse: SafeTunnelOperationResponse = {

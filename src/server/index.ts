@@ -12,7 +12,17 @@ const safeTunnel = await loadSafeTunnelBridge(config.safeTunnel, {
 });
 const app = await buildApp({
   bodyLimit: maxUploadBytes(process.env, config),
-  ...(safeTunnel === undefined ? {} : { safeTunnel }),
+  ...(safeTunnel === undefined
+    ? {}
+    : {
+        safeTunnel,
+        safeTunnelMutationHosts: {
+          listenerHost: config.host ?? "127.0.0.1",
+          ...(config.allowedHosts === undefined
+            ? {}
+            : { allowedHosts: config.allowedHosts }),
+        },
+      }),
 });
 appRef.current = app;
 await runWebProcess(app, {

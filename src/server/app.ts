@@ -39,6 +39,11 @@ import { proxyMachinePluginAsset, registerMachinePluginProxyRoutes } from "./mac
 import type { Project, WorkspaceEffectiveConfig, WorkspaceProviderResolution } from "./types.js";
 import type { SafeTunnelBridgeService } from "./safeTunnel/safeTunnelBridgeService.js";
 
+export interface SafeTunnelMutationHostConfig {
+  listenerHost?: string;
+  allowedHosts?: readonly string[] | true;
+}
+
 export interface AppDependencies {
   projects?: ProjectService;
   workspaceCatalog?: WorkspaceCatalog;
@@ -51,6 +56,8 @@ export interface AppDependencies {
   config?: PiWebConfigService;
   /** Present only when startup opted in and composed the web-owned Safe Tunnel graph. */
   safeTunnel?: SafeTunnelBridgeService;
+  /** Startup-snapshot host trust inputs used only by Safe Tunnel mutations. */
+  safeTunnelMutationHosts?: SafeTunnelMutationHostConfig;
   clientDist?: string | false;
   logger?: FastifyServerOptions["logger"];
   /** Maximum accepted HTTP request body size in bytes. */
@@ -160,9 +167,10 @@ async function withProfileDependency<T>(reply: FastifyReply, operation: () => Pr
 async function registerSafeTunnelFeature(
   app: FastifyInstance,
   bridge: SafeTunnelBridgeService,
+  mutationHosts: SafeTunnelMutationHostConfig,
 ): Promise<void> {
   const { registerSafeTunnelRoutes } = await import("./safeTunnel/safeTunnelRoutes.js");
-  registerSafeTunnelRoutes(app, bridge);
+  registerSafeTunnelRoutes(app, bridge, mutationHosts);
   app.addHook("onReady", async () => {
     await bridge.startup();
   });
@@ -213,7 +221,13 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
   );
   const machines = deps.machines ?? new MachineService(undefined, { localRuntime });
 
-  if (safeTunnel !== undefined) await registerSafeTunnelFeature(app, safeTunnel);
+  if (safeTunnel !== undefined) {
+    await registerSafeTunnelFeature(
+      app,
+      safeTunnel,
+      deps.safeTunnelMutationHosts ?? {},
+    );
+  }
 
   app.get("/pi-web-plugins/manifest.json", async (_request, reply) => withProfileDependency(reply, () => piWebPlugins.manifest()));
 

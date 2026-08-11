@@ -28,6 +28,12 @@ Restart the **web/API process** after changing the config key or environment. Sa
 
 Any non-empty `PI_WEB_OFFLINE` or `PI_OFFLINE` setting overrides both opt-in mechanisms and keeps Safe Tunnel unavailable. Without active opt-in, PI WEB does not construct the production Safe Tunnel graph, read or migrate its state, register its routes or lifecycle, start background network/process work, or expose its browser controls. Direct Safe Tunnel API probes receive the same generic `404` as any unknown API route.
 
+## Trust browser mutation hosts
+
+Safe Tunnel accepts Enable and Disable only when the request has a valid browser `Origin` and both its `Host` and `Origin` hostnames are independently trusted. PI WEB trusts `localhost`, literal IP addresses (including direct loopback and LAN access), the exact configured web listener hostname, exact names in the global `allowedHosts` array, and the public hostname saved from a successful Safe Tunnel registration. This prevents a page from becoming trusted merely because a DNS-rebound `Origin` still equals its `Host`.
+
+For a LAN DNS name or reverse proxy, add each browser-facing DNS name—and any different DNS name to which the proxy rewrites `Host`—as an exact `allowedHosts` entry without a scheme or port. `PI_WEB_ALLOWED_HOSTS` supplies the same exact names as a comma-separated list. Preserve the browser `Origin` and `Host` headers at the proxy when practical; if `Host` must be rewritten to a DNS name, trust that exact name too. The Vite-only `allowedHosts: true` mode and leading-dot subdomain patterns do not trust arbitrary DNS names for Safe Tunnel mutations. Restart the web/API process after changing this startup-snapshot trust list. A hostname from PI WEB's saved public-ingress registration is trusted automatically, so Disable and later re-enable flows continue to work through that ingress without manually copying its generated name.
+
 ## Availability and desired state are separate
 
 Safe Tunnel has two independent controls:
@@ -70,6 +76,7 @@ While supervision is active, PI WEB also owns `frpc.toml`, `frps-roots.pem`, and
 ## Security and trust boundaries
 
 - **Ingress authentication is an operator requirement.** The tunnel transport itself is not evidence that the resulting public endpoint is authenticated. Verify the actual ingress policy before exposing PI WEB.
+- **Browser mutations are host-bound.** Enable and Disable use the [trusted mutation-host contract](#trust-browser-mutation-hosts); request-controlled `Host`/`Origin` equality is not sufficient.
 - **Control API credentials require protected transport.** Production and self-hosted Control API URLs must use HTTPS. Plain HTTP is accepted only for URL-parser-normalized literal loopback development endpoints in `127.0.0.0/8` or `[::1]`; names such as `localhost` are not exceptions.
 - **Provider tunnel configuration is constrained.** PI WEB accepts one expected HTTP proxy only, validates its public hostname and provider-declared local target, and regenerates the final local target from PI WEB-owned desired state. Extra proxies, arbitrary target changes, unknown fields, disabled transport TLS, `frps` tokens that are not at least 32 visible ASCII characters, and `frpc` Go-template actions are rejected. The Control API must generate that token with cryptographically secure randomness; length validation cannot recover entropy that the provider did not supply.
 - **The relay peer must authenticate with public TLS.** PI WEB sets the TLS server name to the validated `serverAddr` and makes both managed and advanced `frpc` use a PI WEB-owned runtime CA file populated from Node.js's bundled public roots. Provider TOML cannot select a local CA path or alternate certificate identity. The `frps` endpoint must therefore present a currently valid certificate for its declared DNS name or IP address that chains to one of those roots; private or self-signed relay CAs are not supported.

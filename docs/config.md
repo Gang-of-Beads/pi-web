@@ -156,7 +156,7 @@ Rows with JSON key `—` are runtime-only environment variables, not config-file
 | **Config-file keys** |  |  |  |  |  |
 | Web/API bind host | `host` | `PI_WEB_HOST` | Global | Not supported locally | Restart web/API |
 | Web/API port | `port` | `PI_WEB_PORT`, `PORT` | Global | Not supported locally | Restart web/API |
-| Dev-server allowed hosts | `allowedHosts` | `PI_WEB_ALLOWED_HOSTS` | Global | Not supported locally | Restart dev web/UI |
+| Dev-server and Safe Tunnel mutation hosts | `allowedHosts` | `PI_WEB_ALLOWED_HOSTS` | Global | Not supported locally | Restart dev web/UI; exact Safe Tunnel mutation hosts also require a gateway web/API restart |
 | Experimental Safe Tunnel availability | `safeTunnel` | `PI_WEB_SAFE_TUNNEL` | Global/gateway web/API | Not supported locally or in selected-machine config | Restart gateway web/API; no session-daemon restart |
 | External filesystem roots | `pathAccess.allowedPaths` | — | Global + project | **Merges**: global roots first, then project roots; duplicates removed | Next file request; refresh existing views if needed |
 | Manual file upload default folder | `uploads.defaultFolder` | — | Global + project | **Overrides**: project value wins for workspaces in that project; otherwise global/default applies | New Upload dialogs and direct drag/drop batches after config/workspace refresh |

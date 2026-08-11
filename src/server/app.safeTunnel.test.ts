@@ -10,6 +10,10 @@ import type {
   SafeTunnelEnableResponse,
   SafeTunnelStatusResponse,
 } from "../shared/apiTypes.js";
+import {
+  SAFE_TUNNEL_MUTATION_HEADER_NAME,
+  SAFE_TUNNEL_MUTATION_HEADER_VALUE,
+} from "../shared/safeTunnelHttp.js";
 import { buildApp } from "./app.js";
 import type { SafeTunnelBridgeService } from "./safeTunnel/safeTunnelBridgeService.js";
 import type { SessionProxyDaemon } from "./sessiond/sessionProxyRoutes.js";
@@ -89,6 +93,53 @@ describe("Safe Tunnel app composition", () => {
       expect(localRuntime.capabilities).not.toContain("safeTunnel");
       expect(deepLink.statusCode).toBe(200);
       expect(deepLink.body).toBe("<html>PI WEB</html>");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("binds enabled mutations to the startup-snapshot trusted host config", async () => {
+    const fixture = fakeBridge();
+    const app = await buildApp({
+      clientDist: false,
+      logger: false,
+      safeTunnel: fixture.bridge,
+      safeTunnelMutationHosts: {
+        listenerHost: "127.0.0.1",
+        allowedHosts: ["gateway.example.test"],
+      },
+      sessionDaemon: fakeSessionDaemon(),
+    });
+    const mutationHeaders = {
+      [SAFE_TUNNEL_MUTATION_HEADER_NAME]: SAFE_TUNNEL_MUTATION_HEADER_VALUE,
+      "sec-fetch-site": "same-origin",
+    } as const;
+
+    try {
+      const trusted = await app.inject({
+        method: "POST",
+        url: "/api/safe-tunnel/enable",
+        headers: {
+          ...mutationHeaders,
+          host: "gateway.example.test",
+          origin: "https://gateway.example.test",
+        },
+        payload: {},
+      });
+      const rebound = await app.inject({
+        method: "POST",
+        url: "/api/safe-tunnel/enable",
+        headers: {
+          ...mutationHeaders,
+          host: "rebind.attacker.example:8504",
+          origin: "http://rebind.attacker.example:8504",
+        },
+        payload: {},
+      });
+
+      expect(trusted.statusCode).toBe(202);
+      expect(rebound.statusCode).toBe(403);
+      expect(rebound.json()).toEqual({ error: "Request forbidden." });
     } finally {
       await app.close();
     }
