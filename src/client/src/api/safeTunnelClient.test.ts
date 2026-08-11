@@ -1,4 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  SAFE_TUNNEL_MUTATION_HEADER_NAME,
+  SAFE_TUNNEL_MUTATION_HEADER_VALUE,
+} from "../../../shared/safeTunnelHttp";
 import { safeTunnelApi } from "./safeTunnelClient";
 
 beforeEach(() => {
@@ -36,10 +40,25 @@ describe("Safe Tunnel browser API", () => {
     ]);
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ cache: "no-store" });
     expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ method: "POST" });
+    expect(requestHeaders(fetchMock.mock.calls[1]?.[1]).get("content-type"))
+      .toBe("application/json");
+    expect(
+      requestHeaders(fetchMock.mock.calls[1]?.[1]).get(
+        SAFE_TUNNEL_MUTATION_HEADER_NAME,
+      ),
+    ).toBe(SAFE_TUNNEL_MUTATION_HEADER_VALUE);
     expect(JSON.parse(requestBody(fetchMock.mock.calls[1]?.[1]))).toEqual({
       advanced: { controlApiUrl: "http://127.0.0.1:8787", frpcPath: "/opt/frpc" },
     });
     expect(fetchMock.mock.calls[2]?.[1]).toMatchObject({ method: "POST" });
+    expect(requestHeaders(fetchMock.mock.calls[2]?.[1]).get("content-type"))
+      .toBe("application/json");
+    expect(
+      requestHeaders(fetchMock.mock.calls[2]?.[1]).get(
+        SAFE_TUNNEL_MUTATION_HEADER_NAME,
+      ),
+    ).toBe(SAFE_TUNNEL_MUTATION_HEADER_VALUE);
+    expect(JSON.parse(requestBody(fetchMock.mock.calls[2]?.[1]))).toEqual({});
     expect(fetchMock.mock.calls[3]?.[1]).toMatchObject({ cache: "no-store" });
   });
 });
@@ -72,6 +91,10 @@ function operationResponse() {
 function fetchUrl([input]: [input: RequestInfo | URL, init?: RequestInit | undefined]): string {
   if (typeof input === "string") return input;
   return input instanceof URL ? input.href : input.url;
+}
+
+function requestHeaders(init: RequestInit | undefined): Headers {
+  return new Headers(init?.headers);
 }
 
 function requestBody(init: RequestInit | undefined): string {

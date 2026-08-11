@@ -10,10 +10,19 @@ import type {
   SafeTunnelStatusResponse,
 } from "../../shared/apiTypes.js";
 import {
+  SAFE_TUNNEL_MUTATION_HEADER_NAME,
+  SAFE_TUNNEL_MUTATION_HEADER_VALUE,
+} from "../../shared/safeTunnelHttp.js";
+import {
   SafeTunnelOperationConflictError,
   registerSafeTunnelRoutes,
   type SafeTunnelRouteService,
 } from "./safeTunnelRoutes.js";
+
+const acceptedMutationHeaders = {
+  [SAFE_TUNNEL_MUTATION_HEADER_NAME]: SAFE_TUNNEL_MUTATION_HEADER_VALUE,
+  "sec-fetch-site": "same-origin",
+} as const;
 
 let app: FastifyInstance;
 let service: FakeSafeTunnelRouteService;
@@ -45,11 +54,26 @@ describe("registerSafeTunnelRoutes", () => {
   it("marks status, mutation, operation, and error responses no-store", async () => {
     const responses = await Promise.all([
       app.inject({ method: "GET", url: "/api/safe-tunnel/status" }),
-      app.inject({ method: "POST", url: "/api/safe-tunnel/enable", payload: {} }),
-      app.inject({ method: "POST", url: "/api/safe-tunnel/disable" }),
+      app.inject({
+        method: "POST",
+        url: "/api/safe-tunnel/enable",
+        headers: acceptedMutationHeaders,
+        payload: {},
+      }),
+      app.inject({
+        method: "POST",
+        url: "/api/safe-tunnel/disable",
+        headers: acceptedMutationHeaders,
+        payload: {},
+      }),
       app.inject({ method: "GET", url: "/api/safe-tunnel/operations/op_1" }),
       app.inject({ method: "GET", url: "/api/safe-tunnel/operations/missing" }),
-      app.inject({ method: "POST", url: "/api/safe-tunnel/enable", payload: [] }),
+      app.inject({
+        method: "POST",
+        url: "/api/safe-tunnel/enable",
+        headers: acceptedMutationHeaders,
+        payload: [],
+      }),
     ]);
 
     for (const response of responses) {
@@ -68,16 +92,67 @@ describe("registerSafeTunnelRoutes", () => {
     expect(service.status).toHaveBeenCalledOnce();
   });
 
-  it("starts the normal no-input enable flow", async () => {
+  it("accepts the marked same-origin JSON enable contract", async () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/safe-tunnel/enable",
+      headers: acceptedMutationHeaders,
       payload: {},
     });
 
     expect(response.statusCode).toBe(202);
     expect(response.json<SafeTunnelEnableResponse>()).toEqual(service.enableResponse);
     expect(service.enable).toHaveBeenCalledWith({});
+  });
+
+  it("rejects cross-site, simple, and bodyless mutations before service calls", async () => {
+    const hostileOrigin = "https://hostile.example.test";
+    const responses = await Promise.all([
+      app.inject({
+        method: "POST",
+        url: "/api/safe-tunnel/enable",
+        headers: {
+          "content-type": "text/plain",
+          origin: hostileOrigin,
+          "sec-fetch-site": "cross-site",
+        },
+        payload: "{}",
+      }),
+      app.inject({
+        method: "POST",
+        url: "/api/safe-tunnel/disable",
+        headers: {
+          [SAFE_TUNNEL_MUTATION_HEADER_NAME]: SAFE_TUNNEL_MUTATION_HEADER_VALUE,
+          "content-type": "application/json",
+          origin: hostileOrigin,
+          "sec-fetch-site": "cross-site",
+        },
+        payload: {},
+      }),
+      app.inject({
+        method: "POST",
+        url: "/api/safe-tunnel/disable",
+        headers: acceptedMutationHeaders,
+      }),
+      app.inject({
+        method: "POST",
+        url: "/api/safe-tunnel/disable",
+        headers: {
+          "content-type": "text/plain",
+          origin: "http://localhost",
+          "sec-fetch-site": "same-origin",
+        },
+        payload: "{}",
+      }),
+    ]);
+
+    for (const response of responses) {
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toEqual({ error: "Request forbidden." });
+      expect(response.headers["cache-control"]).toBe("no-store");
+    }
+    expect(service.enable).not.toHaveBeenCalled();
+    expect(service.disable).not.toHaveBeenCalled();
   });
 
   it("returns the complete enable response when HTTP compression is negotiated", async () => {
@@ -93,7 +168,7 @@ describe("registerSafeTunnelRoutes", () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/safe-tunnel/enable",
-      headers: { "accept-encoding": "gzip" },
+      headers: { ...acceptedMutationHeaders, "accept-encoding": "gzip" },
       payload: {},
     });
 
@@ -108,6 +183,7 @@ describe("registerSafeTunnelRoutes", () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/safe-tunnel/enable",
+      headers: acceptedMutationHeaders,
       payload: {
         advanced: {
           controlApiUrl: " http://127.0.0.1:8787 ",
@@ -135,21 +211,25 @@ describe("registerSafeTunnelRoutes", () => {
     const legacy = await app.inject({
       method: "POST",
       url: "/api/safe-tunnel/enable",
+      headers: acceptedMutationHeaders,
       payload: { controlApiUrl: "https://control.example.test" },
     });
     const malformedBody = await app.inject({
       method: "POST",
       url: "/api/safe-tunnel/enable",
+      headers: acceptedMutationHeaders,
       payload: [],
     });
     const malformedOverride = await app.inject({
       method: "POST",
       url: "/api/safe-tunnel/enable",
+      headers: acceptedMutationHeaders,
       payload: { advanced: { machineSlug: "" } },
     });
     const oversizedOverride = await app.inject({
       method: "POST",
       url: "/api/safe-tunnel/enable",
+      headers: acceptedMutationHeaders,
       payload: { advanced: { machineName: "x".repeat(81) } },
     });
 
@@ -176,6 +256,8 @@ describe("registerSafeTunnelRoutes", () => {
     const disabled = await app.inject({
       method: "POST",
       url: "/api/safe-tunnel/disable",
+      headers: acceptedMutationHeaders,
+      payload: {},
     });
     const operation = await app.inject({
       method: "GET",
@@ -220,6 +302,7 @@ describe("registerSafeTunnelRoutes", () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/safe-tunnel/enable",
+      headers: acceptedMutationHeaders,
       payload: {},
     });
 
@@ -238,8 +321,18 @@ describe("registerSafeTunnelRoutes", () => {
 
     const responses = await Promise.all([
       app.inject({ method: "GET", url: "/api/safe-tunnel/status" }),
-      app.inject({ method: "POST", url: "/api/safe-tunnel/enable", payload: {} }),
-      app.inject({ method: "POST", url: "/api/safe-tunnel/disable" }),
+      app.inject({
+        method: "POST",
+        url: "/api/safe-tunnel/enable",
+        headers: acceptedMutationHeaders,
+        payload: {},
+      }),
+      app.inject({
+        method: "POST",
+        url: "/api/safe-tunnel/disable",
+        headers: acceptedMutationHeaders,
+        payload: {},
+      }),
       app.inject({ method: "GET", url: "/api/safe-tunnel/operations/op_1" }),
     ]);
 

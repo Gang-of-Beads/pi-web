@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyReply } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type {
   SafeTunnelAdvancedOverrides,
   SafeTunnelDisableResponse,
@@ -7,8 +7,13 @@ import type {
   SafeTunnelOperationResponse,
   SafeTunnelStatusResponse,
 } from "../../shared/apiTypes.js";
+import {
+  SAFE_TUNNEL_MUTATION_HEADER_NAME,
+  SAFE_TUNNEL_MUTATION_HEADER_VALUE,
+} from "../../shared/safeTunnelHttp.js";
 
 const enableRequestKeys = new Set(["advanced"]);
+const disableRequestKeys = new Set<string>();
 const advancedOverrideKeys = new Set([
   "controlApiUrl",
   "frpcPath",
@@ -56,24 +61,33 @@ export function registerSafeTunnelRoutes(
     }
   });
 
-  app.post<{ Body: unknown }>("/api/safe-tunnel/enable", async (request, reply) => {
-    markSafeTunnelResponsePrivate(reply);
-    try {
-      const response = await service.enable(parseEnableRequest(request.body));
-      return await reply.code(202).send(response);
-    } catch (error) {
-      return sendSafeTunnelError(reply, error);
-    }
-  });
+  app.post<{ Body: unknown }>(
+    "/api/safe-tunnel/enable",
+    { preValidation: requireSafeTunnelMutationRequest },
+    async (request, reply) => {
+      markSafeTunnelResponsePrivate(reply);
+      try {
+        const response = await service.enable(parseEnableRequest(request.body));
+        return await reply.code(202).send(response);
+      } catch (error) {
+        return sendSafeTunnelError(reply, error);
+      }
+    },
+  );
 
-  app.post("/api/safe-tunnel/disable", async (_request, reply) => {
-    markSafeTunnelResponsePrivate(reply);
-    try {
-      return await service.disable();
-    } catch (error) {
-      return sendSafeTunnelError(reply, error);
-    }
-  });
+  app.post<{ Body: unknown }>(
+    "/api/safe-tunnel/disable",
+    { preValidation: requireSafeTunnelMutationRequest },
+    async (request, reply) => {
+      markSafeTunnelResponsePrivate(reply);
+      try {
+        parseDisableRequest(request.body);
+        return await service.disable();
+      } catch (error) {
+        return sendSafeTunnelError(reply, error);
+      }
+    },
+  );
 
   app.get<{ Params: { operationId: string } }>(
     "/api/safe-tunnel/operations/:operationId",
@@ -96,10 +110,30 @@ function markSafeTunnelResponsePrivate(reply: FastifyReply): void {
   void reply.header("cache-control", "no-store");
 }
 
+async function requireSafeTunnelMutationRequest(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<void> {
+  const fetchSite = request.headers["sec-fetch-site"];
+  const isSameOriginWhenKnown = fetchSite === undefined || fetchSite === "same-origin";
+  const isMarkedBrowserRequest =
+    request.headers[SAFE_TUNNEL_MUTATION_HEADER_NAME]
+      === SAFE_TUNNEL_MUTATION_HEADER_VALUE;
+  const hasJsonBody = request.body !== undefined
+    && hasJsonContentType(request.headers["content-type"]);
+  if (isSameOriginWhenKnown && isMarkedBrowserRequest && hasJsonBody) return;
+
+  markSafeTunnelResponsePrivate(reply);
+  await reply.code(403).send({ error: "Request forbidden." });
+}
+
+function hasJsonContentType(value: string | undefined): boolean {
+  return value?.split(";", 1)[0]?.trim().toLowerCase() === "application/json";
+}
+
 class SafeTunnelRequestValidationError extends Error {}
 
 function parseEnableRequest(body: unknown): SafeTunnelEnableRequest {
-  if (body === undefined) return {};
   const request = requireRequestObject(
     body,
     "Safe Tunnel enable request body must be an object",
@@ -150,6 +184,14 @@ function parseEnableRequest(body: unknown): SafeTunnelEnableRequest {
     4_096,
   );
   return Object.keys(parsed).length === 0 ? {} : { advanced: parsed };
+}
+
+function parseDisableRequest(body: unknown): void {
+  const request = requireRequestObject(
+    body,
+    "Safe Tunnel disable request body must be an object",
+  );
+  assertOnlyKeys(request, disableRequestKeys, "Safe Tunnel disable request");
 }
 
 function copyOptionalString(
