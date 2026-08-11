@@ -137,7 +137,7 @@ interface OwnedFrpcProcess {
   readonly handle: SafeTunnelFrpcProcessHandle;
   resolveCompletion: () => void;
   exit?: SafeTunnelFrpcProcessExit;
-  settled: boolean;
+  closed: boolean;
   stopRequested: boolean;
 }
 
@@ -196,12 +196,16 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
   }
 
   async shutdown(): Promise<void> {
-    if (this.disposed) {
+    if (!this.disposed) {
+      this.disposed = true;
+      await this.stopRuntime();
+      return;
+    }
+    if (this.stopInFlight !== undefined) {
       await this.stopInFlight;
       return;
     }
-    this.disposed = true;
-    await this.stopRuntime();
+    if (this.activeProcess !== undefined) await this.stopRuntime();
   }
 
   async status(): Promise<SafeTunnelRuntimeStatus> {
@@ -397,9 +401,9 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
     exit: SafeTunnelFrpcProcessExit,
     input: SafeTunnelFrpcStartInput,
   ): void {
-    if (this.activeProcess !== owned || owned.settled) return;
+    if (this.activeProcess !== owned || owned.closed) return;
     owned.exit = exit;
-    this.releaseOwnedProcess(owned);
+    this.releaseClosedProcess(owned);
 
     if (owned.stopRequested || !this.isCurrentAttempt(owned.generation)) {
       this.phase = this.disposed ? "shutdown" : "stopped";
@@ -472,35 +476,37 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
     if (owned !== undefined) {
       owned.stopRequested = true;
       this.phase = "stopping";
-      try {
-        owned.handle.terminate("SIGTERM");
-      } catch {
-        // The exact handle remains owned and gets the bounded SIGKILL attempt below.
+      const terminateRequested = this.trySignalOwnedProcess(owned, "SIGTERM");
+
+      let stopped = owned.closed;
+      if (!stopped && terminateRequested) {
+        stopped = await this.waitForOwnedProcess(owned, this.policy.stopGracePeriodMs);
       }
 
-      let stopped = await this.waitForOwnedProcess(owned, this.policy.stopGracePeriodMs);
-      let forced = false;
+      let forceKillRequested = false;
       if (!stopped) {
-        forced = true;
-        try {
-          owned.handle.terminate("SIGKILL");
-        } catch {
-          // Failure is translated after the final bounded wait.
+        forceKillRequested = this.trySignalOwnedProcess(owned, "SIGKILL");
+        stopped = owned.closed;
+        if (!stopped) {
+          stopped = await this.waitForOwnedProcess(owned, this.policy.killGracePeriodMs);
         }
-        stopped = await this.waitForOwnedProcess(owned, this.policy.killGracePeriodMs);
       }
 
       if (!stopped) {
-        this.releaseOwnedProcess(owned);
+        // A signal result or error cannot prove termination. Keep the exact
+        // handle owned to prevent replacement until an eventual close releases it.
         stopError = new SafeTunnelFrpcSupervisorError("process_stop_failed");
       } else {
+        const forceStopped = forceKillRequested
+          && owned.exit?.kind === "exited"
+          && owned.exit.signal === "SIGKILL";
         output = {
           exitCode: 0,
           stderr: "",
-          stdout: forced
+          stdout: forceStopped
             ? "PI WEB force-stopped its owned Safe Tunnel frpc process.\n"
             : "PI WEB stopped its owned Safe Tunnel frpc process.\n",
-          ...(forced ? { signal: "SIGKILL" } : {}),
+          ...(forceStopped ? { signal: "SIGKILL" } : {}),
         };
       }
     }
@@ -511,17 +517,29 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
       stopError ??= new SafeTunnelFrpcSupervisorError("config_write_failed");
     }
     await this.dependencies.files.flushLog();
-    this.phase = this.disposed ? "shutdown" : "stopped";
+    if (this.activeProcess !== undefined) this.phase = "stopping";
+    else this.phase = this.disposed ? "shutdown" : "stopped";
     this.lastError = stopError?.message;
     if (stopError !== undefined) throw stopError;
     return output;
+  }
+
+  private trySignalOwnedProcess(
+    owned: OwnedFrpcProcess,
+    signal: NodeJS.Signals,
+  ): boolean {
+    try {
+      return owned.handle.terminate(signal);
+    } catch {
+      return false;
+    }
   }
 
   private waitForOwnedProcess(
     owned: OwnedFrpcProcess,
     timeoutMs: number,
   ): Promise<boolean> {
-    if (owned.settled) return Promise.resolve(true);
+    if (owned.closed) return Promise.resolve(true);
     return new Promise((resolve) => {
       let settled = false;
       const timeout = this.clock.schedule(() => {
@@ -538,9 +556,9 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
     });
   }
 
-  private releaseOwnedProcess(owned: OwnedFrpcProcess): void {
-    if (owned.settled) return;
-    owned.settled = true;
+  private releaseClosedProcess(owned: OwnedFrpcProcess): void {
+    if (owned.closed) return;
+    owned.closed = true;
     owned.handle.dispose();
     if (this.activeProcess === owned) this.activeProcess = undefined;
     this.cancelStableRunTask();
@@ -641,7 +659,7 @@ function createOwnedProcess(
     generation,
     handle,
     resolveCompletion,
-    settled: false,
+    closed: false,
     stopRequested: false,
   };
 }

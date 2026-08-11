@@ -181,7 +181,7 @@ describe("SafeTunnelFrpcSupervisor", () => {
     );
   });
 
-  it("fails bounded shutdown instead of hanging when the child never reports exit", async () => {
+  it("fails bounded shutdown while retaining ownership until a late close", async () => {
     const fixture = createFixture();
     await fixture.supervisor.start({});
     const child = fixture.launcher.processes[0];
@@ -196,9 +196,55 @@ describe("SafeTunnelFrpcSupervisor", () => {
       new SafeTunnelFrpcSupervisorError("process_stop_failed"),
     );
     expect(child.signals).toEqual(["SIGTERM", "SIGKILL"]);
-    expect(child.disposeCalls).toBe(1);
+    expect(child.disposeCalls).toBe(0);
     expect(fixture.clock.activeTaskCount()).toBe(0);
     expect(fixture.files.removeCalls).toBe(1);
+    await expect(fixture.supervisor.status()).resolves.toMatchObject({
+      error: "PI WEB could not confirm that its owned Safe Tunnel frpc process stopped.",
+      state: "running",
+    });
+
+    const retry = fixture.supervisor.shutdown();
+    expect(child.signals).toEqual(["SIGTERM", "SIGKILL", "SIGTERM"]);
+    fixture.clock.advance(5);
+    await flushAsyncWork();
+    expect(child.signals).toEqual(["SIGTERM", "SIGKILL", "SIGTERM", "SIGKILL"]);
+    child.exit(null, "SIGKILL");
+
+    await expect(retry).resolves.toBeUndefined();
+    expect(child.disposeCalls).toBe(1);
+    expect(fixture.clock.activeTaskCount()).toBe(0);
+    const status = await fixture.supervisor.status();
+    expect(status.state).toBe("stopped");
+    expect(status.error).toBeUndefined();
+  });
+
+  it("fails closed on false signal results and blocks replacement until close", async () => {
+    const fixture = createFixture();
+    await fixture.supervisor.start({});
+    const child = fixture.launcher.processes[0];
+    if (child === undefined) throw new Error("missing fake child");
+    child.terminationResults.set("SIGTERM", false);
+    child.terminationResults.set("SIGKILL", false);
+
+    const stopping = fixture.supervisor.stop();
+
+    expect(child.signals).toEqual(["SIGTERM", "SIGKILL"]);
+    fixture.clock.advance(5);
+    await expect(stopping).rejects.toEqual(
+      new SafeTunnelFrpcSupervisorError("process_stop_failed"),
+    );
+    expect(child.disposeCalls).toBe(0);
+    expect(fixture.clock.activeTaskCount()).toBe(0);
+    await expect(fixture.supervisor.start({})).rejects.toEqual(
+      new SafeTunnelFrpcSupervisorError("already_running"),
+    );
+    expect(fixture.launcher.processes).toHaveLength(1);
+
+    child.exit(0);
+    await expect(fixture.supervisor.status()).resolves.toMatchObject({ state: "stopped" });
+    await expect(fixture.supervisor.start({})).resolves.toMatchObject({ pid: 4001 });
+    expect(fixture.launcher.processes).toHaveLength(2);
   });
 
   it("waits out cancelled preparation without launching a late child", async () => {
@@ -364,6 +410,7 @@ class FakeProcessHandle implements SafeTunnelFrpcProcessHandle {
   disposed = false;
   exitOnTerminate = false;
   readonly signals: NodeJS.Signals[] = [];
+  readonly terminationResults = new Map<NodeJS.Signals, boolean>();
 
   constructor(
     readonly pid: number,
@@ -378,8 +425,9 @@ class FakeProcessHandle implements SafeTunnelFrpcProcessHandle {
 
   terminate(signal: NodeJS.Signals): boolean {
     this.signals.push(signal);
-    if (this.exitOnTerminate) this.exit(null, signal);
-    return true;
+    const result = this.terminationResults.get(signal) ?? true;
+    if (result && this.exitOnTerminate) this.exit(null, signal);
+    return result;
   }
 
   exit(exitCode: number | null, signal: NodeJS.Signals | null = null): void {

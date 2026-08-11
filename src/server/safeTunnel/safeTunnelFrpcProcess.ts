@@ -6,6 +6,7 @@ export interface SafeTunnelFrpcProcessRequest {
   readonly frpcPath: string;
 }
 
+/** Terminal notification emitted only after the exact child reports close. */
 export type SafeTunnelFrpcProcessExit =
   | {
     readonly exitCode: number | null;
@@ -53,7 +54,7 @@ export interface SafeTunnelNodeChildProcess {
   onceClose(
     listener: (exitCode: number | null, signal: NodeJS.Signals | null) => void,
   ): void;
-  onceError(listener: (error: Error) => void): void;
+  onError(listener: (error: Error) => void): void;
   processId(): number | undefined;
 }
 
@@ -94,8 +95,10 @@ export class NodeSafeTunnelFrpcProcessLauncher implements SafeTunnelFrpcProcessL
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
     });
+    const pid = child.processId();
     let disposed = false;
     let settled = false;
+    let spawnFailed = false;
 
     const onStdout = (chunk: string): void => { observer.onStdout?.(chunk); };
     const onStderr = (chunk: string): void => { observer.onStderr?.(chunk); };
@@ -114,23 +117,27 @@ export class NodeSafeTunnelFrpcProcessLauncher implements SafeTunnelFrpcProcessL
       observer.onExit(exit);
     };
     const onError = (): void => {
-      settle({ kind: "error" });
+      // ChildProcess also emits "error" when signal delivery fails. Only a
+      // missing initial PID identifies a pre-spawn failure; close remains the
+      // authoritative event that releases ownership in either case.
+      if (pid === undefined) spawnFailed = true;
     };
     const onClose = (
       exitCode: number | null,
       signal: NodeJS.Signals | null,
     ): void => {
-      settle({ exitCode, kind: "exited", signal });
+      settle(spawnFailed
+        ? { kind: "error" }
+        : { exitCode, kind: "exited", signal });
     };
 
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
     child.stdout.on("data", onStdout);
     child.stderr.on("data", onStderr);
-    child.onceError(onError);
+    child.onError(onError);
     child.onceClose(onClose);
 
-    const pid = child.processId();
     return {
       ...(pid === undefined ? {} : { pid }),
       dispose: cleanup,
@@ -158,7 +165,7 @@ function spawnNodeFrpcProcess(
     offClose: (listener) => { child.off("close", listener); },
     offError: (listener) => { child.off("error", listener); },
     onceClose: (listener) => { child.once("close", listener); },
-    onceError: (listener) => { child.once("error", listener); },
+    onError: (listener) => { child.on("error", listener); },
     processId: () => child.pid,
   };
 }
