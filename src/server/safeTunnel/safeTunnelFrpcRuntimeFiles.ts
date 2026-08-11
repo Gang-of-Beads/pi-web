@@ -11,14 +11,17 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { rootCertificates } from "node:tls";
 import { redactSafeTunnelDiagnostic } from "./safeTunnelDiagnostics.js";
 import { defaultSafeTunnelStatePath } from "./safeTunnelState.js";
 
 export const safeTunnelFrpcRuntimeDirectoryMode = 0o700;
 export const safeTunnelFrpcConfigFileMode = 0o600;
 export const safeTunnelFrpcLogFileMode = 0o600;
+export const safeTunnelFrpcTrustedCaFileMode = 0o600;
 export const safeTunnelFrpcConfigFileName = "frpc.toml";
 export const safeTunnelFrpcLogFileName = "frpc.log";
+export const safeTunnelFrpcTrustedCaFileName = "frps-roots.pem";
 export const safeTunnelFrpcLogTailCharacters = 12_000;
 
 export interface SafeTunnelFrpcRuntimeFileStatus {
@@ -32,6 +35,7 @@ export interface SafeTunnelFrpcRuntimeFileStatus {
 export interface SafeTunnelFrpcRuntimeFiles {
   readonly configPath: string;
   readonly logPath: string;
+  readonly trustedCaPath: string;
   appendLog(chunk: string): void;
   flushLog(): Promise<void>;
   registerLogRedactionValues(values: readonly string[]): void;
@@ -46,48 +50,57 @@ export interface FileSafeTunnelFrpcRuntimeFilesOptions {
   readonly logPath?: string;
   readonly platform?: NodeJS.Platform;
   readonly statePath?: string;
+  readonly trustedCaPath?: string;
+  readonly trustedCaPem?: string;
 }
 
-/** Owns private generated TOML plus the local diagnostic log beneath PI WEB data. */
+/** Owns generated TOML, relay trust roots, and the local log beneath PI WEB data. */
 export class FileSafeTunnelFrpcRuntimeFiles implements SafeTunnelFrpcRuntimeFiles {
   readonly configPath: string;
   readonly logPath: string;
+  readonly trustedCaPath: string;
   private currentProcessOwnsLog = false;
   private lastLogError: string | undefined;
   private readonly logRedactionValues = new Set<string>();
   private logWriteTail: Promise<void> = Promise.resolve();
   private readonly platform: NodeJS.Platform;
+  private readonly trustedCaPem: string;
 
   constructor(options: FileSafeTunnelFrpcRuntimeFilesOptions = {}) {
     const defaultDirectory = dirname(options.statePath ?? defaultSafeTunnelStatePath());
     this.configPath = options.configPath ?? join(defaultDirectory, safeTunnelFrpcConfigFileName);
     this.logPath = options.logPath ?? join(defaultDirectory, safeTunnelFrpcLogFileName);
+    this.trustedCaPath = options.trustedCaPath
+      ?? join(dirname(this.configPath), safeTunnelFrpcTrustedCaFileName);
     this.platform = options.platform ?? process.platform;
+    this.trustedCaPem = requireTrustedCaPem(
+      options.trustedCaPem ?? `${rootCertificates.join("\n")}\n`,
+    );
   }
 
   async writeConfig(contents: string): Promise<void> {
-    const directory = dirname(this.configPath);
-    await this.ensurePrivateDirectory(directory);
-    const tempPath = `${this.configPath}.${process.pid.toString()}-${randomUUID()}.tmp`;
-    let handle: Awaited<ReturnType<typeof open>> | undefined;
-
     try {
-      handle = await open(tempPath, "wx", safeTunnelFrpcConfigFileMode);
-      await handle.writeFile(contents, "utf8");
-      await handle.sync();
-      await handle.close();
-      handle = undefined;
-      await restrictMode(tempPath, safeTunnelFrpcConfigFileMode, this.platform);
-      await rename(tempPath, this.configPath);
-      await restrictMode(this.configPath, safeTunnelFrpcConfigFileMode, this.platform);
-    } finally {
-      await handle?.close().catch(() => undefined);
-      await rm(tempPath, { force: true }).catch(() => undefined);
+      await this.writePrivateFile(
+        this.trustedCaPath,
+        this.trustedCaPem,
+        safeTunnelFrpcTrustedCaFileMode,
+      );
+      await this.writePrivateFile(this.configPath, contents, safeTunnelFrpcConfigFileMode);
+    } catch (error: unknown) {
+      await rm(this.trustedCaPath, { force: true }).catch(() => undefined);
+      throw error;
     }
   }
 
   async removeConfig(): Promise<void> {
-    await rm(this.configPath, { force: true });
+    const removals = await Promise.allSettled([
+      rm(this.configPath, { force: true }),
+      rm(this.trustedCaPath, { force: true }),
+    ]);
+    const failed = removals.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    if (failed !== undefined) throw failed.reason;
   }
 
   async resetLog(header: string): Promise<void> {
@@ -162,6 +175,30 @@ export class FileSafeTunnelFrpcRuntimeFiles implements SafeTunnelFrpcRuntimeFile
     };
   }
 
+  private async writePrivateFile(
+    path: string,
+    contents: string,
+    mode: number,
+  ): Promise<void> {
+    await this.ensurePrivateDirectory(dirname(path));
+    const tempPath = `${path}.${process.pid.toString()}-${randomUUID()}.tmp`;
+    let handle: Awaited<ReturnType<typeof open>> | undefined;
+
+    try {
+      handle = await open(tempPath, "wx", mode);
+      await handle.writeFile(contents, "utf8");
+      await handle.sync();
+      await handle.close();
+      handle = undefined;
+      await restrictMode(tempPath, mode, this.platform);
+      await rename(tempPath, path);
+      await restrictMode(path, mode, this.platform);
+    } finally {
+      await handle?.close().catch(() => undefined);
+      await rm(tempPath, { force: true }).catch(() => undefined);
+    }
+  }
+
   private async ensurePrivateDirectory(directory: string): Promise<void> {
     await mkdir(directory, {
       mode: safeTunnelFrpcRuntimeDirectoryMode,
@@ -169,6 +206,10 @@ export class FileSafeTunnelFrpcRuntimeFiles implements SafeTunnelFrpcRuntimeFile
     });
     await restrictMode(directory, safeTunnelFrpcRuntimeDirectoryMode, this.platform);
   }
+}
+
+export function safeTunnelFrpcTrustedCaPath(statePath: string): string {
+  return join(dirname(statePath), safeTunnelFrpcTrustedCaFileName);
 }
 
 async function privateFileExists(path: string): Promise<{
@@ -194,6 +235,15 @@ async function restrictMode(
 ): Promise<void> {
   if (platform === "win32") return;
   await chmod(path, mode);
+}
+
+function requireTrustedCaPem(value: string): string {
+  if (value.trim() === ""
+    || !value.includes("-----BEGIN CERTIFICATE-----")
+    || !value.includes("-----END CERTIFICATE-----")) {
+    throw new Error("Safe Tunnel requires a non-empty PI WEB-owned CA certificate bundle.");
+  }
+  return value.endsWith("\n") ? value : `${value}\n`;
 }
 
 function tailText(contents: string, maxCharacters: number): string {

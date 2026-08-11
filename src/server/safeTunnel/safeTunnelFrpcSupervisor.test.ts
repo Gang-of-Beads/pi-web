@@ -22,6 +22,9 @@ import {
 } from "./safeTunnelFrpcSupervisor.js";
 import type { SafeTunnelPreparedTunnelConfig } from "./safeTunnelService.js";
 
+const frpcToken = "private-relay-token-0123456789abcdef";
+const trustedCaPath = "/private/safe-tunnel/frps-roots.pem";
+
 const policy = {
   initialRestartDelayMs: 10,
   killGracePeriodMs: 5,
@@ -43,22 +46,26 @@ describe("SafeTunnelFrpcSupervisor", () => {
     expect(fixture.configProvider.calls).toBe(1);
     expect(fixture.managedFrpc.calls).toBe(1);
     expect(fixture.files.configWrites).toEqual([preparedConfig().frpcConfigToml]);
+    expect(fixture.files.configWrites[0]).toContain(
+      `trustedCaFile = ${JSON.stringify(trustedCaPath)}`,
+    );
+    expect(fixture.files.configWrites[0]).toContain('serverName = "relay.example.test"');
     expect(fixture.launcher.requests).toEqual([{
       configPath: fixture.files.configPath,
       frpcPath: fixture.managedFrpc.result.path,
     }]);
     expect(result).toMatchObject({
-      credentialRedactionValues: ["private-relay-token"],
+      credentialRedactionValues: [frpcToken],
       pid: 4000,
       publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
     });
     expect(result.output).toContain("verified PI WEB-managed frpc v0.69.1 for linux-x64");
     expect(result.output).not.toContain("linux-arm64");
     expect(result.output).not.toContain(fixture.managedFrpc.result.path);
-    expect(result.output).not.toContain("private-relay-token");
+    expect(result.output).not.toContain(frpcToken);
 
-    fixture.launcher.processes[0]?.stdout("frpc ready: private-relay-");
-    fixture.launcher.processes[0]?.stdout(`token\n${"x".repeat(300)}`);
+    fixture.launcher.processes[0]?.stdout(`frpc ready: ${frpcToken.slice(0, 17)}`);
+    fixture.launcher.processes[0]?.stdout(`${frpcToken.slice(17)}\n${"x".repeat(300)}`);
     const status = await fixture.supervisor.status();
     expect(status).toMatchObject({
       state: "running",
@@ -66,12 +73,12 @@ describe("SafeTunnelFrpcSupervisor", () => {
       frpcConfigExists: true,
     });
     expect(status.logTail).toContain("frpc ready: █");
-    expect(status.logTail).not.toContain("private-relay-token");
+    expect(status.logTail).not.toContain(frpcToken);
   });
 
   it("redacts credentials split across chunks, streams, and terminal controls", async () => {
     const fixture = createFixture();
-    const credential = "aB3!";
+    const credential = `aB3!${"q".repeat(28)}`;
     fixture.configProvider.result = Promise.resolve(preparedConfig(credential));
 
     await fixture.supervisor.start({});
@@ -82,7 +89,7 @@ describe("SafeTunnelFrpcSupervisor", () => {
     child.stderr("\u001B[");
     child.stdout("31mB");
     child.stderr("\u001B[0m3");
-    child.stdout(`! failed safely\n${"x".repeat(300)}`);
+    child.stdout(`!${"q".repeat(28)} failed safely\n${"x".repeat(300)}`);
 
     const status = await fixture.supervisor.status();
 
@@ -96,15 +103,15 @@ describe("SafeTunnelFrpcSupervisor", () => {
 
   it("redacts mixed percent and JSON aliases split across child chunks and streams", async () => {
     const fixture = createFixture();
-    const credential = "tok+/=";
+    const credential = `tok+/=${"A".repeat(26)}`;
     fixture.configProvider.result = Promise.resolve(preparedConfig(credential));
     await fixture.supervisor.start({});
     const child = fixture.launcher.processes[0];
     if (child === undefined) throw new Error("missing fake child");
 
     const aliases = [
-      "%74ok%2b%2F%3d",
-      "\\u0074\\u006F\\u006b\\u002B\\/\\u003d",
+      `%74ok%2b%2F%3d${"A".repeat(26)}`,
+      `\\u0074\\u006F\\u006b\\u002B\\/\\u003d${"A".repeat(26)}`,
     ];
     let chunkIndex = 0;
     for (const alias of aliases) {
@@ -128,7 +135,7 @@ describe("SafeTunnelFrpcSupervisor", () => {
 
   it("rejects frpc authentication material reused as a public hostname", async () => {
     const fixture = createFixture();
-    const credential = "frpsecret";
+    const credential = "frpsecret0123456789abcdef0123456789";
     fixture.configProvider.result = Promise.resolve({
       ...preparedConfig(credential),
       publicHostname: `${credential}.example.test`,
@@ -145,21 +152,24 @@ describe("SafeTunnelFrpcSupervisor", () => {
   });
 
   it("omits structured runtime paths contaminated by an frpc credential", async () => {
-    const fixture = createFixture();
-    fixture.configProvider.result = Promise.resolve(preparedConfig("private"));
+    const credential = "private-frpc-credential-0123456789";
+    const fixture = createFixture(new FakeRuntimeFiles(
+      `/private/${credential}/frpc.toml`,
+      `/private/${credential}/frpc.log`,
+    ));
+    fixture.configProvider.result = Promise.resolve(preparedConfig(credential));
 
     await fixture.supervisor.start({});
     const status = await fixture.supervisor.status();
 
     expect(status.frpcConfigPath).toBeUndefined();
     expect(status.logPath).toBeUndefined();
-    expect(JSON.stringify(status)).not.toContain('"frpcConfigPath":"/private');
-    expect(JSON.stringify(status)).not.toContain('"logPath":"/private');
+    expect(JSON.stringify(status)).not.toContain(credential);
   });
 
   it("redacts accepted credentials from PI WEB-owned diagnostics too", async () => {
     const fixture = createFixture();
-    const credential = "Safe";
+    const credential = `Safe${"s".repeat(28)}`;
     fixture.configProvider.result = Promise.resolve(preparedConfig(credential));
 
     const result = await fixture.supervisor.start({});
@@ -170,9 +180,9 @@ describe("SafeTunnelFrpcSupervisor", () => {
     expect(status.logTail).not.toContain(credential);
   });
 
-  it("rejects a short credential even when a config provider bypasses preparation", async () => {
+  it("rejects a weak credential even when a config provider bypasses preparation", async () => {
     const fixture = createFixture();
-    fixture.configProvider.result = Promise.resolve(preparedConfig("abc"));
+    fixture.configProvider.result = Promise.resolve(preparedConfig("x".repeat(31)));
 
     await expect(fixture.supervisor.start({})).rejects.toEqual(
       new SafeTunnelFrpcSupervisorError("tunnel_config_failed"),
@@ -202,13 +212,42 @@ describe("SafeTunnelFrpcSupervisor", () => {
     expect(fixture.launcher.processes).toEqual([]);
   });
 
-  it("uses an advanced executable override without invoking managed acquisition", async () => {
+  it.each([
+    ["managed", {}],
+    ["advanced", { advancedFrpcPath: "/opt/private/frpc" }],
+  ] as const)("rejects a repointed CA path before launching the %s executable", async (
+    _label,
+    startInput,
+  ) => {
+    const fixture = createFixture();
+    const config = preparedConfig();
+    fixture.configProvider.result = Promise.resolve({
+      ...config,
+      frpcConfigToml: config.frpcConfigToml.replace(
+        trustedCaPath,
+        "/tmp/provider-ca.pem",
+      ),
+    });
+
+    await expect(fixture.supervisor.start(startInput))
+      .rejects.toEqual(new SafeTunnelFrpcSupervisorError("tunnel_config_failed"));
+
+    expect(fixture.managedFrpc.calls).toBe(0);
+    expect(fixture.files.configWrites).toEqual([]);
+    expect(fixture.launcher.processes).toEqual([]);
+  });
+
+  it("uses an advanced executable override without bypassing PI WEB's relay trust", async () => {
     const fixture = createFixture();
 
     const result = await fixture.supervisor.start({ advancedFrpcPath: "/opt/private/frpc" });
 
     expect(fixture.managedFrpc.calls).toBe(0);
     expect(fixture.launcher.requests[0]?.frpcPath).toBe("/opt/private/frpc");
+    expect(fixture.files.configWrites[0]).toContain(
+      `trustedCaFile = ${JSON.stringify(trustedCaPath)}`,
+    );
+    expect(fixture.files.configWrites[0]).toContain('serverName = "relay.example.test"');
     expect(result.output).toContain("Using an advanced frpc path override.");
     expect(result.output).not.toContain("/opt/private/frpc");
   });
@@ -441,7 +480,7 @@ describe("SafeTunnelFrpcSupervisor", () => {
   it("redacts launch failures while keeping enabled supervision on bounded retry", async () => {
     const fixture = createFixture();
     fixture.launcher.launchError = new Error(
-      "spawn /private/frpc ENOENT private-relay-token",
+      `spawn /private/frpc ENOENT ${frpcToken}`,
     );
 
     await expect(fixture.supervisor.start({ advancedFrpcPath: "/private/frpc" }))
@@ -451,7 +490,7 @@ describe("SafeTunnelFrpcSupervisor", () => {
     expect(status.state).toBe("unknown");
     expect(status.error).toContain("could not launch");
     expect(JSON.stringify(status)).not.toContain("/private/frpc");
-    expect(JSON.stringify(status)).not.toContain("private-relay-token");
+    expect(JSON.stringify(status)).not.toContain(frpcToken);
     expect(fixture.clock.scheduledDelays.at(-1)).toBe(10);
   });
 });
@@ -465,10 +504,9 @@ interface Fixture {
   readonly supervisor: SafeTunnelFrpcSupervisor;
 }
 
-function createFixture(): Fixture {
+function createFixture(files = new FakeRuntimeFiles()): Fixture {
   const clock = new ManualClock();
   const configProvider = new FakeConfigProvider();
-  const files = new FakeRuntimeFiles();
   const launcher = new FakeProcessLauncher();
   const managedFrpc = new FakeManagedFrpcProvider();
   return {
@@ -518,14 +556,18 @@ class FakeManagedFrpcProvider implements SafeTunnelManagedFrpcProvider {
 }
 
 class FakeRuntimeFiles implements SafeTunnelFrpcRuntimeFiles {
-  readonly configPath = "/private/safe-tunnel/frpc.toml";
-  readonly logPath = "/private/safe-tunnel/frpc.log";
   readonly configWrites: string[] = [];
+  readonly trustedCaPath = trustedCaPath;
   configExists = false;
   log = "";
   readonly logRedactionValues: string[] = [];
   removeCalls = 0;
   readonly removeResults: Promise<void>[] = [];
+
+  constructor(
+    readonly configPath = "/private/safe-tunnel/frpc.toml",
+    readonly logPath = "/private/safe-tunnel/frpc.log",
+  ) {}
 
   appendLog(chunk: string): void {
     this.log += chunk;
@@ -664,7 +706,7 @@ class ManualClock implements SafeTunnelSupervisorClock {
 }
 
 function preparedConfig(
-  credential = "private-relay-token",
+  credential = frpcToken,
 ): SafeTunnelPreparedTunnelConfig {
   return {
     credentialRedactionValues: [credential],
@@ -675,7 +717,19 @@ function preparedConfig(
     proxyName: "account-machine",
     frpcConfigToml: [
       'serverAddr = "relay.example.test"',
+      "serverPort = 7000",
+      'auth.method = "token"',
       `auth.token = ${JSON.stringify(credential)}`,
+      "transport.tls.enable = true",
+      'transport.tls.serverName = "relay.example.test"',
+      `transport.tls.trustedCaFile = ${JSON.stringify(trustedCaPath)}`,
+      "",
+      "[[proxies]]",
+      'name = "account-machine"',
+      'type = "http"',
+      'localIP = "127.0.0.1"',
+      "localPort = 8504",
+      'customDomains = ["dev-box.ns.tunnels.pi-web.dev"]',
       "",
     ].join("\n"),
   };

@@ -332,7 +332,10 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
 
     let configCredentials: readonly string[];
     try {
-      configCredentials = safeTunnelFrpcConfigCredentials(tunnelConfig.frpcConfigToml);
+      configCredentials = safeTunnelFrpcConfigCredentials(
+        tunnelConfig.frpcConfigToml,
+        { trustedCaFile: this.dependencies.files.trustedCaPath },
+      );
     } catch {
       throw this.failAttempt(
         generation,

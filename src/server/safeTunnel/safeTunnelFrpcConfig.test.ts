@@ -1,15 +1,27 @@
 import { parse } from "smol-toml";
 import { describe, expect, it } from "vitest";
 import {
-  prepareSafeTunnelFrpcConfig,
+  prepareSafeTunnelFrpcConfig as prepareSafeTunnelFrpcConfigWithTrust,
+  safeTunnelFrpcConfigCredentials,
   type SafeTunnelFrpcConfigInput,
 } from "./safeTunnelFrpcConfig.js";
+
+const frpcToken = "private-relay-token-0123456789abcdef";
+const trustedCaFile = "/private/safe-tunnel/frps-roots.pem";
+const trust = { trustedCaFile } as const;
+
+function prepareSafeTunnelFrpcConfig(
+  configInput: SafeTunnelFrpcConfigInput,
+  desiredLocalPiWebUrl: string,
+): string {
+  return prepareSafeTunnelFrpcConfigWithTrust(configInput, desiredLocalPiWebUrl, trust);
+}
 
 const providerConfig = [
   'serverAddr = "relay.example.test"',
   "serverPort = 7000",
   'auth.method = "token"',
-  'auth.token = "private-relay-token"',
+  `auth.token = ${JSON.stringify(frpcToken)}`,
   "transport.tls.enable = true",
   "",
   "[[proxies]]",
@@ -59,7 +71,7 @@ const templateFieldCases: readonly TemplateFieldCase[] = [
   {
     field: "auth.token",
     frpcConfigToml: providerConfig.replace(
-      'auth.token = "private-relay-token"',
+      `auth.token = ${JSON.stringify(frpcToken)}`,
       `auth.token = ${JSON.stringify(templateAction)}`,
     ),
   },
@@ -119,8 +131,14 @@ describe("prepareSafeTunnelFrpcConfig", () => {
     expect(parse(generated)).toEqual({
       serverAddr: "relay.example.test",
       serverPort: 7000,
-      auth: { method: "token", token: "private-relay-token" },
-      transport: { tls: { enable: true } },
+      auth: { method: "token", token: frpcToken },
+      transport: {
+        tls: {
+          enable: true,
+          serverName: "relay.example.test",
+          trustedCaFile,
+        },
+      },
       proxies: [{
         name: "account-machine",
         type: "http",
@@ -145,11 +163,11 @@ describe("prepareSafeTunnelFrpcConfig", () => {
 
   it("rejects templates that could inject TOML structure after validation", () => {
     const frpcConfigToml = providerConfig.replace(
-      'auth.token = "private-relay-token"',
+      `auth.token = ${JSON.stringify(frpcToken)}`,
       `auth.token = ${JSON.stringify(templateAction)}`,
     );
     const renderedPayload = [
-      'private-relay-token"',
+      `${frpcToken}"`,
       'includes = ["/tmp/provider-owned/*.toml"]',
       "#",
     ].join("\n");
@@ -165,7 +183,7 @@ describe("prepareSafeTunnelFrpcConfig", () => {
   it("checks the serialized boundary when TOML escapes hide a template action", () => {
     const escapedTemplateAction = "\\u007b\\u007b .Envs.PI_WEB_SERVICE_CREDENTIAL \\u007d\\u007d";
     const frpcConfigToml = providerConfig.replace(
-      'auth.token = "private-relay-token"',
+      `auth.token = ${JSON.stringify(frpcToken)}`,
       `auth.token = "${escapedTemplateAction}"`,
     );
 
@@ -195,8 +213,16 @@ describe("prepareSafeTunnelFrpcConfig", () => {
       "transport.tls.enable = true",
       "transport.tls.enable = false",
     )],
+    ["provider-selected CA path", providerConfig.replace(
+      "transport.tls.enable = true",
+      'transport.tls.enable = true\ntransport.tls.trustedCaFile = "/tmp/provider-ca.pem"',
+    )],
+    ["provider-selected certificate identity", providerConfig.replace(
+      "transport.tls.enable = true",
+      'transport.tls.enable = true\ntransport.tls.serverName = "attacker.example"',
+    )],
   ])("rejects %s without retaining provider values in the error", (_label, frpcConfigToml) => {
-    const secret = "private-relay-token";
+    const secret = frpcToken;
     let observed: unknown;
 
     try {
@@ -212,12 +238,14 @@ describe("prepareSafeTunnelFrpcConfig", () => {
 
   it.each([
     ["one character", "a"],
-    ["two characters", "ab"],
-    ["three characters", "abc"],
-    ["terminal controls", "ab\u001B[31mcd"],
+    ["four characters", "abcd"],
+    ["31 characters", "x".repeat(31)],
+    ["whitespace-only material", " ".repeat(32)],
+    ["non-ASCII material", "é".repeat(32)],
+    ["terminal controls", `${"x".repeat(32)}\u001B[31m`],
   ])("rejects %s credentials before they can reach frpc", (_label, token) => {
     const frpcConfigToml = providerConfig.replace(
-      '"private-relay-token"',
+      JSON.stringify(frpcToken),
       JSON.stringify(token),
     );
 
@@ -225,6 +253,23 @@ describe("prepareSafeTunnelFrpcConfig", () => {
       { ...input, frpcConfigToml },
       input.localPiWebUrl,
     )).toThrow("provider frpc configuration is invalid");
+  });
+
+  it("revalidates PI WEB-owned trust at the child-process boundary", () => {
+    const generated = prepareSafeTunnelFrpcConfig(input, input.localPiWebUrl);
+
+    expect(safeTunnelFrpcConfigCredentials(generated, trust)).toEqual([frpcToken]);
+    for (const unsafe of [
+      generated.replace(trustedCaFile, "/tmp/provider-ca.pem"),
+      generated.replace(
+        'serverName = "relay.example.test"',
+        'serverName = "attacker.example"',
+      ),
+      generated.replace(`trustedCaFile = ${JSON.stringify(trustedCaFile)}\n`, ""),
+    ]) {
+      expect(() => safeTunnelFrpcConfigCredentials(unsafe, trust))
+        .toThrow("provider frpc configuration is invalid");
+    }
   });
 
   it("rejects malformed or oversized TOML before it can reach frpc", () => {

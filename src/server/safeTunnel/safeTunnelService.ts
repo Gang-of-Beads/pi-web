@@ -13,6 +13,7 @@ import {
   prepareSafeTunnelFrpcConfig,
   safeTunnelFrpcConfigCredentials,
 } from "./safeTunnelFrpcConfig.js";
+import { safeTunnelFrpcTrustedCaPath } from "./safeTunnelFrpcRuntimeFiles.js";
 import {
   normalizeSafeTunnelControlApiBaseUrl,
   normalizeSafeTunnelLocalPiWebUrl,
@@ -86,6 +87,7 @@ export interface SafeTunnelPreparedTunnelConfig extends SafeTunnelMachineTunnelC
 export interface SafeTunnelServiceDependencies {
   readonly controlPlane: SafeTunnelControlPlane;
   readonly stateStorage: SafeTunnelStateStorage;
+  readonly frpcTrustedCaPath?: string;
   readonly now?: () => Date;
   readonly sleep?: (milliseconds: number, signal?: AbortSignal) => Promise<void>;
 }
@@ -96,11 +98,14 @@ export interface SafeTunnelServiceDependencies {
  * binary acquisition or child process behavior.
  */
 export class SafeTunnelService {
+  private readonly frpcTrustedCaPath: string;
   private readonly now: () => Date;
   private readonly sleep: (milliseconds: number, signal?: AbortSignal) => Promise<void>;
   private mutationTail: Promise<void> = Promise.resolve();
 
   constructor(private readonly dependencies: SafeTunnelServiceDependencies) {
+    this.frpcTrustedCaPath = dependencies.frpcTrustedCaPath
+      ?? safeTunnelFrpcTrustedCaPath(dependencies.stateStorage.filePath);
     this.now = dependencies.now ?? (() => new Date());
     this.sleep = dependencies.sleep ?? abortableSleep;
   }
@@ -274,6 +279,7 @@ export class SafeTunnelService {
     const prepared = applySafeTunnelLocalTarget(
       tunnelConfig,
       loaded.state.localPiWebUrl,
+      this.frpcTrustedCaPath,
     );
     assertNoTunnelMetadataCredentialAliases(
       prepared,
@@ -429,15 +435,18 @@ function normalizeLoginInput(
 export function applySafeTunnelLocalTarget(
   tunnelConfig: SafeTunnelMachineTunnelConfig,
   localPiWebUrl: string,
+  frpcTrustedCaPath: string,
 ): SafeTunnelPreparedTunnelConfig {
   let normalizedLocalPiWebUrl: string;
   try {
     normalizedLocalPiWebUrl = normalizeSafeTunnelLocalPiWebUrl(localPiWebUrl);
+    const trust = { trustedCaFile: frpcTrustedCaPath };
     const frpcConfigToml = prepareSafeTunnelFrpcConfig(
       tunnelConfig,
       normalizedLocalPiWebUrl,
+      trust,
     );
-    const credentialRedactionValues = safeTunnelFrpcConfigCredentials(frpcConfigToml);
+    const credentialRedactionValues = safeTunnelFrpcConfigCredentials(frpcConfigToml, trust);
     const prepared = {
       ...tunnelConfig,
       credentialRedactionValues,

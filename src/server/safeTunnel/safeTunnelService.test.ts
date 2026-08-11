@@ -22,6 +22,9 @@ import {
   applySafeTunnelLocalTarget,
 } from "./safeTunnelService.js";
 
+const frpcToken = "private-relay-token-0123456789abcdef";
+const trustedCaPath = "/data/pi-web/safe-tunnel/frps-roots.pem";
+
 class MemorySafeTunnelStateStorage implements SafeTunnelStateStorage {
   readonly filePath = "/data/pi-web/safe-tunnel/config.json";
   readonly saves: SafeTunnelPersistedState[] = [];
@@ -168,7 +171,7 @@ function machineTunnelConfig(): SafeTunnelMachineTunnelConfig {
       'serverAddr = "relay.example.test"',
       "serverPort = 7000",
       'auth.method = "token"',
-      'auth.token = "private-relay-token"',
+      `auth.token = ${JSON.stringify(frpcToken)}`,
       "transport.tls.enable = true",
       "",
       "[[proxies]]",
@@ -489,8 +492,12 @@ describe("SafeTunnelService", () => {
     const config = await service.getTunnelConfig();
 
     expect(config.localPiWebUrl).toBe("http://127.0.0.1:19000");
-    expect(config.credentialRedactionValues).toEqual(["private-relay-token"]);
+    expect(config.credentialRedactionValues).toEqual([frpcToken]);
     expect(config.frpcConfigToml).toContain("localPort = 19000\n");
+    expect(config.frpcConfigToml).toContain('serverName = "relay.example.test"');
+    expect(config.frpcConfigToml).toContain(
+      `trustedCaFile = ${JSON.stringify(trustedCaPath)}`,
+    );
     expect(controlPlane.calls).toEqual([{
       method: "config",
       input: registeredState().state.machine,
@@ -500,7 +507,7 @@ describe("SafeTunnelService", () => {
   it("rejects an frpc authentication value reused in public tunnel metadata", async () => {
     const storage = new MemorySafeTunnelStateStorage(registeredState());
     const controlPlane = new FakeSafeTunnelControlPlane();
-    const credential = "frpsecret";
+    const credential = "frpsecret0123456789abcdef0123456789";
     const publicHostname = `${credential}.example.test`;
     const config = machineTunnelConfig();
     controlPlane.tunnelConfig = {
@@ -508,7 +515,7 @@ describe("SafeTunnelService", () => {
       publicHostname,
       publicUrl: `https://${publicHostname}`,
       frpcConfigToml: config.frpcConfigToml
-        .replace("private-relay-token", credential)
+        .replace(frpcToken, credential)
         .replace("dev-box.ns-abc123.tunnels.pi-web.dev", publicHostname),
     };
     const service = new SafeTunnelService({ controlPlane, stateStorage: storage });
@@ -662,6 +669,7 @@ describe("applySafeTunnelLocalTarget", () => {
     const config = applySafeTunnelLocalTarget(
       machineTunnelConfig(),
       "http://[::1]:19000",
+      trustedCaPath,
     );
 
     expect(config.localPiWebUrl).toBe("http://[::1]:19000");
@@ -676,13 +684,13 @@ describe("applySafeTunnelLocalTarget", () => {
         "localPort = 8504",
         "localPort = 9999",
       ),
-    }, "http://127.0.0.1:19000")).toThrow("unexpected local target");
+    }, "http://127.0.0.1:19000", trustedCaPath)).toThrow("unexpected local target");
   });
 
   it("rejects provider config that smuggles another proxy even when the first target is valid", () => {
     expect(() => applySafeTunnelLocalTarget({
       ...machineTunnelConfig(),
       frpcConfigToml: `${machineTunnelConfig().frpcConfigToml}\n[[proxies]]\nname = "extra"\ntype = "tcp"\nlocalIP = "169.254.169.254"\nlocalPort = 80\n`,
-    }, "http://127.0.0.1:19000")).toThrow("unexpected local target");
+    }, "http://127.0.0.1:19000", trustedCaPath)).toThrow("unexpected local target");
   });
 });

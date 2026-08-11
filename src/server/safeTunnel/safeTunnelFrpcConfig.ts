@@ -1,16 +1,19 @@
 import { isIP } from "node:net";
+import { isAbsolute } from "node:path";
 import { parse, stringify, type TomlTable } from "smol-toml";
 import { normalizeSafeTunnelLocalPiWebUrl } from "./safeTunnelState.js";
 
 const maximumFrpcConfigCharacters = 32_000;
-const minimumFrpcSecretCharacters = 4;
+const minimumFrpcSecretCharacters = 32;
 const maximumFrpcSecretCharacters = 4_096;
 const maximumFrpcNameCharacters = 253;
+const maximumFrpcPathCharacters = 4_096;
 
 const rootKeys = new Set(["auth", "proxies", "serverAddr", "serverPort", "transport"]);
 const authKeys = new Set(["method", "token"]);
 const transportKeys = new Set(["tls"]);
-const tlsKeys = new Set(["enable"]);
+const providerTlsKeys = new Set(["enable"]);
+const preparedTlsKeys = new Set(["enable", "serverName", "trustedCaFile"]);
 const proxyKeys = new Set([
   "customDomains",
   "localIP",
@@ -26,6 +29,11 @@ export interface SafeTunnelFrpcConfigInput {
   readonly publicHostname: string;
 }
 
+export interface SafeTunnelFrpcTransportTrust {
+  /** Absolute PI WEB-owned CA bundle path; provider TOML never selects this path. */
+  readonly trustedCaFile: string;
+}
+
 /**
  * Treat provider TOML as an untrusted transport shape. Only the minimal frpc
  * client contract PI WEB needs is retained, and the sole proxy's local target
@@ -35,9 +43,11 @@ export interface SafeTunnelFrpcConfigInput {
 export function prepareSafeTunnelFrpcConfig(
   input: SafeTunnelFrpcConfigInput,
   desiredLocalPiWebUrl: string,
+  trust: SafeTunnelFrpcTransportTrust,
 ): string {
   if (input.frpcConfigToml.length > maximumFrpcConfigCharacters) throw invalidConfig();
   assertNoFrpcTemplateActions(input.frpcConfigToml);
+  const trustedCaFile = requireTrustedCaFile(trust.trustedCaFile);
 
   let parsed: TomlTable;
   try {
@@ -64,7 +74,10 @@ export function prepareSafeTunnelFrpcConfig(
     assertOnlyKeys(transport, transportKeys);
     const tls = transport["tls"] === undefined ? undefined : requireTable(transport["tls"]);
     if (tls !== undefined) {
-      assertOnlyKeys(tls, tlsKeys);
+      // The provider can require TLS but cannot choose a local trust path or a
+      // certificate identity. PI WEB binds those below to its own CA bundle
+      // and the validated relay endpoint.
+      assertOnlyKeys(tls, providerTlsKeys);
       if (tls["enable"] !== undefined && tls["enable"] !== true) throw invalidConfig();
     }
   }
@@ -95,7 +108,11 @@ export function prepareSafeTunnelFrpcConfig(
       token: authToken,
     },
     transport: {
-      tls: { enable: true },
+      tls: {
+        enable: true,
+        serverName: serverAddr,
+        trustedCaFile,
+      },
     },
     proxies: [{
       name: proxyName,
@@ -111,8 +128,15 @@ export function prepareSafeTunnelFrpcConfig(
   return prepared;
 }
 
-/** Extracts credentials from PI WEB's prepared config for diagnostic redaction. */
-export function safeTunnelFrpcConfigCredentials(toml: string): readonly string[] {
+/**
+ * Revalidates the generated child-process boundary and extracts credentials for
+ * diagnostic redaction. This keeps an injected config provider from removing
+ * or repointing PI WEB's relay certificate verification.
+ */
+export function safeTunnelFrpcConfigCredentials(
+  toml: string,
+  trust: SafeTunnelFrpcTransportTrust,
+): readonly string[] {
   if (toml.length > maximumFrpcConfigCharacters) throw invalidConfig();
   assertNoFrpcTemplateActions(toml);
 
@@ -122,9 +146,40 @@ export function safeTunnelFrpcConfigCredentials(toml: string): readonly string[]
   } catch {
     throw invalidConfig();
   }
+
+  assertOnlyKeys(parsed, rootKeys);
+  const serverAddr = requireServerAddress(parsed["serverAddr"]);
+  requirePort(parsed["serverPort"]);
+
   const auth = requireTable(parsed["auth"]);
   assertOnlyKeys(auth, authKeys);
-  return [requireFrpcCredential(auth["token"])];
+  if (auth["method"] !== "token") throw invalidConfig();
+  const credential = requireFrpcCredential(auth["token"]);
+
+  const transport = requireTable(parsed["transport"]);
+  assertOnlyKeys(transport, transportKeys);
+  const tls = requireTable(transport["tls"]);
+  assertOnlyKeys(tls, preparedTlsKeys);
+  if (tls["enable"] !== true
+    || tls["serverName"] !== serverAddr
+    || tls["trustedCaFile"] !== requireTrustedCaFile(trust.trustedCaFile)) {
+    throw invalidConfig();
+  }
+
+  const proxies = parsed["proxies"];
+  if (!Array.isArray(proxies) || proxies.length !== 1) throw invalidConfig();
+  const proxy = requireTable(proxies[0]);
+  assertOnlyKeys(proxy, proxyKeys);
+  requireBoundedString(proxy["name"], maximumFrpcNameCharacters);
+  if (proxy["type"] !== "http") throw invalidConfig();
+  requireServerAddress(proxy["localIP"]);
+  requirePort(proxy["localPort"]);
+  const customDomains = proxy["customDomains"];
+  if (!Array.isArray(customDomains)
+    || customDomains.length !== 1
+    || requireHostname(customDomains[0]) !== customDomains[0]) throw invalidConfig();
+
+  return [credential];
 }
 
 interface LocalTarget {
@@ -185,12 +240,29 @@ function requireFrpcCredential(value: unknown): string {
   if (typeof value !== "string"
     || value.length < minimumFrpcSecretCharacters
     || value.length > maximumFrpcSecretCharacters
+    || !isVisibleAscii(value)) throw invalidConfig();
+  return value;
+}
+
+function requireTrustedCaFile(value: unknown): string {
+  if (typeof value !== "string"
+    || value.length < 1
+    || value.length > maximumFrpcPathCharacters
+    || !isAbsolute(value)
     || hasTerminalControl(value)) throw invalidConfig();
   return value;
 }
 
 function assertNoFrpcTemplateActions(value: string): void {
   if (value.includes("{{")) throw invalidConfig();
+}
+
+function isVisibleAscii(value: string): boolean {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0);
+    if (codePoint === undefined || codePoint < 0x21 || codePoint > 0x7e) return false;
+  }
+  return true;
 }
 
 function hasTerminalControl(value: string): boolean {

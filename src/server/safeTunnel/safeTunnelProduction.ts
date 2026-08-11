@@ -38,8 +38,10 @@ export function createSafeTunnelProduction(
   options: SafeTunnelProductionOptions,
 ): SafeTunnelBridgeService {
   const statePath = defaultSafeTunnelStatePath();
+  const runtimeFiles = new FileSafeTunnelFrpcRuntimeFiles({ statePath });
   const safeTunnel = new SafeTunnelService({
     controlPlane: new HttpSafeTunnelControlPlane(),
+    frpcTrustedCaPath: runtimeFiles.trustedCaPath,
     stateStorage: new FileSafeTunnelStateStorage({ filePath: statePath }),
   });
   const managedFrpc = new SafeTunnelFrpcManager({
@@ -53,7 +55,7 @@ export function createSafeTunnelProduction(
   const supervisor = new SafeTunnelFrpcSupervisor({
     clock,
     configProvider: safeTunnel,
-    files: new FileSafeTunnelFrpcRuntimeFiles({ statePath }),
+    files: runtimeFiles,
     launcher: new NodeSafeTunnelFrpcProcessLauncher(),
     managedFrpc,
   });

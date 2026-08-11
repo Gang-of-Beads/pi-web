@@ -10,6 +10,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { rootCertificates } from "node:tls";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   FileSafeTunnelFrpcRuntimeFiles,
@@ -17,6 +18,7 @@ import {
   safeTunnelFrpcLogFileMode,
   safeTunnelFrpcLogTailCharacters,
   safeTunnelFrpcRuntimeDirectoryMode,
+  safeTunnelFrpcTrustedCaFileMode,
 } from "./safeTunnelFrpcRuntimeFiles.js";
 
 let tempDirectory: string;
@@ -38,6 +40,7 @@ describe("FileSafeTunnelFrpcRuntimeFiles", () => {
 
     expect(files.configPath).toBe(join(runtimeDirectory, "frpc.toml"));
     expect(files.logPath).toBe(join(runtimeDirectory, "frpc.log"));
+    expect(files.trustedCaPath).toBe(join(runtimeDirectory, "frps-roots.pem"));
     await expect(stat(runtimeDirectory)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
@@ -45,10 +48,12 @@ describe("FileSafeTunnelFrpcRuntimeFiles", () => {
     const runtimeDirectory = join(tempDirectory, "safe-tunnel");
     const configPath = join(runtimeDirectory, "frpc.toml");
     const logPath = join(runtimeDirectory, "frpc.log");
+    const trustedCaPath = join(runtimeDirectory, "frps-roots.pem");
     const files = new FileSafeTunnelFrpcRuntimeFiles({
       configPath,
       logPath,
       platform: "linux",
+      trustedCaPath,
     });
     await writeFile(join(tempDirectory, "unrelated"), "keep");
 
@@ -67,7 +72,14 @@ describe("FileSafeTunnelFrpcRuntimeFiles", () => {
       .toBe(safeTunnelFrpcConfigFileMode);
     expect((await stat(logPath)).mode & 0o777)
       .toBe(safeTunnelFrpcLogFileMode);
-    expect((await readdir(runtimeDirectory)).sort()).toEqual(["frpc.log", "frpc.toml"]);
+    expect((await stat(trustedCaPath)).mode & 0o777)
+      .toBe(safeTunnelFrpcTrustedCaFileMode);
+    expect(await readFile(trustedCaPath, "utf8")).toContain(rootCertificates[0]);
+    expect((await readdir(runtimeDirectory)).sort()).toEqual([
+      "frpc.log",
+      "frpc.toml",
+      "frps-roots.pem",
+    ]);
 
     await expect(files.status()).resolves.toEqual({
       configExists: true,
@@ -80,6 +92,8 @@ describe("FileSafeTunnelFrpcRuntimeFiles", () => {
       configExists: false,
       logExists: true,
     });
+    await expect(stat(trustedCaPath)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await readdir(runtimeDirectory)).toEqual(["frpc.log"]);
   });
 
   it("hides persisted historical logs until this process initializes them", async () => {
