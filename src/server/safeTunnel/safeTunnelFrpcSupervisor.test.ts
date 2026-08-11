@@ -64,8 +64,59 @@ describe("SafeTunnelFrpcSupervisor", () => {
       pid: 4000,
       frpcConfigExists: true,
     });
-    expect(status.logTail).toContain("frpc ready: [redacted]");
+    expect(status.logTail).toContain("frpc ready: █");
     expect(status.logTail).not.toContain("private-relay-token");
+  });
+
+  it("redacts credentials split across chunks, streams, and terminal controls", async () => {
+    const fixture = createFixture();
+    const credential = "aB3!";
+    fixture.configProvider.result = Promise.resolve(preparedConfig(credential));
+
+    await fixture.supervisor.start({});
+    const child = fixture.launcher.processes[0];
+    if (child === undefined) throw new Error("missing fake child");
+
+    child.stdout("useful frpc diagnostic: a");
+    child.stderr("\u001B[");
+    child.stdout("31mB");
+    child.stderr("\u001B[0m3");
+    child.stdout("! failed safely\n");
+
+    const status = await fixture.supervisor.status();
+
+    expect(fixture.files.log).toContain("useful frpc diagnostic:");
+    expect(fixture.files.log).toContain("█");
+    expect(fixture.files.log).not.toContain(credential);
+    expect(fixture.files.log).not.toContain("\u001B");
+    expect(status.logTail).not.toContain(credential);
+    expect(fixture.files.logRedactionValues).toContain(credential);
+  });
+
+  it("redacts accepted credentials from PI WEB-owned diagnostics too", async () => {
+    const fixture = createFixture();
+    const credential = "Safe";
+    fixture.configProvider.result = Promise.resolve(preparedConfig(credential));
+
+    const result = await fixture.supervisor.start({});
+    const status = await fixture.supervisor.status();
+
+    expect(result.output).toContain("PI WEB-owned");
+    expect(result.output).not.toContain(credential);
+    expect(status.logTail).not.toContain(credential);
+  });
+
+  it("rejects a short credential even when a config provider bypasses preparation", async () => {
+    const fixture = createFixture();
+    fixture.configProvider.result = Promise.resolve(preparedConfig("abc"));
+
+    await expect(fixture.supervisor.start({})).rejects.toEqual(
+      new SafeTunnelFrpcSupervisorError("tunnel_config_failed"),
+    );
+
+    expect(fixture.managedFrpc.calls).toBe(0);
+    expect(fixture.files.configWrites).toEqual([]);
+    expect(fixture.launcher.processes).toEqual([]);
   });
 
   it("uses an advanced executable override without invoking managed acquisition", async () => {
@@ -389,6 +440,7 @@ class FakeRuntimeFiles implements SafeTunnelFrpcRuntimeFiles {
   readonly configWrites: string[] = [];
   configExists = false;
   log = "";
+  readonly logRedactionValues: string[] = [];
   removeCalls = 0;
   readonly removeResults: Promise<void>[] = [];
 
@@ -400,6 +452,10 @@ class FakeRuntimeFiles implements SafeTunnelFrpcRuntimeFiles {
     return Promise.resolve();
   }
 
+  registerLogRedactionValues(values: readonly string[]): void {
+    this.logRedactionValues.push(...values);
+  }
+
   removeConfig(): Promise<void> {
     this.removeCalls += 1;
     const result = this.removeResults.shift() ?? Promise.resolve();
@@ -408,6 +464,7 @@ class FakeRuntimeFiles implements SafeTunnelFrpcRuntimeFiles {
 
   resetLog(header: string): Promise<void> {
     this.log = header;
+    this.logRedactionValues.length = 0;
     return Promise.resolve();
   }
 
@@ -473,6 +530,10 @@ class FakeProcessHandle implements SafeTunnelFrpcProcessHandle {
     this.observer.onExit({ exitCode, kind: "exited", signal });
   }
 
+  stderr(chunk: string): void {
+    if (!this.disposed) this.observer.onStderr?.(chunk);
+  }
+
   stdout(chunk: string): void {
     if (!this.disposed) this.observer.onStdout?.(chunk);
   }
@@ -519,7 +580,9 @@ class ManualClock implements SafeTunnelSupervisorClock {
   }
 }
 
-function preparedConfig(): SafeTunnelPreparedTunnelConfig {
+function preparedConfig(
+  credential = "private-relay-token",
+): SafeTunnelPreparedTunnelConfig {
   return {
     machineId: "machine_123",
     publicHostname: "dev-box.ns.tunnels.pi-web.dev",
@@ -528,7 +591,7 @@ function preparedConfig(): SafeTunnelPreparedTunnelConfig {
     proxyName: "account-machine",
     frpcConfigToml: [
       'serverAddr = "relay.example.test"',
-      'auth.token = "private-relay-token"',
+      `auth.token = ${JSON.stringify(credential)}`,
       "",
     ].join("\n"),
   };

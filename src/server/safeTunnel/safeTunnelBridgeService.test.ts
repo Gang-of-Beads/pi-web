@@ -100,6 +100,48 @@ describe("DefaultSafeTunnelBridgeService", () => {
     expect(runtime.logTailMaxCharacters).toBe(12_000);
   });
 
+  it("redacts persisted credentials again at every browser diagnostic boundary", async () => {
+    const fixture = createFixture();
+    const credential = "abc";
+    fixture.application.loaded = registeredState({
+      machine: {
+        ...registeredState().state.machine ?? missingMachineCredentials(),
+        machineToken: credential,
+      },
+    });
+    fixture.runtime.statusValue = runtimeStatus({
+      error: "runtime saw a\u001B[31mbc failure",
+      logError: "log handling retained abc",
+      logTail: "useful historical detail: a\u001B[31mbc was withheld",
+    });
+
+    const status = await fixture.service.status();
+
+    expect(status.runtime.error).toContain("runtime saw");
+    expect(status.runtime.logError).toContain("log handling retained");
+    expect(status.runtime.error).not.toContain(credential);
+    expect(status.runtime.logError).not.toContain(credential);
+    expect(status.runtime.logTail).toContain("useful historical detail:");
+    expect(status.runtime.logTail).not.toContain(credential);
+    expect(status.runtime.logTail).not.toContain("\u001B");
+
+    fixture.runtime.startResult = Promise.resolve({
+      output: "useful start detail: a\u001B[31mbc was withheld\n",
+      pid: 1234,
+      publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
+    });
+    const enabled = await fixture.service.enable({});
+    await vi.waitFor(() => {
+      expect(fixture.service.operation(enabled.operation.id)?.status).toBe("succeeded");
+    });
+    const operation = fixture.service.operation(enabled.operation.id);
+
+    expect(operation?.stdout).toContain("useful start detail:");
+    expect(operation?.stdout).toContain("█");
+    expect(JSON.stringify(operation)).not.toContain(credential);
+    expect(JSON.stringify(operation)).not.toContain("\u001B");
+  });
+
   it("runs one deterministic approval-through-supervision enable operation", async () => {
     const fixture = createFixture();
     const login = createDeferred<SafeTunnelLoginResult>();

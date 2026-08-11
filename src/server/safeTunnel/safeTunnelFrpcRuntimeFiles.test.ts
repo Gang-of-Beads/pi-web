@@ -82,6 +82,40 @@ describe("FileSafeTunnelFrpcRuntimeFiles", () => {
     });
   });
 
+  it("hides persisted historical logs until this process initializes them", async () => {
+    const runtimeDirectory = join(tempDirectory, "safe-tunnel");
+    const logPath = join(runtimeDirectory, "frpc.log");
+    const historicalCredential = "abc";
+    await mkdir(runtimeDirectory);
+    await writeFile(
+      logPath,
+      `historical token: a\u001B[31mbc\u001B[0m\n`,
+    );
+    const files = new FileSafeTunnelFrpcRuntimeFiles({
+      configPath: join(runtimeDirectory, "frpc.toml"),
+      logPath,
+    });
+
+    const historical = await files.status();
+
+    expect(historical).toMatchObject({ logExists: true });
+    expect(historical.logTail).toBeUndefined();
+    expect(JSON.stringify(historical)).not.toContain(historicalCredential);
+    expect(JSON.stringify(historical)).not.toContain("historical token");
+
+    await files.resetLog("current process diagnostics\n");
+    files.registerLogRedactionValues(["credential-token"]);
+    files.appendLog("useful failure: cred\u001B[");
+    files.appendLog("31mential-token\u001B[0m\n");
+
+    const current = await files.status();
+
+    expect(current.logTail).toContain("useful failure:");
+    expect(current.logTail).toContain("█");
+    expect(current.logTail).not.toContain("credential-token");
+    expect(current.logTail).not.toContain("\u001B");
+  });
+
   it("serializes appended chunks and bounds the visible diagnostic tail", async () => {
     const logPath = join(tempDirectory, "safe-tunnel", "frpc.log");
     const files = new FileSafeTunnelFrpcRuntimeFiles({

@@ -11,6 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { redactSafeTunnelDiagnostic } from "./safeTunnelDiagnostics.js";
 import { defaultSafeTunnelStatePath } from "./safeTunnelState.js";
 
 export const safeTunnelFrpcRuntimeDirectoryMode = 0o700;
@@ -19,11 +20,6 @@ export const safeTunnelFrpcLogFileMode = 0o600;
 export const safeTunnelFrpcConfigFileName = "frpc.toml";
 export const safeTunnelFrpcLogFileName = "frpc.log";
 export const safeTunnelFrpcLogTailCharacters = 12_000;
-
-const ansiEscapePattern = new RegExp(
-  `${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`,
-  "gu",
-);
 
 export interface SafeTunnelFrpcRuntimeFileStatus {
   readonly configExists: boolean;
@@ -38,6 +34,7 @@ export interface SafeTunnelFrpcRuntimeFiles {
   readonly logPath: string;
   appendLog(chunk: string): void;
   flushLog(): Promise<void>;
+  registerLogRedactionValues(values: readonly string[]): void;
   removeConfig(): Promise<void>;
   resetLog(header: string): Promise<void>;
   status(): Promise<SafeTunnelFrpcRuntimeFileStatus>;
@@ -55,7 +52,9 @@ export interface FileSafeTunnelFrpcRuntimeFilesOptions {
 export class FileSafeTunnelFrpcRuntimeFiles implements SafeTunnelFrpcRuntimeFiles {
   readonly configPath: string;
   readonly logPath: string;
+  private currentProcessOwnsLog = false;
   private lastLogError: string | undefined;
+  private readonly logRedactionValues = new Set<string>();
   private logWriteTail: Promise<void> = Promise.resolve();
   private readonly platform: NodeJS.Platform;
 
@@ -93,6 +92,8 @@ export class FileSafeTunnelFrpcRuntimeFiles implements SafeTunnelFrpcRuntimeFile
 
   async resetLog(header: string): Promise<void> {
     await this.flushLog();
+    this.currentProcessOwnsLog = false;
+    this.logRedactionValues.clear();
     try {
       await this.ensurePrivateDirectory(dirname(this.logPath));
       await writeFile(this.logPath, header, {
@@ -100,6 +101,7 @@ export class FileSafeTunnelFrpcRuntimeFiles implements SafeTunnelFrpcRuntimeFile
         mode: safeTunnelFrpcLogFileMode,
       });
       await restrictMode(this.logPath, safeTunnelFrpcLogFileMode, this.platform);
+      this.currentProcessOwnsLog = true;
       this.lastLogError = undefined;
     } catch {
       this.lastLogError = "Unable to initialize the private frpc log.";
@@ -126,6 +128,12 @@ export class FileSafeTunnelFrpcRuntimeFiles implements SafeTunnelFrpcRuntimeFile
     await this.logWriteTail;
   }
 
+  registerLogRedactionValues(values: readonly string[]): void {
+    for (const value of values) {
+      if (value !== "") this.logRedactionValues.add(value);
+    }
+  }
+
   async status(): Promise<SafeTunnelFrpcRuntimeFileStatus> {
     await this.flushLog();
     const config = await privateFileExists(this.configPath);
@@ -133,11 +141,11 @@ export class FileSafeTunnelFrpcRuntimeFiles implements SafeTunnelFrpcRuntimeFile
     let logTail: string | undefined;
     let logError = this.lastLogError ?? log.error;
 
-    if (log.exists) {
+    if (log.exists && this.currentProcessOwnsLog) {
       try {
         const contents = await readFile(this.logPath, "utf8");
         logTail = tailText(
-          contents.replace(ansiEscapePattern, ""),
+          redactSafeTunnelDiagnostic(contents, [...this.logRedactionValues]),
           safeTunnelFrpcLogTailCharacters,
         );
       } catch {

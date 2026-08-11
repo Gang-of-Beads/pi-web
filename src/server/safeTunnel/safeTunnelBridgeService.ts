@@ -7,6 +7,7 @@ import type {
   SafeTunnelRuntimeStatus,
   SafeTunnelStatusResponse,
 } from "../../shared/apiTypes.js";
+import { redactSafeTunnelDiagnostic } from "./safeTunnelDiagnostics.js";
 import type { SafeTunnelEnableDefaults } from "./safeTunnelEnableDefaults.js";
 import {
   SafeTunnelOperationConflictError,
@@ -64,6 +65,7 @@ export interface SafeTunnelBridgeDependencies {
 }
 
 interface SafeTunnelOperationState {
+  readonly diagnosticSecrets: string[];
   readonly id: string;
   readonly kind: "enable";
   readonly startedAt: string;
@@ -112,7 +114,7 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
     return {
       config: ownedState.config,
       desiredState: ownedState.desiredState,
-      runtime: snapshotRuntimeStatus(runtime),
+      runtime: snapshotRuntimeStatus(runtime, ownedState.diagnosticSecrets),
       ...(activeOperation === undefined ? {} : { activeOperation }),
     };
   }
@@ -140,7 +142,7 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
         runtime,
         loadedState,
       );
-      const operation = this.createOperation();
+      const operation = this.createOperation(loadedState);
       const promise = Promise.resolve()
         .then(() => this.runEnableWorkflow(
           request,
@@ -159,6 +161,7 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
           },
         )
         .finally(() => {
+          sealOperationDiagnostics(operation);
           const active = this.activeWorkflow;
           if (active?.operation.id === operation.id) this.activeWorkflow = undefined;
           this.clearActiveOperation(operation);
@@ -252,13 +255,16 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
       const controlApiBaseUrl = advanced?.controlApiUrl
         ?? loadedState.state.machine?.controlApiBaseUrl
         ?? defaults.controlApiBaseUrl;
-      await this.dependencies.safeTunnel.login({
+      const login = await this.dependencies.safeTunnel.login({
         controlApiBaseUrl,
         machineName: advanced?.machineName ?? defaults.machineName,
         machineSlug: advanced?.machineSlug ?? defaults.machineSlug,
         localPiWebUrl,
         ...(advanced?.frpcPath === undefined ? {} : { frpcPath: advanced.frpcPath }),
       }, enableLoginObserver(operation), { signal });
+      registerOperationDiagnosticSecrets(operation, [
+        login.machineCredentials.machineToken,
+      ]);
       throwIfEnableCancelled(signal);
     }
 
@@ -276,6 +282,10 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
     throwIfEnableCancelled(signal);
 
     const enabledState = await this.dependencies.safeTunnel.state();
+    registerOperationDiagnosticSecrets(
+      operation,
+      diagnosticSecretsFromLoadedState(enabledState),
+    );
     throwIfEnableCancelled(signal);
     const advancedFrpcPath = enabledState.state.frpcPath;
     return this.dependencies.runtime.start({
@@ -289,7 +299,7 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
     }
   }
 
-  private createOperation(): SafeTunnelOperationState {
+  private createOperation(loadedState: LoadedSafeTunnelState): SafeTunnelOperationState {
     const operationId = this.dependencies.createOperationId();
     if (operationId.trim() === ""
       || operationId.length > maxBrowserIdentifierCharacters
@@ -297,6 +307,7 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
       throw new Error("Safe Tunnel operation IDs must be non-empty and unique.");
     }
     const operation: SafeTunnelOperationState = {
+      diagnosticSecrets: diagnosticSecretsFromLoadedState(loadedState),
       id: operationId,
       kind: "enable",
       phase: "preparing",
@@ -346,10 +357,14 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
   private async readOwnedStateStatus(): Promise<{
     readonly config: SafeTunnelConfigStatus;
     readonly desiredState: SafeTunnelStatusResponse["desiredState"];
+    readonly diagnosticSecrets: readonly string[];
   }> {
     try {
       const loaded = await this.dependencies.safeTunnel.state();
-      return ownedStateStatus(this.dependencies.safeTunnel.statePath, loaded);
+      return {
+        ...ownedStateStatus(this.dependencies.safeTunnel.statePath, loaded),
+        diagnosticSecrets: diagnosticSecretsFromLoadedState(loaded),
+      };
     } catch {
       return {
         config: {
@@ -362,6 +377,7 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
           error: invalidStateMessage,
         },
         desiredState: "disabled",
+        diagnosticSecrets: [],
       };
     }
   }
@@ -443,7 +459,7 @@ function statusFromLoadedState(
   return {
     config: ownedState.config,
     desiredState: ownedState.desiredState,
-    runtime: snapshotRuntimeStatus(runtime),
+    runtime: snapshotRuntimeStatus(runtime, diagnosticSecretsFromLoadedState(loaded)),
   };
 }
 
@@ -491,7 +507,10 @@ function configStatusFromOwnedState(
   };
 }
 
-function snapshotRuntimeStatus(runtime: SafeTunnelRuntimeStatus): SafeTunnelRuntimeStatus {
+function snapshotRuntimeStatus(
+  runtime: SafeTunnelRuntimeStatus,
+  diagnosticSecrets: readonly string[],
+): SafeTunnelRuntimeStatus {
   return {
     state: runtime.state,
     ...(runtime.diagnosticCode === undefined
@@ -506,38 +525,56 @@ function snapshotRuntimeStatus(runtime: SafeTunnelRuntimeStatus): SafeTunnelRunt
     ...(runtime.pid === undefined ? {} : { pid: runtime.pid }),
     ...(runtime.error === undefined
       ? {}
-      : { error: headText(runtime.error, maxBrowserDiagnosticCharacters) }),
+      : {
+          error: headText(
+            redactSafeTunnelDiagnostic(runtime.error, diagnosticSecrets),
+            maxBrowserDiagnosticCharacters,
+          ),
+        }),
     ...(runtime.logError === undefined
       ? {}
-      : { logError: headText(runtime.logError, maxBrowserDiagnosticCharacters) }),
+      : {
+          logError: headText(
+            redactSafeTunnelDiagnostic(runtime.logError, diagnosticSecrets),
+            maxBrowserDiagnosticCharacters,
+          ),
+        }),
     ...(runtime.logExists === undefined ? {} : { logExists: runtime.logExists }),
     ...(runtime.logPath === undefined
       ? {}
       : { logPath: headText(runtime.logPath, maxBrowserPathCharacters) }),
     ...(runtime.logTail === undefined
       ? {}
-      : { logTail: tailText(runtime.logTail, maxFrpcLogTailCharacters) }),
+      : {
+          logTail: tailText(
+            redactSafeTunnelDiagnostic(runtime.logTail, diagnosticSecrets),
+            maxFrpcLogTailCharacters,
+          ),
+        }),
     logTailMaxCharacters: maxFrpcLogTailCharacters,
   };
 }
 
 function snapshotOperation(operation: SafeTunnelOperationState): SafeTunnelOperationResponse {
+  const redact = (value: string): string => (
+    redactSafeTunnelDiagnostic(value, operation.diagnosticSecrets)
+  );
   return {
     id: headText(operation.id, maxBrowserIdentifierCharacters),
     kind: operation.kind,
     phase: operation.phase,
     startedAt: operation.startedAt,
     status: operation.status,
-    stdout: tailText(operation.stdout, maxCapturedOutputCharacters),
-    stderr: tailText(operation.stderr, maxCapturedOutputCharacters),
+    stdout: tailText(redact(operation.stdout), maxCapturedOutputCharacters),
+    stderr: tailText(redact(operation.stderr), maxCapturedOutputCharacters),
     ...(operation.error === undefined
       ? {}
-      : { error: headText(operation.error, maxBrowserDiagnosticCharacters) }),
+      : { error: headText(redact(operation.error), maxBrowserDiagnosticCharacters) }),
     ...(operation.exitCode === undefined ? {} : { exitCode: operation.exitCode }),
     ...(operation.finishedAt === undefined ? {} : { finishedAt: operation.finishedAt }),
     ...(operation.logTail === undefined || operation.logTail === ""
       ? {}
-      : { logTail: tailText(operation.logTail, maxFrpcLogTailCharacters) }),
+      : { logTail: tailText(redact(operation.logTail), maxFrpcLogTailCharacters) }),
     logTailMaxCharacters: maxFrpcLogTailCharacters,
     ...(operation.publicUrl === undefined
       ? {}
@@ -556,10 +593,57 @@ function snapshotOperation(operation: SafeTunnelOperationState): SafeTunnelOpera
   };
 }
 
+function diagnosticSecretsFromLoadedState(
+  loaded: LoadedSafeTunnelState,
+): string[] {
+  const machineToken = loaded.state.machine?.machineToken;
+  return machineToken === undefined ? [] : [machineToken];
+}
+
+function registerOperationDiagnosticSecrets(
+  operation: SafeTunnelOperationState,
+  values: readonly string[],
+): void {
+  for (const value of values) {
+    if (value !== "" && !operation.diagnosticSecrets.includes(value)) {
+      operation.diagnosticSecrets.push(value);
+    }
+  }
+  redactOperationDiagnostics(operation);
+}
+
+function sealOperationDiagnostics(operation: SafeTunnelOperationState): void {
+  redactOperationDiagnostics(operation);
+  operation.diagnosticSecrets.length = 0;
+}
+
+function redactOperationDiagnostics(operation: SafeTunnelOperationState): void {
+  operation.stdout = redactSafeTunnelDiagnostic(
+    operation.stdout,
+    operation.diagnosticSecrets,
+  );
+  operation.stderr = redactSafeTunnelDiagnostic(
+    operation.stderr,
+    operation.diagnosticSecrets,
+  );
+  if (operation.error !== undefined) {
+    operation.error = redactSafeTunnelDiagnostic(
+      operation.error,
+      operation.diagnosticSecrets,
+    );
+  }
+  if (operation.logTail !== undefined) {
+    operation.logTail = redactSafeTunnelDiagnostic(
+      operation.logTail,
+      operation.diagnosticSecrets,
+    );
+  }
+}
+
 function appendOperationStdout(operation: SafeTunnelOperationState, chunk: string): void {
   operation.stdout = appendCapped(
     operation.stdout,
-    chunk,
+    redactSafeTunnelDiagnostic(chunk, operation.diagnosticSecrets),
     maxCapturedOutputCharacters,
   );
 }

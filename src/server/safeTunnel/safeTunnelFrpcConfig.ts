@@ -3,6 +3,7 @@ import { parse, stringify, type TomlTable } from "smol-toml";
 import { normalizeSafeTunnelLocalPiWebUrl } from "./safeTunnelState.js";
 
 const maximumFrpcConfigCharacters = 32_000;
+const minimumFrpcSecretCharacters = 4;
 const maximumFrpcSecretCharacters = 4_096;
 const maximumFrpcNameCharacters = 253;
 
@@ -53,7 +54,7 @@ export function prepareSafeTunnelFrpcConfig(
     ? "token"
     : requireBoundedString(auth["method"], maximumFrpcNameCharacters);
   if (authMethod !== "token") throw invalidConfig();
-  const authToken = requireBoundedString(auth["token"], maximumFrpcSecretCharacters);
+  const authToken = requireFrpcCredential(auth["token"]);
 
   const transport = parsed["transport"] === undefined
     ? undefined
@@ -103,6 +104,21 @@ export function prepareSafeTunnelFrpcConfig(
       customDomains: [publicHostname],
     }],
   });
+}
+
+/** Extracts credentials from PI WEB's prepared config for diagnostic redaction. */
+export function safeTunnelFrpcConfigCredentials(toml: string): readonly string[] {
+  if (toml.length > maximumFrpcConfigCharacters) throw invalidConfig();
+
+  let parsed: TomlTable;
+  try {
+    parsed = parse(toml);
+  } catch {
+    throw invalidConfig();
+  }
+  const auth = requireTable(parsed["auth"]);
+  assertOnlyKeys(auth, authKeys);
+  return [requireFrpcCredential(auth["token"])];
 }
 
 interface LocalTarget {
@@ -157,6 +173,24 @@ function requireBoundedString(value: unknown, maximumCharacters: number): string
     || value.length < 1
     || value.length > maximumCharacters) throw invalidConfig();
   return value;
+}
+
+function requireFrpcCredential(value: unknown): string {
+  if (typeof value !== "string"
+    || value.length < minimumFrpcSecretCharacters
+    || value.length > maximumFrpcSecretCharacters
+    || hasTerminalControl(value)) throw invalidConfig();
+  return value;
+}
+
+function hasTerminalControl(value: string): boolean {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0);
+    if (codePoint === undefined
+      || codePoint <= 0x1f
+      || (codePoint >= 0x7f && codePoint <= 0x9f)) return true;
+  }
+  return false;
 }
 
 function requireTable(value: unknown): TomlTable {

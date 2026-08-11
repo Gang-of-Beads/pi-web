@@ -82,6 +82,23 @@ describe("prepareSafeTunnelFrpcConfig", () => {
     expect(JSON.stringify(observed) + String(observed)).not.toContain(secret);
   });
 
+  it.each([
+    ["one character", "a"],
+    ["two characters", "ab"],
+    ["three characters", "abc"],
+    ["terminal controls", "ab\u001B[31mcd"],
+  ])("rejects %s credentials before they can reach frpc", (_label, token) => {
+    const frpcConfigToml = providerConfig.replace(
+      '"private-relay-token"',
+      JSON.stringify(token),
+    );
+
+    expect(() => prepareSafeTunnelFrpcConfig(
+      { ...input, frpcConfigToml },
+      input.localPiWebUrl,
+    )).toThrow("provider frpc configuration is invalid");
+  });
+
   it("rejects malformed or oversized TOML before it can reach frpc", () => {
     expect(() => prepareSafeTunnelFrpcConfig({
       ...input,

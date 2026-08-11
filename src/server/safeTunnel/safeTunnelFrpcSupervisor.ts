@@ -2,6 +2,11 @@ import type {
   SafeTunnelCommandOutput,
   SafeTunnelRuntimeStatus,
 } from "../../shared/apiTypes.js";
+import { safeTunnelFrpcConfigCredentials } from "./safeTunnelFrpcConfig.js";
+import {
+  redactSafeTunnelDiagnostic,
+  SafeTunnelStreamingDiagnosticRedactor,
+} from "./safeTunnelDiagnostics.js";
 import {
   SafeTunnelFrpcAcquisitionError,
   type SafeTunnelManagedFrpc,
@@ -151,6 +156,7 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
   private activeProcess: OwnedFrpcProcess | undefined;
   private readonly clock: SafeTunnelSupervisorClock;
   private consecutiveFailures = 0;
+  private readonly diagnosticRedactionValues = new Set<string>();
   private disposed = false;
   private generation = 0;
   private lastError: string | undefined;
@@ -182,6 +188,7 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
 
     this.cancelRestartTask();
     this.cancelStableRunTask();
+    this.diagnosticRedactionValues.clear();
     this.generation += 1;
     const generation = this.generation;
     this.runRequested = true;
@@ -222,6 +229,7 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
   async status(): Promise<SafeTunnelRuntimeStatus> {
     const files = await this.dependencies.files.status();
     const runtimeError = this.lastError ?? files.configError;
+    const redactionValues = [...this.diagnosticRedactionValues];
     return {
       state: runtimeStateFor(this.phase, this.activeProcess !== undefined),
       frpcConfigExists: files.configExists,
@@ -229,11 +237,17 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
       ...(this.activeProcess?.handle.pid === undefined
         ? {}
         : { pid: this.activeProcess.handle.pid }),
-      ...(runtimeError === undefined ? {} : { error: runtimeError }),
-      ...(files.logError === undefined ? {} : { logError: files.logError }),
+      ...(runtimeError === undefined
+        ? {}
+        : { error: redactSafeTunnelDiagnostic(runtimeError, redactionValues) }),
+      ...(files.logError === undefined
+        ? {}
+        : { logError: redactSafeTunnelDiagnostic(files.logError, redactionValues) }),
       logExists: files.logExists,
       logPath: this.dependencies.files.logPath,
-      ...(files.logTail === undefined ? {} : { logTail: files.logTail }),
+      ...(files.logTail === undefined
+        ? {}
+        : { logTail: redactSafeTunnelDiagnostic(files.logTail, redactionValues) }),
       logTailMaxCharacters: safeTunnelFrpcLogTailCharacters,
     };
   }
@@ -302,6 +316,18 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
     }
     this.assertCurrentAttempt(generation);
 
+    let configCredentials: readonly string[];
+    try {
+      configCredentials = safeTunnelFrpcConfigCredentials(tunnelConfig.frpcConfigToml);
+    } catch {
+      throw this.failAttempt(
+        generation,
+        input,
+        new SafeTunnelFrpcSupervisorError("tunnel_config_failed"),
+      );
+    }
+    this.registerDiagnosticRedactionValues(configCredentials);
+
     let managedFrpc: SafeTunnelManagedFrpc | undefined;
     let frpcPath = input.advancedFrpcPath;
     if (frpcPath === undefined) {
@@ -325,6 +351,13 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
     }
     this.assertCurrentAttempt(generation);
 
+    const attemptRedactionValues = [
+      this.dependencies.files.configPath,
+      frpcPath,
+      ...configCredentials,
+    ];
+    this.registerDiagnosticRedactionValues(attemptRedactionValues);
+
     try {
       await this.dependencies.files.writeConfig(tunnelConfig.frpcConfigToml);
     } catch {
@@ -341,16 +374,17 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
         createStartLogHeader(this.clock.now(), `restart ${this.consecutiveFailures.toString()}`),
       );
     }
-    const output = startOutput(tunnelConfig, managedFrpc);
+    const output = redactSafeTunnelDiagnostic(
+      startOutput(tunnelConfig, managedFrpc),
+      [...this.diagnosticRedactionValues],
+    );
     this.dependencies.files.appendLog(output);
 
     let earlyExit: SafeTunnelFrpcProcessExit | undefined;
     const ownership: { current?: OwnedFrpcProcess } = {};
-    const outputRedactor = new SafeTunnelProcessOutputRedactor([
-      this.dependencies.files.configPath,
-      frpcPath,
-      ...sensitiveTomlValues(tunnelConfig.frpcConfigToml),
-    ]);
+    const outputRedactor = new SafeTunnelStreamingDiagnosticRedactor(
+      attemptRedactionValues,
+    );
     let handle: SafeTunnelFrpcProcessHandle;
     try {
       handle = this.dependencies.launcher.launch({
@@ -363,10 +397,10 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
           else this.handleProcessExit(ownership.current, exit, input);
         },
         onStderr: (chunk) => {
-          this.dependencies.files.appendLog(outputRedactor.write("stderr", chunk));
+          this.dependencies.files.appendLog(outputRedactor.write(chunk));
         },
         onStdout: (chunk) => {
-          this.dependencies.files.appendLog(outputRedactor.write("stdout", chunk));
+          this.dependencies.files.appendLog(outputRedactor.write(chunk));
         },
       });
     } catch {
@@ -596,67 +630,16 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
     this.stableRunTask = undefined;
   }
 
+  private registerDiagnosticRedactionValues(values: readonly string[]): void {
+    for (const value of values) {
+      if (value !== "") this.diagnosticRedactionValues.add(value);
+    }
+    this.dependencies.files.registerLogRedactionValues(values);
+  }
+
   private async resetLogSafely(header: string): Promise<void> {
     await this.dependencies.files.resetLog(header).catch(() => undefined);
   }
-}
-
-class SafeTunnelProcessOutputRedactor {
-  private readonly carry = { stderr: "", stdout: "" };
-  private readonly maximumSecretLength: number;
-  private readonly secrets: readonly string[];
-
-  constructor(values: readonly string[]) {
-    this.secrets = [...new Set(values.filter((value) => value.length >= 4))]
-      .sort((left, right) => right.length - left.length);
-    this.maximumSecretLength = Math.max(1, ...this.secrets.map((value) => value.length));
-  }
-
-  write(stream: "stderr" | "stdout", chunk: string): string {
-    const combined = `${this.carry[stream]}${chunk}`;
-    let boundary = Math.max(0, combined.length - (this.maximumSecretLength - 1));
-    for (const secret of this.secrets) {
-      let searchFrom = 0;
-      for (;;) {
-        const index = combined.indexOf(secret, searchFrom);
-        if (index < 0) break;
-        if (index < boundary && index + secret.length > boundary) boundary = index;
-        searchFrom = index + secret.length;
-      }
-    }
-    const safe = combined.slice(0, boundary);
-    this.carry[stream] = combined.slice(boundary);
-    return this.redact(safe);
-  }
-
-  flush(): string {
-    const output = this.redact(`${this.carry.stdout}${this.carry.stderr}`);
-    this.carry.stdout = "";
-    this.carry.stderr = "";
-    return output;
-  }
-
-  private redact(value: string): string {
-    let redacted = value;
-    for (const secret of this.secrets) redacted = redacted.split(secret).join("[redacted]");
-    return redacted;
-  }
-}
-
-function sensitiveTomlValues(toml: string): string[] {
-  const values: string[] = [];
-  const sensitiveScalar = /^\s*(?:[A-Za-z0-9_-]+\.)*(?:password|secret|token)\s*=\s*("(?:[^"\\]|\\.)*")/gimu;
-  for (const match of toml.matchAll(sensitiveScalar)) {
-    const literal = match[1];
-    if (literal === undefined) continue;
-    try {
-      const value: unknown = JSON.parse(literal);
-      if (typeof value === "string") values.push(value);
-    } catch {
-      // Invalid TOML is rejected by frpc; do not expose its unparsed scalar here.
-    }
-  }
-  return values;
 }
 
 function createOwnedProcess(
