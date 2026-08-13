@@ -92,7 +92,7 @@ describe("Safe Tunnel enable request helpers", () => {
       rejected: true,
       runtimeState: "running",
     }))).toMatchObject({ action: "disable", label: "Enabled" });
-    expect(safeTunnelRuntimeSummary({ state: "running", pid: 1234 })).toBe("Running (PID 1234)");
+    expect(safeTunnelRuntimeSummary({ state: "running" })).toBe("Running");
   });
 });
 
@@ -388,7 +388,6 @@ function safeTunnelStatus(options: SafeTunnelStatusOptions = {}): SafeTunnelStat
   const rejected = options.rejected ?? false;
   return {
     config: {
-      path: "/home/test/.pi-web/safe-tunnel/config.json",
       exists: registered,
       state: rejected ? "rejected" : registered ? "registered" : "missing",
       localPiWebUrl: "http://127.0.0.1:8504",
@@ -426,9 +425,6 @@ function safeTunnelOperation(options: {
     kind: "enable",
     phase: options.phase,
     status: options.status ?? "running",
-    startedAt: "2026-07-03T00:00:00.000Z",
-    stdout: "Waiting for approval.\n",
-    stderr: "",
     ...(options.phase === "awaiting_approval" ? {
       userCode: "ABCD-EFGH",
       verificationUriComplete: "https://api.tunnels.pi-web.dev/device?user_code=ABCD-EFGH",

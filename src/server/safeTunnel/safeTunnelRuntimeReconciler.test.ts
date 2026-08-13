@@ -204,7 +204,7 @@ describe("SafeTunnelRuntimeReconciler", () => {
 
   it("contains detached reconciliation failures while retrying a disabled-intent stop", async () => {
     const fixture = createFixture();
-    fixture.runtime.statusValue = runtimeStatus({ state: "running", pid: 4100 });
+    fixture.runtime.statusValue = runtimeStatus({ state: "running" });
     fixture.safeTunnel.stateResults = [
       Promise.reject(new Error("private state read failure")),
       Promise.resolve({
@@ -537,11 +537,8 @@ class FakeFrpcRuntime implements SafeTunnelFrpcRuntime {
   start(input: SafeTunnelFrpcStartInput): Promise<SafeTunnelFrpcStartResult> {
     this.order.push("runtime:start");
     this.startCalls.push(input);
-    this.statusValue = runtimeStatus({ state: "running", pid: 4100 });
+    this.statusValue = runtimeStatus({ state: "running" });
     return Promise.resolve({
-      credentialRedactionValues: [],
-      output: "PI WEB Safe Tunnel supervision started.\n",
-      pid: 4100,
       publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
     });
   }
@@ -636,11 +633,6 @@ function runtimeStatus(
 ): SafeTunnelRuntimeStatus {
   return {
     state: "stopped",
-    frpcConfigPath: "/data/pi-web/safe-tunnel/frpc.toml",
-    frpcConfigExists: false,
-    logPath: "/data/pi-web/safe-tunnel/frpc.log",
-    logExists: false,
-    logTailMaxCharacters: 12_000,
     ...overrides,
   };
 }

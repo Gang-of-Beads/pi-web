@@ -1,7 +1,6 @@
 import {
   SafeTunnelControlPlaneError,
   safeTunnelClientVersion,
-  type SafeTunnelApprovedDeviceAuthorization,
   type SafeTunnelControlPlane,
   type SafeTunnelDeviceAuthorization,
   type SafeTunnelHeartbeatTunnelStatus,
@@ -9,15 +8,7 @@ import {
   type SafeTunnelMachineTunnelConfig,
   type SafeTunnelRegisteredMachine,
 } from "./safeTunnelControlPlane.js";
-import {
-  SafeTunnelCredentialBoundary,
-  withSafeTunnelContiguousPublicComposite as withContiguousPublicComposite,
-  type SafeTunnelCredentialClassification,
-} from "./safeTunnelDiagnostics.js";
-import {
-  inspectSafeTunnelFrpcConfigSecurity,
-  prepareSafeTunnelFrpcConfig,
-} from "./safeTunnelFrpcConfig.js";
+import { prepareSafeTunnelFrpcConfig } from "./safeTunnelFrpcConfig.js";
 import { safeTunnelFrpcTrustedCaPath } from "./safeTunnelFrpcRuntimeFiles.js";
 import {
   normalizeSafeTunnelControlApiBaseUrl,
@@ -57,11 +48,6 @@ export interface SafeTunnelEnableInput {
   readonly localPiWebUrl?: string;
 }
 
-export interface SafeTunnelEnableOptions {
-  /** Browser-bound classification accumulated before runtime credentials arrive. */
-  readonly credentialBoundary?: SafeTunnelCredentialBoundary;
-}
-
 export type SafeTunnelPublicDeviceAuthorization = Omit<
   SafeTunnelDeviceAuthorization,
   "deviceCode"
@@ -69,8 +55,6 @@ export type SafeTunnelPublicDeviceAuthorization = Omit<
 
 export interface SafeTunnelLoginObserver {
   readonly onAuthorizationApproved?: () => void;
-  /** Called before public approval metadata so observers can scrub re-entrant views. */
-  readonly onCredentialRedactionValues?: (values: readonly string[]) => void;
   readonly onDeviceAuthorization?: (
     authorization: SafeTunnelPublicDeviceAuthorization,
   ) => void;
@@ -78,21 +62,15 @@ export interface SafeTunnelLoginObserver {
 }
 
 export interface SafeTunnelLoginOptions {
-  /** Browser-bound classification accumulated before login learns later credentials. */
-  readonly credentialBoundary?: SafeTunnelCredentialBoundary;
   readonly signal?: AbortSignal;
 }
 
 export interface SafeTunnelLoginResult {
-  /** Ephemeral values used only to scrub browser-bound operation snapshots. */
-  readonly credentialRedactionValues: readonly string[];
   readonly machineCredentials: SafeTunnelMachineCredentials;
   readonly registeredMachine: SafeTunnelRegisteredMachine;
 }
 
 export interface SafeTunnelPreparedTunnelConfig extends SafeTunnelMachineTunnelConfig {
-  /** Private frpc authentication values carried only for downstream scrubbing. */
-  readonly credentialRedactionValues: readonly string[];
   readonly localPiWebUrl: string;
   readonly frpcConfigToml: string;
 }
@@ -106,19 +84,13 @@ export interface SafeTunnelServiceDependencies {
 }
 
 /**
- * PI WEB-owned Safe Tunnel application boundary. It coordinates durable local
- * intent/credentials with the normalized Control API contract, but owns no
- * binary acquisition or child process behavior.
+ * Coordinates durable local intent and credentials with the normalized Control
+ * API contract. Browser shaping and child-process ownership live elsewhere.
  */
 export class SafeTunnelService {
   private readonly frpcTrustedCaPath: string;
   private readonly now: () => Date;
   private readonly sleep: (milliseconds: number, signal?: AbortSignal) => Promise<void>;
-  private activeCredentialBoundary: {
-    readonly boundary: SafeTunnelCredentialBoundary;
-    readonly machineId: string;
-    readonly machineToken: string;
-  } | undefined;
   private mutationTail: Promise<void> = Promise.resolve();
 
   constructor(private readonly dependencies: SafeTunnelServiceDependencies) {
@@ -137,16 +109,6 @@ export class SafeTunnelService {
     return this.dependencies.stateStorage.load();
   }
 
-  /** Durably merges a validated browser/public credential boundary. */
-  persistCredentialBoundary(
-    boundary: SafeTunnelCredentialBoundary,
-  ): Promise<void> {
-    return this.persistCredentialBoundaryWithCode(
-      boundary,
-      "invalid_tunnel_config",
-    );
-  }
-
   async login(
     input: SafeTunnelLoginInput,
     observer: SafeTunnelLoginObserver = {},
@@ -155,43 +117,14 @@ export class SafeTunnelService {
     throwIfAborted(options.signal);
     const existing = await this.state();
     const login = normalizeLoginInput(input, existing.state);
-    const persistedCredentialBoundary = this.credentialBoundaryForState(
-      existing,
-      "invalid_login",
-    );
-    const credentialBoundary = options.credentialBoundary
-      ?? persistedCredentialBoundary;
-    if (options.credentialBoundary !== undefined) {
-      requireCredentialClassification(
-        credentialBoundary,
-        persistedCredentialBoundary.classification(),
-        "invalid_login",
-      );
-    }
-    requireCredentialClassification(credentialBoundary, {
-      publicValues: loginPublicValues(this.statePath, login),
-    }, "invalid_login");
-    await this.persistCredentialBoundaryWithCode(
-      credentialBoundary,
-      "invalid_login",
-    );
 
-    const started = classifyDeviceAuthorization(
+    const started = validateDeviceAuthorization(
       await this.dependencies.controlPlane.startDeviceAuthorization({
         controlApiBaseUrl: login.controlApiBaseUrl,
         clientVersion: safeTunnelClientVersion,
       }, options.signal === undefined ? {} : { signal: options.signal }),
     );
-    requireCredentialClassification(credentialBoundary, {
-      credentialValues: [started.deviceCode],
-      publicValues: deviceAuthorizationPublicValues(started),
-    }, "invalid_login");
-    await this.persistCredentialBoundaryWithCode(
-      credentialBoundary,
-      "invalid_login",
-    );
     throwIfAborted(options.signal);
-    observer.onCredentialRedactionValues?.([started.deviceCode]);
     observer.onDeviceAuthorization?.({
       userCode: started.userCode,
       verificationUri: started.verificationUri,
@@ -210,18 +143,10 @@ export class SafeTunnelService {
       authorization.accessToken,
       "accessToken",
     );
-    requireCredentialClassification(credentialBoundary, {
-      credentialValues: [connectorAccessToken],
-      publicValues: approvedAuthorizationPublicValues(authorization),
-    }, "invalid_login");
-    await this.persistCredentialBoundaryWithCode(
-      credentialBoundary,
-      "invalid_login",
-    );
     observer.onAuthorizationApproved?.();
 
     // Once registration begins, let its one-time credential response finish and
-    // persist even if the user disables concurrently; the bridge will observe
+    // persist even if the user disables concurrently; the bridge checks
     // cancellation before it can arm supervision.
     const registeredMachine = normalizeRegisteredPublicIngress(
       await this.dependencies.controlPlane.registerMachine({
@@ -240,11 +165,6 @@ export class SafeTunnelService {
       registeredMachine.machineToken,
       "machineToken",
     );
-    requireCredentialClassification(credentialBoundary, {
-      credentialValues: [machineToken],
-      publicValues: registeredMachinePublicValues(registeredMachine),
-    }, "invalid_login");
-
     const machineCredentials: SafeTunnelMachineCredentials = {
       controlApiBaseUrl: login.controlApiBaseUrl,
       credentialStatus: "active",
@@ -257,27 +177,16 @@ export class SafeTunnelService {
     await this.mutateState((current) => ({
       ...current,
       localPiWebUrl: login.localPiWebUrl,
-      ...persistedCredentialBoundaryState(credentialBoundary),
       machine: machineCredentials,
       ...(login.frpcPath === undefined ? {} : { frpcPath: login.frpcPath }),
     }));
-    this.rememberCredentialBoundary(machineCredentials, credentialBoundary);
     observer.onMachineRegistered?.();
 
-    return {
-      credentialRedactionValues: [
-        started.deviceCode,
-        connectorAccessToken,
-        machineToken,
-      ],
-      machineCredentials,
-      registeredMachine,
-    };
+    return { machineCredentials, registeredMachine };
   }
 
   async enable(
     input: SafeTunnelEnableInput = {},
-    options: SafeTunnelEnableOptions = {},
   ): Promise<SafeTunnelPersistedState> {
     const normalizedFrpcPath = input.frpcPath === undefined
       ? undefined
@@ -291,45 +200,19 @@ export class SafeTunnelService {
       throw new SafeTunnelServiceError("invalid_login");
     }
 
-    let credentialBoundary: SafeTunnelCredentialBoundary | undefined;
-    const enabled = await this.mutateState((current) => {
+    return this.mutateState((current) => {
       const machine = current.machine;
       if (machine === undefined) throw new SafeTunnelServiceError("not_registered");
       if (machine.credentialStatus === "rejected") {
         throw new SafeTunnelServiceError("credentials_rejected");
       }
-      const persistedCredentialBoundary = this.credentialBoundaryForState({
-        exists: true,
-        state: current,
-      }, "invalid_tunnel_config");
-      credentialBoundary = options.credentialBoundary
-        ?? persistedCredentialBoundary;
-      if (options.credentialBoundary !== undefined) {
-        requireCredentialClassification(
-          credentialBoundary,
-          persistedCredentialBoundary.classification(),
-          "invalid_tunnel_config",
-        );
-      }
-      const next = {
+      return {
         ...current,
-        desiredState: "enabled" as const,
-        ...persistedCredentialBoundaryState(credentialBoundary),
+        desiredState: "enabled",
         ...(normalizedLocalPiWebUrl === undefined ? {} : { localPiWebUrl: normalizedLocalPiWebUrl }),
         ...(normalizedFrpcPath === undefined ? {} : { frpcPath: normalizedFrpcPath }),
       };
-      requireCredentialClassification(credentialBoundary, {
-        publicValues: persistedStatePublicValues(this.statePath, next),
-      }, "invalid_tunnel_config");
-      return {
-        ...next,
-        ...persistedCredentialBoundaryState(credentialBoundary),
-      };
     });
-    if (credentialBoundary !== undefined && enabled.machine !== undefined) {
-      this.rememberCredentialBoundary(enabled.machine, credentialBoundary);
-    }
-    return enabled;
   }
 
   disable(): Promise<SafeTunnelPersistedState> {
@@ -345,10 +228,6 @@ export class SafeTunnelService {
     if (credentials.credentialStatus === "rejected") {
       throw new SafeTunnelServiceError("credentials_rejected");
     }
-    const credentialBoundary = this.credentialBoundaryForState(
-      loaded,
-      "invalid_tunnel_config",
-    );
 
     let tunnelConfig: SafeTunnelMachineTunnelConfig;
     try {
@@ -364,29 +243,11 @@ export class SafeTunnelService {
       || !matchesRegisteredPublicIngress(tunnelConfig, credentials.publicUrl)) {
       throw new SafeTunnelServiceError("invalid_tunnel_config");
     }
-    const prepared = applySafeTunnelLocalTarget(
+    return applySafeTunnelLocalTarget(
       tunnelConfig,
       loaded.state.localPiWebUrl,
       this.frpcTrustedCaPath,
     );
-    const frpcSecurity = inspectSafeTunnelFrpcConfigSecurity(
-      prepared.frpcConfigToml,
-      { trustedCaFile: this.frpcTrustedCaPath },
-    );
-    requireCredentialClassification(credentialBoundary, {
-      credentialValues: frpcSecurity.credentialValues,
-      publicValues: tunnelConfigPublicValues(
-        prepared,
-        credentials,
-        frpcSecurity.nonSecretValues,
-      ),
-    }, "invalid_tunnel_config");
-    await this.persistCredentialBoundaryWithCode(
-      credentialBoundary,
-      "invalid_tunnel_config",
-    );
-    this.rememberCredentialBoundary(credentials, credentialBoundary);
-    return prepared;
   }
 
   async recordHeartbeat(
@@ -402,10 +263,6 @@ export class SafeTunnelService {
     if (credentials.credentialStatus === "rejected") {
       throw new SafeTunnelServiceError("credentials_rejected");
     }
-    const credentialBoundary = this.credentialBoundaryForState(
-      loaded,
-      "invalid_heartbeat",
-    );
 
     let heartbeat: SafeTunnelMachineHeartbeat;
     try {
@@ -419,22 +276,12 @@ export class SafeTunnelService {
         options,
       );
     } catch (error: unknown) {
-      // Preserve the terminal authentication category even if recording the
-      // durable diagnostic itself fails; the runtime must still stop safely.
       await this.rememberRejectedCredentials(credentials, error).catch(() => undefined);
       throw error;
     }
     if (heartbeat.machineId !== credentials.machineId) {
       throw new SafeTunnelServiceError("invalid_heartbeat");
     }
-    requireCredentialClassification(credentialBoundary, {
-      publicValues: heartbeatPublicValues(heartbeat),
-    }, "invalid_heartbeat");
-    await this.persistCredentialBoundaryWithCode(
-      credentialBoundary,
-      "invalid_heartbeat",
-    );
-    this.rememberCredentialBoundary(credentials, credentialBoundary);
     return heartbeat;
   }
 
@@ -469,32 +316,6 @@ export class SafeTunnelService {
     }
   }
 
-  private async persistCredentialBoundaryWithCode(
-    boundary: SafeTunnelCredentialBoundary,
-    failureCode: SafeTunnelServiceErrorCode,
-  ): Promise<void> {
-    await this.mutateState((current) => {
-      const persistedBoundary = this.credentialBoundaryForState({
-        exists: true,
-        state: current,
-      }, failureCode);
-      requireCredentialClassification(
-        boundary,
-        persistedBoundary.classification(),
-        failureCode,
-      );
-      const persisted = persistedCredentialBoundaryState(boundary);
-      if (sameValues(
-        current.credentialBoundaryPrivateValues,
-        persisted.credentialBoundaryPrivateValues,
-      ) && sameValues(
-        current.credentialBoundaryPublicValues,
-        persisted.credentialBoundaryPublicValues,
-      )) return current;
-      return { ...current, ...persisted };
-    });
-  }
-
   private async rememberRejectedCredentials(
     credentials: SafeTunnelMachineCredentials,
     error: unknown,
@@ -512,38 +333,6 @@ export class SafeTunnelService {
         machine: { ...currentMachine, credentialStatus: "rejected" },
       };
     });
-  }
-
-  private credentialBoundaryForState(
-    loaded: LoadedSafeTunnelState,
-    failureCode: SafeTunnelServiceErrorCode,
-  ): SafeTunnelCredentialBoundary {
-    const machine = loaded.state.machine;
-    const active = this.activeCredentialBoundary;
-    const boundary = machine !== undefined
-      && active?.machineId === machine.machineId
-      && active.machineToken === machine.machineToken
-      ? active.boundary.clone()
-      : new SafeTunnelCredentialBoundary();
-    requireCredentialClassification(boundary, {
-      credentialValues: [
-        ...(loaded.state.credentialBoundaryPrivateValues ?? []),
-        ...(machine === undefined ? [] : [machine.machineToken]),
-      ],
-      publicValues: persistedStatePublicValues(this.statePath, loaded.state),
-    }, failureCode);
-    return boundary;
-  }
-
-  private rememberCredentialBoundary(
-    credentials: SafeTunnelMachineCredentials,
-    boundary: SafeTunnelCredentialBoundary,
-  ): void {
-    this.activeCredentialBoundary = {
-      boundary,
-      machineId: credentials.machineId,
-      machineToken: credentials.machineToken,
-    };
   }
 
   private mutateState(
@@ -637,38 +426,24 @@ export function applySafeTunnelLocalTarget(
   localPiWebUrl: string,
   frpcTrustedCaPath: string,
 ): SafeTunnelPreparedTunnelConfig {
-  let normalizedLocalPiWebUrl: string;
   try {
-    normalizedLocalPiWebUrl = normalizeSafeTunnelLocalPiWebUrl(localPiWebUrl);
-    const trust = { trustedCaFile: frpcTrustedCaPath };
+    const normalizedLocalPiWebUrl = normalizeSafeTunnelLocalPiWebUrl(localPiWebUrl);
     const frpcConfigToml = prepareSafeTunnelFrpcConfig(
       tunnelConfig,
       normalizedLocalPiWebUrl,
-      trust,
+      { trustedCaFile: frpcTrustedCaPath },
     );
-    const frpcSecurity = inspectSafeTunnelFrpcConfigSecurity(frpcConfigToml, trust);
-    const prepared = {
+    return {
       ...tunnelConfig,
-      credentialRedactionValues: frpcSecurity.credentialValues,
       localPiWebUrl: normalizedLocalPiWebUrl,
       frpcConfigToml,
     };
-    const credentialBoundary = new SafeTunnelCredentialBoundary();
-    requireCredentialClassification(credentialBoundary, {
-      credentialValues: frpcSecurity.credentialValues,
-      publicValues: tunnelConfigPublicValues(
-        prepared,
-        undefined,
-        frpcSecurity.nonSecretValues,
-      ),
-    }, "invalid_tunnel_config");
-    return prepared;
   } catch {
     throw new SafeTunnelServiceError("invalid_tunnel_config");
   }
 }
 
-function classifyDeviceAuthorization(
+function validateDeviceAuthorization(
   authorization: SafeTunnelDeviceAuthorization,
 ): SafeTunnelDeviceAuthorization {
   const deviceCode = authorization.deviceCode;
@@ -677,164 +452,7 @@ function classifyDeviceAuthorization(
     || hasTerminalControl(deviceCode)) {
     throw new SafeTunnelServiceError("invalid_login");
   }
-  return { ...authorization, deviceCode };
-}
-
-function requireCredentialClassification(
-  boundary: SafeTunnelCredentialBoundary,
-  classification: SafeTunnelCredentialClassification,
-  failureCode: SafeTunnelServiceErrorCode,
-): void {
-  if (!boundary.classify(classification)) {
-    throw new SafeTunnelServiceError(failureCode);
-  }
-}
-
-function loginPublicValues(
-  statePath: string,
-  login: NormalizedSafeTunnelLoginInput,
-): readonly string[] {
-  return withContiguousPublicComposite([
-    statePath,
-    login.controlApiBaseUrl,
-    login.localPiWebUrl,
-    login.machineName,
-    login.machineSlug,
-    ...(login.frpcPath === undefined ? [] : [login.frpcPath]),
-  ]);
-}
-
-function deviceAuthorizationPublicValues(
-  authorization: SafeTunnelDeviceAuthorization,
-): readonly string[] {
-  return withContiguousPublicComposite([
-    authorization.userCode,
-    authorization.verificationUri,
-    authorization.verificationUriComplete,
-    authorization.expiresAt,
-    authorization.intervalSeconds.toString(),
-  ]);
-}
-
-function approvedAuthorizationPublicValues(
-  authorization: SafeTunnelApprovedDeviceAuthorization,
-): readonly string[] {
-  return withContiguousPublicComposite([
-    authorization.expiresAt,
-    authorization.account.id,
-    authorization.account.publicNamespace,
-  ]);
-}
-
-function registeredMachinePublicValues(
-  registeredMachine: SafeTunnelRegisteredMachine,
-): readonly string[] {
-  return withContiguousPublicComposite([
-    registeredMachine.machine.id,
-    registeredMachine.machine.accountId,
-    registeredMachine.machine.name,
-    registeredMachine.machine.slug,
-    registeredMachine.publicHostname,
-    registeredMachine.publicUrl,
-  ]);
-}
-
-function persistedStatePublicValues(
-  statePath: string,
-  state: SafeTunnelPersistedState,
-): readonly string[] {
-  const machine = state.machine;
-  const machineHostname = machine?.publicUrl === undefined
-    ? undefined
-    : new URL(machine.publicUrl).hostname;
-  const currentValues = [
-    statePath,
-    state.desiredState,
-    state.localPiWebUrl,
-    ...(state.frpcPath === undefined ? [] : [state.frpcPath]),
-    ...(machine === undefined
-      ? []
-      : [
-          machine.controlApiBaseUrl,
-          machine.machineId,
-          ...(machine.machineSlug === undefined ? [] : [machine.machineSlug]),
-          ...(machine.credentialBoundaryPublicValues ?? []),
-          ...(machine.publicUrl === undefined ? [] : [machine.publicUrl]),
-          ...(machineHostname === undefined ? [] : [machineHostname]),
-        ]),
-  ];
-  return [
-    ...(state.credentialBoundaryPublicValues ?? []),
-    ...withContiguousPublicComposite(currentValues),
-    ...(machine === undefined
-      ? []
-      : withContiguousPublicComposite([
-          machine.machineId,
-          ...(machine.machineSlug === undefined ? [] : [machine.machineSlug]),
-          ...(machineHostname === undefined
-            ? []
-            : [machineHostname.split(".")[0] ?? ""]),
-        ])),
-  ];
-}
-
-function tunnelConfigPublicValues(
-  tunnelConfig: SafeTunnelPreparedTunnelConfig,
-  machineCredentials: SafeTunnelMachineCredentials | undefined,
-  generatedNonSecretValues: readonly string[],
-): readonly string[] {
-  return withContiguousPublicComposite([
-    tunnelConfig.machineId,
-    tunnelConfig.publicHostname,
-    tunnelConfig.publicUrl,
-    tunnelConfig.localPiWebUrl,
-    tunnelConfig.proxyName,
-    ...generatedNonSecretValues,
-    ...(machineCredentials === undefined
-      ? []
-      : [
-          machineCredentials.controlApiBaseUrl,
-          machineCredentials.machineId,
-          ...(machineCredentials.machineSlug === undefined
-            ? []
-            : [machineCredentials.machineSlug]),
-          ...(machineCredentials.publicUrl === undefined
-            ? []
-            : [machineCredentials.publicUrl]),
-        ]),
-  ]);
-}
-
-function persistedCredentialBoundaryState(
-  boundary: SafeTunnelCredentialBoundary,
-): {
-  readonly credentialBoundaryPrivateValues: readonly string[];
-  readonly credentialBoundaryPublicValues: readonly string[];
-} {
-  const classification = boundary.classification();
-  return {
-    credentialBoundaryPrivateValues: classification.credentialValues,
-    credentialBoundaryPublicValues: classification.publicValues,
-  };
-}
-
-function sameValues(
-  left: readonly string[] | undefined,
-  right: readonly string[],
-): boolean {
-  const normalizedLeft = left ?? [];
-  return normalizedLeft.length === right.length
-    && normalizedLeft.every((value, index) => value === right[index]);
-}
-
-function heartbeatPublicValues(
-  heartbeat: SafeTunnelMachineHeartbeat,
-): readonly string[] {
-  return withContiguousPublicComposite([
-    heartbeat.machineId,
-    heartbeat.lastSeenAt,
-    heartbeat.nextHeartbeatSeconds.toString(),
-  ]);
+  return authorization;
 }
 
 function hasTerminalControl(value: string): boolean {

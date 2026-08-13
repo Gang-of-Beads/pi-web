@@ -66,7 +66,6 @@ describe("Safe Tunnel browser API", () => {
 function statusResponse() {
   return {
     config: {
-      path: "/tmp/safe-tunnel/config.json",
       exists: false,
       state: "missing",
       frpcPathConfigured: false,
@@ -82,9 +81,6 @@ function operationResponse() {
     kind: "enable",
     phase: "starting",
     status: "running",
-    startedAt: "2026-07-03T00:00:00.000Z",
-    stdout: "",
-    stderr: "",
   };
 }
 

@@ -331,6 +331,7 @@ export type SafeTunnelRuntimeDiagnosticCode =
   | "heartbeat_retrying"
   | "registration_required"
   | "runtime_recovery_failed"
+  | "runtime_retrying"
   | "state_retrying";
 export type SafeTunnelOperationKind = "enable";
 export type SafeTunnelOperationPhase =
@@ -346,7 +347,6 @@ export type SafeTunnelOperationStatus =
   | "cancelled";
 
 export interface SafeTunnelConfigStatus {
-  path: string;
   exists: boolean;
   state: SafeTunnelConfigState;
   localPiWebUrl?: string;
@@ -365,15 +365,8 @@ export interface SafeTunnelRuntimeStatus {
   state: SafeTunnelRuntimeState;
   /** Stable machine-readable category for recovery UI; raw external failures never cross this boundary. */
   diagnosticCode?: SafeTunnelRuntimeDiagnosticCode;
-  frpcConfigExists?: boolean;
-  frpcConfigPath?: string;
-  pid?: number;
+  /** PI WEB-authored summary only; provider and child diagnostics stay server-side. */
   error?: string;
-  logError?: string;
-  logExists?: boolean;
-  logPath?: string;
-  logTail?: string;
-  logTailMaxCharacters?: number;
 }
 
 export interface SafeTunnelCommandOutput {
@@ -388,17 +381,8 @@ export interface SafeTunnelOperationResponse {
   kind: SafeTunnelOperationKind;
   phase: SafeTunnelOperationPhase;
   status: SafeTunnelOperationStatus;
-  startedAt: string;
-  stdout: string;
-  stderr: string;
   error?: string;
-  exitCode?: number | null;
-  finishedAt?: string;
-  logPath?: string;
-  logTail?: string;
-  logTailMaxCharacters?: number;
   publicUrl?: string;
-  signal?: string;
   userCode?: string;
   verificationUriComplete?: string;
 }

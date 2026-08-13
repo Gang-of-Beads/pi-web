@@ -16,9 +16,6 @@ import { isSafeTunnelControlApiTransportAllowed } from "../../../shared/safeTunn
 
 const maximumDiagnosticCharacters = 2_000;
 const maximumIdentifierCharacters = 256;
-const maximumOutputCharacters = 24_000;
-const maximumPathCharacters = 4_096;
-const maximumLogTailCharacters = 12_000;
 const maximumUrlCharacters = 2_048;
 
 export function parseSafeTunnelStatusResponse(value: unknown): SafeTunnelStatusResponse {
@@ -46,35 +43,20 @@ export function parseSafeTunnelEnableResponse(value: unknown): SafeTunnelEnableR
 
 export function parseSafeTunnelOperationResponse(value: unknown): SafeTunnelOperationResponse {
   const record = requireRecord(value);
-  const exitCode = optionalNumberOrNull(record, "exitCode");
-  const finishedAt = optionalString(record, "finishedAt", maximumIdentifierCharacters);
-  const logPath = optionalString(record, "logPath", maximumPathCharacters);
-  const logTail = optionalString(record, "logTail", maximumLogTailCharacters);
-  const logTailMaxCharacters = optionalNumber(record, "logTailMaxCharacters");
+  const error = optionalString(record, "error", maximumDiagnosticCharacters);
   const publicUrl = optionalHttpUrl(record, "publicUrl");
-  const signal = optionalString(record, "signal", maximumIdentifierCharacters);
   const userCode = optionalString(record, "userCode", maximumIdentifierCharacters);
   const verificationUriComplete = optionalSafeControlApiUrl(
     record,
     "verificationUriComplete",
   );
-  const error = optionalString(record, "error", maximumDiagnosticCharacters);
   return {
     id: requireString(record, "id", maximumIdentifierCharacters),
     kind: requireSafeTunnelOperationKind(record, "kind"),
     phase: requireSafeTunnelOperationPhase(record, "phase"),
     status: requireSafeTunnelOperationStatus(record, "status"),
-    startedAt: requireString(record, "startedAt", maximumIdentifierCharacters),
-    stdout: requireString(record, "stdout", maximumOutputCharacters),
-    stderr: requireString(record, "stderr", maximumOutputCharacters),
     ...(error === undefined ? {} : { error }),
-    ...(exitCode === undefined ? {} : { exitCode }),
-    ...(finishedAt === undefined ? {} : { finishedAt }),
-    ...(logPath === undefined ? {} : { logPath }),
-    ...(logTail === undefined ? {} : { logTail }),
-    ...(logTailMaxCharacters === undefined ? {} : { logTailMaxCharacters }),
     ...(publicUrl === undefined ? {} : { publicUrl }),
-    ...(signal === undefined ? {} : { signal }),
     ...(userCode === undefined ? {} : { userCode }),
     ...(verificationUriComplete === undefined ? {} : { verificationUriComplete }),
   };
@@ -94,7 +76,6 @@ function parseSafeTunnelConfigStatus(value: unknown): SafeTunnelConfigStatus {
     : parseSafeTunnelConfigMachine(record["machine"]);
   const error = optionalString(record, "error", maximumDiagnosticCharacters);
   return {
-    path: requireString(record, "path", maximumPathCharacters),
     exists: requireBoolean(record, "exists"),
     state: requireSafeTunnelConfigState(record, "state"),
     ...(localPiWebUrl === undefined ? {} : { localPiWebUrl }),
@@ -121,27 +102,11 @@ function parseSafeTunnelConfigMachine(value: unknown): NonNullable<SafeTunnelCon
 function parseSafeTunnelRuntimeStatus(value: unknown): SafeTunnelRuntimeStatus {
   const record = requireRecord(value);
   const diagnosticCode = optionalSafeTunnelRuntimeDiagnosticCode(record, "diagnosticCode");
-  const frpcConfigExists = optionalBoolean(record, "frpcConfigExists");
-  const frpcConfigPath = optionalString(record, "frpcConfigPath", maximumPathCharacters);
-  const pid = optionalNumber(record, "pid");
   const error = optionalString(record, "error", maximumDiagnosticCharacters);
-  const logError = optionalString(record, "logError", maximumDiagnosticCharacters);
-  const logExists = optionalBoolean(record, "logExists");
-  const logPath = optionalString(record, "logPath", maximumPathCharacters);
-  const logTail = optionalString(record, "logTail", maximumLogTailCharacters);
-  const logTailMaxCharacters = optionalNumber(record, "logTailMaxCharacters");
   return {
     state: requireSafeTunnelRuntimeState(record, "state"),
     ...(diagnosticCode === undefined ? {} : { diagnosticCode }),
-    ...(frpcConfigExists === undefined ? {} : { frpcConfigExists }),
-    ...(frpcConfigPath === undefined ? {} : { frpcConfigPath }),
-    ...(pid === undefined ? {} : { pid }),
     ...(error === undefined ? {} : { error }),
-    ...(logError === undefined ? {} : { logError }),
-    ...(logExists === undefined ? {} : { logExists }),
-    ...(logPath === undefined ? {} : { logPath }),
-    ...(logTail === undefined ? {} : { logTail }),
-    ...(logTailMaxCharacters === undefined ? {} : { logTailMaxCharacters }),
   };
 }
 
@@ -175,6 +140,7 @@ function optionalSafeTunnelRuntimeDiagnosticCode(
     && value !== "heartbeat_retrying"
     && value !== "registration_required"
     && value !== "runtime_recovery_failed"
+    && value !== "runtime_retrying"
     && value !== "state_retrying") {
     throw new Error(`Expected Safe Tunnel runtime diagnostic field: ${key}`);
   }
@@ -219,7 +185,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function requireString(
   record: Record<string, unknown>,
   key: string,
-  maximumCharacters = maximumOutputCharacters,
+  maximumCharacters = maximumIdentifierCharacters,
 ): string {
   const value = record[key];
   if (typeof value !== "string" || value.length > maximumCharacters) {
@@ -231,7 +197,7 @@ function requireString(
 function optionalString(
   record: Record<string, unknown>,
   key: string,
-  maximumCharacters = maximumOutputCharacters,
+  maximumCharacters = maximumIdentifierCharacters,
 ): string | undefined {
   const value = record[key];
   if (value === undefined) return undefined;
@@ -297,19 +263,5 @@ function optionalBoolean(record: Record<string, unknown>, key: string): boolean 
   const value = record[key];
   if (value === undefined) return undefined;
   if (typeof value !== "boolean") throw new Error(`Expected optional boolean field: ${key}`);
-  return value;
-}
-
-function optionalNumber(record: Record<string, unknown>, key: string): number | undefined {
-  const value = record[key];
-  if (value === undefined) return undefined;
-  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`Expected optional number field: ${key}`);
-  return value;
-}
-
-function optionalNumberOrNull(record: Record<string, unknown>, key: string): number | null | undefined {
-  const value = record[key];
-  if (value === undefined || value === null) return value;
-  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`Expected optional number|null field: ${key}`);
   return value;
 }

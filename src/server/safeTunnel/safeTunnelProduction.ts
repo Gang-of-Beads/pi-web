@@ -71,7 +71,6 @@ export function createSafeTunnelProduction(
       serverAddress: options.serverAddress,
     }),
     fileExists: existsSync,
-    now: () => new Date(),
     runtime,
     safeTunnel,
   });

@@ -1,17 +1,321 @@
-import { Buffer } from "node:buffer";
-import { createHash } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   HttpSafeTunnelControlPlane,
-  SafeTunnelControlPlaneError,
   safeTunnelClientVersion,
-  type SafeTunnelControlPlaneTimeoutScheduler,
   type SafeTunnelFetch,
 } from "./safeTunnelControlPlane.js";
 
-interface ObservedRequest {
-  readonly input: string;
-  readonly init: RequestInit;
+const controlApiBaseUrl = "https://control.example.test";
+const connectorAccessToken = "piwt_ctok_v1_connector";
+const machineToken = "piwt_mtok_v1_machine";
+
+describe("HttpSafeTunnelControlPlane", () => {
+  it("starts and completes the ordinary device approval flow", async () => {
+    const transport = sequencedFetch([
+      jsonResponse(202, startedAuthorization()),
+      jsonResponse(409, { error: { code: "authorization_pending" } }),
+      jsonResponse(200, approvedAuthorization()),
+    ]);
+    const controlPlane = new HttpSafeTunnelControlPlane({ fetch: transport.fetch });
+
+    await expect(controlPlane.startDeviceAuthorization({
+      controlApiBaseUrl,
+      clientVersion: safeTunnelClientVersion,
+    })).resolves.toEqual(startedAuthorization());
+    await expect(controlPlane.completeDeviceAuthorization({
+      controlApiBaseUrl,
+      deviceCode: "device-code-private",
+    })).resolves.toEqual({ kind: "pending" });
+    await expect(controlPlane.completeDeviceAuthorization({
+      controlApiBaseUrl,
+      deviceCode: "device-code-private",
+    })).resolves.toEqual({
+      kind: "approved",
+      authorization: {
+        accessToken: connectorAccessToken,
+        expiresAt: "2030-01-01T01:00:00.000Z",
+        account: { id: "account_123", publicNamespace: "account" },
+      },
+    });
+
+    expect(transport.requests.map((request) => request.input)).toEqual([
+      `${controlApiBaseUrl}/v1/device/start`,
+      `${controlApiBaseUrl}/v1/device/complete`,
+      `${controlApiBaseUrl}/v1/device/complete`,
+    ]);
+    expect(transport.requests[0]?.init.body).toBe(JSON.stringify({
+      connectorVersion: safeTunnelClientVersion,
+    }));
+    expect(transport.requests[1]?.init.body).toBe(JSON.stringify({
+      deviceCode: "device-code-private",
+    }));
+  });
+
+  it("registers one machine and preserves bearer credentials exactly in the request", async () => {
+    const transport = sequencedFetch([jsonResponse(201, registeredMachine())]);
+    const controlPlane = new HttpSafeTunnelControlPlane({ fetch: transport.fetch });
+
+    await expect(controlPlane.registerMachine({
+      controlApiBaseUrl,
+      connectorAccessToken,
+      machineName: "Dev Box",
+      machineSlug: "dev-box",
+      localPiWebUrl: "http://127.0.0.1:8504",
+      clientVersion: safeTunnelClientVersion,
+    })).resolves.toEqual({
+      machine: {
+        id: "machine_123",
+        accountId: "account_123",
+        name: "Dev Box",
+        slug: "dev-box",
+      },
+      publicHostname: "dev-box.example.test",
+      publicUrl: "https://dev-box.example.test",
+      machineToken,
+    });
+    expect(transport.requests[0]).toMatchObject({
+      input: `${controlApiBaseUrl}/v1/machines`,
+      init: {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          authorization: `Bearer ${connectorAccessToken}`,
+          "content-type": "application/json",
+        },
+        redirect: "error",
+      },
+    });
+  });
+
+  it("fetches tunnel config and records sustained heartbeat inputs", async () => {
+    const transport = sequencedFetch([
+      jsonResponse(200, tunnelConfigResponse()),
+      jsonResponse(202, heartbeatResponse()),
+    ]);
+    const controlPlane = new HttpSafeTunnelControlPlane({ fetch: transport.fetch });
+    const credentials = {
+      controlApiBaseUrl,
+      machineId: "machine_123",
+      machineToken,
+    };
+
+    await expect(controlPlane.getMachineTunnelConfig(credentials)).resolves.toEqual({
+      machineId: "machine_123",
+      publicHostname: "dev-box.example.test",
+      publicUrl: "https://dev-box.example.test",
+      localPiWebUrl: "http://127.0.0.1:8504",
+      proxyName: "account-machine",
+      frpcConfigToml: "[[proxies]]\n",
+    });
+    await expect(controlPlane.recordMachineHeartbeat(credentials, {
+      clientVersion: safeTunnelClientVersion,
+      tunnelStatus: "error",
+      errorMessage: "PI WEB Safe Tunnel runtime is recovering.",
+    })).resolves.toEqual({
+      machineId: "machine_123",
+      lastSeenAt: "2030-01-01T00:00:00.000Z",
+      nextHeartbeatSeconds: 30,
+    });
+
+    expect(transport.requests[0]?.init.headers).toMatchObject({
+      authorization: `Bearer ${machineToken}`,
+    });
+    expect(transport.requests[1]?.init.body).toBe(JSON.stringify({
+      connectorVersion: safeTunnelClientVersion,
+      tunnelStatus: "error",
+      errorMessage: "PI WEB Safe Tunnel runtime is recovering.",
+    }));
+  });
+
+  it("rejects malformed response shape, insecure public URLs, and oversized bodies", async () => {
+    const malformed = new HttpSafeTunnelControlPlane({
+      fetch: () => Promise.resolve(jsonResponse(202, {
+        ...startedAuthorization(),
+        intervalSeconds: 0,
+      })),
+    });
+    await expect(malformed.startDeviceAuthorization({
+      controlApiBaseUrl,
+      clientVersion: safeTunnelClientVersion,
+    })).rejects.toMatchObject({ code: "invalid_response" });
+
+    const insecure = new HttpSafeTunnelControlPlane({
+      fetch: () => Promise.resolve(jsonResponse(201, {
+        ...registeredMachine(),
+        publicHostname: "dev-box.example.test",
+        publicUrl: "http://dev-box.example.test",
+      })),
+    });
+    await expect(insecure.registerMachine({
+      controlApiBaseUrl,
+      connectorAccessToken,
+      machineName: "Dev Box",
+      machineSlug: "dev-box",
+      localPiWebUrl: "http://127.0.0.1:8504",
+      clientVersion: safeTunnelClientVersion,
+    })).rejects.toMatchObject({ code: "invalid_response" });
+
+    const oversized = new HttpSafeTunnelControlPlane({
+      fetch: () => Promise.resolve(new Response("x", {
+        status: 202,
+        headers: { "content-length": (128 * 1_024 + 1).toString() },
+      })),
+    });
+    await expect(oversized.startDeviceAuthorization({
+      controlApiBaseUrl,
+      clientVersion: safeTunnelClientVersion,
+    })).rejects.toMatchObject({ code: "invalid_response" });
+  });
+
+  it("requires HTTPS except literal-loopback development before sending credentials", async () => {
+    const fetch = vi.fn<SafeTunnelFetch>();
+    const controlPlane = new HttpSafeTunnelControlPlane({ fetch });
+
+    await expect(controlPlane.getMachineTunnelConfig({
+      controlApiBaseUrl: "http://control.example.test",
+      machineId: "machine_123",
+      machineToken,
+    })).rejects.toThrow("controlApiBaseUrl must use https");
+    expect(fetch).not.toHaveBeenCalled();
+
+    const loopback = new HttpSafeTunnelControlPlane({
+      fetch: () => Promise.resolve(jsonResponse(200, tunnelConfigResponse({
+        publicHostname: "127.0.0.1",
+        publicUrl: "http://127.0.0.1:9443",
+      }))),
+    });
+    await expect(loopback.getMachineTunnelConfig({
+      controlApiBaseUrl: "http://127.0.0.1:9000",
+      machineId: "machine_123",
+      machineToken,
+    })).resolves.toMatchObject({ publicUrl: "http://127.0.0.1:9443" });
+  });
+
+  it.each([
+    [401, "authentication_failed"],
+    [409, "conflict"],
+    [429, "rate_limited"],
+    [503, "service_unavailable"],
+    [400, "request_rejected"],
+  ] as const)("maps HTTP %i to %s without returning provider bodies", async (status, code) => {
+    const secret = "raw-provider-secret";
+    const controlPlane = new HttpSafeTunnelControlPlane({
+      fetch: () => Promise.resolve(jsonResponse(status, {
+        error: { code: "provider_internal", message: secret },
+      })),
+    });
+
+    let observed: unknown;
+    try {
+      await controlPlane.startDeviceAuthorization({
+        controlApiBaseUrl,
+        clientVersion: safeTunnelClientVersion,
+      });
+    } catch (error: unknown) {
+      observed = error;
+    }
+    expect(observed).toMatchObject({ code, operation: "start_device_authorization" });
+    expect(String(observed) + JSON.stringify(observed)).not.toContain(secret);
+  });
+
+  it("times out and honours caller cancellation with a bounded transport error", async () => {
+    let timeoutCallback = (): void => undefined;
+    const pending = new HttpSafeTunnelControlPlane({
+      fetch: () => new Promise<Response>(() => undefined),
+      requestTimeoutMs: 10,
+      scheduleTimeout: (callback) => {
+        timeoutCallback = callback;
+        return { cancel: () => undefined };
+      },
+    });
+    const timedOut = pending.startDeviceAuthorization({
+      controlApiBaseUrl,
+      clientVersion: safeTunnelClientVersion,
+    });
+    timeoutCallback();
+    await expect(timedOut).rejects.toMatchObject({ code: "transport_failed" });
+
+    const controller = new AbortController();
+    const cancelled = pending.startDeviceAuthorization({
+      controlApiBaseUrl,
+      clientVersion: safeTunnelClientVersion,
+    }, { signal: controller.signal });
+    controller.abort();
+    await expect(cancelled).rejects.toMatchObject({ code: "transport_failed" });
+  });
+
+  it("rejects header-unsafe bearer credentials before constructing a request", async () => {
+    const fetch = vi.fn<SafeTunnelFetch>();
+    const controlPlane = new HttpSafeTunnelControlPlane({ fetch });
+
+    await expect(controlPlane.getMachineTunnelConfig({
+      controlApiBaseUrl,
+      machineId: "machine_123",
+      machineToken: "bad token\nvalue",
+    })).rejects.toThrow("HTTP-header-safe bearer credential");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+function startedAuthorization() {
+  return {
+    deviceCode: "device-code-private",
+    userCode: "ABCD-EFGH",
+    verificationUri: "https://control.example.test/device",
+    verificationUriComplete: "https://control.example.test/device?user_code=ABCD-EFGH",
+    expiresAt: "2030-01-01T00:10:00.000Z",
+    intervalSeconds: 5,
+  };
+}
+
+function approvedAuthorization() {
+  return {
+    tokenType: "Bearer",
+    accessToken: connectorAccessToken,
+    expiresAt: "2030-01-01T01:00:00.000Z",
+    account: { id: "account_123", publicNamespace: "account" },
+  };
+}
+
+function registeredMachine() {
+  return {
+    machine: {
+      id: "machine_123",
+      accountId: "account_123",
+      name: "Dev Box",
+      slug: "dev-box",
+    },
+    publicHostname: "dev-box.example.test",
+    publicUrl: "https://dev-box.example.test",
+    tunnelConfigUrl: `${controlApiBaseUrl}/v1/machines/machine_123/tunnel-config`,
+    machineToken,
+  };
+}
+
+function tunnelConfigResponse(overrides: Record<string, unknown> = {}) {
+  return {
+    machine: { id: "machine_123" },
+    publicHostname: "dev-box.example.test",
+    publicUrl: "https://dev-box.example.test",
+    localPiWebUrl: "http://127.0.0.1:8504",
+    frp: {
+      proxyName: "account-machine",
+      configFormat: "toml",
+      frpcConfigToml: "[[proxies]]\n",
+    },
+    ...overrides,
+  };
+}
+
+function heartbeatResponse() {
+  return {
+    accepted: true,
+    machine: {
+      id: "machine_123",
+      lastSeenAt: "2030-01-01T00:00:00.000Z",
+    },
+    nextHeartbeatSeconds: 30,
+  };
 }
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -21,883 +325,19 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
-function sequencedFetch(responses: readonly Response[]): {
+function sequencedFetch(responses: Response[]): {
   readonly fetch: SafeTunnelFetch;
-  readonly requests: readonly ObservedRequest[];
+  readonly requests: { readonly input: string; readonly init: RequestInit }[];
 } {
-  const requests: ObservedRequest[] = [];
-  let index = 0;
+  const requests: { input: string; init: RequestInit }[] = [];
   return {
     requests,
-    fetch(input, init) {
+    fetch: (input, init) => {
       requests.push({ input, init });
-      const response = responses[index];
-      index += 1;
+      const response = responses.shift();
       return response === undefined
-        ? Promise.reject(new Error("Unexpected HTTP request"))
+        ? Promise.reject(new Error("No fake response queued"))
         : Promise.resolve(response);
     },
   };
 }
-
-function manualTimeoutScheduler(): {
-  readonly fire: (index?: number) => void;
-  readonly schedule: SafeTunnelControlPlaneTimeoutScheduler;
-  readonly tasks: readonly { readonly delayMs: number; active: boolean }[];
-} {
-  const tasks: { callback: () => void; delayMs: number; active: boolean }[] = [];
-  return {
-    tasks,
-    fire(index = 0) {
-      const task = tasks[index];
-      if (task?.active !== true) throw new Error("No active timeout to fire");
-      task.active = false;
-      task.callback();
-    },
-    schedule(callback, delayMs) {
-      const task = { callback, delayMs, active: true };
-      tasks.push(task);
-      return { cancel: () => { task.active = false; } };
-    },
-  };
-}
-
-function startedAuthorization(): Record<string, unknown> {
-  return {
-    deviceCode: "piwt_dcode_v1_device",
-    userCode: "ABCD-EFGH",
-    verificationUri: "https://control.example.test/device",
-    verificationUriComplete: "https://control.example.test/device?user_code=ABCD-EFGH",
-    expiresAt: "2026-07-29T12:10:00.000Z",
-    intervalSeconds: 5,
-  };
-}
-
-function approvedAuthorization(): Record<string, unknown> {
-  return {
-    accessToken: "piwt_cat_v1_access",
-    tokenType: "Bearer",
-    expiresAt: "2026-07-29T12:15:00.000Z",
-    account: { id: "account_123", publicNamespace: "ns-abc123" },
-  };
-}
-
-function heartbeatResponse(overrides: Record<string, unknown> = {}): Record<string, unknown> {
-  return {
-    accepted: true,
-    machine: {
-      id: "machine_123",
-      lastSeenAt: "2026-07-29T12:05:00.000Z",
-    },
-    nextHeartbeatSeconds: 30,
-    ...overrides,
-  };
-}
-
-function registeredMachine(): Record<string, unknown> {
-  return {
-    machine: {
-      id: "machine_123",
-      accountId: "account_123",
-      name: "Dev Box",
-      slug: "dev-box",
-    },
-    publicHostname: "dev-box.ns-abc123.tunnels.pi-web.dev",
-    publicUrl: "https://dev-box.ns-abc123.tunnels.pi-web.dev",
-    machineToken: "piwt_mtok_v1_machine",
-    tunnelConfigUrl: "/v1/machines/machine_123/tunnel-config",
-  };
-}
-
-describe("HttpSafeTunnelControlPlane", () => {
-  it("owns the device authorization and machine registration HTTP contract", async () => {
-    const transport = sequencedFetch([
-      jsonResponse(202, startedAuthorization()),
-      jsonResponse(409, { error: { code: "authorization_pending", message: "wait" } }),
-      jsonResponse(200, approvedAuthorization()),
-      jsonResponse(201, registeredMachine()),
-    ]);
-    const timeouts = manualTimeoutScheduler();
-    const controlPlane = new HttpSafeTunnelControlPlane({
-      fetch: transport.fetch,
-      scheduleTimeout: timeouts.schedule,
-    });
-    const controller = new AbortController();
-
-    await expect(controlPlane.startDeviceAuthorization({
-      controlApiBaseUrl: "https://control.example.test/",
-      clientVersion: safeTunnelClientVersion,
-    }, { signal: controller.signal })).resolves.toMatchObject({ userCode: "ABCD-EFGH", intervalSeconds: 5 });
-    await expect(controlPlane.completeDeviceAuthorization({
-      controlApiBaseUrl: "https://control.example.test",
-      deviceCode: "piwt_dcode_v1_device",
-    }, { signal: controller.signal })).resolves.toEqual({ kind: "pending" });
-    await expect(controlPlane.completeDeviceAuthorization({
-      controlApiBaseUrl: "https://control.example.test",
-      deviceCode: "piwt_dcode_v1_device",
-    })).resolves.toMatchObject({
-      kind: "approved",
-      authorization: { account: { publicNamespace: "ns-abc123" } },
-    });
-    await expect(controlPlane.registerMachine({
-      controlApiBaseUrl: "https://control.example.test",
-      connectorAccessToken: "piwt_cat_v1_access",
-      machineName: "Dev Box",
-      machineSlug: "dev-box",
-      localPiWebUrl: "http://127.0.0.1:8504",
-      clientVersion: safeTunnelClientVersion,
-    })).resolves.toMatchObject({
-      machine: { id: "machine_123", slug: "dev-box" },
-      machineToken: "piwt_mtok_v1_machine",
-    });
-
-    expect(transport.requests.map(({ input }) => input)).toEqual([
-      "https://control.example.test/v1/device/start",
-      "https://control.example.test/v1/device/complete",
-      "https://control.example.test/v1/device/complete",
-      "https://control.example.test/v1/machines",
-    ]);
-    expect(transport.requests[0]?.init).toMatchObject({
-      method: "POST",
-      redirect: "error",
-      body: JSON.stringify({ connectorVersion: safeTunnelClientVersion }),
-    });
-    expect(transport.requests[0]?.init.signal).toBeInstanceOf(AbortSignal);
-    expect(transport.requests[0]?.init.signal).not.toBe(controller.signal);
-    expect(transport.requests[1]?.init.signal).toBeInstanceOf(AbortSignal);
-    expect(transport.requests[1]?.init.signal).not.toBe(controller.signal);
-    expect(transport.requests[3]?.init).toMatchObject({
-      headers: { authorization: "Bearer piwt_cat_v1_access" },
-      body: JSON.stringify({
-        name: "Dev Box",
-        slug: "dev-box",
-        localPiWebUrl: "http://127.0.0.1:8504",
-        connectorVersion: safeTunnelClientVersion,
-      }),
-    });
-    expect(timeouts.tasks).toHaveLength(4);
-    expect(timeouts.tasks.every(({ active }) => !active)).toBe(true);
-  });
-
-  it("aborts stalled registration at the injected whole-response timeout", async () => {
-    const timeouts = manualTimeoutScheduler();
-    let requestSignal: AbortSignal | undefined;
-    const controlPlane = new HttpSafeTunnelControlPlane({
-      fetch: (_input, init) => {
-        requestSignal = init.signal ?? undefined;
-        return new Promise(() => undefined);
-      },
-      requestTimeoutMs: 25,
-      scheduleTimeout: timeouts.schedule,
-    });
-
-    const registration = controlPlane.registerMachine({
-      controlApiBaseUrl: "https://control.example.test",
-      connectorAccessToken: "piwt_cat_v1_access",
-      machineName: "Dev Box",
-      machineSlug: "dev-box",
-      localPiWebUrl: "http://127.0.0.1:8504",
-      clientVersion: safeTunnelClientVersion,
-    });
-    await Promise.resolve();
-
-    expect(timeouts.tasks).toHaveLength(1);
-    expect(timeouts.tasks[0]).toMatchObject({ delayMs: 25, active: true });
-    expect(requestSignal?.aborted).toBe(false);
-    timeouts.fire();
-
-    await expect(registration).rejects.toMatchObject({
-      code: "transport_failed",
-      operation: "register_machine",
-    });
-    expect(requestSignal?.aborted).toBe(true);
-    expect(timeouts.tasks[0]?.active).toBe(false);
-  });
-
-  it("keeps the timeout active while a success response body is stalled", async () => {
-    const timeouts = manualTimeoutScheduler();
-    const controlPlane = new HttpSafeTunnelControlPlane({
-      fetch: () => Promise.resolve(new Response(new ReadableStream<Uint8Array>(), {
-        status: 202,
-      })),
-      requestTimeoutMs: 40,
-      scheduleTimeout: timeouts.schedule,
-    });
-
-    const request = controlPlane.startDeviceAuthorization({
-      controlApiBaseUrl: "https://control.example.test",
-      clientVersion: safeTunnelClientVersion,
-    });
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(timeouts.tasks[0]).toMatchObject({ delayMs: 40, active: true });
-
-    timeouts.fire();
-
-    await expect(request).rejects.toMatchObject({
-      code: "transport_failed",
-      operation: "start_device_authorization",
-    });
-    expect(timeouts.tasks[0]?.active).toBe(false);
-  });
-
-  it("propagates caller cancellation through an internal request signal and clears its timeout", async () => {
-    const timeouts = manualTimeoutScheduler();
-    const caller = new AbortController();
-    let requestSignal: AbortSignal | undefined;
-    const controlPlane = new HttpSafeTunnelControlPlane({
-      fetch: (_input, init) => {
-        requestSignal = init.signal ?? undefined;
-        return new Promise(() => undefined);
-      },
-      scheduleTimeout: timeouts.schedule,
-    });
-
-    const request = controlPlane.getMachineTunnelConfig({
-      controlApiBaseUrl: "https://control.example.test",
-      machineId: "machine_123",
-      machineToken: "piwt_mtok_v1_private",
-    }, { signal: caller.signal });
-    await Promise.resolve();
-    expect(requestSignal).not.toBe(caller.signal);
-
-    caller.abort();
-
-    await expect(request).rejects.toMatchObject({
-      code: "transport_failed",
-      operation: "get_tunnel_config",
-    });
-    expect(requestSignal?.aborted).toBe(true);
-    expect(timeouts.tasks[0]?.active).toBe(false);
-  });
-
-  it("rejects non-loopback plaintext endpoints before sending bearer credentials", async () => {
-    let fetchCalls = 0;
-    const controlPlane = new HttpSafeTunnelControlPlane({
-      fetch: () => {
-        fetchCalls += 1;
-        return Promise.resolve(jsonResponse(201, registeredMachine()));
-      },
-    });
-
-    await expect(controlPlane.registerMachine({
-      controlApiBaseUrl: "http://control.example.test",
-      connectorAccessToken: "piwt_cat_v1_access",
-      machineName: "Dev Box",
-      machineSlug: "dev-box",
-      localPiWebUrl: "http://127.0.0.1:8504",
-      clientVersion: safeTunnelClientVersion,
-    })).rejects.toThrow("must use https");
-    await expect(controlPlane.getMachineTunnelConfig({
-      controlApiBaseUrl: "http://localhost:8787",
-      machineId: "machine_123",
-      machineToken: "piwt_mtok_v1_private",
-    })).rejects.toThrow("must use https");
-    expect(fetchCalls).toBe(0);
-  });
-
-  it("rejects plaintext non-loopback public ingress identities from registration and config", async () => {
-    const insecureRegistration = new HttpSafeTunnelControlPlane({
-      fetch: () => Promise.resolve(jsonResponse(201, {
-        ...registeredMachine(),
-        publicUrl: "http://dev-box.ns-abc123.tunnels.pi-web.dev",
-      })),
-    });
-
-    await expect(insecureRegistration.registerMachine({
-      controlApiBaseUrl: "https://control.example.test",
-      connectorAccessToken: "piwt_cat_v1_access",
-      machineName: "Dev Box",
-      machineSlug: "dev-box",
-      localPiWebUrl: "http://127.0.0.1:8504",
-      clientVersion: safeTunnelClientVersion,
-    })).rejects.toMatchObject({
-      code: "invalid_response",
-      operation: "register_machine",
-    });
-
-    const insecureConfig = new HttpSafeTunnelControlPlane({
-      fetch: () => Promise.resolve(jsonResponse(200, {
-        machine: { id: "machine_123" },
-        publicHostname: "dev-box.ns-abc123.tunnels.pi-web.dev",
-        publicUrl: "http://dev-box.ns-abc123.tunnels.pi-web.dev",
-        localPiWebUrl: "http://127.0.0.1:8504",
-        frp: {
-          proxyName: "account-machine",
-          configFormat: "toml",
-          frpcConfigToml: "[[proxies]]\n",
-        },
-      })),
-    });
-
-    await expect(insecureConfig.getMachineTunnelConfig({
-      controlApiBaseUrl: "https://control.example.test",
-      machineId: "machine_123",
-      machineToken: "piwt_mtok_v1_private",
-    })).rejects.toMatchObject({
-      code: "invalid_response",
-      operation: "get_tunnel_config",
-    });
-  });
-
-  it("bounds success bodies and rejects insecure approval links", async () => {
-    const oversized = new HttpSafeTunnelControlPlane({
-      fetch: () => Promise.resolve(new Response("x", {
-        status: 202,
-        headers: { "content-length": (128 * 1_024 + 1).toString() },
-      })),
-    });
-    await expect(oversized.startDeviceAuthorization({
-      controlApiBaseUrl: "https://control.example.test",
-      clientVersion: safeTunnelClientVersion,
-    })).rejects.toMatchObject({ code: "invalid_response" });
-
-    const insecureApproval = new HttpSafeTunnelControlPlane({
-      fetch: () => Promise.resolve(jsonResponse(202, {
-        ...startedAuthorization(),
-        verificationUriComplete: "http://approval.example.test/device?secret=code",
-      })),
-    });
-    await expect(insecureApproval.startDeviceAuthorization({
-      controlApiBaseUrl: "https://control.example.test",
-      clientVersion: safeTunnelClientVersion,
-    })).rejects.toMatchObject({ code: "invalid_response" });
-  });
-
-  it.each([
-    ["mixed-case percent escapes", "%74ok%2b%2F%3d"],
-    ["percent-encoded unreserved bytes", "%74%6F%6b%2B%2f%3D"],
-    ["JSON Unicode escapes", "\\u0074\\u006F\\u006b\\u002B\\/\\u003d"],
-  ])("rejects device-code reflection through %s before returning approval metadata", async (
-    _label,
-    reflectedCode,
-  ) => {
-    const controlPlane = new HttpSafeTunnelControlPlane({
-      fetch: () => Promise.resolve(jsonResponse(202, {
-        ...startedAuthorization(),
-        deviceCode: "tok+/=",
-        userCode: reflectedCode,
-      })),
-    });
-
-    await expect(controlPlane.startDeviceAuthorization({
-      controlApiBaseUrl: "https://control.example.test",
-      clientVersion: safeTunnelClientVersion,
-    })).rejects.toMatchObject({
-      code: "invalid_response",
-      operation: "start_device_authorization",
-    });
-  });
-
-  it("rejects encoded bearer aliases in parsed provider metadata", async () => {
-    const machineToken = "tok+/=";
-    const registered = new HttpSafeTunnelControlPlane({
-      fetch: () => Promise.resolve(jsonResponse(201, {
-        ...registeredMachine(),
-        machine: {
-          id: "\\u0074\\u006F\\u006b\\u002B\\/\\u003d",
-          accountId: "account_123",
-          name: "Dev Box",
-          slug: "dev-box",
-        },
-        machineToken,
-      })),
-    });
-
-    await expect(registered.registerMachine({
-      controlApiBaseUrl: "https://control.example.test",
-      connectorAccessToken: "connector-token",
-      machineName: "Dev Box",
-      machineSlug: "dev-box",
-      localPiWebUrl: "http://127.0.0.1:8504",
-      clientVersion: safeTunnelClientVersion,
-    })).rejects.toMatchObject({
-      code: "invalid_response",
-      operation: "register_machine",
-    });
-
-    const connectorToken = "Access+/=";
-    const reflectedConnector = new HttpSafeTunnelControlPlane({
-      fetch: () => Promise.resolve(jsonResponse(201, {
-        ...registeredMachine(),
-        machine: {
-          id: "%41ccess%2b%2F%3d",
-          accountId: "account_123",
-          name: "Dev Box",
-          slug: "dev-box",
-        },
-      })),
-    });
-    await expect(reflectedConnector.registerMachine({
-      controlApiBaseUrl: "https://control.example.test",
-      connectorAccessToken: connectorToken,
-      machineName: "Dev Box",
-      machineSlug: "dev-box",
-      localPiWebUrl: "http://127.0.0.1:8504",
-      clientVersion: safeTunnelClientVersion,
-    })).rejects.toMatchObject({
-      code: "invalid_response",
-      operation: "register_machine",
-    });
-  });
-
-  it.each((() => {
-    const machineToken = "private-machine-token-1234567890";
-    const bytes = Buffer.from(machineToken, "utf8");
-    const base64url = bytes.toString("base64url");
-    return [
-      ["hex", bytes.toString("hex")],
-      ["base64", bytes.toString("base64")],
-      ["base64url", base64url],
-      ["dot-separated base64url", `${base64url.slice(0, 20)}.${base64url.slice(20)}`],
-      ["SHA-256 digest", createHash("sha256").update(bytes).digest("hex")],
-    ] as const;
-  })())("rejects a machine-token %s alias in provider browser metadata", async (
-    _label,
-    alias,
-  ) => {
-    const machineToken = "private-machine-token-1234567890";
-    const controlPlane = new HttpSafeTunnelControlPlane({
-      fetch: () => Promise.resolve(jsonResponse(201, {
-        ...registeredMachine(),
-        machine: {
-          id: alias,
-          accountId: "account_123",
-          name: "Dev Box",
-          slug: "dev-box",
-        },
-        machineToken,
-      })),
-    });
-
-    await expect(controlPlane.registerMachine({
-      controlApiBaseUrl: "https://control.example.test",
-      connectorAccessToken: "connector-token",
-      machineName: "Dev Box",
-      machineSlug: "dev-box",
-      localPiWebUrl: "http://127.0.0.1:8504",
-      clientVersion: safeTunnelClientVersion,
-    })).rejects.toMatchObject({
-      code: "invalid_response",
-      operation: "register_machine",
-    });
-  });
-
-  it("rejects credential hex split across three provider metadata fields", async () => {
-    const machineToken = "private-machine-token-1234567890-abcdefghijkl";
-    const hex = Buffer.from(machineToken, "utf8").toString("hex");
-    const chunkLength = Math.ceil(hex.length / 3);
-    const controlPlane = new HttpSafeTunnelControlPlane({
-      fetch: () => Promise.resolve(jsonResponse(201, {
-        ...registeredMachine(),
-        machine: {
-          id: hex.slice(0, chunkLength),
-          accountId: hex.slice(chunkLength, chunkLength * 2),
-          name: hex.slice(chunkLength * 2),
-          slug: "dev-box",
-        },
-        machineToken,
-      })),
-    });
-
-    await expect(controlPlane.registerMachine({
-      controlApiBaseUrl: "https://control.example.test",
-      connectorAccessToken: "connector-token",
-      machineName: "Dev Box",
-      machineSlug: "dev-box",
-      localPiWebUrl: "http://127.0.0.1:8504",
-      clientVersion: safeTunnelClientVersion,
-    })).rejects.toMatchObject({ code: "invalid_response" });
-  });
-
-  it("rejects dot-separated credential hex in a registered public hostname", async () => {
-    const machineToken = "private-machine-token-1234567890";
-    const hex = Buffer.from(machineToken, "utf8").toString("hex");
-    const publicHostname = `${hex.slice(0, 32)}.${hex.slice(32)}.example.test`;
-    const controlPlane = new HttpSafeTunnelControlPlane({
-      fetch: () => Promise.resolve(jsonResponse(201, {
-        ...registeredMachine(),
-        publicHostname,
-        publicUrl: `https://${publicHostname}`,
-        machineToken,
-      })),
-    });
-
-    await expect(controlPlane.registerMachine({
-      controlApiBaseUrl: "https://control.example.test",
-      connectorAccessToken: "connector-token",
-      machineName: "Dev Box",
-      machineSlug: "dev-box",
-      localPiWebUrl: "http://127.0.0.1:8504",
-      clientVersion: safeTunnelClientVersion,
-    })).rejects.toMatchObject({ code: "invalid_response" });
-  });
-
-  it("rejects a machine credential that encodes same-response public metadata", async () => {
-    const machineId = "public-machine-id";
-    const machineToken = Buffer.from(machineId, "utf8").toString("base64url");
-    const controlPlane = new HttpSafeTunnelControlPlane({
-      fetch: () => Promise.resolve(jsonResponse(201, {
-        ...registeredMachine(),
-        machine: {
-          id: machineId,
-          accountId: "account_123",
-          name: "Dev Box",
-          slug: "dev-box",
-        },
-        machineToken,
-      })),
-    });
-
-    await expect(controlPlane.registerMachine({
-      controlApiBaseUrl: "https://control.example.test",
-      connectorAccessToken: "connector-token",
-      machineName: "Dev Box",
-      machineSlug: "dev-box",
-      localPiWebUrl: "http://127.0.0.1:8504",
-      clientVersion: safeTunnelClientVersion,
-    })).rejects.toMatchObject({ code: "invalid_response" });
-  });
-
-  it("fetches and strictly parses tunnel config with private machine credentials", async () => {
-    const transport = sequencedFetch([jsonResponse(200, {
-      machine: { id: "machine_123" },
-      publicHostname: "dev-box.ns-abc123.tunnels.pi-web.dev",
-      publicUrl: "https://dev-box.ns-abc123.tunnels.pi-web.dev",
-      localPiWebUrl: "http://127.0.0.1:8504",
-      frp: {
-        proxyName: "account-machine",
-        configFormat: "toml",
-        frpcConfigToml: "[[proxies]]\n",
-      },
-    })]);
-    const controlPlane = new HttpSafeTunnelControlPlane({ fetch: transport.fetch });
-    const controller = new AbortController();
-
-    await expect(controlPlane.getMachineTunnelConfig({
-      controlApiBaseUrl: "https://control.example.test",
-      machineId: "machine_123",
-      machineToken: "piwt_mtok_v1_private",
-    }, { signal: controller.signal })).resolves.toEqual({
-      machineId: "machine_123",
-      publicHostname: "dev-box.ns-abc123.tunnels.pi-web.dev",
-      publicUrl: "https://dev-box.ns-abc123.tunnels.pi-web.dev",
-      localPiWebUrl: "http://127.0.0.1:8504",
-      proxyName: "account-machine",
-      frpcConfigToml: "[[proxies]]\n",
-    });
-    expect(transport.requests[0]).toMatchObject({
-      input: "https://control.example.test/v1/machines/machine_123/tunnel-config",
-      init: {
-        method: "GET",
-        redirect: "error",
-        headers: { authorization: "Bearer piwt_mtok_v1_private" },
-      },
-    });
-    expect(transport.requests[0]?.init.signal).toBeInstanceOf(AbortSignal);
-    expect(transport.requests[0]?.init.signal).not.toBe(controller.signal);
-  });
-
-  it("records and strictly parses normalized machine heartbeats", async () => {
-    const transport = sequencedFetch([jsonResponse(202, heartbeatResponse())]);
-    const controlPlane = new HttpSafeTunnelControlPlane({ fetch: transport.fetch });
-    const controller = new AbortController();
-
-    await expect(controlPlane.recordMachineHeartbeat({
-      controlApiBaseUrl: "https://control.example.test",
-      machineId: "machine_123",
-      machineToken: "piwt_mtok_v1_private",
-    }, {
-      clientVersion: safeTunnelClientVersion,
-      tunnelStatus: "error",
-      errorMessage: "PI WEB Safe Tunnel runtime is recovering.",
-    }, { signal: controller.signal })).resolves.toEqual({
-      machineId: "machine_123",
-      lastSeenAt: "2026-07-29T12:05:00.000Z",
-      nextHeartbeatSeconds: 30,
-    });
-    expect(transport.requests[0]).toMatchObject({
-      input: "https://control.example.test/v1/machines/machine_123/heartbeat",
-      init: {
-        method: "POST",
-        redirect: "error",
-        headers: {
-          accept: "application/json",
-          authorization: "Bearer piwt_mtok_v1_private",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          connectorVersion: safeTunnelClientVersion,
-          tunnelStatus: "error",
-          errorMessage: "PI WEB Safe Tunnel runtime is recovering.",
-        }),
-      },
-    });
-    expect(transport.requests[0]?.init.signal).toBeInstanceOf(AbortSignal);
-    expect(transport.requests[0]?.init.signal).not.toBe(controller.signal);
-  });
-
-  it("rejects a machine-token alias in heartbeat public metadata", async () => {
-    const machineToken = "private-machine-token";
-    const alias = Buffer.from(machineToken, "utf8").toString("base64url");
-    const separatedAlias = `${alias.slice(0, 12)}.${alias.slice(12)}`;
-    const controlPlane = new HttpSafeTunnelControlPlane({
-      fetch: () => Promise.resolve(jsonResponse(202, heartbeatResponse({
-        machine: {
-          id: separatedAlias,
-          lastSeenAt: "2026-07-29T12:05:00.000Z",
-        },
-      }))),
-    });
-
-    await expect(controlPlane.recordMachineHeartbeat({
-      controlApiBaseUrl: "https://control.example.test",
-      machineId: "machine_123",
-      machineToken,
-    }, {
-      clientVersion: safeTunnelClientVersion,
-      tunnelStatus: "running",
-    })).rejects.toMatchObject({
-      code: "invalid_response",
-      operation: "record_heartbeat",
-    });
-  });
-
-  it("rejects malformed heartbeat success and maps rejected credentials", async () => {
-    const malformed = new HttpSafeTunnelControlPlane({
-      fetch: () => Promise.resolve(jsonResponse(202, heartbeatResponse({
-        nextHeartbeatSeconds: 0,
-      }))),
-    });
-    await expect(malformed.recordMachineHeartbeat({
-      controlApiBaseUrl: "https://control.example.test",
-      machineId: "machine_123",
-      machineToken: "piwt_mtok_v1_private",
-    }, {
-      clientVersion: safeTunnelClientVersion,
-      tunnelStatus: "running",
-    })).rejects.toMatchObject({
-      code: "invalid_response",
-      operation: "record_heartbeat",
-    });
-
-    const revoked = new HttpSafeTunnelControlPlane({
-      fetch: () => Promise.resolve(jsonResponse(401, {
-        error: { code: "invalid_machine_token", message: "private provider detail" },
-      })),
-    });
-    await expect(revoked.recordMachineHeartbeat({
-      controlApiBaseUrl: "https://control.example.test",
-      machineId: "machine_123",
-      machineToken: "piwt_mtok_v1_private",
-    }, {
-      clientVersion: safeTunnelClientVersion,
-      tunnelStatus: "running",
-    })).rejects.toMatchObject({
-      code: "authentication_failed",
-      operation: "record_heartbeat",
-    });
-  });
-
-  it("maps denial, authentication, rate-limit, and service failures to stable errors", async () => {
-    const cases = [
-      {
-        response: jsonResponse(403, { error: { code: "authorization_denied" } }),
-        operation: "complete" as const,
-        code: "authorization_denied",
-      },
-      { response: jsonResponse(401, { error: { message: "bad token" } }), operation: "start" as const, code: "authentication_failed" },
-      { response: jsonResponse(429, { error: { message: "slow down" } }), operation: "start" as const, code: "rate_limited" },
-      { response: jsonResponse(503, { error: { message: "outage" } }), operation: "start" as const, code: "service_unavailable" },
-    ];
-
-    for (const testCase of cases) {
-      const controlPlane = new HttpSafeTunnelControlPlane({
-        fetch: () => Promise.resolve(testCase.response),
-      });
-      const request = testCase.operation === "complete"
-        ? controlPlane.completeDeviceAuthorization({
-          controlApiBaseUrl: "https://control.example.test",
-          deviceCode: "device",
-        })
-        : controlPlane.startDeviceAuthorization({
-          controlApiBaseUrl: "https://control.example.test",
-          clientVersion: safeTunnelClientVersion,
-        });
-      await expect(request).rejects.toMatchObject({ code: testCase.code });
-    }
-  });
-
-  it("preserves valid token68 bearer credentials exactly across response and header boundaries", async () => {
-    const accessToken = "Access-._~+/==";
-    const machineToken = "Machine-._~+/=";
-    const transport = sequencedFetch([
-      jsonResponse(200, { ...approvedAuthorization(), accessToken }),
-      jsonResponse(201, { ...registeredMachine(), machineToken }),
-    ]);
-    const controlPlane = new HttpSafeTunnelControlPlane({ fetch: transport.fetch });
-
-    await expect(controlPlane.completeDeviceAuthorization({
-      controlApiBaseUrl: "https://control.example.test",
-      deviceCode: "device",
-    })).resolves.toMatchObject({
-      kind: "approved",
-      authorization: { accessToken },
-    });
-    await expect(controlPlane.registerMachine({
-      controlApiBaseUrl: "https://control.example.test",
-      connectorAccessToken: accessToken,
-      machineName: "Dev Box",
-      machineSlug: "dev-box",
-      localPiWebUrl: "http://127.0.0.1:8504",
-      clientVersion: safeTunnelClientVersion,
-    })).resolves.toMatchObject({ machineToken });
-    expect(transport.requests[1]?.init.headers).toMatchObject({
-      authorization: `Bearer ${accessToken}`,
-    });
-  });
-
-  it("rejects unsafe provider bearer credentials as invalid responses", async () => {
-    const unsafeResponses = [
-      {
-        operation: "complete_device_authorization",
-        response: jsonResponse(200, {
-          ...approvedAuthorization(),
-          accessToken: " access-token",
-        }),
-        request: (controlPlane: HttpSafeTunnelControlPlane) => (
-          controlPlane.completeDeviceAuthorization({
-            controlApiBaseUrl: "https://control.example.test",
-            deviceCode: "device",
-          })
-        ),
-      },
-      {
-        operation: "register_machine",
-        response: jsonResponse(201, {
-          ...registeredMachine(),
-          machineToken: "machine-token\nheader",
-        }),
-        request: (controlPlane: HttpSafeTunnelControlPlane) => controlPlane.registerMachine({
-          controlApiBaseUrl: "https://control.example.test",
-          connectorAccessToken: "safe-access-token",
-          machineName: "Dev Box",
-          machineSlug: "dev-box",
-          localPiWebUrl: "http://127.0.0.1:8504",
-          clientVersion: safeTunnelClientVersion,
-        }),
-      },
-    ] as const;
-
-    for (const testCase of unsafeResponses) {
-      const controlPlane = new HttpSafeTunnelControlPlane({
-        fetch: () => Promise.resolve(testCase.response),
-      });
-      await expect(testCase.request(controlPlane)).rejects.toMatchObject({
-        code: "invalid_response",
-        operation: testCase.operation,
-      });
-    }
-  });
-
-  it("rejects unsafe bearer credentials before constructing an HTTP request", async () => {
-    let fetchCalls = 0;
-    const controlPlane = new HttpSafeTunnelControlPlane({
-      fetch: () => {
-        fetchCalls += 1;
-        return Promise.resolve(jsonResponse(500, {}));
-      },
-    });
-
-    await expect(controlPlane.registerMachine({
-      controlApiBaseUrl: "https://control.example.test",
-      connectorAccessToken: "access token",
-      machineName: "Dev Box",
-      machineSlug: "dev-box",
-      localPiWebUrl: "http://127.0.0.1:8504",
-      clientVersion: safeTunnelClientVersion,
-    })).rejects.toThrow("HTTP-header-safe bearer credential");
-    await expect(controlPlane.getMachineTunnelConfig({
-      controlApiBaseUrl: "https://control.example.test",
-      machineId: "machine_123",
-      machineToken: "machine-token\r\nInjected: value",
-    })).rejects.toThrow("HTTP-header-safe bearer credential");
-    await expect(controlPlane.recordMachineHeartbeat({
-      controlApiBaseUrl: "https://control.example.test",
-      machineId: "machine_123",
-      machineToken: "tóken",
-    }, {
-      clientVersion: safeTunnelClientVersion,
-      tunnelStatus: "running",
-    })).rejects.toThrow("HTTP-header-safe bearer credential");
-    expect(fetchCalls).toBe(0);
-  });
-
-  it("rejects malformed success payloads as operation-specific application errors", async () => {
-    const controlPlane = new HttpSafeTunnelControlPlane({
-      fetch: () => Promise.resolve(jsonResponse(201, {
-        ...registeredMachine(),
-        machineToken: "",
-      })),
-    });
-
-    await expect(controlPlane.registerMachine({
-      controlApiBaseUrl: "https://control.example.test",
-      connectorAccessToken: "access",
-      machineName: "Dev Box",
-      machineSlug: "dev-box",
-      localPiWebUrl: "http://127.0.0.1:8504",
-      clientVersion: safeTunnelClientVersion,
-    })).rejects.toMatchObject({
-      code: "invalid_response",
-      operation: "register_machine",
-    });
-  });
-
-  it("drops raw transport/provider details and all credential material from errors", async () => {
-    const secrets = [
-      "piwt_mtok_v1_private",
-      "piwt_cat_v1_access",
-      "provider says account owner@example.test is blocked",
-    ];
-    const transportFailure = new HttpSafeTunnelControlPlane({
-      fetch: () => Promise.reject(new Error(secrets.join(" "))),
-    });
-
-    let observed: unknown;
-    try {
-      await transportFailure.getMachineTunnelConfig({
-        controlApiBaseUrl: "https://secret-control.example.test",
-        machineId: "machine_123",
-        machineToken: secrets[0] ?? "",
-      });
-    } catch (error: unknown) {
-      observed = error;
-    }
-    expect(observed).toBeInstanceOf(SafeTunnelControlPlaneError);
-    const serialized = JSON.stringify(observed) + String(observed);
-    for (const secret of secrets) expect(serialized).not.toContain(secret);
-    expect(serialized).not.toContain("secret-control.example.test");
-
-    const providerFailure = new HttpSafeTunnelControlPlane({
-      fetch: () => Promise.resolve(jsonResponse(401, {
-        error: { code: "invalid_token", message: secrets.join(" ") },
-      })),
-    });
-    let providerError: unknown;
-    try {
-      await providerFailure.registerMachine({
-        controlApiBaseUrl: "https://control.example.test",
-        connectorAccessToken: secrets[1] ?? "",
-        machineName: "Dev Box",
-        machineSlug: "dev-box",
-        localPiWebUrl: "http://127.0.0.1:8504",
-        clientVersion: safeTunnelClientVersion,
-      });
-    } catch (error: unknown) {
-      providerError = error;
-    }
-    const serializedProviderError = JSON.stringify(providerError) + String(providerError);
-    for (const secret of secrets) expect(serializedProviderError).not.toContain(secret);
-  });
-});

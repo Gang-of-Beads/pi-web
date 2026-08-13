@@ -2,12 +2,7 @@ import type {
   SafeTunnelCommandOutput,
   SafeTunnelRuntimeStatus,
 } from "../../shared/apiTypes.js";
-import { safeTunnelFrpcConfigCredentials } from "./safeTunnelFrpcConfig.js";
-import {
-  containsSafeTunnelSensitiveRepresentation,
-  redactSafeTunnelDiagnostic,
-  SafeTunnelStreamingDiagnosticRedactor,
-} from "./safeTunnelDiagnostics.js";
+import { validateSafeTunnelFrpcConfig } from "./safeTunnelFrpcConfig.js";
 import {
   SafeTunnelFrpcAcquisitionError,
   type SafeTunnelManagedFrpc,
@@ -18,10 +13,7 @@ import type {
   SafeTunnelFrpcProcessHandle,
   SafeTunnelFrpcProcessLauncher,
 } from "./safeTunnelFrpcProcess.js";
-import {
-  safeTunnelFrpcLogTailCharacters,
-  type SafeTunnelFrpcRuntimeFiles,
-} from "./safeTunnelFrpcRuntimeFiles.js";
+import type { SafeTunnelFrpcRuntimeFiles } from "./safeTunnelFrpcRuntimeFiles.js";
 import type { SafeTunnelPreparedTunnelConfig } from "./safeTunnelService.js";
 
 const defaultInitialRestartDelayMs = 1_000;
@@ -100,10 +92,6 @@ export interface SafeTunnelFrpcStartInput {
 }
 
 export interface SafeTunnelFrpcStartResult {
-  /** Private frpc authentication values carried only for browser-bound scrubbing. */
-  readonly credentialRedactionValues: readonly string[];
-  readonly output: string;
-  readonly pid?: number;
   readonly publicUrl: string;
 }
 
@@ -159,8 +147,6 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
   private activeProcess: OwnedFrpcProcess | undefined;
   private readonly clock: SafeTunnelSupervisorClock;
   private consecutiveFailures = 0;
-  private readonly diagnosticRedactionValues = new Set<string>();
-  private readonly frpcCredentialRedactionValues = new Set<string>();
   private disposed = false;
   private generation = 0;
   private lastError: string | undefined;
@@ -192,8 +178,6 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
 
     this.cancelRestartTask();
     this.cancelStableRunTask();
-    this.diagnosticRedactionValues.clear();
-    this.frpcCredentialRedactionValues.clear();
     this.generation += 1;
     const generation = this.generation;
     this.runRequested = true;
@@ -201,7 +185,7 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
     this.lastError = undefined;
     this.phase = "starting";
     const controller = new AbortController();
-    const attempt = this.performInitialAttempt(generation, input, controller.signal);
+    const attempt = this.performAttempt(generation, input, controller.signal);
     return this.trackAttempt(attempt, controller);
   }
 
@@ -231,39 +215,11 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
     return shutdown;
   }
 
-  async status(): Promise<SafeTunnelRuntimeStatus> {
-    const files = await this.dependencies.files.status();
-    const runtimeError = this.lastError ?? files.configError;
-    const redactionValues = [...this.diagnosticRedactionValues];
-    const credentialValues = [...this.frpcCredentialRedactionValues];
-    const frpcConfigPath = credentialSafeStructuredValue(
-      this.dependencies.files.configPath,
-      credentialValues,
-    );
-    const logPath = credentialSafeStructuredValue(
-      this.dependencies.files.logPath,
-      credentialValues,
-    );
-    return {
+  status(): Promise<SafeTunnelRuntimeStatus> {
+    return Promise.resolve({
       state: runtimeStateFor(this.phase, this.activeProcess !== undefined),
-      frpcConfigExists: files.configExists,
-      ...(frpcConfigPath === undefined ? {} : { frpcConfigPath }),
-      ...(this.activeProcess?.handle.pid === undefined
-        ? {}
-        : { pid: this.activeProcess.handle.pid }),
-      ...(runtimeError === undefined
-        ? {}
-        : { error: redactSafeTunnelDiagnostic(runtimeError, redactionValues) }),
-      ...(files.logError === undefined
-        ? {}
-        : { logError: redactSafeTunnelDiagnostic(files.logError, redactionValues) }),
-      logExists: files.logExists,
-      ...(logPath === undefined ? {} : { logPath }),
-      ...(files.logTail === undefined
-        ? {}
-        : { logTail: redactSafeTunnelDiagnostic(files.logTail, redactionValues) }),
-      logTailMaxCharacters: safeTunnelFrpcLogTailCharacters,
-    };
+      ...(this.lastError === undefined ? {} : { error: this.lastError }),
+    });
   }
 
   private runAttempt(
@@ -280,16 +236,6 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
       this.performAttempt(generation, input, controller.signal),
       controller,
     );
-  }
-
-  private async performInitialAttempt(
-    generation: number,
-    input: SafeTunnelFrpcStartInput,
-    signal: AbortSignal,
-  ): Promise<SafeTunnelFrpcStartResult> {
-    await this.resetLogSafely(createStartLogHeader(this.clock.now(), "requested"));
-    this.assertCurrentAttempt(generation);
-    return this.performAttempt(generation, input, signal);
   }
 
   private trackAttempt(
@@ -330,27 +276,12 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
     }
     this.assertCurrentAttempt(generation);
 
-    let configCredentials: readonly string[];
     try {
-      configCredentials = safeTunnelFrpcConfigCredentials(
+      validateSafeTunnelFrpcConfig(
         tunnelConfig.frpcConfigToml,
         { trustedCaFile: this.dependencies.files.trustedCaPath },
       );
     } catch {
-      throw this.failAttempt(
-        generation,
-        input,
-        new SafeTunnelFrpcSupervisorError("tunnel_config_failed"),
-      );
-    }
-    this.registerDiagnosticRedactionValues(configCredentials);
-    for (const credential of configCredentials) {
-      this.frpcCredentialRedactionValues.add(credential);
-    }
-    if (!sameCredentialValues(
-      tunnelConfig.credentialRedactionValues,
-      configCredentials,
-    ) || tunnelConfigMetadataContainsCredential(tunnelConfig, configCredentials)) {
       throw this.failAttempt(
         generation,
         input,
@@ -381,13 +312,6 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
     }
     this.assertCurrentAttempt(generation);
 
-    const attemptRedactionValues = [
-      this.dependencies.files.configPath,
-      frpcPath,
-      ...configCredentials,
-    ];
-    this.registerDiagnosticRedactionValues(attemptRedactionValues);
-
     try {
       await this.dependencies.files.writeConfig(tunnelConfig.frpcConfigToml);
     } catch {
@@ -399,22 +323,8 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
     }
     this.assertCurrentAttempt(generation);
 
-    if (this.consecutiveFailures > 0) {
-      this.dependencies.files.appendLog(
-        createStartLogHeader(this.clock.now(), `restart ${this.consecutiveFailures.toString()}`),
-      );
-    }
-    const output = redactSafeTunnelDiagnostic(
-      startOutput(tunnelConfig, managedFrpc),
-      [...this.diagnosticRedactionValues],
-    );
-    this.dependencies.files.appendLog(output);
-
     let earlyExit: SafeTunnelFrpcProcessExit | undefined;
     const ownership: { current?: OwnedFrpcProcess } = {};
-    const outputRedactor = new SafeTunnelStreamingDiagnosticRedactor(
-      attemptRedactionValues,
-    );
     let handle: SafeTunnelFrpcProcessHandle;
     try {
       handle = this.dependencies.launcher.launch({
@@ -422,15 +332,8 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
         frpcPath,
       }, {
         onExit: (exit) => {
-          this.dependencies.files.appendLog(outputRedactor.flush());
           if (ownership.current === undefined) earlyExit = exit;
           else this.handleProcessExit(ownership.current, exit, input);
-        },
-        onStderr: (chunk) => {
-          this.dependencies.files.appendLog(outputRedactor.write(chunk));
-        },
-        onStdout: (chunk) => {
-          this.dependencies.files.appendLog(outputRedactor.write(chunk));
         },
       });
     } catch {
@@ -453,12 +356,7 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
     }
 
     this.scheduleStableRunReset(owned);
-    return {
-      credentialRedactionValues: [...configCredentials],
-      output,
-      ...(handle.pid === undefined ? {} : { pid: handle.pid }),
-      publicUrl: tunnelConfig.publicUrl,
-    };
+    return { publicUrl: tunnelConfig.publicUrl };
   }
 
   private failAttempt(
@@ -503,7 +401,6 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
     const delayMs = restartDelay(this.consecutiveFailures, this.policy);
     this.phase = "retrying";
     this.lastError = `${error.message} Retrying in ${formatDelay(delayMs)}.`;
-    this.dependencies.files.appendLog(`${this.lastError}\n`);
     this.restartTask = this.clock.schedule(() => {
       this.restartTask = undefined;
       if (!this.isCurrentAttempt(generation)) return;
@@ -592,7 +489,6 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
     } catch {
       stopError ??= new SafeTunnelFrpcSupervisorError("config_write_failed");
     }
-    await this.dependencies.files.flushLog();
     if (this.activeProcess !== undefined) this.phase = "stopping";
     else this.phase = this.disposed ? "shutdown" : "stopped";
     this.lastError = stopError?.message;
@@ -661,16 +557,6 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
     this.stableRunTask = undefined;
   }
 
-  private registerDiagnosticRedactionValues(values: readonly string[]): void {
-    for (const value of values) {
-      if (value !== "") this.diagnosticRedactionValues.add(value);
-    }
-    this.dependencies.files.registerLogRedactionValues(values);
-  }
-
-  private async resetLogSafely(header: string): Promise<void> {
-    await this.dependencies.files.resetLog(header).catch(() => undefined);
-  }
 }
 
 function createOwnedProcess(
@@ -740,62 +626,6 @@ function runtimeStateFor(
   return "stopped";
 }
 
-function credentialSafeStructuredValue(
-  value: string,
-  credentials: readonly string[],
-): string | undefined {
-  return containsSafeTunnelSensitiveRepresentation(value, credentials)
-    ? undefined
-    : value;
-}
-
-function sameCredentialValues(
-  declared: readonly string[],
-  extracted: readonly string[],
-): boolean {
-  return declared.length === extracted.length
-    && declared.every((value, index) => value === extracted[index]);
-}
-
-function tunnelConfigMetadataContainsCredential(
-  config: SafeTunnelPreparedTunnelConfig,
-  credentials: readonly string[],
-): boolean {
-  return [
-    config.machineId,
-    config.publicHostname,
-    config.publicUrl,
-    config.localPiWebUrl,
-    config.proxyName,
-  ].some((value) => (
-    containsSafeTunnelSensitiveRepresentation(value, credentials)
-  ));
-}
-
-function startOutput(
-  config: SafeTunnelPreparedTunnelConfig,
-  managedFrpc: SafeTunnelManagedFrpc | undefined,
-): string {
-  return [
-    frpcPreparationOutput(managedFrpc).trimEnd(),
-    "Starting PI WEB-owned Safe Tunnel frpc supervision.",
-    `Public URL: ${config.publicUrl}`,
-    `Local target: ${config.localPiWebUrl}`,
-    "",
-  ].join("\n");
-}
-
-function frpcPreparationOutput(managedFrpc: SafeTunnelManagedFrpc | undefined): string {
-  if (managedFrpc === undefined) return "Using an advanced frpc path override.";
-  const target = `${managedFrpc.platform}-${managedFrpc.architecture}`;
-  if (managedFrpc.source === "fallback") {
-    const reason = managedFrpc.updateErrorCode ?? "install_failed";
-    return `Managed frpc update was unavailable (${reason}); using verified fallback v${managedFrpc.version} for ${target}.`;
-  }
-  const action = managedFrpc.source === "installed" ? "Installed" : "Using";
-  return `${action} verified PI WEB-managed frpc v${managedFrpc.version} for ${target}.`;
-}
-
 function unexpectedExitError(exit: SafeTunnelFrpcProcessExit): Error {
   if (exit.kind === "error") return new Error("The owned frpc process failed.");
   if (exit.signal !== null) {
@@ -804,10 +634,6 @@ function unexpectedExitError(exit: SafeTunnelFrpcProcessExit): Error {
   return new Error(
     `The owned frpc process exited unexpectedly with code ${exit.exitCode?.toString() ?? "unknown"}.`,
   );
-}
-
-function createStartLogHeader(now: Date, reason: string): string {
-  return `\n=== ${now.toISOString()} PI WEB Safe Tunnel frpc ${reason} start ===\n`;
 }
 
 function formatDelay(milliseconds: number): string {

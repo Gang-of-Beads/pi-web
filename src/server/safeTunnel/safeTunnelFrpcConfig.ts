@@ -1,8 +1,6 @@
-import { Buffer } from "node:buffer";
 import { isIP } from "node:net";
 import { isAbsolute } from "node:path";
 import { parse, stringify, type TomlTable } from "smol-toml";
-import { areSafeTunnelPublicValuesSeparatedFromCredentials } from "./safeTunnelDiagnostics.js";
 import { normalizeSafeTunnelLocalPiWebUrl } from "./safeTunnelState.js";
 
 const maximumFrpcConfigCharacters = 32_000;
@@ -127,25 +125,15 @@ export function prepareSafeTunnelFrpcConfig(
   // frpc renders Go templates before parsing TOML. Check the serialized output
   // too, so TOML escapes cannot turn into executable template actions here.
   assertNoFrpcTemplateActions(prepared);
-  inspectSafeTunnelFrpcConfigSecurity(prepared, trust);
+  validateSafeTunnelFrpcConfig(prepared, trust);
   return prepared;
 }
 
-export interface SafeTunnelFrpcConfigSecurity {
-  readonly credentialValues: readonly string[];
-  /** Every generated non-credential value rendered as classification text. */
-  readonly nonSecretValues: readonly string[];
-}
-
-/**
- * Revalidates and classifies the complete generated child-process boundary.
- * This keeps injected config providers from removing/repointing relay trust or
- * reusing credentials in generated DNS, TLS, proxy, target, or path channels.
- */
-export function inspectSafeTunnelFrpcConfigSecurity(
+/** Revalidates the exact constrained configuration passed to frpc. */
+export function validateSafeTunnelFrpcConfig(
   toml: string,
   trust: SafeTunnelFrpcTransportTrust,
-): SafeTunnelFrpcConfigSecurity {
+): void {
   if (toml.length > maximumFrpcConfigCharacters) throw invalidConfig();
   assertNoFrpcTemplateActions(toml);
 
@@ -158,12 +146,12 @@ export function inspectSafeTunnelFrpcConfigSecurity(
 
   assertOnlyKeys(parsed, rootKeys);
   const serverAddr = requireServerAddress(parsed["serverAddr"]);
-  const serverPort = requirePort(parsed["serverPort"]);
+  requirePort(parsed["serverPort"]);
 
   const auth = requireTable(parsed["auth"]);
   assertOnlyKeys(auth, authKeys);
   if (auth["method"] !== "token") throw invalidConfig();
-  const credential = requireFrpcCredential(auth["token"]);
+  requireFrpcCredential(auth["token"]);
 
   const transport = requireTable(parsed["transport"]);
   assertOnlyKeys(transport, transportKeys);
@@ -181,61 +169,14 @@ export function inspectSafeTunnelFrpcConfigSecurity(
   if (!Array.isArray(proxies) || proxies.length !== 1) throw invalidConfig();
   const proxy = requireTable(proxies[0]);
   assertOnlyKeys(proxy, proxyKeys);
-  const proxyName = requireBoundedString(proxy["name"], maximumFrpcNameCharacters);
+  requireBoundedString(proxy["name"], maximumFrpcNameCharacters);
   if (proxy["type"] !== "http") throw invalidConfig();
-  const localIP = requireServerAddress(proxy["localIP"]);
-  const localPort = requirePort(proxy["localPort"]);
+  requireServerAddress(proxy["localIP"]);
+  requirePort(proxy["localPort"]);
   const customDomains = proxy["customDomains"];
   if (!Array.isArray(customDomains) || customDomains.length !== 1) throw invalidConfig();
   const publicHostname = requireHostname(customDomains[0]);
   if (publicHostname !== customDomains[0]) throw invalidConfig();
-
-  const credentialValues = [credential];
-  const nonSecretValues = [
-    "",
-    ...rootKeys,
-    ...authKeys,
-    ...transportKeys,
-    ...preparedTlsKeys,
-    ...proxyKeys,
-    "auth.method",
-    "auth.token",
-    "transport.tls.enable",
-    "transport.tls.serverName",
-    "transport.tls.trustedCaFile",
-    "[[proxies]]",
-    publicFrpcConfig(parsed, auth),
-    ...networkIdentityClassificationValues(serverAddr),
-    serverPort.toString(),
-    "token",
-    ...networkIdentityClassificationValues(serverName),
-    "true",
-    trustedCaFile,
-    proxyName,
-    "http",
-    ...networkIdentityClassificationValues(localIP),
-    localPort.toString(),
-    publicHostname,
-  ];
-  if (!areSafeTunnelPublicValuesSeparatedFromCredentials(
-    nonSecretValues,
-    credentialValues,
-  )) throw invalidConfig();
-  return { credentialValues, nonSecretValues };
-}
-
-function publicFrpcConfig(parsed: TomlTable, auth: TomlTable): string {
-  return stringify({
-    ...parsed,
-    auth: { ...auth, token: "" },
-  });
-}
-
-export function safeTunnelFrpcConfigCredentials(
-  toml: string,
-  trust: SafeTunnelFrpcTransportTrust,
-): readonly string[] {
-  return inspectSafeTunnelFrpcConfigSecurity(toml, trust).credentialValues;
 }
 
 interface LocalTarget {
@@ -261,45 +202,6 @@ function requireServerAddress(value: unknown): string {
   const source = requireBoundedString(value, maximumFrpcNameCharacters);
   if (isIP(source) === 0 && !isDnsHostname(source)) throw invalidConfig();
   return source;
-}
-
-function networkIdentityClassificationValues(value: string): readonly string[] {
-  const family = isIP(value);
-  if (family === 4) {
-    const bytes = value.split(".").map((part) => Number.parseInt(part, 10));
-    return [value, Buffer.from(bytes).toString("hex")];
-  }
-  if (family === 6) return [value, expandIpv6Hex(value)];
-  return [value];
-}
-
-function expandIpv6Hex(value: string): string {
-  const halves = value.toLowerCase().split("::");
-  if (halves.length > 2) throw invalidConfig();
-  const left = ipv6Groups(halves[0] ?? "");
-  const right = halves.length === 2 ? ipv6Groups(halves[1] ?? "") : [];
-  const missing = 8 - left.length - right.length;
-  if ((halves.length === 1 && missing !== 0)
-    || (halves.length === 2 && missing < 1)) throw invalidConfig();
-  return [...left, ...Array<string>(missing).fill("0000"), ...right].join("");
-}
-
-function ipv6Groups(value: string): readonly string[] {
-  if (value === "") return [];
-  const parts = value.split(":");
-  const last = parts.at(-1);
-  if (last?.includes(".") === true) {
-    if (isIP(last) !== 4) throw invalidConfig();
-    const bytes = last.split(".").map((part) => Number.parseInt(part, 10));
-    parts.splice(
-      parts.length - 1,
-      1,
-      ((bytes[0] ?? 0) * 256 + (bytes[1] ?? 0)).toString(16),
-      ((bytes[2] ?? 0) * 256 + (bytes[3] ?? 0)).toString(16),
-    );
-  }
-  if (parts.some((part) => !/^[0-9a-f]{1,4}$/u.test(part))) throw invalidConfig();
-  return parts.map((part) => part.padStart(4, "0"));
 }
 
 function requireHostname(value: unknown): string {

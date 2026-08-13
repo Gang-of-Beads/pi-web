@@ -8,7 +8,7 @@ import type { SafeTunnelBridgeService } from "./safeTunnelBridgeService.js";
 import { loadSafeTunnelBridge } from "./safeTunnelProductionLoader.js";
 
 const status: SafeTunnelStatusResponse = {
-  config: { exists: false, path: "/tmp/config.json", state: "missing" },
+  config: { exists: false, state: "missing" },
   desiredState: "disabled",
   runtime: { state: "stopped" },
 };
@@ -63,9 +63,6 @@ function fakeBridge() {
       kind: "enable",
       phase: "preparing",
       status: "running",
-      startedAt: "2026-08-01T00:00:00.000Z",
-      stdout: "",
-      stderr: "",
     },
     status,
   };

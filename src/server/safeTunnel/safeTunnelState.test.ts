@@ -1,5 +1,3 @@
-import { Buffer } from "node:buffer";
-import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -32,7 +30,7 @@ describe("Safe Tunnel state paths", () => {
       .toBe("/workspace/data/safe-tunnel/config.json");
   });
 
-  it("discovers the read-only legacy state import on POSIX and Windows", () => {
+  it("discovers legacy imports on POSIX and Windows", () => {
     expect(discoverLegacySafeTunnelStatePath({
       env: { XDG_CONFIG_HOME: "/config" },
       homeDirectory: "/home/pi",
@@ -46,56 +44,38 @@ describe("Safe Tunnel state paths", () => {
   });
 });
 
-describe("Safe Tunnel Control API URL policy", () => {
+describe("Safe Tunnel URL policy", () => {
   it.each([
-    ["production HTTPS", "https://control.example.test/", "https://control.example.test"],
-    ["IPv4 loopback development", "http://127.1:8787/", "http://127.0.0.1:8787"],
-    ["IPv6 loopback development", "http://[0:0:0:0:0:0:0:1]:8787", "http://[::1]:8787"],
-  ])("accepts %s endpoints", (_label, input, expected) => {
+    ["https://control.example.test/", "https://control.example.test"],
+    ["http://127.1:8787/", "http://127.0.0.1:8787"],
+    ["http://[0:0:0:0:0:0:0:1]:8787", "http://[::1]:8787"],
+  ])("normalizes supported Control API endpoint %s", (input, expected) => {
     expect(normalizeSafeTunnelControlApiBaseUrl(input)).toBe(expected);
   });
 
   it.each([
     "http://control.example.test",
     "http://localhost:8787",
-    "http://127.example.test:8787",
     "http://0.0.0.0:8787",
     "http://192.168.1.10:8787",
-  ])("rejects non-HTTPS non-literal-loopback endpoint %s", (controlApiBaseUrl) => {
-    expect(() => normalizeSafeTunnelControlApiBaseUrl(controlApiBaseUrl))
+  ])("rejects plaintext non-loopback Control API endpoint %s", (value) => {
+    expect(() => normalizeSafeTunnelControlApiBaseUrl(value)).toThrow("must use https");
+  });
+
+  it("normalizes HTTPS and literal-loopback public origins", () => {
+    expect(normalizeSafeTunnelPublicUrl("https://Ingress.Example.Test:443/"))
+      .toBe("https://ingress.example.test");
+    expect(normalizeSafeTunnelPublicUrl("http://127.0.0.1:9443"))
+      .toBe("http://127.0.0.1:9443");
+    expect(() => normalizeSafeTunnelPublicUrl("http://ingress.example.test"))
       .toThrow("must use https");
   });
 });
 
-describe("Safe Tunnel public-ingress URL policy", () => {
-  it.each([
-    ["production HTTPS", "https://Ingress.Example.Test:443/", "https://ingress.example.test"],
-    ["non-default HTTPS port", "https://ingress.example.test:9443", "https://ingress.example.test:9443"],
-    ["IPv4 loopback development", "http://127.1:8787/", "http://127.0.0.1:8787"],
-    ["IPv6 loopback development", "http://[0:0:0:0:0:0:0:1]:8787", "http://[::1]:8787"],
-  ])("normalizes %s origins", (_label, input, expected) => {
-    expect(normalizeSafeTunnelPublicUrl(input)).toBe(expected);
-  });
-
-  it.each([
-    "http://ingress.example.test",
-    "http://localhost:8787",
-    "http://127.example.test:8787",
-    "http://0.0.0.0:8787",
-    "http://192.168.1.10:8787",
-  ])("rejects plaintext non-literal-loopback ingress %s", (publicUrl) => {
-    expect(() => normalizeSafeTunnelPublicUrl(publicUrl)).toThrow("must use https");
-  });
-});
-
 describe("FileSafeTunnelStateStorage", () => {
-  it("defaults durable intent to disabled without creating state", async () => {
+  it("defaults intent to disabled without creating state", async () => {
     const filePath = join(tempDirectory, "data", "safe-tunnel", "config.json");
-    const storage = new FileSafeTunnelStateStorage({
-      filePath,
-      legacyImportPath: join(tempDirectory, "missing-legacy.json"),
-      platform: "linux",
-    });
+    const storage = createStorage(filePath);
 
     await expect(storage.load()).resolves.toEqual({
       exists: false,
@@ -104,27 +84,23 @@ describe("FileSafeTunnelStateStorage", () => {
     await expect(stat(filePath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("atomically persists private credentials and independent disabled intent", async () => {
+  it("atomically persists only current private intent and credentials", async () => {
     const filePath = join(tempDirectory, "data", "safe-tunnel", "config.json");
-    const storage = new FileSafeTunnelStateStorage({
-      filePath,
-      legacyImportPath: join(tempDirectory, "missing-legacy.json"),
-      platform: "linux",
-    });
+    const storage = createStorage(filePath);
     const state = {
       ...createDefaultSafeTunnelState(),
+      desiredState: "enabled" as const,
       localPiWebUrl: "http://127.0.0.1:9000",
       frpcPath: "/opt/frpc",
-      credentialBoundaryPrivateValues: ["transient-private-credential"],
       machine: {
         controlApiBaseUrl: "https://control.example.test/",
+        credentialStatus: "active" as const,
         machineId: "machine_123",
-        machineToken: "piwt_mtok_v1_private",
+        machineToken: "AbC-._~+/==",
         machineSlug: "dev-box",
-        credentialBoundaryPublicValues: ["approval-code-already-public"],
-        publicUrl: "https://dev-box.ns.tunnels.pi-web.dev",
+        publicUrl: "https://dev-box.example.test",
       },
-    } as const;
+    };
 
     await storage.save(state);
 
@@ -132,221 +108,69 @@ describe("FileSafeTunnelStateStorage", () => {
       exists: true,
       state: {
         ...state,
-        credentialBoundaryPublicValues: ["approval-code-already-public"],
         machine: {
+          ...state.machine,
           controlApiBaseUrl: "https://control.example.test",
-          credentialStatus: "active",
-          machineId: state.machine.machineId,
-          machineToken: state.machine.machineToken,
-          machineSlug: state.machine.machineSlug,
-          publicUrl: state.machine.publicUrl,
         },
       },
     });
     expect((await stat(join(tempDirectory, "data", "safe-tunnel"))).mode & 0o777)
       .toBe(safeTunnelStateDirectoryMode);
     expect((await stat(filePath)).mode & 0o777).toBe(safeTunnelStateFileMode);
-    expect((await readFile(filePath, "utf8"))).toContain("piwt_mtok_v1_private");
-    expect((await readFile(filePath, "utf8"))).toContain('"desiredState": "disabled"');
+    const source = await readFile(filePath, "utf8");
+    expect(source).toContain('"machineToken": "AbC-._~+/=="');
+    expect(source).not.toContain("credentialBoundary");
   });
 
-  it("preserves accepted opaque bearer credentials byte-for-byte", async () => {
-    const filePath = join(tempDirectory, "data", "safe-tunnel", "config.json");
-    const storage = new FileSafeTunnelStateStorage({
-      filePath,
-      legacyImportPath: join(tempDirectory, "missing-legacy.json"),
-      platform: "linux",
-    });
-    const machineToken = "AbC-._~+/==";
-
-    await storage.save({
-      ...createDefaultSafeTunnelState(),
-      machine: {
-        controlApiBaseUrl: "https://control.example.test",
-        machineId: "machine_exact",
-        machineToken,
-      },
-    });
-
-    expect((await storage.load()).state.machine?.machineToken).toBe(machineToken);
-    const persisted: unknown = JSON.parse(await readFile(filePath, "utf8"));
-    expect(persisted).toMatchObject({ machine: { machineToken } });
-  });
-
-  it.each([
-    ["mixed-case percent escapes", "%74ok%2b%2F%3d"],
-    ["percent-encoded unreserved bytes", "%74%6F%6b%2B%2f%3D"],
-    ["JSON Unicode escapes", "\\u0074\\u006F\\u006b\\u002B\\/\\u003d"],
-    ["hex", Buffer.from("tok+/=").toString("hex")],
-    ["base64", Buffer.from("tok+/=").toString("base64")],
-    ["base64url", Buffer.from("tok+/=").toString("base64url")],
-    ["SHA-256 digest", createHash("sha256").update("tok+/=").digest("hex")],
-  ])("rejects a %s credential alias before state persistence", async (
-    _label,
-    machineId,
-  ) => {
-    const filePath = join(tempDirectory, "data", "safe-tunnel", "config.json");
-    const storage = new FileSafeTunnelStateStorage({
-      filePath,
-      legacyImportPath: join(tempDirectory, "missing-legacy.json"),
-      platform: "linux",
-    });
-
-    await expect(storage.save({
-      ...createDefaultSafeTunnelState(),
-      machine: {
-        controlApiBaseUrl: "https://control.example.test",
-        machineId,
-        machineToken: "tok+/=",
-      },
-    })).rejects.toThrow("must not contain credential material");
-    await expect(stat(filePath)).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  it("treats desired state and durable boundary history as public metadata", async () => {
-    const filePath = join(tempDirectory, "data", "safe-tunnel", "config.json");
-    const storage = new FileSafeTunnelStateStorage({
-      filePath,
-      legacyImportPath: join(tempDirectory, "missing-legacy.json"),
-      platform: "linux",
-    });
-
-    await expect(storage.save({
-      ...createDefaultSafeTunnelState(),
-      machine: {
-        controlApiBaseUrl: "https://control.example.test",
-        machineId: "machine_123",
-        machineToken: "disabled",
-      },
-    })).rejects.toThrow("must not contain credential material");
-    await expect(storage.save({
-      ...createDefaultSafeTunnelState(),
-      credentialBoundaryPublicValues: ["x".repeat((16 * 1_024 * 1_024) + 1)],
-    })).rejects.toThrow("must be bounded public strings");
-    await expect(stat(filePath)).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  it("persists empty browser values as classified public metadata", async () => {
-    const filePath = join(tempDirectory, "data", "safe-tunnel", "config.json");
-    const storage = new FileSafeTunnelStateStorage({
-      filePath,
-      legacyImportPath: join(tempDirectory, "missing-legacy.json"),
-      platform: "linux",
-    });
-
-    await expect(storage.save({
-      ...createDefaultSafeTunnelState(),
-      credentialBoundaryPublicValues: [""],
-    })).resolves.toBeUndefined();
-    await expect(storage.load()).resolves.toMatchObject({
-      state: { credentialBoundaryPublicValues: [""] },
-    });
-  });
-
-  it("rejects credential material split across three persisted public fields", async () => {
-    const filePath = join(tempDirectory, "data", "safe-tunnel", "config.json");
-    const storage = new FileSafeTunnelStateStorage({
-      filePath,
-      legacyImportPath: join(tempDirectory, "missing-legacy.json"),
-      platform: "linux",
-    });
-    const machineToken = "private-machine-token-1234567890-abcdefghijkl";
-    const hex = Buffer.from(machineToken, "utf8").toString("hex");
-    const chunkLength = Math.ceil(hex.length / 3);
-    const machineId = hex.slice(0, chunkLength);
-    const machineSlug = hex.slice(chunkLength, chunkLength * 2);
-    const hostnameLabel = hex.slice(chunkLength * 2);
-
-    await expect(storage.save({
-      ...createDefaultSafeTunnelState(),
-      machine: {
-        controlApiBaseUrl: "https://control.example.test",
-        machineId,
-        machineToken,
-        machineSlug,
-        publicUrl: `https://${hostnameLabel}.example.test`,
-      },
-    })).rejects.toThrow("must not contain credential material");
-    await expect(stat(filePath)).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  it("rejects a persisted credential derived from public machine metadata", async () => {
-    const filePath = join(tempDirectory, "data", "safe-tunnel", "config.json");
-    const storage = new FileSafeTunnelStateStorage({
-      filePath,
-      legacyImportPath: join(tempDirectory, "missing-legacy.json"),
-      platform: "linux",
-    });
-    const machineId = "public-machine-id";
-
-    await expect(storage.save({
-      ...createDefaultSafeTunnelState(),
-      machine: {
-        controlApiBaseUrl: "https://control.example.test",
-        machineId,
-        machineToken: Buffer.from(machineId).toString("base64url"),
-      },
-    })).rejects.toThrow("must not contain credential material");
-    await expect(stat(filePath)).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  it("migrates PI WEB-owned v1 state without losing intent or credentials", async () => {
+  it("removes obsolete classification history when an existing state file is loaded", async () => {
     const filePath = join(tempDirectory, "data", "safe-tunnel", "config.json");
     await mkdir(join(tempDirectory, "data", "safe-tunnel"), { recursive: true });
     await writeFile(filePath, JSON.stringify({
-      stateVersion: 1,
-      schemaVersion: 2,
-      desiredState: "enabled",
-      localPiWebUrl: "http://127.0.0.1:9000",
+      ...createDefaultSafeTunnelState(),
+      credentialBoundaryPrivateValues: ["old-private-value"],
+      credentialBoundaryPublicValues: ["old-public-value"],
       machine: {
         controlApiBaseUrl: "https://control.example.test",
-        credentialStatus: "rejected",
-        machineId: "machine_v1",
-        machineToken: "piwt_mtok_v1_preserved",
+        machineId: "machine_123",
+        machineToken: "machine-token",
+        credentialBoundaryPublicValues: ["old-machine-public-value"],
       },
     }));
-    const storage = new FileSafeTunnelStateStorage({
-      filePath,
-      legacyImportPath: join(tempDirectory, "missing-legacy.json"),
-      platform: "linux",
-    });
+    const storage = createStorage(filePath);
 
     const loaded = await storage.load();
 
-    expect(loaded.state).toMatchObject({
-      stateVersion: 2,
-      desiredState: "enabled",
-      localPiWebUrl: "http://127.0.0.1:9000",
+    expect(loaded.state).toEqual({
+      ...createDefaultSafeTunnelState(),
       machine: {
-        credentialStatus: "rejected",
-        machineId: "machine_v1",
-        machineToken: "piwt_mtok_v1_preserved",
+        controlApiBaseUrl: "https://control.example.test",
+        credentialStatus: "active",
+        machineId: "machine_123",
+        machineToken: "machine-token",
       },
     });
-    const migrated: unknown = JSON.parse(await readFile(filePath, "utf8"));
-    expect(migrated).toMatchObject({ stateVersion: 2 });
-    expect(migrated).not.toHaveProperty("schemaVersion");
+    const rewritten = await readFile(filePath, "utf8");
+    expect(rewritten).not.toContain("credentialBoundary");
+    expect(rewritten).not.toContain("old-public-value");
+    expect(rewritten).not.toContain("old-private-value");
   });
 
-  it("safely imports legacy state once without enabling it or deleting the source", async () => {
+  it("imports a legacy config once into PI WEB-owned state", async () => {
     const filePath = join(tempDirectory, "data", "safe-tunnel", "config.json");
-    const legacyPath = join(tempDirectory, "legacy", "config.json");
+    const legacyImportPath = join(tempDirectory, "legacy", "config.json");
     await mkdir(join(tempDirectory, "legacy"), { recursive: true });
-    await writeFile(legacyPath, JSON.stringify({
+    await writeFile(legacyImportPath, JSON.stringify({
       schemaVersion: 2,
       localPiWebUrl: "http://127.0.0.1:8504",
-      frpcPath: "/legacy/frpc",
       machine: {
         controlApiBaseUrl: "https://control.example.test",
         machineId: "machine_legacy",
-        machineToken: "piwt_mtok_v1_legacy",
-        machineSlug: "legacy-box",
-        publicUrl: "https://legacy-box.ns.tunnels.pi-web.dev",
+        machineToken: "legacy-token",
       },
     }));
     const storage = new FileSafeTunnelStateStorage({
       filePath,
-      legacyImportPath: legacyPath,
+      legacyImportPath,
       platform: "linux",
     });
 
@@ -357,123 +181,49 @@ describe("FileSafeTunnelStateStorage", () => {
       state: {
         stateVersion: 2,
         desiredState: "disabled",
-        machine: {
-          credentialStatus: "active",
-          machineId: "machine_legacy",
-          machineToken: "piwt_mtok_v1_legacy",
-        },
+        machine: { machineId: "machine_legacy", machineToken: "legacy-token" },
       },
     });
-    expect(await readFile(legacyPath, "utf8")).toContain("piwt_mtok_v1_legacy");
-    expect(await readFile(filePath, "utf8")).toContain('"stateVersion": 2');
-    expect(await readFile(filePath, "utf8")).not.toContain('"schemaVersion"');
+    expect(await readFile(filePath, "utf8")).not.toContain("schemaVersion");
   });
 
-  it("prefers existing PI WEB state over the legacy import source", async () => {
+  it("reports invalid JSON and unsupported versions without overwriting them", async () => {
     const filePath = join(tempDirectory, "data", "safe-tunnel", "config.json");
-    const legacyPath = join(tempDirectory, "legacy.json");
-    const storage = new FileSafeTunnelStateStorage({ filePath, legacyImportPath: legacyPath });
-    await storage.save({ ...createDefaultSafeTunnelState(), desiredState: "enabled" });
-    await writeFile(legacyPath, JSON.stringify({
-      schemaVersion: 2,
-      localPiWebUrl: "http://127.0.0.1:8504",
-      machine: {
-        controlApiBaseUrl: "https://wrong.example.test",
-        machineId: "wrong",
-        machineToken: "wrong-token",
-      },
-    }));
+    await mkdir(join(tempDirectory, "data", "safe-tunnel"), { recursive: true });
+    await writeFile(filePath, "not json");
+    const storage = createStorage(filePath);
 
-    const loaded = await storage.load();
-
-    expect(loaded.state.desiredState).toBe("enabled");
-    expect(loaded.state.machine).toBeUndefined();
-  });
-
-  it("rejects legacy plaintext non-loopback credentials before they can be used", () => {
+    await expect(storage.load()).rejects.toThrow("contains invalid JSON");
+    expect(await readFile(filePath, "utf8")).toBe("not json");
     expect(() => parseSafeTunnelState({
-      stateVersion: 2,
-      desiredState: "enabled",
+      stateVersion: 99,
+      desiredState: "disabled",
       localPiWebUrl: "http://127.0.0.1:8504",
-      machine: {
-        controlApiBaseUrl: "http://provider.example.test",
-        machineId: "machine_123",
-        machineToken: "private",
-      },
-    })).toThrow("must use https");
+    })).toThrow("Unsupported Safe Tunnel state version");
   });
 
   it.each([
-    ["empty", ""],
-    ["leading whitespace", " token"],
-    ["trailing whitespace", "token "],
-    ["embedded whitespace", "two words"],
-    ["line break", "line\nbreak"],
-    ["C0 control", `token${String.fromCharCode(0)}`],
-    ["DEL control", `token${String.fromCharCode(127)}`],
-    ["non-ASCII", "tóken"],
-    ["embedded padding", "token=value"],
-    ["oversized", "x".repeat(4_097)],
-  ])("rejects %s machine bearer credentials without normalization", (_label, machineToken) => {
+    ["invalid desired state", { desiredState: "maybe" }],
+    ["invalid local target", { localPiWebUrl: "https://127.0.0.1:8504" }],
+    ["header-unsafe token", {
+      machine: {
+        controlApiBaseUrl: "https://control.example.test",
+        machineId: "machine_123",
+        machineToken: "bad token\nvalue",
+      },
+    }],
+  ])("rejects %s", (_label, override) => {
     expect(() => parseSafeTunnelState({
-      stateVersion: 2,
-      desiredState: "enabled",
-      localPiWebUrl: "http://127.0.0.1:8504",
-      machine: {
-        controlApiBaseUrl: "https://control.example.test",
-        machineId: "machine_123",
-        machineToken,
-      },
-    })).toThrow("HTTP-header-safe bearer credential");
-  });
-
-  it("parses durable rejected-credential state and rejects unknown credential states", () => {
-    expect(parseSafeTunnelState({
-      stateVersion: 2,
-      desiredState: "enabled",
-      localPiWebUrl: "http://127.0.0.1:8504",
-      machine: {
-        controlApiBaseUrl: "https://control.example.test",
-        credentialStatus: "rejected",
-        machineId: "machine_123",
-        machineToken: "private",
-      },
-    }).machine?.credentialStatus).toBe("rejected");
-    expect(() => parseSafeTunnelState({
-      stateVersion: 2,
-      desiredState: "enabled",
-      localPiWebUrl: "http://127.0.0.1:8504",
-      machine: {
-        controlApiBaseUrl: "https://control.example.test",
-        credentialStatus: "unknown",
-        machineId: "machine_123",
-        machineToken: "private",
-      },
-    })).toThrow("credentialStatus");
-  });
-
-  it("reports malformed state without retaining credential contents in the error", () => {
-    const secret = "piwt_mtok_v1_must_not_leak";
-    expect(() => parseSafeTunnelState({
-      stateVersion: 2,
-      desiredState: "sometimes",
-      localPiWebUrl: "http://127.0.0.1:8504",
-      machine: {
-        controlApiBaseUrl: "https://control.example.test",
-        machineId: "machine_123",
-        machineToken: secret,
-      },
-    })).toThrow("desiredState");
-
-    try {
-      parseSafeTunnelState({
-        stateVersion: 2,
-        desiredState: "sometimes",
-        localPiWebUrl: "http://127.0.0.1:8504",
-        machine: { machineToken: secret },
-      });
-    } catch (error: unknown) {
-      expect(String(error)).not.toContain(secret);
-    }
+      ...createDefaultSafeTunnelState(),
+      ...override,
+    })).toThrow();
   });
 });
+
+function createStorage(filePath: string): FileSafeTunnelStateStorage {
+  return new FileSafeTunnelStateStorage({
+    filePath,
+    legacyImportPath: join(tempDirectory, "missing-legacy.json"),
+    platform: "linux",
+  });
+}

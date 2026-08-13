@@ -8,11 +8,6 @@ import {
   isSafeTunnelControlApiTransportAllowed,
   isSafeTunnelPublicIngressTransportAllowed,
 } from "../../shared/safeTunnelUrlPolicy.js";
-import {
-  SafeTunnelCredentialBoundary,
-  withSafeTunnelContiguousPublicComposite,
-} from "./safeTunnelDiagnostics.js";
-
 export const safeTunnelStateVersion = 2;
 const previousSafeTunnelStateVersion = 1;
 export const safeTunnelStateDirectoryMode = 0o700;
@@ -23,10 +18,6 @@ const maximumUrlCharacters = 2_048;
 const maximumMachineIdCharacters = 256;
 const maximumBearerCredentialCharacters = 4_096;
 const maximumPathCharacters = 4_096;
-const maximumCredentialBoundaryPrivateValues = 256;
-const maximumCredentialBoundaryPrivateCharacters = 512 * 1_024;
-const maximumCredentialBoundaryPublicValues = 262_144;
-const maximumCredentialBoundaryPublicCharacters = 16 * 1_024 * 1_024;
 const bearerCredentialPattern = /^[A-Za-z0-9._~+/-]+={0,}$/u;
 
 export type SafeTunnelMachineCredentialStatus = "active" | "rejected";
@@ -43,8 +34,6 @@ export interface SafeTunnelMachineCredentials {
   readonly machineId: string;
   readonly machineToken: string;
   readonly machineSlug?: string;
-  /** Legacy placement accepted on read; canonical writes retain history at state scope. */
-  readonly credentialBoundaryPublicValues?: readonly string[];
   readonly publicUrl?: string;
 }
 
@@ -57,10 +46,6 @@ export interface SafeTunnelPersistedState {
   readonly stateVersion: typeof safeTunnelStateVersion;
   readonly desiredState: SafeTunnelDesiredState;
   readonly localPiWebUrl: string;
-  /** Private credential classifications retained in this mode-0600 state file. */
-  readonly credentialBoundaryPrivateValues?: readonly string[];
-  /** Browser/public classifications retained exactly across restarts. */
-  readonly credentialBoundaryPublicValues?: readonly string[];
   readonly frpcPath?: string;
   readonly machine?: SafeTunnelMachineCredentials;
 }
@@ -98,7 +83,7 @@ export class FileSafeTunnelStateStorage implements SafeTunnelStateStorage {
     if (persisted !== undefined) {
       await this.restrictExistingStatePermissions();
       const state = parseSafeTunnelState(persisted);
-      if (!isCurrentSafeTunnelStateRecord(persisted)) await this.save(state);
+      if (!isCanonicalSafeTunnelStateRecord(persisted, state)) await this.save(state);
       return { exists: true, state };
     }
 
@@ -203,86 +188,11 @@ export function parseSafeTunnelState(value: unknown): SafeTunnelPersistedState {
     "frpcPath",
     maximumPathCharacters,
   );
-  const parsedMachine = parseOptionalMachineCredentials(record["machine"]);
-  let legacyMachinePublicValues: readonly string[] | undefined;
-  let machine: SafeTunnelMachineCredentials | undefined;
-  if (parsedMachine !== undefined) {
-    const {
-      credentialBoundaryPublicValues,
-      ...canonicalMachine
-    } = parsedMachine;
-    legacyMachinePublicValues = credentialBoundaryPublicValues;
-    machine = canonicalMachine;
-  }
-  const credentialBoundaryPrivateValues = parseCredentialBoundaryValues(
-    record["credentialBoundaryPrivateValues"],
-    {
-      allowEmpty: false,
-      maximumCharacters: maximumCredentialBoundaryPrivateCharacters,
-      maximumValues: maximumCredentialBoundaryPrivateValues,
-      visibility: "private",
-    },
-  ) ?? [];
-  const credentialBoundaryPublicValues = parseCredentialBoundaryPublicValues([
-    ...(parseCredentialBoundaryPublicValues(
-      record["credentialBoundaryPublicValues"],
-    ) ?? []),
-    ...(legacyMachinePublicValues ?? []),
-  ]) ?? [];
-  const machineHostname = machine?.publicUrl === undefined
-    ? undefined
-    : new URL(machine.publicUrl).hostname;
-  const machinePublicValues = machine === undefined
-    ? []
-    : [
-        machine.controlApiBaseUrl,
-        machine.machineId,
-        ...(machine.machineSlug === undefined ? [] : [machine.machineSlug]),
-        ...(machine.publicUrl === undefined ? [] : [machine.publicUrl]),
-        ...(machineHostname === undefined ? [] : [machineHostname]),
-      ];
-  const machineIdentityValues = machine === undefined
-    ? []
-    : [
-        machine.machineId,
-        ...(machine.machineSlug === undefined ? [] : [machine.machineSlug]),
-        ...(machineHostname === undefined ? [] : [machineHostname.split(".")[0] ?? ""]),
-      ];
-  const publicValues = [
-    desiredState,
-    localPiWebUrl,
-    ...(frpcPath === undefined ? [] : [frpcPath]),
-    ...credentialBoundaryPublicValues,
-    ...machinePublicValues,
-  ];
-  const classifiedPublicValues = [
-    ...publicValues,
-    ...withSafeTunnelContiguousPublicComposite(machinePublicValues),
-    ...withSafeTunnelContiguousPublicComposite(machineIdentityValues),
-  ];
-  const publicValueBoundary = new SafeTunnelCredentialBoundary();
-  const privateValues = [
-    ...credentialBoundaryPrivateValues,
-    ...(machine === undefined ? [] : [machine.machineToken]),
-  ];
-  if (!publicValueBoundary.classify({
-    publicValues: classifiedPublicValues,
-    credentialValues: privateValues,
-  })) {
-    throw new Error(
-      "Safe Tunnel state public metadata must not contain credential material.",
-    );
-  }
+  const machine = parseOptionalMachineCredentials(record["machine"]);
   return {
     stateVersion: safeTunnelStateVersion,
     desiredState,
     localPiWebUrl,
-    ...(credentialBoundaryPrivateValues.length === 0
-      ? {}
-      : { credentialBoundaryPrivateValues }),
-    ...(credentialBoundaryPublicValues.length === 0
-      ? {}
-      : { credentialBoundaryPublicValues }),
     ...(frpcPath === undefined ? {} : { frpcPath }),
     ...(machine === undefined ? {} : { machine }),
   };
@@ -370,10 +280,6 @@ function parseOptionalMachineCredentials(value: unknown): SafeTunnelMachineCrede
   const publicUrl = record["publicUrl"] === undefined
     ? undefined
     : normalizeSafeTunnelPublicUrl(record["publicUrl"]);
-  const credentialBoundaryPublicValues = parseCredentialBoundaryPublicValues(
-    record["credentialBoundaryPublicValues"],
-  );
-
   if (machineSlug !== undefined && !isMachineSlug(machineSlug)) {
     throw new Error("Safe Tunnel machine.machineSlug must be a lowercase DNS label.");
   }
@@ -391,62 +297,8 @@ function parseOptionalMachineCredentials(value: unknown): SafeTunnelMachineCrede
       "machine.machineToken",
     ),
     ...(machineSlug === undefined ? {} : { machineSlug }),
-    ...(credentialBoundaryPublicValues === undefined
-      ? {}
-      : { credentialBoundaryPublicValues }),
     ...(publicUrl === undefined ? {} : { publicUrl }),
   };
-}
-
-function parseCredentialBoundaryPublicValues(
-  value: unknown,
-): readonly string[] | undefined {
-  return parseCredentialBoundaryValues(value, {
-    allowEmpty: true,
-    maximumCharacters: maximumCredentialBoundaryPublicCharacters,
-    maximumValues: maximumCredentialBoundaryPublicValues,
-    visibility: "public",
-  });
-}
-
-function parseCredentialBoundaryValues(
-  value: unknown,
-  options: {
-    readonly allowEmpty: boolean;
-    readonly maximumCharacters: number;
-    readonly maximumValues: number;
-    readonly visibility: "private" | "public";
-  },
-): readonly string[] | undefined {
-  if (value === undefined) return undefined;
-  const invalid = options.visibility === "public"
-    ? invalidCredentialBoundaryPublicValues
-    : invalidCredentialBoundaryPrivateValues;
-  if (!Array.isArray(value)) throw invalid();
-  const normalizedValues = new Set<string>();
-  for (const item of value) {
-    if (typeof item !== "string" || (!options.allowEmpty && item === "")) {
-      throw invalid();
-    }
-    normalizedValues.add(item);
-  }
-  const normalized = [...normalizedValues];
-  const characters = normalized.reduce((total, item) => total + item.length, 0);
-  if (normalized.length > options.maximumValues
-    || characters > options.maximumCharacters) throw invalid();
-  return normalized;
-}
-
-function invalidCredentialBoundaryPublicValues(): Error {
-  return new Error(
-    "Safe Tunnel credentialBoundaryPublicValues must be bounded public strings.",
-  );
-}
-
-function invalidCredentialBoundaryPrivateValues(): Error {
-  return new Error(
-    "Safe Tunnel credentialBoundaryPrivateValues must be bounded private strings.",
-  );
 }
 
 function parseMachineCredentialStatus(value: unknown): SafeTunnelMachineCredentialStatus {
@@ -455,13 +307,11 @@ function parseMachineCredentialStatus(value: unknown): SafeTunnelMachineCredenti
   throw new Error("Safe Tunnel machine.credentialStatus must be active or rejected.");
 }
 
-function isCurrentSafeTunnelStateRecord(value: unknown): boolean {
-  if (!isRecord(value)) return false;
-  const machine = value["machine"];
-  return value["stateVersion"] === safeTunnelStateVersion
-    && value["schemaVersion"] === undefined
-    && (value["desiredState"] === "enabled" || value["desiredState"] === "disabled")
-    && (!isRecord(machine) || machine["credentialBoundaryPublicValues"] === undefined);
+function isCanonicalSafeTunnelStateRecord(
+  value: unknown,
+  state: SafeTunnelPersistedState,
+): boolean {
+  return JSON.stringify(value) === JSON.stringify(state);
 }
 
 async function readJsonFile(path: string): Promise<unknown> {

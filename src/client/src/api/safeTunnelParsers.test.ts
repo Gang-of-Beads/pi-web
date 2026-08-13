@@ -7,11 +7,19 @@ import {
 } from "./safeTunnelParsers";
 
 describe("Safe Tunnel API parsers", () => {
-  it("parses status, approval progress, enable, and disable responses", () => {
+  it("parses only the allowlisted status and approval fields", () => {
     const operation = operationResponse();
     const status = statusResponse(operation);
 
-    expect(parseSafeTunnelStatusResponse({ ...status, ignored: "not exposed" })).toEqual(status);
+    expect(parseSafeTunnelStatusResponse({
+      ...status,
+      rawProviderBody: "not exposed",
+      runtime: {
+        ...status.runtime,
+        logTail: "raw child output",
+        frpcConfigPath: "/private/frpc.toml",
+      },
+    })).toEqual(status);
     expect(parseSafeTunnelEnableResponse({ accepted: true, operation, status })).toEqual({
       accepted: true,
       operation,
@@ -22,12 +30,12 @@ describe("Safe Tunnel API parsers", () => {
 
   it("rejects malformed state, operation, and diagnostic enums", () => {
     expect(() => parseSafeTunnelStatusResponse({
-      config: { path: "/tmp/config", exists: false, state: "missing" },
+      config: { exists: false, state: "missing" },
       desiredState: "disabled",
       runtime: { state: "stale" },
     })).toThrow("Expected Safe Tunnel runtime state field: state");
     expect(() => parseSafeTunnelStatusResponse({
-      config: { path: "/tmp/config", exists: false, state: "missing" },
+      config: { exists: false, state: "missing" },
       desiredState: "sometimes",
       runtime: { state: "stopped" },
     })).toThrow("Expected Safe Tunnel desired state field: desiredState");
@@ -36,56 +44,38 @@ describe("Safe Tunnel API parsers", () => {
       phase: "future",
     })).toThrow("Expected Safe Tunnel operation phase field: phase");
     expect(() => parseSafeTunnelStatusResponse({
-      config: { path: "/tmp/config", exists: true, state: "rejected" },
-      desiredState: "enabled",
+      ...statusResponse(),
       runtime: { state: "stopped", diagnosticCode: "provider_secret" },
     })).toThrow("Expected Safe Tunnel runtime diagnostic field: diagnosticCode");
   });
 
-  it("rejects oversized browser-visible diagnostics, logs, output, and URLs", () => {
-    expect(() => parseSafeTunnelOperationResponse({
-      ...operationResponse(),
-      stdout: "x".repeat(24_001),
-    })).toThrow("bounded string field: stdout");
-    expect(() => parseSafeTunnelStatusResponse({
-      ...statusResponse(),
-      runtime: { state: "stopped", logTail: "x".repeat(12_001) },
-    })).toThrow("bounded optional string field: logTail");
+  it("bounds authored diagnostics, identifiers, and browser URLs", () => {
     expect(() => parseSafeTunnelStatusResponse({
       ...statusResponse(),
       runtime: { state: "stopped", error: "x".repeat(2_001) },
     })).toThrow("bounded optional string field: error");
     expect(() => parseSafeTunnelOperationResponse({
       ...operationResponse(),
+      id: "x".repeat(257),
+    })).toThrow("bounded string field: id");
+    expect(() => parseSafeTunnelOperationResponse({
+      ...operationResponse(),
       verificationUriComplete: `https://control.example.test/${"x".repeat(2_100)}`,
-    })).toThrow("bounded HTTP(S) URL field");
+    })).toThrow("bounded optional string field: verificationUriComplete");
     expect(() => parseSafeTunnelOperationResponse({
       ...operationResponse(),
       verificationUriComplete: "http://approval.example.test/device",
     })).toThrow("secure Control API URL field");
-    expect(() => parseSafeTunnelStatusResponse({
-      ...statusResponse(),
-      config: {
-        ...statusResponse().config,
-        machine: {
-          ...statusResponse().config.machine,
-          controlApiBaseUrl: "http://control.example.test",
-        },
-      },
-    })).toThrow("secure Control API URL field");
   });
 
-  it("requires accepted enable responses and typed optional fields", () => {
-    expect(() => parseSafeTunnelEnableResponse({ accepted: false })).toThrow("Expected Safe Tunnel enable accepted response");
+  it("requires accepted responses and typed optional fields", () => {
+    expect(() => parseSafeTunnelEnableResponse({ accepted: false }))
+      .toThrow("Expected Safe Tunnel enable accepted response");
     expect(() => parseSafeTunnelStatusResponse({
-      config: { path: "/tmp/config", exists: false, state: "missing", frpcPathConfigured: "no" },
+      config: { exists: false, state: "missing", frpcPathConfigured: "no" },
       desiredState: "disabled",
       runtime: { state: "stopped" },
     })).toThrow("Expected optional boolean field: frpcPathConfigured");
-    expect(() => parseSafeTunnelOperationResponse({
-      ...operationResponse(),
-      logTailMaxCharacters: Number.POSITIVE_INFINITY,
-    })).toThrow("Expected optional number field: logTailMaxCharacters");
     expect(() => parseSafeTunnelOperationResponse({
       ...operationResponse(),
       verificationUriComplete: "javascript:alert(1)",
@@ -99,9 +89,6 @@ function operationResponse() {
     kind: "enable",
     phase: "awaiting_approval",
     status: "running",
-    startedAt: "2026-07-03T00:00:00.000Z",
-    stdout: "Waiting for approval.\n",
-    stderr: "",
     userCode: "ABCD-EFGH",
     verificationUriComplete: "https://control.example.test/device?user_code=ABCD-EFGH",
   };
@@ -110,7 +97,6 @@ function operationResponse() {
 function statusResponse(activeOperation = operationResponse()) {
   return {
     config: {
-      path: "/home/test/.pi-web/safe-tunnel/config.json",
       exists: true,
       state: "registered",
       localPiWebUrl: "http://127.0.0.1:8504",
@@ -127,11 +113,7 @@ function statusResponse(activeOperation = operationResponse()) {
     runtime: {
       state: "stopped",
       diagnosticCode: "credentials_rejected",
-      error: "Safe Tunnel access was rejected.",
-      logPath: "/home/test/.pi-web/safe-tunnel/frpc.log",
-      logExists: true,
-      logTail: "frpc stopped\n",
-      logTailMaxCharacters: 12_000,
+      error: "Safe Tunnel approval was rejected or revoked.",
     },
     activeOperation,
   };

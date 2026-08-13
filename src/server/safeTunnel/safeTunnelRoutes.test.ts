@@ -433,7 +433,7 @@ describe("registerSafeTunnelRoutes", () => {
       ...service.enableResponse,
       operation: {
         ...service.enableResponse.operation,
-        stdout: "Safe Tunnel progress\n".repeat(100),
+        error: "Safe Tunnel progress\n".repeat(100),
       },
     };
     service.enable.mockResolvedValueOnce(enableResponse);
@@ -645,10 +645,7 @@ class FakeSafeTunnelRouteService implements SafeTunnelRouteService {
     id: "op_1",
     kind: "enable",
     phase: "awaiting_approval",
-    startedAt: "2026-07-03T00:00:00.000Z",
     status: "running",
-    stdout: "",
-    stderr: "",
     userCode: "ABCD-EFGH",
     verificationUriComplete:
       "https://control.example.test/device?user_code=ABCD-EFGH",
@@ -657,7 +654,6 @@ class FakeSafeTunnelRouteService implements SafeTunnelRouteService {
   readonly statusResponse: SafeTunnelStatusResponse = {
     config: {
       exists: false,
-      path: "/data/pi-web/safe-tunnel/config.json",
       state: "missing",
     },
     desiredState: "disabled",

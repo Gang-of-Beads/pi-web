@@ -176,13 +176,6 @@ export class SettingsSafeTunnelPanel extends LitElement {
         `}
 
         ${operation.error === undefined ? null : html`<p class="bad" role="alert">${operation.error}</p>`}
-        ${operation.stdout.trim() === "" && operation.stderr.trim() === "" ? null : html`
-          <details class="technical-diagnostics">
-            <summary>Technical progress</summary>
-            ${operation.stdout.trim() === "" ? null : html`<pre>${operation.stdout}</pre>`}
-            ${operation.stderr.trim() === "" ? null : html`<pre>${operation.stderr}</pre>`}
-          </details>
-        `}
       </section>
     `;
   }
@@ -192,10 +185,7 @@ export class SettingsSafeTunnelPanel extends LitElement {
     if (status === undefined) return null;
     const rejected = safeTunnelRegistrationRejected(status);
     const runtime = status.runtime;
-    const hasRuntimeDetail = runtime.error !== undefined
-      || runtime.logError !== undefined
-      || (runtime.logTail !== undefined && runtime.logTail.trim() !== "");
-    if (!rejected && !hasRuntimeDetail && status.config.error === undefined) return null;
+    if (!rejected && runtime.error === undefined && status.config.error === undefined) return null;
 
     return html`
       <section class=${`card diagnostics-card ${rejected ? "revoked" : ""}`}>
@@ -207,14 +197,6 @@ export class SettingsSafeTunnelPanel extends LitElement {
         </div>
         ${status.config.error === undefined ? null : html`<p class="bad">${status.config.error}</p>`}
         ${runtime.error === undefined ? null : html`<p class=${rejected ? "bad" : "help"}>${runtime.error}</p>`}
-        ${hasRuntimeDetail ? html`
-          <details class="technical-diagnostics" ?open=${!rejected && runtime.state !== "running"}>
-            <summary>Runtime diagnostics</summary>
-            ${runtime.logError === undefined ? null : html`<p class="bad">frpc log: ${runtime.logError}</p>`}
-            ${runtime.logPath === undefined ? null : html`<p class="help muted">${runtime.logPath}</p>`}
-            ${runtime.logTail === undefined || runtime.logTail.trim() === "" ? null : html`<pre>${runtime.logTail}</pre>`}
-          </details>
-        ` : null}
       </section>
     `;
   }
@@ -262,7 +244,6 @@ export class SettingsSafeTunnelPanel extends LitElement {
               ${detailRow("Control API", status.config.machine?.controlApiBaseUrl)}
               ${detailRow("Local target", status.config.localPiWebUrl)}
               ${detailRow("Runtime selection", status.config.frpcPathConfigured === true ? "Saved advanced frpc override" : "PI WEB-managed frpc")}
-              ${detailRow("State file", status.config.path)}
               ${detailRow("Runtime", safeTunnelRuntimeSummary(status.runtime))}
             </dl>
           </details>
@@ -478,7 +459,6 @@ export class SettingsSafeTunnelPanel extends LitElement {
     input { box-sizing: border-box; width: 100%; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-bg); color: var(--pi-text); padding: 8px 9px; font: inherit; }
     label { display: grid; gap: 5px; color: var(--pi-text); font-weight: 600; }
     label small, .help { color: var(--pi-muted); font-weight: 400; }
-    pre { max-height: 220px; overflow: auto; margin: 8px 0 0; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-bg); padding: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
     a { color: var(--pi-accent); overflow-wrap: anywhere; }
     .card { min-width: 0; display: grid; gap: 12px; border: 1px solid var(--pi-border); border-radius: 12px; background: var(--pi-surface); padding: 14px; }
     .hero-card { gap: 14px; }
@@ -492,7 +472,7 @@ export class SettingsSafeTunnelPanel extends LitElement {
     .user-code span { color: var(--pi-muted); }
     .user-code strong { font: 18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .08em; }
     .diagnostics-card.revoked { border-color: var(--pi-danger); }
-    .advanced-card > summary, .technical-diagnostics > summary { cursor: pointer; font-weight: 700; }
+    .advanced-card > summary { cursor: pointer; font-weight: 700; }
     .advanced-grid { display: grid; gap: 11px; margin-top: 12px; }
     .detail-list { display: grid; gap: 7px; margin: 10px 0 0; }
     .detail-row { display: grid; grid-template-columns: minmax(110px, 160px) minmax(0, 1fr); gap: 10px; border-top: 1px solid var(--pi-border); padding-top: 7px; }
@@ -614,8 +594,7 @@ export function safeTunnelPresentation(
 }
 
 export function safeTunnelRuntimeSummary(runtime: SafeTunnelRuntimeStatus): string {
-  const label = runtimeStateLabel(runtime.state);
-  return runtime.pid === undefined ? label : `${label} (PID ${runtime.pid.toString()})`;
+  return runtimeStateLabel(runtime.state);
 }
 
 function safeTunnelRegistrationRejected(status: SafeTunnelStatusResponse): boolean {
