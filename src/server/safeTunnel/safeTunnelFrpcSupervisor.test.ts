@@ -121,6 +121,23 @@ describe("SafeTunnelFrpcSupervisor", () => {
     expect(fixture.files.removeCalls).toBe(1);
   });
 
+  it("cancels an in-progress managed frpc acquisition before stopping", async () => {
+    const fixture = createFixture();
+    fixture.managed.waitForAbort = true;
+
+    const starting = fixture.supervisor.start({});
+    await fixture.managed.started;
+    const stopping = fixture.supervisor.stop();
+
+    await expect(starting).rejects.toEqual(
+      new SafeTunnelFrpcSupervisorError("start_cancelled"),
+    );
+    await stopping;
+    expect(fixture.managed.observedSignal?.aborted).toBe(true);
+    expect(fixture.launcher.requests).toEqual([]);
+    expect(fixture.files.removeCalls).toBe(1);
+  });
+
   it("shuts down idempotently and rejects later starts", async () => {
     const fixture = createFixture();
     await fixture.supervisor.start({});
@@ -226,10 +243,27 @@ class FakeRuntimeFiles implements SafeTunnelFrpcRuntimeFiles {
 
 class FakeManagedFrpc implements SafeTunnelManagedFrpcProvider {
   calls = 0;
+  observedSignal: AbortSignal | undefined;
+  private resolveStarted = (): void => undefined;
+  readonly started = new Promise<void>((resolve) => { this.resolveStarted = resolve; });
+  waitForAbort = false;
 
-  ensureManagedFrpc() {
+  ensureManagedFrpc(options: { readonly signal?: AbortSignal } = {}) {
     this.calls += 1;
-    return Promise.resolve({ path: managedPath });
+    this.observedSignal = options.signal;
+    this.resolveStarted();
+    if (!this.waitForAbort) return Promise.resolve({ path: managedPath });
+    return new Promise<{ readonly path: string }>((_resolve, reject) => {
+      if (options.signal?.aborted === true) {
+        reject(new Error("cancelled acquisition"));
+        return;
+      }
+      options.signal?.addEventListener(
+        "abort",
+        () => { reject(new Error("cancelled acquisition")); },
+        { once: true },
+      );
+    });
   }
 }
 

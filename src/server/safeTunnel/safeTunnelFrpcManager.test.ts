@@ -139,6 +139,33 @@ describe("HttpSafeTunnelFrpcArtifactSource", () => {
       vi.useRealTimers();
     }
   });
+
+  it("aborts a pending transport when its caller cancels", async () => {
+    let observedSignal: AbortSignal | null | undefined;
+    const source = new HttpSafeTunnelFrpcArtifactSource({
+      fetch: (_input, init) => {
+        observedSignal = init?.signal;
+        return new Promise<Response>((_resolve, reject) => {
+          observedSignal?.addEventListener(
+            "abort",
+            () => { reject(new Error("cancelled transport")); },
+            { once: true },
+          );
+        });
+      },
+    });
+    const fixture = artifactFixture("1.0.0", Buffer.from("fixture"));
+    const controller = new AbortController();
+    const assertion = expect(source.download(
+      fixture.artifact,
+      { signal: controller.signal },
+    )).rejects.toMatchObject({ code: "download_failed" });
+
+    controller.abort();
+
+    await assertion;
+    expect(observedSignal?.aborted).toBe(true);
+  });
 });
 
 describe("SafeTunnelFrpcManager", () => {
@@ -180,19 +207,51 @@ describe("SafeTunnelFrpcManager", () => {
     expect(requestCount).toBe(1);
   });
 
-  it("coalesces concurrent acquisition through the same manager", async () => {
-    const fixture = artifactFixture("1.0.0", Buffer.from("verified frpc"));
-    const source = new FixtureArtifactSource([
-      [fixture.artifact.downloadUrl, fixture.archive],
-    ]);
-    const manager = managerFor(fixture.manifest, source);
+  it("does not extract or install after cancellation during download", async () => {
+    const executable = Buffer.from("verified frpc");
+    const fixture = artifactFixture("1.0.0", executable);
+    const controller = new AbortController();
+    let observedSignal: AbortSignal | undefined;
+    let markDownloadStarted = (): void => undefined;
+    const downloadStarted = new Promise<void>((resolve) => { markDownloadStarted = resolve; });
+    let releaseDownload = (archive: Uint8Array): void => {
+      throw new Error(`Download did not start for ${archive.byteLength.toString()} bytes.`);
+    };
+    const source: SafeTunnelFrpcArtifactSource = {
+      download(_artifact, options = {}) {
+        observedSignal = options.signal;
+        return new Promise<Uint8Array>((resolve) => {
+          releaseDownload = resolve;
+          markDownloadStarted();
+        });
+      },
+    };
+    const extractExecutable = vi.fn(() => Uint8Array.from(executable));
+    const installAtomically = vi.fn(() => Promise.resolve());
+    const manager = new SafeTunnelFrpcManager({
+      archiveExtractor: { extractExecutable },
+      artifactSource: source,
+      installationStore: {
+        executablePath: () => join(tempDirectory, "frpc"),
+        installAtomically,
+        isVerifiedExisting: () => Promise.resolve(false),
+      },
+      manifest: fixture.manifest,
+      platform: "linux",
+      architecture: "arm64",
+    });
 
-    const first = manager.ensureManagedFrpc();
-    const second = manager.ensureManagedFrpc();
+    const acquisition = manager.ensureManagedFrpc({ signal: controller.signal });
+    await downloadStarted;
+    expect(observedSignal).toBe(controller.signal);
 
-    expect(second).toBe(first);
-    await Promise.all([first, second]);
-    expect(source.calls).toEqual([fixture.artifact.downloadUrl]);
+    controller.abort();
+    expect(observedSignal?.aborted).toBe(true);
+    releaseDownload(fixture.archive);
+
+    await expect(acquisition).rejects.toThrow();
+    expect(extractExecutable).not.toHaveBeenCalled();
+    expect(installAtomically).not.toHaveBeenCalled();
   });
 
   it("rejects a checksum mismatch without installing an executable", async () => {

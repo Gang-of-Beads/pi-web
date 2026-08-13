@@ -40,11 +40,16 @@ export interface SafeTunnelManagedFrpc {
 }
 
 export interface SafeTunnelManagedFrpcProvider {
-  ensureManagedFrpc(): Promise<SafeTunnelManagedFrpc>;
+  ensureManagedFrpc(options?: {
+    readonly signal?: AbortSignal;
+  }): Promise<SafeTunnelManagedFrpc>;
 }
 
 export interface SafeTunnelFrpcArtifactSource {
-  download(artifact: SafeTunnelFrpcArtifact): Promise<Uint8Array>;
+  download(
+    artifact: SafeTunnelFrpcArtifact,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<Uint8Array>;
 }
 
 export type SafeTunnelFrpcFetch = (
@@ -72,21 +77,30 @@ export class HttpSafeTunnelFrpcArtifactSource implements SafeTunnelFrpcArtifactS
     this.timeoutMs = positiveInteger(options.timeoutMs ?? defaultDownloadTimeoutMs);
   }
 
-  async download(artifact: SafeTunnelFrpcArtifact): Promise<Uint8Array> {
+  async download(
+    artifact: SafeTunnelFrpcArtifact,
+    options: { readonly signal?: AbortSignal } = {},
+  ): Promise<Uint8Array> {
     const maximumBytes = Math.min(
       this.maximumDownloadBytes,
       positiveInteger(artifact.archiveSize),
     );
+    const callerSignal = options.signal;
     const controller = new AbortController();
+    const abortFromCaller = (): void => { controller.abort(); };
+    callerSignal?.addEventListener("abort", abortFromCaller, { once: true });
+    if (callerSignal?.aborted === true) controller.abort();
     const timeout = setTimeout(() => { controller.abort(); }, this.timeoutMs);
     try {
       let response: Response;
       try {
+        controller.signal.throwIfAborted();
         response = await this.fetch(artifact.downloadUrl, {
           headers: { accept: "application/octet-stream" },
           redirect: "follow",
           signal: controller.signal,
         });
+        controller.signal.throwIfAborted();
       } catch {
         throw new SafeTunnelFrpcAcquisitionError("download_failed");
       }
@@ -97,13 +111,16 @@ export class HttpSafeTunnelFrpcArtifactSource implements SafeTunnelFrpcArtifactS
       }
 
       try {
-        return await readBoundedResponseBody(response, maximumBytes);
+        const archive = await readBoundedResponseBody(response, maximumBytes);
+        controller.signal.throwIfAborted();
+        return archive;
       } catch (error: unknown) {
         if (error instanceof SafeTunnelFrpcAcquisitionError) throw error;
         throw new SafeTunnelFrpcAcquisitionError("download_failed");
       }
     } finally {
       clearTimeout(timeout);
+      callerSignal?.removeEventListener("abort", abortFromCaller);
     }
   }
 }
@@ -256,7 +273,6 @@ export class SafeTunnelFrpcManager implements SafeTunnelManagedFrpcProvider {
   private readonly architecture: NodeJS.Architecture;
   private readonly manifest: SafeTunnelFrpcManifest;
   private readonly platform: NodeJS.Platform;
-  private acquisition: Promise<SafeTunnelManagedFrpc> | undefined;
 
   constructor(private readonly options: SafeTunnelFrpcManagerOptions) {
     this.architecture = options.architecture ?? process.arch;
@@ -264,14 +280,14 @@ export class SafeTunnelFrpcManager implements SafeTunnelManagedFrpcProvider {
     this.platform = options.platform ?? process.platform;
   }
 
-  ensureManagedFrpc(): Promise<SafeTunnelManagedFrpc> {
-    this.acquisition ??= this.ensureOnce().finally(() => {
-      this.acquisition = undefined;
-    });
-    return this.acquisition;
+  ensureManagedFrpc(
+    options: { readonly signal?: AbortSignal } = {},
+  ): Promise<SafeTunnelManagedFrpc> {
+    return this.ensureOnce(options.signal);
   }
 
-  private async ensureOnce(): Promise<SafeTunnelManagedFrpc> {
+  private async ensureOnce(signal?: AbortSignal): Promise<SafeTunnelManagedFrpc> {
+    signal?.throwIfAborted();
     const artifact = findSafeTunnelFrpcArtifact(
       this.manifest,
       this.platform,
@@ -282,37 +298,52 @@ export class SafeTunnelFrpcManager implements SafeTunnelManagedFrpcProvider {
     }
 
     const path = this.options.installationStore.executablePath(this.manifest, artifact);
-    if (await this.options.installationStore.isVerifiedExisting(this.manifest, artifact)) {
-      return { path };
-    }
+    const isVerifiedExisting = await this.options.installationStore.isVerifiedExisting(
+      this.manifest,
+      artifact,
+    );
+    signal?.throwIfAborted();
+    if (isVerifiedExisting) return { path };
 
     try {
-      const executable = await this.downloadAndVerify(artifact);
+      const executable = await this.downloadAndVerify(artifact, signal);
+      signal?.throwIfAborted();
       await this.options.installationStore.installAtomically(
         this.manifest,
         artifact,
         executable,
       );
-      if (!await this.options.installationStore.isVerifiedExisting(
+      const isVerifiedInstalled = await this.options.installationStore.isVerifiedExisting(
         this.manifest,
         artifact,
-      )) {
+      );
+      signal?.throwIfAborted();
+      if (!isVerifiedInstalled) {
         throw new SafeTunnelFrpcAcquisitionError("install_failed");
       }
       return { path };
     } catch (error: unknown) {
+      if (signal?.aborted === true) throw error;
       throw normalizeAcquisitionError(error);
     }
   }
 
-  private async downloadAndVerify(artifact: SafeTunnelFrpcArtifact): Promise<Uint8Array> {
+  private async downloadAndVerify(
+    artifact: SafeTunnelFrpcArtifact,
+    signal?: AbortSignal,
+  ): Promise<Uint8Array> {
     let archive: Uint8Array;
     try {
-      archive = await this.options.artifactSource.download(artifact);
+      archive = await this.options.artifactSource.download(
+        artifact,
+        signal === undefined ? {} : { signal },
+      );
     } catch (error: unknown) {
+      if (signal?.aborted === true) throw error;
       throw normalizeDownloadError(error);
     }
 
+    signal?.throwIfAborted();
     if (!matchesArchive(archive, artifact)) {
       throw new SafeTunnelFrpcAcquisitionError("checksum_mismatch");
     }

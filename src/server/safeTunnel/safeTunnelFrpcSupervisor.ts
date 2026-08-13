@@ -210,10 +210,9 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
     let frpcPath = input.advancedFrpcPath;
     if (frpcPath === undefined) {
       try {
-        const managedFrpc = await abortable(
-          this.dependencies.managedFrpc.ensureManagedFrpc(),
-          controller.signal,
-        );
+        const managedFrpc = await this.dependencies.managedFrpc.ensureManagedFrpc({
+          signal: controller.signal,
+        });
         frpcPath = managedFrpc.path;
       } catch (error: unknown) {
         if (controller.signal.aborted) {
