@@ -54,13 +54,13 @@ describe("API parsers", () => {
       exists: true,
       config: { host: "0.0.0.0", port: 8504, allowedHosts: ["example.local"], shortcuts: { "core:view.chat": "mod+1", "core:session.stop": null }, plugins: { info: { enabled: false, settings: { compact: true } } }, pathAccess: { allowedPaths: ["/tmp"] }, uploads: { defaultFolder: "manual/uploads" }, maxUploadBytes: 1234, safeTunnel: true, agent: { command: "agent-lab", dir: "~/agent-profiles/lab" } },
       effectiveConfig: { host: "127.0.0.1", port: 8504, allowedHosts: true, pathAccess: { allowedPaths: ["/tmp"] }, uploads: { defaultFolder: ".pi-web/uploads" }, safeTunnel: false, agent: { command: "agent-lab", dir: "/Users/dev/agent-profiles/lab" } },
-      envOverrides: { host: true, port: false, allowedHosts: false, safeTunnel: true, spawnSessions: false, subsessions: false, askUser: false, agentCommand: false, agentDir: true, agentDirSource: "pi-compatibility", agentSessionDir: false },
+      envOverrides: { host: true, port: false, allowedHosts: false, safeTunnel: true, spawnSessions: false, subsessions: false, askUser: false },
     })).toEqual({
       path: "/tmp/config.json",
       exists: true,
       config: { host: "0.0.0.0", port: 8504, allowedHosts: ["example.local"], shortcuts: { "core:view.chat": "mod+1", "core:session.stop": null }, plugins: { info: { enabled: false, settings: { compact: true } } }, pathAccess: { allowedPaths: ["/tmp"] }, uploads: { defaultFolder: "manual/uploads" }, maxUploadBytes: 1234, safeTunnel: true, agent: { command: "agent-lab", dir: "~/agent-profiles/lab" } },
       effectiveConfig: { host: "127.0.0.1", port: 8504, allowedHosts: true, pathAccess: { allowedPaths: ["/tmp"] }, uploads: { defaultFolder: ".pi-web/uploads" }, safeTunnel: false, agent: { command: "agent-lab", dir: "/Users/dev/agent-profiles/lab" } },
-      envOverrides: { host: true, port: false, allowedHosts: false, safeTunnel: true, spawnSessions: false, subsessions: false, askUser: false, agentCommand: false, agentDir: true, agentDirSource: "pi-compatibility", agentSessionDir: false },
+      envOverrides: { host: true, port: false, allowedHosts: false, safeTunnel: true, spawnSessions: false, subsessions: false, askUser: false },
     });
   });
 
@@ -70,12 +70,15 @@ describe("API parsers", () => {
       exists: true,
       config: { safeTunnel: "yes" },
       effectiveConfig: { safeTunnel: false },
-      envOverrides: { host: false, port: false, allowedHosts: false, safeTunnel: false, spawnSessions: false, subsessions: false, askUser: false, agentCommand: false, agentDir: false, agentSessionDir: false },
+      envOverrides: { host: false, port: false, allowedHosts: false, safeTunnel: false, spawnSessions: false, subsessions: false, askUser: false },
     })).toThrow("Invalid PI WEB safeTunnel field");
   });
 
-  it("parses PI WEB runtime responses including the daemon-owned active profile", () => {
-    expect(parsePiWebRuntimeResponse({
+  it("parses PI WEB runtime responses and ignores the daemon-reported active agent profile", () => {
+    // The session daemon still reports its active agent profile for server-side
+    // flows; the client no longer surfaces it, so parsing must drop it without
+    // failing (rolling compatibility with daemons that keep sending it).
+    const parsed = parsePiWebRuntimeResponse({
       packageName: "@jmfederico/pi-web",
       generatedAt: "now",
       components: {
@@ -87,67 +90,83 @@ describe("API parsers", () => {
           available: true,
           capabilities: [],
           activeAgentProfile: {
-            schemaVersion: 1,
-            revision: `sha256:${"a".repeat(64)}`,
-            command: "agent-lab",
-            dir: "/srv/agent-lab",
-            sessionDirEnvKeys: ["PI_WEB_AGENT_SESSION_DIR"],
+            schemaVersion: 2,
+            dir: "/srv/pi-state",
           },
         },
       },
       capabilities: ["piPackages.manage", "future.capability"],
-    })).toMatchObject({
+    });
+
+    expect(parsed.components.sessiond).toEqual({
+      component: "sessiond",
+      label: "Session daemon",
+      runtimeVersion: "1.0.0",
+      available: true,
       capabilities: [],
-      components: { sessiond: { activeAgentProfile: { command: "agent-lab", dir: "/srv/agent-lab" } } },
     });
   });
 
-  it("retains portable active profiles in machine runtime snapshots and rejects invalid ownership", () => {
-    const profile = {
-      schemaVersion: 1,
-      revision: `sha256:${"b".repeat(64)}`,
-      command: "C:\\tools\\pi.exe",
-      dir: "C:\\agent-profiles\\work",
-      sessionDirEnvKeys: ["PI_WEB_AGENT_SESSION_DIR"],
-    };
-    const components = {
-      web: { component: "web", label: "Web/UI", available: true, capabilities: [] },
-      sessiond: { component: "sessiond", label: "Session daemon", available: true, capabilities: [], activeAgentProfile: profile },
-    };
-
-    const parsed = parseMachineRuntime({ machineId: "remote-a", ok: true, checkedAt: "now", components, capabilities: [] });
-
-    expect(parsed.components?.sessiond.activeAgentProfile).toMatchObject({ command: profile.command, dir: profile.dir });
-    expect(Object.isFrozen(parsed.components?.sessiond.activeAgentProfile)).toBe(true);
-    expect(() => parseMachineRuntime({
+  it("ignores the daemon-reported active agent profile in machine runtime snapshots", () => {
+    const parsed = parseMachineRuntime({
       machineId: "remote-a",
       ok: true,
       checkedAt: "now",
-      components: { ...components, web: { ...components.web, activeAgentProfile: profile } },
+      components: {
+        web: { component: "web", label: "Web/UI", available: true, capabilities: [] },
+        sessiond: { component: "sessiond", label: "Session daemon", available: true, capabilities: [], activeAgentProfile: { schemaVersion: 2, dir: "C:\\pi-profiles\\work" } },
+      },
       capabilities: [],
-    })).toThrow("Invalid active agent profile descriptor");
-    expect(() => parseMachineRuntime({
+    });
+
+    expect(parsed.components?.sessiond).toEqual({
+      component: "sessiond",
+      label: "Session daemon",
+      available: true,
+      capabilities: [],
+    });
+  });
+
+  it("parses deprecated agent input reports in machine runtime snapshots", () => {
+    const parsed = parseMachineRuntime({
       machineId: "remote-a",
       ok: true,
       checkedAt: "now",
-      components: { ...components, sessiond: { ...components.sessiond, activeAgentProfile: { ...profile, token: "secret" } } },
-      capabilities: [],
-    })).toThrow("Invalid active agent profile descriptor");
+      deprecatedAgentInputs: [
+        { source: "environment", name: "PI_WEB_AGENT_DIR", replacement: "PI_CODING_AGENT_DIR" },
+        { source: "config", name: "agent.command" },
+      ],
+    });
+
+    expect(parsed.deprecatedAgentInputs).toEqual([
+      { source: "environment", name: "PI_WEB_AGENT_DIR", replacement: "PI_CODING_AGENT_DIR" },
+      { source: "config", name: "agent.command" },
+    ]);
   });
 
-  it("rejects malformed agent directory override metadata", () => {
-    expect(() => parsePiWebConfigResponse({
-      path: "/tmp/config.json",
-      exists: true,
-      config: {},
-      effectiveConfig: {},
-      envOverrides: { host: false, port: false, allowedHosts: false, safeTunnel: false, spawnSessions: false, subsessions: false, askUser: false, agentCommand: false, agentDir: false, agentSessionDir: false, agentDirSource: "future" },
-    })).toThrow("Invalid PI WEB agentDirSource field");
+  it("drops malformed deprecated-input entries but rejects a non-array report", () => {
+    const parsed = parseMachineRuntime({
+      machineId: "remote-a",
+      ok: true,
+      checkedAt: "now",
+      deprecatedAgentInputs: [
+        { source: "environment", name: "PI_WEB_AGENT_DIR", replacement: "PI_CODING_AGENT_DIR" },
+        { source: "process", name: "PI_WEB_AGENT_DIR" },
+        { source: "config" },
+      ],
+    });
+
+    expect(parsed.deprecatedAgentInputs).toEqual([
+      { source: "environment", name: "PI_WEB_AGENT_DIR", replacement: "PI_CODING_AGENT_DIR" },
+    ]);
+
+    expect(() => parseMachineRuntime({ machineId: "remote-a", ok: true, checkedAt: "now", deprecatedAgentInputs: "PI_WEB_AGENT_DIR" }))
+      .toThrow("Invalid PI WEB deprecated agent inputs");
   });
 
-  it("rejects config responses missing a required environment override flag", () => {
-    const envOverrides = { host: false, port: false, allowedHosts: false, safeTunnel: false, spawnSessions: false, subsessions: false, askUser: false, agentCommand: false, agentDir: false, agentSessionDir: false };
-    for (const flag of ["safeTunnel", "askUser", "agentCommand", "agentDir", "agentSessionDir"] as const) {
+  it("rejects config responses missing a required override flag", () => {
+    const envOverrides = { host: false, port: false, allowedHosts: false, safeTunnel: false, spawnSessions: false, subsessions: false, askUser: false };
+    for (const flag of ["host", "port", "allowedHosts", "safeTunnel", "spawnSessions", "subsessions", "askUser"] as const) {
       const incomplete = Object.fromEntries(Object.entries(envOverrides).filter(([key]) => key !== flag));
       expect(() => parsePiWebConfigResponse({
         path: "/tmp/config.json",

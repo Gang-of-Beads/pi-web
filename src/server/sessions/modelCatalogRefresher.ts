@@ -69,9 +69,10 @@ const noopLogger: ModelCatalogRefresherLogger = {
 /**
  * Refreshes provider model catalogs over the network on a background schedule.
  *
- * The shared ModelRuntime is constructed offline (see authService.ts), so its
- * own refreshes never touch the network and stay fast on request paths. This
- * refresher is the single place that deliberately performs network refreshes —
+ * The shared ModelRuntime keeps its own refreshes local-only (pi 0.84 does so
+ * by default, and pi-web request paths pass `allowNetwork: false` explicitly —
+ * see authService.ts), so they stay fast. This refresher is the single place
+ * that deliberately performs network refreshes —
  * bounded by an abort timeout, serialized through one in-flight run, stopped by
  * `dispose()` even mid-flight, and off any request path. `requestRefresh()`
  * additionally asks for a prompt forced refresh after events that change what

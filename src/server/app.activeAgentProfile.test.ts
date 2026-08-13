@@ -31,7 +31,7 @@ describe("buildApp active profile composition", () => {
       writePiPackageSettings(secondAgentDir, [secondPackageDir]),
     ]);
 
-    let result: SessionDaemonAgentProfileResult = { status: "available", profile: activeProfile("a", "first-agent", firstAgentDir) };
+    let result: SessionDaemonAgentProfileResult = { status: "available", profile: activeProfile(firstAgentDir) };
     const getActiveAgentProfile = vi.fn(() => Promise.resolve(result));
     const app = await buildApp({
       agentProfileProvider: { getActiveAgentProfile },
@@ -48,7 +48,7 @@ describe("buildApp active profile composition", () => {
       expect(pluginIds(firstPlugins.json())).toContain("profile-first");
       expect(pluginIds(firstPlugins.json())).not.toContain("profile-second");
 
-      result = { status: "available", profile: activeProfile("b", "second-agent", secondAgentDir) };
+      result = { status: "available", profile: activeProfile(secondAgentDir) };
 
       const secondPackages = await app.inject({ method: "GET", url: "/api/pi-packages" });
       const secondPlugins = await app.inject({ method: "GET", url: "/api/plugins" });
@@ -142,13 +142,10 @@ describe("buildApp active profile composition", () => {
   });
 });
 
-function activeProfile(revisionCharacter: string, command: string, dir: string): ActiveAgentProfileDescriptor {
+function activeProfile(dir: string): ActiveAgentProfileDescriptor {
   return {
-    schemaVersion: 1,
-    revision: `sha256:${revisionCharacter.repeat(64)}`,
-    command,
+    schemaVersion: 2,
     dir,
-    sessionDirEnvKeys: ["PI_WEB_AGENT_SESSION_DIR"],
   };
 }
 
@@ -181,9 +178,6 @@ function configResponse(config: PiWebConfigResponse["config"]): PiWebConfigRespo
       spawnSessions: false,
       subsessions: false,
       askUser: false,
-      agentCommand: false,
-      agentDir: false,
-      agentSessionDir: false,
     },
   };
 }
@@ -202,9 +196,6 @@ function emptyConfigService(): PiWebConfigService {
       spawnSessions: false,
       subsessions: false,
       askUser: false,
-      agentCommand: false,
-      agentDir: false,
-      agentSessionDir: false,
     },
   };
   return {

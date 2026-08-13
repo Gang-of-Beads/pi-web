@@ -3,9 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  agentCommandForChecks,
   commandWithVersionCheck,
   doctorExitCode,
+  expectedRunningComponents,
+  generalDoctorChecks,
   isCliEntrypoint,
   launchdRuntimeDetails,
   nodeVersionCheck,
@@ -13,10 +14,10 @@ import {
   serviceBackendForPlatform,
   sessionDaemonRestartPlan,
 } from "./cli.js";
+import type { NativeServiceId } from "./nativeServices/servicePlan.js";
 
 const originalShell = process.env["SHELL"];
 const originalPiWebConfig = process.env["PI_WEB_CONFIG"];
-const originalPiWebAgentCommand = process.env["PI_WEB_AGENT_COMMAND"];
 
 afterEach(() => {
   if (originalShell === undefined) {
@@ -28,11 +29,6 @@ afterEach(() => {
     delete process.env["PI_WEB_CONFIG"];
   } else {
     process.env["PI_WEB_CONFIG"] = originalPiWebConfig;
-  }
-  if (originalPiWebAgentCommand === undefined) {
-    delete process.env["PI_WEB_AGENT_COMMAND"];
-  } else {
-    process.env["PI_WEB_AGENT_COMMAND"] = originalPiWebAgentCommand;
   }
 });
 
@@ -72,24 +68,15 @@ describe("nodeVersionCheck", () => {
   });
 });
 
-describe("agentCommandForChecks", () => {
-  it("reads the configured agent command for doctor checks", () => {
-    const dir = mkdtempSync(join(tmpdir(), "pi-web-cli-test-"));
-    try {
-      const configPath = join(dir, "config.json");
-      writeFileSync(configPath, `${JSON.stringify({ agent: { command: "acme-agent", dir: "/opt/acme-agent/state" } })}\n`);
-      process.env["PI_WEB_CONFIG"] = configPath;
-      delete process.env["PI_WEB_AGENT_COMMAND"];
+describe("generalDoctorChecks", () => {
+  it("probes node and npm, then a hardcoded pi on PATH", () => {
+    process.env["SHELL"] = "/bin/bash";
 
-      expect(agentCommandForChecks()).toBe("acme-agent");
-      expect(agentCommandForChecks({
-        PI_WEB_CONFIG: configPath,
-        PI_WEB_AGENT_COMMAND: "environment-agent",
-        PI_WEB_AGENT_DIR: join(dir, "environment-agent-state"),
-      })).toBe("environment-agent");
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+    const checks = generalDoctorChecks();
+    const piCheck = checks.find(([label]) => label.endsWith("can find pi"));
+
+    expect(checks.map(([label]) => label)).toHaveLength(3);
+    expect(piCheck?.[1].at(-1)).toBe(commandWithVersionCheck("pi"));
   });
 });
 
@@ -100,11 +87,12 @@ describe("native-service doctor CLI contracts", () => {
     expect(serviceBackendForPlatform("win32")).toBeUndefined();
   });
 
-  it("fails doctor for general, native-plan, or node-pty failures", () => {
-    expect(doctorExitCode(true, true, true)).toBe(0);
-    expect(doctorExitCode(false, true, true)).toBe(1);
-    expect(doctorExitCode(true, false, true)).toBe(1);
-    expect(doctorExitCode(true, true, false)).toBe(1);
+  it("fails doctor for general, native-plan, node-pty, or running-component failures", () => {
+    expect(doctorExitCode(true, true, true, true)).toBe(0);
+    expect(doctorExitCode(false, true, true, true)).toBe(1);
+    expect(doctorExitCode(true, false, true, true)).toBe(1);
+    expect(doctorExitCode(true, true, false, true)).toBe(1);
+    expect(doctorExitCode(true, true, true, false)).toBe(1);
   });
 
   it("accepts only regular files as bundled entrypoints", () => {
@@ -126,6 +114,35 @@ describe("native-service doctor CLI contracts", () => {
       detail: "exited (last exit code 127)",
       pid: undefined,
     });
+  });
+});
+
+describe("expectedRunningComponents", () => {
+  it("expects nothing when no services are installed outside Docker", () => {
+    expect(expectedRunningComponents(new Set<NativeServiceId>(), {})).toEqual([]);
+  });
+
+  it("expects web and sessiond for a production install", () => {
+    expect(expectedRunningComponents(new Set<NativeServiceId>(["sessiond", "web"]), {})).toEqual(["web", "sessiond"]);
+  });
+
+  it("expects web and sessiond for a development install", () => {
+    expect(expectedRunningComponents(new Set<NativeServiceId>(["sessiond", "uiDev"]), {})).toEqual(["web", "sessiond"]);
+  });
+
+  it("expects only the components whose services are installed", () => {
+    expect(expectedRunningComponents(new Set<NativeServiceId>(["sessiond"]), {})).toEqual(["sessiond"]);
+    expect(expectedRunningComponents(new Set<NativeServiceId>(["web"]), {})).toEqual(["web"]);
+    expect(expectedRunningComponents(new Set<NativeServiceId>(["uiDev"]), {})).toEqual(["web"]);
+  });
+
+  it("expects both components for a Docker runtime regardless of native service files", () => {
+    expect(expectedRunningComponents(new Set<NativeServiceId>(), { PI_WEB_DOCKER_RUNTIME: "1" })).toEqual(["web", "sessiond"]);
+    expect(expectedRunningComponents(new Set<NativeServiceId>(["sessiond"]), { PI_WEB_DOCKER_RUNTIME: "1", PI_WEB_DOCKER_MODE: "dev" })).toEqual(["web", "sessiond"]);
+  });
+
+  it("treats a falsy Docker runtime marker as no Docker runtime", () => {
+    expect(expectedRunningComponents(new Set<NativeServiceId>(), { PI_WEB_DOCKER_RUNTIME: "0" })).toEqual([]);
   });
 });
 

@@ -219,7 +219,7 @@ async function policyHarness(options: { runtime?: ModelRuntime; agentDir?: strin
   const service = new PiSessionService(new CapturingSessionEventHub(), {
     agentDir,
     modelRuntime: runtime,
-    sessionManager: createPiSessionManagerGateway({ agentDir, env: {}, sessionDirEnvKeys: [] }),
+    sessionManager: createPiSessionManagerGateway({ agentDir, env: {} }),
     heartbeatIntervalMs: 60_000,
     logger,
   });

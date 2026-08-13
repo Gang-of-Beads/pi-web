@@ -3,48 +3,47 @@
  *
  * Sessions run inside the session daemon process, so everything agents can
  * spawn — the bash tool, terminals, subsessions — inherits the daemon's
- * environment by default. That environment carries PI WEB's own runtime
- * configuration: deployment keys such as `NODE_ENV=production` baked into the
- * Docker image, and the daemon's `PI_WEB_*` wiring (data dir, socket, ports,
- * feature switches). Those keys are meant for the daemon, not for agents:
- * `NODE_ENV=production` makes npm skip devDependencies and flips Node
- * package-export conditions, and inherited `PI_WEB_DATA_DIR` /
- * `PI_WEB_SESSIOND_SOCKET` make a second PI WEB instance started from inside a
- * session point at the live daemon's state.
+ * environment by default. That inheritance is deliberate: the daemon's
+ * `PI_WEB_*` wiring stays visible so agent-facing tooling keeps working, and
+ * a second PI WEB instance started from inside a session resolves the same
+ * state and fails loudly at startup (see `sessiondStateOwnership`) instead of
+ * silently corrupting the live daemon's data. `PI_WEB_SESSION=1` and the
+ * session environment facts tell agents they are nested and which precautions
+ * apply.
  *
- * The daemon captures its environment once at startup for its own use and then
- * removes every non-agent-visible key from `process.env`, so all later spawns
- * inherit a clean environment without per-call-site filtering. Visibility
- * rules:
+ * The daemon captures its environment once at startup for its own use and
+ * then removes the handful of keys that silently distort the tools agents
+ * run, so all later spawns inherit a clean environment without per-call-site
+ * filtering. Visibility rules:
  *
  * - Ordinary variables (`PATH`, `HOME`, `XDG_CONFIG_HOME`, proxy keys, …)
  *   stay.
- * - `PI_WEB_*` keys are daemon configuration and are removed — including keys
- *   added in the future — except `PI_WEB_DOCKER_*` deployment descriptors,
- *   which the agent-facing `pi-web-docker` CLI reads.
+ * - `PI_WEB_*` keys stay — including `PI_WEB_DOCKER_*` deployment descriptors
+ *   the agent-facing `pi-web-docker` CLI reads, and the deprecated
+ *   `PI_WEB_AGENT_*` aliases: the canonical `PI_CODING_AGENT_*` vars are
+ *   exported with the fully resolved values, so both names resolve
+ *   identically for anything started from here.
  * - `HOSTEXEC_*` stays: agents use `hostexec`.
  * - `PI_CODING_AGENT_DIR` stays so agent-spawned `pi` CLIs find the profile's
- *   auth and models; `PI_CODING_AGENT_SESSION_DIR` is daemon session-discovery
- *   wiring and is removed.
- * - `NODE_ENV` and `PORT` are app-runtime configuration, removed like
- *   `PI_WEB_*`. Nothing in PI WEB reads `NODE_ENV` at runtime, but tools
- *   agents run (npm, Vite, Node itself) change behavior based on it.
+ *   auth and models; `PI_CODING_AGENT_SESSION_DIR` stays for the same reason:
+ *   it is documented `pi` configuration, not daemon wiring, so a deployment
+ *   that sets it wants every `pi` process — whether daemon-spawned or started
+ *   by an agent — using the same session storage.
+ * - `NODE_ENV` and `PORT` are app-runtime configuration and the only removals:
+ *   `NODE_ENV=production` makes npm skip devDependencies and flips Node
+ *   package-export conditions, and `PORT` leaks into the listener
+ *   configuration of tools agents run.
  */
-
-/** Deployment descriptors agent-facing tools (`pi-web-docker`) legitimately read. */
-const AGENT_VISIBLE_PI_WEB_PREFIXES = ["PI_WEB_DOCKER_"] as const;
 
 /**
- * Non-`PI_WEB_` keys that still configure the daemon or app rather than the
- * processes agents run. Daemon configuration should use `PI_WEB_`-prefixed
- * keys so it is covered by the prefix rule above; a key only belongs here when
- * it cannot carry the prefix (deployment conventions like `NODE_ENV`) or is a
- * compatibility name owned by the companion CLI (`PI_CODING_AGENT_*`).
+ * Keys that configure the daemon or app runtime in ways that silently break
+ * the tools agents run. Daemon configuration belongs in `PI_WEB_`-prefixed
+ * keys, which stay visible; a key only belongs here when it cannot carry the
+ * prefix (deployment conventions like `NODE_ENV`).
  */
-const DAEMON_ONLY_ENV_KEYS = new Set(["NODE_ENV", "PORT", "PI_CODING_AGENT_SESSION_DIR"]);
+const DAEMON_ONLY_ENV_KEYS = new Set(["NODE_ENV", "PORT"]);
 
 export function isAgentVisibleEnvKey(key: string): boolean {
-  if (key.startsWith("PI_WEB_")) return AGENT_VISIBLE_PI_WEB_PREFIXES.some((prefix) => key.startsWith(prefix));
   return !DAEMON_ONLY_ENV_KEYS.has(key);
 }
 

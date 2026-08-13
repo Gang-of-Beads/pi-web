@@ -3,6 +3,7 @@ import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
+import { AGENT_SESSION_DIR_ENV_KEYS } from "../../config.js";
 import { canonicalizeStoredCwd, cwdPathsEqual } from "../workingDirectory.js";
 import { readSessionHeaderSummary, type SessionHeaderReader } from "./sessionFileHeader.js";
 import { SessionSummaryScanner } from "./sessionSummaryScanner.js";
@@ -19,7 +20,6 @@ export interface SessionDirResolution {
 export interface SessionDirResolverOptions {
   agentDir: string;
   env: Readonly<NodeJS.ProcessEnv>;
-  sessionDirEnvKeys: readonly string[];
 }
 
 export class SessionDirResolver {
@@ -29,7 +29,10 @@ export class SessionDirResolver {
 
   constructor(options: SessionDirResolverOptions) {
     this.agentDir = options.agentDir;
-    this.envSessionDir = options.sessionDirEnvKeys
+    // Session storage override policy: the deprecated PI_WEB_ alias keeps
+    // winning when both are set, then the canonical pi SDK name (see
+    // AGENT_SESSION_DIR_ENV_KEYS).
+    this.envSessionDir = AGENT_SESSION_DIR_ENV_KEYS
       .map((key) => options.env[key])
       .find((value) => value !== undefined && value !== "");
     const configuredHome = options.env["HOME"];

@@ -1,11 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, isAbsolute, join, normalize, resolve } from "node:path";
-import type { PiWebAgentDirEnvSource, PiWebConfigValues } from "./shared/apiTypes.js";
-import { isPiCompanionCommand, usesPiCodingAgentStateCompatibility } from "./shared/activeAgentProfile.js";
+import { dirname, isAbsolute, join, normalize, resolve } from "node:path";
+import type { PiWebConfigValues, PiWebDeprecatedAgentInput } from "./shared/apiTypes.js";
 import { isPiWebPluginId, piWebPluginIdPattern } from "./shared/pluginIds.js";
-
-export { isPiCompanionCommand };
 
 export type PiWebConfig = PiWebConfigValues;
 
@@ -13,6 +10,8 @@ export interface LoadedPiWebConfig {
   path: string;
   exists: boolean;
   config: PiWebConfig;
+  /** Deprecated agent-configuration inputs detected in `env` and the loaded file. */
+  deprecatedAgentInputs: readonly DeprecatedAgentInput[];
 }
 
 export interface EffectivePiWebConfig extends Omit<PiWebConfig, "uploads" | "safeTunnel" | "spawnSessions" | "subsessions" | "askUser" | "dockerEnvironmentFacts" | "agent" | "extensionDialogsTimeoutMs"> {
@@ -23,7 +22,7 @@ export interface EffectivePiWebConfig extends Omit<PiWebConfig, "uploads" | "saf
   askUser: boolean;
   environmentFacts: boolean;
   extensionDialogsTimeoutMs: number;
-  agent: Required<NonNullable<PiWebConfig["agent"]>>;
+  agent: EffectivePiWebAgentConfig;
 }
 
 export interface LoadedEffectivePiWebConfig extends Omit<LoadedPiWebConfig, "config"> {
@@ -61,49 +60,69 @@ export const DEFAULT_UPLOADS_FOLDER = ".pi-web/uploads";
  */
 export const DEFAULT_EXTENSION_DIALOGS_TIMEOUT_MS = 300_000;
 
-export const DEFAULT_AGENT_COMMAND = "pi";
 export const PI_WEB_AGENT_COMMAND_ENV = "PI_WEB_AGENT_COMMAND";
 export const PI_WEB_AGENT_DIR_ENV = "PI_WEB_AGENT_DIR";
 export const PI_WEB_AGENT_SESSION_DIR_ENV = "PI_WEB_AGENT_SESSION_DIR";
 export const PI_CODING_AGENT_DIR_ENV = "PI_CODING_AGENT_DIR";
 export const PI_CODING_AGENT_SESSION_DIR_ENV = "PI_CODING_AGENT_SESSION_DIR";
 
+/**
+ * Session storage override env keys in precedence order: the deprecated
+ * `PI_WEB_` alias first so it keeps winning when both are set (today's
+ * precedence, preserved for the deprecation window), then the canonical pi
+ * SDK name.
+ */
+export const AGENT_SESSION_DIR_ENV_KEYS = [PI_WEB_AGENT_SESSION_DIR_ENV, PI_CODING_AGENT_SESSION_DIR_ENV] as const;
+
 export interface EffectivePiWebAgentConfig {
-  command: string;
   dir: string;
-  sessionDirEnvKeys: string[];
 }
 
+/**
+ * Resolve the pi agent state directory. PI WEB runs sessions on the bundled pi
+ * SDK only, so there is no command abstraction: the directory comes from the
+ * deprecated `PI_WEB_AGENT_DIR` alias, then the canonical `PI_CODING_AGENT_DIR`,
+ * then the deprecated `agent.dir` config alias, then the pi SDK default
+ * (`~/.pi/agent`, mirrored from the SDK's `getAgentDir()`). The session daemon
+ * exports the resolved value as `PI_CODING_AGENT_DIR` at startup, so the
+ * embedded SDK's own `getAgentDir()` observes the same directory and pi-web
+ * cannot drift from pi.
+ */
 export function effectiveAgentConfig(env: NodeJS.ProcessEnv = process.env, config: Pick<PiWebConfig, "agent"> = {}): EffectivePiWebAgentConfig {
-  const command = parseAgentCommand(envValue(env, PI_WEB_AGENT_COMMAND_ENV) ?? config.agent?.command ?? DEFAULT_AGENT_COMMAND, "agent.command", "environment", "current");
-  const configuredDir = envValue(env, PI_WEB_AGENT_DIR_ENV) ?? (usesPiCodingAgentStateCompatibility(command) ? envValue(env, PI_CODING_AGENT_DIR_ENV) : undefined) ?? config.agent?.dir ?? defaultAgentDirForCommand(command, env);
-  return {
-    command,
-    dir: resolveAgentDirPath(configuredDir, env, "agent.dir", "environment"),
-    sessionDirEnvKeys: agentSessionDirEnvKeys(command),
-  };
+  const sources: readonly (readonly [string, string | undefined])[] = [
+    [PI_WEB_AGENT_DIR_ENV, envValue(env, PI_WEB_AGENT_DIR_ENV)],
+    [PI_CODING_AGENT_DIR_ENV, envValue(env, PI_CODING_AGENT_DIR_ENV)],
+    ["agent.dir", config.agent?.dir],
+  ];
+  const configured = sources.find((source): source is readonly [string, string] => source[1] !== undefined);
+  const [sourceName, configuredDir] = configured ?? ["the agent directory default", defaultAgentDir(env)];
+  return { dir: resolveAgentDirPath(configuredDir, env, sourceName, "environment") };
 }
 
-export function agentSessionDirEnvKeys(command = DEFAULT_AGENT_COMMAND): string[] {
-  return uniqueStrings([
-    PI_WEB_AGENT_SESSION_DIR_ENV,
-    ...(usesPiCodingAgentStateCompatibility(command) ? [PI_CODING_AGENT_SESSION_DIR_ENV] : []),
-  ]);
-}
-
-export function agentDirEnvSource(env: NodeJS.ProcessEnv): PiWebAgentDirEnvSource | undefined {
-  if (isEnvSet(env[PI_WEB_AGENT_DIR_ENV])) return "pi-web";
-  if (isEnvSet(env[PI_CODING_AGENT_DIR_ENV])) return "pi-compatibility";
+/** The session storage override from the environment, in `AGENT_SESSION_DIR_ENV_KEYS` precedence order. */
+export function agentSessionDirEnvOverride(env: Readonly<NodeJS.ProcessEnv>): string | undefined {
+  for (const key of AGENT_SESSION_DIR_ENV_KEYS) {
+    const value = env[key];
+    if (value !== undefined && value !== "") return value;
+  }
   return undefined;
 }
 
-export function hasAgentDirEnvOverride(env: NodeJS.ProcessEnv, command = DEFAULT_AGENT_COMMAND): boolean {
-  const source = agentDirEnvSource(env);
-  return source === "pi-web" || (source === "pi-compatibility" && usesPiCodingAgentStateCompatibility(command));
-}
+/**
+ * A deprecated agent-configuration input detected in a process environment or
+ * config file; the canonical wire shape lives in `shared/apiTypes.ts` so the
+ * runtime/status pipeline reports exactly what the loader detects.
+ */
+export type DeprecatedAgentInput = PiWebDeprecatedAgentInput;
 
-export function hasAgentSessionDirEnvOverride(env: NodeJS.ProcessEnv, command = DEFAULT_AGENT_COMMAND): boolean {
-  return agentSessionDirEnvKeys(command).some((key) => isEnvSet(env[key]));
+export function detectDeprecatedAgentInputs(env: Readonly<NodeJS.ProcessEnv>, config: Pick<PiWebConfig, "agent"> = {}): DeprecatedAgentInput[] {
+  const inputs: DeprecatedAgentInput[] = [];
+  if (isEnvSet(env[PI_WEB_AGENT_COMMAND_ENV])) inputs.push({ source: "environment", name: PI_WEB_AGENT_COMMAND_ENV });
+  if (isEnvSet(env[PI_WEB_AGENT_DIR_ENV])) inputs.push({ source: "environment", name: PI_WEB_AGENT_DIR_ENV, replacement: PI_CODING_AGENT_DIR_ENV });
+  if (isEnvSet(env[PI_WEB_AGENT_SESSION_DIR_ENV])) inputs.push({ source: "environment", name: PI_WEB_AGENT_SESSION_DIR_ENV, replacement: PI_CODING_AGENT_SESSION_DIR_ENV });
+  if (config.agent?.command !== undefined) inputs.push({ source: "config", name: "agent.command" });
+  if (config.agent?.dir !== undefined) inputs.push({ source: "config", name: "agent.dir", replacement: PI_CODING_AGENT_DIR_ENV });
+  return inputs;
 }
 
 export function effectiveUploadsConfig(config: Pick<PiWebConfig, "uploads"> = {}): NonNullable<PiWebConfig["uploads"]> {
@@ -135,12 +154,13 @@ export function piWebConfigPath(env: NodeJS.ProcessEnv = process.env, cwd = proc
 export function loadPiWebConfig(options: LoadOptions = {}): LoadedPiWebConfig {
   const env = options.env ?? process.env;
   const path = piWebConfigPath(env, options.cwd ?? process.cwd());
-  if (!existsSync(path)) return { path, exists: false, config: {} };
+  if (!existsSync(path)) return { path, exists: false, config: {}, deprecatedAgentInputs: detectDeprecatedAgentInputs(env) };
 
   const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
   if (!isRecord(parsed)) throw new Error(`PI WEB config must be a JSON object: ${path}`);
 
-  return { path, exists: true, config: parsePiWebConfig(parsed, path) };
+  const config = parsePiWebConfig(parsed, path);
+  return { path, exists: true, config, deprecatedAgentInputs: detectDeprecatedAgentInputs(env, config) };
 }
 
 export function effectivePiWebConfig(options: LoadOptions = {}): LoadedEffectivePiWebConfig {
@@ -169,7 +189,9 @@ export function resolveEffectivePiWebConfig(loaded: LoadedPiWebConfig, options: 
       // Always resolved (on by default) so the effective config is the single
       // source of truth for the runtime state and the settings UI toggle.
       spawnSessions: spawnSessionsEnabled(env, loaded.config),
-      // Beta capability, resolved off by default.
+      // Resolved on by default like the other capabilities,
+      // so the effective config is the single source of truth for the runtime
+      // state and the settings UI toggle.
       subsessions: subsessionsEnabled(env, loaded.config),
       // Always resolved (on by default); the user is present for every ask.
       askUser: askUserEnabled(env, loaded.config),
@@ -177,7 +199,7 @@ export function resolveEffectivePiWebConfig(loaded: LoadedPiWebConfig, options: 
       environmentFacts: environmentFactsEnabled(env, loaded.config),
       // Always resolved; the unattended-dialog safety valve, not a gate.
       extensionDialogsTimeoutMs: loaded.config.extensionDialogsTimeoutMs ?? DEFAULT_EXTENSION_DIALOGS_TIMEOUT_MS,
-      agent: { command: agent.command, dir: agent.dir },
+      agent,
     },
   };
 }
@@ -206,7 +228,7 @@ export function savePiWebConfig(config: PiWebConfig, options: LoadOptions = {}):
   const merged = { ...existing, ...piWebConfigRecord(normalized) };
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
-  return { path, exists: true, config: normalized };
+  return { path, exists: true, config: normalized, deprecatedAgentInputs: detectDeprecatedAgentInputs(env, normalized) };
 }
 
 function readExistingConfigObject(path: string): Record<string, unknown> {
@@ -296,17 +318,16 @@ function parseSubsessions(value: unknown, path: string): boolean {
 }
 
 /**
- * Beta: whether LLMs may start tracked child sessions via the spawn_subsession
- * family of tools. Off by default while the capability stabilizes, so it can
- * ship in main without affecting releases; enable with the env var
- * `PI_WEB_SUBSESSIONS` or the `subsessions` config key. The env var takes
- * precedence over the config file. Subsessions also require spawnSessions to be
- * enabled (they share the same project-scope resolver).
+ * Whether LLMs may start tracked child sessions via the spawn_subsession
+ * family of tools. On by default; set the env var `PI_WEB_SUBSESSIONS` or the
+ * `subsessions` config key to `false` to disable. The env var takes precedence
+ * over the config file. Subsessions also require spawnSessions to be enabled
+ * (they share the same project-scope resolver).
  */
 export function subsessionsEnabled(env: NodeJS.ProcessEnv = process.env, config: PiWebConfig = {}): boolean {
   const fromEnv = env["PI_WEB_SUBSESSIONS"];
   if (fromEnv !== undefined && fromEnv !== "") return fromEnv === "1" || fromEnv.toLowerCase() === "true";
-  return config.subsessions ?? false;
+  return config.subsessions ?? true;
 }
 
 function parseAskUser(value: unknown, path: string): boolean {
@@ -345,9 +366,10 @@ function parseBooleanKey(value: unknown, key: string, path: string): boolean {
  * `environmentFacts` config key to `false` to leave the system prompt
  * untouched. The env var takes precedence over the config file.
  *
- * PI WEB only has facts to add in Docker deployments today, so the resolved
- * value has no effect elsewhere. The env var deliberately avoids the
- * `PI_WEB_DOCKER_` prefix, which agent processes inherit for `pi-web-docker`.
+ * The facts describe the pi-web session nesting every session runs in; Docker
+ * deployments append container facts on top. The env var deliberately avoids
+ * the `PI_WEB_DOCKER_` prefix, which agent processes inherit for
+ * `pi-web-docker`.
  */
 export function environmentFactsEnabled(env: NodeJS.ProcessEnv = process.env, config: PiWebConfig = {}): boolean {
   const fromEnv = env["PI_WEB_ENVIRONMENT_FACTS"];
@@ -375,30 +397,31 @@ function parseString(value: unknown, key: string, path: string): string {
   return value;
 }
 
-const AGENT_CONFIG_KEYS = new Set(["command", "dir"]);
-const SAFE_BARE_AGENT_COMMAND_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9._+-]*$/u;
+/**
+ * Keys still accepted under `agent` during the deprecation window: `command`
+ * is parsed only so the file round-trips and the deprecation detector can name
+ * it (the concept is gone), and `dir` remains honored as a deprecated alias.
+ * The section has no live schema — every accepted key is deprecated — so any
+ * other key fails loudly, naming the deprecated survivors.
+ */
+const DEPRECATED_AGENT_CONFIG_KEYS = new Set(["command", "dir"]);
 
 export type AgentPathHost = "current" | "portable";
 
 export function parseAgentConfig(value: unknown, path: string, pathHost: AgentPathHost = "current"): NonNullable<PiWebConfig["agent"]> {
   if (!isRecord(value)) throw new Error(`PI WEB config agent must be an object: ${path}`);
-  const unknownKey = Object.keys(value).find((key) => !AGENT_CONFIG_KEYS.has(key));
-  if (unknownKey !== undefined) throw new Error(`PI WEB config agent contains unknown key ${JSON.stringify(unknownKey)}: ${path}`);
+  const unknownKey = Object.keys(value).find((key) => !DEPRECATED_AGENT_CONFIG_KEYS.has(key));
+  if (unknownKey !== undefined) throw new Error(`PI WEB config agent accepts only the deprecated keys "command" and "dir"; unknown key ${JSON.stringify(unknownKey)}: ${path}`);
   const command = value["command"];
   const dir = value["dir"];
   return {
-    ...(command !== undefined ? { command: parseAgentCommand(command, "agent.command", path, pathHost) } : {}),
+    // `agent.command` is deprecated and ignored (the multi-CLI abstraction is
+    // gone): it is parsed only so the file round-trips faithfully and the
+    // deprecation detector can name it. `agent.dir` is still honored as a
+    // deprecated alias during the deprecation window, so it keeps validation.
+    ...(command !== undefined ? { command: parseString(command, "agent.command", path) } : {}),
     ...(dir !== undefined ? { dir: parseAgentDir(dir, "agent.dir", path, pathHost) } : {}),
   };
-}
-
-function parseAgentCommand(value: unknown, key: string, path: string, pathHost: AgentPathHost): string {
-  const command = parseString(value, key, path).trim();
-  if (!isSafeAgentCommand(command, pathHost)) {
-    const absoluteLabel = pathHost === "current" ? "host-absolute" : "absolute";
-    throw new Error(`PI WEB config ${key} must be a safe bare executable name or ${absoluteLabel} executable path: ${path}`);
-  }
-  return command;
 }
 
 function parseAgentDir(value: unknown, key: string, path: string, pathHost: AgentPathHost): string {
@@ -418,17 +441,6 @@ function resolveAgentDirPath(value: string, env: NodeJS.ProcessEnv, key: string,
     throw new Error(`PI WEB config ${key} must resolve to a host-absolute path: ${path}`);
   }
   return normalize(expanded);
-}
-
-export function isSafeAgentCommandForHost(value: string): boolean {
-  return isSafeAgentCommand(value, "current");
-}
-
-function isSafeAgentCommand(value: string, pathHost: AgentPathHost): boolean {
-  if (value === "" || value !== value.trim() || value.includes("\0") || /[\s;&|`$<>]/u.test(value)) return false;
-  if (SAFE_BARE_AGENT_COMMAND_PATTERN.test(value)) return true;
-  if (pathHost === "current") return isAbsolute(value) && basename(value) !== "";
-  return isAbsoluteLike(value) && value.split(/[\\/]/u).at(-1) !== "";
 }
 
 export function isHostAbsoluteAgentDir(value: string): boolean {
@@ -504,9 +516,12 @@ function expandHomePath(value: string, env: NodeJS.ProcessEnv): string {
   return value;
 }
 
-function defaultAgentDirForCommand(command: string, env: NodeJS.ProcessEnv): string {
-  if (usesPiCodingAgentStateCompatibility(command)) return expandHomePath("~/.pi/agent", env);
-  throw new Error(`PI WEB config agent.dir or ${PI_WEB_AGENT_DIR_ENV} is required when agent.command is ${JSON.stringify(command)}`);
+// Exact mirror of the pi SDK default (`getAgentDir()`: `~/.pi/agent`) rather
+// than a delegation, so the injected `env` stays authoritative; if the bundled
+// SDK is ever swapped for a fork whose default moves, this mirror must move
+// with it or the two resolutions drift.
+function defaultAgentDir(env: NodeJS.ProcessEnv): string {
+  return expandHomePath("~/.pi/agent", env);
 }
 
 function envValue(env: NodeJS.ProcessEnv, key: string): string | undefined {
@@ -516,10 +531,6 @@ function envValue(env: NodeJS.ProcessEnv, key: string): string | undefined {
 
 function isEnvSet(value: string | undefined): boolean {
   return value !== undefined && value !== "";
-}
-
-function uniqueStrings(values: readonly string[]): string[] {
-  return [...new Set(values)];
 }
 
 function hasControlCharacter(value: string): boolean {

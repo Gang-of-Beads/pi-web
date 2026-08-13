@@ -40,8 +40,8 @@ describe("settings-dialog session daemon machine targeting", () => {
     expect(getDialogProperty(dialog, "sessiondLoading")).toBe(false);
   });
 
-  it("reloads desired config and the active runtime descriptor together", async () => {
-    const config = configResponse({ agent: { command: "agent-lab", dir: "/srv/agent-lab" } });
+  it("reloads session-daemon config and refreshes the machine runtime together", async () => {
+    const config = configResponse({ spawnSessions: false, subsessions: true });
     const configSpy = vi.spyOn(configApi, "config").mockResolvedValue(config);
     const runtimeRefresh = vi.fn(() => Promise.resolve());
     const dialog = new SettingsDialog();
@@ -72,9 +72,9 @@ describe("settings-dialog session daemon machine targeting", () => {
     expect(getDialogProperty(dialog, "saving")).toBe(false);
   });
 
-  it("saves a remote agent profile on the selected machine", async () => {
+  it("saves session-daemon toggles on the selected remote machine", async () => {
     stubWindowTimers();
-    const patch = { agent: { command: "agent-lab", dir: "/srv/agent-lab" } };
+    const patch = { spawnSessions: false, subsessions: true };
     const saved = configResponse(patch);
     const saveSpy = vi.spyOn(configApi, "saveConfig").mockResolvedValue(saved);
     const dialog = new SettingsDialog();

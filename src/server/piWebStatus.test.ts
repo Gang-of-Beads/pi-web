@@ -60,7 +60,7 @@ describe("PI WEB status", () => {
         capabilities: [],
       });
 
-      const status = await getPiWebVersionStatus(daemon, { activeAgentProfile: activeProfile("a", "alt-agent", agentDir) });
+      const status = await getPiWebVersionStatus(daemon, { activeAgentProfile: activeProfile(agentDir) });
 
       expect(status.components.sessiond.installation).toMatchObject({ kind: "pi-package", source: process.cwd(), scope: "user" });
     } finally {
@@ -117,11 +117,8 @@ describe("PI WEB status", () => {
 
   it("carries the daemon-owned active agent profile through the web runtime response", async () => {
     const activeAgentProfile = {
-      schemaVersion: 1 as const,
-      revision: `sha256:${"a".repeat(64)}`,
-      command: "acme-agent",
-      dir: "/opt/acme-agent/state",
-      sessionDirEnvKeys: ["PI_WEB_AGENT_SESSION_DIR"],
+      schemaVersion: 2 as const,
+      dir: "/opt/pi/state",
     };
     const daemon = daemonWithRuntime({
       component: "sessiond",
@@ -136,6 +133,63 @@ describe("PI WEB status", () => {
 
     expect(runtime.components.sessiond.activeAgentProfile).toEqual(activeAgentProfile);
     expect(runtime.components.web.activeAgentProfile).toBeUndefined();
+  });
+
+  it("reports web-process deprecated agent inputs through the runtime response", async () => {
+    const deprecatedAgentInputs = [
+      { source: "environment" as const, name: "PI_WEB_AGENT_DIR", replacement: "PI_CODING_AGENT_DIR" },
+      { source: "config" as const, name: "agent.dir", replacement: "PI_CODING_AGENT_DIR" },
+    ];
+    const daemon = daemonWithRuntime(runningSessiondRuntime());
+
+    const runtime = await getPiWebRuntime(daemon, {
+      loadConfig: () => ({ path: "/tmp/config.json", exists: true, config: {}, deprecatedAgentInputs }),
+    });
+
+    expect(runtime.components.web.deprecatedAgentInputs).toEqual(deprecatedAgentInputs);
+    expect(runtime.components.sessiond.deprecatedAgentInputs).toBeUndefined();
+  });
+
+  it("carries daemon-reported deprecated agent inputs through the session daemon component", async () => {
+    const deprecatedAgentInputs = [
+      { source: "environment" as const, name: "PI_WEB_AGENT_SESSION_DIR", replacement: "PI_CODING_AGENT_SESSION_DIR" },
+      { source: "config" as const, name: "agent.command" },
+    ];
+    const daemon = daemonWithRuntime({ ...runningSessiondRuntime(), deprecatedAgentInputs });
+
+    const runtime = await getPiWebRuntime(daemon, {
+      loadConfig: () => ({ path: "/tmp/config.json", exists: false, config: {}, deprecatedAgentInputs: [] }),
+    });
+
+    expect(runtime.components.sessiond.deprecatedAgentInputs).toEqual(deprecatedAgentInputs);
+  });
+
+  it("omits the deprecated-input report when neither component detects anything", async () => {
+    const daemon = daemonWithRuntime(runningSessiondRuntime());
+
+    const runtime = await getPiWebRuntime(daemon, {
+      loadConfig: () => ({ path: "/tmp/config.json", exists: false, config: {}, deprecatedAgentInputs: [] }),
+    });
+
+    expect(runtime.components.web).not.toHaveProperty("deprecatedAgentInputs");
+    expect(runtime.components.sessiond).not.toHaveProperty("deprecatedAgentInputs");
+  });
+
+  it("keeps the web runtime component well-formed when the config file cannot be loaded", async () => {
+    const daemon = daemonWithRuntime(runningSessiondRuntime());
+
+    const runtime = await getPiWebRuntime(daemon, {
+      loadConfig: () => { throw new Error("PI WEB config agent.dir must be a host-absolute path or start with ~: /tmp/config.json"); },
+    });
+
+    expect(runtime.components.web.available).toBe(true);
+    expect(runtime.components.web.capabilities).toEqual(["plugins.lifecycle"]);
+    expect(runtime.components.web.runtimeVersion).toBeDefined();
+    expect(runtime.components.web).not.toHaveProperty("deprecatedAgentInputs");
+    expect(runtime.components.web.error).toContain("Could not check for deprecated agent configuration inputs");
+    expect(runtime.components.web.error).toContain("agent.dir must be a host-absolute path");
+    expect(runtime.components.sessiond.available).toBe(true);
+    expect(runtime.capabilities).toEqual(["plugins.lifecycle"]);
   });
 
   it("bypasses cached npm release data for a forced check", async () => {
@@ -231,7 +285,7 @@ describe("PI WEB status", () => {
     }
   });
 
-  it("suppresses Pi package update planning without an active companion command", async () => {
+  it("suppresses Pi package update planning without an active state profile", async () => {
     const hasCommand = vi.fn(() => Promise.resolve(true));
 
     const updateCommand = await updateCommandFor(
@@ -245,18 +299,17 @@ describe("PI WEB status", () => {
   });
 
   it("preserves and shell-quotes the active state profile in Pi-package update commands", async () => {
-    const command = "/tmp/agent's/pi";
     const dir = "/tmp/profile's/state";
     const updateCommand = await updateCommandFor(
       { kind: "pi-package", source: "npm:@jmfederico/pi-web", scope: "user", path: "/tmp/pi-web" },
       "pi-web restart",
       {
-        activeAgentProfile: activeProfile("a", command, dir),
-        hasCommand: (candidate) => Promise.resolve(candidate === command),
+        activeAgentProfile: activeProfile(dir),
+        hasCommand: (candidate) => Promise.resolve(candidate === "pi"),
       },
     );
 
-    expect(updateCommand).toBe("PI_CODING_AGENT_DIR='/tmp/profile'\\''s/state' '/tmp/agent'\\''s/pi' update 'npm:@jmfederico/pi-web' && pi-web restart");
+    expect(updateCommand).toBe("PI_CODING_AGENT_DIR='/tmp/profile'\\''s/state' pi update 'npm:@jmfederico/pi-web' && pi-web restart");
   });
 
   it("scopes node-pty script approval in npm-global update commands", async () => {
@@ -279,20 +332,27 @@ describe("PI WEB status", () => {
     expect(updateCommand).toBeUndefined();
   });
 
-  it.each([
-    activeProfile("a", "acme-agent", "/opt/acme/state"),
-    activeProfile("b", "pi", "relative/state"),
-  ])("suppresses Pi-package updates when the active companion profile cannot be represented safely", async (profile) => {
+  it("suppresses Pi-package updates when the active state profile cannot be represented safely", async () => {
     const hasCommand = vi.fn(() => Promise.resolve(true));
 
     const updateCommand = await updateCommandFor(
       { kind: "pi-package", source: "npm:@jmfederico/pi-web", scope: "user", path: "/tmp/pi-web" },
       "pi-web restart",
-      { activeAgentProfile: profile, hasCommand },
+      { activeAgentProfile: activeProfile("relative/state"), hasCommand },
     );
 
     expect(updateCommand).toBeUndefined();
     expect(hasCommand).not.toHaveBeenCalled();
+  });
+
+  it("suppresses Pi-package updates when the pi command is not on PATH", async () => {
+    const updateCommand = await updateCommandFor(
+      { kind: "pi-package", source: "npm:@jmfederico/pi-web", scope: "user", path: "/tmp/pi-web" },
+      "pi-web restart",
+      { activeAgentProfile: activeProfile("/opt/pi/state"), hasCommand: () => Promise.resolve(false) },
+    );
+
+    expect(updateCommand).toBeUndefined();
   });
 
   it.skipIf(process.platform !== "linux")("suggests native systemd commands for local development services", async () => {
@@ -396,13 +456,10 @@ describe("PI WEB status", () => {
   });
 });
 
-function activeProfile(revisionCharacter: string, command: string, dir: string) {
+function activeProfile(dir: string) {
   return {
-    schemaVersion: 1 as const,
-    revision: `sha256:${revisionCharacter.repeat(64)}`,
-    command,
+    schemaVersion: 2 as const,
     dir,
-    sessionDirEnvKeys: ["PI_WEB_AGENT_SESSION_DIR"],
   };
 }
 

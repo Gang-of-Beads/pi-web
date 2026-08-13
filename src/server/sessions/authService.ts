@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { ModelRuntime, type CreateModelRuntimeOptions } from "@earendil-works/pi-coding-agent";
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { AuthProvidersResponse, AuthType, OAuthFlowState } from "../../shared/apiTypes.js";
 import { getLoginProviderOptions, getLogoutProviderOptions } from "./authProviderOptions.js";
 import { OAuthLoginFlowService } from "./oauthLoginFlowService.js";
@@ -31,61 +31,22 @@ interface AuthChangeContext {
 const noopLogger: AuthServiceLogger = { error() { /* no-op */ } };
 
 /**
- * Serializes the `PI_OFFLINE` windows below, which is what keeps their
- * save/restore pairs properly nested. Two overlapping calls would otherwise both
- * capture the forced `"1"` and restore it, leaving the whole process offline
- * permanently. Owned by this module only; nothing else may mutate it.
- */
-let offlineRuntimeCreations: Promise<unknown> = Promise.resolve();
-
-/**
- * Create the shared model runtime with runtime-owned network refreshes disabled.
+ * Model-runtime network policy for the shared runtime.
  *
- * Upstream `ModelRuntime.refresh()`, `login()`, and `logout()` always refresh
- * with `allowNetwork: modelNetworkEnabled` by default, and `login()`/`logout()`
- * accept no abort signal. With the default (`PI_OFFLINE` unset) a single stalled
- * provider-catalog fetch can block those call paths for minutes — and, because
- * pi-web shares one runtime and pi coalesces per-provider refreshes, session
- * creation joins the same stalled fetch. Forcing `PI_OFFLINE` during construction makes every runtime-driven
- * refresh local-only; pi-web performs its own bounded catalog refreshes in the
- * background instead (see modelCatalogRefresher.ts).
- *
- * `modelNetworkEnabled` is computed once from the environment inside
- * `ModelRuntime.create()`, so the env var is the only lever upstream exposes.
- * Calls are queued so their env windows never overlap.
+ * Pi 0.84 made every runtime-owned refresh local-only: `ModelRuntime.create()`
+ * fetches catalogs over the network only when `allowModelNetwork: true`, and
+ * `login()`/`logout()`/runtime-API-key mutations synchronize provider state
+ * with a hard-coded `allowNetwork: false`, provider-scoped and abortable.
+ * Pi-web's own request-path refreshes pass `allowNetwork: false` explicitly
+ * (see below), so no request path can stall on a provider-catalog fetch. The
+ * single deliberate network path is the bounded background refresher in
+ * modelCatalogRefresher.ts.
  */
-function createOfflineModelRuntime(options: CreateModelRuntimeOptions): Promise<ModelRuntime> {
-  const created = offlineRuntimeCreations.then(() => forceOfflineWhile(() => ModelRuntime.create(options)));
-  // A failed creation must not poison the queue; the caller still sees the rejection.
-  offlineRuntimeCreations = created.then(() => undefined, () => undefined);
-  return created;
-}
-
-/**
- * Force `PI_OFFLINE` for the duration of `create`, then restore what was there.
- *
- * `process.env` is process-wide, so this window is a real global side effect:
- * anything reading `PI_OFFLINE` while `create` awaits observes offline mode,
- * including upstream's package manager, tools manager, and version check. That
- * is acceptable because pi-web only builds runtimes during daemon startup and in
- * tests, and the window is one `ModelRuntime.create()` call — but it is why
- * callers must stay serialized rather than run concurrently.
- */
-async function forceOfflineWhile<T>(create: () => Promise<T>): Promise<T> {
-  const previous = process.env["PI_OFFLINE"];
-  process.env["PI_OFFLINE"] = "1";
-  try {
-    return await create();
-  } finally {
-    if (previous === undefined) delete process.env["PI_OFFLINE"];
-    else process.env["PI_OFFLINE"] = previous;
-  }
-}
-
 export function createModelRuntimeForAgentDir(agentDir: string): Promise<ModelRuntime> {
-  return createOfflineModelRuntime({
+  return ModelRuntime.create({
     authPath: join(agentDir, "auth.json"),
     modelsPath: join(agentDir, "models.json"),
+    allowModelNetwork: false,
   });
 }
 
@@ -102,7 +63,7 @@ export class AuthService {
   }
 
   static async create(deps: AuthServiceDependencies = {}): Promise<AuthService> {
-    const runtime = deps.runtime ?? (deps.agentDir === undefined ? await createOfflineModelRuntime({}) : await createModelRuntimeForAgentDir(deps.agentDir));
+    const runtime = deps.runtime ?? (deps.agentDir === undefined ? await ModelRuntime.create({ allowModelNetwork: false }) : await createModelRuntimeForAgentDir(deps.agentDir));
     const logger = deps.logger ?? noopLogger;
     const authFlows = deps.authFlows ?? new OAuthLoginFlowService({ logger });
     return new AuthService(runtime, authFlows, logger);
@@ -121,7 +82,7 @@ export class AuthService {
   }
 
   async authProviders(mode: "login" | "logout", authType?: AuthType): Promise<AuthProvidersResponse> {
-    await this.runtime.refresh();
+    await this.runtime.refresh({ allowNetwork: false });
     const providers = mode === "logout" ? await getLogoutProviderOptions(this.runtime) : getLoginProviderOptions(this.runtime, authType);
     return { providers };
   }
@@ -184,7 +145,7 @@ export class AuthService {
   }
 
   private async requireApiKeyLoginProvider(providerId: string) {
-    await this.runtime.refresh();
+    await this.runtime.refresh({ allowNetwork: false });
     const provider = getLoginProviderOptions(this.runtime, "api_key").find((option) => option.id === providerId);
     if (provider !== undefined) return provider;
 
@@ -196,7 +157,7 @@ export class AuthService {
   }
 
   private async requireOAuthLoginProvider(providerId: string) {
-    await this.runtime.refresh();
+    await this.runtime.refresh({ allowNetwork: false });
     const provider = getLoginProviderOptions(this.runtime, "oauth").find((option) => option.id === providerId);
     if (provider === undefined) throw new Error(`OAuth provider not found: ${providerId}`);
     return provider;

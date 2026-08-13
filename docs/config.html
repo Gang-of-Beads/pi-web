@@ -81,7 +81,7 @@
           <p>
             PI WEB configuration covers the machine-local and project-local settings you usually need: bind address,
             trusted development-host settings, UI preferences, desired PI WEB plugin state, server-plugin recovery,
-            file-explorer path access, manual upload defaults, upload limits, Pi-compatible agent profiles and companion CLIs, and session-daemon tools.
+            file-explorer path access, manual upload defaults, upload limits, the Pi agent state directory, and session-daemon tools.
           </p>
         </div>
       </section>
@@ -100,7 +100,7 @@
             <a href="#safe-tunnel-availability">Safe Tunnel availability</a>
             <a href="#path-access">External path access</a>
             <a href="#manual-uploads">Manual uploads</a>
-            <a href="#agent-runtime">Agent profile and companion CLI</a>
+            <a href="#agent-runtime">Agent state directory</a>
             <a href="#pi-extension-provider-baseline">Pi extension providers</a>
             <a href="#catalog-refresh">Model catalog refresh</a>
             <a href="#session-tools">Session tools</a>
@@ -120,9 +120,10 @@
               </ul>
               <p>
                 Each PI WEB machine has its own config. When using Fleet/machine federation, Settings uses the selected
-                machine for config that affects work running there: the Pi-compatible agent profile and companion CLI,
-                session daemon tools, desired PI WEB plugin enablement/settings, external path access, and upload defaults. Gateway/browser-only settings stay local to the gateway:
-                keyboard shortcuts, remote machine registry/tokens, gateway host/port/allowed-hosts, and experimental Safe Tunnel availability.
+                machine for config that affects work running there: session daemon tools, desired PI WEB plugin
+                enablement/settings, external path access, and upload defaults. Gateway/browser-only settings stay local to the gateway:
+                keyboard shortcuts, remote machine registry/tokens, gateway host/port/allowed-hosts, and experimental
+                Safe Tunnel availability.
               </p>
               <p>
                 Pi package settings are separate from PI WEB config. They live in Pi's package-manager settings on the
@@ -169,15 +170,15 @@
               <p>
                 Environment overrides include <code>PI_WEB_HOST</code>, <code>PI_WEB_PORT</code> / <code>PORT</code>,
                 <code>PI_WEB_ALLOWED_HOSTS</code>, <code>PI_WEB_MAX_UPLOAD_BYTES</code>, <code>PI_WEB_SAFE_TUNNEL</code>,
-                <code>PI_WEB_AGENT_COMMAND</code>, <code>PI_WEB_AGENT_DIR</code>, <code>PI_WEB_AGENT_SESSION_DIR</code>,
-                <code>PI_CODING_AGENT_DIR</code> / <code>PI_CODING_AGENT_SESSION_DIR</code> for Pi compatibility,
-                <code>PI_WEB_SPAWN_SESSIONS</code>, <code>PI_WEB_SUBSESSIONS</code>, and <code>PI_WEB_ASK_USER</code>.
+                <code>PI_CODING_AGENT_DIR</code>, <code>PI_CODING_AGENT_SESSION_DIR</code>,
+                <code>PI_WEB_SPAWN_SESSIONS</code>, <code>PI_WEB_SUBSESSIONS</code>,
+                <code>PI_WEB_ASK_USER</code>, and <code>PI_WEB_ENVIRONMENT_FACTS</code>.
               </p>
               <ul>
                 <li><code>host</code> / <code>port</code>: restart the gateway web/API service or process.</li>
                 <li><code>safeTunnel</code>: restart the gateway web/API service or process; do not restart the session daemon. Availability remains at the active server startup snapshot until that restart.</li>
                 <li><code>maxUploadBytes</code>: restart both the web/API process and the session daemon on that machine.</li>
-                <li><code>agent.command</code> / <code>agent.dir</code> / <code>spawnSessions</code> / <code>subsessions</code> / <code>askUser</code> / <code>extensionDialogsTimeoutMs</code>: restart the session daemon on that machine.</li>
+                <li><code>spawnSessions</code> / <code>subsessions</code> / <code>askUser</code> / <code>extensionDialogsTimeoutMs</code> / <code>environmentFacts</code>: restart the session daemon on that machine.</li>
                 <li><code>pathAccess</code>: applies on the next request; existing file views may need a browser refresh.</li>
                 <li><code>uploads.defaultFolder</code>: applies to newly opened Files upload dialogs and new direct drag/drop batches after config/workspace refresh.</li>
                 <li><code>plugins</code>: browser-only changes apply after a tab reload. Any enablement, settings, source, or package-revision change affecting a <code>serverModule</code> requires a manual sessiond restart, then a tab reload for its paired UI.</li>
@@ -212,12 +213,8 @@
   },
   "maxUploadBytes": 67108864,
   "safeTunnel": false,
-  "agent": {
-    "command": "pi",
-    "dir": "~/agent-profiles/research"
-  },
   "spawnSessions": true,
-  "subsessions": false,
+  "subsessions": true,
   "askUser": true,
   "extensionDialogsTimeoutMs": 300000,
   "plugins": {
@@ -339,7 +336,7 @@ worktree_path="$1"
                 it, and whether project-local config overrides or merges with global config. Rows with JSON key
                 <code>—</code> are runtime-only environment variables, not config-file keys. <code>Global</code> means
                 machine-global. In Settings, selected-machine-safe global keys (<code>pathAccess</code>, <code>uploads</code>,
-                <code>maxUploadBytes</code>, <code>agent</code>, <code>spawnSessions</code>, <code>subsessions</code>, <code>askUser</code>, and <code>plugins</code>)
+                <code>maxUploadBytes</code>, <code>spawnSessions</code>, <code>subsessions</code>, <code>askUser</code>, and <code>plugins</code>)
                 are edited for the selected machine; gateway host/port/allowed-hosts, Safe Tunnel availability, keyboard
                 shortcuts, and machine registry/tokens stay local.
               </p>
@@ -414,22 +411,6 @@ worktree_path="$1"
                       <td>Restart web/API and session daemon on that machine</td>
                     </tr>
                     <tr>
-                      <td>Companion CLI command</td>
-                      <td><code>agent.command</code></td>
-                      <td><code>PI_WEB_AGENT_COMMAND</code></td>
-                      <td>Global/session daemon</td>
-                      <td>Not supported locally</td>
-                      <td>Restart session daemon on that machine; affects doctor/status/update checks</td>
-                    </tr>
-                    <tr>
-                      <td>Agent profile state directory</td>
-                      <td><code>agent.dir</code></td>
-                      <td><code>PI_WEB_AGENT_DIR</code> (<code>PI_CODING_AGENT_DIR</code> for Pi compatibility)</td>
-                      <td>Global/session daemon</td>
-                      <td>Not supported locally</td>
-                      <td>Restart session daemon on that machine; affects auth, models, settings, sessions, Pi packages, and Pi-package-backed PI WEB plugins</td>
-                    </tr>
-                    <tr>
                       <td>Agent can spawn sessions</td>
                       <td><code>spawnSessions</code></td>
                       <td><code>PI_WEB_SPAWN_SESSIONS</code></td>
@@ -438,7 +419,7 @@ worktree_path="$1"
                       <td>Restart session daemon on that machine</td>
                     </tr>
                     <tr>
-                      <td>Tracked subsessions (beta)</td>
+                      <td>Tracked subsessions</td>
                       <td><code>subsessions</code></td>
                       <td><code>PI_WEB_SUBSESSIONS</code></td>
                       <td>Global/session daemon</td>
@@ -457,6 +438,14 @@ worktree_path="$1"
                       <td>Extension dialog auto-cancel timeout</td>
                       <td><code>extensionDialogsTimeoutMs</code></td>
                       <td>—</td>
+                      <td>Global/session daemon</td>
+                      <td>Not supported locally</td>
+                      <td>Restart session daemon on that machine</td>
+                    </tr>
+                    <tr>
+                      <td>Session environment facts</td>
+                      <td><code>environmentFacts</code></td>
+                      <td><code>PI_WEB_ENVIRONMENT_FACTS</code></td>
                       <td>Global/session daemon</td>
                       <td>Not supported locally</td>
                       <td>Restart session daemon on that machine</td>
@@ -508,7 +497,7 @@ worktree_path="$1"
                       <td><code>PI_WEB_DATA_DIR</code></td>
                       <td>Process/env</td>
                       <td>Not supported locally</td>
-                      <td>Restart services before changing; existing state stays in the previous data directory</td>
+                      <td>Restart services before changing; existing state stays in the previous data directory; one live session daemon owns each data directory</td>
                     </tr>
                     <tr>
                       <td>Session daemon socket</td>
@@ -559,20 +548,20 @@ worktree_path="$1"
                       <td>Restart web/API; advanced state override</td>
                     </tr>
                     <tr>
-                      <td>Agent profile session storage directory</td>
+                      <td>Agent state directory</td>
                       <td>—</td>
-                      <td><code>PI_WEB_AGENT_SESSION_DIR</code> (<code>PI_CODING_AGENT_SESSION_DIR</code> for Pi compatibility)</td>
+                      <td><code>PI_CODING_AGENT_DIR</code></td>
                       <td>Session daemon env</td>
                       <td>Not supported locally</td>
-                      <td>Restart session daemon; env-only session storage override</td>
+                      <td>Restart session daemon on that machine; affects auth, models, settings, sessions, Pi packages, and Pi-package-backed PI WEB plugins</td>
                     </tr>
                     <tr>
-                      <td>Agent profile state directory</td>
+                      <td>Agent session storage directory</td>
                       <td>—</td>
-                      <td><code>PI_WEB_AGENT_DIR</code> (<code>PI_CODING_AGENT_DIR</code> for Pi compatibility)</td>
-                      <td>Web/API + session daemon env</td>
+                      <td><code>PI_CODING_AGENT_SESSION_DIR</code></td>
+                      <td>Session daemon env</td>
                       <td>Not supported locally</td>
-                      <td>Restart services</td>
+                      <td>Restart session daemon on that machine; env-only session storage override</td>
                     </tr>
                     <tr>
                       <td>Skip update checks</td>
@@ -597,11 +586,26 @@ worktree_path="$1"
                 </table>
               </div>
               <p>
-                Agent shells, terminals, and spawned sessions do not inherit the session daemon's own configuration:
-                at startup the daemon removes its <code>PI_WEB_*</code> configuration keys, <code>NODE_ENV</code>, <code>PORT</code>,
-                and <code>PI_CODING_AGENT_SESSION_DIR</code> from the environment agent processes see, so commands like
-                <code>npm install</code> behave normally inside sessions. <code>PI_CODING_AGENT_DIR</code> and ordinary
-                variables stay visible; the daemon keeps using the values it captured at startup.
+                Agent shells, terminals, and spawned sessions inherit the session daemon's environment almost as-is:
+                at startup the daemon removes only <code>NODE_ENV</code> and <code>PORT</code> from the environment agent
+                processes see, so commands like <code>npm install</code> behave normally inside sessions. Ordinary
+                variables, the daemon's <code>PI_WEB_*</code> configuration keys, and the resolved
+                <code>PI_CODING_AGENT_DIR</code> / <code>PI_CODING_AGENT_SESSION_DIR</code> values stay visible, so a
+                <code>pi</code> CLI started from inside a session uses the same agent state — auth, models, and session
+                storage — as the daemon; the daemon keeps using the values it captured at startup.
+              </p>
+              <p>
+                Every process spawned from a session also inherits <code>PI_WEB_SESSION=1</code>, marking it as nested
+                inside the running PI WEB instance. The inherited <code>PI_WEB_*</code> values point at that live
+                instance, so starting another PI WEB instance from inside a session fails loudly at startup because the
+                live instance owns the state; running one deliberately requires a distinct
+                <code>PI_WEB_DATA_DIR</code>, <code>PI_WEB_SESSIOND_SOCKET</code> (or
+                <code>PI_WEB_SESSIOND_PORT</code> / <code>PI_WEB_SESSIOND_HOST</code>), and <code>PI_WEB_PORT</code>.
+                Session system prompts state these nesting facts — and, in a Docker deployment, the container layout
+                facts — so agents learn the rules before discovering them by breaking their own session. Set the
+                <code>environmentFacts</code> config key to <code>false</code>, or
+                <code>PI_WEB_ENVIRONMENT_FACTS=false</code> in the session daemon's environment, to leave environment
+                facts out of session system prompts; they default to on.
               </p>
             </section>
 
@@ -700,62 +704,42 @@ worktree_path="$1"
             </section>
 
             <section id="agent-runtime">
-              <h2>Pi-compatible agent profile and companion CLI</h2>
+              <h2>Agent state directory</h2>
               <p>
-                <code>agent.command</code> selects the Pi-compatible companion CLI used by <code>pi-web doctor</code> and,
-                when it can be generated safely, package-managed update commands. It defaults to <code>pi</code>. This
-                setting does <strong>not</strong> replace the embedded runtime: every session continues to use PI WEB's
-                bundled Pi SDK.
+                PI WEB runs every session on its bundled Pi SDK. <code>pi-web doctor</code> and the status/update flow
+                probe the <code>pi</code> command on the machine's <code>PATH</code>.
               </p>
               <p>
-                <code>agent.dir</code> selects the Pi-compatible state profile used for auth providers, models, settings,
-                sessions, Pi packages, and Pi-package-backed PI WEB plugin discovery. It defaults to
-                <code>~/.pi/agent</code> only for a canonical Pi companion command. The directory must use the data layout
-                supported by the bundled Pi SDK; PI WEB does not load or convert incompatible fork formats, migrate
-                profile data, or repartition PI WEB-managed archives when the profile changes.
+                <code>PI_CODING_AGENT_DIR</code> selects the Pi agent state directory used for auth providers, models,
+                settings, sessions, Pi packages, and Pi-package-backed PI WEB plugin discovery. It defaults to Pi's own
+                default, <code>~/.pi/agent</code>. <code>PI_CODING_AGENT_SESSION_DIR</code> overrides session storage
+                separately from the state directory. Both are environment-only; there is no config-file key.
               </p>
               <div class="code-card">
-                <pre><code>{
-  "agent": {
-    "command": "pi-lab",
-    "dir": "/opt/pi-profiles/lab"
-  }
-}</code></pre>
+                <pre><code># Session daemon environment
+PI_CODING_AGENT_DIR=/opt/pi-profiles/lab
+PI_CODING_AGENT_SESSION_DIR=/opt/pi-profiles/lab-sessions</code></pre>
               </div>
               <p>
-                An alternate command always requires an explicit state directory. The command must be a safe bare
-                executable name such as <code>pi-lab</code> or a host-absolute executable path such as
-                <code>/opt/pi/bin/pi</code>; relative paths, shell expressions, and launcher strings are rejected. The
-                state directory must be host-absolute or start with <code>~</code>. In a federated save, the gateway
-                transports Unix and Windows absolute paths without reinterpreting them, and the target machine validates
-                and returns the persisted profile.
+                The directory must use the data layout supported by the bundled Pi SDK; PI WEB does not load or convert
+                incompatible formats, migrate profile data, or repartition PI WEB-managed archives when the directory
+                changes.
               </p>
               <p>
-                Environment variables take precedence over the config file. <code>PI_WEB_AGENT_COMMAND</code> selects the
-                companion CLI, <code>PI_WEB_AGENT_DIR</code> sets the profile state directory, and
-                <code>PI_WEB_AGENT_SESSION_DIR</code> overrides session storage separately from <code>agent.dir</code>. The
-                legacy <code>PI_CODING_AGENT_DIR</code> and <code>PI_CODING_AGENT_SESSION_DIR</code> names apply only to a
-                canonical Pi companion command; PI WEB never derives ambient environment-variable names from an arbitrary
-                command. Use the explicit <code>PI_WEB_AGENT_*</code> names for alternate commands.
-                <code>PI_WEB_AGENT_DIR</code> is an unconditional override, while a legacy
-                <code>PI_CODING_AGENT_DIR</code> override stops applying when Settings selects an alternate command so the
-                command and directory can transition together.
-              </p>
-              <p>
-                The session daemon resolves the persisted desired values plus its environment once at startup. That
-                secret-free active profile stays fixed for the daemon lifetime. <strong>Settings → Session daemon</strong>
-                saves command and directory together as desired configuration and shows whether the profile is active,
-                needs a restart, or cannot be compared. Until the daemon restarts, sessions, Pi package operations,
-                Pi-package-backed PI WEB plugin discovery, status/install detection, and update planning continue to use
-                the daemon-owned active profile; a web/API restart recovers that same active profile instead of applying
-                the newly saved values.
+                The session daemon resolves the directory once at startup and exports the resolved values to everything
+                it starts, so sessions, terminals, the bash tool, and subsessions all observe the same
+                <code>PI_CODING_AGENT_DIR</code> / <code>PI_CODING_AGENT_SESSION_DIR</code>. That resolved active directory
+                stays fixed for the daemon lifetime: changing the environment takes effect on the next session-daemon
+                restart on that machine, and until then sessions, Pi package operations, Pi-package-backed PI WEB plugin
+                discovery, status/install detection, and update planning continue to use the daemon-owned active
+                directory; a web/API restart recovers that same active directory instead of applying the new value.
               </p>
               <div class="callout warning">
-                If the session daemon cannot report a valid active profile, profile-dependent Pi package and PI WEB plugin
-                operations report unavailable instead of falling back to independently resolved config. A package-managed
-                update command is shown only when PI WEB can preserve the active profile with a recognized, safe Pi
-                companion CLI; otherwise the command is omitted. Restart the session daemon on the selected machine to
-                establish the next active profile.
+                If the session daemon cannot report a valid active directory, profile-dependent Pi package and PI WEB
+                plugin operations report unavailable instead of falling back to independently resolved values. A
+                package-managed update command is shown only when the daemon reports a valid active directory and the
+                <code>pi</code> command is on <code>PATH</code>, and the command pins that directory for the update.
+                Restart the session daemon on the selected machine to establish the next active directory.
               </div>
             </section>
 
@@ -770,8 +754,8 @@ worktree_path="$1"
               </p>
               <p>
                 PI WEB shares one model runtime across all sessions. When the session daemon starts, before any project
-                resources load, it initializes global Pi extensions from the active agent profile
-                (<code>agent.dir</code>), including extensions supplied by globally configured Pi packages. Provider
+                resources load, it initializes global Pi extensions from the active agent directory,
+                including extensions supplied by globally configured Pi packages. Provider
                 registrations made by synchronous or awaited asynchronous extension factories during this bootstrap join
                 the shared baseline. PI WEB captures both config-form registrations
                 (<code>pi.registerProvider("id", config)</code>) and native-provider registrations
@@ -835,7 +819,7 @@ worktree_path="$1"
               </p>
               <p>
                 Configure providers before the daemon starts: use the active agent directory's
-                <code>models.json</code>, or install the Pi extension globally in that agent profile. Project Pi extensions
+                <code>models.json</code>, or install the Pi extension globally in that agent directory. Project Pi extensions
                 and project-level <code>models.json</code> files cannot add providers to PI WEB's shared baseline.
               </p>
               <div class="callout warning">
@@ -888,7 +872,7 @@ worktree_path="$1"
                 To turn the background refresh off entirely, set <code>PI_WEB_OFFLINE</code> or <code>PI_OFFLINE</code> in
                 the session daemon's environment and restart it. In offline mode PI WEB performs no provider catalog
                 network requests, including after logins, and sessions use the catalogs already stored in the agent
-                profile. The <code>PI_WEB_SKIP_VERSION_CHECK</code> and <code>PI_SKIP_VERSION_CHECK</code> keys do
+                directory. The <code>PI_WEB_SKIP_VERSION_CHECK</code> and <code>PI_SKIP_VERSION_CHECK</code> keys do
                 <strong>not</strong> affect this refresh; they only suppress PI WEB release checks.
               </p>
             </section>
@@ -904,9 +888,9 @@ worktree_path="$1"
 
               <h3><code>subsessions</code></h3>
               <p>
-                Boolean. Beta. Controls whether agents receive the tracked-subsession tools:
+                Boolean. Controls whether agents receive the tracked-subsession tools:
                 <code>spawn_subsession</code>, <code>list_subsessions</code>, <code>check_subsession</code>,
-                <code>read_subsession</code>, and <code>yield_to_subsessions</code>. Defaults to <code>false</code> and also
+                <code>read_subsession</code>, and <code>yield_to_subsessions</code>. Defaults to <code>true</code> and also
                 requires <code>spawnSessions</code> to be enabled.
               </p>
               <p>

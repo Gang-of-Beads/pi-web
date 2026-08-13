@@ -1,20 +1,14 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { InMemoryCredentialStore, type Credential } from "@earendil-works/pi-ai";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CredentialSynchronizationError, ModelRuntime } from "@earendil-works/pi-coding-agent";
+import { InMemoryCredentialStore, type Credential, type OAuthAuth, type Provider } from "@earendil-works/pi-ai";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { OAuthFlowState } from "../../shared/apiTypes.js";
 import { AuthService, createModelRuntimeForAgentDir, type AuthChange, type AuthServiceLogger } from "./authService.js";
 import { OAuthLoginFlowService } from "./oauthLoginFlowService.js";
 
 const tempDirs: string[] = [];
-
-beforeEach(() => {
-  // Pi 0.82 uses PI_OFFLINE for refreshes after runtime creation. Auth tests
-  // exercise local credential behavior and must never fetch provider catalogs.
-  vi.stubEnv("PI_OFFLINE", "1");
-});
 
 afterEach(async () => {
   vi.unstubAllEnvs();
@@ -22,15 +16,32 @@ afterEach(async () => {
 });
 
 describe("AuthService", () => {
-  it("logs out providers and emits the removed provider id after the runtime refreshes", async () => {
-    const { auth, runtime, credentials, changes } = await createAuthService({ anthropic: { type: "api_key", key: "sk-test" } });
+  it("logs out providers and emits the removed provider id after the runtime syncs", async () => {
+    const credential: Credential = {
+      type: "oauth",
+      refresh: "refresh-token",
+      access: "access-token",
+      expires: Date.now() + 60_000,
+    };
+    const provider = fakeOAuthProvider("test-logout-sync", () => Promise.resolve(credential));
+    const { auth, runtime, credentials, changes } = await createAuthService({ [provider.id]: credential });
+    // registerNativeProvider kicks off a background refresh whose availability
+    // pass invalidates in-flight provider-scoped syncs (upstream's eventual
+    // consistency). Await its exact promise so the logout sync below is the
+    // only writer when it runs.
     const refresh = vi.spyOn(runtime, "refresh");
+    runtime.registerNativeProvider(provider);
+    const registrationRefresh = refresh.mock.results.at(0);
+    if (registrationRefresh?.type !== "return") throw new Error("Expected the registration refresh");
+    await registrationRefresh.value;
 
-    await expect(auth.logoutProvider("anthropic")).resolves.toEqual({ accepted: true });
+    await expect(auth.logoutProvider(provider.id)).resolves.toEqual({ accepted: true });
 
-    await expect(credentials.read("anthropic")).resolves.toBeUndefined();
-    expect(refresh).toHaveBeenCalledOnce();
-    expect(changes).toEqual([{ removedProviderId: "anthropic" }]);
+    await expect(credentials.read(provider.id)).resolves.toBeUndefined();
+    // Pi 0.84 synchronizes provider state inside logout(); it resolving proves
+    // the sync finished, so auth-change listeners observe post-sync truth.
+    expect(runtime.getProviderAuthStatus(provider.id)).toEqual({ configured: false });
+    expect(changes).toEqual([{ removedProviderId: provider.id }]);
     auth.dispose();
   });
 
@@ -51,8 +62,12 @@ describe("AuthService", () => {
     });
 
     const state = await auth.startApiKeyLogin("anthropic");
-    if (state.prompt === undefined) throw new Error("Expected Anthropic key prompt");
-    auth.respondToOAuthFlow(state.flowId, state.prompt.requestId, "sk-test");
+    // Pi 0.84 queues credential operations, so the interactive prompt is
+    // published asynchronously after the flow starts.
+    await vi.waitFor(() => { expect(auth.oauthFlow(state.flowId).prompt).toBeDefined(); });
+    const prompt = auth.oauthFlow(state.flowId).prompt;
+    if (prompt === undefined) throw new Error("Expected Anthropic key prompt");
+    auth.respondToOAuthFlow(state.flowId, prompt.requestId, "sk-test");
     await vi.waitFor(() => { expect(auth.oauthFlow(state.flowId).status).toBe("complete"); });
 
     await expect(credentials.read("anthropic")).resolves.toEqual({ type: "api_key", key: "sk-test" });
@@ -90,9 +105,12 @@ describe("AuthService", () => {
     const { auth, credentials, changes } = await createAuthService();
 
     const state = await auth.startApiKeyLogin("cloudflare-ai-gateway");
-    expect(state.prompt).toMatchObject({ message: "Enter Cloudflare API key", promptType: "secret" });
-    if (state.prompt === undefined) throw new Error("Expected Cloudflare key prompt");
-    auth.respondToOAuthFlow(state.flowId, state.prompt.requestId, "cf-secret");
+    await vi.waitFor(() => {
+      expect(auth.oauthFlow(state.flowId).prompt).toMatchObject({ message: "Enter Cloudflare API key", promptType: "secret" });
+    });
+    const keyPrompt = auth.oauthFlow(state.flowId).prompt;
+    if (keyPrompt === undefined) throw new Error("Expected Cloudflare key prompt");
+    auth.respondToOAuthFlow(state.flowId, keyPrompt.requestId, "cf-secret");
 
     await vi.waitFor(() => {
       expect(auth.oauthFlow(state.flowId).prompt).toMatchObject({ message: "Enter Cloudflare account ID", promptType: "text" });
@@ -125,9 +143,10 @@ describe("AuthService", () => {
     const { auth, credentials, changes } = await createAuthService();
 
     const state = await auth.startApiKeyLogin(providerId);
-    expect(state.select).toBeDefined();
-    if (state.select === undefined) throw new Error("Expected auth method selection");
-    auth.respondToOAuthFlow(state.flowId, state.select.requestId, selection);
+    await vi.waitFor(() => { expect(auth.oauthFlow(state.flowId).select).toBeDefined(); });
+    const select = auth.oauthFlow(state.flowId).select;
+    if (select === undefined) throw new Error("Expected auth method selection");
+    auth.respondToOAuthFlow(state.flowId, select.requestId, selection);
 
     await vi.waitFor(() => {
       expect(auth.oauthFlow(state.flowId).prompt).toMatchObject({ message: secretPrompt, promptType: "secret" });
@@ -257,55 +276,71 @@ describe("AuthService", () => {
     const auth = await AuthService.create({ runtime });
 
     const state = await auth.startApiKeyLogin("anthropic");
-    if (state.prompt === undefined) throw new Error("Expected Anthropic key prompt");
-    auth.respondToOAuthFlow(state.flowId, state.prompt.requestId, "sk-test");
+    await vi.waitFor(() => { expect(auth.oauthFlow(state.flowId).prompt).toBeDefined(); });
+    const prompt = auth.oauthFlow(state.flowId).prompt;
+    if (prompt === undefined) throw new Error("Expected Anthropic key prompt");
+    auth.respondToOAuthFlow(state.flowId, prompt.requestId, "sk-test");
     await vi.waitFor(() => { expect(auth.oauthFlow(state.flowId).status).toBe("complete"); });
 
     await expect(readFile(join(agentDir, "auth.json"), "utf8")).resolves.toContain("sk-test");
     auth.dispose();
   });
 
-  it("reconciles cancellation after ModelRuntime persists OAuth but before its refresh completes", async () => {
+  it("keeps the persisted credential when cancellation lands during the post-login sync", async () => {
     const { auth, runtime, credentials, changes } = await createAuthService();
-    const provider = runtime.getProviders().find((option) => option.id === "anthropic" && option.auth.oauth !== undefined);
-    if (provider?.auth.oauth === undefined) throw new Error("Expected built-in OAuth provider");
     const credential: Credential = {
       type: "oauth",
       refresh: "refresh-token",
       access: "access-token",
       expires: Date.now() + 60_000,
     };
-    vi.spyOn(provider.auth.oauth, "login").mockResolvedValue(credential);
-    const refreshStarted = deferred<undefined>();
-    const finishRefresh = deferred<undefined>();
-    // Pi 0.82 merged reloadConfig() into refresh(), so the provider lookup now
-    // shares this seam with the post-login refresh. Only the post-login call
-    // (the second) is held open; deferring the lookup would stall the flow
-    // before it starts.
-    let refreshCalls = 0;
-    const refresh = vi.spyOn(runtime, "refresh").mockImplementation(async () => {
-      refreshCalls += 1;
-      if (refreshCalls < 2) return { aborted: false, errors: new Map() };
-      refreshStarted.resolve(undefined);
-      await finishRefresh.promise;
-      return { aborted: false, errors: new Map() };
+    // Pi 0.84 makes login abortable end to end: the credential is persisted
+    // before the provider-scoped post-login sync, and cancelling the flow
+    // aborts that sync, rejecting login with CredentialSynchronizationError.
+    // The read gate holds the sync's availability pass open so cancel lands
+    // inside the window; arming it from the provider login mock guarantees
+    // every pre-login availability read of this provider already happened.
+    let gateArmed = false;
+    const syncStarted = deferred<undefined>();
+    const finishSync = deferred<undefined>();
+    const provider = fakeOAuthProvider("test-cancel-during-sync", () => {
+      gateArmed = true;
+      return Promise.resolve(credential);
     });
+    // Await the registration refresh's exact promise so its credential reads
+    // cannot trip the gate below once it is armed.
+    const refresh = vi.spyOn(runtime, "refresh");
+    runtime.registerNativeProvider(provider);
+    const registrationRefresh = refresh.mock.results.at(0);
+    if (registrationRefresh?.type !== "return") throw new Error("Expected the registration refresh");
+    await registrationRefresh.value;
+    refresh.mockRestore();
+    vi.spyOn(credentials, "read").mockImplementation(async (providerId, options) => {
+      if (gateArmed && providerId === provider.id) {
+        gateArmed = false;
+        syncStarted.resolve(undefined);
+        await finishSync.promise;
+      }
+      return InMemoryCredentialStore.prototype.read.call(credentials, providerId, options);
+    });
+    const login = vi.spyOn(runtime, "login");
 
     const state = await auth.startOAuthLogin(provider.id);
-    await refreshStarted.promise;
+    await syncStarted.promise;
 
     await expect(credentials.read(provider.id)).resolves.toEqual(credential);
     expect(auth.cancelOAuthFlow(state.flowId)).toMatchObject({ status: "cancelled", error: "Login cancelled" });
-    expect(changes).toEqual([]);
 
-    finishRefresh.resolve(undefined);
-    await vi.waitFor(() => { expect(auth.oauthFlow(state.flowId).status).toBe("complete"); });
+    finishSync.resolve(undefined);
+    const loginCall = login.mock.results.at(0);
+    if (loginCall?.type !== "return") throw new Error("Expected the runtime login call");
+    await expect(loginCall.value).rejects.toBeInstanceOf(CredentialSynchronizationError);
 
-    expect(auth.oauthFlow(state.flowId)).toMatchObject({ status: "complete", progress: ["Login complete"] });
-    expect(auth.oauthFlow(state.flowId)).not.toHaveProperty("error");
+    // The aborted login supersedes nothing: the flow stays cancelled and the
+    // already-persisted credential remains the stored truth.
+    expect(auth.oauthFlow(state.flowId)).toMatchObject({ status: "cancelled", error: "Login cancelled" });
     await expect(credentials.read(provider.id)).resolves.toEqual(credential);
-    expect(changes).toEqual([{}]);
-    expect(refresh).toHaveBeenCalledTimes(2);
+    expect(changes).toEqual([]);
     auth.dispose();
   });
 
@@ -371,66 +406,40 @@ describe("AuthService", () => {
 });
 
 describe("createModelRuntimeForAgentDir", () => {
-  it("keeps runtime-owned refreshes local so request paths cannot stall", async () => {
-    // Runtime-owned mutations refresh with allowNetwork = the construction-time
-    // network flag and no abort signal; that is what regressed. Pi 0.82 removed
-    // reloadConfig(), so removeRuntimeApiKey() is the surviving public seam that
-    // still forwards that flag explicitly and can be observed on refresh().
-    // The ambient PI_OFFLINE=1 stub has to go, or the runtime would be offline
-    // whether or not the helper forces it and this would assert nothing.
-    vi.stubEnv("PI_OFFLINE", undefined);
+  it("keeps request-path refreshes local so they cannot stall on the network", async () => {
     const agentDir = await tempAgentDir();
     const runtime = await createModelRuntimeForAgentDir(agentDir);
+    const auth = await AuthService.create({ runtime });
     const refresh = vi.spyOn(runtime, "refresh");
 
-    await runtime.removeRuntimeApiKey("anthropic");
+    await auth.authProviders("login");
+    await auth.authProviders("logout");
+    const apiKeyFlow = await auth.startApiKeyLogin("anthropic");
+    auth.cancelOAuthFlow(apiKeyFlow.flowId);
+    await expect(auth.startOAuthLogin("unknown-provider")).rejects.toThrow("OAuth provider not found: unknown-provider");
 
-    expect(refresh).toHaveBeenCalledWith({ allowNetwork: false });
+    // Every auth request path refreshes the runtime first; all of them must
+    // stay local-only. Network refreshes belong to the background catalog
+    // refresher.
+    expect(refresh.mock.calls.length).toBeGreaterThan(0);
+    for (const call of refresh.mock.calls) {
+      expect(call).toEqual([{ allowNetwork: false }]);
+    }
+    auth.dispose();
   });
 
-  it("restores a previously set PI_OFFLINE after runtime creation", async () => {
-    // The file-level beforeEach stubs PI_OFFLINE=1.
-    const agentDir = await tempAgentDir();
-    await createModelRuntimeForAgentDir(agentDir);
+  it("leaves PI_OFFLINE untouched while creating runtimes concurrently", async () => {
+    // Pi 0.84 made runtime-owned refreshes local-only, so construction no
+    // longer forces PI_OFFLINE; the env var must stay exactly as found, even
+    // when creations overlap.
+    vi.stubEnv("PI_OFFLINE", "1");
+    const dirs = await Promise.all([tempAgentDir(), tempAgentDir(), tempAgentDir()]);
+    await Promise.all(dirs.map((dir) => createModelRuntimeForAgentDir(dir)));
     expect(process.env["PI_OFFLINE"]).toBe("1");
-  });
 
-  it("restores a previously unset PI_OFFLINE after runtime creation", async () => {
-    vi.unstubAllEnvs();
-    const previous = process.env["PI_OFFLINE"];
-    delete process.env["PI_OFFLINE"];
-    try {
-      const agentDir = await tempAgentDir();
-      const runtime = await createModelRuntimeForAgentDir(agentDir);
-      const refresh = vi.spyOn(runtime, "refresh");
-
-      await runtime.removeRuntimeApiKey("anthropic");
-
-      expect(refresh).toHaveBeenCalledWith({ allowNetwork: false });
-      expect(process.env["PI_OFFLINE"]).toBeUndefined();
-    } finally {
-      if (previous !== undefined) process.env["PI_OFFLINE"] = previous;
-    }
-  });
-
-  it("restores PI_OFFLINE when creations overlap, because the env windows are serialized", async () => {
-    vi.unstubAllEnvs();
-    const previous = process.env["PI_OFFLINE"];
-    delete process.env["PI_OFFLINE"];
-    try {
-      const dirs = await Promise.all([tempAgentDir(), tempAgentDir(), tempAgentDir()]);
-      const runtimes = await Promise.all(dirs.map((dir) => createModelRuntimeForAgentDir(dir)));
-
-      // Interleaved save/restore pairs would leave PI_OFFLINE set process-wide.
-      expect(process.env["PI_OFFLINE"]).toBeUndefined();
-      for (const runtime of runtimes) {
-        const refresh = vi.spyOn(runtime, "refresh");
-        await runtime.removeRuntimeApiKey("anthropic");
-        expect(refresh).toHaveBeenCalledWith({ allowNetwork: false });
-      }
-    } finally {
-      if (previous !== undefined) process.env["PI_OFFLINE"] = previous;
-    }
+    vi.stubEnv("PI_OFFLINE", undefined);
+    await createModelRuntimeForAgentDir(await tempAgentDir());
+    expect(process.env["PI_OFFLINE"]).toBeUndefined();
   });
 });
 
@@ -471,6 +480,24 @@ function deferred<T>() {
     rejectValue = reject;
   });
   return { promise, resolve: resolveValue, reject: rejectValue };
+}
+
+function fakeOAuthProvider(id: string, login: OAuthAuth["login"]): Provider {
+  return {
+    id,
+    name: `Test ${id}`,
+    auth: {
+      oauth: {
+        name: `Test ${id} OAuth`,
+        login,
+        refresh: (credential) => Promise.resolve(credential),
+        toAuth: (credential) => Promise.resolve({ apiKey: credential.access }),
+      },
+    },
+    getModels: () => [],
+    stream: () => { throw new Error("stream not implemented"); },
+    streamSimple: () => { throw new Error("streamSimple not implemented"); },
+  };
 }
 
 function radiusModelsConfig(name: string): string {

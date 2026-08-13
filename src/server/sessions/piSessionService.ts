@@ -796,10 +796,9 @@ export interface PiSessionServiceDependencies {
    */
   spawnTargets?: SpawnTargetResolver;
   /**
-   * Beta: when true (and `spawnTargets` is provided), the tracked-subsession
+   * When true (and `spawnTargets` is provided), the tracked-subsession
    * tools are available to sessions whose creation provenance permits
-   * delegation. Off by default so the capability can ship in main without
-   * being exposed in releases.
+   * delegation. On by default; the operator opts out via config or environment.
    */
   subsessionsEnabled?: boolean;
   /**
@@ -935,7 +934,7 @@ export class PiSessionService implements SessionRouteService {
       deps.unreadPublicationRetryDelayMs ?? DEFAULT_UNREAD_PUBLICATION_RETRY_MS,
     );
     this.unreadPublicationRetryDelayMs = this.unreadPublicationRetryInitialMs;
-    // Subsessions are a beta capability gated behind their own flag, and they
+    // Subsessions are gated behind their own flag, and they
     // also require the spawn capability (they share its project-scope resolver).
     const subsessionsActive = this.spawnTargets !== undefined && deps.subsessionsEnabled === true;
     this.createRuntime = deps.createRuntime ?? createDefaultRuntimeFactory(
@@ -1270,10 +1269,12 @@ export class PiSessionService implements SessionRouteService {
   /**
    * The models a session may pick from: its scoped set when model-scoped,
    * otherwise the runtime's available snapshot. Refreshes the runtime catalog
-   * first so callers see newly configured providers and models.
+   * first so callers see newly configured providers and models. The refresh
+   * stays local (`allowNetwork: false`); network refreshes belong to the
+   * bounded background catalog refresher, not this request path.
    */
   private async sessionModelCandidates(session: PiAgentSession): Promise<readonly AgentModel[]> {
-    await session.modelRuntime.refresh();
+    await session.modelRuntime.refresh({ allowNetwork: false });
     return session.scopedModels.length > 0
       ? session.scopedModels.map((scoped) => scoped.model)
       : session.modelRuntime.getAvailableSnapshot();

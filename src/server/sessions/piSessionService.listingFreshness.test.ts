@@ -37,7 +37,6 @@ describe("PiSessionService listing of replaced session files", () => {
     const realGateway = createPiSessionManagerGateway({
       agentDir: TEST_AGENT_DIR,
       env: { PI_CODING_AGENT_SESSION_DIR: sessionDir },
-      sessionDirEnvKeys: ["PI_CODING_AGENT_SESSION_DIR"],
     });
     const replacementRuntime = fakeRuntime("replacement-id", {
       sessionManager: fakeSessionManager(LISTING_CWD, {
@@ -109,7 +108,6 @@ describe("PiSessionService.detachParent summary memo", () => {
     const realGateway = createPiSessionManagerGateway({
       agentDir: TEST_AGENT_DIR,
       env: { PI_CODING_AGENT_SESSION_DIR: sessionDir },
-      sessionDirEnvKeys: ["PI_CODING_AGENT_SESSION_DIR"],
     });
     const child = fakeRuntime("child", { sessionFile: childPath });
     const service = new PiSessionService(new CapturingSessionEventHub(), {

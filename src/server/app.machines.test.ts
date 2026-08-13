@@ -68,11 +68,8 @@ describe("buildApp machine routes", () => {
             available: true,
             capabilities: [],
             activeAgentProfile: {
-              schemaVersion: 1,
-              revision: `sha256:${"a".repeat(64)}`,
-              command: "remote-agent",
-              dir: "/srv/remote-agent",
-              sessionDirEnvKeys: ["PI_WEB_AGENT_SESSION_DIR"],
+              schemaVersion: 2,
+              dir: "/srv/remote-pi-state",
             },
           },
         },
@@ -90,7 +87,7 @@ describe("buildApp machine routes", () => {
       machineId: remote.id,
       ok: true,
       capabilities: [],
-      components: { sessiond: { activeAgentProfile: { command: "remote-agent", dir: "/srv/remote-agent" } } },
+      components: { sessiond: { activeAgentProfile: { schemaVersion: 2, dir: "/srv/remote-pi-state" } } },
     });
     expect(requestJson).toHaveBeenCalledTimes(2);
     expect(requestJson).toHaveBeenCalledWith("GET", "/api/pi-web/runtime", undefined, { timeoutMs: 3000 });

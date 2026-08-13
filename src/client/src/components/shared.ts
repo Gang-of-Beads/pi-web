@@ -175,6 +175,9 @@ export const appStyles = css`
   .error { display: flex; gap: 8px; align-items: flex-start; padding: 10px 16px; border-bottom: 1px solid var(--pi-border); color: var(--pi-danger); }
   .error .error-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
   .error .error-dismiss { flex: 0 0 auto; padding: 0 6px; border: 0; background: none; color: inherit; line-height: 1.4; }
+  .deprecation-notice { padding: 10px 16px; border-bottom: 1px solid var(--pi-border); color: var(--pi-warning); }
+  .deprecation-notice .deprecation-notice-text { margin: 0; overflow-wrap: anywhere; }
+  .deprecation-notice .deprecation-notice-text + .deprecation-notice-text { margin-top: 4px; }
 `;
 
 export const workspacePanelStyles = css`

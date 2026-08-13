@@ -258,7 +258,6 @@ describe("PiSessionService lifecycle, listing, and reload", () => {
     const realGateway = createPiSessionManagerGateway({
       agentDir: TEST_AGENT_DIR,
       env: { PI_CODING_AGENT_SESSION_DIR: sessionDir },
-      sessionDirEnvKeys: ["PI_CODING_AGENT_SESSION_DIR"],
     });
     const open = vi.fn(() => fakeSessionManager(workspace, { getSessionId: () => sessionId }));
     const service = new PiSessionService(new CapturingSessionEventHub(), {

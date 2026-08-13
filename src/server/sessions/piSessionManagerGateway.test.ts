@@ -2,7 +2,6 @@ import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { agentSessionDirEnvKeys } from "../../config.js";
 import { createPiSessionManagerGateway, defaultPiSessionDir, defaultPiSessionsRoot, filterSessionsForCwd, resolveSessionFileInDir, SessionDirResolver } from "./piSessionManagerGateway.js";
 import type { PiSessionListEntry } from "./piSessionService.js";
 import type { PiSessionManager } from "./piSessionService.js";
@@ -73,14 +72,25 @@ describe("SessionDirResolver", () => {
     expect(resolver.resolve(cwd)).toMatchObject({ source: "env", sessionDir: envDir, usesConfiguredSessionDir: true });
   });
 
+  it("prefers the deprecated PI WEB session directory alias over the canonical env var", async () => {
+    const aliasDir = join(tempDir, "pi-web-env-sessions");
+    await mkdir(agentDir, { recursive: true });
+    await writeFile(join(agentDir, "settings.json"), `${JSON.stringify({ sessionDir: join(tempDir, "settings-sessions") }, null, 2)}\n`, "utf8");
+
+    const resolver = new SessionDirResolver(piProfileOptions({
+      PI_WEB_AGENT_SESSION_DIR: aliasDir,
+      PI_CODING_AGENT_SESSION_DIR: join(tempDir, "pi-env-sessions"),
+    }));
+
+    expect(resolver.resolve(cwd)).toMatchObject({ source: "env", sessionDir: aliasDir, usesConfiguredSessionDir: true });
+  });
+
   it("snapshots the daemon epoch's injected session-directory environment", () => {
     const firstDir = join(tempDir, "first-env-sessions");
     const env = { PI_WEB_AGENT_SESSION_DIR: firstDir };
-    const sessionDirEnvKeys = ["PI_WEB_AGENT_SESSION_DIR"];
-    const resolver = new SessionDirResolver({ agentDir, env, sessionDirEnvKeys });
+    const resolver = new SessionDirResolver({ agentDir, env });
 
     env.PI_WEB_AGENT_SESSION_DIR = join(tempDir, "mutated-env-sessions");
-    sessionDirEnvKeys[0] = "OTHER_SESSION_DIR";
 
     expect(resolver.resolve(cwd)).toMatchObject({ source: "env", sessionDir: firstDir, usesConfiguredSessionDir: true });
   });
@@ -112,7 +122,6 @@ describe("Pi session manager gateway", () => {
       const gateway = createPiSessionManagerGateway({
         agentDir,
         env: { [envKey]: envSessionDir },
-        sessionDirEnvKeys: [envKey],
       });
 
       await expect(gateway.listAll()).resolves.toEqual(expect.arrayContaining([expect.objectContaining({ id: `${envKey.toLowerCase()}-session`, cwd })]));
@@ -394,7 +403,7 @@ describe("session listing canonicalization", () => {
 });
 
 function piProfileOptions(env: NodeJS.ProcessEnv = {}) {
-  return { agentDir, env, sessionDirEnvKeys: agentSessionDirEnvKeys() };
+  return { agentDir, env };
 }
 
 function hasSessionDir(manager: PiSessionManager): manager is PiSessionManager & { getSessionDir(): string } {

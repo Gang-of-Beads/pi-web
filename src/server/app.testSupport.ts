@@ -268,11 +268,8 @@ function fakeConfigService() {
 
 function appTestAgentProfile(dir: string): ActiveAgentProfileDescriptor {
   return {
-    schemaVersion: 1,
-    revision: `sha256:${"a".repeat(64)}`,
-    command: "pi",
+    schemaVersion: 2,
     dir,
-    sessionDirEnvKeys: ["PI_WEB_AGENT_SESSION_DIR", "PI_CODING_AGENT_SESSION_DIR"],
   };
 }
 
@@ -310,7 +307,7 @@ export function piWebConfigResponse(config: PiWebConfigValues): PiWebConfigRespo
     exists: false,
     config,
     effectiveConfig: config,
-    envOverrides: { host: false, port: false, allowedHosts: false, safeTunnel: false, spawnSessions: false, subsessions: false, askUser: false, agentCommand: false, agentDir: false, agentSessionDir: false },
+    envOverrides: { host: false, port: false, allowedHosts: false, safeTunnel: false, spawnSessions: false, subsessions: false, askUser: false },
   };
 }
 

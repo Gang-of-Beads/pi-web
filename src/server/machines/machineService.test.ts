@@ -197,6 +197,33 @@ describe("MachineService", () => {
     ]);
   });
 
+  it("unions and deduplicates component deprecated agent inputs per machine", async () => {
+    const body = remoteRuntimeBody();
+    body.components.web.deprecatedAgentInputs = [
+      { source: "environment", name: "PI_WEB_AGENT_DIR", replacement: "PI_CODING_AGENT_DIR" },
+      { source: "config", name: "agent.dir", replacement: "PI_CODING_AGENT_DIR" },
+    ];
+    body.components.sessiond.deprecatedAgentInputs = [
+      // Both processes read the same config file: the duplicate collapses into one warning.
+      { source: "config", name: "agent.dir", replacement: "PI_CODING_AGENT_DIR" },
+      { source: "environment", name: "PI_WEB_AGENT_COMMAND" },
+    ];
+    const requestJson = vi.fn<MachineClient["requestJson"]>(() => Promise.resolve({ statusCode: 200, headers: {}, body }));
+    const remoteService = new MachineService(new MachineStore(storePath), {
+      remoteClientFactory: () => fakeRemoteClient({ requestJson }),
+      now: () => new Date("2026-05-25T00:00:00.000Z"),
+    });
+    const machine = await remoteService.add({ name: "Remote", baseUrl: "https://remote.example.test" });
+
+    const runtime = await remoteService.runtime(machine.id);
+
+    expect(runtime?.deprecatedAgentInputs).toEqual([
+      { source: "environment", name: "PI_WEB_AGENT_DIR", replacement: "PI_CODING_AGENT_DIR" },
+      { source: "config", name: "agent.dir", replacement: "PI_CODING_AGENT_DIR" },
+      { source: "environment", name: "PI_WEB_AGENT_COMMAND" },
+    ]);
+  });
+
   it("caches remote runtime errors and clears them after remote updates", async () => {
     let now = new Date("2026-05-25T00:00:00.000Z");
     const body = remoteRuntimeBody();

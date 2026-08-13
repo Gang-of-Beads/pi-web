@@ -30,13 +30,15 @@ import { TerminalService } from "./terminals/terminalService.js";
 import { registerTerminalRoutes } from "./terminals/terminalRoutes.js";
 import { getPiWebRuntimeComponent } from "./piWebStatus.js";
 import { SESSIOND_RUNTIME_CAPABILITIES } from "../shared/capabilities.js";
-import { agentSessionDirEnvKeys, effectivePiWebConfig, maxUploadBytes, offlineModeEnabled } from "../config.js";
+import { agentSessionDirEnvOverride, effectivePiWebConfig, maxUploadBytes, offlineModeEnabled, PI_CODING_AGENT_DIR_ENV, PI_CODING_AGENT_SESSION_DIR_ENV } from "../config.js";
 import { createActiveAgentProfileDescriptor } from "../sessiond/activeAgentProfile.js";
 import { loadServerPluginRecoveryConfig } from "../serverPluginRecovery.js";
 import { PiWebPluginCatalog } from "./piWebPluginCatalog.js";
 import { applyAgentHttpIdleTimeout } from "./sessiond/agentHttpDispatcher.js";
 import { scrubNonAgentVisibleEnvKeys } from "./sessiond/agentProcessEnvironment.js";
+import { claimSessiondStateOwnership } from "./sessiond/sessiondStateOwnership.js";
 import { dockerEnvironmentPromptSections } from "./sessions/dockerEnvironmentFacts.js";
+import { PI_WEB_SESSION_ENV, sessionEnvironmentPromptSections } from "./sessions/sessionEnvironmentFacts.js";
 import { createServerPluginExecFile } from "./plugins/serverPluginExec.js";
 import { createServerPluginRuntime } from "./plugins/serverPluginRuntime.js";
 import { runSessionDaemonShutdown } from "./sessiond/sessionDaemonShutdown.js";
@@ -49,13 +51,28 @@ import { WorkspaceRemovalService } from "./workspaces/workspaceRemovalService.js
 
 const daemonEnvironment: NodeJS.ProcessEnv = Object.freeze({ ...process.env });
 const serverPluginRecovery = loadServerPluginRecoveryConfig({ env: daemonEnvironment });
-const { config } = effectivePiWebConfig({ env: daemonEnvironment });
-const activeAgentProfile = createActiveAgentProfileDescriptor({
-  command: config.agent.command,
-  dir: config.agent.dir,
-  sessionDirEnvKeys: agentSessionDirEnvKeys(config.agent.command),
-});
+const { config, deprecatedAgentInputs } = effectivePiWebConfig({ env: daemonEnvironment });
+const activeAgentProfile = createActiveAgentProfileDescriptor(config.agent);
+// Normalize the resolved agent state locations into the canonical pi SDK env
+// vars before anything agent-visible can spawn: the embedded SDK's own
+// resolution (getAgentDir(), its session-dir override), terminals, the bash
+// tool, and subsessions then all observe the same values by inheritance. The
+// exported canonical values are fully resolved, so agent processes that also
+// inherit the deprecated PI_WEB_AGENT_* aliases still resolve to the same
+// locations.
+process.env[PI_CODING_AGENT_DIR_ENV] = activeAgentProfile.dir;
+const agentSessionDirOverride = agentSessionDirEnvOverride(daemonEnvironment);
+if (agentSessionDirOverride !== undefined) {
+  process.env[PI_CODING_AGENT_SESSION_DIR_ENV] = agentSessionDirOverride;
+}
+// Deliberately agent-visible nesting marker: every process spawned from a
+// session can tell it runs inside this pi-web instance. The session
+// environment facts below explain the precautions that follow from it.
+process.env[PI_WEB_SESSION_ENV] = "1";
 const app = Fastify({ logger: true, bodyLimit: maxUploadBytes(daemonEnvironment, config) });
+if (deprecatedAgentInputs.length > 0) {
+  app.log.warn({ deprecatedAgentInputs }, "deprecated agent configuration inputs detected; support will be removed in a future release");
+}
 if (serverPluginRecovery.safeStartDiagnostic !== undefined) {
   app.log.error(
     { component: "server-plugins", configPath: serverPluginRecovery.path },
@@ -95,12 +112,22 @@ process.once("SIGINT", (signal) => { void requestShutdown(signal); });
 process.once("SIGTERM", (signal) => { void requestShutdown(signal); });
 
 // Agent-executed processes (bash tool, terminals, subsessions) are spawned from
-// this process and inherit its environment, so hide the daemon's own
-// configuration keys before any of them can start. The daemon keeps using the
-// captured daemonEnvironment above; its runtime stores resolve their paths from
-// it explicitly below.
+// this process and inherit its environment. The scrub removes only the keys
+// that silently distort the tools agents run; the daemon's PI_WEB_* wiring
+// stays visible on purpose, because a nested instance resolving the same state
+// now fails loudly through the ownership claim below instead of corrupting it
+// silently. The daemon keeps using the captured daemonEnvironment above; its
+// runtime stores resolve their paths from it explicitly below.
 const scrubbedEnvKeys = scrubNonAgentVisibleEnvKeys(process.env);
 app.log.info({ scrubbedEnvKeys }, "daemon-only environment keys hidden from agent processes");
+
+// Claim ownership of the instance's durable state before any runtime store can
+// touch it: a second daemon resolving the same data directory finds a live
+// owner here and fails with an actionable error. Service and tsx-watch
+// restarts briefly overlap the outgoing daemon, so the claim waits out a short
+// grace for it to release first. The web/API process of this instance shares
+// the data directory but never claims it.
+const stateOwnership = await claimSessiondStateOwnership({ env: daemonEnvironment, logger: app.log });
 
 const runtime = await createSessionDaemonRuntime();
 try {
@@ -206,14 +233,22 @@ async function createSessionDaemonRuntime() {
       ...(spawnTargets === undefined ? {} : { spawnTargets }),
       subsessionsEnabled: config.subsessions,
       askUserEnabled: config.askUser,
-      // Docker deployments describe their container to agents; ordinary installs
-      // add nothing. Resolved once here, from the captured daemon environment,
-      // because the deployment cannot change while the daemon runs.
-      appendSystemPromptSections: dockerEnvironmentPromptSections({
-        env: daemonEnvironment,
-        enabled: config.environmentFacts,
-        logger: app.log,
-      }),
+      appendSystemPromptSections: [
+        // Sessions always run nested in this daemon, so they always get the
+        // session environment facts; Docker deployments add their container
+        // facts on top. Resolved once here, from the captured daemon
+        // environment, because the deployment cannot change while the daemon
+        // runs.
+        ...sessionEnvironmentPromptSections({
+          env: daemonEnvironment,
+          enabled: config.environmentFacts,
+        }),
+        ...dockerEnvironmentPromptSections({
+          env: daemonEnvironment,
+          enabled: config.environmentFacts,
+          logger: app.log,
+        }),
+      ],
       extensionDialogsTimeoutMs: config.extensionDialogsTimeoutMs,
       notificationStore,
       unreadStore,
@@ -222,14 +257,17 @@ async function createSessionDaemonRuntime() {
       sessionManager: createPiSessionManagerGateway({
         agentDir: activeAgentProfile.dir,
         env: daemonEnvironment,
-        sessionDirEnvKeys: activeAgentProfile.sessionDirEnvKeys,
       }),
     }));
     auth.subscribe((change) => { sessions.applyAuthChange(change); });
     const terminals = new TerminalService(eventHub, workspaceActivity);
     const workspaceRemovals = new WorkspaceRemovalService(workspaceProviders, terminals);
     const runtimeComponent = Object.freeze({
-      ...getPiWebRuntimeComponent("sessiond", SESSIOND_RUNTIME_CAPABILITIES),
+      // The deprecated-input report is fixed at startup: it was detected from
+      // the captured pre-scrub daemon environment and the config snapshot this
+      // daemon actually honors, so it stays accurate for this daemon lifetime
+      // and clears only when the inputs are removed and the daemon restarts.
+      ...getPiWebRuntimeComponent("sessiond", SESSIOND_RUNTIME_CAPABILITIES, deprecatedAgentInputs),
       activeAgentProfile,
     });
     let disposed = false;
@@ -250,6 +288,10 @@ async function createSessionDaemonRuntime() {
         },
         onFailure: () => { process.exitCode = 1; },
       });
+      // Release last: the daemon owns the instance state until everything that
+      // writes it is down. Best-effort; a leftover marker goes stale and the
+      // next start discards it.
+      await stateOwnership.release();
     };
     return { eventHub, machineStatus, statusAttribution, auth, sessions, terminals, unreadStore, activeAgentProfile, runtimeComponent, catalogRefresher, serverPlugins, projects, workspaceProviders, workspaceProviderRuntime, workspaceRemovals, shutdown };
   } catch (error) {

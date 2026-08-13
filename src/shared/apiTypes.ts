@@ -116,6 +116,8 @@ export interface MachineRuntime {
   generatedAt?: string;
   components?: PiWebRuntimeResponse["components"];
   capabilities?: PiWebCapability[];
+  /** Deprecated agent-configuration inputs detected on this machine (union of the web and session daemon reports, deduplicated); omitted when none. */
+  deprecatedAgentInputs?: readonly PiWebDeprecatedAgentInput[];
   error?: string;
 }
 
@@ -138,10 +140,26 @@ export interface PiWebUploadsConfig {
 }
 
 export interface PiWebAgentConfig {
-  /** Pi-compatible companion CLI used for diagnostics and safe package-managed updates. */
+  /** Deprecated and ignored: the multi-implementation CLI abstraction was removed; sessions always run on the bundled pi SDK. Detected for the deprecation warning. */
   command?: string;
-  /** Pi-compatible profile directory containing auth.json, models.json, settings.json, and sessions/. */
+  /** Deprecated alias for the PI_CODING_AGENT_DIR env var: pi agent state directory containing auth.json, models.json, settings.json, and sessions/. */
   dir?: string;
+}
+
+/**
+ * A deprecated agent-configuration input detected on one machine, as reported
+ * over the runtime/status pipeline. Values from the legacy PI_WEB_AGENT_* env
+ * vars and the agent.* config keys are still honored (or, for the removed
+ * command concept, ignored) during the deprecation window; every detected
+ * input is surfaced as a non-dismissable UI warning until the input is removed.
+ */
+export interface PiWebDeprecatedAgentInput {
+  /** Where the input was found: the process environment or the config file. */
+  readonly source: "environment" | "config";
+  /** The deprecated input as the user set it: an env var name or a config key path. */
+  readonly name: string;
+  /** The replacement input; absent when the concept was removed and the input should simply be deleted. */
+  readonly replacement?: string;
 }
 
 export interface PiWebConfigValues {
@@ -161,10 +179,10 @@ export interface PiWebConfigValues {
   /** When true, LLMs can start new sessions via the spawn_session tool. */
   spawnSessions?: boolean;
   /**
-   * Beta: when true, LLMs can start tracked child sessions via the
+   * When true, LLMs can start tracked child sessions via the
    * spawn_subsession / list_subsessions / check_subsession / read_subsession
-   * tools. Off by default
-   * while the capability stabilizes. Requires spawnSessions to be enabled.
+   * tools. On by default; set to `false` to disable. Requires spawnSessions
+   * to be enabled.
    */
   subsessions?: boolean;
   /**
@@ -173,9 +191,9 @@ export interface PiWebConfigValues {
    */
   askUser?: boolean;
   /**
-   * When true, PI WEB appends deployment environment facts to session system
-   * prompts. On by default. Only Docker deployments have facts to add today, so
-   * the value has no effect elsewhere.
+   * When true, PI WEB appends environment facts to session system prompts:
+   * the pi-web session nesting every session runs in, plus container facts in
+   * Docker deployments. On by default.
    */
   environmentFacts?: boolean;
   /**
@@ -185,7 +203,7 @@ export interface PiWebConfigValues {
    * Tuning knob only — extension dialogs are always enabled.
    */
   extensionDialogsTimeoutMs?: number;
-  /** Desired Pi-compatible agent profile and companion CLI (Pi by default). */
+  /** Deprecated agent-configuration keys, still honored as aliases during the deprecation window and detected for the deprecation warning (see PiWebAgentConfig). */
   agent?: PiWebAgentConfig;
 }
 
@@ -420,8 +438,6 @@ export interface SafeTunnelDisableResponse {
   status: SafeTunnelStatusResponse;
 }
 
-export type PiWebAgentDirEnvSource = "pi-web" | "pi-compatibility";
-
 export interface PiWebConfigEnvOverrides {
   host: boolean;
   port: boolean;
@@ -430,11 +446,6 @@ export interface PiWebConfigEnvOverrides {
   spawnSessions: boolean;
   subsessions: boolean;
   askUser: boolean;
-  agentCommand: boolean;
-  agentDir: boolean;
-  /** The configured directory environment source, even when Pi compatibility is inactive for the desired command. */
-  agentDirSource?: PiWebAgentDirEnvSource;
-  agentSessionDir: boolean;
 }
 
 export interface PiWebConfigResponse {
@@ -1192,13 +1203,10 @@ export interface RunTerminalCommandInput {
   open?: boolean;
 }
 
-/** Secret-free identity of the Pi-compatible CLI/state profile fixed for one sessiond lifetime. */
+/** Secret-free identity of the pi agent state directory fixed for one sessiond lifetime. */
 export interface ActiveAgentProfileDescriptor {
-  readonly schemaVersion: 1;
-  readonly revision: string;
-  readonly command: string;
+  readonly schemaVersion: 2;
   readonly dir: string;
-  readonly sessionDirEnvKeys: readonly string[];
 }
 
 export interface PiWebRuntimeComponent {
@@ -1209,6 +1217,8 @@ export interface PiWebRuntimeComponent {
   capabilities: PiWebCapability[];
   /** Present only for a session daemon that supports active-profile reporting. */
   activeAgentProfile?: ActiveAgentProfileDescriptor;
+  /** Deprecated agent-configuration inputs detected in this component's process environment and config file; omitted when none. */
+  deprecatedAgentInputs?: readonly PiWebDeprecatedAgentInput[];
   error?: string;
 }
 
