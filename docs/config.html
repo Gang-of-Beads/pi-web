@@ -639,12 +639,12 @@ worktree_path="$1"
               <p>
                 Any non-empty <code>PI_WEB_OFFLINE</code> or <code>PI_OFFLINE</code> setting dominates both opt-in
                 mechanisms, including values such as <code>0</code>. In that process Safe Tunnel has no routes, UI, state
-                migration, timers, child process, or background network activity.
+                reads or writes, timers, artifact work, child process, or background network activity.
               </p>
               <p>
                 When Safe Tunnel is available and used, private state lives at
-                <code>$PI_WEB_DATA_DIR/safe-tunnel/config.json</code> and managed <code>frpc</code> versions live beneath
-                <code>$PI_WEB_DATA_DIR/safe-tunnel/frpc/versions/</code>. See the
+                <code>$PI_WEB_DATA_DIR/safe-tunnel/config.json</code>. The one pinned managed <code>frpc</code> executable,
+                when downloaded, lives beneath <code>$PI_WEB_DATA_DIR/safe-tunnel/frpc/versions/0.69.1/</code>. See the
                 <a href="safe-tunnel.md">experimental Safe Tunnel guide</a> for operation, ingress-security requirements,
                 restart behavior, and managed-platform limits.
               </p>

@@ -184,7 +184,7 @@ Rows with JSON key `—` are runtime-only environment variables, not config-file
 
 ### Managed data directory
 
-`PI_WEB_DATA_DIR` sets the root for PI WEB-managed runtime state and defaults to `~/.pi-web`. Unless a more specific path override is configured, PI WEB stores its project and machine registries, locally discovered plugins, default session-daemon socket, and session archives beneath this root. When experimental Safe Tunnel is available and used, its private state lives at `safe-tunnel/config.json` and managed `frpc` versions live beneath `safe-tunnel/frpc/versions/` in the same data directory.
+`PI_WEB_DATA_DIR` sets the root for PI WEB-managed runtime state and defaults to `~/.pi-web`. Unless a more specific path override is configured, PI WEB stores its project and machine registries, locally discovered plugins, default session-daemon socket, and session archives beneath this root. When experimental Safe Tunnel is available and used, its private state lives at `safe-tunnel/config.json`; the one pinned managed `frpc` executable, when downloaded, lives beneath `safe-tunnel/frpc/versions/0.69.1/` in the same data directory.
 
 Each data directory is independent: after pointing PI WEB at a new root, it starts there with empty registries and no session archives. To carry session archives over, stop PI WEB, then copy `archived-sessions.json` and the `archived-sessions/` directory from the old data directory into the new one before starting it again.
 
@@ -206,7 +206,7 @@ Safe Tunnel is experimental and completely unavailable by default. Its availabil
 
 Availability is resolved once when the gateway web/API process starts. Restart that process after changing the key or environment; no session-daemon restart is needed. Making Safe Tunnel available still leaves its durable desired state disabled until the user chooses **Enable Safe Tunnel**. Turning availability off and restarting makes the feature dormant without rewriting that desired state.
 
-Any non-empty `PI_WEB_OFFLINE` or `PI_OFFLINE` setting dominates both opt-in mechanisms, including values such as `0`. In that process Safe Tunnel has no routes, UI, state migration, timers, child process, or background network activity. See the [experimental Safe Tunnel guide](safe-tunnel.md) for operation, ingress-security requirements, restart behavior, and managed-platform limits.
+Any non-empty `PI_WEB_OFFLINE` or `PI_OFFLINE` setting dominates both opt-in mechanisms, including values such as `0`. In that process Safe Tunnel has no routes, UI, state reads or writes, timers, artifact work, child process, or background network activity. See the [experimental Safe Tunnel guide](safe-tunnel.md) for operation, ingress-security requirements, restart behavior, and managed-platform limits.
 
 ### Agent process environment
 

@@ -130,6 +130,19 @@ describe("DefaultSafeTunnelBridgeService", () => {
     }]);
   });
 
+  it("restores durable enabled intent once on web/API startup", async () => {
+    const fixture = createFixture({
+      ...registeredState,
+      desiredState: "enabled",
+    });
+
+    await fixture.bridge.startup();
+
+    expect(fixture.runtime.startupCalls).toBe(1);
+    expect(fixture.safeTunnel.loginInputs).toEqual([]);
+    expect(fixture.safeTunnel.enableInputs).toEqual([]);
+  });
+
   it("exposes a fixed failure instead of an internal provider or child error", async () => {
     const fixture = createFixture(registeredState);
     fixture.runtime.startError = new Error(`provider body and ${machineToken}`);
@@ -292,6 +305,7 @@ class FakeRuntime implements SafeTunnelReconciledFrpcRuntime {
   currentStatus: SafeTunnelRuntimeStatus = { state: "stopped" };
   startError: Error | undefined;
   readonly startInputs: SafeTunnelFrpcStartInput[] = [];
+  startupCalls = 0;
   stopCalls = 0;
 
   shutdown(): Promise<void> {
@@ -307,6 +321,7 @@ class FakeRuntime implements SafeTunnelReconciledFrpcRuntime {
   }
 
   startup(): Promise<void> {
+    this.startupCalls += 1;
     return Promise.resolve();
   }
 
