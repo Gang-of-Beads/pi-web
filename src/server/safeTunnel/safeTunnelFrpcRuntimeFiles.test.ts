@@ -8,7 +8,11 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { rootCertificates } from "node:tls";
+import {
+  getCACertificates,
+  rootCertificates,
+  setDefaultCACertificates,
+} from "node:tls";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   FileSafeTunnelFrpcRuntimeFiles,
@@ -62,7 +66,8 @@ describe("FileSafeTunnelFrpcRuntimeFiles", () => {
       .toBe(safeTunnelFrpcConfigFileMode);
     expect((await stat(trustedCaPath)).mode & 0o777)
       .toBe(safeTunnelFrpcTrustedCaFileMode);
-    expect(await readFile(trustedCaPath, "utf8")).toContain(rootCertificates[0]);
+    expect(await readFile(trustedCaPath, "utf8"))
+      .toContain(getCACertificates("default")[0]);
     expect((await readdir(runtimeDirectory)).sort()).toEqual([
       "frpc.toml",
       "frps-roots.pem",
@@ -70,6 +75,27 @@ describe("FileSafeTunnelFrpcRuntimeFiles", () => {
 
     await files.removeConfig();
     expect(await readdir(runtimeDirectory)).toEqual([]);
+  });
+
+  it("writes Node's active configured default CA set", async () => {
+    const originalDefaultCertificates = getCACertificates("default");
+    const configuredRoot = rootCertificates.at(1);
+    if (configuredRoot === undefined) throw new Error("Node did not provide a test CA root");
+
+    try {
+      setDefaultCACertificates([configuredRoot]);
+      const configuredDefaultCertificates = getCACertificates("default");
+      const files = new FileSafeTunnelFrpcRuntimeFiles({
+        statePath: join(tempDirectory, "configured", "config.json"),
+      });
+
+      await files.writeConfig("serverAddr = \"relay.example.test\"\n");
+
+      expect(await readFile(files.trustedCaPath, "utf8"))
+        .toBe(`${configuredDefaultCertificates.join("\n")}\n`);
+    } finally {
+      setDefaultCACertificates(originalDefaultCertificates);
+    }
   });
 
   it("requires a non-empty certificate bundle", () => {

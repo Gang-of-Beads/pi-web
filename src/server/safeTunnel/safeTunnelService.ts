@@ -1,3 +1,4 @@
+import { isAbsolute } from "node:path";
 import {
   SafeTunnelControlPlaneError,
   safeTunnelClientVersion,
@@ -190,7 +191,7 @@ export class SafeTunnelService {
   ): Promise<SafeTunnelPersistedState> {
     const normalizedFrpcPath = input.frpcPath === undefined
       ? undefined
-      : requireNonEmptyString(input.frpcPath);
+      : requireAbsoluteFrpcPath(input.frpcPath);
     let normalizedLocalPiWebUrl: string | undefined;
     try {
       normalizedLocalPiWebUrl = input.localPiWebUrl === undefined
@@ -410,7 +411,7 @@ function normalizeLoginInput(
   }
   const frpcPath = input.frpcPath === undefined
     ? undefined
-    : requireNonEmptyString(input.frpcPath);
+    : requireAbsoluteFrpcPath(input.frpcPath);
 
   return {
     controlApiBaseUrl,
@@ -468,6 +469,12 @@ function hasTerminalControl(value: string): boolean {
 function requireNonEmptyString(value: string): string {
   const normalized = value.trim();
   if (normalized === "") throw new SafeTunnelServiceError("invalid_login");
+  return normalized;
+}
+
+function requireAbsoluteFrpcPath(value: string): string {
+  const normalized = requireNonEmptyString(value);
+  if (!isAbsolute(normalized)) throw new SafeTunnelServiceError("invalid_login");
   return normalized;
 }
 

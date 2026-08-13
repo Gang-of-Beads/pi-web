@@ -194,7 +194,9 @@ function localTarget(value: string): LocalTarget {
   const url = new URL(normalized);
   return {
     localIP: url.hostname.replace(/^\[|\]$/gu, ""),
-    localPort: Number.parseInt(url.port, 10),
+    // Normalization requires an explicit port and restores canonical :80, but
+    // WHATWG omits that default from URL.port when parsed again.
+    localPort: url.port === "" ? 80 : Number.parseInt(url.port, 10),
   };
 }
 

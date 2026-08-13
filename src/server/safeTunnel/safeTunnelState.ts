@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { piWebDataDir } from "../../config.js";
 import type { SafeTunnelDesiredState } from "../../shared/safeTunnelTypes.js";
 import {
+  hasExplicitSafeTunnelHttpPort,
   isSafeTunnelControlApiTransportAllowed,
   isSafeTunnelPublicIngressTransportAllowed,
 } from "../../shared/safeTunnelUrlPolicy.js";
@@ -195,7 +196,7 @@ export function normalizeSafeTunnelLocalPiWebUrl(value: unknown): string {
   if (parsed.pathname !== "/" || parsed.search !== "" || parsed.hash !== "") {
     throw new Error("Safe Tunnel localPiWebUrl must not include a path, query, or fragment.");
   }
-  if (parsed.port === "" && !hasExplicitHttpPort(source)) {
+  if (parsed.port === "" && !hasExplicitSafeTunnelHttpPort(source)) {
     throw new Error("Safe Tunnel localPiWebUrl must include an explicit port.");
   }
   // WHATWG URLs omit the default HTTP port from `port` and `origin`, so put
@@ -326,10 +327,6 @@ function parseUrl(value: string, fieldName: string): URL {
   } catch {
     throw new Error(`Safe Tunnel ${fieldName} must be a valid URL.`);
   }
-}
-
-function hasExplicitHttpPort(value: string): boolean {
-  return /^http:\/\/(?:\[[^\]]+\]|[^:/?#]+):\d+(?:[/?#]|$)/iu.test(value);
 }
 
 function requireUrlWithoutCredentials(url: URL, fieldName: string): void {

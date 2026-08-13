@@ -1,6 +1,6 @@
 import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { rootCertificates } from "node:tls";
+import { getCACertificates } from "node:tls";
 import { defaultSafeTunnelStatePath } from "./safeTunnelState.js";
 
 export const safeTunnelFrpcRuntimeDirectoryMode = 0o700;
@@ -38,7 +38,7 @@ export class FileSafeTunnelFrpcRuntimeFiles implements SafeTunnelFrpcRuntimeFile
       ?? join(dirname(this.configPath), safeTunnelFrpcTrustedCaFileName);
     this.platform = options.platform ?? process.platform;
     this.trustedCaPem = requireTrustedCaPem(
-      options.trustedCaPem ?? `${rootCertificates.join("\n")}\n`,
+      options.trustedCaPem ?? `${getCACertificates("default").join("\n")}\n`,
     );
   }
 

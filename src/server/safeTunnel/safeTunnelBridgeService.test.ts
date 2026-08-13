@@ -199,6 +199,35 @@ describe("DefaultSafeTunnelBridgeService", () => {
     expect(fixture.runtime.stopCalls).toBe(1);
   });
 
+  it("keeps Enable admission closed until a cancelled registration joins Disable", async () => {
+    const fixture = createFixture(createDefaultSafeTunnelState());
+    const firstRegistration = deferred<undefined>();
+    fixture.safeTunnel.registrationGates.set("machine-a", firstRegistration);
+    const first = await fixture.bridge.enable({
+      advanced: { machineName: "Machine A", machineSlug: "machine-a" },
+    });
+    await waitFor(() => fixture.bridge.operation(first.operation.id)?.phase === "registering");
+
+    const disabling = fixture.bridge.disable();
+    await expect(fixture.bridge.enable({
+      advanced: { machineName: "Machine B", machineSlug: "machine-b" },
+    })).rejects.toMatchObject({ code: "operation_in_progress" });
+
+    firstRegistration.resolve(undefined);
+    await disabling;
+    const second = await fixture.bridge.enable({
+      advanced: { machineName: "Machine B", machineSlug: "machine-b" },
+    });
+    await waitFor(() => fixture.bridge.operation(second.operation.id)?.status === "succeeded");
+
+    expect(fixture.safeTunnel.loginInputs.map((input) => input.machineSlug)).toEqual([
+      "machine-a",
+      "machine-b",
+    ]);
+    expect(fixture.safeTunnel.stateValue.machine?.machineId).toBe("machine_machine-b");
+    expect(fixture.runtime.runningMachineId).toBe("machine_machine-b");
+  });
+
   it("keeps only the latest completed operation", async () => {
     const fixture = createFixture(registeredState);
     const first = await fixture.bridge.enable({});
@@ -240,7 +269,7 @@ function createFixture(
   readonly safeTunnel: FakeSafeTunnelApplication;
 } {
   const safeTunnel = new FakeSafeTunnelApplication(initialState);
-  const runtime = new FakeRuntime();
+  const runtime = new FakeRuntime(() => safeTunnel.stateValue.machine);
   let operationSequence = 0;
   const bridge = new DefaultSafeTunnelBridgeService({
     createOperationId: () => `operation-${(++operationSequence).toString()}`,
@@ -256,6 +285,7 @@ class FakeSafeTunnelApplication implements SafeTunnelApplicationService {
   readonly statePath = "/private/safe-tunnel/config.json";
   readonly enableInputs: SafeTunnelEnableInput[] = [];
   readonly loginInputs: SafeTunnelLoginInput[] = [];
+  readonly registrationGates = new Map<string, Deferred<undefined>>();
   loginGate: Deferred<undefined> | undefined;
   stateError: Error | undefined;
 
@@ -292,13 +322,21 @@ class FakeSafeTunnelApplication implements SafeTunnelApplicationService {
     });
     await waitForGateOrAbort(this.loginGate, options.signal);
     observer.onAuthorizationApproved?.();
+    // Registration is intentionally a one-time unabortable credential write.
+    await this.registrationGates.get(input.machineSlug)?.promise;
+    const machineId = input.machineSlug === defaults.machineSlug
+      ? "machine_123"
+      : `machine_${input.machineSlug}`;
+    const registeredPublicUrl = input.machineSlug === defaults.machineSlug
+      ? publicUrl
+      : `https://${input.machineSlug}.example.test`;
     const machineCredentials = {
       controlApiBaseUrl: input.controlApiBaseUrl,
       credentialStatus: "active" as const,
-      machineId: "machine_123",
+      machineId,
       machineToken,
       machineSlug: input.machineSlug,
-      publicUrl,
+      publicUrl: registeredPublicUrl,
     };
     this.stateValue = {
       ...this.stateValue,
@@ -310,14 +348,14 @@ class FakeSafeTunnelApplication implements SafeTunnelApplicationService {
       machineCredentials,
       registeredMachine: {
         machine: {
-          id: "machine_123",
+          id: machineId,
           accountId: "account_123",
           name: input.machineName,
           slug: input.machineSlug,
         },
         machineToken,
-        publicHostname: "machine.example.test",
-        publicUrl,
+        publicHostname: new URL(registeredPublicUrl).hostname,
+        publicUrl: registeredPublicUrl,
       },
     };
   }
@@ -331,21 +369,29 @@ class FakeSafeTunnelApplication implements SafeTunnelApplicationService {
 
 class FakeRuntime implements SafeTunnelReconciledFrpcRuntime {
   currentStatus: SafeTunnelRuntimeStatus = { state: "stopped" };
+  runningMachineId: string | undefined;
   startError: Error | undefined;
   readonly startInputs: SafeTunnelFrpcStartInput[] = [];
   startupCalls = 0;
   stopCalls = 0;
 
+  constructor(
+    private readonly currentMachine: () => SafeTunnelPersistedState["machine"],
+  ) {}
+
   shutdown(): Promise<void> {
     this.currentStatus = { state: "stopped" };
+    this.runningMachineId = undefined;
     return Promise.resolve();
   }
 
   start(input: SafeTunnelFrpcStartInput): Promise<SafeTunnelFrpcStartResult> {
     this.startInputs.push(input);
     if (this.startError !== undefined) return Promise.reject(this.startError);
+    const machine = this.currentMachine();
     this.currentStatus = { state: "running" };
-    return Promise.resolve({ publicUrl });
+    this.runningMachineId = machine?.machineId;
+    return Promise.resolve({ publicUrl: machine?.publicUrl ?? publicUrl });
   }
 
   startup(): Promise<void> {
@@ -360,6 +406,7 @@ class FakeRuntime implements SafeTunnelReconciledFrpcRuntime {
   stop(): Promise<void> {
     this.stopCalls += 1;
     this.currentStatus = { state: "stopped" };
+    this.runningMachineId = undefined;
     return Promise.resolve();
   }
 }

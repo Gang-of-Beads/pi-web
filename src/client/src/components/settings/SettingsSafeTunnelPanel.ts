@@ -6,7 +6,10 @@ import type {
   SafeTunnelRuntimeStatus,
   SafeTunnelStatusResponse,
 } from "../../../../shared/apiTypes";
-import { isSafeTunnelControlApiTransportAllowed } from "../../../../shared/safeTunnelUrlPolicy";
+import {
+  hasExplicitSafeTunnelHttpPort,
+  isSafeTunnelControlApiTransportAllowed,
+} from "../../../../shared/safeTunnelUrlPolicy";
 import { safeTunnelApi, type SafeTunnelApi } from "../../api/safeTunnelClient";
 import { writeClipboardText } from "../../clipboard";
 
@@ -517,6 +520,11 @@ export function safeTunnelAdvancedValidationMessage(
     const error = localPiWebUrlValidationMessage(localPiWebUrl);
     if (error !== undefined) return error;
   }
+
+  const frpcPath = normalizedOptionalString(fields.frpcPath);
+  if (frpcPath !== undefined && !looksLikeAbsolutePath(frpcPath)) {
+    return "Advanced frpc path must be absolute.";
+  }
   return undefined;
 }
 
@@ -727,11 +735,19 @@ function localPiWebUrlValidationMessage(value: string): string | undefined {
   if (url.username !== "" || url.password !== "") {
     return "Advanced local PI WEB URL must not include credentials.";
   }
-  if (url.port === "") return "Advanced local PI WEB URL must include an explicit port.";
+  if (url.port === "" && !hasExplicitSafeTunnelHttpPort(value)) {
+    return "Advanced local PI WEB URL must include an explicit port.";
+  }
   if (url.pathname !== "/" || url.search !== "" || url.hash !== "") {
     return "Advanced local PI WEB URL must not include a path, query, or fragment.";
   }
   return undefined;
+}
+
+function looksLikeAbsolutePath(value: string): boolean {
+  return value.startsWith("/")
+    || value.startsWith("\\")
+    || /^[A-Za-z]:[\\/]/u.test(value);
 }
 
 function isValidMachineSlug(value: string): boolean {

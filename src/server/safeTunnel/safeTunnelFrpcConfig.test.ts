@@ -150,6 +150,25 @@ describe("prepareSafeTunnelFrpcConfig", () => {
     expect(generated).not.toContain("127.0.0.1");
   });
 
+  it.each([
+    ["IPv4", "http://127.0.0.1:80", "127.0.0.1"],
+    ["bracketed IPv6", "http://[::1]:80", "::1"],
+  ])("preserves explicit HTTP port 80 for a %s local target", (_label, localUrl, localIP) => {
+    const frpcConfigToml = providerConfig
+      .replace('localIP = "127.0.0.1"', `localIP = ${JSON.stringify(localIP)}`)
+      .replace("localPort = 8504", "localPort = 80");
+
+    const generated = prepareSafeTunnelFrpcConfig({
+      ...input,
+      frpcConfigToml,
+      localPiWebUrl: localUrl,
+    }, localUrl);
+
+    expect(parse(generated)).toMatchObject({
+      proxies: [{ localIP, localPort: 80 }],
+    });
+  });
+
   it.each(templateFieldCases)(
     "rejects Go-template references in provider-controlled $field",
     ({ frpcConfigToml, inputOverrides = {} }) => {

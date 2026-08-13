@@ -262,7 +262,10 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
   }
 
   private assertNoActiveOperation(): void {
-    if (this.operationStartInFlight || this.activeOperation?.status === "running") {
+    // A cancelled workflow can still be joining its unabortable registration write.
+    if (this.operationStartInFlight
+      || this.activeWorkflow?.operation.status === "cancelled"
+      || this.activeOperation?.status === "running") {
       throw new SafeTunnelOperationConflictError("operation_in_progress");
     }
   }

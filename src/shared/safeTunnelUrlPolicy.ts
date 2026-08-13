@@ -9,6 +9,10 @@ export function isSafeTunnelLoopbackHostname(hostname: string): boolean {
   return ipv4?.slice(1).every((octet) => Number(octet) <= 255) ?? false;
 }
 
+export function hasExplicitSafeTunnelHttpPort(value: string): boolean {
+  return /^http:\/\/(?:\[[^\]]+\]|[^:/?#]+):\d+(?:[/?#]|$)/iu.test(value);
+}
+
 export function isSafeTunnelControlApiTransportAllowed(url: URL): boolean {
   return isSafeTunnelProtectedTransportAllowed(url);
 }

@@ -84,6 +84,36 @@ describe("SafeTunnelService", () => {
     })]);
   });
 
+  it("rejects relative advanced frpc paths before Control API or durable effects", async () => {
+    const loginControlPlane = new FakeControlPlane();
+    const loginStorage = new MemoryStateStorage();
+    const startAuthorization = vi.spyOn(loginControlPlane, "startDeviceAuthorization");
+    const loginService = createService(loginControlPlane, loginStorage);
+
+    await expect(loginService.login({
+      controlApiBaseUrl: "https://control.example.test",
+      frpcPath: "relative/frpc",
+      localPiWebUrl,
+      machineName: "Test machine",
+      machineSlug: "machine-slug",
+    })).rejects.toMatchObject({ code: "invalid_login" });
+    expect(startAuthorization).not.toHaveBeenCalled();
+    expect(loginControlPlane.registerInputs).toEqual([]);
+    expect(loginStorage.saves).toEqual([]);
+
+    const enableControlPlane = new FakeControlPlane();
+    const enableStorage = new MemoryStateStorage({
+      ...createDefaultSafeTunnelState(),
+      machine,
+    });
+    const enableService = createService(enableControlPlane, enableStorage);
+
+    await expect(enableService.enable({ frpcPath: "relative/frpc" }))
+      .rejects.toMatchObject({ code: "invalid_login" });
+    expect(enableStorage.state.desiredState).toBe("disabled");
+    expect(enableStorage.saves).toEqual([]);
+  });
+
   it("enables, prepares one constrained tunnel, and records a normalized heartbeat", async () => {
     const controlPlane = new FakeControlPlane();
     const storage = new MemoryStateStorage({

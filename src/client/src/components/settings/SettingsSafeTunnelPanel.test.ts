@@ -70,6 +70,23 @@ describe("Safe Tunnel enable request helpers", () => {
     });
   });
 
+  it.each([
+    "http://127.0.0.1:80",
+    "http://[::1]:80",
+  ])("accepts an explicit default port in advanced local target %s", (localPiWebUrl) => {
+    expect(safeTunnelAdvancedValidationMessage({
+      ...emptyAdvancedFields(),
+      localPiWebUrl,
+    })).toBeUndefined();
+  });
+
+  it("rejects a relative advanced frpc path before Enable", () => {
+    expect(safeTunnelAdvancedValidationMessage({
+      ...emptyAdvancedFields(),
+      frpcPath: "relative/frpc",
+    })).toBe("Advanced frpc path must be absolute.");
+  });
+
   it("presents enabled, stopped, disabled, and revoked states as one action", () => {
     expect(safeTunnelPresentation(safeTunnelStatus({ desiredState: "disabled", runtimeState: "stopped" }))).toMatchObject({
       action: "enable",
