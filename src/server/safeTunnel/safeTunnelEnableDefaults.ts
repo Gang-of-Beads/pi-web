@@ -15,6 +15,14 @@ export interface SafeTunnelEnableDefaults {
   readonly machineSlug: string;
 }
 
+export interface SafeTunnelEnableDefaultOverrides {
+  readonly localPiWebUrl?: string;
+}
+
+export type SafeTunnelEnableDefaultsProvider = (
+  overrides?: SafeTunnelEnableDefaultOverrides,
+) => SafeTunnelEnableDefaults;
+
 export type SafeTunnelServerAddress = AddressInfo | string | null;
 
 export interface NodeSafeTunnelEnableDefaultsOptions {
@@ -30,14 +38,15 @@ export interface NodeSafeTunnelEnableDefaultsOptions {
  */
 export function createNodeSafeTunnelEnableDefaultsProvider(
   options: NodeSafeTunnelEnableDefaultsOptions,
-): () => SafeTunnelEnableDefaults {
+): SafeTunnelEnableDefaultsProvider {
   const hostname = options.hostname ?? operatingSystemHostname;
   const uniqueId = options.uniqueId ?? randomUUID;
-  return () => {
+  return (overrides = {}) => {
     const machineName = normalizeMachineName(hostname());
     return {
       controlApiBaseUrl: defaultSafeTunnelControlApiBaseUrl,
-      localPiWebUrl: safeTunnelLocalPiWebUrlFromServerAddress(options.serverAddress()),
+      localPiWebUrl: overrides.localPiWebUrl
+        ?? safeTunnelLocalPiWebUrlFromServerAddress(options.serverAddress()),
       machineName,
       machineSlug: collisionResistantMachineSlug(machineName, uniqueId()),
     };

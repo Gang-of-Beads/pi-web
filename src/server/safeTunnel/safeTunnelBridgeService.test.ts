@@ -1,10 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { SafeTunnelRuntimeStatus } from "../../shared/apiTypes.js";
 import {
   DefaultSafeTunnelBridgeService,
   type SafeTunnelApplicationService,
+  type SafeTunnelBridgeDependencies,
 } from "./safeTunnelBridgeService.js";
-import type { SafeTunnelEnableDefaults } from "./safeTunnelEnableDefaults.js";
+import {
+  createNodeSafeTunnelEnableDefaultsProvider,
+  type SafeTunnelEnableDefaults,
+} from "./safeTunnelEnableDefaults.js";
 import type { SafeTunnelReconciledFrpcRuntime } from "./safeTunnelRuntimeReconciler.js";
 import type {
   SafeTunnelEnableInput,
@@ -130,6 +134,25 @@ describe("DefaultSafeTunnelBridgeService", () => {
     }]);
   });
 
+  it("lets an advanced local target bypass unavailable listener inference", async () => {
+    const enableDefaults = vi.fn(createNodeSafeTunnelEnableDefaultsProvider({
+      serverAddress: () => ({ address: "fe80::1%lo0", family: "IPv6", port: 8504 }),
+      hostname: () => defaults.machineName,
+      uniqueId: () => "12345678-abcd",
+    }));
+    const fixture = createFixture(createDefaultSafeTunnelState(), { enableDefaults });
+    const localPiWebUrl = "http://[::1]:80";
+
+    const response = await fixture.bridge.enable({ advanced: { localPiWebUrl } });
+    await waitFor(() => fixture.bridge.operation(response.operation.id)?.status === "succeeded");
+
+    expect(enableDefaults).toHaveBeenCalledWith({ localPiWebUrl });
+    expect(fixture.safeTunnel.loginInputs).toEqual([
+      expect.objectContaining({ localPiWebUrl }),
+    ]);
+    expect(fixture.safeTunnel.enableInputs).toEqual([{ localPiWebUrl }]);
+  });
+
   it("restores durable enabled intent once on web/API startup", async () => {
     const fixture = createFixture({
       ...registeredState,
@@ -206,7 +229,12 @@ describe("DefaultSafeTunnelBridgeService", () => {
   });
 });
 
-function createFixture(initialState: SafeTunnelPersistedState): {
+function createFixture(
+  initialState: SafeTunnelPersistedState,
+  options: {
+    readonly enableDefaults?: SafeTunnelBridgeDependencies["enableDefaults"];
+  } = {},
+): {
   readonly bridge: DefaultSafeTunnelBridgeService;
   readonly runtime: FakeRuntime;
   readonly safeTunnel: FakeSafeTunnelApplication;
@@ -216,7 +244,7 @@ function createFixture(initialState: SafeTunnelPersistedState): {
   let operationSequence = 0;
   const bridge = new DefaultSafeTunnelBridgeService({
     createOperationId: () => `operation-${(++operationSequence).toString()}`,
-    enableDefaults: () => defaults,
+    enableDefaults: options.enableDefaults ?? (() => defaults),
     fileExists: () => true,
     runtime,
     safeTunnel,

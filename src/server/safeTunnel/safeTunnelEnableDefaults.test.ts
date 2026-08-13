@@ -46,6 +46,26 @@ describe("Safe Tunnel inferred enable defaults", () => {
     expect(() => safeTunnelLocalPiWebUrlFromServerAddress("/tmp/pi-web.sock")).toThrow("advanced local target");
   });
 
+  it("uses an advanced local target without consulting unavailable listener inference", () => {
+    let serverAddressCalls = 0;
+    const defaults = createNodeSafeTunnelEnableDefaultsProvider({
+      serverAddress: () => {
+        serverAddressCalls += 1;
+        return { address: "fe80::1%lo0", family: "IPv6", port: 8504 };
+      },
+      hostname: () => "Scoped IPv6 machine",
+      uniqueId: () => "12345678-abcd",
+    })({ localPiWebUrl: "http://[::1]:80" });
+
+    expect(defaults).toEqual({
+      controlApiBaseUrl: defaultSafeTunnelControlApiBaseUrl,
+      localPiWebUrl: "http://[::1]:80",
+      machineName: "Scoped IPv6 machine",
+      machineSlug: "scoped-ipv6-machine-12345678",
+    });
+    expect(serverAddressCalls).toBe(0);
+  });
+
   it("bounds and normalizes inferred machine identity", () => {
     const defaults = createNodeSafeTunnelEnableDefaultsProvider({
       serverAddress: () => ({ address: "127.0.0.1", family: "IPv4", port: 8504 }),

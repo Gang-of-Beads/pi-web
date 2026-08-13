@@ -7,6 +7,7 @@ import {
   createDefaultSafeTunnelState,
   defaultSafeTunnelStatePath,
   normalizeSafeTunnelControlApiBaseUrl,
+  normalizeSafeTunnelLocalPiWebUrl,
   normalizeSafeTunnelPublicUrl,
   parseSafeTunnelState,
   safeTunnelStateDirectoryMode,
@@ -47,6 +48,15 @@ describe("Safe Tunnel URL policy", () => {
     "http://192.168.1.10:8787",
   ])("rejects plaintext non-loopback Control API endpoint %s", (value) => {
     expect(() => normalizeSafeTunnelControlApiBaseUrl(value)).toThrow("must use https");
+  });
+
+  it("preserves an explicit default port in IPv4 and bracketed IPv6 local targets", () => {
+    expect(normalizeSafeTunnelLocalPiWebUrl("http://127.0.0.1:80"))
+      .toBe("http://127.0.0.1:80");
+    expect(normalizeSafeTunnelLocalPiWebUrl("http://[::1]:80"))
+      .toBe("http://[::1]:80");
+    expect(() => normalizeSafeTunnelLocalPiWebUrl("http://127.0.0.1"))
+      .toThrow("explicit port");
   });
 
   it("normalizes HTTPS and literal-loopback public origins", () => {

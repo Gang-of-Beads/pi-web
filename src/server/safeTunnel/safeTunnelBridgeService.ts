@@ -8,7 +8,10 @@ import type {
   SafeTunnelRuntimeStatus,
   SafeTunnelStatusResponse,
 } from "../../shared/apiTypes.js";
-import type { SafeTunnelEnableDefaults } from "./safeTunnelEnableDefaults.js";
+import type {
+  SafeTunnelEnableDefaults,
+  SafeTunnelEnableDefaultsProvider,
+} from "./safeTunnelEnableDefaults.js";
 import {
   SafeTunnelOperationConflictError,
   type SafeTunnelRouteService,
@@ -52,7 +55,7 @@ export interface SafeTunnelApplicationService {
 
 export interface SafeTunnelBridgeDependencies {
   readonly createOperationId: () => string;
-  readonly enableDefaults: () => SafeTunnelEnableDefaults;
+  readonly enableDefaults: SafeTunnelEnableDefaultsProvider;
   readonly fileExists: (path: string) => boolean;
   readonly runtime: SafeTunnelReconciledFrpcRuntime;
   readonly safeTunnel: SafeTunnelApplicationService;
@@ -126,7 +129,12 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
         throw new SafeTunnelOperationConflictError("already_enabled");
       }
 
-      const defaults = this.dependencies.enableDefaults();
+      const advancedLocalPiWebUrl = request.advanced?.localPiWebUrl;
+      const defaults = this.dependencies.enableDefaults(
+        advancedLocalPiWebUrl === undefined
+          ? undefined
+          : { localPiWebUrl: advancedLocalPiWebUrl },
+      );
       throwIfEnableCancelled(controller.signal);
       const initialStatus = statusFromLoadedState(runtime, loadedState);
       const operation = this.createOperation();
@@ -217,7 +225,7 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
     signal: AbortSignal,
   ): Promise<SafeTunnelFrpcStartResult> {
     const advanced = request.advanced;
-    const localPiWebUrl = advanced?.localPiWebUrl ?? defaults.localPiWebUrl;
+    const localPiWebUrl = defaults.localPiWebUrl;
     const registrationRequired = shouldRegisterMachine(
       loadedState,
       runtime,

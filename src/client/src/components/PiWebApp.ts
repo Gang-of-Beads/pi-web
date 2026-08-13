@@ -946,6 +946,8 @@ export class PiWebApp extends LitElement {
       (event) => { this.handleRealtimeEvent(machineId, event); },
       () => {
         void this.sessionUnread.refresh(machineId);
+        this.machines.invalidateMachineRuntime("local");
+        void this.machines.refreshMachineRuntime("local");
         const workspace = this.state.selectedWorkspace;
         if (workspace !== undefined) void this.refreshActiveTerminals(workspace);
       },

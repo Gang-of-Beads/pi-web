@@ -1,13 +1,15 @@
 // @vitest-environment happy-dom
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PI_WEB_CAPABILITIES } from "../../../shared/capabilities";
-import type { Machine, MachineRuntime } from "../api";
+import { api, type Machine, type MachineRuntime } from "../api";
 import { initialAppState, type AppState } from "../appState";
 import type { AppAction } from "../actions";
+import { SessionUnreadController } from "../sessionUnread";
 import { PiWebApp } from "./PiWebApp";
 
 afterEach(() => {
+  vi.restoreAllMocks();
   window.history.replaceState({}, "", "/");
   document.body.replaceChildren();
   localStorage.clear();
@@ -106,6 +108,39 @@ describe("PiWebApp Safe Tunnel availability gate", () => {
     expect(visibleSettingsSection(app)).toBe("safe-tunnel");
     expect(new URL(window.location.href).searchParams.get("settings")).toBe("safe-tunnel");
   });
+
+  it("discovers activation when the gateway realtime socket reconnects", async () => {
+    const app = new PiWebApp();
+    setAppState(app, { machineRuntimes: { local: runtime("local", []) } });
+    vi.spyOn(api, "runtime").mockResolvedValue(
+      runtime("local", [PI_WEB_CAPABILITIES.safeTunnel]),
+    );
+    const onOpen = captureRealtimeOpen(app);
+
+    onOpen();
+
+    await vi.waitFor(() => { expect(safeTunnelAction(app)).toBeDefined(); });
+    expect(api.runtime).toHaveBeenCalledWith("local", true);
+  });
+
+  it("fails activation closed while refreshing after gateway reconnect", async () => {
+    const app = new PiWebApp();
+    setAppState(app, {
+      machineRuntimes: { local: runtime("local", [PI_WEB_CAPABILITIES.safeTunnel]) },
+    });
+    vi.spyOn(api, "runtime").mockResolvedValue(runtime("local", []));
+    void safeTunnelAction(app)?.run();
+    expect(settingsSection(app)).toBe("safe-tunnel");
+    const onOpen = captureRealtimeOpen(app);
+
+    onOpen();
+
+    expect(safeTunnelAction(app)).toBeUndefined();
+    expect(settingsSection(app)).toBe("safe-tunnel");
+    await vi.waitFor(() => { expect(settingsSection(app)).toBe("general"); });
+    expect(api.runtime).toHaveBeenCalledWith("local", true);
+    expect(safeTunnelAction(app)).toBeUndefined();
+  });
 });
 
 const remoteMachine: Machine = {
@@ -124,6 +159,25 @@ function runtime(machineId: string, capabilities: NonNullable<MachineRuntime["ca
     checkedAt: "2026-07-03T00:00:00.000Z",
     capabilities,
   };
+}
+
+function captureRealtimeOpen(app: PiWebApp): () => void {
+  const sessionUnread: unknown = Reflect.get(app, "sessionUnread");
+  if (!(sessionUnread instanceof SessionUnreadController)) {
+    throw new Error("PiWebApp session unread controller was unavailable");
+  }
+  vi.spyOn(sessionUnread, "refresh").mockResolvedValue();
+
+  let onOpen: (() => void) | undefined;
+  const realtime = {
+    connect: (_onEvent: unknown, nextOnOpen?: () => void): void => {
+      onOpen = nextOnOpen;
+    },
+  };
+  if (!Reflect.set(app, "realtime", realtime)) throw new Error("Could not replace PiWebApp realtime socket");
+  callAppMethod(app, "connectRealtime");
+  if (onOpen === undefined) throw new Error("PiWebApp realtime open callback was unavailable");
+  return onOpen;
 }
 
 function safeTunnelAction(app: PiWebApp): AppAction | undefined {

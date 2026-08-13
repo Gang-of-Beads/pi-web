@@ -195,10 +195,12 @@ export function normalizeSafeTunnelLocalPiWebUrl(value: unknown): string {
   if (parsed.pathname !== "/" || parsed.search !== "" || parsed.hash !== "") {
     throw new Error("Safe Tunnel localPiWebUrl must not include a path, query, or fragment.");
   }
-  if (parsed.port === "") {
+  if (parsed.port === "" && !hasExplicitHttpPort(source)) {
     throw new Error("Safe Tunnel localPiWebUrl must include an explicit port.");
   }
-  return parsed.origin;
+  // WHATWG URLs omit the default HTTP port from `port` and `origin`, so put
+  // an explicitly supplied :80 back into the constrained local target.
+  return parsed.port === "" ? `${parsed.origin}:80` : parsed.origin;
 }
 
 export function normalizeSafeTunnelPublicUrl(value: unknown): string {
@@ -324,6 +326,10 @@ function parseUrl(value: string, fieldName: string): URL {
   } catch {
     throw new Error(`Safe Tunnel ${fieldName} must be a valid URL.`);
   }
+}
+
+function hasExplicitHttpPort(value: string): boolean {
+  return /^http:\/\/(?:\[[^\]]+\]|[^:/?#]+):\d+(?:[/?#]|$)/iu.test(value);
 }
 
 function requireUrlWithoutCredentials(url: URL, fieldName: string): void {
