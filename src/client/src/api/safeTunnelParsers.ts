@@ -207,11 +207,11 @@ function optionalString(
 }
 
 function requireHttpUrl(record: Record<string, unknown>, key: string): string {
-  return requireSafeBrowserUrl(requireString(record, key), key);
+  return requireSafeBrowserUrl(requireString(record, key, maximumUrlCharacters), key);
 }
 
 function optionalHttpUrl(record: Record<string, unknown>, key: string): string | undefined {
-  const value = optionalString(record, key);
+  const value = optionalString(record, key, maximumUrlCharacters);
   return value === undefined ? undefined : requireSafeBrowserUrl(value, key);
 }
 

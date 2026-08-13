@@ -44,6 +44,24 @@ describe("SafeTunnelFrpcSupervisor", () => {
     expect(fixture.launcher.requests).toEqual([{ configPath, frpcPath: "/opt/frpc" }]);
   });
 
+  it("rejects a pre-spawn advanced executable failure before reporting running", async () => {
+    const fixture = createFixture();
+    fixture.launcher.startError = new Error("missing executable");
+
+    await expect(fixture.supervisor.start({ advancedFrpcPath: "/missing/frpc" }))
+      .rejects.toEqual(new SafeTunnelFrpcSupervisorError("process_launch_failed"));
+
+    expect(await fixture.supervisor.status()).toEqual({
+      state: "stopped",
+      error: "PI WEB could not launch the Safe Tunnel frpc process.",
+    });
+    const child = fixture.launcher.processes[0];
+    expect(child?.disposed).toBe(false);
+
+    child?.exit({ kind: "error" });
+    expect(child?.disposed).toBe(true);
+  });
+
   it("reports an ordinary unexpected child exit without starting a retry loop", async () => {
     const fixture = createFixture();
     await fixture.supervisor.start({});
@@ -270,13 +288,18 @@ class FakeManagedFrpc implements SafeTunnelManagedFrpcProvider {
 class FakeLauncher implements SafeTunnelFrpcProcessLauncher {
   readonly processes: FakeProcess[] = [];
   readonly requests: SafeTunnelFrpcProcessRequest[] = [];
+  startError: Error | undefined;
 
   launch(
     request: SafeTunnelFrpcProcessRequest,
     observer: SafeTunnelFrpcProcessObserver,
   ): SafeTunnelFrpcProcessHandle {
     this.requests.push(request);
-    const process = new FakeProcess(observer, 4_000 + this.processes.length);
+    const process = new FakeProcess(
+      observer,
+      4_000 + this.processes.length,
+      this.startError,
+    );
     this.processes.push(process);
     return process;
   }
@@ -286,11 +309,17 @@ class FakeProcess implements SafeTunnelFrpcProcessHandle {
   disposed = false;
   exitOnSignal: NodeJS.Signals | undefined = "SIGTERM";
   readonly signals: NodeJS.Signals[] = [];
+  readonly started: Promise<void>;
 
   constructor(
     private readonly observer: SafeTunnelFrpcProcessObserver,
     readonly pid: number,
-  ) {}
+    startError: Error | undefined,
+  ) {
+    this.started = startError === undefined
+      ? Promise.resolve()
+      : Promise.reject(startError);
+  }
 
   dispose(): void {
     this.disposed = true;

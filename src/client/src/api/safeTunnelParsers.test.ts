@@ -50,6 +50,12 @@ describe("Safe Tunnel API parsers", () => {
   });
 
   it("bounds authored diagnostics, identifiers, and browser URLs", () => {
+    const longApprovalUrl = httpUrlWithLength(320);
+    expect(parseSafeTunnelOperationResponse({
+      ...operationResponse(),
+      verificationUriComplete: longApprovalUrl,
+    }).verificationUriComplete).toBe(longApprovalUrl);
+
     expect(() => parseSafeTunnelStatusResponse({
       ...statusResponse(),
       runtime: { state: "stopped", error: "x".repeat(2_001) },
@@ -60,7 +66,7 @@ describe("Safe Tunnel API parsers", () => {
     })).toThrow("bounded string field: id");
     expect(() => parseSafeTunnelOperationResponse({
       ...operationResponse(),
-      verificationUriComplete: `https://control.example.test/${"x".repeat(2_100)}`,
+      verificationUriComplete: httpUrlWithLength(2_049),
     })).toThrow("bounded optional string field: verificationUriComplete");
     expect(() => parseSafeTunnelOperationResponse({
       ...operationResponse(),
@@ -82,6 +88,11 @@ describe("Safe Tunnel API parsers", () => {
     })).toThrow("Expected HTTP(S) URL field: verificationUriComplete");
   });
 });
+
+function httpUrlWithLength(length: number): string {
+  const prefix = "https://control.example.test/device?token=";
+  return `${prefix}${"x".repeat(length - prefix.length)}`;
+}
 
 function operationResponse() {
   return {

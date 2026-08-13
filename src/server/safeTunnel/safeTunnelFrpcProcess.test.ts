@@ -1,4 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   NodeSafeTunnelFrpcProcessLauncher,
@@ -29,10 +32,18 @@ class FakeNodeChild extends EventEmitter implements SafeTunnelNodeChildProcess {
     this.off("error", listener);
   }
 
+  offSpawn(listener: () => void): void {
+    this.off("spawn", listener);
+  }
+
   onceClose(
     listener: (exitCode: number | null, signal: NodeJS.Signals | null) => void,
   ): void {
     this.once("close", listener);
+  }
+
+  onceSpawn(listener: () => void): void {
+    this.once("spawn", listener);
   }
 
   onError(listener: (error: Error) => void): void {
@@ -50,10 +61,14 @@ class FakeNodeChild extends EventEmitter implements SafeTunnelNodeChildProcess {
   fail(error: Error): void {
     this.emit("error", error);
   }
+
+  acknowledgeSpawn(): void {
+    this.emit("spawn");
+  }
 }
 
 describe("NodeSafeTunnelFrpcProcessLauncher", () => {
-  it("launches without ambient environment or output and owns the exact returned child", () => {
+  it("launches without ambient environment or output and owns the exact returned child", async () => {
     const child = new FakeNodeChild();
     const calls: Parameters<SafeTunnelNodeProcessSpawner>[] = [];
     const launcher = new NodeSafeTunnelFrpcProcessLauncher({
@@ -83,6 +98,8 @@ describe("NodeSafeTunnelFrpcProcessLauncher", () => {
         windowsHide: true,
       },
     ]]);
+    child.acknowledgeSpawn();
+    await expect(handle.started).resolves.toBeUndefined();
     expect(handle.pid).toBe(4242);
     expect(handle.terminate("SIGTERM")).toBe(true);
     expect(child.signals).toEqual(["SIGTERM"]);
@@ -95,7 +112,7 @@ describe("NodeSafeTunnelFrpcProcessLauncher", () => {
     expect(child.listenerCount("error")).toBe(0);
   });
 
-  it("reports a pre-spawn error only after the child closes", () => {
+  it("rejects start on a pre-spawn error but retains exit ownership until close", async () => {
     const child = new FakeNodeChild(null);
     const launcher = new NodeSafeTunnelFrpcProcessLauncher({
       spawnProcess: () => child,
@@ -110,6 +127,7 @@ describe("NodeSafeTunnelFrpcProcessLauncher", () => {
 
     child.fail(new Error("spawn failed"));
     expect(handle.pid).toBeUndefined();
+    await expect(handle.started).rejects.toThrow("The frpc process did not start.");
     expect(exits).toEqual([]);
 
     child.close(1, null);
@@ -118,7 +136,43 @@ describe("NodeSafeTunnelFrpcProcessLauncher", () => {
     expect(child.listenerCount("error")).toBe(0);
   });
 
-  it("detaches its listeners without signaling the child", () => {
+  it("rejects start when the child closes before spawn acknowledgement", async () => {
+    const child = new FakeNodeChild(null);
+    const launcher = new NodeSafeTunnelFrpcProcessLauncher({
+      spawnProcess: () => child,
+    });
+    const exits: SafeTunnelFrpcProcessExit[] = [];
+    const handle = launcher.launch({
+      configPath: "/tmp/frpc.toml",
+      frpcPath: "/opt/frpc",
+    }, {
+      onExit: (exit) => { exits.push(exit); },
+    });
+
+    child.close(1, null);
+
+    await expect(handle.started).rejects.toThrow("The frpc process did not start.");
+    expect(exits).toEqual([{ kind: "error" }]);
+  });
+
+  it("rejects start for an ordinary missing executable", async () => {
+    const launcher = new NodeSafeTunnelFrpcProcessLauncher();
+    let resolveExit: (exit: SafeTunnelFrpcProcessExit) => void = () => undefined;
+    const exited = new Promise<SafeTunnelFrpcProcessExit>((resolve) => {
+      resolveExit = resolve;
+    });
+    const handle = launcher.launch({
+      configPath: join(tmpdir(), "pi-web-safe-tunnel-frpc.toml"),
+      frpcPath: join(tmpdir(), `missing-pi-web-frpc-${randomUUID()}`),
+    }, {
+      onExit: resolveExit,
+    });
+
+    await expect(handle.started).rejects.toThrow("The frpc process did not start.");
+    await expect(exited).resolves.toEqual({ kind: "error" });
+  });
+
+  it("detaches its listeners without signaling the child", async () => {
     const child = new FakeNodeChild();
     const launcher = new NodeSafeTunnelFrpcProcessLauncher({
       spawnProcess: () => child,
@@ -131,6 +185,8 @@ describe("NodeSafeTunnelFrpcProcessLauncher", () => {
       onExit: (exit) => { exits.push(exit); },
     });
 
+    child.acknowledgeSpawn();
+    await handle.started;
     handle.dispose();
     handle.dispose();
     child.close(0, null);
@@ -139,6 +195,7 @@ describe("NodeSafeTunnelFrpcProcessLauncher", () => {
     expect(child.signals).toEqual([]);
     expect(child.listenerCount("close")).toBe(0);
     expect(child.listenerCount("error")).toBe(0);
+    expect(child.listenerCount("spawn")).toBe(0);
   });
 
   it.each([

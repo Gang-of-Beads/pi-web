@@ -255,14 +255,28 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
     const owned = createOwnedProcess(handle);
     ownership.current = owned;
     this.activeProcess = owned;
-    this.phase = "running";
-    this.lastError = undefined;
 
     if (earlyExit !== undefined) {
       this.handleProcessExit(owned, earlyExit);
       throw this.failStart(new SafeTunnelFrpcSupervisorError("process_launch_failed"));
     }
 
+    try {
+      await handle.started;
+    } catch {
+      if (controller.signal.aborted) {
+        throw new SafeTunnelFrpcSupervisorError("start_cancelled");
+      }
+      throw this.failStart(new SafeTunnelFrpcSupervisorError("process_launch_failed"));
+    }
+    this.assertStartActive(controller);
+
+    if (owned.closed || this.activeProcess !== owned) {
+      throw this.failStart(new SafeTunnelFrpcSupervisorError("process_launch_failed"));
+    }
+
+    this.phase = "running";
+    this.lastError = undefined;
     return { publicUrl: tunnelConfig.publicUrl };
   }
 
