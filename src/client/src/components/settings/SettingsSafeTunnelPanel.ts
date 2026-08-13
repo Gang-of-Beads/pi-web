@@ -192,8 +192,8 @@ export class SettingsSafeTunnelPanel extends LitElement {
         <div>
           <h3>${rejected ? "Safe Tunnel approval is no longer valid" : "Safe Tunnel diagnostics"}</h3>
           <p>${rejected
-            ? "This machine's provider registration was rejected or revoked. Enable Safe Tunnel to approve a replacement registration and resume supervision automatically."
-            : "PI WEB is keeping your requested state and reports recovery details below."}</p>
+            ? "This machine's provider registration was rejected or revoked. Enable Safe Tunnel to approve a replacement registration."
+            : "PI WEB is keeping your requested state and reports the current failure below."}</p>
         </div>
         ${status.config.error === undefined ? null : html`<p class="bad">${status.config.error}</p>`}
         ${runtime.error === undefined ? null : html`<p class=${rejected ? "bad" : "help"}>${runtime.error}</p>`}
@@ -572,7 +572,7 @@ export function safeTunnelPresentation(
       || status.config.state === "unregistered")) {
     return {
       action: "enable",
-      description: "This PI WEB needs approval before Safe Tunnel can recover.",
+      description: "This PI WEB needs approval before Safe Tunnel can start.",
       label: "Approval required",
       tone: "bad",
     };
@@ -587,8 +587,8 @@ export function safeTunnelPresentation(
   }
   return {
     action: "disable",
-    description: "PI WEB is recovering the requested Safe Tunnel connection.",
-    label: "Recovering",
+    description: "Safe Tunnel is enabled in settings, but its runtime is not running.",
+    label: "Stopped",
     tone: status.runtime.error === undefined ? "muted" : "bad",
   };
 }
@@ -674,7 +674,7 @@ function runtimeStateLabel(state: SafeTunnelRuntimeStatus["state"]): string {
     case "running":
       return "Running";
     case "unknown":
-      return "Starting or retrying";
+      return "Starting";
   }
 }
 

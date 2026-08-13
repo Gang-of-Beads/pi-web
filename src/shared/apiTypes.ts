@@ -328,11 +328,10 @@ export type SafeTunnelConfigState =
 export type SafeTunnelRuntimeState = "stopped" | "running" | "unknown";
 export type SafeTunnelRuntimeDiagnosticCode =
   | "credentials_rejected"
-  | "heartbeat_retrying"
+  | "heartbeat_failed"
   | "registration_required"
-  | "runtime_recovery_failed"
-  | "runtime_retrying"
-  | "state_retrying";
+  | "runtime_failed"
+  | "state_invalid";
 export type SafeTunnelOperationKind = "enable";
 export type SafeTunnelOperationPhase =
   | "preparing"
@@ -363,17 +362,10 @@ export interface SafeTunnelConfigStatus {
 
 export interface SafeTunnelRuntimeStatus {
   state: SafeTunnelRuntimeState;
-  /** Stable machine-readable category for recovery UI; raw external failures never cross this boundary. */
+  /** Stable machine-readable category for browser UI; raw external failures never cross this boundary. */
   diagnosticCode?: SafeTunnelRuntimeDiagnosticCode;
   /** PI WEB-authored summary only; provider and child diagnostics stay server-side. */
   error?: string;
-}
-
-export interface SafeTunnelCommandOutput {
-  exitCode: number | null;
-  stdout: string;
-  stderr: string;
-  signal?: string;
 }
 
 export interface SafeTunnelOperationResponse {

@@ -24,18 +24,15 @@ const publicUrl = "https://machine.example.test";
 const frpcToken = "0123456789abcdef0123456789abcdef";
 
 describe("SafeTunnelFrpcSupervisor", () => {
-  it("writes one constrained config, launches one child, and reports authored status only", async () => {
+  it("writes one constrained config and launches one owned child", async () => {
     const fixture = createFixture();
 
     const result = await fixture.supervisor.start({});
-    fixture.launcher.processes[0]?.stdout(`raw child output ${frpcToken}`);
-    fixture.launcher.processes[0]?.stderr("raw child failure");
 
     expect(result).toEqual({ publicUrl });
     expect(fixture.files.writes).toEqual([fixture.configProvider.config.frpcConfigToml]);
     expect(fixture.launcher.requests).toEqual([{ configPath, frpcPath: managedPath }]);
     expect(await fixture.supervisor.status()).toEqual({ state: "running" });
-    expect(JSON.stringify(await fixture.supervisor.status())).not.toContain(frpcToken);
   });
 
   it("uses an explicit advanced executable without acquiring managed frpc", async () => {
@@ -47,21 +44,19 @@ describe("SafeTunnelFrpcSupervisor", () => {
     expect(fixture.launcher.requests).toEqual([{ configPath, frpcPath: "/opt/frpc" }]);
   });
 
-  it("restarts after an ordinary unexpected child exit", async () => {
+  it("reports an ordinary unexpected child exit without starting a retry loop", async () => {
     const fixture = createFixture();
     await fixture.supervisor.start({});
 
     fixture.launcher.processes[0]?.exit({ exitCode: 1, kind: "exited", signal: null });
-    expect(await fixture.supervisor.status()).toMatchObject({
-      state: "unknown",
-      error: "The owned frpc process exited unexpectedly with code 1. Retrying in 10 ms.",
-    });
-
-    fixture.clock.advance(10);
+    fixture.clock.advance(60_000);
     await settle();
 
-    expect(fixture.launcher.requests).toHaveLength(2);
-    expect(await fixture.supervisor.status()).toEqual({ state: "running" });
+    expect(fixture.launcher.requests).toHaveLength(1);
+    expect(await fixture.supervisor.status()).toEqual({
+      state: "stopped",
+      error: "The owned frpc process exited unexpectedly with code 1.",
+    });
   });
 
   it("stops only its exact child and removes generated credentials", async () => {
@@ -69,11 +64,7 @@ describe("SafeTunnelFrpcSupervisor", () => {
     await fixture.supervisor.start({});
     const child = fixture.launcher.processes[0];
 
-    await expect(fixture.supervisor.stop()).resolves.toEqual({
-      exitCode: 0,
-      stderr: "",
-      stdout: "PI WEB stopped its owned Safe Tunnel frpc process.\n",
-    });
+    await fixture.supervisor.stop();
 
     expect(child?.signals).toEqual(["SIGTERM"]);
     expect(child?.disposed).toBe(true);
@@ -81,25 +72,63 @@ describe("SafeTunnelFrpcSupervisor", () => {
     expect(await fixture.supervisor.status()).toEqual({ state: "stopped" });
   });
 
-  it("reports one stable category when tunnel preparation fails and schedules retry", async () => {
+  it("escalates one unresponsive owned child from SIGTERM to SIGKILL", async () => {
+    const fixture = createFixture();
+    await fixture.supervisor.start({});
+    const child = fixture.launcher.processes[0];
+    if (child === undefined) throw new Error("Expected a launched child");
+    child.exitOnSignal = "SIGKILL";
+
+    const stopping = fixture.supervisor.stop();
+    await settle();
+    fixture.clock.advance(5);
+    await settle();
+    await stopping;
+
+    expect(child.signals).toEqual(["SIGTERM", "SIGKILL"]);
+    expect(child.disposed).toBe(true);
+  });
+
+  it("reports one stable category when tunnel preparation fails", async () => {
     const fixture = createFixture();
     fixture.configProvider.error = new Error("raw provider response");
 
     await expect(fixture.supervisor.start({})).rejects.toMatchObject({
       code: "tunnel_config_failed",
     });
+    fixture.clock.advance(60_000);
+
+    expect(fixture.launcher.requests).toEqual([]);
     expect(await fixture.supervisor.status()).toEqual({
-      state: "unknown",
-      error: "PI WEB could not prepare Safe Tunnel configuration. Retrying in 10 ms.",
+      state: "stopped",
+      error: "PI WEB could not prepare Safe Tunnel configuration.",
     });
+  });
+
+  it("cancels an in-progress configuration request before stopping", async () => {
+    const fixture = createFixture();
+    fixture.configProvider.waitForAbort = true;
+
+    const starting = fixture.supervisor.start({});
+    const stopping = fixture.supervisor.stop();
+
+    await expect(starting).rejects.toEqual(
+      new SafeTunnelFrpcSupervisorError("start_cancelled"),
+    );
+    await stopping;
+    expect(fixture.configProvider.observedSignal?.aborted).toBe(true);
+    expect(fixture.launcher.requests).toEqual([]);
+    expect(fixture.files.removeCalls).toBe(1);
   });
 
   it("shuts down idempotently and rejects later starts", async () => {
     const fixture = createFixture();
     await fixture.supervisor.start({});
 
-    await fixture.supervisor.shutdown();
-    await fixture.supervisor.shutdown();
+    const first = fixture.supervisor.shutdown();
+    const second = fixture.supervisor.shutdown();
+    expect(second).toBe(first);
+    await first;
 
     expect(fixture.files.removeCalls).toBe(1);
     await expect(fixture.supervisor.start({})).rejects.toEqual(
@@ -128,10 +157,7 @@ function createFixture(): {
     launcher,
     managedFrpc: managed,
     policy: {
-      initialRestartDelayMs: 10,
       killGracePeriodMs: 5,
-      maximumRestartDelayMs: 40,
-      stableRunDurationMs: 100,
       stopGracePeriodMs: 5,
     },
   });
@@ -166,11 +192,18 @@ class FakeConfigProvider implements SafeTunnelFrpcConfigProvider {
     ].join("\n"),
   }, "http://127.0.0.1:8504", trustedCaPath);
   error: Error | undefined;
+  observedSignal: AbortSignal | undefined;
+  waitForAbort = false;
 
-  getTunnelConfig(): Promise<typeof this.config> {
-    return this.error === undefined
-      ? Promise.resolve(this.config)
-      : Promise.reject(this.error);
+  getTunnelConfig(options: { readonly signal?: AbortSignal } = {}): Promise<typeof this.config> {
+    this.observedSignal = options.signal;
+    if (this.error !== undefined) return Promise.reject(this.error);
+    if (!this.waitForAbort) return Promise.resolve(this.config);
+    return new Promise((_resolve, reject) => {
+      options.signal?.addEventListener("abort", () => { reject(new Error("aborted")); }, {
+        once: true,
+      });
+    });
   }
 }
 
@@ -196,14 +229,7 @@ class FakeManagedFrpc implements SafeTunnelManagedFrpcProvider {
 
   ensureManagedFrpc() {
     this.calls += 1;
-    return Promise.resolve({
-      path: managedPath,
-      version: "0.61.0",
-      desiredVersion: "0.61.0",
-      platform: "linux" as const,
-      architecture: "x64" as const,
-      source: "existing" as const,
-    });
+    return Promise.resolve({ path: managedPath });
   }
 }
 
@@ -224,6 +250,7 @@ class FakeLauncher implements SafeTunnelFrpcProcessLauncher {
 
 class FakeProcess implements SafeTunnelFrpcProcessHandle {
   disposed = false;
+  exitOnSignal: NodeJS.Signals | undefined = "SIGTERM";
   readonly signals: NodeJS.Signals[] = [];
 
   constructor(
@@ -237,22 +264,16 @@ class FakeProcess implements SafeTunnelFrpcProcessHandle {
 
   terminate(signal: NodeJS.Signals): boolean {
     this.signals.push(signal);
-    queueMicrotask(() => {
-      this.exit({ exitCode: 0, kind: "exited", signal });
-    });
+    if (signal === this.exitOnSignal) {
+      queueMicrotask(() => {
+        this.exit({ exitCode: 0, kind: "exited", signal });
+      });
+    }
     return true;
   }
 
   exit(exit: SafeTunnelFrpcProcessExit): void {
     this.observer.onExit(exit);
-  }
-
-  stderr(value: string): void {
-    this.observer.onStderr?.(value);
-  }
-
-  stdout(value: string): void {
-    this.observer.onStdout?.(value);
   }
 }
 
@@ -265,10 +286,6 @@ interface Scheduled {
 class ManualClock implements SafeTunnelSupervisorClock {
   private current = 0;
   private readonly scheduled: Scheduled[] = [];
-
-  now(): Date {
-    return new Date(this.current);
-  }
 
   schedule(callback: () => void, delayMs: number): SafeTunnelScheduledTask {
     const task = { callback, dueAt: this.current + delayMs, cancelled: false };

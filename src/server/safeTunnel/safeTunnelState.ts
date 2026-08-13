@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { dirname, join, posix, win32 } from "node:path";
+import { dirname, join } from "node:path";
 import { piWebDataDir } from "../../config.js";
 import type { SafeTunnelDesiredState } from "../../shared/safeTunnelTypes.js";
 import {
@@ -9,7 +8,6 @@ import {
   isSafeTunnelPublicIngressTransportAllowed,
 } from "../../shared/safeTunnelUrlPolicy.js";
 export const safeTunnelStateVersion = 2;
-const previousSafeTunnelStateVersion = 1;
 export const safeTunnelStateDirectoryMode = 0o700;
 export const safeTunnelStateFileMode = 0o600;
 export const defaultSafeTunnelLocalPiWebUrl = "http://127.0.0.1:8504";
@@ -22,14 +20,9 @@ const bearerCredentialPattern = /^[A-Za-z0-9._~+/-]+={0,}$/u;
 
 export type SafeTunnelMachineCredentialStatus = "active" | "rejected";
 
-interface PathApi {
-  dirname(path: string): string;
-  join(...paths: string[]): string;
-}
-
 export interface SafeTunnelMachineCredentials {
   readonly controlApiBaseUrl: string;
-  /** Absent in legacy state and treated as active; new writes make it explicit. */
+  /** Absent values are normalized to active when an existing file is rewritten. */
   readonly credentialStatus?: SafeTunnelMachineCredentialStatus;
   readonly machineId: string;
   readonly machineToken: string;
@@ -63,18 +56,15 @@ export interface SafeTunnelStateStorage {
 
 export interface FileSafeTunnelStateStorageOptions {
   readonly filePath?: string;
-  readonly legacyImportPath?: string;
   readonly platform?: NodeJS.Platform;
 }
 
 export class FileSafeTunnelStateStorage implements SafeTunnelStateStorage {
   readonly filePath: string;
-  private readonly legacyImportPath: string;
   private readonly platform: NodeJS.Platform;
 
   constructor(options: FileSafeTunnelStateStorageOptions = {}) {
     this.filePath = options.filePath ?? defaultSafeTunnelStatePath();
-    this.legacyImportPath = options.legacyImportPath ?? discoverLegacySafeTunnelStatePath();
     this.platform = options.platform ?? process.platform;
   }
 
@@ -87,14 +77,7 @@ export class FileSafeTunnelStateStorage implements SafeTunnelStateStorage {
       return { exists: true, state };
     }
 
-    const legacy = this.legacyImportPath === this.filePath
-      ? undefined
-      : await readJsonFile(this.legacyImportPath);
-    if (legacy === undefined) return { exists: false, state: createDefaultSafeTunnelState() };
-
-    const state = parseSafeTunnelState(legacy);
-    await this.save(state);
-    return { exists: true, state };
+    return { exists: false, state: createDefaultSafeTunnelState() };
   }
 
   async save(state: SafeTunnelPersistedState): Promise<void> {
@@ -139,49 +122,13 @@ export function defaultSafeTunnelStatePath(
   return join(piWebDataDir(env, cwd), "safe-tunnel", "config.json");
 }
 
-export function discoverLegacySafeTunnelStatePath(options: {
-  readonly env?: Readonly<Record<string, string | undefined>>;
-  readonly homeDirectory?: string;
-  readonly platform?: NodeJS.Platform;
-} = {}): string {
-  const env = options.env ?? process.env;
-  const homeDirectory = requireNonEmptyString(options.homeDirectory ?? homedir(), "home directory");
-  const platform = options.platform ?? process.platform;
-  const pathApi = pathApiForPlatform(platform);
-
-  if (platform === "win32") {
-    const configRoot = optionalNonEmptyString(env["APPDATA"])
-      ?? pathApi.join(homeDirectory, "AppData", "Roaming");
-    return pathApi.join(configRoot, "pi-web-tunnel", "config.json");
-  }
-
-  const configRoot = optionalNonEmptyString(env["XDG_CONFIG_HOME"])
-    ?? pathApi.join(homeDirectory, ".config");
-  return pathApi.join(configRoot, "pi-web-tunnel", "config.json");
-}
-
 export function parseSafeTunnelState(value: unknown): SafeTunnelPersistedState {
   const record = requireRecord(value, "Safe Tunnel state must be a JSON object.");
-  const stateVersion = record["stateVersion"];
-  const legacySchemaVersion = record["schemaVersion"];
-
-  if (stateVersion !== undefined
-    && stateVersion !== previousSafeTunnelStateVersion
-    && stateVersion !== safeTunnelStateVersion) {
+  if (record["stateVersion"] !== safeTunnelStateVersion) {
     throw new Error("Unsupported Safe Tunnel state version.");
   }
-  if ((stateVersion === undefined || stateVersion === previousSafeTunnelStateVersion)
-    && legacySchemaVersion !== 1
-    && legacySchemaVersion !== 2) {
-    throw new Error("Unsupported legacy Safe Tunnel config schema version.");
-  }
-  if (stateVersion === safeTunnelStateVersion && legacySchemaVersion !== undefined) {
-    throw new Error("PI WEB Safe Tunnel state must not include legacy schemaVersion.");
-  }
 
-  const desiredState = stateVersion === undefined
-    ? "disabled"
-    : requireDesiredState(record["desiredState"]);
+  const desiredState = requireDesiredState(record["desiredState"]);
   const localPiWebUrl = normalizeSafeTunnelLocalPiWebUrl(record["localPiWebUrl"]);
   const frpcPath = optionalBoundedStateString(
     record["frpcPath"],
@@ -352,12 +299,6 @@ function optionalBoundedStateString(
   return requireBoundedString(value, fieldName, maximumCharacters);
 }
 
-function optionalNonEmptyString(value: string | undefined): string | undefined {
-  if (value === undefined) return undefined;
-  const normalized = value.trim();
-  return normalized === "" ? undefined : normalized;
-}
-
 function requireNonEmptyString(value: unknown, fieldName: string): string {
   if (typeof value !== "string" || value.trim() === "") {
     throw new Error(`Safe Tunnel ${fieldName} must be a non-empty string.`);
@@ -406,8 +347,4 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 
 function isNodeErrorWithCode(error: unknown, code: string): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error && error.code === code;
-}
-
-function pathApiForPlatform(platform: NodeJS.Platform): PathApi {
-  return platform === "win32" ? win32 : posix;
 }

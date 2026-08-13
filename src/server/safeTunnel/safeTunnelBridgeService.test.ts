@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type {
-  SafeTunnelCommandOutput,
-  SafeTunnelRuntimeStatus,
-} from "../../shared/apiTypes.js";
+import type { SafeTunnelRuntimeStatus } from "../../shared/apiTypes.js";
 import {
   DefaultSafeTunnelBridgeService,
   type SafeTunnelApplicationService,
@@ -73,8 +70,8 @@ describe("DefaultSafeTunnelBridgeService", () => {
       desiredState: "disabled",
       runtime: {
         state: "unknown",
-        diagnosticCode: "runtime_retrying",
-        error: "Safe Tunnel runtime is unavailable. PI WEB will retry.",
+        diagnosticCode: "runtime_failed",
+        error: "Safe Tunnel runtime is unavailable.",
       },
     });
     const serialized = JSON.stringify(status);
@@ -297,10 +294,6 @@ class FakeRuntime implements SafeTunnelReconciledFrpcRuntime {
   readonly startInputs: SafeTunnelFrpcStartInput[] = [];
   stopCalls = 0;
 
-  reconcile(): Promise<void> {
-    return Promise.resolve();
-  }
-
   shutdown(): Promise<void> {
     this.currentStatus = { state: "stopped" };
     return Promise.resolve();
@@ -321,10 +314,10 @@ class FakeRuntime implements SafeTunnelReconciledFrpcRuntime {
     return Promise.resolve(this.currentStatus);
   }
 
-  stop(): Promise<SafeTunnelCommandOutput> {
+  stop(): Promise<void> {
     this.stopCalls += 1;
     this.currentStatus = { state: "stopped" };
-    return Promise.resolve({ exitCode: 0, stderr: "", stdout: "stopped" });
+    return Promise.resolve();
   }
 }
 

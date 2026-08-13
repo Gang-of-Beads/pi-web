@@ -110,7 +110,7 @@ describe("HttpSafeTunnelControlPlane", () => {
     await expect(controlPlane.recordMachineHeartbeat(credentials, {
       clientVersion: safeTunnelClientVersion,
       tunnelStatus: "error",
-      errorMessage: "PI WEB Safe Tunnel runtime is recovering.",
+      errorMessage: "PI WEB Safe Tunnel runtime is unavailable.",
     })).resolves.toEqual({
       machineId: "machine_123",
       lastSeenAt: "2030-01-01T00:00:00.000Z",
@@ -123,7 +123,7 @@ describe("HttpSafeTunnelControlPlane", () => {
     expect(transport.requests[1]?.init.body).toBe(JSON.stringify({
       connectorVersion: safeTunnelClientVersion,
       tunnelStatus: "error",
-      errorMessage: "PI WEB Safe Tunnel runtime is recovering.",
+      errorMessage: "PI WEB Safe Tunnel runtime is unavailable.",
     }));
   });
 

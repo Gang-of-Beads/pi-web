@@ -70,7 +70,7 @@ describe("Safe Tunnel enable request helpers", () => {
     });
   });
 
-  it("presents enabled, recovering, disabled, and revoked states as one action", () => {
+  it("presents enabled, stopped, disabled, and revoked states as one action", () => {
     expect(safeTunnelPresentation(safeTunnelStatus({ desiredState: "disabled", runtimeState: "stopped" }))).toMatchObject({
       action: "enable",
       label: "Disabled",
@@ -81,7 +81,7 @@ describe("Safe Tunnel enable request helpers", () => {
     });
     expect(safeTunnelPresentation(safeTunnelStatus({ desiredState: "enabled", runtimeState: "unknown" }))).toMatchObject({
       action: "disable",
-      label: "Recovering",
+      label: "Stopped",
     });
     expect(safeTunnelPresentation(safeTunnelStatus({ rejected: true }))).toMatchObject({
       action: "enable",

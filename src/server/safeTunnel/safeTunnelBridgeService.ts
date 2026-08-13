@@ -65,7 +65,6 @@ interface SafeTunnelOperationState {
   status: SafeTunnelOperationResponse["status"];
   error?: string;
   publicUrl?: string;
-  sealedSnapshot?: SafeTunnelOperationResponse;
   userCode?: string;
   verificationUriComplete?: string;
 }
@@ -86,7 +85,7 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
   private activeWorkflow: ActiveEnableWorkflow | undefined;
   private enableRequestController: AbortController | undefined;
   private operationStartInFlight = false;
-  private readonly operations = new Map<string, SafeTunnelOperationState>();
+  private lastOperation: SafeTunnelOperationState | undefined;
 
   constructor(private readonly dependencies: SafeTunnelBridgeDependencies) {}
 
@@ -143,7 +142,6 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
         .then((result) => { finishEnableOperation(operation, result); })
         .catch(() => { this.failOperation(operation, controller.signal); })
         .finally(() => {
-          sealOperation(operation);
           const active = this.activeWorkflow;
           if (active?.operation.id === operation.id) this.activeWorkflow = undefined;
           this.clearActiveOperation(operation);
@@ -190,8 +188,8 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
   }
 
   operation(operationId: string): SafeTunnelOperationResponse | undefined {
-    const operation = this.operations.get(operationId);
-    return operation === undefined ? undefined : snapshotOperation(operation);
+    const operation = this.lastOperation;
+    return operation?.id === operationId ? snapshotOperation(operation) : undefined;
   }
 
   async shutdown(): Promise<void> {
@@ -273,9 +271,8 @@ export class DefaultSafeTunnelBridgeService implements SafeTunnelBridgeService {
       phase: "preparing",
       status: "running",
     };
-    this.operations.clear();
     this.activeOperation = operation;
-    this.operations.set(operation.id, operation);
+    this.lastOperation = operation;
     return operation;
   }
 
@@ -434,7 +431,7 @@ function ownedStateStatus(
 
 function browserRuntimeStatus(runtime: SafeTunnelRuntimeStatus): SafeTunnelRuntimeStatus {
   const diagnosticCode = runtime.diagnosticCode
-    ?? (runtime.error === undefined ? undefined : "runtime_retrying");
+    ?? (runtime.error === undefined ? undefined : "runtime_failed");
   return {
     state: runtime.state,
     ...(diagnosticCode === undefined
@@ -450,21 +447,18 @@ function runtimeDiagnosticMessage(code: SafeTunnelRuntimeDiagnosticCode): string
   switch (code) {
     case "credentials_rejected":
       return "Safe Tunnel approval was rejected or revoked.";
-    case "heartbeat_retrying":
-      return "Safe Tunnel heartbeat failed. PI WEB will retry.";
+    case "heartbeat_failed":
+      return "Safe Tunnel heartbeat failed. PI WEB will try again at the next interval.";
     case "registration_required":
       return "Safe Tunnel needs approval before PI WEB can reconnect.";
-    case "runtime_recovery_failed":
-      return "PI WEB could not recover the Safe Tunnel runtime and will retry.";
-    case "runtime_retrying":
-      return "Safe Tunnel runtime is unavailable. PI WEB will retry.";
-    case "state_retrying":
-      return "PI WEB could not read Safe Tunnel state and will retry.";
+    case "runtime_failed":
+      return "Safe Tunnel runtime is unavailable.";
+    case "state_invalid":
+      return "PI WEB could not read Safe Tunnel state.";
   }
 }
 
 function snapshotOperation(operation: SafeTunnelOperationState): SafeTunnelOperationResponse {
-  if (operation.sealedSnapshot !== undefined) return { ...operation.sealedSnapshot };
   return {
     id: operation.id,
     kind: operation.kind,
@@ -477,13 +471,6 @@ function snapshotOperation(operation: SafeTunnelOperationState): SafeTunnelOpera
       ? {}
       : { verificationUriComplete: operation.verificationUriComplete }),
   };
-}
-
-function sealOperation(operation: SafeTunnelOperationState): void {
-  operation.sealedSnapshot = snapshotOperation(operation);
-  delete operation.publicUrl;
-  delete operation.userCode;
-  delete operation.verificationUriComplete;
 }
 
 function throwIfEnableCancelled(signal: AbortSignal): void {

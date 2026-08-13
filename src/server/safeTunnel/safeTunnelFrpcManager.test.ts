@@ -1,22 +1,19 @@
 import { createHash } from "node:crypto";
 import { createServer, type RequestListener, type Server } from "node:http";
-import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   findSafeTunnelFrpcArtifact,
-  findSafeTunnelFrpcRelease,
   safeTunnelFrpcManifest,
   type SafeTunnelFrpcArtifact,
   type SafeTunnelFrpcManifest,
-  type SafeTunnelFrpcRelease,
 } from "./safeTunnelFrpcManifest.js";
 import {
   FileSafeTunnelFrpcInstallationStore,
   HttpSafeTunnelFrpcArtifactSource,
-  SafeTunnelFrpcAcquisitionError,
   SafeTunnelFrpcManager,
   TarGzipSafeTunnelFrpcArchiveExtractor,
   type SafeTunnelFrpcArtifactSource,
@@ -35,13 +32,10 @@ afterEach(async () => {
 });
 
 describe("pinned Safe Tunnel frpc manifest", () => {
-  it("pins independently verified official frp executables for the supported targets", () => {
-    const release = findSafeTunnelFrpcRelease(safeTunnelFrpcManifest, "0.69.1");
-    if (release === undefined) throw new Error("Pinned frp release is missing");
-
-    expect(safeTunnelFrpcManifest.desiredVersion).toBe("0.69.1");
-    expect(release.artifacts).toHaveLength(2);
-    expect(findSafeTunnelFrpcArtifact(release, "linux", "arm64")).toEqual({
+  it("pins independently verified official frp executables for supported targets", () => {
+    expect(safeTunnelFrpcManifest.version).toBe("0.69.1");
+    expect(safeTunnelFrpcManifest.artifacts).toHaveLength(2);
+    expect(findSafeTunnelFrpcArtifact(safeTunnelFrpcManifest, "linux", "arm64")).toEqual({
       platform: "linux",
       architecture: "arm64",
       archiveFormat: "tar.gz",
@@ -52,7 +46,7 @@ describe("pinned Safe Tunnel frpc manifest", () => {
       executableSha256: "f93e758ea21099a8ac6b65791d1113e86ccb06bab03cc41575613726e375322d",
       executableSize: 15_007_928,
     });
-    expect(findSafeTunnelFrpcArtifact(release, "linux", "x64")).toEqual({
+    expect(findSafeTunnelFrpcArtifact(safeTunnelFrpcManifest, "linux", "x64")).toEqual({
       platform: "linux",
       architecture: "x64",
       archiveFormat: "tar.gz",
@@ -67,7 +61,7 @@ describe("pinned Safe Tunnel frpc manifest", () => {
 });
 
 describe("HttpSafeTunnelFrpcArtifactSource", () => {
-  it("downloads bytes within both the transport and pinned-artifact bounds without exposing details", async () => {
+  it("downloads only a bounded successful artifact body", async () => {
     const expected = Buffer.from("fixture archive bytes");
     const baseArtifact = {
       ...artifactFixture("1.0.0", expected).artifact,
@@ -76,9 +70,9 @@ describe("HttpSafeTunnelFrpcArtifactSource", () => {
     const requests: { readonly accept: string | undefined; readonly path: string | undefined }[] = [];
     const server = await listen((request, response) => {
       requests.push({ accept: request.headers.accept, path: request.url });
-      if (request.url?.startsWith("/failure") === true) {
-        response.writeHead(503, { "content-type": "text/plain" });
-        response.end("private-provider-response");
+      if (request.url === "/failure") {
+        response.writeHead(503);
+        response.end("provider response");
         return;
       }
       if (request.url === "/large") {
@@ -92,8 +86,7 @@ describe("HttpSafeTunnelFrpcArtifactSource", () => {
         return;
       }
       response.writeHead(200, { "content-length": expected.byteLength.toString() });
-      response.write(expected.subarray(0, 7));
-      response.end(expected.subarray(7));
+      response.end(expected);
     });
     const source = new HttpSafeTunnelFrpcArtifactSource({ maximumDownloadBytes: 1_024 });
 
@@ -102,30 +95,18 @@ describe("HttpSafeTunnelFrpcArtifactSource", () => {
       downloadUrl: `${server.origin}/artifact`,
     })).resolves.toEqual(Uint8Array.from(expected));
     expect(requests[0]).toEqual({ accept: "application/octet-stream", path: "/artifact" });
-
-    const failureArtifact = {
+    await expect(source.download({
       ...baseArtifact,
-      downloadUrl: `${server.origin}/failure?access_token=private-url-token`,
-    };
-    const failure = await captureError(source.download(failureArtifact));
-    expect(failure).toMatchObject({
-      code: "download_failed",
-      message: "PI WEB could not download the managed Safe Tunnel runtime.",
-    });
-    expect(errorDiagnostic(failure)).not.toContain("private-url-token");
-    expect(errorDiagnostic(failure)).not.toContain("private-provider-response");
-
-    const declaredLarge = await captureError(source.download({
+      downloadUrl: `${server.origin}/failure`,
+    })).rejects.toMatchObject({ code: "download_failed" });
+    await expect(source.download({
       ...baseArtifact,
       downloadUrl: `${server.origin}/large`,
-    }));
-    expect(declaredLarge).toMatchObject({ code: "download_too_large" });
-
-    const streamedLarge = await captureError(source.download({
+    })).rejects.toMatchObject({ code: "download_too_large" });
+    await expect(source.download({
       ...baseArtifact,
       downloadUrl: `${server.origin}/stream-large`,
-    }));
-    expect(streamedLarge).toMatchObject({ code: "download_too_large" });
+    })).rejects.toMatchObject({ code: "download_too_large" });
   });
 
   it("aborts a stalled transport at the configured timeout", async () => {
@@ -138,7 +119,7 @@ describe("HttpSafeTunnelFrpcArtifactSource", () => {
           return new Promise<Response>((_resolve, reject) => {
             observedSignal?.addEventListener(
               "abort",
-              () => { reject(new Error("private stalled transport")); },
+              () => { reject(new Error("stalled transport")); },
               { once: true },
             );
           });
@@ -148,7 +129,6 @@ describe("HttpSafeTunnelFrpcArtifactSource", () => {
       const fixture = artifactFixture("1.0.0", Buffer.from("fixture"));
       const assertion = expect(source.download(fixture.artifact)).rejects.toMatchObject({
         code: "download_failed",
-        message: "PI WEB could not download the managed Safe Tunnel runtime.",
       });
 
       await vi.advanceTimersByTimeAsync(50);
@@ -162,7 +142,7 @@ describe("HttpSafeTunnelFrpcArtifactSource", () => {
 });
 
 describe("SafeTunnelFrpcManager", () => {
-  it("selects, extracts, verifies, and atomically installs a loopback archive fixture", async () => {
+  it("selects, verifies, extracts, and installs the pinned target", async () => {
     const executable = Buffer.from("#!/bin/sh\necho fixture-frpc\n");
     let requestCount = 0;
     const archivePath = "frp_1.2.3_linux_arm64/frpc";
@@ -180,13 +160,6 @@ describe("SafeTunnelFrpcManager", () => {
 
     const installed = await manager.ensureManagedFrpc();
 
-    expect(installed).toMatchObject({
-      version: "1.2.3",
-      desiredVersion: "1.2.3",
-      platform: "linux",
-      architecture: "arm64",
-      source: "installed",
-    });
     expect(installed.path).toBe(join(
       tempDirectory,
       "safe-tunnel",
@@ -203,7 +176,7 @@ describe("SafeTunnelFrpcManager", () => {
     }
     expect(await temporaryInstallFiles(join(tempDirectory, "safe-tunnel", "frpc"))).toEqual([]);
 
-    await expect(manager.ensureManagedFrpc()).resolves.toMatchObject({ source: "existing" });
+    await expect(manager.ensureManagedFrpc()).resolves.toEqual(installed);
     expect(requestCount).toBe(1);
   });
 
@@ -218,151 +191,27 @@ describe("SafeTunnelFrpcManager", () => {
     const second = manager.ensureManagedFrpc();
 
     expect(second).toBe(first);
-    await expect(Promise.all([first, second])).resolves.toEqual([
-      expect.objectContaining({ source: "installed" }),
-      expect.objectContaining({ source: "installed" }),
-    ]);
+    await Promise.all([first, second]);
     expect(source.calls).toEqual([fixture.artifact.downloadUrl]);
   });
 
-  it.skipIf(process.platform === "win32")(
-    "rejects a symlinked managed-install directory before writing through it",
-    async () => {
-      const fixture = artifactFixture("1.0.0", Buffer.from("verified frpc"));
-      const source = new FixtureArtifactSource([
-        [fixture.artifact.downloadUrl, fixture.archive],
-      ]);
-      const installDirectory = join(tempDirectory, "safe-tunnel", "frpc");
-      const outsideDirectory = join(tempDirectory, "outside");
-      await mkdir(dirname(installDirectory), { recursive: true });
-      await mkdir(outsideDirectory);
-      await symlink(outsideDirectory, installDirectory, "dir");
-
-      await expect(managerFor(fixture.manifest, source).ensureManagedFrpc())
-        .rejects.toMatchObject({ code: "install_failed" });
-      await expect(readdir(outsideDirectory)).resolves.toEqual([]);
-    },
-  );
-
-  it("installs a desired-version upgrade while preserving the verified prior version", async () => {
-    const versionOne = artifactFixture("1.0.0", Buffer.from("verified frpc version one"));
-    const firstSource = new FixtureArtifactSource([[versionOne.artifact.downloadUrl, versionOne.archive]]);
-    const first = await managerFor(versionOne.manifest, firstSource).ensureManagedFrpc();
-
-    const versionTwo = artifactFixture("2.0.0", Buffer.from("verified frpc version two"));
-    const upgradeManifest: SafeTunnelFrpcManifest = {
-      desiredVersion: "2.0.0",
-      releases: [versionTwo.release, versionOne.release],
-    };
-    const upgradeSource = new FixtureArtifactSource([[versionTwo.artifact.downloadUrl, versionTwo.archive]]);
-
-    const upgraded = await managerFor(upgradeManifest, upgradeSource).ensureManagedFrpc();
-
-    expect(upgraded).toMatchObject({ version: "2.0.0", source: "installed" });
-    expect(upgraded.path).not.toBe(first.path);
-    expect(await readFile(upgraded.path)).toEqual(Buffer.from("verified frpc version two"));
-    expect(await readFile(first.path)).toEqual(Buffer.from("verified frpc version one"));
-    expect(await temporaryInstallFiles(join(tempDirectory, "safe-tunnel", "frpc"))).toEqual([]);
-
-    const noDownloadSource = new FixtureArtifactSource([]);
-    await expect(managerFor(upgradeManifest, noDownloadSource).ensureManagedFrpc())
-      .resolves.toMatchObject({ version: "2.0.0", source: "existing" });
-    expect(noDownloadSource.calls).toEqual([]);
-  });
-
-  it("falls back only to a manifest-known existing binary whose SHA-256 still verifies", async () => {
-    const versionOne = artifactFixture("1.0.0", Buffer.from("verified fallback frpc"));
-    const installed = await managerFor(
-      versionOne.manifest,
-      new FixtureArtifactSource([[versionOne.artifact.downloadUrl, versionOne.archive]]),
-    ).ensureManagedFrpc();
-    const versionTwo = artifactFixture("2.0.0", Buffer.from("desired update frpc"));
-    const upgradeManifest: SafeTunnelFrpcManifest = {
-      desiredVersion: "2.0.0",
-      releases: [versionTwo.release, versionOne.release],
-    };
-    const privateFailure = new Error("download https://private.example/token failed: provider-secret");
-    const failingSource = new FixtureArtifactSource([
-      [versionTwo.artifact.downloadUrl, privateFailure],
-    ]);
-
-    const fallback = await managerFor(upgradeManifest, failingSource).ensureManagedFrpc();
-
-    expect(fallback).toEqual({
-      path: installed.path,
-      version: "1.0.0",
-      desiredVersion: "2.0.0",
-      platform: "linux",
-      architecture: "arm64",
-      source: "fallback",
-      updateErrorCode: "download_failed",
-    });
-    expect(JSON.stringify(fallback)).not.toContain("provider-secret");
-    expect(JSON.stringify(fallback)).not.toContain("private.example");
-
-    const tamperedUpdate = tarGzipFixture([{
-      path: versionTwo.artifact.archiveEntryPath,
-      contents: Buffer.from("tampered update frpc"),
-    }]);
-    await expect(managerFor(
-      upgradeManifest,
-      new FixtureArtifactSource([[versionTwo.artifact.downloadUrl, tamperedUpdate]]),
-    ).ensureManagedFrpc()).resolves.toMatchObject({
-      source: "fallback",
-      version: "1.0.0",
-      updateErrorCode: "checksum_mismatch",
-    });
-
-    await writeFile(installed.path, "corrupted fallback");
-    const failure = await captureError(
-      managerFor(upgradeManifest, failingSource).ensureManagedFrpc(),
-    );
-    expect(failure).toMatchObject({ code: "download_failed" });
-    expect(errorDiagnostic(failure)).not.toContain("provider-secret");
-  });
-
-  it("rejects malformed archives, non-regular target entries, and checksum mismatches without installing them", async () => {
-    const executable = Buffer.from("expected executable bytes");
-    const valid = artifactFixture("1.0.0", executable);
-    const malformed = artifactFixture("1.0.0", executable, undefined, {
-      archive: Buffer.from("not a gzip archive"),
-    });
-    const malformedSource = new FixtureArtifactSource([
-      [malformed.artifact.downloadUrl, malformed.archive],
-    ]);
-    await expect(managerFor(malformed.manifest, malformedSource).ensureManagedFrpc())
-      .rejects.toMatchObject({ code: "invalid_archive" });
-
-    const symlinkArchive = tarGzipFixture([{
-      path: valid.artifact.archiveEntryPath,
-      contents: Buffer.alloc(0),
-      typeFlag: "2",
-    }]);
-    const symlink = artifactFixture("1.0.0", executable, undefined, {
-      archive: symlinkArchive,
-    });
-    await expect(managerFor(
-      symlink.manifest,
-      new FixtureArtifactSource([[symlink.artifact.downloadUrl, symlink.archive]]),
-    ).ensureManagedFrpc()).rejects.toMatchObject({ code: "invalid_archive" });
-
+  it("rejects a checksum mismatch without installing an executable", async () => {
+    const expected = Buffer.from("expected executable bytes");
+    const fixture = artifactFixture("1.0.0", expected);
     const tamperedArchive = tarGzipFixture([{
-      path: valid.artifact.archiveEntryPath,
+      path: fixture.artifact.archiveEntryPath,
       contents: Buffer.from("tampered executable bytes"),
     }]);
-    const tampered = artifactFixture("1.0.0", executable, undefined, {
-      archive: tamperedArchive,
-    });
-    await expect(managerFor(
-      tampered.manifest,
-      new FixtureArtifactSource([[tampered.artifact.downloadUrl, tampered.archive]]),
-    ).ensureManagedFrpc()).rejects.toMatchObject({ code: "checksum_mismatch" });
 
+    await expect(managerFor(
+      fixture.manifest,
+      new FixtureArtifactSource([[fixture.artifact.downloadUrl, tamperedArchive]]),
+    ).ensureManagedFrpc()).rejects.toMatchObject({ code: "checksum_mismatch" });
     await expect(readdir(join(tempDirectory, "safe-tunnel", "frpc")))
       .rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("fails closed for a target omitted from the production manifest before downloading", async () => {
+  it("fails before downloading when the pinned manifest omits this platform", async () => {
     const source = new FixtureArtifactSource([]);
     const manager = new SafeTunnelFrpcManager({
       archiveExtractor: new TarGzipSafeTunnelFrpcArchiveExtractor(),
@@ -381,51 +230,6 @@ describe("SafeTunnelFrpcManager", () => {
       message: "PI WEB does not provide a managed Safe Tunnel runtime for this platform and architecture.",
     });
     expect(source.calls).toEqual([]);
-    await expect(readdir(join(tempDirectory, "safe-tunnel", "frpc")))
-      .rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  it("rejects unsafe or ambiguous injected manifests with one redacted application error", () => {
-    const fixture = artifactFixture("1.0.0", Buffer.from("fixture"));
-    const invalidArtifactValues: readonly (
-      readonly [keyof SafeTunnelFrpcArtifact, unknown]
-    )[] = [
-      ["archiveEntryPath", "../frpc"],
-      ["archiveFormat", "zip"],
-      ["archiveSha256", "not-a-sha256"],
-      ["archiveSize", 0],
-      ["downloadUrl", "http://artifacts.example.test/frpc.tar.gz"],
-      ["downloadUrl", "https://user:secret@artifacts.example.test/frpc.tar.gz"],
-      ["executableSha256", "not-a-sha256"],
-      ["executableSize", 0],
-    ];
-    const invalidManifests: readonly SafeTunnelFrpcManifest[] = [
-      ...invalidArtifactValues.map(([field, value]) => {
-        const artifact = { ...fixture.artifact };
-        Object.defineProperty(artifact, field, { value });
-        return {
-          desiredVersion: "1.0.0",
-          releases: [{ ...fixture.release, artifacts: [artifact] }],
-        };
-      }),
-      {
-        desiredVersion: "missing",
-        releases: [fixture.release],
-      },
-      {
-        desiredVersion: "1.0.0",
-        releases: [{
-          ...fixture.release,
-          artifacts: [fixture.artifact, fixture.artifact],
-        }],
-      },
-    ];
-
-    for (const invalid of invalidManifests) {
-      expect(() => managerFor(invalid, new FixtureArtifactSource([]))).toThrow(
-        new SafeTunnelFrpcAcquisitionError("invalid_manifest"),
-      );
-    }
   });
 });
 
@@ -438,7 +242,6 @@ interface ArtifactFixture {
   readonly archive: Uint8Array;
   readonly artifact: SafeTunnelFrpcArtifact;
   readonly manifest: SafeTunnelFrpcManifest;
-  readonly release: SafeTunnelFrpcRelease;
 }
 
 function artifactFixture(
@@ -461,12 +264,10 @@ function artifactFixture(
     executableSha256: createHash("sha256").update(executable).digest("hex"),
     executableSize: executable.byteLength,
   };
-  const release: SafeTunnelFrpcRelease = { version, artifacts: [artifact] };
   return {
     archive,
     artifact,
-    release,
-    manifest: { desiredVersion: version, releases: [release] },
+    manifest: { version, artifacts: [artifact] },
   };
 }
 
@@ -516,7 +317,9 @@ async function listen(listener: RequestListener): Promise<LoopbackServer> {
     server.listen(0, "127.0.0.1", resolve);
   });
   const address = server.address();
-  if (address === null || typeof address === "string") throw new Error("Loopback server has no TCP address");
+  if (address === null || typeof address === "string") {
+    throw new Error("Loopback server has no TCP address");
+  }
   return { origin: `http://127.0.0.1:${address.port.toString()}` };
 }
 
@@ -533,7 +336,6 @@ function closeServer(server: Server): Promise<void> {
 interface TarFixtureEntry {
   readonly path: string;
   readonly contents: Uint8Array;
-  readonly typeFlag?: "0" | "2";
 }
 
 function tarGzipFixture(entries: readonly TarFixtureEntry[]): Buffer {
@@ -547,7 +349,7 @@ function tarGzipFixture(entries: readonly TarFixtureEntry[]): Buffer {
     writeTarOctal(header, 124, 12, entry.contents.byteLength);
     writeTarOctal(header, 136, 12, 0);
     header.fill(32, 148, 156);
-    header[156] = (entry.typeFlag ?? "0").charCodeAt(0);
+    header[156] = "0".charCodeAt(0);
     writeTarText(header, 257, 6, "ustar");
     writeTarText(header, 263, 2, "00");
     const checksum = header.reduce((sum, byte) => sum + byte, 0);
@@ -599,18 +401,4 @@ async function visit(path: string, files: string[]): Promise<void> {
     if (entry.isDirectory()) await visit(child, files);
     else files.push(child);
   }
-}
-
-async function captureError(promise: Promise<unknown>): Promise<Error> {
-  try {
-    await promise;
-  } catch (error: unknown) {
-    if (error instanceof Error) return error;
-    throw new Error("Expected an Error rejection", { cause: error });
-  }
-  throw new Error("Expected promise to reject");
-}
-
-function errorDiagnostic(error: Error): string {
-  return `${error.name}: ${error.message} ${JSON.stringify(error)}`;
 }

@@ -1,14 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
-import { chmod, lstat, mkdir, open, readFile, rename, rm } from "node:fs/promises";
+import { chmod, mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import {
   findSafeTunnelFrpcArtifact,
-  findSafeTunnelFrpcRelease,
   safeTunnelFrpcManifest,
   type SafeTunnelFrpcArtifact,
   type SafeTunnelFrpcManifest,
-  type SafeTunnelFrpcRelease,
 } from "./safeTunnelFrpcManifest.js";
 import { defaultSafeTunnelStatePath } from "./safeTunnelState.js";
 
@@ -20,8 +18,6 @@ const maximumExpandedArchiveBytes = 128 * 1024 * 1024;
 const maximumExecutableBytes = 64 * 1024 * 1024;
 const defaultDownloadTimeoutMs = 60_000;
 const tarBlockSize = 512;
-const sha256Pattern = /^[a-f0-9]{64}$/u;
-const safePathSegmentPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 
 export type SafeTunnelFrpcAcquisitionErrorCode =
   | "checksum_mismatch"
@@ -41,12 +37,6 @@ export class SafeTunnelFrpcAcquisitionError extends Error {
 
 export interface SafeTunnelManagedFrpc {
   readonly path: string;
-  readonly version: string;
-  readonly desiredVersion: string;
-  readonly platform: NodeJS.Platform;
-  readonly architecture: NodeJS.Architecture;
-  readonly source: "existing" | "fallback" | "installed";
-  readonly updateErrorCode?: SafeTunnelFrpcAcquisitionErrorCode;
 }
 
 export interface SafeTunnelManagedFrpcProvider {
@@ -143,16 +133,16 @@ export class TarGzipSafeTunnelFrpcArchiveExtractor implements SafeTunnelFrpcArch
 
 export interface SafeTunnelFrpcInstallationStore {
   executablePath(
-    release: SafeTunnelFrpcRelease,
+    manifest: SafeTunnelFrpcManifest,
     artifact: SafeTunnelFrpcArtifact,
   ): string;
   installAtomically(
-    release: SafeTunnelFrpcRelease,
+    manifest: SafeTunnelFrpcManifest,
     artifact: SafeTunnelFrpcArtifact,
     executable: Uint8Array,
   ): Promise<void>;
   isVerifiedExisting(
-    release: SafeTunnelFrpcRelease,
+    manifest: SafeTunnelFrpcManifest,
     artifact: SafeTunnelFrpcArtifact,
   ): Promise<boolean>;
 }
@@ -176,30 +166,30 @@ export class FileSafeTunnelFrpcInstallationStore implements SafeTunnelFrpcInstal
   }
 
   executablePath(
-    release: SafeTunnelFrpcRelease,
+    manifest: SafeTunnelFrpcManifest,
     artifact: SafeTunnelFrpcArtifact,
   ): string {
     const target = `${artifact.platform}-${artifact.architecture}`;
     const executableName = artifact.platform === "win32" ? "frpc.exe" : "frpc";
-    return join(this.installDirectory, "versions", release.version, target, executableName);
+    return join(this.installDirectory, "versions", manifest.version, target, executableName);
   }
 
   isVerifiedExisting(
-    release: SafeTunnelFrpcRelease,
+    manifest: SafeTunnelFrpcManifest,
     artifact: SafeTunnelFrpcArtifact,
   ): Promise<boolean> {
-    return this.isVerifiedPath(this.executablePath(release, artifact), artifact);
+    return this.isVerifiedPath(this.executablePath(manifest, artifact), artifact);
   }
 
   async installAtomically(
-    release: SafeTunnelFrpcRelease,
+    manifest: SafeTunnelFrpcManifest,
     artifact: SafeTunnelFrpcArtifact,
     executable: Uint8Array,
   ): Promise<void> {
     const versionsDirectory = join(this.installDirectory, "versions");
-    const releaseDirectory = join(versionsDirectory, release.version);
-    const targetDirectory = dirname(this.executablePath(release, artifact));
-    const finalPath = this.executablePath(release, artifact);
+    const releaseDirectory = join(versionsDirectory, manifest.version);
+    const targetDirectory = dirname(this.executablePath(manifest, artifact));
+    const finalPath = this.executablePath(manifest, artifact);
     const temporaryPath = join(
       targetDirectory,
       `.frpc-${process.pid.toString()}-${randomUUID()}.tmp`,
@@ -239,10 +229,6 @@ export class FileSafeTunnelFrpcInstallationStore implements SafeTunnelFrpcInstal
     artifact: SafeTunnelFrpcArtifact,
   ): Promise<boolean> {
     try {
-      const status = await lstat(path);
-      if (!status.isFile() || status.isSymbolicLink() || status.size !== artifact.executableSize) {
-        return false;
-      }
       const executable = await readFile(path);
       if (!matchesExecutable(executable, artifact)) return false;
       if (this.platform !== "win32") await chmod(path, safeTunnelFrpcExecutableMode);
@@ -276,7 +262,6 @@ export class SafeTunnelFrpcManager implements SafeTunnelManagedFrpcProvider {
     this.architecture = options.architecture ?? process.arch;
     this.manifest = options.manifest ?? safeTunnelFrpcManifest;
     this.platform = options.platform ?? process.platform;
-    validateManifest(this.manifest);
   }
 
   ensureManagedFrpc(): Promise<SafeTunnelManagedFrpc> {
@@ -287,52 +272,36 @@ export class SafeTunnelFrpcManager implements SafeTunnelManagedFrpcProvider {
   }
 
   private async ensureOnce(): Promise<SafeTunnelManagedFrpc> {
-    const desiredRelease = findSafeTunnelFrpcRelease(
+    const artifact = findSafeTunnelFrpcArtifact(
       this.manifest,
-      this.manifest.desiredVersion,
-    );
-    if (desiredRelease === undefined) {
-      throw new SafeTunnelFrpcAcquisitionError("invalid_manifest");
-    }
-
-    const desiredArtifact = findSafeTunnelFrpcArtifact(
-      desiredRelease,
       this.platform,
       this.architecture,
     );
-    if (desiredArtifact === undefined) {
-      return this.useFallbackOrThrow(
-        new SafeTunnelFrpcAcquisitionError("unsupported_platform"),
-      );
+    if (artifact === undefined) {
+      throw new SafeTunnelFrpcAcquisitionError("unsupported_platform");
     }
 
-    const desiredPath = this.options.installationStore.executablePath(
-      desiredRelease,
-      desiredArtifact,
-    );
-    if (await this.options.installationStore.isVerifiedExisting(
-      desiredRelease,
-      desiredArtifact,
-    )) {
-      return this.result(desiredRelease.version, desiredPath, "existing");
+    const path = this.options.installationStore.executablePath(this.manifest, artifact);
+    if (await this.options.installationStore.isVerifiedExisting(this.manifest, artifact)) {
+      return { path };
     }
 
     try {
-      const executable = await this.downloadAndVerify(desiredArtifact);
+      const executable = await this.downloadAndVerify(artifact);
       await this.options.installationStore.installAtomically(
-        desiredRelease,
-        desiredArtifact,
+        this.manifest,
+        artifact,
         executable,
       );
       if (!await this.options.installationStore.isVerifiedExisting(
-        desiredRelease,
-        desiredArtifact,
+        this.manifest,
+        artifact,
       )) {
         throw new SafeTunnelFrpcAcquisitionError("install_failed");
       }
-      return this.result(desiredRelease.version, desiredPath, "installed");
+      return { path };
     } catch (error: unknown) {
-      return this.useFallbackOrThrow(normalizeAcquisitionError(error));
+      throw normalizeAcquisitionError(error);
     }
   }
 
@@ -354,41 +323,6 @@ export class SafeTunnelFrpcManager implements SafeTunnelManagedFrpcProvider {
     return executable;
   }
 
-  private async useFallbackOrThrow(
-    updateError: SafeTunnelFrpcAcquisitionError,
-  ): Promise<SafeTunnelManagedFrpc> {
-    for (const release of this.manifest.releases) {
-      if (release.version === this.manifest.desiredVersion) continue;
-      const artifact = findSafeTunnelFrpcArtifact(
-        release,
-        this.platform,
-        this.architecture,
-      );
-      if (artifact === undefined) continue;
-      const path = this.options.installationStore.executablePath(release, artifact);
-      if (!await this.options.installationStore.isVerifiedExisting(release, artifact)) continue;
-      return {
-        ...this.result(release.version, path, "fallback"),
-        updateErrorCode: updateError.code,
-      };
-    }
-    throw updateError;
-  }
-
-  private result(
-    version: string,
-    path: string,
-    source: SafeTunnelManagedFrpc["source"],
-  ): SafeTunnelManagedFrpc {
-    return {
-      path,
-      version,
-      desiredVersion: this.manifest.desiredVersion,
-      platform: this.platform,
-      architecture: this.architecture,
-      source,
-    };
-  }
 }
 
 export function defaultSafeTunnelFrpcInstallDirectory(
@@ -570,10 +504,6 @@ async function ensurePrivateInstallDirectory(
   platform: NodeJS.Platform,
 ): Promise<void> {
   await mkdir(directory, { mode: safeTunnelFrpcDirectoryMode, recursive: true });
-  const status = await lstat(directory);
-  if (!status.isDirectory() || status.isSymbolicLink()) {
-    throw new SafeTunnelFrpcAcquisitionError("install_failed");
-  }
   if (platform !== "win32") await chmod(directory, safeTunnelFrpcDirectoryMode);
 }
 
@@ -607,77 +537,8 @@ function normalizeAcquisitionError(error: unknown): SafeTunnelFrpcAcquisitionErr
     : new SafeTunnelFrpcAcquisitionError("install_failed");
 }
 
-function validateManifest(manifest: SafeTunnelFrpcManifest): void {
-  try {
-    if (!safePathSegmentPattern.test(manifest.desiredVersion) || manifest.releases.length < 1) {
-      throw new Error("invalid manifest");
-    }
-    const releaseVersions = new Set<string>();
-    for (const release of manifest.releases) {
-      if (!safePathSegmentPattern.test(release.version) || releaseVersions.has(release.version)) {
-        throw new Error("invalid release");
-      }
-      releaseVersions.add(release.version);
-      const targets = new Set<string>();
-      for (const artifact of release.artifacts) {
-        const target = `${artifact.platform}:${artifact.architecture}`;
-        if (targets.has(target)) throw new Error("duplicate target");
-        targets.add(target);
-        validateArtifact(artifact);
-      }
-    }
-    if (!releaseVersions.has(manifest.desiredVersion)) throw new Error("missing desired release");
-  } catch {
-    throw new SafeTunnelFrpcAcquisitionError("invalid_manifest");
-  }
-}
-
-function validateArtifact(artifact: SafeTunnelFrpcArtifact): void {
-  if (!safePathSegmentPattern.test(artifact.platform)
-    || !safePathSegmentPattern.test(artifact.architecture)) {
-    throw new Error("invalid target");
-  }
-  if (!isTarGzipArchiveFormat(artifact.archiveFormat)) throw new Error("invalid archive format");
-  if (!sha256Pattern.test(artifact.archiveSha256)
-    || !sha256Pattern.test(artifact.executableSha256)) {
-    throw new Error("invalid checksum");
-  }
-  if (!Number.isSafeInteger(artifact.archiveSize)
-    || artifact.archiveSize < 1
-    || artifact.archiveSize > maximumArchiveBytes) {
-    throw new Error("invalid archive size");
-  }
-  if (!Number.isSafeInteger(artifact.executableSize)
-    || artifact.executableSize < 1
-    || artifact.executableSize > maximumExecutableBytes) {
-    throw new Error("invalid executable size");
-  }
-  if (!isSafeArchiveEntryPath(artifact.archiveEntryPath)) {
-    throw new Error("invalid archive path");
-  }
-  const url = new URL(artifact.downloadUrl);
-  const loopbackHttp = url.protocol === "http:" && isLoopbackHostname(url.hostname);
-  if ((url.protocol !== "https:" && !loopbackHttp)
-    || url.username !== ""
-    || url.password !== ""
-    || url.hash !== "") {
-    throw new Error("invalid artifact URL");
-  }
-}
-
 function isTarGzipArchiveFormat(value: unknown): value is "tar.gz" {
   return value === "tar.gz";
-}
-
-function isSafeArchiveEntryPath(path: string): boolean {
-  if (path === "" || path.startsWith("/") || path.includes("\\") || path.includes("\0")) {
-    return false;
-  }
-  return path.split("/").every((segment) => segment !== "" && segment !== "." && segment !== "..");
-}
-
-function isLoopbackHostname(hostname: string): boolean {
-  return hostname === "127.0.0.1" || hostname === "::1" || hostname === "localhost";
 }
 
 function positiveInteger(value: number): number {

@@ -19,8 +19,6 @@ export type SafeTunnelFrpcProcessExit =
 
 export interface SafeTunnelFrpcProcessObserver {
   readonly onExit: (exit: SafeTunnelFrpcProcessExit) => void;
-  readonly onStderr?: (chunk: string) => void;
-  readonly onStdout?: (chunk: string) => void;
 }
 
 /** The exact child returned by a launch. Callers never signal a persisted PID. */
@@ -37,15 +35,7 @@ export interface SafeTunnelFrpcProcessLauncher {
   ): SafeTunnelFrpcProcessHandle;
 }
 
-interface SafeTunnelNodeReadable {
-  setEncoding(encoding: BufferEncoding): this;
-  on(event: "data", listener: (chunk: string) => void): this;
-  off(event: "data", listener: (chunk: string) => void): this;
-}
-
 export interface SafeTunnelNodeChildProcess {
-  readonly stderr: SafeTunnelNodeReadable;
-  readonly stdout: SafeTunnelNodeReadable;
   kill(signal: NodeJS.Signals): boolean;
   offClose(
     listener: (exitCode: number | null, signal: NodeJS.Signals | null) => void,
@@ -66,7 +56,7 @@ export type SafeTunnelNodeProcessSpawner = (
     readonly detached: false;
     readonly env: NodeJS.ProcessEnv;
     readonly shell: false;
-    readonly stdio: ["ignore", "pipe", "pipe"];
+    readonly stdio: ["ignore", "ignore", "ignore"];
     readonly windowsHide: true;
   },
 ) => SafeTunnelNodeChildProcess;
@@ -96,7 +86,7 @@ export class NodeSafeTunnelFrpcProcessLauncher implements SafeTunnelFrpcProcessL
       // process environment, including service credentials, visible to it.
       env: {},
       shell: false,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["ignore", "ignore", "ignore"],
       windowsHide: true,
     });
     const pid = child.processId();
@@ -104,41 +94,27 @@ export class NodeSafeTunnelFrpcProcessLauncher implements SafeTunnelFrpcProcessL
     let settled = false;
     let spawnFailed = false;
 
-    const onStdout = (chunk: string): void => { observer.onStdout?.(chunk); };
-    const onStderr = (chunk: string): void => { observer.onStderr?.(chunk); };
     const cleanup = (): void => {
       if (disposed) return;
       disposed = true;
-      child.stdout.off("data", onStdout);
-      child.stderr.off("data", onStderr);
       child.offError(onError);
       child.offClose(onClose);
     };
-    const settle = (exit: SafeTunnelFrpcProcessExit): void => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      observer.onExit(exit);
-    };
     const onError = (): void => {
-      // ChildProcess also emits "error" when signal delivery fails. Only a
-      // missing initial PID identifies a pre-spawn failure; close remains the
-      // authoritative event that releases ownership in either case.
       if (pid === undefined) spawnFailed = true;
     };
     const onClose = (
       exitCode: number | null,
       signal: NodeJS.Signals | null,
     ): void => {
-      settle(spawnFailed
+      if (settled) return;
+      settled = true;
+      cleanup();
+      observer.onExit(spawnFailed
         ? { kind: "error" }
         : { exitCode, kind: "exited", signal });
     };
 
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", onStdout);
-    child.stderr.on("data", onStderr);
     child.onError(onError);
     child.onceClose(onClose);
 
@@ -158,14 +134,12 @@ function spawnNodeFrpcProcess(
     readonly detached: false;
     readonly env: NodeJS.ProcessEnv;
     readonly shell: false;
-    readonly stdio: ["ignore", "pipe", "pipe"];
+    readonly stdio: ["ignore", "ignore", "ignore"];
     readonly windowsHide: true;
   },
 ): SafeTunnelNodeChildProcess {
   const child = spawn(command, [...args], options);
   return {
-    stderr: child.stderr,
-    stdout: child.stdout,
     kill: (signal) => child.kill(signal),
     offClose: (listener) => { child.off("close", listener); },
     offError: (listener) => { child.off("error", listener); },

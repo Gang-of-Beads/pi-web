@@ -1,5 +1,4 @@
-import { randomUUID } from "node:crypto";
-import { chmod, mkdir, open, rename, rm } from "node:fs/promises";
+import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { rootCertificates } from "node:tls";
 import { defaultSafeTunnelStatePath } from "./safeTunnelState.js";
@@ -44,60 +43,36 @@ export class FileSafeTunnelFrpcRuntimeFiles implements SafeTunnelFrpcRuntimeFile
   }
 
   async writeConfig(contents: string): Promise<void> {
+    const directory = dirname(this.configPath);
     try {
-      await this.writePrivateFile(
+      await mkdir(directory, {
+        mode: safeTunnelFrpcRuntimeDirectoryMode,
+        recursive: true,
+      });
+      await restrictMode(directory, safeTunnelFrpcRuntimeDirectoryMode, this.platform);
+      await writePrivateFile(
         this.trustedCaPath,
         this.trustedCaPem,
         safeTunnelFrpcTrustedCaFileMode,
+        this.platform,
       );
-      await this.writePrivateFile(this.configPath, contents, safeTunnelFrpcConfigFileMode);
+      await writePrivateFile(
+        this.configPath,
+        contents,
+        safeTunnelFrpcConfigFileMode,
+        this.platform,
+      );
     } catch (error: unknown) {
-      await rm(this.trustedCaPath, { force: true }).catch(() => undefined);
+      await this.removeConfig().catch(() => undefined);
       throw error;
     }
   }
 
   async removeConfig(): Promise<void> {
-    const removals = await Promise.allSettled([
+    await Promise.all([
       rm(this.configPath, { force: true }),
       rm(this.trustedCaPath, { force: true }),
     ]);
-    const failed = removals.find(
-      (result): result is PromiseRejectedResult => result.status === "rejected",
-    );
-    if (failed !== undefined) throw failed.reason;
-  }
-
-  private async writePrivateFile(
-    path: string,
-    contents: string,
-    mode: number,
-  ): Promise<void> {
-    await this.ensurePrivateDirectory(dirname(path));
-    const tempPath = `${path}.${process.pid.toString()}-${randomUUID()}.tmp`;
-    let handle: Awaited<ReturnType<typeof open>> | undefined;
-
-    try {
-      handle = await open(tempPath, "wx", mode);
-      await handle.writeFile(contents, "utf8");
-      await handle.sync();
-      await handle.close();
-      handle = undefined;
-      await restrictMode(tempPath, mode, this.platform);
-      await rename(tempPath, path);
-      await restrictMode(path, mode, this.platform);
-    } finally {
-      await handle?.close().catch(() => undefined);
-      await rm(tempPath, { force: true }).catch(() => undefined);
-    }
-  }
-
-  private async ensurePrivateDirectory(directory: string): Promise<void> {
-    await mkdir(directory, {
-      mode: safeTunnelFrpcRuntimeDirectoryMode,
-      recursive: true,
-    });
-    await restrictMode(directory, safeTunnelFrpcRuntimeDirectoryMode, this.platform);
   }
 }
 
@@ -105,13 +80,22 @@ export function safeTunnelFrpcTrustedCaPath(statePath: string): string {
   return join(dirname(statePath), safeTunnelFrpcTrustedCaFileName);
 }
 
+async function writePrivateFile(
+  path: string,
+  contents: string,
+  mode: number,
+  platform: NodeJS.Platform,
+): Promise<void> {
+  await writeFile(path, contents, { encoding: "utf8", mode });
+  await restrictMode(path, mode, platform);
+}
+
 async function restrictMode(
   path: string,
   mode: number,
   platform: NodeJS.Platform,
 ): Promise<void> {
-  if (platform === "win32") return;
-  await chmod(path, mode);
+  if (platform !== "win32") await chmod(path, mode);
 }
 
 function requireTrustedCaPem(value: string): string {

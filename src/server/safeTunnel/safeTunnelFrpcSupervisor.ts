@@ -1,11 +1,7 @@
-import type {
-  SafeTunnelCommandOutput,
-  SafeTunnelRuntimeStatus,
-} from "../../shared/apiTypes.js";
+import type { SafeTunnelRuntimeStatus } from "../../shared/apiTypes.js";
 import { validateSafeTunnelFrpcConfig } from "./safeTunnelFrpcConfig.js";
 import {
   SafeTunnelFrpcAcquisitionError,
-  type SafeTunnelManagedFrpc,
   type SafeTunnelManagedFrpcProvider,
 } from "./safeTunnelFrpcManager.js";
 import type {
@@ -16,9 +12,6 @@ import type {
 import type { SafeTunnelFrpcRuntimeFiles } from "./safeTunnelFrpcRuntimeFiles.js";
 import type { SafeTunnelPreparedTunnelConfig } from "./safeTunnelService.js";
 
-const defaultInitialRestartDelayMs = 1_000;
-const defaultMaximumRestartDelayMs = 30_000;
-const defaultStableRunDurationMs = 60_000;
 const defaultStopGracePeriodMs = 5_000;
 const defaultKillGracePeriodMs = 2_000;
 
@@ -47,15 +40,10 @@ export interface SafeTunnelScheduledTask {
 }
 
 export interface SafeTunnelSupervisorClock {
-  now(): Date;
   schedule(callback: () => void, delayMs: number): SafeTunnelScheduledTask;
 }
 
 export class NodeSafeTunnelSupervisorClock implements SafeTunnelSupervisorClock {
-  now(): Date {
-    return new Date();
-  }
-
   schedule(callback: () => void, delayMs: number): SafeTunnelScheduledTask {
     let active = true;
     const timeout = setTimeout(() => {
@@ -74,10 +62,7 @@ export class NodeSafeTunnelSupervisorClock implements SafeTunnelSupervisorClock 
 }
 
 export interface SafeTunnelFrpcSupervisorPolicy {
-  readonly initialRestartDelayMs?: number;
   readonly killGracePeriodMs?: number;
-  readonly maximumRestartDelayMs?: number;
-  readonly stableRunDurationMs?: number;
   readonly stopGracePeriodMs?: number;
 }
 
@@ -99,7 +84,7 @@ export interface SafeTunnelFrpcRuntime {
   shutdown(): Promise<void>;
   start(input: SafeTunnelFrpcStartInput): Promise<SafeTunnelFrpcStartResult>;
   status(): Promise<SafeTunnelRuntimeStatus>;
-  stop(): Promise<SafeTunnelCommandOutput>;
+  stop(): Promise<void>;
 }
 
 export interface SafeTunnelFrpcSupervisorDependencies {
@@ -112,7 +97,6 @@ export interface SafeTunnelFrpcSupervisorDependencies {
 }
 
 type SupervisorPhase =
-  | "retrying"
   | "running"
   | "shutdown"
   | "starting"
@@ -120,16 +104,12 @@ type SupervisorPhase =
   | "stopping";
 
 interface NormalizedSupervisorPolicy {
-  readonly initialRestartDelayMs: number;
   readonly killGracePeriodMs: number;
-  readonly maximumRestartDelayMs: number;
-  readonly stableRunDurationMs: number;
   readonly stopGracePeriodMs: number;
 }
 
 interface OwnedFrpcProcess {
   readonly completion: Promise<void>;
-  readonly generation: number;
   readonly handle: SafeTunnelFrpcProcessHandle;
   resolveCompletion: () => void;
   exit?: SafeTunnelFrpcProcessExit;
@@ -137,27 +117,18 @@ interface OwnedFrpcProcess {
   stopRequested: boolean;
 }
 
-/**
- * Owns the one exact frpc child launched by this PI WEB process. Persisted PIDs
- * are deliberately absent: disable and shutdown can signal only this handle.
- */
+/** Owns only the exact frpc child launched by this PI WEB process. */
 export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
   private activeAttempt: Promise<SafeTunnelFrpcStartResult> | undefined;
   private activeAttemptAbortController: AbortController | undefined;
   private activeProcess: OwnedFrpcProcess | undefined;
   private readonly clock: SafeTunnelSupervisorClock;
-  private consecutiveFailures = 0;
   private disposed = false;
-  private generation = 0;
   private lastError: string | undefined;
   private phase: SupervisorPhase = "stopped";
   private readonly policy: NormalizedSupervisorPolicy;
-  private restartTask: SafeTunnelScheduledTask | undefined;
-  private runRequested = false;
-  private shutdownComplete = false;
   private shutdownInFlight: Promise<void> | undefined;
-  private stableRunTask: SafeTunnelScheduledTask | undefined;
-  private stopInFlight: Promise<SafeTunnelCommandOutput> | undefined;
+  private stopInFlight: Promise<void> | undefined;
 
   constructor(private readonly dependencies: SafeTunnelFrpcSupervisorDependencies) {
     this.clock = dependencies.clock ?? new NodeSafeTunnelSupervisorClock();
@@ -168,50 +139,39 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
     if (this.disposed) {
       return Promise.reject(new SafeTunnelFrpcSupervisorError("supervisor_shutdown"));
     }
-    if (
-      this.stopInFlight !== undefined
+    if (this.stopInFlight !== undefined
       || this.activeAttempt !== undefined
-      || this.activeProcess !== undefined
-    ) {
+      || this.activeProcess !== undefined) {
       return Promise.reject(new SafeTunnelFrpcSupervisorError("already_running"));
     }
 
-    this.cancelRestartTask();
-    this.cancelStableRunTask();
-    this.generation += 1;
-    const generation = this.generation;
-    this.runRequested = true;
-    this.consecutiveFailures = 0;
     this.lastError = undefined;
     this.phase = "starting";
     const controller = new AbortController();
-    const attempt = this.performAttempt(generation, input, controller.signal);
-    return this.trackAttempt(attempt, controller);
+    const attempt = this.performStart(input, controller);
+    this.activeAttempt = attempt;
+    this.activeAttemptAbortController = controller;
+    const clear = (): void => {
+      if (this.activeAttempt === attempt) this.activeAttempt = undefined;
+      if (this.activeAttemptAbortController === controller) {
+        this.activeAttemptAbortController = undefined;
+      }
+    };
+    void attempt.then(clear, clear);
+    return attempt;
   }
 
-  async stop(): Promise<SafeTunnelCommandOutput> {
+  stop(): Promise<void> {
     return this.stopRuntime();
   }
 
   shutdown(): Promise<void> {
-    if (this.shutdownComplete) return Promise.resolve();
     if (this.shutdownInFlight !== undefined) return this.shutdownInFlight;
-
     this.disposed = true;
     const shutdown = this.stopRuntime().then(() => {
-      this.shutdownComplete = true;
+      this.phase = "shutdown";
     });
     this.shutdownInFlight = shutdown;
-    void shutdown.then(
-      () => {
-        if (this.shutdownInFlight === shutdown) this.shutdownInFlight = undefined;
-      },
-      () => {
-        // Keep shutdown retryable until both the exact child and its generated
-        // private configuration have been cleaned up successfully.
-        if (this.shutdownInFlight === shutdown) this.shutdownInFlight = undefined;
-      },
-    );
     return shutdown;
   }
 
@@ -222,59 +182,21 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
     });
   }
 
-  private runAttempt(
-    generation: number,
+  private async performStart(
     input: SafeTunnelFrpcStartInput,
-  ): Promise<SafeTunnelFrpcStartResult> {
-    if (this.activeAttempt !== undefined) {
-      return Promise.reject(new SafeTunnelFrpcSupervisorError("already_running"));
-    }
-
-    this.phase = "starting";
-    const controller = new AbortController();
-    return this.trackAttempt(
-      this.performAttempt(generation, input, controller.signal),
-      controller,
-    );
-  }
-
-  private trackAttempt(
-    attempt: Promise<SafeTunnelFrpcStartResult>,
     controller: AbortController,
-  ): Promise<SafeTunnelFrpcStartResult> {
-    this.activeAttempt = attempt;
-    this.activeAttemptAbortController = controller;
-    const clear = (): void => {
-      if (this.activeAttempt !== attempt) return;
-      this.activeAttempt = undefined;
-      if (this.activeAttemptAbortController === controller) {
-        this.activeAttemptAbortController = undefined;
-      }
-    };
-    void attempt.then(clear, clear);
-    return attempt;
-  }
-
-  private async performAttempt(
-    generation: number,
-    input: SafeTunnelFrpcStartInput,
-    signal: AbortSignal,
   ): Promise<SafeTunnelFrpcStartResult> {
     let tunnelConfig: SafeTunnelPreparedTunnelConfig;
     try {
       tunnelConfig = await abortable(
-        this.dependencies.configProvider.getTunnelConfig({ signal }),
-        signal,
+        this.dependencies.configProvider.getTunnelConfig({ signal: controller.signal }),
+        controller.signal,
       );
     } catch {
-      if (signal.aborted) throw new SafeTunnelFrpcSupervisorError("start_cancelled");
-      throw this.failAttempt(
-        generation,
-        input,
-        new SafeTunnelFrpcSupervisorError("tunnel_config_failed"),
-      );
+      if (controller.signal.aborted) throw new SafeTunnelFrpcSupervisorError("start_cancelled");
+      throw this.failStart(new SafeTunnelFrpcSupervisorError("tunnel_config_failed"));
     }
-    this.assertCurrentAttempt(generation);
+    this.assertStartActive(controller);
 
     try {
       validateSafeTunnelFrpcConfig(
@@ -282,46 +204,37 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
         { trustedCaFile: this.dependencies.files.trustedCaPath },
       );
     } catch {
-      throw this.failAttempt(
-        generation,
-        input,
-        new SafeTunnelFrpcSupervisorError("tunnel_config_failed"),
-      );
+      throw this.failStart(new SafeTunnelFrpcSupervisorError("tunnel_config_failed"));
     }
 
-    let managedFrpc: SafeTunnelManagedFrpc | undefined;
     let frpcPath = input.advancedFrpcPath;
     if (frpcPath === undefined) {
       try {
-        managedFrpc = await abortable(
+        const managedFrpc = await abortable(
           this.dependencies.managedFrpc.ensureManagedFrpc(),
-          signal,
+          controller.signal,
         );
         frpcPath = managedFrpc.path;
       } catch (error: unknown) {
-        if (signal.aborted) throw new SafeTunnelFrpcSupervisorError("start_cancelled");
+        if (controller.signal.aborted) {
+          throw new SafeTunnelFrpcSupervisorError("start_cancelled");
+        }
         const detailCode = error instanceof SafeTunnelFrpcAcquisitionError
           ? error.code
           : undefined;
-        throw this.failAttempt(
-          generation,
-          input,
+        throw this.failStart(
           new SafeTunnelFrpcSupervisorError("frpc_acquisition_failed", detailCode),
         );
       }
     }
-    this.assertCurrentAttempt(generation);
+    this.assertStartActive(controller);
 
     try {
       await this.dependencies.files.writeConfig(tunnelConfig.frpcConfigToml);
     } catch {
-      throw this.failAttempt(
-        generation,
-        input,
-        new SafeTunnelFrpcSupervisorError("config_write_failed"),
-      );
+      throw this.failStart(new SafeTunnelFrpcSupervisorError("config_write_failed"));
     }
-    this.assertCurrentAttempt(generation);
+    this.assertStartActive(controller);
 
     let earlyExit: SafeTunnelFrpcProcessExit | undefined;
     const ownership: { current?: OwnedFrpcProcess } = {};
@@ -333,98 +246,58 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
       }, {
         onExit: (exit) => {
           if (ownership.current === undefined) earlyExit = exit;
-          else this.handleProcessExit(ownership.current, exit, input);
+          else this.handleProcessExit(ownership.current, exit);
         },
       });
     } catch {
-      throw this.failAttempt(
-        generation,
-        input,
-        new SafeTunnelFrpcSupervisorError("process_launch_failed"),
-      );
+      throw this.failStart(new SafeTunnelFrpcSupervisorError("process_launch_failed"));
     }
 
-    const owned = createOwnedProcess(handle, generation);
+    const owned = createOwnedProcess(handle);
     ownership.current = owned;
     this.activeProcess = owned;
     this.phase = "running";
     this.lastError = undefined;
 
     if (earlyExit !== undefined) {
-      this.handleProcessExit(owned, earlyExit, input);
-      throw new SafeTunnelFrpcSupervisorError("process_launch_failed");
+      this.handleProcessExit(owned, earlyExit);
+      throw this.failStart(new SafeTunnelFrpcSupervisorError("process_launch_failed"));
     }
 
-    this.scheduleStableRunReset(owned);
     return { publicUrl: tunnelConfig.publicUrl };
   }
 
-  private failAttempt(
-    generation: number,
-    input: SafeTunnelFrpcStartInput,
-    error: SafeTunnelFrpcSupervisorError,
-  ): SafeTunnelFrpcSupervisorError {
-    if (this.isCurrentAttempt(generation)) {
-      this.scheduleRestart(error, generation, input);
-    }
+  private failStart(error: SafeTunnelFrpcSupervisorError): SafeTunnelFrpcSupervisorError {
+    if (!this.disposed) this.phase = "stopped";
+    this.lastError = error.message;
     return error;
   }
 
   private handleProcessExit(
     owned: OwnedFrpcProcess,
     exit: SafeTunnelFrpcProcessExit,
-    input: SafeTunnelFrpcStartInput,
   ): void {
     if (this.activeProcess !== owned || owned.closed) return;
     owned.exit = exit;
     this.releaseClosedProcess(owned);
 
-    if (owned.stopRequested || !this.isCurrentAttempt(owned.generation)) {
+    if (owned.stopRequested) {
       this.phase = this.disposed ? "shutdown" : "stopped";
       this.lastError = undefined;
       return;
     }
 
-    const error = unexpectedExitError(exit);
-    this.scheduleRestart(error, owned.generation, input);
+    this.phase = this.disposed ? "shutdown" : "stopped";
+    this.lastError = unexpectedExitError(exit).message;
   }
 
-  private scheduleRestart(
-    error: Error,
-    generation: number,
-    input: SafeTunnelFrpcStartInput,
-  ): void {
-    if (!this.isCurrentAttempt(generation)) return;
-    this.cancelRestartTask();
-    this.cancelStableRunTask();
-    this.consecutiveFailures += 1;
-    const delayMs = restartDelay(this.consecutiveFailures, this.policy);
-    this.phase = "retrying";
-    this.lastError = `${error.message} Retrying in ${formatDelay(delayMs)}.`;
-    this.restartTask = this.clock.schedule(() => {
-      this.restartTask = undefined;
-      if (!this.isCurrentAttempt(generation)) return;
-      void this.runAttempt(generation, input).catch(() => undefined);
-    }, delayMs);
-  }
-
-  private scheduleStableRunReset(owned: OwnedFrpcProcess): void {
-    this.cancelStableRunTask();
-    this.stableRunTask = this.clock.schedule(() => {
-      this.stableRunTask = undefined;
-      if (this.activeProcess !== owned || !this.isCurrentAttempt(owned.generation)) return;
-      this.consecutiveFailures = 0;
-    }, this.policy.stableRunDurationMs);
-  }
-
-  private stopRuntime(): Promise<SafeTunnelCommandOutput> {
+  private stopRuntime(): Promise<void> {
     if (this.stopInFlight !== undefined) return this.stopInFlight;
 
-    this.runRequested = false;
-    this.generation += 1;
     this.activeAttemptAbortController?.abort();
-    this.cancelRestartTask();
-    this.cancelStableRunTask();
+    if (this.activeAttempt !== undefined || this.activeProcess !== undefined) {
+      this.phase = "stopping";
+    }
     const stopping = this.performStop();
     this.stopInFlight = stopping;
     void stopping.then(
@@ -434,53 +307,30 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
     return stopping;
   }
 
-  private async performStop(): Promise<SafeTunnelCommandOutput> {
-    const activeAttempt = this.activeAttempt;
-    if (activeAttempt !== undefined) await activeAttempt.catch(() => undefined);
+  private async performStop(): Promise<void> {
+    await this.activeAttempt?.catch(() => undefined);
 
     const owned = this.activeProcess;
-    let output: SafeTunnelCommandOutput = {
-      exitCode: 0,
-      stderr: "",
-      stdout: "No running PI WEB Safe Tunnel frpc process was found.\n",
-    };
     let stopError: SafeTunnelFrpcSupervisorError | undefined;
-
     if (owned !== undefined) {
       owned.stopRequested = true;
-      this.phase = "stopping";
       const terminateRequested = this.trySignalOwnedProcess(owned, "SIGTERM");
 
       let stopped = owned.closed;
       if (!stopped && terminateRequested) {
         stopped = await this.waitForOwnedProcess(owned, this.policy.stopGracePeriodMs);
       }
-
-      let forceKillRequested = false;
       if (!stopped) {
-        forceKillRequested = this.trySignalOwnedProcess(owned, "SIGKILL");
+        this.trySignalOwnedProcess(owned, "SIGKILL");
         stopped = owned.closed;
         if (!stopped) {
           stopped = await this.waitForOwnedProcess(owned, this.policy.killGracePeriodMs);
         }
       }
-
       if (!stopped) {
-        // A signal result or error cannot prove termination. Keep the exact
-        // handle owned to prevent replacement until an eventual close releases it.
+        // Keep the exact handle owned so a replacement cannot be launched while
+        // termination remains unconfirmed.
         stopError = new SafeTunnelFrpcSupervisorError("process_stop_failed");
-      } else {
-        const forceStopped = forceKillRequested
-          && owned.exit?.kind === "exited"
-          && owned.exit.signal === "SIGKILL";
-        output = {
-          exitCode: 0,
-          stderr: "",
-          stdout: forceStopped
-            ? "PI WEB force-stopped its owned Safe Tunnel frpc process.\n"
-            : "PI WEB stopped its owned Safe Tunnel frpc process.\n",
-          ...(forceStopped ? { signal: "SIGKILL" } : {}),
-        };
       }
     }
 
@@ -489,11 +339,11 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
     } catch {
       stopError ??= new SafeTunnelFrpcSupervisorError("config_write_failed");
     }
+
     if (this.activeProcess !== undefined) this.phase = "stopping";
     else this.phase = this.disposed ? "shutdown" : "stopped";
     this.lastError = stopError?.message;
     if (stopError !== undefined) throw stopError;
-    return output;
   }
 
   private trySignalOwnedProcess(
@@ -533,41 +383,23 @@ export class SafeTunnelFrpcSupervisor implements SafeTunnelFrpcRuntime {
     owned.closed = true;
     owned.handle.dispose();
     if (this.activeProcess === owned) this.activeProcess = undefined;
-    this.cancelStableRunTask();
     owned.resolveCompletion();
   }
 
-  private assertCurrentAttempt(generation: number): void {
-    if (!this.isCurrentAttempt(generation)) {
+  private assertStartActive(controller: AbortController): void {
+    if (controller.signal.aborted
+      || this.disposed
+      || this.activeAttemptAbortController !== controller) {
       throw new SafeTunnelFrpcSupervisorError("start_cancelled");
     }
   }
-
-  private isCurrentAttempt(generation: number): boolean {
-    return this.runRequested && !this.disposed && this.generation === generation;
-  }
-
-  private cancelRestartTask(): void {
-    this.restartTask?.cancel();
-    this.restartTask = undefined;
-  }
-
-  private cancelStableRunTask(): void {
-    this.stableRunTask?.cancel();
-    this.stableRunTask = undefined;
-  }
-
 }
 
-function createOwnedProcess(
-  handle: SafeTunnelFrpcProcessHandle,
-  generation: number,
-): OwnedFrpcProcess {
+function createOwnedProcess(handle: SafeTunnelFrpcProcessHandle): OwnedFrpcProcess {
   let resolveCompletion = (): void => undefined;
   const completion = new Promise<void>((resolve) => { resolveCompletion = resolve; });
   return {
     completion,
-    generation,
     handle,
     resolveCompletion,
     closed: false,
@@ -578,43 +410,16 @@ function createOwnedProcess(
 function normalizePolicy(
   policy: SafeTunnelFrpcSupervisorPolicy = {},
 ): NormalizedSupervisorPolicy {
-  const normalized = {
-    initialRestartDelayMs: positiveInteger(
-      policy.initialRestartDelayMs ?? defaultInitialRestartDelayMs,
-      "initialRestartDelayMs",
-    ),
+  return {
     killGracePeriodMs: positiveInteger(
       policy.killGracePeriodMs ?? defaultKillGracePeriodMs,
       "killGracePeriodMs",
-    ),
-    maximumRestartDelayMs: positiveInteger(
-      policy.maximumRestartDelayMs ?? defaultMaximumRestartDelayMs,
-      "maximumRestartDelayMs",
-    ),
-    stableRunDurationMs: positiveInteger(
-      policy.stableRunDurationMs ?? defaultStableRunDurationMs,
-      "stableRunDurationMs",
     ),
     stopGracePeriodMs: positiveInteger(
       policy.stopGracePeriodMs ?? defaultStopGracePeriodMs,
       "stopGracePeriodMs",
     ),
   };
-  if (normalized.maximumRestartDelayMs < normalized.initialRestartDelayMs) {
-    throw new Error("maximumRestartDelayMs must not be shorter than initialRestartDelayMs.");
-  }
-  return normalized;
-}
-
-function restartDelay(
-  failureCount: number,
-  policy: NormalizedSupervisorPolicy,
-): number {
-  const exponent = Math.min(failureCount - 1, 30);
-  return Math.min(
-    policy.maximumRestartDelayMs,
-    policy.initialRestartDelayMs * (2 ** exponent),
-  );
 }
 
 function runtimeStateFor(
@@ -622,7 +427,7 @@ function runtimeStateFor(
   hasActiveProcess: boolean,
 ): SafeTunnelRuntimeStatus["state"] {
   if (phase === "running" || (phase === "stopping" && hasActiveProcess)) return "running";
-  if (phase === "starting" || phase === "retrying") return "unknown";
+  if (phase === "starting") return "unknown";
   return "stopped";
 }
 
@@ -634,12 +439,6 @@ function unexpectedExitError(exit: SafeTunnelFrpcProcessExit): Error {
   return new Error(
     `The owned frpc process exited unexpectedly with code ${exit.exitCode?.toString() ?? "unknown"}.`,
   );
-}
-
-function formatDelay(milliseconds: number): string {
-  if (milliseconds % 1_000 !== 0) return `${milliseconds.toString()} ms`;
-  const seconds = milliseconds / 1_000;
-  return `${seconds.toString()} ${seconds === 1 ? "second" : "seconds"}`;
 }
 
 function abortable<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {

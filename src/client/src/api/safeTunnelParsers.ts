@@ -137,11 +137,10 @@ function optionalSafeTunnelRuntimeDiagnosticCode(
   const value = optionalString(record, key);
   if (value === undefined) return undefined;
   if (value !== "credentials_rejected"
-    && value !== "heartbeat_retrying"
+    && value !== "heartbeat_failed"
     && value !== "registration_required"
-    && value !== "runtime_recovery_failed"
-    && value !== "runtime_retrying"
-    && value !== "state_retrying") {
+    && value !== "runtime_failed"
+    && value !== "state_invalid") {
     throw new Error(`Expected Safe Tunnel runtime diagnostic field: ${key}`);
   }
   return value;

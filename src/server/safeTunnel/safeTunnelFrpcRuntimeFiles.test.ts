@@ -39,7 +39,7 @@ describe("FileSafeTunnelFrpcRuntimeFiles", () => {
     await expect(stat(runtimeDirectory)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("atomically replaces private config and PI WEB-owned trust roots", async () => {
+  it("writes private config and PI WEB-owned trust roots", async () => {
     const runtimeDirectory = join(tempDirectory, "safe-tunnel");
     const configPath = join(runtimeDirectory, "frpc.toml");
     const trustedCaPath = join(runtimeDirectory, "frps-roots.pem");

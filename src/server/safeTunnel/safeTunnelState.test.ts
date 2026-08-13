@@ -6,7 +6,6 @@ import {
   FileSafeTunnelStateStorage,
   createDefaultSafeTunnelState,
   defaultSafeTunnelStatePath,
-  discoverLegacySafeTunnelStatePath,
   normalizeSafeTunnelControlApiBaseUrl,
   normalizeSafeTunnelPublicUrl,
   parseSafeTunnelState,
@@ -30,18 +29,6 @@ describe("Safe Tunnel state paths", () => {
       .toBe("/workspace/data/safe-tunnel/config.json");
   });
 
-  it("discovers legacy imports on POSIX and Windows", () => {
-    expect(discoverLegacySafeTunnelStatePath({
-      env: { XDG_CONFIG_HOME: "/config" },
-      homeDirectory: "/home/pi",
-      platform: "linux",
-    })).toBe("/config/pi-web-tunnel/config.json");
-    expect(discoverLegacySafeTunnelStatePath({
-      env: { APPDATA: "C:\\Users\\pi\\AppData\\Roaming" },
-      homeDirectory: "C:\\Users\\pi",
-      platform: "win32",
-    })).toBe("C:\\Users\\pi\\AppData\\Roaming\\pi-web-tunnel\\config.json");
-  });
 });
 
 describe("Safe Tunnel URL policy", () => {
@@ -155,37 +142,6 @@ describe("FileSafeTunnelStateStorage", () => {
     expect(rewritten).not.toContain("old-private-value");
   });
 
-  it("imports a legacy config once into PI WEB-owned state", async () => {
-    const filePath = join(tempDirectory, "data", "safe-tunnel", "config.json");
-    const legacyImportPath = join(tempDirectory, "legacy", "config.json");
-    await mkdir(join(tempDirectory, "legacy"), { recursive: true });
-    await writeFile(legacyImportPath, JSON.stringify({
-      schemaVersion: 2,
-      localPiWebUrl: "http://127.0.0.1:8504",
-      machine: {
-        controlApiBaseUrl: "https://control.example.test",
-        machineId: "machine_legacy",
-        machineToken: "legacy-token",
-      },
-    }));
-    const storage = new FileSafeTunnelStateStorage({
-      filePath,
-      legacyImportPath,
-      platform: "linux",
-    });
-
-    const loaded = await storage.load();
-
-    expect(loaded).toMatchObject({
-      exists: true,
-      state: {
-        stateVersion: 2,
-        desiredState: "disabled",
-        machine: { machineId: "machine_legacy", machineToken: "legacy-token" },
-      },
-    });
-    expect(await readFile(filePath, "utf8")).not.toContain("schemaVersion");
-  });
 
   it("reports invalid JSON and unsupported versions without overwriting them", async () => {
     const filePath = join(tempDirectory, "data", "safe-tunnel", "config.json");
@@ -223,7 +179,6 @@ describe("FileSafeTunnelStateStorage", () => {
 function createStorage(filePath: string): FileSafeTunnelStateStorage {
   return new FileSafeTunnelStateStorage({
     filePath,
-    legacyImportPath: join(tempDirectory, "missing-legacy.json"),
     platform: "linux",
   });
 }

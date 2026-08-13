@@ -155,7 +155,6 @@ describe("SafeTunnelService", () => {
     const filePath = join(directory, "safe-tunnel", "config.json");
     const storage = new FileSafeTunnelStateStorage({
       filePath,
-      legacyImportPath: join(directory, "legacy.json"),
       platform: "linux",
     });
     await storage.save({

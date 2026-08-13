@@ -1,5 +1,4 @@
 import { EventEmitter } from "node:events";
-import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
 import {
   NodeSafeTunnelFrpcProcessLauncher,
@@ -9,11 +8,7 @@ import {
 } from "./safeTunnelFrpcProcess.js";
 
 class FakeNodeChild extends EventEmitter implements SafeTunnelNodeChildProcess {
-  readonly stderr = new PassThrough();
-  readonly stdout = new PassThrough();
   readonly signals: NodeJS.Signals[] = [];
-  killError: Error | undefined;
-  killResult = true;
 
   constructor(private readonly pid: number | null = 4242) {
     super();
@@ -21,8 +16,7 @@ class FakeNodeChild extends EventEmitter implements SafeTunnelNodeChildProcess {
 
   kill(signal: NodeJS.Signals): boolean {
     this.signals.push(signal);
-    if (this.killError !== undefined) this.fail(this.killError);
-    return this.killResult;
+    return true;
   }
 
   offClose(
@@ -59,7 +53,7 @@ class FakeNodeChild extends EventEmitter implements SafeTunnelNodeChildProcess {
 }
 
 describe("NodeSafeTunnelFrpcProcessLauncher", () => {
-  it("launches with an explicit config and owns only the exact returned child", () => {
+  it("launches without ambient environment or output and owns the exact returned child", () => {
     const child = new FakeNodeChild();
     const calls: Parameters<SafeTunnelNodeProcessSpawner>[] = [];
     const launcher = new NodeSafeTunnelFrpcProcessLauncher({
@@ -68,8 +62,6 @@ describe("NodeSafeTunnelFrpcProcessLauncher", () => {
         return child;
       },
     });
-    const stdout: string[] = [];
-    const stderr: string[] = [];
     const exits: SafeTunnelFrpcProcessExit[] = [];
 
     const handle = launcher.launch({
@@ -77,8 +69,6 @@ describe("NodeSafeTunnelFrpcProcessLauncher", () => {
       frpcPath: "/data/pi-web/safe-tunnel/frpc/versions/0.69.1/frpc",
     }, {
       onExit: (exit) => { exits.push(exit); },
-      onStderr: (chunk) => { stderr.push(chunk); },
-      onStdout: (chunk) => { stdout.push(chunk); },
     });
 
     expect(calls).toEqual([[
@@ -89,15 +79,10 @@ describe("NodeSafeTunnelFrpcProcessLauncher", () => {
         detached: false,
         env: {},
         shell: false,
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: ["ignore", "ignore", "ignore"],
         windowsHide: true,
       },
     ]]);
-    child.stdout.write("started\n");
-    child.stderr.write("warning\n");
-    expect(stdout).toEqual(["started\n"]);
-    expect(stderr).toEqual(["warning\n"]);
-
     expect(handle.pid).toBe(4242);
     expect(handle.terminate("SIGTERM")).toBe(true);
     expect(child.signals).toEqual(["SIGTERM"]);
@@ -108,97 +93,29 @@ describe("NodeSafeTunnelFrpcProcessLauncher", () => {
     expect(exits).toEqual([{ exitCode: null, kind: "exited", signal: "SIGTERM" }]);
     expect(child.listenerCount("close")).toBe(0);
     expect(child.listenerCount("error")).toBe(0);
-    expect(child.stdout.listenerCount("data")).toBe(0);
-    expect(child.stderr.listenerCount("data")).toBe(0);
   });
 
-  it("does not inherit the web-process environment into an advanced executable", () => {
-    const child = new FakeNodeChild();
-    let childEnvironment: NodeJS.ProcessEnv | undefined;
-    const launcher = new NodeSafeTunnelFrpcProcessLauncher({
-      spawnProcess: (_command, _args, options) => {
-        childEnvironment = options.env;
-        return child;
-      },
-    });
-
-    const handle = launcher.launch({
-      configPath: "/data/pi-web/safe-tunnel/frpc.toml",
-      frpcPath: "/advanced/frpc",
-    }, { onExit: () => undefined });
-
-    expect(childEnvironment).toEqual({});
-    expect(childEnvironment).not.toBe(process.env);
-    expect(Object.keys(childEnvironment ?? {})).toEqual([]);
-    handle.dispose();
-  });
-
-  it("reports a pre-spawn error only after the authoritative close", () => {
+  it("reports a pre-spawn error only after the child closes", () => {
     const child = new FakeNodeChild(null);
     const launcher = new NodeSafeTunnelFrpcProcessLauncher({
       spawnProcess: () => child,
     });
     const exits: SafeTunnelFrpcProcessExit[] = [];
-    const stdout: string[] = [];
     const handle = launcher.launch({
       configPath: "/tmp/frpc.toml",
       frpcPath: "/opt/frpc",
     }, {
       onExit: (exit) => { exits.push(exit); },
-      onStdout: (chunk) => { stdout.push(chunk); },
     });
 
-    child.fail(new Error("private spawn detail"));
-    child.stdout.write("pending close\n");
-
+    child.fail(new Error("spawn failed"));
     expect(handle.pid).toBeUndefined();
     expect(exits).toEqual([]);
-    expect(stdout).toEqual(["pending close\n"]);
-    expect(child.listenerCount("close")).toBe(1);
-    expect(child.listenerCount("error")).toBe(1);
 
     child.close(1, null);
-    child.close(0, null);
-    child.stdout.write("after close\n");
-
     expect(exits).toEqual([{ kind: "error" }]);
-    expect(stdout).toEqual(["pending close\n"]);
     expect(child.listenerCount("close")).toBe(0);
     expect(child.listenerCount("error")).toBe(0);
-    expect(child.stdout.listenerCount("data")).toBe(0);
-    expect(child.stderr.listenerCount("data")).toBe(0);
-  });
-
-  it("retains listeners after repeated signal-delivery errors until close", () => {
-    const child = new FakeNodeChild();
-    child.killError = new Error("signal delivery failed");
-    child.killResult = false;
-    const launcher = new NodeSafeTunnelFrpcProcessLauncher({
-      spawnProcess: () => child,
-    });
-    const exits: SafeTunnelFrpcProcessExit[] = [];
-    const handle = launcher.launch({
-      configPath: "/tmp/frpc.toml",
-      frpcPath: "/opt/frpc",
-    }, {
-      onExit: (exit) => { exits.push(exit); },
-    });
-
-    expect(handle.terminate("SIGTERM")).toBe(false);
-    expect(handle.terminate("SIGKILL")).toBe(false);
-
-    expect(child.signals).toEqual(["SIGTERM", "SIGKILL"]);
-    expect(exits).toEqual([]);
-    expect(child.listenerCount("close")).toBe(1);
-    expect(child.listenerCount("error")).toBe(1);
-
-    child.close(0, null);
-
-    expect(exits).toEqual([{ exitCode: 0, kind: "exited", signal: null }]);
-    expect(child.listenerCount("close")).toBe(0);
-    expect(child.listenerCount("error")).toBe(0);
-    expect(child.stdout.listenerCount("data")).toBe(0);
-    expect(child.stderr.listenerCount("data")).toBe(0);
   });
 
   it("detaches its listeners without signaling the child", () => {
@@ -222,8 +139,6 @@ describe("NodeSafeTunnelFrpcProcessLauncher", () => {
     expect(child.signals).toEqual([]);
     expect(child.listenerCount("close")).toBe(0);
     expect(child.listenerCount("error")).toBe(0);
-    expect(child.stdout.listenerCount("data")).toBe(0);
-    expect(child.stderr.listenerCount("data")).toBe(0);
   });
 
   it.each([

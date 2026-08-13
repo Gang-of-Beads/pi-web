@@ -26,8 +26,6 @@ import {
 } from "./webProcessLifecycle.js";
 
 const tempDirectories: string[] = [];
-const LONG_SHUTDOWN_RETRY_INTERVAL_MS = 60_000;
-
 const safeTunnelStatus: SafeTunnelStatusResponse = {
   config: { exists: false, state: "missing" },
   desiredState: "disabled",
@@ -229,223 +227,18 @@ describe("web-process lifecycle", () => {
         sessionDaemon: fakeSessionDaemon(),
       });
 
-      try {
-        await runWebProcess(app, { port: 0 }, {
-          listen: readyWithoutListening,
-          retryShutdown: () => fixture.bridge.shutdown(),
-          signalSource,
-        });
-        expect(fixture.startup).toHaveBeenCalledOnce();
-
-        await signalSource.emit(signal);
-        await signalSource.emit(signal);
-
-        expect(fixture.shutdown).toHaveBeenCalledOnce();
-        expect(signalSource.listenerCount("SIGINT")).toBe(0);
-        expect(signalSource.listenerCount("SIGTERM")).toBe(0);
-      } finally {
-        await app.close();
-      }
+      await runWebProcess(app, { port: 0 }, {
+        listen: readyWithoutListening,
+        signalSource,
+      });
+      await signalSource.emit(signal);
+      await signalSource.emit(signal);
 
       expect(fixture.shutdown).toHaveBeenCalledOnce();
+      expect(signalSource.listenerCount("SIGINT")).toBe(0);
+      expect(signalSource.listenerCount("SIGTERM")).toBe(0);
     },
   );
-
-  it("coalesces later signals while retrying a retained enabled bridge", async () => {
-    const fixture = fakeBridge();
-    const signalSource = new FakeWebProcessSignalSource();
-    const stopFailure = new Error("owned child stop was not confirmed");
-    const retryShutdown = createDeferred();
-    fixture.shutdown
-      .mockRejectedValueOnce(stopFailure)
-      .mockImplementationOnce(() => retryShutdown.promise);
-    const app = await buildApp({
-      clientDist: false,
-      logger: false,
-      safeTunnel: fixture.bridge,
-      sessionDaemon: fakeSessionDaemon(),
-    });
-    const close = vi.fn((closingApp: FastifyInstance) => closingApp.close());
-    const logError = vi.spyOn(app.log, "error");
-
-    try {
-      await runWebProcess(app, { port: 0 }, {
-        close,
-        listen: readyWithoutListening,
-        retryShutdown: () => fixture.bridge.shutdown(),
-        shutdownRetryIntervalMs: LONG_SHUTDOWN_RETRY_INTERVAL_MS,
-        signalSource,
-      });
-
-      await signalSource.emit("SIGTERM");
-
-      expect(close).toHaveBeenCalledOnce();
-      expect(fixture.shutdown).toHaveBeenCalledOnce();
-      expect(logError).toHaveBeenCalledWith(
-        { err: stopFailure, signal: "SIGTERM" },
-        "failed to close web server after shutdown signal",
-      );
-      expect(signalSource.listenerCount("SIGINT")).toBe(1);
-      expect(signalSource.listenerCount("SIGTERM")).toBe(1);
-
-      const retryRequests = [
-        signalSource.emit("SIGINT"),
-        signalSource.emit("SIGTERM"),
-      ];
-      await Promise.resolve();
-
-      expect(close).toHaveBeenCalledOnce();
-      expect(fixture.shutdown).toHaveBeenCalledTimes(2);
-      expect(signalSource.listenerCount("SIGINT")).toBe(1);
-      expect(signalSource.listenerCount("SIGTERM")).toBe(1);
-
-      retryShutdown.resolve();
-      await Promise.all(retryRequests);
-      expect(signalSource.listenerCount("SIGINT")).toBe(0);
-      expect(signalSource.listenerCount("SIGTERM")).toBe(0);
-    } finally {
-      retryShutdown.resolve();
-      await signalSource.emit("SIGINT");
-      await app.close().catch(() => undefined);
-    }
-  });
-
-  it("retries incomplete signal cleanup on a referenced schedule", async () => {
-    const fixture = fakeBridge();
-    const signalSource = new FakeWebProcessSignalSource();
-    fixture.shutdown
-      .mockRejectedValueOnce(new Error("owned child stop was not confirmed"))
-      .mockResolvedValueOnce(undefined);
-    const app = await buildApp({
-      clientDist: false,
-      logger: false,
-      safeTunnel: fixture.bridge,
-      sessionDaemon: fakeSessionDaemon(),
-    });
-
-    try {
-      await runWebProcess(app, { port: 0 }, {
-        listen: readyWithoutListening,
-        retryShutdown: () => fixture.bridge.shutdown(),
-        shutdownRetryIntervalMs: 10,
-        signalSource,
-      });
-
-      await signalSource.emit("SIGTERM");
-      expect(fixture.shutdown).toHaveBeenCalledOnce();
-      expect(signalSource.listenerCount("SIGINT")).toBe(1);
-      expect(signalSource.listenerCount("SIGTERM")).toBe(1);
-
-      await vi.waitFor(() => {
-        expect(fixture.shutdown).toHaveBeenCalledTimes(2);
-        expect(signalSource.listenerCount("SIGINT")).toBe(0);
-        expect(signalSource.listenerCount("SIGTERM")).toBe(0);
-      });
-    } finally {
-      await signalSource.emit("SIGINT");
-      await app.close().catch(() => undefined);
-    }
-  });
-
-  it("retains direct-close cleanup ownership until the injected bridge succeeds", async () => {
-    const fixture = fakeBridge();
-    const signalSource = new FakeWebProcessSignalSource();
-    const closeFailure = new Error("owned child stop was not confirmed");
-    const retryShutdown = createDeferred();
-    fixture.shutdown
-      .mockRejectedValueOnce(closeFailure)
-      .mockImplementationOnce(() => retryShutdown.promise);
-    const app = await buildApp({
-      clientDist: false,
-      logger: false,
-      safeTunnel: fixture.bridge,
-      sessionDaemon: fakeSessionDaemon(),
-    });
-
-    try {
-      await runWebProcess(app, { port: 0 }, {
-        listen: readyWithoutListening,
-        retryShutdown: () => fixture.bridge.shutdown(),
-        shutdownRetryIntervalMs: 25,
-        signalSource,
-      });
-
-      await expect(app.close()).rejects.toBe(closeFailure);
-      expect(fixture.shutdown).toHaveBeenCalledOnce();
-      expect(signalSource.listenerCount("SIGINT")).toBe(1);
-      expect(signalSource.listenerCount("SIGTERM")).toBe(1);
-
-      await vi.waitFor(() => {
-        expect(fixture.shutdown).toHaveBeenCalledTimes(2);
-      });
-      const joinedRetries = [
-        signalSource.emit("SIGINT"),
-        signalSource.emit("SIGTERM"),
-        app.close(),
-      ];
-      await Promise.resolve();
-      expect(fixture.shutdown).toHaveBeenCalledTimes(2);
-
-      retryShutdown.resolve();
-      await Promise.all(joinedRetries);
-      expect(signalSource.listenerCount("SIGINT")).toBe(0);
-      expect(signalSource.listenerCount("SIGTERM")).toBe(0);
-      expect(fixture.shutdown).toHaveBeenCalledTimes(2);
-    } finally {
-      retryShutdown.resolve();
-      await signalSource.emit("SIGINT");
-      await app.close().catch(() => undefined);
-    }
-  });
-
-  it("releases direct-close ownership after one successful enabled cleanup", async () => {
-    const fixture = fakeBridge();
-    const signalSource = new FakeWebProcessSignalSource();
-    const app = await buildApp({
-      clientDist: false,
-      logger: false,
-      safeTunnel: fixture.bridge,
-      sessionDaemon: fakeSessionDaemon(),
-    });
-
-    try {
-      await runWebProcess(app, { port: 0 }, {
-        listen: readyWithoutListening,
-        retryShutdown: () => fixture.bridge.shutdown(),
-        shutdownRetryIntervalMs: 10,
-        signalSource,
-      });
-
-      await app.close();
-
-      expect(fixture.shutdown).toHaveBeenCalledOnce();
-      expect(signalSource.listenerCount("SIGINT")).toBe(0);
-      expect(signalSource.listenerCount("SIGTERM")).toBe(0);
-    } finally {
-      await app.close();
-    }
-  });
-
-  it("removes both process listeners when the app is closed externally", async () => {
-    const app = Fastify({ logger: false });
-    const signalSource = new FakeWebProcessSignalSource();
-
-    try {
-      await runWebProcess(app, { port: 0 }, {
-        listen: readyWithoutListening,
-        signalSource,
-      });
-      expect(signalSource.listenerCount("SIGINT")).toBe(1);
-      expect(signalSource.listenerCount("SIGTERM")).toBe(1);
-
-      await app.close();
-
-      expect(signalSource.listenerCount("SIGINT")).toBe(0);
-      expect(signalSource.listenerCount("SIGTERM")).toBe(0);
-    } finally {
-      await app.close();
-    }
-  });
 
   it("coalesces concurrent shutdown signals into one close operation", async () => {
     const app = Fastify({ logger: false });
@@ -453,190 +246,63 @@ describe("web-process lifecycle", () => {
     const closeStarted = createDeferred();
     const releaseClose = createDeferred();
     const close = vi.fn((closingApp: FastifyInstance) => closingApp.close());
-    let shutdownRequests: Promise<void>[] = [];
     app.addHook("onClose", async () => {
       closeStarted.resolve();
       await releaseClose.promise;
     });
 
-    try {
-      await runWebProcess(app, { port: 0 }, {
-        close,
-        listen: readyWithoutListening,
-        signalSource,
-      });
+    await runWebProcess(app, { port: 0 }, {
+      close,
+      listen: readyWithoutListening,
+      signalSource,
+    });
+    const requests = [signalSource.emit("SIGINT")];
+    await closeStarted.promise;
+    requests.push(signalSource.emit("SIGTERM"));
 
-      shutdownRequests = [signalSource.emit("SIGINT")];
-      await closeStarted.promise;
-      expect(close).toHaveBeenCalledOnce();
-      expect(signalSource.listenerCount("SIGINT")).toBe(1);
-      expect(signalSource.listenerCount("SIGTERM")).toBe(1);
+    expect(close).toHaveBeenCalledOnce();
+    releaseClose.resolve();
+    await Promise.all(requests);
+    expect(close).toHaveBeenCalledOnce();
+    expect(signalSource.listenerCount("SIGINT")).toBe(0);
+    expect(signalSource.listenerCount("SIGTERM")).toBe(0);
+  });
 
-      shutdownRequests.push(signalSource.emit("SIGTERM"));
-      expect(close).toHaveBeenCalledOnce();
-      releaseClose.resolve();
-      await Promise.all(shutdownRequests);
+  it("removes process listeners when the app is closed externally", async () => {
+    const app = Fastify({ logger: false });
+    const signalSource = new FakeWebProcessSignalSource();
 
-      expect(close).toHaveBeenCalledOnce();
-      expect(signalSource.listenerCount("SIGINT")).toBe(0);
-      expect(signalSource.listenerCount("SIGTERM")).toBe(0);
-    } finally {
-      releaseClose.resolve();
-      await Promise.allSettled(shutdownRequests);
-      await app.close();
-    }
+    await runWebProcess(app, { port: 0 }, {
+      listen: readyWithoutListening,
+      signalSource,
+    });
+    await app.close();
+
+    expect(signalSource.listenerCount("SIGINT")).toBe(0);
+    expect(signalSource.listenerCount("SIGTERM")).toBe(0);
   });
 
   it("closes a ready app before surfacing its original listen failure", async () => {
     const app = Fastify({ logger: false });
     const signalSource = new FakeWebProcessSignalSource();
-    const startup = vi.fn<() => Promise<void>>(() => Promise.resolve());
     const shutdown = vi.fn<() => Promise<void>>(() => Promise.resolve());
     const close = vi.fn((closingApp: FastifyInstance) => closingApp.close());
     const listenFailure = new Error("address already in use");
-    app.addHook("onReady", startup);
     app.addHook("onClose", shutdown);
 
-    try {
-      await expect(runWebProcess(app, { port: 8504 }, {
-        close,
-        signalSource,
-        listen: async (readyApp) => {
-          await readyApp.ready();
-          throw listenFailure;
-        },
-      })).rejects.toBe(listenFailure);
+    await expect(runWebProcess(app, { port: 8504 }, {
+      close,
+      signalSource,
+      listen: async (readyApp) => {
+        await readyApp.ready();
+        throw listenFailure;
+      },
+    })).rejects.toBe(listenFailure);
 
-      expect(startup).toHaveBeenCalledOnce();
-      expect(shutdown).toHaveBeenCalledOnce();
-      expect(close).toHaveBeenCalledOnce();
-      expect(signalSource.listenerCount("SIGINT")).toBe(0);
-      expect(signalSource.listenerCount("SIGTERM")).toBe(0);
-    } finally {
-      await app.close();
-    }
-  });
-
-  it("retains signal ownership until repeated listen-failure cleanup succeeds", async () => {
-    const fixture = fakeBridge();
-    const signalSource = new FakeWebProcessSignalSource();
-    const listenFailure = new Error("address already in use");
-    const retryFailure = new Error("owned child still did not stop");
-    fixture.shutdown
-      .mockRejectedValueOnce(new Error("owned child stop was not confirmed"))
-      .mockRejectedValueOnce(retryFailure)
-      .mockResolvedValueOnce(undefined);
-    const app = await buildApp({
-      clientDist: false,
-      logger: false,
-      safeTunnel: fixture.bridge,
-      sessionDaemon: fakeSessionDaemon(),
-    });
-    const close = vi.fn((closingApp: FastifyInstance) => closingApp.close());
-    const logError = vi.spyOn(app.log, "error");
-
-    try {
-      let lifecycleSettled = false;
-      const lifecycleResult = runWebProcess(app, { port: 8504 }, {
-        close,
-        retryShutdown: () => fixture.bridge.shutdown(),
-        shutdownRetryIntervalMs: LONG_SHUTDOWN_RETRY_INTERVAL_MS,
-        signalSource,
-        listen: async (readyApp) => {
-          await readyApp.ready();
-          throw listenFailure;
-        },
-      }).then(
-        () => {
-          lifecycleSettled = true;
-          return undefined;
-        },
-        (error: unknown) => {
-          lifecycleSettled = true;
-          return error;
-        },
-      );
-
-      await vi.waitFor(() => {
-        expect(fixture.shutdown).toHaveBeenCalledTimes(2);
-        expect(logError).toHaveBeenCalledWith(
-          { err: retryFailure },
-          "web server listen failed and shutdown was incomplete",
-        );
-      });
-      expect(fixture.startup).toHaveBeenCalledOnce();
-      expect(close).toHaveBeenCalledOnce();
-      expect(lifecycleSettled).toBe(false);
-      expect(signalSource.listenerCount("SIGINT")).toBe(1);
-      expect(signalSource.listenerCount("SIGTERM")).toBe(1);
-
-      await Promise.all([
-        signalSource.emit("SIGINT"),
-        signalSource.emit("SIGTERM"),
-      ]);
-
-      expect(await lifecycleResult).toBe(listenFailure);
-      expect(fixture.shutdown).toHaveBeenCalledTimes(3);
-      expect(signalSource.listenerCount("SIGINT")).toBe(0);
-      expect(signalSource.listenerCount("SIGTERM")).toBe(0);
-    } finally {
-      await signalSource.emit("SIGINT");
-      await app.close().catch(() => undefined);
-    }
-  });
-
-  it("logs cleanup failure without masking the original listen failure", async () => {
-    const app = Fastify({ logger: false });
-    const signalSource = new FakeWebProcessSignalSource();
-    const listenFailure = new Error("listen failed");
-    const cleanupFailure = new Error("shutdown failed");
-    const logError = vi.spyOn(app.log, "error");
-    app.addHook("onClose", () => Promise.reject(cleanupFailure));
-
-    try {
-      await expect(runWebProcess(app, { port: 8504 }, {
-        signalSource,
-        listen: async (readyApp) => {
-          await readyApp.ready();
-          throw listenFailure;
-        },
-      })).rejects.toBe(listenFailure);
-
-      expect(logError).toHaveBeenCalledWith(
-        { err: cleanupFailure },
-        "web server listen failed and shutdown was incomplete",
-      );
-      expect(signalSource.listenerCount("SIGINT")).toBe(0);
-      expect(signalSource.listenerCount("SIGTERM")).toBe(0);
-    } finally {
-      await app.close().catch(() => undefined);
-    }
-  });
-
-  it("reports a signal-driven close failure after releasing signal ownership", async () => {
-    const app = Fastify({ logger: false });
-    const signalSource = new FakeWebProcessSignalSource();
-    const cleanupFailure = new Error("shutdown failed");
-    const logError = vi.spyOn(app.log, "error");
-    app.addHook("onClose", () => Promise.reject(cleanupFailure));
-
-    try {
-      await runWebProcess(app, { port: 0 }, {
-        listen: readyWithoutListening,
-        signalSource,
-      });
-
-      await signalSource.emit("SIGTERM");
-
-      expect(logError).toHaveBeenCalledWith(
-        { err: cleanupFailure, signal: "SIGTERM" },
-        "failed to close web server after shutdown signal",
-      );
-      expect(signalSource.listenerCount("SIGINT")).toBe(0);
-      expect(signalSource.listenerCount("SIGTERM")).toBe(0);
-    } finally {
-      await app.close().catch(() => undefined);
-    }
+    expect(shutdown).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledOnce();
+    expect(signalSource.listenerCount("SIGINT")).toBe(0);
+    expect(signalSource.listenerCount("SIGTERM")).toBe(0);
   });
 });
 
