@@ -16,20 +16,21 @@ describe("app-context-bar session-led layout", () => {
   it("leads with the session name and a single breadcrumb", async () => {
     const root = await mount({ emphasizeSession: true });
 
-    expect(root.querySelector(".context-session-title")?.textContent?.trim()).toBe("Mobile UX sweep");
-    expect(root.querySelector(".context-breadcrumb")?.textContent?.trim()).toBe("pi-web");
+    expect(root.querySelector(".context-session-title")?.textContent.trim()).toBe("Mobile UX sweep");
+    expect(root.querySelector(".context-breadcrumb")?.textContent.trim()).toBe("pi-web");
     // The four-chip trail is replaced, not stacked above: height is unchanged.
     expect(root.querySelectorAll(".context-chip")).toHaveLength(0);
   });
 
   it("falls back to the first message when a session has no alias", async () => {
-    const { name: _unnamed, ...withoutName } = session();
+    const withoutName = { ...session() };
+    delete withoutName.name;
     const root = await mount({
       emphasizeSession: true,
       session: { ...withoutName, firstMessage: "hello there" },
     });
 
-    expect(root.querySelector(".context-session-title")?.textContent?.trim()).toBe("hello there");
+    expect(root.querySelector(".context-session-title")?.textContent.trim()).toBe("hello there");
   });
 
   it("names a non-main workspace rather than repeating the project", async () => {
@@ -38,7 +39,7 @@ describe("app-context-bar session-led layout", () => {
       workspace: { ...workspace(), isMain: false, label: "feature-branch" },
     });
 
-    expect(root.querySelector(".context-breadcrumb")?.textContent?.trim()).toBe("feature-branch");
+    expect(root.querySelector(".context-breadcrumb")?.textContent.trim()).toBe("feature-branch");
   });
 
   it("opens the workspace section from the breadcrumb", async () => {

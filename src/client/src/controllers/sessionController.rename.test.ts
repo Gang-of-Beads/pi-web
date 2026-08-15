@@ -13,7 +13,7 @@ type RunCommand = typeof defaultApi.runCommand;
  */
 describe("SessionController.renameSession", () => {
   it("runs /name and shows the alias immediately", async () => {
-    const runCommand = vi.fn<RunCommand>(async () => ({ type: "done" as const, message: "Session named: Mobile UX" }));
+    const runCommand = vi.fn<RunCommand>(() => Promise.resolve({ type: "done" as const, message: "Session named: Mobile UX" }));
     const { controller, state } = harness(runCommand);
 
     await controller.renameSession(oldSession, "Mobile UX");
@@ -23,7 +23,7 @@ describe("SessionController.renameSession", () => {
   });
 
   it("trims the alias so leading whitespace never reaches the command", async () => {
-    const runCommand = vi.fn<RunCommand>(async () => ({ type: "done" as const, message: "ok" }));
+    const runCommand = vi.fn<RunCommand>(() => Promise.resolve({ type: "done" as const, message: "ok" }));
     const { controller, state } = harness(runCommand);
 
     await controller.renameSession(oldSession, "   Padded   ");
@@ -33,7 +33,7 @@ describe("SessionController.renameSession", () => {
   });
 
   it("ignores a blank alias instead of clearing the name", async () => {
-    const runCommand = vi.fn<RunCommand>(async () => ({ type: "done" as const, message: "ok" }));
+    const runCommand = vi.fn<RunCommand>(() => Promise.resolve({ type: "done" as const, message: "ok" }));
     const { controller } = harness(runCommand);
 
     await controller.renameSession({ ...oldSession, name: "Keep me" }, "   ");
@@ -42,7 +42,7 @@ describe("SessionController.renameSession", () => {
   });
 
   it("rolls back to the previous name when the command fails", async () => {
-    const runCommand = vi.fn<RunCommand>(async () => { throw new Error("daemon down"); });
+    const runCommand = vi.fn<RunCommand>(() => Promise.reject(new Error("daemon down")));
     const named = { ...oldSession, name: "Original" };
     const { controller, state } = harness(runCommand, named);
 

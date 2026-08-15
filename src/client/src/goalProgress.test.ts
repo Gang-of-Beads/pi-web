@@ -70,8 +70,9 @@ describe("findCurrentTask", () => {
   });
 
   it("returns nothing when no task is focused", () => {
-    const { currentTaskId: _ignored, ...withoutFocus } = goal();
-    expect(findCurrentTask({ ...withoutFocus, tasks: goal().tasks })).toBeUndefined();
+    const withoutFocus = { ...goal() };
+    delete withoutFocus.currentTaskId;
+    expect(findCurrentTask(withoutFocus)).toBeUndefined();
   });
 
   it("returns nothing when the focused id no longer exists", () => {

@@ -1432,7 +1432,7 @@ export class SessionController {
     if (state.closedDialogs.some((entry) => entry.dialog.dialogId === closed.dialog.dialogId)) return;
     this.setState({
       pendingDialogs: state.pendingDialogs.filter((pending) => pending.dialogId !== closed.dialog.dialogId),
-      closedDialogs: [...state.closedDialogs, closed],
+      ...(leavesOutcomeCard(closed) ? { closedDialogs: [...state.closedDialogs, closed] } : {}),
     });
   }
 
@@ -1756,6 +1756,23 @@ export class SessionController {
     if (watermark === undefined || watermark.sessionId !== this.getState().selectedSession?.id) return false;
     return event.seq !== undefined && event.seq <= watermark.seq;
   }
+}
+
+/**
+ * Whether a settled dialog is worth a lasting outcome card in the transcript.
+ *
+ * Everything the user did is worth keeping, including dismissing a prompt:
+ * `cancelled` is a deliberate action, not an absence of one. The single case
+ * worth dropping is a *background* prompt that nobody acted on before it timed
+ * out, because the extension that opened it will simply ask again — an update
+ * notice on a five-minute timer would otherwise deposit a fresh card in the
+ * conversation on every cycle, which on a phone is the whole screen.
+ *
+ * Run-scoped dialogs always leave a card: they belong to work the user started,
+ * so even an unanswered timeout there is part of the story.
+ */
+function leavesOutcomeCard(closed: ClosedExtensionDialog): boolean {
+  return closed.reason !== "timeout" || closed.dialog.runScoped;
 }
 
 function omitSessionActivity(activities: Record<string, SessionActivity>, sessionId: string): Record<string, SessionActivity> {
