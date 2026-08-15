@@ -17,3 +17,7 @@ dist/
 
 # Dev docs site staging output (scripts/build-docs-dev.mjs).
 /docs/.deploy/
+
+# Playwright e2e artefacts
+/test-results/
+/playwright-report/

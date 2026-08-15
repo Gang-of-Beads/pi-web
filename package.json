@@ -71,7 +71,12 @@
     "prepare": "node scripts/install-git-hooks.mjs",
     "changeset": "changeset",
     "release:version": "changeset version",
-    "changelog:status": "changeset status"
+    "changelog:status": "changeset status",
+    "e2e": "playwright test",
+    "e2e:mobile": "playwright test --project=mobile",
+    "docker:verify:start": "./docker/pi-web-docker --dev start",
+    "docker:verify:stop": "./docker/pi-web-docker --dev stop",
+    "docker:verify:status": "./docker/pi-web-docker --dev status"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.4",
@@ -107,6 +112,7 @@
     "@earendil-works/pi-ai": "^0.84.1",
     "@earendil-works/pi-coding-agent": "^0.84.1",
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.62.1",
     "@types/node": "^24.13.3",
     "@types/ws": "^8.18.1",
     "eslint": "^10.6.0",

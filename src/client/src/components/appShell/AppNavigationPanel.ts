@@ -91,9 +91,6 @@ export class AppNavigationPanel extends LitElement {
       case "projects": return await this.focusNavigableSection(this.projectList);
       case "workspaces": return await this.focusNavigableSection(this.workspaceList);
       case "sessions": return await this.focusNavigableSection(this.sessionList);
-      // Goals are a read-only context panel with no roving-focus row model, so
-      // keyboard section navigation skips over it rather than trapping focus.
-      case "goals": return false;
     }
   }
 
@@ -165,7 +162,7 @@ export class AppNavigationPanel extends LitElement {
       ${this.renderProjectList(false, visible !== "projects")}
       ${this.renderWorkspaceList(false, visible !== "workspaces")}
       ${this.renderSessionList(false, visible !== "sessions")}
-      ${visible === "goals" ? this.renderGoalPanel() : null}
+      ${visible === "sessions" ? this.renderGoalPanel() : null}
     `;
   }
 
@@ -240,8 +237,10 @@ export class AppNavigationPanel extends LitElement {
   }
 
   /**
-   * Goals are workspace context rather than a navigation step, so the panel is
-   * omitted entirely until a workspace is selected and it has something to say.
+   * Goals are workspace context rather than a navigation step: they sit with
+   * the sessions of the workspace they belong to instead of taking an
+   * accordion slot of their own. Omitted entirely until a workspace is
+   * selected and there is something to report.
    */
   private renderGoalPanel() {
     if (this.selectedWorkspace === undefined) return null;
