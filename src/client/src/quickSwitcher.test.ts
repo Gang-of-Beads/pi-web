@@ -1,0 +1,128 @@
+import { describe, expect, it } from "vitest";
+import type { SessionInfo, Workspace } from "./api";
+import { quickSwitcherModel, quickSwitcherSessionSubtitle, quickSwitcherWorkspaces } from "./quickSwitcher";
+
+const NOW = Date.parse("2026-08-14T12:00:00.000Z");
+
+function session(id: string, overrides: Partial<SessionInfo> = {}): SessionInfo {
+  return {
+    id,
+    path: `/repo/.pi/sessions/${id}.jsonl`,
+    cwd: "/repo",
+    persisted: true,
+    created: "2026-08-14T11:00:00.000Z",
+    modified: "2026-08-14T11:00:00.000Z",
+    messageCount: 2,
+    firstMessage: "",
+    ...overrides,
+  };
+}
+
+function workspace(id: string, overrides: Partial<Workspace> = {}): Workspace {
+  return {
+    id,
+    projectId: "project-1",
+    label: id,
+    path: `/repo/${id}`,
+    isMain: false,
+    effectiveConfig: {},
+    ...overrides,
+  };
+}
+
+function groupIds(sessions: SessionInfo[], activeSessionIds: ReadonlySet<string> = new Set(), query = ""): string[] {
+  return quickSwitcherModel({ sessions, activeSessionIds, query, now: NOW }).groups.map((group) => group.id);
+}
+
+describe("quickSwitcherModel", () => {
+  it("groups sessions by age, newest group first", () => {
+    const sessions = [
+      session("today", { modified: "2026-08-14T09:00:00.000Z" }),
+      session("yesterday", { modified: "2026-08-13T09:00:00.000Z" }),
+      session("earlier", { modified: "2026-08-01T09:00:00.000Z" }),
+    ];
+
+    expect(groupIds(sessions)).toEqual(["today", "yesterday", "earlier"]);
+  });
+
+  it("promotes running sessions above every date group", () => {
+    const sessions = [
+      session("today", { modified: "2026-08-14T09:00:00.000Z" }),
+      session("old-but-running", { modified: "2026-06-01T09:00:00.000Z" }),
+    ];
+
+    const model = quickSwitcherModel({ sessions, activeSessionIds: new Set(["old-but-running"]), query: "", now: NOW });
+
+    expect(model.groups[0]?.id).toBe("active");
+    expect(model.groups[0]?.sessions.map((item) => item.id)).toEqual(["old-but-running"]);
+  });
+
+  it("orders each group by most recently modified", () => {
+    const sessions = [
+      session("older", { modified: "2026-08-14T08:00:00.000Z" }),
+      session("newer", { modified: "2026-08-14T10:00:00.000Z" }),
+    ];
+
+    const model = quickSwitcherModel({ sessions, activeSessionIds: new Set(), query: "", now: NOW });
+
+    expect(model.groups[0]?.sessions.map((item) => item.id)).toEqual(["newer", "older"]);
+  });
+
+  it("hides archived sessions", () => {
+    const sessions = [session("live"), session("gone", { archived: true })];
+
+    const model = quickSwitcherModel({ sessions, activeSessionIds: new Set(), query: "", now: NOW });
+
+    expect(model.matchCount).toBe(1);
+    expect(model.groups.flatMap((group) => group.sessions).map((item) => item.id)).toEqual(["live"]);
+  });
+
+  it("filters by the shared session search rules", () => {
+    const sessions = [session("a", { name: "billing refactor" }), session("b", { name: "mobile layout" })];
+
+    const model = quickSwitcherModel({ sessions, activeSessionIds: new Set(), query: "mobile", now: NOW });
+
+    expect(model.matchCount).toBe(1);
+    expect(model.groups.flatMap((group) => group.sessions).map((item) => item.id)).toEqual(["b"]);
+  });
+
+  it("reports no groups when nothing matches", () => {
+    const model = quickSwitcherModel({ sessions: [session("a", { name: "billing" })], activeSessionIds: new Set(), query: "zzzz", now: NOW });
+
+    expect(model.groups).toEqual([]);
+    expect(model.matchCount).toBe(0);
+  });
+
+  it("treats an unparsable timestamp as an old session instead of dropping it", () => {
+    expect(groupIds([session("broken", { modified: "not-a-date" })])).toEqual(["earlier"]);
+  });
+});
+
+describe("quickSwitcherWorkspaces", () => {
+  const workspaces = [workspace("main", { path: "/repo/main" }), workspace("feature-login", { path: "/repo/feature-login" })];
+
+  it("returns every workspace without a query", () => {
+    expect(quickSwitcherWorkspaces(workspaces, "  ").map((item) => item.id)).toEqual(["main", "feature-login"]);
+  });
+
+  it("matches the label and the path", () => {
+    expect(quickSwitcherWorkspaces(workspaces, "login").map((item) => item.id)).toEqual(["feature-login"]);
+    expect(quickSwitcherWorkspaces(workspaces, "/repo/main").map((item) => item.id)).toEqual(["main"]);
+  });
+
+  it("requires every token to match", () => {
+    expect(quickSwitcherWorkspaces(workspaces, "feature zzz")).toEqual([]);
+  });
+});
+
+describe("quickSwitcherSessionSubtitle", () => {
+  it("names the owning workspace alongside the message count", () => {
+    const workspaces = [workspace("main", { path: "/repo/main", label: "main" })];
+
+    expect(quickSwitcherSessionSubtitle(session("a", { cwd: "/repo/main", messageCount: 3 }), workspaces)).toBe("main · 3 messages");
+  });
+
+  it("falls back to the message count when the workspace is not listed", () => {
+    expect(quickSwitcherSessionSubtitle(session("a", { cwd: "/elsewhere", messageCount: 1 }), [])).toBe("1 message");
+  });
+});

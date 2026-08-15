@@ -52,3 +52,23 @@ describe("navigationState", () => {
   });
 
 });
+
+describe("defaultNavigationSection", () => {
+  it("opens sessions directly once a workspace is selected", () => {
+    expect(defaultNavigationSection({ selectedProject: {}, selectedWorkspace: {} })).toBe("sessions");
+  });
+
+  it("still asks for a project when nothing is selected", () => {
+    expect(defaultNavigationSection({ selectedProject: undefined, selectedWorkspace: undefined })).toBe("projects");
+  });
+
+  it("asks for a workspace when only the project is known", () => {
+    expect(defaultNavigationSection({ selectedProject: {}, selectedWorkspace: undefined })).toBe("workspaces");
+  });
+
+  // A restored deep link can name a workspace before its project row loads;
+  // the working surface is still the right place to land.
+  it("prefers sessions when a workspace is known without its project", () => {
+    expect(defaultNavigationSection({ selectedProject: undefined, selectedWorkspace: {} })).toBe("sessions");
+  });
+});

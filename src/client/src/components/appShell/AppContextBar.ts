@@ -14,6 +14,12 @@ export class AppContextBar extends LitElement {
   @property({ attribute: false }) refreshControl: unknown;
   @property({ attribute: false }) onOpenSection?: (section: NavigationSection) => void;
   @property({ attribute: false }) onShowActions?: () => void;
+  /**
+   * Opens the flat session sheet. When present it replaces the session chip's
+   * drill-down, because picking a session is the one context change that
+   * should never cost a walk through the navigation accordion.
+   */
+  @property({ attribute: false }) onQuickSwitch?: () => void;
   @query(".context-items") private contextItems?: HTMLElement | null;
   @state() private canScrollLeft = false;
   @state() private canScrollRight = false;
@@ -68,14 +74,33 @@ export class AppContextBar extends LitElement {
             </button>
           </li>
           <li class="context-item">
-            <button type="button" class=${this.session === undefined ? "context-chip empty" : "context-chip"} title=${sessionContextTitle(this.session)} aria-label=${`Session: ${sessionLabel}. Open session selection.`} @click=${() => { this.onOpenSection?.("sessions"); }}>
+            <button type="button" class=${this.session === undefined ? "context-chip empty" : "context-chip"} title=${sessionContextTitle(this.session)} aria-label=${`Session: ${sessionLabel}. Open session selection.`} @click=${() => { this.openSessions(); }}>
               <span class="context-kind">Session</span>
               <span class="context-value">${sessionLabel}</span>
             </button>
           </li>
         </ol>
-        ${this.hasContextActions() ? html`<div class="context-actions">${this.renderActionsButton()}${this.refreshControl}</div>` : null}
+        ${this.hasContextActions() ? html`<div class="context-actions">${this.renderQuickSwitchButton()}${this.renderActionsButton()}${this.refreshControl}</div>` : null}
       </nav>
+    `;
+  }
+
+  private openSessions(): void {
+    if (this.onQuickSwitch !== undefined) {
+      this.onQuickSwitch();
+      return;
+    }
+    this.onOpenSection?.("sessions");
+  }
+
+  private renderQuickSwitchButton() {
+    if (this.onQuickSwitch === undefined) return null;
+    return html`
+      <button type="button" class="context-action-button" title="Sessions" aria-label="Open sessions" @click=${(event: MouseEvent) => { event.stopPropagation(); this.onQuickSwitch?.(); }}>
+        <svg class="context-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 6h16M4 12h16M4 18h10"></path>
+        </svg>
+      </button>
     `;
   }
 
@@ -100,7 +125,7 @@ export class AppContextBar extends LitElement {
   }
 
   private hasContextActions(): boolean {
-    return this.refreshControl !== undefined || this.onShowActions !== undefined;
+    return this.refreshControl !== undefined || this.onShowActions !== undefined || this.onQuickSwitch !== undefined;
   }
 
   private observeContextItems(): void {

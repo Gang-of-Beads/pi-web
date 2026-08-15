@@ -59,6 +59,7 @@ import type { PromptEditor } from "./PromptEditor";
 import "./StatusBar";
 import "./CommandPicker";
 import "./ActionPalette";
+import "./QuickSwitcher";
 import "./AuthDialog";
 import "./ProjectDialog";
 import "./MachineDialog";
@@ -226,6 +227,7 @@ export class PiWebApp extends LitElement {
   private themePreference: ThemePreference = readStoredThemePreference() ?? DEFAULT_THEME_PREFERENCE;
   @state() private activeThemeId: QualifiedContributionId = CLASSIC_THEME_ID;
   @state() private isRefreshingApp = false;
+  @state() private quickSwitcherOpen = false;
   @state() private sessionCleanupDialog: SessionCleanupDialogState | undefined;
   @state() private settingsSection: SettingsSection | undefined = readSettingsSection();
   @state() private shortcutConfig: PiWebShortcutConfig = {};
@@ -1276,6 +1278,32 @@ export class PiWebApp extends LitElement {
     await this.startSessionAndOpenChat(isCurrentSelection);
   }
 
+  private canStartSession(): boolean {
+    return this.state.selectedWorkspace !== undefined;
+  }
+
+  private activeSessionIds(): ReadonlySet<string> {
+    const active = new Set<string>();
+    for (const session of this.state.sessions) {
+      if (isSessionActive(this.state.sessionStatuses[session.id], this.state.sessionActivities[session.id])) active.add(session.id);
+    }
+    return active;
+  }
+
+  private openQuickSwitcher(): void {
+    this.quickSwitcherOpen = true;
+  }
+
+  /**
+   * Opening from the sheet lands directly in the conversation. The navigation
+   * view is only meaningful on the mobile stacked layout, and returning there
+   * after an explicit pick would undo the tap the user just made.
+   */
+  private async openSessionFromQuickSwitcher(session: SessionInfo): Promise<void> {
+    await this.sessions.selectSession(session);
+    await this.focusChatComposer();
+  }
+
   private async startSessionAndOpenChat(shouldComplete: () => boolean = () => true): Promise<void> {
     // `startSession()` remains in flight until the backend session resolves;
     // open the chat as soon as the controller has inserted the temporary row.
@@ -1510,6 +1538,26 @@ export class PiWebApp extends LitElement {
 
   private sessionActions(): AppAction[] {
     return [
+      {
+        id: "app.sessions.quick-switch",
+        title: "Open Session",
+        description: "Search and open a session, or start a new one, without walking the navigation panel",
+        // mod+k already opens the action palette (core plugin); mod+p keeps the
+        // familiar "quick open" meaning for jumping straight to a session.
+        shortcut: "mod+p",
+        group: "Sessions",
+        run: () => { this.openQuickSwitcher(); },
+      },
+      {
+        id: "app.sessions.new",
+        title: "New Session",
+        description: "Start a session in the selected workspace",
+        shortcut: "mod+shift+n",
+        group: "Sessions",
+        enabled: this.canStartSession(),
+        ...(this.canStartSession() ? {} : { disabledReason: "Select a workspace first" }),
+        run: () => { void this.startSessionAndOpenChat(); },
+      },
       {
         id: "app.sessions.cleanup",
         title: "Clean Up Sessions",
@@ -2073,6 +2121,7 @@ export class PiWebApp extends LitElement {
         .session=${this.state.selectedSession}
         .refreshControl=${this.appShell.shouldShowAppRefreshInContextBar() ? this.renderAppRefresh() : undefined}
         .onOpenSection=${(section: NavigationSection) => { this.openNavigationSection(section); }}
+        .onQuickSwitch=${() => { this.openQuickSwitcher(); }}
         .onShowActions=${() => { this.setState({ actionPaletteOpen: true }); }}
       ></app-context-bar>
     `;
@@ -2139,6 +2188,20 @@ export class PiWebApp extends LitElement {
         ${this.renderWorkspacePanelEdgeControl()}
         ${this.renderWorkspacePanel()}
         ${state.authDialog !== undefined ? html`<auth-dialog .state=${state.authDialog} .onChooseMethod=${(authType: "oauth" | "api_key") => { void this.auth.chooseLoginMethod(authType); }} .onSelectProvider=${(providerId: string, authType: "oauth" | "api_key") => { void this.auth.selectLoginProvider(providerId, authType); }} .onLogoutProvider=${(providerId: string) => { void this.auth.logoutProvider(providerId); }} .onOAuthInput=${(value: string) => { this.auth.updateOAuthInput(value); }} .onOAuthRespond=${(value?: string) => { void this.auth.respondOAuth(value); }} .onOAuthCancel=${() => { void this.auth.cancelOAuth(); }} .onCancel=${() => { this.auth.closeDialog(); }}></auth-dialog>` : null}
+        ${this.quickSwitcherOpen ? html`<quick-switcher
+          .sessions=${state.sessions}
+          .workspaces=${state.workspaces}
+          .selectedSession=${state.selectedSession}
+          .selectedWorkspace=${state.selectedWorkspace}
+          .activeSessionIds=${this.activeSessionIds()}
+          .unreadSessionIds=${this.unreadSessionIds}
+          .canStartSession=${this.canStartSession()}
+          .onCreateSession=${() => { void this.startSessionAndOpenChat(); }}
+          .onOpenSession=${(session: SessionInfo) => { void this.openSessionFromQuickSwitcher(session); }}
+          .onSelectWorkspace=${(workspace: Workspace) => { void this.workspaces.selectWorkspace(workspace); }}
+          .onBrowse=${() => { this.openNavigationSection("projects"); }}
+          .onClose=${() => { this.quickSwitcherOpen = false; }}
+        ></quick-switcher>` : null}
         ${state.actionPaletteOpen ? html`<action-palette .actions=${this.getActions()} .onRun=${(action: AppAction) => { this.setState({ actionPaletteOpen: false }); this.runAction(action); }} .onCancel=${() => { this.setState({ actionPaletteOpen: false }); }}></action-palette>` : null}
         ${this.renderSessionTreeNavigator(state)}
         ${state.projectDialogOpen ? html`<project-dialog .machineId=${selectedMachineId(state)} .onSubmit=${(path: string, create: boolean) => this.projects.addProject(path, create)} .onCancel=${() => { this.setState({ projectDialogOpen: false }); }}></project-dialog>` : null}

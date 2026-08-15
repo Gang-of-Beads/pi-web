@@ -9,10 +9,17 @@ export interface NavigationSelectionState {
   selectedWorkspace: object | undefined;
 }
 
+/**
+ * Section opened first on the mobile accordion.
+ *
+ * Sessions are the working surface, so a restored selection opens straight
+ * there instead of replaying project → workspace → sessions. Only a genuinely
+ * unselected context falls back to the section that still needs a choice.
+ */
 export function defaultNavigationSection(state: NavigationSelectionState): NavigationSection {
+  if (state.selectedWorkspace !== undefined) return "sessions";
   if (state.selectedProject === undefined) return "projects";
-  if (state.selectedWorkspace === undefined) return "workspaces";
-  return "sessions";
+  return "workspaces";
 }
 
 export function expandedNavigationSection(expanded: ExpandedNavigationSection, state: NavigationSelectionState): NavigationSection | undefined {
