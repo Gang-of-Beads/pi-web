@@ -423,6 +423,21 @@ export interface SessionUnreadCatalogSnapshot {
   sessions: SessionUnreadSummary[];
 }
 
+/**
+ * Status of every session the daemon currently holds open, used to hydrate a
+ * freshly loaded or freshly reconnected browser.
+ *
+ * Live status is otherwise delivered only as `status.update` broadcasts, so a
+ * browser that arrives mid-stream shows no work indicator for an already-busy
+ * session until its next publish. A session missing from `statuses` is not
+ * loaded by this daemon, which means its work state is *unknown* rather than
+ * idle — a session running under another host reports to nobody here.
+ */
+export interface SessionStatusCatalogSnapshot {
+  statuses: SessionStatus[];
+  generatedAt: string;
+}
+
 export interface SessionUnreadAcknowledgeRequest {
   cwd: string;
   /** The catalog epoch in which `throughCompletionOrder` was observed. */

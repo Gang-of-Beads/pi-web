@@ -41,6 +41,7 @@ import {
   parseSessionInfo,
   parseSessionNotificationInboxSnapshot,
   parseSessionStatus,
+  parseSessionStatusCatalogSnapshot,
   parseSessionUnreadCatalogSnapshot,
   parseSessionStreamSnapshot,
   parseSessionTreeForkResult,
@@ -210,6 +211,9 @@ export const workspacesApi = {
 export const sessionsApi = {
   sessions: (cwd: string, machineId = "local") => request(`${machinePrefix(machineId)}/sessions?cwd=${encodeURIComponent(cwd)}`, arrayOf(parseSessionInfo)),
   unreadCatalog: (machineId = "local") => request(`${machinePrefix(machineId)}/sessions/unread`, parseSessionUnreadCatalogSnapshot, { cache: "no-store" }),
+  // `no-store`: a cached snapshot would reinstate work indicators the browser
+  // has already superseded with live `status.update` events.
+  statusCatalog: (machineId = "local") => request(`${machinePrefix(machineId)}/sessions/statuses`, parseSessionStatusCatalogSnapshot, { cache: "no-store" }),
   acknowledgeUnread: (session: SessionRef, catalogId: string, throughCompletionOrder: number, machineId = "local") => {
     const body: SessionUnreadAcknowledgeRequest = { cwd: session.cwd, catalogId, throughCompletionOrder };
     return request(sessionPath(session, "unread/acknowledge", machineId), parseSessionUnreadCatalogSnapshot, { method: "POST", body: JSON.stringify(body) });

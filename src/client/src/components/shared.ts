@@ -74,7 +74,7 @@ export interface ChatLine {
 }
 
 export interface CompletionItem {
-  kind: "command" | "file" | "model";
+  kind: "command" | "file" | "model" | "history";
   replaceFrom: number;
   replaceTo: number;
   insertText: string;
@@ -173,6 +173,7 @@ export const appStyles = css`
   button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; }
   .empty { margin: auto; color: var(--pi-muted); }
   .error { display: flex; gap: 8px; align-items: flex-start; padding: 10px 16px; border-bottom: 1px solid var(--pi-border); color: var(--pi-danger); }
+  .error.transient { color: var(--pi-warning); background: color-mix(in srgb, var(--pi-warning) 8%, transparent); }
   .error .error-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
   .error .error-dismiss { flex: 0 0 auto; padding: 0 6px; border: 0; background: none; color: inherit; line-height: 1.4; }
   .deprecation-notice { padding: 10px 16px; border-bottom: 1px solid var(--pi-border); color: var(--pi-warning); }
@@ -539,12 +540,17 @@ export const promptEditorStyles = css`
   textarea { overflow-y: auto; padding: 8px; }
   .markdown-editor .cm-scroller { max-height: 220px; overflow-y: auto; font-family: var(--pi-control-font-family, system-ui, sans-serif); line-height: 1.4; }
   .markdown-editor .cm-content { min-height: 38px; padding: 8px 44px 8px 8px; caret-color: var(--pi-text); text-align: start; unicode-bidi: plaintext; }
+  .markdown-editor .cm-cursor, .markdown-editor .cm-dropCursor { border-left-width: 2px; }
+  .markdown-editor .cm-cursor { height: 1.25em !important; margin-top: 0.08em; }
   .markdown-editor .cm-line { padding: 0; unicode-bidi: plaintext; }
   .markdown-editor .cm-placeholder { color: var(--pi-dim); }
   .markdown-editor .cm-focused { outline: none; }
   .shell-mode textarea, .shell-mode .markdown-editor .cm-editor { border-color: var(--pi-success); box-shadow: 0 0 0 1px var(--pi-success-ring); }
   .mode-hint { position: absolute; right: 46px; bottom: 8px; max-width: calc(100% - 54px); border: 1px solid var(--pi-success-border); border-radius: 999px; background: var(--pi-success-surface); color: var(--pi-success); padding: 2px 8px; font-size: 12px; pointer-events: none; }
-  .attachments { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+  /* Attachments live above the text box, so pasted images/files are visible
+     before the user starts editing the message body and never get hidden below
+     the keyboard/action row on mobile. */
+  .attachments { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; padding: 0 0 2px; }
   .attachment-chip { position: relative; width: 56px; height: 56px; border: 1px solid var(--pi-border); border-radius: 8px; overflow: hidden; background: var(--pi-bg); }
   .attachment-chip img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .attachment-chip-file { display: grid; place-items: center; }
@@ -567,5 +573,6 @@ export const promptEditorStyles = css`
     .select-model { max-width: 48vw; }
     button { padding: 5px 7px; }
     .icon-button { width: 34px; height: 34px; }
+    .markdown-editor .cm-cursor { height: 1.05em !important; margin-top: 0.02em; }
   }
 `;

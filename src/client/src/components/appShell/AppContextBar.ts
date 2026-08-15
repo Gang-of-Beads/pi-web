@@ -209,7 +209,9 @@ function projectContextTitle(project: Project | undefined): string {
 }
 
 function workspaceContextLabel(workspace: Workspace | undefined): string {
-  return workspace === undefined ? "No workspace" : `${workspace.label}${workspace.isMain ? " · main" : ""} · ${workspace.path}`;
+  // Mobile needs the chip to stay one line tall; the full path still lives in
+  // the title/secondary surfaces, while the chip itself keeps just the label.
+  return workspace === undefined ? "No workspace" : `${workspace.label}${workspace.isMain ? " · main" : ""}`;
 }
 
 function workspaceContextTitle(workspace: Workspace | undefined): string {

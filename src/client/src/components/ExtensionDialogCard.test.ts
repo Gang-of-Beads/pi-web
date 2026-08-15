@@ -8,6 +8,7 @@ import {
   extensionDialogCloseLabel,
   extensionDialogCloseSummary,
   extensionDialogCountdownText,
+  splitDialogTitle,
   type ExtensionDialogAnswerCallback,
   type ExtensionDialogCancelCallback,
   type ExtensionDialogDismissCallback,
@@ -214,6 +215,83 @@ describe("extension-dialog-card closed outcome", () => {
 
     expect(root.querySelector(".header-status")?.textContent).toBe("Timed out");
     expect(root.querySelector(".closed-summary")?.textContent).toContain("timed out");
+  });
+});
+
+describe("splitDialogTitle", () => {
+  it("keeps a short single-line title entirely in the heading", () => {
+    expect(splitDialogTitle("Allow file writes?")).toEqual({ heading: "Allow file writes?" });
+  });
+
+  it("moves everything after the first line into the detail body", () => {
+    expect(splitDialogTitle("Confirm Goal Draft\n\nObjective: ship it\nCriteria: tests pass")).toEqual({
+      heading: "Confirm Goal Draft",
+      body: "\nObjective: ship it\nCriteria: tests pass",
+    });
+  });
+
+  it("preserves interior blank lines so structured documents keep their shape", () => {
+    const body = splitDialogTitle("Title\nA\n\nB").body;
+    expect(body).toBe("A\n\nB");
+  });
+
+  it("ignores leading and trailing blank lines", () => {
+    expect(splitDialogTitle("\n\nHeading only\n\n")).toEqual({ heading: "Heading only" });
+  });
+
+  it("normalizes CRLF input", () => {
+    expect(splitDialogTitle("Heading\r\nDetail")).toEqual({ heading: "Heading", body: "Detail" });
+  });
+
+  it("elides an over-long single line but keeps its full text in the body", () => {
+    const title = "x".repeat(200);
+    const parts = splitDialogTitle(title);
+    expect(parts.heading).toHaveLength(121);
+    expect(parts.heading.endsWith("\u2026")).toBe(true);
+    expect(parts.body).toBe(title);
+  });
+
+  it("repeats an elided first line inside the body so no characters are lost", () => {
+    const first = "y".repeat(200);
+    const parts = splitDialogTitle(`${first}\ntail`);
+    expect(parts.heading.endsWith("\u2026")).toBe(true);
+    expect(parts.body).toBe(`${first}\ntail`);
+  });
+});
+
+describe("extension-dialog-card long titles", () => {
+  it("renders a one-line heading plus a scrollable detail region for a multi-line title", async () => {
+    const card = await mountOpenDialog(openDialog({
+      kind: "select",
+      title: "Confirm Goal Draft\n\nObjective: ship the mobile work\nTasks: 9",
+      options: ["Confirm", "Continue chatting"],
+    }));
+    const root = renderRoot(card);
+
+    expect(root.querySelector("h2")?.textContent).toBe("Confirm Goal Draft");
+    const detail = requiredElement(root.querySelector(".dialog-detail"), "detail region");
+    expect(detail.textContent).toContain("Objective: ship the mobile work");
+    expect(detail.textContent).toContain("Tasks: 9");
+    // Reachable by keyboard so the detail can be scrolled without a pointer.
+    expect(detail.getAttribute("tabindex")).toBe("0");
+  });
+
+  it("omits the detail region when the title is a single short line", async () => {
+    const card = await mountOpenDialog(openDialog({ message: "Body" }));
+    expect(renderRoot(card).querySelector(".dialog-detail")).toBeNull();
+  });
+
+  it("keeps a closed card header to the heading line only", async () => {
+    const card = new ExtensionDialogCard();
+    card.outcome = {
+      dialog: openDialog({ title: "Confirm Goal Draft\nObjective: ship it" }),
+      reason: "answered",
+      answer: "Confirm",
+    };
+    document.body.append(card);
+    await card.updateComplete;
+
+    expect(renderRoot(card).querySelector("h2")?.textContent).toBe("Confirm Goal Draft");
   });
 });
 

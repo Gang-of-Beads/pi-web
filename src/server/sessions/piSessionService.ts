@@ -55,6 +55,7 @@ import type {
   SessionNotificationDismissRequest,
   SessionNotificationInboxSnapshot,
   SessionUnreadAcknowledgeRequest,
+  SessionStatusCatalogSnapshot,
   SessionUnreadCatalogSnapshot,
   SessionWarning,
 } from "../../shared/apiTypes.js";
@@ -998,6 +999,26 @@ export class PiSessionService implements SessionRouteService {
     return this.unreadStore.durableCatalogSnapshot();
   }
 
+  /**
+   * Status of every session this daemon currently holds open.
+   *
+   * Live status reaches the browser only through `status.update` broadcasts, so
+   * a browser that connects while a session is already streaming sees no work
+   * indicator until that session happens to publish again — which, for a long
+   * quiet tool call, can be minutes. This snapshot is the hydration source for
+   * a fresh load and for socket reconnects, closing the same gap the unread
+   * catalog closes for unread state.
+   *
+   * Only loaded sessions can report: a session running under a different host
+   * (a terminal pi) is not in this registry and is reported by nobody, so the
+   * absence of an entry means "unknown", not "idle".
+   */
+  sessionStatusCatalog(): SessionStatusCatalogSnapshot {
+    const statuses = [...new Set(this.active.values())]
+      .map((active) => this.statusFromSession(active.runtime.session));
+    return { statuses, generatedAt: new Date(this.now()).toISOString() };
+  }
+
   async acknowledgeUnread(sessionId: string, request: SessionUnreadAcknowledgeRequest): Promise<SessionUnreadCatalogSnapshot> {
     const result = this.unreadStore.acknowledge(sessionId, {
       ...request,
@@ -1901,20 +1922,25 @@ export class PiSessionService implements SessionRouteService {
   async availableModels(ref: PiSessionRef): Promise<ClientSessionModel[]> {
     const session = await this.getOrOpen(ref);
     const models = await this.sessionModelCandidates(session);
-    return models.map(modelToClientModel);
+    return withAnthropicAccountAliases(models.map(modelToClientModel), await readAnthropicAccountNames());
   }
 
   async setModel(ref: PiSessionRef, provider: string, modelId: string): Promise<ClientSessionStatus> {
     await this.assertWritable(ref);
     const session = await this.getOrOpen(ref);
     this.assertTreeNavigationInactive(session, "change models");
+    const aliasAccount = anthropicAliasAccountName(provider);
+    if (aliasAccount !== undefined) {
+      await setActiveAnthropicAccount(aliasAccount);
+      provider = "anthropic";
+    }
     const candidates = await this.sessionModelCandidates(session);
     this.assertTreeNavigationInactive(session, "change models");
     const model = candidates.find((candidate) => candidate.provider === provider && candidate.id === modelId)
       ?? session.modelRuntime.getModel(provider, modelId);
     if (model === undefined) throw new Error(`Model not found: ${provider}/${modelId}`);
     await this.runSessionEntryMutation(session, "change models", () => session.setModel(model));
-    this.publishActivity(session, `model: ${model.id}`, "idle", model.provider);
+    this.publishActivity(session, `model: ${model.id}`, "idle", aliasAccount === undefined ? model.provider : `${model.provider} · ${aliasAccount}`);
     this.publishStatus(session);
     return this.statusFromSession(session);
   }
@@ -3712,6 +3738,8 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+const ANTHROPIC_ACCOUNT_PROVIDER_PREFIX = "anthropic-";
+
 function modelToClientModel(model: PiAgentSession["model"]): ClientSessionModel {
   if (model === undefined) return {};
   const name = getString(model, "name");
@@ -3723,6 +3751,56 @@ function modelToClientModel(model: PiAgentSession["model"]): ClientSessionModel 
     contextWindow: model.contextWindow,
     ...(reasoning === undefined ? {} : { reasoning }),
   };
+}
+
+function anthropicAliasAccountName(provider: string): string | undefined {
+  return provider.startsWith(ANTHROPIC_ACCOUNT_PROVIDER_PREFIX)
+    ? provider.slice(ANTHROPIC_ACCOUNT_PROVIDER_PREFIX.length) || undefined
+    : undefined;
+}
+
+async function readAnthropicAccountNames(): Promise<string[]> {
+  try {
+    const path = join(process.env["HOME"] ?? "", ".pi", "agent", "pi-accounts.json");
+    const raw = await readFile(path, "utf8");
+    const providers = getProperty(JSON.parse(raw), "providers");
+    const anthropic = getProperty(providers, "anthropic");
+    const accounts = getProperty(anthropic, "accounts");
+    return isRecord(accounts) ? Object.keys(accounts) : [];
+  } catch {
+    return [];
+  }
+}
+
+function withAnthropicAccountAliases(models: readonly ClientSessionModel[], accountNames: readonly string[]): ClientSessionModel[] {
+  if (accountNames.length === 0) return [...models];
+  const anthropicModels = models.filter((model) => model.provider === "anthropic");
+  const augmented = [...models];
+  const seen = new Set(models.map((model) => `${model.provider ?? ""}\0${model.id ?? ""}`));
+  for (const accountName of accountNames) {
+    for (const model of anthropicModels) {
+      const provider = `${ANTHROPIC_ACCOUNT_PROVIDER_PREFIX}${accountName}`;
+      const key = `${provider}\0${model.id ?? ""}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      augmented.push({ ...model, provider, ...(model.name === undefined ? {} : { name: `${model.name} · ${accountName}` }) });
+    }
+  }
+  return augmented;
+}
+
+async function setActiveAnthropicAccount(accountName: string): Promise<void> {
+  const path = join(process.env["HOME"] ?? "", ".pi", "agent", "pi-accounts.json");
+  const raw = await readFile(path, "utf8");
+  const parsed: unknown = JSON.parse(raw);
+  const providers = getProperty(parsed, "providers");
+  const anthropic = getProperty(providers, "anthropic");
+  const accounts = getProperty(anthropic, "accounts");
+  if (!isRecord(anthropic) || !isRecord(accounts) || accounts[accountName] === undefined) {
+    throw new Error(`Anthropic account not found: ${accountName}`);
+  }
+  anthropic["active"] = accountName;
+  await writeFile(path, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
 }
 
 function notificationIdentityForSession(session: PiAgentSession): { sessionId: string; cwd: string } {

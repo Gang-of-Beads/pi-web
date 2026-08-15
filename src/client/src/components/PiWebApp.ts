@@ -1,6 +1,6 @@
 import { LitElement, html } from "lit";
 import { customElement, query, state } from "lit/decorators.js";
-import { configApi, effectiveWorkspaceUploadFolder, sessionsApi, terminalsApi, workspacesApi, workspaceEffectiveUploadFolder, type AskUserSubmission, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
+import { configApi, effectiveWorkspaceUploadFolder, projectsApi, sessionsApi, terminalsApi, workspacesApi, workspaceEffectiveUploadFolder, type AskUserSubmission, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
 import type { AppAction } from "../actions";
 import { initialAppState, type AppState } from "../appState";
 import { isSessionActive } from "../../../shared/activity";
@@ -228,6 +228,10 @@ export class PiWebApp extends LitElement {
   @state() private activeThemeId: QualifiedContributionId = CLASSIC_THEME_ID;
   @state() private isRefreshingApp = false;
   @state() private quickSwitcherOpen = false;
+  @state() private quickSwitcherLoading = false;
+  @state() private quickSwitcherSessions: readonly SessionInfo[] = [];
+  @state() private quickSwitcherWorkspaces: readonly Workspace[] = [];
+  private quickSwitcherMachineId: string | undefined;
   @state() private sessionCleanupDialog: SessionCleanupDialogState | undefined;
   @state() private settingsSection: SettingsSection | undefined = readSettingsSection();
   @state() private shortcutConfig: PiWebShortcutConfig = {};
@@ -926,6 +930,10 @@ export class PiWebApp extends LitElement {
       (event) => { this.handleRealtimeEvent(machineId, event); },
       () => {
         void this.sessionUnread.refresh(machineId);
+        // Status updates that landed during the gap are gone for good, so a
+        // session that started working while disconnected would otherwise show
+        // no work indicator until its next publish.
+        void this.sessions.hydrateSessionStatuses(machineId);
         const workspace = this.state.selectedWorkspace;
         if (workspace !== undefined) void this.refreshActiveTerminals(workspace);
       },
@@ -1224,6 +1232,8 @@ export class PiWebApp extends LitElement {
         .sessionsCollapsed=${this.navigationSections.isCollapsed("sessions")}
         .workspaceLabelItems=${(workspace: Workspace) => this.workspaceLabelItems(workspace)}
         .refreshControl=${this.appShell.shouldShowAppRefreshInHeader() ? this.renderAppRefresh() : undefined}
+        .onAddProject=${() => { this.setState({ projectDialogOpen: true }); }}
+        .onQuickSwitch=${() => { this.openQuickSwitcher(); }}
         .onShowActions=${() => { this.setState({ actionPaletteOpen: true }); }}
         .onToggleProjects=${() => { this.navigationSections.toggle("projects"); }}
         .onToggleWorkspaces=${() => { this.navigationSections.toggle("workspaces"); }}
@@ -1245,6 +1255,7 @@ export class PiWebApp extends LitElement {
         .onDeleteArchivedSession=${(session: SessionInfo) => this.sessions.deleteArchivedSessions([session])}
         .onDeleteArchivedSessions=${(sessions: SessionInfo[]) => this.sessions.deleteArchivedSessions(sessions)}
         .onDetachParentSession=${(session: SessionInfo) => this.sessions.detachParent(session)}
+        .onRenameSession=${(session: SessionInfo, name: string) => this.sessions.renameSession(session, name)}
         .onReloadSession=${(session: SessionInfo) => this.sessions.reloadSession(session)}
         .onCleanupSessions=${() => { this.openSessionCleanupDialog(); }}
         .onFocusNavigationTarget=${(target: NavigationFocusTarget) => { void this.focusNavigationTarget(target); }}
@@ -1292,6 +1303,40 @@ export class PiWebApp extends LitElement {
 
   private openQuickSwitcher(): void {
     this.quickSwitcherOpen = true;
+    void this.loadQuickSwitcherData();
+  }
+
+  private async loadQuickSwitcherData(force = false): Promise<void> {
+    const machineId = selectedMachineId(this.state);
+    if (!force && this.quickSwitcherMachineId === machineId && (this.quickSwitcherSessions.length > 0 || this.quickSwitcherWorkspaces.length > 0 || this.quickSwitcherLoading)) {
+      return;
+    }
+    this.quickSwitcherLoading = true;
+    try {
+      const projects = this.state.projects.length > 0 ? this.state.projects : await projectsApi.projects(machineId);
+      const workspaceLists = await Promise.all(projects.map(async (project) => {
+        try {
+          return await workspacesApi.workspaces(project.id, machineId);
+        } catch {
+          return [];
+        }
+      }));
+      const workspaces = dedupeById(workspaceLists.flat());
+      const sessionLists = await Promise.all(workspaces.map(async (workspace) => {
+        try {
+          return await sessionsApi.sessions(workspace.path, machineId);
+        } catch {
+          return [];
+        }
+      }));
+      this.quickSwitcherMachineId = machineId;
+      this.quickSwitcherWorkspaces = workspaces;
+      this.quickSwitcherSessions = dedupeById(sessionLists.flat()).sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified));
+    } catch (error) {
+      if (selectedMachineId(this.state) === machineId) this.setState({ error: `Failed to load sessions: ${errorMessage(error)}` });
+    } finally {
+      if (selectedMachineId(this.state) === machineId) this.quickSwitcherLoading = false;
+    }
   }
 
   /**
@@ -2128,6 +2173,10 @@ export class PiWebApp extends LitElement {
   }
 
   private renderMobileMainTabs() {
+    // On a phone, the context bar already exposes the session/workspace jumps.
+    // Keeping a full second toolbar while the chat is open steals too much of
+    // the viewport from the transcript, so the tabs collapse away in chat view.
+    if (this.state.mainView === "chat" && this.state.selectedSession !== undefined) return null;
     return html`
       <app-mobile-main-tabs
         .tabs=${this.mobileMainTabs()}
@@ -2189,8 +2238,9 @@ export class PiWebApp extends LitElement {
         ${this.renderWorkspacePanel()}
         ${state.authDialog !== undefined ? html`<auth-dialog .state=${state.authDialog} .onChooseMethod=${(authType: "oauth" | "api_key") => { void this.auth.chooseLoginMethod(authType); }} .onSelectProvider=${(providerId: string, authType: "oauth" | "api_key") => { void this.auth.selectLoginProvider(providerId, authType); }} .onLogoutProvider=${(providerId: string) => { void this.auth.logoutProvider(providerId); }} .onOAuthInput=${(value: string) => { this.auth.updateOAuthInput(value); }} .onOAuthRespond=${(value?: string) => { void this.auth.respondOAuth(value); }} .onOAuthCancel=${() => { void this.auth.cancelOAuth(); }} .onCancel=${() => { this.auth.closeDialog(); }}></auth-dialog>` : null}
         ${this.quickSwitcherOpen ? html`<quick-switcher
-          .sessions=${state.sessions}
-          .workspaces=${state.workspaces}
+          .loading=${this.quickSwitcherLoading}
+          .sessions=${this.quickSwitcherSessions}
+          .workspaces=${this.quickSwitcherWorkspaces}
           .selectedSession=${state.selectedSession}
           .selectedWorkspace=${state.selectedWorkspace}
           .activeSessionIds=${this.activeSessionIds()}
@@ -2268,6 +2318,17 @@ function patchChangesState(state: AppState, patch: Partial<AppState>): boolean {
 
 function sameStringSet(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
   return left.size === right.size && [...left].every((value) => right.has(value));
+}
+
+function dedupeById<T extends { id: string }>(items: readonly T[]): T[] {
+  const seen = new Set<string>();
+  const deduped: T[] = [];
+  for (const item of items) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    deduped.push(item);
+  }
+  return deduped;
 }
 
 function isActive(state: Pick<AppState, "status" | "activity">): boolean {

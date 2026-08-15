@@ -15,6 +15,47 @@ export type ExtensionDialogDismissCallback = (dialogId: string) => void;
 
 const COUNTDOWN_TICK_MS = 1_000;
 
+/**
+ * Longest heading kept in the sticky card header. Beyond this the heading is
+ * elided and the untouched title moves into the scrollable detail body.
+ */
+const DIALOG_HEADING_MAX_LENGTH = 120;
+
+/** A dialog title split into a header line and an optional scrollable detail body. */
+export interface DialogTitleParts {
+  heading: string;
+  body?: string;
+}
+
+/**
+ * Split a dialog title into a one-line heading and an optional detail body.
+ *
+ * `ctx.ui.select()` and `ctx.ui.input()` offer a single text slot, so an
+ * extension that needs to present a structured document (a goal contract, a
+ * migration plan) has nowhere to put it but `title`. Rendering that verbatim
+ * in the sticky card header buries the viewport on a phone and collapses every
+ * newline, so only the first line stays in the header while the remainder
+ * becomes a scrollable body that preserves its line breaks.
+ *
+ * Pure so the split is unit-testable without rendering.
+ */
+export function splitDialogTitle(title: string): DialogTitleParts {
+  const normalized = title.replace(/\r\n/g, "\n").replace(/^\n+/, "").trimEnd();
+  const newlineIndex = normalized.indexOf("\n");
+  if (newlineIndex === -1) {
+    // A single line that still cannot fit the header keeps its full text in the
+    // body, so eliding the heading never loses characters.
+    if (normalized.length <= DIALOG_HEADING_MAX_LENGTH) return { heading: normalized };
+    return { heading: `${normalized.slice(0, DIALOG_HEADING_MAX_LENGTH).trimEnd()}\u2026`, body: normalized };
+  }
+  const firstLine = normalized.slice(0, newlineIndex).trimEnd();
+  const headingFits = firstLine.length <= DIALOG_HEADING_MAX_LENGTH;
+  const heading = headingFits ? firstLine : `${firstLine.slice(0, DIALOG_HEADING_MAX_LENGTH).trimEnd()}\u2026`;
+  // An elided first line is repeated inside the body; a fitting one is not.
+  const body = headingFits ? normalized.slice(newlineIndex + 1).replace(/\n+$/, "") : normalized;
+  return body.trim() === "" ? { heading } : { heading, body };
+}
+
 /** Header status label for a closed extension dialog. */
 export function extensionDialogCloseLabel(reason: ExtensionDialogCloseReason): string {
   switch (reason) {
@@ -125,10 +166,11 @@ export class ExtensionDialogCard extends LitElement {
 
   private renderOpen(dialog: PendingExtensionDialog): TemplateResult {
     const countdown = extensionDialogCountdownText(dialog.timeoutAt, this.countdownNow === 0 ? Date.now() : this.countdownNow);
+    const { heading, body } = splitDialogTitle(dialog.title);
     return html`
       <article class="card open-card" aria-labelledby="extension-dialog-heading">
         <header class="card-header">
-          <h2 id="extension-dialog-heading">${dialog.title}</h2>
+          <h2 id="extension-dialog-heading">${heading}</h2>
           ${countdown === undefined
             ? null
             // Decorative only — no live region: a polite region would queue one
@@ -136,6 +178,11 @@ export class ExtensionDialogCard extends LitElement {
             // the real signal, and the settled card announces the outcome.
             : html`<span class="header-status countdown">${countdown}</span>`}
         </header>
+        ${body === undefined
+          ? null
+          // Focusable so the detail scrolls by keyboard as well as by touch;
+          // the group role keeps it out of the heading's accessible name.
+          : html`<div class="dialog-detail" role="group" aria-label="Details" tabindex="0">${body}</div>`}
         ${this.renderOpenBody(dialog)}
       </article>
     `;
@@ -197,7 +244,7 @@ export class ExtensionDialogCard extends LitElement {
     return html`
       <article class="card closed-card" aria-labelledby="extension-dialog-closed-heading">
         <header class="card-header">
-          <h2 id="extension-dialog-closed-heading">${closed.dialog.title}</h2>
+          <h2 id="extension-dialog-closed-heading">${splitDialogTitle(closed.dialog.title).heading}</h2>
           <span class=${`header-status ${closed.reason}`}>${extensionDialogCloseLabel(closed.reason)}</span>
         </header>
         <p class="closed-summary">${extensionDialogCloseSummary(closed)}</p>
@@ -315,8 +362,25 @@ export class ExtensionDialogCard extends LitElement {
       margin: 0;
       padding: 12px 16px;
       line-height: 1.4;
+      /* Structured messages arrive with their own line breaks; collapsing them
+         turns a formatted plan into an unreadable run-on paragraph. */
+      white-space: pre-wrap;
       overflow-wrap: anywhere;
     }
+    .dialog-detail {
+      /* Bounded so a long document scrolls inside the card instead of pushing
+         the choices below the fold on a phone. */
+      max-height: min(46vh, 420px);
+      overflow: auto;
+      overscroll-behavior: contain;
+      border-bottom: 1px solid var(--pi-border-muted);
+      padding: 12px 16px;
+      font-size: 13px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .dialog-detail:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: -2px; }
     .dialog-options { display: grid; gap: 7px; padding: 12px 16px; }
     .option-button {
       display: block;
@@ -372,7 +436,10 @@ export class ExtensionDialogCard extends LitElement {
       overflow-wrap: anywhere;
     }
     @container (max-width: 580px) {
-      .primary-action { min-height: 42px; }
+      /* Every actionable control is a touch target on a phone, not just the
+         primary one: the options are the whole point of a select dialog. */
+      .primary-action, .secondary-action, .option-button { min-height: 42px; }
+      .dialog-detail { max-height: min(40vh, 320px); }
     }
   `;
 }

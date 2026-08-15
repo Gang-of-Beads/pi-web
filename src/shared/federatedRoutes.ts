@@ -83,6 +83,7 @@ export const FEDERATED_HTTP_ROUTES = [
   { method: "GET", path: "/sessions" },
   { method: "POST", path: "/sessions" },
   { method: "GET", path: "/sessions/unread" },
+  { method: "GET", path: "/sessions/statuses" },
   { method: "GET", path: "/sessions/notifications" },
   { method: "POST", path: "/sessions/cleanup/preview" },
   { method: "POST", path: "/sessions/cleanup" },

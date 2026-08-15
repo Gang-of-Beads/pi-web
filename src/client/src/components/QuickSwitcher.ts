@@ -18,6 +18,7 @@ import { scrollWhenSelected } from "./scrollWhenSelected";
  */
 @customElement("quick-switcher")
 export class QuickSwitcher extends LitElement {
+  @property({ type: Boolean }) loading = false;
   @property({ attribute: false }) sessions: readonly SessionInfo[] = [];
   @property({ attribute: false }) workspaces: readonly Workspace[] = [];
   @property({ attribute: false }) selectedSession?: SessionInfo;
@@ -68,7 +69,11 @@ export class QuickSwitcher extends LitElement {
         <div class="body">
           ${this.renderCreateRow()}
           ${model.groups.map((group) => this.renderGroup(group))}
-          ${model.matchCount === 0 ? html`<p class="empty">${this.query.trim() === "" ? "No sessions yet." : `No sessions match “${this.query.trim()}”.`}</p>` : null}
+          ${this.loading
+            ? html`<p class="empty">Loading sessions…</p>`
+            : model.matchCount === 0
+              ? html`<p class="empty">${this.query.trim() === "" ? "No sessions yet." : `No sessions match “${this.query.trim()}”.`}</p>`
+              : null}
           ${otherWorkspaces.length === 0 ? null : html`
             <h3>Workspaces</h3>
             <div class="rows">

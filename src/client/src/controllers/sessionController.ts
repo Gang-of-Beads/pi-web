@@ -734,7 +734,41 @@ export class SessionController {
       else this.deselectSession({ forgetRememberedSelection: true });
     } catch (error) {
       if (selectedMachineId(this.getState()) === machineId && this.getState().selectedWorkspace?.id === workspace.id) this.setState({ error: String(error) });
+    } finally {
+      // Independent of the listing outcome: a listing failure is exactly when a
+      // stale work indicator is most misleading.
+      void this.hydrateSessionStatuses(machineId);
     }
+  }
+
+  /**
+   * Fill `sessionStatuses` from the daemon's snapshot of every loaded session.
+   *
+   * Status otherwise arrives only as `status.update` broadcasts, so a browser
+   * that loads (or reconnects) while a session is mid-stream shows no work
+   * indicator until that session publishes again. Live events stay
+   * authoritative: the snapshot only fills sessions the browser has no status
+   * for, so a fresher event is never overwritten by an older snapshot.
+   *
+   * Best-effort by design — a hydration failure leaves the list exactly as the
+   * live events left it, so it is not surfaced as a session error.
+   */
+  async hydrateSessionStatuses(machineId = selectedMachineId(this.getState())): Promise<void> {
+    let snapshot;
+    try {
+      snapshot = await this.api.statusCatalog(machineId);
+    } catch {
+      return;
+    }
+    if (selectedMachineId(this.getState()) !== machineId) return;
+    const state = this.getState();
+    const hydrated: Record<string, SessionStatus> = {};
+    for (const status of snapshot.statuses) {
+      if (state.sessionStatuses[status.sessionId] !== undefined) continue;
+      hydrated[status.sessionId] = status;
+    }
+    if (Object.keys(hydrated).length === 0) return;
+    this.setState({ sessionStatuses: { ...state.sessionStatuses, ...hydrated } });
   }
 
   async deleteCachedNewSession(session = this.getState().selectedSession) {
@@ -1422,6 +1456,31 @@ export class SessionController {
     // (typically the supersede half of an open), so it must not clear the card.
     if (this.getState().pendingAsk?.askId !== askId) return;
     this.setState({ pendingAsk: undefined });
+  }
+
+  /**
+   * Give a session a human alias.
+   *
+   * Routed through the daemon's existing `/name` command rather than a new
+   * endpoint: that path already owns persistence into the session file and the
+   * `session.name` broadcast, so every other connected browser and the terminal
+   * UI converge without a second source of truth.
+   *
+   * The rename is applied locally first so the list reflects the new alias
+   * immediately; the broadcast that follows is identical, and a failure rolls
+   * back to the previous name rather than leaving a lie on screen.
+   */
+  async renameSession(session: SessionInfo, name: string, machineId = selectedMachineId(this.getState())): Promise<void> {
+    const trimmed = name.trim();
+    if (trimmed === "") return;
+    const previous = session.name;
+    this.applySessionName(session.id, trimmed);
+    try {
+      await this.api.runCommand({ id: session.id, cwd: session.cwd }, `/name ${trimmed}`, machineId);
+    } catch (error) {
+      this.applySessionName(session.id, previous);
+      this.setState({ error: String(error) });
+    }
   }
 
   private applySessionName(sessionId: string, name: string | undefined) {

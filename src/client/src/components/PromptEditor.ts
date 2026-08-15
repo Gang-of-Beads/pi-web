@@ -7,12 +7,12 @@ import { LitElement, html, type PropertyValues } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { api, type FileSuggestion, type PromptAttachment, type SessionModel, type SessionStatus, type SlashCommand } from "../api";
 import type { PromptAttachmentDelivery } from "../../../shared/apiTypes";
-import { capturePromptAttachments, effectivePromptAttachmentDelivery, isInlinePromptAttachment, promptAttachmentsCanUseInlineDelivery, type CapturedAttachment } from "../promptAttachmentCapture";
+import { capturePromptAttachments, effectivePromptAttachmentDelivery, isInlinePromptAttachment, type CapturedAttachment } from "../promptAttachmentCapture";
 import { inputModeForDraft, inputModesEqual, type InputMode } from "../inputModes";
 import { machineSessionKey } from "../machineKeys";
 import { detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletionChoices, type PromptCompletionTrigger } from "../promptCompletions";
 import { clearDraft, loadDraft, saveDraft } from "../promptDraftStorage";
-import { loadAttachmentDelivery, saveAttachmentDelivery } from "../attachmentPreferences";
+import { loadPromptHistory, rememberPromptHistory, searchPromptHistory } from "../promptHistory";
 import { createMobilePromptEnterMedia, readPromptEnterPreference, shouldSendPromptOnEnterShortcut, shouldUsePromptEnterShiftShortcut } from "../promptEnterBehavior";
 import { promptEditorStyles, type CompletionItem } from "./shared";
 import { renderAttachIcon, renderSendIcon, renderQueueIcon, renderSteerIcon, renderStopIcon, renderThinkingGauge } from "./promptEditorIcons";
@@ -52,10 +52,11 @@ export class PromptEditor extends LitElement {
   @state() private completions: CompletionItem[] = [];
   @state() private selectedIndex = 0;
   @state() private attachments: PendingAttachment[] = [];
-  @state() private attachmentDelivery: PromptAttachmentDelivery = loadAttachmentDelivery();
   @state() private attachmentError: string | undefined = undefined;
   private attachmentSeq = 0;
   private requestVersion = 0;
+  private historyIndex: number | undefined;
+  private historyDraftBeforeBrowse = "";
   private editor: EditorView | undefined;
   private readonly editableCompartment = new Compartment();
   private readonly readOnlyCompartment = new Compartment();
@@ -108,13 +109,13 @@ export class PromptEditor extends LitElement {
     const busy = this.disabled || this.sending;
     return html`
       <footer class=${shellMode ? "shell-mode" : ""} @paste=${(event: ClipboardEvent) => { void this.handlePaste(event); }} @dragover=${(event: DragEvent) => { this.handleDragOver(event); }} @drop=${(event: DragEvent) => { void this.handleDrop(event); }}>
+        <input class="attachment-input" type="file" multiple hidden @change=${(event: Event) => { void this.handleFileInput(event); }} />
+        ${this.renderAttachments()}
         <div class="editor-wrap">
           <div class=${`markdown-editor${this.disabled ? " markdown-editor-disabled" : ""}`} aria-label="Message pi" aria-disabled=${this.disabled ? "true" : "false"}></div>
-          <input class="attachment-input" type="file" multiple hidden @change=${(event: Event) => { void this.handleFileInput(event); }} />
           <button class="editor-attach icon-button" ?disabled=${busy} title="Attach files" aria-label="Attach files" @click=${() => { this.attachmentInput?.click(); }}>${renderAttachIcon()}</button>
           ${shellMode ? html`<div class="mode-hint">Shell command${shellInputMode.excludeFromContext ? " · excluded from context" : ""}</div>` : null}
           ${this.isCompacting && !shellMode ? html`<div class="mode-hint">Compacting history · message will be queued</div>` : null}
-          ${this.renderAttachments()}
           <autocomplete-menu .items=${this.completions} .selectedIndex=${this.selectedIndex} .onPick=${(item: CompletionItem) => { this.pick(item); }}></autocomplete-menu>
         </div>
         <div class="actions">
@@ -173,8 +174,6 @@ export class PromptEditor extends LitElement {
 
   private renderAttachments() {
     if (this.attachments.length === 0 && this.attachmentError === undefined) return null;
-    const canUseInlineDelivery = promptAttachmentsCanUseInlineDelivery(this.attachments);
-    const delivery = this.effectiveAttachmentDelivery();
     return html`
       <div class="attachments" aria-label="Pending attachments">
         ${this.attachments.map((attachment) => html`
@@ -183,14 +182,6 @@ export class PromptEditor extends LitElement {
             <button type="button" class="attachment-remove" title="Remove attachment" aria-label=${`Remove ${attachment.name}`} @click=${() => { this.removeAttachment(attachment.id); }}>×</button>
           </div>
         `)}
-        ${this.attachments.length > 0 ? html`
-          <label class="attachment-delivery" title=${canUseInlineDelivery ? "How attachments are delivered to the agent" : "General files are saved and mentioned from the workspace"}>
-            <select .value=${delivery} @change=${(event: Event) => { this.changeDelivery(event); }}>
-              <option value="inline" ?disabled=${!canUseInlineDelivery}>Attach to message${canUseInlineDelivery ? "" : " (images only)"}</option>
-              <option value="folder">Save to .pi-web/attachments</option>
-            </select>
-          </label>
-        ` : null}
         ${this.attachmentError !== undefined ? html`<div class="attachment-error">${this.attachmentError}</div>` : null}
       </div>
     `;
@@ -204,17 +195,6 @@ export class PromptEditor extends LitElement {
       <div class="attachment-file-preview" aria-hidden="true">${fileExtensionLabel(attachment.name)}</div>
       <span class="attachment-file-name">${attachment.name}</span>
     `;
-  }
-
-  private changeDelivery(event: Event) {
-    if (!(event.target instanceof HTMLSelectElement)) return;
-    const requested = event.target.value === "folder" ? "folder" : "inline";
-    if (requested === "inline" && !promptAttachmentsCanUseInlineDelivery(this.attachments)) {
-      event.target.value = "folder";
-      return;
-    }
-    this.attachmentDelivery = requested;
-    saveAttachmentDelivery(this.attachmentDelivery);
   }
 
   private removeAttachment(id: string) {
@@ -261,7 +241,9 @@ export class PromptEditor extends LitElement {
   }
 
   private effectiveAttachmentDelivery(): PromptAttachmentDelivery {
-    return effectivePromptAttachmentDelivery(this.attachmentDelivery, this.attachments);
+    // Keep the UI simple on mobile: images ride inline, everything else falls
+    // back to workspace files automatically.
+    return effectivePromptAttachmentDelivery("inline", this.attachments);
   }
 
   private createEditor() {
@@ -290,8 +272,8 @@ export class PromptEditor extends LitElement {
           }),
           keymap.of([
             { any: (view, event) => this.handleEditorKeyDown(event, view) },
-            { key: "ArrowDown", run: () => this.moveCompletion(1) },
-            { key: "ArrowUp", run: () => this.moveCompletion(-1) },
+            { key: "ArrowDown", run: (view) => this.handleEditorArrow(view, 1) },
+            { key: "ArrowUp", run: (view) => this.handleEditorArrow(view, -1) },
             { key: "Escape", run: () => this.closeCompletions() },
             { key: "Tab", run: (view) => this.handleEditorTab(view) },
             { key: "Shift-Tab", run: (view) => indentWithTab.shift?.(view) ?? false },
@@ -393,6 +375,38 @@ export class PromptEditor extends LitElement {
     return true;
   }
 
+  private handleEditorArrow(view: EditorView, delta: 1 | -1): boolean {
+    if (this.completions.length) return this.moveCompletion(delta);
+    return this.browsePromptHistory(view, delta);
+  }
+
+  private browsePromptHistory(view: EditorView, delta: 1 | -1): boolean {
+    const key = draftStorageKey(this.machineId, this.sessionId);
+    if (key === undefined) return false;
+    const history = loadPromptHistory(key);
+    if (history.length === 0) return false;
+    const cursor = view.state.selection.main.head;
+    const selectionEmpty = view.state.selection.main.empty;
+    const doc = view.state.doc.toString();
+    if (this.historyIndex === undefined) {
+      if (!(selectionEmpty && cursor === doc.length && doc.trim() === "")) return false;
+      this.historyDraftBeforeBrowse = doc;
+      this.historyIndex = 0;
+    } else {
+      const nextIndex = this.historyIndex + delta;
+      if (nextIndex < 0) return true;
+      if (nextIndex >= history.length) {
+        this.historyIndex = undefined;
+        this.replaceText(this.historyDraftBeforeBrowse);
+        return true;
+      }
+      this.historyIndex = nextIndex;
+    }
+    const next = history[this.historyIndex] ?? this.historyDraftBeforeBrowse;
+    this.replaceText(next);
+    return true;
+  }
+
   private closeCompletions(): boolean {
     if (!this.completions.length) return false;
     this.completions = [];
@@ -404,8 +418,13 @@ export class PromptEditor extends LitElement {
       this.explicitShiftKeyActive = true;
       return false;
     }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "r") {
+      event.preventDefault();
+      return this.openPromptHistoryPicker();
+    }
     if (event.key !== "Enter") {
       this.explicitShiftKeyActive = false;
+      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") this.historyIndex = undefined;
       return false;
     }
     if (event.defaultPrevented || event.isComposing || view.composing) return false;
@@ -455,6 +474,12 @@ export class PromptEditor extends LitElement {
   private pick(item: CompletionItem) {
     const editor = this.editor;
     if (!editor) return;
+    if (item.kind === "history") {
+      this.historyIndex = undefined;
+      this.replaceText(item.insertText);
+      this.completions = [];
+      return;
+    }
     const suffix = item.kind === "file" && (item.insertText.endsWith("/") || item.cursorOffset !== undefined) ? "" : " ";
     const cursor = item.replaceFrom + (item.cursorOffset ?? item.insertText.length) + suffix.length;
     const replaceTo = item.insertText.endsWith("\"") && this.draft.slice(item.replaceTo).startsWith("\"") ? item.replaceTo + 1 : item.replaceTo;
@@ -466,6 +491,23 @@ export class PromptEditor extends LitElement {
     this.completions = [];
   }
 
+  private openPromptHistoryPicker(): boolean {
+    const key = draftStorageKey(this.machineId, this.sessionId);
+    if (key === undefined) return false;
+    const matches = searchPromptHistory(key, this.draft).slice(0, 12);
+    if (matches.length === 0) return false;
+    this.selectedIndex = 0;
+    this.completions = matches.map((entry) => ({
+      kind: "history",
+      replaceFrom: 0,
+      replaceTo: this.draft.length,
+      insertText: entry,
+      detail: "history",
+      description: entry,
+    }));
+    return true;
+  }
+
   private send(streamingBehavior?: "steer" | "followUp") {
     if (this.disabled || this.sending) return;
     const text = this.draft.trim();
@@ -474,6 +516,8 @@ export class PromptEditor extends LitElement {
     const behavior = this.canSteer || this.isCompacting ? streamingBehavior : undefined;
     const attachments = pending.length > 0 ? this.currentAttachments() : undefined;
     const delivery = this.effectiveAttachmentDelivery();
+    const key = draftStorageKey(this.machineId, this.sessionId);
+    if (key !== undefined && text !== "") rememberPromptHistory(key, text);
     this.resetComposer();
     // Sending is owned by the controller (it drives the chat activity dock and,
     // for folder mode, orchestrates the upload + reference rewrite), so this is

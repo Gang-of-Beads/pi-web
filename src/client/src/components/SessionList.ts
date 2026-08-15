@@ -56,6 +56,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
   @property({ attribute: false }) onDeleteArchived?: (session: SessionInfo) => void | Promise<void>;
   @property({ attribute: false }) onDeleteArchivedMany?: (sessions: SessionInfo[]) => void | Promise<void>;
   @property({ attribute: false }) onDetachParent?: (session: SessionInfo) => void;
+  @property({ attribute: false }) onRename?: (session: SessionInfo, name: string) => void | Promise<void>;
   @property({ attribute: false }) onMarkRead?: (session: SessionInfo) => void;
   @property({ attribute: false }) onMarkReadMany?: (sessions: SessionInfo[]) => void | Promise<void>;
   @property({ attribute: false }) onReload?: (session: SessionInfo) => void;
@@ -362,6 +363,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
                       <button title="Archive session" @click=${() => { this.openMenuSessionId = undefined; this.onArchive?.(session); }}>Archive</button>
                       ${descendantCount > 0 ? html`<button title="Archive this session and its descendants" @click=${() => { this.openMenuSessionId = undefined; this.confirmArchiveWithDescendants(session, descendantCount); }}>Archive with descendants (${descendantCount})</button>` : null}
                     ` : null}
+                    <button title="Give this session a name you will recognise" @click=${() => { this.openMenuSessionId = undefined; this.promptRename(session); }}>Rename</button>
                     ${session.parentSessionPath !== undefined ? html`<button title="Detach from parent" @click=${() => { this.openMenuSessionId = undefined; this.onDetachParent?.(session); }}>Detach from parent</button>` : null}
                     ${canArchive ? html`<button title=${isSessionActive(this.statuses[session.id], this.activities[session.id]) ? "Stop current session activity before reloading from disk" : "Reload session from disk without refreshing Pi runtime resources"} ?disabled=${isSessionActive(this.statuses[session.id], this.activities[session.id])} @click=${() => { this.openMenuSessionId = undefined; this.onReload?.(session); }}>Reload from disk</button>` : null}
                   `}
@@ -414,6 +416,20 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
   private confirmArchiveWithDescendants(session: SessionInfo, descendantCount: number): void {
     const noun = descendantCount === 1 ? "descendant session" : "descendant sessions";
     if (confirm(`Archive “${sessionLabel(session)}” and ${String(descendantCount)} ${noun}?`)) this.onArchiveWithDescendants?.(session);
+  }
+
+  /**
+   * Ask for a session alias, seeded with the current name so a rename edits
+   * rather than retypes. An unchanged or empty answer is a no-op, and Cancel
+   * returns null, so neither can clear an existing name by accident.
+   */
+  private promptRename(session: SessionInfo): void {
+    const current = session.name ?? "";
+    const next = prompt(`Name for this session:`, current);
+    if (next === null) return;
+    const trimmed = next.trim();
+    if (trimmed === "" || trimmed === current) return;
+    void this.onRename?.(session, trimmed);
   }
 
   private confirmDeleteArchived(session: SessionInfo): void {

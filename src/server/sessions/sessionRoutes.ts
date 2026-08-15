@@ -72,6 +72,16 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
     }
   });
 
+  // Declared with the other collection routes, ahead of `/sessions/:sessionId`,
+  // so "statuses" is never captured as a session id.
+  app.get(`${prefix}/sessions/statuses`, async (_request, reply) => {
+    try {
+      return await sessions.sessionStatusCatalog();
+    } catch (error) {
+      return reply.code(503).send({ error: errorMessage(error) });
+    }
+  });
+
   app.post<{ Params: { sessionId: string }; Body: Record<string, unknown> | undefined }>(`${prefix}/sessions/:sessionId/unread/acknowledge`, async (request, reply) => {
     let sessionId: string;
     let acknowledgement: SessionUnreadAcknowledgeRequest;

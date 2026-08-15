@@ -43,6 +43,8 @@ export class AppNavigationPanel extends LitElement {
   @property({ type: Number }) startingSessionCount = 0;
   @property({ type: Boolean }) canStartSession = false;
   @property({ attribute: false }) onShowActions?: () => void;
+  @property({ attribute: false }) onQuickSwitch?: () => void;
+  @property({ attribute: false }) onAddProject?: () => void;
   @property({ attribute: false }) onToggleMachines?: () => void;
   @property({ attribute: false }) onToggleProjects?: () => void;
   @property({ attribute: false }) onToggleWorkspaces?: () => void;
@@ -61,6 +63,7 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) onDeleteArchivedSession?: (session: SessionInfo) => void | Promise<void>;
   @property({ attribute: false }) onDeleteArchivedSessions?: (sessions: SessionInfo[]) => void | Promise<void>;
   @property({ attribute: false }) onDetachParentSession?: (session: SessionInfo) => void | Promise<void>;
+  @property({ attribute: false }) onRenameSession?: (session: SessionInfo, name: string) => void | Promise<void>;
   @property({ attribute: false }) onMarkSessionRead?: (session: SessionInfo) => void | Promise<void>;
   @property({ attribute: false }) onMarkSessionsRead?: (sessions: SessionInfo[]) => void | Promise<void>;
   @property({ attribute: false }) onReloadSession?: (session: SessionInfo) => void | Promise<void>;
@@ -88,6 +91,7 @@ export class AppNavigationPanel extends LitElement {
   }
 
   override render() {
+    if (this.compact) return this.renderCompact();
     return html`
       <header>
         <strong>PI WEB</strong>
@@ -108,27 +112,93 @@ export class AppNavigationPanel extends LitElement {
           <button title="Show Actions" aria-label="Show Actions" @click=${() => { this.onShowActions?.(); }}>Actions</button>
         </div>
       </header>
-      ${this.compact && shouldShowMachinesSection(this.machines) ? html`
-        <machine-list
-          .machines=${this.machines}
-          .selected=${this.selectedMachine}
-          .statuses=${this.machineStatuses}
-          .statusSnapshots=${this.machineStatusSnapshots}
-          .collapsible=${this.collapsible}
-          .collapsed=${this.machinesCollapsed}
-          .onToggleCollapsed=${() => { this.onToggleMachines?.(); }}
-          .onSelect=${(machine: Machine) => this.onSelectMachine?.(machine)}
-          .onRemove=${(machine: Machine) => this.onRemoveMachine?.(machine)}
-          .onFocusNextSection=${() => { this.focusNextFrom("machines"); }}
-          .onCancelKeyboardNavigation=${() => { this.cancelKeyboardNavigation(); }}
-        ></machine-list>
-      ` : null}
+      ${this.renderMachineList(false)}
+      ${this.renderProjectList(true)}
+      ${this.renderWorkspaceList(true)}
+      ${this.renderSessionList(true)}
+    `;
+  }
+
+  private renderCompact() {
+    return html`
+      <div class="compact-shell">
+        ${shouldShowMachinesSection(this.machines) ? html`
+          <machine-switcher
+            hidden
+            .machines=${this.machines}
+            .selected=${this.selectedMachine}
+            .statuses=${this.machineStatuses}
+            .statusSnapshots=${this.machineStatusSnapshots}
+            .onSelect=${(machine: Machine) => this.onSelectMachine?.(machine)}
+            .onRemove=${(machine: Machine) => this.onRemoveMachine?.(machine)}
+            .onFocusNextSection=${() => { this.focusNextFrom("machines"); }}
+            .onCancelKeyboardNavigation=${() => { this.cancelKeyboardNavigation(); }}
+          ></machine-switcher>
+        ` : null}
+        <div class="mobile-quick-actions">
+          <button class="quick-action primary" ?disabled=${this.onAddProject === undefined} @click=${() => { this.runMaybeAsync(this.onAddProject); }}>Add project</button>
+          <button class="quick-action" ?disabled=${this.onQuickSwitch === undefined} @click=${() => { this.onQuickSwitch?.(); }}>Open session</button>
+          <button class="quick-action" ?disabled=${!this.canStartSession} @click=${() => { this.runMaybeAsync(this.onStartSession); }}>New session</button>
+        </div>
+        ${this.renderCompactPrimaryList()}
+      </div>
+    `;
+  }
+
+  /**
+   * Mobile shows one primary list at a time instead of stacking every section.
+   * The context bar chips above this panel already act as a breadcrumb for
+   * jumping backwards, so the body should focus on the next useful decision.
+   */
+  private renderCompactPrimaryList() {
+    const visible = this.compactVisibleSection();
+    return html`
+      ${this.renderMachineList(false, visible !== "machines")}
+      ${this.renderProjectList(false, visible !== "projects")}
+      ${this.renderWorkspaceList(false, visible !== "workspaces")}
+      ${this.renderSessionList(false, visible !== "sessions")}
+    `;
+  }
+
+  private compactVisibleSection(): NavigationSection {
+    if (shouldShowMachinesSection(this.machines) && !this.machinesCollapsed) return "machines";
+    if (!this.projectsCollapsed) return "projects";
+    if (!this.workspacesCollapsed) return "workspaces";
+    if (!this.sessionsCollapsed) return "sessions";
+    if (this.selectedWorkspace !== undefined) return "sessions";
+    if (this.selectedProject !== undefined) return "workspaces";
+    return "projects";
+  }
+
+  private renderMachineList(collapsible: boolean, hidden = false) {
+    if (!shouldShowMachinesSection(this.machines)) return null;
+    return html`
+      <machine-list
+        ?hidden=${hidden}
+        .machines=${this.machines}
+        .selected=${this.selectedMachine}
+        .statuses=${this.machineStatuses}
+        .statusSnapshots=${this.machineStatusSnapshots}
+        .collapsible=${collapsible && this.collapsible}
+        .collapsed=${collapsible ? this.machinesCollapsed : false}
+        .onToggleCollapsed=${() => { this.onToggleMachines?.(); }}
+        .onSelect=${(machine: Machine) => this.onSelectMachine?.(machine)}
+        .onRemove=${(machine: Machine) => this.onRemoveMachine?.(machine)}
+        .onFocusNextSection=${() => { this.focusNextFrom("machines"); }}
+        .onCancelKeyboardNavigation=${() => { this.cancelKeyboardNavigation(); }}
+      ></machine-list>
+    `;
+  }
+
+  private renderProjectList(collapsible: boolean, hidden = false) {
+    return html`
       <project-list
+        ?hidden=${hidden}
         .projects=${this.projects}
         .selected=${this.selectedProject}
         .statusSnapshot=${this.selectedMachineStatusSnapshot()}
-        .collapsible=${this.collapsible}
-        .collapsed=${this.projectsCollapsed}
+        .collapsible=${collapsible && this.collapsible}
+        .collapsed=${collapsible ? this.projectsCollapsed : false}
         .onToggleCollapsed=${() => { this.onToggleProjects?.(); }}
         .onSelect=${(project: Project) => this.onSelectProject?.(project)}
         .onClose=${(project: Project) => this.onCloseProject?.(project)}
@@ -136,13 +206,19 @@ export class AppNavigationPanel extends LitElement {
         .onFocusNextSection=${() => { this.focusNextFrom("projects"); }}
         .onCancelKeyboardNavigation=${() => { this.cancelKeyboardNavigation(); }}
       ></project-list>
+    `;
+  }
+
+  private renderWorkspaceList(collapsible: boolean, hidden = false) {
+    return html`
       <workspace-list
+        ?hidden=${hidden}
         .workspaces=${this.workspaces}
         .selected=${this.selectedWorkspace}
         .statusSnapshot=${this.selectedMachineStatusSnapshot()}
         .deletingWorkspaceIds=${this.deletingWorkspaceIds}
-        .collapsible=${this.collapsible}
-        .collapsed=${this.workspacesCollapsed}
+        .collapsible=${collapsible && this.collapsible}
+        .collapsed=${collapsible ? this.workspacesCollapsed : false}
         .workspaceLabelItems=${this.workspaceLabelItems}
         .onToggleCollapsed=${() => { this.onToggleWorkspaces?.(); }}
         .onSelect=${(workspace: Workspace) => this.onSelectWorkspace?.(workspace)}
@@ -151,7 +227,13 @@ export class AppNavigationPanel extends LitElement {
         .onFocusNextSection=${() => { this.focusNextFrom("workspaces"); }}
         .onCancelKeyboardNavigation=${() => { this.cancelKeyboardNavigation(); }}
       ></workspace-list>
+    `;
+  }
+
+  private renderSessionList(collapsible: boolean, hidden = false) {
+    return html`
       <session-list
+        ?hidden=${hidden}
         .sessions=${this.sessions}
         .statuses=${this.sessionStatuses}
         .activities=${this.sessionActivities}
@@ -160,8 +242,8 @@ export class AppNavigationPanel extends LitElement {
         .selected=${this.selectedSession}
         .startingCount=${this.startingSessionCount}
         .canStart=${this.canStartSession}
-        .collapsible=${this.collapsible}
-        .collapsed=${this.sessionsCollapsed}
+        .collapsible=${collapsible && this.collapsible}
+        .collapsed=${collapsible ? this.sessionsCollapsed : false}
         .onToggleCollapsed=${() => { this.onToggleSessions?.(); }}
         .onArchivedCollapsed=${() => this.onArchivedCollapsed?.()}
         .onStart=${() => this.onStartSession?.()}
@@ -174,6 +256,7 @@ export class AppNavigationPanel extends LitElement {
         .onDeleteArchived=${(session: SessionInfo) => this.onDeleteArchivedSession?.(session)}
         .onDeleteArchivedMany=${(sessions: SessionInfo[]) => this.onDeleteArchivedSessions?.(sessions)}
         .onDetachParent=${(session: SessionInfo) => this.onDetachParentSession?.(session)}
+        .onRename=${(session: SessionInfo, name: string) => this.onRenameSession?.(session, name)}
         .onMarkRead=${(session: SessionInfo) => this.onMarkSessionRead?.(session)}
         .onMarkReadMany=${(sessions: SessionInfo[]) => this.onMarkSessionsRead?.(sessions)}
         .onReload=${(session: SessionInfo) => this.onReloadSession?.(session)}
@@ -201,6 +284,11 @@ export class AppNavigationPanel extends LitElement {
     return await section.focusSelectedOrFirst();
   }
 
+  private runMaybeAsync(action: (() => void | Promise<void>) | undefined): void {
+    const result = action?.();
+    if (result instanceof Promise) void result;
+  }
+
   private focusPreviousFrom(section: NavigationSection): void {
     const target = previousVisibleNavigationTarget(section, this.machines);
     if (target !== undefined) void this.onFocusNavigationTarget?.(target);
@@ -218,6 +306,10 @@ export class AppNavigationPanel extends LitElement {
     :host { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
     :host([compact]) { flex: 1 1 auto; }
     header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border-bottom: 1px solid var(--pi-border); }
+    .compact-shell { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+    .mobile-quick-actions { flex: 0 0 auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 10px; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); }
+    .quick-action { min-height: 44px; }
+    .quick-action.primary { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
     header strong { flex: 0 0 auto; }
     machine-switcher { flex: 1 1 auto; min-width: 0; }
     :host([compact]) header { display: none; }
@@ -226,7 +318,10 @@ export class AppNavigationPanel extends LitElement {
        section distributes its space to every remaining section, not just the
        session list. Collapsed sections keep only their heading height. */
     machine-list, project-list, workspace-list, session-list { flex: 1 1 0px; min-height: 0; overflow: hidden; border-bottom: 1px solid var(--pi-border-muted); }
-    machine-list[collapsed],
+    :host([compact]) machine-list,
+    :host([compact]) project-list,
+    :host([compact]) workspace-list,
+    :host([compact]) session-list { flex: 1 1 auto; }    machine-list[collapsed],
     project-list[collapsed],
     workspace-list[collapsed],
     session-list[collapsed] { flex: 0 0 auto; min-height: auto; overflow: hidden; }

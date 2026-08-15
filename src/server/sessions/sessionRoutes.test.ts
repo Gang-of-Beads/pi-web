@@ -25,6 +25,7 @@ import type {
   SessionTreeForkResult,
   SessionTreeNavigateRequest,
   SessionUnreadAcknowledgeRequest,
+  SessionStatusCatalogSnapshot,
   SessionUnreadCatalogSnapshot,
   SessionTreeNavigateResult,
 } from "../../shared/apiTypes.js";
@@ -75,6 +76,47 @@ describe("session routes", () => {
       expect(inbox.statusCode).toBe(200);
       expect(inbox.json()).toMatchObject({ daemonInstanceId: "daemon-test", summary: { sessionId: "session-1", cwd: requestCwd } });
       expect(routeService.notificationInboxCalls).toEqual([{ id: "session-1", cwd: requestCwd }]);
+    } finally {
+      await routeService.dispose();
+      await routeApp.close();
+    }
+  });
+
+  it("serves the session status catalog without capturing 'statuses' as a session id", async () => {
+    const routeApp = Fastify({ logger: false });
+    await routeApp.register(fastifyWebsocket);
+    const eventHub = new SessionEventHub();
+    const routeService = new CapturingRouteSessionService();
+    registerSessionRoutes(routeApp, routeService, eventHub);
+
+    try {
+      const catalog = await routeApp.inject({ method: "GET", url: "/sessions/statuses" });
+
+      expect(catalog.statusCode).toBe(200);
+      expect(catalog.json()).toEqual(routeService.statusCatalogResponse);
+      // The collection route must win over `/sessions/:sessionId/...`; a
+      // capture would turn hydration into a lookup for a session named
+      // "statuses" and answer 404 forever.
+      expect(routeService.calls).toEqual([]);
+    } finally {
+      await routeService.dispose();
+      await routeApp.close();
+    }
+  });
+
+  it("reports an unavailable status catalog as 503 so hydration can retry", async () => {
+    const routeApp = Fastify({ logger: false });
+    await routeApp.register(fastifyWebsocket);
+    const eventHub = new SessionEventHub();
+    const routeService = new CapturingRouteSessionService();
+    routeService.statusCatalogError = new Error("daemon starting");
+    registerSessionRoutes(routeApp, routeService, eventHub);
+
+    try {
+      const catalog = await routeApp.inject({ method: "GET", url: "/sessions/statuses" });
+
+      expect(catalog.statusCode).toBe(503);
+      expect(catalog.json()).toEqual({ error: "daemon starting" });
     } finally {
       await routeService.dispose();
       await routeApp.close();
@@ -1027,6 +1069,8 @@ class CapturingRouteSessionService implements SessionRouteService {
   readonly notificationInboxCalls: SessionRef[] = [];
   readonly acknowledgeUnreadCalls: { sessionId: string; request: SessionUnreadAcknowledgeRequest }[] = [];
   readonly unreadCatalogResponse: SessionUnreadCatalogSnapshot = { catalogId: "catalog-test", catalogRevision: 1, sessions: [] };
+  readonly statusCatalogResponse: SessionStatusCatalogSnapshot = { statuses: [], generatedAt: "2026-07-27T10:00:00.000Z" };
+  statusCatalogError: Error | undefined;
   readonly dismissNotificationCalls: { ref: SessionRef; request: Omit<SessionNotificationDismissRequest, "cwd"> }[] = [];
   readonly dismissAllNotificationCalls: { ref: SessionRef; request: Omit<SessionNotificationDismissAllRequest, "cwd"> }[] = [];
   dismissWarningError: Error | undefined;
@@ -1113,6 +1157,12 @@ class CapturingRouteSessionService implements SessionRouteService {
     return this.unreadError === undefined
       ? Promise.resolve(this.unreadCatalogResponse)
       : Promise.reject(this.unreadError);
+  }
+
+  sessionStatusCatalog(): Promise<SessionStatusCatalogSnapshot> {
+    return this.statusCatalogError === undefined
+      ? Promise.resolve(this.statusCatalogResponse)
+      : Promise.reject(this.statusCatalogError);
   }
 
   acknowledgeUnread(sessionId: string, request: SessionUnreadAcknowledgeRequest): Promise<SessionUnreadCatalogSnapshot> {
