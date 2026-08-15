@@ -20,6 +20,16 @@ export class AppContextBar extends LitElement {
    * should never cost a walk through the navigation accordion.
    */
   @property({ attribute: false }) onQuickSwitch?: () => void;
+  /**
+   * Lead with the session instead of the full location trail.
+   *
+   * While reading a conversation the session is the subject, and the machine /
+   * project / workspace chips are only how the user got there. Set on the chat
+   * surface so the session's name is the heading rather than the last of four
+   * equally weighted chips, while the trail collapses into one breadcrumb that
+   * still reaches every level. Height is unchanged: one row either way.
+   */
+  @property({ type: Boolean }) emphasizeSession = false;
   @query(".context-items") private contextItems?: HTMLElement | null;
   @state() private canScrollLeft = false;
   @state() private canScrollRight = false;
@@ -44,6 +54,47 @@ export class AppContextBar extends LitElement {
   }
 
   override render() {
+    if (this.emphasizeSession && this.session !== undefined) return this.renderSessionLed();
+    return this.renderLocationTrail();
+  }
+
+  /**
+   * Session-led layout: one breadcrumb for where we are, then the session name
+   * as the heading. The breadcrumb opens the deepest section that still has a
+   * choice to make, so no level becomes unreachable.
+   */
+  private renderSessionLed() {
+    const breadcrumb = breadcrumbLabel(this.workspace, this.project, this.machine, this.machines);
+    const label = sessionContextLabel(this.session);
+    return html`
+      <nav class=${this.contextBarClass()} aria-label="Current session">
+        <button
+          type="button"
+          class="context-breadcrumb"
+          title=${breadcrumbTitle(this.workspace, this.project)}
+          aria-label=${`Location: ${breadcrumb}. Open navigation.`}
+          @click=${() => { this.onOpenSection?.(this.breadcrumbSection()); }}
+        >${breadcrumb}</button>
+        <button
+          type="button"
+          class="context-session-title"
+          title=${sessionContextTitle(this.session)}
+          aria-label=${`Session: ${label}. Open session selection.`}
+          @click=${() => { this.openSessions(); }}
+        >${label}</button>
+        ${this.hasContextActions() ? html`<div class="context-actions inline">${this.renderQuickSwitchButton()}${this.renderActionsButton()}${this.refreshControl}</div>` : null}
+      </nav>
+    `;
+  }
+
+  /** Section the breadcrumb opens: the deepest one already chosen. */
+  private breadcrumbSection(): NavigationSection {
+    if (this.workspace !== undefined) return "workspaces";
+    if (this.project !== undefined) return "projects";
+    return shouldShowMachineContext(this.machines) ? "machines" : "projects";
+  }
+
+  private renderLocationTrail() {
     const showMachineContext = shouldShowMachineContext(this.machines);
     const machineLabel = machineContextLabel(this.machine);
     const projectLabel = projectContextLabel(this.project);
@@ -183,6 +234,43 @@ export class AppContextBar extends LitElement {
     .context-chip:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 2px; }
     .context-chip.empty { border-style: dashed; color: var(--pi-muted); }
     .context-kind { display: none; }
+    .context-breadcrumb {
+      flex: 0 1 auto;
+      min-width: 0;
+      max-width: 42%;
+      overflow: hidden;
+      border: 0;
+      background: none;
+      color: var(--pi-muted);
+      padding: 4px 0 4px 8px;
+      font: inherit;
+      font-size: 11px;
+      text-align: start;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .context-breadcrumb::after { content: "›"; padding: 0 2px 0 4px; }
+    .context-breadcrumb:hover { color: var(--pi-text); }
+    .context-session-title {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      border: 0;
+      background: none;
+      color: var(--pi-text-bright, var(--pi-text));
+      padding: 4px 8px 4px 0;
+      font: inherit;
+      font-weight: 650;
+      text-align: start;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .context-breadcrumb:focus-visible, .context-session-title:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: -2px; }
+    /* Session-led layout keeps the actions in flow rather than overlaying a
+       scrolling chip strip that no longer exists. */
+    .context-actions.inline { position: static; flex: 0 0 auto; }
     .context-value { min-width: 0; overflow: visible; text-overflow: clip; white-space: nowrap; }
     button { cursor: pointer; }
   `;
@@ -216,6 +304,32 @@ function workspaceContextLabel(workspace: Workspace | undefined): string {
 
 function workspaceContextTitle(workspace: Workspace | undefined): string {
   return workspace === undefined ? "No workspace selected" : `${workspace.label}${workspace.isMain ? " · main" : ""} — ${workspace.path}`;
+}
+
+/**
+ * Condensed trail for the session-led layout: the most specific place that has
+ * been chosen, qualified by its parent when that is not redundant.
+ */
+function breadcrumbLabel(
+  workspace: Workspace | undefined,
+  project: Project | undefined,
+  machine: Machine | undefined,
+  machines: readonly Machine[],
+): string {
+  const machinePrefix = shouldShowMachineContext(machines) && machine !== undefined ? `${machine.name} / ` : "";
+  if (workspace !== undefined) {
+    // A main workspace repeats its project's name, so naming both is noise.
+    const label = workspace.isMain && project !== undefined ? project.name : workspace.label;
+    return `${machinePrefix}${label}`;
+  }
+  if (project !== undefined) return `${machinePrefix}${project.name}`;
+  return machinePrefix === "" ? "No workspace" : machinePrefix.replace(/ \/ $/u, "");
+}
+
+function breadcrumbTitle(workspace: Workspace | undefined, project: Project | undefined): string {
+  if (workspace !== undefined) return workspace.path;
+  if (project !== undefined) return project.path;
+  return "No workspace selected";
 }
 
 function sessionContextLabel(session: SessionInfo | undefined): string {
