@@ -4,6 +4,8 @@ import { api, type FileSuggestion } from "../api";
 import { css } from "lit";
 import "./ModalSurface";
 
+const SUGGESTION_DEBOUNCE_MS = 120;
+
 @customElement("project-dialog")
 export class ProjectDialog extends LitElement {
   @property({ attribute: false }) onSubmit?: (path: string, create: boolean) => void;
@@ -17,10 +19,36 @@ export class ProjectDialog extends LitElement {
   @query("input") private pathInput?: HTMLInputElement;
 
   private requestId = 0;
+  private suggestionTimer: ReturnType<typeof setTimeout> | undefined;
 
   override connectedCallback(): void {
     super.connectedCallback();
     void this.loadSuggestions();
+  }
+
+  override disconnectedCallback(): void {
+    this.cancelPendingSuggestions();
+    super.disconnectedCallback();
+  }
+
+  /**
+   * Folder suggestions now search downward from the typed parent, so a
+   * keystroke can cost a real directory scan. Debouncing keeps fast typing on
+   * a phone keyboard from queueing one scan per character while still feeling
+   * immediate once typing pauses.
+   */
+  private scheduleSuggestions(): void {
+    this.cancelPendingSuggestions();
+    this.suggestionTimer = setTimeout(() => {
+      this.suggestionTimer = undefined;
+      void this.loadSuggestions();
+    }, SUGGESTION_DEBOUNCE_MS);
+  }
+
+  private cancelPendingSuggestions(): void {
+    if (this.suggestionTimer === undefined) return;
+    clearTimeout(this.suggestionTimer);
+    this.suggestionTimer = undefined;
   }
 
   private async loadSuggestions() {
@@ -41,15 +69,21 @@ export class ProjectDialog extends LitElement {
   private setPath(value: string) {
     this.path = value;
     this.selected = 0;
-    void this.loadSuggestions();
+    this.scheduleSuggestions();
   }
 
   private pick(suggestion: FileSuggestion) {
-    this.setPath(suggestion.path);
+    this.path = suggestion.path;
+    this.selected = 0;
+    // Picking is an explicit navigation step, so its listing should not wait
+    // out the typing debounce.
+    this.cancelPendingSuggestions();
+    void this.loadSuggestions();
   }
 
   private submit() {
     if (this.path.trim() === "") return;
+    this.cancelPendingSuggestions();
     this.onSubmit?.(this.path, this.createMissing);
   }
 
@@ -101,8 +135,17 @@ export class ProjectDialog extends LitElement {
         <div class="body">
           <label>
             Project folder
-            <input .value=${this.path} @input=${(event: InputEvent) => { this.onPathInput(event); }} placeholder="/path/to/project or ~/code/project" />
+            <input
+              .value=${this.path}
+              @input=${(event: InputEvent) => { this.onPathInput(event); }}
+              placeholder="~/code/project, or just type playria"
+              autocomplete="off"
+              autocapitalize="none"
+              spellcheck="false"
+              enterkeyhint="go"
+            />
           </label>
+          <small class="hint">Type any part of a folder name to search below the path you entered; end with / to browse that folder.</small>
           <div class="suggestions">
             ${this.loading ? html`<div class="hint">Loading folders…</div>` : null}
             ${this.suggestions.map((suggestion, index) => html`
@@ -110,7 +153,7 @@ export class ProjectDialog extends LitElement {
                 ${suggestion.path}
               </button>
             `)}
-            ${!this.loading && this.suggestions.length === 0 ? html`<div class="hint">No matching folders. Enter a new path to create it.</div>` : null}
+            ${!this.loading && this.suggestions.length === 0 ? html`<div class="hint">No matching folders found. Enter a full path to create it.</div>` : null}
           </div>
           <label class="check">
             <input type="checkbox" .checked=${this.createMissing} @change=${(event: InputEvent) => { this.onCreateMissingChange(event); }} />
@@ -138,6 +181,14 @@ export class ProjectDialog extends LitElement {
     .suggestions button { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 0; border-bottom: 1px solid var(--pi-border); border-radius: 0; background: transparent; color: var(--pi-text); padding: 8px 10px; text-align: left; font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .suggestions button.selected, .suggestions button:hover { background: var(--pi-selection-bg); }
     .hint { padding: 12px; color: var(--pi-muted); }
+    small.hint { padding: 0; line-height: 1.4; }
+    @media (max-width: 760px) {
+      /* Suggestion rows double as the primary navigation control on a phone,
+         so they get a full touch target and room for long paths. */
+      .suggestions { max-height: 45dvh; }
+      .suggestions button { min-height: 44px; padding: 10px 12px; }
+      footer button { min-height: 44px; }
+    }
     button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; }
     header button { border: 0; background: transparent; color: var(--pi-muted); font-size: 22px; padding: 0 8px; }
     .primary { border-color: var(--pi-success-border); background: var(--pi-success-border); }

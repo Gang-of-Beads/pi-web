@@ -18,6 +18,19 @@ import { TrailingRefreshCoordinator } from "./trailingRefreshCoordinator";
 
 const MESSAGE_PAGE_SIZE = 100;
 
+/**
+ * Hard deadline for applying buffered stream updates.
+ *
+ * Batching per animation frame keeps the prompt editor's DOM stable while
+ * tokens stream, but `requestAnimationFrame` is throttled hard (or not run at
+ * all) for background tabs and under heavy paint pressure on phones, which
+ * shows up as a transcript that visibly stalls and then jumps. A timer running
+ * alongside the frame request guarantees the buffer is applied on time even
+ * when frames stop arriving; whichever fires first flushes and cancels the
+ * other.
+ */
+const PENDING_FLUSH_DEADLINE_MS = 100;
+
 export interface SessionEventSocket {
   connect(
     session: SessionRef,
@@ -119,6 +132,7 @@ export class SessionController {
   private pendingStatusBySession = new Map<string, SessionStatus>();
   private pendingActivityBySession = new Map<string, SessionActivity>();
   private pendingFrame: number | undefined;
+  private pendingFlushTimer: ReturnType<typeof setTimeout> | undefined;
   private pendingSessionStartSeq = 0;
   private pendingQueuedSendSeq = 0;
   private readonly pendingSessionStarts = new Map<string, PendingSessionStart>();
@@ -1616,11 +1630,25 @@ export class SessionController {
   }
 
   private schedulePendingFlush(): void {
-    if (this.pendingFrame !== undefined) return;
-    this.pendingFrame = requestAnimationFrame(() => {
+    this.pendingFrame ??= requestAnimationFrame(() => {
       this.pendingFrame = undefined;
       this.flushPendingUpdates();
     });
+    this.pendingFlushTimer ??= setTimeout(() => {
+      this.pendingFlushTimer = undefined;
+      this.flushPendingUpdates();
+    }, PENDING_FLUSH_DEADLINE_MS);
+  }
+
+  private cancelScheduledFlush(): void {
+    if (this.pendingFrame !== undefined) {
+      cancelAnimationFrame(this.pendingFrame);
+      this.pendingFrame = undefined;
+    }
+    if (this.pendingFlushTimer !== undefined) {
+      clearTimeout(this.pendingFlushTimer);
+      this.pendingFlushTimer = undefined;
+    }
   }
 
   // Apply buffered transcript deltas, activity, and status in one task. Activity
@@ -1630,6 +1658,9 @@ export class SessionController {
   // the latest buffered value per session. These writes run in a single task, so
   // Lit batches them into one render.
   flushPendingUpdates(): void {
+    // Whichever scheduler won the race, the buffer is now empty: cancel the
+    // other so it cannot re-enter with nothing to apply.
+    this.cancelScheduledFlush();
     if (this.pendingTranscriptEvents.length > 0) {
       const events = this.pendingTranscriptEvents;
       this.pendingTranscriptEvents = [];
@@ -1653,9 +1684,7 @@ export class SessionController {
     this.pendingTranscriptEvents = [];
     this.pendingStatusBySession.clear();
     this.pendingActivityBySession.clear();
-    if (this.pendingFrame === undefined) return;
-    cancelAnimationFrame(this.pendingFrame);
-    this.pendingFrame = undefined;
+    this.cancelScheduledFlush();
   }
 
   // Watermark filter for join-time exactly-once application. An event is below

@@ -5,6 +5,7 @@ import { isCachedNewSessionInfo } from "../cachedNewSessions";
 import { shortSessionId } from "../sessionLabels";
 import { isArchivableSessionInfo, isTransientNewSessionInfo } from "../sessionPersistence";
 import { normalizeSessionPath } from "../sessionPaths";
+import { filterSessionRows, shouldShowSessionSearch } from "../sessionSearch";
 import { isSessionActive } from "../../../shared/activity";
 import { actionMenuPanelStyle } from "./actionMenu";
 import { renderActionActivityIndicator, type ActivityIndicatorKind } from "./activityBadge";
@@ -68,6 +69,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
   @state() private openMenuSessionId: string | undefined;
   @state() private menuStyle = "";
   @state() private archivedExpanded = false;
+  @state() private searchQuery = "";
   @state() private selectionScopes: ReadonlySet<SessionSelectionScope> = new Set();
   @state() private selectedSessionIds: ReadonlySet<string> = new Set();
 
@@ -125,31 +127,84 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
   }
 
   override render() {
-    const currentRows = sessionRowsForCurrentTree(this.sessions);
-    const currentRowIds = new Set(currentRows.map((row) => row.session.id));
-    const currentSelectableSessions = currentRows.map((row) => row.session).filter((session) => sessionSelectionScope(session) === "current");
-    const archivedRows = sessionRows(this.sessions.filter((session) => session.archived === true && !currentRowIds.has(session.id)));
+    const allCurrentRows = sessionRowsForCurrentTree(this.sessions);
+    const currentRowIds = new Set(allCurrentRows.map((row) => row.session.id));
+    const currentSelectableSessions = allCurrentRows.map((row) => row.session).filter((session) => sessionSelectionScope(session) === "current");
+    const allArchivedRows = sessionRows(this.sessions.filter((session) => session.archived === true && !currentRowIds.has(session.id)));
     const descendantCounts = unarchivedDescendantCounts(this.sessions);
     const unreadCount = unreadSessionCount(currentSelectableSessions, this.unreadSessionIds);
+
+    const searching = this.searchQuery.trim() !== "";
+    const currentRows = filterSessionRows(allCurrentRows, this.searchQuery);
+    const archivedRows = filterSessionRows(allArchivedRows, this.searchQuery);
+    // While searching, archived matches are the whole point of the query, so
+    // they are revealed without forcing a second tap on the section toggle.
+    const archivedOpen = this.archivedExpanded || (searching && archivedRows.length > 0);
+    const noMatches = searching && currentRows.length === 0 && archivedRows.length === 0;
+
     return html`
       <section>
-        ${this.renderHeading(currentRows.length + archivedRows.length, currentSelectableSessions, unreadCount)}
+        ${this.renderHeading(allCurrentRows.length + allArchivedRows.length, currentSelectableSessions, unreadCount)}
         ${this.collapsed ? null : html`
           <div class="list-body">
+            ${this.renderSearch(allCurrentRows.length + allArchivedRows.length)}
             ${this.renderCurrentSelectionToolbar(currentSelectableSessions)}
             ${this.startingCount > 0 ? this.renderStartingSession() : null}
             ${currentRows.map((row) => this.renderSession(row, descendantCounts.get(row.session.id) ?? 0, "current"))}
             ${archivedRows.length > 0 ? html`
-              ${this.renderArchivedHeading(archivedRows.map((row) => row.session))}
-              ${this.archivedExpanded ? html`
+              ${this.renderArchivedHeading(archivedRows.map((row) => row.session), archivedOpen)}
+              ${archivedOpen ? html`
                 ${this.renderArchivedSelectionToolbar(archivedRows.map((row) => row.session))}
                 ${archivedRows.map((row) => this.renderSession(row, descendantCounts.get(row.session.id) ?? 0, "archived"))}
               ` : null}
             ` : null}
+            ${noMatches ? html`<div class="search-empty" role="status">No sessions match “${this.searchQuery.trim()}”.</div>` : null}
           </div>
         `}
       </section>
     `;
+  }
+
+  private renderSearch(sessionCount: number) {
+    if (!shouldShowSessionSearch(sessionCount, this.searchQuery)) return null;
+    const hasQuery = this.searchQuery !== "";
+    return html`
+      <div class="session-search">
+        <input
+          class="session-search-input"
+          type="search"
+          inputmode="search"
+          autocomplete="off"
+          spellcheck="false"
+          enterkeyhint="search"
+          aria-label="Search sessions"
+          placeholder="Search sessions"
+          .value=${this.searchQuery}
+          @input=${(event: Event) => { this.onSearchInput(event); }}
+          @keydown=${(event: KeyboardEvent) => { this.onSearchKeydown(event); }}
+        >
+        ${hasQuery ? html`<button class="session-search-clear" title="Clear search" aria-label="Clear search" @click=${() => { this.clearSearch(); }}>×</button>` : null}
+      </div>
+    `;
+  }
+
+  private onSearchInput(event: Event): void {
+    if (!(event.target instanceof HTMLInputElement)) return;
+    this.searchQuery = event.target.value;
+    this.openMenuSessionId = undefined;
+  }
+
+  private onSearchKeydown(event: KeyboardEvent): void {
+    if (event.key !== "Escape" || this.searchQuery === "") return;
+    // Escape clears the query before it can bubble out and close the panel:
+    // on mobile the field is the only way back to the full list.
+    event.preventDefault();
+    event.stopPropagation();
+    this.clearSearch();
+  }
+
+  private clearSearch(): void {
+    this.searchQuery = "";
   }
 
   private renderHeading(sessionCount: number, currentSessions: SessionInfo[], unreadCount: number) {
@@ -211,12 +266,12 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     `;
   }
 
-  private renderArchivedHeading(archivedSessions: SessionInfo[]) {
+  private renderArchivedHeading(archivedSessions: SessionInfo[], archivedOpen = this.archivedExpanded) {
     const active = this.selectionScopes.has("archived");
     return html`
       <h2 class="subheading">
-        <button class="section-toggle" aria-expanded=${String(this.archivedExpanded)} @click=${() => { this.toggleArchived(); }}><span>${this.archivedExpanded ? "▾" : "▸"} Archived</span></button>
-        ${this.archivedExpanded ? html`<button class="bulk-select-entry ${active ? "selected" : ""}" title=${active ? "Close archived session selection" : "Select archived sessions"} aria-label=${active ? "Close archived session selection" : "Select archived sessions"} aria-expanded=${String(active)} aria-pressed=${String(active)} @click=${() => { this.toggleSelection("archived", archivedSessions); }}>☑</button>` : null}
+        <button class="section-toggle" aria-expanded=${String(archivedOpen)} @click=${() => { this.toggleArchived(); }}><span>${archivedOpen ? "▾" : "▸"} Archived</span></button>
+        ${archivedOpen ? html`<button class="bulk-select-entry ${active ? "selected" : ""}" title=${active ? "Close archived session selection" : "Select archived sessions"} aria-label=${active ? "Close archived session selection" : "Select archived sessions"} aria-expanded=${String(active)} aria-pressed=${String(active)} @click=${() => { this.toggleSelection("archived", archivedSessions); }}>☑</button>` : null}
         <small class="section-count">${archivedSessions.length}</small>
       </h2>
     `;
@@ -505,6 +560,25 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .pending-session-row.starting-session .activity-indicator { flex: 0 0 auto; margin: 0; }
     .action-main.selecting { padding-left: calc(32px + var(--depth, 0) * 16px); }
     .session-checkbox { position: absolute; top: 9px; left: calc(8px + var(--depth, 0) * 16px); z-index: 2; margin: 0; }
+    /* Search sits inside the scrolling body but stays pinned, so filtering a
+       long list never scrolls the field out of reach on a phone. */
+    .session-search { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 6px; margin: 0 0 6px; padding-bottom: 6px; background: var(--pi-bg); }
+    .session-search-input { box-sizing: border-box; flex: 1 1 auto; min-width: 0; height: 34px; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 0 9px; font: var(--pi-control-font-size, 14px) var(--pi-control-font-family, system-ui, sans-serif); }
+    .session-search-input::placeholder { color: var(--pi-dim); }
+    .session-search-input::-webkit-search-cancel-button { display: none; }
+    .session-search-input:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }
+    .session-search-clear { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; font-size: 18px; line-height: 1; }
+    .search-empty { padding: 12px 4px; color: var(--pi-muted); }
+    @media (max-width: 760px) {
+      /* 16px keeps iOS Safari from zooming the viewport on focus, and the
+         taller controls match the platform minimum touch target. */
+      .session-search-input { height: 40px; font-size: 16px; }
+      .session-search-clear { width: 40px; height: 40px; }
+      .bulk-select-entry, .start-session-button { width: 36px; min-width: 36px; height: 36px; }
+      .cleanup-entry { min-height: 36px; padding: 6px 10px; }
+      .action-menu-toggle { min-width: 36px; min-height: 36px; }
+      .bulk-row button { min-height: 36px; }
+    }
   `];
 }
 
