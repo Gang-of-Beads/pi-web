@@ -1,4 +1,4 @@
-import type { AuthProviderOption, CommandOption, CommandResult, ExtensionDialogAnswer, ExtensionDialogCloseReason, FileContentResponse, FileTreeEntry, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingAskUser, PendingExtensionDialog, PiWebStatusResponse, Project, QueuedSessionMessage, SessionActivity, SessionInfo, SessionStatus, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";
+import type { AuthProviderOption, CommandOption, CommandResult, ExtensionDialogAnswer, ExtensionDialogCloseReason, FileContentResponse, FileTreeEntry, GoalRecordSummary, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingAskUser, PendingExtensionDialog, PiWebStatusResponse, Project, QueuedSessionMessage, SessionActivity, SessionInfo, SessionStatus, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";
 import type { ChatLine } from "./components/shared";
 import type { MachineStatusSnapshot } from "../../shared/machineStatus";
 import type { QualifiedContributionId } from "./plugins/ids";
@@ -56,6 +56,9 @@ export interface AppState {
   closedDialogs: ClosedExtensionDialog[];
   /** Thinking levels available for the selected session's current model. */
   availableThinkingLevels: readonly string[];
+  /** Goals recorded for the selected workspace, newest unfinished first. */
+  workspaceGoals: GoalRecordSummary[];
+  workspaceGoalsLoading: boolean;
   sessionStatuses: Record<string, SessionStatus>;
   sessionActivities: Record<string, SessionActivity>;
   /** Authoritative projection plus browser-local optimistic overlays for the selected inbox. */
@@ -104,6 +107,8 @@ export type AuthDialogState =
 
 export type WorkspaceScopedStateReset = Pick<AppState,
   | "sessions"
+  | "workspaceGoals"
+  | "workspaceGoalsLoading"
   | "clientQueuedSessionMessages"
   | "startingSessionCount"
   | "selectedNotificationInbox"
@@ -121,6 +126,10 @@ export type WorkspaceScopedStateReset = Pick<AppState,
 export function resetWorkspaceScopedState(): WorkspaceScopedStateReset {
   return {
     sessions: [],
+    // Goals belong to the workspace being left, so they must not linger over
+    // the next one while its own records load.
+    workspaceGoals: [],
+    workspaceGoalsLoading: false,
     clientQueuedSessionMessages: {},
     startingSessionCount: 0,
     selectedNotificationInbox: undefined,
@@ -166,6 +175,8 @@ export function initialAppState(): AppState {
     pendingDialogs: [],
     closedDialogs: [],
     availableThinkingLevels: [],
+    workspaceGoals: [],
+    workspaceGoalsLoading: false,
     sessionStatuses: {},
     sessionActivities: {},
     selectedNotificationInbox: undefined,

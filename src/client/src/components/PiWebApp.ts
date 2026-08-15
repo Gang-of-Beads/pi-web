@@ -1256,6 +1256,9 @@ export class PiWebApp extends LitElement {
         .onDeleteArchivedSessions=${(sessions: SessionInfo[]) => this.sessions.deleteArchivedSessions(sessions)}
         .onDetachParentSession=${(session: SessionInfo) => this.sessions.detachParent(session)}
         .onRenameSession=${(session: SessionInfo, name: string) => this.sessions.renameSession(session, name)}
+        .goals=${this.state.workspaceGoals}
+        ?goalsLoading=${this.state.workspaceGoalsLoading}
+        .onRefreshGoals=${() => this.workspaces.refreshWorkspaceGoals()}
         .onReloadSession=${(session: SessionInfo) => this.sessions.reloadSession(session)}
         .onCleanupSessions=${() => { this.openSessionCleanupDialog(); }}
         .onFocusNavigationTarget=${(target: NavigationFocusTarget) => { void this.focusNavigationTarget(target); }}

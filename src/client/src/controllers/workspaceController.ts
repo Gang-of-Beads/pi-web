@@ -1,4 +1,4 @@
-import { api as defaultApi, type Project, type Workspace } from "../api";
+import { api as defaultApi, type GoalRecordSummary, type Project, type Workspace } from "../api";
 import { resetWorkspaceScopedState, type AppState } from "../appState";
 import { mergeCachedNewSessions } from "../cachedNewSessions";
 import { machineProjectKey } from "../machineKeys";
@@ -10,13 +10,13 @@ import { InMemoryWorkspaceSelectionMemory, selectPreferredWorkspace, type Worksp
 const WORKSPACE_TOPOLOGY_REFRESH_DEBOUNCE_MS = 50;
 
 export interface WorkspaceControllerDependencies {
-  api?: Pick<typeof defaultApi, "sessions" | "workspaces">;
+  api?: Pick<typeof defaultApi, "sessions" | "workspaces" | "workspaceGoals">;
   onBackgroundError?: (message: string, error: unknown) => void;
   topologyRefreshDebounceMs?: number;
 }
 
 export class WorkspaceController {
-  private readonly api: Pick<typeof defaultApi, "sessions" | "workspaces">;
+  private readonly api: Pick<typeof defaultApi, "sessions" | "workspaces" | "workspaceGoals">;
   private readonly onBackgroundError: (message: string, error: unknown) => void;
   private readonly topologyRefreshes: TrailingRefreshCoordinator<string>;
 
@@ -77,7 +77,34 @@ export class WorkspaceController {
       else if (target?.updateUrl !== false) this.updateUrl();
     } catch (error) {
       if (selectedMachineId(this.getState()) === machineId && this.getState().selectedWorkspace?.id === workspace.id) this.setState({ error: String(error) });
+    } finally {
+      void this.refreshWorkspaceGoals(workspace, machineId);
     }
+  }
+
+  /**
+   * Load the goals recorded under a workspace's `.pi/goals/` directory.
+   *
+   * Goals belong to the workspace, not to a session, so this is refreshed on
+   * workspace selection rather than session selection. Failures are swallowed:
+   * a workspace with no goal extension installed is the common case, and an
+   * unreadable goal directory must not present as a workspace error.
+   */
+  async refreshWorkspaceGoals(
+    workspace = this.getState().selectedWorkspace,
+    machineId = selectedMachineId(this.getState()),
+  ): Promise<void> {
+    if (workspace === undefined) return;
+    this.setState({ workspaceGoalsLoading: true });
+    let goals: GoalRecordSummary[];
+    try {
+      goals = (await this.api.workspaceGoals(workspace.projectId, workspace.id, machineId)).goals;
+    } catch {
+      goals = [];
+    }
+    // Discard a response that lost its race with a newer selection.
+    if (selectedMachineId(this.getState()) !== machineId || this.getState().selectedWorkspace?.id !== workspace.id) return;
+    this.setState({ workspaceGoals: goals, workspaceGoalsLoading: false });
   }
 
 

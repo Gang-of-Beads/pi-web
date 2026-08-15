@@ -8,6 +8,7 @@ import { listWorkspaceTree } from "./workspaces/fileTreeService.js";
 import { readWorkspaceFilePreview } from "./workspaces/filePreviewService.js";
 import { workspaceFilePreviewResponsePolicy } from "./workspaces/filePreviewResponsePolicy.js";
 import { applyWorkspaceFilePreviewErrorResponsePolicy } from "./workspaces/filePreviewResponseHeaders.js";
+import { readWorkspaceGoals } from "./goals/goalStore.js";
 import { resolveWorkspaceContext } from "./workspaces/workspaceContext.js";
 import { pathAccessForWorkspaceContext } from "./workspaces/effectivePathAccess.js";
 import type { WorkspaceCatalog } from "./workspaces/workspaceCatalog.js";
@@ -24,6 +25,18 @@ export function registerWorkspaceExplorerRoutes(app: FastifyInstance, projects: 
     try {
       const context = await resolveWorkspaceContext(projects, workspaces, request.params.projectId, request.params.workspaceId);
       return await listWorkspaceTree(context.root, request.query.path, await pathAccessForWorkspaceContext(context, options.config));
+    } catch (error) {
+      return sendWorkspaceRequestError(reply, error, 400);
+    }
+  });
+
+  // Goals are read straight from the workspace's `.pi/goals/` directory rather
+  // than through a session: the records outlive any one session, and several
+  // sessions of the same workspace share the directory.
+  app.get<{ Params: { projectId: string; workspaceId: string } }>(`${prefix}/projects/:projectId/workspaces/:workspaceId/goals`, async (request, reply) => {
+    try {
+      const context = await resolveWorkspaceContext(projects, workspaces, request.params.projectId, request.params.workspaceId);
+      return await readWorkspaceGoals(context.root);
     } catch (error) {
       return sendWorkspaceRequestError(reply, error, 400);
     }

@@ -424,6 +424,59 @@ export interface SessionUnreadCatalogSnapshot {
 }
 
 /**
+ * One task of a goal, as recorded by the `pi-goal-x` extension.
+ *
+ * `status` is passed through as written rather than narrowed to a union: the
+ * extension owns the vocabulary and may add states, and an unrecognised status
+ * should render as itself instead of collapsing into a wrong one.
+ */
+export interface GoalTaskSummary {
+  id: string;
+  title: string;
+  status: string;
+  verificationContract?: string;
+  subtasks?: GoalTaskSummary[];
+}
+
+/**
+ * A goal recorded under a workspace's `.pi/goals/` directory.
+ *
+ * PI WEB reads these files directly rather than talking to the extension: the
+ * records are the durable artefact, they outlive any one session, and several
+ * goals can be open at once across different sessions of the same workspace.
+ */
+export interface GoalRecordSummary {
+  id: string;
+  objective: string;
+  /** Extension-owned lifecycle state, e.g. `active`, `paused`, `complete`. */
+  status: string;
+  /** Absolute path of the file this record was read from. */
+  path: string;
+  sisyphus: boolean;
+  autoContinue: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  /** The task the agent reported working on; execution focus, not completion. */
+  currentTaskId?: string;
+  stopReason?: string;
+  pauseReason?: string;
+  verificationContract?: string;
+  tokensUsed?: number;
+  activeSeconds?: number;
+  tasks: GoalTaskSummary[];
+  /** Counts include nested subtasks, so a tree renders one honest ratio. */
+  completedTaskCount: number;
+  totalTaskCount: number;
+}
+
+export interface WorkspaceGoalsResponse {
+  goals: GoalRecordSummary[];
+  /** Absolute path of the goals directory that was read, present even when empty. */
+  directory: string;
+  generatedAt: string;
+}
+
+/**
  * Status of every session the daemon currently holds open, used to hydrate a
  * freshly loaded or freshly reconnected browser.
  *

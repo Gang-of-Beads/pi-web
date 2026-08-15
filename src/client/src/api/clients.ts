@@ -42,6 +42,7 @@ import {
   parseSessionNotificationInboxSnapshot,
   parseSessionStatus,
   parseSessionStatusCatalogSnapshot,
+  parseWorkspaceGoalsResponse,
   parseSessionUnreadCatalogSnapshot,
   parseSessionStreamSnapshot,
   parseSessionTreeForkResult,
@@ -178,6 +179,9 @@ export const workspacesApi = {
       { method: "DELETE", body: JSON.stringify(body) },
     );
   },
+  // Goal records live in the workspace, not in a session, so the listing is
+  // workspace-scoped and shared by every session of that workspace.
+  workspaceGoals: (projectId: string, workspaceId: string, machineId = "local") => request(`${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/goals`, parseWorkspaceGoalsResponse, { cache: "no-store" }),
   workspaceTree: (projectId: string, workspaceId: string, path = "", machineId = "local") => request(`${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/tree?path=${encodeURIComponent(path)}`, parseFileTreeResponse),
   workspaceFile: (projectId: string, workspaceId: string, path: string, machineId = "local") => request(`${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/file?path=${encodeURIComponent(path)}`, parseFileContentResponse),
   writeWorkspaceFile: (projectId: string, workspaceId: string, path: string, content: string | Uint8Array, options?: WriteWorkspaceFileOptions, machineId = "local") => {

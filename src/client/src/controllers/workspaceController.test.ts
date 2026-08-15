@@ -67,7 +67,11 @@ function harness(
     sessions,
     undefined,
     {
-      api: { workspaces: loadWorkspaces, sessions: vi.fn<(path: string, machineId?: string) => Promise<SessionInfo[]>>().mockResolvedValue([]) },
+      api: {
+        workspaces: loadWorkspaces,
+        sessions: vi.fn<(path: string, machineId?: string) => Promise<SessionInfo[]>>().mockResolvedValue([]),
+        workspaceGoals: vi.fn(async () => ({ goals: [], directory: "/repo/.pi/goals", generatedAt: "2026-07-27T10:00:00.000Z" })),
+      },
       onBackgroundError: (message, error) => { backgroundErrors.push({ message, error }); },
       topologyRefreshDebounceMs: options.topologyRefreshDebounceMs ?? 0,
     },

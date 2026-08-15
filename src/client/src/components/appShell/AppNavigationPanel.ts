@@ -1,6 +1,6 @@
 import { LitElement, css, html } from "lit";
 import { customElement, property, query } from "lit/decorators.js";
-import type { Machine, MachineHealth, Project, SessionActivity, SessionInfo, SessionStatus, Workspace } from "../../api";
+import type { GoalRecordSummary, Machine, MachineHealth, Project, SessionActivity, SessionInfo, SessionStatus, Workspace } from "../../api";
 import type { MachineStatusSnapshot } from "../../../../shared/machineStatus";
 import type { WorkspaceLabelItem } from "../../plugins/types";
 import { selectedMachineId } from "../../controllers/types";
@@ -12,6 +12,7 @@ import "../MachineSwitcher";
 import "../ProjectList";
 import "../WorkspaceList";
 import "../SessionList";
+import "../GoalPanel";
 
 export type NavigationFocusTarget = NavigationSection | "chat";
 
@@ -64,6 +65,9 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) onDeleteArchivedSessions?: (sessions: SessionInfo[]) => void | Promise<void>;
   @property({ attribute: false }) onDetachParentSession?: (session: SessionInfo) => void | Promise<void>;
   @property({ attribute: false }) onRenameSession?: (session: SessionInfo, name: string) => void | Promise<void>;
+  @property({ attribute: false }) goals: GoalRecordSummary[] = [];
+  @property({ type: Boolean }) goalsLoading = false;
+  @property({ attribute: false }) onRefreshGoals?: () => void | Promise<void>;
   @property({ attribute: false }) onMarkSessionRead?: (session: SessionInfo) => void | Promise<void>;
   @property({ attribute: false }) onMarkSessionsRead?: (sessions: SessionInfo[]) => void | Promise<void>;
   @property({ attribute: false }) onReloadSession?: (session: SessionInfo) => void | Promise<void>;
@@ -87,6 +91,9 @@ export class AppNavigationPanel extends LitElement {
       case "projects": return await this.focusNavigableSection(this.projectList);
       case "workspaces": return await this.focusNavigableSection(this.workspaceList);
       case "sessions": return await this.focusNavigableSection(this.sessionList);
+      // Goals are a read-only context panel with no roving-focus row model, so
+      // keyboard section navigation skips over it rather than trapping focus.
+      case "goals": return false;
     }
   }
 
@@ -116,6 +123,7 @@ export class AppNavigationPanel extends LitElement {
       ${this.renderProjectList(true)}
       ${this.renderWorkspaceList(true)}
       ${this.renderSessionList(true)}
+      ${this.renderGoalPanel()}
     `;
   }
 
@@ -157,6 +165,7 @@ export class AppNavigationPanel extends LitElement {
       ${this.renderProjectList(false, visible !== "projects")}
       ${this.renderWorkspaceList(false, visible !== "workspaces")}
       ${this.renderSessionList(false, visible !== "sessions")}
+      ${visible === "goals" ? this.renderGoalPanel() : null}
     `;
   }
 
@@ -227,6 +236,22 @@ export class AppNavigationPanel extends LitElement {
         .onFocusNextSection=${() => { this.focusNextFrom("workspaces"); }}
         .onCancelKeyboardNavigation=${() => { this.cancelKeyboardNavigation(); }}
       ></workspace-list>
+    `;
+  }
+
+  /**
+   * Goals are workspace context rather than a navigation step, so the panel is
+   * omitted entirely until a workspace is selected and it has something to say.
+   */
+  private renderGoalPanel() {
+    if (this.selectedWorkspace === undefined) return null;
+    if (this.goals.length === 0 && !this.goalsLoading) return null;
+    return html`
+      <goal-panel
+        .goals=${this.goals}
+        ?loading=${this.goalsLoading}
+        .onRefresh=${() => this.onRefreshGoals?.()}
+      ></goal-panel>
     `;
   }
 

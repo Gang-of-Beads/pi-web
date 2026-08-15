@@ -5,13 +5,15 @@ import { sessionMatchesSearch } from "../sessionSearch";
 import { SessionController } from "./sessionController";
 import { defaultApi, FakeSocket, oldSession, type AppState } from "./sessionController.testSupport";
 
+type RunCommand = typeof defaultApi.runCommand;
+
 /**
  * Renaming goes through the daemon's existing `/name` command so persistence
  * and the `session.name` broadcast keep a single owner.
  */
 describe("SessionController.renameSession", () => {
   it("runs /name and shows the alias immediately", async () => {
-    const runCommand = vi.fn(async () => ({ type: "done" as const, message: "Session named: Mobile UX" }));
+    const runCommand = vi.fn<RunCommand>(async () => ({ type: "done" as const, message: "Session named: Mobile UX" }));
     const { controller, state } = harness(runCommand);
 
     await controller.renameSession(oldSession, "Mobile UX");
@@ -21,7 +23,7 @@ describe("SessionController.renameSession", () => {
   });
 
   it("trims the alias so leading whitespace never reaches the command", async () => {
-    const runCommand = vi.fn(async () => ({ type: "done" as const, message: "ok" }));
+    const runCommand = vi.fn<RunCommand>(async () => ({ type: "done" as const, message: "ok" }));
     const { controller, state } = harness(runCommand);
 
     await controller.renameSession(oldSession, "   Padded   ");
@@ -31,7 +33,7 @@ describe("SessionController.renameSession", () => {
   });
 
   it("ignores a blank alias instead of clearing the name", async () => {
-    const runCommand = vi.fn(async () => ({ type: "done" as const, message: "ok" }));
+    const runCommand = vi.fn<RunCommand>(async () => ({ type: "done" as const, message: "ok" }));
     const { controller } = harness(runCommand);
 
     await controller.renameSession({ ...oldSession, name: "Keep me" }, "   ");
@@ -40,7 +42,7 @@ describe("SessionController.renameSession", () => {
   });
 
   it("rolls back to the previous name when the command fails", async () => {
-    const runCommand = vi.fn(async () => { throw new Error("daemon down"); });
+    const runCommand = vi.fn<RunCommand>(async () => { throw new Error("daemon down"); });
     const named = { ...oldSession, name: "Original" };
     const { controller, state } = harness(runCommand, named);
 
@@ -62,7 +64,7 @@ describe("SessionController.renameSession", () => {
   });
 });
 
-function harness(runCommand: ReturnType<typeof vi.fn>, session = oldSession) {
+function harness(runCommand: RunCommand, session = oldSession) {
   let state: AppState = { ...initialAppState(), selectedSession: session, sessions: [session] };
   const controller = new SessionController(
     () => state,

@@ -1,6 +1,8 @@
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 
-export const NAVIGATION_SECTION_ORDER = ["machines", "projects", "workspaces", "sessions"] as const;
+// Goals sit after sessions: they are workspace-scoped context for the work,
+// not a navigation step on the way to opening a session.
+export const NAVIGATION_SECTION_ORDER = ["machines", "projects", "workspaces", "sessions", "goals"] as const;
 export type NavigationSection = (typeof NAVIGATION_SECTION_ORDER)[number];
 export type ExpandedNavigationSection = NavigationSection | "none" | undefined;
 
