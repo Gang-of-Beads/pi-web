@@ -69,6 +69,14 @@ tailnet `:8506`), never the host installation.
   - [ ] List rows are `<div tabindex="0">` with click handlers; the guidelines
         call for real `<button>`s (`SessionList.ts:339`, `WorkspaceList.ts:85`).
         Also the reason e2e has to click `.action-main` instead of a role.
+        **Attempted and reverted.** Adding `role="button"` alone broke row
+        activation — two navigation e2e tests failed, and stashing the change
+        turned them green again, so the regression was mine. A row cannot simply
+        become a `<button>` either: it contains a checkbox and the `⋯` menu
+        button, and nesting interactive elements is invalid HTML. The real fix
+        moves the checkbox out of `.action-main` and makes only that region a
+        button, which is a layout change across all four lists and needs its own
+        pass with the e2e switched to role selectors in the same commit.
   - [ ] Confirm `touch-action: manipulation` covers every tap target, not just
         the five current call sites.
 - [ ] **Top bar density**: still two rows (context chips + icon tab strip) before
