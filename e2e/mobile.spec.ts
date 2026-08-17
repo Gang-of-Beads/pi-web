@@ -1,6 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 import { apiBaseURL } from "../playwright.config";
 
+/** Installed into the page by `installSectionGeometry`. */
+declare function sectionGeometry(panelRoot: ShadowRoot | null | undefined): { tag: string; height: number; top: number }[];
+
 /**
  * Mobile shell behaviour on a phone viewport.
  *
@@ -18,23 +21,42 @@ test.describe("mobile shell", () => {
       const app = document.querySelector("pi-web-app");
       const root = app?.shadowRoot;
       if (root === undefined || root === null) return undefined;
-      const panel = root.querySelector("app-navigation-panel");
-      const panelRoot = panel?.shadowRoot;
-      const visibleSections = panelRoot === undefined || panelRoot === null
-        ? []
-        : [...panelRoot.querySelectorAll("machine-list, project-list, workspace-list, session-list")]
-          .filter((element) => !element.hasAttribute("hidden"))
-          .map((element) => element.tagName.toLowerCase());
+      const panelRoot = root.querySelector("app-navigation-panel")?.shadowRoot;
       return {
         hasContextBar: root.querySelector("app-context-bar") !== null,
-        visibleSections,
+        sections: sectionGeometry(panelRoot),
       };
     });
 
     expect(shell?.hasContextBar).toBe(true);
-    // The accordion regression this guards against is every section rendering
-    // at once, forcing the user to scroll past collapsed headers.
-    expect(shell?.visibleSections.length).toBeLessThanOrEqual(1);
+    // Measured, not inferred from the `hidden` attribute: a host `display` rule
+    // beats the UA stylesheet's `[hidden] { display: none }`, so a section can
+    // carry the attribute and still occupy a full screen. Asserting the flag
+    // rather than the geometry is exactly how that regression shipped.
+    expect(shell?.sections.filter((section) => section.height > 0)).toHaveLength(1);
+  });
+
+  test("swaps to the workspace list in place after choosing a project", async ({ page }) => {
+    const stamp = String(Date.now());
+    const name = `e2e-nav-${stamp}`;
+    await createProjectViaApi(page, name);
+    await openApp(page);
+
+    await clickRow(page, "project-list", name);
+
+    const sections = await page.evaluate(() => {
+      const panelRoot = document.querySelector("pi-web-app")?.shadowRoot
+        ?.querySelector("app-navigation-panel")?.shadowRoot;
+      return sectionGeometry(panelRoot);
+    });
+
+    const visible = sections.filter((section) => section.height > 0);
+    expect(visible.map((section) => section.tag)).toEqual(["workspace-list"]);
+    // The reported symptom: the workspace list existed but sat below a full
+    // screen of collapsed projects, so it was unreachable without scrolling.
+    const workspaces = visible[0];
+    expect(workspaces).toBeDefined();
+    expect(workspaces!.top).toBeLessThan(400);
   });
 
   test("keeps the chat surface taller than the chrome above it", async ({ page }) => {
@@ -115,7 +137,32 @@ test.describe("goal panel", () => {
   });
 });
 
+/**
+ * Geometry of the navigation sections, installed in the page so every test
+ * measures visibility the same way.
+ */
+async function installSectionGeometry(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    (globalThis as unknown as Record<string, unknown>)["sectionGeometry"] = (panelRoot: ShadowRoot | null | undefined) => {
+      if (panelRoot === null || panelRoot === undefined) return [];
+      return [...panelRoot.querySelectorAll("machine-list, project-list, workspace-list, session-list, goal-panel")]
+        .map((element) => {
+          const box = element.getBoundingClientRect();
+          return { tag: element.tagName.toLowerCase(), height: Math.round(box.height), top: Math.round(box.top) };
+        });
+    };
+  });
+}
+
+async function createProjectViaApi(page: Page, name: string): Promise<void> {
+  const response = await page.request.post(`${apiBaseURL}/api/projects`, {
+    data: { name, path: `/data/home/${name}`, create: true },
+  });
+  expect(response.ok()).toBe(true);
+}
+
 async function openApp(page: Page): Promise<void> {
+  await installSectionGeometry(page);
   await page.goto("/", { waitUntil: "networkidle" });
   await expect(page.locator("pi-web-app")).toBeAttached();
   await page.waitForFunction(() => document.querySelector("pi-web-app")?.shadowRoot?.querySelector("app-navigation-panel") !== null);

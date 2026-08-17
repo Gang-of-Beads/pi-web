@@ -232,6 +232,11 @@ export const workspacePanelStyles = css`
 
 export const listStyles = css`
   :host { display: flex; flex-direction: column; min-height: 0; overflow: hidden; color: var(--pi-text); font: 14px system-ui, sans-serif; }
+  /* A host \`display\` beats the UA stylesheet's \`[hidden] { display: none }\`, so
+     without this every "hidden" list still occupies its full height: the mobile
+     accordion would render one visible section pushed below a screenful of
+     collapsed ones. Must stay ahead of any other :host display rule. */
+  :host([hidden]) { display: none; }
   :host([collapsed]) { flex: 0 0 auto; min-height: auto; overflow: hidden; }
   section { box-sizing: border-box; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 10px; }
   h2 { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 0 0 8px; color: var(--pi-muted); font-size: 12px; text-transform: uppercase; }
