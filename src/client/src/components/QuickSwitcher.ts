@@ -24,6 +24,7 @@ export class QuickSwitcher extends LitElement {
   @property({ attribute: false }) selectedSession?: SessionInfo;
   @property({ attribute: false }) selectedWorkspace?: Workspace;
   @property({ attribute: false }) activeSessionIds: ReadonlySet<string> = new Set();
+  @property({ attribute: false }) waitingSessionIds: ReadonlySet<string> = new Set();
   @property({ attribute: false }) unreadSessionIds: ReadonlySet<string> = new Set();
   @property({ type: Boolean }) canStartSession = false;
   @property({ attribute: false }) onCreateSession?: () => void;
@@ -38,6 +39,8 @@ export class QuickSwitcher extends LitElement {
     const model = quickSwitcherModel({
       sessions: this.sessions,
       activeSessionIds: this.activeSessionIds,
+      waitingSessionIds: this.waitingSessionIds,
+      unreadSessionIds: this.unreadSessionIds,
       query: this.query,
       now: Date.now(),
     });
@@ -147,6 +150,8 @@ export class QuickSwitcher extends LitElement {
     const model = quickSwitcherModel({
       sessions: this.sessions,
       activeSessionIds: this.activeSessionIds,
+      waitingSessionIds: this.waitingSessionIds,
+      unreadSessionIds: this.unreadSessionIds,
       query: this.query,
       now: Date.now(),
     });

@@ -126,3 +126,81 @@ describe("quickSwitcherSessionSubtitle", () => {
     expect(quickSwitcherSessionSubtitle(session("a", { cwd: "/elsewhere", messageCount: 1 }), [])).toBe("1 message");
   });
 });
+
+describe("quickSwitcherModel attention ranking", () => {
+  const now = Date.parse("2026-08-18T12:00:00.000Z");
+
+  function session(id: string, modified = "2026-08-18T11:59:00.000Z") {
+    return { id, cwd: "/repo", path: `/s/${id}.jsonl`, created: modified, modified, messageCount: 1, firstMessage: id };
+  }
+
+  it("ranks waiting above running, running above unread, and unread above plain recency", () => {
+    const sessions = [session("recent"), session("unread"), session("running"), session("waiting")];
+
+    const model = quickSwitcherModel({
+      sessions,
+      activeSessionIds: new Set(["running"]),
+      waitingSessionIds: new Set(["waiting"]),
+      unreadSessionIds: new Set(["unread"]),
+      query: "",
+      now,
+    });
+
+    expect(model.groups.map((group) => group.id)).toEqual(["waiting", "active", "unread", "today"]);
+    expect(model.groups[0]?.sessions.map((entry) => entry.id)).toEqual(["waiting"]);
+    expect(model.groups[3]?.sessions.map((entry) => entry.id)).toEqual(["recent"]);
+  });
+
+  it("puts a session blocked on a question above one that is merely running", () => {
+    // Both need attention, but only the blocked one cannot progress without it.
+    const model = quickSwitcherModel({
+      sessions: [session("both")],
+      activeSessionIds: new Set(["both"]),
+      waitingSessionIds: new Set(["both"]),
+      unreadSessionIds: new Set(["both"]),
+      query: "",
+      now,
+    });
+
+    expect(model.groups.map((group) => group.id)).toEqual(["waiting"]);
+  });
+
+  it("names the attention groups for what they mean to the user", () => {
+    const model = quickSwitcherModel({
+      sessions: [session("a"), session("b")],
+      activeSessionIds: new Set(["b"]),
+      waitingSessionIds: new Set(["a"]),
+      unreadSessionIds: new Set(),
+      query: "",
+      now,
+    });
+
+    expect(model.groups.map((group) => group.title)).toEqual(["Waiting for you", "Working"]);
+  });
+
+  it("still ranks by attention when a query filters the list", () => {
+    const model = quickSwitcherModel({
+      sessions: [session("alpha-recent"), session("alpha-waiting")],
+      activeSessionIds: new Set(),
+      waitingSessionIds: new Set(["alpha-waiting"]),
+      unreadSessionIds: new Set(),
+      query: "alpha",
+      now,
+    });
+
+    expect(model.groups[0]?.id).toBe("waiting");
+    expect(model.matchCount).toBe(2);
+  });
+
+  it("falls back to date grouping when no attention signals are supplied", () => {
+    // The sets are optional so callers without unread/ask data keep working.
+    const model = quickSwitcherModel({
+      sessions: [session("only")],
+      activeSessionIds: new Set(),
+      query: "",
+      now,
+    });
+
+    expect(model.groups.map((group) => group.id)).toEqual(["today"]);
+  });
+});

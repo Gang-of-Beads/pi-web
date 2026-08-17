@@ -1305,6 +1305,19 @@ export class PiWebApp extends LitElement {
     return active;
   }
 
+  /**
+   * Sessions whose agent is blocked on an `ask_user` answer. They cannot make
+   * any progress until the user replies, which is why the switcher lists them
+   * above work that is merely running.
+   */
+  private waitingSessionIds(): ReadonlySet<string> {
+    const waiting = new Set<string>();
+    for (const session of this.quickSwitcherSessions) {
+      if (this.state.sessionStatuses[session.id]?.pendingAsk !== undefined) waiting.add(session.id);
+    }
+    return waiting;
+  }
+
   private openQuickSwitcher(): void {
     this.quickSwitcherOpen = true;
     void this.loadQuickSwitcherData();
@@ -2257,6 +2270,7 @@ export class PiWebApp extends LitElement {
           .selectedSession=${state.selectedSession}
           .selectedWorkspace=${state.selectedWorkspace}
           .activeSessionIds=${this.activeSessionIds()}
+          .waitingSessionIds=${this.waitingSessionIds()}
           .unreadSessionIds=${this.unreadSessionIds}
           .canStartSession=${this.canStartSession()}
           .onCreateSession=${() => { void this.startSessionAndOpenChat(); }}

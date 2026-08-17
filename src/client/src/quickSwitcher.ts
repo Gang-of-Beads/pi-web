@@ -16,7 +16,7 @@ import { sessionMatchesSearch } from "./sessionSearch";
  * testable without rendering the sheet.
  */
 
-export type QuickSwitcherGroupId = "active" | "today" | "yesterday" | "earlier";
+export type QuickSwitcherGroupId = "waiting" | "active" | "unread" | "today" | "yesterday" | "earlier";
 
 export interface QuickSwitcherGroup {
   id: QuickSwitcherGroupId;
@@ -27,6 +27,10 @@ export interface QuickSwitcherGroup {
 export interface QuickSwitcherModelInput {
   sessions: readonly SessionInfo[];
   activeSessionIds: ReadonlySet<string>;
+  /** Sessions whose agent is blocked on an `ask_user` answer. */
+  waitingSessionIds?: ReadonlySet<string>;
+  /** Sessions that finished work the user has not looked at yet. */
+  unreadSessionIds?: ReadonlySet<string>;
   query: string;
   now: number;
 }
@@ -36,14 +40,26 @@ export interface QuickSwitcherModel {
   matchCount: number;
 }
 
+/**
+ * Groups in the order they are shown, which is the order of how much they want
+ * the user: an agent blocked on a question cannot progress at all without them,
+ * work in flight may still need them, finished-but-unseen work is the reason
+ * they opened the switcher, and everything else is plain recency.
+ */
+const GROUP_ORDER = ["waiting", "active", "unread", "today", "yesterday", "earlier"] as const;
+
 const GROUP_TITLES: Record<QuickSwitcherGroupId, string> = {
-  active: "Active",
+  waiting: "Waiting for you",
+  active: "Working",
+  unread: "Finished",
   today: "Today",
   yesterday: "Yesterday",
   earlier: "Earlier",
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+const EMPTY_IDS: ReadonlySet<string> = new Set();
 
 export function quickSwitcherModel(input: QuickSwitcherModelInput): QuickSwitcherModel {
   const matches = input.sessions
@@ -52,14 +68,20 @@ export function quickSwitcherModel(input: QuickSwitcherModelInput): QuickSwitche
 
   const byGroup = new Map<QuickSwitcherGroupId, SessionInfo[]>();
   for (const session of matches) {
-    const groupId = quickSwitcherGroupId(session, input.activeSessionIds, input.now);
+    const groupId = quickSwitcherGroupId(
+      session,
+      input.activeSessionIds,
+      input.waitingSessionIds ?? EMPTY_IDS,
+      input.unreadSessionIds ?? EMPTY_IDS,
+      input.now,
+    );
     const group = byGroup.get(groupId) ?? [];
     group.push(session);
     byGroup.set(groupId, group);
   }
 
   const groups: QuickSwitcherGroup[] = [];
-  for (const id of ["active", "today", "yesterday", "earlier"] as const) {
+  for (const id of GROUP_ORDER) {
     const sessions = byGroup.get(id);
     if (sessions === undefined || sessions.length === 0) continue;
     groups.push({ id, title: GROUP_TITLES[id], sessions: sessions.sort(byMostRecentlyModified) });
@@ -69,11 +91,21 @@ export function quickSwitcherModel(input: QuickSwitcherModelInput): QuickSwitche
 }
 
 /**
- * Running work is what the user is most likely coming back to, so it is
- * promoted above every date group regardless of when it was last modified.
+ * Attention beats recency: a session that needs the user is promoted above
+ * every date group no matter when it was last modified. Within that, being
+ * blocked on a question outranks still running, which outranks finished work
+ * the user has not read.
  */
-function quickSwitcherGroupId(session: SessionInfo, activeSessionIds: ReadonlySet<string>, now: number): QuickSwitcherGroupId {
+function quickSwitcherGroupId(
+  session: SessionInfo,
+  activeSessionIds: ReadonlySet<string>,
+  waitingSessionIds: ReadonlySet<string>,
+  unreadSessionIds: ReadonlySet<string>,
+  now: number,
+): QuickSwitcherGroupId {
+  if (waitingSessionIds.has(session.id)) return "waiting";
   if (activeSessionIds.has(session.id)) return "active";
+  if (unreadSessionIds.has(session.id)) return "unread";
   const modified = Date.parse(session.modified);
   if (Number.isNaN(modified)) return "earlier";
   const age = now - modified;

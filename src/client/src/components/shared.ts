@@ -547,7 +547,20 @@ export const promptEditorStyles = css`
   .markdown-editor .cm-content { min-height: 38px; padding: 8px 44px 8px 8px; caret-color: var(--pi-text); text-align: start; unicode-bidi: plaintext; }
   .markdown-editor .cm-cursor, .markdown-editor .cm-dropCursor { border-left-width: 2px; }
   .markdown-editor .cm-cursor { height: 1.25em !important; margin-top: 0.08em; }
-  .markdown-editor .cm-line { padding: 0; unicode-bidi: plaintext; }
+  /* An empty document still has one line, and a min-height on the content
+     stretches that single line box to fill it. The caret is sized from the line
+     box, so before the first keystroke it rendered at the full height of the
+     editor and then snapped down once text arrived. Pinning the line box to the
+     text's own line-height keeps the caret the same size whether or not
+     anything has been typed; the editor keeps its minimum size through the
+     container, not by inflating the line. */
+  .markdown-editor .cm-line { padding: 0; min-height: calc(var(--pi-control-font-size, 16px) * 1.4); line-height: 1.4; unicode-bidi: plaintext; }
+  /* The placeholder renders inside the first line, so a hint long enough to
+     wrap made the empty line as tall as the wrapped text. The caret is sized
+     from that line box, which is why it towered over the input until the first
+     keystroke removed the placeholder. Taking it out of flow lets the empty
+     line keep the height of a single line of text, and the caret with it. */
+  .markdown-editor .cm-placeholder { position: absolute; inset-inline: 0; pointer-events: none; }
   .markdown-editor .cm-placeholder { color: var(--pi-dim); }
   .markdown-editor .cm-focused { outline: none; }
   .shell-mode textarea, .shell-mode .markdown-editor .cm-editor { border-color: var(--pi-success); box-shadow: 0 0 0 1px var(--pi-success-ring); }

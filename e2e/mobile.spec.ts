@@ -239,3 +239,45 @@ async function writeGoalFixture(workspacePath: string): Promise<void> {
     `mkdir -p ${workspacePath}/.pi/goals && cat > ${workspacePath}/.pi/goals/active_goal_e2e.md <<'GOALEOF'\n${contents}GOALEOF`,
   ]);
 }
+
+test.describe("composer", () => {
+  test.skip(({ isMobile }) => isMobile === false, "phone-viewport behaviour");
+
+  test("keeps the caret one line tall before anything is typed", async ({ page }) => {
+    await openApp(page);
+
+    const measured = await page.evaluate(async () => {
+      const editor = document.createElement("prompt-editor") as HTMLElement & {
+        sessionId?: string;
+        cwd?: string;
+        updateComplete: Promise<unknown>;
+        replaceText: (text: string) => void;
+      };
+      editor.sessionId = "caret-probe";
+      editor.cwd = "/tmp";
+      document.body.append(editor);
+      await editor.updateComplete;
+      await new Promise((resolve) => setTimeout(resolve, 600));
+
+      const root = editor.shadowRoot;
+      const lineHeight = () => Math.round(root?.querySelector(".cm-line")?.getBoundingClientRect().height ?? -1);
+      const placeholder = root?.querySelector(".cm-placeholder");
+      const empty = lineHeight();
+      const placeholderVisible = placeholder !== null && placeholder !== undefined
+        && placeholder.getBoundingClientRect().height > 0;
+
+      editor.replaceText("typed");
+      await editor.updateComplete;
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      return { empty, typed: lineHeight(), placeholderVisible };
+    });
+
+    // The caret is sized from the line box. A placeholder long enough to wrap
+    // used to inflate the empty line to the height of the wrapped hint, so the
+    // caret towered over the input until the first keystroke.
+    expect(measured.empty).toBe(measured.typed);
+    // ...and the hint must still be shown; hiding it would be a different bug.
+    expect(measured.placeholderVisible).toBe(true);
+  });
+});
