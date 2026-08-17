@@ -9,6 +9,13 @@ tailnet `:8506`), never the host installation.
 
 ## Done
 
+- [x] **Archiving works for a session with no file yet.** A session with no
+      messages has a path but no transcript, and the copy step raised a raw
+      `ENOENT copyfile` while the delete step already tolerated the same case.
+      *Evidence:* `sessionArchiveStore.test.ts` (archive + restore), plus a live
+      `{"archived":true}` from the container for both an unwritten and a
+      written session.
+
 - [x] **Collapsed sections actually collapse.** `:host([hidden])` was missing, so
       a "hidden" list kept its full height and pushed the workspace list off
       screen after choosing a project.

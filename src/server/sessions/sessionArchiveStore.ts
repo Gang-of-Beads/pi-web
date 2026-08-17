@@ -194,6 +194,12 @@ function archiveRecordFromInput(session: ArchiveSessionInput, archive: { archive
 
 async function copySessionFileToArchive(source: string, archivePath: string): Promise<void> {
   if (source === archivePath) return;
+  // A session that has not been written yet — one with no messages — has a path
+  // but no file. Archiving is routine cleanup and the durable record is what is
+  // being preserved, so there being no transcript to copy is not a failure.
+  // Mirrors removeActiveSessionFile, which already tolerates a missing source;
+  // only this side raised the raw copyfile ENOENT.
+  if (!await pathExists(source)) return;
   await mkdir(dirname(archivePath), { recursive: true });
   if (await pathExists(archivePath)) return;
   await copyFile(source, archivePath);
@@ -207,6 +213,9 @@ async function removeActiveSessionFile(source: string, archivePath: string): Pro
 async function restoreSessionFile(archivePath: string, originalPath: string): Promise<void> {
   if (archivePath === originalPath) return;
   if (await pathExists(originalPath)) throw new Error(`Cannot restore archived session because a session already exists at ${originalPath}`);
+  // Nothing was archived for a session that had no file, so there is nothing to
+  // move back; dropping the record is the whole of the restore.
+  if (!await pathExists(archivePath)) return;
   await mkdir(dirname(originalPath), { recursive: true });
   await moveFile(archivePath, originalPath);
 }

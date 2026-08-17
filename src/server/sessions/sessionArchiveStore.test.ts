@@ -50,6 +50,61 @@ describe("SessionArchiveStore", () => {
     await expect(readFile(join(dataDir, "archived-sessions.json"), "utf8")).resolves.toContain('"sessionId": "managed"');
   });
 
+  it("archives a session whose file was never written to disk", async () => {
+    // A session with no messages yet has a path but no file. Archiving it is a
+    // routine cleanup action, and the archive record — not the transcript — is
+    // what the user is preserving, so a missing file must not fail the archive
+    // with a raw copyfile ENOENT.
+    const root = await mkdtemp(join(tmpdir(), "pi-web-archive-unwritten-"));
+    tempRoots.push(root);
+    const activeDir = join(root, "active");
+    await mkdir(activeDir, { recursive: true });
+    const sourcePath = join(activeDir, "2026-01-01_never-written.jsonl");
+
+    const store = new SessionArchiveStore(join(root, "archived-sessions.json"), join(root, "archived-files"));
+    const record = await store.archive({
+      sessionId: "never-written",
+      cwd: "/workspace",
+      path: sourcePath,
+      created: "2026-01-01T00:00:00.000Z",
+      modified: "2026-01-01T00:00:00.000Z",
+      messageCount: 0,
+      firstMessage: "",
+    });
+
+    expect(record.sessionId).toBe("never-written");
+    // The record is durable even though there was no transcript to copy.
+    await expect(readFile(join(root, "archived-sessions.json"), "utf8")).resolves.toContain('"sessionId": "never-written"');
+    // Nothing is invented at the destination.
+    expect(record.archivePath).toBeDefined();
+    await expect(access(record.archivePath ?? "")).rejects.toThrow();
+  });
+
+  it("restores a session that was archived without a file", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pi-web-archive-unwritten-restore-"));
+    tempRoots.push(root);
+    const activeDir = join(root, "active");
+    await mkdir(activeDir, { recursive: true });
+    const sourcePath = join(activeDir, "2026-01-01_no-file.jsonl");
+
+    const store = new SessionArchiveStore(join(root, "archived-sessions.json"), join(root, "archived-files"));
+    await store.archive({
+      sessionId: "no-file",
+      cwd: "/workspace",
+      path: sourcePath,
+      created: "2026-01-01T00:00:00.000Z",
+      modified: "2026-01-01T00:00:00.000Z",
+      messageCount: 0,
+      firstMessage: "",
+    });
+
+    await expect(store.restore("no-file")).resolves.toBeUndefined();
+    // Dropping the record is the whole of the restore when no file was archived.
+    await expect(readFile(join(root, "archived-sessions.json"), "utf8")).resolves.not.toContain('"sessionId": "no-file"');
+    // Restoring must not fabricate an empty transcript at the original path.
+    await expect(access(sourcePath)).rejects.toThrow();
+  });
+
   it("moves archived session files out of the active session directory and restores them", async () => {
     const root = await mkdtemp(join(tmpdir(), "pi-web-archive-"));
     tempRoots.push(root);
