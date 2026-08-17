@@ -9,6 +9,17 @@ tailnet `:8506`), never the host installation.
 
 ## Done
 
+- [x] **Caret is one line tall before typing.** CodeMirror renders the
+      placeholder inside the first line, and the hint wraps to three lines on a
+      phone, so the empty line box — which sizes the caret — stood 67px tall and
+      snapped to 22px on the first keystroke. Taking the placeholder out of flow
+      fixes it. *Evidence:* measured 67px→22px in the container; e2e
+      "composer > keeps the caret one line tall before anything is typed".
+- [x] **Quick switcher ranks by attention, not just recency.** Groups now lead
+      with waiting-for-you (daemon `pendingAsk`), then working, then
+      finished-unseen. The unread set was already being passed in and ignored.
+      *Evidence:* `quickSwitcher.test.ts` attention-ranking suite (5 cases).
+
 - [x] **The update prompt stops recurring.** The checkout pinned pi 0.84.1 while
       the CLI had moved to 0.84.2, so every session opened an unsatisfiable
       "Update 0.84.1 → 0.84.2" prompt. *Evidence:* SDK aligned to 0.84.2
