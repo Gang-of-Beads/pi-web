@@ -1,0 +1,57 @@
+# Goal status — msure99o-a1kk9q
+
+Recorded here because the goal's own task tools are unavailable in this host
+(see "Blocker" below), so task state cannot be ticked where the auditor reads
+it. Every claim below was re-verified by running the command shown, not
+recalled from earlier in the session.
+
+## Gates (re-run 2026-08-18)
+
+| Gate | Result |
+| --- | --- |
+| `npx tsc --noEmit` | 0 errors |
+| `npx eslint src` | 0 errors |
+| `npx vitest run` | 3184 passed, 1 failed |
+| `npx playwright test` | 17 passed, 5 skipped, 0 failed |
+| `git log fork/main..HEAD` | 0 unpushed |
+
+The single vitest failure is `src/server/piWebStatus.test.ts > bypasses cached
+npm release data for a forced check`. It reaches the npm registry and fails with
+this branch's changes stashed, so it is a pre-existing environmental baseline
+rather than a regression.
+
+## Tasks
+
+| # | Task | Evidence |
+| --- | --- | --- |
+| 1 | Compress the mobile header | Measured chrome = context bar 42px + tabs 57px = 99px of an 839px viewport (12%). Tabs are omitted entirely in chat view. e2e asserts chrome < viewport/3. |
+| 2 | Global quick switcher + ranking | `loadQuickSwitcherData` enumerates every project × workspace, so sessions are machine-wide regardless of selection. `quickSwitcherModel` ranks waiting (daemon `pendingAsk`) > active > unread > date. `quickSwitcher.test.ts`: 17 tests including a 5-case ranking suite. |
+| 3 | Composer layout | Caret line box 67px → 22px on a phone viewport, pinned by e2e "composer › keeps the caret one line tall before anything is typed". Attachments render above the input; the delivery selector is gone (delivery is derived at send time). |
+| 4 | Prompt history | `promptHistory.ts` with 14 tests: per-session scoping, newest-first, promotion of a repeat, bounding, corrupt and refusing storage. |
+| 5 | De-emphasise transient errors | `errorBanner.ts` normalises `sessiond.sock` ENOENT and aborted requests to a `status` role with softer styling; covered by `errorBanner.test.ts`. |
+| 6 | multi-account alias semantics | pi-multi-account v0.4.3 switches the active account and normalises `anthropic-<account>` back to the canonical `anthropic` provider. |
+| 7 | multi-account reliability | v0.4.4 stops the background sweep rotating the token an in-flight run is using — the cause of `OAuth access token has been revoked` mid-run — and runs one sweep per process instead of one per session. |
+| 8 | Playwright acceptance | `npx playwright test` → 17 passed / 0 failed, against the Docker dev stack, reusing the machine's existing chromium-1228 (no browser download). |
+| 9 | Ship | `fork/main` and `fork/mobile-ux-and-search` both at HEAD, 0 unpushed. `scripts/redeploy-host.sh` + `npm run redeploy:host` exist and pass `bash -n`. Host systemd units already point at this checkout. **Incomplete clause:** "本机服务确认运行该 main" needs a host restart, which the user forbade after earlier restarts terminated their session. That call is theirs. |
+
+## Blocker
+
+`update_goal_task` and `update_goal` both return "Tool not found", on three
+consecutive goal turns. The task gate forbids requesting completion while tasks
+are pending, so the goal cannot be closed from this host even though the work is
+done.
+
+The cause is the defect already diagnosed and patched in this project:
+`pi-goal-x` drives its UI through `ctx.ui.custom()`, which pi implements only in
+TUI mode and stubs as `async () => undefined` everywhere else. This session runs
+inside PI WEB (RPC mode), where `hasUI` is true but custom components do not
+exist. Patching `~/.pi/agent/npm/node_modules/pi-goal-x` to guard on
+`ctx.mode === "tui"` fixed the drafting dialog; the task-mutation tools are still
+not registered in this host.
+
+Running the goal from terminal pi (TUI) should expose the tools and allow the
+tasks to be ticked.
+
+Deliberately **not** worked around by editing `.pi/goals/active_goal_*.md`
+directly: that file is the artifact an auditor inspects, and rewriting task
+state by hand would fabricate the evidence being audited.
