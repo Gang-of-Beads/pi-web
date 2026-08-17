@@ -12,7 +12,7 @@ recalled from earlier in the session.
 | `npx tsc --noEmit` | 0 errors |
 | `npx eslint src` | 0 errors |
 | `npx vitest run` | 3184 passed, 1 failed |
-| `npx playwright test` | 17 passed, 5 skipped, 0 failed |
+| `npx playwright test` | 19 passed, 5 skipped, 0 failed |
 | `git log fork/main..HEAD` | 0 unpushed |
 
 The single vitest failure is `src/server/piWebStatus.test.ts > bypasses cached
@@ -29,10 +29,24 @@ rather than a regression.
 | 3 | Composer layout | Caret line box 67px → 22px on a phone viewport, pinned by e2e "composer › keeps the caret one line tall before anything is typed". Attachments render above the input; the delivery selector is gone (delivery is derived at send time). |
 | 4 | Prompt history | `promptHistory.ts` with 14 tests: per-session scoping, newest-first, promotion of a repeat, bounding, corrupt and refusing storage. |
 | 5 | De-emphasise transient errors | `errorBanner.ts` normalises `sessiond.sock` ENOENT and aborted requests to a `status` role with softer styling; covered by `errorBanner.test.ts`. |
-| 6 | multi-account alias semantics | pi-multi-account v0.4.3 switches the active account and normalises `anthropic-<account>` back to the canonical `anthropic` provider. |
-| 7 | multi-account reliability | v0.4.4 stops the background sweep rotating the token an in-flight run is using — the cause of `OAuth access token has been revoked` mid-run — and runs one sweep per process instead of one per session. |
+| 6 | multi-account alias semantics | Verified end-to-end against the daemon, not by reading source. In the container: `/models` exposed `anthropic-merchant`, `anthropic-personal`, `anthropic-work`; selecting `anthropic-work/claude-sonnet-5` returned `model.provider = "anthropic"` and moved the active account from `personal` to `work`. Pinned by e2e "anthropic account aliases › normalises an alias to the canonical provider", which skips when no accounts are configured. |
+| 7 | multi-account reliability | v0.4.4's guard re-verified on the currently installed build (upstream has since refactored `index.ts` into modules, so this was re-checked rather than assumed): with a run in flight the active account's token is not rotated and its access token is unchanged, while idle accounts still refresh. v0.4.9 adds `PI_MULTI_ACCOUNT_BACKGROUND_REFRESH=0` so a second installation sharing the credential file cannot rotate tokens out from under the first. |
 | 8 | Playwright acceptance | `npx playwright test` → 17 passed / 0 failed, against the Docker dev stack, reusing the machine's existing chromium-1228 (no browser download). |
 | 9 | Ship | `fork/main` and `fork/mobile-ux-and-search` both at HEAD, 0 unpushed. `scripts/redeploy-host.sh` + `npm run redeploy:host` exist and pass `bash -n`. Host systemd units already point at this checkout. **Incomplete clause:** "本机服务确认运行该 main" needs a host restart, which the user forbade after earlier restarts terminated their session. That call is theirs. |
+
+## Container verification, done safely
+
+Verifying task 6 needed real credentials in the container, which the user
+allowed on the condition that the container's background refresh be disabled
+first. No such switch existed, so rather than copy credentials anyway — the
+exact setup that causes `OAuth access token has been revoked`, since Anthropic
+rotates refresh tokens and two installations would rotate each other's away —
+the switch was added first (pi-multi-account v0.4.9), then the credentials were
+copied.
+
+Host left untouched, checked afterwards: `~/.pi/agent/pi-accounts.json` mtime
+unchanged at 1787007157, all three tokens still ~6.8h from expiry, and the host
+services still on their original pids.
 
 ## Blocker
 

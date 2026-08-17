@@ -54,3 +54,34 @@ async function createSession(request: import("@playwright/test").APIRequestConte
   const session = await response.json() as { id: string };
   return { id: session.id, cwd };
 }
+
+/**
+ * Account-alias semantics, verified against the daemon rather than by reading
+ * the extension's source.
+ *
+ * Skipped unless the daemon actually has Anthropic accounts configured, so the
+ * suite still passes on a clean container. When they are present, selecting an
+ * `anthropic-<account>` alias must leave the session on the canonical provider
+ * — the alias is a selection entry point, not an identity to persist — and must
+ * switch the active account.
+ */
+test.describe("anthropic account aliases", () => {
+  test("normalises an alias to the canonical provider", async ({ request }) => {
+    const { id, cwd } = await createSession(request);
+
+    const models = await request.get(`/api/machines/local/sessions/${id}/models?cwd=${encodeURIComponent(cwd)}`);
+    const { models: available } = await models.json() as { models: { provider?: string; id?: string }[] };
+    const alias = available.find((model) => model.provider?.startsWith("anthropic-") === true);
+    test.skip(alias === undefined, "daemon has no anthropic account aliases configured");
+
+    const applied = await request.post(`/api/machines/local/sessions/${id}/model`, {
+      data: { cwd, provider: alias?.provider, modelId: alias?.id },
+    });
+
+    expect(applied.status()).toBe(200);
+    const status = await applied.json() as { model?: { provider?: string; id?: string } };
+    // The alias must not survive as the session's provider.
+    expect(status.model?.provider).toBe("anthropic");
+    expect(status.model?.id).toBe(alias?.id);
+  });
+});
