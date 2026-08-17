@@ -9,6 +9,15 @@ tailnet `:8506`), never the host installation.
 
 ## Done
 
+- [x] **The update prompt stops recurring.** The checkout pinned pi 0.84.1 while
+      the CLI had moved to 0.84.2, so every session opened an unsatisfiable
+      "Update 0.84.1 → 0.84.2" prompt. *Evidence:* SDK aligned to 0.84.2
+      (with pi-ai / pi-agent-core, or two copies of pi-ai break the types).
+- [x] **One-click resend of a failed prompt, images included.** A turn that
+      fails after delivery left the transcript as the only copy of what was
+      sent, so retrying meant retyping the text and re-picking every image.
+      *Evidence:* `resendMessage.test.ts`, `PromptEditor.restorePrompt.test.ts`.
+
 - [x] **Archiving works for a session with no file yet.** A session with no
       messages has a path but no transcript, and the copy step raised a raw
       `ENOENT copyfile` while the delete step already tolerated the same case.

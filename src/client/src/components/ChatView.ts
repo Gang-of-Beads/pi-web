@@ -25,6 +25,7 @@ import {
   type SelectedSessionNotificationView,
   type SessionNotificationTarget,
 } from "../sessionNotifications";
+import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
 import type { ChatLine, ChatPart } from "./shared";
 import { chatStyles, renderSessionWarningIcon } from "./shared";
 import "./AskUserCard";
@@ -205,6 +206,12 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) onAnswerDialog?: ExtensionDialogAnswerCallback;
   @property({ attribute: false }) onCancelDialog?: ExtensionDialogCancelCallback;
   @property({ attribute: false }) onDismissClosedDialog?: ExtensionDialogDismissCallback;
+  /**
+   * Put a sent prompt back in the composer, images included. Offered on user
+   * messages because a turn that fails after delivery leaves the transcript as
+   * the only remaining copy of what was sent.
+   */
+  @property({ attribute: false }) onResendMessage?: (prompt: RecoveredPrompt) => void | Promise<void>;
   @property({ attribute: false }) notificationInbox?: SelectedSessionNotificationView;
   @property({ attribute: false }) onClearServerQueue?: () => void;
   @property({ attribute: false }) onDismissWarning?: (dismissId: string) => void;
@@ -906,15 +913,35 @@ export class ChatView extends LitElement {
   }
 
   private renderMessageActions(message: ChatLine, key: string) {
-    if (!this.isCopyableMessage(message)) return null;
+    const resendable = this.onResendMessage !== undefined && isResendableLine(message);
+    if (!this.isCopyableMessage(message) && !resendable) return null;
     const copied = this.copiedMessageKey === key;
     return html`
       <div class="msg-actions" aria-label="Message actions">
-        <button type="button" class="msg-action" title=${copied ? "Copied" : "Copy message"} aria-label=${`${copied ? "Copied" : "Copy"} ${message.role} message`} @click=${(event: MouseEvent) => { void this.copyMessage(message, key, event); }}>
-          <span aria-hidden="true">${copied ? "✓" : "⧉"}</span>
-        </button>
+        ${resendable
+          ? html`<button type="button" class="msg-action" title="Edit and send again" aria-label="Put this message back in the composer to send again" @click=${(event: MouseEvent) => { this.resendMessage(message, event); }}>
+              <span aria-hidden="true">↻</span>
+            </button>`
+          : null}
+        ${this.isCopyableMessage(message)
+          ? html`<button type="button" class="msg-action" title=${copied ? "Copied" : "Copy message"} aria-label=${`${copied ? "Copied" : "Copy"} ${message.role} message`} @click=${(event: MouseEvent) => { void this.copyMessage(message, key, event); }}>
+              <span aria-hidden="true">${copied ? "✓" : "⧉"}</span>
+            </button>`
+          : null}
       </div>
     `;
+  }
+
+  /**
+   * Hand the prompt back to the composer rather than sending it straight away:
+   * the previous attempt failed, and the user usually wants to change the model
+   * or the wording before trying again.
+   */
+  private resendMessage(message: ChatLine, event: MouseEvent): void {
+    event.stopPropagation();
+    const recovered = recoverPromptFromLine(message);
+    if (recovered === undefined) return;
+    void this.onResendMessage?.(recovered);
   }
 
   private onMetaKeydown(event: KeyboardEvent, key: string, expanded: boolean) {

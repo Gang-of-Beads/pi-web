@@ -132,6 +132,34 @@ export class PromptEditor extends LitElement {
     this.editor?.focus();
   }
 
+  /**
+   * Restore a previously sent prompt: its text, plus its images as fresh
+   * pending attachments.
+   *
+   * Replaces rather than appends, because this is a retry of one message and
+   * merging it into whatever is half-typed would silently mix two prompts.
+   */
+  restorePrompt(prompt: { text: string; attachments: readonly PromptAttachment[] }): void {
+    this.attachmentError = undefined;
+    this.attachments = prompt.attachments
+      .filter((attachment): attachment is Extract<PromptAttachment, { kind: "image" }> => attachment.kind === "image")
+      .map((attachment, index) => {
+        this.attachmentSeq += 1;
+        return {
+          id: `restored-${String(this.attachmentSeq)}`,
+          kind: "image" as const,
+          name: attachment.name ?? `image-${String(index + 1)}`,
+          mimeType: attachment.mimeType,
+          data: attachment.data,
+          // Recomputed from the payload: the original byte size is not carried
+          // in the transcript, and the previews size themselves from it.
+          size: Math.floor((attachment.data.length * 3) / 4),
+        };
+      });
+    this.replaceText(prompt.text);
+    this.focusInput();
+  }
+
   replaceText(text: string): void {
     this.draft = text;
     const key = draftStorageKey(this.machineId, this.sessionId);
