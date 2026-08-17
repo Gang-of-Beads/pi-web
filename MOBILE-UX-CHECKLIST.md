@@ -98,6 +98,12 @@ tailnet `:8506`), never the host installation.
 
 - [ ] Run the Playwright suite after every change, not at the end
       (`npm run e2e:mobile`).
+- [x] **Verify in the Docker dev stack, never the host.** The host installation
+      is the user's working environment; restarting it to test a change
+      terminates their session. Deploy to the container instead:
+      `npm run build && ./docker/pi-web-docker --dev restart-sessiond restart-web`,
+      then drive `:8511` with Playwright. Frontend edits hot-reload; server
+      edits need the rebuild because the container runs `dist/`.
 - [ ] For each fix, first write the assertion that fails for the reported reason.
       The accordion bug is the cautionary case: the test asserted
       `hasAttribute("hidden")`, which was true the whole time.
