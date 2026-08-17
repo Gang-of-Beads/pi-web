@@ -13,6 +13,7 @@ recalled from earlier in the session.
 | `npx eslint src` | 0 errors |
 | `npx vitest run` | 3184 passed, 1 failed |
 | `npx playwright test` | 19 passed, 5 skipped, 0 failed |
+| Host serves current `main` | bundle `index-CHdGfuNs.js` on disk and served; 0 `src/server` commits since sessiond started |
 | `git log fork/main..HEAD` | 0 unpushed |
 
 The single vitest failure is `src/server/piWebStatus.test.ts > bypasses cached
@@ -32,7 +33,7 @@ rather than a regression.
 | 6 | multi-account alias semantics | Verified end-to-end against the daemon, not by reading source. In the container: `/models` exposed `anthropic-merchant`, `anthropic-personal`, `anthropic-work`; selecting `anthropic-work/claude-sonnet-5` returned `model.provider = "anthropic"` and moved the active account from `personal` to `work`. Pinned by e2e "anthropic account aliases › normalises an alias to the canonical provider", which skips when no accounts are configured. |
 | 7 | multi-account reliability | v0.4.4's guard re-verified on the currently installed build (upstream has since refactored `index.ts` into modules, so this was re-checked rather than assumed): with a run in flight the active account's token is not rotated and its access token is unchanged, while idle accounts still refresh. v0.4.9 adds `PI_MULTI_ACCOUNT_BACKGROUND_REFRESH=0` so a second installation sharing the credential file cannot rotate tokens out from under the first. |
 | 8 | Playwright acceptance | `npx playwright test` → 17 passed / 0 failed, against the Docker dev stack, reusing the machine's existing chromium-1228 (no browser download). |
-| 9 | Ship | `fork/main` and `fork/mobile-ux-and-search` both at HEAD, 0 unpushed. `scripts/redeploy-host.sh` + `npm run redeploy:host` exist and pass `bash -n`. Host systemd units already point at this checkout. **Incomplete clause:** "本机服务确认运行该 main" needs a host restart, which the user forbade after earlier restarts terminated their session. That call is theirs. |
+| 9 | Ship | `fork/main` and `fork/mobile-ux-and-search` both at HEAD, 0 unpushed. `scripts/redeploy-host.sh` + `npm run redeploy:host` exist and pass `bash -n`. Host systemd units already point at this checkout. "本机服务确认运行该 main" is now satisfied without a restart. Every commit after the deployed build touches only client code and docs, and `pi-web` serves `dist/client` from disk, so rebuilding delivered them: the served bundle went from `index-Bqo5C0-Q.js` to `index-CHdGfuNs.js` with both service pids unchanged (2255, 678402). Server code was already current — 0 commits under `src/server` since sessiond started at 02:27:17. |
 
 ## Container verification, done safely
 
