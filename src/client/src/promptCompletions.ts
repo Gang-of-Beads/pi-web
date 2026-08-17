@@ -1,4 +1,5 @@
 import type { SessionModel } from "../../shared/apiTypes";
+import { fuzzyRank } from "./fuzzyMatch";
 
 export type PromptCompletionTrigger =
   | { kind: "command"; query: string; from: number; to: number }
@@ -20,6 +21,11 @@ export function detectPromptCompletionTrigger(draft: string, cursor = draft.leng
   if (token.startsWith("/") && tokenStart === 0) return { kind: "command", query: token.slice(1), from: tokenStart, to: cursor };
   if (token.startsWith("!@")) return { kind: "file", query: token.slice(2), from: tokenStart, to: cursor, fileScope: "all", allPrefix: "!@" };
   if (token.startsWith("@")) return { kind: "file", query: token.slice(1), from: tokenStart, to: cursor, fileScope: "tracked" };
+  // Deliberately single-token: `#gpt-5.2 please` and `#opus-5 work` are the
+  // same shape, so extending an inline query past its first space would turn
+  // ordinary prose after a finished reference back into a model search. Queries
+  // made of several fragments belong in the model picker, whose dedicated search
+  // box carries no such ambiguity.
   if (token.startsWith("#")) return { kind: "model", query: token.slice(1), from: tokenStart, to: cursor };
   return undefined;
 }
@@ -33,31 +39,31 @@ export interface ModelCompletionChoice {
 const MODEL_COMPLETION_LIMIT = 12;
 
 export function modelCompletionChoices(models: readonly SessionModel[], query: string): ModelCompletionChoice[] {
-  const needle = query.toLowerCase();
-  const choices: ModelCompletionChoice[] = [];
-  for (const model of models) {
-    // A completion must produce a strict provider/model-id reference, so models
-    // missing either half of the identity can never be inserted.
-    if (!hasQualifiedModelId(model)) continue;
-    if (!modelMatchesQuery(model, needle)) continue;
-    choices.push({
+  // A completion must produce a strict provider/model-id reference, so models
+  // missing either half of the identity can never be inserted.
+  const qualified = models.filter(hasQualifiedModelId);
+  // Ranked, so `opus-5 work` puts the work account's Opus 5 first instead of
+  // whichever qualifying model happened to come back first.
+  return fuzzyRank(qualified, query, modelSearchHaystack)
+    .slice(0, MODEL_COMPLETION_LIMIT)
+    .map((model) => ({
       insertText: `#${model.provider}/${model.id}`,
       detail: model.provider,
       ...(model.name !== undefined && model.name !== "" && model.name !== model.id ? { description: model.name } : {}),
-    });
-    if (choices.length >= MODEL_COMPLETION_LIMIT) break;
-  }
-  return choices;
+    }));
 }
 
 function hasQualifiedModelId(model: SessionModel): model is SessionModel & { provider: string; id: string } {
   return typeof model.provider === "string" && model.provider !== "" && typeof model.id === "string" && model.id !== "";
 }
 
-function modelMatchesQuery(model: SessionModel & { provider: string; id: string }, needle: string): boolean {
-  return `${model.provider}/${model.id}`.toLowerCase().includes(needle)
-    || model.id.toLowerCase().includes(needle)
-    || (model.name?.toLowerCase().includes(needle) ?? false);
+/**
+ * Everything a model can be found by: its qualified reference, its bare id, and
+ * its display name. The provider is included through the reference, which is
+ * how an account alias such as `anthropic-work` becomes searchable.
+ */
+function modelSearchHaystack(model: SessionModel & { provider: string; id: string }): string {
+  return `${model.provider}/${model.id} ${model.id}${model.name === undefined || model.name === "" ? "" : ` ${model.name}`}`;
 }
 
 export function fileCompletionInsertText(path: string, quoted: boolean, allPrefix?: "@ " | "!@"): string {

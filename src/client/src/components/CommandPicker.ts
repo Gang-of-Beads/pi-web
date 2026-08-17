@@ -1,6 +1,7 @@
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { CommandOption } from "../api";
+import { fuzzyRank } from "../fuzzyMatch";
 import { keyboardEventOriginatesFromNativeActivationControl } from "./keyboardEventTarget";
 import "./ModalSurface";
 import { scrollWhenSelected } from "./scrollWhenSelected";
@@ -67,9 +68,10 @@ export class CommandPicker extends LitElement {
   }
 
   private filteredOptions(): CommandOption[] {
-    const query = this.query.trim().toLowerCase();
-    if (query === "") return this.options;
-    return this.options.filter((option) => `${option.label} ${option.description ?? ""} ${option.value}`.toLowerCase().includes(query));
+    // Ranked rather than merely filtered: an option's searchable text spans its
+    // label, description, and value, so a forgiving match admits weak hits that
+    // would otherwise bury the obvious answer. Ties keep the caller's order.
+    return fuzzyRank(this.options, this.query, (option) => `${option.label} ${option.description ?? ""} ${option.value}`);
   }
 
   // Escape and backdrop presses are owned by the modal surface (routed to

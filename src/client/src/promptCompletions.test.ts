@@ -103,6 +103,52 @@ describe("modelCompletionChoices", () => {
     ]);
   });
 
+  it("finds a model from remembered fragments in any order", () => {
+    // The multi-account case, as reached from the model picker: an alias
+    // provider and a model id given as two fragments. The inline `#` trigger
+    // stays single-token on purpose, so it never produces a query like this.
+    const accounts: SessionModel[] = [
+      { provider: "anthropic-personal", id: "claude-opus-5", name: "Claude Opus 5" },
+      { provider: "anthropic-work", id: "claude-opus-5", name: "Claude Opus 5" },
+      { provider: "anthropic-work", id: "claude-haiku-4-5", name: "Claude Haiku 4.5" },
+    ];
+
+    expect(modelCompletionChoices(accounts, "opus-5 work")).toEqual([
+      { insertText: "#anthropic-work/claude-opus-5", detail: "anthropic-work", description: "Claude Opus 5" },
+    ]);
+    // Order between fragments must not matter.
+    expect(modelCompletionChoices(accounts, "work opus-5")).toEqual([
+      { insertText: "#anthropic-work/claude-opus-5", detail: "anthropic-work", description: "Claude Opus 5" },
+    ]);
+  });
+
+  it("ranks the account named in the query above the other copies of a model", () => {
+    const accounts: SessionModel[] = [
+      { provider: "anthropic-personal", id: "claude-opus-5" },
+      { provider: "anthropic-merchant", id: "claude-opus-5" },
+      { provider: "anthropic-work", id: "claude-opus-5" },
+    ];
+
+    expect(modelCompletionChoices(accounts, "work")[0]?.insertText).toBe("#anthropic-work/claude-opus-5");
+  });
+
+  it("matches an abbreviation of a single fragment, which the inline trigger can produce", () => {
+    const accounts: SessionModel[] = [
+      { provider: "anthropic-work", id: "claude-opus-5" },
+      { provider: "github-copilot", id: "gpt-5.4" },
+    ];
+
+    // Word initials and prefix runs, all inside one token.
+    expect(modelCompletionChoices(accounts, "workopus")[0]?.insertText).toBe("#anthropic-work/claude-opus-5");
+    expect(modelCompletionChoices(accounts, "opus5")[0]?.insertText).toBe("#anthropic-work/claude-opus-5");
+  });
+
+  it("does not offer a model that only matches scattered mid-word letters", () => {
+    // Guards the abbreviation rule: a confident query must not surface a model
+    // whose letters merely happen to contain it.
+    expect(modelCompletionChoices([{ provider: "anthropic", id: "claude-sonnet-4-5" }], "opus-4")).toEqual([]);
+  });
+
   it("omits the description when the display name matches the id", () => {
     expect(modelCompletionChoices([{ provider: "ollama", id: "qwen3", name: "qwen3" }], "")).toEqual([
       { insertText: "#ollama/qwen3", detail: "ollama" },

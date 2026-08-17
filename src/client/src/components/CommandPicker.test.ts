@@ -145,3 +145,69 @@ function closeButton(picker: CommandPicker): HTMLButtonElement {
 function selectedOptionIndex(picker: CommandPicker): number {
   return optionButtons(picker).findIndex((button) => button.classList.contains("selected"));
 }
+
+describe("command-picker fuzzy model search", () => {
+  it("finds a model from two remembered fragments and ranks the named account first", async () => {
+    const picker = await mountPicker({ title: "Select Model", searchable: true, options: [
+      { value: "anthropic-personal/claude-opus-5", label: "claude-opus-5", description: "anthropic-personal" },
+      { value: "anthropic-work/claude-opus-5", label: "claude-opus-5", description: "anthropic-work" },
+      { value: "anthropic-work/claude-haiku-4-5", label: "claude-haiku-4-5", description: "anthropic-work" },
+    ] });
+
+    await search(picker, "opus-5 work");
+
+    // Neither fragment order nor contiguity holds in the option's text, so a
+    // plain substring filter finds nothing here.
+    expect(optionValues(picker)).toEqual(["anthropic-work/claude-opus-5"]);
+  });
+
+  it("lists every account's copy when only the model is named", async () => {
+    const picker = await mountPicker({ title: "Select Model", searchable: true, options: [
+      { value: "anthropic-personal/claude-opus-5", label: "claude-opus-5", description: "anthropic-personal" },
+      { value: "anthropic-work/claude-opus-5", label: "claude-opus-5", description: "anthropic-work" },
+      { value: "github-copilot/gpt-5.4", label: "gpt-5.4", description: "github-copilot" },
+    ] });
+
+    await search(picker, "opus");
+
+    expect(optionValues(picker)).toEqual([
+      "anthropic-personal/claude-opus-5",
+      "anthropic-work/claude-opus-5",
+    ]);
+  });
+
+  it("reports no matches for a query nothing satisfies", async () => {
+    const picker = await mountPicker({ title: "Select Model", searchable: true, options: [
+      { value: "anthropic/claude-opus-5", label: "claude-opus-5", description: "anthropic" },
+    ] });
+
+    await search(picker, "gemini");
+
+    expect(optionValues(picker)).toEqual([]);
+  });
+});
+
+/** Type into the picker's search box and let it re-render. */
+async function search(picker: CommandPicker, query: string): Promise<void> {
+  const root = picker.shadowRoot;
+  if (root === null) throw new Error("Expected command-picker shadow root");
+  const input = root.querySelector("input");
+  if (input === null) throw new Error("Expected a search input");
+  input.value = query;
+  input.dispatchEvent(new Event("input"));
+  await picker.updateComplete;
+}
+
+/**
+ * Options as `description/label`, which for the model picker reconstructs the
+ * `provider/model-id` reference the option would insert.
+ */
+function optionValues(picker: CommandPicker): string[] {
+  const root = picker.shadowRoot;
+  if (root === null) throw new Error("Expected command-picker shadow root");
+  return [...root.querySelectorAll(".options button")].map((button) => {
+    const label = button.querySelector("span")?.textContent.trim() ?? "";
+    const description = button.querySelector("small")?.textContent.trim() ?? "";
+    return description === "" ? label : `${description}/${label}`;
+  });
+}
