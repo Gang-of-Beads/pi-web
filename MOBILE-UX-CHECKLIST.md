@@ -180,8 +180,16 @@ tailnet `:8506`), never the host installation.
 ## Open — voice input
 
 - [ ] **Tap-to-talk in the composer**: one tap starts capture, one tap stops.
-- [ ] **VAD**: keep recording while silent, transcribe once speech is detected
-      and finished; do not cut off a slow start.
+      *Core landed:* `voiceCapture.ts` is the tap/VAD state machine, pure and
+      covered by 14 tests. Still to build: the microphone binding, the
+      transcription call, and the composer control.
+- [x] **VAD rules decided and tested.** Silence before speech never ends the
+      recording (thinking time), a pause mid-sentence does not end the utterance
+      (900ms trailing threshold, asserted to not fire at 800ms), stopping
+      mid-utterance keeps what was said rather than discarding it, and a runaway
+      recording is capped — transcribing if speech was heard, dropped if it was
+      only silence. Every state has a label, so the feature can never fail
+      silently. *Evidence:* `voiceCapture.test.ts`, 14 cases.
 - [ ] **STT**: choose the engine and where it runs. Decision needed — browser
       `SpeechRecognition` is free and instant but Chrome-only and sends audio to
       Google; a server-side Whisper keeps audio local but needs a model and CPU
