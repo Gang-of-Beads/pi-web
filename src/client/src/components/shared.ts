@@ -633,9 +633,13 @@ export const promptEditorStyles = css`
   textarea, .markdown-editor .cm-editor { box-sizing: border-box; width: 100%; min-height: 54px; max-height: 220px; resize: none; overflow: hidden; border-radius: 8px; border: 1px solid var(--pi-border); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px)/1.4 var(--pi-control-font-family, system-ui, sans-serif); }
   textarea { overflow-y: auto; padding: 8px; }
   .markdown-editor .cm-scroller { max-height: 220px; overflow-y: auto; font-family: var(--pi-control-font-family, system-ui, sans-serif); line-height: 1.4; }
-  .markdown-editor .cm-content { min-height: 38px; padding: 8px 44px 8px 8px; caret-color: var(--pi-text); text-align: start; unicode-bidi: plaintext; }
+  .markdown-editor .cm-content { min-height: 38px; padding: 8px 44px 8px 8px; caret-color: var(--pi-text); text-align: start; unicode-bidi: plaintext; --pi-composer-pad: 8px; }
   .markdown-editor .cm-cursor, .markdown-editor .cm-dropCursor { border-left-width: 2px; }
-  .markdown-editor .cm-cursor { height: 1.25em !important; margin-top: 0.08em; }
+  /* The caret should sit on the line the text will occupy: 1.4 * font-size is
+     the line's height, and centering a caret of that height in the line box
+     keeps it visually aligned with the surrounding text instead of hanging
+     lower -- the old 1.25em + margin approach drifted as the font size changed. */
+  .markdown-editor .cm-cursor { height: 1.4em !important; }
   /* An empty document still has one line, and a min-height on the content
      stretches that single line box to fill it. The caret is sized from the line
      box, so before the first keystroke it rendered at the full height of the
@@ -649,7 +653,12 @@ export const promptEditorStyles = css`
      from that line box, which is why it towered over the input until the first
      keystroke removed the placeholder. Taking it out of flow lets the empty
      line keep the height of a single line of text, and the caret with it. */
-  .markdown-editor .cm-placeholder { position: absolute; inset-inline: 0; pointer-events: none; }
+  /* Out of flow so a wrapped hint cannot inflate the empty line (and with it
+     the caret), but still anchored to the content's text area: the content has
+     8px of left padding, and a placeholder spanning the box edge paints the
+     hint 8px left of where the first keystroke will land -- the caret visibly
+     overlapping the first character. */
+  .markdown-editor .cm-placeholder { position: absolute; inset-block: 0; left: 8px; right: 44px; display: flex; align-items: center; pointer-events: none; }
   .markdown-editor .cm-placeholder { color: var(--pi-dim); }
   /* CodeMirror suppresses its own outline, so the focus ring belongs on the
      bordered box the user actually sees. Without this the composer was the one

@@ -277,11 +277,23 @@ test.describe("composer", () => {
       const placeholderVisible = placeholder !== null && placeholder !== undefined
         && placeholder.getBoundingClientRect().height > 0;
 
+      // The hint must sit exactly where the first keystroke lands: a
+      // placeholder that is absolute against the box edge starts left of the
+      // text padding, so the caret visibly overlaps the first character.
+      const textLeft = (element: Element | null | undefined) => {
+        if (element === null || element === undefined) return null;
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        return Math.round(range.getBoundingClientRect().left);
+      };
+      const placeholderLeft = textLeft(placeholder);
+
       editor.replaceText("typed");
       await editor.updateComplete;
       await new Promise((resolve) => setTimeout(resolve, 300));
+      const typedLeft = textLeft(root?.querySelector(".cm-line"));
 
-      return { empty, typed: lineHeight(), placeholderVisible };
+      return { empty, typed: lineHeight(), placeholderVisible, placeholderLeft, typedLeft };
     });
 
     // The caret is sized from the line box. A placeholder long enough to wrap
@@ -290,6 +302,11 @@ test.describe("composer", () => {
     expect(measured.empty).toBe(measured.typed);
     // ...and the hint must still be shown; hiding it would be a different bug.
     expect(measured.placeholderVisible).toBe(true);
+    // The hint and the text share an origin: the caret sat one character over
+    // the first letter when the placeholder anchored to the box edge instead.
+    expect(measured.placeholderLeft).not.toBeNull();
+    expect(measured.typedLeft).not.toBeNull();
+    expect(measured.placeholderLeft).toBe(measured.typedLeft);
   });
 
   test("stacks pending attachments above the input, not between it and the send button", async ({ page }) => {
