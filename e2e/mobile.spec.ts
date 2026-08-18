@@ -286,6 +286,67 @@ test.describe("composer", () => {
     // ...and the hint must still be shown; hiding it would be a different bug.
     expect(measured.placeholderVisible).toBe(true);
   });
+
+  test("stacks pending attachments above the input, not between it and the send button", async ({ page }) => {
+    await openApp(page);
+
+    const measured = await page.evaluate(async () => {
+      const editor = document.createElement("prompt-editor") as HTMLElement & {
+        machineId?: string;
+        sessionId?: string;
+        cwd?: string;
+        attachments?: unknown[];
+        requestUpdate: () => void;
+        updateComplete: Promise<unknown>;
+      };
+      editor.machineId = "local";
+      editor.sessionId = "attachment-probe";
+      editor.cwd = "/tmp";
+      document.body.append(editor);
+      await editor.updateComplete;
+      await new Promise((resolve) => setTimeout(resolve, 400));
+
+      // A 1x1 PNG: the smallest thing that still exercises the image path.
+      editor.attachments = [
+        {
+          id: "a1", name: "screenshot.png", kind: "image", mimeType: "image/png",
+          data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+        },
+        { id: "a2", name: "notes.txt", kind: "file", mimeType: "text/plain", data: "aGVsbG8=" },
+      ];
+      editor.requestUpdate();
+      await editor.updateComplete;
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const root = editor.shadowRoot;
+      const rect = (selector: string) => {
+        const box = root?.querySelector(selector)?.getBoundingClientRect();
+        return box === undefined ? undefined : { top: Math.round(box.top), bottom: Math.round(box.bottom) };
+      };
+      const chips = [...(root?.querySelectorAll(".attachment-chip") ?? [])];
+      return {
+        attachments: rect(".attachments"),
+        input: rect(".cm-editor"),
+        chipClasses: chips.map((chip) => chip.className.replace("attachment-chip ", "")),
+        everyChipRemovable: chips.length > 0 && chips.every((chip) => chip.querySelector(".attachment-remove") !== null),
+        imageHasThumbnail: chips[0]?.querySelector("img") !== null,
+      };
+    });
+
+    // Attachments belong above the text, where they do not push the send button
+    // off a phone screen and are visible while the message is being written.
+    expect(measured.attachments).toBeDefined();
+    expect(measured.input).toBeDefined();
+    expect(measured.attachments!.bottom).toBeLessThanOrEqual(measured.input!.top);
+
+    // An image is shown as an image; a file that cannot be inlined is not
+    // dressed up as one, because that difference decides how it is delivered.
+    expect(measured.chipClasses).toEqual(["attachment-chip-image", "attachment-chip-file"]);
+    expect(measured.imageHasThumbnail).toBe(true);
+    // Every attachment must be removable: picking the wrong file otherwise
+    // means discarding the whole message to correct it.
+    expect(measured.everyChipRemovable).toBe(true);
+  });
 });
 
 test.describe("list row semantics", () => {
