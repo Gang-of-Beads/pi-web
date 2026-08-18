@@ -20,6 +20,8 @@ export class AppContextBar extends LitElement {
    * should never cost a walk through the navigation accordion.
    */
   @property({ attribute: false }) onQuickSwitch?: () => void;
+  /** Rename the session being read. Absent when renaming is not available. */
+  @property({ attribute: false }) onRenameSession?: (name: string) => void;
   /**
    * Lead with the session instead of the full location trail.
    *
@@ -31,6 +33,7 @@ export class AppContextBar extends LitElement {
    */
   @property({ type: Boolean }) emphasizeSession = false;
   @query(".context-items") private contextItems?: HTMLElement | null;
+  @state() private renamingSession = false;
   @state() private canScrollLeft = false;
   @state() private canScrollRight = false;
   private observedContextItems: HTMLElement | undefined;
@@ -51,6 +54,10 @@ export class AppContextBar extends LitElement {
   override updated(): void {
     this.observeContextItems();
     this.updateScrollState();
+    // Select the text once the input exists, so the tap that starts the edit
+    // also opens the keyboard and a correction can be typed straight away.
+    const renameInput = this.renderRoot.querySelector<HTMLInputElement>(".context-session-input");
+    if (renameInput !== null && renameInput.ownerDocument.activeElement !== this) renameInput.select();
   }
 
   override render() {
@@ -75,16 +82,59 @@ export class AppContextBar extends LitElement {
           aria-label=${`Location: ${breadcrumb}. Open navigation.`}
           @click=${() => { this.onOpenSection?.(this.breadcrumbSection()); }}
         >${breadcrumb}</button>
-        <button
-          type="button"
-          class="context-session-title"
-          title=${sessionContextTitle(this.session)}
-          aria-label=${`Session: ${label}. Open session selection.`}
-          @click=${() => { this.openSessions(); }}
-        >${label}</button>
+        ${this.renamingSession
+          ? html`<input
+              class="context-session-input"
+              type="text"
+              .value=${this.session?.name ?? label}
+              aria-label="Session name"
+              enterkeyhint="done"
+              spellcheck="false"
+              autocomplete="off"
+              @keydown=${(event: KeyboardEvent) => { this.onRenameKeydown(event); }}
+              @blur=${() => { this.renamingSession = false; }}
+            >`
+          : html`<button
+              type="button"
+              class="context-session-title"
+              title=${sessionContextTitle(this.session)}
+              aria-label=${`Session: ${label}. Open session selection.`}
+              @click=${() => { this.openSessions(); }}
+            >${label}</button>`}
+        ${this.onRenameSession === undefined || this.session === undefined || this.renamingSession
+          ? null
+          : html`<button
+              type="button"
+              class="context-session-rename"
+              title="Rename session"
+              aria-label=${`Rename session ${label}`}
+              @click=${() => { this.renamingSession = true; }}
+            >✎</button>`}
         ${this.hasContextActions() ? html`<div class="context-actions inline">${this.renderQuickSwitchButton()}${this.renderActionsButton()}${this.refreshControl}</div>` : null}
       </nav>
     `;
+  }
+
+  /**
+   * Enter saves, Escape abandons.
+   *
+   * An unchanged or blank name is treated as no rename at all: the edit starts
+   * seeded with the current name, so clearing it is far more likely to be a
+   * slip than an intent to remove the name the user is looking at.
+   */
+  private onRenameKeydown(event: KeyboardEvent): void {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      this.renamingSession = false;
+      return;
+    }
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    const input = this.renderRoot.querySelector<HTMLInputElement>(".context-session-input");
+    const next = (input?.value ?? "").trim();
+    this.renamingSession = false;
+    if (next === "" || next === this.session?.name) return;
+    this.onRenameSession?.(next);
   }
 
   /** Section the breadcrumb opens: the deepest one already chosen. */
@@ -211,6 +261,15 @@ export class AppContextBar extends LitElement {
   };
 
   static override styles = css`
+    /* Sized like the title it replaces, so starting an edit does not reflow the
+       bar or move the controls beside it under the user's thumb. */
+    .context-session-input { flex: 1 1 auto; min-width: 0; box-sizing: border-box; min-height: 32px; padding: 4px 8px; border: 1px solid var(--pi-accent); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text-bright); font: inherit; }
+    .context-session-input:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }
+    .context-session-rename { flex: 0 0 auto; display: inline-grid; place-items: center; width: 32px; min-height: 32px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--pi-muted); font-size: 14px; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+    .context-session-rename:hover, .context-session-rename:focus-visible { background: var(--pi-selection-bg); color: var(--pi-text-bright); }
+    .context-session-rename:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }
+    @media (pointer: coarse) { .context-session-rename { width: 34px; min-height: 34px; } }
+
     /* Shell styles do not cross a shadow boundary, so the tap-highlight
        suppression is repeated for components that define their own. */
     button, [role="button"], a, summary, label, input { -webkit-tap-highlight-color: transparent; }

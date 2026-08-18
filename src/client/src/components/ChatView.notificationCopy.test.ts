@@ -6,7 +6,7 @@ import { templateEventHandlerAfterMarker } from "../templateInspection.testSuppo
 
 // The clipboard itself belongs to the browser; what is worth pinning here is
 // that the button hands it the right text.
-const writeClipboardText = vi.hoisted(() => vi.fn<(text: string) => Promise<boolean>>(async () => true));
+const writeClipboardText = vi.hoisted(() => vi.fn<(text: string) => Promise<boolean>>(() => Promise.resolve(true)));
 vi.mock("../clipboard", () => ({ writeClipboardText }));
 
 const MESSAGE = 'Anthropic account "personal" failed closed: token refresh request failed.\nurl=https://platform.claude.com/v1/oauth/token';
@@ -40,11 +40,19 @@ function viewWithNotification(): ChatView {
 }
 
 function renderTray(view: ChatView): TemplateResult {
+  // The tray renderer is private; reaching it keeps the test at the seam that
+  // actually decides what the row offers.
   const method: unknown = Reflect.get(view, "renderNotificationTray");
-  if (typeof method !== "function") throw new Error("ChatView.renderNotificationTray is not callable");
-  const rendered: unknown = (method as () => unknown).call(view);
-  if (rendered === null || rendered === undefined) throw new Error("expected a notification tray");
-  return rendered as TemplateResult;
+  if (!isRenderNotificationTray(method)) throw new Error("ChatView.renderNotificationTray is not callable");
+  const rendered = method.call(view);
+  if (rendered === null) throw new Error("expected a notification tray");
+  return rendered;
+}
+
+type RenderNotificationTray = (this: ChatView) => TemplateResult | null;
+
+function isRenderNotificationTray(value: unknown): value is RenderNotificationTray {
+  return typeof value === "function";
 }
 
 describe("notification copy", () => {

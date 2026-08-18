@@ -2,6 +2,7 @@ import { LitElement, css, html, type PropertyValues, nothing} from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { SessionActivity, SessionInfo, SessionStatus } from "../api";
 import { isCachedNewSessionInfo } from "../cachedNewSessions";
+import { LongPressTracker } from "../longPress";
 import { sessionLabel } from "../sessionLabels";
 import { isArchivableSessionInfo, isTransientNewSessionInfo } from "../sessionPersistence";
 import { normalizeSessionPath } from "../sessionPaths";
@@ -67,6 +68,17 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
   @state() private archivedExpanded = false;
   @state() private searchQuery = "";
   @state() private selectionScopes: ReadonlySet<SessionSelectionScope> = new Set();
+  /**
+   * Holding a row opens multi-select, which otherwise hides behind a small
+   * toolbar toggle that people do not find. One tracker for the list: two
+   * fingers on it is a scroll or a pinch, never a deliberate hold.
+   */
+  private readonly longPress = new LongPressTracker({
+    onLongPress: () => { this.onRowHeld(); },
+    setTimer: (callback, ms) => window.setTimeout(callback, ms),
+    clearTimer: (handle) => { window.clearTimeout(handle); },
+  });
+  private heldSession: { session: SessionInfo; scope: SessionSelectionScope } | undefined;
   @state() private selectedSessionIds: ReadonlySet<string> = new Set();
 
   private readonly onDocumentClick = (event: MouseEvent) => {
@@ -348,7 +360,17 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
           type="button"
           class="action-main ${selectionActive ? "selecting" : ""}"
           aria-current=${this.selected?.id === session.id ? "true" : nothing}
-          @click=${() => { this.activateSessionRow(session, scope); }}
+          @pointerdown=${(event: PointerEvent) => { this.startRowHold(event, session, scope); }}
+          @pointermove=${(event: PointerEvent) => { this.longPress.move(event); }}
+          @pointerup=${() => { this.longPress.cancel(); }}
+          @pointercancel=${() => { this.longPress.cancel(); }}
+          @contextmenu=${(event: Event) => { if (this.selectionScopes.has(scope)) event.preventDefault(); }}
+          @click=${() => {
+            // A completed hold already answered this press by selecting the
+            // row; letting the click through would open the session too.
+            if (this.longPress.consumeSuppressedClick()) return;
+            this.activateSessionRow(session, scope);
+          }}
         >
           <span class="action-name-line"><span class="action-name" dir="auto">${this.renderRowMarker(row)}${sessionLabel(session)}</span>${this.renderRowBadges(row)}</span><small>${this.renderSessionMetaPrefix(session, status, activity)}${String(session.messageCount)} messages</small>
           ${this.renderActivity(indicatorKind, unread)}
@@ -462,6 +484,26 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     const sessions = this.selectedSessions("current").filter((session) => isArchivableSessionInfo(session, this.statuses[session.id]));
     this.selectedSessionIds = removeSessionIds(this.selectedSessionIds, sessions.map((session) => session.id));
     void this.onArchiveMany?.(sessions);
+  }
+
+  /** Only touch and pen hold to select; a mouse has better ways. */
+  private startRowHold(event: PointerEvent, session: SessionInfo, scope: SessionSelectionScope): void {
+    if (event.pointerType === "mouse") return;
+    this.heldSession = { session, scope };
+    this.longPress.start(event);
+  }
+
+  private onRowHeld(): void {
+    const held = this.heldSession;
+    if (held === undefined) return;
+    this.heldSession = undefined;
+    // Entering selection with the held row already ticked: the hold expressed
+    // an intent about that row, so requiring a second tap to select it wastes
+    // the gesture.
+    if (!this.selectionScopes.has(held.scope)) {
+      this.selectionScopes = new Set([...this.selectionScopes, held.scope]);
+    }
+    this.toggleSelected(held.session.id);
   }
 
   private toggleSelection(scope: SessionSelectionScope, visibleSessions: SessionInfo[]): void {

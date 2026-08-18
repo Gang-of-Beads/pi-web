@@ -68,3 +68,27 @@ describe("aborted requests", () => {
     expect(isTransientError("Model aborted the tool call for policy reasons")).toBe(false);
   });
 });
+
+describe("daemon restart", () => {
+  // Restarting the daemon produces ECONNREFUSED, not ENOENT: the socket file is
+  // still there, nothing is listening yet. The rule matched only ENOENT, so the
+  // one error a user is guaranteed to see after an update arrived as a
+  // permanent failure -- observed in a screenshot moments after a restart.
+  it("treats a refused daemon connection as transient", () => {
+    expect(isTransientError(
+      "Session daemon workspace authority unavailable: connect ECONNREFUSED /home/u/.pi-web/sessiond.sock",
+    )).toBe(true);
+  });
+
+  it("still treats a missing socket as transient", () => {
+    expect(isTransientError(
+      "Session daemon workspace authority unavailable: connect ENOENT /home/u/.pi-web/sessiond.sock",
+    )).toBe(true);
+  });
+
+  it("does not demote an unrelated connection failure", () => {
+    // Nothing here says the session daemon is restarting, so it must not be
+    // dressed up as something that heals itself.
+    expect(isTransientError("connect ECONNREFUSED 127.0.0.1:5432")).toBe(false);
+  });
+});

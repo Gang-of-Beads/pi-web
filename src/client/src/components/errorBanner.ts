@@ -39,7 +39,10 @@ export function isTransientError(error: string): boolean {
 export const TRANSIENT_ERROR_TIMEOUT_MS = 6000;
 
 function normalizeTransientError(error: string): string | undefined {
-  if (/session daemon workspace authority unavailable: connect enoent/i.test(error) && /sessiond\.sock/i.test(error)) {
+  // ENOENT when the socket file is gone, ECONNREFUSED while the daemon is
+  // restarting and nothing is listening on it yet. The second is the one a user
+  // is guaranteed to meet, because it is what an update looks like.
+  if (/session daemon workspace authority unavailable: connect (enoent|econnrefused)/i.test(error) && /sessiond\.sock/i.test(error)) {
     return "Reconnecting to the session daemon…";
   }
   // Matches the DOMException text a cancelled fetch stringifies to, with or

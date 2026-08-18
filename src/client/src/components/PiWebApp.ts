@@ -2273,6 +2273,10 @@ export class PiWebApp extends LitElement {
         .refreshControl=${this.appShell.shouldShowAppRefreshInContextBar() ? this.renderAppRefresh() : undefined}
         .onOpenSection=${(section: NavigationSection) => { this.openNavigationSection(section); }}
         .onQuickSwitch=${() => { this.openQuickSwitcher(); }}
+        .onRenameSession=${(name: string) => {
+          const session = this.state.selectedSession;
+          if (session !== undefined) void this.sessions.renameSession(session, name);
+        }}
         .onShowActions=${() => { this.setState({ actionPaletteOpen: true }); }}
       ></app-context-bar>
     `;

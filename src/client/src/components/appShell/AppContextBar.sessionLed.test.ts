@@ -82,6 +82,7 @@ async function mount(options: {
   workspace?: Workspace;
   onOpenSection?: (section: NavigationSection) => void;
   onQuickSwitch?: () => void;
+  onRenameSession?: (name: string) => void;
 }): Promise<ShadowRoot> {
   const bar = new AppContextBar();
   bar.machines = [];
@@ -92,6 +93,7 @@ async function mount(options: {
   bar.emphasizeSession = options.emphasizeSession;
   if (options.onOpenSection !== undefined) bar.onOpenSection = options.onOpenSection;
   if (options.onQuickSwitch !== undefined) bar.onQuickSwitch = options.onQuickSwitch;
+  if (options.onRenameSession !== undefined) bar.onRenameSession = options.onRenameSession;
   document.body.append(bar);
   await bar.updateComplete;
   const root = bar.shadowRoot;
@@ -126,3 +128,58 @@ function session(): SessionInfo {
     firstMessage: "hello there",
   };
 }
+
+/**
+ * Naming the session you are reading is the common case -- it is the one whose
+ * name is wrong often enough to matter, and it was reachable only by leaving the
+ * conversation for the session list and finding the row again.
+ */
+describe("renaming the current session in place", () => {
+  async function startEditing(onRenameSession: (name: string) => void): Promise<{ root: ShadowRoot; input: HTMLInputElement }> {
+    const root = await mount({ emphasizeSession: true, onRenameSession });
+    root.querySelector<HTMLButtonElement>(".context-session-rename")?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const input = root.querySelector<HTMLInputElement>(".context-session-input");
+    if (input === null) throw new Error("expected an inline rename input");
+    return { root, input };
+  }
+
+  it("saves the edited name on Enter", async () => {
+    const onRenameSession = vi.fn();
+    const { input } = await startEditing(onRenameSession);
+
+    // Seeded with the current name, so a correction is an edit rather than a retype.
+    expect(input.value).toBe("Mobile UX sweep");
+    input.value = "  Mobile UX sweep v2  ";
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+
+    expect(onRenameSession).toHaveBeenCalledExactlyOnceWith("Mobile UX sweep v2");
+  });
+
+  it("abandons the edit on Escape", async () => {
+    const onRenameSession = vi.fn();
+    const { root, input } = await startEditing(onRenameSession);
+
+    input.value = "discarded";
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(onRenameSession).not.toHaveBeenCalled();
+    // ...and the title is back, so the bar cannot be left stuck in edit mode.
+    expect(root.querySelector(".context-session-title")).not.toBeNull();
+  });
+
+  it("treats an unchanged or emptied name as no rename at all", async () => {
+    const onRenameSession = vi.fn();
+    const { input } = await startEditing(onRenameSession);
+
+    input.value = "   ";
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(onRenameSession).not.toHaveBeenCalled();
+
+    input.value = "Mobile UX sweep";
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    // Clearing a name by accident is the failure worth preventing here.
+    expect(onRenameSession).not.toHaveBeenCalled();
+  });
+});
