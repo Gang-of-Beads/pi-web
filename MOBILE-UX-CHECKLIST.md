@@ -180,9 +180,14 @@ tailnet `:8506`), never the host installation.
 ## Open — voice input
 
 - [ ] **Tap-to-talk in the composer**: one tap starts capture, one tap stops.
-      *Core landed:* `voiceCapture.ts` is the tap/VAD state machine, pure and
-      covered by 14 tests. Still to build: the microphone binding, the
-      transcription call, and the composer control.
+      *Everything but the button is built and tested:* `voiceCapture.ts` (tap
+      and VAD rules, 14 tests), `speechToText.ts` (configurable transcription,
+      14 tests), `voiceController.ts` (sequencing and failure paths, 11 tests),
+      `browserVoiceRecorder.ts` (microphone binding, thin by design with the
+      level maths covered by 5 tests). What remains is the composer control
+      itself: render the button only when `speechToText.endpoint` is
+      configured, show `voiceCaptureLabel(state)`, and insert the transcript
+      through the editor's existing text-replacement path.
 - [x] **VAD rules decided and tested.** Silence before speech never ends the
       recording (thinking time), a pause mid-sentence does not end the utterance
       (900ms trailing threshold, asserted to not fire at 800ms), stopping
