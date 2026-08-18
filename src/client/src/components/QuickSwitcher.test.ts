@@ -48,6 +48,44 @@ describe("quick-switcher", () => {
     expect(onOpenSession).toHaveBeenCalledWith(target);
   });
 
+  it("renders four-state badges from sessionStates, with three dots only while working", async () => {
+    const sessions = [session("work", { name: "streaming" }), session("done", { name: "finished" }), session("ask", { name: "waiting on me" }), session("bad", { name: "model error" })];
+    const switcher = await mount({
+      sessions,
+      selectedWorkspace: workspace("main"),
+      activeSessionIds: new Set(["work", "done", "ask", "bad"]),
+      sessionStates: new Map([
+        ["work", "working"],
+        ["done", "idle"],
+        ["ask", "asking"],
+        ["bad", "error"],
+      ]),
+    });
+
+    const rows = sessionRows(switcher);
+    const byName = (name: string) => rows.find((row) => rowTitle(row) === name);
+    expect(byName("streaming")?.querySelectorAll(".state-dot").length).toBe(3);
+    expect(byName("streaming")?.querySelector(".session-state")?.getAttribute("class")).toContain("working");
+    expect(byName("finished")?.querySelector(".session-state")?.getAttribute("class")).toContain("idle");
+    expect(byName("waiting on me")?.querySelector(".session-state")?.getAttribute("class")).toContain("asking");
+    expect(byName("model error")?.querySelector(".session-state")?.getAttribute("class")).toContain("error");
+    // A working row never also shows the old single flag dot.
+    expect(byName("streaming")?.querySelector(".row-flag.active")).toBeNull();
+  });
+
+  it("falls back to a working badge for active sessions the state map has not reached yet", async () => {
+    const switcher = await mount({
+      sessions: [session("fresh", { name: "just opened" })],
+      selectedWorkspace: workspace("main"),
+      activeSessionIds: new Set(["fresh"]),
+      sessionStates: new Map(),
+    });
+
+    const row = sessionRows(switcher).find((candidate) => rowTitle(candidate) === "just opened");
+    expect(row?.querySelectorAll(".state-dot").length).toBe(3);
+    expect(row?.querySelector(".session-state")?.getAttribute("class")).toContain("working");
+  });
+
   it("filters sessions as the query is typed", async () => {
     const switcher = await mount({
       sessions: [session("a", { name: "billing refactor" }), session("b", { name: "mobile layout" })],
@@ -133,6 +171,8 @@ async function mount(props: MountProps): Promise<QuickSwitcher> {
   if (props.onSelectWorkspace !== undefined) switcher.onSelectWorkspace = props.onSelectWorkspace;
   if (props.onBrowse !== undefined) switcher.onBrowse = props.onBrowse;
   if (props.onClose !== undefined) switcher.onClose = props.onClose;
+  if (props.activeSessionIds !== undefined) switcher.activeSessionIds = props.activeSessionIds;
+  if (props.sessionStates !== undefined) switcher.sessionStates = props.sessionStates;
   document.body.append(switcher);
   await switcher.updateComplete;
   return switcher;
