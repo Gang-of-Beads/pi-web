@@ -231,6 +231,13 @@ export const workspacePanelStyles = css`
 `;
 
 export const listStyles = css`
+  /* Motion is a preference, not a decoration: a user who asks for less of it
+     gets none. Kept to a blanket rule because every animation here is
+     ornamental — progress bars, pulses, fades — so there is no reduced variant
+     worth designing separately. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+  }
   /* Tap targets should not wait for a double-tap-zoom gesture to be ruled out.
      Scoped to controls, so scrollable and pannable surfaces keep the gestures
      they set for themselves; and it lives here rather than on the app shell
@@ -325,6 +332,13 @@ export const listStyles = css`
 `;
 
 export const chatStyles = css`
+  /* Motion is a preference, not a decoration: a user who asks for less of it
+     gets none. Kept to a blanket rule because every animation here is
+     ornamental — progress bars, pulses, fades — so there is no reduced variant
+     worth designing separately. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+  }
   /* Tap targets should not wait for a double-tap-zoom gesture to be ruled out.
      Scoped to controls, so scrollable and pannable surfaces keep the gestures
      they set for themselves; and it lives here rather than on the app shell
@@ -547,6 +561,13 @@ export const autocompleteStyles = css`
 `;
 
 export const promptEditorStyles = css`
+  /* Motion is a preference, not a decoration: a user who asks for less of it
+     gets none. Kept to a blanket rule because every animation here is
+     ornamental — progress bars, pulses, fades — so there is no reduced variant
+     worth designing separately. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+  }
   /* Tap targets should not wait for a double-tap-zoom gesture to be ruled out.
      Scoped to controls, so scrollable and pannable surfaces keep the gestures
      they set for themselves; and it lives here rather than on the app shell

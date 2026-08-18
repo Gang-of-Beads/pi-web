@@ -86,7 +86,7 @@ export class GoalPanel extends LitElement {
           aria-valuenow=${String(goal.completedTaskCount)}
           aria-label=${`${goal.objective}: ${goalProgressLabel(goal)} tasks complete`}
         >
-          <span class="goal-bar-fill" style=${`width: ${String(Math.round(fraction * 100))}%`}></span>
+          <span class="goal-bar-fill" style=${`transform: scaleX(${String(fraction)})`}></span>
         </div>
         ${open ? this.renderDetail(goal, current, tokens) : this.renderCollapsedMeta(goal, current, tokens)}
       </article>
@@ -180,7 +180,10 @@ export class GoalPanel extends LitElement {
     .goal-status.done { color: var(--pi-success); }
     .goal-ratio { flex: 0 0 auto; color: var(--pi-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
     .goal-bar { height: 3px; background: var(--pi-border-muted); }
-    .goal-bar-fill { display: block; height: 100%; background: var(--pi-accent); transition: width .2s ease; }
+    /* Scaled rather than resized: width animation runs on the layout thread,
+       transform runs on the compositor. Origin pinned left so the bar grows
+       from its start rather than from the middle. */
+    .goal-bar-fill { display: block; height: 100%; width: 100%; transform-origin: left center; background: var(--pi-accent); transition: transform .2s ease; }
     .goal.done .goal-bar-fill { background: var(--pi-success); }
     .goal.blocked .goal-bar-fill { background: var(--pi-warning); }
     .goal-meta, .goal-footer { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 6px 10px 8px; color: var(--pi-muted); font-size: 11px; }

@@ -64,6 +64,14 @@ tailnet `:8506`), never the host installation.
 
 ## Open — layout and interaction
 
+- [x] **Motion respects `prefers-reduced-motion`.** The app honoured it
+      nowhere, and the goal progress bar animated `width`, which runs on the
+      layout thread. Every animation here is ornamental — progress, pulses,
+      fades — so a blanket reduction is right rather than designing reduced
+      variants; the bar now scales on the compositor instead.
+      *Evidence:* measured in the container, `transition-duration` on a list row
+      is `0s` normally and `1e-06s` under `reduce`; `GoalPanel.test.ts` asserts
+      the progress *fraction* rather than a CSS unit.
 - [ ] **Audit every surface against the Web Interface Guidelines skill**
       (`~/.agents/skills/web-design-guidelines`). Known findings to resolve:
   - [x] **List rows now expose a real button.** All four lists (project,

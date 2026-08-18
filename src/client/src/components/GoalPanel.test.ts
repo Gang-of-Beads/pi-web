@@ -25,7 +25,11 @@ describe("goal-panel", () => {
     const bar = root.querySelector('[role="progressbar"]');
     expect(bar?.getAttribute("aria-valuenow")).toBe("1");
     expect(bar?.getAttribute("aria-valuemax")).toBe("3");
-    expect(root.querySelector<HTMLElement>(".goal-bar-fill")?.getAttribute("style")).toContain("33%");
+    // Scaled rather than resized so the animation stays on the compositor; the
+    // fraction is what matters, however it is expressed.
+    const fill = root.querySelector<HTMLElement>(".goal-bar-fill")?.getAttribute("style") ?? "";
+    const scale = Number(/scaleX\(([0-9.]+)\)/u.exec(fill)?.[1] ?? "-1");
+    expect(scale).toBeCloseTo(1 / 3, 2);
   });
 
   it("keeps goals collapsed but still names the task in progress", async () => {
