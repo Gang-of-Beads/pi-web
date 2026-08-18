@@ -9,7 +9,7 @@ import { registerMachineStatusRoutes } from "./status/machineStatusRoutes.js";
 import { CachedWorkspaceAttribution } from "./status/workspaceAttribution.js";
 import { SessionEventHub } from "./realtime/sessionEventHub.js";
 import { drainActiveWork, resolveDrainTimeoutMs } from "./sessions/shutdownDrain.js";
-import { recordInterruptedRuns } from "./sessions/interruptedRunStore.js";
+import { recordInterruptedRuns, takeInterruptedRuns } from "./sessions/interruptedRunStore.js";
 import { AuthService } from "./sessions/authService.js";
 import { bootstrapAndFreezeGlobalExtensionProviders } from "./sessions/globalProviderPolicy.js";
 import { registerAuthRoutes } from "./sessions/authRoutes.js";
@@ -380,6 +380,18 @@ async function listenSessionDaemon({ shutdown }: SessionDaemonRuntime): Promise<
   if (pendingShutdownSignal !== undefined) {
     await requestShutdown(pendingShutdownSignal);
     return;
+  }
+
+  // Anything still marked in flight belongs to the previous process, which is
+  // gone -- so it did not finish. Promoted into the record the API serves, and
+  // cleared, so a restart cannot report the same interruption forever.
+  const leftOverRuns = await takeInterruptedRuns();
+  if (leftOverRuns.length > 0) {
+    app.log.warn(
+      { sessionIds: leftOverRuns.map((run) => run.sessionId) },
+      "runs were in flight when the previous session daemon exited",
+    );
+    await recordInterruptedRuns(leftOverRuns);
   }
 
   const portValue = daemonEnvironment["PI_WEB_SESSIOND_PORT"];

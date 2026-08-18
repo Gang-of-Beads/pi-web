@@ -5,6 +5,18 @@ import { piWebDataDir } from "../../config.js";
 /**
  * Remembering which runs a restart cut off.
  *
+ * The record is written when a run *starts* and removed when it ends, so
+ * whatever remains is exactly what did not finish. Writing it during shutdown
+ * does not work: the daemon runs under systemd's default
+ * KillMode=control-group, so SIGTERM reaches the agent subprocesses at the same
+ * instant as the daemon itself. The run the drain exists to protect is already
+ * dead by the time the drain looks, so it waits for nothing and a
+ * shutdown-time record records nothing -- observed as "shutting down" and
+ * "Stopped" in the same second, with no drain line at all.
+ *
+ * Marking at the start costs a small write per run and, unlike a shutdown hook,
+ * also survives SIGKILL, a crash, and the power going out.
+ *
  * A drain can only ever be bounded — systemd's own `TimeoutStopSec` is 90s on
  * this deployment, after which it sends SIGKILL no matter what the daemon
  * wants — so no timeout is long enough for a genuinely long agent run. The
@@ -117,4 +129,74 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   const result: Record<string, unknown> = {};
   for (const [key, entry] of Object.entries(value)) result[key] = entry;
   return result;
+}
+
+/** Where the live set of in-flight runs is kept. */
+export function defaultInFlightRunFilePath(
+  env: NodeJS.ProcessEnv = process.env,
+  cwd = process.cwd(),
+): string {
+  return join(piWebDataDir(env, cwd), "in-flight-runs.json");
+}
+
+/**
+ * Note that a run has started.
+ *
+ * Never throws: failing to write a convenience record must not fail the run it
+ * is describing.
+ */
+export async function markRunInFlight(
+  run: { sessionId: string; cwd: string },
+  filePath: string = defaultInFlightRunFilePath(),
+): Promise<void> {
+  try {
+    const current = await readRuns(filePath);
+    if (current.some((entry) => entry.sessionId === run.sessionId)) return;
+    await writeRuns([...current, { ...run, interruptedAt: new Date().toISOString() }], filePath);
+  } catch {
+    // The run proceeds regardless.
+  }
+}
+
+/** Note that a run finished, so it is not reported as interrupted. */
+export async function clearRunInFlight(
+  sessionId: string,
+  filePath: string = defaultInFlightRunFilePath(),
+): Promise<void> {
+  try {
+    const current = await readRuns(filePath);
+    const next = current.filter((entry) => entry.sessionId !== sessionId);
+    if (next.length === current.length) return;
+    await writeRuns(next, filePath);
+  } catch {
+    // Leaving a stale entry only risks over-reporting, which the user can dismiss.
+  }
+}
+
+/**
+ * Read what the previous process left behind and clear it.
+ *
+ * Called once at startup: anything still marked in flight belongs to a process
+ * that is gone, so it did not finish. Clearing as part of reading means a
+ * restart cannot report the same interruption forever.
+ */
+export async function takeInterruptedRuns(
+  filePath: string = defaultInFlightRunFilePath(),
+): Promise<InterruptedRun[]> {
+  const runs = await readRuns(filePath);
+  if (runs.length > 0) await writeRuns([], filePath);
+  return runs;
+}
+
+async function readRuns(filePath: string): Promise<InterruptedRun[]> {
+  try {
+    return parseRuns(JSON.parse(await readFile(filePath, "utf8")));
+  } catch {
+    return [];
+  }
+}
+
+async function writeRuns(runs: readonly InterruptedRun[], filePath: string): Promise<void> {
+  await mkdir(dirname(filePath), { recursive: true });
+  await writeFile(filePath, `${JSON.stringify({ runs: [...runs] }, null, 2)}\n`, "utf8");
 }

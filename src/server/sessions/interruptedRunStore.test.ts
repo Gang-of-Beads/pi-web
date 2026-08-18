@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { clearInterruptedRuns, readInterruptedRuns, recordInterruptedRuns } from "./interruptedRunStore";
+import { clearInterruptedRuns, clearRunInFlight, markRunInFlight, readInterruptedRuns, recordInterruptedRuns, takeInterruptedRuns } from "./interruptedRunStore";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -101,5 +101,39 @@ describe("read-and-clear semantics", () => {
 
     await clearInterruptedRuns(file);
     expect((await readInterruptedRuns(file)).runs).toEqual([]);
+  });
+});
+
+describe("surviving a kill that leaves no shutdown window", () => {
+  // The daemon runs under KillMode=control-group, so SIGTERM reaches the agent
+  // subprocesses at the same instant as the daemon. The run being protected is
+  // already dead by the time the drain looks, so the drain finds nothing to wait
+  // for and a record written at shutdown records nothing. Observed in practice:
+  // "shutting down" and "Stopped" in the same second, no drain line at all.
+  //
+  // The record therefore has to exist *before* the process dies: written when a
+  // run starts, cleared when it ends, so whatever is left at startup is exactly
+  // what did not finish -- which also covers SIGKILL, a crash and a power cut.
+  it("reports a run that was in flight when the process died", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pi-web-inflight-"));
+    const file = join(dir, "in-flight-runs.json");
+
+    await markRunInFlight({ sessionId: "01a00616", cwd: "/home/u/project" }, file);
+    // No clear: the process is killed here.
+
+    const leftovers = await takeInterruptedRuns(file);
+    expect(leftovers.map((run) => run.sessionId)).toEqual(["01a00616"]);
+    // Taking them clears the file, so the next start does not re-report them.
+    expect(await takeInterruptedRuns(file)).toEqual([]);
+  });
+
+  it("does not report a run that finished normally", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pi-web-inflight-"));
+    const file = join(dir, "in-flight-runs.json");
+
+    await markRunInFlight({ sessionId: "01a00616", cwd: "/home/u/project" }, file);
+    await clearRunInFlight("01a00616", file);
+
+    expect(await takeInterruptedRuns(file)).toEqual([]);
   });
 });

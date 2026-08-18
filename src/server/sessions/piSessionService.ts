@@ -28,6 +28,7 @@ import type { SessionEventHub } from "../realtime/sessionEventHub.js";
 import { BUILTIN_COMMANDS } from "./builtinCommands.js";
 import { SessionCommandService } from "./sessionCommandService.js";
 import { projectSessionTree, type ProjectableSessionTreeNode } from "./sessionTreeProjection.js";
+import { clearRunInFlight, markRunInFlight } from "./interruptedRunStore.js";
 import { SessionArchiveStore, type ArchivedSessionRecord, type ArchiveSessionInput } from "./sessionArchiveStore.js";
 import { findArchiveCandidateByIdOrPrefix, planSessionArchiveTree, type SessionArchiveTreeCandidate } from "./sessionArchiveTree.js";
 import type { ActiveSession } from "./sessionRuntimeStore.js";
@@ -857,6 +858,8 @@ export class PiSessionService implements SessionRouteService {
    * on full readiness.
    */
   private readonly startupSessions = new Map<string, PiAgentSession>();
+  /** Session ids currently marked in flight on disk, to write only on change. */
+  private readonly runInFlight = new Set<string>();
   private readonly activities = new Map<string, { phase: "active" | "idle" | "error"; label: string; detail?: string; at: string }>();
   private readonly heartbeat: NodeJS.Timeout;
   private readonly commandService: SessionCommandService<PiAgentSession>;
@@ -3657,11 +3660,36 @@ export class PiSessionService implements SessionRouteService {
 
   private publishStatus(session: PiAgentSession): void {
     const status = this.statusFromSession(session);
+    this.recordRunLifecycle(session);
     this.clearStaleActiveActivity(session);
     this.workspaceActivity?.applySessionStatus(session.sessionManager.getCwd(), status);
     this.events.publish(session.sessionId, { type: "status.update", status });
     this.events.publishGlobal({ type: "status.update", status });
     this.observeUnreadActivityState(session);
+  }
+
+  /**
+   * Keep the on-disk in-flight record in step with this session's work.
+   *
+   * Written while the run is alive rather than at shutdown, because the daemon
+   * is killed as a control group: its agent subprocesses receive SIGTERM at the
+   * same instant it does, so by the time a shutdown hook runs there is no work
+   * left to notice. Only transitions are written, so an idle daemon does no
+   * disk I/O.
+   */
+  private recordRunLifecycle(session: PiAgentSession): void {
+    const active = this.hasActiveWork(session);
+    if (active === this.runInFlight.has(session.sessionId)) return;
+    if (active) {
+      this.runInFlight.add(session.sessionId);
+      void markRunInFlight({
+        sessionId: session.sessionId,
+        cwd: canonicalizeStoredCwd(session.sessionManager.getCwd()),
+      });
+    } else {
+      this.runInFlight.delete(session.sessionId);
+      void clearRunInFlight(session.sessionId);
+    }
   }
 
   private clearStaleActiveActivity(session: PiAgentSession): void {
