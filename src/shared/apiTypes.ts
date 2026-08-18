@@ -133,6 +133,21 @@ export interface PiWebPathAccessConfig {
   allowedPaths?: string[];
 }
 
+/**
+ * Where recorded speech is sent for transcription.
+ *
+ * `endpoint` is the whole feature switch: without it there is no dictation
+ * control at all, so an install that has not opted in never records anything.
+ */
+export interface PiWebSpeechToTextConfig {
+  /** Absolute URL accepting the audio and returning a transcription. */
+  endpoint: string;
+  /** Optional model hint forwarded to the service. */
+  model?: string;
+  /** Language hint, e.g. "en" or "zh"; omitted means let the service decide. */
+  language?: string;
+}
+
 export interface PiWebUploadsConfig {
   defaultFolder?: string;
 }
@@ -170,6 +185,16 @@ export interface PiWebConfigValues {
   pathAccess?: PiWebPathAccessConfig;
   /** Workspace-relative defaults for manual file uploads. */
   uploads?: PiWebUploadsConfig;
+  /**
+   * Speech-to-text for the composer's dictation control.
+   *
+   * Absent by default, and dictation is simply not offered when it is: audio is
+   * sensitive enough that sending it somewhere must be an explicit choice, not
+   * something that happens because a browser API existed. Point `endpoint` at
+   * any service that accepts the recorded audio and answers with a
+   * transcription — a local Whisper server keeps the audio on the machine.
+   */
+  speechToText?: PiWebSpeechToTextConfig;
   /** Maximum accepted HTTP request body size in bytes (uploads/attachments). */
   maxUploadBytes?: number;
   /** When true, LLMs can start new sessions via the spawn_session tool. */

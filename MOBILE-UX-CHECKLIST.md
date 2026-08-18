@@ -190,10 +190,15 @@ tailnet `:8506`), never the host installation.
       recording is capped — transcribing if speech was heard, dropped if it was
       only silence. Every state has a label, so the feature can never fail
       silently. *Evidence:* `voiceCapture.test.ts`, 14 cases.
-- [ ] **STT**: choose the engine and where it runs. Decision needed — browser
-      `SpeechRecognition` is free and instant but Chrome-only and sends audio to
-      Google; a server-side Whisper keeps audio local but needs a model and CPU
-      budget on this box.
+- [x] **STT is user-configured, absent by default.** Per the user's decision,
+      `speechToText.endpoint` in the PI WEB config is the whole feature switch:
+      with nothing configured there is no dictation control and nothing is ever
+      recorded, because sending audio somewhere should be a deliberate choice
+      rather than a consequence of a browser API existing. Point it at a local
+      Whisper server and the audio stays on the machine.
+      *Evidence:* `speechToText.test.ts`, 14 cases covering the opted-out state
+      (never calls the service), the Whisper-style response shapes, and every
+      failure path returning a message rather than failing silently.
 - [ ] Transcribed text lands in the composer as editable text, never auto-sent.
 - [ ] Permission, offline, and no-speech states are visible rather than silent.
 
