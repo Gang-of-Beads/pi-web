@@ -426,6 +426,60 @@ test.describe("soft keyboard", () => {
   });
 });
 
+test.describe("transient errors", () => {
+  test.skip(({ isMobile }) => isMobile === false, "phone-viewport behaviour");
+
+  test("withdraws a reconnect notice but keeps a real failure", async ({ page }) => {
+    await openApp(page);
+
+    const show = async (message: string) => page.evaluate((error) => {
+      const app = document.querySelector("pi-web-app") as (HTMLElement & {
+        state?: Record<string, unknown>;
+        requestUpdate: () => void;
+        updateComplete: Promise<unknown>;
+      }) | null;
+      if (app !== null && app.state !== undefined) app.state = { ...app.state, error };
+      app?.requestUpdate();
+      return app?.updateComplete.then(() => {
+        const banner = app.shadowRoot?.querySelector(".error");
+        const box = banner?.getBoundingClientRect();
+        return banner === null || banner === undefined ? null : {
+          role: banner.getAttribute("role"),
+          text: (banner.textContent ?? "").replace(/\s+/g, " ").trim(),
+          heightFraction: box === undefined ? 1 : box.height / window.innerHeight,
+        };
+      });
+    }, message);
+
+    const stillShown = async () => page.evaluate(() =>
+      document.querySelector("pi-web-app")?.shadowRoot?.querySelector(".error") !== null);
+
+    // The message a dropped session daemon really produces. An earlier rule
+    // matched only a wrapped form that never reaches this banner, so it looked
+    // handled while a cancelled request still got the full failure treatment.
+    const reconnect = await show("Session daemon workspace authority unavailable: connect ENOENT /run/user/1000/pi-web/sessiond.sock");
+    expect(reconnect?.role).toBe("status");
+    // Rewritten into what the user can do about it, not transport wording.
+    expect(reconnect?.text).toContain("Reconnecting");
+    // Lightweight: it must not take a meaningful share of a phone screen.
+    expect(reconnect?.heightFraction).toBeLessThan(0.12);
+
+    const aborted = await show("AbortError: The operation was aborted.");
+    expect(aborted?.role).toBe("status");
+
+    // ...and it withdraws on its own, so a reconnect notice cannot outlive the
+    // reconnect it describes.
+    await page.waitForTimeout(7000);
+    expect(await stillShown()).toBe(false);
+
+    // A real failure is never expired: it waits to be read and dismissed.
+    const real = await show("Session not found: no such file or directory");
+    expect(real?.role).toBe("alert");
+    await page.waitForTimeout(7000);
+    expect(await stillShown()).toBe(true);
+  });
+});
+
 test.describe("quick switcher", () => {
   test.skip(({ isMobile }) => isMobile === false, "phone-viewport behaviour");
 
