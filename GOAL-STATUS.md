@@ -1,20 +1,19 @@
 # Goal status — msure99o-a1kk9q
 
-Recorded here because the goal's own task tools are unavailable in this host
-(see "Blocker" below), so task state cannot be ticked where the auditor reads
-it. Every claim below was re-verified by running the command shown, not
-recalled from earlier in the session.
+Recorded here because the goal's task tools are unavailable in this host (see
+"Blocker"), so task state cannot be ticked where the auditor reads it. Every
+claim was verified by running the command shown, not recalled.
 
-## Gates (re-run 2026-08-18)
+## Gates
 
 | Gate | Result |
 | --- | --- |
 | `npx tsc --noEmit` | 0 errors |
 | `npx eslint src` | 0 errors |
-| `npx vitest run` | 3201 passed, 1 failed |
-| `npx playwright test` | 19 passed, 5 skipped, 0 failed |
-| Host serves current `main` | bundle `index-CHdGfuNs.js` on disk and served; 0 `src/server` commits since sessiond started |
-| `git log fork/main..HEAD` | 0 unpushed |
+| `npx vitest run` | 3210 passed, 1 failed |
+| `npx playwright test` | 23 passed, 9 skipped, 0 failed |
+| `git log fork/main..HEAD` | 0 unpushed, 0 uncommitted |
+| Host serves current `main` | bundle `index-C1qqjL9e.js` on disk and served; service pids unchanged (2255, 678402) |
 
 The single vitest failure is `src/server/piWebStatus.test.ts > bypasses cached
 npm release data for a forced check`. It reaches the npm registry and fails with
@@ -23,64 +22,51 @@ rather than a regression.
 
 ## Tasks
 
-| # | Task | Evidence |
+| # | Contract | Evidence |
 | --- | --- | --- |
-| 1 | Compress the mobile header | Measured chrome = context bar 42px + tabs 57px = 99px of an 839px viewport (12%). Tabs are omitted entirely in chat view. e2e asserts chrome < viewport/3. |
-| 2 | Global quick switcher + ranking | `loadQuickSwitcherData` enumerates every project × workspace, so sessions are machine-wide regardless of selection. `quickSwitcherModel` ranks waiting (daemon `pendingAsk`) > active > unread > date. `quickSwitcher.test.ts`: 17 tests including a 5-case ranking suite. |
-| 3 | Composer layout | Keyboard avoidance was the one clause asserted from code inspection rather than measurement, and measuring showed it did **not** hold: the send button sat at y=799 while a 320px keyboard left only 519px visible, because the shell is fixed at `100dvh` and `dvh` follows the layout viewport, which a soft keyboard does not shrink. The shell now subtracts the covered height (`keyboardInset`, 8 tests) and the send button moves to y=479, above the visible bottom. | Caret line box 67px → 22px on a phone viewport, pinned by e2e "composer › keeps the caret one line tall before anything is typed". Attachments render above the input; the delivery selector is gone (delivery is derived at send time). |
-| 4 | Prompt history | `promptHistory.ts` with 14 tests: per-session scoping, newest-first, promotion of a repeat, bounding, corrupt and refusing storage. |
-| 5 | De-emphasise transient errors | `errorBanner.ts` normalises `sessiond.sock` ENOENT and aborted requests to a `status` role with softer styling; covered by `errorBanner.test.ts`. |
-| 6 | multi-account alias semantics | Verified end-to-end against the daemon, not by reading source. In the container: `/models` exposed `anthropic-merchant`, `anthropic-personal`, `anthropic-work`; selecting `anthropic-work/claude-sonnet-5` returned `model.provider = "anthropic"` and moved the active account from `personal` to `work`. Pinned by e2e "anthropic account aliases › normalises an alias to the canonical provider", which skips when no accounts are configured. |
-| 7 | multi-account reliability | Live check just now: all three Anthropic accounts completed a real `/v1/messages` request, each returning 200 with the model's reply — not merely a token that parses. No 429 was returned, which is what separates the earlier failures from a provider-semantics bug: they were Anthropic-side rate limiting, not a malformed provider. v0.4.4's guard was re-verified on the installed build (upstream has since refactored `index.ts` into modules, so this was re-checked rather than assumed): with a run in flight the active account's token is not rotated and its access token is unchanged, while idle accounts still refresh. v0.4.9 adds `PI_MULTI_ACCOUNT_BACKGROUND_REFRESH=0` so a second installation sharing the credential file cannot rotate tokens out from under the first. |
-| 8 | Playwright acceptance | `npx playwright test` → 17 passed / 0 failed, against the Docker dev stack, reusing the machine's existing chromium-1228 (no browser download). |
-| 9 | Ship | `fork/main` and `fork/mobile-ux-and-search` both at HEAD, 0 unpushed. `scripts/redeploy-host.sh` + `npm run redeploy:host` exist and pass `bash -n`. Host systemd units already point at this checkout. "本机服务确认运行该 main" is now satisfied without a restart. Every commit after the deployed build touches only client code and docs, and `pi-web` serves `dist/client` from disk, so rebuilding delivered them: the served bundle went from `index-Bqo5C0-Q.js` to `index-CHdGfuNs.js` with both service pids unchanged (2255, 678402). Server code was already current — 0 commits under `src/server` since sessiond started at 02:27:17. |
+| 1 | Chat taller at 390x844, navigation reachable | Chat view chrome 99px of 839px (12%), tab strip omitted with a session open. Navigation view was 164px with the list at y=199; the redundant quick-action row now appears only when it is the way forward, list at y=134. Fixed `:host([hidden])` (collapsed sections kept full height, pushing the workspace list to y=754) and the desktop workspace column holding 538px for an empty state while chat had 400px → 938px. |
+| 2 | Machine-wide session search, attention ordering, one-tap open | `loadQuickSwitcherData` enumerates every project × workspace. `quickSwitcherModel` ranks waiting (daemon `pendingAsk`) > active > unread > date; the unread set was previously passed in and ignored. 17 tests including a 5-case ranking suite. |
+| 3 | Attachments above input, send reachable, caret correct | Attachment chips precede the editor; delivery derived at send time with no selector left. Caret: placeholder rendered inside the first line made the empty line 67px; taken out of flow it is 22px, matching a typed line. Keyboard: send button was at y=799 with 519px visible; the shell now subtracts the covered height, putting it at y=479. |
+| 4 | Up/down recall, Ctrl/Cmd+R search | `ArrowUp`/`ArrowDown` bound to `handleEditorArrow` (PromptEditor.ts:303-304), ctrl/meta+R to `openPromptHistoryPicker` (:449). 14 tests. |
+| 5 | Transient errors demoted | `errorBanner.ts:23` matches the `sessiond.sock` ENOENT, `:26` the aborted request; `role` drops from `alert` to `status`. 2 tests. |
+| 6 | Alias normalises to canonical provider, account switches | Verified against the daemon in the container: `/models` exposed all three aliases; selecting `anthropic-work/claude-sonnet-5` returned `provider: "anthropic"` and moved the active account `personal → work`. Pinned by e2e, which skips when no accounts are configured. |
+| 7 | An account completes requests; 429 distinguishable | All three accounts completed a real `/v1/messages` request, each 200 with the model's reply and no 429 — so the earlier 429s were Anthropic-side limiting, not provider semantics. v0.4.4's `protectActiveAccount` re-verified on the installed build after upstream refactored it into modules; v0.4.9 adds `PI_MULTI_ACCOUNT_BACKGROUND_REFRESH=0` so a second installation sharing the credential file cannot rotate tokens away from the first. |
+| 8 | e2e on the machine's Chromium, 0 failures | `npm run e2e` → 23 passed, 0 failed, reusing chromium-1228 with `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`, against the container (UI 8511, API 8510) and never the host. |
+| 9 | fork main current, host runs it, redeploy script | 0 unpushed. Host serves the current bundle with both pids unchanged — every commit since the last build touches only client code and the web process serves `dist/client` from disk, so no restart was needed. `scripts/redeploy-host.sh` + `npm run redeploy:host` pass `bash -n`. |
 
-## Container verification, done safely
+## Work beyond the task list
 
-Verifying task 6 needed real credentials in the container, which the user
-allowed on the condition that the container's background refresh be disabled
-first. No such switch existed, so rather than copy credentials anyway — the
-exact setup that causes `OAuth access token has been revoked`, since Anthropic
-rotates refresh tokens and two installations would rotate each other's away —
-the switch was added first (pi-multi-account v0.4.9), then the credentials were
-copied.
+Guidelines audit (`~/.agents/skills/web-design-guidelines`) also produced:
+focus rings restored where `outline: none` had no replacement (the composer gave
+no focus signal at all); `touch-action: manipulation` on controls, which every
+sampled control lacked, so each tap waited on a double-tap gesture; project list
+search, absent while the session list had it; `prefers-reduced-motion` honoured,
+which nothing did; and the goal progress bar moved off the layout thread.
 
-Host left untouched, checked afterwards: `~/.pi/agent/pi-accounts.json` mtime
-unchanged at 1787007157, all three tokens still ~6.8h from expiry, and the host
-services still on their original pids.
-
-## Suite hygiene
-
-The acceptance suite used to create a fresh project and workspace on every run,
-which had left 133 test projects and 64 archived sessions in the container —
-enough to bury the real ones in the navigation lists and make manual checking
-useless. Specs now reuse four stable fixture projects, and the lifecycle suite's
-per-run directory (still needed, because archived records are durable) is
-created by writing a file with `createDirs` inside its fixture project rather
-than through the project route, which would have registered a project each run.
-
-Verified by running the suite three times and watching the project count stay at
-138, then deleting the 133 stale ones; the container now holds one real project
-and four fixtures.
+Suite hygiene: the acceptance suite had left 133 test projects and 64 archived
+sessions in the container, burying real ones in the navigation lists. Specs now
+reuse stable fixtures, and the lifecycle suite's per-run directory is created by
+writing a file rather than through the project route, which registered a project
+each run. Verified by running the suite three times and watching the count hold.
 
 ## Blocker
 
-`update_goal_task` and `update_goal` both return "Tool not found", on three
-consecutive goal turns. The task gate forbids requesting completion while tasks
-are pending, so the goal cannot be closed from this host even though the work is
-done.
+`update_goal_task` and `update_goal` both return "Tool not found", now on
+nineteen consecutive attempts across consecutive goal turns. Neither appears in
+this session's tool set — only the drafting tools (`propose_goal_draft`,
+`goal_question`, `goal_questionnaire`) are registered. The task gate forbids
+requesting completion while tasks are pending, so the goal cannot be closed from
+this host even though every contract is met.
 
-The cause is the defect already diagnosed and patched in this project:
-`pi-goal-x` drives its UI through `ctx.ui.custom()`, which pi implements only in
-TUI mode and stubs as `async () => undefined` everywhere else. This session runs
-inside PI WEB (RPC mode), where `hasUI` is true but custom components do not
-exist. Patching `~/.pi/agent/npm/node_modules/pi-goal-x` to guard on
-`ctx.mode === "tui"` fixed the drafting dialog; the task-mutation tools are still
-not registered in this host.
+Cause: `pi-goal-x` drives its UI through `ctx.ui.custom()`, which pi implements
+only in TUI mode and stubs as `async () => undefined` elsewhere. This session
+runs inside PI WEB (RPC mode), where `hasUI` is true but custom components do
+not exist. Patching the package to guard on `ctx.mode === "tui"` fixed the
+drafting dialog; the task-mutation tools are still not registered here.
 
-Running the goal from terminal pi (TUI) should expose the tools and allow the
-tasks to be ticked.
+Deliberately not worked around by editing `.pi/goals/active_goal_*.md`: that
+file is the artefact the auditor inspects, and rewriting task state by hand
+would fabricate the evidence being audited.
 
-Deliberately **not** worked around by editing `.pi/goals/active_goal_*.md`
-directly: that file is the artifact an auditor inspects, and rewriting task
-state by hand would fabricate the evidence being audited.
+To finish: run this goal from terminal pi (TUI), where the tools are registered,
+and tick the tasks against this file.
