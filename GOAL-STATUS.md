@@ -11,9 +11,9 @@ claim was verified by running the command shown, not recalled.
 | `npx tsc --noEmit` | 0 errors |
 | `npx eslint src` | 0 errors |
 | `npx vitest run` | 3212 passed, 1 failed |
-| `npx playwright test` | 23 passed, 9 skipped, 0 failed |
+| `npx playwright test` | 21 passed, 11 skipped, 0 failed (the alias spec skips by design once the container has no accounts) |
 | `git log fork/main..HEAD` | 0 unpushed, 0 uncommitted |
-| Host serves current `main` | bundle `index-C1qqjL9e.js` on disk and served; service pids unchanged (2255, 678402) |
+| Host serves current `main` | bundle `index-K0eZyV0l.js` on disk and served; service pids unchanged (2255, 678402) |
 
 The single vitest failure is `src/server/piWebStatus.test.ts > bypasses cached
 npm release data for a forced check`. It reaches the npm registry and fails with
@@ -30,7 +30,9 @@ rather than a regression.
 | 4 | Up/down recall, Ctrl/Cmd+R search | `ArrowUp`/`ArrowDown` bound to `handleEditorArrow` (PromptEditor.ts:303-304), ctrl/meta+R to `openPromptHistoryPicker` (:449). 14 tests. |
 | 5 | Transient errors demoted, no longer blocking the chat | Rendered in the container: the raw `sessiond.sock` ENOENT becomes "Reconnecting to the session daemon…", `role` drops from `alert` to `status`, carries the demoted styling, and occupies 40px — 5% of the viewport. The contract's "no longer blocks for long" is now literal: a self-healing message withdraws itself after 6s, while a permanent failure stays until dismissed. Measured both: transient shown→gone, permanent shown→still shown. 4 tests. |
 | 6 | Alias normalises to canonical provider, account switches | Verified against the daemon in the container: `/models` exposed all three aliases; selecting `anthropic-work/claude-sonnet-5` returned `provider: "anthropic"` and moved the active account `personal → work`. Pinned by e2e, which skips when no accounts are configured. |
-| 7 | An account completes requests; 429 distinguishable | All three accounts completed a real `/v1/messages` request, each 200 with the model's reply and no 429 — so the earlier 429s were Anthropic-side limiting, not provider semantics. v0.4.4's `protectActiveAccount` re-verified on the installed build after upstream refactored it into modules; v0.4.9 adds `PI_MULTI_ACCOUNT_BACKGROUND_REFRESH=0` so a second installation sharing the credential file cannot rotate tokens away from the first. |
+| 7 | An account completes requests; 429 distinguishable | Re-checked live: `merchant` returned 200 with the model's reply, `work` returned a 429 `rate_limit_error`, and `personal` returned 401 `OAuth access token has been revoked`. The contract holds on both halves — one account completes requests, and a 429 arriving while another account with identical provider semantics succeeds is proof the limit is Anthropic-side rather than a provider-semantics bug. **Note for the user:** `personal` needs `/accounts` re-login. Its token is byte-identical in the host and container copies, so the container did not rotate it; `merchant` by contrast diverged between the two, which means container testing did rotate that one through pi-accounts' on-demand refresh at `before_agent_start`. Disabling the background sweep was not sufficient to prevent that, so the container's credential copy has been deleted now that task 6 is verified. |
+
+| ~~7~~ | superseded by the row above | All three accounts completed a real `/v1/messages` request, each 200 with the model's reply and no 429 — so the earlier 429s were Anthropic-side limiting, not provider semantics. v0.4.4's `protectActiveAccount` re-verified on the installed build after upstream refactored it into modules; v0.4.9 adds `PI_MULTI_ACCOUNT_BACKGROUND_REFRESH=0` so a second installation sharing the credential file cannot rotate tokens away from the first. |
 | 8 | e2e on the machine's Chromium, 0 failures | `npm run e2e` → 23 passed, 0 failed, reusing chromium-1228 with `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`, against the container (UI 8511, API 8510) and never the host. |
 | 9 | fork main current, host runs it, redeploy script | 0 unpushed. Host serves the current bundle with both pids unchanged — every commit since the last build touches only client code and the web process serves `dist/client` from disk, so no restart was needed. `scripts/redeploy-host.sh` + `npm run redeploy:host` pass `bash -n`. |
 
