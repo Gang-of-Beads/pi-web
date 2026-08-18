@@ -363,3 +363,27 @@ test.describe("soft keyboard", () => {
     expect(measured!.closed.host).toBe(measured!.innerHeight);
   });
 });
+
+test.describe("desktop layout", () => {
+  test.skip(({ isMobile }) => isMobile === true, "wide-viewport behaviour");
+
+  test("does not spend half the window on an empty workspace panel", async ({ page }) => {
+    await openApp(page);
+
+    const measured = await page.evaluate(() => {
+      const root = document.querySelector("pi-web-app")?.shadowRoot;
+      const main = root?.querySelector("main");
+      const panel = root?.querySelector("workspace-panel");
+      return {
+        mainWidth: Math.round(main?.getBoundingClientRect().width ?? 0),
+        panelWidth: Math.round(panel?.getBoundingClientRect().width ?? 0),
+        viewportWidth: window.innerWidth,
+      };
+    });
+
+    // The panel is sized minmax(360px, 42vw), so before this it held 538px of a
+    // 1280px window to show "Select a project" while the chat had 400px.
+    expect(measured.panelWidth).toBe(0);
+    expect(measured.mainWidth).toBeGreaterThan(measured.viewportWidth / 2);
+  });
+});

@@ -35,14 +35,29 @@ export class PanelCollapseController implements ReactiveController {
     this.host.requestUpdate();
   }
 
-  shellClass(mainView: AppState["mainView"]): string {
+  shellClass(mainView: AppState["mainView"], hasWorkspace = true): string {
     return [
       "shell",
       mainViewClass(mainView),
       ...(this.navigationPanelCollapsed ? ["navigation-panel-collapsed"] : []),
-      ...(this.workspacePanelCollapsed ? ["workspace-panel-collapsed"] : []),
+      ...(workspacePanelTakesSpace(this.workspacePanelCollapsed, hasWorkspace) ? [] : ["workspace-panel-collapsed"]),
     ].join(" ");
   }
+}
+
+/**
+ * Whether the workspace panel should occupy its column.
+ *
+ * It is sized `minmax(360px, 42vw)`, which on a 1280px desktop is 538px — wider
+ * than the chat it sits beside. Spending that on a panel whose only content is
+ * "Select a project" leaves the conversation in 400px while half the window
+ * shows an empty state, so the column is given up until there is a workspace to
+ * put in it. An explicit collapse still wins: the user's choice is not
+ * second-guessed once made.
+ */
+export function workspacePanelTakesSpace(collapsed: boolean, hasWorkspace: boolean): boolean {
+  if (collapsed) return false;
+  return hasWorkspace;
 }
 
 export function mainViewClass(mainView: AppState["mainView"]): "navigation-view" | "chat-view" | "workspace-view" {

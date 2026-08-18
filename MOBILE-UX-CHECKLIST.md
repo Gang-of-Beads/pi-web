@@ -104,6 +104,16 @@ tailnet `:8506`), never the host installation.
         from `none` to `rgb(100,48,216) 0 0 0 1px` on focus. The two remaining
         cases in TerminalPanel are deliberate: xterm draws its own cursor, and
         the copy selector is a transparent proxy over it.
+- [x] **Desktop: the chat no longer loses half the window to an empty panel.**
+      The workspace column is `minmax(360px, 42vw)` — 538px on a 1280px desktop,
+      wider than the chat beside it — and it held that space to display
+      "Select a project" while the conversation had 400px. It now gives the
+      column up until there is a workspace to put in it; an explicit collapse
+      still wins, so the user's own choice is not second-guessed.
+      *Evidence:* measured 400px → 938px with no workspace selected, and the
+      panel returns to 538px once one is chosen; e2e "desktop layout › does not
+      spend half the window on an empty workspace panel".
+
 - [ ] **Top bar density**: still two rows (context chips + icon tab strip) before
       the list begins. Measure and reduce.
 - [x] **Long project lists are searchable.** The project list had no search at
