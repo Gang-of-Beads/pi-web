@@ -55,6 +55,7 @@ import {
   parseTerminalInfo,
   parseThinkingLevelsResponse,
   parseWriteWorkspaceFileResponse,
+  parsePiWebSelfUpdateStatus,
   parseWorkspaceProviderResolution,
   requireMachineStatusSnapshot,
 } from "./parsers";
@@ -121,8 +122,21 @@ export const configApi = {
   saveConfig: (config: PiWebConfigValues, machineId?: string) => request(configPath(machineId), parsePiWebConfigResponse, { method: "PUT", body: JSON.stringify({ config }) }),
 };
 
+interface SelfUpdateApplyResponse { started: boolean; error?: string; }
+function parseSelfUpdateApplyResponse(value: unknown): SelfUpdateApplyResponse {
+  const record = isRecord(value) ? value : {};
+  const started = record["started"] === true;
+  const error = typeof record["error"] === "string" ? record["error"] : undefined;
+  return error === undefined ? { started } : { started, error };
+}
+
 export const pluginsApi = {
   plugins: (machineId?: string) => request(pluginsPath(machineId), parsePiWebPluginsResponse),
+};
+
+export const selfUpdateApi = {
+  status: () => request("api/pi-web/update/status", parsePiWebSelfUpdateStatus, { cache: "no-store" }),
+  apply: () => request("api/pi-web/update/apply", parseSelfUpdateApplyResponse, { method: "POST", body: JSON.stringify({}) }),
 };
 
 function piPackagePath(endpoint = "", machineId?: string): string {

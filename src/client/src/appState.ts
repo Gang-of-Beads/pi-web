@@ -1,4 +1,4 @@
-import type { AuthProviderOption, CommandOption, CommandResult, ExtensionDialogAnswer, ExtensionDialogCloseReason, FileContentResponse, FileTreeEntry, GoalRecordSummary, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingAskUser, PendingExtensionDialog, PiWebStatusResponse, Project, QueuedSessionMessage, SessionActivity, SessionInfo, SessionStatus, SessionSubagentInfo, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";
+import type { AuthProviderOption, CommandOption, CommandResult, ExtensionDialogAnswer, ExtensionDialogCloseReason, FileContentResponse, FileTreeEntry, GoalRecordSummary, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingAskUser, PendingExtensionDialog, PiWebSelfUpdateStatus, PiWebStatusResponse, Project, QueuedSessionMessage, SessionActivity, SessionInfo, SessionStatus, SessionSubagentInfo, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";
 import type { ChatLine } from "./components/shared";
 import type { MachineStatusSnapshot } from "../../shared/machineStatus";
 import type { QualifiedContributionId } from "./plugins/ids";
@@ -65,6 +65,10 @@ export interface AppState {
   sessionActivities: Record<string, SessionActivity>;
   /** Authoritative projection plus browser-local optimistic overlays for the selected inbox. */
   selectedNotificationInbox: SelectedSessionNotificationInbox | undefined;
+  /** Self-update check result for this host; undefined means not checked yet. */
+  selfUpdate: PiWebSelfUpdateStatus | undefined;
+  /** True while the Update now flow is applying and the page will reconnect. */
+  selfUpdateApplying: boolean;
   workspacesByProjectId: Record<string, Workspace[]>;
   workspaceDeletionRuns: Record<string, TerminalCommandRun>;
   commandDialog: Extract<CommandResult, { type: "select" }> | undefined;
@@ -150,6 +154,8 @@ export function resetWorkspaceScopedState(): WorkspaceScopedStateReset {
 export function initialAppState(): AppState {
   return {
     machines: [],
+    selfUpdate: undefined,
+    selfUpdateApplying: false,
     selectedMachine: undefined,
     isLoadingMachines: false,
     machineStatuses: {},

@@ -1214,3 +1214,52 @@ describe("PiSessionService.streamSnapshot", () => {
     }
   });
 });
+
+describe("activity labels from raw agent events", () => {
+  it("names a turn_start event in user-facing words instead of echoing the event type", async () => {
+    const hub = new CapturingSessionEventHub();
+    let listener: ((event: unknown) => void) | undefined;
+    const fake = fakeRuntime("turn-label-session", {
+      isStreaming: true,
+      subscribe: (next) => {
+        listener = next;
+        return () => undefined;
+      },
+    });
+    const service = new PiSessionService(hub, {
+      agentDir: TEST_AGENT_DIR,
+      modelRuntime: testModelRuntime,
+      createAgentRuntime: runtimeCreator(fake.runtime),
+      sessionManager: sessionGateway([sessionRecord("turn-label-session")]),
+      heartbeatIntervalMs: 60_000,
+    });
+    try {
+      await service.status(sessionRef("turn-label-session"));
+      hub.globalEvents.length = 0;
+      listener?.({ type: "turn_start" });
+
+      const firstActivity = activityUpdate(hub.globalEvents);
+      if (firstActivity === undefined) throw new Error("expected an activity event");
+      expect(firstActivity.activity.label).toBe("turn in progress");
+      expect(firstActivity.activity.phase).toBe("active");
+
+      // An unknown event type still gets a friendly label, never the raw
+      // snake_case event name (which used to surface as e.g. "turn start").
+      hub.globalEvents.length = 0;
+      listener?.({ type: "run_started_whatever" });
+      const generic = activityUpdate(hub.globalEvents);
+      if (generic === undefined) throw new Error("expected an activity event");
+      expect(generic.activity.label).toBe("working");
+    } finally {
+      await service.dispose();
+    }
+  });
+});
+
+interface ActivityUpdateEvent { type: string; activity?: { label: string; phase: string; sessionId: string } }
+function activityUpdate(events: readonly ActivityUpdateEvent[]): { activity: { label: string; phase: string; sessionId: string } } | undefined {
+  const event = events.find((candidate) => candidate.type === "activity.update");
+  if (event === undefined) return undefined;
+  if (event.activity === undefined) return undefined;
+  return { activity: event.activity };
+}

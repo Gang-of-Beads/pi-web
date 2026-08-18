@@ -1,6 +1,6 @@
-import { LitElement, html } from "lit";
+import { LitElement, html, type TemplateResult } from "lit";
 import { customElement, query, state } from "lit/decorators.js";
-import { configApi, effectiveWorkspaceUploadFolder, projectsApi, sessionsApi, terminalsApi, workspacesApi, workspaceEffectiveUploadFolder, type AskUserSubmission, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo,
+import { configApi, effectiveWorkspaceUploadFolder, projectsApi, selfUpdateApi, sessionsApi, terminalsApi, workspacesApi, workspaceEffectiveUploadFolder, type AskUserSubmission, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo,
   type SessionSubagentInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
 import type { AppAction } from "../actions";
 import { initialAppState, type AppState } from "../appState";
@@ -146,6 +146,7 @@ export class PiWebApp extends LitElement {
       notifications: this.notifications,
       onSelectedSessionReady: ({ machineId, session }) => {
         void this.commitReadyChatAfterRender(machineId, session);
+        void this.refreshSelfUpdate();
       },
       replacePromptEditorText: async ({ machineId, sessionId, text }) => {
         await this.updateComplete;
@@ -354,6 +355,81 @@ export class PiWebApp extends LitElement {
     }
   }
 
+  /**
+   * Interactive self-update: check the fork remote (cheap, daemon-cached) and
+   * surface an "Update now / Skip" banner like the pi extension updater. The
+   * trigger is opening a session, which is when someone actually reads the
+   * page; a background timer is exactly the machinery the user asked not to
+   * have.
+   */
+  private selfUpdateCooldownUntil = 0;
+  private async refreshSelfUpdate(): Promise<void> {
+    if (Date.now() < this.selfUpdateCooldownUntil) return;
+    this.selfUpdateCooldownUntil = Date.now() + 60_000;
+    try {
+      const status = await selfUpdateApi.status();
+      this.setState({ selfUpdate: status });
+    } catch (error) {
+      // A disabled host answers with enabled:false; a hard failure just means
+      // no banner. Neither is worth an error toast on every session open.
+      console.warn("Self-update status check failed", error);
+    }
+  }
+
+  private async applySelfUpdate(): Promise<void> {
+    if (this.state.selfUpdateApplying) return;
+    this.setState({ selfUpdateApplying: true });
+    try {
+      const result = await selfUpdateApi.apply();
+      if (!result.started) {
+        this.setState({ selfUpdateApplying: false });
+        if (result.error !== undefined) {
+          this.setState({ error: `Update failed: ${result.error}` });
+          this.scheduleTransientErrorDismissal(`Update failed: ${result.error}`);
+        }
+      }
+      // On success the page keeps saying "reconnecting…"; the socket comes
+      // back after the restart. The applying flag stays up until then.
+    } catch {
+      this.setState({ selfUpdateApplying: false });
+      this.setState({ error: "Update request failed" });
+      this.scheduleTransientErrorDismissal("Update request failed");
+    }
+  }
+
+  private skipSelfUpdate(): void {
+    const latest = this.state.selfUpdate?.latest;
+    if (latest === undefined) return;
+    try {
+      window.localStorage.setItem("piWebSelfUpdateSkipped", latest);
+    } catch {
+      // Private mode: skipping just lasts this visit.
+    }
+    this.setState({ selfUpdate: undefined });
+  }
+
+  /** Render the "Update now / Skip" strip above the session view. */
+  private renderSelfUpdateBanner(): TemplateResult | null {
+    const status = this.state.selfUpdate;
+    if (status === undefined || !status.enabled || !status.available) return null;
+    if (this.state.selfUpdateApplying) {
+      return html`
+        <div class="self-update-banner applying" role="status" aria-live="polite">
+          <span class="state-dots"><span class="state-dot"></span><span class="state-dot"></span><span class="state-dot"></span></span>
+          <span>正在更新 pi-web（${status.current} → ${status.latest ?? "new"}）… 重启后页面将自动重连。</span>
+        </div>`;
+    }
+    let skipped = false;
+    try { skipped = window.localStorage.getItem("piWebSelfUpdateSkipped") === status.latest; } catch { /* ignore */ }
+    if (skipped) return null;
+    return html`
+      <div class="self-update-banner" role="status" aria-live="polite">
+        <span>pi-web 有新版本：${status.current} → ${status.latest ?? "new"}</span>
+        <button type="button" @click=${() => { void this.applySelfUpdate(); }}>Update now</button>
+        <button type="button" class="skip" @click=${() => { this.skipSelfUpdate(); }}>Skip</button>
+      </div>`;
+  }
+
   private syncUnreadSessionIds(): void {
     const next = this.sessionUnread.unreadSessionIds(selectedMachineId(this.state), this.state.sessions);
     if (!sameStringSet(next, this.unreadSessionIds)) this.unreadSessionIds = next;
@@ -407,6 +483,7 @@ export class PiWebApp extends LitElement {
     this.syncSessionUnreadMachines();
     this.piWebStatusTimer = window.setInterval(() => { this.schedulePiWebStatusRefresh(); }, PI_WEB_STATUS_REFRESH_MS);
     void this.loadClientConfig();
+    void this.refreshSelfUpdate();
     void this.ensureGatewayPluginsLoaded();
     void this.loadProjectsAndRestoreRoute().finally(() => { this.schedulePiWebStatusRefresh(); });
   }
@@ -2396,6 +2473,7 @@ export class PiWebApp extends LitElement {
           ${this.renderContextBar()}
           ${this.renderMobileMainTabs()}
           ${this.renderErrorBanner(state.error)}
+          ${this.renderSelfUpdateBanner()}
           ${deprecatedAgentInputsBanner(deprecatedAgentInputsWarnings(state.machines, state.machineRuntimes))}
           <div class="mobile-navigation-panel">${this.appShell.isMobileNavigationLayout ? this.renderNavigationPanel() : null}</div>
           ${state.selectedSession ? html`

@@ -180,6 +180,13 @@ export const appStyles = css`
   .deprecation-notice { padding: 10px 16px; border-bottom: 1px solid var(--pi-border); color: var(--pi-warning); }
   .deprecation-notice .deprecation-notice-text { margin: 0; overflow-wrap: anywhere; }
   .deprecation-notice .deprecation-notice-text + .deprecation-notice-text { margin-top: 4px; }
+
+  .self-update-banner { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; box-sizing: border-box; margin: 0 12px 10px; border: 1px solid var(--pi-warning-border); border-radius: 10px; background: var(--pi-warning-surface); color: var(--pi-warning); padding: 8px 12px; font-size: 13px; }
+  .self-update-banner.applying { border-color: var(--pi-accent-border); background: var(--pi-surface); color: var(--pi-text); }
+  .self-update-banner button { min-height: 32px; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); cursor: pointer; padding: 4px 10px; }
+  .self-update-banner button:hover { border-color: var(--pi-accent); }
+  .self-update-banner button.skip { color: var(--pi-muted); background: transparent; }
+  .self-update-banner .state-dot { background: currentColor; }
 `;
 
 export const workspacePanelStyles = css`

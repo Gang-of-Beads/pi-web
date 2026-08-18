@@ -3597,6 +3597,7 @@ export class PiSessionService implements SessionRouteService {
       return;
     }
     if (eventType === "turn_end") { this.publishActivity(session, "turn complete", "idle"); return; }
+    if (eventType === "turn_start") { this.publishActivity(session, "turn in progress", "active"); return; }
     if (eventType === "message_start") { this.publishActivity(session, "message started", "active"); return; }
     if (eventType === "message_end") { this.publishActivity(session, "message complete", "idle"); return; }
     if (eventType === "message_update") { this.publishActivity(session, "receiving response", "active"); return; }
@@ -3608,7 +3609,7 @@ export class PiSessionService implements SessionRouteService {
     }
     if (eventType === "bash_execution_start") { this.publishActivity(session, "running bash", "active"); return; }
     if (eventType === "bash_execution_end") { this.publishActivity(session, "bash complete", "idle"); return; }
-    if (this.hasActiveWork(session)) this.publishActivity(session, eventType.replaceAll("_", " "), "active");
+    if (this.hasActiveWork(session)) this.publishActivity(session, "working", "active");
   }
 
   /**

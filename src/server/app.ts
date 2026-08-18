@@ -32,6 +32,7 @@ import {
 } from "./activeAgentProfileProvider.js";
 import { MachineService } from "./machines/machineService.js";
 import { registerMachineRoutes } from "./machines/machineRoutes.js";
+import { registerSelfUpdateRoutes } from "./updates/selfUpdateRoutes.js";
 import { registerMachineProxyRoutes } from "./machines/machineProxyRoutes.js";
 import { registerPluginBackendProxyRoutes } from "./plugins/pluginBackendProxyRoutes.js";
 import { proxyMachinePluginAsset, registerMachinePluginProxyRoutes } from "./machines/machinePluginProxyRoutes.js";
@@ -226,6 +227,7 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
 
   registerMachineRoutes(app, machines);
   registerMachinePluginProxyRoutes(app, machines);
+  registerSelfUpdateRoutes(app);
 
   registerLocalProjectRoutes(app, projects, workspaces, "/api", { config: configService });
   registerLocalProjectRoutes(app, projects, workspaces, "/api/machines/local", { config: configService });
