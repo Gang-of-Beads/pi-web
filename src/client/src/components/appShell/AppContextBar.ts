@@ -211,6 +211,9 @@ export class AppContextBar extends LitElement {
   };
 
   static override styles = css`
+    /* Shell styles do not cross a shadow boundary, so the tap-highlight
+       suppression is repeated for components that define their own. */
+    button, [role="button"], a, summary, label, input { -webkit-tap-highlight-color: transparent; }
     /* Keep the refresh menu in this shadow tree above the following mobile tab strip. */
     :host { position: relative; z-index: 20; flex: 0 0 auto; min-width: 0; }
     .context-bar { position: relative; flex: 0 0 auto; min-width: 0; display: flex; align-items: center; gap: 0; padding: 6px 0; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); }

@@ -231,6 +231,13 @@ export const workspacePanelStyles = css`
 `;
 
 export const listStyles = css`
+  /* Mobile browsers paint a rectangular highlight on tap, which looks pasted-on
+     over a round or rounded control. Suppressed in favour of the app's own
+     pressed and focus styling; :focus-visible still shows keyboard focus, so
+     nothing is lost for keyboard users. */
+  button, [role="button"], a, summary, label, input, select { -webkit-tap-highlight-color: transparent; }
+  /* Follows the control's own shape rather than boxing a circle. */
+  button:focus-visible, [role="button"]:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 2px; border-radius: inherit; }
   /* Motion is a preference, not a decoration: a user who asks for less of it
      gets none. Kept to a blanket rule because every animation here is
      ornamental — progress bars, pulses, fades — so there is no reduced variant
@@ -332,6 +339,13 @@ export const listStyles = css`
 `;
 
 export const chatStyles = css`
+  /* Mobile browsers paint a rectangular highlight on tap, which looks pasted-on
+     over a round or rounded control. Suppressed in favour of the app's own
+     pressed and focus styling; :focus-visible still shows keyboard focus, so
+     nothing is lost for keyboard users. */
+  button, [role="button"], a, summary, label, input, select { -webkit-tap-highlight-color: transparent; }
+  /* Follows the control's own shape rather than boxing a circle. */
+  button:focus-visible, [role="button"]:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 2px; border-radius: inherit; }
   /* Motion is a preference, not a decoration: a user who asks for less of it
      gets none. Kept to a blanket rule because every animation here is
      ornamental — progress bars, pulses, fades — so there is no reduced variant
@@ -561,6 +575,13 @@ export const autocompleteStyles = css`
 `;
 
 export const promptEditorStyles = css`
+  /* Mobile browsers paint a rectangular highlight on tap, which looks pasted-on
+     over a round or rounded control. Suppressed in favour of the app's own
+     pressed and focus styling; :focus-visible still shows keyboard focus, so
+     nothing is lost for keyboard users. */
+  button, [role="button"], a, summary, label, input, select { -webkit-tap-highlight-color: transparent; }
+  /* Follows the control's own shape rather than boxing a circle. */
+  button:focus-visible, [role="button"]:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 2px; border-radius: inherit; }
   /* Motion is a preference, not a decoration: a user who asks for less of it
      gets none. Kept to a blanket rule because every animation here is
      ornamental — progress bars, pulses, fades — so there is no reduced variant

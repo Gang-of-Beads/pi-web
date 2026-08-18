@@ -331,6 +331,9 @@ export class AppNavigationPanel extends LitElement {
   }
 
   static override styles = css`
+    /* Shell styles do not cross a shadow boundary, so the tap-highlight
+       suppression is repeated for components that define their own. */
+    button, [role="button"], a, summary, label, input { -webkit-tap-highlight-color: transparent; }
     /* This panel defines its own styles rather than adopting the shared list
        block, so the tap rule has to be repeated: shell styles do not cross a
        component's shadow boundary. */
