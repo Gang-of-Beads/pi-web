@@ -1,4 +1,4 @@
-import { LitElement, html } from "lit";
+import { LitElement, html, type TemplateResult } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import { ChatDisclosureController } from "../chatDisclosure";
@@ -26,7 +26,7 @@ import {
   type SessionNotificationTarget,
 } from "../sessionNotifications";
 import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
-import type { SessionNotification } from "../../../shared/apiTypes";
+import type { SessionNotification, SessionSubagentInfo } from "../../../shared/apiTypes";
 import type { ChatLine, ChatPart } from "./shared";
 import { chatStyles, renderSessionWarningIcon } from "./shared";
 import "./AskUserCard";
@@ -214,6 +214,10 @@ export class ChatView extends LitElement {
    */
   @property({ attribute: false }) onResendMessage?: (prompt: RecoveredPrompt) => void | Promise<void>;
   @property({ attribute: false }) notificationInbox?: SelectedSessionNotificationView;
+  /** Child sessions (subagents) spawned by this session, most urgent first. */
+  @property({ attribute: false }) subagents?: readonly SessionSubagentInfo[];
+  /** Open a listed subagent in the navigation. */
+  @property({ attribute: false }) onOpenSubagent?: (subagent: SessionSubagentInfo) => void;
   @property({ attribute: false }) onClearServerQueue?: () => void;
   @property({ attribute: false }) onDismissWarning?: (dismissId: string) => void;
   @property({ attribute: false }) onDismissNotification?: (notificationId: string) => void;
@@ -452,8 +456,42 @@ export class ChatView extends LitElement {
   private renderTopNotices() {
     const warnings = this.renderWarnings();
     const notifications = this.renderNotificationTray();
-    if (warnings === null && notifications === null) return null;
-    return html`<div class="top-notices">${warnings}${notifications}</div>`;
+    const subagents = this.renderSubagents();
+    if (warnings === null && notifications === null && subagents === null) return null;
+    return html`<div class="top-notices">${warnings}${notifications}${subagents}</div>`;
+  }
+
+  /**
+   * Compact strip of the subagents this session spawned.
+   *
+   * A parent conversation stays open while its children run; without this the
+   * only way to see them was the agent tools' own output. The strip is small on
+   * purpose -- the point is to know who is still working and to be able to jump
+   * to one, not to host a transcription next to the parent's.
+   */
+  private renderSubagents(): TemplateResult | null {
+    const subagents = this.subagents;
+    if (subagents === undefined || subagents.length === 0) return null;
+    const rows = subagentRows(subagents);
+    const heading = `${rows.some((row) => row.status === "working") ? "◌ " : ""}Subagents (${String(rows.length)})`;
+    return html`
+      <section class="subagents-strip" role="region" aria-label="Subagents">
+        <strong class="subagents-heading">${heading}</strong>
+        ${rows.map((row, index) => html`
+          <button
+            type="button"
+            class="subagent-row subagent-open-${index}"
+            title=${row.cwd}
+            aria-label=${row.ariaLabel}
+            @click=${() => { this.onOpenSubagent?.(row.subagent); }}
+          >
+            <span class="subagent-dot ${row.status}" aria-hidden="true"></span>
+            <span class="subagent-id" dir="ltr">${row.shortId}</span>
+            <span class="subagent-status">${row.statusLabel}</span>
+          </button>
+        `)}
+      </section>
+    `;
   }
 
   private renderNotificationTray() {
@@ -1427,4 +1465,35 @@ export class ChatView extends LitElement {
   }
 
   static override styles = chatStyles;
+}
+
+/**
+ * Row fields for the subagents strip, derived once so the presentation layer
+ * stays a dumb map and the shape is testable directly (mirrors
+ * chatSessionWarningRows).
+ */
+export interface SubagentRow {
+  subagent: SessionSubagentInfo;
+  shortId: string;
+  status: SessionSubagentInfo["status"];
+  /** "Working"/"idle"/"error"/"unknown": the word shown in the strip. */
+  statusLabel: string;
+  cwd: string;
+  ariaLabel: string;
+}
+
+export function subagentRows(subagents: readonly SessionSubagentInfo[]): SubagentRow[] {
+  return subagents.map((subagent) => {
+    const status = subagent.status;
+    const shortId = subagent.sessionId.slice(-8);
+    const statusLabel = status === "working" ? "Working" : status;
+    return {
+      subagent,
+      shortId,
+      status,
+      statusLabel,
+      cwd: subagent.cwd,
+      ariaLabel: `${statusLabel} subagent ${shortId}`,
+    };
+  });
 }

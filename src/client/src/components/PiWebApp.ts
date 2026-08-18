@@ -1,6 +1,7 @@
 import { LitElement, html } from "lit";
 import { customElement, query, state } from "lit/decorators.js";
-import { configApi, effectiveWorkspaceUploadFolder, projectsApi, sessionsApi, terminalsApi, workspacesApi, workspaceEffectiveUploadFolder, type AskUserSubmission, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
+import { configApi, effectiveWorkspaceUploadFolder, projectsApi, sessionsApi, terminalsApi, workspacesApi, workspaceEffectiveUploadFolder, type AskUserSubmission, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo,
+  type SessionSubagentInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
 import type { AppAction } from "../actions";
 import { initialAppState, type AppState } from "../appState";
 import { isSessionActive } from "../../../shared/activity";
@@ -320,6 +321,35 @@ export class PiWebApp extends LitElement {
     void this.sessions.loadInterruptedRuns(machineId).then((ids) => {
       if (ids.size > 0) this.interruptedSessionIds = ids;
     });
+  }
+
+  /**
+   * Refresh the subagent strip for the selected session.
+   *
+   * Fetch-on-select is enough: a subagent appears the moment its parent spawns
+   * it, and opening the parent again is when the user wants to see them. The
+   * strip disappears on its own when a subagent finishes.
+   */
+  /** Open a subagent session listed anywhere in the machine. */
+  private openSubagent(info: SessionSubagentInfo): void {
+    const session = this.quickSwitcherSessions.find((entry) => entry.id === info.sessionId) ??
+      this.state.sessions.find((entry) => entry.id === info.sessionId);
+    if (session === undefined) return;
+    void this.selectNavigationItem("sessions", "chat", () => this.sessions.selectSession(session));
+  }
+
+  private async refreshSubagents(): Promise<void> {
+    const session = this.state.selectedSession;
+    if (session === undefined) return;
+    try {
+      const machineId = selectedMachineId(this.state);
+      const snapshot = await sessionsApi.subsessions(session, machineId);
+      if (this.state.selectedSession?.id !== session.id || selectedMachineId(this.state) !== machineId) return;
+      if (sameSubagents(snapshot.subsessions, this.state.subagents)) return;
+      this.setState({ subagents: snapshot.subsessions });
+    } catch {
+      // A failed read leaves the previous strip; the error banner shows why.
+    }
   }
 
   private syncUnreadSessionIds(): void {
@@ -1308,13 +1338,13 @@ export class PiWebApp extends LitElement {
         .onDeleteWorkspace=${(workspace: Workspace) => { void this.deleteWorkspace(workspace); }}
         .onArchivedCollapsed=${() => { this.sessions.clearSelectionAfterArchivedCollapse(); }}
         .onStartSession=${() => this.startSessionFromNavigation()}
-        .onSelectSession=${(session: SessionInfo) => this.selectNavigationItem("sessions", "chat", () => this.sessions.selectSession(session))}
+        .onSelectSession=${(session: SessionInfo) => this.selectNavigationItem("sessions", "chat", () => this.sessions.selectSession(session).finally(() => { void this.refreshSubagents(); }))}
         .onMarkSessionRead=${(session: SessionInfo) => { this.markSessionsRead([session]); }}
         .onMarkSessionsRead=${(sessions: SessionInfo[]) => { this.markSessionsRead(sessions); }}
         .onArchiveSession=${(session: SessionInfo) => this.sessions.archiveSession(session)}
         .onArchiveSessionWithDescendants=${(session: SessionInfo) => this.sessions.archiveSessionWithDescendants(session)}
         .onArchiveSessions=${(sessions: SessionInfo[]) => this.sessions.archiveSessions(sessions)}
-        .onRestoreSession=${(session: SessionInfo) => this.selectNavigationItem("sessions", "chat", () => this.sessions.restoreSession(session))}
+        .onRestoreSession=${(session: SessionInfo) => this.selectNavigationItem("sessions", "chat", () => this.sessions.restoreSession(session).finally(() => { void this.refreshSubagents(); }))}
         .onDeleteCachedNewSession=${(session: SessionInfo) => this.sessions.deleteCachedNewSession(session)}
         .onDeleteArchivedSession=${(session: SessionInfo) => this.sessions.deleteArchivedSessions([session])}
         .onDeleteArchivedSessions=${(sessions: SessionInfo[]) => this.sessions.deleteArchivedSessions(sessions)}
@@ -2288,6 +2318,7 @@ export class PiWebApp extends LitElement {
         .workspace=${this.state.selectedWorkspace}
         .session=${this.state.selectedSession}
         ?emphasizeSession=${this.state.mainView === "chat"}
+        ?isWorking=${this.state.mainView === "chat" && this.state.selectedSession !== undefined && isActive(this.state)}
         .refreshControl=${this.appShell.shouldShowAppRefreshInContextBar() ? this.renderAppRefresh() : undefined}
         .onOpenSection=${(section: NavigationSection) => { this.openNavigationSection(section); }}
         .onQuickSwitch=${() => { this.openQuickSwitcher(); }}
@@ -2446,6 +2477,14 @@ function shouldRefreshMachineActivity(machine: Machine, health: MachineHealth | 
 
 function patchChangesState(state: AppState, patch: Partial<AppState>): boolean {
   return Object.entries(patch).some(([key, value]) => Reflect.get(state, key) !== value);
+}
+
+function sameSubagents(left: readonly SessionSubagentInfo[], right: readonly SessionSubagentInfo[]): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((entry, index) => {
+    const other = right[index];
+    return other?.sessionId === entry.sessionId && other.status === entry.status;
+  });
 }
 
 function sameStringSet(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {

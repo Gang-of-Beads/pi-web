@@ -22,6 +22,8 @@ export class AppContextBar extends LitElement {
   @property({ attribute: false }) onQuickSwitch?: () => void;
   /** Rename the session being read. Absent when renaming is not available. */
   @property({ attribute: false }) onRenameSession?: (name: string) => void;
+  /** Whether the session being read has work in progress. */
+  @property({ type: Boolean }) isWorking = false;
   /**
    * Lead with the session instead of the full location trail.
    *
@@ -101,6 +103,14 @@ export class AppContextBar extends LitElement {
               aria-label=${`Session: ${label}. Open session selection.`}
               @click=${() => { this.openSessions(); }}
             >${label}</button>`}
+        ${this.isWorking
+          ? html`<span
+              class="context-working"
+              role="status"
+              aria-label="Session is working"
+              title="Session is working"
+            ><span class="context-working-dot"></span><span class="context-working-dot"></span><span class="context-working-dot"></span></span>`
+          : null}
         ${this.onRenameSession === undefined || this.session === undefined || this.renamingSession
           ? null
           : html`<button
@@ -265,6 +275,16 @@ export class AppContextBar extends LitElement {
        bar or move the controls beside it under the user's thumb. */
     .context-session-input { flex: 1 1 auto; min-width: 0; box-sizing: border-box; min-height: 32px; padding: 4px 8px; border: 1px solid var(--pi-accent); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text-bright); font: inherit; }
     .context-session-input:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }
+    /* Three dots like a messenger typing indicator: unmistakable at a glance,
+       and the dots keep a visible static layout under reduced motion. */
+    .context-working { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 3px; min-height: 32px; padding: 4px 8px; }
+    .context-working-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--pi-accent, var(--pi-text-bright)); animation: context-working-bounce 1.2s ease-in-out infinite; }
+    .context-working-dot:nth-child(2) { animation-delay: .2s; }
+    .context-working-dot:nth-child(3) { animation-delay: .4s; }
+    @keyframes context-working-bounce { 0%, 60%, 100% { transform: translateY(0); opacity: .55; } 30% { transform: translateY(-3px); opacity: 1; } }
+    @media (prefers-reduced-motion: reduce) {
+      .context-working-dot { animation: none; opacity: .8; }
+    }
     .context-session-rename { flex: 0 0 auto; display: inline-grid; place-items: center; width: 32px; min-height: 32px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--pi-muted); font-size: 14px; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
     .context-session-rename:hover, .context-session-rename:focus-visible { background: var(--pi-selection-bg); color: var(--pi-text-bright); }
     .context-session-rename:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }

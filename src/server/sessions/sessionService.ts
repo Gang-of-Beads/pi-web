@@ -34,6 +34,7 @@ import type {
   SessionStreamSnapshot,
 } from "../types.js";
 import type { NormalizedSessionCleanupRequest } from "./sessionCleanup.js";
+import type { SubsessionSummary } from "./spawnSubsessionTool.js";
 
 export type SessionRouteRef = ClientSessionRef;
 
@@ -84,6 +85,14 @@ export interface SessionRouteService {
   deleteArchivedMany(refs: readonly SessionBulkMutationRef[]): Promise<SessionBulkDeleteArchivedResponse>;
   shell(ref: SessionRouteRef, text: string): Promise<void>;
   runCommand(ref: SessionRouteRef, text: string): Promise<ClientCommandResult>;
+  /**
+   * Child sessions the agent spawned while working in this session.
+   *
+   * The web UI shows them so a parent conversation does not end the moment its
+   * own turn does: the children keep running and now have somewhere visible to
+   * live. Returned with the fields the client needs to label and reopen them.
+   */
+  subsessions(ref: SessionRouteRef): Promise<SubsessionSummary[]>;
   respondToCommand(ref: SessionRouteRef, requestId: string, value: string): Promise<ClientCommandResult>;
   navigateTree(ref: SessionRouteRef, request: ClientSessionTreeNavigateRequest): Promise<ClientSessionTreeNavigateResult>;
   forkFromTree(ref: SessionRouteRef, request: ClientSessionTreeForkRequest): Promise<ClientSessionTreeForkResult>;

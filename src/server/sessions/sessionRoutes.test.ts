@@ -82,6 +82,34 @@ describe("session routes", () => {
     }
   });
 
+  it("serves the subsessions a parent session spawned, needing only a cwd", async () => {
+    const routeApp = Fastify({ logger: false });
+    await routeApp.register(fastifyWebsocket);
+    const eventHub = new SessionEventHub();
+    const routeService = new CapturingRouteSessionService();
+    routeService.subsessionsResponse = [
+      { sessionId: "child-1", cwd: "/repo/.subagents", status: "working" },
+      { sessionId: "child-2", cwd: "/repo/.subagents", status: "idle" },
+    ];
+    registerSessionRoutes(routeApp, routeService, eventHub);
+
+    try {
+      const response = await routeApp.inject({ method: "GET", url: "/sessions/session-1/subsessions?cwd=%2Frepo" });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({
+        subsessions: [
+          { sessionId: "child-1", cwd: "/repo/.subagents", status: "working" },
+          { sessionId: "child-2", cwd: "/repo/.subagents", status: "idle" },
+        ],
+      });
+      expect(routeService.subsessionsCalls).toEqual([{ id: "session-1", cwd: "/repo" }]);
+    } finally {
+      await routeService.dispose();
+      await routeApp.close();
+    }
+  });
+
   it("serves the session status catalog without capturing 'statuses' as a session id", async () => {
     const routeApp = Fastify({ logger: false });
     await routeApp.register(fastifyWebsocket);
@@ -1267,6 +1295,13 @@ class CapturingRouteSessionService implements SessionRouteService {
       mimeType: attachment.mimeType,
       size: Buffer.from(attachment.data, "base64").byteLength,
     })));
+  }
+
+  readonly subsessionsCalls: SessionRouteRef[] = [];
+  subsessionsResponse: import("./spawnSubsessionTool.js").SubsessionSummary[] = [];
+  subsessions(ref: SessionRouteRef): Promise<import("./spawnSubsessionTool.js").SubsessionSummary[]> {
+    this.subsessionsCalls.push(ref);
+    return Promise.resolve(this.subsessionsResponse);
   }
 
   shell(): never { throw unusedRouteMethod("shell"); }

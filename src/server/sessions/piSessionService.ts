@@ -1997,6 +1997,19 @@ export class PiSessionService implements SessionRouteService {
     return this.statusFromSession(session);
   }
 
+  /**
+   * Web-facing view of the subsessions this session spawned.
+   *
+   * The agent tools get list/check/read keyed by parent file; the browser only
+   * has the parent's ref, so it is resolved here first. A session whose
+   * subsessions are not tracked simply has none to show, which also covers a
+   * deployment where the feature is disabled.
+   */
+  async subsessions(ref: PiSessionRef): Promise<SubsessionSummary[]> {
+    const session = await this.getOrOpen(ref);
+    return this.listSubsessions(session.sessionId, session.sessionManager.getSessionFile());
+  }
+
   async commands(ref: PiSessionRef): Promise<ClientCommand[]> {
     const session = await this.getOrOpen(ref);
     const commands: ClientCommand[] = [...BUILTIN_COMMANDS];

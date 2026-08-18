@@ -42,6 +42,7 @@ import {
   parseSessionNotificationInboxSnapshot,
   parseSessionStatus,
   parseSessionStatusCatalogSnapshot,
+  parseSessionSubagentsSnapshot,
   parseInterruptedRunSnapshot,
   parseWorkspaceGoalsResponse,
   parseSessionUnreadCatalogSnapshot,
@@ -222,6 +223,8 @@ export const sessionsApi = {
   // Reading this clears it on the daemon, so it is fetched once per connection
   // rather than polled: the record answers "what did the last restart cut off".
   interruptedRuns: (machineId = "local") => request(`${machinePrefix(machineId)}/sessions/interrupted`, parseInterruptedRunSnapshot, { cache: "no-store" }),
+  subsessions: (session: SessionRef, machineId = "local") =>
+    request(`${sessionPath(session, "subsessions", machineId)}?cwd=${encodeURIComponent(session.cwd)}`, parseSessionSubagentsSnapshot, { cache: "no-store" }),
   acknowledgeUnread: (session: SessionRef, catalogId: string, throughCompletionOrder: number, machineId = "local") => {
     const body: SessionUnreadAcknowledgeRequest = { cwd: session.cwd, catalogId, throughCompletionOrder };
     return request(sessionPath(session, "unread/acknowledge", machineId), parseSessionUnreadCatalogSnapshot, { method: "POST", body: JSON.stringify(body) });

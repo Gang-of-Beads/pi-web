@@ -83,6 +83,7 @@ async function mount(options: {
   onOpenSection?: (section: NavigationSection) => void;
   onQuickSwitch?: () => void;
   onRenameSession?: (name: string) => void;
+  isWorking?: boolean;
 }): Promise<ShadowRoot> {
   const bar = new AppContextBar();
   bar.machines = [];
@@ -94,6 +95,7 @@ async function mount(options: {
   if (options.onOpenSection !== undefined) bar.onOpenSection = options.onOpenSection;
   if (options.onQuickSwitch !== undefined) bar.onQuickSwitch = options.onQuickSwitch;
   if (options.onRenameSession !== undefined) bar.onRenameSession = options.onRenameSession;
+  if (options.isWorking !== undefined) bar.isWorking = options.isWorking;
   document.body.append(bar);
   await bar.updateComplete;
   const root = bar.shadowRoot;
@@ -181,5 +183,19 @@ describe("renaming the current session in place", () => {
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     // Clearing a name by accident is the failure worth preventing here.
     expect(onRenameSession).not.toHaveBeenCalled();
+  });
+});
+
+describe("working indicator", () => {
+  it("shows animated dots while the session is working and hides them when idle", async () => {
+    const busy = await mount({ emphasizeSession: true, isWorking: true });
+    const busyDots = busy.querySelectorAll(".context-working-dot");
+    expect(busyDots.length).toBe(3);
+    const indicator = busy.querySelector(".context-working");
+    expect(indicator?.getAttribute("role")).toBe("status");
+    expect(indicator?.getAttribute("aria-label")).toBe("Session is working");
+
+    const idle = await mount({ emphasizeSession: true, isWorking: false });
+    expect(idle.querySelector(".context-working")).toBeNull();
   });
 });

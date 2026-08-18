@@ -1355,3 +1355,14 @@ export interface InterruptedRunInfo {
 export interface InterruptedRunSnapshot {
   readonly runs: readonly InterruptedRunInfo[];
 }
+
+/** A child session spawned by a parent session (subagent), as shown to the web UI. */
+export interface SessionSubagentInfo {
+  readonly sessionId: string;
+  readonly cwd: string;
+  readonly status: "working" | "idle" | "error" | "unknown";
+}
+
+export interface SessionSubagentsSnapshot {
+  readonly subsessions: readonly SessionSubagentInfo[];
+}
