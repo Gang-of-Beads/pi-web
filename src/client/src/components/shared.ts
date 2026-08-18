@@ -399,20 +399,36 @@ export const chatStyles = css`
   .notification-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; box-sizing: border-box; padding: 0 10px 5px; }
   .notification-list[hidden] { display: none; }
   .notification-overflow { margin: 0; padding: 7px 2px; border-bottom: 1px solid var(--pi-border-muted); color: var(--pi-muted); font-size: 11px; overflow-wrap: anywhere; }
-  .notification-row { position: relative; min-width: 0; display: grid; gap: 4px; box-sizing: border-box; padding: 9px 38px 9px 2px; border-bottom: 1px solid var(--pi-border-muted); color: var(--pi-text); }
+  /* Severity is carried by the row itself, not only by a small coloured word:
+     an error and a routine notice were otherwise structurally identical, so the
+     tray had to be read to be triaged. The accent is a left border plus a very
+     light wash, which stays legible in both themes without shouting. */
+  .notification-row { position: relative; min-width: 0; display: grid; gap: 4px; box-sizing: border-box; margin: 6px 0; padding: 9px 10px 9px 11px; border: 1px solid var(--pi-border-muted); border-left: 3px solid var(--pi-border); border-radius: 8px; color: var(--pi-text); }
+  .notification-row.warning { border-left-color: var(--pi-warning); background: color-mix(in srgb, var(--pi-warning) 6%, transparent); }
+  .notification-row.error { border-left-color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 7%, transparent); }
   .notification-row:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: -2px; }
   .notification-metadata { min-width: 0; display: flex; align-items: baseline; gap: 5px; color: var(--pi-muted); font-size: 11px; }
   .notification-severity { color: var(--pi-muted); font-size: inherit; font-weight: 600; }
   .notification-row.warning .notification-severity { color: var(--pi-warning); }
   .notification-row.error .notification-severity { color: var(--pi-danger); }
-  .notification-message { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; text-align: start; unicode-bidi: plaintext; }
+  .notification-message { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; text-align: start; unicode-bidi: plaintext; -webkit-user-select: text; user-select: text; }
+  /* Only the first line needs to clear the buttons; later lines use the full
+     width, so a long error does not wrap into a narrow column. */
+  .notification-metadata { padding-right: 72px; }
   .notification-truncated { margin: 0; color: var(--pi-muted); font-size: 11px; overflow-wrap: anywhere; }
-  .notification-row-dismiss { position: absolute; top: 5px; right: 0; display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; }
+  /* Copy and dismiss sit together in one cluster rather than one floating over
+     the text: the message wraps under them, so an absolute button either
+     overlapped the text or forced padding that made every row look ragged. */
+  .notification-row-actions { position: absolute; top: 4px; right: 4px; display: flex; gap: 2px; }
+  .notification-row-dismiss, .notification-row-copy { display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; }
+  .notification-row-copy { min-height: 32px; border: 0; border-radius: 6px; background: transparent; color: var(--pi-muted); font-size: 14px; cursor: pointer; }
+  .notification-row-copy:hover, .notification-row-copy:focus-visible { background: var(--pi-selection-bg); color: var(--pi-text-bright); }
+  .notification-row-copy:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }
   .visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0 0 0 0) !important; clip-path: inset(50%) !important; white-space: nowrap !important; border: 0 !important; }
   .notification-live span { display: block; }
   @media (pointer: coarse) {
-    .notification-control, .notification-row-dismiss { min-height: 34px; }
-    .notification-toggle, .notification-row-dismiss { width: 34px; height: 34px; }
+    .notification-control, .notification-row-dismiss, .notification-row-copy { min-height: 34px; }
+    .notification-toggle, .notification-row-dismiss, .notification-row-copy { width: 34px; height: 34px; }
     .notification-row { padding-right: 40px; }
   }
   @media (max-width: 520px) {

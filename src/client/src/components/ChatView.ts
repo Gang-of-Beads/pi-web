@@ -26,6 +26,7 @@ import {
   type SessionNotificationTarget,
 } from "../sessionNotifications";
 import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
+import type { SessionNotification } from "../../../shared/apiTypes";
 import type { ChatLine, ChatPart } from "./shared";
 import { chatStyles, renderSessionWarningIcon } from "./shared";
 import "./AskUserCard";
@@ -225,6 +226,7 @@ export class ChatView extends LitElement {
   @state() private pinnedToBottom = true;
   @state() private zoomedImage: { src: string; alt: string } | undefined = undefined;
   @state() private expandedMetaKey: string | undefined;
+  @state() private copiedNotificationId: string | undefined;
   @state() private copiedMessageKey: string | undefined;
   @state() private currentConversationIndex: number | undefined;
   @state() private collapsedNotificationTargetKeys: ReadonlySet<string> = new Set();
@@ -504,14 +506,23 @@ export class ChatView extends LitElement {
                 </div>
                 <p class="notification-message" dir="auto">${notification.message}</p>
                 ${truncationLabel === undefined ? null : html`<p class="notification-truncated">${truncationLabel}</p>`}
-                <button
-                  type="button"
-                  class="notification-row-dismiss"
-                  aria-label=${notificationDismissLabel(notification)}
-                  title="Dismiss notification"
-                  ?disabled=${inbox.pendingDismissedIds.has(notification.id) || inbox.dismissAllPending || this.onDismissNotification === undefined}
-                  @click=${() => { this.dismissNotification(notification.id); }}
-                >${renderNotificationCloseIcon()}</button>
+                <div class="notification-row-actions">
+                  <button
+                    type="button"
+                    class="notification-row-copy"
+                    aria-label=${this.copiedNotificationId === notification.id ? "Message copied" : `Copy ${notificationSeverityLabel(notification.severity).toLowerCase()} message`}
+                    title=${this.copiedNotificationId === notification.id ? "Copied" : "Copy message"}
+                    @click=${() => { void this.copyNotification(notification); }}
+                  ><span aria-hidden="true">${this.copiedNotificationId === notification.id ? "✓" : "⧉"}</span></button>
+                  <button
+                    type="button"
+                    class="notification-row-dismiss"
+                    aria-label=${notificationDismissLabel(notification)}
+                    title="Dismiss notification"
+                    ?disabled=${inbox.pendingDismissedIds.has(notification.id) || inbox.dismissAllPending || this.onDismissNotification === undefined}
+                    @click=${() => { this.dismissNotification(notification.id); }}
+                  >${renderNotificationCloseIcon()}</button>
+                </div>
               </article>
             `;
           })}
@@ -964,6 +975,26 @@ export class ChatView extends LitElement {
       .join("\n\n");
     this.messageCopyTextCache.set(message, text);
     return text;
+  }
+
+  /**
+   * Put a notification's message on the clipboard.
+   *
+   * The message alone, without the severity or timestamp shown beside it: what
+   * gets pasted into a bug report or a search box should be what went wrong.
+   * A notification is often the only place that detail exists, and taking it by
+   * drag-selecting wrapped lines inside a scrolling list is painful on a phone,
+   * where the drag fights the scroll.
+   */
+  private async copyNotification(notification: SessionNotification): Promise<void> {
+    if (!await writeClipboardText(notification.message)) return;
+    const id = notification.id;
+    this.copiedNotificationId = id;
+    // Plain setTimeout, not window.setTimeout: the tray renders in environments
+    // that have timers but no window object.
+    setTimeout(() => {
+      if (this.copiedNotificationId === id) this.copiedNotificationId = undefined;
+    }, 1200);
   }
 
   private async copyMessage(message: ChatLine, key: string, event: MouseEvent): Promise<void> {
