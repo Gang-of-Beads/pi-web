@@ -49,6 +49,20 @@ Host left untouched, checked afterwards: `~/.pi/agent/pi-accounts.json` mtime
 unchanged at 1787007157, all three tokens still ~6.8h from expiry, and the host
 services still on their original pids.
 
+## Suite hygiene
+
+The acceptance suite used to create a fresh project and workspace on every run,
+which had left 133 test projects and 64 archived sessions in the container —
+enough to bury the real ones in the navigation lists and make manual checking
+useless. Specs now reuse four stable fixture projects, and the lifecycle suite's
+per-run directory (still needed, because archived records are durable) is
+created by writing a file with `createDirs` inside its fixture project rather
+than through the project route, which would have registered a project each run.
+
+Verified by running the suite three times and watching the project count stay at
+138, then deleting the 133 stale ones; the container now holds one real project
+and four fixtures.
+
 ## Blocker
 
 `update_goal_task` and `update_goal` both return "Tool not found", on three

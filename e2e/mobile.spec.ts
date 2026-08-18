@@ -37,8 +37,10 @@ test.describe("mobile shell", () => {
   });
 
   test("swaps to the workspace list in place after choosing a project", async ({ page }) => {
-    const stamp = String(Date.now());
-    const name = `e2e-nav-${stamp}`;
+    // A stable fixture, not a per-run name: the project route is idempotent for
+    // an existing path, and a fresh name each run left 127 test projects in the
+    // container, which buries the real ones in the navigation list.
+    const name = "e2e-fixture-nav";
     await createProjectViaApi(page, name);
     await openApp(page);
 
@@ -85,8 +87,7 @@ test.describe("goal panel", () => {
   test.skip(({ isMobile }) => isMobile === false, "runs once, on the mobile projection");
 
   test("renders goal progress read from the workspace", async ({ page, request }) => {
-    const stamp = String(Date.now());
-    const name = `e2e-goals-${stamp}`;
+    const name = "e2e-fixture-goals";
     const path = `/data/home/${name}`;
 
     const created = await request.post(`${apiBaseURL}/api/projects`, { data: { name, path, create: true } });

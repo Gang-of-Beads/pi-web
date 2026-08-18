@@ -34,7 +34,7 @@ test.describe("session status catalog", () => {
 test.describe("workspace goals", () => {
   test("reports an empty, well-formed listing for a workspace with no goals", async ({ request }) => {
     const project = await request.post("/api/projects", {
-      data: { name: `e2e-empty-${String(Date.now())}`, path: `/data/home/e2e-empty-${String(Date.now())}`, create: true },
+      data: { name: "e2e-fixture-empty", path: "/data/home/e2e-fixture-empty", create: true },
     });
     expect(project.ok()).toBe(true);
     const { id } = await project.json() as { id: string };

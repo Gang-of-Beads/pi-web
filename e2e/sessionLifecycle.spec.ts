@@ -57,20 +57,38 @@ test.describe("archiving", () => {
  * makes the navigation lists useless for manual checking. A per-run directory
  * keeps that debris out of the workspaces a human actually opens.
  */
-const RUN_WORKSPACE = `/data/home/e2e-lifecycle-${String(Date.now())}`;
+const RUN_WORKSPACE = `/data/home/e2e-fixture-lifecycle/run-${String(Date.now())}`;
 
 /**
- * The daemon will not open a session in a directory that does not exist, so the
- * run's workspace is created once through the project route, which creates the
- * directory as a side effect.
+ * The run's workspace directory, created inside one stable fixture project.
+ *
+ * Archived records are durable, so each run needs its own directory or the
+ * archives pile up. Creating it through the project route would leave a project
+ * behind on every run, which is the debris this is meant to avoid, so the
+ * directory is made by writing a file into the fixture project's workspace with
+ * `createDirs`.
  */
+const FIXTURE_PROJECT = "/data/home/e2e-fixture-lifecycle";
 let workspaceReady: Promise<void> | undefined;
+
 async function ensureRunWorkspace(request: import("@playwright/test").APIRequestContext): Promise<void> {
   workspaceReady ??= (async () => {
-    const created = await request.post("/api/projects", {
-      data: { name: RUN_WORKSPACE.split("/").pop(), path: RUN_WORKSPACE, create: true },
+    const project = await request.post("/api/projects", {
+      data: { name: "e2e-fixture-lifecycle", path: FIXTURE_PROJECT, create: true },
     });
-    expect(created.ok(), `create run workspace: ${String(created.status())}`).toBe(true);
+    expect(project.ok(), `fixture project: ${String(project.status())}`).toBe(true);
+    const { id: projectId } = await project.json() as { id: string };
+
+    const workspaces = await request.get(`/api/projects/${projectId}/workspaces`);
+    const { workspaces: list } = await workspaces.json() as { workspaces: { id: string }[] };
+    const workspaceId = list[0]?.id ?? "";
+
+    const relative = `${RUN_WORKSPACE.slice(FIXTURE_PROJECT.length + 1)}/.keep`;
+    const written = await request.put(
+      `/api/projects/${projectId}/workspaces/${workspaceId}/file?path=${encodeURIComponent(relative)}&createDirs=true`,
+      { data: Buffer.from("e2e run marker\n") },
+    );
+    expect(written.ok(), `create run directory: ${String(written.status())}`).toBe(true);
   })();
   await workspaceReady;
 }
