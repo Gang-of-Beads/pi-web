@@ -51,3 +51,20 @@ describe("isTransientError", () => {
     expect(isTransientError("")).toBe(false);
   });
 });
+
+describe("aborted requests", () => {
+  // A cancelled fetch reaches the banner as String(error), i.e. the
+  // DOMException text, with no "Model response failed:" prefix -- that prefix
+  // only ever appears on a transcript system line, so the rule written for it
+  // could never fire here. Navigating away or losing the network mid-request
+  // is self-healing and should not be dressed as a failure.
+  it("treats a cancelled request as transient", () => {
+    expect(isTransientError("AbortError: The operation was aborted.")).toBe(true);
+    expect(isTransientError("The operation was aborted")).toBe(true);
+  });
+
+  it("still treats a genuine failure as permanent", () => {
+    expect(isTransientError("Session not found: no such file or directory")).toBe(false);
+    expect(isTransientError("Model aborted the tool call for policy reasons")).toBe(false);
+  });
+});

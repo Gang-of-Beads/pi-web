@@ -42,7 +42,11 @@ function normalizeTransientError(error: string): string | undefined {
   if (/session daemon workspace authority unavailable: connect enoent/i.test(error) && /sessiond\.sock/i.test(error)) {
     return "Reconnecting to the session daemon…";
   }
-  if (/model response failed: this operation was aborted/i.test(error)) {
+  // Matches the DOMException text a cancelled fetch stringifies to, with or
+  // without a wrapping prefix. The earlier rule required "model response
+  // failed:", which only ever prefixes a transcript system line, so it never
+  // fired on the banner it was written for.
+  if (/\boperation was aborted\b/i.test(error)) {
     return "Previous request was interrupted. Retry if the message did not finish.";
   }
   if (/remote machine request cancelled/i.test(error)) {
