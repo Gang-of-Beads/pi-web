@@ -49,6 +49,52 @@ export function hasStatusUnread(flags: StatusFlags | undefined): boolean {
   return flags?.[CORE_STATUS_FLAGS.unread] === true;
 }
 
+
+/**
+ * Four-state session badge, shared by list rows, the quick switcher, and the
+ * chat dock so every surface tells the same story about a session:
+ *
+ *   working -> three bouncing dots (the AI is generating/tooling right now)
+ *   idle    -> static green dot (done; nothing in flight)
+ *   asking  -> amber dot (an ask_user question set is waiting on the user)
+ *   error   -> red dot (activity phase error, e.g. a model error)
+ *
+ * The old single pulse-on-green dot could not express "done" (a finished
+ * session never stopped pulsing) or "waiting on me" (an ask looked identical
+ * to work). Unread still wins as a separate attention ring, exactly like the
+ * work indicators above.
+ */
+export type SessionStateBadgeKind = "working" | "idle" | "asking" | "error";
+
+const SESSION_STATE_LABELS: Record<SessionStateBadgeKind, string> = {
+  working: "Session is working",
+  idle: "Session is done",
+  asking: "Waiting for your answer",
+  error: "Session hit an error",
+};
+
+export function renderSessionStateBadge(kind: SessionStateBadgeKind | "sending" | undefined, unreadLabel?: string): TemplateResult | undefined {
+  if (kind === undefined) {
+    if (unreadLabel === undefined) return undefined;
+    return html`<span class="session-state unread" role="img" aria-label=${unreadLabel} title=${unreadLabel}></span>`;
+  }
+  const label = kind === "sending" ? "Sending message" : SESSION_STATE_LABELS[kind];
+  const combined = unreadLabel === undefined ? label : `${unreadLabel} · ${label}`;
+  if (kind === "working" || kind === "sending") {
+    // Three dots instead of one: an animation on a single dot cannot say
+    // "working" because the same bounce was used for nothing at all.
+    const dots = kind === "working" ? [0, 1, 2].map((i) => html`<span class="state-dot working-dot" style=${`animation-delay:${(i * 0.14).toFixed(2)}s`}></span>`) : null;
+    const content = unreadLabel === undefined
+      ? html`<span class="session-state working" role="img" aria-label=${label} title=${label}><span class="state-dots">${dots}</span></span>`
+      : html`<span class="unread-ring" role="img" aria-label=${combined} title=${combined}><span class="session-state working" aria-hidden="true"><span class="state-dots">${dots}</span></span></span>`;
+    return content;
+  }
+  if (unreadLabel === undefined) {
+    return html`<span class=${`session-state ${kind}`} role="img" aria-label=${label} title=${label}></span>`;
+  }
+  return html`<span class="unread-ring" role="img" aria-label=${combined} title=${combined}><span class=${`session-state ${kind}`} aria-hidden="true"></span></span>`;
+}
+
 export function renderActionActivityIndicator(kind: ActivityIndicatorKind | undefined, label = "Active", unreadLabel?: string): TemplateResult | undefined {
   const indicator = renderActivityIndicator(kind, label, unreadLabel);
   if (indicator === undefined) return undefined;

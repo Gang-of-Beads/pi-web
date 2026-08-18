@@ -9,7 +9,9 @@ import { normalizeSessionPath } from "../sessionPaths";
 import { filterSessionRows, shouldShowSessionSearch } from "../sessionSearch";
 import { isSessionActive } from "../../../shared/activity";
 import { actionMenuPanelStyle } from "./actionMenu";
-import { renderActionActivityIndicator, type ActivityIndicatorKind } from "./activityBadge";
+import { renderSessionStateBadge, type SessionStateBadgeKind } from "./activityBadge";
+import { sessionActivityCategory } from "../../../shared/sessionActivityState";
+import { sessionStateBadgeStyles } from "./sessionStateBadgeStyles";
 import type { KeyboardNavigableSection } from "./navigationFocus";
 import { focusSelectedOrFirstSelectableRow, handleSelectableRowKeyboard } from "./selectableRow";
 import { listStyles } from "./shared";
@@ -340,7 +342,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     const bulkSelected = showsCheckbox && this.selectedSessionIds.has(session.id);
     const status = this.statuses[session.id];
     const activity = this.activities[session.id];
-    const indicatorKind = sessionRowActivityKind(session, status, activity, this.sending[session.id] === true);
+    const stateKind = sessionRowStateKind(session, status, activity, this.sending[session.id] === true);
     const unread = sessionRowUnread(session, this.unreadSessionIds);
     const canArchive = isArchivableSessionInfo(session, status);
     const canDeleteTransient = isTransientNewSessionInfo(session, status);
@@ -373,7 +375,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
           }}
         >
           <span class="action-name-line"><span class="action-name" dir="auto">${this.renderRowMarker(row)}${sessionLabel(session)}</span>${this.renderRowBadges(row)}</span><small>${this.renderSessionMetaPrefix(session, status, activity)}${String(session.messageCount)} messages</small>
-          ${this.renderActivity(indicatorKind, unread)}
+          ${this.renderActivity(stateKind, unread)}
         </button>
         <div class="action-menu">
           <button class="action-menu-toggle" title="Session actions" @click=${(event: MouseEvent) => { event.stopPropagation(); this.toggleMenu(session.id, event.currentTarget); }}>⋯</button>
@@ -585,12 +587,11 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     return "";
   }
 
-  private renderActivity(kind: ActivityIndicatorKind | undefined, unread: boolean) {
-    const label = kind === "sending" ? "Sending message" : "Session active";
-    return renderActionActivityIndicator(kind, label, unread ? "Unread session activity" : undefined);
+  private renderActivity(kind: SessionStateBadgeKind | "sending" | undefined, unread: boolean) {
+    return renderSessionStateBadge(kind, unread ? "Unread session activity" : undefined);
   }
 
-  static override styles = [listStyles, css`
+  static override styles = [listStyles, sessionStateBadgeStyles, css`
     h2 { min-height: 30px; }
     h2 > .section-count { flex: 0 0 auto; display: inline; color: var(--pi-muted); font-size: inherit; }
     h2 > .section-unread-count { flex: 0 0 auto; display: inline; color: var(--pi-accent); font-size: inherit; text-transform: none; }
@@ -695,16 +696,22 @@ function unarchivedDescendantCounts(sessions: SessionInfo[]): Map<string, number
  * is not a kind: it is an attention flag resolved by `sessionRowUnread` and
  * rendered as a ring around this dot (or a filled dot when this is undefined).
  */
-export function sessionRowActivityKind(
+export function sessionRowStateKind(
   session: SessionInfo,
   status: SessionStatus | undefined,
   activity: SessionActivity | undefined,
   sending: boolean,
-): ActivityIndicatorKind | undefined {
+): SessionStateBadgeKind | "sending" | undefined {
   if (isCachedNewSessionInfo(session) || session.archived === true) return undefined;
   if (sending) return "sending";
-  if (isSessionActive(status, activity)) return "session";
-  return undefined;
+  const category = sessionActivityCategory(status, activity);
+  // A startup-only activity is the session opening, not work in progress and
+  // not done yet; let the row stay unmarked until a real signal arrives
+  // (streaming, an ask, an error, or the activity settling to idle). The
+  // exclusion only removes the activity-phase reason: status signals that
+  // carry real work are untouched.
+  if (category === "working" && activity?.startup === true && !statusShowsWork(status)) return undefined;
+  return category;
 }
 
 /**
@@ -775,4 +782,8 @@ function sessionRows(sessions: SessionInfo[]): SessionRow[] {
   };
   for (const root of roots) visit(root, 0, new Set());
   return rows;
+}
+
+function statusShowsWork(status: SessionStatus | undefined): boolean {
+  return status?.isStreaming === true || status?.isBashRunning === true || status?.isCompacting === true || (status?.pendingMessageCount ?? 0) > 0;
 }

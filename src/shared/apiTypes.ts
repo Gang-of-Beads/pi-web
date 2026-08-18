@@ -1366,3 +1366,24 @@ export interface SessionSubagentInfo {
 export interface SessionSubagentsSnapshot {
   readonly subsessions: readonly SessionSubagentInfo[];
 }
+
+/**
+ * Whether a newer build of this checkout is available on the fork remote.
+ *
+ * Reported for one machine at a time; the UI only shows the update affordance
+ * when the machine hosting the daemon is a git checkout with a fork remote.
+ */
+export interface PiWebSelfUpdateStatus {
+  /** False when this host has no fork checkout to update (e.g. containers). */
+  readonly enabled: boolean;
+  /** Current local commit, short form. */
+  readonly current: string;
+  /** Latest commit on the fork remote, short form. */
+  readonly latest: string | undefined;
+  /** True when the fork remote has commits this checkout does not. */
+  readonly available: boolean;
+  readonly branch: string | undefined;
+  readonly checkedAt: string;
+  /** Human reason when updates are not supported here. */
+  readonly disabledReason?: string;
+}

@@ -2,7 +2,7 @@
 
 import { render, type TemplateResult } from "lit";
 import { afterEach, describe, expect, it } from "vitest";
-import { hasStatusUnread, renderActionActivityIndicator, renderActivityIndicator, statusActivityKind } from "./activityBadge";
+import { hasStatusUnread, renderActionActivityIndicator, renderActivityIndicator, renderSessionStateBadge, statusActivityKind } from "./activityBadge";
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -88,3 +88,32 @@ function renderInto(template: TemplateResult | undefined): HTMLElement {
   render(template ?? null, container);
   return container;
 }
+
+describe("renderSessionStateBadge", () => {
+  it("renders three bouncing dots for working with a clear label", () => {
+    const container = renderInto(renderSessionStateBadge("working"));
+    const dots = container.querySelectorAll(".state-dot");
+    expect(dots.length).toBe(3);
+    expect(container.querySelector(".session-state.working")?.getAttribute("aria-label")).toBe("Session is working");
+  });
+
+  it("renders a static dot colored by state for idle, asking, and error", () => {
+    const idle = renderInto(renderSessionStateBadge("idle"));
+    expect(idle.querySelector(".session-state.idle")?.getAttribute("aria-label")).toBe("Session is done");
+    const asking = renderInto(renderSessionStateBadge("asking"));
+    expect(asking.querySelector(".session-state.asking")?.getAttribute("aria-label")).toBe("Waiting for your answer");
+    const error = renderInto(renderSessionStateBadge("error"));
+    expect(error.querySelector(".session-state.error")?.getAttribute("aria-label")).toBe("Session hit an error");
+  });
+
+  it("renders nothing when there is no state and nothing unread", () => {
+    expect(renderInto(renderSessionStateBadge(undefined)).querySelector(".session-state")).toBeNull();
+  });
+
+  it("wraps unread as a ring like the work indicators", () => {
+    const container = renderInto(renderSessionStateBadge("working", "Unread session activity"));
+    const ring = container.querySelector(".unread-ring");
+    expect(ring?.getAttribute("aria-label")).toBe("Unread session activity · Session is working");
+    expect(ring?.querySelector(".state-dots .state-dot")?.getAttribute("aria-hidden")).toBeNull();
+  });
+});

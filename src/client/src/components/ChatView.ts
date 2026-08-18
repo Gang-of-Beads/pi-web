@@ -29,6 +29,7 @@ import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from ".
 import type { SessionNotification, SessionSubagentInfo } from "../../../shared/apiTypes";
 import type { ChatLine, ChatPart } from "./shared";
 import { chatStyles, renderSessionWarningIcon } from "./shared";
+import type { SessionStateBadgeKind } from "./activityBadge";
 import "./AskUserCard";
 import "./ExtensionDialogCard";
 import type { ExtensionDialogAnswerCallback, ExtensionDialogCancelCallback, ExtensionDialogDismissCallback } from "./ExtensionDialogCard";
@@ -717,18 +718,20 @@ export class ChatView extends LitElement {
   private renderActivityDock() {
     if (this.isSendingPrompt) {
       return html`
-        <div class="activity-dock active" aria-live="polite">
-          <span class="dot"></span>
+        <div class="activity-dock sending" aria-live="polite">
+          <span class="state-dots"><span class="state-dot"></span><span class="state-dot"></span><span class="state-dot"></span></span>
           <span class="activity-text">Sending your message…</span>
         </div>
       `;
     }
     const state = this.activityState();
     if (state === undefined) return null;
-    const active = state !== "idle" || this.activity?.phase === "active";
+    const category = this.activityCategory(state);
     return html`
-      <div class=${active ? "activity-dock active" : "activity-dock"} aria-live="polite">
-        <span class="dot"></span>
+      <div class=${`activity-dock ${category ?? ""}`} aria-live="polite">
+        ${category === "working"
+          ? html`<span class="state-dots"><span class="state-dot"></span><span class="state-dot"></span><span class="state-dot"></span></span>`
+          : html`<span class="dot"></span>`}
         <span class="activity-text">${this.activityText(state)}</span>
       </div>
     `;
@@ -825,6 +828,21 @@ export class ChatView extends LitElement {
     if (status.isStreaming) return "running";
     if (status.pendingMessageCount > 0) return "queued";
     return "idle";
+  }
+
+  /**
+   * Map the coarse dock state onto the shared four-state badge so the dock and
+   * the session list rows agree: working (three dots), idle (green), asking
+   * (amber, an ask_user set is waiting), error (red).
+   */
+  private activityCategory(state: string): SessionStateBadgeKind | undefined {
+    if (this.activity?.phase === "error") return "error";
+    if (state === "idle" || state === "undefined") {
+      if (this.status?.pendingAsk !== undefined) return "asking";
+      return "idle";
+    }
+    if (this.status?.pendingAsk !== undefined) return "asking";
+    return "working";
   }
 
   private activityText(state: string): string {

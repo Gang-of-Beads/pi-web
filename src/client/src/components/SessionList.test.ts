@@ -15,35 +15,45 @@ import {
   templateValues,
   type TemplateEventHandler,
 } from "../templateInspection.testSupport";
-import { SessionList, sessionRowActivityKind, sessionRowsForCurrentTree, sessionRowUnread, unreadSessionCount } from "./SessionList";
+import { SessionList, sessionRowStateKind, sessionRowsForCurrentTree, sessionRowUnread, unreadSessionCount } from "./SessionList";
 
-describe("sessionRowActivityKind", () => {
+describe("sessionRowStateKind", () => {
   const idle = sessionStatus("s");
 
   it("reports 'sending' for an uploading session, taking precedence over server activity", () => {
-    expect(sessionRowActivityKind(session("s"), idle, undefined, true)).toBe("sending");
-    expect(sessionRowActivityKind(session("s"), { ...idle, isStreaming: true }, undefined, true)).toBe("sending");
+    expect(sessionRowStateKind(session("s"), idle, undefined, true)).toBe("sending");
+    expect(sessionRowStateKind(session("s"), { ...idle, isStreaming: true }, undefined, true)).toBe("sending");
   });
 
-  it("reports 'session' for server activity when not sending", () => {
-    expect(sessionRowActivityKind(session("s"), { ...idle, isStreaming: true }, undefined, false)).toBe("session");
+  it("reports 'working' for server activity when not sending", () => {
+    expect(sessionRowStateKind(session("s"), { ...idle, isStreaming: true }, undefined, false)).toBe("working");
   });
 
   it("shows no active-work indicator for a session that is only starting up", () => {
     const startup = { sessionId: "s", phase: "active" as const, label: "Opening session", detail: "Starting the Pi session", at: "now", startup: true };
 
-    expect(sessionRowActivityKind(session("s"), idle, startup, false)).toBeUndefined();
+    expect(sessionRowStateKind(session("s"), idle, startup, false)).toBeUndefined();
     // Ordinary activity is work and keeps its indicator.
-    expect(sessionRowActivityKind(session("s"), idle, { sessionId: "s", phase: "active", label: "running tool", at: "now" }, false)).toBe("session");
+    expect(sessionRowStateKind(session("s"), idle, { sessionId: "s", phase: "active", label: "running tool", at: "now" }, false)).toBe("working");
+    // A real work signal (streaming) beats the startup report.
+    expect(sessionRowStateKind(session("s"), { ...idle, isStreaming: true }, startup, false)).toBe("working");
   });
 
-  it("reports undefined when idle and not sending, even for an unread session", () => {
-    expect(sessionRowActivityKind(session("s"), idle, undefined, false)).toBeUndefined();
+  it("reports 'idle' when done and not sending, even for an unread session", () => {
+    expect(sessionRowStateKind(session("s"), idle, undefined, false)).toBe("idle");
+  });
+
+  it("reports 'asking' while a question set waits on the user", () => {
+    expect(sessionRowStateKind(session("s"), { ...idle, pendingAsk: { askId: "a", askedAt: "", questions: [] } }, undefined, false)).toBe("asking");
+  });
+
+  it("reports 'error' when the activity phase errored", () => {
+    expect(sessionRowStateKind(session("s"), idle, { sessionId: "s", phase: "error", label: "model", at: "now" }, false)).toBe("error");
   });
 
   it("never shows an indicator for archived or cached-new sessions, even while sending", () => {
-    expect(sessionRowActivityKind({ ...session("s"), archived: true }, idle, undefined, true)).toBeUndefined();
-    expect(sessionRowActivityKind(markCachedNewSessionInfo(session("s")), idle, undefined, true)).toBeUndefined();
+    expect(sessionRowStateKind({ ...session("s"), archived: true }, idle, undefined, true)).toBeUndefined();
+    expect(sessionRowStateKind(markCachedNewSessionInfo(session("s")), idle, undefined, true)).toBeUndefined();
   });
 });
 

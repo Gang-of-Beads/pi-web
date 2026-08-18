@@ -2,6 +2,8 @@ import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { SessionInfo, Workspace } from "../api";
 import { quickSwitcherModel, quickSwitcherSessionSubtitle, quickSwitcherWorkspaces, type QuickSwitcherGroup } from "../quickSwitcher";
+import { renderSessionStateBadge, type SessionStateBadgeKind } from "./activityBadge";
+import { sessionStateBadgeStyles } from "./sessionStateBadgeStyles";
 import { sessionLabel } from "../sessionLabels";
 import { keyboardEventOriginatesFromNativeActivationControl } from "./keyboardEventTarget";
 import "./ModalSurface";
@@ -28,6 +30,8 @@ export class QuickSwitcher extends LitElement {
   @property({ attribute: false }) unreadSessionIds: ReadonlySet<string> = new Set();
   /** Sessions the daemon reported as cut off by a restart. */
   @property({ attribute: false }) interruptedSessionIds: ReadonlySet<string> = new Set();
+  /** Four-state session badge per session, computed upstream. */
+  @property({ attribute: false }) sessionStates: ReadonlyMap<string, SessionStateBadgeKind> = new Map();
   @property({ type: Boolean }) canStartSession = false;
   @property({ attribute: false }) onCreateSession?: () => void;
   @property({ attribute: false }) onOpenSession?: (session: SessionInfo) => void;
@@ -129,8 +133,8 @@ export class QuickSwitcher extends LitElement {
   private renderSessionRow(session: SessionInfo) {
     const selected = this.selectedSession?.id === session.id;
     const unread = this.unreadSessionIds.has(session.id);
-    const active = this.activeSessionIds.has(session.id);
-    const interrupted = this.interruptedSessionIds.has(session.id) && !active;
+    const stateKind = this.sessionStates.get(session.id) ?? (this.activeSessionIds.has(session.id) ? "working" : undefined);
+    const interrupted = this.interruptedSessionIds.has(session.id) && stateKind !== "working";
     return html`
       <button
         class=${`row session-row ${selected ? "selected" : ""} ${unread ? "unread" : ""}`}
@@ -140,9 +144,9 @@ export class QuickSwitcher extends LitElement {
       >
         <span class="row-title" dir="auto">${sessionLabel(session)}</span>
         <span class="row-subtitle">${quickSwitcherSessionSubtitle(session, this.workspaces)}</span>
-        ${active ? html`<span class="row-flag active" title="Session is working" aria-label="Session is working"></span>` : null}
+        <span class="row-state">${renderSessionStateBadge(stateKind, unread && stateKind === undefined ? "Unread activity" : undefined)}</span>
         ${interrupted ? html`<span class="row-flag interrupted" title="A restart interrupted this run" aria-label="A restart interrupted this run"></span>` : null}
-        ${!active && !interrupted && unread ? html`<span class="row-flag unread" title="Unread activity" aria-label="Unread activity"></span>` : null}
+        ${stateKind === undefined && !interrupted && unread ? html`<span class="row-flag unread" title="Unread activity" aria-label="Unread activity"></span>` : null}
       </button>
     `;
   }
@@ -195,7 +199,7 @@ export class QuickSwitcher extends LitElement {
     this.onClose?.();
   }
 
-  static override styles = css`
+  static override styles = [sessionStateBadgeStyles, css`
     :host { position: fixed; inset: 0; z-index: 25; color: var(--pi-text); font: 14px system-ui, sans-serif; }
     modal-surface {
       --modal-surface-place-items: end center;
@@ -220,8 +224,9 @@ export class QuickSwitcher extends LitElement {
     .create-row .row-title { font-weight: 650; }
     .session-row.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     .session-row.unread .row-title { color: var(--pi-text-bright); font-weight: 650; }
-    .row-flag { position: absolute; top: 50%; right: 12px; width: 8px; height: 8px; margin-top: -4px; border-radius: 50%; }
-    .row-flag.active { background: var(--pi-success); }
+    .row-flag, .row-state { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); }
+    .row-state { display: inline-flex; align-items: center; }
+    .row-flag { width: 8px; height: 8px; border-radius: 50%; }
     .row-flag.unread { background: var(--pi-accent); }
     /* Hollow rather than filled: this one marks work that stopped, so it should
        not read as another kind of activity at a glance. */
@@ -229,7 +234,7 @@ export class QuickSwitcher extends LitElement {
     .empty { margin: 16px 4px; color: var(--pi-muted); }
     footer { flex: 0 0 auto; padding: 10px; padding-bottom: max(10px, env(safe-area-inset-bottom)); border-top: 1px solid var(--pi-border); }
     footer button { width: 100%; min-height: 44px; border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
-  `;
+  `];
 }
 
 declare global {

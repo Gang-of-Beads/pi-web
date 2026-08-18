@@ -5,6 +5,8 @@ import { configApi, effectiveWorkspaceUploadFolder, projectsApi, sessionsApi, te
 import type { AppAction } from "../actions";
 import { initialAppState, type AppState } from "../appState";
 import { isSessionActive } from "../../../shared/activity";
+import { sessionActivityCategory } from "../../../shared/sessionActivityState";
+import type { SessionStateBadgeKind } from "./activityBadge";
 import { PI_WEB_CAPABILITIES, supportsPiWebCapability } from "../../../shared/capabilities";
 import { machineScopedPluginId } from "../../../shared/machinePluginIds";
 import { AuthController } from "../controllers/authController";
@@ -1410,6 +1412,16 @@ export class PiWebApp extends LitElement {
     return active;
   }
 
+  /** Four-state badge per session for the quick switcher and list rows. */
+  private sessionStateKinds(): ReadonlyMap<string, SessionStateBadgeKind> {
+    const kinds = new Map<string, SessionStateBadgeKind>();
+    for (const session of this.state.sessions) {
+      const kind = sessionActivityCategory(this.state.sessionStatuses[session.id], this.state.sessionActivities[session.id]);
+      if (kind !== undefined) kinds.set(session.id, kind);
+    }
+    return kinds;
+  }
+
   /**
    * Sessions whose agent is blocked on an `ask_user` answer. They cannot make
    * any progress until the user replies, which is why the switcher lists them
@@ -2405,6 +2417,7 @@ export class PiWebApp extends LitElement {
           .selectedSession=${state.selectedSession}
           .selectedWorkspace=${state.selectedWorkspace}
           .activeSessionIds=${this.activeSessionIds()}
+          .sessionStates=${this.sessionStateKinds()}
           .waitingSessionIds=${this.waitingSessionIds()}
           .unreadSessionIds=${this.unreadSessionIds}
           .interruptedSessionIds=${this.interruptedSessionIds}

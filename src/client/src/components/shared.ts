@@ -1,4 +1,5 @@
 import { css, svg, type TemplateResult } from "lit";
+import { sessionStateBadgeStyles as SessionStateBadgeStyles } from "./sessionStateBadgeStyles";
 import type { AskUserOutcome } from "../../../shared/apiTypes";
 import type { SessionWarningSeverity } from "../api";
 
@@ -339,6 +340,7 @@ export const listStyles = css`
 `;
 
 export const chatStyles = css`
+  ${SessionStateBadgeStyles}
   /* Mobile browsers paint a rectangular highlight on tap, which looks pasted-on
      over a round or rounded control. Suppressed in favour of the app's own
      pressed and focus styling; :focus-visible still shows keyboard focus, so
@@ -439,9 +441,14 @@ export const chatStyles = css`
   .scroll-marker { display: block; height: 0; overflow: hidden; pointer-events: none; }
   .activity-dock { position: absolute; left: 16px; right: 16px; bottom: 12px; z-index: 20; display: flex; align-items: center; gap: 8px; min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: 999px; background: var(--pi-bg-overlay); color: var(--pi-muted); padding: 8px 12px; font-size: 13px; pointer-events: none; box-shadow: 0 8px 28px var(--pi-shadow); backdrop-filter: blur(6px); }
   .activity-dock.active { border-color: var(--pi-success-border); color: var(--pi-success); background: var(--pi-success-bg-overlay); }
+  .activity-dock.sending { border-color: var(--pi-warning-border); color: var(--pi-warning); background: var(--pi-warning-surface); }
+  .activity-dock.asking { border-color: var(--pi-warning-border); color: var(--pi-warning); background: var(--pi-warning-bg-overlay); }
+  .activity-dock.error { border-color: var(--pi-danger-border); color: var(--pi-danger); background: var(--pi-danger-bg-overlay); }
   .activity-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; opacity: .45; flex: 0 0 auto; }
   .activity-dock.active .dot { animation: pulse 1s ease-in-out infinite; opacity: 1; }
+  .activity-dock .state-dot { background: currentColor; }
+  .activity-dock.working .state-dot { opacity: 1; }
   .msg { max-width: 100%; min-width: 0; box-sizing: border-box; margin: 0 0 14px; padding: 12px; border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-surface); overflow: visible; }
   .msg.assistant, .msg.tool-image-output { background: var(--pi-surface); }
   .msg.user { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
