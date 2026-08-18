@@ -387,3 +387,28 @@ test.describe("desktop layout", () => {
     expect(measured.mainWidth).toBeGreaterThan(measured.viewportWidth / 2);
   });
 });
+
+test.describe("navigation density", () => {
+  test.skip(({ isMobile }) => isMobile === false, "phone-viewport behaviour");
+
+  test("does not stack a third bar above the list when it is redundant", async ({ page }) => {
+    await openApp(page);
+
+    const measured = await page.evaluate(() => {
+      const panelRoot = document.querySelector("pi-web-app")?.shadowRoot
+        ?.querySelector("app-navigation-panel")?.shadowRoot;
+      const list = panelRoot?.querySelector("project-list")?.shadowRoot?.querySelector(".list-body");
+      return {
+        listTop: Math.round(list?.getBoundingClientRect().top ?? 0),
+        quickActions: panelRoot?.querySelector(".mobile-quick-actions") !== null
+          && panelRoot?.querySelector(".mobile-quick-actions") !== undefined,
+        viewport: window.innerHeight,
+      };
+    });
+
+    // Context bar + tab strip + quick actions used to push the list to y=199,
+    // a fifth of the screen before any content.
+    expect(measured.quickActions).toBe(false);
+    expect(measured.listTop).toBeLessThan(measured.viewport / 5);
+  });
+});

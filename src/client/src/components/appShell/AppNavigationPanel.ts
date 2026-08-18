@@ -4,6 +4,7 @@ import type { GoalRecordSummary, Machine, MachineHealth, Project, SessionActivit
 import type { MachineStatusSnapshot } from "../../../../shared/machineStatus";
 import type { WorkspaceLabelItem } from "../../plugins/types";
 import { selectedMachineId } from "../../controllers/types";
+import { shouldShowQuickActions } from "../../appShell/quickActionVisibility";
 import type { NavigationSection } from "../../appShell/navigationState";
 import { NAVIGATION_SECTION_ORDER } from "../../appShell/navigationState";
 import type { KeyboardNavigableSection } from "../navigationFocus";
@@ -140,11 +141,14 @@ export class AppNavigationPanel extends LitElement {
             .onCancelKeyboardNavigation=${() => { this.cancelKeyboardNavigation(); }}
           ></machine-switcher>
         ` : null}
-        <div class="mobile-quick-actions">
-          <button class="quick-action primary" ?disabled=${this.onAddProject === undefined} @click=${() => { this.runMaybeAsync(this.onAddProject); }}>Add project</button>
-          <button class="quick-action" ?disabled=${this.onQuickSwitch === undefined} @click=${() => { this.onQuickSwitch?.(); }}>Open session</button>
-          <button class="quick-action" ?disabled=${!this.canStartSession} @click=${() => { this.runMaybeAsync(this.onStartSession); }}>New session</button>
-        </div>
+        ${shouldShowQuickActions({ projectCount: this.projects.length, canStartSession: this.canStartSession, visibleSection: this.compactVisibleSection() })
+          ? html`
+            <div class="mobile-quick-actions">
+              <button class="quick-action primary" ?disabled=${this.onAddProject === undefined} @click=${() => { this.runMaybeAsync(this.onAddProject); }}>Add project</button>
+              <button class="quick-action" ?disabled=${this.onQuickSwitch === undefined} @click=${() => { this.onQuickSwitch?.(); }}>Open session</button>
+              <button class="quick-action" ?disabled=${!this.canStartSession} @click=${() => { this.runMaybeAsync(this.onStartSession); }}>New session</button>
+            </div>`
+          : null}
         ${this.renderCompactPrimaryList()}
       </div>
     `;

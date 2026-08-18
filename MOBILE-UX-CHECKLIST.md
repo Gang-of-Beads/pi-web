@@ -114,8 +114,17 @@ tailnet `:8506`), never the host installation.
       panel returns to 538px once one is chosen; e2e "desktop layout › does not
       spend half the window on an empty workspace panel".
 
-- [ ] **Top bar density**: still two rows (context chips + icon tab strip) before
-      the list begins. Measure and reduce.
+- [x] **Top bar density.** Measured: context bar 42px + tab strip 57px + quick
+      actions 65px = 164px, so the list only began at y=199 — a fifth of an
+      839px screen before any content. Two of the three quick actions duplicate
+      the list below them (you pick a project from the list; "Open session" is
+      the same sheet the context bar opens), so the row now appears only when it
+      is the way forward: an app with no projects yet, or a section where
+      starting a session is possible and not otherwise offered. The list starts
+      at y=134.
+      *Evidence:* `quickActionVisibility.test.ts` (5 cases, including that an
+      empty app keeps the row) and e2e "navigation density › does not stack a
+      third bar above the list when it is redundant".
 - [x] **Long project lists are searchable.** The project list had no search at
       all while the session list did, and a phone shows a full screen of
       projects well before the list feels long — the verification container had
@@ -126,11 +135,27 @@ tailnet `:8506`), never the host installation.
       `.list-search*` so a second list cannot drift from the first.
       *Evidence:* `projectSearch.test.ts` (9 cases); measured in the container —
       8 projects, typing `tools` left exactly `alpha-tools` and `beta-tools`.
-- [ ] **Keyboard avoidance**: verify the send control stays reachable with the
-      soft keyboard open, on a real device rather than only in a headless
-      viewport.
-- [ ] **Attachments above the input**, no delivery dropdown, correct caret size —
-      re-verify on device after the layout changes above.
+- [x] **Keyboard avoidance.** Measured, and it did not hold: with a 320px
+      keyboard the send button sat at y=799 while only 519px stayed visible, so
+      it was covered by 280px. The shell is `position: fixed` at `100dvh`, and
+      `dvh` follows the layout viewport, which a soft keyboard does not shrink —
+      only the visual viewport does. The shell now subtracts the covered height,
+      putting the send button at y=479. The inset is computed rather than
+      assumed to be the keyboard height, since the visual viewport also moves
+      under pinch-zoom and a collapsing URL bar.
+      *Evidence:* `keyboardInset.test.ts` (8 cases) and e2e "soft keyboard ›
+      shortens the shell so the composer stays above the keyboard", which drives
+      the real `visualViewport` resize and asserts the inset is applied **and**
+      released. Still worth a check on a physical device, since a headless
+      viewport cannot reproduce every browser's keyboard behaviour.
+- [x] **Attachments above the input, no delivery dropdown, correct caret size.**
+      Attachment chips precede the editor; delivery is derived at send time
+      (`effectivePromptAttachmentDelivery`) with no UI selector left; the caret
+      line box is 22px empty and typed alike, after the placeholder was taken
+      out of flow.
+      *Evidence:* `PromptEditor.restorePrompt.test.ts` for the chips, and e2e
+      "composer › keeps the caret one line tall before anything is typed", which
+      also asserts the placeholder is still shown so hiding it cannot pass.
 
 ## Open — cross-device and attention
 
