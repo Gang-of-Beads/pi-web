@@ -1,12 +1,14 @@
 # sendUserMessage from a slash-command handler never starts a turn
 
-## Verdict: reproduced, root cause is in the pi coding agent core
+## Verdict: PI WEB is correct — the failure is CLI print-mode process lifetime
 
-`pi.sendUserMessage()` called from an extension slash-command handler while the
-session is idle does **not** start an agent turn. The user message is accepted,
-`sendUserMessage` resolves without throwing, but no model request is ever made
-and no assistant reply is produced. Reproduces in the PI WEB UI (`/sessions/:id
-/prompt`) and in CLI print mode (`pi -p`), with any provider.
+`pi.sendUserMessage()` inside a slash-command handler works in PI WEB: the
+nested prompt runs after the handler's command dispatch and the model request
+is made, both when idle and when streaming (followUp). CLI print mode
+(`pi -p`) appears broken only because the process exits as soon as the command
+handler returns, so the asynchronous turn started by `sendUserMessage` never
+gets a chance to execute. PI WEB's long-lived session daemon is the supported
+runtime and is unaffected.
 
 ## Reproduction (container dev stack, mock LLM endpoint)
 
@@ -15,17 +17,18 @@ registered one command whose handler calls `pi.sendUserMessage("ping from
 sendUserMessage")`. Model calls were counted by REQUEST log lines, not by
 process output (the container's own stderr noise was excluded).
 
-| Scenario | Model requests | stdout | handler logs |
-|---|---|---|---|
-| Plain prompt `say hi` (control) | **1** | `mock reply` | — |
-| `/cmd` handler `await sendUserMessage` (idle) | **0** | empty | handler ran, resolved, no error |
-| `/cmd` handler `pi.sendUserMessage` (no await) | **0** | empty | handler returned |
-| `/cmd` handler `await ctx.waitForIdle()` then send | **0** | empty | resolved, no error |
-| PI WEB `/sessions/:id/prompt` with `/cmd` | **0** | `accepted:true` | same |
-| `/cmd` handler `sendCustomMessage(triggerTurn:true)` | **0** | empty | resolved, no error |
+Measured against a mock endpoint (REQUEST lines appended by the mock itself;
+line-count deltas, never process output, because the container stderr carries
+unrelated noise). CLI variants exit before the async turn runs; PI WEB keeps
+the session alive so the turn completes.
 
-Control confirmed the mock path works: a normal prompt produces exactly one
-model request and prints the reply. Every slash-command variant produces zero.
+| Scenario | Model requests | notes |
+|---|---|---|
+| CLI `pi -p` plain prompt | 1 | control: mock path works |
+| CLI `pi -p` `/cmd` + `await sendUserMessage` | 0 | process exits at handler return |
+| CLI `pi -p` `/cmd` + fire-and-forget | 0 | same |
+| PI WEB `/sessions/:id/prompt` `/cmd` + await | **2** | title-gen + `ping … variant` request |
+| PI WEB busy path: `/cmd` while streaming | **3+** | followUp queued, then delivered |
 
 ## Code path (core 0.84.2, dist/core/agent-session.js)
 
@@ -40,14 +43,11 @@ model request and prints the reply. Every slash-command variant produces zero.
    never does: no error, no queue, no model request, message may appear in
    agent state yet the turn machinery is skipped.
 
-The single-dot difference from a normal prompt is the nesting. It is not
-specific to `sendUserMessage`: `sendCustomMessage(..., { triggerTurn: true })`
-inside the same handler is swallowed identically (zero requests), so any
-turn-triggering call nested in a command dispatch is silently skipped. The
-interactive TUI is the only place the official `/ask` example is exercised,
-which is why this has been a known issue family upstream rather than a loud
-failure. A pi-web workaround therefore cannot just switch the extension to
-another core API; it has to break the nesting itself.
+Early runs reported "0 requests" across the board; that was a measurement
+artifact (the mock's log file was deleted under it, so later appends went to an
+unlinked inode). Re-measuring with append-only logs and line-count deltas shows
+PI WEB delivers the nested turn. What remains is print mode, where the process
+lifetime excludes any work scheduled after the command handler returns.
 
 ## Upstream status
 
