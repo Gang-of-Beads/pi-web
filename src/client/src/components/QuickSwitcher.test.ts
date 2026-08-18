@@ -158,6 +158,8 @@ interface MountProps {
   onSelectWorkspace?: (workspace: Workspace) => void;
   onBrowse?: () => void;
   onClose?: () => void;
+  activeSessionIds?: ReadonlySet<string>;
+  sessionStates?: ReadonlyMap<string, "working" | "idle" | "asking" | "error">;
 }
 
 async function mount(props: MountProps): Promise<QuickSwitcher> {

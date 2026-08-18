@@ -370,6 +370,26 @@ export const chatStyles = css`
   :host { position: relative; z-index: 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden; color: var(--pi-text); font: 14px system-ui, sans-serif; }
   .chat-wrap { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; }
   .top-notices { box-sizing: border-box; flex: 0 0 auto; max-height: 40%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border-bottom: 1px solid var(--pi-border); background: var(--pi-bg-overlay); }
+  /* Subagents strip: child sessions spawned by the parent conversation. The
+     strip must read at one glance -- who is still working, who finished --
+     and every row is a real button large enough to open with a thumb. */
+  .subagents-strip { flex: 0 0 auto; display: grid; gap: 6px; box-sizing: border-box; padding: 10px 16px 12px; border-bottom: 1px solid var(--pi-border-muted); }
+  .subagents-heading { min-width: 0; color: var(--pi-muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .subagent-row { box-sizing: border-box; min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 8px; min-height: 40px; padding: 6px 10px; border: 1px solid var(--pi-border-muted); border-radius: 10px; background: var(--pi-surface); color: var(--pi-text); font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; text-align: start; }
+  .subagent-row:hover, .subagent-row:focus-visible { background: var(--pi-surface-hover); border-color: var(--pi-accent-border); }
+  .subagent-row:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }
+  .subagent-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--pi-muted); }
+  .subagent-dot.working { background: var(--pi-accent); animation: pulse 1s ease-in-out infinite; }
+  .subagent-dot.idle { background: var(--pi-success); }
+  .subagent-dot.error { background: var(--pi-danger); }
+  .subagent-id { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--pi-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 13px; color: var(--pi-text-bright); }
+  .subagent-status { color: var(--pi-muted); font-size: 12px; }
+  .subagent-row .subagent-status.working { color: var(--pi-accent); }
+  .subagent-row .subagent-status.error { color: var(--pi-danger); }
+  .subagent-chevron { flex: 0 0 auto; color: var(--pi-muted); font-size: 12px; }
+  @media (pointer: coarse) {
+    .subagent-row { min-height: 44px; }
+  }
   .session-warnings { flex: 0 1 auto; display: grid; gap: 8px; max-height: 50%; min-height: 0; overflow-y: auto; box-sizing: border-box; padding: 10px 16px; border-bottom: 1px solid var(--pi-border-muted); }
   .session-warnings:only-child { flex: 1 1 auto; max-height: 100%; border-bottom: 0; }
   .session-warnings-controls { display: flex; justify-content: flex-end; }

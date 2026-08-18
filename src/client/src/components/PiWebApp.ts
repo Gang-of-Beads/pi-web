@@ -5,7 +5,6 @@ import { configApi, effectiveWorkspaceUploadFolder, projectsApi, selfUpdateApi, 
 import type { AppAction } from "../actions";
 import { initialAppState, type AppState } from "../appState";
 import { isSessionActive } from "../../../shared/activity";
-import { sessionActivityCategory } from "../../../shared/sessionActivityState";
 import type { SessionStateBadgeKind } from "./activityBadge";
 import { PI_WEB_CAPABILITIES, supportsPiWebCapability } from "../../../shared/capabilities";
 import { machineScopedPluginId } from "../../../shared/machinePluginIds";
@@ -79,7 +78,7 @@ import type { AppMobileMainTab } from "./appShell/AppMobileMainTabs";
 import { shouldShowMachinesSection, type AppNavigationPanel, type NavigationFocusTarget } from "./appShell/AppNavigationPanel";
 import "./appShell/AppPanelEdgeControl";
 import "./appShell/AppRefreshControl";
-import { renameSessionInList } from "../quickSwitcher";
+import { quickSwitcherSessionStates, renameSessionInList } from "../quickSwitcher";
 import { errorBanner, isTransientError, TRANSIENT_ERROR_TIMEOUT_MS } from "./errorBanner";
 import { deprecatedAgentInputsBanner, deprecatedAgentInputsWarnings } from "./deprecatedAgentInputsBanner";
 import { appStyles } from "./shared";
@@ -248,10 +247,61 @@ export class PiWebApp extends LitElement {
   @state() private workspaceUploadDefaultFolder = effectiveWorkspaceUploadFolder(undefined);
   @state() private speechToTextConfig: PiWebConfigValues["speechToText"];
   private sessionWarningVisibility = initialSessionWarningVisibilityState();
-  private readonly onPopState = () => void this.withChatScrollTransition(async () => {
-    this.restoreSettingsRoute();
-    await this.restoreRoute(false);
-  });
+  private readonly onPopState = () => {
+    if (this.modalLayerOpen()) {
+      // The back gesture pops the placeholder frame we pushed when the layer
+      // opened: consume it by closing the layer, never by moving the route.
+      this.closeModalLayer();
+      return;
+    }
+    // A placeholder frame from a layer that was closed by its own cancel is
+    // still on the stack; its URL equals the current state, so there is
+    // nothing to restore. Only a real navigation (URL changed) restores.
+    if (this.currentRouteMatchesUrl()) return;
+    void this.withChatScrollTransition(async () => {
+      this.restoreSettingsRoute();
+      await this.restoreRoute(false);
+    });
+  };
+
+  /**
+   * The route lives in the URL; the state traces it. When the two agree, the
+   * popped frame was a placeholder for a layer that has since closed normally,
+   * so the back gesture has nothing left to do.
+   */
+  private currentRouteMatchesUrl(): boolean {
+    const state = this.state;
+    const url = new URL(window.location.href);
+    const param = (key: string): string | undefined => {
+      const value = url.searchParams.get(key);
+      return value === null || value === "" ? undefined : value;
+    };
+    // The local machine is the default and is never written to the URL, so an
+    // absent machine parameter matches the local machine.
+    const machine = state.selectedMachine === undefined ? undefined : state.selectedMachine.id;
+    const machineMatches = param("machine") === (machine === "local" ? undefined : machine);
+    return machineMatches
+      && param("project") === (state.selectedProject === undefined ? undefined : state.selectedProject.id)
+      && param("workspace") === (state.selectedWorkspace === undefined ? undefined : state.selectedWorkspace.id)
+      && param("session") === (state.selectedSession === undefined ? undefined : state.selectedSession.id);
+  }
+
+  /** Close the topmost modal layer; popstate is the only caller. */
+  private closeModalLayer(): void {
+    if (this.quickSwitcherOpen) {
+      this.quickSwitcherOpen = false;
+      return;
+    }
+    const state = this.state;
+    if (state.actionPaletteOpen) { this.setState({ actionPaletteOpen: false }); return; }
+    if (state.projectDialogOpen) { this.setState({ projectDialogOpen: false }); return; }
+    if (state.machineDialogOpen) { this.setState({ machineDialogOpen: false }); return; }
+    if (state.commandDialog !== undefined) { this.sessions.cancelCommand(); return; }
+    if (state.modelDialog !== undefined) { this.setState({ modelDialog: undefined }); return; }
+    if (state.thinkingDialog !== undefined) { this.setState({ thinkingDialog: undefined }); return; }
+    if (state.themeDialog !== undefined) { this.setState({ themeDialog: undefined }); return; }
+    if (this.sessionCleanupDialog !== undefined) { this.sessionCleanupDialog = undefined; return; }
+  }
   private readonly onPageShow = () => {
     void this.sessionUnread.refreshAll();
     this.appShell.repairViewportPosition();
@@ -1405,9 +1455,9 @@ export class PiWebApp extends LitElement {
         .sessionsCollapsed=${this.navigationSections.isCollapsed("sessions")}
         .workspaceLabelItems=${(workspace: Workspace) => this.workspaceLabelItems(workspace)}
         .refreshControl=${this.appShell.shouldShowAppRefreshInHeader() ? this.renderAppRefresh() : undefined}
-        .onAddProject=${() => { this.setState({ projectDialogOpen: true }); }}
+        .onAddProject=${() => { this.openProjectDialog(); }}
         .onQuickSwitch=${() => { this.openQuickSwitcher(); }}
-        .onShowActions=${() => { this.setState({ actionPaletteOpen: true }); }}
+        .onShowActions=${() => { this.openActionPalette(); }}
         .onToggleProjects=${() => { this.navigationSections.toggle("projects"); }}
         .onToggleWorkspaces=${() => { this.navigationSections.toggle("workspaces"); }}
         .onToggleSessions=${() => { this.navigationSections.toggle("sessions"); }}
@@ -1481,9 +1531,17 @@ export class PiWebApp extends LitElement {
     return this.state.selectedWorkspace !== undefined;
   }
 
+  /**
+   * Active sessions for the switcher's WORKING group.
+   *
+   * Based on the machine-wide list the switcher renders, not the selected
+   * workspace's session list: a recent session from another workspace runs
+   * just as much as one from here, and grouping it under WORKING without a
+   * working badge would recreate the divergence this code exists to avoid.
+   */
   private activeSessionIds(): ReadonlySet<string> {
     const active = new Set<string>();
-    for (const session of this.state.sessions) {
+    for (const session of this.quickSwitcherSessions) {
       if (isSessionActive(this.state.sessionStatuses[session.id], this.state.sessionActivities[session.id])) active.add(session.id);
     }
     return active;
@@ -1491,12 +1549,7 @@ export class PiWebApp extends LitElement {
 
   /** Four-state badge per session for the quick switcher and list rows. */
   private sessionStateKinds(): ReadonlyMap<string, SessionStateBadgeKind> {
-    const kinds = new Map<string, SessionStateBadgeKind>();
-    for (const session of this.state.sessions) {
-      const kind = sessionActivityCategory(this.state.sessionStatuses[session.id], this.state.sessionActivities[session.id]);
-      if (kind !== undefined) kinds.set(session.id, kind);
-    }
-    return kinds;
+    return quickSwitcherSessionStates(this.quickSwitcherSessions, this.state.sessionStatuses, this.state.sessionActivities);
   }
 
   /**
@@ -1512,8 +1565,43 @@ export class PiWebApp extends LitElement {
     return waiting;
   }
 
+  /** True while a modal layer owns the back gesture. */
+  private modalLayerOpen(): boolean {
+    return this.quickSwitcherOpen
+      || this.state.actionPaletteOpen
+      || this.state.projectDialogOpen
+      || this.state.machineDialogOpen
+      || this.state.commandDialog !== undefined
+      || this.state.modelDialog !== undefined
+      || this.state.thinkingDialog !== undefined
+      || this.state.themeDialog !== undefined
+      || this.sessionCleanupDialog !== undefined;
+  }
+
+  /**
+   * Android back must close the layer it is looking at, not jump to another
+   * session. Push a placeholder frame when a layer opens so the back gesture
+   * pops to that frame; the popstate handler then closes the layer instead of
+   * restoring the previous session route.
+   */
+  private pushModalLayerFrame(): void {
+    // Same URL, new frame: writeRoute dedupes identical URLs, so push directly.
+    window.history.pushState({}, "");
+  }
+
+  private openActionPalette(): void {
+    this.pushModalLayerFrame();
+    this.setState({ actionPaletteOpen: true });
+  }
+
+  private openProjectDialog(): void {
+    this.pushModalLayerFrame();
+    this.setState({ projectDialogOpen: true });
+  }
+
   private openQuickSwitcher(): void {
     this.quickSwitcherOpen = true;
+    this.pushModalLayerFrame();
     // Show what is cached, then refresh behind it. The cache was previously
     // kept for the life of the page, so anything that changed after the first
     // open -- a rename, a new session, one archived on another device -- stayed
@@ -2004,9 +2092,9 @@ export class PiWebApp extends LitElement {
         terminalCommandRuns: this.terminalCommandRunsForOrigin(origin),
         openSettings: (section) => { this.openSettings(section); },
       },
-      openActionPalette: () => { this.setState({ actionPaletteOpen: true }); },
+      openActionPalette: () => { this.openActionPalette(); },
       focusPrompt: () => { void this.focusChatComposer(); },
-      addProject: () => { this.setState({ projectDialogOpen: true }); },
+      addProject: () => { this.openProjectDialog(); },
       addMachine: () => { this.openMachineDialog(); },
       refreshSelectedMachine: async () => {
         await Promise.all([this.machines.refreshMachineHealth(), this.machines.refreshMachineRuntime()]);
@@ -2141,6 +2229,7 @@ export class PiWebApp extends LitElement {
   }
 
   private openMachineDialog(): void {
+    this.pushModalLayerFrame();
     this.setState({ machineDialogOpen: true, error: "" });
   }
 
@@ -2182,6 +2271,7 @@ export class PiWebApp extends LitElement {
     const models = await this.sessions.listModels();
     const currentProvider = this.state.status?.model?.provider;
     const currentId = this.state.status?.model?.id;
+    this.pushModalLayerFrame();
     this.setState({
       modelDialog: {
         title: "Select Model",
@@ -2208,6 +2298,7 @@ export class PiWebApp extends LitElement {
     const resolution = this.resolveCurrentThemePreference(themes);
     const selectedThemeId = resolution.selectedTheme?.id;
     const autoValue = this.themePreference.auto ? THEME_AUTO_OFF_VALUE : THEME_AUTO_ON_VALUE;
+    this.pushModalLayerFrame();
     this.setState({
       themeDialog: {
         title: "Select Theme",
@@ -2295,6 +2386,7 @@ export class PiWebApp extends LitElement {
   private async openThinkingDialog() {
     const levels = await this.sessions.listThinkingLevels();
     const current = this.state.status?.thinkingLevel ?? "off";
+    this.pushModalLayerFrame();
     this.setState({
       thinkingDialog: {
         title: "Select Thinking Level",

@@ -1,4 +1,6 @@
-import type { SessionInfo, Workspace } from "./api";
+import type { SessionActivity, SessionInfo, SessionStatus, Workspace } from "./api";
+import { sessionActivityCategory } from "../../shared/sessionActivityState";
+import type { SessionStateBadgeKind } from "./components/activityBadge";
 import { sessionMatchesSearch } from "./sessionSearch";
 
 /**
@@ -168,4 +170,28 @@ export function renameSessionInList(
 ): readonly SessionInfo[] {
   if (!sessions.some((session) => session.id === sessionId)) return sessions;
   return sessions.map((session) => (session.id === sessionId ? { ...session, name } : session));
+}
+
+/**
+ * Four-state work badges for exactly the sessions the switcher lists.
+ *
+ * The switcher is machine-wide: it lists recent sessions from every workspace,
+ * while the app's selected workspace only knows its own. Computing the badges
+ * from `state.sessions` would leave cross-workspace sessions without a state -
+ * and the fallback in the row renderer would paint an active session with the
+ * idle dot it happens to share, which is how a working session came to read as
+ * a green dot. Deriving from the list being rendered keeps group placement and
+ * badge color from the same source, so WORKING and three dots cannot diverge.
+ */
+export function quickSwitcherSessionStates(
+  sessions: readonly SessionInfo[],
+  statuses: Readonly<Record<string, SessionStatus>>,
+  activities: Readonly<Record<string, SessionActivity>>,
+): ReadonlyMap<string, SessionStateBadgeKind> {
+  const kinds = new Map<string, SessionStateBadgeKind>();
+  for (const session of sessions) {
+    const kind = sessionActivityCategory(statuses[session.id], activities[session.id]);
+    if (kind !== undefined) kinds.set(session.id, kind);
+  }
+  return kinds;
 }

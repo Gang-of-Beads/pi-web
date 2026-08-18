@@ -488,7 +488,8 @@ export class ChatView extends LitElement {
           >
             <span class="subagent-dot ${row.status}" aria-hidden="true"></span>
             <span class="subagent-id" dir="ltr">${row.shortId}</span>
-            <span class="subagent-status">${row.statusLabel}</span>
+            <span class="subagent-status ${row.status}">${row.statusLabel}</span>
+            <span class="subagent-chevron" aria-hidden="true">›</span>
           </button>
         `)}
       </section>

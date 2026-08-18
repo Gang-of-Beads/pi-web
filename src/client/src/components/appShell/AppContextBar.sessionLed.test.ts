@@ -103,6 +103,13 @@ async function mount(options: {
   return root;
 }
 
+/** The bar element behind a mounted shadow root (root.host, typed). */
+function hostElement(root: ShadowRoot): AppContextBar {
+  const host = root.host;
+  if (!(host instanceof AppContextBar)) throw new Error("Expected app-context-bar host");
+  return host;
+}
+
 function project(): Project {
   return { id: "p1", name: "pi-web", path: "/repo/pi-web", createdAt: "2026-07-27T10:00:00.000Z" };
 }
@@ -189,12 +196,11 @@ describe("renaming the current session in place", () => {
     // The user is mid-edit: cursor at position 3, text beyond the seed.
     input.value = "my new name";
     input.setSelectionRange(3, 3);
-    // A re-render arrives while typing (status/activity changed upstream)...
-    root.querySelector<HTMLElement>(".context-working")?.remove();
-    root.querySelector("app-context-bar, *")?.dispatchEvent(new Event("change"));
-    // Simulate lit re-render by toggling a related property on the component.
-    const bar = root.host as unknown as { isWorking: boolean };
-    if (bar !== undefined) bar.isWorking = true;
+    // A re-render arrives while typing (status/activity changed upstream):
+    // toggling a real property triggers a lit update of the very component
+    // whose edit is in progress.
+    const bar = hostElement(root);
+    bar.isWorking = true;
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     // ...and the edit must still be exactly what the user typed, cursor intact.
@@ -216,11 +222,11 @@ describe("renaming the current session in place", () => {
     // The seed label is the first message; a new first message arrives
     // upstream (the very first word of a streaming reply).
     input.value = "half-typed";
-    const barElement = root.querySelector("input")?.closest("div") ?? null;
-    // Rerender with a changed session firstMessage, as PiWebApp does.
-    const host = root.host as unknown as { session: object };
-    (host as { session: { firstMessage: string } }).session.firstMessage = "a brand new first message";
-    (host as { requestUpdate?: () => void }).requestUpdate?.();
+    const host = hostElement(root);
+    const current = host.session;
+    if (current === undefined) throw new Error("expected a session");
+    const changed: SessionInfo = { ...current, firstMessage: "a brand new first message" };
+    host.session = changed;
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(input.value).toBe("half-typed");
