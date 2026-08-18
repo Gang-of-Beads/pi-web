@@ -82,3 +82,52 @@ describe("shouldShowSessionSearch", () => {
     expect(shouldShowSessionSearch(1, "bill")).toBe(true);
   });
 });
+
+describe("session id search", () => {
+  const session = (id: string, firstMessage: string, path: string): SessionInfo => ({
+    id, cwd: "/home/hanxiaodu", path, created: "", modified: "", messageCount: 0, firstMessage,
+  });
+
+  // Searching a session id prefix used to return nearly the whole list: the
+  // matcher fell back to a plain subsequence over name + first message + id +
+  // path, and a long UUID plus a path spells almost any short hex string.
+  it("does not match unrelated sessions from a session id prefix", () => {
+    const other = session(
+      "01a00f62-1111-2222-3333-444444444444",
+      "\u276f ssh hanxiaodu@100.100.1.1 Welcome to Ubuntu",
+      "/home/hanxiaodu/.pi/sessions/01a00f62.jsonl",
+    );
+    expect(sessionMatchesSearch(other, "01a0136")).toBe(false);
+  });
+
+  // A session whose first message is a stack trace: 4000-odd characters of
+  // file paths and line numbers contain "0", "1", "a", "3", "6" in order many
+  // times over, so an id-shaped query matched a session it has nothing to do
+  // with. Taken from a real session that showed up when searching "01a0136".
+  it("does not treat an id-shaped query as an abbreviation of prose", () => {
+    // Real stack traces run to thousands of characters of paths and line
+    // numbers; this rebuilds that shape rather than pasting one session's data.
+    const frame = (index: number) =>
+      `    at refreshAnthropicToken (file:///home/u/.nvm/node/v24.13.1/lib/pi-ai/dist/auth/oauth/anthropic.js:${String(index)}:30)`;
+    const stackTrace = [
+      'Error: Anthropic account "personal" failed closed: token refresh failed.',
+      "url=https://platform.claude.com/v1/oauth/token; details=TypeError: The",
+      '"signals[0]" argument must be an instance of AbortSignal. Received undefined',
+      ...Array.from({ length: 24 }, (_unused, index) => frame(100 + index * 37)),
+    ].join("\n");
+
+    const noisy = session(
+      "01a00616-738e-76a6-a2bf-f0656c8021ec", stackTrace,
+      "/home/hanxiaodu/.pi/agent/sessions/2026-08-15T15-42-03-696Z_01a00616.jsonl",
+    );
+    expect(sessionMatchesSearch(noisy, "01a0136")).toBe(false);
+  });
+
+  it("still matches the session whose id carries the prefix", () => {
+    const target = session(
+      "01a01367-aaaa-bbbb-cccc-dddddddddddd", "hi",
+      "/home/hanxiaodu/.pi/sessions/01a01367.jsonl",
+    );
+    expect(sessionMatchesSearch(target, "01a0136")).toBe(true);
+  });
+});
