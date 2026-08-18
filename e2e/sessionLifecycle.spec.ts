@@ -47,8 +47,37 @@ test.describe("archiving", () => {
   });
 });
 
+/**
+ * Each run gets its own workspace.
+ *
+ * These tests create sessions and archive them, and an archived record is
+ * durable by design. Sharing one workspace across runs therefore accumulates
+ * archived sessions indefinitely — this suite had left 52 of them in the
+ * container, which buries any real session behind a wall of test debris and
+ * makes the navigation lists useless for manual checking. A per-run directory
+ * keeps that debris out of the workspaces a human actually opens.
+ */
+const RUN_WORKSPACE = `/data/home/e2e-lifecycle-${String(Date.now())}`;
+
+/**
+ * The daemon will not open a session in a directory that does not exist, so the
+ * run's workspace is created once through the project route, which creates the
+ * directory as a side effect.
+ */
+let workspaceReady: Promise<void> | undefined;
+async function ensureRunWorkspace(request: import("@playwright/test").APIRequestContext): Promise<void> {
+  workspaceReady ??= (async () => {
+    const created = await request.post("/api/projects", {
+      data: { name: RUN_WORKSPACE.split("/").pop(), path: RUN_WORKSPACE, create: true },
+    });
+    expect(created.ok(), `create run workspace: ${String(created.status())}`).toBe(true);
+  })();
+  await workspaceReady;
+}
+
 async function createSession(request: import("@playwright/test").APIRequestContext): Promise<{ id: string; cwd: string }> {
-  const cwd = "/data/home/goaldemo";
+  await ensureRunWorkspace(request);
+  const cwd = RUN_WORKSPACE;
   const response = await request.post("/api/machines/local/sessions", { data: { cwd } });
   expect(response.ok(), `create session: ${String(response.status())}`).toBe(true);
   const session = await response.json() as { id: string };
