@@ -90,7 +90,7 @@ export const appStyles = css`
   @media (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
     :host { --pi-app-safe-area-bottom: env(safe-area-inset-bottom); }
   }
-  .shell { --navigation-panel-size: 340px; --workspace-panel-size: minmax(360px, 42vw); --navigation-panel-width: var(--navigation-panel-size); --workspace-panel-width: var(--workspace-panel-size); display: grid; grid-template-columns: var(--navigation-panel-width) 1px minmax(320px, 1fr) 1px var(--workspace-panel-width); height: 100%; min-height: 0; }
+  .shell { --navigation-panel-size: 340px; --workspace-panel-size: minmax(340px, 32vw); --navigation-panel-width: var(--navigation-panel-size); --workspace-panel-width: var(--workspace-panel-size); display: grid; grid-template-columns: var(--navigation-panel-width) 1px minmax(320px, 1.35fr) 1px var(--workspace-panel-width); height: 100%; min-height: 0; }
   aside { grid-column: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
   aside app-navigation-panel { flex: 1 1 auto; min-height: 0; }
   header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border-bottom: 1px solid var(--pi-border); }
@@ -502,7 +502,7 @@ export const chatStyles = css`
   .group-msg > .msg-header { position: sticky; top: -26px; z-index: 4; margin: -10px 0 8px; padding: 7px 0 6px; border-bottom: 1px solid color-mix(in srgb, var(--pi-border-muted) 35%, transparent); background: var(--pi-bg); }
   .msg-header-trailing { min-width: 0; flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; }
   .msg-actions { flex: 0 0 auto; display: inline-flex; gap: 6px; opacity: 0; transition: opacity .12s ease; }
-  .msg-action { display: inline-grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--pi-border); border-radius: 6px; background: var(--pi-surface); color: var(--pi-muted); padding: 0; font: 14px system-ui, sans-serif; line-height: 1; cursor: pointer; }
+  .msg-action { display: inline-grid; place-items: center; width: 32px; height: 32px; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: 6px; background: var(--pi-surface); color: var(--pi-muted); padding: 0; font: 14px system-ui, sans-serif; line-height: 1; cursor: pointer; }
   .msg-action:hover, .msg-action:focus { color: var(--pi-text); border-color: var(--pi-accent); }
   .msg:hover > .msg-header .msg-actions, .msg:focus-within > .msg-header .msg-actions, .group-msg:hover > .msg-header .msg-actions, .group-msg:focus-within > .msg-header .msg-actions { opacity: 1; }
   .label { display: block; color: var(--pi-muted); font-size: 12px; text-transform: uppercase; }
@@ -617,8 +617,8 @@ export const promptEditorStyles = css`
   .actions { display: flex; gap: 8px; align-items: center; justify-content: flex-end; flex-wrap: nowrap; white-space: nowrap; }
   .compact-status { display: flex; min-width: 0; align-items: center; gap: 6px; color: var(--pi-muted); font-size: 12px; flex: 1 1 0; }
   .compact-status > button { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .select-model { max-width: min(42vw, 320px); }
-  .icon-button { flex: 0 0 auto; display: inline-grid; place-items: center; width: 36px; height: 36px; padding: 0; }
+  .select-model { max-width: min(42vw, 320px); min-height: 40px; display: inline-flex; align-items: center; box-sizing: border-box; }
+  .icon-button { flex: 0 0 auto; display: inline-grid; place-items: center; width: 36px; height: 36px; box-sizing: border-box; padding: 0; }
   .icon-button .prompt-action-icon, .icon-button .prompt-thinking-gauge { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
   .icon-button .prompt-action-icon-filled { fill: currentColor; stroke: none; }
   .send-button:not(:disabled) { color: var(--pi-accent, var(--pi-text)); }
@@ -681,8 +681,7 @@ export const promptEditorStyles = css`
   .attachment-error { flex-basis: 100%; color: var(--pi-danger); font-size: 12px; }
   button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; }
   button:disabled, textarea:disabled, .markdown-editor-disabled .cm-editor { opacity: .5; cursor: not-allowed; }
-  @media (max-width: 640px) {
-    footer { gap: 8px; padding: 8px; }
+      footer { gap: 8px; padding: 8px; }
     .actions { gap: 6px; }
     .compact-status { flex: 1 1 220px; gap: 4px; }
     .select-model { max-width: min(58vw, 260px); }
@@ -692,7 +691,9 @@ export const promptEditorStyles = css`
     .compact-status { flex-basis: 170px; font-size: 11px; }
     .select-model { max-width: 48vw; }
     button { padding: 5px 7px; }
-    .icon-button { width: 34px; height: 34px; }
-    .markdown-editor .cm-cursor { height: 1.05em !important; margin-top: 0.02em; }
+    /* Narrow screens are phones: the touch targets get *bigger*, not smaller,
+       and the caret keeps the line height it has on wide screens. */
+    .icon-button { width: 40px; height: 40px; }
+    .markdown-editor .cm-cursor { height: 1.4em !important; }
   }
 `;

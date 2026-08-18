@@ -659,3 +659,59 @@ test.describe("navigation density", () => {
     expect(measured.listTop).toBeLessThan(measured.viewport / 5);
   });
 });
+
+test.describe("touch targets", () => {
+  test.skip(({ isMobile }) => isMobile === false, "phone-viewport behaviour");
+
+  // The audits measure tap height, not style presence: a control can carry
+  // padding and still be too small to hit reliably.
+  test("keeps primary controls at a tappable height", async ({ page }) => {
+    await openApp(page);
+
+    const measured = await page.evaluate(async () => {
+      const app = document.querySelector("pi-web-app") as (HTMLElement & { updateComplete: Promise<unknown> }) | null;
+      const barRoot = app?.shadowRoot?.querySelector("app-context-bar")?.shadowRoot;
+
+      const height = (root: ShadowRoot | null | undefined, selector: string) => {
+        const box = root?.querySelector(selector)?.getBoundingClientRect();
+        return box === undefined || box === null ? null : Math.round(box.height);
+      };
+      const editor = document.createElement("prompt-editor") as HTMLElement & {
+        machineId?: string; sessionId?: string; cwd?: string; status?: unknown; updateComplete: Promise<unknown>;
+      };
+      editor.machineId = "local"; editor.sessionId = "touch-probe"; editor.cwd = "/tmp";
+      // The model selector only renders once a session status exists: a bare
+      // mount would claim "no selector" while every real conversation has one.
+      editor.status = { model: { provider: "anthropic", id: "claude-opus-5" } };
+      (app?.shadowRoot ?? document.body).append(editor);
+      await editor.updateComplete;
+      await new Promise((resolve) => setTimeout(resolve, 400));
+
+      // The landing bar is the location trail; the session-led layout comes
+      // later. Either way every control here is a primary tap target, so every
+      // one of them that exists must clear the floor.
+      return {
+        chips: [...(barRoot?.querySelectorAll(".context-chip") ?? [])]
+          .map((chip) => Math.round(chip.getBoundingClientRect().height)),
+        breadcrumb: height(barRoot, ".context-breadcrumb"),
+        sessionTitle: height(barRoot, ".context-session-title"),
+        modelSelector: height(editor.shadowRoot, ".select-model"),
+        sendButton: height(editor.shadowRoot, ".send-button"),
+        attachButton: height(editor.shadowRoot, ".editor-attach"),
+      };
+    });
+
+    // The context bar is the primary navigation on a phone.
+    const barTargets = [measured.breadcrumb, measured.sessionTitle, ...(measured.chips ?? [])].filter(
+      (value): value is number => value !== null && value !== undefined,
+    );
+    expect(barTargets.length).toBeGreaterThan(0);
+    for (const value of barTargets) expect(value).toBeGreaterThanOrEqual(40);
+    // Composer controls are used dozens of times per conversation.
+    for (const [label, value] of [["model", measured.modelSelector], ["send", measured.sendButton]]) {
+      expect(value, label).not.toBeNull();
+      expect(value, label).toBeGreaterThanOrEqual(36);
+    }
+    expect(measured.attachButton, "attach").toBeGreaterThanOrEqual(30);
+  });
+});

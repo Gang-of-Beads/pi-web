@@ -152,7 +152,8 @@ export class GoalPanel extends LitElement {
   static override styles = [listStyles, css`
     h2 { min-height: 30px; }
     h2 > .section-count { flex: 0 0 auto; color: var(--pi-muted); font-size: inherit; }
-    .refresh-entry { flex: 0 0 auto; display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; font-size: 13px; }
+    .refresh-entry { flex: 0 0 auto; display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; font-size: 13px; }
+
     .goal-list { display: grid; gap: 8px; }
     .goal { border: 1px solid var(--pi-border-muted); border-radius: 9px; background: var(--pi-surface); overflow: hidden; }
     .goal.blocked { border-color: color-mix(in srgb, var(--pi-warning) 45%, var(--pi-border-muted)); }
@@ -160,9 +161,12 @@ export class GoalPanel extends LitElement {
     .goal-header {
       display: grid;
       grid-template-columns: auto 1fr auto auto;
-      align-items: baseline;
+      align-items: center;
       gap: 7px;
       width: 100%;
+      /* The whole header is the primary tap target on a phone. */
+      min-height: 40px;
+      box-sizing: border-box;
       border: 0;
       background: none;
       color: var(--pi-text);
