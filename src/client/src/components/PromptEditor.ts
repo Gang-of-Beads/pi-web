@@ -14,6 +14,11 @@ import { detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletio
 import { clearDraft, loadDraft, saveDraft } from "../promptDraftStorage";
 import { loadPromptHistory, rememberPromptHistory, searchPromptHistory } from "../promptHistory";
 import { createMobilePromptEnterMedia, readPromptEnterPreference, shouldSendPromptOnEnterShortcut, shouldUsePromptEnterShiftShortcut } from "../promptEnterBehavior";
+import { createBrowserVoiceRecorder } from "../browserVoiceRecorder";
+import { isDictationConfigured } from "../speechToText";
+import { isVoiceCaptureActive, voiceCaptureLabel, type VoiceCaptureState } from "../voiceCapture";
+import { VoiceController } from "../voiceController";
+import type { PiWebSpeechToTextConfig } from "../../../shared/apiTypes";
 import { promptEditorStyles, type CompletionItem } from "./shared";
 import { renderAttachIcon, renderSendIcon, renderQueueIcon, renderSteerIcon, renderStopIcon, renderThinkingGauge } from "./promptEditorIcons";
 import { thinkingGauge, thinkingLevelLabel } from "../../../shared/thinkingLevels";
@@ -51,6 +56,10 @@ export class PromptEditor extends LitElement {
   @state() private currentInputMode: InputMode = { kind: "normal" };
   @state() private completions: CompletionItem[] = [];
   @state() private selectedIndex = 0;
+  /** Absent means dictation is not offered at all. */
+  @property({ attribute: false }) speechToText?: PiWebSpeechToTextConfig;
+  @state() private voiceState: VoiceCaptureState = { kind: "idle" };
+  private voice?: VoiceController;
   @state() private attachments: PendingAttachment[] = [];
   @state() private attachmentError: string | undefined = undefined;
   private attachmentSeq = 0;
@@ -114,6 +123,7 @@ export class PromptEditor extends LitElement {
         <div class="editor-wrap">
           <div class=${`markdown-editor${this.disabled ? " markdown-editor-disabled" : ""}`} aria-label="Message pi" aria-disabled=${this.disabled ? "true" : "false"}></div>
           <button class="editor-attach icon-button" ?disabled=${busy} title="Attach files" aria-label="Attach files" @click=${() => { this.attachmentInput?.click(); }}>${renderAttachIcon()}</button>
+          ${this.renderDictateButton(busy)}
           ${shellMode ? html`<div class="mode-hint">Shell command${shellInputMode.excludeFromContext ? " · excluded from context" : ""}</div>` : null}
           ${this.isCompacting && !shellMode ? html`<div class="mode-hint">Compacting history · message will be queued</div>` : null}
           <autocomplete-menu .items=${this.completions} .selectedIndex=${this.selectedIndex} .onPick=${(item: CompletionItem) => { this.pick(item); }}></autocomplete-menu>
@@ -266,6 +276,54 @@ export class PromptEditor extends LitElement {
 
   private currentAttachments(): PromptAttachment[] {
     return this.attachments.map((attachment) => pendingToPromptAttachment(attachment));
+  }
+
+  /**
+   * The dictation control, rendered only when a transcription endpoint is
+   * configured: without one there is nothing to send audio to, and offering a
+   * microphone that cannot work would be worse than not offering it.
+   */
+  private renderDictateButton(busy: boolean) {
+    if (!isDictationConfigured(this.speechToText)) return null;
+    const label = voiceCaptureLabel(this.voiceState);
+    const active = isVoiceCaptureActive(this.voiceState);
+    return html`
+      <button
+        class=${`editor-dictate icon-button${active ? " listening" : ""}`}
+        type="button"
+        ?disabled=${busy || this.voiceState.kind === "transcribing"}
+        title=${label}
+        aria-label=${label}
+        aria-pressed=${String(active)}
+        @click=${() => { void this.toggleDictation(); }}
+      >${active ? "\u25A0" : "\u25CF"}</button>
+    `;
+  }
+
+  private async toggleDictation(): Promise<void> {
+    this.voice ??= new VoiceController(
+      { recorder: createBrowserVoiceRecorder() },
+      {
+        onState: (state) => { this.voiceState = state; },
+        // Inserted, never sent: the user reads what was heard before it goes
+        // anywhere.
+        onTranscript: (text) => { this.insertDictatedText(text); },
+      },
+    );
+    await this.voice.toggle(this.speechToText);
+  }
+
+  /**
+   * Append dictated text to whatever is already typed rather than replacing it.
+   *
+   * Public because it is the seam dictation lands through, and it is the
+   * behaviour worth asserting: a transcript must never wipe a half-written
+   * message.
+   */
+  insertDictatedText(text: string): void {
+    const current = this.editor?.state.doc.toString() ?? this.draft;
+    const separator = current === "" || current.endsWith(" ") || current.endsWith("\n") ? "" : " ";
+    this.replaceText(`${current}${separator}${text}`);
   }
 
   private effectiveAttachmentDelivery(): PromptAttachmentDelivery {

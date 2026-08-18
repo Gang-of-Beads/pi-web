@@ -179,15 +179,16 @@ tailnet `:8506`), never the host installation.
 
 ## Open — voice input
 
-- [ ] **Tap-to-talk in the composer**: one tap starts capture, one tap stops.
-      *Everything but the button is built and tested:* `voiceCapture.ts` (tap
-      and VAD rules, 14 tests), `speechToText.ts` (configurable transcription,
-      14 tests), `voiceController.ts` (sequencing and failure paths, 11 tests),
-      `browserVoiceRecorder.ts` (microphone binding, thin by design with the
-      level maths covered by 5 tests). What remains is the composer control
-      itself: render the button only when `speechToText.endpoint` is
-      configured, show `voiceCaptureLabel(state)`, and insert the transcript
-      through the editor's existing text-replacement path.
+- [x] **Tap-to-talk in the composer.** One tap starts capture, one tap stops.
+      The control is rendered only when `speechToText.endpoint` is configured,
+      shows the current state as its label, and appends the transcript to
+      whatever is already typed rather than replacing a half-written message.
+      Layers: `voiceCapture.ts` (tap/VAD rules, 14 tests), `speechToText.ts`
+      (configurable transcription, 14 tests), `voiceController.ts` (sequencing
+      and failure paths, 11 tests), `browserVoiceRecorder.ts` (microphone, thin
+      by design, 5 tests), plus 5 tests for the control's visibility.
+      *Evidence:* measured in the browser — the button is absent with no
+      endpoint configured and present, labelled "Dictate", once one is set.
 - [x] **VAD rules decided and tested.** Silence before speech never ends the
       recording (thinking time), a pause mid-sentence does not end the utterance
       (900ms trailing threshold, asserted to not fire at 800ms), stopping
