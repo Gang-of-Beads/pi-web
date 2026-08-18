@@ -53,3 +53,18 @@ function isSubsequence(needle: string, haystack: string): boolean {
   }
   return true;
 }
+
+/**
+ * Which way through history a key moves.
+ *
+ * Named rather than passed as +1/-1 because the two are easy to swap and the
+ * result still looks plausible: ArrowUp reached the most recent entry and then
+ * appeared to stop, while ArrowDown walked backwards through time. Every shell,
+ * and pi's own terminal UI, treat Up as "further back".
+ */
+export type HistoryDirection = "older" | "newer";
+
+/** Index 0 is the most recent entry, so going older means counting up. */
+export function historyIndexStep(direction: HistoryDirection): 1 | -1 {
+  return direction === "older" ? 1 : -1;
+}

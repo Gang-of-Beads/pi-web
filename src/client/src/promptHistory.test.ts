@@ -1,13 +1,11 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  loadPromptHistory,
+import { historyIndexStep, loadPromptHistory,
   promptHistoryKey,
   rememberPromptHistory,
   savePromptHistory,
-  searchPromptHistory,
-} from "./promptHistory";
+  searchPromptHistory, } from "./promptHistory";
 
 afterEach(() => {
   localStorage.clear();
@@ -114,5 +112,15 @@ describe("searchPromptHistory", () => {
     rememberPromptHistory(SESSION, "test two");
 
     expect(searchPromptHistory(SESSION, "test")).toEqual(["test two", "test one"]);
+  });
+});
+
+describe("history direction", () => {
+  // Up went to the most recent entry and then stopped, because it stepped
+  // toward index -1; Down walked further back. That is inverted from every
+  // shell and from pi's terminal UI, where Up means "further back".
+  it("counts up for older, since index 0 is the most recent entry", () => {
+    expect(historyIndexStep("older")).toBe(1);
+    expect(historyIndexStep("newer")).toBe(-1);
   });
 });

@@ -12,7 +12,7 @@ import { inputModeForDraft, inputModesEqual, type InputMode } from "../inputMode
 import { machineSessionKey } from "../machineKeys";
 import { detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletionChoices, type PromptCompletionTrigger } from "../promptCompletions";
 import { clearDraft, loadDraft, saveDraft } from "../promptDraftStorage";
-import { loadPromptHistory, rememberPromptHistory, searchPromptHistory } from "../promptHistory";
+import { historyIndexStep, type HistoryDirection, loadPromptHistory, rememberPromptHistory, searchPromptHistory } from "../promptHistory";
 import { createMobilePromptEnterMedia, readPromptEnterPreference, shouldSendPromptOnEnterShortcut, shouldUsePromptEnterShiftShortcut } from "../promptEnterBehavior";
 import { createBrowserVoiceRecorder } from "../browserVoiceRecorder";
 import { isDictationConfigured } from "../speechToText";
@@ -367,8 +367,8 @@ export class PromptEditor extends LitElement {
           }),
           keymap.of([
             { any: (view, event) => this.handleEditorKeyDown(event, view) },
-            { key: "ArrowDown", run: (view) => this.handleEditorArrow(view, 1) },
-            { key: "ArrowUp", run: (view) => this.handleEditorArrow(view, -1) },
+            { key: "ArrowDown", run: (view) => this.handleEditorArrow(view, "newer") },
+            { key: "ArrowUp", run: (view) => this.handleEditorArrow(view, "older") },
             { key: "Escape", run: () => this.closeCompletions() },
             { key: "Tab", run: (view) => this.handleEditorTab(view) },
             { key: "Shift-Tab", run: (view) => indentWithTab.shift?.(view) ?? false },
@@ -470,9 +470,12 @@ export class PromptEditor extends LitElement {
     return true;
   }
 
-  private handleEditorArrow(view: EditorView, delta: 1 | -1): boolean {
-    if (this.completions.length) return this.moveCompletion(delta);
-    return this.browsePromptHistory(view, delta);
+  private handleEditorArrow(view: EditorView, direction: HistoryDirection): boolean {
+    // In a completion list, Up moves toward the top of the list; in history, Up
+    // moves further back in time. The two are opposite directions through an
+    // array, so they are named rather than shared as a raw step.
+    if (this.completions.length) return this.moveCompletion(direction === "older" ? -1 : 1);
+    return this.browsePromptHistory(view, historyIndexStep(direction));
   }
 
   private browsePromptHistory(view: EditorView, delta: 1 | -1): boolean {
