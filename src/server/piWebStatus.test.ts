@@ -7,6 +7,12 @@ import { comparePackageVersions, getPiWebRuntime, getPiWebStatus, getPiWebVersio
 import { SessionDaemonClient } from "../sessiond/sessionDaemonClient.js";
 import type { PiWebRuntimeComponent } from "../shared/apiTypes.js";
 
+// Every name the status code consults, not just the PI WEB one: a developer
+// machine that exports PI_SKIP_VERSION_CHECK for pi itself would otherwise make
+// the forced-check test skip its lookup and fail, which is exactly what
+// happened on the host this was written on.
+const SKIP_VERSION_CHECK_KEYS = ["PI_WEB_SKIP_VERSION_CHECK", "PI_WEB_OFFLINE", "PI_SKIP_VERSION_CHECK", "PI_OFFLINE"] as const;
+const originalSkipVersionChecks = new Map(SKIP_VERSION_CHECK_KEYS.map((key) => [key, process.env[key]]));
 const originalSkipVersionCheck = process.env["PI_WEB_SKIP_VERSION_CHECK"];
 const originalHome = process.env["HOME"];
 const originalPath = process.env["PATH"];
@@ -17,6 +23,7 @@ const originalDockerDevRepoRoot = process.env["PI_WEB_DOCKER_DEV_REPO_ROOT"];
 const originalAgentDir = process.env["PI_WEB_AGENT_DIR"];
 
 afterEach(() => {
+  for (const [key, value] of originalSkipVersionChecks) restoreEnv(key, value);
   restoreEnv("PI_WEB_SKIP_VERSION_CHECK", originalSkipVersionCheck);
   restoreEnv("HOME", originalHome);
   restoreEnv("PATH", originalPath);
@@ -178,7 +185,7 @@ describe("PI WEB status", () => {
   });
 
   it("bypasses cached npm release data for a forced check", async () => {
-    Reflect.deleteProperty(process.env, "PI_WEB_SKIP_VERSION_CHECK");
+    for (const key of SKIP_VERSION_CHECK_KEYS) Reflect.deleteProperty(process.env, key);
     process.env["PI_WEB_DOCKER_RUNTIME"] = "1";
     process.env["PI_WEB_DOCKER_MODE"] = "runtime";
     const fetchMock = vi.spyOn(globalThis, "fetch")
