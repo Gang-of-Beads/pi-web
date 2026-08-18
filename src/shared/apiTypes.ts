@@ -1344,3 +1344,14 @@ export type GlobalSessionEvent =
   | SessionUnreadEvent
   | SessionStartupProgressEvent;
 export type RealtimeEvent = GlobalSessionEvent | TerminalUiEvent | MachineStatusUiEvent;
+
+/** A run a restart cut off, as reported once by the daemon and then cleared. */
+export interface InterruptedRunInfo {
+  readonly sessionId: string;
+  readonly cwd: string;
+  readonly interruptedAt: string;
+}
+
+export interface InterruptedRunSnapshot {
+  readonly runs: readonly InterruptedRunInfo[];
+}

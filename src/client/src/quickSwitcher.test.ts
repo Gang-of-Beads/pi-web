@@ -204,3 +204,39 @@ describe("quickSwitcherModel attention ranking", () => {
     expect(model.groups.map((group) => group.id)).toEqual(["today"]);
   });
 });
+
+describe("interrupted runs", () => {
+  // A session a restart cut off is not going to finish on its own, and looks
+  // identical to an idle one in the list -- which is how a running session
+  // became impossible to find again after the daemon restarted under it.
+  it("ranks an interrupted session above everything except a blocked one", () => {
+    const model = quickSwitcherModel({
+      sessions: [
+        session("idle", { modified: "2026-08-18T10:00:00Z" }),
+        session("cut-off", { modified: "2026-08-18T08:00:00Z" }),
+        session("busy", { modified: "2026-08-18T09:00:00Z" }),
+      ],
+      activeSessionIds: new Set(["busy"]),
+      interruptedSessionIds: new Set(["cut-off"]),
+      query: "",
+      now: Date.parse("2026-08-18T11:00:00Z"),
+    });
+
+    const order = model.groups.flatMap((group) => group.sessions.map((entry) => entry.id));
+    expect(order.indexOf("cut-off")).toBeLessThan(order.indexOf("busy"));
+    expect(order.indexOf("cut-off")).toBeLessThan(order.indexOf("idle"));
+    expect(model.groups.find((group) => group.id === "interrupted")?.title).toBe("Interrupted");
+  });
+
+  it("does not report a session as interrupted once it is working again", () => {
+    const model = quickSwitcherModel({
+      sessions: [session("resumed", { modified: "2026-08-18T10:00:00Z" })],
+      activeSessionIds: new Set(["resumed"]),
+      interruptedSessionIds: new Set(["resumed"]),
+      query: "",
+      now: Date.parse("2026-08-18T11:00:00Z"),
+    });
+    expect(model.groups.find((group) => group.id === "interrupted")).toBeUndefined();
+    expect(model.groups.find((group) => group.id === "active")?.sessions).toHaveLength(1);
+  });
+});

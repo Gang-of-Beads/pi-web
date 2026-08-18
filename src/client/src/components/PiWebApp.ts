@@ -122,6 +122,7 @@ export class PiWebApp extends LitElement {
       console.warn(`Failed to ${operation} session unread state for ${machineId}`, error);
     },
   });
+  @state() private interruptedSessionIds: ReadonlySet<string> = new Set();
   @state() private unreadSessionIds: ReadonlySet<string> = this.sessionUnread.unreadSessionIds(selectedMachineId(this.state), this.state.sessions);
   private unreadConnected = false;
   private committedChatIdentity: string | undefined;
@@ -307,6 +308,17 @@ export class PiWebApp extends LitElement {
     if (!this.unreadConnected || selectedChatIdentity(this.state) !== identity) return;
     this.readyChatIdentity = identity;
     this.syncSelectedSessionReadState();
+  }
+
+  /**
+   * Runs the daemon's last restart cut off. They will not finish on their own,
+   * so they are surfaced above work that is merely idle. Reading the record
+   * clears it, so this is only worth doing when a connection is established.
+   */
+  private refreshInterruptedRuns(machineId: string): void {
+    void this.sessions.loadInterruptedRuns(machineId).then((ids) => {
+      if (ids.size > 0) this.interruptedSessionIds = ids;
+    });
   }
 
   private syncUnreadSessionIds(): void {
@@ -972,6 +984,10 @@ export class PiWebApp extends LitElement {
 
   private connectRealtime(): void {
     const machineId = selectedMachineId(this.state);
+    // Read once on the first connect too, not only when re-establishing: a
+    // fresh page load is exactly when the user is looking for the work the
+    // last restart cut off.
+    this.refreshInterruptedRuns(machineId);
     this.realtime.connect(
       (event) => { this.handleRealtimeEvent(machineId, event); },
       () => {
@@ -980,6 +996,7 @@ export class PiWebApp extends LitElement {
         // session that started working while disconnected would otherwise show
         // no work indicator until its next publish.
         void this.sessions.hydrateSessionStatuses(machineId);
+        this.refreshInterruptedRuns(machineId);
         const workspace = this.state.selectedWorkspace;
         if (workspace !== undefined) void this.refreshActiveTerminals(workspace);
       },
@@ -2326,6 +2343,7 @@ export class PiWebApp extends LitElement {
           .activeSessionIds=${this.activeSessionIds()}
           .waitingSessionIds=${this.waitingSessionIds()}
           .unreadSessionIds=${this.unreadSessionIds}
+          .interruptedSessionIds=${this.interruptedSessionIds}
           .canStartSession=${this.canStartSession()}
           .onCreateSession=${() => { void this.startSessionAndOpenChat(); }}
           .onOpenSession=${(session: SessionInfo) => { void this.openSessionFromQuickSwitcher(session); }}

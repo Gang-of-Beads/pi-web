@@ -763,6 +763,25 @@ export class SessionController {
    * Best-effort by design — a hydration failure leaves the list exactly as the
    * live events left it, so it is not surfaced as a session error.
    */
+  /**
+   * Session ids whose run the daemon's last restart cut off.
+   *
+   * Reading the record clears it on the daemon, so this is called once per
+   * connection rather than polled: it answers "what did the last restart
+   * interrupt", not a state that keeps changing while the app is open.
+   *
+   * Best-effort: no record is the common case, and failing to read one must not
+   * disturb reconnecting.
+   */
+  async loadInterruptedRuns(machineId = selectedMachineId(this.getState())): Promise<ReadonlySet<string>> {
+    try {
+      const snapshot = await this.api.interruptedRuns(machineId);
+      return new Set(snapshot.runs.map((run) => run.sessionId));
+    } catch {
+      return new Set();
+    }
+  }
+
   async hydrateSessionStatuses(machineId = selectedMachineId(this.getState())): Promise<void> {
     let snapshot;
     try {

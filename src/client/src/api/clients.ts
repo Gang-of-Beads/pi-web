@@ -42,6 +42,7 @@ import {
   parseSessionNotificationInboxSnapshot,
   parseSessionStatus,
   parseSessionStatusCatalogSnapshot,
+  parseInterruptedRunSnapshot,
   parseWorkspaceGoalsResponse,
   parseSessionUnreadCatalogSnapshot,
   parseSessionStreamSnapshot,
@@ -218,6 +219,9 @@ export const sessionsApi = {
   // `no-store`: a cached snapshot would reinstate work indicators the browser
   // has already superseded with live `status.update` events.
   statusCatalog: (machineId = "local") => request(`${machinePrefix(machineId)}/sessions/statuses`, parseSessionStatusCatalogSnapshot, { cache: "no-store" }),
+  // Reading this clears it on the daemon, so it is fetched once per connection
+  // rather than polled: the record answers "what did the last restart cut off".
+  interruptedRuns: (machineId = "local") => request(`${machinePrefix(machineId)}/sessions/interrupted`, parseInterruptedRunSnapshot, { cache: "no-store" }),
   acknowledgeUnread: (session: SessionRef, catalogId: string, throughCompletionOrder: number, machineId = "local") => {
     const body: SessionUnreadAcknowledgeRequest = { cwd: session.cwd, catalogId, throughCompletionOrder };
     return request(sessionPath(session, "unread/acknowledge", machineId), parseSessionUnreadCatalogSnapshot, { method: "POST", body: JSON.stringify(body) });

@@ -16,7 +16,7 @@ import { sessionMatchesSearch } from "./sessionSearch";
  * testable without rendering the sheet.
  */
 
-export type QuickSwitcherGroupId = "waiting" | "active" | "unread" | "today" | "yesterday" | "earlier";
+export type QuickSwitcherGroupId = "waiting" | "interrupted" | "active" | "unread" | "today" | "yesterday" | "earlier";
 
 export interface QuickSwitcherGroup {
   id: QuickSwitcherGroupId;
@@ -31,6 +31,8 @@ export interface QuickSwitcherModelInput {
   waitingSessionIds?: ReadonlySet<string>;
   /** Sessions that finished work the user has not looked at yet. */
   unreadSessionIds?: ReadonlySet<string>;
+  /** Sessions whose run a restart cut off, from the daemon's interrupted record. */
+  interruptedSessionIds?: ReadonlySet<string>;
   query: string;
   now: number;
 }
@@ -43,13 +45,15 @@ export interface QuickSwitcherModel {
 /**
  * Groups in the order they are shown, which is the order of how much they want
  * the user: an agent blocked on a question cannot progress at all without them,
- * work in flight may still need them, finished-but-unseen work is the reason
- * they opened the switcher, and everything else is plain recency.
+ * work that was cut off will never finish on its own, work in flight may still
+ * need them, finished-but-unseen work is the reason they opened the switcher,
+ * and everything else is plain recency.
  */
-const GROUP_ORDER = ["waiting", "active", "unread", "today", "yesterday", "earlier"] as const;
+const GROUP_ORDER = ["waiting", "interrupted", "active", "unread", "today", "yesterday", "earlier"] as const;
 
 const GROUP_TITLES: Record<QuickSwitcherGroupId, string> = {
   waiting: "Waiting for you",
+  interrupted: "Interrupted",
   active: "Working",
   unread: "Finished",
   today: "Today",
@@ -73,6 +77,7 @@ export function quickSwitcherModel(input: QuickSwitcherModelInput): QuickSwitche
       input.activeSessionIds,
       input.waitingSessionIds ?? EMPTY_IDS,
       input.unreadSessionIds ?? EMPTY_IDS,
+      input.interruptedSessionIds ?? EMPTY_IDS,
       input.now,
     );
     const group = byGroup.get(groupId) ?? [];
@@ -101,9 +106,13 @@ function quickSwitcherGroupId(
   activeSessionIds: ReadonlySet<string>,
   waitingSessionIds: ReadonlySet<string>,
   unreadSessionIds: ReadonlySet<string>,
+  interruptedSessionIds: ReadonlySet<string>,
   now: number,
 ): QuickSwitcherGroupId {
   if (waitingSessionIds.has(session.id)) return "waiting";
+  // Only while it is still stopped: a session that has been picked up again is
+  // reported by what it is doing now, not by what a past restart did to it.
+  if (interruptedSessionIds.has(session.id) && !activeSessionIds.has(session.id)) return "interrupted";
   if (activeSessionIds.has(session.id)) return "active";
   if (unreadSessionIds.has(session.id)) return "unread";
   const modified = Date.parse(session.modified);

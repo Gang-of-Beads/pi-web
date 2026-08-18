@@ -26,6 +26,8 @@ export class QuickSwitcher extends LitElement {
   @property({ attribute: false }) activeSessionIds: ReadonlySet<string> = new Set();
   @property({ attribute: false }) waitingSessionIds: ReadonlySet<string> = new Set();
   @property({ attribute: false }) unreadSessionIds: ReadonlySet<string> = new Set();
+  /** Sessions the daemon reported as cut off by a restart. */
+  @property({ attribute: false }) interruptedSessionIds: ReadonlySet<string> = new Set();
   @property({ type: Boolean }) canStartSession = false;
   @property({ attribute: false }) onCreateSession?: () => void;
   @property({ attribute: false }) onOpenSession?: (session: SessionInfo) => void;
@@ -41,6 +43,7 @@ export class QuickSwitcher extends LitElement {
       activeSessionIds: this.activeSessionIds,
       waitingSessionIds: this.waitingSessionIds,
       unreadSessionIds: this.unreadSessionIds,
+      interruptedSessionIds: this.interruptedSessionIds,
       query: this.query,
       now: Date.now(),
     });
@@ -127,6 +130,7 @@ export class QuickSwitcher extends LitElement {
     const selected = this.selectedSession?.id === session.id;
     const unread = this.unreadSessionIds.has(session.id);
     const active = this.activeSessionIds.has(session.id);
+    const interrupted = this.interruptedSessionIds.has(session.id) && !active;
     return html`
       <button
         class=${`row session-row ${selected ? "selected" : ""} ${unread ? "unread" : ""}`}
@@ -137,7 +141,8 @@ export class QuickSwitcher extends LitElement {
         <span class="row-title" dir="auto">${sessionLabel(session)}</span>
         <span class="row-subtitle">${quickSwitcherSessionSubtitle(session, this.workspaces)}</span>
         ${active ? html`<span class="row-flag active" title="Session is working" aria-label="Session is working"></span>` : null}
-        ${!active && unread ? html`<span class="row-flag unread" title="Unread activity" aria-label="Unread activity"></span>` : null}
+        ${interrupted ? html`<span class="row-flag interrupted" title="A restart interrupted this run" aria-label="A restart interrupted this run"></span>` : null}
+        ${!active && !interrupted && unread ? html`<span class="row-flag unread" title="Unread activity" aria-label="Unread activity"></span>` : null}
       </button>
     `;
   }
@@ -152,6 +157,7 @@ export class QuickSwitcher extends LitElement {
       activeSessionIds: this.activeSessionIds,
       waitingSessionIds: this.waitingSessionIds,
       unreadSessionIds: this.unreadSessionIds,
+      interruptedSessionIds: this.interruptedSessionIds,
       query: this.query,
       now: Date.now(),
     });
@@ -217,6 +223,9 @@ export class QuickSwitcher extends LitElement {
     .row-flag { position: absolute; top: 50%; right: 12px; width: 8px; height: 8px; margin-top: -4px; border-radius: 50%; }
     .row-flag.active { background: var(--pi-success); }
     .row-flag.unread { background: var(--pi-accent); }
+    /* Hollow rather than filled: this one marks work that stopped, so it should
+       not read as another kind of activity at a glance. */
+    .row-flag.interrupted { background: transparent; border: 2px solid var(--pi-warning, var(--pi-accent)); }
     .empty { margin: 16px 4px; color: var(--pi-muted); }
     footer { flex: 0 0 auto; padding: 10px; padding-bottom: max(10px, env(safe-area-inset-bottom)); border-top: 1px solid var(--pi-border); }
     footer button { width: 100%; min-height: 44px; border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
