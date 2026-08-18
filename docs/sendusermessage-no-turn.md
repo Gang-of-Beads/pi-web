@@ -22,6 +22,7 @@ process output (the container's own stderr noise was excluded).
 | `/cmd` handler `pi.sendUserMessage` (no await) | **0** | empty | handler returned |
 | `/cmd` handler `await ctx.waitForIdle()` then send | **0** | empty | resolved, no error |
 | PI WEB `/sessions/:id/prompt` with `/cmd` | **0** | `accepted:true` | same |
+| `/cmd` handler `sendCustomMessage(triggerTurn:true)` | **0** | empty | resolved, no error |
 
 Control confirmed the mock path works: a normal prompt produces exactly one
 model request and prints the reply. Every slash-command variant produces zero.
@@ -39,11 +40,14 @@ model request and prints the reply. Every slash-command variant produces zero.
    never does: no error, no queue, no model request, message may appear in
    agent state yet the turn machinery is skipped.
 
-The single-dot difference from a normal prompt is the nesting: sendUserMessage
-from a command handler races the outer `prompt()`'s command dispatch. The
+The single-dot difference from a normal prompt is the nesting. It is not
+specific to `sendUserMessage`: `sendCustomMessage(..., { triggerTurn: true })`
+inside the same handler is swallowed identically (zero requests), so any
+turn-triggering call nested in a command dispatch is silently skipped. The
 interactive TUI is the only place the official `/ask` example is exercised,
 which is why this has been a known issue family upstream rather than a loud
-failure.
+failure. A pi-web workaround therefore cannot just switch the extension to
+another core API; it has to break the nesting itself.
 
 ## Upstream status
 
