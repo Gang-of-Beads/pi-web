@@ -108,12 +108,13 @@ async function createSession(request: import("@playwright/test").APIRequestConte
  *
  * Skipped unless the daemon actually has Anthropic accounts configured, so the
  * suite still passes on a clean container. When they are present, selecting an
- * `anthropic-<account>` alias must leave the session on the canonical provider
- * — the alias is a selection entry point, not an identity to persist — and must
- * switch the active account.
+ * `anthropic-<account>` alias must pin *this session* to that account: the
+ * extension registers each alias as a real provider bound to one account, so
+ * the session keeps the alias as its provider and the machine-wide active
+ * account is left alone.
  */
 test.describe("anthropic account aliases", () => {
-  test("normalises an alias to the canonical provider", async ({ request }) => {
+  test("pins the session to the chosen account without changing the global active account", async ({ request }) => {
     const { id, cwd } = await createSession(request);
 
     const models = await request.get(`/api/machines/local/sessions/${id}/models?cwd=${encodeURIComponent(cwd)}`);
@@ -127,8 +128,16 @@ test.describe("anthropic account aliases", () => {
 
     expect(applied.status()).toBe(200);
     const status = await applied.json() as { model?: { provider?: string; id?: string } };
-    // The alias must not survive as the session's provider.
-    expect(status.model?.provider).toBe("anthropic");
+    // The alias is the session's binding to one account, so it must survive.
+    // Rewriting it to the canonical provider is what made the choice global.
+    expect(status.model?.provider).toBe(alias?.provider);
     expect(status.model?.id).toBe(alias?.id);
+
+    // A second session must be unaffected: the choice above was per-session.
+    const other = await createSession(request);
+    const otherStatus = await request.get(`/api/machines/local/sessions/${other.id}/status?cwd=${encodeURIComponent(other.cwd)}`);
+    const otherModel = await otherStatus.json() as { model?: { provider?: string } };
+    expect(otherModel.model?.provider).not.toBe(alias?.provider);
   });
 });
+

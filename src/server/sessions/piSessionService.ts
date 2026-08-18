@@ -1922,25 +1922,33 @@ export class PiSessionService implements SessionRouteService {
   async availableModels(ref: PiSessionRef): Promise<ClientSessionModel[]> {
     const session = await this.getOrOpen(ref);
     const models = await this.sessionModelCandidates(session);
-    return withAnthropicAccountAliases(models.map(modelToClientModel), await readAnthropicAccountNames());
+    // Account aliases are not synthesised here. The multi-account extension
+    // registers each `anthropic-<account>` as a real provider, so they arrive
+    // with the runtime's own models; fabricating them from pi-accounts.json as
+    // well would offer entries that cannot resolve when the extension is absent.
+    return models.map(modelToClientModel);
   }
 
   async setModel(ref: PiSessionRef, provider: string, modelId: string): Promise<ClientSessionStatus> {
     await this.assertWritable(ref);
     const session = await this.getOrOpen(ref);
     this.assertTreeNavigationInactive(session, "change models");
-    const aliasAccount = anthropicAliasAccountName(provider);
-    if (aliasAccount !== undefined) {
-      await setActiveAnthropicAccount(aliasAccount);
-      provider = "anthropic";
-    }
+    // An `anthropic-<account>` provider is kept as the session's provider
+    // rather than being rewritten to the canonical one. The extension registers
+    // each alias as a real provider bound to exactly that account, so keeping it
+    // pins this session to that account.
+    //
+    // This used to rewrite the global active account instead. That made the
+    // choice machine-wide: every other session silently followed, and a session
+    // used whichever account happened to be active when its request went out,
+    // so a concurrent switch could fail an unrelated session with a 401.
     const candidates = await this.sessionModelCandidates(session);
     this.assertTreeNavigationInactive(session, "change models");
     const model = candidates.find((candidate) => candidate.provider === provider && candidate.id === modelId)
       ?? session.modelRuntime.getModel(provider, modelId);
     if (model === undefined) throw new Error(`Model not found: ${provider}/${modelId}`);
     await this.runSessionEntryMutation(session, "change models", () => session.setModel(model));
-    this.publishActivity(session, `model: ${model.id}`, "idle", aliasAccount === undefined ? model.provider : `${model.provider} · ${aliasAccount}`);
+    this.publishActivity(session, `model: ${model.id}`, "idle", model.provider);
     this.publishStatus(session);
     return this.statusFromSession(session);
   }
@@ -3751,7 +3759,6 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-const ANTHROPIC_ACCOUNT_PROVIDER_PREFIX = "anthropic-";
 
 function modelToClientModel(model: PiAgentSession["model"]): ClientSessionModel {
   if (model === undefined) return {};
@@ -3766,55 +3773,9 @@ function modelToClientModel(model: PiAgentSession["model"]): ClientSessionModel 
   };
 }
 
-function anthropicAliasAccountName(provider: string): string | undefined {
-  return provider.startsWith(ANTHROPIC_ACCOUNT_PROVIDER_PREFIX)
-    ? provider.slice(ANTHROPIC_ACCOUNT_PROVIDER_PREFIX.length) || undefined
-    : undefined;
-}
 
-async function readAnthropicAccountNames(): Promise<string[]> {
-  try {
-    const path = join(process.env["HOME"] ?? "", ".pi", "agent", "pi-accounts.json");
-    const raw = await readFile(path, "utf8");
-    const providers = getProperty(JSON.parse(raw), "providers");
-    const anthropic = getProperty(providers, "anthropic");
-    const accounts = getProperty(anthropic, "accounts");
-    return isRecord(accounts) ? Object.keys(accounts) : [];
-  } catch {
-    return [];
-  }
-}
 
-function withAnthropicAccountAliases(models: readonly ClientSessionModel[], accountNames: readonly string[]): ClientSessionModel[] {
-  if (accountNames.length === 0) return [...models];
-  const anthropicModels = models.filter((model) => model.provider === "anthropic");
-  const augmented = [...models];
-  const seen = new Set(models.map((model) => `${model.provider ?? ""}\0${model.id ?? ""}`));
-  for (const accountName of accountNames) {
-    for (const model of anthropicModels) {
-      const provider = `${ANTHROPIC_ACCOUNT_PROVIDER_PREFIX}${accountName}`;
-      const key = `${provider}\0${model.id ?? ""}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      augmented.push({ ...model, provider, ...(model.name === undefined ? {} : { name: `${model.name} · ${accountName}` }) });
-    }
-  }
-  return augmented;
-}
 
-async function setActiveAnthropicAccount(accountName: string): Promise<void> {
-  const path = join(process.env["HOME"] ?? "", ".pi", "agent", "pi-accounts.json");
-  const raw = await readFile(path, "utf8");
-  const parsed: unknown = JSON.parse(raw);
-  const providers = getProperty(parsed, "providers");
-  const anthropic = getProperty(providers, "anthropic");
-  const accounts = getProperty(anthropic, "accounts");
-  if (!isRecord(anthropic) || !isRecord(accounts) || accounts[accountName] === undefined) {
-    throw new Error(`Anthropic account not found: ${accountName}`);
-  }
-  anthropic["active"] = accountName;
-  await writeFile(path, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
-}
 
 function notificationIdentityForSession(session: PiAgentSession): { sessionId: string; cwd: string } {
   return {
