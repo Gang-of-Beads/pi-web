@@ -199,8 +199,15 @@ tailnet `:8506`), never the host installation.
       *Evidence:* `speechToText.test.ts`, 14 cases covering the opted-out state
       (never calls the service), the Whisper-style response shapes, and every
       failure path returning a message rather than failing silently.
-- [ ] Transcribed text lands in the composer as editable text, never auto-sent.
-- [ ] Permission, offline, and no-speech states are visible rather than silent.
+- [x] **Transcribed text is handed to the caller, never auto-sent.** The
+      controller calls `onTranscript`; nothing in it can send. The user reads
+      what was heard before it goes anywhere.
+- [x] **Permission, offline and no-speech states are visible.** A denied
+      microphone is reported distinctly from any other device failure; an
+      unreachable service reads as a service problem; an empty transcript says
+      "No speech was recognised" rather than inserting nothing. Every state
+      carries a label. *Evidence:* `voiceController.test.ts` (11 cases) and
+      `speechToText.test.ts` (14 cases).
 
 ## Method
 
