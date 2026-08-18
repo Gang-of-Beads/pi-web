@@ -19,6 +19,25 @@ export function errorBanner(error: string, onDismiss: () => void): TemplateResul
   </div>`;
 }
 
+/**
+ * Whether a message is one of the self-healing transport failures.
+ *
+ * Exported so the owner of the banner can let those expire on their own. A
+ * permanent failure must never expire: it stays until the user has seen and
+ * dismissed it.
+ */
+export function isTransientError(error: string): boolean {
+  return normalizeTransientError(error) !== undefined;
+}
+
+/**
+ * How long a self-healing message stays before it withdraws itself.
+ *
+ * Long enough to read at a glance, short enough that a reconnect notice does
+ * not outlive the reconnect it describes.
+ */
+export const TRANSIENT_ERROR_TIMEOUT_MS = 6000;
+
 function normalizeTransientError(error: string): string | undefined {
   if (/session daemon workspace authority unavailable: connect enoent/i.test(error) && /sessiond\.sock/i.test(error)) {
     return "Reconnecting to the session daemon…";

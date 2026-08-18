@@ -76,7 +76,7 @@ import type { AppMobileMainTab } from "./appShell/AppMobileMainTabs";
 import { shouldShowMachinesSection, type AppNavigationPanel, type NavigationFocusTarget } from "./appShell/AppNavigationPanel";
 import "./appShell/AppPanelEdgeControl";
 import "./appShell/AppRefreshControl";
-import { errorBanner } from "./errorBanner";
+import { errorBanner, isTransientError, TRANSIENT_ERROR_TIMEOUT_MS } from "./errorBanner";
 import { deprecatedAgentInputsBanner, deprecatedAgentInputsWarnings } from "./deprecatedAgentInputsBanner";
 import { appStyles } from "./shared";
 
@@ -229,6 +229,8 @@ export class PiWebApp extends LitElement {
   private themePreference: ThemePreference = readStoredThemePreference() ?? DEFAULT_THEME_PREFERENCE;
   @state() private activeThemeId: QualifiedContributionId = CLASSIC_THEME_ID;
   @state() private isRefreshingApp = false;
+  private transientErrorTimer: number | undefined;
+  private lastScheduledError = "";
   @state() private quickSwitcherOpen = false;
   @state() private quickSwitcherLoading = false;
   @state() private quickSwitcherSessions: readonly SessionInfo[] = [];
@@ -363,7 +365,28 @@ export class PiWebApp extends LitElement {
     void this.loadProjectsAndRestoreRoute().finally(() => { this.schedulePiWebStatusRefresh(); });
   }
 
+  /**
+   * Let a self-healing message withdraw itself.
+   *
+   * A reconnect notice that outlives the reconnect is just noise occupying the
+   * top of a phone screen. A permanent failure is never expired here: it stays
+   * until the user has seen and dismissed it.
+   */
+  private scheduleTransientErrorDismissal(error: string): void {
+    if (this.transientErrorTimer !== undefined) {
+      window.clearTimeout(this.transientErrorTimer);
+      this.transientErrorTimer = undefined;
+    }
+    if (!isTransientError(error)) return;
+    this.transientErrorTimer = window.setTimeout(() => {
+      this.transientErrorTimer = undefined;
+      // Only clear what we scheduled for: a newer message must not be swallowed.
+      if (this.state.error === error) this.setState({ error: "" });
+    }, TRANSIENT_ERROR_TIMEOUT_MS);
+  }
+
   override disconnectedCallback(): void {
+    if (this.transientErrorTimer !== undefined) window.clearTimeout(this.transientErrorTimer);
     window.visualViewport?.removeEventListener("resize", this.onVisualViewportChange);
     window.visualViewport?.removeEventListener("scroll", this.onVisualViewportChange);
     this.unreadConnected = false;
@@ -2198,6 +2221,14 @@ export class PiWebApp extends LitElement {
     `;
   }
 
+  private renderErrorBanner(error: string) {
+    if (error !== this.lastScheduledError) {
+      this.lastScheduledError = error;
+      this.scheduleTransientErrorDismissal(error);
+    }
+    return errorBanner(error, () => { this.setState({ error: "" }); });
+  }
+
   private renderContextBar() {
     if (!this.appShell.isMobileNavigationLayout) return null;
     return html`
@@ -2266,7 +2297,7 @@ export class PiWebApp extends LitElement {
         <main class=${mainViewClass(state.mainView)}>
           ${this.renderContextBar()}
           ${this.renderMobileMainTabs()}
-          ${errorBanner(state.error, () => { this.setState({ error: "" }); })}
+          ${this.renderErrorBanner(state.error)}
           ${deprecatedAgentInputsBanner(deprecatedAgentInputsWarnings(state.machines, state.machineRuntimes))}
           <div class="mobile-navigation-panel">${this.appShell.isMobileNavigationLayout ? this.renderNavigationPanel() : null}</div>
           ${state.selectedSession ? html`

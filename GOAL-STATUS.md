@@ -10,7 +10,7 @@ claim was verified by running the command shown, not recalled.
 | --- | --- |
 | `npx tsc --noEmit` | 0 errors |
 | `npx eslint src` | 0 errors |
-| `npx vitest run` | 3210 passed, 1 failed |
+| `npx vitest run` | 3212 passed, 1 failed |
 | `npx playwright test` | 23 passed, 9 skipped, 0 failed |
 | `git log fork/main..HEAD` | 0 unpushed, 0 uncommitted |
 | Host serves current `main` | bundle `index-C1qqjL9e.js` on disk and served; service pids unchanged (2255, 678402) |
@@ -28,7 +28,7 @@ rather than a regression.
 | 2 | Machine-wide session search, attention ordering, one-tap open | `loadQuickSwitcherData` enumerates every project × workspace. `quickSwitcherModel` ranks waiting (daemon `pendingAsk`) > active > unread > date; the unread set was previously passed in and ignored. 17 tests including a 5-case ranking suite. |
 | 3 | Attachments above input, send reachable, caret correct | Attachment chips precede the editor; delivery derived at send time with no selector left. Caret: placeholder rendered inside the first line made the empty line 67px; taken out of flow it is 22px, matching a typed line. Keyboard: send button was at y=799 with 519px visible; the shell now subtracts the covered height, putting it at y=479. |
 | 4 | Up/down recall, Ctrl/Cmd+R search | `ArrowUp`/`ArrowDown` bound to `handleEditorArrow` (PromptEditor.ts:303-304), ctrl/meta+R to `openPromptHistoryPicker` (:449). 14 tests. |
-| 5 | Transient errors demoted | `errorBanner.ts:23` matches the `sessiond.sock` ENOENT, `:26` the aborted request; `role` drops from `alert` to `status`. 2 tests. |
+| 5 | Transient errors demoted, no longer blocking the chat | Rendered in the container: the raw `sessiond.sock` ENOENT becomes "Reconnecting to the session daemon…", `role` drops from `alert` to `status`, carries the demoted styling, and occupies 40px — 5% of the viewport. The contract's "no longer blocks for long" is now literal: a self-healing message withdraws itself after 6s, while a permanent failure stays until dismissed. Measured both: transient shown→gone, permanent shown→still shown. 4 tests. |
 | 6 | Alias normalises to canonical provider, account switches | Verified against the daemon in the container: `/models` exposed all three aliases; selecting `anthropic-work/claude-sonnet-5` returned `provider: "anthropic"` and moved the active account `personal → work`. Pinned by e2e, which skips when no accounts are configured. |
 | 7 | An account completes requests; 429 distinguishable | All three accounts completed a real `/v1/messages` request, each 200 with the model's reply and no 429 — so the earlier 429s were Anthropic-side limiting, not provider semantics. v0.4.4's `protectActiveAccount` re-verified on the installed build after upstream refactored it into modules; v0.4.9 adds `PI_MULTI_ACCOUNT_BACKGROUND_REFRESH=0` so a second installation sharing the credential file cannot rotate tokens away from the first. |
 | 8 | e2e on the machine's Chromium, 0 failures | `npm run e2e` → 23 passed, 0 failed, reusing chromium-1228 with `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`, against the container (UI 8511, API 8510) and never the host. |
