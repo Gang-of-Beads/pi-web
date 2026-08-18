@@ -81,3 +81,25 @@ describe("interrupted run record", () => {
     )).resolves.toBeUndefined();
   });
 });
+
+describe("read-and-clear semantics", () => {
+  // The record answers "what did the last restart interrupt". Reporting the
+  // same interruption after every reconnect would train the user to ignore it,
+  // so handing it over has to spend it.
+  it("reports nothing on a second read once cleared", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pi-web-interrupted-"));
+    const file = join(dir, "interrupted-runs.json");
+
+    await recordInterruptedRuns(
+      [{ sessionId: "01a01367", cwd: "/home/u/project", interruptedAt: "2026-08-18T06:00:00.000Z" }],
+      file,
+    );
+
+    const first = await readInterruptedRuns(file);
+    expect(first.runs).toHaveLength(1);
+    expect(first.runs[0]?.sessionId).toBe("01a01367");
+
+    await clearInterruptedRuns(file);
+    expect((await readInterruptedRuns(file)).runs).toEqual([]);
+  });
+});

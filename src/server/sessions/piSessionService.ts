@@ -2632,6 +2632,22 @@ export class PiSessionService implements SessionRouteService {
    * work rather than every loaded session: a restart should wait for a running
    * turn, not for every session that happens to be open.
    */
+  /**
+   * Sessions with work in flight, with the cwd needed to reopen them.
+   *
+   * Used when a shutdown has to interrupt work: an id alone is not enough to
+   * find the session again, and the record is written when the daemon is
+   * already past its drain deadline.
+   */
+  activeWorkSessions(): { sessionId: string; cwd: string }[] {
+    return [...new Set(this.active.values())]
+      .filter((active) => this.hasActiveWork(active.runtime.session))
+      .map((active) => ({
+        sessionId: active.runtime.session.sessionId,
+        cwd: canonicalizeStoredCwd(active.runtime.session.sessionManager.getCwd()),
+      }));
+  }
+
   activeWorkSessionIds(): string[] {
     return [...new Set(this.active.values())]
       .filter((active) => this.hasActiveWork(active.runtime.session))

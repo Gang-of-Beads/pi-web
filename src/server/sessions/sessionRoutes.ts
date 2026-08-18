@@ -4,6 +4,7 @@ import { projectBrowserMessageResponse } from "../browserMessageProjection.js";
 import { normalizeRequestCwd } from "../workingDirectory.js";
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
 import type { SessionRouteRef, SessionRouteService } from "./sessionService.js";
+import { clearInterruptedRuns, readInterruptedRuns } from "./interruptedRunStore.js";
 import { normalizeSessionCleanupRequest } from "./sessionCleanup.js";
 
 interface SessionQuery {
@@ -77,6 +78,19 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
   app.get(`${prefix}/sessions/statuses`, async (_request, reply) => {
     try {
       return await sessions.sessionStatusCatalog();
+    } catch (error) {
+      return reply.code(503).send({ error: errorMessage(error) });
+    }
+  });
+
+  // Runs a restart had to cut off. Read-and-clear: the record answers "what did
+  // the last restart interrupt", so once handed over it is spent -- leaving it
+  // would report the same interruption again after every reconnect.
+  app.get(`${prefix}/sessions/interrupted`, async (_request, reply) => {
+    try {
+      const record = await readInterruptedRuns();
+      if (record.runs.length > 0) await clearInterruptedRuns();
+      return record;
     } catch (error) {
       return reply.code(503).send({ error: errorMessage(error) });
     }

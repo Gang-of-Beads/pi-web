@@ -9,6 +9,7 @@ import { registerMachineStatusRoutes } from "./status/machineStatusRoutes.js";
 import { CachedWorkspaceAttribution } from "./status/workspaceAttribution.js";
 import { SessionEventHub } from "./realtime/sessionEventHub.js";
 import { drainActiveWork, resolveDrainTimeoutMs } from "./sessions/shutdownDrain.js";
+import { recordInterruptedRuns } from "./sessions/interruptedRunStore.js";
 import { AuthService } from "./sessions/authService.js";
 import { bootstrapAndFreezeGlobalExtensionProviders } from "./sessions/globalProviderPolicy.js";
 import { registerAuthRoutes } from "./sessions/authRoutes.js";
@@ -295,6 +296,17 @@ async function createSessionDaemonRuntime() {
               app.log.warn(
                 { activeSessionIds: decision.activeSessionIds, timeoutMs },
                 "shutdown drain deadline reached with work still running",
+              );
+              // Recorded so the next start can say which conversations were cut
+              // off. The drain deadline is deliberately shorter than systemd's
+              // TimeoutStopSec, so there is still time to write this before the
+              // process is killed outright.
+              const interrupted = new Set(decision.activeSessionIds);
+              await recordInterruptedRuns(
+                sessions
+                  .activeWorkSessions()
+                  .filter(({ sessionId }) => interrupted.has(sessionId))
+                  .map(({ sessionId, cwd }) => ({ sessionId, cwd, interruptedAt: new Date().toISOString() })),
               );
             } else if (decision.reason === "waiting-for-active-work" || decision.reason === "no-active-work") {
               app.log.info({ waitedMs: Date.now() - startedAt }, "shutdown drain finished");
