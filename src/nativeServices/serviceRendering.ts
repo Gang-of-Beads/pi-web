@@ -17,11 +17,21 @@ export function renderSystemdUnit(
   const restart = service.restart === "on-failure"
     ? "Restart=on-failure\nRestartSec=2\n"
     : "Restart=no\n";
+  // The session daemon drains in-flight agent runs before exiting. Under
+  // systemd's default KillMode=control-group a restart sends SIGTERM to every
+  // process in the unit's cgroup at once, so those runs die before the drain
+  // can even look -- which is exactly the interruption the drain exists to
+  // prevent. mixed signals only the main process, and TimeoutStopSec makes
+  // room for the drain before SIGKILL follows. The web server is stateless and
+  // needs none of this.
+  const drainProtection = service.id === "sessiond"
+    ? "KillMode=mixed\nTimeoutStopSec=180\n"
+    : "";
   return `[Unit]
 Description=${service.description}
 ${systemdDependencyLine(plan, "After", service.after)}${systemdDependencyLine(plan, "Wants", service.wants)}[Service]
 Type=simple
-${workingDirectory}${systemdEnvironmentLines(service.environment)}ExecStart=/usr/bin/env ${systemdExecArgument(plan.shell.executable)} -lc ${systemdExecArgument(service.shellCommand)}
+${drainProtection}${workingDirectory}${systemdEnvironmentLines(service.environment)}ExecStart=/usr/bin/env ${systemdExecArgument(plan.shell.executable)} -lc ${systemdExecArgument(service.shellCommand)}
 ${restart}
 [Install]
 WantedBy=default.target

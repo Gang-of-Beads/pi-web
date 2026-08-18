@@ -81,3 +81,30 @@ describe("native service rendering", () => {
     expect(() => renderSystemdUnit(first, planService(second, 0))).toThrow("not a member");
   });
 });
+
+describe("systemd drain protection", () => {
+  // Under systemd's default KillMode=control-group a `systemctl restart` sends
+  // SIGTERM to every process in the unit's cgroup at the same instant, so the
+  // agent subprocesses the drain exists to protect die before it can even look.
+  // Observed as "shutting down" and "Stopped" in the same second, no drain line.
+  it("lets the sessiond drain run by signalling only the main process", () => {
+    const plan = developmentPlan("systemd");
+    const sessiond = plan.services.find((service) => service.id === "sessiond");
+    if (sessiond === undefined) throw new Error("plan has no sessiond");
+    const unit = renderSystemdUnit(plan, sessiond);
+
+    expect(unit).toContain("KillMode=mixed");
+    // systemd's default stop timeout (90s) is shorter than the daemon's
+    // Promise.allSettled drain can need once it actually gets to wait, so the
+    // unit must make room for it before SIGKILL.
+    expect(unit).toContain("TimeoutStopSec=180");
+  });
+
+  it("does not claim drain protection for a stateless service", () => {
+    const plan = developmentPlan("systemd");
+    const uiDev = plan.services.find((service) => service.id === "uiDev");
+    if (uiDev === undefined) throw new Error("plan has no uiDev");
+    const unit = renderSystemdUnit(plan, uiDev);
+    expect(unit).not.toContain("KillMode=mixed");
+  });
+});
