@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SessionInfo, Workspace } from "./api";
-import { quickSwitcherModel, quickSwitcherSessionSubtitle, quickSwitcherWorkspaces } from "./quickSwitcher";
+import { sessionLabel } from "./sessionLabels";
+import { renameSessionInList, quickSwitcherModel, quickSwitcherSessionSubtitle, quickSwitcherWorkspaces } from "./quickSwitcher";
 
 const NOW = Date.parse("2026-08-14T12:00:00.000Z");
 
@@ -238,5 +239,35 @@ describe("interrupted runs", () => {
     });
     expect(model.groups.find((group) => group.id === "interrupted")).toBeUndefined();
     expect(model.groups.find((group) => group.id === "active")?.sessions).toHaveLength(1);
+  });
+});
+
+describe("renamed sessions", () => {
+  // The switcher keeps its own copy of the session list, loaded once. Renaming
+  // a session updated the context bar and the navigation list but not that
+  // copy, so the switcher went on offering the old name -- and the old name is
+  // exactly what the user renamed away from because it was unrecognisable.
+  it("shows the new name in the cached list", () => {
+    const sessions = [
+      session("kept", { name: "other work", modified: "2026-08-18T09:00:00Z" }),
+      session("renamed", { firstMessage: 'Error: Anthropic account "personal" failed closed', modified: "2026-08-18T10:00:00Z" }),
+    ];
+
+    const updated = renameSessionInList(sessions, "renamed", "web pi");
+
+    const model = quickSwitcherModel({
+      sessions: updated,
+      activeSessionIds: new Set(),
+      query: "",
+      now: Date.parse("2026-08-18T11:00:00Z"),
+    });
+    const titles = model.groups.flatMap((group) => group.sessions.map((entry) => sessionLabel(entry)));
+    expect(titles).toContain("web pi");
+    expect(titles.some((title) => title.startsWith("Error:"))).toBe(false);
+  });
+
+  it("leaves the list alone when the session is not in it", () => {
+    const sessions = [session("kept", { name: "other work" })];
+    expect(renameSessionInList(sessions, "absent", "new name")).toBe(sessions);
   });
 });

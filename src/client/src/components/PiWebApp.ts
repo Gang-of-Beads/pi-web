@@ -76,6 +76,7 @@ import type { AppMobileMainTab } from "./appShell/AppMobileMainTabs";
 import { shouldShowMachinesSection, type AppNavigationPanel, type NavigationFocusTarget } from "./appShell/AppNavigationPanel";
 import "./appShell/AppPanelEdgeControl";
 import "./appShell/AppRefreshControl";
+import { renameSessionInList } from "../quickSwitcher";
 import { errorBanner, isTransientError, TRANSIENT_ERROR_TIMEOUT_MS } from "./errorBanner";
 import { deprecatedAgentInputsBanner, deprecatedAgentInputsWarnings } from "./deprecatedAgentInputsBanner";
 import { appStyles } from "./shared";
@@ -1318,7 +1319,10 @@ export class PiWebApp extends LitElement {
         .onDeleteArchivedSession=${(session: SessionInfo) => this.sessions.deleteArchivedSessions([session])}
         .onDeleteArchivedSessions=${(sessions: SessionInfo[]) => this.sessions.deleteArchivedSessions(sessions)}
         .onDetachParentSession=${(session: SessionInfo) => this.sessions.detachParent(session)}
-        .onRenameSession=${(session: SessionInfo, name: string) => this.sessions.renameSession(session, name)}
+        .onRenameSession=${(session: SessionInfo, name: string) => {
+          this.applyRenameToQuickSwitcher(session.id, name);
+          return this.sessions.renameSession(session, name);
+        }}
         .goals=${this.state.workspaceGoals}
         ?goalsLoading=${this.state.workspaceGoalsLoading}
         .onRefreshGoals=${() => this.workspaces.refreshWorkspaceGoals()}
@@ -1391,7 +1395,21 @@ export class PiWebApp extends LitElement {
 
   private openQuickSwitcher(): void {
     this.quickSwitcherOpen = true;
-    void this.loadQuickSwitcherData();
+    // Show what is cached, then refresh behind it. The cache was previously
+    // kept for the life of the page, so anything that changed after the first
+    // open -- a rename, a new session, one archived on another device -- stayed
+    // invisible until a reload.
+    void this.loadQuickSwitcherData(this.quickSwitcherSessions.length > 0);
+  }
+
+  /**
+   * Keep the switcher's own copy of a session in step with a rename.
+   *
+   * It holds a separate list from the navigation panel, so without this the
+   * switcher goes on offering the name the user just renamed away from.
+   */
+  private applyRenameToQuickSwitcher(sessionId: string, name: string): void {
+    this.quickSwitcherSessions = renameSessionInList(this.quickSwitcherSessions, sessionId, name);
   }
 
   private async loadQuickSwitcherData(force = false): Promise<void> {
@@ -2275,7 +2293,9 @@ export class PiWebApp extends LitElement {
         .onQuickSwitch=${() => { this.openQuickSwitcher(); }}
         .onRenameSession=${(name: string) => {
           const session = this.state.selectedSession;
-          if (session !== undefined) void this.sessions.renameSession(session, name);
+          if (session === undefined) return;
+          this.applyRenameToQuickSwitcher(session.id, name);
+          void this.sessions.renameSession(session, name);
         }}
         .onShowActions=${() => { this.setState({ actionPaletteOpen: true }); }}
       ></app-context-bar>

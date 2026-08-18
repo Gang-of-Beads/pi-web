@@ -150,3 +150,22 @@ export function quickSwitcherSessionSubtitle(session: SessionInfo, workspaces: r
   const messages = `${String(session.messageCount)} ${session.messageCount === 1 ? "message" : "messages"}`;
   return workspace === undefined ? messages : `${workspace.label} · ${messages}`;
 }
+
+/**
+ * Apply a rename to a cached session list.
+ *
+ * The switcher holds its own copy of the sessions, loaded once and reused, so a
+ * rename made anywhere else leaves it showing the previous name -- which is the
+ * name the user renamed away from, usually because it was unrecognisable.
+ *
+ * Returns the original array when nothing matched, so an unrelated rename does
+ * not invalidate a rendered list.
+ */
+export function renameSessionInList(
+  sessions: readonly SessionInfo[],
+  sessionId: string,
+  name: string,
+): readonly SessionInfo[] {
+  if (!sessions.some((session) => session.id === sessionId)) return sessions;
+  return sessions.map((session) => (session.id === sessionId ? { ...session, name } : session));
+}
