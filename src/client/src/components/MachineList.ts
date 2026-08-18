@@ -1,11 +1,11 @@
-import { LitElement, css, html, type PropertyValues } from "lit";
+import { LitElement, css, html, type PropertyValues, nothing} from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { Machine, MachineHealth } from "../api";
 import type { MachineStatusSnapshot } from "../../../shared/machineStatus";
 import { actionMenuPanelStyle } from "./actionMenu";
 import { hasStatusUnread, renderActionActivityIndicator, statusActivityKind } from "./activityBadge";
 import type { KeyboardNavigableSection } from "./navigationFocus";
-import { activateSelectableRow, focusSelectedOrFirstSelectableRow, handleSelectableRowKeyboard } from "./selectableRow";
+import { focusSelectedOrFirstSelectableRow, handleSelectableRowKeyboard } from "./selectableRow";
 import { listStyles } from "./shared";
 
 @customElement("machine-list")
@@ -70,15 +70,18 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
     return html`
       <div
         class=${`action-row machine-row ${this.selected?.id === machine.id ? "selected" : ""} ${hasRemoveAction ? "" : "no-actions"}`}
-        tabindex="0"
         title=${machine.baseUrl ?? machine.name}
-        @click=${(event: MouseEvent) => { activateSelectableRow(event, () => this.onSelect?.(machine)); }}
         @keydown=${(event: KeyboardEvent) => { this.handleMachineKeydown(event, machine); }}
       >
-        <div class="action-main">
+        <button
+          type="button"
+          class="action-main"
+          aria-current=${this.selected?.id === machine.id ? "true" : nothing}
+          @click=${() => { this.onSelect?.(machine); }}
+        >
           <span class="action-name machine-primary"><span class="machine-primary-label">${machine.name}</span></span><small>${machine.kind === "local" ? "Local Pi Web" : machine.baseUrl ?? "Remote Pi Web"} · ${statusLabel}</small>
           ${this.renderActivity(machine)}
-        </div>
+        </button>
         ${hasRemoveAction ? this.renderMachineMenu(machine) : null}
       </div>
     `;

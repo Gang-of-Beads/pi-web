@@ -1,4 +1,4 @@
-import { LitElement, html, type PropertyValues, type TemplateResult } from "lit";
+import { LitElement, html, type PropertyValues, type TemplateResult, nothing} from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { Workspace } from "../api";
 import type { MachineStatusSnapshot } from "../../../shared/machineStatus";
@@ -8,7 +8,7 @@ import { canDeleteWorkspace } from "../workspaceDeletion";
 import { actionMenuPanelStyle } from "./actionMenu";
 import { hasStatusUnread, renderActionActivityIndicator, statusActivityKind } from "./activityBadge";
 import type { KeyboardNavigableSection } from "./navigationFocus";
-import { activateSelectableRow, focusSelectedOrFirstSelectableRow, handleSelectableRowKeyboard } from "./selectableRow";
+import { focusSelectedOrFirstSelectableRow, handleSelectableRowKeyboard } from "./selectableRow";
 import { listStyles } from "./shared";
 import { renderWorkspaceLabelInlineItems } from "./workspaceLabel";
 
@@ -82,14 +82,17 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
               return html`
                 <div
                   class=${`action-row workspace-row ${this.selected?.id === workspace.id ? "selected" : ""}`}
-                  tabindex="0"
                   title=${label}
-                  @click=${(event: MouseEvent) => { activateSelectableRow(event, () => this.onSelect?.(workspace)); }}
                   @keydown=${(event: KeyboardEvent) => { this.handleWorkspaceKeydown(event, workspace); }}
                 >
-                  <div class="action-main">
+                  <button
+                    type="button"
+                    class="action-main"
+                    aria-current=${this.selected?.id === workspace.id ? "true" : nothing}
+                    @click=${() => { this.onSelect?.(workspace); }}
+                  >
                     ${this.renderWorkspaceMain(label, items, workspace)}
-                  </div>
+                  </button>
                   ${this.renderWorkspaceMenu(label, items, workspace)}
                 </div>
               `;

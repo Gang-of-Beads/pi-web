@@ -66,17 +66,22 @@ tailnet `:8506`), never the host installation.
 
 - [ ] **Audit every surface against the Web Interface Guidelines skill**
       (`~/.agents/skills/web-design-guidelines`). Known findings to resolve:
-  - [ ] List rows are `<div tabindex="0">` with click handlers; the guidelines
-        call for real `<button>`s (`SessionList.ts:339`, `WorkspaceList.ts:85`).
-        Also the reason e2e has to click `.action-main` instead of a role.
-        **In progress: ProjectList converted.** The earlier attempt at adding
-        `role="button"` alone broke row activation — two navigation e2e tests failed, and stashing the change
-        turned them green again, so the regression was mine. A row cannot simply
-        become a `<button>` either: it contains a checkbox and the `⋯` menu
-        button, and nesting interactive elements is invalid HTML. The real fix
-        moves the checkbox out of `.action-main` and makes only that region a
-        button, which is a layout change across all four lists and needs its own
-        pass with the e2e switched to role selectors in the same commit.
+  - [x] **List rows now expose a real button.** All four lists (project,
+        workspace, session, machine) render their primary region as
+        `<button class="action-main">`; the row keeps no click handler or
+        tabindex, so the actions menu stays a sibling rather than nesting one
+        interactive element inside another. The session list's checkbox moved
+        out of the button for the same reason — it is absolutely positioned
+        against the row, so its place on screen is unchanged.
+        Two things had to move with it: `activateSelectableRow` exists to ignore
+        clicks bubbling from controls inside a row, and once the primary region
+        became a button that guard suppressed the row's own activation, so a
+        real button calls its handler directly; and `.action-main` gained font
+        and cursor resets so a button does not inherit the UA's control styling.
+        *Evidence:* e2e "list row semantics › exposes the project row's primary
+        action as a real button" asserts the tag, that the menu is not nested,
+        and that the row has no tabindex; the e2e helper now prefers
+        `button.action-main`. vitest 3184 passed, e2e 20 passed.
   - [ ] Confirm `touch-action: manipulation` covers every tap target, not just
         the five current call sites.
 - [ ] **Top bar density**: still two rows (context chips + icon tab strip) before
