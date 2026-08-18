@@ -36,6 +36,10 @@ export class AppContextBar extends LitElement {
   @property({ type: Boolean }) emphasizeSession = false;
   @query(".context-items") private contextItems?: HTMLElement | null;
   @state() private renamingSession = false;
+  /** The name shown the moment the edit opened; the input is seeded from it. */
+  @state() private renameSeed = "";
+  /** Tracks whether the just-opened input has had its one-time select. */
+  private renameInputSeeded = false;
   @state() private canScrollLeft = false;
   @state() private canScrollRight = false;
   private observedContextItems: HTMLElement | undefined;
@@ -56,10 +60,17 @@ export class AppContextBar extends LitElement {
   override updated(): void {
     this.observeContextItems();
     this.updateScrollState();
-    // Select the text once the input exists, so the tap that starts the edit
-    // also opens the keyboard and a correction can be typed straight away.
+    // Select the text exactly once, when the input first appears, so the tap
+    // that starts the edit also opens the keyboard and a correction can be
+    // typed straight away. Every later render -- a fresh token streaming in,
+    // a status change -- must leave the user's caret and draft untouched.
     const renameInput = this.renderRoot.querySelector<HTMLInputElement>(".context-session-input");
-    if (renameInput !== null && renameInput.ownerDocument.activeElement !== this) renameInput.select();
+    if (renameInput !== null && !this.renameInputSeeded) {
+      this.renameInputSeeded = true;
+      renameInput.select();
+    } else if (renameInput === null) {
+      this.renameInputSeeded = false;
+    }
   }
 
   override render() {
@@ -85,17 +96,35 @@ export class AppContextBar extends LitElement {
           @click=${() => { this.onOpenSection?.(this.breadcrumbSection()); }}
         >${breadcrumb}</button>
         ${this.renamingSession
-          ? html`<input
-              class="context-session-input"
-              type="text"
-              .value=${this.session?.name ?? label}
-              aria-label="Session name"
-              enterkeyhint="done"
-              spellcheck="false"
-              autocomplete="off"
-              @keydown=${(event: KeyboardEvent) => { this.onRenameKeydown(event); }}
-              @blur=${() => { this.renamingSession = false; }}
-            >`
+          ? html`<span class="context-session-edit">
+              <input
+                class="context-session-input"
+                type="text"
+                .value=${this.renameSeed}
+                aria-label="Session name"
+                enterkeyhint="done"
+                spellcheck="false"
+                autocomplete="off"
+                @keydown=${(event: KeyboardEvent) => { this.onRenameKeydown(event); }}
+                @blur=${() => { this.renamingSession = false; }}
+              >
+              <button
+                type="button"
+                class="context-session-edit-button confirm"
+                aria-label="Save session name"
+                title="Save"
+                @pointerdown=${(event: PointerEvent) => { event.preventDefault(); }}
+                @click=${() => { this.commitRename(); }}
+              >✓</button>
+              <button
+                type="button"
+                class="context-session-edit-button abandon"
+                aria-label="Cancel renaming"
+                title="Cancel"
+                @pointerdown=${(event: PointerEvent) => { event.preventDefault(); }}
+                @click=${() => { this.renamingSession = false; }}
+              >✕</button>
+            </span>`
           : html`<button
               type="button"
               class="context-session-title"
@@ -118,7 +147,7 @@ export class AppContextBar extends LitElement {
               class="context-session-rename"
               title="Rename session"
               aria-label=${`Rename session ${label}`}
-              @click=${() => { this.renamingSession = true; }}
+              @click=${() => { this.renameSeed = label; this.renamingSession = true; }}
             >✎</button>`}
         ${this.hasContextActions() ? html`<div class="context-actions inline">${this.renderQuickSwitchButton()}${this.renderActionsButton()}${this.refreshControl}</div>` : null}
       </nav>
@@ -140,10 +169,15 @@ export class AppContextBar extends LitElement {
     }
     if (event.key !== "Enter") return;
     event.preventDefault();
+    this.commitRename();
+  }
+
+  /** Shared by Enter and the confirm button; never fires for blank/unchanged. */
+  private commitRename(): void {
     const input = this.renderRoot.querySelector<HTMLInputElement>(".context-session-input");
     const next = (input?.value ?? "").trim();
     this.renamingSession = false;
-    if (next === "" || next === this.session?.name) return;
+    if (next === "" || next === this.renameSeed || next === this.session?.name) return;
     this.onRenameSession?.(next);
   }
 
@@ -271,10 +305,20 @@ export class AppContextBar extends LitElement {
   };
 
   static override styles = css`
-    /* Sized like the title it replaces, so starting an edit does not reflow the
-       bar or move the controls beside it under the user's thumb. */
-    .context-session-input { flex: 1 1 auto; min-width: 0; box-sizing: border-box; min-height: 32px; padding: 4px 8px; border: 1px solid var(--pi-accent); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text-bright); font: inherit; }
-    .context-session-input:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }
+    /* The edit replaces the title in place; nothing else may move under the
+       user's thumb, so the row keeps one line and the controls beside it keep
+       their slots. 40px + 16px font keep the field tappable and free of the
+       iOS auto-zoom that shrinks 15px inputs when they are focused. */
+    .context-session-edit { flex: 1 1 auto; display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+    .context-session-input { flex: 1 1 auto; min-width: 0; box-sizing: border-box; min-height: 40px; padding: 4px 10px; border: 1px solid var(--pi-accent-border); border-radius: 10px; background: var(--pi-surface); color: var(--pi-text-bright); font-size: 16px; box-shadow: 0 0 0 2px color-mix(in srgb, var(--pi-accent) 10%, transparent); }
+    .context-session-input:focus { outline: none; border-color: var(--pi-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--pi-accent) 26%, transparent); }
+    .context-session-edit-button { flex: 0 0 auto; display: grid; place-items: center; box-sizing: border-box; width: 38px; min-height: 40px; padding: 0; border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-surface); color: var(--pi-muted); font-size: 14px; line-height: 1; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+    .context-session-edit-button.confirm { border-color: var(--pi-success-border); color: var(--pi-success); }
+    .context-session-edit-button:hover, .context-session-edit-button:focus-visible { background: var(--pi-surface-hover); color: var(--pi-text-bright); }
+    .context-session-edit-button:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }
+    @media (prefers-reduced-motion: no-preference) {
+      .context-session-edit-button.confirm:active { transform: scale(.94); }
+    }
     /* Three dots like a messenger typing indicator: unmistakable at a glance,
        and the dots keep a visible static layout under reduced motion. */
     .context-working { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 3px; min-height: 32px; padding: 4px 8px; }

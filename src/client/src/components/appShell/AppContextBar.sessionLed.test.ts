@@ -137,6 +137,13 @@ function session(): SessionInfo {
  * conversation for the session list and finding the row again.
  */
 describe("renaming the current session in place", () => {
+  function withoutName() {
+    const bare = session();
+    delete bare.name;
+    bare.firstMessage = "seed label";
+    return bare;
+  }
+
   async function startEditing(onRenameSession: (name: string) => void): Promise<{ root: ShadowRoot; input: HTMLInputElement }> {
     const root = await mount({ emphasizeSession: true, onRenameSession });
     root.querySelector<HTMLButtonElement>(".context-session-rename")?.click();
@@ -169,6 +176,85 @@ describe("renaming the current session in place", () => {
     expect(onRenameSession).not.toHaveBeenCalled();
     // ...and the title is back, so the bar cannot be left stuck in edit mode.
     expect(root.querySelector(".context-session-title")).not.toBeNull();
+  });
+
+  it("keeps the in-progress edit across re-renders (streaming output must not clobber it)", async () => {
+    const onRenameSession = vi.fn();
+    const root = await mount({ emphasizeSession: true, onRenameSession, session: withoutName() });
+    root.querySelector<HTMLButtonElement>(".context-session-rename")?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const input = root.querySelector<HTMLInputElement>(".context-session-input");
+    if (input === null) throw new Error("expected an inline rename input");
+
+    // The user is mid-edit: cursor at position 3, text beyond the seed.
+    input.value = "my new name";
+    input.setSelectionRange(3, 3);
+    // A re-render arrives while typing (status/activity changed upstream)...
+    root.querySelector<HTMLElement>(".context-working")?.remove();
+    root.querySelector("app-context-bar, *")?.dispatchEvent(new Event("change"));
+    // Simulate lit re-render by toggling a related property on the component.
+    const bar = root.host as unknown as { isWorking: boolean };
+    if (bar !== undefined) bar.isWorking = true;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // ...and the edit must still be exactly what the user typed, cursor intact.
+    expect(input.value).toBe("my new name");
+    expect(input.selectionStart).toBe(3);
+    expect(input.selectionEnd).toBe(3);
+
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(onRenameSession).toHaveBeenCalledExactlyOnceWith("my new name");
+  });
+
+  it("does not clobber the draft when the session label changes mid-edit", async () => {
+    const root = await mount({ emphasizeSession: true, onRenameSession: () => undefined, session: withoutName() });
+    root.querySelector<HTMLButtonElement>(".context-session-rename")?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const input = root.querySelector<HTMLInputElement>(".context-session-input");
+    if (input === null) throw new Error("expected an inline rename input");
+
+    // The seed label is the first message; a new first message arrives
+    // upstream (the very first word of a streaming reply).
+    input.value = "half-typed";
+    const barElement = root.querySelector("input")?.closest("div") ?? null;
+    // Rerender with a changed session firstMessage, as PiWebApp does.
+    const host = root.host as unknown as { session: object };
+    (host as { session: { firstMessage: string } }).session.firstMessage = "a brand new first message";
+    (host as { requestUpdate?: () => void }).requestUpdate?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(input.value).toBe("half-typed");
+  });
+
+  it("confirms from the save button with the same rules as Enter", async () => {
+    const onRenameSession = vi.fn();
+    const root = await mount({ emphasizeSession: true, onRenameSession });
+    root.querySelector<HTMLButtonElement>(".context-session-rename")?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const input = root.querySelector<HTMLInputElement>(".context-session-input");
+    if (input === null) throw new Error("expected an inline rename input");
+    input.value = "Saved from button";
+    // The pointerdown guard keeps the input from blurring (blur abandons).
+    root.querySelector<HTMLButtonElement>(".context-session-edit-button.confirm")?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(onRenameSession).toHaveBeenCalledExactlyOnceWith("Saved from button");
+    expect(root.querySelector(".context-session-input")).toBeNull();
+  });
+
+  it("abandons from the cancel button without saving", async () => {
+    const onRenameSession = vi.fn();
+    const root = await mount({ emphasizeSession: true, onRenameSession });
+    root.querySelector<HTMLButtonElement>(".context-session-rename")?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const input = root.querySelector<HTMLInputElement>(".context-session-input");
+    if (input === null) throw new Error("expected an inline rename input");
+    input.value = "discarded";
+    root.querySelector<HTMLButtonElement>(".context-session-edit-button.abandon")?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(onRenameSession).not.toHaveBeenCalled();
+    expect(root.querySelector(".context-session-input")).toBeNull();
   });
 
   it("treats an unchanged or emptied name as no rename at all", async () => {
