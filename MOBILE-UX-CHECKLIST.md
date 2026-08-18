@@ -86,8 +86,16 @@ tailnet `:8506`), never the host installation.
         the five current call sites.
 - [ ] **Top bar density**: still two rows (context chips + icon tab strip) before
       the list begins. Measure and reduce.
-- [ ] **Long project lists** need search/virtualisation: 10+ projects already
-      fill the viewport.
+- [x] **Long project lists are searchable.** The project list had no search at
+      all while the session list did, and a phone shows a full screen of
+      projects well before the list feels long — the verification container had
+      128 of them. Filtering reuses the app's shared fuzzy rules, so `web mob`
+      finds `pi-web-mobile` and behaviour matches every other search surface.
+      The field appears at six projects and stays while a query is active, so
+      clearing it is always possible. Search styling moved to `listStyles` as
+      `.list-search*` so a second list cannot drift from the first.
+      *Evidence:* `projectSearch.test.ts` (9 cases); measured in the container —
+      8 projects, typing `tools` left exactly `alpha-tools` and `beta-tools`.
 - [ ] **Keyboard avoidance**: verify the send control stays reachable with the
       soft keyboard open, on a real device rather than only in a headless
       viewport.

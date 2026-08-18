@@ -238,6 +238,15 @@ export const listStyles = css`
      collapsed ones. Must stay ahead of any other :host display rule. */
   :host([hidden]) { display: none; }
   :host([collapsed]) { flex: 0 0 auto; min-height: auto; overflow: hidden; }
+  /* Search affordance shared by the lists that have one, so a second list does
+     not drift from the first. Class named for the role, not the list. */
+  .list-search { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 6px; margin: 0 0 6px; padding-bottom: 6px; background: var(--pi-bg); }
+  .list-search-input { box-sizing: border-box; flex: 1 1 auto; min-width: 0; height: 34px; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 0 9px; font: var(--pi-control-font-size, 14px) var(--pi-control-font-family, system-ui, sans-serif); }
+  .list-search-input::placeholder { color: var(--pi-dim); }
+  .list-search-input::-webkit-search-cancel-button { display: none; }
+  .list-search-input:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }
+  .list-search-clear { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; font-size: 18px; line-height: 1; }
+  .search-empty { padding: 12px 4px; color: var(--pi-muted); }
   section { box-sizing: border-box; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 10px; }
   h2 { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 0 0 8px; color: var(--pi-muted); font-size: 12px; text-transform: uppercase; }
   .list-body { flex: 1 1 auto; min-height: 0; overflow: auto; }

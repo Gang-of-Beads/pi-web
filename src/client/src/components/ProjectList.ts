@@ -1,5 +1,6 @@
 import { LitElement, html, type PropertyValues, nothing} from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { filterProjects, shouldShowProjectSearch } from "../projectSearch";
 import type { Project } from "../api";
 import type { MachineStatusSnapshot } from "../../../shared/machineStatus";
 import { actionMenuPanelStyle } from "./actionMenu";
@@ -11,6 +12,7 @@ import { listStyles } from "./shared";
 @customElement("project-list")
 export class ProjectList extends LitElement implements KeyboardNavigableSection {
   @property({ attribute: false }) projects: Project[] = [];
+  @state() private searchQuery = "";
   @property({ attribute: false }) selected?: Project;
   /** Status tree of the machine these projects belong to; absent means no indicators. */
   @property({ attribute: false }) statusSnapshot: MachineStatusSnapshot | undefined;
@@ -50,12 +52,17 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
   }
 
   override render() {
+    const visible = filterProjects(this.projects, this.searchQuery);
     return html`
       <section>
         <h2>${this.renderHeading()}</h2>
         ${this.collapsed ? null : html`
+          ${this.renderSearch()}
           <div class="list-body">
-            ${this.projects.map((project) => html`
+            ${visible.length === 0 && this.searchQuery.trim() !== ""
+              ? html`<div class="search-empty" role="status">No projects match “${this.searchQuery.trim()}”.</div>`
+              : null}
+            ${visible.map((project) => html`
               <div
                 class=${`action-row ${this.selected?.id === project.id ? "selected" : ""}`}
                 title=${project.path}
@@ -98,6 +105,33 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
       nextSection: this.onFocusNextSection === undefined ? undefined : () => { void this.onFocusNextSection?.(); },
       cancel: this.onCancelKeyboardNavigation === undefined ? undefined : () => { void this.onCancelKeyboardNavigation?.(); },
     });
+  }
+
+  /**
+   * The search field, shown once the list is long enough to be a nuisance to
+   * scan and while a query is active so it can always be cleared.
+   */
+  private renderSearch() {
+    if (!shouldShowProjectSearch(this.projects.length, this.searchQuery)) return null;
+    const hasQuery = this.searchQuery !== "";
+    return html`
+      <div class="list-search">
+        <input
+          class="list-search-input"
+          type="search"
+          inputmode="search"
+          autocomplete="off"
+          spellcheck="false"
+          enterkeyhint="search"
+          aria-label="Search projects"
+          placeholder="Search projects"
+          .value=${this.searchQuery}
+          @input=${(event: Event) => { if (event.target instanceof HTMLInputElement) this.searchQuery = event.target.value; }}
+          @keydown=${(event: KeyboardEvent) => { if (event.key === "Escape") { event.stopPropagation(); this.searchQuery = ""; } }}
+        >
+        ${hasQuery ? html`<button class="list-search-clear" title="Clear search" aria-label="Clear search" @click=${() => { this.searchQuery = ""; }}>×</button>` : null}
+      </div>
+    `;
   }
 
   private renderHeading() {
