@@ -9,6 +9,12 @@ export interface SessionDaemonShutdownDependencies {
   catalogRefresher: { dispose(): void | Promise<void> };
   auth: { dispose(): void | Promise<void> };
   sessions: { dispose(): void | Promise<void> };
+  /**
+   * Wait for in-flight agent runs, after ingress is quiesced and before the
+   * sessions are disposed. Optional so existing callers and tests keep their
+   * behaviour; omitted means tear down immediately, as before.
+   */
+  drainActiveWork?: () => void | Promise<void>;
   unreadStore: { flush(): void | Promise<void> };
   closeServer(): void | Promise<void>;
 }
@@ -24,6 +30,13 @@ export async function runSessionDaemonShutdown(options: SessionDaemonShutdownOpt
   const { dependencies } = options;
   const operations: readonly (readonly [string, () => void | Promise<void>])[] = [
     ["quiesce server", () => dependencies.quiesceServer()],
+    // Between quiescing and disposal: no new work can arrive, and the runs
+    // already underway get a bounded chance to finish. An agent turn cannot be
+    // resumed after the process exits, so not interrupting it is the only way a
+    // restart is non-disruptive.
+    ...(dependencies.drainActiveWork === undefined
+      ? []
+      : [["drain active work", () => dependencies.drainActiveWork?.()] as const]),
     ["dispose terminals", () => dependencies.terminals.dispose()],
     ["dispose catalog refresher", () => dependencies.catalogRefresher.dispose()],
     ["dispose sessions", () => dependencies.sessions.dispose()],

@@ -8,6 +8,7 @@ import { MachineStatusService } from "./status/machineStatusService.js";
 import { registerMachineStatusRoutes } from "./status/machineStatusRoutes.js";
 import { CachedWorkspaceAttribution } from "./status/workspaceAttribution.js";
 import { SessionEventHub } from "./realtime/sessionEventHub.js";
+import { drainActiveWork, resolveDrainTimeoutMs } from "./sessions/shutdownDrain.js";
 import { AuthService } from "./sessions/authService.js";
 import { bootstrapAndFreezeGlobalExtensionProviders } from "./sessions/globalProviderPolicy.js";
 import { registerAuthRoutes } from "./sessions/authRoutes.js";
@@ -278,6 +279,27 @@ async function createSessionDaemonRuntime() {
         logger: app.log,
         dependencies: {
           quiesceServer: () => { serverQuiescing = true; },
+          // Give agent turns already in flight a bounded chance to finish, so
+          // updating or restarting does not cut work off mid-run. Disable with
+          // PI_WEB_SHUTDOWN_DRAIN_MS=0.
+          drainActiveWork: async () => {
+            const timeoutMs = resolveDrainTimeoutMs(daemonEnvironment);
+            const startedAt = Date.now();
+            const decision = await drainActiveWork(timeoutMs, {
+              activeSessionIds: () => sessions.activeWorkSessionIds(),
+              elapsedMs: () => Date.now() - startedAt,
+              wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+            });
+            if (decision.reason === "deadline-reached") {
+              // Named, not swallowed: these are the runs the restart cut off.
+              app.log.warn(
+                { activeSessionIds: decision.activeSessionIds, timeoutMs },
+                "shutdown drain deadline reached with work still running",
+              );
+            } else if (decision.reason === "waiting-for-active-work" || decision.reason === "no-active-work") {
+              app.log.info({ waitedMs: Date.now() - startedAt }, "shutdown drain finished");
+            }
+          },
           serverPlugins,
           terminals,
           catalogRefresher,

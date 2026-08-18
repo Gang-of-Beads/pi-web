@@ -2617,6 +2617,19 @@ export class PiSessionService implements SessionRouteService {
     });
   }
 
+  /**
+   * Sessions whose work should not be interrupted by a restart.
+   *
+   * Used by the shutdown drain, which is why it reports only genuinely active
+   * work rather than every loaded session: a restart should wait for a running
+   * turn, not for every session that happens to be open.
+   */
+  activeWorkSessionIds(): string[] {
+    return [...new Set(this.active.values())]
+      .filter((active) => this.hasActiveWork(active.runtime.session))
+      .map((active) => active.runtime.session.sessionId);
+  }
+
   private cleanupActiveSessionStatuses(): { sessionId: string; hasActiveWork: boolean }[] {
     return [...new Set(this.active.values())].map((active) => ({
       sessionId: active.runtime.session.sessionId,

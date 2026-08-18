@@ -215,6 +215,22 @@ tailnet `:8506`), never the host installation.
       carries a label. *Evidence:* `voiceController.test.ts` (11 cases) and
       `speechToText.test.ts` (14 cases).
 
+## Open — restart continuity
+
+- [x] **A restart waits for in-flight runs instead of cutting them off.** The
+      daemon quiesced ingress and then tore down immediately, so updating killed
+      whatever the agent was mid-way through. It now drains between quiescing
+      and disposal, bounded by `PI_WEB_SHUTDOWN_DRAIN_MS` (default 60s, `0`
+      restores the old immediate exit). Runs still active at the deadline are
+      named in a warning rather than dropped silently.
+      *Evidence:* `shutdownDrain.test.ts` (11 cases) and a container restart
+      logging `shutdown drain finished, waitedMs: 0` with nothing running.
+- [ ] **Resuming a run after restart is not possible** and should not be
+      promised: an agent turn is a live streaming request plus a tool-call loop,
+      so once the process exits there is no execution point to return to. The
+      realistic follow-up is recording which sessions were interrupted and
+      offering the existing one-click resend, not true continuation.
+
 ## Method
 
 - [ ] Run the Playwright suite after every change, not at the end
