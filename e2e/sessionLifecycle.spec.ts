@@ -110,17 +110,25 @@ async function createSession(request: import("@playwright/test").APIRequestConte
  * suite still passes on a clean container. When they are present, selecting an
  * `anthropic-<account>` alias must pin *this session* to that account: the
  * extension registers each alias as a real provider bound to one account, so
- * the session keeps the alias as its provider and the machine-wide active
- * account is left alone.
+ * the session keeps the alias as its provider and a session that is already
+ * open keeps its own.
+ *
+ * PI WEB no longer writes the machine-wide active account, but the extension
+ * still syncs it on model_select, so that is deliberately not asserted here.
  */
 test.describe("anthropic account aliases", () => {
-  test("pins the session to the chosen account without changing the global active account", async ({ request }) => {
+  test("pins the session to the chosen account and leaves an open session alone", async ({ request }) => {
     const { id, cwd } = await createSession(request);
 
     const models = await request.get(`/api/machines/local/sessions/${id}/models?cwd=${encodeURIComponent(cwd)}`);
     const { models: available } = await models.json() as { models: { provider?: string; id?: string }[] };
     const alias = available.find((model) => model.provider?.startsWith("anthropic-") === true);
     test.skip(alias === undefined, "daemon has no anthropic account aliases configured");
+
+    // Opened before the switch so its recorded model predates the choice.
+    const bystander = await createSession(request);
+    const bystanderStatus = await request.get(`/api/machines/local/sessions/${bystander.id}/status?cwd=${encodeURIComponent(bystander.cwd)}`);
+    const bystanderBefore = ((await bystanderStatus.json()) as { model?: { provider?: string; id?: string } }).model ?? {};
 
     const applied = await request.post(`/api/machines/local/sessions/${id}/model`, {
       data: { cwd, provider: alias?.provider, modelId: alias?.id },
@@ -133,11 +141,14 @@ test.describe("anthropic account aliases", () => {
     expect(status.model?.provider).toBe(alias?.provider);
     expect(status.model?.id).toBe(alias?.id);
 
-    // A second session must be unaffected: the choice above was per-session.
-    const other = await createSession(request);
-    const otherStatus = await request.get(`/api/machines/local/sessions/${other.id}/status?cwd=${encodeURIComponent(other.cwd)}`);
-    const otherModel = await otherStatus.json() as { model?: { provider?: string } };
-    expect(otherModel.model?.provider).not.toBe(alias?.provider);
+    // The point of a per-session binding is that a session already in progress
+    // keeps its own account when another session picks a different one. A
+    // *new* session is not evidence either way: pi seeds it from the last
+    // selected model on purpose, so it inherits the alias legitimately.
+    const bystanderAfter = await request.get(`/api/machines/local/sessions/${bystander.id}/status?cwd=${encodeURIComponent(bystander.cwd)}`);
+    const bystanderModel = await bystanderAfter.json() as { model?: { provider?: string; id?: string } };
+    expect(bystanderModel.model?.provider).toBe(bystanderBefore.provider);
+    expect(bystanderModel.model?.id).toBe(bystanderBefore.id);
   });
 });
 
