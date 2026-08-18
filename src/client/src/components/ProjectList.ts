@@ -1,4 +1,4 @@
-import { LitElement, html, type PropertyValues } from "lit";
+import { LitElement, html, type PropertyValues, nothing} from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { Project } from "../api";
 import type { MachineStatusSnapshot } from "../../../shared/machineStatus";
@@ -58,15 +58,23 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
             ${this.projects.map((project) => html`
               <div
                 class=${`action-row ${this.selected?.id === project.id ? "selected" : ""}`}
-                tabindex="0"
                 title=${project.path}
-                @click=${(event: MouseEvent) => { activateSelectableRow(event, () => this.onSelect?.(project)); }}
                 @keydown=${(event: KeyboardEvent) => { this.handleProjectKeydown(event, project); }}
               >
-                <div class="action-main">
+                <!-- The row's primary region is a real button: it is the thing
+                     being activated, and the guidelines rule out a div with a
+                     click handler. The row itself keeps no click or tabindex,
+                     so the actions button beside it stays a sibling rather than
+                     nesting inside another interactive element. -->
+                <button
+                  type="button"
+                  class="action-main"
+                  aria-current=${this.selected?.id === project.id ? "true" : nothing}
+                  @click=${() => { this.onSelect?.(project); }}
+                >
                   <span class="workspace-primary"><span class="workspace-primary-label">${project.name}</span></span><small>${project.path}</small>
                   ${this.renderActivity(project)}
-                </div>
+                </button>
                 <div class="action-menu">
                   <button class="action-menu-toggle" title="Project actions" aria-label=${`Actions for ${project.name}`} @click=${(event: MouseEvent) => { event.stopPropagation(); this.toggleMenu(project.id, event.currentTarget); }}>⋯</button>
                   ${this.openMenuProjectId === project.id ? html`

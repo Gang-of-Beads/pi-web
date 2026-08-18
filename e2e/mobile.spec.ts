@@ -192,7 +192,12 @@ async function clickRow(page: Page, listTag: string, text: string): Promise<void
       const list = panel?.querySelector(tag)?.shadowRoot;
       const row = [...(list?.querySelectorAll(".action-row") ?? [])]
         .find((candidate) => candidate.textContent?.includes(needle));
-      const target = row?.querySelector(".action-main") ?? row;
+      // Prefer the row's primary control by role. Lists converted to a real
+      // <button> expose one; the rest still fall back to the class, so this
+      // helper works across the migration.
+      const target = row?.querySelector("button.action-main")
+        ?? row?.querySelector(".action-main")
+        ?? row;
       if (target instanceof HTMLElement) { target.click(); return true; }
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
@@ -279,5 +284,36 @@ test.describe("composer", () => {
     expect(measured.empty).toBe(measured.typed);
     // ...and the hint must still be shown; hiding it would be a different bug.
     expect(measured.placeholderVisible).toBe(true);
+  });
+});
+
+test.describe("list row semantics", () => {
+  test.skip(({ isMobile }) => isMobile === false, "phone-viewport navigation");
+
+  test("exposes the project row's primary action as a real button", async ({ page }) => {
+    await openApp(page);
+
+    const row = await page.evaluate(() => {
+      const list = document.querySelector("pi-web-app")?.shadowRoot
+        ?.querySelector("app-navigation-panel")?.shadowRoot
+        ?.querySelector("project-list")?.shadowRoot;
+      const first = list?.querySelector(".action-row");
+      const primary = first?.querySelector(".action-main");
+      const menu = first?.querySelector(".action-menu-toggle");
+      return {
+        primaryTag: primary?.tagName.toLowerCase() ?? "(none)",
+        // The actions button must remain a sibling: nesting one interactive
+        // element inside another is invalid HTML and breaks assistive tech.
+        menuInsidePrimary: primary !== null && primary !== undefined && menu !== null && menu !== undefined
+          ? primary.contains(menu)
+          : false,
+        rowHasClickTabindex: first?.hasAttribute("tabindex") ?? false,
+      };
+    });
+
+    expect(row.primaryTag).toBe("button");
+    expect(row.menuInsidePrimary).toBe(false);
+    // The row no longer doubles as a control, so focus lands on the button.
+    expect(row.rowHasClickTabindex).toBe(false);
   });
 });

@@ -69,8 +69,8 @@ tailnet `:8506`), never the host installation.
   - [ ] List rows are `<div tabindex="0">` with click handlers; the guidelines
         call for real `<button>`s (`SessionList.ts:339`, `WorkspaceList.ts:85`).
         Also the reason e2e has to click `.action-main` instead of a role.
-        **Attempted and reverted.** Adding `role="button"` alone broke row
-        activation — two navigation e2e tests failed, and stashing the change
+        **In progress: ProjectList converted.** The earlier attempt at adding
+        `role="button"` alone broke row activation — two navigation e2e tests failed, and stashing the change
         turned them green again, so the regression was mine. A row cannot simply
         become a `<button>` either: it contains a checkbox and the `⋯` menu
         button, and nesting interactive elements is invalid HTML. The real fix
