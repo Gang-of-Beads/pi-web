@@ -39,7 +39,11 @@ export class PromptEditor extends LitElement {
   @property({ type: Boolean }) canStop = false;
   @property({ attribute: false }) status?: SessionStatus;
   @property({ type: Boolean }) sending = false;
-  @property({ attribute: false }) onSend?: (text: string, streamingBehavior?: "steer" | "followUp", attachments?: PromptAttachment[], delivery?: PromptAttachmentDelivery) => void | Promise<void>;
+  /**
+   * Send handler. Resolving `false` means the message was not accepted, and the
+   * composer puts its contents back rather than losing them.
+   */
+  @property({ attribute: false }) onSend?: (text: string, streamingBehavior?: "steer" | "followUp", attachments?: PromptAttachment[], delivery?: PromptAttachmentDelivery) => Promise<boolean | undefined> | boolean | undefined;
   @property({ attribute: false }) onStop?: () => void;
   @property({ attribute: false }) onSelectModel?: () => void;
   @property({ attribute: false }) onSelectThinking?: () => void;
@@ -350,7 +354,12 @@ export class PromptEditor extends LitElement {
             keyup: (event) => this.handleEditorKeyUp(event),
             blur: () => this.resetEditorModifierState(),
           }),
-          placeholder("Message pi... Use / for commands, @ for tracked files, @ space for all files, # for models"),
+          // Short enough to read at a glance on a phone. The full syntax was
+          // three wrapped lines of hint above an empty input, which both
+          // truncated once the placeholder was taken out of flow and buried the
+          // one thing the field is for. The affordances are discoverable by
+          // typing the trigger characters, which is how people find them anyway.
+          placeholder("Message pi\u2026  /  @  #"),
           this.editableCompartment.of(EditorView.editable.of(!this.disabled)),
           this.readOnlyCompartment.of(EditorState.readOnly.of(this.disabled)),
           EditorView.updateListener.of((update) => {
@@ -604,11 +613,41 @@ export class PromptEditor extends LitElement {
     const delivery = this.effectiveAttachmentDelivery();
     const key = draftStorageKey(this.machineId, this.sessionId);
     if (key !== undefined && text !== "") rememberPromptHistory(key, text);
+    // Cleared optimistically so the composer feels immediate, but the contents
+    // are kept so a rejected send can put them back. Losing a long prompt and
+    // its images to a dropped connection is the kind of failure that makes
+    // people distrust the app.
+    const restorable = { text: this.draft, attachments: pending };
     this.resetComposer();
-    // Sending is owned by the controller (it drives the chat activity dock and,
-    // for folder mode, orchestrates the upload + reference rewrite), so this is
-    // fire-and-forget here.
-    void this.onSend?.(text, behavior, attachments, attachments === undefined ? undefined : delivery);
+    void this.deliverAndRestoreOnFailure(text, behavior, attachments, delivery, restorable);
+  }
+
+  /**
+   * Hand the prompt to the controller and, if it reports failure, restore what
+   * the composer was holding.
+   *
+   * Only restores when the composer is still empty: anything typed since is the
+   * user's newer intent, and overwriting it would be a second kind of loss.
+   */
+  private async deliverAndRestoreOnFailure(
+    text: string,
+    behavior: "steer" | "followUp" | undefined,
+    attachments: PromptAttachment[] | undefined,
+    delivery: PromptAttachmentDelivery,
+    restorable: { text: string; attachments: PendingAttachment[] },
+  ): Promise<void> {
+    let accepted: boolean | undefined;
+    try {
+      accepted = await this.onSend?.(text, behavior, attachments, attachments === undefined ? undefined : delivery);
+    } catch {
+      accepted = false;
+    }
+    // `undefined` keeps the old contract for handlers that report nothing.
+    if (accepted !== false) return;
+    const current = this.editor?.state.doc.toString() ?? this.draft;
+    if (current.trim() !== "") return;
+    this.attachments = restorable.attachments;
+    this.replaceText(restorable.text);
   }
 
   private resetComposer() {
