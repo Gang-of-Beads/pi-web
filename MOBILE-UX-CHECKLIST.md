@@ -84,6 +84,16 @@ tailnet `:8506`), never the host installation.
         `button.action-main`. vitest 3184 passed, e2e 20 passed.
   - [ ] Confirm `touch-action: manipulation` covers every tap target, not just
         the five current call sites.
+  - [x] **Every `outline: none` now has a focus replacement.** The guidelines
+        forbid removing the outline without one, and four places had done so:
+        the composer (CodeMirror suppresses its own outline, so the composer was
+        the one control in the app that gave no sign of being focused), the
+        action palette's input, and the option containers of the command picker
+        and auth dialog — all three focusable by keyboard for arrow navigation.
+        *Evidence:* measured in the container, the composer's box-shadow goes
+        from `none` to `rgb(100,48,216) 0 0 0 1px` on focus. The two remaining
+        cases in TerminalPanel are deliberate: xterm draws its own cursor, and
+        the copy selector is a transparent proxy over it.
 - [ ] **Top bar density**: still two rows (context chips + icon tab strip) before
       the list begins. Measure and reduce.
 - [x] **Long project lists are searchable.** The project list had no search at

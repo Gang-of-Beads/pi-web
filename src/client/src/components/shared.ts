@@ -575,7 +575,11 @@ export const promptEditorStyles = css`
      line keep the height of a single line of text, and the caret with it. */
   .markdown-editor .cm-placeholder { position: absolute; inset-inline: 0; pointer-events: none; }
   .markdown-editor .cm-placeholder { color: var(--pi-dim); }
+  /* CodeMirror suppresses its own outline, so the focus ring belongs on the
+     bordered box the user actually sees. Without this the composer was the one
+     control in the app that gave no sign of being focused. */
   .markdown-editor .cm-focused { outline: none; }
+  .markdown-editor:focus-within .cm-editor { border-color: var(--pi-accent); box-shadow: 0 0 0 1px var(--pi-accent-ring, var(--pi-accent)); }
   .shell-mode textarea, .shell-mode .markdown-editor .cm-editor { border-color: var(--pi-success); box-shadow: 0 0 0 1px var(--pi-success-ring); }
   .mode-hint { position: absolute; right: 46px; bottom: 8px; max-width: calc(100% - 54px); border: 1px solid var(--pi-success-border); border-radius: 999px; background: var(--pi-success-surface); color: var(--pi-success); padding: 2px 8px; font-size: 12px; pointer-events: none; }
   /* Attachments live above the text box, so pasted images/files are visible
