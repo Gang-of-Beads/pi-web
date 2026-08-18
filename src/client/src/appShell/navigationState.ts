@@ -48,6 +48,19 @@ export function toggleCollapsedNavigationSection(collapsedSections: readonly Nav
   return orderedNavigationSections(collapsed);
 }
 
+/**
+ * Where to go after a project is chosen.
+ *
+ * A workspace is a git worktree, so that step earns its place when a project
+ * has several. With exactly one, it lists a single option the app has already
+ * selected, so stopping there asks for a tap that changes nothing. An unknown
+ * count means the list has not loaded yet: the honest destination is the list
+ * about to be filled, not a guess at its contents.
+ */
+export function sectionAfterProjectSelection(options: { workspaceCount: number | undefined }): NavigationSection {
+  return options.workspaceCount === 1 ? "sessions" : "workspaces";
+}
+
 export function nextNavigationSection(section: NavigationSection): NavigationSection | undefined {
   return NAVIGATION_SECTION_ORDER[NAVIGATION_SECTION_ORDER.indexOf(section) + 1];
 }
@@ -97,9 +110,11 @@ export class NavigationSectionsController implements ReactiveController {
     this.setCollapsedSections(this.collapsedSections.filter((collapsedSection) => collapsedSection !== section));
   }
 
-  advanceAfterSelection(section: NavigationSection): void {
+  advanceAfterSelection(section: NavigationSection, options?: { workspaceCount?: number | undefined }): void {
     if (!this.isMobileLayout()) return;
-    const next = nextNavigationSection(section);
+    const next = section === "projects"
+      ? sectionAfterProjectSelection({ workspaceCount: options?.workspaceCount })
+      : nextNavigationSection(section);
     if (next !== undefined) this.expand(next);
   }
 

@@ -37,7 +37,7 @@ test.describe("mobile shell", () => {
     expect(shell?.sections.filter((section) => section.height > 0)).toHaveLength(1);
   });
 
-  test("swaps to the workspace list in place after choosing a project", async ({ page }) => {
+  test("goes straight to sessions when the project has only one workspace", async ({ page }) => {
     // A stable fixture, not a per-run name: the project route is idempotent for
     // an existing path, and a fresh name each run left 127 test projects in the
     // container, which buries the real ones in the navigation list.
@@ -46,6 +46,7 @@ test.describe("mobile shell", () => {
     await openApp(page);
 
     await clickRow(page, "project-list", name);
+    await page.waitForTimeout(1500);
 
     const sections = await page.evaluate(() => {
       const panelRoot = document.querySelector("pi-web-app")?.shadowRoot
@@ -54,12 +55,15 @@ test.describe("mobile shell", () => {
     });
 
     const visible = sections.filter((section) => section.height > 0);
-    expect(visible.map((section) => section.tag)).toEqual(["workspace-list"]);
-    // The reported symptom: the workspace list existed but sat below a full
-    // screen of collapsed projects, so it was unreachable without scrolling.
-    const workspaces = visible[0];
-    expect(workspaces).toBeDefined();
-    expect(workspaces!.top).toBeLessThan(400);
+    // A workspace is a git worktree, so that step earns its place when a
+    // project has several. With one, it listed a single option the app had
+    // already selected, so it asked for a tap that changed nothing.
+    expect(visible.map((section) => section.tag)).toEqual(["session-list"]);
+    // The reported symptom this fixed originally: the list existed but sat
+    // below a full screen of collapsed sections, unreachable without scrolling.
+    const sessions = visible[0];
+    expect(sessions).toBeDefined();
+    expect(sessions!.top).toBeLessThan(400);
   });
 
   test("keeps the chat surface taller than the chrome above it", async ({ page }) => {

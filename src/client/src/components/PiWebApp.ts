@@ -1344,7 +1344,16 @@ export class PiWebApp extends LitElement {
     }, isCurrentSelection);
 
     if (!isCurrentSelection()) return;
-    await this.focusNavigationTarget(nextTarget);
+    // The workspace count is only known once the project has loaded, so the
+    // decision to skip that step is re-made here rather than guessed at the tap.
+    // Selecting the project already selects its only workspace, so stopping on
+    // a list of one would ask for a tap that changes nothing.
+    let target = nextTarget;
+    if (section === "projects") {
+      this.navigationSections.advanceAfterSelection("projects", { workspaceCount: this.state.workspaces.length });
+      if (this.state.workspaces.length === 1 && this.state.selectedWorkspace !== undefined) target = "sessions";
+    }
+    await this.focusNavigationTarget(target);
   }
 
   private async startSessionFromNavigation(): Promise<void> {

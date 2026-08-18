@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultNavigationSection, expandedNavigationSection, isNavigationSectionCollapsed, toggleCollapsedNavigationSection, toggleNavigationSection } from "./navigationState";
+import { sectionAfterProjectSelection, defaultNavigationSection, expandedNavigationSection, isNavigationSectionCollapsed, toggleCollapsedNavigationSection, toggleNavigationSection } from "./navigationState";
 
 describe("navigationState", () => {
   it("defaults to the first incomplete selection section", () => {
@@ -70,5 +70,25 @@ describe("defaultNavigationSection", () => {
   // the working surface is still the right place to land.
   it("prefers sessions when a workspace is known without its project", () => {
     expect(defaultNavigationSection({ selectedProject: undefined, selectedWorkspace: {} })).toBe("sessions");
+  });
+});
+
+describe("skipping a step that offers no choice", () => {
+  // A workspace is a git worktree, so the layer earns its place when a project
+  // has several. With exactly one it is a step that shows a list of one and
+  // asks the user to pick the only option -- and the app has already selected
+  // it by then, so the tap achieves nothing but a second screen.
+  it("advances past workspaces to sessions when the project has only one", () => {
+    expect(sectionAfterProjectSelection({ workspaceCount: 1 })).toBe("sessions");
+  });
+
+  it("stops at workspaces when there is a genuine choice", () => {
+    expect(sectionAfterProjectSelection({ workspaceCount: 3 })).toBe("workspaces");
+  });
+
+  // Nothing is known yet at the moment of the tap, so the honest destination is
+  // the list that is about to be filled rather than a guess at its contents.
+  it("stops at workspaces when the count is not yet known", () => {
+    expect(sectionAfterProjectSelection({ workspaceCount: undefined })).toBe("workspaces");
   });
 });
