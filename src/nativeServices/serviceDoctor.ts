@@ -301,7 +301,7 @@ interface ParsedSystemdDirective {
 }
 
 function systemdServiceDirectives(contents: string): ParsedSystemdDirective[] | undefined {
-  const allowed = new Set(["Type", "WorkingDirectory", "Environment", "ExecStart", "Restart", "RestartSec"]);
+  const allowed = new Set(["Type", "WorkingDirectory", "Environment", "ExecStart", "Restart", "RestartSec", "KillMode", "TimeoutStopSec"]);
   const directives: ParsedSystemdDirective[] = [];
   let inServiceSection = false;
   let foundServiceSection = false;
