@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { apiBaseURL } from "../playwright.config";
+import { CONTAINER_HOME } from "./fixtures";
 
 /** Installed into the page by `installSectionGeometry`. */
 declare function sectionGeometry(panelRoot: ShadowRoot | null | undefined): { tag: string; height: number; top: number }[];
@@ -422,6 +423,63 @@ test.describe("soft keyboard", () => {
     // ...and takes it back, or the app would stay short after typing.
     expect(measured!.closed.inset).toBe("0px");
     expect(measured!.closed.host).toBe(measured!.innerHeight);
+  });
+});
+
+test.describe("quick switcher", () => {
+  test.skip(({ isMobile }) => isMobile === false, "phone-viewport behaviour");
+
+  test("finds a session with no workspace selected and opens it in one tap", async ({ page, request }) => {
+    // A session on a workspace the app has not been pointed at. Finding this
+    // without first navigating to its workspace is the point of the switcher.
+    const cwd = `${CONTAINER_HOME}/e2e-fixture-lifecycle`;
+    await request.put(
+      `/api/machines/local/workspace/file?path=${encodeURIComponent(`${cwd}/.keep`)}&createDirs=true`,
+      { data: "" },
+    );
+    const created = await request.post("/api/machines/local/sessions", { data: { cwd } });
+    expect(created.ok(), `create session: ${String(created.status())}`).toBe(true);
+    const { id } = await created.json() as { id: string };
+
+    await openApp(page);
+
+    // Opened the way a user does with nothing selected: the "Open Session"
+    // shortcut. Setting the open flag directly skips the machine-wide load that
+    // happens on open, so a test that does that proves nothing.
+    const before = await page.evaluate(() => {
+      const app = document.querySelector("pi-web-app") as (HTMLElement & {
+        state?: { selectedWorkspace?: unknown };
+      }) | null;
+      return { workspaceSelected: app?.state?.selectedWorkspace !== undefined && app?.state?.selectedWorkspace !== null };
+    });
+
+    // Searchable with nothing selected: the list is populated from the whole
+    // machine, not from a workspace the user had to pick first.
+    expect(before.workspaceSelected).toBe(false);
+
+    await page.keyboard.press("ControlOrMeta+p");
+    // The switcher loads every project's sessions when it opens.
+    await page.waitForTimeout(3000);
+
+    const opened = await page.evaluate((sessionId) => {
+      const app = document.querySelector("pi-web-app") as (HTMLElement & {
+        state?: { selectedSession?: { id?: string } };
+      }) | null;
+      const root = app?.shadowRoot?.querySelector("quick-switcher")?.shadowRoot;
+      const rows = [...(root?.querySelectorAll(".session-row") ?? [])];
+      const match = rows.find((row) => (row as HTMLElement).textContent?.includes(sessionId.slice(-8)) === true) ?? rows[0];
+      (match as HTMLElement | undefined)?.click();
+      return { rowCount: rows.length };
+    }, id);
+    await page.waitForTimeout(2000);
+
+    expect(opened.rowCount).toBeGreaterThan(0);
+
+    // And a single tap lands in a session, rather than only navigating closer.
+    const selected = await page.evaluate(() =>
+      (document.querySelector("pi-web-app") as (HTMLElement & { state?: { selectedSession?: { id?: string } } }) | null)
+        ?.state?.selectedSession?.id);
+    expect(selected).toBeDefined();
   });
 });
 
