@@ -327,6 +327,11 @@ export class AppNavigationPanel extends LitElement {
   }
 
   static override styles = css`
+    /* This panel defines its own styles rather than adopting the shared list
+       block, so the tap rule has to be repeated: shell styles do not cross a
+       component's shadow boundary. */
+    button, [role="button"], input, select, summary { touch-action: manipulation; }
+
     :host { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
     :host([compact]) { flex: 1 1 auto; }
     header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border-bottom: 1px solid var(--pi-border); }

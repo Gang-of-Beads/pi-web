@@ -82,8 +82,18 @@ tailnet `:8506`), never the host installation.
         action as a real button" asserts the tag, that the menu is not nested,
         and that the row has no tabindex; the e2e helper now prefers
         `button.action-main`. vitest 3184 passed, e2e 20 passed.
-  - [ ] Confirm `touch-action: manipulation` covers every tap target, not just
-        the five current call sites.
+  - [x] **Tap targets opt out of the double-tap-zoom delay.** Only five call
+        sites had `touch-action`, and every control sampled in the container
+        computed to `auto` — including list rows, row menus and the quick
+        actions — so each tap waited for a double-tap gesture to be ruled out.
+        The rule is scoped to controls and lives in the shared style blocks each
+        component adopts, because a rule on the app shell does not cross a
+        component's shadow boundary; `AppNavigationPanel` defines its own styles
+        and needed it repeated. Gesture surfaces keep what they set for
+        themselves: the terminal soft keys stay `pan-x`, the copy selector
+        `auto`, the resize handle `none`.
+        *Evidence:* measured before (`auto` everywhere) and after
+        (`manipulation` on row button, row menu, quick action).
   - [x] **Every `outline: none` now has a focus replacement.** The guidelines
         forbid removing the outline without one, and four places had done so:
         the composer (CodeMirror suppresses its own outline, so the composer was

@@ -231,6 +231,11 @@ export const workspacePanelStyles = css`
 `;
 
 export const listStyles = css`
+  /* Tap targets should not wait for a double-tap-zoom gesture to be ruled out.
+     Scoped to controls, so scrollable and pannable surfaces keep the gestures
+     they set for themselves; and it lives here rather than on the app shell
+     because shell styles do not cross a component's shadow boundary. */
+  button, [role="button"], input, select, summary { touch-action: manipulation; }
   :host { display: flex; flex-direction: column; min-height: 0; overflow: hidden; color: var(--pi-text); font: 14px system-ui, sans-serif; }
   /* A host \`display\` beats the UA stylesheet's \`[hidden] { display: none }\`, so
      without this every "hidden" list still occupies its full height: the mobile
@@ -320,6 +325,11 @@ export const listStyles = css`
 `;
 
 export const chatStyles = css`
+  /* Tap targets should not wait for a double-tap-zoom gesture to be ruled out.
+     Scoped to controls, so scrollable and pannable surfaces keep the gestures
+     they set for themselves; and it lives here rather than on the app shell
+     because shell styles do not cross a component's shadow boundary. */
+  button, [role="button"], input, select, summary { touch-action: manipulation; }
   :host { position: relative; z-index: 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden; color: var(--pi-text); font: 14px system-ui, sans-serif; }
   .chat-wrap { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; }
   .top-notices { box-sizing: border-box; flex: 0 0 auto; max-height: 40%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border-bottom: 1px solid var(--pi-border); background: var(--pi-bg-overlay); }
@@ -537,6 +547,11 @@ export const autocompleteStyles = css`
 `;
 
 export const promptEditorStyles = css`
+  /* Tap targets should not wait for a double-tap-zoom gesture to be ruled out.
+     Scoped to controls, so scrollable and pannable surfaces keep the gestures
+     they set for themselves; and it lives here rather than on the app shell
+     because shell styles do not cross a component's shadow boundary. */
+  button, [role="button"], input, select, summary { touch-action: manipulation; }
   :host { position: relative; z-index: 5; display: block; color: var(--pi-text); font: 14px system-ui, sans-serif; }
   footer { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 12px; border-top: 1px solid var(--pi-border); }
   footer.shell-mode { border-top-color: var(--pi-success); background: var(--pi-success-bg); }
