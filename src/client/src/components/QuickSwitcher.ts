@@ -133,8 +133,13 @@ export class QuickSwitcher extends LitElement {
   private renderSessionRow(session: SessionInfo) {
     const selected = this.selectedSession?.id === session.id;
     const unread = this.unreadSessionIds.has(session.id);
-    const stateKind = this.sessionStates.get(session.id) ?? (this.activeSessionIds.has(session.id) ? "working" : undefined);
-    const interrupted = this.interruptedSessionIds.has(session.id) && stateKind !== "working";
+    const rawStateKind = this.sessionStates.get(session.id) ?? (this.activeSessionIds.has(session.id) ? "working" : undefined);
+    // An interrupted run's marker replaces any idle-state dot: being cut off by
+    // a restart is more informative than being briefly quiet, and two marks in
+    // the same corner read as noise. The moment the session works again the
+    // marker yields to the live state (three dots / green / amber / red).
+    const interrupted = this.interruptedSessionIds.has(session.id) && rawStateKind !== "working";
+    const stateKind = interrupted ? undefined : rawStateKind;
     return html`
       <button
         class=${`row session-row ${selected ? "selected" : ""} ${unread ? "unread" : ""}`}

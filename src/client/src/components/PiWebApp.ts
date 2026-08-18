@@ -372,7 +372,11 @@ export class PiWebApp extends LitElement {
    */
   private refreshInterruptedRuns(machineId: string): void {
     void this.sessions.loadInterruptedRuns(machineId).then((ids) => {
-      if (ids.size > 0) this.interruptedSessionIds = ids;
+      // Adopt the record verbatim, empty or not: the daemon clears the file
+      // once it is read, so an empty later read is the retraction of markers
+      // the user has already seen -- keeping the old set would leave a session
+      // stuck with the hollow interrupted ring long after its run continued.
+      this.interruptedSessionIds = ids;
     });
   }
 
@@ -1607,6 +1611,10 @@ export class PiWebApp extends LitElement {
     // open -- a rename, a new session, one archived on another device -- stayed
     // invisible until a reload.
     void this.loadQuickSwitcherData(this.quickSwitcherSessions.length > 0);
+    // The interrupted record is read-once on the daemon; re-reading it when
+    // the switcher opens retracts markers whose runs have since continued.
+    const machineId = selectedMachineId(this.state);
+    if (machineId !== "") this.refreshInterruptedRuns(machineId);
   }
 
   /**

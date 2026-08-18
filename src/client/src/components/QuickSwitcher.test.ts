@@ -86,6 +86,35 @@ describe("quick-switcher", () => {
     expect(row?.querySelector(".session-state")?.getAttribute("class")).toContain("working");
   });
 
+  it("shows only the interrupted ring for a cut-off session, not a green idle dot", async () => {
+    const switcher = await mount({
+      sessions: [session("cut", { name: "cut off by restart" })],
+      selectedWorkspace: workspace("main"),
+      activeSessionIds: new Set(),
+      sessionStates: new Map([["cut", "idle"]]),
+      interruptedSessionIds: new Set(["cut"]),
+    });
+
+    const row = sessionRows(switcher).find((candidate) => rowTitle(candidate) === "cut off by restart");
+    expect(row?.querySelector(".row-flag.interrupted")).not.toBeNull();
+    // One mark in the corner: the interrupted ring replaces the idle dot.
+    expect(row?.querySelector(".session-state")).toBeNull();
+  });
+
+  it("lets live work replace the interrupted ring once the run continues", async () => {
+    const switcher = await mount({
+      sessions: [session("resumed", { name: "resumed" })],
+      selectedWorkspace: workspace("main"),
+      activeSessionIds: new Set(["resumed"]),
+      sessionStates: new Map([["resumed", "working"]]),
+      interruptedSessionIds: new Set(["resumed"]),
+    });
+
+    const row = sessionRows(switcher).find((candidate) => rowTitle(candidate) === "resumed");
+    expect(row?.querySelector(".row-flag.interrupted")).toBeNull();
+    expect(row?.querySelectorAll(".state-dot").length).toBe(3);
+  });
+
   it("filters sessions as the query is typed", async () => {
     const switcher = await mount({
       sessions: [session("a", { name: "billing refactor" }), session("b", { name: "mobile layout" })],
@@ -160,6 +189,7 @@ interface MountProps {
   onClose?: () => void;
   activeSessionIds?: ReadonlySet<string>;
   sessionStates?: ReadonlyMap<string, "working" | "idle" | "asking" | "error">;
+  interruptedSessionIds?: ReadonlySet<string>;
 }
 
 async function mount(props: MountProps): Promise<QuickSwitcher> {
@@ -175,6 +205,7 @@ async function mount(props: MountProps): Promise<QuickSwitcher> {
   if (props.onClose !== undefined) switcher.onClose = props.onClose;
   if (props.activeSessionIds !== undefined) switcher.activeSessionIds = props.activeSessionIds;
   if (props.sessionStates !== undefined) switcher.sessionStates = props.sessionStates;
+  if (props.interruptedSessionIds !== undefined) switcher.interruptedSessionIds = props.interruptedSessionIds;
   document.body.append(switcher);
   await switcher.updateComplete;
   return switcher;
