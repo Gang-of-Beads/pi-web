@@ -318,3 +318,48 @@ test.describe("list row semantics", () => {
     expect(row.rowHasClickTabindex).toBe(false);
   });
 });
+
+test.describe("soft keyboard", () => {
+  test.skip(({ isMobile }) => isMobile === false, "phone-viewport behaviour");
+
+  test("shortens the shell so the composer stays above the keyboard", async ({ page }) => {
+    await openApp(page);
+
+    const measured = await page.evaluate(async () => {
+      const app = document.querySelector("pi-web-app");
+      const viewport = window.visualViewport;
+      if (app === null || viewport === null || viewport === undefined) return undefined;
+      const read = (): string => (app as HTMLElement).style.getPropertyValue("--pi-app-keyboard-inset");
+      const KEYBOARD = 320;
+
+      const before = { inset: read(), host: Math.round(app.getBoundingClientRect().height) };
+
+      // A soft keyboard shrinks the visual viewport and leaves the layout
+      // viewport alone, which is exactly why 100dvh does not react to it.
+      const original = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(viewport), "height");
+      Object.defineProperty(viewport, "height", { configurable: true, get: () => window.innerHeight - KEYBOARD });
+      Object.defineProperty(viewport, "offsetTop", { configurable: true, get: () => 0 });
+      viewport.dispatchEvent(new Event("resize"));
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      const open = { inset: read(), host: Math.round(app.getBoundingClientRect().height) };
+
+      Object.defineProperty(viewport, "height", { configurable: true, get: () => window.innerHeight });
+      viewport.dispatchEvent(new Event("resize"));
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      const closed = { inset: read(), host: Math.round(app.getBoundingClientRect().height) };
+      if (original !== undefined) Object.defineProperty(viewport, "height", original);
+
+      return { before, open, closed, innerHeight: window.innerHeight, keyboard: KEYBOARD };
+    });
+
+    expect(measured).toBeDefined();
+    expect(measured!.before.inset).toBe("0px");
+    // The shell gives up exactly the height the keyboard covers; without this
+    // the send button sat at y=799 with only 519px visible.
+    expect(measured!.open.inset).toBe(`${String(measured!.keyboard)}px`);
+    expect(measured!.open.host).toBe(measured!.innerHeight - measured!.keyboard);
+    // ...and takes it back, or the app would stay short after typing.
+    expect(measured!.closed.inset).toBe("0px");
+    expect(measured!.closed.host).toBe(measured!.innerHeight);
+  });
+});
