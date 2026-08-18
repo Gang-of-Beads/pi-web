@@ -425,6 +425,59 @@ test.describe("soft keyboard", () => {
   });
 });
 
+test.describe("prompt history", () => {
+  test.skip(({ isMobile }) => isMobile === true, "physical-keyboard behaviour");
+
+  test("walks further back on each Up and returns on Down", async ({ page }) => {
+    await openApp(page);
+
+    await page.evaluate(async () => {
+      // Seed the store the composer really reads, keyed by machine and session.
+      // Index 0 is the most recent entry.
+      localStorage.setItem(
+        "pi-web:prompt-history:local:history-probe",
+        JSON.stringify(["third message", "second message", "first message"]),
+      );
+      const editor = document.createElement("prompt-editor") as HTMLElement & {
+        machineId?: string;
+        sessionId?: string;
+        cwd?: string;
+        updateComplete: Promise<unknown>;
+      };
+      editor.machineId = "local";
+      editor.sessionId = "history-probe";
+      editor.cwd = "/tmp";
+      editor.id = "history-probe-editor";
+      document.body.append(editor);
+      await editor.updateComplete;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      (editor.shadowRoot?.querySelector(".cm-content") as HTMLElement | null)?.focus();
+    });
+
+    const text = async () => page.evaluate(() =>
+      document.querySelector("#history-probe-editor")?.shadowRoot?.querySelector(".cm-content")?.textContent ?? "");
+
+    const seen: string[] = [];
+    for (const key of ["ArrowUp", "ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown"]) {
+      await page.keyboard.press(key);
+      await page.waitForTimeout(200);
+      seen.push(await text());
+    }
+
+    // Up means further back in time, as in every shell and in pi's own terminal
+    // UI. The steps were once passed as +1/-1 and wired the wrong way round, so
+    // Up reached the most recent entry and appeared to stop while Down walked
+    // backwards -- a single press looked correct, which is why it survived.
+    expect(seen).toEqual([
+      "third message",
+      "second message",
+      "first message",
+      "second message",
+      "third message",
+    ]);
+  });
+});
+
 test.describe("desktop layout", () => {
   test.skip(({ isMobile }) => isMobile === true, "wide-viewport behaviour");
 
