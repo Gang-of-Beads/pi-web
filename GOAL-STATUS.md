@@ -11,7 +11,7 @@ recalled from earlier in the session.
 | --- | --- |
 | `npx tsc --noEmit` | 0 errors |
 | `npx eslint src` | 0 errors |
-| `npx vitest run` | 3184 passed, 1 failed |
+| `npx vitest run` | 3201 passed, 1 failed |
 | `npx playwright test` | 19 passed, 5 skipped, 0 failed |
 | Host serves current `main` | bundle `index-CHdGfuNs.js` on disk and served; 0 `src/server` commits since sessiond started |
 | `git log fork/main..HEAD` | 0 unpushed |
@@ -27,7 +27,7 @@ rather than a regression.
 | --- | --- | --- |
 | 1 | Compress the mobile header | Measured chrome = context bar 42px + tabs 57px = 99px of an 839px viewport (12%). Tabs are omitted entirely in chat view. e2e asserts chrome < viewport/3. |
 | 2 | Global quick switcher + ranking | `loadQuickSwitcherData` enumerates every project × workspace, so sessions are machine-wide regardless of selection. `quickSwitcherModel` ranks waiting (daemon `pendingAsk`) > active > unread > date. `quickSwitcher.test.ts`: 17 tests including a 5-case ranking suite. |
-| 3 | Composer layout | Caret line box 67px → 22px on a phone viewport, pinned by e2e "composer › keeps the caret one line tall before anything is typed". Attachments render above the input; the delivery selector is gone (delivery is derived at send time). |
+| 3 | Composer layout | Keyboard avoidance was the one clause asserted from code inspection rather than measurement, and measuring showed it did **not** hold: the send button sat at y=799 while a 320px keyboard left only 519px visible, because the shell is fixed at `100dvh` and `dvh` follows the layout viewport, which a soft keyboard does not shrink. The shell now subtracts the covered height (`keyboardInset`, 8 tests) and the send button moves to y=479, above the visible bottom. | Caret line box 67px → 22px on a phone viewport, pinned by e2e "composer › keeps the caret one line tall before anything is typed". Attachments render above the input; the delivery selector is gone (delivery is derived at send time). |
 | 4 | Prompt history | `promptHistory.ts` with 14 tests: per-session scoping, newest-first, promotion of a repeat, bounding, corrupt and refusing storage. |
 | 5 | De-emphasise transient errors | `errorBanner.ts` normalises `sessiond.sock` ENOENT and aborted requests to a `status` role with softer styling; covered by `errorBanner.test.ts`. |
 | 6 | multi-account alias semantics | Verified end-to-end against the daemon, not by reading source. In the container: `/models` exposed `anthropic-merchant`, `anthropic-personal`, `anthropic-work`; selecting `anthropic-work/claude-sonnet-5` returned `model.provider = "anthropic"` and moved the active account from `personal` to `work`. Pinned by e2e "anthropic account aliases › normalises an alias to the canonical provider", which skips when no accounts are configured. |

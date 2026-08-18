@@ -22,6 +22,7 @@ import { SessionStorageWorkspaceSelectionMemory } from "../controllers/workspace
 import { KeyboardShortcutDispatcher } from "../keyboardShortcuts";
 import { selectedMachineId } from "../controllers/types";
 import type { RecoveredPrompt } from "../resendMessage";
+import { keyboardInset } from "../appShell/keyboardInset";
 import { machineSessionKey } from "../machineKeys";
 import { sessionCleanupRequestKey } from "../sessionCleanupUi";
 import { selectedNotificationView } from "../sessionNotifications";
@@ -330,9 +331,24 @@ export class PiWebApp extends LitElement {
     return hasRenderedModal(this.ownerDocument);
   }
 
+  /**
+   * Shorten the shell by however much of it the soft keyboard covers.
+   *
+   * The shell is fixed at 100dvh, which follows the layout viewport and so does
+   * not change when a keyboard opens; without this the composer, send button
+   * included, sits underneath it.
+   */
+  private readonly onVisualViewportChange = (): void => {
+    const inset = keyboardInset(window.innerHeight, window.visualViewport ?? undefined);
+    this.style.setProperty("--pi-app-keyboard-inset", `${String(Math.round(inset))}px`);
+  };
+
   override connectedCallback(): void {
     super.connectedCallback();
     this.unreadConnected = true;
+    window.visualViewport?.addEventListener("resize", this.onVisualViewportChange);
+    window.visualViewport?.addEventListener("scroll", this.onVisualViewportChange);
+    this.onVisualViewportChange();
     window.addEventListener("popstate", this.onPopState);
     window.addEventListener("pageshow", this.onPageShow);
     this.browserResume.connect();
@@ -348,6 +364,8 @@ export class PiWebApp extends LitElement {
   }
 
   override disconnectedCallback(): void {
+    window.visualViewport?.removeEventListener("resize", this.onVisualViewportChange);
+    window.visualViewport?.removeEventListener("scroll", this.onVisualViewportChange);
     this.unreadConnected = false;
     this.committedChatIdentity = undefined;
     this.readyChatIdentity = undefined;
