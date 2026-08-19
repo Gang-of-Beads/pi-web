@@ -1297,10 +1297,13 @@ describe("prompt submission for extension-injected user messages", () => {
 
       const echoes = hub.sessionEvents
         .filter(({ event }) => event.type === "message.append")
-        .map(({ event }) => event.message.content);
+        .map(({ event }) => {
+          if (event.type !== "message.append") throw new Error("unreachable");
+          return JSON.stringify(event.message);
+        });
       expect(echoes).toEqual([
-        "/feynman_teach What is NAT?",
-        "Let's learn NAT together.",
+        JSON.stringify({ role: "user", content: "/feynman_teach What is NAT?" }),
+        JSON.stringify({ role: "user", content: "Let's learn NAT together." }),
       ]);
       expect(prompts).toEqual(["/feynman_teach What is NAT?", "Let's learn NAT together."]);
     } finally {
