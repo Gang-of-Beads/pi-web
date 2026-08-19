@@ -6,7 +6,7 @@ import { LongPressTracker } from "../longPress";
 import { sessionLabel } from "../sessionLabels";
 import { isArchivableSessionInfo, isTransientNewSessionInfo } from "../sessionPersistence";
 import { normalizeSessionPath } from "../sessionPaths";
-import { filterSessionRows, shouldShowSessionSearch } from "../sessionSearch";
+import { filterSessionRows, hideCollapsedSubtreeRows, shouldShowSessionSearch } from "../sessionSearch";
 import { isSessionActive } from "../../../shared/activity";
 import { actionMenuPanelStyle } from "./actionMenu";
 import { renderSessionStateBadge, type SessionStateBadgeKind } from "./activityBadge";
@@ -68,6 +68,8 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
   @state() private openMenuSessionId: string | undefined;
   @state() private menuStyle = "";
   @state() private archivedExpanded = false;
+  /** Parent session paths whose descendant subagent rows are collapsed. */
+  @state() private collapsedSubtreeRoots: ReadonlySet<string> = new Set();
   @state() private searchQuery = "";
   @state() private selectionScopes: ReadonlySet<SessionSelectionScope> = new Set();
   /**
@@ -146,6 +148,9 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
 
     const searching = this.searchQuery.trim() !== "";
     const currentRows = filterSessionRows(allCurrentRows, this.searchQuery);
+    // Searching reveals descendants regardless of their subtree's collapse
+    // state, so matches stay visible without an extra tap on the chevron.
+    const visibleCurrentRows = searching ? currentRows : hideCollapsedSubtreeRows(currentRows, this.collapsedSubtreeRoots, (row) => row.session.path);
     const archivedRows = filterSessionRows(allArchivedRows, this.searchQuery);
     // While searching, archived matches are the whole point of the query, so
     // they are revealed without forcing a second tap on the section toggle.
@@ -160,7 +165,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
             ${this.renderSearch(allCurrentRows.length + allArchivedRows.length)}
             ${this.renderCurrentSelectionToolbar(currentSelectableSessions)}
             ${this.startingCount > 0 ? this.renderStartingSession() : null}
-            ${currentRows.map((row) => this.renderSession(row, descendantCounts.get(row.session.id) ?? 0, "current"))}
+            ${visibleCurrentRows.map((row) => this.renderSession(row, descendantCounts.get(row.session.id) ?? 0, "current"))}
             ${archivedRows.length > 0 ? html`
               ${this.renderArchivedHeading(archivedRows.map((row) => row.session), archivedOpen)}
               ${archivedOpen ? html`
@@ -336,6 +341,8 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
   private renderSession(row: SessionRow, descendantCount: number, scope: SessionSelectionScope) {
     const { session } = row;
     const cappedDepth = Math.min(row.depth, 2);
+    const subtreeCollapsed = row.depth === 0 && descendantCount > 0 && this.collapsedSubtreeRoots.has(session.path);
+    const hasSubagents = row.depth === 0 && descendantCount > 0;
     const canBulkSelect = sessionSelectionScope(session) === scope;
     const selectionActive = this.selectionScopes.has(scope);
     const showsCheckbox = selectionActive && canBulkSelect;
@@ -358,6 +365,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
              place on screen while letting the primary region be a real button
              without nesting one control inside another. -->
         ${showsCheckbox ? html`<input class="session-checkbox" type="checkbox" aria-label=${`Select ${sessionLabel(session)}`} .checked=${bulkSelected} @click=${(event: MouseEvent) => { event.stopPropagation(); }} @change=${() => { this.toggleSelected(session.id); }}>` : null}
+        ${hasSubagents ? this.renderSubtreeToggle(row, scope) : null}
         <button
           type="button"
           class="action-main ${selectionActive ? "selecting" : ""}"
@@ -403,6 +411,35 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
         </div>
       </div>
     `;
+  }
+
+
+  private renderSubtreeToggle(row: SessionRow, scope: SessionSelectionScope) {
+    const collapsed = this.collapsedSubtreeRoots.has(row.session.path);
+    if (collapsed && this.selectionScopes.has(scope)) {
+      // During multi-select the tree is intentionally flat; keep the toggle
+      // visible but inert rather than removing rows the user may be selecting.
+      return html`<span class="subtree-toggle inert" aria-hidden="true"></span>`;
+    }
+    return html`
+      <button
+        type="button"
+        class="subtree-toggle"
+        aria-label=${collapsed ? `Expand subagents under ${sessionLabel(row.session)}` : `Collapse subagents under ${sessionLabel(row.session)}`}
+        aria-expanded=${collapsed ? "false" : "true"}
+        @pointerdown=${(event: PointerEvent) => { event.stopPropagation(); }}
+        @click=${(event: MouseEvent) => { event.stopPropagation(); this.toggleSubtreeCollapsed(row.session.path); }}
+      >
+        <span class="subtree-chevron ${collapsed ? "collapsed" : ""}" aria-hidden="true">▾</span>
+      </button>
+    `;
+  }
+
+  private toggleSubtreeCollapsed(parentPath: string): void {
+    const next = new Set(this.collapsedSubtreeRoots);
+    if (next.has(parentPath)) next.delete(parentPath);
+    else next.add(parentPath);
+    this.collapsedSubtreeRoots = next;
   }
 
   /**
@@ -620,7 +657,13 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .pending-session-row.starting-session .action-name { display: flex; align-items: center; gap: 6px; max-height: none; -webkit-line-clamp: 1; }
     .pending-session-row.starting-session .activity-indicator { flex: 0 0 auto; margin: 0; }
     .action-main.selecting { padding-left: calc(32px + var(--depth, 0) * 16px); }
-    .session-checkbox { position: absolute; top: 9px; left: calc(8px + var(--depth, 0) * 16px); z-index: 2; margin: 0; }
+.session-checkbox { position: absolute; top: 9px; left: calc(8px + var(--depth, 0) * 16px); z-index: 2; margin: 0; }
+    .subtree-toggle, .subtree-toggle.inert { position: absolute; top: 8px; left: calc(6px + var(--depth, 0) * 16px); z-index: 2; box-sizing: border-box; width: 24px; height: 24px; padding: 0; display: inline-grid; place-items: center; border: 1px solid var(--pi-border-muted); border-radius: 6px; background: var(--pi-surface); color: var(--pi-muted); font-size: 11px; line-height: 1; }
+    .subtree-toggle { cursor: pointer; }
+    .subtree-toggle:hover { border-color: var(--pi-border-strong, var(--pi-accent)); color: var(--pi-text); }
+    .subtree-toggle.inert { visibility: hidden; }
+    .subtree-chevron { display: inline-block; transition: transform 120ms ease; }
+    .subtree-chevron.collapsed { transform: rotate(-90deg); }
     /* Search sits inside the scrolling body but stays pinned, so filtering a
        long list never scrolls the field out of reach on a phone. */
     .session-search { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 6px; margin: 0 0 6px; padding-bottom: 6px; background: var(--pi-bg); }

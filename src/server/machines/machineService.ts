@@ -31,13 +31,19 @@ export class MachineService {
   constructor(private readonly store = new MachineStore(), private readonly deps: MachineServiceDependencies = {}) {}
 
   async list(): Promise<Machine[]> {
-    return [localMachine(), ...(await this.store.list()).map(publicMachine)];
+    return [await this.localMachine(), ...(await this.store.list()).map(publicMachine)];
   }
 
   async get(id: string): Promise<Machine | undefined> {
-    if (id === "local") return localMachine();
+    if (id === "local") return await this.localMachine();
     const machine = (await this.store.list()).find((stored) => stored.id === id);
     return machine === undefined ? undefined : publicMachine(machine);
+  }
+
+  /** Local machine with the user's alias applied, if one was set. */
+  async localMachine(): Promise<Machine> {
+    const { alias } = await this.store.localAlias();
+    return alias === undefined || alias === "" ? localMachine() : { ...localMachine(), name: alias };
   }
 
   async add(input: CreateMachineInput): Promise<Machine> {
@@ -48,7 +54,16 @@ export class MachineService {
   }
 
   async update(id: string, input: UpdateMachineInput): Promise<Machine | undefined> {
-    if (id === "local") throw new Error("Local machine cannot be changed");
+    if (id === "local") {
+      // The local machine is not a stored client; the only supported change
+      // is a display alias. Everything else stays fixed by definition.
+      if (input.name !== undefined) {
+        const alias = validateName(input.name);
+        await this.store.setLocalAlias(alias);
+        return await this.localMachine();
+      }
+      return await this.localMachine();
+    }
     const patch: Partial<Pick<StoredMachine, "name" | "baseUrl" | "token" | "headers">> = {};
     if (input.name !== undefined) patch.name = validateName(input.name);
     if (input.baseUrl !== undefined) patch.baseUrl = validateBaseUrl(input.baseUrl);

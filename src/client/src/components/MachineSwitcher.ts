@@ -294,16 +294,18 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     .activity-indicator.unread { border-radius: 50%; background: var(--pi-accent); animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--pi-accent) 20%, transparent); }
     .unread-ring { flex: 0 0 auto; box-sizing: border-box; display: inline-grid; place-items: center; width: 9px; height: 9px; border: 1.5px solid var(--pi-accent); border-radius: 50%; }
     .unread-ring .activity-indicator { width: 5px; height: 5px; }
-    .machine-switcher-menu { position: fixed; z-index: 10000; box-sizing: border-box; min-width: min(280px, calc(100vw - 16px)); overflow: auto; padding: 4px; border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-surface); box-shadow: 0 8px 24px var(--pi-shadow); }
-    .machine-option { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px; align-items: stretch; margin: 2px 0; }
-    .machine-option.no-actions { grid-template-columns: minmax(0, 1fr); }
+    .machine-switcher-menu { position: fixed; z-index: 10000; box-sizing: border-box; width: min(420px, calc(100vw - 16px)); overflow: auto; padding: 8px; border: 1px solid var(--pi-border); border-radius: 12px; background: var(--pi-surface); box-shadow: 0 8px 24px var(--pi-shadow); display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+    .machine-option { position: relative; display: grid; gap: 4px; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-surface); }
+    .machine-option:hover { background: var(--pi-surface-hover); border-color: var(--pi-accent-border); }
+    .machine-option.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     .machine-option-main, .machine-option-actions-toggle, .machine-option-actions-panel button { border: 0; border-radius: 7px; background: transparent; color: var(--pi-text); cursor: pointer; }
-    .machine-option-main { min-width: 0; display: grid; gap: 2px; padding: 7px 8px; text-align: left; }
+    .machine-option-main { min-width: 0; min-height: 76px; display: grid; gap: 3px; padding: 8px; text-align: left; align-content: start; }
     .machine-option-name { min-width: 0; display: flex; align-items: baseline; gap: 6px; }
-    .machine-option-name span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .machine-option-main small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); }
-    .machine-option-actions { position: relative; align-self: stretch; }
-    .machine-option-actions-toggle { display: grid; place-items: center; height: 100%; min-width: 32px; padding: 0; color: var(--pi-muted); }
+    .machine-option-name span:last-child { min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .machine-option-main small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: 11px; line-height: 1.3; }
+    .machine-option-actions { position: absolute; top: 4px; right: 4px; }
+    .machine-option-actions-toggle { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; color: var(--pi-muted); border-radius: 6px; }
+    .machine-option.no-actions .machine-option-actions { display: none; }
     .machine-option-actions-panel { position: fixed; z-index: 10001; box-sizing: border-box; min-width: min(120px, calc(100vw - 16px)); overflow: auto; padding: 4px; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); box-shadow: 0 8px 24px var(--pi-shadow); }
     .machine-option-actions-panel button { display: block; width: 100%; padding: 7px 9px; text-align: left; white-space: nowrap; }
     .machine-option-actions-panel button.danger { color: var(--pi-danger); }

@@ -263,9 +263,26 @@ describe("MachineService", () => {
     expect(requestJson).toHaveBeenCalledTimes(2);
   });
 
-  it("does not allow local machine mutation", async () => {
-    await expect(service.update("local", { name: "Other" })).rejects.toThrow("Local machine cannot be changed");
+  it("aliases the local machine via update and persists it", async () => {
+    const renamed = await service.update("local", { name: "My Dev Box" });
+    expect(renamed).toMatchObject({ id: "local", name: "My Dev Box", kind: "local" });
+
+    // The alias persists across service instances (same store file).
+    const otherService = new MachineService(new MachineStore(storePath));
+    await expect(otherService.list()).resolves.toEqual([
+      expect.objectContaining({ id: "local", name: "My Dev Box", kind: "local" }),
+    ]);
+
+    // Untouched local machine fields keep their canonical values.
+    const raw: unknown = JSON.parse(await readFile(storePath, "utf8"));
+    expect(raw).toMatchObject({ localAlias: "My Dev Box" });
+  });
+
+  it("does not allow local machine deletion and ignores non-name updates", async () => {
     await expect(service.remove("local")).rejects.toThrow("Local machine cannot be deleted");
+    // Non-name updates to the local machine are accepted as no-ops.
+    const unchanged = await service.update("local", { baseUrl: "https://elsewhere.test" });
+    expect(unchanged).toMatchObject({ id: "local", name: "Local", kind: "local" });
   });
 
   it("supports PI_WEB_MACHINES_FILE path overrides", () => {

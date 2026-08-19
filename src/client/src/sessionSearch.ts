@@ -116,3 +116,28 @@ function isSubsequence(needle: string, haystack: string): boolean {
   }
   return needle.length === 0;
 }
+
+/**
+ * Drop descendant rows whose subtree root is collapsed. Rows are depth-first,
+ * so a depth>0 row belongs to the nearest preceding row with a smaller depth.
+ * Rows with a missing recorded parent (orphan rows) are their own roots and
+ * are never hidden.
+ */
+export function hideCollapsedSubtreeRows<Row extends { depth: number; hasMissingParent: boolean }>(
+  rows: readonly Row[],
+  collapsedRoots: ReadonlySet<string>,
+  rootKey: (row: Row) => string,
+): Row[] {
+  if (collapsedRoots.size === 0) return [...rows];
+  const visible: Row[] = [];
+  let activeRoot: Row | undefined;
+  for (const row of rows) {
+    if (row.depth === 0) {
+      activeRoot = row.hasMissingParent ? undefined : row;
+      visible.push(row);
+      continue;
+    }
+    if (activeRoot === undefined || !collapsedRoots.has(rootKey(activeRoot))) visible.push(row);
+  }
+  return visible;
+}

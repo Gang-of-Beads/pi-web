@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SessionInfo } from "./api";
-import { filterSessionRows, sessionMatchesSearch, shouldShowSessionSearch } from "./sessionSearch";
+import { filterSessionRows, hideCollapsedSubtreeRows, sessionMatchesSearch, shouldShowSessionSearch } from "./sessionSearch";
 
 function session(id: string, overrides: Partial<SessionInfo> = {}): SessionInfo {
   return {
@@ -129,5 +129,34 @@ describe("session id search", () => {
       "/home/hanxiaodu/.pi/sessions/01a01367.jsonl",
     );
     expect(sessionMatchesSearch(target, "01a0136")).toBe(true);
+  });
+});
+
+describe("hideCollapsedSubtreeRows", () => {
+  const row = (id: string, depth: number, hasMissingParent = false) => ({ session: { id }, depth, hasMissingParent });
+
+  it("keeps rows visible when nothing is collapsed", () => {
+    const rows = [row("p", 0), row("c", 1), row("g", 0)];
+    expect(hideCollapsedSubtreeRows(rows, new Set(), (r) => r.session.id)).toEqual(rows);
+  });
+
+  it("hides descendants of a collapsed root without hiding its siblings", () => {
+    const rows = [row("p", 0), row("c", 1), row("gc", 2), row("g", 0), row("gc2", 1)];
+    const visible = hideCollapsedSubtreeRows(rows, new Set(["p"]), (r) => r.session.id);
+    expect(visible.map((r) => r.session.id)).toEqual(["p", "g", "gc2"]);
+  });
+
+  it("keeps orphan rows visible because they have no collapsible root", () => {
+    const rows = [row("o", 0, true), row("c", 1), row("root", 0)];
+    const visible = hideCollapsedSubtreeRows(rows, new Set(["o"]), (r) => r.session.id);
+    // "o" is an orphan root; collapsing its path must not hide the child that
+    // follows it, since the child actually belongs to "root".
+    expect(visible.map((r) => r.session.id)).toEqual(["o", "c", "root"]);
+  });
+
+  it("collapsing a non-root path is a no-op", () => {
+    const rows = [row("p", 0), row("c", 1)];
+    const visible = hideCollapsedSubtreeRows(rows, new Set(["c"]), (r) => r.session.id);
+    expect(visible).toEqual(rows);
   });
 });
