@@ -1,10 +1,11 @@
 import { css, html, LitElement, type PropertyValues, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { AppAction } from "../actions";
-import { configApi, piPackagesApi, pluginsApi, type Machine, type MachineRuntime, type PiPackageMutationResponse, type PiPackageScope, type PiPackagesResponse, type PiWebConfigResponse, type PiWebConfigValues, type PiWebPluginsResponse } from "../api";
+import { configApi, piPackagesApi, pluginsApi, type Machine, type MachineHealth, type MachineRuntime, type PiPackageMutationResponse, type PiPackageScope, type PiPackagesResponse, type PiWebConfigResponse, type PiWebConfigValues, type PiWebPluginsResponse } from "../api";
 import type { SettingsSection } from "../settingsRoute";
 import "./ModalSurface";
 import "./settings/SettingsGeneralPanel";
+import "./settings/SettingsMachinesPanel";
 import "./settings/SettingsSessiondPanel";
 import "./settings/SettingsPackagesPanel";
 import "./settings/SettingsPluginsPanel";
@@ -22,6 +23,11 @@ export class SettingsDialog extends LitElement {
   @property({ attribute: false }) actions: AppAction[] = [];
   @property({ attribute: false }) machine: Machine | undefined;
   @property({ attribute: false }) machineRuntime: MachineRuntime | undefined;
+  @property({ attribute: false }) machines: Machine[] = [];
+  @property({ attribute: false }) machineStatuses: Record<string, MachineHealth> = {};
+  @property({ attribute: false }) onAddMachine?: () => void;
+  @property({ attribute: false }) onRenameMachine?: (machine: Machine, name: string) => void | Promise<void>;
+  @property({ attribute: false }) onRemoveMachine?: (machine: Machine) => void | Promise<void>;
   @property({ attribute: false }) onNavigate?: (section: SettingsSection) => void;
   @property({ attribute: false }) onClose?: () => void;
   @property({ attribute: false }) onConfigSaved?: (config: PiWebConfigValues) => void;
@@ -106,6 +112,7 @@ export class SettingsDialog extends LitElement {
         <div class="settings-body">
           <nav class="settings-nav" aria-label="Settings sections">
             ${this.renderNavButton("general", "General", "Gateway + selected machine")}
+            ${this.renderNavButton("machines", "Machines", "All connected devices")}
             ${this.renderNavButton("sessiond", "Session daemon", "Selected machine")}
             ${this.renderNavButton("packages", "Pi packages", "Selected machine")}
             ${this.renderNavButton("plugins", "PI WEB plugins", "Selected machine")}
@@ -123,6 +130,17 @@ export class SettingsDialog extends LitElement {
     // Keep the section -> panel routing in sync with the public
     // `activeSettingsPanelTag` seam below, which tests assert against instead of
     // scraping this template's markup.
+    if (this.section === "machines") {
+      return html`
+        <settings-machines-panel
+          .machines=${this.machines}
+          .machineStatuses=${this.machineStatuses}
+          .onAdd=${() => this.onAddMachine?.()}
+          .onRename=${(machine: Machine, name: string) => this.onRenameMachine?.(machine, name)}
+          .onRemove=${(machine: Machine) => this.onRemoveMachine?.(machine)}
+        ></settings-machines-panel>
+      `;
+    }
     if (this.section === "sessiond") {
       return html`
         <settings-sessiond-panel
@@ -621,6 +639,7 @@ function errorMessage(error: unknown): string {
 }
 
 export type SettingsPanelTag =
+  | "settings-machines-panel"
   | "settings-general-panel"
   | "settings-sessiond-panel"
   | "settings-packages-panel"
@@ -647,5 +666,7 @@ export function activeSettingsPanelTag(section: SettingsSection): SettingsPanelT
       return "settings-shortcuts-panel";
     case "general":
       return "settings-general-panel";
+    case "machines":
+      return "settings-machines-panel";
   }
 }

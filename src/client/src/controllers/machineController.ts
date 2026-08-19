@@ -58,6 +58,18 @@ export class MachineController {
     void this.refreshMachineRuntime(machine.id);
   }
 
+  async updateMachine(machine: Machine, patch: { name?: string }): Promise<Machine | undefined> {
+    this.setState({ error: "" });
+    try {
+      const updated = await api.updateMachine(machine.id, patch);
+      this.setState({ machines: this.getState().machines.map((candidate) => (candidate.id === updated.id ? updated : candidate)) });
+      return updated;
+    } catch (error) {
+      this.setState({ error: String(error) });
+      return undefined;
+    }
+  }
+
   async addMachine(input: { name: string; baseUrl: string; token?: string }): Promise<Machine | undefined> {
     this.setState({ error: "" });
     try {
