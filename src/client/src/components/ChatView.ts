@@ -219,7 +219,7 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) subagents?: readonly SessionSubagentInfo[];
   /** Open a listed subagent in the navigation. */
   @property({ attribute: false }) onOpenSubagent?: (subagent: SessionSubagentInfo) => void;
-  @property({ attribute: false }) onClearServerQueue?: () => void;
+  @property({ attribute: false }) onClearServerQueue?: (queued: QueuedSessionMessage[]) => void;
   @property({ attribute: false }) onDismissWarning?: (dismissId: string) => void;
   @property({ attribute: false }) onDismissNotification?: (notificationId: string) => void;
   @property({ attribute: false }) onDismissAllNotifications?: () => void;
@@ -280,7 +280,7 @@ export class ChatView extends LitElement {
     this.saveScrollPosition();
   };
   private readonly handleClearServerQueue = (): void => {
-    this.onClearServerQueue?.();
+    this.onClearServerQueue?.(this.status?.queuedMessages ?? []);
   };
   private readonly handleToggleWarnings = (): void => {
     this.onToggleWarnings?.();

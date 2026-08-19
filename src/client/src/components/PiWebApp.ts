@@ -1,7 +1,7 @@
 import { LitElement, html, type TemplateResult } from "lit";
 import { customElement, query, state } from "lit/decorators.js";
 import { configApi, effectiveWorkspaceUploadFolder, projectsApi, selfUpdateApi, sessionsApi, terminalsApi, workspacesApi, workspaceEffectiveUploadFolder, type AskUserSubmission, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
-  type SessionSubagentInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";import type { AppAction } from "../actions";
+  type QueuedSessionMessage, type SessionSubagentInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";import type { AppAction } from "../actions";
 import { initialAppState, type AppState } from "../appState";
 import { isSessionActive } from "../../../shared/activity";
 import type { SessionStateBadgeKind } from "./activityBadge";
@@ -2442,7 +2442,14 @@ export class PiWebApp extends LitElement {
     void this.sessions.stopActiveWork();
   };
 
-  private readonly handleClearServerQueue = (): void => {
+  private readonly handleClearServerQueue = (queued: QueuedSessionMessage[]): void => {
+    // Recall the queued messages into the composer so the user can edit and
+    // resend rather than losing them. Replace semantics match restorePrompt.
+    const texts = queued.map((message) => message.text).filter((text) => text.trim() !== "");
+    if (texts.length > 0) {
+      this.promptEditor?.replaceText(texts.join("\n\n"));
+      this.promptEditor?.focusInput();
+    }
     void this.sessions.clearServerQueue();
   };
 

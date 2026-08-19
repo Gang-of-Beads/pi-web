@@ -28,13 +28,31 @@ describe("PiWebApp queued-message clear wiring", () => {
     const secondCallback = templateCallbackAfterMarker(secondRender, ".onClearServerQueue=");
 
     expect(secondCallback).toBe(firstCallback);
-    firstCallback();
+    firstCallback([{ kind: "steer", text: "queued one" }]);
+    expect(clearServerQueue).toHaveBeenCalledOnce();
+  });
+
+  it("recalls queued message texts into the prompt editor before clearing", async () => {
+    const app = createApp();
+    const state = stateWithQueuedSession();
+    setAppState(app, state);
+    const controller = appSessionController(app);
+    const clearServerQueue = vi.spyOn(controller, "clearServerQueue").mockResolvedValue(undefined);
+    const replaceText = vi.fn();
+    vi.spyOn(PiWebApp.prototype, "promptEditor", "get").mockReturnValue({ replaceText, focusInput: vi.fn() } as never);
+
+    const render = renderChatView(app, state);
+    const callback = templateCallbackAfterMarker(render, ".onClearServerQueue=") as (queued: { kind: string; text: string }[]) => void;
+
+    callback([{ kind: "steer", text: "first queued" }, { kind: "followUp", text: "second queued" }]);
+
+    expect(replaceText).toHaveBeenCalledWith("first queued\n\nsecond queued");
     expect(clearServerQueue).toHaveBeenCalledOnce();
   });
 });
 
 type RenderChatView = (this: PiWebApp, state: AppState, session: SessionInfo) => TemplateResult;
-type ClearServerQueueCallback = () => void;
+type ClearServerQueueCallback = (queued: { kind: string; text: string }[]) => void;
 
 function createApp(): PiWebApp {
   const storage = {

@@ -20,7 +20,7 @@ import { isVoiceCaptureActive, voiceCaptureLabel, type VoiceCaptureState } from 
 import { VoiceController } from "../voiceController";
 import type { PiWebSpeechToTextConfig } from "../../../shared/apiTypes";
 import { promptEditorStyles, type CompletionItem } from "./shared";
-import { renderAttachIcon, renderSendIcon, renderQueueIcon, renderSteerIcon, renderStopIcon, renderThinkingGauge } from "./promptEditorIcons";
+import { renderAttachIcon, renderSendIcon, renderQueueIcon, renderStopIcon, renderThinkingGauge } from "./promptEditorIcons";
 import { thinkingGauge, thinkingLevelLabel } from "../../../shared/thinkingLevels";
 import "./AutocompleteMenu";
 
@@ -134,8 +134,7 @@ export class PromptEditor extends LitElement {
         </div>
         <div class="actions">
           ${this.renderCompactStatus()}
-          <button class="icon-button send-button" ?disabled=${busy} title=${queuesInput ? "Queue until the current activity finishes" : "Send message"} aria-label=${queuesInput ? "Queue message" : "Send message"} @click=${() => { this.send("followUp"); }}>${queuesInput ? renderQueueIcon() : renderSendIcon()}</button>
-          ${this.canSteer && !this.isCompacting ? html`<button class="icon-button steer-button" ?disabled=${busy} title="Steer the current response before the next model call" aria-label="Steer current response" @click=${() => { this.send("steer"); }}>${renderSteerIcon()}</button>` : null}
+          <button class="icon-button send-button" ?disabled=${busy} title=${queuesInput ? "Send as steer — joins the current turn at the next safe point" : "Send message"} aria-label=${queuesInput ? "Send message" : "Send message"} @click=${() => { this.send(this.canSteer ? "steer" : "followUp"); }}>${queuesInput ? renderQueueIcon() : renderSendIcon()}</button>
           <button class="icon-button stop-button" ?disabled=${this.disabled || !this.canStop} title=${this.canStop ? "Stop current work and clear queued messages" : "Nothing running"} aria-label="Stop current work" @click=${() => this.onStop?.()}>${renderStopIcon()}</button>
         </div>
       </footer>
@@ -552,7 +551,10 @@ export class PromptEditor extends LitElement {
     if (!shouldSendPromptOnEnterShortcut(shiftKey, this.mobilePromptEnterMedia, readPromptEnterPreference())) {
       return insertNewlineContinueMarkup(view) || insertNewlineAndIndent(view);
     }
-    this.send(this.canSteer || this.isCompacting ? "followUp" : undefined);
+    // Enter sends as steer while the agent is mid-turn (the pi TUI default):
+    // the message interrupts the current work at the next safe point. While
+    // compacting the only queueable mode is follow-up.
+    this.send(this.canSteer ? "steer" : "followUp");
     return true;
   }
 
