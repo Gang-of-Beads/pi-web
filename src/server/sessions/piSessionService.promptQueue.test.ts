@@ -149,6 +149,61 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
     await service.dispose();
   });
 
+  it("reconciles queued messages already consumed into the transcript out of status", async () => {
+    // pi drains a queued steer/follow-up when the agent emits the matching
+    // user message_start, splicing by exact text. If the drained text ever
+    // differs from what was queued, the entry stays in the queue forever.
+    // The status must reconcile against history so a consumed message is
+    // reported as delivered instead of pending forever.
+    const fake = fakeRuntime("reconcile-session", {
+      messages: [
+        { role: "user", content: "adjust this turn" },
+        { role: "assistant", content: "done" },
+      ],
+      pendingMessageCount: 1,
+      getSteeringMessages: () => ["adjust this turn", "still pending"],
+      getFollowUpMessages: () => [],
+    });
+    const service = new PiSessionService(new CapturingSessionEventHub(), {
+      agentDir: TEST_AGENT_DIR,
+      modelRuntime: testModelRuntime,
+      createAgentRuntime: runtimeCreator(fake.runtime),
+      sessionManager: sessionGateway([sessionRecord("reconcile-session")]),
+      heartbeatIntervalMs: 60_000,
+    });
+
+    await expect(service.status(sessionRef("reconcile-session"))).resolves.toMatchObject({
+      // "adjust this turn" already appears in the transcript -> delivered.
+      pendingMessageCount: 1,
+      queuedMessages: [{ kind: "steer", text: "still pending" }],
+    });
+    await service.dispose();
+  });
+
+  it("reconciles multi-part user content arrays against the queue", async () => {
+    const fake = fakeRuntime("reconcile-parts-session", {
+      messages: [
+        { role: "user", content: [{ type: "text", text: "queued with image" }, { type: "image", data: "x" }] },
+      ],
+      pendingMessageCount: 1,
+      getSteeringMessages: () => ["queued with image"],
+      getFollowUpMessages: () => [],
+    });
+    const service = new PiSessionService(new CapturingSessionEventHub(), {
+      agentDir: TEST_AGENT_DIR,
+      modelRuntime: testModelRuntime,
+      createAgentRuntime: runtimeCreator(fake.runtime),
+      sessionManager: sessionGateway([sessionRecord("reconcile-parts-session")]),
+      heartbeatIntervalMs: 60_000,
+    });
+
+    await expect(service.status(sessionRef("reconcile-parts-session"))).resolves.toMatchObject({
+      pendingMessageCount: 0,
+      queuedMessages: [],
+    });
+    await service.dispose();
+  });
+
   it("does not enqueue duplicate queued message text", async () => {
     const fake = fakeRuntime("dedupe-session", {
       isStreaming: true,
@@ -305,6 +360,34 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
     expect(fake.calls.dispose).toBe(0);
     const publishedStatuses = hub.sessionEvents.filter(({ event }) => event.type === "status.update");
     expect(publishedStatuses.at(-1)?.event).toEqual({ type: "status.update", status });
+    await service.dispose();
+  });
+
+  it("does not publish full status for streaming text deltas", async () => {
+    // Streaming text deltas carry no status change; publishing the full
+    // status for every token would re-serialize + broadcast session state on
+    // the agent's own event loop and slow streaming relative to the TUI.
+    const fake = fakeRuntime("delta-session", { messages: [], isStreaming: true });
+    const hub = new CapturingSessionEventHub();
+    const service = new PiSessionService(hub, {
+      agentDir: TEST_AGENT_DIR,
+      modelRuntime: testModelRuntime,
+      createAgentRuntime: runtimeCreator(fake.runtime),
+      sessionManager: sessionGateway([sessionRecord("delta-session")]),
+      heartbeatIntervalMs: 60_000,
+    });
+    await service.prompt(sessionRef("delta-session"), "Start streaming");
+
+    const before = hub.sessionEvents.filter(({ event }) => event.type === "status.update").length;
+    fake.emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "hell" } });
+    fake.emit({ type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: "reason" } });
+    const after = hub.sessionEvents.filter(({ event }) => event.type === "status.update").length;
+    expect(after - before).toBe(0);
+
+    // Structural events still publish status.
+    fake.emit({ type: "message_start", message: { role: "assistant", content: [] } });
+    const afterStart = hub.sessionEvents.filter(({ event }) => event.type === "status.update").length;
+    expect(afterStart - before).toBeGreaterThan(0);
     await service.dispose();
   });
 

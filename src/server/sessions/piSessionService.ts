@@ -3588,7 +3588,13 @@ export class PiSessionService implements SessionRouteService {
       if (eventType === "agent_end") this.abortRunScopedExtensionDialogs(session.sessionId);
       if (eventType === "compaction_end") this.scheduleCompactionQueueDrain(session.sessionId);
       if (eventType === "agent_start" || eventType === "agent_end") this.scheduleCompactionQueueDrain(session.sessionId);
-      this.publishStatus(session);
+      // Delta-only events (streaming text/thinking) carry no status change:
+      // publishing the full status for every token would synchronously
+      // re-serialize and broadcast the session state on the agent's own event
+      // loop, which measurably slows streaming relative to the TUI. Status is
+      // published on structural events below and on a trailing throttle timer
+      // so a burst of deltas still settles into a fresh status.
+      if (!isStreamingDeltaEvent(event)) this.publishStatus(session);
       this.updateSubsessionTracking(session);
     });
     this.active.set(session.sessionId, active);
@@ -4045,7 +4051,9 @@ export class PiSessionService implements SessionRouteService {
   }
 
   private pendingMessageCount(session: PiAgentSession): number {
-    return session.pendingMessageCount + this.compactionQueuedMessages(session.sessionId).length;
+    const consumed = consumedUserMessageTexts(session);
+    const pending = queuedMessagesFromSession(session, this.compactionQueuedMessages(session.sessionId)).filter((message) => !consumed.has(message.text));
+    return pending.length;
   }
 
   private compactionQueuedMessages(sessionId: string): readonly QueuedPrompt[] {
@@ -4480,11 +4488,38 @@ function clearSessionQueue(session: PiAgentSession): void {
 }
 
 function queuedMessagesFromSession(session: PiAgentSession, extraQueuedMessages: readonly QueuedPrompt[] = []): { kind: "steer" | "followUp"; text: string }[] {
+  const consumed = consumedUserMessageTexts(session);
   return [
-    ...session.getSteeringMessages().map((text) => ({ kind: "steer" as const, text })),
-    ...session.getFollowUpMessages().map((text) => ({ kind: "followUp" as const, text })),
-    ...extraQueuedMessages,
+    ...session.getSteeringMessages().filter((text) => !consumed.has(text)).map((text) => ({ kind: "steer" as const, text })),
+    ...session.getFollowUpMessages().filter((text) => !consumed.has(text)).map((text) => ({ kind: "followUp" as const, text })),
+    ...extraQueuedMessages.filter((message) => !consumed.has(message.text)),
   ];
+}
+
+/**
+ * pi drains a queued steer/follow-up when the agent emits the matching user
+ * `message_start`; the queue entry is spliced by exact text. If the drained
+ * text ever differs from what was queued (expansion, normalization, trailing
+ * whitespace), the entry is never removed and the UI would show a consumed
+ * message in the queue forever. Reconcile against the transcript: a queued
+ * text that already appears as a user message has clearly been consumed, so
+ * the status reports it as delivered instead of pending.
+ */
+function consumedUserMessageTexts(session: PiAgentSession): ReadonlySet<string> {
+  const consumed = new Set<string>();
+  for (const message of session.messages) {
+    if (!isRecord(message) || message["role"] !== "user") continue;
+    const content = message["content"];
+    if (typeof content === "string") {
+      consumed.add(content);
+      continue;
+    }
+    if (!Array.isArray(content)) continue;
+    for (const part of content) {
+      if (isRecord(part) && typeof part["text"] === "string") consumed.add(part["text"]);
+    }
+  }
+  return consumed;
 }
 
 function userTextMessage(text: string): { role: "user"; content: string } {
@@ -4580,6 +4615,18 @@ function finalAssistantText(messages: readonly unknown[]): string {
     if (texts.length > 0) return texts.join("\n").trim();
   }
   return "";
+}
+
+/**
+ * Streaming text/thinking deltas that never change session status on their
+ * own. Other `message_update` shapes (usage updates, completed parts) can
+ * still affect status, so only the token-stream hotspots are skipped.
+ */
+function isStreamingDeltaEvent(event: unknown): boolean {
+  if (getString(event, "type") !== "message_update") return false;
+  const assistantMessageEvent = getProperty(event, "assistantMessageEvent");
+  const deltaType = getString(assistantMessageEvent, "type");
+  return deltaType === "text_delta" || deltaType === "thinking_delta";
 }
 
 function toClientEvent(event: unknown, thinkingLevel?: string): SessionUiEvent {
