@@ -36,12 +36,18 @@ jobs:
       - name: Verify
         run: npm run verify
 
+      # Build explicitly (npm pack's implicit prepack can fail differently on
+      # CI runners), then pack with --ignore-scripts so the tarball is just
+      # the artifact, no rebuild surprises.
+      - name: Build
+        run: npm run build
+
       - name: Pack
         id: pack
         run: |
           sha="$(git rev-parse --short HEAD)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "tarball=$(npm pack --silent)" >> "$GITHUB_OUTPUT"
+          echo "tarball=$(npm pack --ignore-scripts --silent)" >> "$GITHUB_OUTPUT"
           echo "tag=v$(date +%Y%m%d)-${sha}" >> "$GITHUB_OUTPUT"
 
       - name: Create tag
