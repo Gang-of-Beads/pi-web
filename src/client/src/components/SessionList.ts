@@ -341,7 +341,6 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
   private renderSession(row: SessionRow, descendantCount: number, scope: SessionSelectionScope) {
     const { session } = row;
     const cappedDepth = Math.min(row.depth, 2);
-    const subtreeCollapsed = row.depth === 0 && descendantCount > 0 && this.collapsedSubtreeRoots.has(session.path);
     const hasSubagents = row.depth === 0 && descendantCount > 0;
     const canBulkSelect = sessionSelectionScope(session) === scope;
     const selectionActive = this.selectionScopes.has(scope);

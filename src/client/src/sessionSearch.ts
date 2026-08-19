@@ -18,10 +18,6 @@ interface SessionRowLike {
   depth: number;
 }
 
-export function sessionSearchHaystack(session: SessionInfo): string {
-  return [session.name ?? "", session.firstMessage, session.id, session.path].join("\n").toLowerCase();
-}
-
 /**
  * Identifiers a person types verbatim rather than abbreviating: the session id
  * and its file path. Kept apart from the prose fields because they are long and

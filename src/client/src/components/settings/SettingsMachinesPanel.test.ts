@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { TemplateResult } from "lit";
 import type { Machine } from "../../api";
 import { SettingsMachinesPanel } from "./SettingsMachinesPanel";
@@ -15,15 +15,12 @@ function machine(id: string, overrides: Partial<Machine> = {}): Machine {
   };
 }
 
-type LitTemplate = TemplateResult & { _$litType$?: unknown; strings: readonly string[]; values: readonly unknown[] };
-
 function templateParts(template: TemplateResult): { strings: readonly string[]; values: readonly unknown[] } {
-  const lit = template as LitTemplate;
-  return { strings: lit.strings, values: lit.values };
+  return { strings: template.strings, values: template.values };
 }
 
 function isTemplateLike(value: unknown): value is TemplateResult {
-  return value instanceof Object && String((value as { _$litType$?: unknown })._$litType$ ?? "") !== "" && Array.isArray((value as { strings?: unknown }).strings);
+  return value !== null && typeof value === "object" && Array.isArray(Reflect.get(value, "strings")) && Array.isArray(Reflect.get(value, "values"));
 }
 
 function flatten(template: TemplateResult): string {
@@ -48,13 +45,13 @@ function flatten(template: TemplateResult): string {
       return;
     }
     if (value instanceof Object && isTemplateLike(value)) {
-      visit(value as TemplateResult);
+      visit(value);
       return;
     }
     if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
       chunks.push(String(value));
-    } else if (value !== null && typeof value === "object" && "strings" in value && "values" in value) {
-      visit(value as TemplateResult);
+    } else if (isTemplateLike(value)) {
+      visit(value);
     }
   }
 }

@@ -32,7 +32,7 @@ describe("PiWebApp queued-message clear wiring", () => {
     expect(clearServerQueue).toHaveBeenCalledOnce();
   });
 
-  it("recalls queued message texts into the prompt editor before clearing", async () => {
+  it("recalls queued message texts into the prompt editor before clearing", () => {
     const app = createApp();
     const state = stateWithQueuedSession();
     setAppState(app, state);
@@ -42,7 +42,7 @@ describe("PiWebApp queued-message clear wiring", () => {
     Object.defineProperty(app, "promptEditor", { get: () => ({ replaceText, focusInput: vi.fn() }), configurable: true });
 
     const render = renderChatView(app, state);
-    const callback = templateCallbackAfterMarker(render, ".onClearServerQueue=") as (queued: { kind: string; text: string }[]) => void;
+    const callback = templateCallbackAfterMarker(render, ".onClearServerQueue=");
 
     callback([{ kind: "steer", text: "first queued" }, { kind: "followUp", text: "second queued" }]);
 

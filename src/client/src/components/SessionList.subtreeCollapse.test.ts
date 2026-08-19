@@ -28,7 +28,7 @@ describe("subagent subtree collapse", () => {
     await list.updateComplete;
 
     const rows = [...list.shadowRoot?.querySelectorAll(".action-row") ?? []];
-    expect(rows.map((r) => r.textContent?.includes("child"))).toEqual([false]);
+    expect(rows.map((r) => r.textContent.includes("child"))).toEqual([false]);
     expect(toggle(list)?.getAttribute("aria-expanded")).toBe("false");
     expect(toggle(list)?.getAttribute("aria-label")).toBe("Expand subagents under parent");
   });
@@ -72,19 +72,23 @@ describe("subagent subtree collapse", () => {
   it("keeps descendants visible while searching even when collapsed", async () => {
     const parent = session("parent");
     const child = session("child", { parentSessionPath: parent.path });
-    const list = await renderList({ sessions: [parent, child] });
+    // Enough sessions that the search input renders (SESSION_SEARCH_MIN_SESSIONS).
+    const fillers = Array.from({ length: 6 }, (_, i) => session(`filler-${String(i)}`));
+    const list = await renderList({ sessions: [parent, child, ...fillers] });
 
     toggle(list)?.click();
     await list.updateComplete;
 
-    // Simulate an active search query the same way the session-search input
-    // does, by setting the state the list derives its filtering from.
-    (list as unknown as { searchQuery: string }).searchQuery = "child";
-    list.requestUpdate();
+    // Type into the real search input so the query goes through the actual
+    // input event chain (and searching reveals collapsed descendants).
+    const input = list.shadowRoot?.querySelector<HTMLInputElement>(".session-search-input");
+    if (input === null || input === undefined) throw new Error("search input missing");
+    input.value = "child";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
     await list.updateComplete;
 
     const rows = [...list.shadowRoot?.querySelectorAll(".action-row") ?? []];
-    expect(rows.some((r) => r.textContent?.includes("child"))).toBe(true);
+    expect(rows.some((r) => r.textContent.includes("child"))).toBe(true);
   });
 
   it("renders no toggle for leaf sessions", async () => {

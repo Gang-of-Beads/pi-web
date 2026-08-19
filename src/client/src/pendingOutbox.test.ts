@@ -6,7 +6,7 @@ function memoryStorage(): Storage & { data: Map<string, string> } {
   return {
     data,
     get length() { return data.size; },
-    clear: () => data.clear(),
+    clear: () => { data.clear(); },
     getItem: (key: string) => data.get(key) ?? null,
     key: (index: number) => [...data.keys()][index] ?? null,
     removeItem: (key: string) => { data.delete(key); },

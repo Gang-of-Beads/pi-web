@@ -50,7 +50,7 @@ export class SettingsMachinesPanel extends LitElement {
         </div>
         ${renaming ? html`
           <form class="rename-form" @submit=${(event: Event) => { event.preventDefault(); void this.confirmRename(machine); }}>
-            <input .value=${this.draftName} aria-label="Machine name" @input=${(event: Event) => { this.draftName = (event.target as HTMLInputElement).value; }} />
+            <input .value=${this.draftName} aria-label="Machine name" @input=${(event: Event) => { const input = event.target; if (input instanceof HTMLInputElement) this.draftName = input.value; }} />
             <div class="rename-actions">
               <button type="submit" ?disabled=${this.draftName.trim() === ""}>Save</button>
               <button type="button" @click=${() => { this.renamingId = undefined; }}>Cancel</button>
@@ -60,7 +60,7 @@ export class SettingsMachinesPanel extends LitElement {
           <div class="machine-card-name" title=${machine.id}>${machine.name}</div>
           <div class="machine-card-sub">${machine.kind === "local" ? "This device" : machine.baseUrl ?? machine.id}</div>
           <div class="machine-card-actions">
-            <button type="button" @click=${() => this.startRename(machine)}>Rename</button>
+            <button type="button" @click=${() => { this.startRename(machine); }}>Rename</button>
             ${machine.kind === "remote" ? html`
               <button type="button" class="danger" @click=${() => void this.onRemove?.(machine)}>Remove</button>
             ` : null}

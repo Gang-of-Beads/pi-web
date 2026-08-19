@@ -111,7 +111,7 @@ export class PromptEditor extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
-    if (this.pendingPrompts !== undefined) this.pendingPrompts = this.pendingPromptsForSession();
+    this.pendingPrompts = this.pendingPromptsForSession();
   }
 
   protected override updated(changed: PropertyValues) {

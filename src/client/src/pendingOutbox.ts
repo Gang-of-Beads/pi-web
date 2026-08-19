@@ -28,6 +28,10 @@ function outboxKey(sessionKey: string): string {
 }
 
 /** Whether an error looks like connectivity loss rather than a server verdict. */
+function isPendingPrompt(value: unknown): value is PendingPrompt {
+  return value !== null && typeof value === "object" && typeof Reflect.get(value, "text") === "string";
+}
+
 export function isNetworkFailure(error: unknown): boolean {
   if (error instanceof TypeError && /fetch|network|load failed|failed to fetch/i.test(error.message)) return true;
   if (error instanceof Error && /ECONNREFUSED|ENOTFOUND|socket hang up|network.*down/i.test(error.message)) return true;
@@ -39,7 +43,8 @@ export function loadPendingPrompts(sessionKey: string, storage = browserStorage(
     const raw = storage?.getItem(outboxKey(sessionKey));
     if (raw === undefined || raw === null || raw === "") return [];
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((entry) => entry !== null && typeof entry === "object") as PendingPrompt[] : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(isPendingPrompt);
   } catch {
     return [];
   }

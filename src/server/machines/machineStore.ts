@@ -135,10 +135,6 @@ function parseStoredMachine(value: unknown): StoredMachine {
   return { id, name, kind, baseUrl, createdAt, updatedAt, ...(token === undefined ? {} : { token }), ...(headers === undefined ? {} : { headers }) };
 }
 
-export function localAliasFromFile(value: unknown): string | undefined {
-  if (!isRecord(value)) return undefined;
-  return optionalString(value["localAlias"], "localAlias");
-}
 
 function optionalString(value: unknown, key: string): string | undefined {
   if (value === undefined) return undefined;

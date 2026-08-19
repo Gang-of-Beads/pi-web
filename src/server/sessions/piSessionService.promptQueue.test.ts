@@ -20,6 +20,13 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
+function isUserAppendEvent(event: unknown): boolean {
+  if (event === null || typeof event !== "object") return false;
+  if (Reflect.get(event, "type") !== "message.append") return false;
+  const message: unknown = Reflect.get(event, "message");
+  return message !== null && typeof message === "object" && Reflect.get(message, "role") === "user";
+}
+
 describe("PiSessionService prompt, queue, and auth warnings", () => {
   it("sends prompts to an injected runtime without touching the SDK runtime", async () => {
     const fake = fakeRuntime("prompt-session");
@@ -240,7 +247,7 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
     expect(fake.calls.prompt).toEqual([{ text: "Wait for the current turn", options: { streamingBehavior: "followUp" } }]);
     // The queue is server-side; the client still sees its own message
     // immediately (mobile otherwise reads as "message disappeared").
-    expect(hub.sessionEvents.some(({ event }) => event.type === "message.append" && (event.message as { role?: string }).role === "user")).toBe(true);
+    expect(hub.sessionEvents.some(({ event }) => isUserAppendEvent(event))).toBe(true);
     await service.dispose();
   });
 
