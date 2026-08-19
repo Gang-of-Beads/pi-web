@@ -69,3 +69,12 @@ lifetime excludes any work scheduled after the command handler returns.
 
 The reproduction above is deterministic and fast to re-run; the mock endpoint
 script lives alongside any chosen fix's tests.
+## Where a real fix would live
+
+The nested-turn dispatch is owned by `@earendil-works/pi-coding-agent`
+(`AgentSession.prompt` → `_tryExecuteExtensionCommand` → nested `prompt()`).
+PI WEB only hosts the daemon-side runtime; the CLI (`pi -p`) is a separate
+binary PI WEB does not execute or control. If print-mode support for
+extension-injected turns is required, the change belongs upstream
+(earendil-works/pi, issues #6010/#2994) or in the user's CLI package
+version/patch, not in this repository.
