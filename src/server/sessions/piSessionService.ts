@@ -2338,12 +2338,17 @@ export class PiSessionService implements SessionRouteService {
     this.maybeGenerateSessionName(session, promptText);
     const isQueued = session.isStreaming || session.isCompacting;
     const behavior = isQueued ? requestedBehavior ?? "followUp" : undefined;
-    if (isQueued && clientMessageId !== undefined) this.recordQueuedPromptClientId(session.sessionId, clientMessageId, promptText);
-    if (isQueued && images.length === 0 && this.hasQueuedMessageText(session, promptText)) {
+    // A retry of the same request must not queue twice, but a person sending
+    // "continue" twice on purpose must not be silently swallowed. The id tells
+    // those apart; without one, matching text is all there is to go on.
+    const isRetryOfQueued = clientMessageId !== undefined && this.hasQueuedPromptClientId(session.sessionId, clientMessageId);
+    const isUnidentifiedRepeat = clientMessageId === undefined && images.length === 0 && this.hasQueuedMessageText(session, promptText);
+    if (isQueued && (isRetryOfQueued || isUnidentifiedRepeat)) {
       this.publishActivity(session, "duplicate queued message ignored", "active");
       this.publishStatus(session);
       return;
     }
+    if (isQueued && clientMessageId !== undefined) this.recordQueuedPromptClientId(session.sessionId, clientMessageId, promptText);
     // A chat message answers the session's open ask in the user's own words, so
     // the form is void: keeping it open would invite answers to questions the
     // conversation has already moved past. Ignored duplicates skip this on
@@ -2379,6 +2384,10 @@ export class PiSessionService implements SessionRouteService {
     else this.queuedPromptClientIds.set(sessionId, stillQueued);
   }
 
+  private hasQueuedPromptClientId(sessionId: string, clientMessageId: string): boolean {
+    return this.queuedPromptClientIds.get(sessionId)?.some((record) => record.clientMessageId === clientMessageId) === true;
+  }
+
   private recordQueuedPromptClientId(sessionId: string, clientMessageId: string, text: string): void {
     const records = this.queuedPromptClientIds.get(sessionId) ?? [];
     records.push({ clientMessageId, text });
@@ -2392,7 +2401,7 @@ export class PiSessionService implements SessionRouteService {
     // agent emits the real user message - on mobile that reads as "message
     // disappeared" (no optimistic bubble, no dock). The client dedupes an
     // identical user line when the queued message is later consumed.
-    if (echoUserMessage) this.events.publish(session.sessionId, { type: "message.append", message: userMessage(text, images), ...(clientMessageId === undefined ? {} : { clientMessageId }) });
+    if (echoUserMessage) this.events.publish(session.sessionId, { type: "message.append", message: userMessage(text, images), echo: true, ...(clientMessageId === undefined ? {} : { clientMessageId }) });
     const promptOptions = buildPromptOptions(behavior, images);
     const promptPromise = this.runSessionEntryMutation(session, "send a prompt", () => session.prompt(text, promptOptions)).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);

@@ -54,6 +54,38 @@ test.describe("navigation panel height", () => {
   });
 });
 
+test.describe("tile row menu", () => {
+  test("draws the tile's menu button as a closed control, not an open-sided one", async ({ page }) => {
+    // In a list row the menu toggle drops its left border on purpose: the
+    // primary region sits against it and draws the divider. Tiles float the
+    // same button in the corner with nothing beside it, where that rule left
+    // one side of the button missing.
+    await page.goto("/", { waitUntil: "networkidle" });
+    await page.waitForFunction(() => {
+      const list = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("app-navigation-panel")?.shadowRoot?.querySelector("project-list")?.shadowRoot;
+      return (list?.querySelectorAll(".list-body.tiles .action-menu-toggle").length ?? 0) > 0;
+    }, undefined, { timeout: 20_000 });
+
+    const measured = await page.evaluate(() => {
+      const list = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("app-navigation-panel")?.shadowRoot?.querySelector("project-list")?.shadowRoot;
+      const toggle = list?.querySelector(".list-body.tiles .action-menu-toggle");
+      if (toggle === null || toggle === undefined) return undefined;
+      const style = getComputedStyle(toggle);
+      const box = toggle.getBoundingClientRect();
+      return {
+        borders: [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth],
+        radius: [style.borderTopLeftRadius, style.borderBottomLeftRadius],
+        size: { width: Math.round(box.width), height: Math.round(box.height) },
+      };
+    });
+
+    expect(measured?.borders).toEqual(["1px", "1px", "1px", "1px"]);
+    expect(measured?.radius).toEqual(["8px", "8px"]);
+    expect(measured?.size.width).toBeGreaterThanOrEqual(32);
+    expect(measured?.size.height).toBeGreaterThanOrEqual(32);
+  });
+});
+
 interface SectionBox { tag: string; height: number; top: number }
 
 async function sectionGeometry(page: Page): Promise<SectionBox[]> {

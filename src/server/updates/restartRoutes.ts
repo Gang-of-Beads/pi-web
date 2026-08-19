@@ -19,7 +19,17 @@ export interface RestartService {
 }
 
 function systemdRunnerAvailable(): boolean {
+  // A Docker deployment has no systemd user session, and the container image
+  // does not always set CONTAINER. Reporting "restart started" there was worse
+  // than reporting nothing: the caller was told work had begun that could never
+  // happen, and a fleet report inherited the same false claim for that machine.
+  if (isTruthyEnv("PI_WEB_DOCKER_RUNTIME")) return false;
   return process.env["CONTAINER"] === undefined || process.env["CONTAINER"] === "";
+}
+
+function isTruthyEnv(key: string): boolean {
+  const value = process.env[key];
+  return value !== undefined && value !== "" && value !== "0" && value.toLowerCase() !== "false";
 }
 
 export function createRestartService(logger: { warn: (obj: unknown, msg: string) => void } | undefined): RestartService {

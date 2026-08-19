@@ -45,6 +45,28 @@ test.describe("delivery correlation (API)", () => {
     }
   });
 
+  test("queues a deliberate repeat but not a retry of the same request", async ({ request }) => {
+    const session = await createSession(request);
+    try {
+      await setMockModel(request, session);
+      await request.post(promptPath(session), { data: { cwd: CWD, text: "first, take your time" } });
+      await waitForStreaming(request, session);
+
+      // Same id twice is a retry (the outbox resending after a dropped reply).
+      await request.post(promptPath(session), { data: { cwd: CWD, text: "continue", clientMessageId: "retry-1" } });
+      await request.post(promptPath(session), { data: { cwd: CWD, text: "continue", clientMessageId: "retry-1" } });
+      // A different id with the same text is a person saying it again.
+      await request.post(promptPath(session), { data: { cwd: CWD, text: "continue", clientMessageId: "repeat-2" } });
+
+      const status = await waitForQueued(request, session);
+      const continues = status.queuedMessages?.filter((message) => message.text === "continue") ?? [];
+      expect(continues).toHaveLength(2);
+      expect(continues.map((message) => message.clientMessageId)).toEqual(["retry-1", "repeat-2"]);
+    } finally {
+      await archive(request, session);
+    }
+  });
+
   test("ignores an oversized or empty correlation id instead of storing it", async ({ request }) => {
     const session = await createSession(request);
     try {

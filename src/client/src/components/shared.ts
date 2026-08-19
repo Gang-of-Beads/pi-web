@@ -85,6 +85,13 @@ export interface ChatLine {
     timestamp?: string;
     /** Present only on messages this browser sent; see MessageDelivery. */
     delivery?: MessageDelivery;
+    /**
+     * The server's optimistic copy of an accepted prompt. The agent commits its
+     * own copy later, and that copy supersedes this line rather than following
+     * it - which is how the same message stops rendering twice on a client that
+     * cannot correlate by id (another device, or this one after a reload).
+     */
+    echo?: boolean;
     model?: { provider?: string; id?: string; responseId?: string };
     /** Thinking level the assistant message was generated with, when known. */
     thinkingLevel?: string;
@@ -301,7 +308,17 @@ export const listStyles = css`
   .list-body.tiles .action-row { grid-template-columns: minmax(0, 1fr); margin: 0; align-self: start; }
   .list-body.tiles .action-main { border-radius: 10px; padding: 10px 30px 10px 10px; min-height: 56px; align-content: center; }
   .list-body.tiles .action-menu { position: absolute; top: 6px; right: 6px; align-self: auto; }
-  .list-body.tiles .action-menu-toggle { height: 30px; min-width: 26px; }
+  /* In a row the toggle drops its left border on purpose: the primary region
+     sits against it and draws the divider. A tile floats it in the corner with
+     nothing on its left, so the same rule left the button open on one side.
+     Give it back a full border and its own radius. */
+  .list-body.tiles .action-menu-toggle { height: 32px; min-width: 32px; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); }
+  /* Touch needs a bigger target than a mouse; 32px is the smallest a finger
+     hits reliably next to a tile's own tap area. */
+  @media (pointer: coarse) {
+    .list-body.tiles .action-menu-toggle { height: 36px; min-width: 36px; }
+    .list-body.tiles .action-menu { top: 4px; right: 4px; }
+  }
   .list-body.tiles .action-activity { top: 7px; right: 32px; }
   button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; }
   section > button { display: block; width: 100%; text-align: left; margin: 6px 0; }

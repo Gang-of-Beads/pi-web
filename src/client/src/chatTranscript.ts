@@ -42,7 +42,7 @@ export function seedStreamingPartial(messages: ChatLine[], partial: unknown): Ch
 }
 
 export function applyTranscriptEvent(messages: ChatLine[], event: SessionUiEvent): ChatLine[] | undefined {
-  if (event.type === "message.append") return appendNewMessage(messages, event.message, event.clientMessageId);
+  if (event.type === "message.append") return appendNewMessage(messages, event.message, event.clientMessageId, event.echo === true);
   if (event.type === "assistant.delta") return appendText(messages, "assistant", event.text);
   if (event.type === "assistant.thinking.delta") return appendThinking(messages, event.text);
   if (event.type === "tool.start") return appendToolExecutionStart(messages, event);
@@ -90,9 +90,10 @@ function applyFinalLine(messages: ChatLine[], displayEnded: ChatLine): ChatLine[
   // the message was taken into the turn.
   if (displayEnded.role === "user") {
     const tracked = findTrackedUserLineIndex(messages, messageText(displayEnded));
-    if (tracked !== -1) {
-      const previous = messages[tracked];
-      if (previous !== undefined) return [...messages.slice(0, tracked), carryDeliveryForward(previous, displayEnded), ...messages.slice(tracked + 1)];
+    const target = tracked === -1 ? findEchoLineIndex(messages, displayEnded) : tracked;
+    if (target !== -1) {
+      const previous = messages[target];
+      if (previous !== undefined) return [...messages.slice(0, target), carryDeliveryForward(previous, displayEnded), ...messages.slice(target + 1)];
     }
   }
   const last = messages.at(-1);
@@ -347,9 +348,22 @@ function messageText(message: ChatLine): string {
     .join("\n\n");
 }
 
-function appendNewMessage(messages: ChatLine[], rawMessage: unknown, clientMessageId?: string): ChatLine[] {
+function appendNewMessage(messages: ChatLine[], rawMessage: unknown, clientMessageId?: string, isEcho = false): ChatLine[] {
   const lines = normalizeMessage(rawMessage);
   if (lines.length === 0) return messages;
+  // Mark the server's optimistic copy so the agent's later, committed copy can
+  // replace it instead of appearing as a second message. Without this, a client
+  // that did not send the prompt (another device, or this one after a reload)
+  // has no way to tell the two apart, and both render.
+  if (isEcho) return appendEchoedMessage(messages, lines, clientMessageId);
+  const superseded = findEchoLineIndex(messages, lines[0]);
+  if (superseded !== -1) {
+    const previous = messages[superseded];
+    const committed = lines[0];
+    if (previous !== undefined && committed !== undefined) {
+      return [...messages.slice(0, superseded), carryDeliveryForward(previous, committed), ...messages.slice(superseded + 1), ...lines.slice(1)];
+    }
+  }
   // The sender already rendered this message the moment it was sent, and both
   // the server echo and the agent's committed copy come back afterwards. The
   // correlation id resolves it exactly; text matching is the fallback for a
@@ -368,6 +382,22 @@ function appendNewMessage(messages: ChatLine[], rawMessage: unknown, clientMessa
     if (last?.role === "user" && newText !== "" && messageText(last) === newText) return messages;
   }
   return [...messages, ...lines];
+}
+
+function appendEchoedMessage(messages: ChatLine[], lines: ChatLine[], clientMessageId: string | undefined): ChatLine[] {
+  if (isEchoOfTrackedMessage(messages, clientMessageId)) return messages;
+  const first = lines[0];
+  if (first === undefined) return messages;
+  const marked: ChatLine = { ...first, meta: { ...first.meta, echo: true } };
+  return [...messages, marked, ...lines.slice(1)];
+}
+
+/** The pending echo a committed user message supersedes, or -1. */
+function findEchoLineIndex(messages: ChatLine[], committed: ChatLine | undefined): number {
+  if (committed?.role !== "user") return -1;
+  const text = messageText(committed);
+  if (text === "") return -1;
+  return messages.findIndex((line) => line.role === "user" && line.meta?.echo === true && messageText(line) === text);
 }
 
 function appendLine(messages: ChatLine[], line: ChatLine): ChatLine[] {

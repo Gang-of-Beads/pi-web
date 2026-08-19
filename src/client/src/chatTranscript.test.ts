@@ -67,6 +67,39 @@ describe("applyTranscriptEvent delivery reconciliation", () => {
     const messages = applyTranscriptEvent([sent], { type: "message.append", message: { role: "user", content: "and also this" } });
     expect(messages).toHaveLength(2);
   });
+
+  // Reported from a phone: one typed message rendered as two USER bubbles with
+  // an event group between them. The browser that sent it had reloaded, so
+  // there was no id to correlate by and the old trailing-line check could not
+  // see past the events.
+  it("replaces the server's echo with the agent's committed copy, even across other lines", () => {
+    const echoed = applyTranscriptEvent([], { type: "message.append", message: { role: "user", content: "mobile版我说的" }, echo: true }) ?? [];
+    expect(echoed).toHaveLength(1);
+    const working = applyTranscriptEvent(echoed, { type: "assistant.delta", text: "working" }) ?? echoed;
+    const committed = applyTranscriptEvent(working, { type: "message.append", message: { role: "user", content: "mobile版我说的" } }) ?? working;
+
+    expect(committed.filter((line) => line.role === "user")).toHaveLength(1);
+    expect(committed.find((line) => line.role === "user")?.meta?.echo).toBeUndefined();
+  });
+
+  it("reconciles the echo when the committed copy arrives as message.end", () => {
+    const echoed = applyTranscriptEvent([], { type: "message.append", message: { role: "user", content: "ship it" }, echo: true }) ?? [];
+    const committed = applyTranscriptEvent(echoed, { type: "message.end", message: { role: "user", content: "ship it" } }) ?? echoed;
+
+    expect(committed.filter((line) => line.role === "user")).toHaveLength(1);
+  });
+
+  it("keeps two genuine sends of the same text as two messages", () => {
+    // Deduping by text alone would swallow a real repeat ("yes", "continue"),
+    // so each echo is only ever consumed by one committed copy.
+    let messages = applyTranscriptEvent([], { type: "message.append", message: { role: "user", content: "continue" }, echo: true }) ?? [];
+    messages = applyTranscriptEvent(messages, { type: "message.append", message: { role: "user", content: "continue" } }) ?? messages;
+    messages = applyTranscriptEvent(messages, { type: "assistant.delta", text: "ok" }) ?? messages;
+    messages = applyTranscriptEvent(messages, { type: "message.append", message: { role: "user", content: "continue" }, echo: true }) ?? messages;
+    messages = applyTranscriptEvent(messages, { type: "message.append", message: { role: "user", content: "continue" } }) ?? messages;
+
+    expect(messages.filter((line) => line.role === "user")).toHaveLength(2);
+  });
 });
 
 describe("applyTranscriptEvent", () => {
