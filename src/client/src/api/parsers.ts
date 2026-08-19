@@ -1,7 +1,7 @@
 import { PI_WEB_PLUGIN_LIFECYCLE_VERSION, ASK_USER_ID_MAX_LENGTH, ASK_USER_OPTION_LIMIT, ASK_USER_OTHER_TEXT_MAX_LENGTH, ASK_USER_QUESTION_LIMIT, ASK_USER_TEXT_MAX_LENGTH, EXTENSION_DIALOG_ID_MAX_LENGTH, EXTENSION_DIALOG_INPUT_MAX_LENGTH, EXTENSION_DIALOG_OPTION_LIMIT, EXTENSION_DIALOG_TEXT_MAX_LENGTH, SESSION_NOTIFICATION_LIMIT, SESSION_NOTIFICATION_MESSAGE_BYTES, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH, SESSION_UNREAD_COMPLETED_AT_MAX_LENGTH, SESSION_UNREAD_CWD_MAX_LENGTH, SESSION_UNREAD_LIMIT, SESSION_UNREAD_SESSION_ID_MAX_LENGTH, type ArchiveSessionsResponse, type AskUserCloseReason, type AskUserCloseResponse, type AskUserOutcome, type AskUserQuestion, type AskUserQuestionOption, type AskUserQuestionRecord, type PendingAskUser, type PendingExtensionDialog, type AuthProviderOption, type AuthProviderStatus, type AuthProvidersResponse, type AuthStatusSource, type AuthType, type CommandOption, type CommandResult, type DeleteWorkspaceFileResponse, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogKind, type ExtensionDialogOutcome, type FileContentResponse, type FileSuggestion, type FileTreeEntry, type FileTreeResponse, type GlobalSessionEvent, type Machine, type MachineHealth, type MachineKind, type MachineRuntime, type MachineStatus, type MessagePage, type ModelSelectionResponse, type MoveWorkspaceFileResponse, type OAuthFlowState, type PiWebCapability, type PiWebComponentStatus, type PiWebConfigEnvOverrides, type PiWebConfigResponse, type PiWebConfigValues, type PiWebDeprecatedAgentInput, type PiWebInstallationInfo, type PiWebPluginConfigMap, type PiWebPluginInfo, type PiWebPluginsResponse, type PiWebPluginScope, type PiWebReleaseStatus, type PiWebRuntimeComponent, type PiWebRuntimeResponse, type PiWebServiceComponent, type PiWebShortcutConfig, type PiWebStatusMessage, type PiWebStatusResponse, type PiWebStatusSeverity, type Project, type QueuedSessionMessage, type SavedPromptAttachment, type SessionBulkArchiveResponse, type SessionBulkDeleteArchivedResponse, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupProjectSummary, type SessionCleanupThresholds, type SessionCleanupTotals, type SessionInfo, type SessionModel, type WorkspaceTrustResponse, type SessionModelCatalogResponse, type SessionModelCatalogEntry, type SessionNotification, type SessionNotificationClearReason, type SessionNotificationDismissThrough, type SessionNotificationInboxDelta, type SessionNotificationInboxEvent, type SessionNotificationInboxSnapshot, type SessionNotificationSeverity, type SessionNotificationSummary, type GoalRecordSummary, type GoalTaskSummary, type WorkspaceGoalsResponse, type SessionStatus, type SessionStatusCatalogSnapshot, type SessionSubagentInfo, type SessionSubagentsSnapshot, type InterruptedRunInfo, type InterruptedRunSnapshot, type SessionStreamSnapshot, type SessionUiEvent, type SessionUnreadCatalogSnapshot, type SessionUnreadEvent, type SessionUnreadSummary, type SessionWarning, type SessionWarningSeverity, type SlashCommand, type TerminalCommandRun, type TerminalCommandRunStatus, type TerminalInfo, type TerminalUiEvent, type ThinkingLevelsResponse, type WriteWorkspaceFileResponse, type Workspace, type WorkspaceEffectiveConfig } from "../../../shared/apiTypes";
 import { parseMachineStatusSnapshot, type MachineStatusSnapshot, type MachineStatusUiEvent } from "../../../shared/machineStatus";
 import type { JsonValue, PiPackageInfo, PiPackageMutationAction, PiPackageMutationResponse, PiPackageScope, PiPackagesResponse, SessionActivity, SessionStartupProgressEvent, SessionTreeForkResult, SessionTreeNavigateResult, SessionTreeNode, SessionTreeNodeKind, SessionTreeSnapshot, WorkspaceProviderDiagnostic, WorkspaceProviderDiagnosticCode, WorkspaceProviderResolution, WorkspaceProviderResolutionStatus, WorkspaceProviderTier } from "../../../shared/apiTypes";
-import type { PiWebSelfUpdateStatus } from "../../../shared/apiTypes";
+import type { PiWebFleetMachineIdentity, PiWebFleetReport, PiWebFleetRunResponse, PiWebFleetTargetOutcome, PiWebFleetTargetReport, PiWebSelfUpdateStatus } from "../../../shared/apiTypes";
 import { parseKnownPiWebCapabilities } from "../../../shared/capabilities";
 import { parseDeprecatedAgentInputs } from "../../../shared/piWebStatusParsing";
 import { PI_WEB_PLUGIN_RECOVERY_COMMANDS, pluginDisableRecoveryCommand } from "../../../shared/pluginRecoveryCommands";
@@ -1507,6 +1507,54 @@ export function parsePiWebSelfUpdateStatus(value: unknown): PiWebSelfUpdateStatu
     return { enabled: false, current: "", latest, available: false, branch, checkedAt: requireString(record, "checkedAt"), ...(disabledReason === undefined ? {} : { disabledReason }) };
   }
   return { enabled: true, current: requireString(record, "current"), latest, available: record["available"] === true, branch, checkedAt: requireString(record, "checkedAt") };
+}
+
+/**
+ * A fleet answer names the server that produced it, because "every machine"
+ * means the machines *that* server knows. Machines that fail to parse are
+ * dropped rather than rendered as blanks.
+ */
+export function parsePiWebFleetReport(value: unknown): PiWebFleetReport {
+  const record = requireRecord(value);
+  return {
+    hub: parseFleetIdentity(record["hub"]),
+    machines: arrayOf(parseFleetTargetReport)(record["machines"]),
+  };
+}
+
+export function parsePiWebFleetRunResponse(value: unknown): PiWebFleetRunResponse {
+  const record = requireRecord(value);
+  const operation = requireString(record, "operation");
+  if (operation !== "restart" && operation !== "update") throw new Error("Invalid fleet operation");
+  return { operation, hub: parseFleetIdentity(record["hub"]), outcomes: arrayOf(parseFleetOutcome)(record["outcomes"]) };
+}
+
+function parseFleetIdentity(value: unknown): PiWebFleetMachineIdentity {
+  const record = requireRecord(value);
+  return { machineId: requireString(record, "machineId"), name: requireString(record, "name") };
+}
+
+function parseFleetTargetReport(value: unknown): PiWebFleetTargetReport {
+  const record = requireRecord(value);
+  const kind = requireString(record, "kind");
+  if (kind !== "local" && kind !== "remote") throw new Error("Invalid machine kind");
+  return {
+    ...parseFleetIdentity(value),
+    kind,
+    online: record["online"] === true,
+    ...optionalField("version", optionalString(record, "version")),
+    ...optionalField("piVersion", optionalString(record, "piVersion")),
+    ...optionalField("error", optionalString(record, "error")),
+  };
+}
+
+function parseFleetOutcome(value: unknown): PiWebFleetTargetOutcome {
+  const record = requireRecord(value);
+  return {
+    ...parseFleetIdentity(value),
+    started: record["started"] === true,
+    ...optionalField("error", optionalString(record, "error")),
+  };
 }
 
 export function parsePiWebConfigResponse(value: unknown): PiWebConfigResponse {

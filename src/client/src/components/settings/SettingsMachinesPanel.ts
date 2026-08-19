@@ -1,6 +1,8 @@
 import { LitElement, css, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import type { Machine, MachineHealth } from "../../api";
+import type { PiWebFleetReport, PiWebFleetRunResponse } from "../../../../shared/apiTypes";
+import "./SettingsFleetSection";
 
 /**
  * Dedicated machines management panel: every connected machine (including
@@ -16,6 +18,11 @@ export class SettingsMachinesPanel extends LitElement {
   @property({ attribute: false }) onAdd?: () => void;
   @property({ attribute: false }) onRename?: (machine: Machine, name: string) => void | Promise<void>;
   @property({ attribute: false }) onRemove?: (machine: Machine) => void | Promise<void>;
+  @property({ attribute: false }) fleetReport?: PiWebFleetReport;
+  @property({ type: Boolean }) fleetLoading = false;
+  @property({ attribute: false }) fleetError?: string;
+  @property({ attribute: false }) onRefreshFleet?: () => void | Promise<void>;
+  @property({ attribute: false }) onRunFleet?: (operation: "restart" | "update", machineIds?: readonly string[]) => Promise<PiWebFleetRunResponse | undefined>;
 
   private renamingId: string | undefined;
   private draftName = "";
@@ -34,6 +41,13 @@ export class SettingsMachinesPanel extends LitElement {
           ${this.machines.map((machine) => this.renderMachineCard(machine))}
           ${this.machines.length === 0 ? html`<p class="empty">No machines configured.</p>` : null}
         </div>
+        <settings-fleet-section
+          .report=${this.fleetReport}
+          ?loading=${this.fleetLoading}
+          .error=${this.fleetError}
+          .onRefresh=${() => this.onRefreshFleet?.()}
+          .onRun=${(operation: "restart" | "update", machineIds?: readonly string[]) => this.onRunFleet?.(operation, machineIds) ?? Promise.resolve(undefined)}
+        ></settings-fleet-section>
       </settings-panel-frame>
     `;
   }

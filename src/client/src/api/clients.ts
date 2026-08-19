@@ -56,6 +56,8 @@ import {
   parseTerminalInfo,
   parseThinkingLevelsResponse,
   parseWriteWorkspaceFileResponse,
+  parsePiWebFleetReport,
+  parsePiWebFleetRunResponse,
   parsePiWebSelfUpdateStatus,
   parseWorkspaceProviderResolution,
   parseWorkspaceTrustResponse,
@@ -141,6 +143,18 @@ export const pluginsApi = {
 export const selfUpdateApi = {
   status: () => request("api/pi-web/update/status", parsePiWebSelfUpdateStatus, { cache: "no-store" }),
   apply: () => request("api/pi-web/update/apply", parseSelfUpdateApplyResponse, { method: "POST", body: JSON.stringify({}) }),
+};
+
+/**
+ * Fleet operations are answered by the server this browser is connected to, so
+ * "every machine" is that server's machine list - which the report names.
+ */
+export const fleetApi = {
+  report: () => request("api/pi-web/fleet", parsePiWebFleetReport, { cache: "no-store" }),
+  run: (operation: "restart" | "update", machineIds?: readonly string[]) => request("api/pi-web/fleet/run", parsePiWebFleetRunResponse, {
+    method: "POST",
+    body: JSON.stringify({ operation, ...(machineIds === undefined ? {} : { machineIds }) }),
+  }),
 };
 
 function piPackagePath(endpoint = "", machineId?: string): string {

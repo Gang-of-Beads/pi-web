@@ -2,6 +2,7 @@ import { css, html, LitElement, type PropertyValues, type TemplateResult } from 
 import { customElement, property, state } from "lit/decorators.js";
 import type { AppAction } from "../actions";
 import { configApi, piPackagesApi, pluginsApi, type Machine, type MachineHealth, type MachineRuntime, type PiPackageMutationResponse, type PiPackageScope, type PiPackagesResponse, type PiWebConfigResponse, type PiWebConfigValues, type PiWebPluginsResponse } from "../api";
+import type { PiWebFleetReport, PiWebFleetRunResponse } from "../../../shared/apiTypes";
 import type { SettingsSection } from "../settingsRoute";
 import "./ModalSurface";
 import "./settings/SettingsGeneralPanel";
@@ -28,6 +29,11 @@ export class SettingsDialog extends LitElement {
   @property({ attribute: false }) onAddMachine?: () => void;
   @property({ attribute: false }) onRenameMachine?: (machine: Machine, name: string) => void | Promise<void>;
   @property({ attribute: false }) onRemoveMachine?: (machine: Machine) => void | Promise<void>;
+  @property({ attribute: false }) fleetReport?: PiWebFleetReport;
+  @property({ type: Boolean }) fleetLoading = false;
+  @property({ attribute: false }) fleetError?: string;
+  @property({ attribute: false }) onRefreshFleet?: () => void | Promise<void>;
+  @property({ attribute: false }) onRunFleet?: (operation: "restart" | "update", machineIds?: readonly string[]) => Promise<PiWebFleetRunResponse | undefined>;
   @property({ attribute: false }) onNavigate?: (section: SettingsSection) => void;
   @property({ attribute: false }) onClose?: () => void;
   @property({ attribute: false }) onConfigSaved?: (config: PiWebConfigValues) => void;
@@ -138,6 +144,11 @@ export class SettingsDialog extends LitElement {
           .onAdd=${() => this.onAddMachine?.()}
           .onRename=${(machine: Machine, name: string) => this.onRenameMachine?.(machine, name)}
           .onRemove=${(machine: Machine) => this.onRemoveMachine?.(machine)}
+          .fleetReport=${this.fleetReport}
+          ?fleetLoading=${this.fleetLoading}
+          .fleetError=${this.fleetError}
+          .onRefreshFleet=${() => this.onRefreshFleet?.()}
+          .onRunFleet=${(operation: "restart" | "update", machineIds?: readonly string[]) => this.onRunFleet?.(operation, machineIds) ?? Promise.resolve(undefined)}
         ></settings-machines-panel>
       `;
     }
