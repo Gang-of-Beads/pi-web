@@ -66,16 +66,16 @@ describe("auth-dialog focus on open", () => {
     expect(dialogSection(dialog).getAttribute("aria-label")).toBe("Configure provider authentication");
   });
 
-  it("focuses the dialog section when opened on the providers step", async () => {
+  it("focuses the search box when opened on the providers step", async () => {
     const dialog = await mountDialog({ step: "providers", mode: "login", machineId: "local", providers: [providerOption("p1", "One")] });
 
-    expect(deepActiveElement()).toBe(dialogSection(dialog));
+    expect(deepActiveElement()).toBe(searchInput(dialog));
   });
 
-  it("focuses the dialog section when opened on the logout step", async () => {
+  it("focuses the search box when opened on the logout step", async () => {
     const dialog = await mountDialog({ step: "logout", machineId: "local", providers: [providerOption("p1", "One")] });
 
-    expect(deepActiveElement()).toBe(dialogSection(dialog));
+    expect(deepActiveElement()).toBe(searchInput(dialog));
   });
 
   it("focuses the prompt input when opened directly on an OAuth prompt", async () => {
@@ -107,7 +107,7 @@ describe("auth-dialog focus on open", () => {
     dialog.state = { step: "providers", mode: "login", machineId: "local", authType: "oauth", providers: [providerOption("p1", "One"), providerOption("p2", "Two")] };
     await settleDialog(dialog);
 
-    expect(deepActiveElement()).toBe(dialogSection(dialog));
+    expect(deepActiveElement()).toBe(searchInput(dialog));
     pressKey(dialogSurface(dialog), "ArrowDown");
     await settleDialog(dialog);
     expect(selectedOptionIndex(dialog)).toBe(1);
@@ -305,6 +305,97 @@ describe("auth-dialog option-list keyboard navigation", () => {
   });
 });
 
+describe("auth-dialog provider search", () => {
+  it("filters providers by name and id as the query narrows the list", async () => {
+    const dialog = await mountDialog({
+      step: "providers", mode: "login", machineId: "local",
+      providers: [providerOption("anthropic", "Anthropic"), providerOption("openai", "OpenAI"), providerOption("github-copilot", "GitHub Copilot")],
+    });
+    expect(optionButtons(dialog)).toHaveLength(3);
+
+    await typeIntoSearch(dialog, "a");
+    expect(optionButtons(dialog)).toHaveLength(2);
+    expect(requiredElement(optionButtons(dialog)[0], "first filtered provider").textContent).toContain("Anthropic");
+    expect(requiredElement(optionButtons(dialog)[1], "second filtered provider").textContent).toContain("OpenAI");
+
+    await typeIntoSearch(dialog, "cop");
+    expect(optionButtons(dialog)).toHaveLength(1);
+    expect(requiredElement(optionButtons(dialog)[0], "only matching provider").textContent).toContain("GitHub Copilot");
+  });
+
+  it("activates the filtered provider with Enter from the search box", async () => {
+    const onSelectProvider = vi.fn<(providerId: string, authType: "oauth" | "api_key") => void>();
+    const dialog = await mountDialog(
+      { step: "providers", mode: "login", machineId: "local", authType: "oauth", providers: [providerOption("anthropic", "Anthropic"), providerOption("openai", "OpenAI")] },
+      { onSelectProvider },
+    );
+
+    await typeIntoSearch(dialog, "openai");
+    pressKey(dialogSurface(dialog), "Enter");
+
+    expect(onSelectProvider).toHaveBeenCalledWith("openai", "oauth");
+  });
+
+  it("moves the roving selection within the filtered list", async () => {
+    const dialog = await mountDialog({
+      step: "providers", mode: "login", machineId: "local",
+      providers: [providerOption("anthropic", "Anthropic"), providerOption("openai", "OpenAI")],
+    });
+
+    await typeIntoSearch(dialog, "a");
+    pressKey(dialogSurface(dialog), "ArrowDown");
+    await settleDialog(dialog);
+    expect(selectedOptionIndex(dialog)).toBe(1);
+  });
+
+  it("shows a no-match message when the query matches no provider", async () => {
+    const dialog = await mountDialog({
+      step: "providers", mode: "login", machineId: "local",
+      providers: [providerOption("anthropic", "Anthropic"), providerOption("openai", "OpenAI")],
+    });
+
+    await typeIntoSearch(dialog, "zzz");
+    expect(optionButtons(dialog)).toHaveLength(0);
+    expect(dialog.shadowRoot?.textContent).toContain("No matching providers");
+  });
+
+  it("hides the search box when no providers are available", async () => {
+    const dialog = await mountDialog({ step: "providers", mode: "login", machineId: "local", providers: [] });
+
+    expect(dialog.shadowRoot?.querySelector("input")).toBeNull();
+    expect(dialog.shadowRoot?.textContent).toContain("No providers available.");
+  });
+
+  it("resets the search query when the step changes", async () => {
+    const dialog = await mountDialog({
+      step: "providers", mode: "login", machineId: "local",
+      providers: [providerOption("p1", "One"), providerOption("p2", "Two")],
+    });
+
+    await typeIntoSearch(dialog, "one");
+    expect(optionButtons(dialog)).toHaveLength(1);
+
+    dialog.state = { step: "logout", machineId: "local", providers: [providerOption("p1", "One"), providerOption("p2", "Two")] };
+    await settleDialog(dialog);
+
+    expect(searchInput(dialog).value).toBe("");
+    expect(optionButtons(dialog)).toHaveLength(2);
+  });
+
+  it("filters stored credentials on the logout step", async () => {
+    const onLogoutProvider = vi.fn<(providerId: string) => void>();
+    const dialog = await mountDialog(
+      { step: "logout", machineId: "local", providers: [providerOption("anthropic", "Anthropic"), providerOption("openai", "OpenAI")] },
+      { onLogoutProvider },
+    );
+
+    await typeIntoSearch(dialog, "openai");
+    expect(optionButtons(dialog)).toHaveLength(1);
+    pressKey(dialogSurface(dialog), "Enter");
+    expect(onLogoutProvider).toHaveBeenCalledWith("openai");
+  });
+});
+
 describe("auth-dialog OAuth prompt keys", () => {
   it("submits the OAuth prompt with Enter", async () => {
     const onOAuthRespond = vi.fn<(value?: string) => void>();
@@ -388,6 +479,17 @@ function dialogSection(dialog: AuthDialog): HTMLElement {
 
 function promptInput(dialog: AuthDialog): HTMLInputElement {
   return requiredElement(dialog.shadowRoot?.querySelector("input"), "OAuth prompt input");
+}
+
+function searchInput(dialog: AuthDialog): HTMLInputElement {
+  return requiredElement(dialog.shadowRoot?.querySelector<HTMLInputElement>("input[placeholder='Search providers']"), "provider search input");
+}
+
+async function typeIntoSearch(dialog: AuthDialog, value: string): Promise<void> {
+  const input = searchInput(dialog);
+  input.value = value;
+  input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+  await settleDialog(dialog);
 }
 
 function closeButton(dialog: AuthDialog): HTMLButtonElement {

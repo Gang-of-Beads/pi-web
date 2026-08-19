@@ -33,6 +33,7 @@ describe("ProjectController", () => {
           projects: vi.fn().mockResolvedValue([currentProject]),
           addProject: vi.fn(),
           closeProject: vi.fn(),
+          setWorkspaceTrust: vi.fn(),
         },
       },
     );
@@ -63,6 +64,7 @@ describe("ProjectController", () => {
           projects: vi.fn(),
           addProject: vi.fn().mockResolvedValue(addedProject),
           closeProject: vi.fn(),
+          setWorkspaceTrust: vi.fn(),
         },
       },
     );
@@ -70,6 +72,63 @@ describe("ProjectController", () => {
     await controller.addProject(" /added ");
 
     expect(selectProject).toHaveBeenCalledOnce();
+  });
+
+  it("pins a touched trust choice on the project's main workspace after adding it", async () => {
+    const addedProject = project("added", "/added");
+    const addedWorkspace = workspace(addedProject.id, addedProject.path);
+    let state: AppState = { ...initialAppState(), projectDialogOpen: true };
+    const setWorkspaceTrust = vi.fn().mockResolvedValue({ path: "/added", decision: true, trusted: true });
+    const selectProject = vi.fn((): Promise<void> => {
+      state = { ...state, workspaces: [addedWorkspace] };
+      return Promise.resolve();
+    });
+    const controller = new ProjectController(
+      () => state,
+      (patch) => { state = { ...state, ...patch }; },
+      { selectProject, forgetProject: vi.fn(), clearSelection: vi.fn() },
+      {
+        api: {
+          projects: vi.fn(),
+          addProject: vi.fn().mockResolvedValue(addedProject),
+          closeProject: vi.fn(),
+          setWorkspaceTrust,
+        },
+      },
+    );
+
+    await controller.addProject("/added", true, { trusted: true, changed: true });
+
+    expect(setWorkspaceTrust).toHaveBeenCalledOnce();
+    expect(setWorkspaceTrust).toHaveBeenCalledWith(addedProject.id, addedWorkspace.id, true, "local");
+  });
+
+  it("does not write trust when the dialog choice was not touched", async () => {
+    const addedProject = project("added", "/added");
+    let state: AppState = { ...initialAppState(), projectDialogOpen: true };
+    const setWorkspaceTrust = vi.fn();
+    const selectProject = vi.fn((): Promise<void> => {
+      state = { ...state, workspaces: [workspace(addedProject.id, addedProject.path)] };
+      return Promise.resolve();
+    });
+    const controller = new ProjectController(
+      () => state,
+      (patch) => { state = { ...state, ...patch }; },
+      { selectProject, forgetProject: vi.fn(), clearSelection: vi.fn() },
+      {
+        api: {
+          projects: vi.fn(),
+          addProject: vi.fn().mockResolvedValue(addedProject),
+          closeProject: vi.fn(),
+          setWorkspaceTrust,
+        },
+      },
+    );
+
+    await controller.addProject("/added");
+    await controller.addProject("/added", undefined, { trusted: true, changed: false });
+
+    expect(setWorkspaceTrust).not.toHaveBeenCalled();
   });
 
   it("forgets a closed project's workspaces before clearing the selection it held", async () => {
@@ -102,6 +161,7 @@ describe("ProjectController", () => {
           projects: vi.fn(),
           addProject: vi.fn(),
           closeProject: vi.fn().mockResolvedValue(undefined),
+          setWorkspaceTrust: vi.fn(),
         },
       },
     );

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PiWebComponentStatus, PiWebReleaseStatus, PiWebStatusResponse, PluginMachine, Workspace } from "@jmfederico/pi-web/plugin-api";
-import { componentDetails, componentHealth, diagnosticsSummary, formatVersion, installationLabel, machineKindLabel, releaseSummary, workspaceFlags } from "./infoInternals.js";
+import { componentDetails, componentHealth, diagnosticsSummary, formatVersion, installationLabel, machineKindLabel, piVersionDriftNote, releaseSummary, workspaceFlags } from "./infoInternals.js";
 
 describe("componentHealth", () => {
   it("reports current when the component is available and not stale", () => {
@@ -37,13 +37,33 @@ describe("releaseSummary", () => {
 
 describe("componentDetails", () => {
   it("combines versions, health, and installation into one line", () => {
-    expect(componentDetails(componentStatus())).toBe("running 1.0.0 · installed 1.0.0 · current · global npm package · /usr/lib/node_modules");
+    expect(componentDetails(componentStatus())).toBe("running 1.0.0 · installed 1.0.0 · pi 0.84.1 · current · global npm package · /usr/lib/node_modules");
+  });
+
+  it("reports the Pi version as unknown when the component does not report one", () => {
+    expect(componentDetails(componentStatusWithoutPi())).toContain("pi unknown");
   });
 
   it("includes the component error when present", () => {
     const details = componentDetails(componentStatus({ available: false, error: "connection refused" }));
     expect(details).toContain("unavailable");
     expect(details).toContain("error: connection refused");
+  });
+});
+
+describe("piVersionDriftNote", () => {
+  it("is undefined when both components run the same Pi version", () => {
+    expect(piVersionDriftNote(componentStatus(), componentStatus({ component: "sessiond" }))).toBeUndefined();
+  });
+
+  it("names the session daemon Pi version when it differs from the web process", () => {
+    expect(piVersionDriftNote(componentStatus(), componentStatus({ component: "sessiond", piVersion: "0.83.0" }))).toBe("session daemon running 0.83.0");
+  });
+
+  it("stays quiet while the session daemon is unavailable or predates Pi version reporting", () => {
+    expect(piVersionDriftNote(componentStatus(), componentStatus({ component: "sessiond", available: false, piVersion: "0.83.0" }))).toBeUndefined();
+    expect(piVersionDriftNote(componentStatus(), componentStatusWithoutPi({ component: "sessiond" }))).toBeUndefined();
+    expect(piVersionDriftNote(componentStatusWithoutPi(), componentStatus({ component: "sessiond", piVersion: "0.83.0" }))).toBeUndefined();
   });
 });
 
@@ -54,8 +74,8 @@ describe("diagnosticsSummary", () => {
     expect(summary).toBe([
       "PI WEB diagnostics",
       "Package: @jmfederico/pi-web",
-      "Web/UI: running 1.0.0 · installed 1.0.1 · restart needed · global npm package · /usr/lib/node_modules",
-      "Session daemon: running 1.0.0 · installed 1.0.0 · current · local checkout · /srv/dev/pi-web",
+      "Web/UI: running 1.0.0 · installed 1.0.1 · pi 0.84.1 · restart needed · global npm package · /usr/lib/node_modules",
+      "Session daemon: running 1.0.0 · installed 1.0.0 · pi 0.84.1 · current · local checkout · /srv/dev/pi-web",
       "Release: Update available: 1.1.0 (checked 2025-01-02T03:04:05Z)",
       "Status generated: 2025-01-02T03:04:06Z",
       "Machine: devbox (local machine)",
@@ -111,11 +131,19 @@ function componentStatus(patch: Partial<PiWebComponentStatus> = {}): PiWebCompon
     label: "Web/UI",
     runtimeVersion: "1.0.0",
     installedVersion: "1.0.0",
+    piVersion: "0.84.1",
     stale: false,
     available: true,
     installation: { kind: "npm-global", path: "/usr/lib/node_modules" },
     ...patch,
   };
+}
+
+/** Component status from a host that predates Pi version reporting. */
+function componentStatusWithoutPi(patch: Partial<PiWebComponentStatus> = {}): PiWebComponentStatus {
+  const component = componentStatus(patch);
+  delete component.piVersion;
+  return component;
 }
 
 function release(patch: Partial<PiWebReleaseStatus> = {}): PiWebReleaseStatus {

@@ -218,6 +218,7 @@ export function savePiWebConfig(config: PiWebConfig, options: LoadOptions = {}):
   delete existing["spawnSessions"];
   delete existing["subsessions"];
   delete existing["askUser"];
+  delete existing["respectProjectTrust"];
   delete existing["environmentFacts"];
   delete existing["agent"];
   const merged = { ...existing, ...piWebConfigRecord(normalized) };

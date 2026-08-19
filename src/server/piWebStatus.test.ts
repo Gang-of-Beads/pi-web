@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { VERSION as PI_CODING_AGENT_VERSION } from "@earendil-works/pi-coding-agent";
 import { comparePackageVersions, getPiWebRuntime, getPiWebStatus, getPiWebVersionStatus, updateCommandFor } from "./piWebStatus.js";
 import { SessionDaemonClient } from "../sessiond/sessionDaemonClient.js";
 import type { PiWebRuntimeComponent } from "../shared/apiTypes.js";
@@ -51,6 +52,26 @@ describe("PI WEB status", () => {
     expect(status.components.web.component).toBe("web");
     expect(status.components.sessiond.runtimeVersion).toBe("1.202605.7");
     expect(status).not.toHaveProperty("release");
+  });
+
+  it("reports the loaded Pi version for each component, preferring the daemon report", async () => {
+    const daemon = daemonWithRuntime({ ...runningSessiondRuntime(), piVersion: "0.83.0" });
+
+    const status = await getPiWebVersionStatus(daemon);
+    const runtime = await getPiWebRuntime(daemon);
+
+    expect(status.components.web.piVersion).toBe(PI_CODING_AGENT_VERSION);
+    expect(status.components.sessiond.piVersion).toBe("0.83.0");
+    expect(runtime.components.web.piVersion).toBe(PI_CODING_AGENT_VERSION);
+    expect(runtime.components.sessiond.piVersion).toBe("0.83.0");
+  });
+
+  it("falls back to this process's Pi version when the daemon predates Pi version reporting", async () => {
+    const daemon = daemonWithRuntime(runningSessiondRuntime());
+
+    const status = await getPiWebVersionStatus(daemon);
+
+    expect(status.components.sessiond.piVersion).toBe(PI_CODING_AGENT_VERSION);
   });
 
   it("detects session daemon package installs from the configured agent dir for runtime responses", async () => {

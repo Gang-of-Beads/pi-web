@@ -71,6 +71,15 @@ describe("PI WEB config persistence", () => {
     expect(loadPiWebConfig(testOptions()).config.extensionDialogsTimeoutMs).toBe(60_000);
   });
 
+  it("drops a hand-edited respectProjectTrust key on save (option removed)", async () => {
+    await writeFile(configPath, `${JSON.stringify({ respectProjectTrust: true, port: 8504 }, null, 2)}\n`, "utf8");
+
+    expect(loadPiWebConfig(testOptions()).config).not.toHaveProperty("respectProjectTrust");
+    savePiWebConfig({ port: 9000 }, testOptions());
+
+    expect(JSON.parse(await readFile(configPath, "utf8"))).toEqual({ port: 9000 });
+  });
+
   it("rejects an invalid extensionDialogsTimeoutMs", async () => {
     for (const value of [-1, 1.5, "5000", null]) {
       await writeFile(configPath, `${JSON.stringify({ extensionDialogsTimeoutMs: value }, null, 2)}\n`, "utf8");

@@ -104,6 +104,8 @@ function subscriptionSession(options: {
     settingsManager: {
       getWarnings: () => (options.anthropicExtraUsage === undefined ? {} : { anthropicExtraUsage: options.anthropicExtraUsage }),
       setWarnings: () => undefined,
+      getEnabledModels: () => undefined,
+      setEnabledModels: () => undefined,
     },
   };
 }
@@ -188,6 +190,8 @@ describe("dismissSessionWarning", () => {
       settingsManager: {
         getWarnings: () => ({}),
         setWarnings: (warnings) => { calls.push(warnings); },
+        getEnabledModels: () => undefined,
+        setEnabledModels: () => undefined,
       },
     }, "anthropicExtraUsage");
 
@@ -200,6 +204,8 @@ describe("dismissSessionWarning", () => {
       settingsManager: {
         getWarnings: () => ({ anthropicExtraUsage: true }),
         setWarnings: (warnings) => { calls.push(warnings); },
+        getEnabledModels: () => undefined,
+        setEnabledModels: () => undefined,
       },
     }, "anthropicExtraUsage");
 
@@ -212,6 +218,8 @@ describe("dismissSessionWarning", () => {
       settingsManager: {
         getWarnings: () => ({}),
         setWarnings: () => { called = true; },
+        getEnabledModels: () => undefined,
+        setEnabledModels: () => undefined,
       },
     }, "somethingElse"); }).toThrow("Unknown session warning dismiss id: somethingElse");
     expect(called).toBe(false);

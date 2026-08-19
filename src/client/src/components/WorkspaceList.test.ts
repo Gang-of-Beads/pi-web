@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
+import { trustApi } from "../api";
 import type { Workspace } from "../api";
 import type { MachineStatusSnapshot } from "../../../shared/machineStatus";
 import { machineStatusSnapshot } from "../machineStatus.testSupport";
@@ -9,6 +10,7 @@ import { WorkspaceList } from "./WorkspaceList";
 let restoreClipboardStub: () => void = () => undefined;
 
 afterEach(() => {
+  vi.restoreAllMocks();
   restoreClipboardStub();
   restoreClipboardStub = () => undefined;
   document.body.replaceChildren();
@@ -45,7 +47,10 @@ describe("workspace-list removal actions", () => {
 
     list.shadowRoot?.querySelectorAll<HTMLButtonElement>(".action-menu-toggle")[1]?.click();
     await list.updateComplete;
-    expect(list.shadowRoot?.querySelector(".workspace-menu-actions")).toBeNull();
+    // The actions block stays visible for the project-trust toggle, but it
+    // must not offer a removal action without removal metadata.
+    expect(list.shadowRoot?.querySelector(".workspace-menu-actions")).not.toBeNull();
+    expect(list.shadowRoot?.querySelector(".workspace-menu-actions .danger")).toBeNull();
   });
 });
 
@@ -145,6 +150,28 @@ describe("workspace detail copy buttons", () => {
 
     expect(detailCopyButton(list, "Copy path")).toBeDefined();
     expect(list.shadowRoot?.querySelector(".workspace-menu-panel .detail-copy[aria-label='Copied']")).toBeNull();
+  });
+});
+
+describe("workspace trust toggle documentation link", () => {
+  it("links to the project-trust docs from the toggle's label row instead of verbose text", async () => {
+    vi.spyOn(trustApi, "workspaceTrust").mockResolvedValue({ path: "/repo/ws-a", decision: true, trusted: true });
+    const list = await mountWorkspaceList([workspace("ws-a")]);
+    openMenu(list, "ws-a");
+    await list.updateComplete;
+
+    const trust = list.shadowRoot?.querySelector(".workspace-menu-trust");
+    const link = trust?.querySelector<HTMLAnchorElement>("a");
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute("href")).toBe("https://pi.dev/docs/latest/security");
+    expect(link?.getAttribute("target")).toBe("_blank");
+    expect(link?.getAttribute("rel")).toBe("noreferrer");
+    expect(link?.textContent).toBe("Learn about project trust");
+    // The verbose sentence is gone: the toggle row only labels the checkbox and links out.
+    expect(trust?.textContent).not.toContain(".pi settings");
+    // The obsolete Pi CLI / respectProjectTrust clause must not survive in any wording.
+    expect(trust?.textContent).not.toMatch(/Pi CLI/i);
+    expect(trust?.textContent).not.toMatch(/respectProjectTrust/);
   });
 });
 

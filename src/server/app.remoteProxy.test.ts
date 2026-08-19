@@ -484,6 +484,28 @@ describe("buildApp remote machine proxy routes", () => {
     expect(request).toHaveBeenCalledWith("PUT", "/api/projects/p1/workspaces/w1/file?path=image.png", payload, { contentType: "application/octet-stream" });
   });
 
+  it("proxies remote workspace trust reads and writes through the allowlisted route", async () => {
+    const addResponse = await appTestContext.app.inject({ method: "POST", url: "/api/machines", payload: { name: "Remote", baseUrl: "https://remote.example.test/" } });
+    const remote = addResponse.json<{ id: string }>();
+    const request = vi.fn<MachineClient["request"]>((method, path, body) => Promise.resolve({
+      statusCode: 200,
+      headers: { "content-type": "application/json" },
+      body: Readable.from([JSON.stringify({ method, path, body })]),
+    }));
+    appTestContext.remoteClient = fakeRemoteClient({ request });
+    const trustBody = { trusted: false };
+
+    const readResponse = await appTestContext.app.inject({ method: "GET", url: `/api/machines/${remote.id}/projects/p1/workspaces/w1/trust` });
+    const writeResponse = await appTestContext.app.inject({ method: "PUT", url: `/api/machines/${remote.id}/projects/p1/workspaces/w1/trust`, payload: trustBody });
+
+    expect(readResponse.statusCode).toBe(200);
+    expect(readResponse.json()).toEqual({ method: "GET", path: "/api/projects/p1/workspaces/w1/trust" });
+    expect(writeResponse.statusCode).toBe(200);
+    expect(writeResponse.json()).toEqual({ method: "PUT", path: "/api/projects/p1/workspaces/w1/trust", body: trustBody });
+    expect(request).toHaveBeenNthCalledWith(1, "GET", "/api/projects/p1/workspaces/w1/trust", undefined);
+    expect(request).toHaveBeenNthCalledWith(2, "PUT", "/api/projects/p1/workspaces/w1/trust", trustBody);
+  });
+
   it("proxies remote terminal command-run and continue routes", async () => {
     const addResponse = await appTestContext.app.inject({ method: "POST", url: "/api/machines", payload: { name: "Remote", baseUrl: "https://remote.example.test/" } });
     const remote = addResponse.json<{ id: string }>();

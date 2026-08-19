@@ -1,14 +1,24 @@
 import { LitElement, html } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
-import { api, type FileSuggestion } from "../api";
+import { api, trustApi, type FileSuggestion } from "../api";
+import type { ProjectTrustChoice } from "../controllers/projectController";
 import { css } from "lit";
 import "./ModalSurface";
 
 const SUGGESTION_DEBOUNCE_MS = 120;
 
+/** Server-resolved trust state for the entered path, keyed on the decided path. */
+interface ProjectTrustState {
+  path: string;
+  decision: boolean | null;
+  trusted: boolean;
+  loading: boolean;
+  error?: string;
+}
+
 @customElement("project-dialog")
 export class ProjectDialog extends LitElement {
-  @property({ attribute: false }) onSubmit?: (path: string, create: boolean) => void;
+  @property({ attribute: false }) onSubmit?: (path: string, create: boolean, trust: ProjectTrustChoice | undefined) => void;
   @property({ attribute: false }) onCancel?: () => void;
   @property() machineId = "local";
   @state() private path = "";
@@ -16,10 +26,16 @@ export class ProjectDialog extends LitElement {
   @state() private suggestions: FileSuggestion[] = [];
   @state() private selected = 0;
   @state() private loading = false;
+  @state() private trust: ProjectTrustState | undefined;
+  @state() private trustTouched = false;
   @query("input") private pathInput?: HTMLInputElement;
 
-  private requestId = 0;
   private suggestionTimer: ReturnType<typeof setTimeout> | undefined;
+  // Separate staleness counters: setPath fires both loaders, so a shared one
+  // would make the trust read invalidate every in-flight suggestions request
+  // (leaving "Loading folders…" up forever).
+  private suggestionRequestId = 0;
+  private trustRequestId = 0;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -52,17 +68,17 @@ export class ProjectDialog extends LitElement {
   }
 
   private async loadSuggestions() {
-    const requestId = ++this.requestId;
+    const requestId = ++this.suggestionRequestId;
     this.loading = true;
     try {
       const suggestions = await api.projectDirectories(this.path, this.machineId);
-      if (requestId !== this.requestId) return;
+      if (requestId !== this.suggestionRequestId) return;
       this.suggestions = suggestions;
       this.selected = Math.min(this.selected, Math.max(0, suggestions.length - 1));
     } catch {
-      if (requestId === this.requestId) this.suggestions = [];
+      if (requestId === this.suggestionRequestId) this.suggestions = [];
     } finally {
-      if (requestId === this.requestId) this.loading = false;
+      if (requestId === this.suggestionRequestId) this.loading = false;
     }
   }
 
@@ -70,6 +86,8 @@ export class ProjectDialog extends LitElement {
     this.path = value;
     this.selected = 0;
     this.scheduleSuggestions();
+    this.trustTouched = false;
+    void this.loadTrust();
   }
 
   private pick(suggestion: FileSuggestion) {
@@ -83,8 +101,7 @@ export class ProjectDialog extends LitElement {
 
   private submit() {
     if (this.path.trim() === "") return;
-    this.cancelPendingSuggestions();
-    this.onSubmit?.(this.path, this.createMissing);
+    this.onSubmit?.(this.path, this.createMissing, this.trust === undefined ? undefined : { trusted: this.trust.trusted, changed: this.trustTouched });
   }
 
   private onPathInput(event: InputEvent) {
@@ -95,6 +112,57 @@ export class ProjectDialog extends LitElement {
   private onCreateMissingChange(event: InputEvent) {
     if (!(event.target instanceof HTMLInputElement)) return;
     this.createMissing = event.target.checked;
+  }
+
+  /**
+   * Server-resolved existing trust for the entered path (never the raw path
+   * trusted verbatim). Dropped when a newer path input or an explicit user
+   * toggle supersedes it, so a stale read can not clobber the user's choice.
+   */
+  private async loadTrust() {
+    const requestId = ++this.trustRequestId;
+    const trimmed = this.path.trim();
+    if (trimmed === "") {
+      if (requestId === this.trustRequestId) this.trust = undefined;
+      return;
+    }
+    if (requestId === this.trustRequestId) {
+      // Keep the previous value visible (cosmetic continuity) while the read
+      // for the new path is in flight; the result replaces it either way.
+      this.trust = {
+        ...(this.trust ?? { path: trimmed, decision: null, trusted: false }),
+        path: trimmed,
+        loading: true,
+      };
+    }
+    try {
+      const result = await trustApi.projectTrust(trimmed, this.machineId);
+      if (requestId !== this.trustRequestId || this.trustTouched) return;
+      this.trust = { path: result.path, decision: result.decision, trusted: result.trusted, loading: false };
+    } catch (error) {
+      if (requestId !== this.trustRequestId || this.trustTouched) return;
+      this.trust = { path: trimmed, decision: null, trusted: false, loading: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  private onTrustChange(checked: boolean) {
+    this.trustTouched = true;
+    if (this.trust !== undefined) this.trust = { ...this.trust, trusted: checked, loading: false };
+  }
+
+  private renderTrustChoice() {
+    const unavailable = this.trust === undefined || this.trust.loading || this.trust.error !== undefined;
+    return html`
+      <label class="check">
+        <input type="checkbox" .checked=${this.trust?.trusted ?? false} ?disabled=${unavailable} @change=${(event: InputEvent) => { if (event.target instanceof HTMLInputElement) this.onTrustChange(event.target.checked); }} />
+        <span>Trust this project</span>
+      </label>
+      <small class="trust-hint">
+        Trusting lets pi load this project's .pi settings, extensions, skills, and packages.
+        <a href="https://pi.dev/docs/latest/security" target="_blank" rel="noreferrer">Learn about project trust</a>
+      </small>
+      ${this.trust?.error === undefined ? null : html`<small class="trust-error">Trust state unavailable: ${this.trust.error}</small>`}
+    `;
   }
 
   // Escape and backdrop presses are owned by the modal surface (routed to
@@ -159,6 +227,7 @@ export class ProjectDialog extends LitElement {
             <input type="checkbox" .checked=${this.createMissing} @change=${(event: InputEvent) => { this.onCreateMissingChange(event); }} />
             Create the folder if it does not exist
           </label>
+          ${this.renderTrustChoice()}
         </div>
         <footer>
           <button @click=${() => { this.onCancel?.(); }}>Cancel</button>
@@ -182,6 +251,9 @@ export class ProjectDialog extends LitElement {
     .suggestions button.selected, .suggestions button:hover { background: var(--pi-selection-bg); }
     .hint { padding: 12px; color: var(--pi-muted); }
     small.hint { padding: 0; line-height: 1.4; }
+    .trust-error { color: var(--pi-danger, #c0392b); }
+    .trust-hint { color: var(--pi-muted); line-height: 1.3; }
+    .trust-hint a { color: var(--pi-accent); }
     @media (max-width: 760px) {
       /* Suggestion rows double as the primary navigation control on a phone,
          so they get a full touch target and room for long paths. */

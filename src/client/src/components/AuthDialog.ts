@@ -14,6 +14,8 @@ interface AuthDialogOption {
   key: string;
   title: TemplateResult | string;
   detail: string;
+  /** Plain text matched by the provider search box, independent of the rendered title. */
+  searchText: string;
   run: () => void;
 }
 
@@ -29,6 +31,8 @@ export class AuthDialog extends LitElement {
   @property({ attribute: false }) onCancel?: () => void;
   @query("modal-surface") private surface?: ModalSurface;
   @state() private selectedIndex = 0;
+  /** Search box text on the provider-list steps; scoped to the current step. */
+  @state() private query = "";
 
   override render() {
     const state = this.state;
@@ -36,7 +40,7 @@ export class AuthDialog extends LitElement {
     return html`
       <modal-surface
         .onClose=${() => { this.cancel(); }}
-        .initialFocus=${state.step === "oauth" && state.flow.prompt !== undefined ? "input" : undefined}
+        .initialFocus=${this.initialFocusTarget(state)}
         .label=${this.dialogTitle(state)}
         @keydown=${(event: KeyboardEvent) => { this.handleKeyDown(event); }}
       >
@@ -49,14 +53,77 @@ export class AuthDialog extends LitElement {
     `;
   }
 
+  /** Selectable choices for the option-list steps; undefined on the oauth step, which has no roving selection. */
+  private optionsFor(state: AuthDialogState): AuthDialogOption[] | undefined {
+    switch (state.step) {
+      case "method":
+        return [
+          { key: "oauth", title: "Use a subscription", detail: "ChatGPT Plus/Pro, Claude Pro/Max, or GitHub Copilot", searchText: "Use a subscription", run: () => { this.onChooseMethod?.("oauth"); } },
+          { key: "api_key", title: "Use provider credentials", detail: "Configure an API key or provider-specific credentials in the active Pi-compatible profile's auth.json", searchText: "Use provider credentials", run: () => { this.onChooseMethod?.("api_key"); } },
+        ];
+      case "providers":
+        return state.providers.map((provider) => ({
+          key: provider.id,
+          title: html`${provider.name}${provider.status.source !== undefined ? html` <em>${statusLabel(provider)}</em>` : null}`,
+          detail: `${provider.id} · ${authTypeLabel(provider.authType)}`,
+          searchText: provider.name,
+          run: () => { this.onSelectProvider?.(provider.id, provider.authType); },
+        }));
+      case "logout":
+        return state.providers.map((provider) => ({
+          key: provider.id,
+          title: provider.name,
+          detail: `${provider.id} · ${authTypeLabel(provider.authType)}`,
+          searchText: provider.name,
+          run: () => { this.onLogoutProvider?.(provider.id); },
+        }));
+      case "oauth":
+        return undefined;
+    }
+  }
+
+  /** The search box target for the step: the OAuth prompt input or the provider search box. */
+  private initialFocusTarget(state: AuthDialogState): string | undefined {
+    if (state.step === "oauth") return state.flow.prompt !== undefined ? "input" : undefined;
+    if (state.step === "providers" || state.step === "logout") return state.providers.length > 0 ? "input" : undefined;
+    return undefined;
+  }
+
+  /** Whether the step renders a searchable provider list (selecting or removing stored credentials). */
+  private stepHasSearch(state: AuthDialogState): boolean {
+    return state.step === "providers" || state.step === "logout";
+  }
+
+  private handleSearchInput(event: Event): void {
+    if (event.target instanceof HTMLInputElement) {
+      this.query = event.target.value;
+      // Filtering replaces the list beneath the roving selection: start back at its first option.
+      this.selectedIndex = 0;
+    }
+  }
+
+  private filteredOptions(options: AuthDialogOption[]): AuthDialogOption[] {
+    const query = this.query.trim().toLowerCase();
+    if (query === "") return options;
+    return options.filter((option) => `${option.searchText} ${option.detail} ${option.key}`.toLowerCase().includes(query));
+  }
+
+  /** The options actually rendered for the step: the roving selection and keyboard navigation see these. */
+  private visibleOptions(state: AuthDialogState): AuthDialogOption[] {
+    const options = this.optionsFor(state);
+    return options === undefined ? [] : this.filteredOptions(options);
+  }
+
   protected override willUpdate(changed: PropertyValues): void {
     if (!changed.has("state")) return;
     if (authDialogStateStep(changed.get("state")) !== this.state?.step) {
-      // Selection is scoped to the visible option list: entering a step starts at its first option.
+      // Selection and search text are scoped to the visible option list:
+      // entering a step starts at its first option with an empty query.
       this.selectedIndex = 0;
+      this.query = "";
       return;
     }
-    const options = this.state === undefined ? undefined : this.optionsFor(this.state);
+    const options = this.state === undefined ? undefined : this.visibleOptions(this.state);
     if (options !== undefined) this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, options.length - 1));
   }
 
@@ -87,9 +154,15 @@ export class AuthDialog extends LitElement {
   private renderBody(state: AuthDialogState) {
     if (state.step === "oauth") return this.renderOAuth(state);
     const options = this.optionsFor(state) ?? [];
+    const visible = this.filteredOptions(options);
     return html`
+      ${this.stepHasSearch(state) && options.length > 0 ? html`
+        <input aria-label="Search providers" placeholder="Search providers" .value=${this.query} @input=${(event: Event) => { this.handleSearchInput(event); }}>
+      ` : null}
       <div class="options">
-        ${options.length === 0 ? html`<div class="empty">${state.step === "logout" ? "No stored credentials. Environment variables and models.json settings are unchanged." : "No providers available."}</div>` : options.map((option, index) => html`
+        ${options.length === 0 ? html`<div class="empty">${state.step === "logout" ? "No stored credentials. Environment variables and models.json settings are unchanged." : "No providers available."}</div>`
+        : visible.length === 0 ? html`<div class="empty">No matching providers</div>`
+        : visible.map((option, index) => html`
           <button
             class=${index === this.selectedIndex ? "selected" : ""}
             aria-current=${index === this.selectedIndex ? "true" : nothing}
@@ -103,33 +176,6 @@ export class AuthDialog extends LitElement {
         `)}
       </div>
     `;
-  }
-
-  /** Selectable choices for the option-list steps; undefined on the oauth step, which has no roving selection. */
-  private optionsFor(state: AuthDialogState): AuthDialogOption[] | undefined {
-    switch (state.step) {
-      case "method":
-        return [
-          { key: "oauth", title: "Use a subscription", detail: "ChatGPT Plus/Pro, Claude Pro/Max, or GitHub Copilot", run: () => { this.onChooseMethod?.("oauth"); } },
-          { key: "api_key", title: "Use provider credentials", detail: "Configure an API key or provider-specific credentials in the active Pi-compatible profile's auth.json", run: () => { this.onChooseMethod?.("api_key"); } },
-        ];
-      case "providers":
-        return state.providers.map((provider) => ({
-          key: provider.id,
-          title: html`${provider.name}${provider.status.source !== undefined ? html` <em>${statusLabel(provider)}</em>` : null}`,
-          detail: `${provider.id} · ${authTypeLabel(provider.authType)}`,
-          run: () => { this.onSelectProvider?.(provider.id, provider.authType); },
-        }));
-      case "logout":
-        return state.providers.map((provider) => ({
-          key: provider.id,
-          title: provider.name,
-          detail: `${provider.id} · ${authTypeLabel(provider.authType)}`,
-          run: () => { this.onLogoutProvider?.(provider.id); },
-        }));
-      case "oauth":
-        return undefined;
-    }
   }
 
   private renderOAuth(state: Extract<AuthDialogState, { step: "oauth" }>) {
@@ -186,8 +232,8 @@ export class AuthDialog extends LitElement {
     const state = this.state;
     if (state === undefined || keyboardEventOriginatesFromNativeActivationControl(event)) return;
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      const options = this.optionsFor(state);
-      if (options === undefined || options.length === 0) return;
+      const options = this.visibleOptions(state);
+      if (options.length === 0) return;
       event.preventDefault();
       const delta = event.key === "ArrowDown" ? 1 : -1;
       this.selectedIndex = (this.selectedIndex + delta + options.length) % options.length;
@@ -200,7 +246,7 @@ export class AuthDialog extends LitElement {
       this.onOAuthRespond?.();
       return;
     }
-    const option = this.optionsFor(state)?.[this.selectedIndex];
+    const option = this.visibleOptions(state)[this.selectedIndex];
     if (option === undefined) return;
     event.preventDefault();
     option.run();

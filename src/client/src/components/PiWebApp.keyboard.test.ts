@@ -66,7 +66,7 @@ describe("PiWebApp global shortcut modality boundary", () => {
 
   it("does not suppress shortcuts for session-scoped state that cannot render", () => {
     const app = new PiWebApp();
-    setAppState(app, { modelDialog: { title: "Select model", options: [] } });
+    setAppState(app, { modelDialog: { title: "Select model", options: [], catalog: [] } });
     const target = appendKeyTarget();
 
     const event = dispatchShortcutThroughApp(app, target);

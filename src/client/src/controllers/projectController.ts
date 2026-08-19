@@ -1,13 +1,23 @@
-import { api as defaultApi } from "../api";
+import { api as defaultApi, type Project } from "../api";
 import { selectedMachineId, type GetState, type SetState } from "./types";
 import type { WorkspaceController } from "./workspaceController";
 
+/**
+ * Trust choice the add-project dialog submits with the path. `changed` is
+ * false for the pre-filled existing/default value, so adding a project never
+ * pins a decision the user did not make in this dialog.
+ */
+export interface ProjectTrustChoice {
+  trusted: boolean;
+  changed: boolean;
+}
+
 export interface ProjectControllerDependencies {
-  api?: Pick<typeof defaultApi, "projects" | "addProject" | "closeProject">;
+  api?: Pick<typeof defaultApi, "projects" | "addProject" | "closeProject" | "setWorkspaceTrust">;
 }
 
 export class ProjectController {
-  private readonly api: Pick<typeof defaultApi, "projects" | "addProject" | "closeProject">;
+  private readonly api: Pick<typeof defaultApi, "projects" | "addProject" | "closeProject" | "setWorkspaceTrust">;
 
   constructor(
     private readonly getState: GetState,
@@ -34,7 +44,7 @@ export class ProjectController {
     }
   }
 
-  async addProject(path: string, create?: boolean) {
+  async addProject(path: string, create?: boolean, trustChoice?: ProjectTrustChoice) {
     if (path.trim() === "") return;
     const machineId = selectedMachineId(this.getState());
     try {
@@ -43,9 +53,24 @@ export class ProjectController {
       const projects = this.getState().projects;
       this.setState({ projects: [...projects.filter((p) => p.id !== project.id), project], projectDialogOpen: false });
       await this.workspaces.selectProject(project);
+      if (trustChoice?.changed === true) {
+        await this.applyTrustChoice(project, trustChoice.trusted, machineId);
+      }
     } catch (error) {
       if (selectedMachineId(this.getState()) === machineId) this.setState({ error: String(error) });
     }
+  }
+
+  /**
+   * Pin the dialog's trust choice once the project's main workspace exists.
+   * The write goes through the id-based trust route (server-resolved path),
+   * never a client-chosen path; without a main workspace the project simply
+   * keeps its default trust.
+   */
+  private async applyTrustChoice(project: Project, trusted: boolean, machineId: string): Promise<void> {
+    const mainWorkspace = this.getState().workspaces.find((workspace) => workspace.isMain);
+    if (mainWorkspace === undefined) return;
+    await this.api.setWorkspaceTrust(project.id, mainWorkspace.id, trusted, machineId);
   }
 
   async closeProject(projectId: string) {

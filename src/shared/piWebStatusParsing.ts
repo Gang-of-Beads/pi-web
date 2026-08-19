@@ -32,6 +32,7 @@ export function parsePiWebRuntimeComponent(value: unknown): PiWebRuntimeComponen
   const component = value["component"];
   const label = value["label"];
   const runtimeVersion = value["runtimeVersion"];
+  const piVersion = value["piVersion"];
   const available = value["available"];
   const capabilities = parseKnownPiWebCapabilities(value["capabilities"]);
   const activeAgentProfileValue = value["activeAgentProfile"];
@@ -45,6 +46,7 @@ export function parsePiWebRuntimeComponent(value: unknown): PiWebRuntimeComponen
     component,
     label,
     ...(typeof runtimeVersion === "string" ? { runtimeVersion } : {}),
+    ...(typeof piVersion === "string" ? { piVersion } : {}),
     available,
     capabilities,
     ...(activeAgentProfile === undefined ? {} : { activeAgentProfile }),
@@ -82,6 +84,7 @@ export function parsePiWebComponentStatus(value: unknown): PiWebComponentStatus 
   const label = value["label"];
   const runtimeVersion = value["runtimeVersion"];
   const installedVersion = value["installedVersion"];
+  const piVersion = value["piVersion"];
   const stale = value["stale"];
   const available = value["available"];
   const error = value["error"];
@@ -93,6 +96,7 @@ export function parsePiWebComponentStatus(value: unknown): PiWebComponentStatus 
     label,
     ...(typeof runtimeVersion === "string" ? { runtimeVersion } : {}),
     ...(typeof installedVersion === "string" ? { installedVersion } : {}),
+    ...(typeof piVersion === "string" ? { piVersion } : {}),
     stale,
     available,
     ...(installation === undefined ? {} : { installation }),

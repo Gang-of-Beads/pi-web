@@ -232,6 +232,7 @@ function componentStatusFromRuntime(runtime: PiWebRuntimeComponent): PiWebCompon
     component: runtime.component,
     label: runtime.label,
     ...(runtime.runtimeVersion === undefined ? {} : { runtimeVersion: runtime.runtimeVersion }),
+    ...(runtime.piVersion === undefined ? {} : { piVersion: runtime.piVersion }),
     stale: false,
     available: runtime.available,
     ...(runtime.error === undefined ? {} : { error: runtime.error }),

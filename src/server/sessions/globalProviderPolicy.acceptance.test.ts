@@ -291,6 +291,11 @@ describe("immutable global provider bootstrap acceptance", () => {
 
   it("blocks real project add, replacement, and unregister calls without disabling other extension features", async () => {
     const agentDir = await agentDirWithExtension(globalProvidersSource());
+    // PI WEB always honors project trust, so the project extension only loads
+    // when the workspace is trusted. Trust it: the provider-policy assertions
+    // below are about blocking provider mutations, not about gating the
+    // extension itself.
+    await writeFile(join(agentDir, "settings.json"), `${JSON.stringify({ defaultProjectTrust: "always" })}\n`);
     const { service, runtime, logEntries } = await policyHarness({ agentDir });
     const baselineConfig = runtime.getRegisteredProviderConfig("global-config");
     const baselineNative = runtime.getRegisteredNativeProvider("global-native");

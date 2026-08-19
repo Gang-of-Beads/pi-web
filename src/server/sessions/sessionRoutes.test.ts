@@ -15,6 +15,7 @@ import type {
   SessionCleanupExecuteResponse,
   SessionCleanupPreviewResponse,
   SessionInfo,
+  SessionModelCatalogEntry,
   SessionNotificationDismissAllRequest,
   SessionNotificationDismissRequest,
   SessionNotificationInboxSnapshot,
@@ -738,6 +739,140 @@ describe("session routes", () => {
     }
   });
 
+  it("serves the full model catalog with per-model enabled state, forwarding workspace context", async () => {
+    const routeApp = Fastify({ logger: false });
+    await routeApp.register(fastifyWebsocket);
+    const eventHub = new SessionEventHub();
+    const routeService = new CapturingRouteSessionService();
+    routeService.modelCatalogResponse = [
+      { provider: "anthropic", id: "claude-opus-4-6", name: "Claude Opus", contextWindow: 200_000, enabled: true },
+      { provider: "anthropic", id: "claude-sonnet-4-5", enabled: false },
+    ];
+    registerSessionRoutes(routeApp, routeService, eventHub);
+
+    try {
+      const requestCwd = resolve("/repo");
+      const response = await routeApp.inject({ method: "GET", url: `/sessions/session-1/models/catalog?cwd=${encodeURIComponent(requestCwd)}` });
+      const missing = await routeApp.inject({ method: "GET", url: "/sessions/session-1/models/catalog" });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ models: routeService.modelCatalogResponse });
+      expect(routeService.modelCatalogCalls).toEqual([{ id: "session-1", cwd: requestCwd }]);
+      expect(missing.statusCode).toBe(400);
+      expect(missing.json()).toEqual({ error: "cwd query parameter is required" });
+    } finally {
+      await routeService.dispose();
+      await routeApp.close();
+    }
+  });
+
+  it("maps model catalog lookup failures to 404", async () => {
+    const routeApp = Fastify({ logger: false });
+    await routeApp.register(fastifyWebsocket);
+    const eventHub = new SessionEventHub();
+    const routeService = new CapturingRouteSessionService();
+    routeService.modelCatalogError = new Error("Session not found");
+    registerSessionRoutes(routeApp, routeService, eventHub);
+
+    try {
+      const response = await routeApp.inject({ method: "GET", url: `/sessions/session-1/models/catalog?cwd=${encodeURIComponent(resolve("/repo"))}` });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toEqual({ error: "Session not found" });
+    } finally {
+      await routeService.dispose();
+      await routeApp.close();
+    }
+  });
+
+  it("forwards per-model enable edits and returns the updated catalog", async () => {
+    const routeApp = Fastify({ logger: false });
+    await routeApp.register(fastifyWebsocket);
+    const eventHub = new SessionEventHub();
+    const routeService = new CapturingRouteSessionService();
+    routeService.setModelEnabledResponse = [{ provider: "anthropic", id: "claude-opus-4-6", enabled: false }];
+    registerSessionRoutes(routeApp, routeService, eventHub);
+
+    try {
+      const requestCwd = resolve("/repo");
+      const response = await routeApp.inject({
+        method: "POST",
+        url: "/sessions/session-1/models/enabled",
+        payload: { cwd: requestCwd, provider: "anthropic", modelId: "claude-opus-4-6", enabled: false },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ models: routeService.setModelEnabledResponse });
+      expect(routeService.setModelEnabledCalls).toEqual([{ lookup: { id: "session-1", cwd: requestCwd }, provider: "anthropic", modelId: "claude-opus-4-6", enabled: false }]);
+    } finally {
+      await routeService.dispose();
+      await routeApp.close();
+    }
+  });
+
+  it("rejects malformed enable edits before calling the service", async () => {
+    const routeApp = Fastify({ logger: false });
+    await routeApp.register(fastifyWebsocket);
+    const eventHub = new SessionEventHub();
+    const routeService = new CapturingRouteSessionService();
+    registerSessionRoutes(routeApp, routeService, eventHub);
+
+    try {
+      const requestCwd = resolve("/repo");
+      const missingEnabled = await routeApp.inject({
+        method: "POST",
+        url: "/sessions/session-1/models/enabled",
+        payload: { cwd: requestCwd, provider: "anthropic", modelId: "claude-opus-4-6" },
+      });
+      const nonBooleanEnabled = await routeApp.inject({
+        method: "POST",
+        url: "/sessions/session-1/models/enabled",
+        payload: { cwd: requestCwd, provider: "anthropic", modelId: "claude-opus-4-6", enabled: "yes" },
+      });
+      const missingModelId = await routeApp.inject({
+        method: "POST",
+        url: "/sessions/session-1/models/enabled",
+        payload: { cwd: requestCwd, provider: "anthropic", enabled: true },
+      });
+
+      expect(missingEnabled.statusCode).toBe(400);
+      expect(missingEnabled.json()).toEqual({ error: "enabled field must be a boolean" });
+      expect(nonBooleanEnabled.statusCode).toBe(400);
+      expect(nonBooleanEnabled.json()).toEqual({ error: "enabled field must be a boolean" });
+      expect(missingModelId.statusCode).toBe(400);
+      expect(missingModelId.json()).toEqual({ error: "modelId field must be a string" });
+      expect(routeService.setModelEnabledCalls).toEqual([]);
+    } finally {
+      await routeService.dispose();
+      await routeApp.close();
+    }
+  });
+
+  it("maps a missing session on an enable edit to 404 and other failures to 400", async () => {
+    const routeApp = Fastify({ logger: false });
+    await routeApp.register(fastifyWebsocket);
+    const eventHub = new SessionEventHub();
+    const routeService = new CapturingRouteSessionService();
+    registerSessionRoutes(routeApp, routeService, eventHub);
+
+    try {
+      const payload = { cwd: resolve("/repo"), provider: "anthropic", modelId: "claude-opus-4-6", enabled: true };
+      routeService.setModelEnabledError = new Error("Session not found");
+      const missing = await routeApp.inject({ method: "POST", url: "/sessions/session-1/models/enabled", payload });
+      routeService.setModelEnabledError = new Error("Model not found: anthropic/nope");
+      const unknown = await routeApp.inject({ method: "POST", url: "/sessions/session-1/models/enabled", payload });
+
+      expect(missing.statusCode).toBe(404);
+      expect(missing.json()).toEqual({ error: "Session not found" });
+      expect(unknown.statusCode).toBe(400);
+      expect(unknown.json()).toEqual({ error: "Model not found: anthropic/nope" });
+    } finally {
+      await routeService.dispose();
+      await routeApp.close();
+    }
+  });
+
+
   it("omits thinking signatures from browser history without mutating service messages", async () => {
     const routeApp = Fastify({ logger: false });
     await routeApp.register(fastifyWebsocket);
@@ -1276,6 +1411,22 @@ class CapturingRouteSessionService implements SessionRouteService {
   }
 
   availableModels(): Promise<[]> { return Promise.resolve([]); }
+  modelCatalogCalls: SessionRouteRef[] = [];
+  modelCatalogResponse: SessionModelCatalogEntry[] = [];
+  modelCatalogError: Error | undefined;
+  modelCatalog(lookup: SessionRouteRef): Promise<SessionModelCatalogEntry[]> {
+    this.modelCatalogCalls.push(lookup);
+    if (this.modelCatalogError !== undefined) return Promise.reject(this.modelCatalogError);
+    return Promise.resolve(this.modelCatalogResponse);
+  }
+  setModelEnabledCalls: { lookup: SessionRouteRef; provider: string; modelId: string; enabled: boolean }[] = [];
+  setModelEnabledResponse: SessionModelCatalogEntry[] = [];
+  setModelEnabledError: Error | undefined;
+  setModelEnabled(lookup: SessionRouteRef, provider: string, modelId: string, enabled: boolean): Promise<SessionModelCatalogEntry[]> {
+    this.setModelEnabledCalls.push({ lookup, provider, modelId, enabled });
+    if (this.setModelEnabledError !== undefined) return Promise.reject(this.setModelEnabledError);
+    return Promise.resolve(this.setModelEnabledResponse);
+  }
   setModel(): never { throw unusedRouteMethod("setModel"); }
   cycleModel(): never { throw unusedRouteMethod("cycleModel"); }
   availableThinkingLevels(): Promise<[]> { return Promise.resolve([]); }

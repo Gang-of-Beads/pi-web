@@ -1,5 +1,8 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { runningComponentsReady, type RunningVersionInfo } from "./piWebVersionReport.js";
+import { probeRunningComponentReady, runningComponentsReady, type RunningVersionInfo } from "./piWebVersionReport.js";
 import type { PiWebComponentStatus } from "./shared/apiTypes.js";
 
 function componentStatus(overrides: Partial<PiWebComponentStatus> = {}): PiWebComponentStatus {
@@ -15,6 +18,57 @@ function componentStatus(overrides: Partial<PiWebComponentStatus> = {}): PiWebCo
 function sessiondStatus(overrides: Partial<PiWebComponentStatus> = {}): PiWebComponentStatus {
   return componentStatus({ component: "sessiond", label: "Session daemon", ...overrides });
 }
+
+describe("probeRunningComponentReady", () => {
+  it("resolves the web endpoint from an injected managed config environment", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "pi-web-version-probe-"));
+    const configPath = join(directory, "managed.json");
+    writeFileSync(configPath, `${JSON.stringify({ host: "0.0.0.0", port: 9123 })}\n`);
+    const requests: string[] = [];
+    const fetchImplementation: typeof globalThis.fetch = (input) => {
+      requests.push(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+      return Promise.resolve(new Response(JSON.stringify({
+        packageName: "@jmfederico/pi-web",
+        generatedAt: "2026-08-01T00:00:00.000Z",
+        components: {
+          web: componentStatus(),
+          sessiond: sessiondStatus(),
+        },
+      }), { status: 200, headers: { "content-type": "application/json" } }));
+    };
+
+    try {
+      await expect(probeRunningComponentReady("web", {
+        configEnv: { PI_WEB_CONFIG: configPath },
+        fetch: fetchImplementation,
+      })).resolves.toBe(true);
+      expect(requests).toEqual(["http://127.0.0.1:9123/api/pi-web/version"]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("does not probe an endpoint when the selected config is malformed", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "pi-web-version-probe-"));
+    const configPath = join(directory, "managed.json");
+    writeFileSync(configPath, "not json\n");
+    let requests = 0;
+    const fetchImplementation: typeof globalThis.fetch = () => {
+      requests += 1;
+      return Promise.reject(new Error("unexpected fetch"));
+    };
+
+    try {
+      await expect(probeRunningComponentReady("web", {
+        configEnv: { PI_WEB_CONFIG: configPath },
+        fetch: fetchImplementation,
+      })).resolves.toBe(false);
+      expect(requests).toBe(0);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("runningComponentsReady", () => {
   it("passes when nothing is expected even if components are unavailable", () => {

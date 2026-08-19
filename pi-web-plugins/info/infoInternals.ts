@@ -53,12 +53,20 @@ export function componentDetails(component: PiWebComponentStatus): string {
   const parts = [
     `running ${formatVersion(component.runtimeVersion)}`,
     `installed ${formatVersion(component.installedVersion)}`,
+    `pi ${formatVersion(component.piVersion)}`,
     componentHealth(component),
     installationLabel(component.installation),
   ];
   if (component.installation?.path !== undefined && component.installation.path !== "") parts.push(component.installation.path);
   if (component.error !== undefined && component.error !== "") parts.push(`error: ${component.error}`);
   return parts.join(" · ");
+}
+
+/** Note shown when the session daemon runs a different Pi version than the web process. */
+export function piVersionDriftNote(web: PiWebComponentStatus, sessiond: PiWebComponentStatus): string | undefined {
+  if (!sessiond.available) return undefined;
+  if (web.piVersion === undefined || sessiond.piVersion === undefined) return undefined;
+  return web.piVersion === sessiond.piVersion ? undefined : `session daemon running ${formatVersion(sessiond.piVersion)}`;
 }
 
 export function workspaceFlags(workspace: Workspace): string[] {
@@ -127,6 +135,7 @@ function renderStatusSection(html: HtmlTemplateTag, status: PiWebStatusResponse 
     `;
   }
   const web = status.components.web;
+  const driftNote = piVersionDriftNote(web, status.components.sessiond);
   const messageCount = status.messages.length;
   return html`
     <section>
@@ -135,6 +144,11 @@ function renderStatusSection(html: HtmlTemplateTag, status: PiWebStatusResponse 
         <span>Version</span>
         <span>${formatVersion(web.runtimeVersion)}</span>
         ${web.installedVersion === undefined || web.installedVersion === web.runtimeVersion ? null : html`<small>installed ${formatVersion(web.installedVersion)}</small>`}
+      </div>
+      <div class="info-row">
+        <span>Pi</span>
+        <span>${formatVersion(web.piVersion)}</span>
+        ${driftNote === undefined ? null : html`<small>${driftNote}</small>`}
       </div>
       <div class="info-row">
         <span>Package</span>

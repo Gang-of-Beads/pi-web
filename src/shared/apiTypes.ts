@@ -374,6 +374,19 @@ export interface WorkspaceRemovalHostState extends WorkspaceRemovalPresentation 
   readonly precondition: string;
 }
 
+/**
+ * Per-project Pi trust state for a workspace path, as stored in the agent
+ * directory's `trust.json` (shared with the Pi CLI).
+ */
+export interface WorkspaceTrustResponse {
+  /** The workspace path the decision is keyed on. */
+  path: string;
+  /** Raw stored decision: `true`/`false` for an explicit entry, `null` when unset. */
+  decision: boolean | null;
+  /** Effective trust the toggle reflects: the stored decision, else `defaultProjectTrust === "always"`. */
+  trusted: boolean;
+}
+
 export interface WorkspaceRemovalRequest {
   precondition: string;
 }
@@ -1026,6 +1039,30 @@ export interface SessionModel {
   reasoning?: unknown;
 }
 
+/**
+ * One row of a session machine's full available-model catalog: the model plus
+ * its membership in pi's enabled-models scope (`enabledModels` setting). Model
+ * scope is selection UX for picking/cycling, never an authorization boundary.
+ */
+export interface SessionModelCatalogEntry {
+  provider: string;
+  id: string;
+  name?: string;
+  contextWindow?: number;
+  reasoning?: unknown;
+  enabled: boolean;
+}
+
+/**
+ * The session machine's full available model catalog with per-model enabled
+ * state. Enabled models come first — in the same set and order as the
+ * session's pickable ("Enabled") model list — followed by the remaining
+ * models in catalog order.
+ */
+export interface SessionModelCatalogResponse {
+  models: SessionModelCatalogEntry[];
+}
+
 // Domain type is owned by pi and re-exported from the shared thinking-levels
 // module. Wire/data fields below intentionally use `string` so an unknown level
 // from a newer pi runtime parses and renders gracefully instead of failing.
@@ -1182,6 +1219,8 @@ export interface PiWebRuntimeComponent {
   component: PiWebServiceComponent;
   label: string;
   runtimeVersion?: string;
+  /** Version of the Pi coding agent library loaded by this component's process; omitted when the component does not report it. */
+  piVersion?: string;
   available: boolean;
   capabilities: PiWebCapability[];
   /** Present only for a session daemon that supports active-profile reporting. */
