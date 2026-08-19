@@ -338,7 +338,18 @@ function messageText(message: ChatLine): string {
 
 function appendNewMessage(messages: ChatLine[], rawMessage: unknown): ChatLine[] {
   const lines = normalizeMessage(rawMessage);
-  return lines.length === 0 ? messages : [...messages, ...lines];
+  if (lines.length === 0) return messages;
+  // The server echoes a queued steer/follow-up optimistically; when the queue
+  // drains and the agent emits the real user message we must not render it
+  // twice. Skip an identical trailing user line (same last text part).
+  const last = messages.at(-1);
+  const firstNew = lines[0];
+  if (last !== undefined && firstNew !== undefined && last.role === "user" && firstNew.role === "user") {
+    const lastText = [...last.parts].reverse().find((part) => part.type === "text")?.text ?? "";
+    const newText = [...firstNew.parts].reverse().find((part) => part.type === "text")?.text ?? "";
+    if (lastText !== "" && lastText === newText) return messages;
+  }
+  return [...messages, ...lines];
 }
 
 function appendLine(messages: ChatLine[], line: ChatLine): ChatLine[] {

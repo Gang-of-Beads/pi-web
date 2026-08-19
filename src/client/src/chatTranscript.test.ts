@@ -599,3 +599,23 @@ describe("applyTranscriptEvent", () => {
     ]);
   });
 });
+
+describe("queued-message echo dedupe", () => {
+  it("skips an identical trailing user line (echo + real message)", () => {
+    let messages: ChatLine[] = [];
+    messages = applyTranscriptEvent(messages, { type: "message.append", message: userMessage("steer me") }) ?? messages;
+    messages = applyTranscriptEvent(messages, { type: "message.append", message: userMessage("steer me") }) ?? messages;
+    expect(messages).toHaveLength(1);
+  });
+
+  it("does not dedupe different trailing texts", () => {
+    let messages: ChatLine[] = [];
+    messages = applyTranscriptEvent(messages, { type: "message.append", message: userMessage("first") }) ?? messages;
+    messages = applyTranscriptEvent(messages, { type: "message.append", message: userMessage("second") }) ?? messages;
+    expect(messages).toHaveLength(2);
+  });
+});
+
+function userMessage(text: string) {
+  return { role: "user", content: [{ type: "text", text }] };
+}

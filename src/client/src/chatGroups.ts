@@ -95,7 +95,8 @@ export function tryAppendGroupChatMessage(
   // The whole prior list must be untouched; only the new tail may differ.
   if (messages[prevLength - 1] !== previousMessages[prevLength - 1]) return undefined;
   const appended = messages[prevLength];
-  if (appended === undefined) return undefined;
+  const previousTail = previousMessages[prevLength - 1];
+  if (appended === undefined || previousTail === undefined) return undefined;
 
   const lastGroup = previousGroups.at(-1);
   if (lastGroup === undefined) return undefined;
@@ -112,7 +113,7 @@ export function tryAppendGroupChatMessage(
     // old tail message was dropped from the prefix, so re-group it together
     // with the appended one.
     tailStartIndex = lastGroup.index;
-    tailMessages = [previousMessages[prevLength - 1], appended];
+    tailMessages = [previousTail, appended];
   }
   const tailGroups = groupChatMessages(tailMessages, tailStartIndex);
   return [...prefix, ...tailGroups];

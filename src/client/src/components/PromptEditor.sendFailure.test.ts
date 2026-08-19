@@ -42,14 +42,26 @@ describe("prompt-editor send failure", () => {
     expect(draft(editor)).toBe("look at this");
   });
 
-  it("restores when the send throws, which is what a network drop looks like", async () => {
+  it("saves a network-dropped send to the outbox instead of restoring the draft", async () => {
     const onSend = vi.fn(() => Promise.reject(new TypeError("Failed to fetch")));
     const editor = await mount(onSend);
     editor.replaceText("typed while offline");
 
     await submit(editor);
 
-    expect(draft(editor)).toBe("typed while offline");
+    // The composer is cleared and the message waits in the outbox for the
+    // next online event (see pendingOutbox); retrying is automatic.
+    expect(draft(editor)).toBe("");
+  });
+
+  it("restores the draft when the send fails for a non-network reason", async () => {
+    const onSend = vi.fn(() => Promise.reject(new Error("400 Bad Request")));
+    const editor = await mount(onSend);
+    editor.replaceText("rejected but not dropped");
+
+    await submit(editor);
+
+    expect(draft(editor)).toBe("rejected but not dropped");
   });
 
   it("keeps the composer clear when the send succeeds", async () => {

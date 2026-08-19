@@ -355,7 +355,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     const canDeleteTransient = isTransientNewSessionInfo(session, status);
     return html`
       <div
-        class="action-row ${this.selected?.id === session.id ? "selected" : ""} ${bulkSelected ? "bulk-selected" : ""} ${session.archived === true ? "archived" : ""} ${selectionActive ? "selecting" : ""} ${unread ? "unread" : ""}"
+        class="action-row ${this.selected?.id === session.id ? "selected" : ""} ${bulkSelected ? "bulk-selected" : ""} ${session.archived === true ? "archived" : ""} ${selectionActive ? "selecting" : ""} ${unread ? "unread" : ""} ${hasSubagents ? "has-subtree-toggle" : ""}"
         style=${`--depth:${String(cappedDepth)}`}
         title=${session.path}
         @keydown=${(event: KeyboardEvent) => { this.handleSessionKeydown(event, session, scope); }}
@@ -659,6 +659,10 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .action-main.selecting { padding-left: calc(32px + var(--depth, 0) * 16px); }
 .session-checkbox { position: absolute; top: 9px; left: calc(8px + var(--depth, 0) * 16px); z-index: 2; margin: 0; }
     .subtree-toggle, .subtree-toggle.inert { position: absolute; top: 8px; left: calc(6px + var(--depth, 0) * 16px); z-index: 2; box-sizing: border-box; width: 24px; height: 24px; padding: 0; display: inline-grid; place-items: center; border: 1px solid var(--pi-border-muted); border-radius: 6px; background: var(--pi-surface); color: var(--pi-muted); font-size: 11px; line-height: 1; }
+    /* Formerly the toggle floated over the row's leading text and swallowed
+       taps aimed at the session name. Reserve the gutter in the padding so
+       the toggle sits over empty space. */
+    .action-row.has-subtree-toggle .action-main { padding-left: calc(38px + var(--depth, 0) * 16px); }
     .subtree-toggle { cursor: pointer; }
     .subtree-toggle:hover { border-color: var(--pi-border-strong, var(--pi-accent)); color: var(--pi-text); }
     .subtree-toggle.inert { visibility: hidden; }

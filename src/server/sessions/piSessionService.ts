@@ -2346,7 +2346,12 @@ export class PiSessionService implements SessionRouteService {
 
   private submitPrompt(session: PiAgentSession, text: string, behavior: QueuedPromptKind | undefined, images: ImageContent[] = [], echoUserMessage = true): Promise<void> {
     this.publishActivity(session, behavior === "steer" ? "steering queued" : behavior === "followUp" ? "message queued" : "prompt accepted", "active");
-    if (behavior === undefined && echoUserMessage) this.events.publish(session.sessionId, { type: "message.append", message: userMessage(text, images) });
+    // Echo the user message whether or not the prompt is queued. A queued
+    // steer/follow-up otherwise shows nothing until the queue drains and the
+    // agent emits the real user message - on mobile that reads as "message
+    // disappeared" (no optimistic bubble, no dock). The client dedupes an
+    // identical user line when the queued message is later consumed.
+    if (echoUserMessage) this.events.publish(session.sessionId, { type: "message.append", message: userMessage(text, images) });
     const promptOptions = buildPromptOptions(behavior, images);
     const promptPromise = this.runSessionEntryMutation(session, "send a prompt", () => session.prompt(text, promptOptions)).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);

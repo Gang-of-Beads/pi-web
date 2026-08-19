@@ -12,6 +12,7 @@ import { inputModeForDraft, inputModesEqual, type InputMode } from "../inputMode
 import { machineSessionKey } from "../machineKeys";
 import { detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletionChoices, type PromptCompletionTrigger } from "../promptCompletions";
 import { clearDraft, loadDraft, saveDraft } from "../promptDraftStorage";
+import { clearPendingPrompts, isNetworkFailure, loadPendingPrompts, savePendingPrompt, type PendingPrompt } from "../pendingOutbox";
 import { historyIndexStep, type HistoryDirection, loadPromptHistory, rememberPromptHistory, searchPromptHistory } from "../promptHistory";
 import { createMobilePromptEnterMedia, readPromptEnterPreference, shouldSendPromptOnEnterShortcut, shouldUsePromptEnterShiftShortcut } from "../promptEnterBehavior";
 import { createBrowserVoiceRecorder } from "../browserVoiceRecorder";
@@ -20,7 +21,7 @@ import { isVoiceCaptureActive, voiceCaptureLabel, type VoiceCaptureState } from 
 import { VoiceController } from "../voiceController";
 import type { PiWebSpeechToTextConfig } from "../../../shared/apiTypes";
 import { promptEditorStyles, type CompletionItem } from "./shared";
-import { renderAttachIcon, renderSendIcon, renderQueueIcon, renderStopIcon, renderThinkingGauge } from "./promptEditorIcons";
+import { renderAttachIcon, renderSendIcon, renderQueueIcon, renderSteerIcon, renderStopIcon, renderThinkingGauge } from "./promptEditorIcons";
 import { thinkingGauge, thinkingLevelLabel } from "../../../shared/thinkingLevels";
 import "./AutocompleteMenu";
 
@@ -100,8 +101,17 @@ export class PromptEditor extends LitElement {
     return true;
   }
 
+  @state() private pendingPrompts: PendingPrompt[] = [];
+
   override firstUpdated(): void {
     this.createEditor();
+    this.pendingPrompts = this.pendingPromptsForSession();
+    window.addEventListener("online", this.flushPendingPrompts);
+  }
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    if (this.pendingPrompts !== undefined) this.pendingPrompts = this.pendingPromptsForSession();
   }
 
   protected override updated(changed: PropertyValues) {
@@ -110,6 +120,7 @@ export class PromptEditor extends LitElement {
   }
 
   override disconnectedCallback(): void {
+    window.removeEventListener("online", this.flushPendingPrompts);
     this.editor?.destroy();
     this.editor = undefined;
     super.disconnectedCallback();
@@ -134,7 +145,7 @@ export class PromptEditor extends LitElement {
         </div>
         <div class="actions">
           ${this.renderCompactStatus()}
-          <button class="icon-button send-button" ?disabled=${busy} title=${queuesInput ? "Send as steer — joins the current turn at the next safe point" : "Send message"} aria-label=${queuesInput ? "Send message" : "Send message"} @click=${() => { this.send(this.canSteer ? "steer" : "followUp"); }}>${queuesInput ? renderQueueIcon() : renderSendIcon()}</button>
+          <button class="icon-button send-button" ?disabled=${busy} title=${queuesInput ? "Steer — joins the current turn at the next safe point" : "Send message"} aria-label=${queuesInput ? "Steer current response (queued if busy)" : "Send message"} @click=${() => { this.send(this.canSteer ? "steer" : "followUp"); }}>${this.canSteer ? renderSteerIcon() : queuesInput ? renderQueueIcon() : renderSendIcon()}</button>
           <button class="icon-button stop-button" ?disabled=${this.disabled || !this.canStop} title=${this.canStop ? "Stop current work and clear queued messages" : "Nothing running"} aria-label="Stop current work" @click=${() => this.onStop?.()}>${renderStopIcon()}</button>
         </div>
       </footer>
@@ -609,6 +620,37 @@ export class PromptEditor extends LitElement {
     return true;
   }
 
+  private pendingPromptsForSession(): PendingPrompt[] {
+    const key = machineSessionKey(this.machineId, this.sessionId ?? "");
+    return key === "" ? [] : loadPendingPrompts(key);
+  }
+
+  private readonly flushPendingPrompts = (): void => {
+    if (!navigator.onLine) return;
+    const key = machineSessionKey(this.machineId, this.sessionId ?? "");
+    if (key === "") return;
+    const pending = loadPendingPrompts(key);
+    if (pending.length === 0) return;
+    let remaining = pending;
+    void (async () => {
+      const stillPending: PendingPrompt[] = [];
+      let networkFailed = false;
+      for (const prompt of remaining) {
+        try {
+          const accepted = await this.onSend?.(prompt.text, prompt.behavior);
+          if (accepted === false) stillPending.push(prompt);
+        } catch (error) {
+          networkFailed = networkFailed || isNetworkFailure(error);
+          stillPending.push(prompt);
+        }
+      }
+      if (stillPending.length === 0) clearPendingPrompts(key);
+      else if (!networkFailed) clearPendingPrompts(key);
+      this.pendingPrompts = stillPending.length === 0 ? [] : stillPending;
+      remaining = stillPending;
+    })();
+  };
+
   private send(streamingBehavior?: "steer" | "followUp") {
     if (this.disabled || this.sending) return;
     const text = this.draft.trim();
@@ -643,13 +685,26 @@ export class PromptEditor extends LitElement {
     restorable: { text: string; attachments: PendingAttachment[] },
   ): Promise<void> {
     let accepted: boolean | undefined;
+    let failure: unknown;
     try {
       accepted = await this.onSend?.(text, behavior, attachments, attachments === undefined ? undefined : delivery);
-    } catch {
+    } catch (error) {
       accepted = false;
+      failure = error;
     }
     // `undefined` keeps the old contract for handlers that report nothing.
     if (accepted !== false) return;
+    // A connectivity loss is retried from the outbox instead of dumped back
+    // into the composer: the message survives the drop and goes out
+    // automatically once the network returns.
+    if (isNetworkFailure(failure)) {
+      const key = machineSessionKey(this.machineId, this.sessionId ?? "");
+      if (key !== "") {
+        savePendingPrompt(key, { text, ...(behavior === undefined ? {} : { behavior }), at: new Date().toISOString() });
+        this.pendingPrompts = loadPendingPrompts(key);
+        return;
+      }
+    }
     const current = this.editor?.state.doc.toString() ?? this.draft;
     if (current.trim() !== "") return;
     this.attachments = restorable.attachments;

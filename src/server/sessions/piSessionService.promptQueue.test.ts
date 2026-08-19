@@ -224,7 +224,7 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
     await service.dispose();
   });
 
-  it("does not append queued prompts to the transcript before delivery", async () => {
+  it("echoes queued prompts so the message never looks lost", async () => {
     const hub = new CapturingSessionEventHub();
     const fake = fakeRuntime("queued-session", { isStreaming: true });
     const service = new PiSessionService(hub, {
@@ -238,7 +238,9 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
     await service.prompt(sessionRef("queued-session"), "Wait for the current turn", "followUp");
 
     expect(fake.calls.prompt).toEqual([{ text: "Wait for the current turn", options: { streamingBehavior: "followUp" } }]);
-    expect(hub.sessionEvents.some(({ event }) => event.type === "message.append")).toBe(false);
+    // The queue is server-side; the client still sees its own message
+    // immediately (mobile otherwise reads as "message disappeared").
+    expect(hub.sessionEvents.some(({ event }) => event.type === "message.append" && (event.message as { role?: string }).role === "user")).toBe(true);
     await service.dispose();
   });
 
