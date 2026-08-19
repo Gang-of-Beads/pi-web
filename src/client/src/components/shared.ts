@@ -280,7 +280,7 @@ export const listStyles = css`
   /* Tile/card layout for management lists (workspaces, projects, machines).
      Rows become compact cards in an auto-fill grid; the row menu moves into
      the card's corner so the two-column row grid can collapse to one. */
-  .list-body.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; align-content: start; padding: 4px 2px; }
+  .list-body.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; align-content: start; padding: 4px 2px; }
   .list-body.tiles .action-row { grid-template-columns: minmax(0, 1fr); margin: 0; align-self: start; }
   .list-body.tiles .action-main { border-radius: 10px; padding: 10px 30px 10px 10px; min-height: 56px; align-content: center; }
   .list-body.tiles .action-menu { position: absolute; top: 6px; right: 6px; align-self: auto; }
@@ -756,6 +756,6 @@ export const promptEditorStyles = css`
     .action-main { padding: 6px 20px 6px calc(8px + var(--depth, 0) * 14px); }
     .list-search-input { height: 30px; font-size: 13px; padding: 0 8px; }
     .list-search-clear { width: 30px; height: 30px; }
-    .list-body.tiles { gap: 6px; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+    .list-body.tiles { gap: 6px; grid-template-columns: 1fr; }
     .list-body.tiles .action-main { min-height: 48px; padding: 8px 28px 8px 8px; }
   }`;

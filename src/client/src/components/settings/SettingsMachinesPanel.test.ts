@@ -22,6 +22,10 @@ function templateParts(template: TemplateResult): { strings: readonly string[]; 
   return { strings: lit.strings, values: lit.values };
 }
 
+function isTemplateLike(value: unknown): value is TemplateResult {
+  return value instanceof Object && String((value as { _$litType$?: unknown })._$litType$ ?? "") !== "" && Array.isArray((value as { strings?: unknown }).strings);
+}
+
 function flatten(template: TemplateResult): string {
   const chunks: string[] = [];
   visit(template);
@@ -43,8 +47,8 @@ function flatten(template: TemplateResult): string {
       for (const item of value) visitValue(item);
       return;
     }
-    if (value instanceof Object && "values" in value && typeof (value as { values(): Iterable<unknown> }).values === "function" && String((value as { _$litType$?: unknown })._$litType$ ?? "") !== "") {
-      visit(value);
+    if (value instanceof Object && isTemplateLike(value)) {
+      visit(value as TemplateResult);
       return;
     }
     if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
@@ -89,7 +93,7 @@ describe("settings-machines-panel", () => {
     const panel = new SettingsMachinesPanel();
     panel.machines = [machine("online-box")];
     panel.machineStatuses = {
-      "online-box": { status: "online", latencyMs: 12, checkedAt: "2026-08-18T00:00:00.000Z" },
+      "online-box": { machineId: "online-box", ok: true, checkedAt: "2026-08-18T00:00:00.000Z", status: "online" },
     };
 
     const text = flatten(panel.render());

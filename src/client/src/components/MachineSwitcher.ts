@@ -98,8 +98,8 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
           @click=${() => { this.select(machine); }}
           @keydown=${(event: KeyboardEvent) => { this.handleMachineOptionKeydown(event); }}
         >
-          <span class="machine-option-name">${this.renderActivity(machine)}<span>${machine.name}</span></span>
-          <small>${machine.kind === "local" ? "Local Pi Web" : machine.baseUrl ?? "Remote Pi Web"} · ${machineStatusLabel(status)}</small>
+          <span class="machine-option-name">${this.renderActivity(machine)}<span>${machine.name}</span><span class=${`machine-option-status ${status}`}><span class="dot" aria-hidden="true"></span>${machineStatusLabel(status)}</span></span>
+          <small>${machine.kind === "local" ? "Local Pi Web" : machine.baseUrl ?? "Remote Pi Web"}</small>
         </button>
         ${hasActions ? html`
           <div class="machine-option-actions">
@@ -294,14 +294,22 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     .activity-indicator.unread { border-radius: 50%; background: var(--pi-accent); animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--pi-accent) 20%, transparent); }
     .unread-ring { flex: 0 0 auto; box-sizing: border-box; display: inline-grid; place-items: center; width: 9px; height: 9px; border: 1.5px solid var(--pi-accent); border-radius: 50%; }
     .unread-ring .activity-indicator { width: 5px; height: 5px; }
-    .machine-switcher-menu { position: fixed; z-index: 10000; box-sizing: border-box; width: min(420px, calc(100vw - 16px)); overflow: auto; padding: 8px; border: 1px solid var(--pi-border); border-radius: 12px; background: var(--pi-surface); box-shadow: 0 8px 24px var(--pi-shadow); display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
-    .machine-option { position: relative; display: grid; gap: 4px; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-surface); }
-    .machine-option:hover { background: var(--pi-surface-hover); border-color: var(--pi-accent-border); }
-    .machine-option.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
+    .machine-switcher-menu { position: fixed; z-index: 10000; box-sizing: border-box; width: min(420px, calc(100vw - 16px)); overflow: auto; padding: 8px; border: 1px solid var(--pi-border-muted); border-radius: 14px; background: var(--pi-surface); box-shadow: 0 12px 40px var(--pi-shadow-strong, var(--pi-shadow)); display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 6px; }
+    .machine-option { position: relative; display: grid; gap: 4px; box-sizing: border-box; border: 1px solid var(--pi-border-muted); border-radius: 10px; background: var(--pi-surface); }
+    .machine-option:hover { background: var(--pi-surface-hover); }
+    .machine-option.selected { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
+    .machine-option.selected::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--pi-accent); }
     .machine-option-main, .machine-option-actions-toggle, .machine-option-actions-panel button { border: 0; border-radius: 7px; background: transparent; color: var(--pi-text); cursor: pointer; }
-    .machine-option-main { min-width: 0; min-height: 76px; display: grid; gap: 3px; padding: 8px; text-align: left; align-content: start; }
-    .machine-option-name { min-width: 0; display: flex; align-items: baseline; gap: 6px; }
+    .machine-option-main { min-width: 0; min-height: 60px; display: grid; gap: 3px; padding: 9px 8px 8px; text-align: left; align-content: start; }
+    .machine-option-name { min-width: 0; display: flex; align-items: center; gap: 6px; }
     .machine-option-name span:last-child { min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .machine-option-status { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; color: var(--pi-muted); font-size: 11px; font-weight: 500; }
+    .machine-option-status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--pi-dim); }
+    .machine-option-status.online { color: var(--pi-success); }
+    .machine-option-status.online .dot { background: var(--pi-success); }
+    .machine-option-status.offline .dot { background: var(--pi-dim); }
+    .machine-option-status.error { color: var(--pi-danger); }
+    .machine-option-status.error .dot { background: var(--pi-danger); }
     .machine-option-main small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: 11px; line-height: 1.3; }
     .machine-option-actions { position: absolute; top: 4px; right: 4px; }
     .machine-option-actions-toggle { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; color: var(--pi-muted); border-radius: 6px; }
