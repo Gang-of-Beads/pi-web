@@ -1256,6 +1256,59 @@ describe("activity labels from raw agent events", () => {
   });
 });
 
+describe("prompt submission for extension-injected user messages", () => {
+  /**
+   * A slash command's handler calls pi.sendUserMessage(kickoff), which lands
+   * as a second session.prompt() inside the outer command dispatch. The
+   * contract PI WEB owns is that both calls reach the agent and that the
+   * user-visible echo is published once per non-streaming submission --
+   * never swallowed, never duplicated. (The nested dispatch itself lives in
+   * the pi coding agent core; this pins the web layer's side of it.)
+   */
+  it("publishes the echo and forwards the kickoff prompt exactly once", async () => {
+    const hub = new CapturingSessionEventHub();
+    const fake = fakeRuntime("kickoff-session", {
+      isStreaming: false,
+      isCompacting: false,
+    });
+    const prompts: string[] = [];
+    fake.session.prompt = (text: string) => {
+      prompts.push(text);
+      return Promise.resolve();
+    };
+    const service = new PiSessionService(hub, {
+      agentDir: TEST_AGENT_DIR,
+      modelRuntime: testModelRuntime,
+      createAgentRuntime: runtimeCreator(fake.runtime),
+      sessionManager: sessionGateway([sessionRecord("kickoff-session")]),
+      heartbeatIntervalMs: 60_000,
+    });
+    try {
+      await service.start("/workspace");
+      const ref = sessionRef("kickoff-session");
+      hub.globalEvents.length = 0;
+
+      // The user types the slash command...
+      await service.prompt(ref, "/feynman_teach What is NAT?");
+      // ...and the command handler's sendUserMessage produces the kickoff
+      // as a nested prompt while idle. This is what the core queues at the
+      // tail of the outer dispatch; the web layer must not lose either.
+      await service.prompt(ref, "Let's learn NAT together.");
+
+      const echoes = hub.sessionEvents
+        .filter(({ event }) => event.type === "message.append")
+        .map(({ event }) => event.message.content);
+      expect(echoes).toEqual([
+        "/feynman_teach What is NAT?",
+        "Let's learn NAT together.",
+      ]);
+      expect(prompts).toEqual(["/feynman_teach What is NAT?", "Let's learn NAT together."]);
+    } finally {
+      await service.dispose();
+    }
+  });
+});
+
 interface ActivityUpdateEvent { type: string; activity?: { label: string; phase: string; sessionId: string } }
 function activityUpdate(events: readonly ActivityUpdateEvent[]): { activity: { label: string; phase: string; sessionId: string } } | undefined {
   const event = events.find((candidate) => candidate.type === "activity.update");
