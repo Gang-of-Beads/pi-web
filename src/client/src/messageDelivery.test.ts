@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyQueueToDelivery, findDeliveryLineIndex, isEchoOfTrackedMessage, markDelivery, newClientMessageId, optimisticUserLine, queuedMessagesWithoutBubbles } from "./messageDelivery";
+import { applyQueueToDelivery, carryDeliveryForward, findDeliveryLineIndex, findTrackedUserLineIndex, isEchoOfTrackedMessage, markDelivery, newClientMessageId, optimisticUserLine, queuedMessagesWithoutBubbles } from "./messageDelivery";
 import type { ChatLine } from "./components/shared";
 
 const ID = "cm-1";
@@ -103,5 +103,33 @@ describe("isEchoOfTrackedMessage", () => {
   it("treats an unknown or absent id as a new message", () => {
     expect(isEchoOfTrackedMessage([tracked("sending")], "cm-other")).toBe(false);
     expect(isEchoOfTrackedMessage([tracked("sending")], undefined)).toBe(false);
+  });
+});
+
+describe("carryDeliveryForward", () => {
+  it("moves the mark to delivered when the agent commits its own copy", () => {
+    // The committed copy replaces the rendered bubble; without carrying the
+    // state the mark vanished at the exact moment delivery was proven.
+    const finalized: ChatLine = { role: "user", parts: [{ type: "text", text: "hello" }], meta: { timestamp: "2026-08-20T00:00:00.000Z" } };
+    const carried = carryDeliveryForward(tracked("queued"), finalized);
+    expect(carried.meta?.delivery).toEqual({ clientMessageId: ID, state: "delivered" });
+    expect(carried.meta?.timestamp).toBe("2026-08-20T00:00:00.000Z");
+  });
+
+  it("leaves an untracked message untouched", () => {
+    const finalized: ChatLine = { role: "user", parts: [{ type: "text", text: "hello" }] };
+    expect(carryDeliveryForward({ role: "user", parts: [] }, finalized)).toBe(finalized);
+  });
+
+  it("does not claim delivery for a message that failed to send", () => {
+    expect(carryDeliveryForward(tracked("failed"), { role: "user", parts: [] }).meta?.delivery?.state).toBe("failed");
+  });
+});
+
+describe("findTrackedUserLineIndex", () => {
+  it("finds the sender's bubble by text wherever it sits", () => {
+    expect(findTrackedUserLineIndex([assistant(), tracked("received")], "hello")).toBe(1);
+    expect(findTrackedUserLineIndex([tracked("received")], "other")).toBe(-1);
+    expect(findTrackedUserLineIndex([{ role: "user", parts: [{ type: "text", text: "hello" }] }], "hello")).toBe(-1);
   });
 });

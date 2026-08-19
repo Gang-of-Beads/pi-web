@@ -1,6 +1,6 @@
 import { appendText, appendThinking, askUserRecordFromToolDetails, normalizeMessage, normalizeMessages, previewFromDetails, summarizeArgs, textMessage } from "./chatMessages";
 import type { ChatLine, ToolExecutionPart } from "./components/shared";
-import { isEchoOfTrackedMessage } from "./messageDelivery";
+import { carryDeliveryForward, findTrackedUserLineIndex, isEchoOfTrackedMessage } from "./messageDelivery";
 import { appendShellChunk, finalizeShellMessage, shellStartMessage } from "./shellMessages";
 import type { SessionUiEvent } from "./sessionSocket";
 
@@ -85,6 +85,16 @@ function applyFinalLine(messages: ChatLine[], displayEnded: ChatLine): ChatLine[
   if (skillReadIndexes.length > 0) return replaceSkillReadLines(messages, skillReadIndexes, displayEnded);
   const askUserRecord = displayEnded.parts.find((part) => part.type === "askUserRecord");
   if (askUserRecord !== undefined) return reconcileFinalAskUserRecord(messages, displayEnded, askUserRecord);
+  // A user message the sender is watching keeps its delivery mark when the
+  // agent's committed copy replaces it - and the committed copy is what proves
+  // the message was taken into the turn.
+  if (displayEnded.role === "user") {
+    const tracked = findTrackedUserLineIndex(messages, messageText(displayEnded));
+    if (tracked !== -1) {
+      const previous = messages[tracked];
+      if (previous !== undefined) return [...messages.slice(0, tracked), carryDeliveryForward(previous, displayEnded), ...messages.slice(tracked + 1)];
+    }
+  }
   const last = messages.at(-1);
   if (last?.role !== displayEnded.role) return [...messages, displayEnded];
   if (displayEnded.role === "assistant" || sameMessageText(last, displayEnded)) return [...messages.slice(0, -1), displayEnded];

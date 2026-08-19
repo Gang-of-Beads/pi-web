@@ -135,3 +135,35 @@ export function queuedMessagesWithoutBubbles(queued: readonly QueuedSessionMessa
 export function isEchoOfTrackedMessage(messages: readonly ChatLine[], clientMessageId: string | undefined): boolean {
   return clientMessageId !== undefined && findDeliveryLineIndex(messages, clientMessageId) !== -1;
 }
+
+/**
+ * Carry a bubble's delivery state onto the agent's finalized copy of the same
+ * message.
+ *
+ * When a turn takes a message, pi emits the committed version and the
+ * transcript swaps the rendered line for it. Swapping blindly dropped the mark
+ * the sender was watching, so the message silently lost its state at the exact
+ * moment it reached the model. The committed copy *is* the proof of delivery,
+ * so the state moves to delivered rather than merely surviving.
+ */
+export function carryDeliveryForward(previous: ChatLine, finalized: ChatLine): ChatLine {
+  const delivery = previous.meta?.delivery;
+  if (delivery === undefined) return finalized;
+  return {
+    ...finalized,
+    meta: { ...finalized.meta, delivery: { ...delivery, state: delivery.state === "failed" ? delivery.state : "delivered" } },
+  };
+}
+
+/** Index of a tracked user bubble with this exact text, or -1. */
+export function findTrackedUserLineIndex(messages: readonly ChatLine[], text: string): number {
+  if (text === "") return -1;
+  return messages.findIndex((line) => line.role === "user" && line.meta?.delivery !== undefined && lineText(line) === text);
+}
+
+function lineText(line: ChatLine): string {
+  return line.parts
+    .filter((part): part is Extract<ChatLine["parts"][number], { type: "text" }> => part.type === "text")
+    .map((part) => part.text)
+    .join("\n\n");
+}
