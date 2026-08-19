@@ -42,8 +42,8 @@ staged="$BASE/.staging-$tag"
 
 if [ -d "$target" ]; then
   echo "already installed: $target"
-  current_tag="$(readlink "$CURRENT" 2>/dev/null || basename "$(readlink "$CURRENT" 2>/dev/null || echo none)")"
-  if [ "$current_tag" = "$tag" ]; then
+  current_tag="$(basename "$(readlink -f "$CURRENT" 2>/dev/null || echo none)")"
+  if [ "$current_tag" = "$tag" ] && [ -d "$target/node_modules/@earendil-works/pi-coding-agent" ]; then
     echo "current already points at $tag; nothing to do"
     exit 0
   fi
@@ -99,11 +99,16 @@ fi
 echo "switching $CURRENT -> $tag"
 ln -sfn "$target" "$CURRENT.swap" && mv -Tf "$CURRENT.swap" "$CURRENT" 2>/dev/null || ln -sfn "$target" "$CURRENT"
 
-node_bin="$(command -v node || true)"
-if [ -z "$node_bin" ]; then
-  # nvm-style installs keep node off the non-interactive PATH.
-  node_bin="$HOME/.nvm/versions/node/v24.13.1/bin/node"
-fi
+# Prefer the nix-profile node: it is the one home-manager keeps in sync and
+# it stays on a non-interactive PATH-free systemd exec line.
+node_bin=""
+for candidate in "$HOME/.nix-profile/bin/node" "$(command -v node || true)" "$HOME/.nvm/versions/node/v24.13.1/bin/node"; do
+  if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+    node_bin="$candidate"
+    break
+  fi
+done
+[ -n "$node_bin" ] || { echo "no usable node found" >&2; exit 1; }
 echo "node: $node_bin"
 
 # Do not cut short someone's run: wait for in-flight runs before restarting,
