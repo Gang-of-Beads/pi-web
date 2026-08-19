@@ -39,15 +39,27 @@ the session alive so the turn completes.
 4. `pi.sendUserMessage()` → `this.prompt(text, { expandPromptTemplates: false,
    source: "extension" })` — a *nested* `prompt()` on the same session while
    the outer command dispatch is still on the stack.
-5. The nested prompt should hit the idle path (`_runAgentPrompt`, ~L919) but
-   never does: no error, no queue, no model request, message may appear in
-   agent state yet the turn machinery is skipped.
+5. In a long-lived runtime (PI WEB daemon, interactive TUI) the nested prompt
+   runs after the handler's dispatch and the turn executes. In `pi -p` print
+   mode the request is never made even when the handler stays alive for
+   seconds: the print-mode run loop does not drive turns started from inside a
+   command handler.
 
-Early runs reported "0 requests" across the board; that was a measurement
-artifact (the mock's log file was deleted under it, so later appends went to an
-unlinked inode). Re-measuring with append-only logs and line-count deltas shows
-PI WEB delivers the nested turn. What remains is print mode, where the process
-lifetime excludes any work scheduled after the command handler returns.
+Measured with an append-only mock log (REQUEST lines written by the mock
+itself; line-count deltas, never process output). A handler that kept an
+`await` pending for 5s still produced only the title-generation request — no
+kickoff model request — while the identical command in PI WEB produced a full
+turn (kickoff, tool calls, assistant reply).
+
+## Verification
+
+- `e2e/sendUserMessage.spec.ts` — drives the daemon through the real prompt
+  API with the real feynman extension: `/feynman_teach` starts a turn
+  (streaming observed, kickoff persisted). 4/4 pass.
+- `scripts/verify-sendusermessage.sh` — repeatable host check (PASS last run).
+- Real host session (2026-08-19): kickoff, web_search tool call, fetched
+  sources, and the assistant's Phase 1 reply all persisted to the session
+  JSONL; turn started within 1s.
 
 ## Upstream status
 
