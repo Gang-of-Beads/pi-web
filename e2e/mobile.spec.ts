@@ -715,3 +715,43 @@ test.describe("touch targets", () => {
     expect(measured.attachButton, "attach").toBeGreaterThanOrEqual(30);
   });
 });
+
+test.describe("quick switcher", () => {
+  test.skip(({ isMobile }) => isMobile === false, "phone-viewport behaviour");
+
+  test("offers context filters and a row menu without squashing the list", async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      const bar = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("app-context-bar")?.shadowRoot;
+      const button = [...(bar?.querySelectorAll("button") ?? [])]
+        .find((candidate) => (candidate.getAttribute("aria-label") ?? "").toLowerCase().includes("session"));
+      button?.click();
+    });
+    // The sheet renders before its data arrives; the chips exist once the
+    // workspaces it groups by have loaded.
+    await page.waitForFunction(() => {
+      const sheet = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("quick-switcher")?.shadowRoot;
+      return (sheet?.querySelectorAll(".chip").length ?? 0) > 0;
+    }, undefined, { timeout: 20_000 });
+
+    const measured = await page.evaluate(() => {
+      const sheet = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("quick-switcher")?.shadowRoot;
+      const filters = sheet?.querySelector(".filters")?.getBoundingClientRect();
+      const chip = sheet?.querySelector(".chip")?.getBoundingClientRect();
+      return {
+        chipLabels: [...(sheet?.querySelectorAll(".chip") ?? [])].map((element) => element.textContent?.trim() ?? ""),
+        menus: sheet?.querySelectorAll(".row-menu-toggle").length ?? 0,
+        filtersHeight: Math.round(filters?.height ?? 0),
+        chipHeight: Math.round(chip?.height ?? 0),
+      };
+    });
+
+    // "All" is focus mode: no filter chosen means every workspace's sessions.
+    expect(measured.chipLabels[0]).toBe("All");
+    // A project whose only workspace shares its name must not print twice.
+    expect(new Set(measured.chipLabels).size).toBe(measured.chipLabels.length);
+    // The chip row is its own band; a squashed one used to overlap the list.
+    expect(measured.filtersHeight).toBeGreaterThanOrEqual(measured.chipHeight);
+    expect(measured.menus).toBeGreaterThan(0);
+  });
+});

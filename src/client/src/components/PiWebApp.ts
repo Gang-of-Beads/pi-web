@@ -80,6 +80,7 @@ import { shouldShowMachinesSection, type AppNavigationPanel, type NavigationFocu
 import "./appShell/AppPanelEdgeControl";
 import "./appShell/AppRefreshControl";
 import { quickSwitcherSessionStates, renameSessionInList } from "../quickSwitcher";
+import { readPinnedSessionIds, togglePinnedSessionId, writePinnedSessionIds } from "../sessionPins";
 import { errorBanner, isTransientError, TRANSIENT_ERROR_TIMEOUT_MS } from "./errorBanner";
 import { deprecatedAgentInputsBanner, deprecatedAgentInputsWarnings } from "./deprecatedAgentInputsBanner";
 import { appStyles } from "./shared";
@@ -240,6 +241,7 @@ export class PiWebApp extends LitElement {
   @state() private quickSwitcherOpen = false;
   @state() private quickSwitcherLoading = false;
   @state() private quickSwitcherSessions: readonly SessionInfo[] = [];
+  @state() private pinnedSessionIds: ReadonlySet<string> = readPinnedSessionIds();
   @state() private quickSwitcherWorkspaces: readonly Workspace[] = [];
   private quickSwitcherMachineId: string | undefined;
   @state() private sessionCleanupDialog: SessionCleanupDialogState | undefined;
@@ -1605,6 +1607,24 @@ export class PiWebApp extends LitElement {
   }
 
   /**
+   * Sessions whose agent stopped on an error - an unavailable model, a failed
+   * tool. They are listed first because nothing moves until someone looks, not
+   * even with an answer typed into them.
+   */
+  private errorSessionIds(): ReadonlySet<string> {
+    const errored = new Set<string>();
+    for (const [sessionId, kind] of this.sessionStateKinds()) {
+      if (kind === "error") errored.add(sessionId);
+    }
+    return errored;
+  }
+
+  private togglePinnedSession(session: SessionInfo): void {
+    this.pinnedSessionIds = togglePinnedSessionId(this.pinnedSessionIds, session.id);
+    writePinnedSessionIds(this.pinnedSessionIds);
+  }
+
+  /**
    * Sessions whose agent is blocked on an `ask_user` answer. They cannot make
    * any progress until the user replies, which is why the switcher lists them
    * above work that is merely running.
@@ -2679,11 +2699,19 @@ export class PiWebApp extends LitElement {
           .waitingSessionIds=${this.waitingSessionIds()}
           .unreadSessionIds=${this.unreadSessionIds}
           .interruptedSessionIds=${this.interruptedSessionIds}
+          .errorSessionIds=${this.errorSessionIds()}
+          .pinnedSessionIds=${this.pinnedSessionIds}
+          .projects=${state.projects}
           .canStartSession=${this.canStartSession()}
           .onCreateSession=${() => { void this.startSessionAndOpenChat(); }}
           .onOpenSession=${(session: SessionInfo) => { void this.openSessionFromQuickSwitcher(session); }}
           .onSelectWorkspace=${(workspace: Workspace) => { void this.workspaces.selectWorkspace(workspace); }}
           .onBrowse=${() => { this.openNavigationSection("projects"); }}
+          .onTogglePin=${(session: SessionInfo) => { this.togglePinnedSession(session); }}
+          .onRenameSession=${(session: SessionInfo, name: string) => {
+            this.applyRenameToQuickSwitcher(session.id, name);
+            return this.sessions.renameSession(session, name);
+          }}
           .onClose=${() => { this.quickSwitcherOpen = false; }}
         ></quick-switcher>` : null}
         ${state.actionPaletteOpen ? html`<action-palette .actions=${this.getActions()} .onRun=${(action: AppAction) => { this.setState({ actionPaletteOpen: false }); this.runAction(action); }} .onCancel=${() => { this.setState({ actionPaletteOpen: false }); }}></action-palette>` : null}
