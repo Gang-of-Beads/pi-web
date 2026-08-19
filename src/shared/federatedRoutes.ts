@@ -33,6 +33,8 @@ export interface FederatedHttpRouteSpec {
 
 export const FEDERATED_HTTP_ROUTES = [
   { method: "GET", path: "/pi-web/status" },
+  { method: "POST", path: "/pi-web/update/apply", timeoutMs: 15_000 },
+  { method: "POST", path: "/pi-web/restart", timeoutMs: 15_000 },
   { method: "GET", path: "/config" },
   { method: "PUT", path: "/config" },
   { method: "GET", path: "/plugins" },

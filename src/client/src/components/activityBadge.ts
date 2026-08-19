@@ -80,6 +80,12 @@ export function renderSessionStateBadge(kind: SessionStateBadgeKind | "sending" 
   }
   const label = kind === "sending" ? "Sending message" : SESSION_STATE_LABELS[kind];
   const combined = unreadLabel === undefined ? label : `${unreadLabel} · ${label}`;
+  if (kind === "idle") {
+    // Idle: gray dot when read, green dot when unread — the color itself says
+    // "done; seen (or not)", so no attention ring is needed on this state.
+    const className = unreadLabel === undefined ? "session-state idle" : "session-state idle unread";
+    return html`<span class=${className} role="img" aria-label=${combined} title=${combined}></span>`;
+  }
   if (kind === "working" || kind === "sending") {
     // Three dots instead of one: an animation on a single dot cannot say
     // "working" because the same bounce was used for nothing at all.

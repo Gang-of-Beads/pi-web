@@ -116,4 +116,14 @@ describe("renderSessionStateBadge", () => {
     expect(ring?.getAttribute("aria-label")).toBe("Unread session activity · Session is working");
     expect(ring?.querySelector(".state-dots .state-dot")?.getAttribute("aria-hidden")).toBeNull();
   });
+
+  it("colors idle gray when read and green when unread, without a ring", () => {
+    const read = renderInto(renderSessionStateBadge("idle"));
+    expect(read.querySelector(".session-state.idle")?.classList.contains("unread")).toBe(false);
+
+    const unread = renderInto(renderSessionStateBadge("idle", "Unread session activity"));
+    const dot = unread.querySelector(".session-state.idle.unread");
+    expect(dot?.getAttribute("aria-label")).toBe("Unread session activity · Session is done");
+    expect(unread.querySelector(".unread-ring")).toBeNull();
+  });
 });
