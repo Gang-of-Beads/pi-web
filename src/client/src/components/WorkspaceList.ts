@@ -27,6 +27,8 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
   @property({ attribute: false }) machineId = "local";
   @property({ type: Boolean, reflect: true }) collapsible = false;
   @property({ type: Boolean, reflect: true }) collapsed = false;
+  /** Render rows as a responsive tile grid instead of full-width rows. */
+  @property({ type: Boolean }) tiles = false;
   @property({ attribute: false }) workspaceLabelItems: (workspace: Workspace) => WorkspaceLabelItem[] = () => [];
   /** Status tree of the machine these workspaces belong to; absent means no indicators. */
   @property({ attribute: false }) statusSnapshot: MachineStatusSnapshot | undefined;
@@ -85,7 +87,7 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
       <section>
         <h2>${this.renderHeading()}</h2>
         ${this.collapsed ? null : html`
-          <div class="list-body">
+          <div class="list-body ${this.tiles ? "tiles" : ""}">
             ${this.workspaces.map((workspace) => {
               const label = workspacePrimaryLabel(workspace);
               const items = this.workspaceLabelItems(workspace);

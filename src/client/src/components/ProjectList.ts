@@ -18,6 +18,8 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
   @property({ attribute: false }) statusSnapshot: MachineStatusSnapshot | undefined;
   @property({ type: Boolean, reflect: true }) collapsible = false;
   @property({ type: Boolean, reflect: true }) collapsed = false;
+  /** Render rows as a responsive tile grid instead of full-width rows. */
+  @property({ type: Boolean }) tiles = false;
   @property({ attribute: false }) onSelect?: (project: Project) => void;
   @property({ attribute: false }) onClose?: (project: Project) => void;
   @property({ attribute: false }) onToggleCollapsed?: () => void;
@@ -58,7 +60,7 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
         <h2>${this.renderHeading()}</h2>
         ${this.collapsed ? null : html`
           ${this.renderSearch()}
-          <div class="list-body">
+          <div class="list-body ${this.tiles ? "tiles" : ""}">
             ${visible.length === 0 && this.searchQuery.trim() !== ""
               ? html`<div class="search-empty" role="status">No projects match “${this.searchQuery.trim()}”.</div>`
               : null}

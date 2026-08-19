@@ -277,6 +277,15 @@ export const listStyles = css`
   section { box-sizing: border-box; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 10px; }
   h2 { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 0 0 8px; color: var(--pi-muted); font-size: 12px; text-transform: uppercase; }
   .list-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
+  /* Tile/card layout for management lists (workspaces, projects, machines).
+     Rows become compact cards in an auto-fill grid; the row menu moves into
+     the card's corner so the two-column row grid can collapse to one. */
+  .list-body.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; align-content: start; padding: 4px 2px; }
+  .list-body.tiles .action-row { grid-template-columns: minmax(0, 1fr); margin: 0; align-self: start; }
+  .list-body.tiles .action-main { border-radius: 10px; padding: 10px 30px 10px 10px; min-height: 56px; align-content: center; }
+  .list-body.tiles .action-menu { position: absolute; top: 6px; right: 6px; align-self: auto; }
+  .list-body.tiles .action-menu-toggle { height: 30px; min-width: 26px; }
+  .list-body.tiles .action-activity { top: 7px; right: 32px; }
   button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; }
   section > button { display: block; width: 100%; text-align: left; margin: 6px 0; }
   .subheading { margin-top: 14px; }
@@ -737,4 +746,16 @@ export const promptEditorStyles = css`
     .icon-button { width: 40px; height: 40px; }
     .markdown-editor .cm-cursor { height: 1.4em !important; }
   }
-`;
+
+  /* Hold the whole list layout still while the user is selecting rows: the
+     checkbox and toolbar must not make rows jump between drags. */
+  @media (max-width: 760px) {
+    section { padding: 8px; }
+    h2 { margin: 0 0 6px; }
+    .action-row { margin: 4px 0; }
+    .action-main { padding: 6px 20px 6px calc(8px + var(--depth, 0) * 14px); }
+    .list-search-input { height: 30px; font-size: 13px; padding: 0 8px; }
+    .list-search-clear { width: 30px; height: 30px; }
+    .list-body.tiles { gap: 6px; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+    .list-body.tiles .action-main { min-height: 48px; padding: 8px 28px 8px 8px; }
+  }`;

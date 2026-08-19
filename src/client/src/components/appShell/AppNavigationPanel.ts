@@ -215,6 +215,7 @@ export class AppNavigationPanel extends LitElement {
         .onFocusPreviousSection=${() => { this.focusPreviousFrom("projects"); }}
         .onFocusNextSection=${() => { this.focusNextFrom("projects"); }}
         .onCancelKeyboardNavigation=${() => { this.cancelKeyboardNavigation(); }}
+        .tiles=${true}
       ></project-list>
     `;
   }
@@ -237,6 +238,7 @@ export class AppNavigationPanel extends LitElement {
         .onFocusPreviousSection=${() => { this.focusPreviousFrom("workspaces"); }}
         .onFocusNextSection=${() => { this.focusNextFrom("workspaces"); }}
         .onCancelKeyboardNavigation=${() => { this.cancelKeyboardNavigation(); }}
+        .tiles=${true}
       ></workspace-list>
     `;
   }
