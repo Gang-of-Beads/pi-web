@@ -1,5 +1,6 @@
 import { appendText, appendThinking, askUserRecordFromToolDetails, normalizeMessage, normalizeMessages, previewFromDetails, summarizeArgs, textMessage } from "./chatMessages";
 import type { ChatLine, ToolExecutionPart } from "./components/shared";
+import { isEchoOfTrackedMessage } from "./messageDelivery";
 import { appendShellChunk, finalizeShellMessage, shellStartMessage } from "./shellMessages";
 import type { SessionUiEvent } from "./sessionSocket";
 
@@ -41,7 +42,7 @@ export function seedStreamingPartial(messages: ChatLine[], partial: unknown): Ch
 }
 
 export function applyTranscriptEvent(messages: ChatLine[], event: SessionUiEvent): ChatLine[] | undefined {
-  if (event.type === "message.append") return appendNewMessage(messages, event.message);
+  if (event.type === "message.append") return appendNewMessage(messages, event.message, event.clientMessageId);
   if (event.type === "assistant.delta") return appendText(messages, "assistant", event.text);
   if (event.type === "assistant.thinking.delta") return appendThinking(messages, event.text);
   if (event.type === "tool.start") return appendToolExecutionStart(messages, event);
@@ -336,18 +337,25 @@ function messageText(message: ChatLine): string {
     .join("\n\n");
 }
 
-function appendNewMessage(messages: ChatLine[], rawMessage: unknown): ChatLine[] {
+function appendNewMessage(messages: ChatLine[], rawMessage: unknown, clientMessageId?: string): ChatLine[] {
   const lines = normalizeMessage(rawMessage);
   if (lines.length === 0) return messages;
-  // The server echoes a queued steer/follow-up optimistically; when the queue
-  // drains and the agent emits the real user message we must not render it
-  // twice. Skip an identical trailing user line (same last text part).
-  const last = messages.at(-1);
+  // The sender already rendered this message the moment it was sent, and both
+  // the server echo and the agent's committed copy come back afterwards. The
+  // correlation id resolves it exactly; text matching is the fallback for a
+  // copy that carries no id (the agent's own), and unlike the old trailing-line
+  // check it still holds when tool or assistant lines land in between.
+  if (isEchoOfTrackedMessage(messages, clientMessageId)) return messages;
   const firstNew = lines[0];
-  if (last !== undefined && firstNew !== undefined && last.role === "user" && firstNew.role === "user") {
-    const lastText = [...last.parts].reverse().find((part) => part.type === "text")?.text ?? "";
-    const newText = [...firstNew.parts].reverse().find((part) => part.type === "text")?.text ?? "";
-    if (lastText !== "" && lastText === newText) return messages;
+  if (firstNew?.role === "user") {
+    const newText = messageText(firstNew);
+    if (newText !== "" && messages.some((line) => line.role === "user" && line.meta?.delivery !== undefined && messageText(line) === newText)) {
+      return messages;
+    }
+    // Untracked echo of the immediately preceding line (another client's send,
+    // or a reload that dropped delivery state).
+    const last = messages.at(-1);
+    if (last?.role === "user" && newText !== "" && messageText(last) === newText) return messages;
   }
   return [...messages, ...lines];
 }

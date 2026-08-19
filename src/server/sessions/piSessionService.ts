@@ -51,6 +51,7 @@ import type {
   ExtensionDialogCloseResponse,
   ExtensionDialogKind,
   ExtensionDialogOutcome,
+  QueuedSessionMessage,
   SavedPromptAttachment,
   SessionBulkArchiveResponse,
   SessionBulkDeleteArchivedResponse,
@@ -180,6 +181,7 @@ interface QueuedPrompt {
   text: string;
   images?: ImageContent[];
   echoUserMessage?: boolean;
+  clientMessageId?: string;
 }
 
 interface DeferredSubsessionNotification {
@@ -1097,6 +1099,14 @@ export class PiSessionService implements SessionRouteService {
   private readonly deferredSubsessionNotifications = new WeakMap<PiAgentSession, DeferredSubsessionNotification[]>();
   private readonly deferredGeneratedSessionNames = new WeakMap<PiAgentSession, string>();
   private readonly compactionPromptQueues = new Map<string, QueuedPrompt[]>();
+  /**
+   * Ids the sending browser minted for prompts that went into pi's steer or
+   * follow-up queue, in submission order. pi's queue APIs carry text only, so
+   * this is what lets a status update tell the sender "the entry you are
+   * looking at is *your* message" instead of making it guess by text.
+   * Entries are dropped as soon as their text leaves the queue.
+   */
+  private readonly queuedPromptClientIds = new Map<string, { clientMessageId: string; text: string }[]>();
   private readonly compactionDrainTimers = new Map<string, NodeJS.Timeout>();
   private readonly authLossWarnings = new Set<string>();
   /** Tracked subsession id -> the parent session id that spawned it. */
@@ -2311,8 +2321,9 @@ export class PiSessionService implements SessionRouteService {
     return commands.sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  async prompt(ref: PiSessionRef, text: unknown, streamingBehavior?: unknown, attachments?: unknown, options?: { echoUserMessage?: boolean }): Promise<void> {
+  async prompt(ref: PiSessionRef, text: unknown, streamingBehavior?: unknown, attachments?: unknown, options?: { echoUserMessage?: boolean; clientMessageId?: unknown }): Promise<void> {
     const promptText = requirePromptText(text);
+    const clientMessageId = parseClientMessageId(options?.clientMessageId);
     // Command-forwarded prompts (e.g. /skill:*) are expanded by the agent, which
     // streams the canonical message back. The client doesn't render the raw
     // command text, so the server must not echo it either, or it would show up
@@ -2327,6 +2338,7 @@ export class PiSessionService implements SessionRouteService {
     this.maybeGenerateSessionName(session, promptText);
     const isQueued = session.isStreaming || session.isCompacting;
     const behavior = isQueued ? requestedBehavior ?? "followUp" : undefined;
+    if (isQueued && clientMessageId !== undefined) this.recordQueuedPromptClientId(session.sessionId, clientMessageId, promptText);
     if (isQueued && images.length === 0 && this.hasQueuedMessageText(session, promptText)) {
       this.publishActivity(session, "duplicate queued message ignored", "active");
       this.publishStatus(session);
@@ -2338,20 +2350,49 @@ export class PiSessionService implements SessionRouteService {
     // purpose: they must not void an ask posted after the queued original.
     await this.voidOpenAskForUserMessage(session);
     if (session.isCompacting) {
-      this.enqueuePromptDuringCompaction(session, promptText, behavior ?? "followUp", images, echoUserMessage);
+      this.enqueuePromptDuringCompaction(session, promptText, behavior ?? "followUp", images, echoUserMessage, clientMessageId);
       return;
     }
-    void this.submitPrompt(session, promptText, behavior, images, echoUserMessage);
+    void this.submitPrompt(session, promptText, behavior, images, echoUserMessage, clientMessageId);
   }
 
-  private submitPrompt(session: PiAgentSession, text: string, behavior: QueuedPromptKind | undefined, images: ImageContent[] = [], echoUserMessage = true): Promise<void> {
+  /**
+   * Stamp each still-queued entry with the id its sender minted, matching by
+   * text in submission order so two identical queued texts keep their original
+   * order. Records whose text is no longer queued are dropped here: this is the
+   * signal the sender uses to move that message from "queued" to "delivered".
+   */
+  private attachQueuedPromptClientIds(sessionId: string, queued: QueuedSessionMessage[]): void {
+    const records = this.queuedPromptClientIds.get(sessionId);
+    if (records === undefined || records.length === 0) return;
+    const remaining = [...records];
+    for (const message of queued) {
+      const index = remaining.findIndex((record) => record.text === message.text);
+      if (index === -1) continue;
+      const record = remaining[index];
+      if (record === undefined) continue;
+      message.clientMessageId = record.clientMessageId;
+      remaining.splice(index, 1);
+    }
+    const stillQueued = records.filter((record) => queued.some((message) => message.clientMessageId === record.clientMessageId));
+    if (stillQueued.length === 0) this.queuedPromptClientIds.delete(sessionId);
+    else this.queuedPromptClientIds.set(sessionId, stillQueued);
+  }
+
+  private recordQueuedPromptClientId(sessionId: string, clientMessageId: string, text: string): void {
+    const records = this.queuedPromptClientIds.get(sessionId) ?? [];
+    records.push({ clientMessageId, text });
+    this.queuedPromptClientIds.set(sessionId, records);
+  }
+
+  private submitPrompt(session: PiAgentSession, text: string, behavior: QueuedPromptKind | undefined, images: ImageContent[] = [], echoUserMessage = true, clientMessageId?: string): Promise<void> {
     this.publishActivity(session, behavior === "steer" ? "steering queued" : behavior === "followUp" ? "message queued" : "prompt accepted", "active");
     // Echo the user message whether or not the prompt is queued. A queued
     // steer/follow-up otherwise shows nothing until the queue drains and the
     // agent emits the real user message - on mobile that reads as "message
     // disappeared" (no optimistic bubble, no dock). The client dedupes an
     // identical user line when the queued message is later consumed.
-    if (echoUserMessage) this.events.publish(session.sessionId, { type: "message.append", message: userMessage(text, images) });
+    if (echoUserMessage) this.events.publish(session.sessionId, { type: "message.append", message: userMessage(text, images), ...(clientMessageId === undefined ? {} : { clientMessageId }) });
     const promptOptions = buildPromptOptions(behavior, images);
     const promptPromise = this.runSessionEntryMutation(session, "send a prompt", () => session.prompt(text, promptOptions)).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
@@ -2362,9 +2403,9 @@ export class PiSessionService implements SessionRouteService {
     return promptPromise;
   }
 
-  private enqueuePromptDuringCompaction(session: PiAgentSession, text: string, kind: QueuedPromptKind, images: ImageContent[] = [], echoUserMessage = true): void {
+  private enqueuePromptDuringCompaction(session: PiAgentSession, text: string, kind: QueuedPromptKind, images: ImageContent[] = [], echoUserMessage = true, clientMessageId?: string): void {
     const queue = this.compactionPromptQueues.get(session.sessionId) ?? [];
-    queue.push({ kind, text, ...(images.length > 0 ? { images } : {}), ...(echoUserMessage ? {} : { echoUserMessage: false }) });
+    queue.push({ kind, text, ...(images.length > 0 ? { images } : {}), ...(echoUserMessage ? {} : { echoUserMessage: false }), ...(clientMessageId === undefined ? {} : { clientMessageId }) });
     this.compactionPromptQueues.set(session.sessionId, queue);
     this.publishActivity(session, "message queued during compaction", "active");
     this.publishStatus(session);
@@ -4040,6 +4081,7 @@ export class PiSessionService implements SessionRouteService {
     for (const message of queuedMessages) {
       if (!consumed.has(message.text)) visibleQueued.push(message);
     }
+    this.attachQueuedPromptClientIds(session.sessionId, visibleQueued);
     return {
       sessionId: session.sessionId,
       persisted: sessionFileExists(session.sessionFile),
@@ -4509,13 +4551,27 @@ function clearSessionQueue(session: PiAgentSession): void {
   session.clearQueue();
 }
 
-function queuedMessagesFromSession(session: PiAgentSession, extraQueuedMessages: readonly QueuedPrompt[] = []): { kind: "steer" | "followUp"; text: string }[] {
+function queuedMessagesFromSession(session: PiAgentSession, extraQueuedMessages: readonly QueuedPrompt[] = []): QueuedSessionMessage[] {
   const consumed = consumedUserMessageTexts(session);
   return [
     ...session.getSteeringMessages().filter((text) => !consumed.has(text)).map((text) => ({ kind: "steer" as const, text })),
     ...session.getFollowUpMessages().filter((text) => !consumed.has(text)).map((text) => ({ kind: "followUp" as const, text })),
-    ...extraQueuedMessages.filter((message) => !consumed.has(message.text)),
+    ...extraQueuedMessages
+      .filter((message) => !consumed.has(message.text))
+      .map((message) => ({ kind: message.kind, text: message.text, ...(message.clientMessageId === undefined ? {} : { clientMessageId: message.clientMessageId }) })),
   ];
+}
+
+/**
+ * Correlation ids come from a browser, so they are untrusted input: accept a
+ * short opaque string and ignore anything else rather than letting an oversized
+ * value into per-session state.
+ */
+function parseClientMessageId(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (trimmed === "" || trimmed.length > 200) return undefined;
+  return trimmed;
 }
 
 /**

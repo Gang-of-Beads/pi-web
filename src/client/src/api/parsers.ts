@@ -730,7 +730,7 @@ export function parseSessionStreamEvent(value: unknown): SessionUiEvent {
     case "message.append":
       // The message payload is a projected Pi message; only its presence is
       // guaranteed at this boundary.
-      return { type: "message.append", message: requirePresent(record, "message") };
+      return { type: "message.append", message: requirePresent(record, "message"), ...optionalField("clientMessageId", optionalString(record, "clientMessageId")) };
     case "assistant.delta":
       return { type: "assistant.delta", text: requireString(record, "text") };
     case "assistant.thinking.delta":
@@ -1186,7 +1186,7 @@ function parseQueuedSessionMessage(value: unknown): QueuedSessionMessage {
   const record = requireRecord(value);
   const kind = requireString(record, "kind");
   if (kind !== "steer" && kind !== "followUp") throw new Error("Invalid queued message kind");
-  return { kind, text: requireString(record, "text") };
+  return { kind, text: requireString(record, "text"), ...optionalField("clientMessageId", optionalString(record, "clientMessageId")) };
 }
 
 function parseTokens(value: unknown): SessionStatus["tokens"] {

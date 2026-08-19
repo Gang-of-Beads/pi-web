@@ -47,6 +47,28 @@ const finalAssistant = {
   model: "model",
 };
 
+describe("applyTranscriptEvent delivery reconciliation", () => {
+  const sent: ChatLine = { role: "user", parts: [{ type: "text", text: "ship it" }], meta: { delivery: { clientMessageId: "cm-1", state: "received" } } };
+
+  it("keeps one bubble when the server echoes a message this browser sent", () => {
+    const messages = applyTranscriptEvent([sent], { type: "message.append", message: { role: "user", content: "ship it" }, clientMessageId: "cm-1" });
+    expect(messages).toEqual([sent]);
+  });
+
+  it("keeps one bubble when the agent commits the message after other lines", () => {
+    // The queue can drain long after the send, with tool and assistant lines in
+    // between; a trailing-line check misses that and rendered a second copy.
+    const withWork: ChatLine[] = [sent, { role: "assistant", parts: [{ type: "text", text: "on it" }] }];
+    const messages = applyTranscriptEvent(withWork, { type: "message.append", message: { role: "user", content: "ship it" } });
+    expect(messages).toEqual(withWork);
+  });
+
+  it("still appends a different user message", () => {
+    const messages = applyTranscriptEvent([sent], { type: "message.append", message: { role: "user", content: "and also this" } });
+    expect(messages).toHaveLength(2);
+  });
+});
+
 describe("applyTranscriptEvent", () => {
   it("streams thinking and text into one assistant message", () => {
     let messages: ChatLine[] = [];

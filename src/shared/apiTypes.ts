@@ -740,6 +740,14 @@ export interface SessionActivity {
 export interface QueuedSessionMessage {
   kind: "steer" | "followUp";
   text: string;
+  /**
+   * Id minted by the browser that sent the prompt. It correlates a queued entry
+   * with the transcript bubble the sender already sees, so the sender can show
+   * a delivery mark on that bubble instead of listing the same text a second
+   * time under "Queued messages". Absent for prompts sent before this field
+   * existed, by another client, or by a non-browser caller.
+   */
+  clientMessageId?: string;
 }
 
 /**
@@ -1352,7 +1360,7 @@ export type CommandResult =
 export type SessionUiEvent = SessionUiEventBody & { seq?: number };
 
 type SessionUiEventBody =
-  | { type: "message.append"; message: unknown }
+  | { type: "message.append"; message: unknown; clientMessageId?: string }
   | { type: "assistant.delta"; text: string }
   | { type: "assistant.thinking.delta"; text: string }
   | { type: "tool.start"; toolName: string; toolCallId: string; summary: string; args?: unknown }

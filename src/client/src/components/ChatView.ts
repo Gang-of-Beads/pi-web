@@ -27,8 +27,9 @@ import {
 } from "../sessionNotifications";
 import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
 import type { SessionNotification, SessionSubagentInfo } from "../../../shared/apiTypes";
-import type { ChatLine, ChatPart } from "./shared";
+import type { ChatLine, ChatPart, MessageDelivery } from "./shared";
 import { chatStyles, renderSessionWarningIcon } from "./shared";
+import { queuedMessagesWithoutBubbles } from "../messageDelivery";
 import type { SessionStateBadgeKind } from "./activityBadge";
 import "./AskUserCard";
 import "./ExtensionDialogCard";
@@ -92,6 +93,29 @@ export function chatQueuedMessageSections(clientQueued: QueuedSessionMessage[], 
     clientQueued.length === 0 ? undefined : { source: "client", heading: "Queued until session starts", detail: "Will send once the backend session is ready", messages: clientQueued },
     serverQueued.length === 0 ? undefined : { source: "server", heading: "Queued messages", detail: `${String(serverQueued.length)} pending`, messages: serverQueued },
   ].filter((section): section is QueuedMessageSection => section !== undefined);
+}
+
+export interface DeliveryPresentation {
+  glyph: string;
+  text: string;
+  label: string;
+  tone: "pending" | "received" | "delivered" | "failed";
+}
+
+/**
+ * How one delivery state reads on a bubble. The glyph carries the state at a
+ * glance and the words carry it for anyone who cannot tell one tick from two -
+ * both are needed, so neither is decoration.
+ */
+export function chatDeliveryPresentation(delivery: MessageDelivery): DeliveryPresentation {
+  if (delivery.state === "sending") return { glyph: "◌", text: "Sending", label: "Sending", tone: "pending" };
+  if (delivery.state === "failed") return { glyph: "!", text: "Not sent", label: "Not sent - the server never received this message", tone: "failed" };
+  if (delivery.state === "queued") {
+    const lane = delivery.kind === "steer" ? "Queued to steer" : "Queued";
+    return { glyph: "✓", text: lane, label: `${lane} - the server has this message and the agent will take it next`, tone: "received" };
+  }
+  if (delivery.state === "received") return { glyph: "✓", text: "Sent", label: "Sent - the server received this message", tone: "received" };
+  return { glyph: "✓✓", text: "Read", label: "Read - the agent took this message into the conversation", tone: "delivered" };
 }
 
 export type ChatImagePart = Extract<ChatPart, { type: "image" }>;
@@ -750,8 +774,28 @@ export class ChatView extends LitElement {
     `;
   }
 
+  /**
+   * Delivery mark for a message this browser sent, in the corner of its own
+   * bubble the way a messaging app reports a send. Messages loaded from history
+   * carry no delivery state and stay unmarked: they arrived long ago, and a
+   * transcript of check marks would be noise.
+   */
+  private renderDeliveryMark(message: ChatLine) {
+    const delivery = message.meta?.delivery;
+    if (delivery === undefined) return null;
+    const presentation = chatDeliveryPresentation(delivery);
+    return html`
+      <div class=${`delivery-mark ${presentation.tone}`} role="status" aria-label=${presentation.label}>
+        <span class="delivery-glyph" aria-hidden="true">${presentation.glyph}</span>
+        <span class="delivery-text">${presentation.text}</span>
+      </div>
+    `;
+  }
+
   private renderQueuedMessages() {
-    const serverQueued = this.status?.queuedMessages ?? [];
+    // A queued message the sender can already see as a marked bubble is not
+    // listed again here: showing both is what made one send look like two.
+    const serverQueued = queuedMessagesWithoutBubbles(this.status?.queuedMessages ?? [], this.messages);
     return html`${chatQueuedMessageSections(this.clientQueuedMessages, serverQueued).map((section) => this.renderQueuedMessageList(section))}`;
   }
 
@@ -920,6 +964,7 @@ export class ChatView extends LitElement {
       <article class=${toolOnly || askUserRecordOnly ? shellClass : `msg ${message.role}`} data-index=${index} data-scroll-anchor-id=${this.messageAnchorKey(index)}>
         ${toolOnly || askUserRecordOnly ? null : this.renderMessageHeader(message, String(index))}
         ${message.parts.map((part) => this.renderPart(part, message))}
+        ${this.renderDeliveryMark(message)}
       </article>
     `;
   }

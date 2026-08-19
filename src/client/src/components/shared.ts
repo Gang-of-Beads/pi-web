@@ -62,12 +62,29 @@ export type ChatPart =
   | { type: "toolResult"; toolCallId?: string; toolName: string; text: string; isError: boolean; content?: unknown; details?: unknown }
   | { type: "empty" };
 
+/**
+ * Delivery state of a message this browser sent, in the order it advances.
+ * Only messages sent from this browser carry one: history loaded from the
+ * server is delivered by definition and stays unmarked.
+ */
+export type MessageDeliveryState = "sending" | "received" | "queued" | "delivered" | "failed";
+
+export interface MessageDelivery {
+  /** Correlation id minted by this browser and echoed back by the server. */
+  clientMessageId: string;
+  state: MessageDeliveryState;
+  /** How the agent will take the message when it is still queued. */
+  kind?: "steer" | "followUp";
+}
+
 export interface ChatLine {
   role: "user" | "assistant" | "tool" | "system" | "bash" | "skill";
   parts: ChatPart[];
   source?: "compaction" | "branch_summary";
   meta?: {
     timestamp?: string;
+    /** Present only on messages this browser sent; see MessageDelivery. */
+    delivery?: MessageDelivery;
     model?: { provider?: string; id?: string; responseId?: string };
     /** Thinking level the assistant message was generated with, when known. */
     thinkingLevel?: string;
@@ -529,6 +546,15 @@ export const chatStyles = css`
   .queued-message:first-of-type { padding-top: 0; border-top: 0; }
   .queued-kind { color: var(--pi-muted); font-size: 12px; text-transform: uppercase; }
   .queued-dialogs { margin: -8px 0 14px; padding: 0 4px; color: var(--pi-muted); font-size: 12px; text-align: center; }
+  /* Delivery mark: bottom-right of the sender's own bubble, quiet enough to
+     ignore while reading and specific enough to answer "did that send?". */
+  .delivery-mark { display: flex; align-items: center; justify-content: flex-end; gap: 5px; margin: 6px -2px -4px 0; color: var(--pi-dim); font: 11px system-ui, sans-serif; }
+  .delivery-mark .delivery-glyph { font-size: 12px; letter-spacing: -1px; line-height: 1; }
+  .delivery-mark.pending { color: var(--pi-dim); }
+  .delivery-mark.pending .delivery-glyph { animation: pulse 1.4s ease-in-out infinite; }
+  .delivery-mark.received { color: var(--pi-muted); }
+  .delivery-mark.delivered { color: var(--pi-success); }
+  .delivery-mark.failed { color: var(--pi-danger); font-weight: 600; }
   .session-activity { max-width: 100%; min-width: 0; box-sizing: border-box; display: grid; gap: 4px; margin: 0 0 14px; padding: 12px; border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-surface); color: var(--pi-text); overflow: hidden; }
   .session-activity.compacting { border-color: var(--pi-purple-border); background: var(--pi-purple-surface); }
   .session-activity strong { color: var(--pi-purple); }

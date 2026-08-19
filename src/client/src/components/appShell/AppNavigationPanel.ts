@@ -353,17 +353,28 @@ export class AppNavigationPanel extends LitElement {
     machine-switcher { flex: 1 1 auto; min-width: 0; }
     :host([compact]) header { display: none; }
     .header-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
-    /* Expanded sections share the panel height equally, so collapsing one
-       section distributes its space to every remaining section, not just the
-       session list. Collapsed sections keep only their heading height. */
-    machine-list, project-list, workspace-list, session-list { flex: 1 1 0px; min-height: 0; overflow: hidden; border-bottom: 1px solid var(--pi-border-muted); }
+    /* Sessions are the working surface; machines/projects/workspaces are
+       context pickers that are chosen once and then read at a glance. So the
+       pickers size to their content up to a cap (they scroll internally past
+       it) and the session list takes every remaining pixel. Splitting the
+       height equally, as this panel used to, left a 33-session list showing a
+       single row while a one-machine list held the same space. */
+    machine-list, project-list, workspace-list, session-list { min-height: 0; overflow: hidden; border-bottom: 1px solid var(--pi-border-muted); }
+    machine-list, project-list, workspace-list { flex: 0 1 auto; max-height: var(--pi-nav-picker-max-height, 30vh); }
+    session-list { flex: 1 1 auto; min-height: var(--pi-nav-sessions-min-height, 220px); }
+    /* Compact mode shows one section at a time, so the visible one takes the
+       whole body and the cap would only shorten it. */
     :host([compact]) machine-list,
     :host([compact]) project-list,
     :host([compact]) workspace-list,
-    :host([compact]) session-list { flex: 1 1 auto; }    machine-list[collapsed],
+    :host([compact]) session-list { flex: 1 1 auto; max-height: none; min-height: 0; }
+    machine-list[collapsed],
     project-list[collapsed],
     workspace-list[collapsed],
-    session-list[collapsed] { flex: 0 0 auto; min-height: auto; overflow: hidden; }
+    session-list[collapsed] { flex: 0 0 auto; min-height: auto; max-height: none; overflow: hidden; }
+    /* Goals are workspace context under the session list: capped so a long
+       task list cannot push the sessions it belongs to off-screen. */
+    goal-panel { flex: 0 1 auto; min-height: 0; max-height: var(--pi-nav-goals-max-height, 26vh); overflow: auto; }
     button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; }
   `;
 }
