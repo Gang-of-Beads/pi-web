@@ -1,0 +1,74 @@
+# Auto-release every push to main: create a v<date>-<sha> tag, build, and
+# publish a GitHub Release with the packed tarball attached, so the fork can
+# be used without building from source (see release-tarball.yml for the
+# manual path — this workflow reuses the same `npm pack` artifact shape).
+#
+# One workflow on purpose: a tag/release created with GITHUB_TOKEN does not
+# trigger other workflows, so the tag + build + release must happen here.
+name: Auto-release main
+
+on:
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Tag, build, publish release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Same gate as release-tarball.yml: a release that fails verify is
+      # worse than no release.
+      - name: Verify
+        run: npm run verify
+
+      - name: Pack
+        id: pack
+        run: |
+          sha="$(git rev-parse --short HEAD)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "tarball=$(npm pack --silent)" >> "$GITHUB_OUTPUT"
+          echo "tag=v$(date +%Y%m%d)-${sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Create tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if git ls-remote --tags origin "${{ steps.pack.outputs.tag }}" | grep -q .; then
+            echo "tag ${{ steps.pack.outputs.tag }} already exists"
+            exit 0
+          fi
+          git tag "${{ steps.pack.outputs.tag }}" HEAD
+          git push origin "${{ steps.pack.outputs.tag }}"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.pack.outputs.tag }}"
+          tarball="${{ steps.pack.outputs.tarball }}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "release $tag already exists; uploading asset if missing"
+            gh release upload "$tag" "$tarball" --clobber || true
+          else
+            gh release create "$tag" "$tarball" \
+              --title "$tag" \
+              --notes "Auto-build of ${{ steps.pack.outputs.sha }}: pre-built tarball (npm pack shape, dist included). Install with: npm i -g <tarball-url> or use in a checkout." \
+              --repo ${{ github.repository }}
+          fi
