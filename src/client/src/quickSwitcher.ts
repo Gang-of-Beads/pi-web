@@ -18,7 +18,14 @@ import { sessionMatchesSearch } from "./sessionSearch";
  * testable without rendering the sheet.
  */
 
-export type QuickSwitcherGroupId = "waiting" | "interrupted" | "active" | "unread" | "today" | "yesterday" | "earlier";
+export type QuickSwitcherGroupId = "error" | "waiting" | "interrupted" | "active" | "unread" | "pinned" | "today" | "yesterday" | "earlier";
+
+/** Filters applied before grouping; an empty filter is focus mode (everything). */
+export interface QuickSwitcherFilter {
+  machineId?: string;
+  projectId?: string;
+  workspacePath?: string;
+}
 
 export interface QuickSwitcherGroup {
   id: QuickSwitcherGroupId;
@@ -29,12 +36,16 @@ export interface QuickSwitcherGroup {
 export interface QuickSwitcherModelInput {
   sessions: readonly SessionInfo[];
   activeSessionIds: ReadonlySet<string>;
+  /** Sessions whose agent stopped on an error (model unavailable, tool failure). */
+  errorSessionIds?: ReadonlySet<string>;
   /** Sessions whose agent is blocked on an `ask_user` answer. */
   waitingSessionIds?: ReadonlySet<string>;
   /** Sessions that finished work the user has not looked at yet. */
   unreadSessionIds?: ReadonlySet<string>;
   /** Sessions whose run a restart cut off, from the daemon's interrupted record. */
   interruptedSessionIds?: ReadonlySet<string>;
+  /** Sessions the user pinned, kept above plain recency. */
+  pinnedSessionIds?: ReadonlySet<string>;
   query: string;
   now: number;
 }
@@ -46,18 +57,21 @@ export interface QuickSwitcherModel {
 
 /**
  * Groups in the order they are shown, which is the order of how much they want
- * the user: an agent blocked on a question cannot progress at all without them,
- * work that was cut off will never finish on its own, work in flight may still
- * need them, finished-but-unseen work is the reason they opened the switcher,
- * and everything else is plain recency.
+ * the user: an agent that errored is stuck until someone looks, one blocked on
+ * a question cannot progress without an answer, a cut-off run will never finish
+ * on its own, work in flight may still need them, finished-but-unseen work is
+ * the reason they opened the switcher, a pinned session is one they chose to
+ * keep close, and everything else is plain recency.
  */
-const GROUP_ORDER = ["waiting", "interrupted", "active", "unread", "today", "yesterday", "earlier"] as const;
+const GROUP_ORDER = ["error", "waiting", "interrupted", "active", "unread", "pinned", "today", "yesterday", "earlier"] as const;
 
 const GROUP_TITLES: Record<QuickSwitcherGroupId, string> = {
+  error: "Needs attention",
   waiting: "Waiting for you",
   interrupted: "Interrupted",
   active: "Working",
   unread: "Finished",
+  pinned: "Pinned",
   today: "Today",
   yesterday: "Yesterday",
   earlier: "Earlier",
@@ -74,14 +88,14 @@ export function quickSwitcherModel(input: QuickSwitcherModelInput): QuickSwitche
 
   const byGroup = new Map<QuickSwitcherGroupId, SessionInfo[]>();
   for (const session of matches) {
-    const groupId = quickSwitcherGroupId(
-      session,
-      input.activeSessionIds,
-      input.waitingSessionIds ?? EMPTY_IDS,
-      input.unreadSessionIds ?? EMPTY_IDS,
-      input.interruptedSessionIds ?? EMPTY_IDS,
-      input.now,
-    );
+    const groupId = quickSwitcherGroupId(session, {
+      active: input.activeSessionIds,
+      error: input.errorSessionIds ?? EMPTY_IDS,
+      waiting: input.waitingSessionIds ?? EMPTY_IDS,
+      unread: input.unreadSessionIds ?? EMPTY_IDS,
+      interrupted: input.interruptedSessionIds ?? EMPTY_IDS,
+      pinned: input.pinnedSessionIds ?? EMPTY_IDS,
+    }, input.now);
     const group = byGroup.get(groupId) ?? [];
     group.push(session);
     byGroup.set(groupId, group);
@@ -103,20 +117,28 @@ export function quickSwitcherModel(input: QuickSwitcherModelInput): QuickSwitche
  * blocked on a question outranks still running, which outranks finished work
  * the user has not read.
  */
-function quickSwitcherGroupId(
-  session: SessionInfo,
-  activeSessionIds: ReadonlySet<string>,
-  waitingSessionIds: ReadonlySet<string>,
-  unreadSessionIds: ReadonlySet<string>,
-  interruptedSessionIds: ReadonlySet<string>,
-  now: number,
-): QuickSwitcherGroupId {
-  if (waitingSessionIds.has(session.id)) return "waiting";
+interface SessionStateSets {
+  active: ReadonlySet<string>;
+  error: ReadonlySet<string>;
+  waiting: ReadonlySet<string>;
+  unread: ReadonlySet<string>;
+  interrupted: ReadonlySet<string>;
+  pinned: ReadonlySet<string>;
+}
+
+function quickSwitcherGroupId(session: SessionInfo, sets: SessionStateSets, now: number): QuickSwitcherGroupId {
+  // An error stops the agent until someone intervenes, so it outranks even a
+  // question the user could answer to keep going.
+  if (sets.error.has(session.id)) return "error";
+  if (sets.waiting.has(session.id)) return "waiting";
   // Only while it is still stopped: a session that has been picked up again is
   // reported by what it is doing now, not by what a past restart did to it.
-  if (interruptedSessionIds.has(session.id) && !activeSessionIds.has(session.id)) return "interrupted";
-  if (activeSessionIds.has(session.id)) return "active";
-  if (unreadSessionIds.has(session.id)) return "unread";
+  if (sets.interrupted.has(session.id) && !sets.active.has(session.id)) return "interrupted";
+  if (sets.active.has(session.id)) return "active";
+  if (sets.unread.has(session.id)) return "unread";
+  // A pin is a floor, not a ceiling: it lifts an otherwise-idle session above
+  // plain recency, but never hides that the same session needs attention.
+  if (sets.pinned.has(session.id)) return "pinned";
   const modified = Date.parse(session.modified);
   if (Number.isNaN(modified)) return "earlier";
   const age = now - modified;
@@ -132,6 +154,34 @@ function byMostRecentlyModified(first: SessionInfo, second: SessionInfo): number
 function sortableTimestamp(value: string): number {
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+/**
+ * Narrow the session list to a chosen device, project or workspace before it is
+ * grouped. An empty filter is focus mode: every session the switcher loaded,
+ * across every workspace, so the default is breadth and narrowing is a choice.
+ *
+ * Project is matched through the workspaces that belong to it, since a session
+ * knows its workspace path but not its project id.
+ */
+export function quickSwitcherFilterSessions(
+  sessions: readonly SessionInfo[],
+  filter: QuickSwitcherFilter,
+  workspaces: readonly Workspace[],
+): SessionInfo[] {
+  const projectPaths = filter.projectId === undefined
+    ? undefined
+    : new Set(workspaces.filter((workspace) => workspace.projectId === filter.projectId).map((workspace) => workspace.path));
+  return sessions.filter((session) => {
+    if (filter.workspacePath !== undefined && session.cwd !== filter.workspacePath) return false;
+    if (projectPaths !== undefined && !projectPaths.has(session.cwd)) return false;
+    return true;
+  });
+}
+
+/** Whether any filter is set; false means focus mode (show everything). */
+export function quickSwitcherFilterActive(filter: QuickSwitcherFilter): boolean {
+  return filter.machineId !== undefined || filter.projectId !== undefined || filter.workspacePath !== undefined;
 }
 
 /**
