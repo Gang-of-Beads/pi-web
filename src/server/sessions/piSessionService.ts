@@ -3953,7 +3953,17 @@ export class PiSessionService implements SessionRouteService {
     this.events.publishGlobal(startupToken === undefined ? { type: "session.startup", activity } : { type: "session.startup", startupToken, activity });
   }
 
+  private readonly lastActivityKeyBySession = new Map<string, string>();
+
   private publishActivity(session: PiAgentSession, label: string, phase: "active" | "idle" | "error", detail?: string): void {
+    // Every text_delta reached publishActivityForEvent and re-broadcast the
+    // identical "receiving response" activity: 2 more stringifies + sockets
+    // sends per token, on the agent's own event loop. Dedupe so only actual
+    // transitions (or detail changes, e.g. a new tool name) are published;
+    // the heartbeat's repeat of an unchanged activity is deduped too.
+    const key = `${phase}\u0000${label}\u0000${detail ?? ""}`;
+    if (this.lastActivityKeyBySession.get(session.sessionId) === key) return;
+    this.lastActivityKeyBySession.set(session.sessionId, key);
     const at = new Date().toISOString();
     const stored = detail === undefined ? { phase, label, at } : { phase, label, detail, at };
     this.activities.set(session.sessionId, stored);
@@ -4016,6 +4026,15 @@ export class PiSessionService implements SessionRouteService {
     const warnings = this.warningsForSession(session);
     const pendingAsk = this.pendingAskStore.pendingAsk(session.sessionId);
     const pendingDialogs = this.pendingExtensionDialogStore.pendingDialogs(session.sessionId);
+    // One transcript pass feeds both the count and the visible queue list:
+    // consumed-message reconciliation walks session.messages, and running it
+    // once per status keeps the per-event cost O(history) instead of 3x.
+    const queuedMessages = queuedMessagesFromSession(session, this.compactionQueuedMessages(session.sessionId));
+    const consumed = consumedUserMessageTexts(session);
+    const visibleQueued = [];
+    for (const message of queuedMessages) {
+      if (!consumed.has(message.text)) visibleQueued.push(message);
+    }
     return {
       sessionId: session.sessionId,
       persisted: sessionFileExists(session.sessionFile),
@@ -4024,8 +4043,8 @@ export class PiSessionService implements SessionRouteService {
       isStreaming: session.isStreaming,
       isCompacting: session.isCompacting,
       isBashRunning: session.isBashRunning,
-      pendingMessageCount: this.pendingMessageCount(session),
-      queuedMessages: queuedMessagesFromSession(session, this.compactionQueuedMessages(session.sessionId)),
+      pendingMessageCount: visibleQueued.length,
+      queuedMessages: visibleQueued,
       messageCount: session.messages.length,
       tokens: stats.tokens,
       cost: stats.cost,
@@ -4051,9 +4070,7 @@ export class PiSessionService implements SessionRouteService {
   }
 
   private pendingMessageCount(session: PiAgentSession): number {
-    const consumed = consumedUserMessageTexts(session);
-    const pending = queuedMessagesFromSession(session, this.compactionQueuedMessages(session.sessionId)).filter((message) => !consumed.has(message.text));
-    return pending.length;
+    return queuedMessagesFromSession(session, this.compactionQueuedMessages(session.sessionId)).length;
   }
 
   private compactionQueuedMessages(sessionId: string): readonly QueuedPrompt[] {
@@ -4705,7 +4722,7 @@ function stringifyToolResult(result: unknown): string {
     if (text !== undefined) return text;
     const content = getProperty(result, "content");
     if (Array.isArray(content)) return stringifyToolResult(content);
-    return JSON.stringify(result, null, 2);
+    return JSON.stringify(result);
   }
   return stringifyPrimitive(result);
 }

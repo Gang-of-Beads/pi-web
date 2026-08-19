@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupChatMessages, summarizeChatGroup } from "./chatGroups";
+import { groupChatMessages, summarizeChatGroup, tryAppendGroupChatMessage } from "./chatGroups";
 import type { ChatLine } from "./components/shared";
 
 const text = (role: ChatLine["role"], value: string): ChatLine => ({ role, parts: [{ type: "text", text: value }] });
@@ -119,5 +119,62 @@ describe("summarizeChatGroup", () => {
 
   it("summarizes mixed groups by role counts", () => {
     expect(summarizeChatGroup([text("tool", "a"), text("system", "b"), text("tool", "c")])).toBe("3 events · 2 tool · 1 system");
+  });
+});
+
+describe("tryAppendGroupChatMessage", () => {
+  it("appends a readable message without touching the prefix groups", () => {
+    const first = text("user", "first");
+    const second = text("assistant", "answer");
+    const oldMessages = [first, second];
+    const oldGroups = groupChatMessages(oldMessages, 0);
+    expect(oldGroups).toHaveLength(2);
+    const next = [...oldMessages, text("user", "follow up")];
+
+    const result = tryAppendGroupChatMessage(oldMessages, oldGroups, next);
+    // Deep prefix identity preserved (stable references for Lit); only the
+    // tail (old last message + appended) is rebuilt.
+    expect(result?.[0]).toBe(oldGroups[0]);
+    expect(result?.[1]).toStrictEqual(oldGroups[1]);
+    expect(result).toHaveLength(3);
+    expect(result?.at(-1)).toMatchObject({ kind: "message", index: 2 });
+  });
+
+  it("merges an appended tool event into a trailing event group", () => {
+    const firstTool = { role: "tool" as const, parts: [{ type: "toolResult" as const, toolName: "read", text: "ok", isError: false }] };
+    const oldMessages = [firstTool];
+    const oldGroups = groupChatMessages(oldMessages, 0);
+    const next = [...oldMessages, { role: "tool" as const, parts: [{ type: "toolResult" as const, toolName: "grep", text: "found", isError: false }] }];
+
+    const result = tryAppendGroupChatMessage(oldMessages, oldGroups, next);
+    const tail = result?.at(-1);
+    expect(tail?.kind).toBe("group");
+    if (tail?.kind === "group") {
+      expect(tail.messages).toHaveLength(2);
+      expect(tail.startIndex).toBe(0);
+      expect(tail.endIndex).toBe(1);
+    }
+  });
+
+  it("does not merge an appended event into a readable tail group", () => {
+    const oldMessages = [text("user", "ask"), text("assistant", "answer")];
+    const oldGroups = groupChatMessages(oldMessages, 0);
+    const next = [...oldMessages, { role: "tool" as const, parts: [{ type: "toolResult" as const, toolName: "read", text: "ok", isError: false }] }];
+
+    const result = tryAppendGroupChatMessage(oldMessages, oldGroups, next);
+    expect(result?.at(-1)?.kind).toBe("group");
+    expect(result).toHaveLength(oldGroups.length + 1);
+  });
+
+  it("returns undefined for non-append changes", () => {
+    const oldMessages = [text("assistant", "a")];
+    const oldGroups = groupChatMessages(oldMessages, 0);
+    // Same length, different tail: an edit, not an append.
+    expect(tryAppendGroupChatMessage(oldMessages, oldGroups, [text("assistant", "b")])).toBeUndefined();
+    // Prepended history: prior references do not line up.
+    const prepended = [text("user", "earlier"), ...oldMessages];
+    expect(tryAppendGroupChatMessage(oldMessages, oldGroups, prepended)).toBeUndefined();
+    // Empty previous list.
+    expect(tryAppendGroupChatMessage([], [], [text("user", "first")])).toBeUndefined();
   });
 });

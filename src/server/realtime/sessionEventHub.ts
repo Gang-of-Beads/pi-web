@@ -48,8 +48,13 @@ export class SessionEventHub {
   publish(sessionId: string, event: SessionUiEvent): void {
     const seq = (this.seqBySession.get(sessionId) ?? 0) + 1;
     this.seqBySession.set(sessionId, seq);
+    // Keep seq monotonic (join-time watermark) but skip serialization when no
+    // browser is subscribed: stringifying every delta/tool event on the
+    // agent's event loop with zero listeners was measurable overhead.
+    const sockets = this.socketsBySession.get(sessionId);
+    if (sockets === undefined || sockets.size === 0) return;
     const payload = JSON.stringify({ ...projectBrowserSessionEvent(event), seq });
-    this.sendToSockets(this.socketsBySession.get(sessionId), payload);
+    this.sendToSockets(sockets, payload);
   }
 
   /**
@@ -72,6 +77,7 @@ export class SessionEventHub {
   }
 
   publishRealtime(event: RealtimeEvent): void {
+    if (this.globalSockets.size === 0) return;
     const payload = JSON.stringify(event);
     this.sendToSockets(this.globalSockets, payload);
   }

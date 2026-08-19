@@ -70,3 +70,50 @@ function isReadablePart(message: ChatLine, part: ChatPart): boolean {
   if (part.type === "skillInvocation" || part.type === "skillRead" || part.type === "image" || part.type === "askUserRecord") return true;
   return part.type === "text" && (message.role === "user" || message.role === "assistant" || message.role === "system" || message.role === "bash");
 }
+
+/**
+ * Incremental grouping for the streaming fast path.
+ *
+ * Live transcript updates are append-only: `appendText`/`appendThinking`
+ * keep every prior message object reference stable and add exactly one new
+ * tail message. In that case the previous groups are still correct for the
+ * whole prefix — reusing those same group objects lets Lit skip re-rendering
+ * them and keeps the per-message metadata cache hitting — and only the tail
+ * needs re-grouping (an appended event may merge into a trailing event group).
+ *
+ * Returns undefined when the change is not a pure append (prepended history,
+ * edited middle, or a fresh list); callers fall back to a full grouping.
+ */
+export function tryAppendGroupChatMessage(
+  previousMessages: readonly ChatLine[],
+  previousGroups: readonly ChatGroup[],
+  messages: readonly ChatLine[],
+): ChatGroup[] | undefined {
+  const prevLength = previousMessages.length;
+  if (prevLength === 0 || previousGroups.length === 0) return undefined;
+  if (messages.length !== prevLength + 1) return undefined;
+  // The whole prior list must be untouched; only the new tail may differ.
+  if (messages[prevLength - 1] !== previousMessages[prevLength - 1]) return undefined;
+  const appended = messages[prevLength];
+  if (appended === undefined) return undefined;
+
+  const lastGroup = previousGroups.at(-1);
+  if (lastGroup === undefined) return undefined;
+
+  const prefix = previousGroups.slice(0, -1);
+  let tailStartIndex: number;
+  let tailMessages: ChatLine[];
+  if (lastGroup.kind === "group") {
+    // Appended technical parts merge into the trailing event group.
+    tailStartIndex = lastGroup.startIndex;
+    tailMessages = [...lastGroup.messages, appended];
+  } else {
+    // A readable/tool-image tail never merges with a new message, but the
+    // old tail message was dropped from the prefix, so re-group it together
+    // with the appended one.
+    tailStartIndex = lastGroup.index;
+    tailMessages = [previousMessages[prevLength - 1], appended];
+  }
+  const tailGroups = groupChatMessages(tailMessages, tailStartIndex);
+  return [...prefix, ...tailGroups];
+}

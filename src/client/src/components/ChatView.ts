@@ -698,6 +698,18 @@ export class ChatView extends LitElement {
 
   private groupedMessages(): ChatGroup[] {
     if (this.groupedMessagesInput === this.messages && this.groupedMessagesStart === this.messageStart) return this.groupedMessagesCache;
+    // Streaming fast path: a pure append reuses the prefix group objects
+    // (Lit skips re-templating them, the metadata cache keeps hitting) and
+    // only re-groups the tail. Falls back to a full grouping otherwise.
+    const previous = this.groupedMessagesInput;
+    if (this.groupedMessagesStart === this.messageStart && previous !== undefined) {
+      const appended = tryAppendGroupChatMessage(previous, this.groupedMessagesCache, this.messages);
+      if (appended !== undefined) {
+        this.groupedMessagesInput = this.messages;
+        this.groupedMessagesCache = appended;
+        return appended;
+      }
+    }
     this.groupedMessagesInput = this.messages;
     this.groupedMessagesStart = this.messageStart;
     this.groupedMessagesCache = groupChatMessages(this.messages, this.messageStart);

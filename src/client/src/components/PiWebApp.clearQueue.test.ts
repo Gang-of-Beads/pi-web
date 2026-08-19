@@ -39,7 +39,7 @@ describe("PiWebApp queued-message clear wiring", () => {
     const controller = appSessionController(app);
     const clearServerQueue = vi.spyOn(controller, "clearServerQueue").mockResolvedValue(undefined);
     const replaceText = vi.fn();
-    vi.spyOn(PiWebApp.prototype, "promptEditor", "get").mockReturnValue({ replaceText, focusInput: vi.fn() } as never);
+    Object.defineProperty(app, "promptEditor", { get: () => ({ replaceText, focusInput: vi.fn() }), configurable: true });
 
     const render = renderChatView(app, state);
     const callback = templateCallbackAfterMarker(render, ".onClearServerQueue=") as (queued: { kind: string; text: string }[]) => void;
