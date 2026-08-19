@@ -39,6 +39,41 @@ git fetch -q fork
 branch=$(git rev-parse --abbrev-ref HEAD)
 remote_sha=$(git rev-parse "fork/$branch" 2>/dev/null || true)
 if [ -z "$remote_sha" ] || [ "$remote_sha" = "$(git rev-parse HEAD)" ]; then
+  # Remote matches HEAD — but dist may still be stale: a commit made
+  # directly in this checkout, or a failed/aborted build, leaves dist older
+  # than HEAD while the remote comparison says "up to date". Record the
+  # built revision in dist/HEAD.sha and rebuild when it differs.
+  recorded=$(cat dist/HEAD.sha 2>/dev/null || echo none)
+  current=$(git rev-parse HEAD)
+  if [ "$recorded" != "$current" ]; then
+    log "dist stale (built $recorded, HEAD $current); rebuilding"
+    if [ -n "$(git status --porcelain)" ]; then
+      log "working tree is dirty; refusing to build over uncommitted changes (exit 3)"
+      exit 3
+    fi
+    npm run build
+    git rev-parse HEAD > dist/HEAD.sha
+    log "build succeeded (stale-dist rebuild)"
+    start=$(date +%s)
+    while true; do
+      busy=$(curl -fsS --max-time 5 "$api/sessions/statuses" 2>/dev/null \
+        | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+            try { const r = JSON.parse(s).statuses ?? [];
+              console.log(r.filter((x)=>x.isStreaming===true||x.isBashRunning===true).length);
+            } catch { console.log("unknown"); }
+          })' || echo unknown)
+      if [ "$busy" = "0" ]; then
+        log "no runs in flight; restarting (stale-dist rebuild)"
+        systemctl --user restart pi-web-sessiond pi-web || true
+        exit 0
+      fi
+      if [ "$(date +%s)" -ge $((start + wait_timeout_seconds)) ]; then
+        log "gave up waiting for in-flight runs after ${wait_timeout_seconds}s"
+        exit 0
+      fi
+      sleep "$poll_seconds"
+    done
+  fi
   log "up to date ($(git rev-parse --short HEAD)); nothing to do"
   exit 0
 fi
@@ -53,6 +88,7 @@ git merge --ff-only "fork/$branch"
 
 log "building"
 npm run build
+git rev-parse HEAD > dist/HEAD.sha
 log "build succeeded"
 
 # Wait for in-flight runs before restarting. This is the whole point of the
