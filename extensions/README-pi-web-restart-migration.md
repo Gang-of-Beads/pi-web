@@ -27,3 +27,19 @@ visible home now: **Settings ▸ Machines ▸ Machines and updates**.
 
 Delete `~/.pi/agent/extensions/pi-web-restart.ts` and `/reload`. Nothing depends
 on it; the built-in command covers every case above.
+
+## Making the built-in command available
+
+The `/pi-web` command lives in this package's `extensions/` directory, which pi
+loads when the package is registered. Installing PI WEB from a release tarball
+does not register it, so the command is absent until the release directory is
+added as a local package:
+
+```
+# ~/.pi/agent/settings.json, "packages"
+"/home/you/pi-web-release/current"
+```
+
+Point it at the `current` symlink rather than a version directory, so the
+command follows the deployment instead of pinning to whichever release happened
+to be installed the day it was set up. Then `/reload`.
