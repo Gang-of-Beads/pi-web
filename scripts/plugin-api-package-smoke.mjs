@@ -42,12 +42,12 @@ export async function smokeInstalledPluginApi({ packageRoot, fixtureRoot, repoRo
   await cp(join(repoRoot, "test-fixtures", "plugin-api-consumers"), consumerRoot, { recursive: true });
   await cp(join(packageRoot, "examples", "workspace-provider-plugin"), join(consumerRoot, "dual-entry"), { recursive: true });
   await Promise.all([
-    mkdir(join(consumerRoot, "node_modules", "@jmfederico"), { recursive: true }),
+    mkdir(join(consumerRoot, "node_modules", "@vincenthanxiaodu"), { recursive: true }),
     mkdir(join(consumerRoot, "node_modules", "@types"), { recursive: true }),
     writeFile(join(consumerRoot, "package.json"), '{"private":true,"type":"module"}\n', "utf8"),
   ]);
   await Promise.all([
-    symlink(packageRoot, join(consumerRoot, "node_modules", "@jmfederico", "pi-web"), "dir"),
+    symlink(packageRoot, join(consumerRoot, "node_modules", "@vincenthanxiaodu", "pi-web"), "dir"),
     symlink(join(repoRoot, "node_modules", "@types", "node"), join(consumerRoot, "node_modules", "@types", "node"), "dir"),
   ]);
 
