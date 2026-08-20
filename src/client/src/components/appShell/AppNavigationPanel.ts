@@ -75,6 +75,7 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) goals: GoalRecordSummary[] = [];
   @property({ type: Boolean }) goalsLoading = false;
   @property({ attribute: false }) onRefreshGoals?: () => void | Promise<void>;
+  @property({ attribute: false }) onArchiveGoal?: (goal: GoalRecordSummary) => void | Promise<void>;
   @property({ attribute: false }) onMarkSessionRead?: (session: SessionInfo) => void | Promise<void>;
   @property({ attribute: false }) onMarkSessionsRead?: (sessions: SessionInfo[]) => void | Promise<void>;
   @property({ attribute: false }) onReloadSession?: (session: SessionInfo) => void | Promise<void>;
@@ -282,6 +283,7 @@ export class AppNavigationPanel extends LitElement {
         .goals=${this.goals}
         ?loading=${this.goalsLoading}
         .onRefresh=${() => this.onRefreshGoals?.()}
+        .onArchive=${(goal: GoalRecordSummary) => this.onArchiveGoal?.(goal)}
       ></goal-panel>
     `;
   }

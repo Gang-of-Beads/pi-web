@@ -56,6 +56,7 @@ import {
   parseTerminalInfo,
   parseThinkingLevelsResponse,
   parseWriteWorkspaceFileResponse,
+  parseGoalArchiveResponse,
   parsePiWebFleetReport,
   parsePiWebFleetRunResponse,
   parsePiWebSelfUpdateStatus,
@@ -215,6 +216,11 @@ export const workspacesApi = {
   },
   // Goal records live in the workspace, not in a session, so the listing is
   // workspace-scoped and shared by every session of that workspace.
+  archiveWorkspaceGoal: (projectId: string, workspaceId: string, goalId: string, machineId = "local") => request(
+    `${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/goals/${encodeURIComponent(goalId)}/archive`,
+    parseGoalArchiveResponse,
+    { method: "POST", body: JSON.stringify({}) },
+  ),
   workspaceGoals: (projectId: string, workspaceId: string, machineId = "local") => request(`${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/goals`, parseWorkspaceGoalsResponse, { cache: "no-store" }),
   workspaceTree: (projectId: string, workspaceId: string, path = "", machineId = "local") => request(`${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/tree?path=${encodeURIComponent(path)}`, parseFileTreeResponse),
   workspaceFile: (projectId: string, workspaceId: string, path: string, machineId = "local") => request(`${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/file?path=${encodeURIComponent(path)}`, parseFileContentResponse),

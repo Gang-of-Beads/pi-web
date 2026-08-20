@@ -59,6 +59,16 @@ pi-web therefore reads files, and asks the agent to make changes.
 | Focus a specific goal | Not supported | UI-gated and session-only; `/goal-focus` ignores its argument today. Upstream gap. |
 | Edit objective, tasks or status | Never from pi-web | Point 2. The agent owns these. |
 
+### What was implemented
+
+The container has no `pi-goal-x` installed, so `/goal-clear` cannot be driven
+there at all, and a web session has no confirmable UI even where it is. pi-web
+therefore implements the fallback protocol in `src/server/goals/goalArchive.ts`,
+exposed as `POST .../workspaces/:workspaceId/goals/:goalId/archive`, and the
+panel offers it behind a two-press confirm. The response carries
+`agentMayRecreate`, and the UI repeats it: a session already working the goal
+keeps its own copy until it reloads.
+
 ### Empirical check before implementing archive
 
 pi-web's own project-trust context sets `hasUI: false`

@@ -507,6 +507,16 @@ export interface GoalRecordSummary {
   totalTaskCount: number;
 }
 
+/** Outcome of archiving a goal from the browser; see docs/pi-goal-integration.md. */
+export interface GoalArchiveResponse {
+  readonly goalId: string;
+  readonly archivedPath: string;
+  /** True when the goal was already gone, which is not an error. */
+  readonly alreadyArchived: boolean;
+  /** True when a running agent may still be holding this goal in memory. */
+  readonly agentMayRecreate: boolean;
+}
+
 export interface WorkspaceGoalsResponse {
   goals: GoalRecordSummary[];
   /** Absolute path of the goals directory that was read, present even when empty. */

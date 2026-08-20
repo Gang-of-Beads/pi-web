@@ -2,7 +2,7 @@ import { LitElement, html, type TemplateResult } from "lit";
 import { customElement, query, state } from "lit/decorators.js";
 import { configApi, effectiveWorkspaceUploadFolder, fleetApi, projectsApi, selfUpdateApi, sessionsApi, terminalsApi, workspacesApi, workspaceEffectiveUploadFolder, type AskUserSubmission, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
   type QueuedSessionMessage, type SessionSubagentInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
-import type { PiWebFleetReport, PiWebFleetRunResponse } from "../../../shared/apiTypes";import type { AppAction } from "../actions";
+import type { GoalRecordSummary, PiWebFleetReport, PiWebFleetRunResponse } from "../../../shared/apiTypes";import type { AppAction } from "../actions";
 import { initialAppState, type AppState } from "../appState";
 import { isSessionActive } from "../../../shared/activity";
 import type { SessionStateBadgeKind } from "./activityBadge";
@@ -1542,6 +1542,7 @@ export class PiWebApp extends LitElement {
         .goals=${this.state.workspaceGoals}
         ?goalsLoading=${this.state.workspaceGoalsLoading}
         .onRefreshGoals=${() => this.workspaces.refreshWorkspaceGoals()}
+        .onArchiveGoal=${(goal: GoalRecordSummary) => this.workspaces.archiveWorkspaceGoal(goal.id)}
         .onReloadSession=${(session: SessionInfo) => this.sessions.reloadSession(session)}
         .onOpenSessionTree=${(session: SessionInfo) => this.openSessionTree(session)}
         .onCleanupSessions=${() => { this.openSessionCleanupDialog(); }}

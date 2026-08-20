@@ -22,17 +22,24 @@ import { listStyles } from "./shared";
  * reveals the task tree, the focused task, and each task's verification
  * contract.
  *
- * Read-only by design: the extension owns goal state, and a browser-side
- * mutation would race the agent that is working the goal.
+ * Reading is the default: the extension owns goal state, and a browser-side
+ * edit would race the agent working the goal. Archiving is the one exception,
+ * because a paused goal otherwise stays at the top of this list forever - the
+ * extension's own clear command refuses without a confirmable UI, which a web
+ * session has not got. It confirms first, and says what it will do.
  */
 @customElement("goal-panel")
 export class GoalPanel extends LitElement {
   @property({ attribute: false }) goals: GoalRecordSummary[] = [];
   @property({ type: Boolean }) loading = false;
   @property({ attribute: false }) onRefresh?: () => void | Promise<void>;
+  /** Archive a goal the agent is not going to finish; confirmed before it runs. */
+  @property({ attribute: false }) onArchive?: (goal: GoalRecordSummary) => void | Promise<void>;
 
   /** Expanded goal ids. Collapsed by default so many goals stay scannable. */
   @state() private expanded = new Set<string>();
+  /** The goal whose archive button has been armed; a second press runs it. */
+  @state() private confirmingArchiveId: string | undefined;
 
   override render(): TemplateResult {
     return html`
@@ -120,9 +127,37 @@ export class GoalPanel extends LitElement {
           ${goal.sisyphus ? html`<span class="goal-flag">Sisyphus</span>` : nothing}
           ${goal.autoContinue ? html`<span class="goal-flag">Auto-continue</span>` : nothing}
           ${tokens === undefined ? nothing : html`<span class="goal-tokens">${tokens}</span>`}
+          ${this.onArchive === undefined ? nothing : html`
+            <button
+              class="goal-archive"
+              type="button"
+              title="Move this goal out of the active list"
+              @click=${() => { this.confirmArchive(goal); }}
+            >${this.confirmingArchiveId === goal.id ? "Confirm archive" : "Archive goal"}</button>
+          `}
         </p>
+        ${this.confirmingArchiveId === goal.id ? html`
+          <p class="goal-archive-warning" role="alert">
+            Archiving moves this record to <code>archived/</code>. An agent already working this goal keeps its own copy until it is told to reload, so archive it while that session is idle.
+          </p>
+        ` : nothing}
       </div>
     `;
+  }
+
+  /**
+   * Two presses rather than a dialog: the first arms and explains, the second
+   * runs. A destructive action that reaches into another process's state should
+   * not happen on one stray tap, and a modal for it would be heavier than the
+   * panel it sits in.
+   */
+  private confirmArchive(goal: GoalRecordSummary): void {
+    if (this.confirmingArchiveId !== goal.id) {
+      this.confirmingArchiveId = goal.id;
+      return;
+    }
+    this.confirmingArchiveId = undefined;
+    void this.onArchive?.(goal);
   }
 
   private renderTask(task: GoalTaskSummary, depth: number, isCurrent: boolean): TemplateResult {
@@ -190,7 +225,11 @@ export class GoalPanel extends LitElement {
     .goal-bar-fill { display: block; height: 100%; width: 100%; transform-origin: left center; background: var(--pi-accent); transition: transform .2s ease; }
     .goal.done .goal-bar-fill { background: var(--pi-success); }
     .goal.blocked .goal-bar-fill { background: var(--pi-warning); }
-    .goal-meta, .goal-footer { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 6px 10px 8px; color: var(--pi-muted); font-size: 11px; }
+    .goal-meta, .goal-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; padding: 6px 10px 8px; color: var(--pi-muted); font-size: 11px; }
+    .goal-archive { margin-left: auto; border: 1px solid var(--pi-border); border-radius: 999px; background: var(--pi-surface); color: var(--pi-muted); padding: 3px 10px; font: inherit; font-size: 11px; cursor: pointer; }
+    .goal-archive:hover, .goal-archive:focus-visible { color: var(--pi-danger); border-color: var(--pi-danger); }
+    .goal-archive-warning { margin: 0; padding: 0 10px 10px; color: var(--pi-warning); font-size: 11px; line-height: 1.45; }
+    .goal-archive-warning code { font-family: var(--pi-control-monospace-font-family, ui-monospace, monospace); }
     .goal-current { color: var(--pi-text); }
     .goal-reason { color: var(--pi-warning); }
     .goal-reason.detail { padding: 8px 10px 0; margin: 0; font-size: 12px; line-height: 1.4; }

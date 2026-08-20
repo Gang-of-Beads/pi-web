@@ -10,13 +10,13 @@ import { InMemoryWorkspaceSelectionMemory, selectPreferredWorkspace, type Worksp
 const WORKSPACE_TOPOLOGY_REFRESH_DEBOUNCE_MS = 50;
 
 export interface WorkspaceControllerDependencies {
-  api?: Pick<typeof defaultApi, "sessions" | "workspaces" | "workspaceGoals">;
+  api?: Pick<typeof defaultApi, "sessions" | "workspaces" | "workspaceGoals" | "archiveWorkspaceGoal">;
   onBackgroundError?: (message: string, error: unknown) => void;
   topologyRefreshDebounceMs?: number;
 }
 
 export class WorkspaceController {
-  private readonly api: Pick<typeof defaultApi, "sessions" | "workspaces" | "workspaceGoals">;
+  private readonly api: Pick<typeof defaultApi, "sessions" | "workspaces" | "workspaceGoals" | "archiveWorkspaceGoal">;
   private readonly onBackgroundError: (message: string, error: unknown) => void;
   private readonly topologyRefreshes: TrailingRefreshCoordinator<string>;
 
@@ -107,6 +107,28 @@ export class WorkspaceController {
     this.setState({ workspaceGoals: goals, workspaceGoalsLoading: false });
   }
 
+
+  /**
+   * Archive a goal, then re-read the directory so the panel reflects the file
+   * system rather than an assumption.
+   *
+   * A running agent focused on that goal keeps its own copy until it reloads,
+   * so the outcome says whether that is possible instead of pretending the
+   * record is gone for good.
+   */
+  async archiveWorkspaceGoal(goalId: string, workspace = this.getState().selectedWorkspace): Promise<void> {
+    if (workspace === undefined) return;
+    const machineId = selectedMachineId(this.getState());
+    try {
+      const result = await this.api.archiveWorkspaceGoal(workspace.projectId, workspace.id, goalId, machineId);
+      if (result.agentMayRecreate) {
+        this.setState({ error: "Goal archived. A session already working it keeps its own copy until it reloads, so run /goal-refresh there if it comes back." });
+      }
+    } catch (error) {
+      this.setState({ error: `Could not archive the goal: ${error instanceof Error ? error.message : String(error)}` });
+    }
+    await this.refreshWorkspaceGoals(workspace, machineId);
+  }
 
   async refreshProjectWorkspaces(projectId: string): Promise<Workspace[]> {
     const project = this.getState().projects.find((candidate) => candidate.id === projectId);
