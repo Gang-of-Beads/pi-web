@@ -7,9 +7,10 @@
 # deployment in ~/pi-web-release/<tag> with a `current` symlink, so machines
 # do not need git or a toolchain to run the latest build.
 #
-# Usage: release-update.sh [--apply]
+# Usage: release-update.sh [--apply] [--force]
 #   default: download + verify + stage, report what would change
 #   --apply: stage, switch the symlink, and restart the local services
+#   --force: restart without waiting for in-flight runs to finish
 #
 # Services are restarted via systemd (Linux) or launchctl (macOS).
 set -euo pipefail
@@ -20,8 +21,10 @@ CURRENT="$BASE/current"
 API="https://api.github.com/repos/$REPO/releases/latest"
 
 apply=false
+force=false
 for arg in "$@"; do
   [ "$arg" = "--apply" ] && apply=true
+  [ "$arg" = "--force" ] && force=true
 done
 
 mkdir -p "$BASE"
@@ -168,7 +171,18 @@ restart_services() {
   fi
 }
 
-wait_for_idle
+# The drain protects other people's work in progress. It cannot protect a run
+# that is itself driving the deployment: an agent session with auto-continue on
+# is never idle, so waiting for it to finish is waiting for something that will
+# not happen while it waits. --force says the caller knows which run is in
+# flight and accepts interrupting it - transcripts are on disk and an
+# interrupted run is recorded as resumable, so the cost is a lost turn, not
+# lost work.
+if [ "$force" = true ]; then
+  echo "--force: restarting without draining in-flight runs"
+else
+  wait_for_idle
+fi
 
 echo "pointing services at $CURRENT"
 sd="$HOME/.config/systemd/user"
