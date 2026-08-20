@@ -74,17 +74,18 @@ test.describe("mobile shell", () => {
       const root = app?.shadowRoot;
       if (root === undefined || root === null) return undefined;
       const bar = root.querySelector("app-context-bar");
-      const tabs = root.querySelector("app-mobile-main-tabs");
       const height = (element: Element | null) => element === null ? 0 : element.getBoundingClientRect().height;
       return {
-        chromeHeight: height(bar) + height(tabs),
+        chromeHeight: height(bar),
         viewportHeight: window.innerHeight,
       };
     });
 
     expect(layout).toBeDefined();
-    // Chrome is allowed to exist, but not to eat a third of a phone screen.
-    expect(layout!.chromeHeight).toBeLessThan(layout!.viewportHeight / 3);
+    // This once summed the context bar and a tab strip; the strip is gone, so
+    // summing it measured nothing. The bar alone is the chrome now, and a
+    // quarter of the screen is already twice what it actually takes.
+    expect(layout!.chromeHeight).toBeLessThan(layout!.viewportHeight / 4);
   });
 });
 
