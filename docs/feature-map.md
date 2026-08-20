@@ -16,7 +16,7 @@ but does not move them.
 
 | Capability | Entry point today | After |
 |---|---|---|
-| Chat, Files, Terminal panels | Workspace tool strip; mobile tab strip; `⌘1/2/4`; `?tool=` | Same surfaces, restyled; the mobile strip becomes a single overflow-aware bar (task-7) |
+| Chat, Files, Terminal panels | Workspace tool strip; mobile tab strip; `⌘1/2/4`; `?tool=` | Desktop tool strip unchanged; on mobile ✅ a "Go to a view" sheet listing every view **by name** replaced the icon strip (`AppMobileToolSheet`) |
 | Session list, search, start, archive, rename, restore, delete | Session list rows and its `⋯` menu | Same; machine/project/workspace rows gained right-click and long-press onto their menus, and the mobile session sheet has its own row menu with pin and rename |
 | Quick switcher | `⌘P`, context bar, mobile quick action | Same |
 | Actions palette | `⌘K`, "Actions" button, context bar | Same; stops being the only home for things listed below |
@@ -73,8 +73,8 @@ panel body, and carries the inline create controls. The session list keeps the
 body the rest of the time. Rows answer hold (touch) and right-click (mouse) with
 the menu their `⋯` button opens.
 
-Still to place, by task: theme selection (task-8), the mobile tool strip
-(task-7), panel-size resets and the unassigned `⌘3` (task-9 cleanup).
+Still to place, by task: theme selection (task-8), panel-size resets and the
+unassigned `⌘3` (task-9 cleanup).
 
 ## Rules this map enforces
 

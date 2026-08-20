@@ -755,3 +755,56 @@ test.describe("quick switcher", () => {
     expect(measured.menus).toBeGreaterThan(0);
   });
 });
+
+test.describe("workspace views on a phone", () => {
+  test.skip(({ isMobile }) => isMobile === false, "phone-viewport behaviour");
+
+  test("reaches every view by name from one control instead of an icon strip", async ({ page }) => {
+    // Workspace views only exist once a workspace is chosen, exactly as the
+    // strip behaved before it.
+    const name = "e2e-fixture-nav";
+    await createProjectViaApi(page, name);
+    await openApp(page);
+    await selectProject(page, name);
+    await page.waitForTimeout(1000);
+
+    // The strip is gone: nothing renders it, and its 57px band is back in the
+    // content area.
+    const stripPresent = await page.evaluate(() => document.querySelector("pi-web-app")?.shadowRoot?.querySelector("app-mobile-main-tabs") !== null
+      && document.querySelector("pi-web-app")?.shadowRoot?.querySelector("app-mobile-main-tabs") !== undefined);
+    expect(stripPresent).toBe(false);
+
+    const opened = await page.evaluate(() => {
+      const bar = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("app-context-bar")?.shadowRoot;
+      const button = bar?.querySelector<HTMLElement>('[aria-label="Go to a view"]');
+      button?.click();
+      return button !== null && button !== undefined;
+    });
+    expect(opened, "the views control must exist in the context bar").toBe(true);
+
+    await page.waitForFunction(() => document.querySelector("pi-web-app")?.shadowRoot?.querySelector("app-mobile-tool-sheet") !== null, undefined, { timeout: 10_000 });
+    const labels = await page.evaluate(() => [...(document.querySelector("pi-web-app")?.shadowRoot
+      ?.querySelector("app-mobile-tool-sheet")?.shadowRoot
+      ?.querySelectorAll(".tool-label") ?? [])].map((element) => element.textContent?.trim() ?? ""));
+
+    // Named, not drawn: the terminal was previously a glyph in the strip.
+    expect(labels).toContain("Chat");
+    expect(labels).toContain("Sessions");
+    expect(labels).toContain("Terminal");
+    expect(labels).toContain("Files");
+  });
+
+  test("closes the views sheet on system back rather than leaving the app", async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      const bar = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("app-context-bar")?.shadowRoot;
+      bar?.querySelector<HTMLElement>('[aria-label="Go to a view"]')?.click();
+    });
+    await page.waitForFunction(() => document.querySelector("pi-web-app")?.shadowRoot?.querySelector("app-mobile-tool-sheet") !== null, undefined, { timeout: 10_000 });
+
+    await page.goBack();
+
+    await page.waitForFunction(() => document.querySelector("pi-web-app")?.shadowRoot?.querySelector("app-mobile-tool-sheet") === null, undefined, { timeout: 10_000 });
+    expect(await page.evaluate(() => document.querySelector("pi-web-app") !== null)).toBe(true);
+  });
+});

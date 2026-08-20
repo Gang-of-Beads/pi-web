@@ -20,6 +20,8 @@ export class AppContextBar extends LitElement {
    * should never cost a walk through the navigation accordion.
    */
   @property({ attribute: false }) onQuickSwitch?: () => void;
+  /** Opens the workspace views sheet; replaces the old icon strip. */
+  @property({ attribute: false }) onOpenTools?: () => void;
   /** Rename the session being read. Absent when renaming is not available. */
   @property({ attribute: false }) onRenameSession?: (name: string) => void;
   /** Whether the session being read has work in progress. */
@@ -149,7 +151,7 @@ export class AppContextBar extends LitElement {
               aria-label=${`Rename session ${label}`}
               @click=${() => { this.renameSeed = label; this.renamingSession = true; }}
             >✎</button>`}
-        ${this.hasContextActions() ? html`<div class="context-actions inline">${this.renderQuickSwitchButton()}${this.renderActionsButton()}${this.refreshControl}</div>` : null}
+        ${this.hasContextActions() ? html`<div class="context-actions inline">${this.renderQuickSwitchButton()}${this.renderToolsButton()}${this.renderActionsButton()}${this.refreshControl}</div>` : null}
       </nav>
     `;
   }
@@ -225,7 +227,7 @@ export class AppContextBar extends LitElement {
             </button>
           </li>
         </ol>
-        ${this.hasContextActions() ? html`<div class="context-actions">${this.renderQuickSwitchButton()}${this.renderActionsButton()}${this.refreshControl}</div>` : null}
+        ${this.hasContextActions() ? html`<div class="context-actions">${this.renderQuickSwitchButton()}${this.renderToolsButton()}${this.renderActionsButton()}${this.refreshControl}</div>` : null}
       </nav>
     `;
   }
@@ -244,6 +246,22 @@ export class AppContextBar extends LitElement {
       <button type="button" class="context-action-button" title="Sessions" aria-label="Open sessions" @click=${(event: MouseEvent) => { event.stopPropagation(); this.onQuickSwitch?.(); }}>
         <svg class="context-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M4 6h16M4 12h16M4 18h10"></path>
+        </svg>
+      </button>
+    `;
+  }
+
+  /**
+   * One control for every workspace view. The strip of unlabelled icons it
+   * replaces cost 57px on every mobile surface and hid the terminal behind a
+   * glyph; a sheet names each view instead.
+   */
+  private renderToolsButton() {
+    if (this.onOpenTools === undefined) return null;
+    return html`
+      <button type="button" class="context-action-button" title="Go to a view" aria-label="Go to a view" aria-haspopup="dialog" @click=${(event: MouseEvent) => { event.stopPropagation(); this.onOpenTools?.(); }}>
+        <svg class="context-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 5h6v6H4zM14 5h6v6h-6zM4 13h6v6H4zM14 13h6v6h-6z"></path>
         </svg>
       </button>
     `;
@@ -270,7 +288,7 @@ export class AppContextBar extends LitElement {
   }
 
   private hasContextActions(): boolean {
-    return this.refreshControl !== undefined || this.onShowActions !== undefined || this.onQuickSwitch !== undefined;
+    return this.refreshControl !== undefined || this.onShowActions !== undefined || this.onQuickSwitch !== undefined || this.onOpenTools !== undefined;
   }
 
   private observeContextItems(): void {

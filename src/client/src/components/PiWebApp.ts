@@ -74,8 +74,8 @@ import "./SettingsDialog";
 import "./WorkspacePanel";
 import type { WorkspacePanelEmptyState } from "./WorkspacePanel";
 import "./appShell/AppContextBar";
-import "./appShell/AppMobileMainTabs";
-import type { AppMobileMainTab } from "./appShell/AppMobileMainTabs";
+import type { AppMobileView } from "./appShell/AppMobileToolSheet";
+import "./appShell/AppMobileToolSheet";
 import { shouldShowMachinesSection, type AppNavigationPanel, type NavigationFocusTarget } from "./appShell/AppNavigationPanel";
 import "./appShell/AppPanelEdgeControl";
 import "./appShell/AppRefreshControl";
@@ -235,6 +235,7 @@ export class PiWebApp extends LitElement {
   private transientErrorTimer: number | undefined;
   private lastScheduledError = "";
   @state() private quickSwitcherOpen = false;
+  @state() private mobileToolSheetOpen = false;
   @state() private quickSwitcherLoading = false;
   @state() private quickSwitcherSessions: readonly SessionInfo[] = [];
   @state() private pinnedSessionIds: ReadonlySet<string> = readPinnedSessionIds();
@@ -291,6 +292,10 @@ export class PiWebApp extends LitElement {
 
   /** Close the topmost modal layer; popstate is the only caller. */
   private closeModalLayer(): void {
+    if (this.mobileToolSheetOpen) {
+      this.mobileToolSheetOpen = false;
+      return;
+    }
     if (this.quickSwitcherOpen) {
       this.quickSwitcherOpen = false;
       return;
@@ -1645,6 +1650,7 @@ export class PiWebApp extends LitElement {
   /** True while a modal layer owns the back gesture. */
   private modalLayerOpen(): boolean {
     return this.quickSwitcherOpen
+      || this.mobileToolSheetOpen
       || this.state.actionPaletteOpen
       || this.state.projectDialogOpen
       || this.state.machineDialogOpen
@@ -2637,25 +2643,36 @@ export class PiWebApp extends LitElement {
           void this.sessions.renameSession(session, name);
         }}
         .onShowActions=${() => { this.setState({ actionPaletteOpen: true }); }}
+        .onOpenTools=${() => { this.openMobileToolSheet(); }}
       ></app-context-bar>
     `;
   }
 
-  private renderMobileMainTabs() {
-    // On a phone, the context bar already exposes the session/workspace jumps.
-    // Keeping a full second toolbar while the chat is open steals too much of
-    // the viewport from the transcript, so the tabs collapse away in chat view.
-    if (this.state.mainView === "chat" && this.state.selectedSession !== undefined) return null;
+  /**
+   * The workspace views, reachable from one control instead of a strip.
+   *
+   * The strip of unlabelled icons cost 57px on every mobile surface and put the
+   * terminal behind a glyph. The sheet lists the same views by name, so nothing
+   * is lost and the transcript keeps the height.
+   */
+  private renderMobileToolSheet() {
+    if (!this.mobileToolSheetOpen) return null;
     return html`
-      <app-mobile-main-tabs
+      <app-mobile-tool-sheet
         .tabs=${this.mobileMainTabs()}
         .selectedView=${this.state.mainView}
         .onSelect=${(view: AppState["mainView"]) => { this.selectMainView(view); }}
-      ></app-mobile-main-tabs>
+        .onClose=${() => { this.mobileToolSheetOpen = false; }}
+      ></app-mobile-tool-sheet>
     `;
   }
 
-  private mobileMainTabs(): AppMobileMainTab[] {
+  private openMobileToolSheet(): void {
+    this.pushModalLayerFrame();
+    this.mobileToolSheetOpen = true;
+  }
+
+  private mobileMainTabs(): AppMobileView[] {
     const unreadCount = unreadSessionCount(this.state.sessions, this.unreadSessionIds);
     return [
       {
@@ -2666,7 +2683,7 @@ export class PiWebApp extends LitElement {
         ...(unreadCount === 0 ? {} : { badge: unreadCount, badgeLabel: `${String(unreadCount)} unread`, badgeTone: "unread" }),
       },
       { id: "chat", label: "Chat", icon: "chat" },
-      ...this.visibleWorkspacePanels().map((panel): AppMobileMainTab => {
+      ...this.visibleWorkspacePanels().map((panel): AppMobileView => {
         const icon = panel.icon;
         return {
           id: panel.id,
@@ -2690,7 +2707,7 @@ export class PiWebApp extends LitElement {
         ${this.renderNavigationPanelEdgeControl()}
         <main class=${mainViewClass(state.mainView)}>
           ${this.renderContextBar()}
-          ${this.renderMobileMainTabs()}
+
           ${this.renderErrorBanner(state.error)}
           ${this.renderSelfUpdateBanner()}
           ${deprecatedAgentInputsBanner(deprecatedAgentInputsWarnings(state.machines, state.machineRuntimes))}
@@ -2707,6 +2724,7 @@ export class PiWebApp extends LitElement {
         ${this.renderWorkspacePanelEdgeControl()}
         ${this.renderWorkspacePanel()}
         ${state.authDialog !== undefined ? html`<auth-dialog .state=${state.authDialog} .onChooseMethod=${(authType: "oauth" | "api_key") => { void this.auth.chooseLoginMethod(authType); }} .onSelectProvider=${(providerId: string, authType: "oauth" | "api_key") => { void this.auth.selectLoginProvider(providerId, authType); }} .onLogoutProvider=${(providerId: string) => { void this.auth.logoutProvider(providerId); }} .onOAuthInput=${(value: string) => { this.auth.updateOAuthInput(value); }} .onOAuthRespond=${(value?: string) => { void this.auth.respondOAuth(value); }} .onOAuthCancel=${() => { void this.auth.cancelOAuth(); }} .onCancel=${() => { this.auth.closeDialog(); }}></auth-dialog>` : null}
+        ${this.renderMobileToolSheet()}
         ${this.quickSwitcherOpen ? html`<quick-switcher
           .loading=${this.quickSwitcherLoading}
           .sessions=${this.quickSwitcherSessions}

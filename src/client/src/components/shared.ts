@@ -138,7 +138,6 @@ export const appStyles = css`
   .context-chip.empty { border-style: dashed; color: var(--pi-muted); }
   .context-kind { display: none; }
   .context-value { min-width: 0; overflow: visible; text-overflow: clip; white-space: nowrap; }
-  app-mobile-main-tabs { display: none; }
   .mobile-tabs-frame { position: relative; display: none; flex: 0 0 auto; min-width: 0; border-bottom: 1px solid var(--pi-border); background: var(--pi-bg); }
   .mobile-tabs-frame::before, .mobile-tabs-frame::after { content: ""; position: absolute; top: 0; bottom: 0; z-index: 2; width: 20px; opacity: 0; pointer-events: none; transition: opacity .15s ease; }
   .mobile-tabs-frame::before { left: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--pi-shadow-strong) 55%, transparent) 0%, transparent 100%); }
@@ -171,7 +170,6 @@ export const appStyles = css`
     aside { grid-row: 1 / 3; }
     .navigation-panel-edge { grid-row: 1 / 3; }
     main { grid-column: 3; grid-row: 1 / 3; }
-    app-mobile-main-tabs { display: block; flex: 0 0 auto; min-width: 0; }
     .mobile-tabs-frame { display: flex; }
     .shell.workspace-view main { grid-row: 1; min-height: auto; }
     .shell.workspace-view > workspace-panel { grid-column: 3; grid-row: 2; display: flex; border-left: 0; }
@@ -300,6 +298,17 @@ export const listStyles = css`
   .search-empty { padding: 12px 4px; color: var(--pi-muted); }
   section { box-sizing: border-box; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 10px; }
   h2 { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 0 0 8px; color: var(--pi-muted); font-size: 12px; text-transform: uppercase; }
+  /* On a phone the context row above already names the step being chosen, so a
+     heading repeating that word only costs the list its first rows. The row's
+     own controls (count, create, clean up) stay, so nothing is lost with it. */
+  @media (max-width: 760px) {
+    section { padding-top: 6px; }
+    h2 { margin-bottom: 4px; }
+    /* A heading that is only a word: the context row already said it. Headings
+       carrying controls (count, create, clean up) are untouched. */
+    h2 > span:only-child { display: none; }
+    h2:has(> span:only-child) { margin: 0; }
+  }
   .list-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
   /* Tile/card layout for management lists (workspaces, projects, machines).
      Rows become compact cards in an auto-fill grid; the row menu moves into
