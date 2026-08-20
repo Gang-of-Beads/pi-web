@@ -1,4 +1,4 @@
-import type { JsonValue, PiWebPlugin, Workspace } from "@jmfederico/pi-web/plugin-api";
+import type { JsonValue, PiWebPlugin, Workspace } from "@vincenthanxiaodu/pi-web/plugin-api";
 
 const plugin: PiWebPlugin = {
   apiVersion: 2,

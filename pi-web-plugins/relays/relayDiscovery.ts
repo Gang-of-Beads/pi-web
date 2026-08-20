@@ -1,4 +1,4 @@
-import type { FileContentResponse, FileTreeEntry, FileTreeResponse } from "@jmfederico/pi-web/plugin-api";
+import type { FileContentResponse, FileTreeEntry, FileTreeResponse } from "@vincenthanxiaodu/pi-web/plugin-api";
 
 export const RELAYS_ROOT = ".pi-web/relays";
 

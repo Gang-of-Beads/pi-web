@@ -166,7 +166,7 @@ export interface WorkspacePanelContext extends WorkspaceContext {
   terminal: WorkspacePanelTerminal;
   /**
    * @deprecated Runtime-only compatibility alias for pre-v2 plugins. Use `terminal.open()` instead.
-   * This is intentionally not part of the public `@jmfederico/pi-web/plugin-api` declarations.
+   * This is intentionally not part of the public `@vincenthanxiaodu/pi-web/plugin-api` declarations.
    */
   openTerminal?: (options?: { terminalId?: string | undefined }) => void;
   piWebUnstable?: Pick<PiWebUnstableRuntimeContext, "terminalCommandRuns">;

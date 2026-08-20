@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { TerminalCommandRun, WorkspacePanelTerminal } from "@jmfederico/pi-web/plugin-api";
+import type { TerminalCommandRun, WorkspacePanelTerminal } from "@vincenthanxiaodu/pi-web/plugin-api";
 import { runWorkspaceTaskInTerminal } from "./taskRunner";
 import type { WorkspaceTask } from "./config";
 

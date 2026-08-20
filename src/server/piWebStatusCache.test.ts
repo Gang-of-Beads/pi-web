@@ -166,13 +166,13 @@ describe("createPiWebStatusCache", () => {
 
 function status(generatedAt: string): PiWebStatusResponse {
   return {
-    packageName: "@jmfederico/pi-web",
+    packageName: "@vincenthanxiaodu/pi-web",
     generatedAt,
     components: {
       web: { component: "web", label: "Web/UI", stale: false, available: true },
       sessiond: { component: "sessiond", label: "Session daemon", stale: false, available: true },
     },
-    release: { packageName: "@jmfederico/pi-web", updateAvailable: false },
+    release: { packageName: "@vincenthanxiaodu/pi-web", updateAvailable: false },
     commands: {},
     messages: [],
   };

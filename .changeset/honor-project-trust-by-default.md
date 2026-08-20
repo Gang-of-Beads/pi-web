@@ -1,5 +1,5 @@
 ---
-"@jmfederico/pi-web": patch
+"@vincenthanxiaodu/pi-web": patch
 ---
 
 PI WEB now always honors pi's project-trust model; the `respectProjectTrust` opt-in (env var and config key) is removed. At session start a workspace's project-local `.pi/` resources load only when the workspace is trusted, resolved the way `pi` resolves it with no browser prompt: a saved decision in the agent directory's `trust.json` wins, a user/global extension may decide through the `project_trust` event (and request that the choice be remembered), and otherwise `defaultProjectTrust` applies — with `ask` or no decision a workspace is untrusted, matching headless `pi`.

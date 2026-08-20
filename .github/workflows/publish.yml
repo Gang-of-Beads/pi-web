@@ -9,11 +9,16 @@ permissions:
   contents: read
   id-token: write
 
+# The fork publishes under its own scope once NPM_TOKEN exists in repo
+# secrets; without it every step but the publish still runs, and the
+# publish itself is skipped rather than failing the release.
+env:
+  NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
 jobs:
   publish:
     name: Publish to npm
     runs-on: ubuntu-latest
-    environment: npm
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -38,12 +43,15 @@ jobs:
         run: npm run smoke:package-install
 
       - name: Publish
+        if: env.NPM_TOKEN != ''
         run: npm publish --access public --provenance
 
   deploy-docs:
     name: Deploy stable docs to pi-web.dev
     # Stable docs only move on GitHub Releases; the dev variant at pi-web.dev/dev/
     # deploys from main via docs-dev.yml. Skipped on manual workflow_dispatch runs.
+    # The fork does not own pi-web.dev credentials, so this job waits on the
+    # publish job and passes once publish is skipped.
     if: github.event_name == 'release'
     needs: publish
     runs-on: ubuntu-latest

@@ -43,13 +43,13 @@ For non-interactive agent work, create a file manually under `.changeset/` with 
 
 ```md
 ---
-"@jmfederico/pi-web": patch
+"@vincenthanxiaodu/pi-web": patch
 ---
 
 Fix session command handling so browser/API restarts do not interrupt active Pi sessions.
 ```
 
-Use the package name from `package.json`; for this repo it is `@jmfederico/pi-web`.
+Use the package name from `package.json`; for this repo it is `@vincenthanxiaodu/pi-web`.
 
 ## Choosing patch/minor/major
 

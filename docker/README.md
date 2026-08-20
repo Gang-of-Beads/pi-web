@@ -55,7 +55,7 @@ Defaults:
 - install directory: `~/.local/share/pi-web-docker` (or `$XDG_DATA_HOME/pi-web-docker`);
 - persistent data: `<install-dir>/data`, mounted at `/data`;
 - browser URL: <http://127.0.0.1:8504>;
-- npm packages: latest `@jmfederico/pi-web`; Pi Coding Agent is resolved as PI WEB's npm peer dependency (newest compatible version) and the peer-provided `pi` binary is linked into the image.
+- npm packages: latest `@vincenthanxiaodu/pi-web`; Pi Coding Agent is resolved as PI WEB's npm peer dependency (newest compatible version) and the peer-provided `pi` binary is linked into the image.
 
 Updating recreates the Docker `sessiond` container. Active Pi agent runtimes in this Docker install may stop, so update while sessions are idle. Persisted PI WEB state, Pi config, and session history under the data directory are kept.
 
@@ -112,7 +112,7 @@ Common environment variables written to `.env`:
 | `PI_WEB_DOCKER_HOST_PROFILE`, `PI_WEB_DOCKER_SOCKET_SOURCE`, `HOSTEXEC_MODE` | Docker host facts: detected host profile, host Docker socket path, and host-command capability toggle |
 | `PI_WEB_DOCKER_EXTRA_HOST_PATHS` | optional whitespace-separated existing absolute paths to bind-mount read/write at the same path |
 | `PI_WEB_BIND_ADDR`, `PI_WEB_PORT` | host bind address and port |
-| `PI_WEB_VERSION` | npm version/range for `@jmfederico/pi-web`; Pi Coding Agent resolves from PI WEB's npm peer dependency |
+| `PI_WEB_VERSION` | npm version/range for `@vincenthanxiaodu/pi-web`; Pi Coding Agent resolves from PI WEB's npm peer dependency |
 | `PI_WEB_OPENSUSE_IMAGE` | openSUSE base image used for the runtime build |
 | `PI_WEB_NODEJS_MAJOR` | Node.js major package to install, defaulting to `22` |
 | `PI_WEB_NODEJS_REPO` | Node.js zypper repository URL, `auto`, or `disabled` |

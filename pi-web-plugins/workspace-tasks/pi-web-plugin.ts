@@ -1,4 +1,4 @@
-import type { PiWebPlugin } from "@jmfederico/pi-web/plugin-api";
+import type { PiWebPlugin } from "@vincenthanxiaodu/pi-web/plugin-api";
 import { TASKS_CONFIG_PATH } from "./config.js";
 import { defineTasksPanelElement, tasksPanelBadge } from "./tasksPanelElement.js";
 

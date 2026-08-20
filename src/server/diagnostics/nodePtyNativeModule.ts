@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 
-export const NODE_PTY_GLOBAL_REINSTALL_COMMAND = "npm install -g @jmfederico/pi-web --allow-scripts=node-pty";
+export const NODE_PTY_GLOBAL_REINSTALL_COMMAND = "npm install -g @vincenthanxiaodu/pi-web --allow-scripts=node-pty";
 
 const doctorLabel = "node-pty native module loadable";
 const requireFromHere = createRequire(import.meta.url);

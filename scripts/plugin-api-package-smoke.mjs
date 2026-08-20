@@ -98,9 +98,9 @@ async function assertInstalledDeclarationArtifacts(packageRoot) {
 async function assertExampleCompatibilityFloor(packageRoot) {
   const manifestPath = join(packageRoot, "examples", "workspace-provider-plugin", "package.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-  const actualRange = manifest?.devDependencies?.["@jmfederico/pi-web"];
+  const actualRange = manifest?.devDependencies?.["@vincenthanxiaodu/pi-web"];
   if (actualRange !== workspaceProviderExamplePiWebRange) {
-    throw new Error(`Installed workspace-provider example must require @jmfederico/pi-web ${workspaceProviderExamplePiWebRange}; received ${JSON.stringify(actualRange)}`);
+    throw new Error(`Installed workspace-provider example must require @vincenthanxiaodu/pi-web ${workspaceProviderExamplePiWebRange}; received ${JSON.stringify(actualRange)}`);
   }
 }
 
@@ -129,8 +129,8 @@ function isDeclarationPath(path) {
 
 function assertPluginApiResolution(consumerPath, compilerOptions, packageRoot) {
   const expectedDeclarations = new Map([
-    ["@jmfederico/pi-web/plugin-api", join(packageRoot, "dist", "plugin-api.d.ts")],
-    ["@jmfederico/pi-web/server-plugin-api", join(packageRoot, "dist", "server-plugin-api.d.ts")],
+    ["@vincenthanxiaodu/pi-web/plugin-api", join(packageRoot, "dist", "plugin-api.d.ts")],
+    ["@vincenthanxiaodu/pi-web/server-plugin-api", join(packageRoot, "dist", "server-plugin-api.d.ts")],
   ]);
   for (const [specifier, expected] of expectedDeclarations) {
     const resolved = ts.resolveModuleName(specifier, consumerPath, compilerOptions, ts.sys).resolvedModule;
@@ -140,10 +140,10 @@ function assertPluginApiResolution(consumerPath, compilerOptions, packageRoot) {
   }
 
   for (const specifier of [
-    "@jmfederico/pi-web/plugin-api/unstable",
-    "@jmfederico/pi-web/dist/plugin-api",
-    "@jmfederico/pi-web/dist/shared/pluginApiTypes",
-    "@jmfederico/pi-web/package.json",
+    "@vincenthanxiaodu/pi-web/plugin-api/unstable",
+    "@vincenthanxiaodu/pi-web/dist/plugin-api",
+    "@vincenthanxiaodu/pi-web/dist/shared/pluginApiTypes",
+    "@vincenthanxiaodu/pi-web/package.json",
   ]) {
     if (ts.resolveModuleName(specifier, consumerPath, compilerOptions, ts.sys).resolvedModule !== undefined) {
       throw new Error(`Unsupported package path resolved from the installed package: ${specifier}`);

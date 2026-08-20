@@ -1,4 +1,4 @@
-import type { PiWebPlugin } from "@jmfederico/pi-web/plugin-api";
+import type { PiWebPlugin } from "@vincenthanxiaodu/pi-web/plugin-api";
 import { RELAYS_ROOT } from "./relayDiscovery.js";
 import { defineRelaysPanelElement } from "./relaysPanelElement.js";
 

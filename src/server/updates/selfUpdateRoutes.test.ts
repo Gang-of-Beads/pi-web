@@ -80,11 +80,11 @@ describe("self-update routes", () => {
 
 describe("self-update command mode", () => {
   afterEach(() => {
-    delete process.env.PI_WEB_UPDATE_COMMAND;
+    delete process.env["PI_WEB_UPDATE_COMMAND"];
   });
 
   it("reports enabled with the built version when a command is configured", async () => {
-    process.env.PI_WEB_UPDATE_COMMAND = "/nix/store/xxx-pi-web-autoupdate/bin/pi-web-autoupdate --force";
+    process.env["PI_WEB_UPDATE_COMMAND"] = "/nix/store/xxx-pi-web-autoupdate/bin/pi-web-autoupdate --force";
     const service = createSelfUpdateService(undefined);
     const status = await service.status();
     expect(status.enabled).toBe(true);
@@ -106,7 +106,7 @@ describe("self-update command mode", () => {
   });
 
   it("hands the configured command to systemd-run, detached", async () => {
-    process.env.PI_WEB_UPDATE_COMMAND = "/nix/store/xxx/bin/pi-web-autoupdate --force";
+    process.env["PI_WEB_UPDATE_COMMAND"] = "/nix/store/xxx/bin/pi-web-autoupdate --force";
     const spawnMock = vi.mocked(childProcess.spawn);
     spawnMock.mockClear();
     const service = createSelfUpdateService(undefined);

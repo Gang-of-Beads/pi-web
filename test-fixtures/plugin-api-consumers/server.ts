@@ -1,4 +1,4 @@
-import type { PiWebServerPlugin } from "@jmfederico/pi-web/server-plugin-api";
+import type { PiWebServerPlugin } from "@vincenthanxiaodu/pi-web/server-plugin-api";
 
 const plugin: PiWebServerPlugin = {
   apiVersion: 1,

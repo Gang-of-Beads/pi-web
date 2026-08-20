@@ -7,7 +7,7 @@ import type {
   ProviderResponse,
   ServerPluginActivationContext,
   ServerPluginExecFileResult,
-} from "@jmfederico/pi-web/server-plugin-api";
+} from "@vincenthanxiaodu/pi-web/server-plugin-api";
 import {
   GIT_DIFF_OPERATION,
   GIT_STATUS_OPERATION,

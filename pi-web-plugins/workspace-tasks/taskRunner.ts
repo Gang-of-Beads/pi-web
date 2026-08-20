@@ -1,4 +1,4 @@
-import type { WorkspacePanelTerminal } from "@jmfederico/pi-web/plugin-api";
+import type { WorkspacePanelTerminal } from "@vincenthanxiaodu/pi-web/plugin-api";
 import type { WorkspaceTask } from "./config.js";
 
 export function runWorkspaceTaskInTerminal(terminal: WorkspacePanelTerminal, task: WorkspaceTask): ReturnType<WorkspacePanelTerminal["runCommand"]> {

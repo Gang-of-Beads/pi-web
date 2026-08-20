@@ -28,7 +28,7 @@ describe("probeRunningComponentReady", () => {
     const fetchImplementation: typeof globalThis.fetch = (input) => {
       requests.push(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
       return Promise.resolve(new Response(JSON.stringify({
-        packageName: "@jmfederico/pi-web",
+        packageName: "@vincenthanxiaodu/pi-web",
         generatedAt: "2026-08-01T00:00:00.000Z",
         components: {
           web: componentStatus(),

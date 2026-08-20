@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import type { ServerPluginActivationContext, ServerPluginExecFileResult } from "@jmfederico/pi-web/server-plugin-api";
+import type { ServerPluginActivationContext, ServerPluginExecFileResult } from "@vincenthanxiaodu/pi-web/server-plugin-api";
 import { createServerPluginExecFile } from "../../src/server/plugins/serverPluginExec.js";
 import { gitDiff as requestGitDiff, gitStatus as requestGitStatus } from "./git-backend.js";
 

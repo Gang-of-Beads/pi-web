@@ -1,4 +1,4 @@
-import type { PiWebPlugin } from "@jmfederico/pi-web/plugin-api";
+import type { PiWebPlugin } from "@vincenthanxiaodu/pi-web/plugin-api";
 import { createGitBrowserContributions } from "./git-panel.js";
 
 const plugin: PiWebPlugin = {

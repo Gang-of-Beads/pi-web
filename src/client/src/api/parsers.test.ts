@@ -69,7 +69,7 @@ describe("API parsers", () => {
     // flows; the client no longer surfaces it, so parsing must drop it without
     // failing (rolling compatibility with daemons that keep sending it).
     const parsed = parsePiWebRuntimeResponse({
-      packageName: "@jmfederico/pi-web",
+      packageName: "@vincenthanxiaodu/pi-web",
       generatedAt: "now",
       components: {
         web: { component: "web", label: "Web/UI", runtimeVersion: "1.0.0", available: true, capabilities: ["piPackages.manage", "future.capability"] },
@@ -192,13 +192,13 @@ describe("API parsers", () => {
 
   it("parses Docker PI WEB installation metadata", () => {
     const response = {
-      packageName: "@jmfederico/pi-web",
+      packageName: "@vincenthanxiaodu/pi-web",
       generatedAt: "now",
       components: {
         web: { component: "web", label: "Web/UI", runtimeVersion: "1.0.0", piVersion: "0.84.1", available: true, stale: false, installation: { kind: "docker", path: "/srv/pi-web-docker", dockerMode: "runtime" } },
         sessiond: { component: "sessiond", label: "Session daemon", runtimeVersion: "1.0.0", piVersion: "0.83.0", available: true, stale: false, installation: { kind: "docker", dockerMode: "dev" } },
       },
-      release: { packageName: "@jmfederico/pi-web", updateAvailable: false },
+      release: { packageName: "@vincenthanxiaodu/pi-web", updateAvailable: false },
       commands: { restart: "pi-web-docker restart", status: "pi-web-docker status" },
       messages: [],
     };

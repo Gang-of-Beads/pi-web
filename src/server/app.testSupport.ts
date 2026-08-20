@@ -103,7 +103,7 @@ export function registerAppTestHooks(): void {
         },
         now: () => new Date("2026-05-25T00:00:00.000Z"),
         localRuntime: () => Promise.resolve({
-          packageName: "@jmfederico/pi-web",
+          packageName: "@vincenthanxiaodu/pi-web",
           generatedAt: "2026-05-25T00:00:00.000Z",
           components: {
             web: { component: "web", label: "PI WEB", available: true, capabilities: [] },

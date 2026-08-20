@@ -6,7 +6,7 @@
 // lives in pi-web-plugin.ts.
 
 import type { TemplateResult } from "lit";
-import type { HtmlTemplateTag, MachineKind, PiWebComponentStatus, PiWebInstallationInfo, PiWebReleaseStatus, PiWebStatusResponse, PluginMachine, PluginRuntimeContext, Workspace, WorkspacePanelContext } from "@jmfederico/pi-web/plugin-api";
+import type { HtmlTemplateTag, MachineKind, PiWebComponentStatus, PiWebInstallationInfo, PiWebReleaseStatus, PiWebStatusResponse, PluginMachine, PluginRuntimeContext, Workspace, WorkspacePanelContext } from "@vincenthanxiaodu/pi-web/plugin-api";
 
 export type ComponentHealth = "current" | "restart needed" | "unavailable";
 

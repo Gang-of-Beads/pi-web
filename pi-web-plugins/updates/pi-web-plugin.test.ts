@@ -1,6 +1,6 @@
 import { html, svg } from "lit";
 import { describe, expect, it, vi } from "vitest";
-import type { PluginRuntimeContext } from "@jmfederico/pi-web/plugin-api";
+import type { PluginRuntimeContext } from "@vincenthanxiaodu/pi-web/plugin-api";
 import plugin from "./pi-web-plugin.js";
 
 describe("Updates plugin actions", () => {
