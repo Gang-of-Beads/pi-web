@@ -28,7 +28,7 @@ test.describe("goal archive", () => {
     expect(archived.ok()).toBe(true);
     const body = await archived.json() as { alreadyArchived: boolean; archivedPath: string; agentMayRecreate: boolean };
     expect(body.alreadyArchived).toBe(false);
-    expect(body.archivedPath).toContain("/archived/");
+    expect(body.archivedPath.replace(/\\/g, "/")).toContain("/archived/");
     // An agent already holding this goal keeps its copy until it reloads; the
     // caller is told rather than left to discover a goal that came back.
     expect(body.agentMayRecreate).toBe(true);

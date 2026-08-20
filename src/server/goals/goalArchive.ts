@@ -1,7 +1,7 @@
 import { mkdir, readFile, readdir, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { appendFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import { GOALS_DIRECTORY } from "./goalStore.js";
 import { extractGoalJsonBlock } from "./goalFile.js";
 
@@ -81,7 +81,10 @@ export async function archiveWorkspaceGoal(workspacePath: string, goalId: string
     await mkdir(join(directory, "archived"), { recursive: true });
 
     const archivedContent = archivedGoalContent(active.content, record, {
-      archivedPath: join(GOALS_DIRECTORY, "archived", archivedName),
+      // Stored inside the record, not handed to the filesystem: the extension
+      // writes these as POSIX relative paths (`.pi/goals/...`), so a Windows
+      // separator here would be a foreign value in someone else's format.
+      archivedPath: posix.join(".pi", "goals", "archived", archivedName),
       at: now().toISOString(),
     });
     const temporary = `${archivedPath}.${String(process.pid)}.${String(now().getTime())}.tmp`;
