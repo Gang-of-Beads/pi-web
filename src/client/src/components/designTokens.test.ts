@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { appStyles, chatStyles, listStyles, promptEditorStyles, workspacePanelStyles } from "./shared";
@@ -81,5 +81,38 @@ describe("accessibility floors", () => {
     // 44px is the smallest target a finger hits reliably; the token exists so
     // that number is stated once rather than retyped per control.
     expect(indexHtml).toContain("--pi-control-height-touch: 44px");
+  });
+
+  it("lets the hidden attribute win over every :host display rule", () => {
+    // A custom element with `display` on :host ignores the HTML hidden
+    // attribute unless it says otherwise, and the failure is silent: the markup
+    // reads as hidden and the element is on screen. The mobile shell keeps four
+    // lists and the machine switcher mounted-but-hidden, and the switcher shipped
+    // without the guard - so a phone named its machine twice.
+    const componentsDir = join(process.cwd(), "src/client/src/components");
+    const rendered = new Set<string>();
+    const walk = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) return walk(full);
+      return entry.isFile() && entry.name.endsWith(".ts") && !entry.name.includes(".test.") ? [full] : [];
+    });
+    const files = walk(componentsDir);
+    for (const file of files) {
+      const source = readFileSync(file, "utf8");
+      for (const match of source.matchAll(/<([a-z][a-z0-9-]*-[a-z0-9-]+)([^>]*?)>/gs)) {
+        const attrs = match[2] ?? "";
+        if (/(^|\s)\?hidden=|(^|\s)hidden(\s|$)/.test(attrs)) rendered.add(match[1] ?? "");
+      }
+    }
+    expect(rendered.size).toBeGreaterThan(0);
+
+    for (const tag of rendered) {
+      const defining = files.find((file) => readFileSync(file, "utf8").includes(`customElement("${tag}")`));
+      expect(defining, `no component defines <${tag}>`).toBeDefined();
+      const source = readFileSync(defining ?? "", "utf8");
+      const usesSharedListSheet = source.includes("listStyles");
+      const guardsItself = source.includes(":host([hidden])");
+      expect(usesSharedListSheet || guardsItself, `<${tag}> is rendered with hidden but nothing makes hidden win`).toBe(true);
+    }
   });
 });

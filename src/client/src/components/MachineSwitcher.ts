@@ -277,8 +277,14 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
 
   static override styles = css`
     :host { min-width: 0; display: block; }
+    /* A display rule on :host outranks the HTML hidden attribute, so an element
+       rendered with the hidden attribute stays on screen unless this says so.
+       The mobile shell keeps this switcher in the tree for keyboard nav and
+       hides it, because the context bar already names the machine - without
+       this, the machine appeared twice on every phone screen. */
+    :host([hidden]) { display: none; }
     .machine-switcher { min-width: 0; }
-    .machine-switcher-button { box-sizing: border-box; width: 100%; min-width: 0; display: flex; align-items: center; gap: 6px; border: 1px solid var(--pi-border); border-radius: 999px; background: var(--pi-surface); color: var(--pi-text); padding: 5px 8px; cursor: pointer; text-align: left; }
+    .machine-switcher-button { box-sizing: border-box; width: 100%; min-width: 0; display: flex; align-items: center; gap: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-2) var(--pi-space-4); cursor: pointer; text-align: left; }
     .machine-switcher-button:hover, .machine-switcher-button:focus-visible { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     .machine-switcher-text { flex: 1 1 auto; min-width: 0; display: grid; gap: 1px; }
     .machine-switcher-kicker { color: var(--pi-muted); font-size: 10px; line-height: 1; text-transform: uppercase; letter-spacing: .02em; }
