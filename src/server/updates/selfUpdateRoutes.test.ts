@@ -2,6 +2,9 @@
 // apply failure, apply start) are tested without touching real git.
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import * as childProcess from "node:child_process";
 
 // The route module destructures spawn, so a namespace spy would not intercept
@@ -94,14 +97,16 @@ describe("self-update command mode", () => {
   });
 
   it("still refuses to apply without a command and without a checkout", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pi-web-no-checkout-"));
     const cwd = process.cwd();
     try {
       // Outside a checkout: the repo root in this test environment is one.
-      process.chdir("/tmp");
+      process.chdir(root);
       const service = createSelfUpdateService(undefined);
       await expect(service.apply()).rejects.toThrow(/no checkout/);
     } finally {
       process.chdir(cwd);
+      rmSync(root, { recursive: true, force: true });
     }
   });
 
