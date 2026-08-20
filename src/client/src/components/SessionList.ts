@@ -631,7 +631,12 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
   }
 
   static override styles = [listStyles, sessionStateBadgeStyles, css`
-    h2 { min-height: 30px; }
+    h2 { min-height: 30px; gap: var(--pi-space-2); }
+    /* The shared heading spreads its children across the full width, which
+       floats the checkbox, the unread count, Clean up and the start button
+       apart like five unrelated controls. One group, pushed right, reads as
+       one toolbar; the title keeps the left edge. */
+    h2 > .bulk-select-entry { margin-left: auto; }
     h2 > .section-count { flex: 0 0 auto; display: inline; color: var(--pi-muted); font-size: inherit; }
     h2 > .section-unread-count { flex: 0 0 auto; display: inline; color: var(--pi-accent); font-size: inherit; text-transform: none; }
     .bulk-select-entry { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; font-size: var(--pi-text-sm); line-height: 1; text-transform: none; }

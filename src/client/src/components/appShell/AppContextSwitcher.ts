@@ -14,9 +14,9 @@ export type ContextSection = "machines" | "projects" | "workspaces";
  * a chip opens that picker in the panel body, and choosing returns the body to
  * the sessions.
  *
- * Creating lives here too. A "+" next to the step it creates is the shortest
- * path from "I need a project" to having one, and it stops the command palette
- * from being the only way in.
+ * Creating lives here too, inside the chip the step already owns: a "+" zone
+ * at the chip's edge is the shortest path from "I need a project" to having
+ * one, without a second box stealing width from the value beside it.
  */
 @customElement("app-context-switcher")
 export class AppContextSwitcher extends LitElement {
@@ -51,22 +51,28 @@ export class AppContextSwitcher extends LitElement {
     addLabel: string | undefined,
   ) {
     const open = this.openSection === section;
+    // The create control sits inside the chip's own border, not beside it in a
+    // second box: three free-standing frames plus two plus-buttons made the row
+    // read as five controls, and each button took its tap target out of the
+    // value's width. One segmented frame reads as one step that can also add.
     return html`
       <div class=${open ? "step open" : "step"}>
-        <button
-          type="button"
-          class="chip"
-          aria-expanded=${open ? "true" : "false"}
-          aria-label=${value === undefined ? `Choose ${label.toLowerCase()}` : `${label}: ${value}. Change it`}
-          title=${value ?? `Choose ${label.toLowerCase()}`}
-          @click=${() => { this.onOpenSection?.(section); }}
-        >
-          <span class="chip-label">${label}</span>
-          <span class="chip-value">${value ?? "Choose"}</span>
-        </button>
-        ${onAdd === undefined || addLabel === undefined
-          ? nothing
-          : html`<button type="button" class="add" title=${addLabel} aria-label=${addLabel} @click=${() => { onAdd(); }}>+</button>`}
+        <div class="seg">
+          <button
+            type="button"
+            class="chip"
+            aria-expanded=${open ? "true" : "false"}
+            aria-label=${value === undefined ? `Choose ${label.toLowerCase()}` : `${label}: ${value}. Change it`}
+            title=${value ?? `Choose ${label.toLowerCase()}`}
+            @click=${() => { this.onOpenSection?.(section); }}
+          >
+            <span class="chip-label">${label}</span>
+            <span class="chip-value">${value ?? "Choose"}</span>
+          </button>
+          ${onAdd === undefined || addLabel === undefined
+            ? nothing
+            : html`<button type="button" class="add" title=${addLabel} aria-label=${addLabel} @click=${() => { onAdd(); }}>+</button>`}
+        </div>
       </div>
     `;
   }
@@ -76,18 +82,25 @@ export class AppContextSwitcher extends LitElement {
     button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
     nav { display: flex; align-items: stretch; gap: var(--pi-space-3); padding: var(--pi-space-4) var(--pi-space-5); overflow-x: auto; scrollbar-width: none; }
     nav::-webkit-scrollbar { display: none; }
-    .step { flex: 1 1 0; min-width: 0; display: flex; align-items: stretch; gap: var(--pi-space-2); }
-    .chip { flex: 1 1 auto; min-width: 0; display: grid; gap: 1px; justify-items: start; min-height: 44px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-3) var(--pi-space-5); font: inherit; text-align: left; cursor: pointer; }
-    .step.open .chip { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
-    .chip:hover { border-color: var(--pi-accent); }
-    .chip:focus-visible, .add:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+    .step { flex: 1 1 0; min-width: 0; container-type: inline-size; }
+    /* One frame per step carries both the picker and the create control, so
+       the row shows three things instead of five and every pixel of the
+       border goes to the value's width instead of two extra tap targets. */
+    .seg { box-sizing: border-box; display: flex; align-items: stretch; min-height: 44px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); }
+    .step.open .seg { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
+    @media (hover: hover) { .seg:hover { border-color: var(--pi-accent); } }
+    .chip { flex: 1 1 auto; min-width: 0; display: grid; gap: 1px; justify-items: start; align-content: center; border: 0; background: none; padding: var(--pi-space-2) var(--pi-space-4); font: inherit; text-align: left; cursor: pointer; }
+    .chip:focus-visible, .add:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -2px; }
     .chip-label { color: var(--pi-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
     .chip-value { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--pi-text-sm); font-weight: 600; }
-    .add { flex: 0 0 auto; width: 32px; min-height: 44px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-muted); font-size: var(--pi-text-lg); line-height: 1; cursor: pointer; }
-    .add:hover { color: var(--pi-text); border-color: var(--pi-accent); }
-    @media (pointer: coarse) {
-      .add { width: 40px; }
-    }
+    /* When a step is too narrow for label and value, the label goes first:
+       the value is the half that answers "where am I?". The picker it opens
+       says its own name. */
+    @container (max-width: 140px) { .chip-label { display: none; } }
+    .add { flex: 0 0 auto; align-self: stretch; width: 34px; border: 0; border-left: 1px solid var(--pi-border); background: none; color: var(--pi-muted); font-size: var(--pi-text-lg); line-height: 1; cursor: pointer; }
+    .step.open .add { border-left-color: color-mix(in srgb, var(--pi-accent) 40%, var(--pi-border)); }
+    @media (pointer: coarse) { .add { width: 40px; } }
+    .add:hover { color: var(--pi-text); }
   `;
 }
 

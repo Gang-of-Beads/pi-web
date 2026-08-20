@@ -196,6 +196,10 @@ export class AppContextBar extends LitElement {
     const projectLabel = projectContextLabel(this.project);
     const workspaceLabel = workspaceContextLabel(this.workspace);
     const sessionLabel = sessionContextLabel(this.session);
+    // The empty session pill said "No session" and read like an error beside
+    // a working session list; the quick-switch control already opens sessions.
+    // The pill returns only when there is a session to name.
+    const showSessionChip = this.session !== undefined;
     return html`
       <nav class=${this.contextBarClass()} aria-label="Current location">
         <span class="context-bar-label">Location</span>
@@ -220,12 +224,14 @@ export class AppContextBar extends LitElement {
               <span class="context-value">${workspaceLabel}</span>
             </button>
           </li>
-          <li class="context-item">
-            <button type="button" class=${this.session === undefined ? "context-chip empty" : "context-chip"} title=${sessionContextTitle(this.session)} aria-label=${`Session: ${sessionLabel}. Open session selection.`} @click=${() => { this.openSessions(); }}>
-              <span class="context-kind">Session</span>
-              <span class="context-value">${sessionLabel}</span>
-            </button>
-          </li>
+          ${showSessionChip ? html`
+            <li class="context-item">
+              <button type="button" class="context-chip" title=${sessionContextTitle(this.session)} aria-label=${`Session: ${sessionLabel}. Open session selection.`} @click=${() => { this.openSessions(); }}>
+                <span class="context-kind">Session</span>
+                <span class="context-value">${sessionLabel}</span>
+              </button>
+            </li>
+          ` : null}
         </ol>
         ${this.hasContextActions() ? html`<div class="context-actions">${this.renderQuickSwitchButton()}${this.renderToolsButton()}${this.renderActionsButton()}${this.refreshControl}</div>` : null}
       </nav>
@@ -379,7 +385,11 @@ export class AppContextBar extends LitElement {
     .context-chip:hover { background: var(--pi-surface-hover); }
     .context-chip:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
     .context-chip.empty { border-style: dashed; color: var(--pi-muted); }
-    .context-kind { display: none; }
+    /* The pills scroll on a phone, so width is cheap: a kind label makes each
+       chip self-describing, and two same-named project/workspace pills no
+       longer read as a stutter. The value carries the weight. */
+    .context-kind { flex: 0 0 auto; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: 500; }
+    .context-chip .context-value { font-weight: 600; }
     .context-breadcrumb {
       flex: 0 1 auto;
       min-width: 0;
@@ -419,7 +429,7 @@ export class AppContextBar extends LitElement {
     /* Session-led layout keeps the actions in flow rather than overlaying a
        scrolling chip strip that no longer exists. */
     .context-actions.inline { position: static; flex: 0 0 auto; }
-    .context-value { min-width: 0; overflow: visible; text-overflow: clip; white-space: nowrap; }
+    .context-value { min-width: 0; max-width: 42vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     button { cursor: pointer; }
   `;
 }

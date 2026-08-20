@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
  * first. This asserts the description names every subcommand the parser
  * accepts, so adding one and forgetting to announce it fails here.
  */
-const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "pi-web.ts"), "utf8");
+const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "..", "extensions", "pi-web.ts"), "utf8");
 
 function declaredSubcommands(): string[] {
   const block = /const subcommands = \[(.*?)\] as const;/s.exec(source)?.[1] ?? "";
@@ -44,5 +44,17 @@ describe("/pi-web command", () => {
   it("states the scope flags, since --all is the one with hub semantics", () => {
     expect(commandDescription()).toContain("--all");
     expect(commandDescription()).toContain("--machine=");
+  });
+});
+
+describe("/pi-web package layout", () => {
+  it("keeps tests out of extensions/, which pi loads as extensions", () => {
+    // pi discovers extensions by loading every .ts file in extensions/; a
+    // test file placed there is loaded as an extension and fails on boot
+    // ("Failed to load extension: Cannot read properties of undefined").
+    const extensionsDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "extensions");
+    const files = readdirSync(extensionsDir);
+    const offender = files.find((name) => name.endsWith(".test.ts") || name.endsWith(".spec.ts") || name.endsWith(".test.mjs"));
+    expect(offender, `move ${offender ?? "it"} into src/extensions/; pi loads extensions/ as code`).toBeUndefined();
   });
 });
