@@ -63,6 +63,16 @@ case "$mode" in
       status=$([ "$marker" = "-" ] && echo "taken" || echo "OUTSTANDING")
       short=$(git rev-parse --short "$sha")
       case " $declined " in *" $short "*) status="declined" ;; esac
+      # A squash merge rewrites the patch id of everything it absorbs, so
+      # `git cherry` stops recognising a commit the fork demonstrably has.
+      # Before believing it, diff the files the commit touched: if HEAD already
+      # matches upstream there, the change arrived, whatever its sha became.
+      if [ "$status" = "OUTSTANDING" ]; then
+        touched=$(git show --pretty= --name-only "$sha" | grep -v '^\.changeset/' || true)
+        if [ -n "$touched" ] && git diff --quiet "$sha" HEAD -- $touched; then
+          status="taken"
+        fi
+      fi
       [ "$status" = "OUTSTANDING" ] && outstanding=$((outstanding + 1))
       printf '%-12s %s  %s  %s\n' "$status" "$short" "$(git log -1 --format=%ad --date=short "$sha")" "$subject"
       [ "$status" = "OUTSTANDING" ] || continue
