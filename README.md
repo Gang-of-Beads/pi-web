@@ -1,6 +1,6 @@
 # PI WEB
 
-[![CI](https://github.com/jmfederico/pi-web/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jmfederico/pi-web/actions/workflows/ci.yml)
+[![CI](https://github.com/VincentHanxiaoDu/pi-web/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/VincentHanxiaoDu/pi-web/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/@vincenthanxiaodu/pi-web)](https://www.npmjs.com/package/@vincenthanxiaodu/pi-web)
 [![Node.js](https://img.shields.io/node/v/@vincenthanxiaodu/pi-web)](package.json)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
