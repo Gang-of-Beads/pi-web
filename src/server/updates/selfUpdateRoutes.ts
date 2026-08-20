@@ -115,15 +115,21 @@ export function createSelfUpdateService(logger: { warn: (obj: unknown, msg: stri
       const command = updateCommand();
       if (command !== undefined) {
         // bash -lc so the command's own PATH expectations hold (home-manager
-        // switch needs the nix profile on PATH). Detached via systemd-run:
-        // the update restarts this very process.
-        const runner = spawn("systemd-run", ["--user", "--collect", "--unit=pi-web-self-update", "--", "/bin/bash", "-lc", command], {
-          detached: true,
-          stdio: "ignore",
-        });
+        // switch needs the nix profile on PATH). On Linux the command runs
+        // detached via systemd-run: the update restarts this very process.
+        // On macOS there is no systemd-run, so fall back to a plain detached
+        // bash child, which survives the web process being recycled (the
+        // update command itself performs the service cutover).
+        const detachViaSystemd = process.platform !== "darwin";
+        const runner = detachViaSystemd
+          ? spawn("systemd-run", ["--user", "--collect", "--unit=pi-web-self-update", "--", "/bin/bash", "-lc", command], {
+              detached: true,
+              stdio: "ignore",
+            })
+          : spawn("/bin/bash", ["-lc", command], { detached: true, stdio: "ignore" });
         runner.unref();
         await new Promise<void>((resolve) => {
-          runner.once("error", (error) => { logger?.warn({ err: error }, "systemd-run failed to start command self-update"); resolve(); });
+          runner.once("error", (error) => { logger?.warn({ err: error }, `${detachViaSystemd ? "systemd-run" : "bash"} failed to start command self-update`); resolve(); });
           runner.once("spawn", () => { resolve(); });
         });
         return;
