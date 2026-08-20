@@ -44,8 +44,26 @@ if [ -d "$target" ]; then
   echo "already installed: $target"
   current_tag="$(basename "$(readlink -f "$CURRENT" 2>/dev/null || echo none)")"
   if [ "$current_tag" = "$tag" ] && [ -d "$target/node_modules/@earendil-works/pi-coding-agent" ]; then
-    echo "current already points at $tag; nothing to do"
-    exit 0
+    # The symlink is not the deployment. A previous run can flip it and then
+    # fail to restart - a drain that timed out, a machine that went down - which
+    # leaves the link on the new release while the processes still execute the
+    # old one. Ask the services when they started: any that predate the link
+    # are running code the link no longer describes, and still need a restart.
+    link_changed=$(stat -c %Y "$CURRENT" 2>/dev/null || echo 0)
+    stale_units=""
+    for unit in pi-web pi-web-sessiond; do
+      started=$(systemctl --user show -p ActiveEnterTimestampMonotonic --value "$unit" 2>/dev/null || echo "")
+      [ -n "$started" ] || continue
+      started_epoch=$(systemctl --user show -p ActiveEnterTimestamp --value "$unit" 2>/dev/null | sed 's/^[A-Za-z]* //')
+      [ -n "$started_epoch" ] || continue
+      started_epoch=$(date -d "$started_epoch" +%s 2>/dev/null || echo 0)
+      [ "$started_epoch" -lt "$link_changed" ] && stale_units="$stale_units $unit"
+    done
+    if [ -z "$stale_units" ]; then
+      echo "current already points at $tag and the services are running it; nothing to do"
+      exit 0
+    fi
+    echo "current points at $tag but$stale_units still run older code; restarting"
   fi
 else
   echo "downloading…"
