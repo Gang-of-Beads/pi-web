@@ -4,10 +4,25 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { PI_WEB_UPDATE_REPO_ENV } from "../../shared/selfUpdate.js";
+import { packageVersion } from "../../piWebVersionReport.js";
 import type { PiWebSelfUpdateStatus } from "../../shared/apiTypes.js";
 
 const execFileAsync = promisify(execFile);
 const GIT_FETCH_INTERVAL_MS = 60_000;
+
+/**
+ * Managed deployments (the nix flake, installer scripts) update through a
+ * command that owns version drift - for the flake that is the automated
+ * lock-and-switch pipeline, invoked via /pi-web update or the update UI.
+ * When this environment is set the git-checkout path is not offered, because
+ * a store build has no .git to compare against.
+ */
+export const PI_WEB_UPDATE_COMMAND_ENV = "PI_WEB_UPDATE_COMMAND";
+
+function updateCommand(): string | undefined {
+  const fromEnv = process.env[PI_WEB_UPDATE_COMMAND_ENV];
+  return fromEnv !== undefined && fromEnv !== "" ? fromEnv : undefined;
+}
 
 /**
  * Interactive self-update for the host deployment.
@@ -66,6 +81,17 @@ export function createSelfUpdateService(logger: { warn: (obj: unknown, msg: stri
 
   return {
     async status() {
+      const command = updateCommand();
+      if (command !== undefined) {
+        return {
+          enabled: true,
+          current: packageVersion(),
+          latest: undefined,
+          available: false,
+          branch: undefined,
+          checkedAt: new Date().toISOString(),
+        };
+      }
       const repo = repoCandidate();
       if (repo === undefined) {
         return { enabled: false, current: "", latest: undefined, available: false, branch: undefined, checkedAt: new Date().toISOString(), disabledReason: "no checkout (set PI_WEB_UPDATE_REPO)" };
@@ -86,6 +112,22 @@ export function createSelfUpdateService(logger: { warn: (obj: unknown, msg: stri
       };
     },
     async apply() {
+      const command = updateCommand();
+      if (command !== undefined) {
+        // bash -lc so the command's own PATH expectations hold (home-manager
+        // switch needs the nix profile on PATH). Detached via systemd-run:
+        // the update restarts this very process.
+        const runner = spawn("systemd-run", ["--user", "--collect", "--unit=pi-web-self-update", "--", "/bin/bash", "-lc", command], {
+          detached: true,
+          stdio: "ignore",
+        });
+        runner.unref();
+        await new Promise<void>((resolve) => {
+          runner.once("error", (error) => { logger?.warn({ err: error }, "systemd-run failed to start command self-update"); resolve(); });
+          runner.once("spawn", () => { resolve(); });
+        });
+        return;
+      }
       const repo = repoCandidate();
       if (repo === undefined) throw new Error("no checkout to update (set PI_WEB_UPDATE_REPO)");
       const script = join(repo, "scripts", "auto-update.sh");

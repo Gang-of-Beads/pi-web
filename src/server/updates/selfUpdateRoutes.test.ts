@@ -1,9 +1,22 @@
 // Self-update routes with an injected service, so the guards (disabled host,
 // apply failure, apply start) are tested without touching real git.
 import Fastify, { type FastifyInstance } from "fastify";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import * as childProcess from "node:child_process";
+
+// The route module destructures spawn, so a namespace spy would not intercept
+// it; the module needs a full mock for the command-mode apply test.
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+  const fakeChild = {
+    unref: () => undefined,
+    once: (_event: string, callback: () => void) => { callback(); },
+  };
+  return { ...actual, spawn: vi.fn(() => fakeChild) };
+});
+import { packageVersion } from "../../piWebVersionReport.js";
 import type { PiWebSelfUpdateStatus } from "../../shared/apiTypes.js";
-import { registerSelfUpdateRoutes, type SelfUpdateService } from "./selfUpdateRoutes.js";
+import { createSelfUpdateService, registerSelfUpdateRoutes, type SelfUpdateService } from "./selfUpdateRoutes.js";
 
 let app: FastifyInstance | undefined;
 
@@ -60,5 +73,50 @@ describe("self-update routes", () => {
     expect(response.statusCode).toBe(202);
     expect(response.json()).toEqual({ started: true });
     expect(applied).toBe(1);
+  });
+});
+// Command mode: the nix/managed deployment path. There is no checkout, so
+// status stays simple and apply hands off to the command via systemd-run.
+
+describe("self-update command mode", () => {
+  afterEach(() => {
+    delete process.env.PI_WEB_UPDATE_COMMAND;
+  });
+
+  it("reports enabled with the built version when a command is configured", async () => {
+    process.env.PI_WEB_UPDATE_COMMAND = "/nix/store/xxx-pi-web-autoupdate/bin/pi-web-autoupdate --force";
+    const service = createSelfUpdateService(undefined);
+    const status = await service.status();
+    expect(status.enabled).toBe(true);
+    expect(status.current).toBe(packageVersion());
+    expect(status.latest).toBeUndefined();
+    expect(status.available).toBe(false);
+  });
+
+  it("still refuses to apply without a command and without a checkout", async () => {
+    const cwd = process.cwd();
+    try {
+      // Outside a checkout: the repo root in this test environment is one.
+      process.chdir("/tmp");
+      const service = createSelfUpdateService(undefined);
+      await expect(service.apply()).rejects.toThrow(/no checkout/);
+    } finally {
+      process.chdir(cwd);
+    }
+  });
+
+  it("hands the configured command to systemd-run, detached", async () => {
+    process.env.PI_WEB_UPDATE_COMMAND = "/nix/store/xxx/bin/pi-web-autoupdate --force";
+    const spawnMock = vi.mocked(childProcess.spawn);
+    spawnMock.mockClear();
+    const service = createSelfUpdateService(undefined);
+    await service.apply();
+    expect(spawnMock).toHaveBeenCalledOnce();
+    const [binary, args] = spawnMock.mock.calls[0] ?? [];
+    expect(binary).toBe("systemd-run");
+    // The env command reaches bash -lc verbatim; the unit name keeps the
+    // apply identifiable in systemd's journal.
+    expect(args).toEqual(expect.arrayContaining(["--unit=pi-web-self-update", "/bin/bash", "-lc"]));
+    expect(args?.at(-1)).toBe("/nix/store/xxx/bin/pi-web-autoupdate --force");
   });
 });
