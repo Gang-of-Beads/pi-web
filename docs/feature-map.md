@@ -37,7 +37,7 @@ gains a visible one.
 |---|---|---|
 | **Open settings** | `⌘,`, palette, `?settings=` — no button anywhere | ✅ gear control in the navigation panel header (`AppNavigationPanel`) |
 | Keyboard shortcut rebinding | Settings ▸ Shortcuts, itself invisible | Same panel, now reachable from the visible settings control |
-| **Theme selection** | Palette action only | Settings ▸ Appearance with live preview and a follow-system switch (task-8) |
+| **Theme selection** | Palette action only | ✅ Settings ▸ Appearance: every contributed theme as a card with a live colour preview, plus a follow-the-system switch (`SettingsAppearancePanel`) |
 | Provider auth (login/logout) | Palette only; usually discovered via an error | Settings ▸ Providers, plus the existing error-driven prompt |
 | **Session tree navigator** (history, branches, fork) | Only by typing a `/tree` command | ✅ "History and branches" in the session row menu (`SessionList`), which runs the same command |
 | Machine refresh / open remote PI WEB | Palette only | ✅ "Check again" / "Open PI WEB" in the machine row menu, plus the fleet panel |
@@ -73,8 +73,8 @@ panel body, and carries the inline create controls. The session list keeps the
 body the rest of the time. Rows answer hold (touch) and right-click (mouse) with
 the menu their `⋯` button opens.
 
-Still to place, by task: theme selection (task-8), panel-size resets and the
-unassigned `⌘3` (task-9 cleanup).
+Still to place, by task: panel-size resets and the unassigned `⌘3`
+(task-9 cleanup).
 
 ## Rules this map enforces
 

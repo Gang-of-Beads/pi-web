@@ -1,4 +1,4 @@
-export type SettingsSection = "general" | "sessiond" | "machines" | "packages" | "plugins" | "shortcuts";
+export type SettingsSection = "general" | "appearance" | "sessiond" | "machines" | "packages" | "plugins" | "shortcuts";
 
 export function readSettingsSection(): SettingsSection | undefined {
   return parseSettingsSection(new URLSearchParams(window.location.search).get("settings"));
@@ -17,6 +17,7 @@ export function writeSettingsSection(section: SettingsSection | undefined, optio
 
 export function parseSettingsSection(value: string | null): SettingsSection | undefined {
   if (value === "general") return "general";
+  if (value === "appearance" || value === "theme" || value === "themes") return "appearance";
   if (value === "sessiond" || value === "sessions") return "sessiond";
   if (value === "machines") return "machines";
   if (value === "packages" || value === "pi-packages") return "packages";
