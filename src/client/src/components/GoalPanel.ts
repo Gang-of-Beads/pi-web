@@ -187,17 +187,17 @@ export class GoalPanel extends LitElement {
   static override styles = [listStyles, css`
     h2 { min-height: 30px; }
     h2 > .section-count { flex: 0 0 auto; color: var(--pi-muted); font-size: inherit; }
-    .refresh-entry { flex: 0 0 auto; display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; font-size: 13px; }
+    .refresh-entry { flex: 0 0 auto; display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; font-size: var(--pi-text-sm); }
 
-    .goal-list { display: grid; gap: 8px; }
-    .goal { border: 1px solid var(--pi-border-muted); border-radius: 9px; background: var(--pi-surface); overflow: hidden; }
+    .goal-list { display: grid; gap: var(--pi-space-4); }
+    .goal { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-md); background: var(--pi-surface); overflow: hidden; }
     .goal.blocked { border-color: color-mix(in srgb, var(--pi-warning) 45%, var(--pi-border-muted)); }
     .goal.done { opacity: .72; }
     .goal-header {
       display: grid;
       grid-template-columns: auto 1fr auto auto;
       align-items: center;
-      gap: 7px;
+      gap: var(--pi-space-4);
       width: 100%;
       /* The whole header is the primary tap target on a phone. */
       min-height: 40px;
@@ -205,19 +205,19 @@ export class GoalPanel extends LitElement {
       border: 0;
       background: none;
       color: var(--pi-text);
-      padding: 8px 10px 6px;
+      padding: var(--pi-space-4) var(--pi-space-5) var(--pi-space-3);
       font: inherit;
       text-align: start;
       cursor: pointer;
     }
     .goal-header:hover { background: var(--pi-surface-hover); }
     .goal-header:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: -2px; }
-    .goal-caret { color: var(--pi-muted); font-size: 11px; }
+    .goal-caret { color: var(--pi-muted); font-size: var(--pi-text-2xs); }
     .goal-objective { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-    .goal-status { flex: 0 0 auto; color: var(--pi-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
+    .goal-status { flex: 0 0 auto; color: var(--pi-muted); font-size: var(--pi-text-2xs); text-transform: uppercase; letter-spacing: .03em; }
     .goal-status.blocked { color: var(--pi-warning); }
     .goal-status.done { color: var(--pi-success); }
-    .goal-ratio { flex: 0 0 auto; color: var(--pi-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+    .goal-ratio { flex: 0 0 auto; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-variant-numeric: tabular-nums; }
     .goal-bar { height: 3px; background: var(--pi-border-muted); }
     /* Scaled rather than resized: width animation runs on the layout thread,
        transform runs on the compositor. Origin pinned left so the bar grows
@@ -225,30 +225,30 @@ export class GoalPanel extends LitElement {
     .goal-bar-fill { display: block; height: 100%; width: 100%; transform-origin: left center; background: var(--pi-accent); transition: transform .2s ease; }
     .goal.done .goal-bar-fill { background: var(--pi-success); }
     .goal.blocked .goal-bar-fill { background: var(--pi-warning); }
-    .goal-meta, .goal-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; padding: 6px 10px 8px; color: var(--pi-muted); font-size: 11px; }
-    .goal-archive { margin-left: auto; border: 1px solid var(--pi-border); border-radius: 999px; background: var(--pi-surface); color: var(--pi-muted); padding: 3px 10px; font: inherit; font-size: 11px; cursor: pointer; }
+    .goal-meta, .goal-footer { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pi-space-4); margin: 0; padding: var(--pi-space-3) var(--pi-space-5) var(--pi-space-4); color: var(--pi-muted); font-size: var(--pi-text-2xs); }
+    .goal-archive { margin-left: auto; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-muted); padding: 3px var(--pi-space-5); font: inherit; font-size: var(--pi-text-2xs); cursor: pointer; }
     .goal-archive:hover, .goal-archive:focus-visible { color: var(--pi-danger); border-color: var(--pi-danger); }
-    .goal-archive-warning { margin: 0; padding: 0 10px 10px; color: var(--pi-warning); font-size: 11px; line-height: 1.45; }
+    .goal-archive-warning { margin: 0; padding: 0 var(--pi-space-5) var(--pi-space-5); color: var(--pi-warning); font-size: var(--pi-text-2xs); line-height: 1.45; }
     .goal-archive-warning code { font-family: var(--pi-control-monospace-font-family, ui-monospace, monospace); }
     .goal-current { color: var(--pi-text); }
     .goal-reason { color: var(--pi-warning); }
-    .goal-reason.detail { padding: 8px 10px 0; margin: 0; font-size: 12px; line-height: 1.4; }
-    .goal-contract { margin: 0; padding: 8px 10px 0; color: var(--pi-muted); font-size: 11px; line-height: 1.45; }
+    .goal-reason.detail { padding: var(--pi-space-4) var(--pi-space-5) 0; margin: 0; font-size: var(--pi-text-xs); line-height: 1.4; }
+    .goal-contract { margin: 0; padding: var(--pi-space-4) var(--pi-space-5) 0; color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: 1.45; }
     .goal-contract .label { display: block; color: var(--pi-text); font-weight: 600; }
-    .goal-flag { border: 1px solid var(--pi-border-muted); border-radius: 999px; padding: 1px 7px; }
+    .goal-flag { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-pill); padding: 1px var(--pi-space-4); }
     .goal-detail { border-top: 1px solid var(--pi-border-muted); }
-    .task-list { display: grid; gap: 2px; margin: 0; padding: 8px 10px; list-style: none; }
-    .task { display: grid; grid-template-columns: auto 1fr auto; align-items: start; gap: 7px; border-radius: 6px; padding: 3px 4px; font-size: 12px; line-height: 1.4; }
+    .task-list { display: grid; gap: var(--pi-space-1); margin: 0; padding: var(--pi-space-4) var(--pi-space-5); list-style: none; }
+    .task { display: grid; grid-template-columns: auto 1fr auto; align-items: start; gap: var(--pi-space-4); border-radius: var(--pi-radius-sm); padding: 3px var(--pi-space-2); font-size: var(--pi-text-xs); line-height: 1.4; }
     .task.current { background: color-mix(in srgb, var(--pi-accent) 12%, transparent); }
-    .task-mark { color: var(--pi-muted); font-size: 11px; }
+    .task-mark { color: var(--pi-muted); font-size: var(--pi-text-2xs); }
     .task.done .task-mark { color: var(--pi-success); }
     .task.done .task-title { color: var(--pi-muted); text-decoration: line-through; }
     .task.skipped .task-title { color: var(--pi-muted); font-style: italic; }
     .task-body { min-width: 0; display: grid; gap: 1px; }
     .task-title { overflow-wrap: anywhere; }
-    .task-contract { color: var(--pi-muted); font-size: 11px; overflow-wrap: anywhere; }
+    .task-contract { color: var(--pi-muted); font-size: var(--pi-text-2xs); overflow-wrap: anywhere; }
     .task-now { color: var(--pi-accent); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
-    .empty { margin: 0; padding: 6px 2px; color: var(--pi-muted); font-size: 12px; }
+    .empty { margin: 0; padding: var(--pi-space-3) var(--pi-space-1); color: var(--pi-muted); font-size: var(--pi-text-xs); }
     @container (max-width: 580px) {
       .goal-header, .refresh-entry { min-height: 42px; }
     }

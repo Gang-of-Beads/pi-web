@@ -79,23 +79,23 @@ export class AppMobileToolSheet extends LitElement {
   }
 
   static override styles = css`
-    :host { position: fixed; inset: 0; z-index: 26; color: var(--pi-text); font: 14px system-ui, sans-serif; }
+    :host { position: fixed; inset: 0; z-index: 26; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
     modal-surface {
       --modal-surface-place-items: end center;
       --modal-surface-backdrop-padding: 0;
       --modal-surface-width: min(560px, 100vw);
       --modal-surface-max-height: min(70dvh, 560px);
     }
-    header { padding: 12px 14px 6px; }
-    h2 { margin: 0; font-size: 13px; color: var(--pi-muted); text-transform: uppercase; letter-spacing: .04em; }
-    .body { flex: 1 1 auto; min-height: 0; overflow: auto; display: grid; gap: 6px; padding: 8px 10px; padding-bottom: max(10px, env(safe-area-inset-bottom)); overscroll-behavior: contain; }
-    .tool { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; min-height: 52px; border: 1px solid var(--pi-border); border-radius: 12px; background: var(--pi-surface); color: var(--pi-text); padding: 8px 12px; font: inherit; text-align: left; cursor: pointer; touch-action: manipulation; }
+    header { padding: var(--pi-space-6) var(--pi-space-7) var(--pi-space-3); }
+    h2 { margin: 0; font-size: var(--pi-text-sm); color: var(--pi-muted); text-transform: uppercase; letter-spacing: .04em; }
+    .body { flex: 1 1 auto; min-height: 0; overflow: auto; display: grid; gap: var(--pi-space-3); padding: var(--pi-space-4) var(--pi-space-5); padding-bottom: max(10px, env(safe-area-inset-bottom)); overscroll-behavior: contain; }
+    .tool { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto auto; align-items: center; gap: var(--pi-space-5); min-height: 52px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-6); font: inherit; text-align: left; cursor: pointer; touch-action: manipulation; }
     .tool.current { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
-    .tool:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }
+    .tool:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
     .tool-icon { display: inline-grid; place-items: center; color: var(--pi-muted); }
     .tool.current .tool-icon { color: var(--pi-accent); }
-    .tool-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
-    .tool-badge { min-width: 20px; border-radius: 999px; background: var(--pi-surface-hover); color: var(--pi-text-secondary); padding: 1px 7px; font-size: 12px; text-align: center; }
+    .tool-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--pi-text-md); }
+    .tool-badge { min-width: 20px; border-radius: var(--pi-radius-pill); background: var(--pi-surface-hover); color: var(--pi-text-secondary); padding: 1px var(--pi-space-4); font-size: var(--pi-text-xs); text-align: center; }
     .tool-badge.unread { background: var(--pi-selection-bg); color: var(--pi-accent); }
     .tool-check { color: var(--pi-accent); }
   `;

@@ -102,29 +102,29 @@ export class SettingsFleetSection extends LitElement {
   }
 
   static override styles = css`
-    :host { display: block; color: var(--pi-text); font: 14px system-ui, sans-serif; }
-    .fleet { display: grid; gap: 10px; }
-    header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-    h3 { margin: 0 0 4px; font-size: 14px; }
-    .muted { margin: 0; color: var(--pi-muted); font-size: 12px; line-height: 1.4; }
-    .error { margin: 0; color: var(--pi-danger); font-size: 12px; }
-    button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 6px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+    :host { display: block; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
+    .fleet { display: grid; gap: var(--pi-space-5); }
+    header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--pi-space-6); }
+    h3 { margin: 0 0 var(--pi-space-2); font-size: var(--pi-text-base); }
+    .muted { margin: 0; color: var(--pi-muted); font-size: var(--pi-text-xs); line-height: 1.4; }
+    .error { margin: 0; color: var(--pi-danger); font-size: var(--pi-text-xs); }
+    button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-3) var(--pi-space-5); font: inherit; font-size: var(--pi-text-xs); cursor: pointer; }
     button:disabled { opacity: .5; cursor: not-allowed; }
     button:hover:not(:disabled), button:focus-visible:not(:disabled) { border-color: var(--pi-accent); }
     .ghost { flex: 0 0 auto; }
-    .machines { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
-    .machine { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-surface); }
-    .machine .detail { grid-column: 2; color: var(--pi-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .machines { display: grid; gap: var(--pi-space-3); margin: 0; padding: 0; list-style: none; }
+    .machine { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); }
+    .machine .detail { grid-column: 2; color: var(--pi-muted); font-size: var(--pi-text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .machine .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .machine .row-actions { grid-row: 1 / span 2; grid-column: 3; display: flex; gap: 6px; }
+    .machine .row-actions { grid-row: 1 / span 2; grid-column: 3; display: flex; gap: var(--pi-space-3); }
     .dot { grid-row: 1 / span 2; width: 8px; height: 8px; border-radius: 50%; background: var(--pi-success); }
     .machine.offline .dot { background: var(--pi-danger); }
     .machine.offline .name { color: var(--pi-muted); }
-    .empty { color: var(--pi-muted); font-size: 12px; }
-    .all-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-    .outcome { display: grid; gap: 4px; padding: 8px 10px; border: 1px solid var(--pi-success-border); border-radius: 10px; background: var(--pi-success-surface); font-size: 12px; }
+    .empty { color: var(--pi-muted); font-size: var(--pi-text-xs); }
+    .all-actions { display: flex; flex-wrap: wrap; gap: var(--pi-space-4); }
+    .outcome { display: grid; gap: var(--pi-space-2); padding: var(--pi-space-4) var(--pi-space-5); border: 1px solid var(--pi-success-border); border-radius: var(--pi-radius-lg); background: var(--pi-success-surface); font-size: var(--pi-text-xs); }
     .outcome.has-failures { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); }
-    .outcome ul { margin: 0; padding-left: 16px; }
+    .outcome ul { margin: 0; padding-left: var(--pi-space-7); }
     @media (max-width: 760px) {
       .machine { grid-template-columns: auto minmax(0, 1fr); }
       .machine .row-actions { grid-row: auto; grid-column: 1 / -1; }

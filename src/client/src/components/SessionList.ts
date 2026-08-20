@@ -634,33 +634,33 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     h2 { min-height: 30px; }
     h2 > .section-count { flex: 0 0 auto; display: inline; color: var(--pi-muted); font-size: inherit; }
     h2 > .section-unread-count { flex: 0 0 auto; display: inline; color: var(--pi-accent); font-size: inherit; text-transform: none; }
-    .bulk-select-entry { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; font-size: 13px; line-height: 1; text-transform: none; }
-    .start-session-button { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; min-width: 30px; height: 30px; padding: 0 9px; }
-    .cleanup-entry { flex: 0 0 auto; padding: 5px 7px; font-size: 12px; text-transform: none; }
-    .bulk-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 6px; }
-    .bulk-row button { padding: 5px 7px; font-size: 12px; white-space: nowrap; }
-    .bulk-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; margin-left: auto; }
+    .bulk-select-entry { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; font-size: var(--pi-text-sm); line-height: 1; text-transform: none; }
+    .start-session-button { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; min-width: 30px; height: 30px; padding: 0 var(--pi-space-5); }
+    .cleanup-entry { flex: 0 0 auto; padding: var(--pi-space-3) var(--pi-space-4); font-size: var(--pi-text-xs); text-transform: none; }
+    .bulk-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pi-space-3); margin: 0 0 var(--pi-space-3); }
+    .bulk-row button { padding: var(--pi-space-3) var(--pi-space-4); font-size: var(--pi-text-xs); white-space: nowrap; }
+    .bulk-actions { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-3); margin-left: auto; }
     .action-name, .section-selected { text-align: start; unicode-bidi: plaintext; }
     .action-row.unread .action-name { color: var(--pi-text-bright); font-weight: 650; }
     .plain-heading { min-width: 0; }
-    .action-name-line { min-width: 0; display: flex; align-items: flex-start; gap: 6px; }
+    .action-name-line { min-width: 0; display: flex; align-items: flex-start; gap: var(--pi-space-3); }
     .action-name-line .action-name { flex: 1 1 auto; min-width: 0; }
     /* Badges must not sit inside the line-clamped title, or a long name hides them entirely. */
-    .row-badges { flex: 0 0 auto; display: flex; align-items: flex-start; gap: 4px; }
+    .row-badges { flex: 0 0 auto; display: flex; align-items: flex-start; gap: var(--pi-space-2); }
     .row-badges .badge { margin-left: 0; white-space: nowrap; }
     /* Same glyph as a normal child marker, dimmed: the row is a child whose parent is not displayed here. */
     .orphan-marker { color: var(--pi-dim); opacity: .65; }
-    .bulk-row.selecting { padding: 6px; border: 1px solid var(--pi-border-muted); border-radius: 8px; background: color-mix(in srgb, var(--pi-surface) 65%, transparent); }
+    .bulk-row.selecting { padding: var(--pi-space-3); border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-md); background: color-mix(in srgb, var(--pi-surface) 65%, transparent); }
     button.danger, .action-menu-panel button.danger { color: var(--pi-danger); }
     button.danger:hover, .action-menu-panel button.danger:hover { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); }
     .action-row.bulk-selected .action-main { border-color: var(--pi-accent); box-shadow: inset 3px 0 0 var(--pi-accent); }
-    .pending-session-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); margin: 6px 0; cursor: default; }
-    .pending-session-row.starting-session .action-main { border-radius: 8px; border-style: dashed; color: var(--pi-muted); }
-    .pending-session-row.starting-session .action-name { display: flex; align-items: center; gap: 6px; max-height: none; -webkit-line-clamp: 1; }
+    .pending-session-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); margin: var(--pi-space-3) 0; cursor: default; }
+    .pending-session-row.starting-session .action-main { border-radius: var(--pi-radius-md); border-style: dashed; color: var(--pi-muted); }
+    .pending-session-row.starting-session .action-name { display: flex; align-items: center; gap: var(--pi-space-3); max-height: none; -webkit-line-clamp: 1; }
     .pending-session-row.starting-session .activity-indicator { flex: 0 0 auto; margin: 0; }
     .action-main.selecting { padding-left: calc(32px + var(--depth, 0) * 16px); }
 .session-checkbox { position: absolute; top: 9px; left: calc(8px + var(--depth, 0) * 16px); z-index: 2; margin: 0; }
-    .subtree-toggle, .subtree-toggle.inert { position: absolute; top: 8px; left: calc(6px + var(--depth, 0) * 16px); z-index: 2; box-sizing: border-box; width: 24px; height: 24px; padding: 0; display: inline-grid; place-items: center; border: 1px solid var(--pi-border-muted); border-radius: 6px; background: var(--pi-surface); color: var(--pi-muted); font-size: 11px; line-height: 1; }
+    .subtree-toggle, .subtree-toggle.inert { position: absolute; top: 8px; left: calc(6px + var(--depth, 0) * 16px); z-index: 2; box-sizing: border-box; width: 24px; height: 24px; padding: 0; display: inline-grid; place-items: center; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: 1; }
     /* Formerly the toggle floated over the row's leading text and swallowed
        taps aimed at the session name. Reserve the gutter in the padding so
        the toggle sits over empty space. */
@@ -672,20 +672,20 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .subtree-chevron.collapsed { transform: rotate(-90deg); }
     /* Search sits inside the scrolling body but stays pinned, so filtering a
        long list never scrolls the field out of reach on a phone. */
-    .session-search { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 6px; margin: 0 0 6px; padding-bottom: 6px; background: var(--pi-bg); }
-    .session-search-input { box-sizing: border-box; flex: 1 1 auto; min-width: 0; height: 34px; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 0 9px; font: var(--pi-control-font-size, 14px) var(--pi-control-font-family, system-ui, sans-serif); }
+    .session-search { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: var(--pi-space-3); margin: 0 0 var(--pi-space-3); padding-bottom: var(--pi-space-3); background: var(--pi-bg); }
+    .session-search-input { box-sizing: border-box; flex: 1 1 auto; min-width: 0; height: 34px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 0 var(--pi-space-5); font: var(--pi-control-font-size, 14px) var(--pi-control-font-family, system-ui, sans-serif); }
     .session-search-input::placeholder { color: var(--pi-dim); }
     .session-search-input::-webkit-search-cancel-button { display: none; }
-    .session-search-input:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }
-    .session-search-clear { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; font-size: 18px; line-height: 1; }
-    .search-empty { padding: 12px 4px; color: var(--pi-muted); }
+    .session-search-input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+    .session-search-clear { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; font-size: var(--pi-text-lg); line-height: 1; }
+    .search-empty { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); }
     @media (max-width: 760px) {
       /* 16px keeps iOS Safari from zooming the viewport on focus, and the
          taller controls match the platform minimum touch target. */
       .session-search-input { height: 40px; font-size: 16px; }
       .session-search-clear { width: 40px; height: 40px; }
       .bulk-select-entry, .start-session-button { width: 36px; min-width: 36px; height: 36px; }
-      .cleanup-entry { min-height: 36px; padding: 6px 10px; }
+      .cleanup-entry { min-height: 36px; padding: var(--pi-space-3) var(--pi-space-5); }
       .action-menu-toggle { min-width: 36px; min-height: 36px; }
       .bulk-row button { min-height: 36px; }
     }

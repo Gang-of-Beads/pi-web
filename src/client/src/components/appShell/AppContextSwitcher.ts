@@ -74,16 +74,16 @@ export class AppContextSwitcher extends LitElement {
   static override styles = css`
     :host { display: block; flex: 0 0 auto; border-bottom: 1px solid var(--pi-border); background: var(--pi-bg); }
     button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
-    nav { display: flex; align-items: stretch; gap: 6px; padding: 8px 10px; overflow-x: auto; scrollbar-width: none; }
+    nav { display: flex; align-items: stretch; gap: var(--pi-space-3); padding: var(--pi-space-4) var(--pi-space-5); overflow-x: auto; scrollbar-width: none; }
     nav::-webkit-scrollbar { display: none; }
-    .step { flex: 1 1 0; min-width: 0; display: flex; align-items: stretch; gap: 4px; }
-    .chip { flex: 1 1 auto; min-width: 0; display: grid; gap: 1px; justify-items: start; min-height: 44px; border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-surface); color: var(--pi-text); padding: 5px 9px; font: inherit; text-align: left; cursor: pointer; }
+    .step { flex: 1 1 0; min-width: 0; display: flex; align-items: stretch; gap: var(--pi-space-2); }
+    .chip { flex: 1 1 auto; min-width: 0; display: grid; gap: 1px; justify-items: start; min-height: 44px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-3) var(--pi-space-5); font: inherit; text-align: left; cursor: pointer; }
     .step.open .chip { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     .chip:hover { border-color: var(--pi-accent); }
-    .chip:focus-visible, .add:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }
+    .chip:focus-visible, .add:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
     .chip-label { color: var(--pi-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
-    .chip-value { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
-    .add { flex: 0 0 auto; width: 32px; min-height: 44px; border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-surface); color: var(--pi-muted); font-size: 18px; line-height: 1; cursor: pointer; }
+    .chip-value { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--pi-text-sm); font-weight: 600; }
+    .add { flex: 0 0 auto; width: 32px; min-height: 44px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-muted); font-size: var(--pi-text-lg); line-height: 1; cursor: pointer; }
     .add:hover { color: var(--pi-text); border-color: var(--pi-accent); }
     @media (pointer: coarse) {
       .add { width: 40px; }

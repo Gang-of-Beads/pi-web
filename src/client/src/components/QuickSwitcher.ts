@@ -350,26 +350,26 @@ export class QuickSwitcher extends LitElement {
   }
 
   static override styles = [sessionStateBadgeStyles, css`
-    :host { position: fixed; inset: 0; z-index: 25; color: var(--pi-text); font: 14px system-ui, sans-serif; }
+    :host { position: fixed; inset: 0; z-index: 25; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
     modal-surface {
       --modal-surface-place-items: end center;
       --modal-surface-backdrop-padding: 0;
       --modal-surface-width: min(560px, 100vw);
       --modal-surface-max-height: min(88dvh, 760px);
     }
-    header { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 10px; border-bottom: 1px solid var(--pi-border); }
-    input { box-sizing: border-box; min-width: 0; height: 40px; border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-bg); color: var(--pi-text); padding: 0 10px; font: 16px system-ui, sans-serif; }
+    header { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--pi-space-4); align-items: center; padding: var(--pi-space-5); border-bottom: 1px solid var(--pi-border); }
+    input { box-sizing: border-box; min-width: 0; height: 40px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-bg); color: var(--pi-text); padding: 0 var(--pi-space-5); font: var(--pi-text-lg) var(--pi-font-ui); }
     input::-webkit-search-cancel-button { display: none; }
-    input:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }
-    .close { border: 0; background: transparent; color: var(--pi-muted); font-size: 24px; line-height: 1; padding: 0 8px; cursor: pointer; }
-    .body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 10px; overscroll-behavior: contain; }
-    h3 { margin: 14px 4px 6px; color: var(--pi-muted); font-size: 12px; font-weight: 600; text-transform: uppercase; }
-    .rows { display: grid; gap: 6px; }
-    .row { position: relative; display: grid; gap: 2px; width: 100%; min-height: 52px; border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-surface); color: var(--pi-text); padding: 9px 34px 9px 12px; text-align: left; cursor: pointer; }
+    input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+    .close { border: 0; background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); line-height: 1; padding: 0 var(--pi-space-4); cursor: pointer; }
+    .body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: var(--pi-space-5); overscroll-behavior: contain; }
+    h3 { margin: var(--pi-space-7) var(--pi-space-2) var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: 600; text-transform: uppercase; }
+    .rows { display: grid; gap: var(--pi-space-3); }
+    .row { position: relative; display: grid; gap: var(--pi-space-1); width: 100%; min-height: 52px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-5) 34px var(--pi-space-5) var(--pi-space-6); text-align: left; cursor: pointer; }
     .row:hover:not(:disabled) { background: var(--pi-surface-hover); }
     .row:disabled { opacity: .55; cursor: not-allowed; }
-    .row-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
-    .row-subtitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: 12px; }
+    .row-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--pi-text-md); }
+    .row-subtitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-xs); }
     .create-row { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
     .create-row .row-title { font-weight: 650; }
     .session-row.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
@@ -383,30 +383,30 @@ export class QuickSwitcher extends LitElement {
     .row-flag.interrupted { background: transparent; border: 2px solid var(--pi-warning, var(--pi-accent)); }
     /* Filters scroll sideways rather than wrapping into a wall of chips; the
        row keeps one line so it never competes with the list for height. */
-    .filters { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--pi-border-muted); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+    .filters { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-3); padding: var(--pi-space-4) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
     .filters::-webkit-scrollbar { display: none; }
-    .chip { flex: 0 0 auto; min-height: 32px; border: 1px solid var(--pi-border); border-radius: 999px; background: var(--pi-surface); color: var(--pi-text-secondary); padding: 4px 12px; font: inherit; font-size: 13px; white-space: nowrap; cursor: pointer; }
+    .chip { flex: 0 0 auto; min-height: 32px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text-secondary); padding: var(--pi-space-2) var(--pi-space-6); font: inherit; font-size: var(--pi-text-sm); white-space: nowrap; cursor: pointer; }
     .chip.on { border-color: var(--pi-accent); background: var(--pi-selection-bg); color: var(--pi-text-bright); }
     /* Nested chips read as a second level, not as peers of the projects. */
-    .chip.nested { border-style: dashed; font-size: 12px; }
-    .chip:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }
-    .row-wrap { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+    .chip.nested { border-style: dashed; font-size: var(--pi-text-xs); }
+    .chip:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+    .row-wrap { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--pi-space-3); }
     /* A long press must not race the platform's own text callout. */
     .row-wrap .session-row { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
-    .row-menu-toggle { flex: 0 0 auto; width: 40px; min-height: 52px; border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-surface); color: var(--pi-muted); font-size: 18px; line-height: 1; cursor: pointer; }
+    .row-menu-toggle { flex: 0 0 auto; width: 40px; min-height: 52px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-muted); font-size: var(--pi-text-lg); line-height: 1; cursor: pointer; }
     .row-menu-toggle:hover, .row-menu-toggle:focus-visible { color: var(--pi-text); border-color: var(--pi-accent); }
-    .row-menu { position: absolute; top: calc(100% - 4px); right: 0; z-index: 3; display: grid; gap: 2px; min-width: 160px; padding: 6px; border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-surface); box-shadow: 0 10px 26px var(--pi-shadow); }
-    .row-menu button { min-height: 40px; border: 0; border-radius: 8px; background: transparent; color: var(--pi-text); padding: 0 10px; font: inherit; text-align: left; cursor: pointer; }
+    .row-menu { position: absolute; top: calc(100% - 4px); right: 0; z-index: 3; display: grid; gap: var(--pi-space-1); min-width: 160px; padding: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); box-shadow: 0 10px 26px var(--pi-shadow); }
+    .row-menu button { min-height: 40px; border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-text); padding: 0 var(--pi-space-5); font: inherit; text-align: left; cursor: pointer; }
     .row-menu button:hover:not(:disabled), .row-menu button:focus-visible:not(:disabled) { background: var(--pi-selection-bg); }
     .row-menu button:disabled { opacity: .5; cursor: not-allowed; }
     .pin-mark { color: var(--pi-accent); }
-    .rename-row { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px 10px; }
-    .rename-input { box-sizing: border-box; width: 100%; min-height: 40px; border: 1px solid var(--pi-accent); border-radius: 8px; background: var(--pi-bg); color: var(--pi-text); padding: 0 10px; font: 16px system-ui, sans-serif; }
-    .rename-actions { display: flex; gap: 6px; }
-    .rename-actions button { width: 40px; min-height: 40px; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
-    .empty { margin: 16px 4px; color: var(--pi-muted); }
-    footer { flex: 0 0 auto; padding: 10px; padding-bottom: max(10px, env(safe-area-inset-bottom)); border-top: 1px solid var(--pi-border); }
-    footer button { width: 100%; min-height: 44px; border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
+    .rename-row { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-space-5); }
+    .rename-input { box-sizing: border-box; width: 100%; min-height: 40px; border: 1px solid var(--pi-accent); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: 0 var(--pi-space-5); font: var(--pi-text-lg) var(--pi-font-ui); }
+    .rename-actions { display: flex; gap: var(--pi-space-3); }
+    .rename-actions button { width: 40px; min-height: 40px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
+    .empty { margin: var(--pi-space-7) var(--pi-space-2); color: var(--pi-muted); }
+    footer { flex: 0 0 auto; padding: var(--pi-space-5); padding-bottom: max(10px, env(safe-area-inset-bottom)); border-top: 1px solid var(--pi-border); }
+    footer button { width: 100%; min-height: 44px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
   `];
 }
 

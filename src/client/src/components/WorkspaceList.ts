@@ -333,11 +333,11 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
   }
 
   static override styles = [listStyles, css`
-    .workspace-menu-trust { display: flex; flex-direction: column; gap: 3px; padding: 4px 2px; }
-    .workspace-menu-trust-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-    .workspace-menu-trust label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+    .workspace-menu-trust { display: flex; flex-direction: column; gap: 3px; padding: var(--pi-space-2) var(--pi-space-1); }
+    .workspace-menu-trust-row { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); }
+    .workspace-menu-trust label { display: flex; align-items: center; gap: var(--pi-space-3); cursor: pointer; }
     .workspace-menu-trust input { cursor: pointer; }
-    .workspace-trust-link { color: var(--pi-accent); font-size: 12px; text-align: right; white-space: nowrap; }
+    .workspace-trust-link { color: var(--pi-accent); font-size: var(--pi-text-xs); text-align: right; white-space: nowrap; }
     .workspace-trust-error { color: var(--pi-danger, #c0392b); line-height: 1.3; }
   `];
 }

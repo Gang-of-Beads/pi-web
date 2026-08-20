@@ -176,10 +176,10 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
   static override styles = [
     listStyles,
     css`
-      .machine-row { border-radius: 10px; }
-      .machine-row.no-actions .action-main { border-radius: 10px; }
+      .machine-row { border-radius: var(--pi-radius-lg); }
+      .machine-row.no-actions .action-main { border-radius: var(--pi-radius-lg); }
       .machine-row .action-main { min-height: 58px; align-content: center; }
-      .machine-primary { display: flex; align-items: baseline; gap: 6px; }
+      .machine-primary { display: flex; align-items: baseline; gap: var(--pi-space-3); }
       .machine-primary-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
       .machine-menu-panel button.danger { color: var(--pi-danger); }
       .machine-menu-panel button.danger:hover, .machine-menu-panel button.danger:focus { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); }

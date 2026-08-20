@@ -103,34 +103,34 @@ export class SettingsAppearancePanel extends LitElement {
   }
 
   static override styles = css`
-    :host { display: block; color: var(--pi-text); font: 14px system-ui, sans-serif; }
-    .heading { margin-bottom: 12px; }
-    h2 { margin: 0 0 4px; font-size: 15px; }
-    .muted { margin: 0; color: var(--pi-muted); font-size: 12px; line-height: 1.4; }
-    .follow { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 14px; padding: 10px; border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-surface); cursor: pointer; }
-    .follow input { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--pi-accent); }
-    .follow span { display: grid; gap: 2px; }
+    :host { display: block; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
+    .heading { margin-bottom: var(--pi-space-6); }
+    h2 { margin: 0 0 var(--pi-space-2); font-family: var(--pi-font-display); font-size: var(--pi-text-lg); font-weight: var(--pi-weight-semibold); letter-spacing: -0.01em; }
+    .muted { margin: 0; color: var(--pi-muted); font-size: var(--pi-text-xs); line-height: 1.4; }
+    .follow { display: flex; align-items: flex-start; gap: var(--pi-space-5); margin-bottom: var(--pi-space-7); padding: var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); cursor: pointer; }
+    .follow input { width: 18px; height: 18px; margin: var(--pi-space-1) 0 0; accent-color: var(--pi-accent); }
+    .follow span { display: grid; gap: var(--pi-space-1); }
     .follow-title { font-weight: 600; }
-    .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
-    .theme { display: grid; gap: 4px; padding: 10px; border: 1px solid var(--pi-border); border-radius: 12px; background: var(--pi-surface); color: var(--pi-text); font: inherit; text-align: left; cursor: pointer; }
+    .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--pi-space-5); }
+    .theme { display: grid; gap: var(--pi-space-2); padding: var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); font: inherit; text-align: left; cursor: pointer; }
     .theme:hover { border-color: var(--pi-accent); }
-    .theme:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 2px; }
+    .theme:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
     .theme.selected { border-color: var(--pi-accent); box-shadow: 0 0 0 1px var(--pi-accent) inset; }
     .theme-name { font-weight: 600; }
-    .theme-scheme, .theme-description { font-size: 11px; }
-    .preview { display: grid; gap: 6px; height: 74px; margin-bottom: 6px; padding: 8px; border: 1px solid var(--preview-border, var(--pi-border)); border-radius: 8px; background: var(--preview-bg, var(--pi-bg)); }
-    .preview-surface { display: grid; align-content: center; gap: 5px; padding: 6px 7px; border: 1px solid var(--preview-border, var(--pi-border)); border-radius: 6px; background: var(--preview-surface, var(--pi-surface)); }
-    .preview-line { display: block; height: 5px; border-radius: 999px; background: var(--preview-text, var(--pi-text)); }
+    .theme-scheme, .theme-description { font-size: var(--pi-text-2xs); }
+    .preview { display: grid; gap: var(--pi-space-3); height: 74px; margin-bottom: var(--pi-space-3); padding: var(--pi-space-4); border: 1px solid var(--preview-border, var(--pi-border)); border-radius: var(--pi-radius-md); background: var(--preview-bg, var(--pi-bg)); }
+    .preview-surface { display: grid; align-content: center; gap: var(--pi-space-3); padding: var(--pi-space-3) var(--pi-space-4); border: 1px solid var(--preview-border, var(--pi-border)); border-radius: var(--pi-radius-sm); background: var(--preview-surface, var(--pi-surface)); }
+    .preview-line { display: block; height: 5px; border-radius: var(--pi-radius-pill); background: var(--preview-text, var(--pi-text)); }
     .preview-line.long { width: 78%; }
     .preview-line.short { width: 46%; background: var(--preview-muted, var(--pi-muted)); }
-    .preview-dots { display: flex; gap: 5px; }
+    .preview-dots { display: flex; gap: var(--pi-space-3); }
     .preview-dot { width: 10px; height: 10px; border-radius: 50%; }
     .preview-dot.accent { background: var(--preview-accent, var(--pi-accent)); }
     .preview-dot.success { background: var(--preview-success, var(--pi-success)); }
     .preview-dot.warning { background: var(--preview-warning, var(--pi-warning)); }
     .preview-dot.danger { background: var(--preview-danger, var(--pi-danger)); }
     @media (max-width: 760px) {
-      .theme-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+      .theme-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--pi-space-4); }
       .preview { height: 64px; }
     }
   `;
