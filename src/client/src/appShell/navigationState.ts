@@ -27,25 +27,20 @@ export function expandedNavigationSection(expanded: ExpandedNavigationSection, s
   return expanded ?? defaultNavigationSection(state);
 }
 
-export function isNavigationSectionCollapsed(section: NavigationSection, options: { isMobileLayout: boolean; expanded: ExpandedNavigationSection; state: NavigationSelectionState; collapsedSections?: readonly NavigationSection[] | undefined }): boolean {
-  if (options.isMobileLayout) return expandedNavigationSection(options.expanded, options.state) !== section;
-  return options.collapsedSections?.includes(section) ?? false;
+/**
+ * One section is open at a time, on every width.
+ *
+ * Desktop used to keep a second model - a set of independently collapsed
+ * sections - so the sidebar stacked four scrolling lists. With the context row
+ * naming machine, project and workspace above the body, a picker is only on
+ * screen while it is being used, which is the same rule the phone already had.
+ */
+export function isNavigationSectionCollapsed(section: NavigationSection, options: { expanded: ExpandedNavigationSection; state: NavigationSelectionState }): boolean {
+  return expandedNavigationSection(options.expanded, options.state) !== section;
 }
 
-export function toggleNavigationSection(expanded: ExpandedNavigationSection, section: NavigationSection, options: { isMobileLayout: boolean; state: NavigationSelectionState }): ExpandedNavigationSection {
-  if (!options.isMobileLayout) return expanded;
+export function toggleNavigationSection(expanded: ExpandedNavigationSection, section: NavigationSection, options: { state: NavigationSelectionState }): ExpandedNavigationSection {
   return expandedNavigationSection(expanded, options.state) === section ? "none" : section;
-}
-
-export function expandNavigationSection(expanded: ExpandedNavigationSection, section: NavigationSection, isMobileLayout: boolean): ExpandedNavigationSection {
-  return isMobileLayout ? section : expanded;
-}
-
-export function toggleCollapsedNavigationSection(collapsedSections: readonly NavigationSection[], section: NavigationSection): NavigationSection[] {
-  const collapsed = new Set(collapsedSections);
-  if (collapsed.has(section)) collapsed.delete(section);
-  else collapsed.add(section);
-  return orderedNavigationSections(collapsed);
 }
 
 /**
@@ -67,7 +62,6 @@ export function nextNavigationSection(section: NavigationSection): NavigationSec
 
 export class NavigationSectionsController implements ReactiveController {
   private expanded: ExpandedNavigationSection;
-  private collapsedSections: readonly NavigationSection[] = [];
 
   hostConnected(): void {
     return;
@@ -76,7 +70,6 @@ export class NavigationSectionsController implements ReactiveController {
   constructor(
     private readonly host: ReactiveControllerHost,
     private readonly getState: () => NavigationSelectionState,
-    private readonly isMobileLayout: () => boolean,
   ) {
     host.addController(this);
   }
@@ -86,32 +79,18 @@ export class NavigationSectionsController implements ReactiveController {
   }
 
   isCollapsed(section: NavigationSection): boolean {
-    return isNavigationSectionCollapsed(section, {
-      isMobileLayout: this.isMobileLayout(),
-      expanded: this.expanded,
-      state: this.getState(),
-      collapsedSections: this.collapsedSections,
-    });
+    return isNavigationSectionCollapsed(section, { expanded: this.expanded, state: this.getState() });
   }
 
   toggle(section: NavigationSection): void {
-    if (this.isMobileLayout()) {
-      this.setExpanded(toggleNavigationSection(this.expanded, section, { isMobileLayout: true, state: this.getState() }));
-      return;
-    }
-    this.setCollapsedSections(toggleCollapsedNavigationSection(this.collapsedSections, section));
+    this.setExpanded(toggleNavigationSection(this.expanded, section, { state: this.getState() }));
   }
 
   expand(section: NavigationSection): void {
-    if (this.isMobileLayout()) {
-      this.setExpanded(expandNavigationSection(this.expanded, section, true));
-      return;
-    }
-    this.setCollapsedSections(this.collapsedSections.filter((collapsedSection) => collapsedSection !== section));
+    this.setExpanded(section);
   }
 
   advanceAfterSelection(section: NavigationSection, options?: { workspaceCount?: number | undefined }): void {
-    if (!this.isMobileLayout()) return;
     const next = section === "projects"
       ? sectionAfterProjectSelection({ workspaceCount: options?.workspaceCount })
       : nextNavigationSection(section);
@@ -119,7 +98,6 @@ export class NavigationSectionsController implements ReactiveController {
   }
 
   open(section: NavigationSection, openNavigationView: () => void): void {
-    if (!this.isMobileLayout()) return;
     this.expand(section);
     openNavigationView();
   }
@@ -130,18 +108,4 @@ export class NavigationSectionsController implements ReactiveController {
     this.host.requestUpdate();
   }
 
-  private setCollapsedSections(collapsedSections: readonly NavigationSection[]): void {
-    if (navigationSectionListsEqual(this.collapsedSections, collapsedSections)) return;
-    this.collapsedSections = collapsedSections;
-    this.host.requestUpdate();
-  }
-}
-
-function orderedNavigationSections(sections: Iterable<NavigationSection>): NavigationSection[] {
-  const sectionSet = new Set(sections);
-  return NAVIGATION_SECTION_ORDER.filter((section) => sectionSet.has(section));
-}
-
-function navigationSectionListsEqual(first: readonly NavigationSection[], second: readonly NavigationSection[]): boolean {
-  return first.length === second.length && first.every((section, index) => section === second[index]);
 }

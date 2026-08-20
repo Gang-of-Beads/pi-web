@@ -1,3 +1,4 @@
+import { RowMenuGestures } from "./rowMenuGestures";
 import { LitElement, css, html, type PropertyValues, nothing} from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { Machine, MachineHealth } from "../api";
@@ -19,10 +20,15 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
   @property({ type: Boolean, reflect: true }) collapsed = false;
   @property({ attribute: false }) onSelect?: (machine: Machine) => void;
   @property({ attribute: false }) onRemove?: (machine: Machine) => void | Promise<void>;
+  /** Re-check one machine's health; previously palette-only. */
+  @property({ attribute: false }) onRefresh?: (machine: Machine) => void | Promise<void>;
+  /** Open a remote machine's own PI WEB; previously palette-only. */
+  @property({ attribute: false }) onOpen?: (machine: Machine) => void;
   @property({ attribute: false }) onToggleCollapsed?: () => void;
   @property({ attribute: false }) onFocusNextSection?: () => void | Promise<void>;
   @property({ attribute: false }) onCancelKeyboardNavigation?: () => void | Promise<void>;
   @state() private openMenuMachineId: string | undefined;
+  private readonly gestures = new RowMenuGestures((id, anchor) => { this.openMenu(id, anchor); });
   @state() private menuStyle = "";
 
   private readonly onDocumentClick = (event: MouseEvent) => {
@@ -77,7 +83,12 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
           type="button"
           class="action-main"
           aria-current=${this.selected?.id === machine.id ? "true" : nothing}
-          @click=${() => { this.onSelect?.(machine); }}
+          @click=${() => { if (!this.gestures.consumeSuppressedClick()) this.onSelect?.(machine); }}
+          @contextmenu=${(event: MouseEvent) => { this.gestures.contextMenu(machine.id, event); }}
+          @pointerdown=${(event: PointerEvent) => { this.gestures.pointerDown(machine.id, event); }}
+          @pointermove=${(event: PointerEvent) => { this.gestures.pointerMove(event); }}
+          @pointerup=${() => { this.gestures.cancel(); }}
+          @pointercancel=${() => { this.gestures.cancel(); }}
         >
           <span class="action-name machine-primary"><span class="machine-primary-label">${machine.name}</span></span><small>${machine.kind === "local" ? "Local Pi Web" : machine.baseUrl ?? "Remote Pi Web"} · ${statusLabel}</small>
           ${this.renderActivity(machine)}
@@ -112,6 +123,8 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
         >⋯</button>
         ${open ? html`
           <div class="action-menu-panel machine-menu-panel" id=${menuId} style=${this.menuStyle} @click=${(event: MouseEvent) => { event.stopPropagation(); }}>
+            ${this.onRefresh === undefined ? null : html`<button title=${`Check ${machine.name} again`} @click=${() => { this.openMenuMachineId = undefined; void this.onRefresh?.(machine); }}>Check again</button>`}
+            ${this.onOpen === undefined || machine.kind !== "remote" ? null : html`<button title=${`Open ${machine.name} in a new tab`} @click=${() => { this.openMenuMachineId = undefined; this.onOpen?.(machine); }}>Open PI WEB</button>`}
             <button class="danger" title=${`Remove ${machine.name}`} @click=${() => { this.removeMachine(machine); }}>Remove</button>
           </div>
         ` : null}
@@ -124,6 +137,12 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
     const selectedSummary = this.selected?.name ?? "No machine selected";
     const selectedTitle = this.selected?.baseUrl ?? selectedSummary;
     return html`<button class="section-toggle" aria-expanded=${String(!this.collapsed)} @click=${() => { this.onToggleCollapsed?.(); }}><span class="section-title"><span class="section-name">${this.collapsed ? "▸" : "▾"} Machines</span>${this.collapsed ? html`<small class="section-selected" title=${selectedTitle}>${selectedSummary}</small>` : null}</span><small class="section-count">${this.machines.length}</small></button>`;
+  }
+
+  /** Open (never toggle): a hold or right-click always means "show me the menu". */
+  private openMenu(machineId: string, target: EventTarget | null): void {
+    this.menuStyle = actionMenuPanelStyle(target, { constrainTo: "viewport" });
+    this.openMenuMachineId = machineId;
   }
 
   private toggleMenu(machineId: string, target: EventTarget | null): void {

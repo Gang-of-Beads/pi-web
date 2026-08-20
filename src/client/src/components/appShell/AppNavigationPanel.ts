@@ -9,6 +9,7 @@ import type { NavigationSection } from "../../appShell/navigationState";
 import { NAVIGATION_SECTION_ORDER } from "../../appShell/navigationState";
 import type { KeyboardNavigableSection } from "../navigationFocus";
 import "../MachineList";
+import "./AppContextSwitcher";
 import "../MachineSwitcher";
 import "../ProjectList";
 import "../WorkspaceList";
@@ -45,6 +46,10 @@ export class AppNavigationPanel extends LitElement {
   @property({ type: Number }) startingSessionCount = 0;
   @property({ type: Boolean }) canStartSession = false;
   @property({ attribute: false }) onShowActions?: () => void;
+  @property({ attribute: false }) onOpenSettings?: () => void;
+  @property({ attribute: false }) onAddMachine?: () => void;
+  @property({ attribute: false }) onRefreshMachine?: (machine: Machine) => void | Promise<void>;
+  @property({ attribute: false }) onOpenMachine?: (machine: Machine) => void;
   @property({ attribute: false }) onQuickSwitch?: () => void;
   @property({ attribute: false }) onAddProject?: () => void;
   @property({ attribute: false }) onToggleMachines?: () => void;
@@ -97,31 +102,34 @@ export class AppNavigationPanel extends LitElement {
 
   override render() {
     if (this.compact) return this.renderCompact();
+    // One body at a time: the context row above says where you are and opens
+    // each picker, so the session list keeps the panel instead of sharing it
+    // with three lists that are read far more often than they are changed.
+    const visible = this.compactVisibleSection();
     return html`
       <header>
         <strong>PI WEB</strong>
-        ${shouldShowMachinesSection(this.machines) ? html`
-          <machine-switcher
-            .machines=${this.machines}
-            .selected=${this.selectedMachine}
-            .statuses=${this.machineStatuses}
-            .statusSnapshots=${this.machineStatusSnapshots}
-            .onSelect=${(machine: Machine) => this.onSelectMachine?.(machine)}
-            .onRemove=${(machine: Machine) => this.onRemoveMachine?.(machine)}
-            .onFocusNextSection=${() => { this.focusNextFrom("machines"); }}
-            .onCancelKeyboardNavigation=${() => { this.cancelKeyboardNavigation(); }}
-          ></machine-switcher>
-        ` : null}
         <div class="header-actions">
           ${this.refreshControl}
+          <button title="Open settings" aria-label="Open settings" @click=${() => { this.onOpenSettings?.(); }}>⚙</button>
           <button title="Show Actions" aria-label="Show Actions" @click=${() => { this.onShowActions?.(); }}>Actions</button>
         </div>
       </header>
-      ${this.renderMachineList(false)}
-      ${this.renderProjectList(true)}
-      ${this.renderWorkspaceList(true)}
-      ${this.renderSessionList(true)}
-      ${this.renderGoalPanel()}
+      <app-context-switcher
+        .machines=${this.machines}
+        .selectedMachine=${this.selectedMachine}
+        .selectedProject=${this.selectedProject}
+        .selectedWorkspace=${this.selectedWorkspace}
+        .openSection=${visible === "sessions" ? undefined : visible}
+        .onOpenSection=${(section: NavigationSection) => { this.openSection(section); }}
+        .onAddMachine=${() => { this.onAddMachine?.(); }}
+        .onAddProject=${() => { this.runMaybeAsync(this.onAddProject); }}
+      ></app-context-switcher>
+      ${this.renderMachineList(false, visible !== "machines")}
+      ${this.renderProjectList(false, visible !== "projects")}
+      ${this.renderWorkspaceList(false, visible !== "workspaces")}
+      ${this.renderSessionList(false, visible !== "sessions")}
+      ${visible === "sessions" ? this.renderGoalPanel() : null}
     `;
   }
 
@@ -170,6 +178,20 @@ export class AppNavigationPanel extends LitElement {
     `;
   }
 
+  /**
+   * Open a picker from the context row, or close it by choosing it again.
+   *
+   * This reuses the accordion's own toggle rather than a second piece of state,
+   * so the desktop context row and the mobile accordion cannot disagree about
+   * which step is showing.
+   */
+  private openSection(section: NavigationSection): void {
+    if (section === "machines") this.onToggleMachines?.();
+    else if (section === "projects") this.onToggleProjects?.();
+    else if (section === "workspaces") this.onToggleWorkspaces?.();
+    else this.onToggleSessions?.();
+  }
+
   private compactVisibleSection(): NavigationSection {
     if (shouldShowMachinesSection(this.machines) && !this.machinesCollapsed) return "machines";
     if (!this.projectsCollapsed) return "projects";
@@ -194,6 +216,8 @@ export class AppNavigationPanel extends LitElement {
         .onToggleCollapsed=${() => { this.onToggleMachines?.(); }}
         .onSelect=${(machine: Machine) => this.onSelectMachine?.(machine)}
         .onRemove=${(machine: Machine) => this.onRemoveMachine?.(machine)}
+        .onRefresh=${(machine: Machine) => this.onRefreshMachine?.(machine)}
+        .onOpen=${(machine: Machine) => { this.onOpenMachine?.(machine); }}
         .onFocusNextSection=${() => { this.focusNextFrom("machines"); }}
         .onCancelKeyboardNavigation=${() => { this.cancelKeyboardNavigation(); }}
       ></machine-list>
@@ -353,28 +377,18 @@ export class AppNavigationPanel extends LitElement {
     machine-switcher { flex: 1 1 auto; min-width: 0; }
     :host([compact]) header { display: none; }
     .header-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
-    /* Sessions are the working surface; machines/projects/workspaces are
-       context pickers that are chosen once and then read at a glance. So the
-       pickers size to their content up to a cap (they scroll internally past
-       it) and the session list takes every remaining pixel. Splitting the
-       height equally, as this panel used to, left a 33-session list showing a
-       single row while a one-machine list held the same space. */
-    machine-list, project-list, workspace-list, session-list { min-height: 0; overflow: hidden; border-bottom: 1px solid var(--pi-border-muted); }
-    machine-list, project-list, workspace-list { flex: 0 1 auto; max-height: var(--pi-nav-picker-max-height, 30vh); }
-    session-list { flex: 1 1 auto; min-height: var(--pi-nav-sessions-min-height, 220px); }
-    /* Compact mode shows one section at a time, so the visible one takes the
-       whole body and the cap would only shorten it. */
-    :host([compact]) machine-list,
-    :host([compact]) project-list,
-    :host([compact]) workspace-list,
-    :host([compact]) session-list { flex: 1 1 auto; max-height: none; min-height: 0; }
+    /* One section owns the body at a time, on every width. The context row
+       above names the machine, project and workspace, so those pickers only
+       appear while they are being changed - which is what frees the whole panel
+       for the session list, the one surface that is actually worked in. */
+    machine-list, project-list, workspace-list, session-list { flex: 1 1 auto; min-height: 0; overflow: hidden; }
     machine-list[collapsed],
     project-list[collapsed],
     workspace-list[collapsed],
-    session-list[collapsed] { flex: 0 0 auto; min-height: auto; max-height: none; overflow: hidden; }
+    session-list[collapsed] { flex: 0 0 auto; min-height: auto; overflow: hidden; }
     /* Goals are workspace context under the session list: capped so a long
        task list cannot push the sessions it belongs to off-screen. */
-    goal-panel { flex: 0 1 auto; min-height: 0; max-height: var(--pi-nav-goals-max-height, 26vh); overflow: auto; }
+    goal-panel { flex: 0 1 auto; min-height: 0; max-height: var(--pi-nav-goals-max-height, 26vh); overflow: auto; border-top: 1px solid var(--pi-border-muted); }
     button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; }
   `;
 }

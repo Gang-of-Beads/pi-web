@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sectionAfterProjectSelection, defaultNavigationSection, expandedNavigationSection, isNavigationSectionCollapsed, toggleCollapsedNavigationSection, toggleNavigationSection } from "./navigationState";
+import { sectionAfterProjectSelection, defaultNavigationSection, expandedNavigationSection, isNavigationSectionCollapsed, toggleNavigationSection } from "./navigationState";
 
 describe("navigationState", () => {
   it("defaults to the first incomplete selection section", () => {
@@ -16,39 +16,29 @@ describe("navigationState", () => {
     expect(expandedNavigationSection("none", state)).toBeUndefined();
   });
 
-  it("uses the mobile accordion state on mobile layouts", () => {
+  // One model on every width now: the context row names machine, project and
+  // workspace, so a picker is only on screen while it is being used. Desktop's
+  // second model - independently collapsed sections - is gone with the stack it
+  // described.
+  it("treats every section but the expanded one as collapsed", () => {
     const state = { selectedProject: {}, selectedWorkspace: {} };
 
-    expect(isNavigationSectionCollapsed("projects", { isMobileLayout: true, expanded: "sessions", state })).toBe(true);
-    expect(isNavigationSectionCollapsed("sessions", { isMobileLayout: true, expanded: "sessions", state })).toBe(false);
+    expect(isNavigationSectionCollapsed("projects", { expanded: "sessions", state })).toBe(true);
+    expect(isNavigationSectionCollapsed("sessions", { expanded: "sessions", state })).toBe(false);
   });
 
-  it("uses independent collapsed sections on desktop layouts", () => {
+  it("collapses everything when the user closes the open section", () => {
     const state = { selectedProject: {}, selectedWorkspace: {} };
 
-    expect(isNavigationSectionCollapsed("projects", { isMobileLayout: false, expanded: "sessions", state })).toBe(false);
-    expect(isNavigationSectionCollapsed("projects", { isMobileLayout: false, expanded: "sessions", state, collapsedSections: ["projects"] })).toBe(true);
-    expect(isNavigationSectionCollapsed("sessions", { isMobileLayout: false, expanded: "sessions", state, collapsedSections: ["projects"] })).toBe(false);
+    expect(isNavigationSectionCollapsed("sessions", { expanded: "none", state })).toBe(true);
   });
 
-  it("toggles the effective mobile section, including the implicit default section", () => {
+  it("toggles the effective section, including the implicit default one", () => {
     const state = { selectedProject: undefined, selectedWorkspace: undefined };
 
-    expect(toggleNavigationSection(undefined, "projects", { isMobileLayout: true, state })).toBe("none");
-    expect(toggleNavigationSection("none", "projects", { isMobileLayout: true, state })).toBe("projects");
-    expect(toggleNavigationSection("projects", "workspaces", { isMobileLayout: true, state })).toBe("workspaces");
-  });
-
-  it("does not mutate expanded section on desktop layouts", () => {
-    const state = { selectedProject: undefined, selectedWorkspace: undefined };
-
-    expect(toggleNavigationSection("projects", "projects", { isMobileLayout: false, state })).toBe("projects");
-  });
-
-  it("toggles desktop sections independently", () => {
-    expect(toggleCollapsedNavigationSection([], "projects")).toEqual(["projects"]);
-    expect(toggleCollapsedNavigationSection(["machines", "projects"], "projects")).toEqual(["machines"]);
-    expect(toggleCollapsedNavigationSection(["sessions"], "machines")).toEqual(["machines", "sessions"]);
+    expect(toggleNavigationSection(undefined, "projects", { state })).toBe("none");
+    expect(toggleNavigationSection("none", "projects", { state })).toBe("projects");
+    expect(toggleNavigationSection("projects", "workspaces", { state })).toBe("workspaces");
   });
 
 });

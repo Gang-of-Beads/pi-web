@@ -25,16 +25,16 @@ describe("shouldShowMachinesSection", () => {
   });
 });
 
-describe("section height allocation", () => {
-  // Regression: every expanded section used to share the panel height equally
+describe("panel body allocation", () => {
+  // Regression history: every expanded section used to share the panel height
   // (`flex: 1 1 0px`), so a workspace with 33 sessions showed a single session
-  // row next to a one-machine list of the same height. Sessions must grow and
-  // the pickers must be capped instead.
+  // row beside a one-machine list. The panel now shows one section at a time
+  // under a context row, so whichever section is showing owns the body - which
+  // supersedes the earlier "pickers are capped, sessions grow" contract.
   const styleText = String(AppNavigationPanel.styles).replace(/\s+/g, " ");
 
-  it("lets the session list grow and caps the context pickers", () => {
-    expect(styleText).toContain("session-list { flex: 1 1 auto;");
-    expect(styleText).toContain("machine-list, project-list, workspace-list { flex: 0 1 auto; max-height:");
+  it("gives the visible section the whole body", () => {
+    expect(styleText).toContain("machine-list, project-list, workspace-list, session-list { flex: 1 1 auto;");
     expect(styleText).not.toContain("flex: 1 1 0px");
   });
 
@@ -42,8 +42,8 @@ describe("section height allocation", () => {
     expect(styleText).toContain("goal-panel { flex: 0 1 auto;");
   });
 
-  it("lets the single visible compact section use the whole body", () => {
-    expect(styleText).toContain(":host([compact]) session-list { flex: 1 1 auto; max-height: none;");
+  it("keeps a collapsed section at heading height", () => {
+    expect(styleText).toContain("session-list[collapsed] { flex: 0 0 auto;");
   });
 });
 

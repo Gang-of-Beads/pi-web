@@ -207,11 +207,7 @@ export class PiWebApp extends LitElement {
   });
   private readonly panelCollapse = new PanelCollapseController(this);
   private readonly panelResize = new PanelResizeController(this);
-  private readonly navigationSections = new NavigationSectionsController(
-    this,
-    () => this.state,
-    () => this.appShell.isMobileNavigationLayout,
-  );
+  private readonly navigationSections = new NavigationSectionsController(this, () => this.state);
   private readonly systemLightThemeMedia = typeof window !== "undefined" && "matchMedia" in window ? window.matchMedia("(prefers-color-scheme: light)") : undefined;
   private terminalAutoStartWorkspaceId: string | undefined;
   private piWebStatusTimer: number | undefined;
@@ -1512,6 +1508,13 @@ export class PiWebApp extends LitElement {
         .onAddProject=${() => { this.openProjectDialog(); }}
         .onQuickSwitch=${() => { this.openQuickSwitcher(); }}
         .onShowActions=${() => { this.openActionPalette(); }}
+        .onOpenSettings=${() => { this.openSettings("general"); }}
+        .onAddMachine=${() => { this.openMachineDialog(); }}
+        .onRefreshMachine=${async (machine: Machine) => {
+          await this.machines.selectMachine(machine);
+          await Promise.all([this.machines.refreshMachineHealth(), this.machines.refreshMachineRuntime()]);
+        }}
+        .onOpenMachine=${(machine: Machine) => { if (machine.kind === "remote" && machine.baseUrl !== undefined) window.open(machine.baseUrl, "_blank", "noopener,noreferrer"); }}
         .onToggleProjects=${() => { this.navigationSections.toggle("projects"); }}
         .onToggleWorkspaces=${() => { this.navigationSections.toggle("workspaces"); }}
         .onToggleSessions=${() => { this.navigationSections.toggle("sessions"); }}

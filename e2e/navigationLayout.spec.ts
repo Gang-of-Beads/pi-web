@@ -39,18 +39,15 @@ test.describe("navigation panel height", () => {
     expect(await visibleSessionRows(page)).toBeGreaterThan(3);
   });
 
-  test("keeps the pickers within their cap when they have plenty of content", async ({ page }) => {
+  test("keeps a picker out of the body until it is being used", async ({ page }) => {
+    // Superseded contract: pickers used to be capped at 30vh while stacked
+    // above the session list. They are no longer stacked at all - the context
+    // row names them, and only the section being changed occupies the body.
     const workspace = await seededWorkspace(page.request);
     await openWorkspace(page, workspace);
 
-    const viewport = page.viewportSize();
     const sections = await sectionGeometry(page);
-    const projects = sections.find((section) => section.tag === "project-list");
-
-    expect(projects).toBeDefined();
-    // 30vh cap: a long project list scrolls internally instead of pushing the
-    // session list off the panel.
-    expect(projects!.height).toBeLessThanOrEqual(Math.round((viewport?.height ?? 900) * 0.31));
+    expect(sections.map((section) => section.tag)).toEqual(["session-list"]);
   });
 });
 
@@ -156,3 +153,61 @@ async function listSessions(request: APIRequestContext, cwd: string): Promise<{ 
   const sessions = await response.json() as { id: string; archived?: boolean }[];
   return sessions.filter((session) => session.archived !== true);
 }
+
+test.describe("context row", () => {
+  test.describe.configure({ timeout: 120_000 });
+  test.skip(({ isMobile }) => isMobile === true, "desktop panel");
+
+  test("names the context in one row and gives the body to the sessions", async ({ page }) => {
+    const workspace = await seededWorkspace(page.request);
+    await openWorkspace(page, workspace);
+
+    const measured = await page.evaluate(() => {
+      const panel = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("app-navigation-panel")?.shadowRoot;
+      const row = panel?.querySelector("app-context-switcher");
+      const chips = [...(row?.shadowRoot?.querySelectorAll(".chip") ?? [])].map((chip) => chip.textContent?.replace(/\s+/g, " ").trim() ?? "");
+      const sections = [...(panel?.querySelectorAll("machine-list, project-list, workspace-list, session-list") ?? [])]
+        .map((element) => ({ tag: element.tagName.toLowerCase(), height: Math.round(element.getBoundingClientRect().height) }))
+        .filter((section) => section.height > 0);
+      const adds = [...(row?.shadowRoot?.querySelectorAll(".add") ?? [])].map((button) => button.getAttribute("aria-label") ?? "");
+      return { chips, sections, adds };
+    });
+
+    // The row names project and workspace; the machine step only appears with a
+    // second machine to switch to.
+    expect(measured.chips.some((chip) => chip.startsWith("Project"))).toBe(true);
+    expect(measured.chips.some((chip) => chip.startsWith("Workspace"))).toBe(true);
+    // Exactly one section owns the body, and with a workspace chosen it is the
+    // session list rather than a picker.
+    expect(measured.sections).toHaveLength(1);
+    expect(measured.sections[0]?.tag).toBe("session-list");
+    expect(measured.sections[0]?.height).toBeGreaterThan(400);
+    // Creating is inline, not palette-only.
+    expect(measured.adds).toContain("Add project");
+  });
+
+  test("opens a picker from its chip and returns the body to sessions on pick", async ({ page }) => {
+    const workspace = await seededWorkspace(page.request);
+    await openWorkspace(page, workspace);
+
+    const openPicker = async () => await page.evaluate(() => {
+      const panel = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("app-navigation-panel")?.shadowRoot;
+      const chip = [...(panel?.querySelector("app-context-switcher")?.shadowRoot?.querySelectorAll<HTMLElement>(".chip") ?? [])]
+        .find((candidate) => candidate.textContent?.includes("Project") === true);
+      chip?.click();
+      return chip !== undefined;
+    });
+    expect(await openPicker()).toBe(true);
+    await page.waitForFunction(() => {
+      const panel = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("app-navigation-panel")?.shadowRoot;
+      return (panel?.querySelector("project-list")?.getBoundingClientRect().height ?? 0) > 200;
+    }, undefined, { timeout: 10_000 });
+
+    const visible = await page.evaluate(() => [...(document.querySelector("pi-web-app")?.shadowRoot
+      ?.querySelector("app-navigation-panel")?.shadowRoot
+      ?.querySelectorAll("machine-list, project-list, workspace-list, session-list") ?? [])]
+      .filter((element) => element.getBoundingClientRect().height > 0)
+      .map((element) => element.tagName.toLowerCase()));
+    expect(visible).toEqual(["project-list"]);
+  });
+});
