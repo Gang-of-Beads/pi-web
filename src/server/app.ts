@@ -33,8 +33,9 @@ import {
 } from "./activeAgentProfileProvider.js";
 import { MachineService } from "./machines/machineService.js";
 import { registerMachineRoutes } from "./machines/machineRoutes.js";
-import { registerRestartRoutes } from "./updates/restartRoutes.js";
-import { registerSelfUpdateRoutes } from "./updates/selfUpdateRoutes.js";
+import { registerFleetRoutes } from "./updates/fleetRoutes.js";
+import { createRestartService, registerRestartRoutes } from "./updates/restartRoutes.js";
+import { createSelfUpdateService, registerSelfUpdateRoutes } from "./updates/selfUpdateRoutes.js";
 import { registerMachineProxyRoutes } from "./machines/machineProxyRoutes.js";
 import { registerPluginBackendProxyRoutes } from "./plugins/pluginBackendProxyRoutes.js";
 import { proxyMachinePluginAsset, registerMachinePluginProxyRoutes } from "./machines/machinePluginProxyRoutes.js";
@@ -229,8 +230,14 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
 
   registerMachineRoutes(app, machines);
   registerMachinePluginProxyRoutes(app, machines);
-  registerSelfUpdateRoutes(app);
-  registerRestartRoutes(app);
+  // One service instance per concern, shared by the single-machine routes and
+  // the fleet fan-out, so "update this machine" and "update every machine"
+  // cannot drift into two different local behaviours.
+  const restartService = createRestartService(app.log);
+  const selfUpdateService = createSelfUpdateService(app.log);
+  registerSelfUpdateRoutes(app, { selfUpdate: selfUpdateService });
+  registerRestartRoutes(app, { restart: restartService });
+  registerFleetRoutes(app, { machines, restart: restartService, selfUpdate: selfUpdateService });
 
   registerLocalProjectRoutes(app, projects, workspaces, "/api", { config: configService });
   registerLocalProjectRoutes(app, projects, workspaces, "/api/machines/local", { config: configService });

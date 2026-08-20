@@ -40,6 +40,9 @@ describe("settings route helpers", () => {
     expect(parseSettingsSection("packages")).toBe("packages");
     expect(parseSettingsSection("pi-packages")).toBe("packages");
     expect(parseSettingsSection("plugins")).toBe("plugins");
+    expect(parseSettingsSection("appearance")).toBe("appearance");
+    expect(parseSettingsSection("theme")).toBe("appearance");
+    expect(parseSettingsSection("themes")).toBe("appearance");
     expect(parseSettingsSection("shortcuts")).toBe("shortcuts");
     expect(parseSettingsSection("keyboard")).toBe("shortcuts");
     expect(parseSettingsSection("unknown")).toBeUndefined();

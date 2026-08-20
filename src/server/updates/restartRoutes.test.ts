@@ -2,7 +2,7 @@
 // failure paths without touching real systemd.
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
-import { registerRestartRoutes, type RestartService } from "./restartRoutes.js";
+import { createRestartService, registerRestartRoutes, type RestartService } from "./restartRoutes.js";
 
 let app: FastifyInstance | undefined;
 
@@ -28,6 +28,22 @@ describe("restart routes", () => {
     expect(response.statusCode).toBe(202);
     expect(response.json()).toEqual({ started: true });
     expect(restarted).toBe(true);
+  });
+
+  // A container has no systemd user session. Claiming a restart started there
+  // told the caller work had begun that could never happen, and a fleet report
+  // repeated that false claim for the machine.
+  it("reports restart as unsupported inside a Docker deployment", async () => {
+    const previous = process.env["PI_WEB_DOCKER_RUNTIME"];
+    process.env["PI_WEB_DOCKER_RUNTIME"] = "1";
+    try {
+      const service = createRestartService(undefined);
+      expect(service.restartSupported()).toBe(false);
+      await expect(service.restart()).rejects.toThrow(/unavailable on this host/);
+    } finally {
+      if (previous === undefined) delete process.env["PI_WEB_DOCKER_RUNTIME"];
+      else process.env["PI_WEB_DOCKER_RUNTIME"] = previous;
+    }
   });
 
   it("reports restart failures as 400 without starting", async () => {

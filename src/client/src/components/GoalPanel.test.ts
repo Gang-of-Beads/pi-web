@@ -70,6 +70,43 @@ describe("goal-panel", () => {
     expect(shadow(loading).querySelector(".empty")?.textContent).toContain("Loading goals");
   });
 
+  // A paused goal has no other way out of the panel: the extension's own clear
+  // command refuses without a confirmable UI, which a web session has not got.
+  it("archives only after a second, explicit press", async () => {
+    const onArchive = vi.fn<(goal: GoalRecordSummary) => void>();
+    const panel = await mountPanel([goal()], undefined, onArchive);
+    shadow(panel).querySelector<HTMLButtonElement>(".goal-header")?.click();
+    await panel.updateComplete;
+
+    shadow(panel).querySelector<HTMLButtonElement>(".goal-archive")?.click();
+    await panel.updateComplete;
+    expect(onArchive).not.toHaveBeenCalled();
+    expect(shadow(panel).querySelector(".goal-archive")?.textContent).toContain("Confirm archive");
+    expect(shadow(panel).querySelector(".goal-archive-warning")?.textContent).toContain("archived/");
+
+    shadow(panel).querySelector<HTMLButtonElement>(".goal-archive")?.click();
+    await panel.updateComplete;
+    expect(onArchive).toHaveBeenCalledOnce();
+  });
+
+  it("warns that an agent already working the goal keeps its own copy", async () => {
+    const panel = await mountPanel([goal()], undefined, vi.fn());
+    shadow(panel).querySelector<HTMLButtonElement>(".goal-header")?.click();
+    await panel.updateComplete;
+    shadow(panel).querySelector<HTMLButtonElement>(".goal-archive")?.click();
+    await panel.updateComplete;
+
+    expect(shadow(panel).querySelector(".goal-archive-warning")?.textContent).toContain("until it is told to reload");
+  });
+
+  it("offers no archive control when the host does not provide one", async () => {
+    const panel = await mountPanel([goal()]);
+    shadow(panel).querySelector<HTMLButtonElement>(".goal-header")?.click();
+    await panel.updateComplete;
+
+    expect(shadow(panel).querySelector(".goal-archive")).toBeNull();
+  });
+
   it("requests a refresh on demand", async () => {
     const onRefresh = vi.fn();
     const panel = await mountPanel([goal()], onRefresh);
@@ -84,10 +121,11 @@ async function mount(goals: GoalRecordSummary[]): Promise<ShadowRoot> {
   return shadow(await mountPanel(goals));
 }
 
-async function mountPanel(goals: GoalRecordSummary[], onRefresh?: () => void): Promise<GoalPanel> {
+async function mountPanel(goals: GoalRecordSummary[], onRefresh?: () => void, onArchive?: (goal: GoalRecordSummary) => void): Promise<GoalPanel> {
   const panel = new GoalPanel();
   panel.goals = goals;
   if (onRefresh !== undefined) panel.onRefresh = onRefresh;
+  if (onArchive !== undefined) panel.onArchive = onArchive;
   document.body.append(panel);
   await panel.updateComplete;
   return panel;

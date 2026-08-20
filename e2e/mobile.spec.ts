@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { apiBaseURL } from "../playwright.config";
 import { CONTAINER_HOME } from "./fixtures";
 
@@ -715,3 +715,269 @@ test.describe("touch targets", () => {
     expect(measured.attachButton, "attach").toBeGreaterThanOrEqual(30);
   });
 });
+
+test.describe("quick switcher", () => {
+  test.skip(({ isMobile }) => isMobile === false, "phone-viewport behaviour");
+
+  test("offers context filters and a row menu without squashing the list", async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      const bar = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("app-context-bar")?.shadowRoot;
+      const button = [...(bar?.querySelectorAll("button") ?? [])]
+        .find((candidate) => (candidate.getAttribute("aria-label") ?? "").toLowerCase().includes("session"));
+      button?.click();
+    });
+    // The sheet renders before its data arrives; the chips exist once the
+    // workspaces it groups by have loaded.
+    await page.waitForFunction(() => {
+      const sheet = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("quick-switcher")?.shadowRoot;
+      return (sheet?.querySelectorAll(".chip").length ?? 0) > 0;
+    }, undefined, { timeout: 20_000 });
+
+    const measured = await page.evaluate(() => {
+      const sheet = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("quick-switcher")?.shadowRoot;
+      const filters = sheet?.querySelector(".filters")?.getBoundingClientRect();
+      const chip = sheet?.querySelector(".chip")?.getBoundingClientRect();
+      return {
+        chipLabels: [...(sheet?.querySelectorAll(".chip") ?? [])].map((element) => element.textContent?.trim() ?? ""),
+        menus: sheet?.querySelectorAll(".row-menu-toggle").length ?? 0,
+        filtersHeight: Math.round(filters?.height ?? 0),
+        chipHeight: Math.round(chip?.height ?? 0),
+      };
+    });
+
+    // "All" is focus mode: no filter chosen means every workspace's sessions.
+    expect(measured.chipLabels[0]).toBe("All");
+    // A project whose only workspace shares its name must not print twice.
+    expect(new Set(measured.chipLabels).size).toBe(measured.chipLabels.length);
+    // The chip row is its own band; a squashed one used to overlap the list.
+    expect(measured.filtersHeight).toBeGreaterThanOrEqual(measured.chipHeight);
+    expect(measured.menus).toBeGreaterThan(0);
+  });
+});
+
+test.describe("workspace views on a phone", () => {
+  test.skip(({ isMobile }) => isMobile === false, "phone-viewport behaviour");
+
+  test("reaches every view by name from one control instead of an icon strip", async ({ page }) => {
+    // Workspace views only exist once a workspace is chosen, exactly as the
+    // strip behaved before it.
+    const name = "e2e-fixture-nav";
+    await createProjectViaApi(page, name);
+    await openApp(page);
+    await selectProject(page, name);
+    await page.waitForTimeout(1000);
+
+    // The strip is gone: nothing renders it, and its 57px band is back in the
+    // content area.
+    const stripPresent = await page.evaluate(() => document.querySelector("pi-web-app")?.shadowRoot?.querySelector("app-mobile-main-tabs") !== null
+      && document.querySelector("pi-web-app")?.shadowRoot?.querySelector("app-mobile-main-tabs") !== undefined);
+    expect(stripPresent).toBe(false);
+
+    const opened = await page.evaluate(() => {
+      const bar = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("app-context-bar")?.shadowRoot;
+      const button = bar?.querySelector<HTMLElement>('[aria-label="Go to a view"]');
+      button?.click();
+      return button !== null && button !== undefined;
+    });
+    expect(opened, "the views control must exist in the context bar").toBe(true);
+
+    await page.waitForFunction(() => document.querySelector("pi-web-app")?.shadowRoot?.querySelector("app-mobile-tool-sheet") !== null, undefined, { timeout: 10_000 });
+    const labels = await page.evaluate(() => [...(document.querySelector("pi-web-app")?.shadowRoot
+      ?.querySelector("app-mobile-tool-sheet")?.shadowRoot
+      ?.querySelectorAll(".tool-label") ?? [])].map((element) => element.textContent?.trim() ?? ""));
+
+    // Named, not drawn: the terminal was previously a glyph in the strip.
+    expect(labels).toContain("Chat");
+    expect(labels).toContain("Sessions");
+    expect(labels).toContain("Terminal");
+    expect(labels).toContain("Files");
+  });
+
+  test("closes the views sheet on system back rather than leaving the app", async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      const bar = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("app-context-bar")?.shadowRoot;
+      bar?.querySelector<HTMLElement>('[aria-label="Go to a view"]')?.click();
+    });
+    await page.waitForFunction(() => document.querySelector("pi-web-app")?.shadowRoot?.querySelector("app-mobile-tool-sheet") !== null, undefined, { timeout: 10_000 });
+
+    await page.goBack();
+
+    await page.waitForFunction(() => document.querySelector("pi-web-app")?.shadowRoot?.querySelector("app-mobile-tool-sheet") === null, undefined, { timeout: 10_000 });
+    expect(await page.evaluate(() => document.querySelector("pi-web-app") !== null)).toBe(true);
+  });
+});
+
+test.describe("chat surface on a phone", () => {
+  test.describe.configure({ timeout: 120_000 });
+  test.skip(({ isMobile }) => isMobile === false, "phone-viewport behaviour");
+
+  test("spends the screen on the transcript, not on chrome", async ({ page, request }) => {
+    const session = await openChatSession(page, request);
+    expect(session, "a session must be open to measure the chat surface").toBe(true);
+
+    const measured = await chatGeometry(page);
+
+    // One bar above the transcript, not three: the strip and the duplicated
+    // heading are gone, so the chrome above the chat is a single context row.
+    expect(measured.chromeAbove).toBeLessThanOrEqual(60);
+    // The transcript itself gets the majority of a phone screen.
+    expect(measured.chatHeight / measured.viewport).toBeGreaterThan(0.6);
+  });
+
+  test("keeps the primary actions inside the thumb zone", async ({ page, request }) => {
+    await openChatSession(page, request);
+
+    const measured = await chatGeometry(page);
+
+    // Composer, send and stop live at the bottom; anything a conversation needs
+    // repeatedly must be reachable without shifting grip.
+    expect(measured.sendCenter).toBeGreaterThan(measured.viewport * 0.6);
+    expect(measured.composerTop).toBeGreaterThan(measured.viewport * 0.5);
+  });
+
+  test("lifts the composer by exactly the inset a keyboard reports", async ({ page, request }) => {
+    // A real soft keyboard cannot be opened in a headless browser, and the
+    // arithmetic that turns a visual-viewport change into an inset is unit
+    // tested. What is verified here is the wiring: the shell's height follows
+    // the inset variable, so the composer rises rather than hiding under the
+    // keyboard.
+    await openChatSession(page, request);
+    const before = await chatGeometry(page);
+
+    await page.evaluate(() => {
+      document.querySelector<HTMLElement>("pi-web-app")?.style.setProperty("--pi-app-keyboard-inset", "260px");
+    });
+    await page.waitForTimeout(200);
+    const after = await chatGeometry(page);
+
+    expect(before.composerBottom - after.composerBottom).toBeGreaterThanOrEqual(250);
+    expect(after.composerBottom).toBeLessThanOrEqual(before.viewport - 250);
+  });
+});
+
+interface ChatGeometry {
+  viewport: number;
+  chromeAbove: number;
+  chatHeight: number;
+  composerTop: number;
+  composerBottom: number;
+  sendCenter: number;
+}
+
+async function chatGeometry(page: Page): Promise<ChatGeometry> {
+  return await page.evaluate(() => {
+    const app = document.querySelector("pi-web-app")?.shadowRoot;
+    const rect = (element: Element | null | undefined) => element?.getBoundingClientRect();
+    const chat = rect(app?.querySelector("chat-view"));
+    const composer = rect(app?.querySelector("prompt-editor"));
+    const send = rect(app?.querySelector("prompt-editor")?.shadowRoot?.querySelector(".send-button"));
+    return {
+      viewport: window.innerHeight,
+      chromeAbove: Math.round(chat?.top ?? 0),
+      chatHeight: Math.round(chat?.height ?? 0),
+      composerTop: Math.round(composer?.top ?? 0),
+      composerBottom: Math.round(composer?.bottom ?? 0),
+      sendCenter: Math.round((send?.top ?? 0) + (send?.height ?? 0) / 2),
+    };
+  });
+}
+
+/** Open a session in chat view through the app's own route. */
+async function openChatSession(page: Page, request: APIRequestContext): Promise<boolean> {
+  const name = "e2e-fixture-nav";
+  await createProjectViaApi(page, name);
+  const projects = await (await request.get(`${apiBaseURL}/api/projects`)).json() as { id: string; name: string }[];
+  const project = projects.find((candidate) => candidate.name === name);
+  if (project === undefined) return false;
+  const workspaces = await (await request.get(`${apiBaseURL}/api/projects/${project.id}/workspaces`)).json() as { workspaces: { id: string; path: string }[] };
+  const workspace = workspaces.workspaces[0];
+  if (workspace === undefined) return false;
+
+  const created = await request.post(`${apiBaseURL}/api/machines/local/sessions`, { data: { cwd: workspace.path } });
+  const session = await created.json() as { id: string };
+  await request.post(`${apiBaseURL}/api/machines/local/sessions/${session.id}/model`, { data: { cwd: workspace.path, provider: "mock", modelId: "mock-model" } });
+  await request.post(`${apiBaseURL}/api/machines/local/sessions/${session.id}/prompt`, { data: { cwd: workspace.path, text: "FASTMOCK chat surface" } });
+
+  await page.goto(`/?project=${project.id}&workspace=${workspace.id}&session=${session.id}&view=chat`, { waitUntil: "networkidle" });
+  await page.waitForFunction(() => document.querySelector("pi-web-app")?.shadowRoot?.querySelector("prompt-editor") !== null, undefined, { timeout: 30_000 });
+  return true;
+}
+
+test.describe("long press on a phone", () => {
+  test.describe.configure({ timeout: 120_000 });
+  test.skip(({ isMobile }) => isMobile === false, "touch gesture");
+
+  test("opens a picker row's menu by holding it, and not by scrolling past it", async ({ page }) => {
+    const name = "e2e-fixture-nav";
+    await createProjectViaApi(page, name);
+    await openApp(page);
+    await page.waitForFunction(() => {
+      const panel = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("app-navigation-panel")?.shadowRoot;
+      return (panel?.querySelector("project-list")?.shadowRoot?.querySelectorAll(".action-row").length ?? 0) > 0;
+    }, undefined, { timeout: 20_000 });
+
+    // A drag that becomes a scroll must not leave a menu open behind it.
+    expect(await holdRow(page, "project-list", { drift: 40 })).toBe(false);
+    expect(await holdRow(page, "project-list", { drift: 0 })).toBe(true);
+  });
+
+  test("keeps hold on a session row meaning multi-select, as it always has", async ({ page }) => {
+    // Two lists, two meanings, on purpose: sessions are the list you act on in
+    // bulk, and taking that away to make the gesture uniform would remove a
+    // capability rather than move it.
+    const name = "e2e-fixture-nav";
+    await createProjectViaApi(page, name);
+    await openApp(page);
+    await clickRow(page, "project-list", name);
+    await page.waitForTimeout(1200);
+
+    const held = await page.evaluate(async () => {
+      const list = document.querySelector("pi-web-app")?.shadowRoot
+        ?.querySelector("app-navigation-panel")?.shadowRoot
+        ?.querySelector("session-list")?.shadowRoot;
+      const row = list?.querySelector(".action-row .action-main");
+      if (row === null || row === undefined) return { rows: 0, selection: false };
+      const box = row.getBoundingClientRect();
+      const point = { clientX: Math.round(box.left + 20), clientY: Math.round(box.top + 10), pointerId: 1, pointerType: "touch", bubbles: true, composed: true };
+      row.dispatchEvent(new PointerEvent("pointerdown", point));
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      row.dispatchEvent(new PointerEvent("pointerup", point));
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      return { rows: list?.querySelectorAll(".action-row").length ?? 0, selection: list?.querySelector(".bulk-row.selecting") !== null };
+    });
+
+    if (held.rows > 0) expect(held.selection).toBe(true);
+  });
+});
+
+/**
+ * Hold a row with a synthetic touch pointer.
+ *
+ * Playwright's touchscreen has no press-and-hold, so the sequence is
+ * dispatched directly: the tracker's own timer decides when a hold counts, and
+ * drift past its tolerance must cancel it the way a scroll does.
+ */
+async function holdRow(page: Page, listTag: string, options: { drift: number }): Promise<boolean> {
+  const opened = await page.evaluate(async ({ tag, drift }) => {
+    const list = document.querySelector("pi-web-app")?.shadowRoot
+      ?.querySelector("app-navigation-panel")?.shadowRoot
+      ?.querySelector(tag)?.shadowRoot;
+    const row = list?.querySelector(".action-row .action-main");
+    if (row === null || row === undefined) return false;
+    const box = row.getBoundingClientRect();
+    const point = { clientX: Math.round(box.left + 20), clientY: Math.round(box.top + 10), pointerId: 1, pointerType: "touch", bubbles: true, composed: true };
+    row.dispatchEvent(new PointerEvent("pointerdown", point));
+    if (drift > 0) row.dispatchEvent(new PointerEvent("pointermove", { ...point, clientY: point.clientY + drift }));
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    const menuOpen = (list?.querySelectorAll(".action-menu-panel").length ?? 0) > 0;
+    row.dispatchEvent(new PointerEvent("pointerup", point));
+    return menuOpen;
+  }, { tag: listTag, drift: options.drift });
+
+  // Dismiss whatever the hold opened so the next assertion starts clean.
+  await page.evaluate(() => { document.body.click(); });
+  await page.waitForTimeout(150);
+  return opened;
+}

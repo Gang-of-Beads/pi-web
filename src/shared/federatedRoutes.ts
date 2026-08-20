@@ -62,6 +62,7 @@ export const FEDERATED_HTTP_ROUTES = [
   },
   { method: "GET", path: "/projects/:projectId/workspaces/:workspaceId/tree" },
   { method: "GET", path: "/projects/:projectId/workspaces/:workspaceId/goals" },
+  { method: "POST", path: "/projects/:projectId/workspaces/:workspaceId/goals/:goalId/archive" },
   { method: "GET", path: "/projects/:projectId/workspaces/:workspaceId/file" },
   { method: "PUT", path: "/projects/:projectId/workspaces/:workspaceId/file" },
   { method: "DELETE", path: "/projects/:projectId/workspaces/:workspaceId/file" },

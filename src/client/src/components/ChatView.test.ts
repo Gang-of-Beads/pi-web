@@ -15,11 +15,34 @@ import {
   chatMessageGroupClassName,
   chatMessageGroupLabel,
   chatMessageMetadataLabel,
+  chatDeliveryPresentation,
   chatQueuedMessageSections,
   chatQueuedSectionShowsClearAction,
   chatSessionWarningRows,
 } from "./ChatView";
 import { templateEventHandlerAfterMarker, templateEventHandlerNearMarker } from "../templateInspection.testSupport";
+
+describe("chatDeliveryPresentation", () => {
+  it("reads as one mark for received and two for taken into the turn", () => {
+    expect(chatDeliveryPresentation({ clientMessageId: "cm-1", state: "received" })).toMatchObject({ glyph: "✓", text: "Sent", tone: "received" });
+    expect(chatDeliveryPresentation({ clientMessageId: "cm-1", state: "delivered" })).toMatchObject({ glyph: "✓✓", text: "Read", tone: "delivered" });
+  });
+
+  it("names the lane a queued message waits in", () => {
+    expect(chatDeliveryPresentation({ clientMessageId: "cm-1", state: "queued", kind: "steer" }).text).toBe("Queued to steer");
+    expect(chatDeliveryPresentation({ clientMessageId: "cm-1", state: "queued", kind: "followUp" }).text).toBe("Queued");
+  });
+
+  it("says plainly when a message never reached the server", () => {
+    const failed = chatDeliveryPresentation({ clientMessageId: "cm-1", state: "failed" });
+    expect(failed).toMatchObject({ text: "Not sent", tone: "failed" });
+    expect(failed.label).toContain("never received");
+  });
+
+  it("shows work in flight while the request is unconfirmed", () => {
+    expect(chatDeliveryPresentation({ clientMessageId: "cm-1", state: "sending" })).toMatchObject({ text: "Sending", tone: "pending" });
+  });
+});
 
 describe("chatQueuedMessageSections", () => {
   it("labels client-side pending-start sends separately from server queued messages", () => {

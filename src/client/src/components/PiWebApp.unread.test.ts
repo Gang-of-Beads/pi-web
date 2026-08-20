@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Machine, SessionInfo, SessionUnreadEvent, SessionUnreadSummary } from "../api";
 import { initialAppState, type AppState } from "../appState";
 import type { BrowserRealtimeEvent } from "../sessionSocket";
-import type { AppMobileMainTab } from "./appShell/AppMobileMainTabs";
+import type { AppMobileView } from "./appShell/AppMobileToolSheet";
 // Template inspection is proportionate here because this node-environment test
 // verifies only PiWebApp's unread-state property wiring into navigation.
 import { templateValueAfterMarker } from "../templateInspection.testSupport";
@@ -235,7 +235,7 @@ describe("PiWebApp session unread wiring", () => {
 type RenderNavigationPanel = (this: PiWebApp) => TemplateResult;
 type SetAppState = (this: PiWebApp, patch: Partial<AppState>) => void;
 type HandleRealtimeEvent = (this: PiWebApp, machineId: string, event: BrowserRealtimeEvent) => void;
-type MobileMainTabs = (this: PiWebApp) => AppMobileMainTab[];
+type MobileMainTabs = (this: PiWebApp) => AppMobileView[];
 type UpdatedHook = (this: PiWebApp) => void;
 type DisconnectedHook = (this: PiWebApp) => void;
 type RefreshUnread = (machineId: string) => Promise<void>;
@@ -336,7 +336,7 @@ function refreshUnread(app: PiWebApp, machineId: string): Promise<void> {
   return refresh.call(controller, machineId);
 }
 
-function mobileNavigationTab(app: PiWebApp): AppMobileMainTab {
+function mobileNavigationTab(app: PiWebApp): AppMobileView {
   const method: unknown = Reflect.get(app, "mobileMainTabs");
   if (!isMobileMainTabs(method)) throw new Error("PiWebApp.mobileMainTabs is not callable");
   const tab = method.call(app).find((candidate) => candidate.id === "navigation");

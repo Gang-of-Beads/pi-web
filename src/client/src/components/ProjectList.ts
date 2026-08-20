@@ -1,3 +1,4 @@
+import { RowMenuGestures } from "./rowMenuGestures";
 import { LitElement, html, type PropertyValues, nothing} from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { filterProjects, shouldShowProjectSearch } from "../projectSearch";
@@ -27,6 +28,7 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
   @property({ attribute: false }) onFocusNextSection?: () => void | Promise<void>;
   @property({ attribute: false }) onCancelKeyboardNavigation?: () => void | Promise<void>;
   @state() private openMenuProjectId: string | undefined;
+  private readonly gestures = new RowMenuGestures((id, anchor) => { this.openMenu(id, anchor); });
   @state() private menuStyle = "";
   private readonly onDocumentClick = (event: MouseEvent) => {
     if (event.composedPath().includes(this)) return;
@@ -79,7 +81,12 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
                   type="button"
                   class="action-main"
                   aria-current=${this.selected?.id === project.id ? "true" : nothing}
-                  @click=${() => { this.onSelect?.(project); }}
+                  @click=${() => { if (!this.gestures.consumeSuppressedClick()) this.onSelect?.(project); }}
+                  @contextmenu=${(event: MouseEvent) => { this.gestures.contextMenu(project.id, event); }}
+                  @pointerdown=${(event: PointerEvent) => { this.gestures.pointerDown(project.id, event); }}
+                  @pointermove=${(event: PointerEvent) => { this.gestures.pointerMove(event); }}
+                  @pointerup=${() => { this.gestures.cancel(); }}
+                  @pointercancel=${() => { this.gestures.cancel(); }}
                 >
                   <span class="workspace-primary"><span class="workspace-primary-label">${project.name}</span></span><small>${project.path}</small>
                   ${this.renderActivity(project)}
@@ -148,6 +155,12 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
     const kind = statusActivityKind(flags);
     const unreadLabel = hasStatusUnread(flags) ? "Unread sessions in this project" : undefined;
     return renderActionActivityIndicator(kind, kind === "terminal" ? "Project terminal active" : "Project active", unreadLabel);
+  }
+
+  /** Open (never toggle): a hold or right-click always means "show me the menu". */
+  private openMenu(projectId: string, target: EventTarget | null) {
+    this.menuStyle = actionMenuPanelStyle(target, { constrainTo: "viewport" });
+    this.openMenuProjectId = projectId;
   }
 
   private toggleMenu(projectId: string, target: EventTarget | null) {

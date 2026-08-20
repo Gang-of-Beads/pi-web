@@ -20,6 +20,8 @@ export class AppContextBar extends LitElement {
    * should never cost a walk through the navigation accordion.
    */
   @property({ attribute: false }) onQuickSwitch?: () => void;
+  /** Opens the workspace views sheet; replaces the old icon strip. */
+  @property({ attribute: false }) onOpenTools?: () => void;
   /** Rename the session being read. Absent when renaming is not available. */
   @property({ attribute: false }) onRenameSession?: (name: string) => void;
   /** Whether the session being read has work in progress. */
@@ -149,7 +151,7 @@ export class AppContextBar extends LitElement {
               aria-label=${`Rename session ${label}`}
               @click=${() => { this.renameSeed = label; this.renamingSession = true; }}
             >✎</button>`}
-        ${this.hasContextActions() ? html`<div class="context-actions inline">${this.renderQuickSwitchButton()}${this.renderActionsButton()}${this.refreshControl}</div>` : null}
+        ${this.hasContextActions() ? html`<div class="context-actions inline">${this.renderQuickSwitchButton()}${this.renderToolsButton()}${this.renderActionsButton()}${this.refreshControl}</div>` : null}
       </nav>
     `;
   }
@@ -225,7 +227,7 @@ export class AppContextBar extends LitElement {
             </button>
           </li>
         </ol>
-        ${this.hasContextActions() ? html`<div class="context-actions">${this.renderQuickSwitchButton()}${this.renderActionsButton()}${this.refreshControl}</div>` : null}
+        ${this.hasContextActions() ? html`<div class="context-actions">${this.renderQuickSwitchButton()}${this.renderToolsButton()}${this.renderActionsButton()}${this.refreshControl}</div>` : null}
       </nav>
     `;
   }
@@ -244,6 +246,22 @@ export class AppContextBar extends LitElement {
       <button type="button" class="context-action-button" title="Sessions" aria-label="Open sessions" @click=${(event: MouseEvent) => { event.stopPropagation(); this.onQuickSwitch?.(); }}>
         <svg class="context-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M4 6h16M4 12h16M4 18h10"></path>
+        </svg>
+      </button>
+    `;
+  }
+
+  /**
+   * One control for every workspace view. The strip of unlabelled icons it
+   * replaces cost 57px on every mobile surface and hid the terminal behind a
+   * glyph; a sheet names each view instead.
+   */
+  private renderToolsButton() {
+    if (this.onOpenTools === undefined) return null;
+    return html`
+      <button type="button" class="context-action-button" title="Go to a view" aria-label="Go to a view" aria-haspopup="dialog" @click=${(event: MouseEvent) => { event.stopPropagation(); this.onOpenTools?.(); }}>
+        <svg class="context-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 5h6v6H4zM14 5h6v6h-6zM4 13h6v6H4zM14 13h6v6h-6z"></path>
         </svg>
       </button>
     `;
@@ -270,7 +288,7 @@ export class AppContextBar extends LitElement {
   }
 
   private hasContextActions(): boolean {
-    return this.refreshControl !== undefined || this.onShowActions !== undefined || this.onQuickSwitch !== undefined;
+    return this.refreshControl !== undefined || this.onShowActions !== undefined || this.onQuickSwitch !== undefined || this.onOpenTools !== undefined;
   }
 
   private observeContextItems(): void {
@@ -309,19 +327,19 @@ export class AppContextBar extends LitElement {
        user's thumb, so the row keeps one line and the controls beside it keep
        their slots. 40px + 16px font keep the field tappable and free of the
        iOS auto-zoom that shrinks 15px inputs when they are focused. */
-    .context-session-edit { flex: 1 1 auto; display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
-    .context-session-input { flex: 1 1 auto; min-width: 0; box-sizing: border-box; min-height: 40px; padding: 4px 10px; border: 1px solid var(--pi-accent-border); border-radius: 10px; background: var(--pi-surface); color: var(--pi-text-bright); font-size: 16px; box-shadow: 0 0 0 2px color-mix(in srgb, var(--pi-accent) 10%, transparent); }
+    .context-session-edit { flex: 1 1 auto; display: inline-flex; align-items: center; gap: var(--pi-space-2); min-width: 0; }
+    .context-session-input { flex: 1 1 auto; min-width: 0; box-sizing: border-box; min-height: 40px; padding: var(--pi-space-2) var(--pi-space-5); border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text-bright); font-size: 16px; box-shadow: 0 0 0 2px color-mix(in srgb, var(--pi-accent) 10%, transparent); }
     .context-session-input:focus { outline: none; border-color: var(--pi-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--pi-accent) 26%, transparent); }
-    .context-session-edit-button { flex: 0 0 auto; display: grid; place-items: center; box-sizing: border-box; width: 38px; min-height: 40px; padding: 0; border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-surface); color: var(--pi-muted); font-size: 14px; line-height: 1; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+    .context-session-edit-button { flex: 0 0 auto; display: grid; place-items: center; box-sizing: border-box; width: 38px; min-height: 40px; padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-muted); font-size: var(--pi-text-base); line-height: 1; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
     .context-session-edit-button.confirm { border-color: var(--pi-success-border); color: var(--pi-success); }
     .context-session-edit-button:hover, .context-session-edit-button:focus-visible { background: var(--pi-surface-hover); color: var(--pi-text-bright); }
-    .context-session-edit-button:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }
+    .context-session-edit-button:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
     @media (prefers-reduced-motion: no-preference) {
       .context-session-edit-button.confirm:active { transform: scale(.94); }
     }
     /* Three dots like a messenger typing indicator: unmistakable at a glance,
        and the dots keep a visible static layout under reduced motion. */
-    .context-working { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 3px; min-height: 32px; padding: 4px 8px; }
+    .context-working { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 3px; min-height: 32px; padding: var(--pi-space-2) var(--pi-space-4); }
     .context-working-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--pi-accent, var(--pi-text-bright)); animation: context-working-bounce 1.2s ease-in-out infinite; }
     .context-working-dot:nth-child(2) { animation-delay: .2s; }
     .context-working-dot:nth-child(3) { animation-delay: .4s; }
@@ -329,9 +347,9 @@ export class AppContextBar extends LitElement {
     @media (prefers-reduced-motion: reduce) {
       .context-working-dot { animation: none; opacity: .8; }
     }
-    .context-session-rename { flex: 0 0 auto; display: inline-grid; place-items: center; width: 32px; min-height: 32px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--pi-muted); font-size: 14px; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+    .context-session-rename { flex: 0 0 auto; display: inline-grid; place-items: center; width: 32px; min-height: 32px; padding: 0; border: 0; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); font-size: var(--pi-text-base); cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
     .context-session-rename:hover, .context-session-rename:focus-visible { background: var(--pi-selection-bg); color: var(--pi-text-bright); }
-    .context-session-rename:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }
+    .context-session-rename:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
     @media (pointer: coarse) { .context-session-rename { width: 34px; min-height: 34px; } }
 
     /* Shell styles do not cross a shadow boundary, so the tap-highlight
@@ -339,27 +357,27 @@ export class AppContextBar extends LitElement {
     button, [role="button"], a, summary, label, input { -webkit-tap-highlight-color: transparent; }
     /* Keep the refresh menu in this shadow tree above the following mobile tab strip. */
     :host { position: relative; z-index: 20; flex: 0 0 auto; min-width: 0; }
-    .context-bar { position: relative; flex: 0 0 auto; min-width: 0; display: flex; align-items: center; gap: 0; padding: 6px 0; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); }
+    .context-bar { position: relative; flex: 0 0 auto; min-width: 0; display: flex; align-items: center; gap: 0; padding: var(--pi-space-3) 0; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); }
     .context-bar::before, .context-bar::after { content: ""; position: absolute; top: 0; bottom: 0; z-index: 2; width: 20px; opacity: 0; pointer-events: none; transition: opacity .15s ease; }
     .context-bar::before { left: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--pi-shadow-strong) 55%, transparent) 0%, transparent 100%); }
     .context-bar::after { right: 0; background: linear-gradient(270deg, color-mix(in srgb, var(--pi-shadow-strong) 55%, transparent) 0%, transparent 100%); }
     .context-bar.can-scroll-left::before, .context-bar.can-scroll-right::after { opacity: 1; }
     .context-bar-label { display: none; }
-    .context-items { flex: 1 1 auto; min-width: 0; display: flex; align-items: stretch; gap: 5px; margin: 0; padding: 0 8px; list-style: none; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scroll-padding-inline: 8px; scrollbar-width: thin; }
+    .context-items { flex: 1 1 auto; min-width: 0; display: flex; align-items: stretch; gap: var(--pi-space-3); margin: 0; padding: 0 var(--pi-space-4); list-style: none; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scroll-padding-inline: 8px; scrollbar-width: thin; }
     .context-bar.has-context-actions .context-items { padding-right: 58px; scroll-padding-inline: 8px 58px; }
     .context-bar.has-context-actions-double .context-items { padding-right: 102px; scroll-padding-inline: 8px 102px; }
     .context-item { flex: 0 0 auto; min-width: 0; display: flex; }
-    .context-actions { position: absolute; top: 6px; right: 0; bottom: 6px; z-index: 3; display: flex; align-items: center; gap: 6px; padding: 0 8px; background: var(--pi-bg); pointer-events: none; }
+    .context-actions { position: absolute; top: 6px; right: 0; bottom: 6px; z-index: 3; display: flex; align-items: center; gap: var(--pi-space-3); padding: 0 var(--pi-space-4); background: var(--pi-bg); pointer-events: none; }
     .context-actions::before { content: ""; position: absolute; top: 0; bottom: 0; left: -24px; z-index: 0; width: 24px; background: linear-gradient(90deg, transparent, var(--pi-bg)); pointer-events: none; }
     app-refresh-control, .context-action-button { position: relative; z-index: 1; pointer-events: auto; }
-    .context-action-button { box-sizing: border-box; width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid var(--pi-border); border-radius: 999px; background: var(--pi-surface); color: var(--pi-text); padding: 0; line-height: 1; }
+    .context-action-button { box-sizing: border-box; width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text); padding: 0; line-height: 1; }
     .context-action-button:hover, .context-action-button:focus-visible { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     .context-action-icon { width: 18px; height: 18px; fill: currentColor; pointer-events: none; }
     /* The chips are the only way back to a list on a phone, so they get the
      comfortable tap height even though their text is one line. */
-  .context-chip { flex: 0 0 auto; min-width: 0; min-height: 40px; display: inline-flex; align-items: center; gap: 5px; box-sizing: border-box; border: 1px solid var(--pi-border-muted); border-radius: 999px; background: var(--pi-surface); color: var(--pi-text); padding: 4px 10px; font: inherit; text-align: left; }
+  .context-chip { flex: 0 0 auto; min-width: 0; min-height: 40px; display: inline-flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-2) var(--pi-space-5); font: inherit; text-align: left; }
     .context-chip:hover { background: var(--pi-surface-hover); }
-    .context-chip:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 2px; }
+    .context-chip:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
     .context-chip.empty { border-style: dashed; color: var(--pi-muted); }
     .context-kind { display: none; }
     .context-breadcrumb {
@@ -372,15 +390,15 @@ export class AppContextBar extends LitElement {
       color: var(--pi-muted);
       min-height: 40px;
       box-sizing: border-box;
-      padding: 4px 0 4px 8px;
+      padding: var(--pi-space-2) 0 var(--pi-space-2) var(--pi-space-4);
       font: inherit;
-      font-size: 11px;
+      font-size: var(--pi-text-2xs);
       text-align: start;
       text-overflow: ellipsis;
       white-space: nowrap;
       cursor: pointer;
     }
-    .context-breadcrumb::after { content: "›"; padding: 0 2px 0 4px; }
+    .context-breadcrumb::after { content: "›"; padding: 0 var(--pi-space-1) 0 var(--pi-space-2); }
     .context-breadcrumb:hover { color: var(--pi-text); }
     .context-session-title {
       flex: 1 1 auto;
@@ -389,7 +407,7 @@ export class AppContextBar extends LitElement {
       border: 0;
       background: none;
       color: var(--pi-text-bright, var(--pi-text));
-      padding: 4px 8px 4px 0;
+      padding: var(--pi-space-2) var(--pi-space-4) var(--pi-space-2) 0;
       font: inherit;
       font-weight: 650;
       text-align: start;

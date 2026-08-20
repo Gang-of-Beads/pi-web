@@ -1,7 +1,8 @@
 import { LitElement, html, type TemplateResult } from "lit";
 import { customElement, query, state } from "lit/decorators.js";
-import { configApi, effectiveWorkspaceUploadFolder, projectsApi, selfUpdateApi, sessionsApi, terminalsApi, workspacesApi, workspaceEffectiveUploadFolder, type AskUserSubmission, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
-  type QueuedSessionMessage, type SessionSubagentInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";import type { AppAction } from "../actions";
+import { configApi, effectiveWorkspaceUploadFolder, fleetApi, projectsApi, selfUpdateApi, sessionsApi, terminalsApi, workspacesApi, workspaceEffectiveUploadFolder, type AskUserSubmission, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
+  type QueuedSessionMessage, type SessionSubagentInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
+import type { GoalRecordSummary, PiWebFleetReport, PiWebFleetRunResponse } from "../../../shared/apiTypes";import type { AppAction } from "../actions";
 import { initialAppState, type AppState } from "../appState";
 import { isSessionActive } from "../../../shared/activity";
 import type { SessionStateBadgeKind } from "./activityBadge";
@@ -73,12 +74,13 @@ import "./SettingsDialog";
 import "./WorkspacePanel";
 import type { WorkspacePanelEmptyState } from "./WorkspacePanel";
 import "./appShell/AppContextBar";
-import "./appShell/AppMobileMainTabs";
-import type { AppMobileMainTab } from "./appShell/AppMobileMainTabs";
+import type { AppMobileView } from "./appShell/AppMobileToolSheet";
+import "./appShell/AppMobileToolSheet";
 import { shouldShowMachinesSection, type AppNavigationPanel, type NavigationFocusTarget } from "./appShell/AppNavigationPanel";
 import "./appShell/AppPanelEdgeControl";
 import "./appShell/AppRefreshControl";
 import { quickSwitcherSessionStates, renameSessionInList } from "../quickSwitcher";
+import { readPinnedSessionIds, togglePinnedSessionId, writePinnedSessionIds } from "../sessionPins";
 import { errorBanner, isTransientError, TRANSIENT_ERROR_TIMEOUT_MS } from "./errorBanner";
 import { deprecatedAgentInputsBanner, deprecatedAgentInputsWarnings } from "./deprecatedAgentInputsBanner";
 import { appStyles } from "./shared";
@@ -205,11 +207,7 @@ export class PiWebApp extends LitElement {
   });
   private readonly panelCollapse = new PanelCollapseController(this);
   private readonly panelResize = new PanelResizeController(this);
-  private readonly navigationSections = new NavigationSectionsController(
-    this,
-    () => this.state,
-    () => this.appShell.isMobileNavigationLayout,
-  );
+  private readonly navigationSections = new NavigationSectionsController(this, () => this.state);
   private readonly systemLightThemeMedia = typeof window !== "undefined" && "matchMedia" in window ? window.matchMedia("(prefers-color-scheme: light)") : undefined;
   private terminalAutoStartWorkspaceId: string | undefined;
   private piWebStatusTimer: number | undefined;
@@ -237,12 +235,18 @@ export class PiWebApp extends LitElement {
   private transientErrorTimer: number | undefined;
   private lastScheduledError = "";
   @state() private quickSwitcherOpen = false;
+  @state() private mobileToolSheetOpen = false;
   @state() private quickSwitcherLoading = false;
   @state() private quickSwitcherSessions: readonly SessionInfo[] = [];
+  @state() private pinnedSessionIds: ReadonlySet<string> = readPinnedSessionIds();
   @state() private quickSwitcherWorkspaces: readonly Workspace[] = [];
   private quickSwitcherMachineId: string | undefined;
   @state() private sessionCleanupDialog: SessionCleanupDialogState | undefined;
   @state() private settingsSection: SettingsSection | undefined = readSettingsSection();
+  @state() private fleetReport: PiWebFleetReport | undefined;
+  @state() private fleetLoading = false;
+  @state() private fleetError: string | undefined;
+  private fleetSectionShown = false;
   @state() private shortcutConfig: PiWebShortcutConfig = {};
   @state() private workspaceUploadDefaultFolder = effectiveWorkspaceUploadFolder(undefined);
   @state() private speechToTextConfig: PiWebConfigValues["speechToText"];
@@ -288,6 +292,10 @@ export class PiWebApp extends LitElement {
 
   /** Close the topmost modal layer; popstate is the only caller. */
   private closeModalLayer(): void {
+    if (this.mobileToolSheetOpen) {
+      this.mobileToolSheetOpen = false;
+      return;
+    }
     if (this.quickSwitcherOpen) {
       this.quickSwitcherOpen = false;
       return;
@@ -333,6 +341,18 @@ export class PiWebApp extends LitElement {
     // deduplicates acknowledgements for the observed completion order.
     this.committedChatIdentity = selectedChatIdentity(this.state);
     this.syncSelectedSessionReadState();
+    this.syncFleetOnSettingsSection();
+  }
+
+  /**
+   * Fetch the fleet when the machines panel becomes visible, whatever opened it
+   * - a menu action, a URL restore, or in-panel navigation all land here, so
+   * the data is not tied to one entry path.
+   */
+  private syncFleetOnSettingsSection(): void {
+    const showing = this.settingsSection === "machines";
+    if (showing && !this.fleetSectionShown) void this.refreshFleet();
+    this.fleetSectionShown = showing;
   }
 
   private syncSessionWarningVisibility(): void {
@@ -1101,6 +1121,37 @@ export class PiWebApp extends LitElement {
     writeSettingsSection(section);
   }
 
+  private async refreshFleet(): Promise<void> {
+    this.fleetLoading = true;
+    this.fleetError = undefined;
+    try {
+      this.fleetReport = await fleetApi.report();
+    } catch (error) {
+      this.fleetError = error instanceof Error ? error.message : String(error);
+    } finally {
+      this.fleetLoading = false;
+    }
+  }
+
+  /**
+   * Run one fleet operation and re-read the report.
+   *
+   * The report is re-read even when the run failed: a restart that started
+   * changes what the machine reports about itself, and a failure often means a
+   * machine went offline, which the list should show.
+   */
+  private async runFleetOperation(operation: "restart" | "update", machineIds?: readonly string[]): Promise<PiWebFleetRunResponse | undefined> {
+    this.fleetError = undefined;
+    try {
+      return await fleetApi.run(operation, machineIds);
+    } catch (error) {
+      this.fleetError = error instanceof Error ? error.message : String(error);
+      return undefined;
+    } finally {
+      void this.refreshFleet();
+    }
+  }
+
   private closeSettings(): void {
     this.settingsSection = undefined;
     writeSettingsSection(undefined);
@@ -1462,6 +1513,13 @@ export class PiWebApp extends LitElement {
         .onAddProject=${() => { this.openProjectDialog(); }}
         .onQuickSwitch=${() => { this.openQuickSwitcher(); }}
         .onShowActions=${() => { this.openActionPalette(); }}
+        .onOpenSettings=${() => { this.openSettings("general"); }}
+        .onAddMachine=${() => { this.openMachineDialog(); }}
+        .onRefreshMachine=${async (machine: Machine) => {
+          await this.machines.selectMachine(machine);
+          await Promise.all([this.machines.refreshMachineHealth(), this.machines.refreshMachineRuntime()]);
+        }}
+        .onOpenMachine=${(machine: Machine) => { if (machine.kind === "remote" && machine.baseUrl !== undefined) window.open(machine.baseUrl, "_blank", "noopener,noreferrer"); }}
         .onToggleProjects=${() => { this.navigationSections.toggle("projects"); }}
         .onToggleWorkspaces=${() => { this.navigationSections.toggle("workspaces"); }}
         .onToggleSessions=${() => { this.navigationSections.toggle("sessions"); }}
@@ -1489,7 +1547,9 @@ export class PiWebApp extends LitElement {
         .goals=${this.state.workspaceGoals}
         ?goalsLoading=${this.state.workspaceGoalsLoading}
         .onRefreshGoals=${() => this.workspaces.refreshWorkspaceGoals()}
+        .onArchiveGoal=${(goal: GoalRecordSummary) => this.workspaces.archiveWorkspaceGoal(goal.id)}
         .onReloadSession=${(session: SessionInfo) => this.sessions.reloadSession(session)}
+        .onOpenSessionTree=${(session: SessionInfo) => this.openSessionTree(session)}
         .onCleanupSessions=${() => { this.openSessionCleanupDialog(); }}
         .onFocusNavigationTarget=${(target: NavigationFocusTarget) => { void this.focusNavigationTarget(target); }}
         .onCancelKeyboardNavigation=${() => { void this.focusChatComposer(); }}
@@ -1557,6 +1617,24 @@ export class PiWebApp extends LitElement {
   }
 
   /**
+   * Sessions whose agent stopped on an error - an unavailable model, a failed
+   * tool. They are listed first because nothing moves until someone looks, not
+   * even with an answer typed into them.
+   */
+  private errorSessionIds(): ReadonlySet<string> {
+    const errored = new Set<string>();
+    for (const [sessionId, kind] of this.sessionStateKinds()) {
+      if (kind === "error") errored.add(sessionId);
+    }
+    return errored;
+  }
+
+  private togglePinnedSession(session: SessionInfo): void {
+    this.pinnedSessionIds = togglePinnedSessionId(this.pinnedSessionIds, session.id);
+    writePinnedSessionIds(this.pinnedSessionIds);
+  }
+
+  /**
    * Sessions whose agent is blocked on an `ask_user` answer. They cannot make
    * any progress until the user replies, which is why the switcher lists them
    * above work that is merely running.
@@ -1572,6 +1650,7 @@ export class PiWebApp extends LitElement {
   /** True while a modal layer owns the back gesture. */
   private modalLayerOpen(): boolean {
     return this.quickSwitcherOpen
+      || this.mobileToolSheetOpen
       || this.state.actionPaletteOpen
       || this.state.projectDialogOpen
       || this.state.machineDialogOpen
@@ -1728,6 +1807,20 @@ export class PiWebApp extends LitElement {
   private async forkSessionTree(entryId: string): Promise<SessionTreeForkResult> {
     // The controller selects the forked session and closes the dialog on success.
     return this.sessions.forkFromTree(entryId);
+  }
+
+  /**
+   * Open the tree for a session from its row.
+   *
+   * The navigator existed only behind a typed /tree command, so the ability to
+   * see a session's branches was invisible unless you already knew about it.
+   * The command stays the source of truth; this just runs it for the row the
+   * user pointed at, selecting that session first because the command acts on
+   * the selected one.
+   */
+  private async openSessionTree(session: SessionInfo): Promise<void> {
+    if (this.state.selectedSession?.id !== session.id) await this.sessions.selectSession(session);
+    await this.sessions.runCommand("/tree");
   }
 
   private closeSessionTreeNavigator(): void {
@@ -2342,6 +2435,24 @@ export class PiWebApp extends LitElement {
     });
   }
 
+  /** Apply a theme chosen from the appearance panel and remember it. */
+  private selectTheme(themeId: QualifiedContributionId): void {
+    const theme = this.plugins.getThemes().find((candidate) => candidate.id === themeId);
+    if (theme === undefined) return;
+    this.themePreference = { themeId: theme.id, auto: this.themePreference.auto };
+    this.applyPreferredTheme(true);
+  }
+
+  /**
+   * Follow the system's light/dark preference, using the pair the chosen theme
+   * belongs to. Without a pair there is nothing to switch between, so the
+   * switch is left off rather than silently doing nothing.
+   */
+  private setFollowSystemTheme(follow: boolean): void {
+    this.themePreference = { themeId: this.themePreference.themeId, auto: follow };
+    this.applyPreferredTheme(true);
+  }
+
   private pickTheme(value: string) {
     this.setState({ themeDialog: undefined });
     if (value === THEME_AUTO_ON_VALUE || value === THEME_AUTO_OFF_VALUE) {
@@ -2550,25 +2661,36 @@ export class PiWebApp extends LitElement {
           void this.sessions.renameSession(session, name);
         }}
         .onShowActions=${() => { this.setState({ actionPaletteOpen: true }); }}
+        .onOpenTools=${() => { this.openMobileToolSheet(); }}
       ></app-context-bar>
     `;
   }
 
-  private renderMobileMainTabs() {
-    // On a phone, the context bar already exposes the session/workspace jumps.
-    // Keeping a full second toolbar while the chat is open steals too much of
-    // the viewport from the transcript, so the tabs collapse away in chat view.
-    if (this.state.mainView === "chat" && this.state.selectedSession !== undefined) return null;
+  /**
+   * The workspace views, reachable from one control instead of a strip.
+   *
+   * The strip of unlabelled icons cost 57px on every mobile surface and put the
+   * terminal behind a glyph. The sheet lists the same views by name, so nothing
+   * is lost and the transcript keeps the height.
+   */
+  private renderMobileToolSheet() {
+    if (!this.mobileToolSheetOpen) return null;
     return html`
-      <app-mobile-main-tabs
+      <app-mobile-tool-sheet
         .tabs=${this.mobileMainTabs()}
         .selectedView=${this.state.mainView}
         .onSelect=${(view: AppState["mainView"]) => { this.selectMainView(view); }}
-      ></app-mobile-main-tabs>
+        .onClose=${() => { this.mobileToolSheetOpen = false; }}
+      ></app-mobile-tool-sheet>
     `;
   }
 
-  private mobileMainTabs(): AppMobileMainTab[] {
+  private openMobileToolSheet(): void {
+    this.pushModalLayerFrame();
+    this.mobileToolSheetOpen = true;
+  }
+
+  private mobileMainTabs(): AppMobileView[] {
     const unreadCount = unreadSessionCount(this.state.sessions, this.unreadSessionIds);
     return [
       {
@@ -2579,7 +2701,7 @@ export class PiWebApp extends LitElement {
         ...(unreadCount === 0 ? {} : { badge: unreadCount, badgeLabel: `${String(unreadCount)} unread`, badgeTone: "unread" }),
       },
       { id: "chat", label: "Chat", icon: "chat" },
-      ...this.visibleWorkspacePanels().map((panel): AppMobileMainTab => {
+      ...this.visibleWorkspacePanels().map((panel): AppMobileView => {
         const icon = panel.icon;
         return {
           id: panel.id,
@@ -2603,7 +2725,7 @@ export class PiWebApp extends LitElement {
         ${this.renderNavigationPanelEdgeControl()}
         <main class=${mainViewClass(state.mainView)}>
           ${this.renderContextBar()}
-          ${this.renderMobileMainTabs()}
+
           ${this.renderErrorBanner(state.error)}
           ${this.renderSelfUpdateBanner()}
           ${deprecatedAgentInputsBanner(deprecatedAgentInputsWarnings(state.machines, state.machineRuntimes))}
@@ -2620,6 +2742,7 @@ export class PiWebApp extends LitElement {
         ${this.renderWorkspacePanelEdgeControl()}
         ${this.renderWorkspacePanel()}
         ${state.authDialog !== undefined ? html`<auth-dialog .state=${state.authDialog} .onChooseMethod=${(authType: "oauth" | "api_key") => { void this.auth.chooseLoginMethod(authType); }} .onSelectProvider=${(providerId: string, authType: "oauth" | "api_key") => { void this.auth.selectLoginProvider(providerId, authType); }} .onLogoutProvider=${(providerId: string) => { void this.auth.logoutProvider(providerId); }} .onOAuthInput=${(value: string) => { this.auth.updateOAuthInput(value); }} .onOAuthRespond=${(value?: string) => { void this.auth.respondOAuth(value); }} .onOAuthCancel=${() => { void this.auth.cancelOAuth(); }} .onCancel=${() => { this.auth.closeDialog(); }}></auth-dialog>` : null}
+        ${this.renderMobileToolSheet()}
         ${this.quickSwitcherOpen ? html`<quick-switcher
           .loading=${this.quickSwitcherLoading}
           .sessions=${this.quickSwitcherSessions}
@@ -2631,11 +2754,19 @@ export class PiWebApp extends LitElement {
           .waitingSessionIds=${this.waitingSessionIds()}
           .unreadSessionIds=${this.unreadSessionIds}
           .interruptedSessionIds=${this.interruptedSessionIds}
+          .errorSessionIds=${this.errorSessionIds()}
+          .pinnedSessionIds=${this.pinnedSessionIds}
+          .projects=${state.projects}
           .canStartSession=${this.canStartSession()}
           .onCreateSession=${() => { void this.startSessionAndOpenChat(); }}
           .onOpenSession=${(session: SessionInfo) => { void this.openSessionFromQuickSwitcher(session); }}
           .onSelectWorkspace=${(workspace: Workspace) => { void this.workspaces.selectWorkspace(workspace); }}
           .onBrowse=${() => { this.openNavigationSection("projects"); }}
+          .onTogglePin=${(session: SessionInfo) => { this.togglePinnedSession(session); }}
+          .onRenameSession=${(session: SessionInfo, name: string) => {
+            this.applyRenameToQuickSwitcher(session.id, name);
+            return this.sessions.renameSession(session, name);
+          }}
           .onClose=${() => { this.quickSwitcherOpen = false; }}
         ></quick-switcher>` : null}
         ${state.actionPaletteOpen ? html`<action-palette .actions=${this.getActions()} .onRun=${(action: AppAction) => { this.setState({ actionPaletteOpen: false }); this.runAction(action); }} .onCancel=${() => { this.setState({ actionPaletteOpen: false }); }}></action-palette>` : null}
@@ -2644,7 +2775,7 @@ export class PiWebApp extends LitElement {
         ${state.machineDialogOpen ? html`<machine-dialog .error=${state.error} .onSubmit=${(input: MachineDialogSubmit) => this.submitMachineDialog(input)} .onCancel=${() => { this.setState({ machineDialogOpen: false }); }}></machine-dialog>` : null}
         ${this.sessionCleanupDialog !== undefined ? html`<session-cleanup-dialog .preview=${this.sessionCleanupDialog.preview} .previewRequest=${this.sessionCleanupDialog.previewRequest} .result=${this.sessionCleanupDialog.result} .loading=${this.sessionCleanupDialog.loading === true} .running=${this.sessionCleanupDialog.running === true} .error=${this.sessionCleanupDialog.error ?? ""} .onPreview=${(request: SessionCleanupRequest) => { void this.previewSessionCleanup(request); }} .onRun=${(request: SessionCleanupRequest) => { void this.runSessionCleanup(request); }} .onClose=${() => { this.closeSessionCleanupDialog(); }}></session-cleanup-dialog>` : null}
         ${state.themeDialog !== undefined ? html`<command-picker title=${state.themeDialog.title} .options=${state.themeDialog.options} .selectedValue=${state.themeDialog.selectedValue} .onPick=${(value: string) => { this.pickTheme(value); }} .onCancel=${() => { this.setState({ themeDialog: undefined }); }}></command-picker>` : null}
-        ${this.settingsSection !== undefined ? html`<settings-dialog .section=${this.settingsSection} .machine=${state.selectedMachine} .machineRuntime=${this.selectedMachineRuntime()} .actions=${this.getDefaultActions()} .onNavigate=${(section: SettingsSection) => { this.navigateSettings(section); }} .onClose=${() => { this.closeSettings(); }} .onConfigSaved=${(config: PiWebConfigValues) => { this.applyClientConfig(config); }} .onRefreshMachineRuntime=${async (machineId: string) => { await this.machines.refreshMachineRuntime(machineId); }} .machines=${state.machines} .machineStatuses=${state.machineStatuses} .onAddMachine=${() => { this.openMachineDialog(); }} .onRenameMachine=${async (machine: Machine, name: string) => { await this.renameMachine(machine, name); }} .onRemoveMachine=${(machine: Machine) => { void this.removeMachine(machine); }}></settings-dialog>` : null}
+        ${this.settingsSection !== undefined ? html`<settings-dialog .section=${this.settingsSection} .machine=${state.selectedMachine} .machineRuntime=${this.selectedMachineRuntime()} .actions=${this.getDefaultActions()} .onNavigate=${(section: SettingsSection) => { this.navigateSettings(section); }} .onClose=${() => { this.closeSettings(); }} .onConfigSaved=${(config: PiWebConfigValues) => { this.applyClientConfig(config); }} .onRefreshMachineRuntime=${async (machineId: string) => { await this.machines.refreshMachineRuntime(machineId); }} .machines=${state.machines} .machineStatuses=${state.machineStatuses} .onAddMachine=${() => { this.openMachineDialog(); }} .onRenameMachine=${async (machine: Machine, name: string) => { await this.renameMachine(machine, name); }} .onRemoveMachine=${(machine: Machine) => { void this.removeMachine(machine); }} .fleetReport=${this.fleetReport} ?fleetLoading=${this.fleetLoading} .fleetError=${this.fleetError} .onRefreshFleet=${() => this.refreshFleet()} .onRunFleet=${(operation: "restart" | "update", machineIds?: readonly string[]) => this.runFleetOperation(operation, machineIds)} .themes=${this.plugins.getThemes()} .selectedThemeId=${this.resolveCurrentThemePreference().selectedTheme?.id} .activeThemeId=${this.activeThemeId} ?followSystemTheme=${this.themePreference.auto} .onSelectTheme=${(themeId: QualifiedContributionId) => { this.selectTheme(themeId); }} .onToggleFollowSystem=${(follow: boolean) => { this.setFollowSystemTheme(follow); }}></settings-dialog>` : null}
       </div>
     `;
   }

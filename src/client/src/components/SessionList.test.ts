@@ -297,3 +297,25 @@ function session(id: string, overrides: Partial<SessionInfo> = {}): SessionInfo 
     ...overrides,
   };
 }
+
+describe("session tree entry point", () => {
+  // The navigator was reachable only by typing a /tree command, so the ability
+  // to see a session's branches was invisible unless you already knew it.
+  it("offers history and branches from the row menu", () => {
+    const list = sessionList([session("a")], new Set());
+    const onOpenTree = vi.fn<(session: SessionInfo) => void>();
+    list.onOpenTree = onOpenTree;
+    openSessionMenu(list, "a");
+
+    templateClickHandlerForText(renderList(list), "History and branches")(new Event("click"));
+
+    expect(onOpenTree).toHaveBeenCalledOnce();
+  });
+
+  it("hides the entry when the host provides no handler", () => {
+    const list = sessionList([session("a")], new Set());
+    openSessionMenu(list, "a");
+
+    expect(findOptionalTemplateClickHandlerForText(renderList(list), "History and branches")).toBeUndefined();
+  });
+});

@@ -104,7 +104,10 @@ describe("session routes", () => {
           { sessionId: "child-2", cwd: "/repo/.subagents", status: "idle" },
         ],
       });
-      expect(routeService.subsessionsCalls).toEqual([{ id: "session-1", cwd: "/repo" }]);
+      // The route resolves the query cwd, which is drive-qualified on Windows;
+      // asserting the raw POSIX string passed only where "/repo" resolves to
+      // itself. Every other case in this file already compares against resolve().
+      expect(routeService.subsessionsCalls).toEqual([{ id: "session-1", cwd: resolve("/repo") }]);
     } finally {
       await routeService.dispose();
       await routeApp.close();

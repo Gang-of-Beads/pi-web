@@ -2,8 +2,11 @@ import { css, html, LitElement, type PropertyValues, type TemplateResult } from 
 import { customElement, property, state } from "lit/decorators.js";
 import type { AppAction } from "../actions";
 import { configApi, piPackagesApi, pluginsApi, type Machine, type MachineHealth, type MachineRuntime, type PiPackageMutationResponse, type PiPackageScope, type PiPackagesResponse, type PiWebConfigResponse, type PiWebConfigValues, type PiWebPluginsResponse } from "../api";
+import type { PiWebFleetReport, PiWebFleetRunResponse } from "../../../shared/apiTypes";
+import type { QualifiedContributionId, QualifiedThemeContribution } from "../plugins/types";
 import type { SettingsSection } from "../settingsRoute";
 import "./ModalSurface";
+import "./settings/SettingsAppearancePanel";
 import "./settings/SettingsGeneralPanel";
 import "./settings/SettingsMachinesPanel";
 import "./settings/SettingsSessiondPanel";
@@ -28,6 +31,17 @@ export class SettingsDialog extends LitElement {
   @property({ attribute: false }) onAddMachine?: () => void;
   @property({ attribute: false }) onRenameMachine?: (machine: Machine, name: string) => void | Promise<void>;
   @property({ attribute: false }) onRemoveMachine?: (machine: Machine) => void | Promise<void>;
+  @property({ attribute: false }) themes: readonly QualifiedThemeContribution[] = [];
+  @property({ attribute: false }) selectedThemeId?: QualifiedContributionId;
+  @property({ attribute: false }) activeThemeId?: QualifiedContributionId;
+  @property({ type: Boolean }) followSystemTheme = false;
+  @property({ attribute: false }) onSelectTheme?: (themeId: QualifiedContributionId) => void;
+  @property({ attribute: false }) onToggleFollowSystem?: (follow: boolean) => void;
+  @property({ attribute: false }) fleetReport?: PiWebFleetReport;
+  @property({ type: Boolean }) fleetLoading = false;
+  @property({ attribute: false }) fleetError?: string;
+  @property({ attribute: false }) onRefreshFleet?: () => void | Promise<void>;
+  @property({ attribute: false }) onRunFleet?: (operation: "restart" | "update", machineIds?: readonly string[]) => Promise<PiWebFleetRunResponse | undefined>;
   @property({ attribute: false }) onNavigate?: (section: SettingsSection) => void;
   @property({ attribute: false }) onClose?: () => void;
   @property({ attribute: false }) onConfigSaved?: (config: PiWebConfigValues) => void;
@@ -112,6 +126,7 @@ export class SettingsDialog extends LitElement {
         <div class="settings-body">
           <nav class="settings-nav" aria-label="Settings sections">
             ${this.renderNavButton("general", "General", "Gateway + selected machine")}
+            ${this.renderNavButton("appearance", "Appearance", "Theme and system preference")}
             ${this.renderNavButton("machines", "Machines", "All connected devices")}
             ${this.renderNavButton("sessiond", "Session daemon", "Selected machine")}
             ${this.renderNavButton("packages", "Pi packages", "Selected machine")}
@@ -138,7 +153,24 @@ export class SettingsDialog extends LitElement {
           .onAdd=${() => this.onAddMachine?.()}
           .onRename=${(machine: Machine, name: string) => this.onRenameMachine?.(machine, name)}
           .onRemove=${(machine: Machine) => this.onRemoveMachine?.(machine)}
+          .fleetReport=${this.fleetReport}
+          ?fleetLoading=${this.fleetLoading}
+          .fleetError=${this.fleetError}
+          .onRefreshFleet=${() => this.onRefreshFleet?.()}
+          .onRunFleet=${(operation: "restart" | "update", machineIds?: readonly string[]) => this.onRunFleet?.(operation, machineIds) ?? Promise.resolve(undefined)}
         ></settings-machines-panel>
+      `;
+    }
+    if (this.section === "appearance") {
+      return html`
+        <settings-appearance-panel
+          .themes=${this.themes}
+          .selectedThemeId=${this.selectedThemeId}
+          .activeThemeId=${this.activeThemeId}
+          ?followSystem=${this.followSystemTheme}
+          .onSelectTheme=${(themeId: QualifiedContributionId) => this.onSelectTheme?.(themeId)}
+          .onToggleFollowSystem=${(follow: boolean) => this.onToggleFollowSystem?.(follow)}
+        ></settings-appearance-panel>
       `;
     }
     if (this.section === "sessiond") {
@@ -644,6 +676,7 @@ export type SettingsPanelTag =
   | "settings-sessiond-panel"
   | "settings-packages-panel"
   | "settings-plugins-panel"
+  | "settings-appearance-panel"
   | "settings-shortcuts-panel";
 
 /**
@@ -656,6 +689,8 @@ export type SettingsPanelTag =
  */
 export function activeSettingsPanelTag(section: SettingsSection): SettingsPanelTag {
   switch (section) {
+    case "appearance":
+      return "settings-appearance-panel";
     case "sessiond":
       return "settings-sessiond-panel";
     case "packages":

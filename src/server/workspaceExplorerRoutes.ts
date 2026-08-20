@@ -9,6 +9,7 @@ import { readWorkspaceFilePreview } from "./workspaces/filePreviewService.js";
 import { workspaceFilePreviewResponsePolicy } from "./workspaces/filePreviewResponsePolicy.js";
 import { applyWorkspaceFilePreviewErrorResponsePolicy } from "./workspaces/filePreviewResponseHeaders.js";
 import { readWorkspaceGoals } from "./goals/goalStore.js";
+import { archiveWorkspaceGoal, GoalArchiveError } from "./goals/goalArchive.js";
 import { resolveWorkspaceContext } from "./workspaces/workspaceContext.js";
 import { pathAccessForWorkspaceContext } from "./workspaces/effectivePathAccess.js";
 import type { WorkspaceCatalog } from "./workspaces/workspaceCatalog.js";
@@ -38,6 +39,22 @@ export function registerWorkspaceExplorerRoutes(app: FastifyInstance, projects: 
       const context = await resolveWorkspaceContext(projects, workspaces, request.params.projectId, request.params.workspaceId);
       return await readWorkspaceGoals(context.root);
     } catch (error) {
+      return sendWorkspaceRequestError(reply, error, 400);
+    }
+  });
+
+  /**
+   * Archiving is the one write pi-web makes to goal state, and only because a
+   * paused goal has no other way out of the panel: the extension's own clear
+   * command refuses without a confirmable UI, which a web session has not got.
+   * The protocol it follows is the extension's (see docs/pi-goal-integration.md).
+   */
+  app.post<{ Params: { projectId: string; workspaceId: string; goalId: string } }>(`${prefix}/projects/:projectId/workspaces/:workspaceId/goals/:goalId/archive`, async (request, reply) => {
+    try {
+      const context = await resolveWorkspaceContext(projects, workspaces, request.params.projectId, request.params.workspaceId);
+      return await archiveWorkspaceGoal(context.root, request.params.goalId);
+    } catch (error) {
+      if (error instanceof GoalArchiveError) return reply.code(error.code === "locked" ? 409 : 400).send({ error: error.message, code: error.code });
       return sendWorkspaceRequestError(reply, error, 400);
     }
   });

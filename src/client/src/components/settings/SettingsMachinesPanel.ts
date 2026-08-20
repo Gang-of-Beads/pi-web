@@ -1,6 +1,8 @@
 import { LitElement, css, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import type { Machine, MachineHealth } from "../../api";
+import type { PiWebFleetReport, PiWebFleetRunResponse } from "../../../../shared/apiTypes";
+import "./SettingsFleetSection";
 
 /**
  * Dedicated machines management panel: every connected machine (including
@@ -16,6 +18,11 @@ export class SettingsMachinesPanel extends LitElement {
   @property({ attribute: false }) onAdd?: () => void;
   @property({ attribute: false }) onRename?: (machine: Machine, name: string) => void | Promise<void>;
   @property({ attribute: false }) onRemove?: (machine: Machine) => void | Promise<void>;
+  @property({ attribute: false }) fleetReport?: PiWebFleetReport;
+  @property({ type: Boolean }) fleetLoading = false;
+  @property({ attribute: false }) fleetError?: string;
+  @property({ attribute: false }) onRefreshFleet?: () => void | Promise<void>;
+  @property({ attribute: false }) onRunFleet?: (operation: "restart" | "update", machineIds?: readonly string[]) => Promise<PiWebFleetRunResponse | undefined>;
 
   private renamingId: string | undefined;
   private draftName = "";
@@ -34,6 +41,13 @@ export class SettingsMachinesPanel extends LitElement {
           ${this.machines.map((machine) => this.renderMachineCard(machine))}
           ${this.machines.length === 0 ? html`<p class="empty">No machines configured.</p>` : null}
         </div>
+        <settings-fleet-section
+          .report=${this.fleetReport}
+          ?loading=${this.fleetLoading}
+          .error=${this.fleetError}
+          .onRefresh=${() => this.onRefreshFleet?.()}
+          .onRun=${(operation: "restart" | "update", machineIds?: readonly string[]) => this.onRunFleet?.(operation, machineIds) ?? Promise.resolve(undefined)}
+        ></settings-fleet-section>
       </settings-panel-frame>
     `;
   }
@@ -83,31 +97,31 @@ export class SettingsMachinesPanel extends LitElement {
   }
 
   static override styles = css`
-    :host { display: block; color: var(--pi-text); font: 14px system-ui, sans-serif; }
-    .machines-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
-    h2 { margin: 0 0 4px; font-size: 15px; }
-    .muted { margin: 0; color: var(--pi-muted); font-size: 12px; line-height: 1.4; }
-    .add-button { flex: 0 0 auto; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 10px; cursor: pointer; }
-    .machine-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
-    .machine-card { box-sizing: border-box; display: flex; flex-direction: column; gap: 6px; min-height: 96px; padding: 10px; border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-surface); }
-    .machine-card-header { display: flex; align-items: center; gap: 6px; }
+    :host { display: block; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
+    .machines-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--pi-space-6); margin-bottom: var(--pi-space-6); }
+    h2 { margin: 0 0 var(--pi-space-2); font-family: var(--pi-font-display); font-size: var(--pi-text-lg); font-weight: var(--pi-weight-semibold); letter-spacing: -0.01em; }
+    .muted { margin: 0; color: var(--pi-muted); font-size: var(--pi-text-xs); line-height: 1.4; }
+    .add-button { flex: 0 0 auto; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
+    .machine-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--pi-space-4); }
+    .machine-card { box-sizing: border-box; display: flex; flex-direction: column; gap: var(--pi-space-3); min-height: 96px; padding: var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); }
+    .machine-card-header { display: flex; align-items: center; gap: var(--pi-space-3); }
     .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--pi-dim); }
     .status-dot.online { background: var(--pi-success); }
     .status-dot.offline { background: var(--pi-danger); }
-    .machine-kind { color: var(--pi-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+    .machine-kind { color: var(--pi-muted); font-size: var(--pi-text-2xs); text-transform: uppercase; letter-spacing: .04em; }
     .machine-card-name { font-weight: 600; overflow-wrap: anywhere; }
-    .machine-card-sub { color: var(--pi-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .machine-card-actions { display: flex; gap: 6px; margin-top: auto; }
-    .machine-card-actions button { border: 1px solid var(--pi-border); border-radius: 6px; background: transparent; color: var(--pi-text); padding: 4px 8px; font-size: 12px; cursor: pointer; }
+    .machine-card-sub { color: var(--pi-muted); font-size: var(--pi-text-2xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .machine-card-actions { display: flex; gap: var(--pi-space-3); margin-top: auto; }
+    .machine-card-actions button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-text); padding: var(--pi-space-2) var(--pi-space-4); font-size: var(--pi-text-xs); cursor: pointer; }
     .machine-card-actions button.danger { color: var(--pi-danger); }
-    .rename-form { display: grid; gap: 6px; }
-    .rename-form input { box-sizing: border-box; width: 100%; border: 1px solid var(--pi-border); border-radius: 6px; background: var(--pi-bg); color: var(--pi-text); padding: 6px 8px; }
-    .rename-actions { display: flex; gap: 6px; }
-    .rename-actions button { border: 1px solid var(--pi-border); border-radius: 6px; background: transparent; color: var(--pi-text); padding: 4px 8px; font-size: 12px; cursor: pointer; }
+    .rename-form { display: grid; gap: var(--pi-space-3); }
+    .rename-form input { box-sizing: border-box; width: 100%; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-bg); color: var(--pi-text); padding: var(--pi-space-3) var(--pi-space-4); }
+    .rename-actions { display: flex; gap: var(--pi-space-3); }
+    .rename-actions button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-text); padding: var(--pi-space-2) var(--pi-space-4); font-size: var(--pi-text-xs); cursor: pointer; }
     .empty { color: var(--pi-muted); }
     @media (max-width: 760px) {
-      .machine-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; }
-      .machine-card { min-height: 88px; padding: 8px; }
+      .machine-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--pi-space-3); }
+      .machine-card { min-height: 88px; padding: var(--pi-space-4); }
     }
   `;
 }

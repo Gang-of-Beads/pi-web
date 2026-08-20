@@ -1,3 +1,4 @@
+import { RowMenuGestures } from "./rowMenuGestures";
 import { LitElement, css, html, type PropertyValues, type TemplateResult, nothing} from "lit";import { customElement, property, state } from "lit/decorators.js";
 import { trustApi } from "../api";
 import type { Workspace } from "../api";
@@ -40,6 +41,7 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
   @property({ attribute: false }) onFocusNextSection?: () => void | Promise<void>;
   @property({ attribute: false }) onCancelKeyboardNavigation?: () => void | Promise<void>;
   @state() private openMenuWorkspaceId: string | undefined;
+  private readonly gestures = new RowMenuGestures((id, anchor) => { this.openMenu(id, anchor); });
   @state() private menuStyle = "";
   @state() private copiedDetailKey: string | undefined;
   @state() private trustByWorkspaceId: Record<string, WorkspaceTrustState> = {};
@@ -101,7 +103,12 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
                     type="button"
                     class="action-main"
                     aria-current=${this.selected?.id === workspace.id ? "true" : nothing}
-                    @click=${() => { this.onSelect?.(workspace); }}
+                    @click=${() => { if (!this.gestures.consumeSuppressedClick()) this.onSelect?.(workspace); }}
+                    @contextmenu=${(event: MouseEvent) => { this.gestures.contextMenu(workspace.id, event); }}
+                    @pointerdown=${(event: PointerEvent) => { this.gestures.pointerDown(workspace.id, event); }}
+                    @pointermove=${(event: PointerEvent) => { this.gestures.pointerMove(event); }}
+                    @pointerup=${() => { this.gestures.cancel(); }}
+                    @pointercancel=${() => { this.gestures.cancel(); }}
                   >
                     ${this.renderWorkspaceMain(label, items, workspace)}
                   </button>
@@ -289,6 +296,12 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
     return this.deletingWorkspaceIds.includes(workspace.id);
   }
 
+  /** Open (never toggle): a hold or right-click always means "show me the menu". */
+  private openMenu(workspaceId: string, target: EventTarget | null) {
+    this.menuStyle = actionMenuPanelStyle(target, { constrainTo: "viewport" });
+    this.openMenuWorkspaceId = workspaceId;
+  }
+
   private toggleMenu(workspaceId: string, target: EventTarget | null): void {
     if (this.openMenuWorkspaceId === workspaceId) {
       this.openMenuWorkspaceId = undefined;
@@ -320,11 +333,11 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
   }
 
   static override styles = [listStyles, css`
-    .workspace-menu-trust { display: flex; flex-direction: column; gap: 3px; padding: 4px 2px; }
-    .workspace-menu-trust-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-    .workspace-menu-trust label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+    .workspace-menu-trust { display: flex; flex-direction: column; gap: 3px; padding: var(--pi-space-2) var(--pi-space-1); }
+    .workspace-menu-trust-row { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); }
+    .workspace-menu-trust label { display: flex; align-items: center; gap: var(--pi-space-3); cursor: pointer; }
     .workspace-menu-trust input { cursor: pointer; }
-    .workspace-trust-link { color: var(--pi-accent); font-size: 12px; text-align: right; white-space: nowrap; }
+    .workspace-trust-link { color: var(--pi-accent); font-size: var(--pi-text-xs); text-align: right; white-space: nowrap; }
     .workspace-trust-error { color: var(--pi-danger, #c0392b); line-height: 1.3; }
   `];
 }

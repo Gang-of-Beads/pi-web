@@ -1,4 +1,4 @@
-export { api, configApi, filesApi, machinesApi, machineStatusApi, selfUpdateApi, piPackagesApi, piWebApi, pluginsApi, projectsApi, SessionTreeForkUnavailableError, sessionsApi, terminalsApi, trustApi, workspacesApi } from "./api/clients";
+export { api, configApi, filesApi, fleetApi, machinesApi, machineStatusApi, selfUpdateApi, piPackagesApi, piWebApi, pluginsApi, projectsApi, SessionTreeForkUnavailableError, sessionsApi, terminalsApi, trustApi, workspacesApi } from "./api/clients";
 export { pluginBackendRequestPath, pluginBackendRequestUrl, requestPluginBackend } from "./api/pluginBackends";
 export { globalSessionEvents, realtimeEvents, sessionEvents, terminalSocket } from "./api/sockets";
 export { DEFAULT_WORKSPACE_UPLOADS_FOLDER, effectiveWorkspaceUploadFolder, uploadWorkspaceFile, uploadWorkspaceFiles, workspaceEffectiveUploadFolder, workspaceUploadPath, WorkspaceUploadBatchError, WorkspaceUploadCancelledError } from "./api/workspaceUploads";

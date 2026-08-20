@@ -6,6 +6,8 @@ import { machineSessionKey } from "../machineKeys";
 import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
 import { clearAskDraft } from "../askDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
+import { applyQueueToDelivery, markDelivery, newClientMessageId, optimisticUserLine } from "../messageDelivery";
+import type { MessageDeliveryState } from "../components/shared";
 import { isShellInput } from "../inputModes";
 import { fileCompletionInsertText } from "../promptCompletions";
 import { SessionSocket, type GlobalSessionEvent, type SessionUiEvent } from "../sessionSocket";
@@ -405,23 +407,43 @@ export class SessionController {
   private async deliverPromptToSession(session: SessionInfo, text: string, streamingBehavior: "steer" | "followUp" | undefined, attachments: PromptAttachment[] | undefined, delivery: PromptAttachmentDelivery, machineId: string, options: { markSending: boolean }): Promise<boolean> {
     const hasAttachments = attachments !== undefined && attachments.length > 0;
     if (options.markSending) this.markSendingPrompt(session.id, true);
+    // The bubble goes up before the request does, carrying the id that every
+    // later signal (server echo, queue projection, agent copy) is matched
+    // against. Without it the composer clears into silence and the user cannot
+    // tell a slow network from a lost message.
+    const clientMessageId = this.beginTrackedSend(session, text);
     try {
       if (hasAttachments && delivery === "folder") {
         const saved = await this.api.saveAttachments(session, attachments, machineId);
         const references = saved.map((file) => fileCompletionInsertText(file.path, false)).join(" ");
         const body = text === "" ? references : `${text}\n\n${references}`;
-        await this.api.prompt(session, body, streamingBehavior, machineId);
+        await this.api.prompt(session, body, streamingBehavior, machineId, undefined, clientMessageId);
       } else {
-        await this.api.prompt(session, text, streamingBehavior, machineId, attachments);
+        await this.api.prompt(session, text, streamingBehavior, machineId, attachments, clientMessageId);
       }
+      if (clientMessageId !== undefined) this.markDelivery(session.id, clientMessageId, "received");
       this.markCachedNewSessionPersisted(session);
       return true;
     } catch (error) {
+      if (clientMessageId !== undefined) this.markDelivery(session.id, clientMessageId, "failed");
       this.setState({ error: String(error) });
       return false;
     } finally {
       if (options.markSending) this.markSendingPrompt(session.id, false);
     }
+  }
+
+  /**
+   * Render the outgoing message immediately and return the id it is tracked by.
+   * Only the session on screen gets a bubble: a send to a background session
+   * has nothing to attach a mark to, and the id would never be resolved.
+   */
+  private beginTrackedSend(session: SessionInfo, text: string): string | undefined {
+    if (text.trim() === "") return undefined;
+    if (this.getState().selectedSession?.id !== session.id) return undefined;
+    const clientMessageId = newClientMessageId();
+    this.setState({ messages: [...this.getState().messages, optimisticUserLine(text, clientMessageId)] });
+    return clientMessageId;
   }
 
   private async deliverShellToSession(session: SessionInfo, text: string, machineId: string, options: { optimisticLine: boolean }): Promise<boolean> {
@@ -1447,6 +1469,10 @@ export class SessionController {
   private applyStatus(status: SessionStatus) {
     const state = this.getState();
     const isSelected = state.selectedSession?.id === status.sessionId;
+    // The queue in a status update is the authority on which of this browser's
+    // messages the agent still has waiting, so it drives the delivery marks on
+    // the bubbles the sender is looking at.
+    const messages = isSelected ? applyQueueToDelivery(state.messages, status.queuedMessages) : state.messages;
     const clearsStaleActivity = state.sessionActivities[status.sessionId]?.phase === "active" && !isSessionActive(status);
     this.setState({
       sessionStatuses: { ...state.sessionStatuses, [status.sessionId]: status },
@@ -1461,7 +1487,16 @@ export class SessionController {
       // the open list. Closed-card outcomes are event/response-driven instead,
       // so a status without the dialog simply drops it from the open list.
       ...(isSelected ? { pendingDialogs: status.pendingDialogs ?? [] } : {}),
+      ...(messages === state.messages ? {} : { messages }),
     });
+  }
+
+  /** Advance one tracked message's delivery mark in the visible transcript. */
+  private markDelivery(sessionId: string, clientMessageId: string, state: MessageDeliveryState): void {
+    const current = this.getState();
+    if (current.selectedSession?.id !== sessionId) return;
+    const messages = markDelivery(current.messages, clientMessageId, state);
+    if (messages !== current.messages) this.setState({ messages });
   }
 
   private applyOpenedDialog(dialog: PendingExtensionDialog): void {

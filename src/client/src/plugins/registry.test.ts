@@ -519,6 +519,9 @@ describe("PluginRegistry", () => {
       { id: "themes:pi-web-dark", colorScheme: "dark" },
       { id: "themes:pi-web-light", colorScheme: "light" },
       { id: "themes:classic", colorScheme: "dark" },
+      { id: "themes:high-contrast", colorScheme: "dark" },
+      { id: "themes:night", colorScheme: "dark" },
+      { id: "themes:paper", colorScheme: "light" },
     ]);
     expect(registry.getThemePairs().map((pair) => ({ id: pair.id, light: pair.light, dark: pair.dark }))).toEqual([
       { id: "themes:pi-web", light: "themes:pi-web-light", dark: "themes:pi-web-dark" },

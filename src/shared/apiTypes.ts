@@ -507,6 +507,16 @@ export interface GoalRecordSummary {
   totalTaskCount: number;
 }
 
+/** Outcome of archiving a goal from the browser; see docs/pi-goal-integration.md. */
+export interface GoalArchiveResponse {
+  readonly goalId: string;
+  readonly archivedPath: string;
+  /** True when the goal was already gone, which is not an error. */
+  readonly alreadyArchived: boolean;
+  /** True when a running agent may still be holding this goal in memory. */
+  readonly agentMayRecreate: boolean;
+}
+
 export interface WorkspaceGoalsResponse {
   goals: GoalRecordSummary[];
   /** Absolute path of the goals directory that was read, present even when empty. */
@@ -740,6 +750,14 @@ export interface SessionActivity {
 export interface QueuedSessionMessage {
   kind: "steer" | "followUp";
   text: string;
+  /**
+   * Id minted by the browser that sent the prompt. It correlates a queued entry
+   * with the transcript bubble the sender already sees, so the sender can show
+   * a delivery mark on that bubble instead of listing the same text a second
+   * time under "Queued messages". Absent for prompts sent before this field
+   * existed, by another client, or by a non-browser caller.
+   */
+  clientMessageId?: string;
 }
 
 /**
@@ -1352,7 +1370,14 @@ export type CommandResult =
 export type SessionUiEvent = SessionUiEventBody & { seq?: number };
 
 type SessionUiEventBody =
-  | { type: "message.append"; message: unknown }
+  /**
+   * `echo` marks the server's optimistic copy of a prompt it has accepted but
+   * the agent has not committed yet. The agent emits its own copy later, so a
+   * client that cannot correlate by id (another device, or this one after a
+   * reload) still knows which rendered line the committed message supersedes
+   * instead of showing the same text twice.
+   */
+  | { type: "message.append"; message: unknown; clientMessageId?: string; echo?: boolean }
   | { type: "assistant.delta"; text: string }
   | { type: "assistant.thinking.delta"; text: string }
   | { type: "tool.start"; toolName: string; toolCallId: string; summary: string; args?: unknown }
@@ -1412,6 +1437,44 @@ export interface SessionSubagentsSnapshot {
  * Reported for one machine at a time; the UI only shows the update affordance
  * when the machine hosting the daemon is a git checkout with a fork remote.
  */
+/** A fleet operation runs on the machines the answering server knows. */
+export type PiWebFleetOperation = "restart" | "update";
+
+export interface PiWebFleetMachineIdentity {
+  readonly machineId: string;
+  readonly name: string;
+}
+
+export interface PiWebFleetTargetReport extends PiWebFleetMachineIdentity {
+  readonly kind: "local" | "remote";
+  readonly online: boolean;
+  /** PI WEB build reported by that machine's web process. */
+  readonly version?: string;
+  /** Pi coding agent version loaded there; the two drift independently. */
+  readonly piVersion?: string;
+  readonly error?: string;
+}
+
+/**
+ * Who would be covered by a fleet operation, as seen from one server. `hub` is
+ * the server that answered - the scope of "all" is only meaningful next to it.
+ */
+export interface PiWebFleetReport {
+  readonly hub: PiWebFleetMachineIdentity;
+  readonly machines: readonly PiWebFleetTargetReport[];
+}
+
+export interface PiWebFleetTargetOutcome extends PiWebFleetMachineIdentity {
+  readonly started: boolean;
+  readonly error?: string;
+}
+
+export interface PiWebFleetRunResponse {
+  readonly operation: PiWebFleetOperation;
+  readonly hub: PiWebFleetMachineIdentity;
+  readonly outcomes: readonly PiWebFleetTargetOutcome[];
+}
+
 export interface PiWebSelfUpdateStatus {
   /** False when this host has no fork checkout to update (e.g. containers). */
   readonly enabled: boolean;

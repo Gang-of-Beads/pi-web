@@ -56,6 +56,9 @@ import {
   parseTerminalInfo,
   parseThinkingLevelsResponse,
   parseWriteWorkspaceFileResponse,
+  parseGoalArchiveResponse,
+  parsePiWebFleetReport,
+  parsePiWebFleetRunResponse,
   parsePiWebSelfUpdateStatus,
   parseWorkspaceProviderResolution,
   parseWorkspaceTrustResponse,
@@ -143,6 +146,18 @@ export const selfUpdateApi = {
   apply: () => request("api/pi-web/update/apply", parseSelfUpdateApplyResponse, { method: "POST", body: JSON.stringify({}) }),
 };
 
+/**
+ * Fleet operations are answered by the server this browser is connected to, so
+ * "every machine" is that server's machine list - which the report names.
+ */
+export const fleetApi = {
+  report: () => request("api/pi-web/fleet", parsePiWebFleetReport, { cache: "no-store" }),
+  run: (operation: "restart" | "update", machineIds?: readonly string[]) => request("api/pi-web/fleet/run", parsePiWebFleetRunResponse, {
+    method: "POST",
+    body: JSON.stringify({ operation, ...(machineIds === undefined ? {} : { machineIds }) }),
+  }),
+};
+
 function piPackagePath(endpoint = "", machineId?: string): string {
   const basePath = machineId === undefined ? "api/pi-packages" : `${machinePrefix(machineId)}/pi-packages`;
   return endpoint === "" ? basePath : `${basePath}/${endpoint}`;
@@ -201,6 +216,11 @@ export const workspacesApi = {
   },
   // Goal records live in the workspace, not in a session, so the listing is
   // workspace-scoped and shared by every session of that workspace.
+  archiveWorkspaceGoal: (projectId: string, workspaceId: string, goalId: string, machineId = "local") => request(
+    `${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/goals/${encodeURIComponent(goalId)}/archive`,
+    parseGoalArchiveResponse,
+    { method: "POST", body: JSON.stringify({}) },
+  ),
   workspaceGoals: (projectId: string, workspaceId: string, machineId = "local") => request(`${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/goals`, parseWorkspaceGoalsResponse, { cache: "no-store" }),
   workspaceTree: (projectId: string, workspaceId: string, path = "", machineId = "local") => request(`${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/tree?path=${encodeURIComponent(path)}`, parseFileTreeResponse),
   workspaceFile: (projectId: string, workspaceId: string, path: string, machineId = "local") => request(`${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/file?path=${encodeURIComponent(path)}`, parseFileContentResponse),
@@ -273,7 +293,7 @@ export const sessionsApi = {
   setThinkingLevel: (session: SessionRef, level: string, machineId = "local") => request(sessionPath(session, "thinking-level", machineId), parseSessionStatus, { method: "POST", body: sessionBody(session, { level }) }),
   cycleThinkingLevel: (session: SessionRef, machineId = "local") => request(sessionPath(session, "thinking-level/cycle", machineId), parseSessionStatus, { method: "POST", body: sessionBody(session) }),
   commands: (session: SessionRef, machineId = "local") => request(sessionQueryPath(session, "commands", machineId), arrayOf(parseSlashCommand)),
-  prompt: (session: SessionRef, text: string, streamingBehavior?: "steer" | "followUp", machineId = "local", attachments?: PromptAttachment[]) => request(sessionPath(session, "prompt", machineId), parseAccepted, { method: "POST", body: sessionBody(session, { text, ...(streamingBehavior === undefined ? {} : { streamingBehavior }), ...(attachments !== undefined && attachments.length > 0 ? { attachments } : {}) }) }),
+  prompt: (session: SessionRef, text: string, streamingBehavior?: "steer" | "followUp", machineId = "local", attachments?: PromptAttachment[], clientMessageId?: string) => request(sessionPath(session, "prompt", machineId), parseAccepted, { method: "POST", body: sessionBody(session, { text, ...(streamingBehavior === undefined ? {} : { streamingBehavior }), ...(attachments !== undefined && attachments.length > 0 ? { attachments } : {}), ...(clientMessageId === undefined ? {} : { clientMessageId }) }) }),
   saveAttachments: (session: SessionRef, attachments: PromptAttachment[], machineId = "local", folder?: string) => request(sessionPath(session, "attachments", machineId), parseSavedAttachments, { method: "POST", body: sessionBody(session, { attachments, ...(folder === undefined ? {} : { folder }) }) }),
   shell: (session: SessionRef, text: string, machineId = "local") => request(sessionPath(session, "shell", machineId), parseAccepted, { method: "POST", body: sessionBody(session, { text }) }),
   runCommand: (session: SessionRef, text: string, machineId = "local") => request(sessionPath(session, "commands/run", machineId), parseCommandResult, { method: "POST", body: sessionBody(session, { text }) }),

@@ -25,6 +25,28 @@ describe("shouldShowMachinesSection", () => {
   });
 });
 
+describe("panel body allocation", () => {
+  // Regression history: every expanded section used to share the panel height
+  // (`flex: 1 1 0px`), so a workspace with 33 sessions showed a single session
+  // row beside a one-machine list. The panel now shows one section at a time
+  // under a context row, so whichever section is showing owns the body - which
+  // supersedes the earlier "pickers are capped, sessions grow" contract.
+  const styleText = String(AppNavigationPanel.styles).replace(/\s+/g, " ");
+
+  it("gives the visible section the whole body", () => {
+    expect(styleText).toContain("machine-list, project-list, workspace-list, session-list { flex: 1 1 auto;");
+    expect(styleText).not.toContain("flex: 1 1 0px");
+  });
+
+  it("caps the goal panel so it cannot push sessions off-screen", () => {
+    expect(styleText).toContain("goal-panel { flex: 0 1 auto;");
+  });
+
+  it("keeps a collapsed section at heading height", () => {
+    expect(styleText).toContain("session-list[collapsed] { flex: 0 0 auto;");
+  });
+});
+
 describe("machine status wiring", () => {
   it("gives machine sections every snapshot and project and workspace sections the selected machine's", async () => {
     const local = machineStatusSnapshot({ machine: { "core:working": true } });

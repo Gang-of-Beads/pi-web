@@ -9,6 +9,7 @@ import type { NavigationSection } from "../../appShell/navigationState";
 import { NAVIGATION_SECTION_ORDER } from "../../appShell/navigationState";
 import type { KeyboardNavigableSection } from "../navigationFocus";
 import "../MachineList";
+import "./AppContextSwitcher";
 import "../MachineSwitcher";
 import "../ProjectList";
 import "../WorkspaceList";
@@ -45,6 +46,11 @@ export class AppNavigationPanel extends LitElement {
   @property({ type: Number }) startingSessionCount = 0;
   @property({ type: Boolean }) canStartSession = false;
   @property({ attribute: false }) onShowActions?: () => void;
+  @property({ attribute: false }) onOpenSettings?: () => void;
+  @property({ attribute: false }) onAddMachine?: () => void;
+  @property({ attribute: false }) onOpenSessionTree?: (session: SessionInfo) => void | Promise<void>;
+  @property({ attribute: false }) onRefreshMachine?: (machine: Machine) => void | Promise<void>;
+  @property({ attribute: false }) onOpenMachine?: (machine: Machine) => void;
   @property({ attribute: false }) onQuickSwitch?: () => void;
   @property({ attribute: false }) onAddProject?: () => void;
   @property({ attribute: false }) onToggleMachines?: () => void;
@@ -69,6 +75,7 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) goals: GoalRecordSummary[] = [];
   @property({ type: Boolean }) goalsLoading = false;
   @property({ attribute: false }) onRefreshGoals?: () => void | Promise<void>;
+  @property({ attribute: false }) onArchiveGoal?: (goal: GoalRecordSummary) => void | Promise<void>;
   @property({ attribute: false }) onMarkSessionRead?: (session: SessionInfo) => void | Promise<void>;
   @property({ attribute: false }) onMarkSessionsRead?: (sessions: SessionInfo[]) => void | Promise<void>;
   @property({ attribute: false }) onReloadSession?: (session: SessionInfo) => void | Promise<void>;
@@ -97,31 +104,34 @@ export class AppNavigationPanel extends LitElement {
 
   override render() {
     if (this.compact) return this.renderCompact();
+    // One body at a time: the context row above says where you are and opens
+    // each picker, so the session list keeps the panel instead of sharing it
+    // with three lists that are read far more often than they are changed.
+    const visible = this.compactVisibleSection();
     return html`
       <header>
         <strong>PI WEB</strong>
-        ${shouldShowMachinesSection(this.machines) ? html`
-          <machine-switcher
-            .machines=${this.machines}
-            .selected=${this.selectedMachine}
-            .statuses=${this.machineStatuses}
-            .statusSnapshots=${this.machineStatusSnapshots}
-            .onSelect=${(machine: Machine) => this.onSelectMachine?.(machine)}
-            .onRemove=${(machine: Machine) => this.onRemoveMachine?.(machine)}
-            .onFocusNextSection=${() => { this.focusNextFrom("machines"); }}
-            .onCancelKeyboardNavigation=${() => { this.cancelKeyboardNavigation(); }}
-          ></machine-switcher>
-        ` : null}
         <div class="header-actions">
           ${this.refreshControl}
+          <button title="Open settings" aria-label="Open settings" @click=${() => { this.onOpenSettings?.(); }}>⚙</button>
           <button title="Show Actions" aria-label="Show Actions" @click=${() => { this.onShowActions?.(); }}>Actions</button>
         </div>
       </header>
-      ${this.renderMachineList(false)}
-      ${this.renderProjectList(true)}
-      ${this.renderWorkspaceList(true)}
-      ${this.renderSessionList(true)}
-      ${this.renderGoalPanel()}
+      <app-context-switcher
+        .machines=${this.machines}
+        .selectedMachine=${this.selectedMachine}
+        .selectedProject=${this.selectedProject}
+        .selectedWorkspace=${this.selectedWorkspace}
+        .openSection=${visible === "sessions" ? undefined : visible}
+        .onOpenSection=${(section: NavigationSection) => { this.openSection(section); }}
+        .onAddMachine=${() => { this.onAddMachine?.(); }}
+        .onAddProject=${() => { this.runMaybeAsync(this.onAddProject); }}
+      ></app-context-switcher>
+      ${this.renderMachineList(false, visible !== "machines")}
+      ${this.renderProjectList(false, visible !== "projects")}
+      ${this.renderWorkspaceList(false, visible !== "workspaces")}
+      ${this.renderSessionList(false, visible !== "sessions")}
+      ${visible === "sessions" ? this.renderGoalPanel() : null}
     `;
   }
 
@@ -170,6 +180,20 @@ export class AppNavigationPanel extends LitElement {
     `;
   }
 
+  /**
+   * Open a picker from the context row, or close it by choosing it again.
+   *
+   * This reuses the accordion's own toggle rather than a second piece of state,
+   * so the desktop context row and the mobile accordion cannot disagree about
+   * which step is showing.
+   */
+  private openSection(section: NavigationSection): void {
+    if (section === "machines") this.onToggleMachines?.();
+    else if (section === "projects") this.onToggleProjects?.();
+    else if (section === "workspaces") this.onToggleWorkspaces?.();
+    else this.onToggleSessions?.();
+  }
+
   private compactVisibleSection(): NavigationSection {
     if (shouldShowMachinesSection(this.machines) && !this.machinesCollapsed) return "machines";
     if (!this.projectsCollapsed) return "projects";
@@ -194,6 +218,8 @@ export class AppNavigationPanel extends LitElement {
         .onToggleCollapsed=${() => { this.onToggleMachines?.(); }}
         .onSelect=${(machine: Machine) => this.onSelectMachine?.(machine)}
         .onRemove=${(machine: Machine) => this.onRemoveMachine?.(machine)}
+        .onRefresh=${(machine: Machine) => this.onRefreshMachine?.(machine)}
+        .onOpen=${(machine: Machine) => { this.onOpenMachine?.(machine); }}
         .onFocusNextSection=${() => { this.focusNextFrom("machines"); }}
         .onCancelKeyboardNavigation=${() => { this.cancelKeyboardNavigation(); }}
       ></machine-list>
@@ -257,6 +283,7 @@ export class AppNavigationPanel extends LitElement {
         .goals=${this.goals}
         ?loading=${this.goalsLoading}
         .onRefresh=${() => this.onRefreshGoals?.()}
+        .onArchive=${(goal: GoalRecordSummary) => this.onArchiveGoal?.(goal)}
       ></goal-panel>
     `;
   }
@@ -291,6 +318,7 @@ export class AppNavigationPanel extends LitElement {
         .onMarkRead=${(session: SessionInfo) => this.onMarkSessionRead?.(session)}
         .onMarkReadMany=${(sessions: SessionInfo[]) => this.onMarkSessionsRead?.(sessions)}
         .onReload=${(session: SessionInfo) => this.onReloadSession?.(session)}
+        .onOpenTree=${(session: SessionInfo) => this.onOpenSessionTree?.(session)}
         .onCleanup=${() => this.onCleanupSessions?.()}
         .onFocusPreviousSection=${() => { this.focusPreviousFrom("sessions"); }}
         .onFocusNextSection=${() => { this.focusNextFrom("sessions"); }}
@@ -353,17 +381,18 @@ export class AppNavigationPanel extends LitElement {
     machine-switcher { flex: 1 1 auto; min-width: 0; }
     :host([compact]) header { display: none; }
     .header-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
-    /* Expanded sections share the panel height equally, so collapsing one
-       section distributes its space to every remaining section, not just the
-       session list. Collapsed sections keep only their heading height. */
-    machine-list, project-list, workspace-list, session-list { flex: 1 1 0px; min-height: 0; overflow: hidden; border-bottom: 1px solid var(--pi-border-muted); }
-    :host([compact]) machine-list,
-    :host([compact]) project-list,
-    :host([compact]) workspace-list,
-    :host([compact]) session-list { flex: 1 1 auto; }    machine-list[collapsed],
+    /* One section owns the body at a time, on every width. The context row
+       above names the machine, project and workspace, so those pickers only
+       appear while they are being changed - which is what frees the whole panel
+       for the session list, the one surface that is actually worked in. */
+    machine-list, project-list, workspace-list, session-list { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+    machine-list[collapsed],
     project-list[collapsed],
     workspace-list[collapsed],
     session-list[collapsed] { flex: 0 0 auto; min-height: auto; overflow: hidden; }
+    /* Goals are workspace context under the session list: capped so a long
+       task list cannot push the sessions it belongs to off-screen. */
+    goal-panel { flex: 0 1 auto; min-height: 0; max-height: var(--pi-nav-goals-max-height, 26vh); overflow: auto; border-top: 1px solid var(--pi-border-muted); }
     button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; }
   `;
 }

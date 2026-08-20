@@ -45,10 +45,12 @@ interface Harness {
   setState: (patch: Partial<AppState>) => void;
 }
 
+type ArchiveWorkspaceGoal = (projectId: string, workspaceId: string, goalId: string, machineId?: string) => Promise<{ goalId: string; archivedPath: string; alreadyArchived: boolean; agentMayRecreate: boolean }>;
+
 function harness(
   initial: Partial<AppState>,
   loadWorkspaces: LoadWorkspaces,
-  options: { topologyRefreshDebounceMs?: number } = {},
+  options: { topologyRefreshDebounceMs?: number; archiveWorkspaceGoal?: ArchiveWorkspaceGoal } = {},
 ): Harness {
   let state: AppState = { ...initialAppState(), ...initial };
   const setState = (patch: Partial<AppState>) => { state = { ...state, ...patch }; };
@@ -71,6 +73,7 @@ function harness(
         workspaces: loadWorkspaces,
         sessions: vi.fn<(path: string, machineId?: string) => Promise<SessionInfo[]>>().mockResolvedValue([]),
         workspaceGoals: vi.fn(() => Promise.resolve({ goals: [], directory: "/repo/.pi/goals", generatedAt: "2026-07-27T10:00:00.000Z" })),
+        archiveWorkspaceGoal: options.archiveWorkspaceGoal ?? vi.fn(() => Promise.resolve({ goalId: "goal-1", archivedPath: "/repo/.pi/goals/archived/goal-1.md", alreadyArchived: false, agentMayRecreate: false })),
       },
       onBackgroundError: (message, error) => { backgroundErrors.push({ message, error }); },
       topologyRefreshDebounceMs: options.topologyRefreshDebounceMs ?? 0,
@@ -506,5 +509,49 @@ describe("WorkspaceController.refreshSelectedProjectTopology", () => {
     await test.controller.refreshSelectedProjectTopology();
 
     expect(loadWorkspaces).not.toHaveBeenCalled();
+  });
+});
+
+describe("archiveWorkspaceGoal", () => {
+  it("archives the goal and re-reads the directory instead of assuming", async () => {
+    const archiveWorkspaceGoal = vi.fn<ArchiveWorkspaceGoal>()
+      .mockResolvedValue({ goalId: "goal-1", archivedPath: "/repo/.pi/goals/archived/goal-1.md", alreadyArchived: false, agentMayRecreate: false });
+    const { controller, state } = harness(
+      { selectedWorkspace: workspace("project-1", "/repo/ws-1"), projects: [project("project-1", "/repo")] },
+      vi.fn<LoadWorkspaces>().mockResolvedValue([workspace("project-1", "/repo/ws-1")]),
+      { archiveWorkspaceGoal },
+    );
+
+    await controller.archiveWorkspaceGoal("goal-1");
+
+    expect(archiveWorkspaceGoal).toHaveBeenCalledWith("project-1", "/repo/ws-1", "goal-1", "local");
+    expect(state().workspaceGoalsLoading).toBe(false);
+  });
+
+  it("says when a running agent may bring the goal back", async () => {
+    const archiveWorkspaceGoal = vi.fn<ArchiveWorkspaceGoal>()
+      .mockResolvedValue({ goalId: "goal-1", archivedPath: "/x", alreadyArchived: false, agentMayRecreate: true });
+    const { controller, state } = harness(
+      { selectedWorkspace: workspace("project-1", "/repo/ws-1"), projects: [project("project-1", "/repo")] },
+      vi.fn<LoadWorkspaces>().mockResolvedValue([workspace("project-1", "/repo/ws-1")]),
+      { archiveWorkspaceGoal },
+    );
+
+    await controller.archiveWorkspaceGoal("goal-1");
+
+    expect(state().error).toContain("/goal-refresh");
+  });
+
+  it("reports a refusal rather than leaving the panel unchanged in silence", async () => {
+    const archiveWorkspaceGoal = vi.fn<ArchiveWorkspaceGoal>().mockRejectedValue(new Error("goal is locked"));
+    const { controller, state } = harness(
+      { selectedWorkspace: workspace("project-1", "/repo/ws-1"), projects: [project("project-1", "/repo")] },
+      vi.fn<LoadWorkspaces>().mockResolvedValue([workspace("project-1", "/repo/ws-1")]),
+      { archiveWorkspaceGoal },
+    );
+
+    await controller.archiveWorkspaceGoal("goal-1");
+
+    expect(state().error).toContain("goal is locked");
   });
 });

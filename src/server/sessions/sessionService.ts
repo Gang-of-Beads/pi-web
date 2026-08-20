@@ -82,7 +82,7 @@ export interface SessionRouteService {
   setThinkingLevel(ref: SessionRouteRef, level: string): Promise<ClientSessionStatus>;
   cycleThinkingLevel(ref: SessionRouteRef): Promise<ClientSessionStatus>;
   commands(ref: SessionRouteRef): Promise<ClientCommand[]>;
-  prompt(ref: SessionRouteRef, text: unknown, streamingBehavior?: unknown, attachments?: unknown): Promise<void>;
+  prompt(ref: SessionRouteRef, text: unknown, streamingBehavior?: unknown, attachments?: unknown, options?: { echoUserMessage?: boolean; clientMessageId?: unknown }): Promise<void>;
   saveAttachments(ref: SessionRouteRef, attachments: unknown, folder?: string): Promise<SavedPromptAttachment[]>;
   cleanupPreview(request: NormalizedSessionCleanupRequest): Promise<ClientSessionCleanupPreviewResponse>;
   cleanup(request: NormalizedSessionCleanupRequest): Promise<ClientSessionCleanupExecuteResponse>;

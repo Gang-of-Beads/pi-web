@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SessionInfo, Workspace } from "./api";
 import { sessionLabel } from "./sessionLabels";
-import { renameSessionInList, quickSwitcherModel, quickSwitcherSessionSubtitle, quickSwitcherWorkspaces } from "./quickSwitcher";
+import { quickSwitcherFilterActive, quickSwitcherFilterSessions, renameSessionInList, quickSwitcherModel, quickSwitcherSessionSubtitle, quickSwitcherWorkspaces } from "./quickSwitcher";
 
 const NOW = Date.parse("2026-08-14T12:00:00.000Z");
 
@@ -34,6 +34,77 @@ function workspace(id: string, overrides: Partial<Workspace> = {}): Workspace {
 function groupIds(sessions: SessionInfo[], activeSessionIds: ReadonlySet<string> = new Set(), query = ""): string[] {
   return quickSwitcherModel({ sessions, activeSessionIds, query, now: NOW }).groups.map((group) => group.id);
 }
+
+describe("quickSwitcherModel attention ordering", () => {
+  const attn = session("attn", { modified: "2026-08-01T00:00:00.000Z" });
+
+  it("floats an errored session above every other group", () => {
+    const ids = quickSwitcherModel({
+      sessions: [session("working"), attn],
+      activeSessionIds: new Set(["working"]),
+      errorSessionIds: new Set(["attn"]),
+      query: "",
+      now: NOW,
+    }).groups.map((group) => group.id);
+    expect(ids[0]).toBe("error");
+  });
+
+  it("ranks error over waiting over interrupted over active over unread", () => {
+    const ids = quickSwitcherModel({
+      sessions: [session("e"), session("w"), session("i"), session("a"), session("u")],
+      activeSessionIds: new Set(["a"]),
+      errorSessionIds: new Set(["e"]),
+      waitingSessionIds: new Set(["w"]),
+      interruptedSessionIds: new Set(["i"]),
+      unreadSessionIds: new Set(["u"]),
+      query: "",
+      now: NOW,
+    }).groups.map((group) => group.id);
+    expect(ids).toEqual(["error", "waiting", "interrupted", "active", "unread"]);
+  });
+
+  it("lifts a pinned idle session above plain recency but not above attention", () => {
+    const model = quickSwitcherModel({
+      sessions: [session("today-one"), session("pinned-old", { modified: "2026-08-01T00:00:00.000Z" })],
+      activeSessionIds: new Set(),
+      pinnedSessionIds: new Set(["pinned-old"]),
+      query: "",
+      now: NOW,
+    });
+    expect(model.groups.map((group) => group.id)).toEqual(["pinned", "today"]);
+  });
+
+  it("does not bury an errored session just because it is pinned", () => {
+    const model = quickSwitcherModel({
+      sessions: [session("p")],
+      activeSessionIds: new Set(),
+      errorSessionIds: new Set(["p"]),
+      pinnedSessionIds: new Set(["p"]),
+      query: "",
+      now: NOW,
+    });
+    expect(model.groups[0]?.id).toBe("error");
+  });
+});
+
+describe("quickSwitcherFilterSessions", () => {
+  const ws = [workspace("main", { projectId: "proj-a", path: "/a/main" }), workspace("feat", { projectId: "proj-a", path: "/a/feat" }), workspace("other", { projectId: "proj-b", path: "/b/main" })];
+  const all = [session("1", { cwd: "/a/main" }), session("2", { cwd: "/a/feat" }), session("3", { cwd: "/b/main" })];
+
+  it("is focus mode when empty: every session passes", () => {
+    expect(quickSwitcherFilterActive({})).toBe(false);
+    expect(quickSwitcherFilterSessions(all, {}, ws)).toHaveLength(3);
+  });
+
+  it("narrows to one workspace", () => {
+    expect(quickSwitcherFilterSessions(all, { workspacePath: "/a/feat" }, ws).map((s) => s.id)).toEqual(["2"]);
+  });
+
+  it("narrows to a project through its workspaces", () => {
+    expect(quickSwitcherFilterSessions(all, { projectId: "proj-a" }, ws).map((s) => s.id)).toEqual(["1", "2"]);
+    expect(quickSwitcherFilterActive({ projectId: "proj-a" })).toBe(true);
+  });
+});
 
 describe("quickSwitcherModel", () => {
   it("groups sessions by age, newest group first", () => {

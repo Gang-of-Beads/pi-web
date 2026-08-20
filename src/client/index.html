@@ -11,9 +11,70 @@
     <style>
       :root {
         color-scheme: dark;
+        /*
+         * Scale tokens: the parts of the look that do not change with the
+         * palette. Themes decide colour; these decide density, rhythm and
+         * shape, so two themes cannot disagree about how tall a row is or how
+         * round a card corner should be. Custom properties inherit through
+         * shadow roots, which is what lets every component read them.
+         *
+         * Spacing is a 2px-based scale with the small steps a dense tool
+         * actually uses; type is a compact scale for glancing rather than
+         * reading; radii step with the size of the thing they round.
+         */
+        --pi-space-1: 2px;
+        --pi-space-2: 4px;
+        --pi-space-3: 6px;
+        --pi-space-4: 8px;
+        --pi-space-5: 10px;
+        --pi-space-6: 12px;
+        --pi-space-7: 16px;
+        --pi-space-8: 20px;
+        --pi-space-9: 24px;
+        --pi-text-2xs: 11px;
+        --pi-text-xs: 12px;
+        --pi-text-sm: 13px;
+        --pi-text-base: 14px;
+        --pi-text-md: 15px;
+        --pi-text-lg: 17px;
+        --pi-text-xl: 20px;
+        --pi-leading-tight: 1.25;
+        --pi-leading-normal: 1.45;
+        --pi-weight-regular: 400;
+        --pi-weight-medium: 500;
+        --pi-weight-semibold: 600;
+        --pi-radius-xs: 4px;
+        --pi-radius-sm: 6px;
+        --pi-radius-md: 8px;
+        --pi-radius-lg: 12px;
+        --pi-radius-xl: 16px;
+        --pi-radius-pill: 999px;
+        /* Touch floor first: a control is 44px on a finger, 32px under a mouse. */
+        --pi-control-height: 32px;
+        --pi-control-height-touch: 44px;
+        --pi-motion-fast: 120ms;
+        --pi-motion-base: 180ms;
+        --pi-motion-slow: 260ms;
+        --pi-ease: cubic-bezier(0.2, 0, 0, 1);
+        --pi-focus-ring-width: 2px;
+        --pi-focus-ring-offset: 2px;
+        /*
+         * Type stacks, named by role. Nothing is downloaded: this app is a PWA
+         * that has to work offline and on a LAN address, so the identity comes
+         * from the pairing and the scale rather than from a webfont. A theme or
+         * a plugin can override any of these.
+         *
+         * UI prefers the platform's own interface face (SF, Segoe, Roboto);
+         * display reaches for a more characterful grotesque when the system has
+         * one and falls back to the UI stack; mono is the terminal's face, so
+         * transcript code and the terminal agree.
+         */
+        --pi-font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        --pi-font-display: "SF Pro Display", "Segoe UI Variable Display", Inter, "Helvetica Neue", var(--pi-font-ui);
+        --pi-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
         --pi-control-font-size: 16px;
-        --pi-control-font-family: system-ui, sans-serif;
-        --pi-control-monospace-font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        --pi-control-font-family: var(--pi-font-ui);
+        --pi-control-monospace-font-family: var(--pi-font-mono);
         --pi-bg: #0d1117;
         --pi-surface: #161b22;
         --pi-surface-hover: #21262d;

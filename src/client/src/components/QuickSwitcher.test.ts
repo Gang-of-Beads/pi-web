@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { SessionInfo, Workspace } from "../api";
+import type { Project, SessionInfo, Workspace } from "../api";
 import { QuickSwitcher } from "./QuickSwitcher";
 
 afterEach(() => {
@@ -190,6 +190,11 @@ interface MountProps {
   activeSessionIds?: ReadonlySet<string>;
   sessionStates?: ReadonlyMap<string, "working" | "idle" | "asking" | "error">;
   interruptedSessionIds?: ReadonlySet<string>;
+  errorSessionIds?: ReadonlySet<string>;
+  pinnedSessionIds?: ReadonlySet<string>;
+  projects?: readonly Project[];
+  onTogglePin?: (session: SessionInfo) => void;
+  onRenameSession?: (session: SessionInfo, name: string) => void;
 }
 
 async function mount(props: MountProps): Promise<QuickSwitcher> {
@@ -206,6 +211,11 @@ async function mount(props: MountProps): Promise<QuickSwitcher> {
   if (props.activeSessionIds !== undefined) switcher.activeSessionIds = props.activeSessionIds;
   if (props.sessionStates !== undefined) switcher.sessionStates = props.sessionStates;
   if (props.interruptedSessionIds !== undefined) switcher.interruptedSessionIds = props.interruptedSessionIds;
+  if (props.errorSessionIds !== undefined) switcher.errorSessionIds = props.errorSessionIds;
+  if (props.pinnedSessionIds !== undefined) switcher.pinnedSessionIds = props.pinnedSessionIds;
+  if (props.projects !== undefined) switcher.projects = props.projects;
+  if (props.onTogglePin !== undefined) switcher.onTogglePin = props.onTogglePin;
+  if (props.onRenameSession !== undefined) switcher.onRenameSession = props.onRenameSession;
   document.body.append(switcher);
   await switcher.updateComplete;
   return switcher;
@@ -225,8 +235,26 @@ function session(id: string, overrides: Partial<SessionInfo> = {}): SessionInfo 
   };
 }
 
-function workspace(id: string): Workspace {
-  return { id, projectId: "project-1", label: id, path: `/repo/${id}`, isMain: id === "main", effectiveConfig: {} };
+function workspace(id: string, projectId = "project-1"): Workspace {
+  return { id, projectId, label: id, path: `/repo/${id}`, isMain: id === "main", effectiveConfig: {} };
+}
+
+function project(id: string, name = id): Project {
+  return { id, name, path: `/repo/${id}`, createdAt: "2026-08-01T00:00:00.000Z" };
+}
+
+function chips(switcher: QuickSwitcher): HTMLButtonElement[] {
+  return [...switcher.renderRoot.querySelectorAll<HTMLButtonElement>(".chip")];
+}
+
+function menuToggle(switcher: QuickSwitcher, index = 0): HTMLButtonElement {
+  const toggle = [...switcher.renderRoot.querySelectorAll<HTMLButtonElement>(".row-menu-toggle")][index];
+  if (toggle === undefined) throw new Error("Expected a row menu toggle");
+  return toggle;
+}
+
+function menuItems(switcher: QuickSwitcher): HTMLButtonElement[] {
+  return [...switcher.renderRoot.querySelectorAll<HTMLButtonElement>(".row-menu button")];
 }
 
 function searchInput(switcher: QuickSwitcher): HTMLInputElement {
@@ -255,3 +283,81 @@ function sessionRows(switcher: QuickSwitcher): HTMLButtonElement[] {
 function rowTitle(row: HTMLButtonElement): string {
   return row.querySelector(".row-title")?.textContent.trim() ?? "";
 }
+
+describe("quick-switcher context filters", () => {
+  const ws = [workspace("main", "project-a"), workspace("feat", "project-b")];
+  const sessions = [session("a", { cwd: "/repo/main", name: "in main" }), session("b", { cwd: "/repo/feat", name: "in feat" })];
+
+  it("shows every workspace's sessions until a filter is chosen", async () => {
+    const switcher = await mount({ sessions, workspaces: ws, projects: [project("project-a"), project("project-b")] });
+    expect(sessionRows(switcher)).toHaveLength(2);
+    expect(chips(switcher)[0]?.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("narrows to one project and widens again when the same chip is tapped", async () => {
+    const switcher = await mount({ sessions, workspaces: ws, projects: [project("project-a"), project("project-b")] });
+    const projectChip = chips(switcher).find((chip) => chip.textContent.trim() === "project-a");
+
+    projectChip?.click();
+    await switcher.updateComplete;
+    expect(sessionRows(switcher).map(rowTitle)).toEqual(["in main"]);
+
+    projectChip?.click();
+    await switcher.updateComplete;
+    expect(sessionRows(switcher)).toHaveLength(2);
+  });
+});
+
+describe("quick-switcher row actions", () => {
+  it("pins from the row menu and marks the row", async () => {
+    const onTogglePin = vi.fn<(session: SessionInfo) => void>();
+    const target = session("a", { name: "billing" });
+    const switcher = await mount({ sessions: [target], onTogglePin });
+
+    menuToggle(switcher).click();
+    await switcher.updateComplete;
+    const pin = menuItems(switcher).find((item) => item.textContent.includes("Pin"));
+    pin?.click();
+
+    expect(onTogglePin).toHaveBeenCalledWith(target);
+  });
+
+  it("labels the action Unpin and marks the row when already pinned", async () => {
+    const switcher = await mount({ sessions: [session("a", { name: "billing" })], pinnedSessionIds: new Set(["a"]) });
+    expect(switcher.renderRoot.querySelector(".pin-mark")).not.toBeNull();
+
+    menuToggle(switcher).click();
+    await switcher.updateComplete;
+    expect(menuItems(switcher).some((item) => item.textContent.includes("Unpin"))).toBe(true);
+  });
+
+  it("renames inline and reports the new name once", async () => {
+    const onRenameSession = vi.fn<(session: SessionInfo, name: string) => void>();
+    const target = session("a", { name: "billing" });
+    const switcher = await mount({ sessions: [target], onRenameSession });
+
+    menuToggle(switcher).click();
+    await switcher.updateComplete;
+    menuItems(switcher).find((item) => item.textContent.includes("Rename"))?.click();
+    await switcher.updateComplete;
+
+    const input = switcher.renderRoot.querySelector<HTMLInputElement>(".rename-input");
+    if (input === null) throw new Error("Expected the inline rename input");
+    input.value = "invoice sync";
+    input.dispatchEvent(new Event("input"));
+    switcher.renderRoot.querySelector<HTMLFormElement>(".rename-row")?.dispatchEvent(new Event("submit", { cancelable: true }));
+    await switcher.updateComplete;
+
+    expect(onRenameSession).toHaveBeenCalledWith(target, "invoice sync");
+  });
+
+  it("lists an errored session above one that is merely running", async () => {
+    const switcher = await mount({
+      sessions: [session("running", { name: "running" }), session("stuck", { name: "stuck" })],
+      activeSessionIds: new Set(["running"]),
+      errorSessionIds: new Set(["stuck"]),
+    });
+
+    expect(sessionRows(switcher).map(rowTitle)).toEqual(["stuck", "running"]);
+  });
+});
