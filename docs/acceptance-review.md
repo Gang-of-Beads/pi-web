@@ -228,6 +228,39 @@ Run on `main` after the merge:
 | CI | ubuntu-latest and windows-latest both green |
 | bllm provider smoke | a real turn against `deepseek-v4-flash` returned the expected reply |
 
+Playwright runs against the docker dev container (`8511` client, `8510` API),
+so those 60 are container evidence, re-run after the container was restarted
+onto the final server code.
+
+## Deployment
+
+| Step | Evidence |
+|---|---|
+| PR merged | #1 squashed as `53006c1`, both CI jobs green |
+| Release | `v20260820-0691272`, matching `main` HEAD |
+| Host applied | `release-update.sh --apply --force`, exit 0 |
+| Host services | `pi-web` and `pi-web-sessiond` active |
+| Host page | HTTP 200, served bundle identical to the release's `dist` |
+| Host fleet | both real machines reported with versions |
+
+Getting there needed three fixes to the deployment path itself, each found by
+it failing:
+
+1. **The symlink is not the deployment.** A run that flips `current` and then
+   fails to restart leaves the link on the new release while the processes still
+   execute the old one. The next run saw the link, called it done, and exited
+   zero. It now asks each service when it started and restarts any that predate
+   the link.
+2. **The drain could not drain.** Waiting for in-flight runs to finish is
+   correct for other people's work and impossible for the run performing the
+   deployment - an agent session with auto-continue is never idle. `--force`
+   states that the caller knows which run is in flight and accepts interrupting
+   it.
+3. **Looking at the deployed thing found a bug the container never showed.** The
+   phone named its machine twice: the shell mounts the machine switcher hidden,
+   but a `display` rule on `:host` outranks the HTML `hidden` attribute. The
+   container has one machine, so the duplicate had nothing to draw.
+
 CI green on Windows took two fixes. One was pre-existing - `main`'s Windows job
 had been failing on a test that hard-coded a POSIX path where the route resolves
 it. The other was ours: the archived-goal record stored its path with the
