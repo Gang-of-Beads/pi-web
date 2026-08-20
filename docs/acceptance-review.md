@@ -238,10 +238,20 @@ onto the final server code.
 |---|---|
 | PR merged | #1 squashed as `53006c1`, both CI jobs green |
 | Release | `v20260820-0691272`, matching `main` HEAD |
-| Host applied | `release-update.sh --apply --force`, exit 0 |
+| Host applied | `release-update.sh --apply --force`, exit 0 (the last run of the script; the deployment path moved into nix immediately after - see below) |
 | Host services | `pi-web` and `pi-web-sessiond` active |
 | Host page | HTTP 200, served bundle identical to the release's `dist` |
 | Host fleet | both real machines reported with versions |
+
+The deployment path retired after this review: the release-tarball pipeline
+(`scripts/release-update.sh`, hand-written systemd units, `~/pi-web-release`)
+was replaced by the nix flake (`home/tools/pi-web.nix` in the nix-config repo)
+- a locked `pi-web` input built with `buildNpmPackage`, declared user units,
+and a timer that bumps the lock and rebuilds on every fork push. The script
+below served until the last host apply, then the three fixes it needed were
+absorbed into the nix design: the symlink problem became the flake lock, the
+drain problem became "stop then start is atomic enough for a session that
+records its own resumability", and the two-machine bug stayed a UI concern.
 
 Getting there needed three fixes to the deployment path itself, each found by
 it failing:
