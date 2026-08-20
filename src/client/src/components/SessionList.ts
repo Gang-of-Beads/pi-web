@@ -63,6 +63,8 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
   @property({ attribute: false }) onMarkRead?: (session: SessionInfo) => void;
   @property({ attribute: false }) onMarkReadMany?: (sessions: SessionInfo[]) => void | Promise<void>;
   @property({ attribute: false }) onReload?: (session: SessionInfo) => void;
+  /** Open the session tree; previously reachable only by typing /tree. */
+  @property({ attribute: false }) onOpenTree?: (session: SessionInfo) => void | Promise<void>;
   @property({ attribute: false }) onCleanup?: () => void;
 
   @state() private openMenuSessionId: string | undefined;
@@ -402,6 +404,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
                       ${descendantCount > 0 ? html`<button title="Archive this session and its descendants" @click=${() => { this.openMenuSessionId = undefined; this.confirmArchiveWithDescendants(session, descendantCount); }}>Archive with descendants (${descendantCount})</button>` : null}
                     ` : null}
                     <button title="Give this session a name you will recognise" @click=${() => { this.openMenuSessionId = undefined; this.promptRename(session); }}>Rename</button>
+                    ${this.onOpenTree === undefined ? null : html`<button title="Browse this session's history and branches" @click=${() => { this.openMenuSessionId = undefined; void this.onOpenTree?.(session); }}>History and branches</button>`}
                     ${session.parentSessionPath !== undefined ? html`<button title="Detach from parent" @click=${() => { this.openMenuSessionId = undefined; this.onDetachParent?.(session); }}>Detach from parent</button>` : null}
                     ${canArchive ? html`<button title=${isSessionActive(this.statuses[session.id], this.activities[session.id]) ? "Stop current session activity before reloading from disk" : "Reload session from disk without refreshing Pi runtime resources"} ?disabled=${isSessionActive(this.statuses[session.id], this.activities[session.id])} @click=${() => { this.openMenuSessionId = undefined; this.onReload?.(session); }}>Reload from disk</button>` : null}
                   `}

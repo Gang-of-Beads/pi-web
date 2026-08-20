@@ -48,6 +48,7 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) onShowActions?: () => void;
   @property({ attribute: false }) onOpenSettings?: () => void;
   @property({ attribute: false }) onAddMachine?: () => void;
+  @property({ attribute: false }) onOpenSessionTree?: (session: SessionInfo) => void | Promise<void>;
   @property({ attribute: false }) onRefreshMachine?: (machine: Machine) => void | Promise<void>;
   @property({ attribute: false }) onOpenMachine?: (machine: Machine) => void;
   @property({ attribute: false }) onQuickSwitch?: () => void;
@@ -315,6 +316,7 @@ export class AppNavigationPanel extends LitElement {
         .onMarkRead=${(session: SessionInfo) => this.onMarkSessionRead?.(session)}
         .onMarkReadMany=${(sessions: SessionInfo[]) => this.onMarkSessionsRead?.(sessions)}
         .onReload=${(session: SessionInfo) => this.onReloadSession?.(session)}
+        .onOpenTree=${(session: SessionInfo) => this.onOpenSessionTree?.(session)}
         .onCleanup=${() => this.onCleanupSessions?.()}
         .onFocusPreviousSection=${() => { this.focusPreviousFrom("sessions"); }}
         .onFocusNextSection=${() => { this.focusNextFrom("sessions"); }}

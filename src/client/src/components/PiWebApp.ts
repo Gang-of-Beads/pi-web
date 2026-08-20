@@ -1543,6 +1543,7 @@ export class PiWebApp extends LitElement {
         ?goalsLoading=${this.state.workspaceGoalsLoading}
         .onRefreshGoals=${() => this.workspaces.refreshWorkspaceGoals()}
         .onReloadSession=${(session: SessionInfo) => this.sessions.reloadSession(session)}
+        .onOpenSessionTree=${(session: SessionInfo) => this.openSessionTree(session)}
         .onCleanupSessions=${() => { this.openSessionCleanupDialog(); }}
         .onFocusNavigationTarget=${(target: NavigationFocusTarget) => { void this.focusNavigationTarget(target); }}
         .onCancelKeyboardNavigation=${() => { void this.focusChatComposer(); }}
@@ -1799,6 +1800,20 @@ export class PiWebApp extends LitElement {
   private async forkSessionTree(entryId: string): Promise<SessionTreeForkResult> {
     // The controller selects the forked session and closes the dialog on success.
     return this.sessions.forkFromTree(entryId);
+  }
+
+  /**
+   * Open the tree for a session from its row.
+   *
+   * The navigator existed only behind a typed /tree command, so the ability to
+   * see a session's branches was invisible unless you already knew about it.
+   * The command stays the source of truth; this just runs it for the row the
+   * user pointed at, selecting that session first because the command acts on
+   * the selected one.
+   */
+  private async openSessionTree(session: SessionInfo): Promise<void> {
+    if (this.state.selectedSession?.id !== session.id) await this.sessions.selectSession(session);
+    await this.sessions.runCommand("/tree");
   }
 
   private closeSessionTreeNavigator(): void {
