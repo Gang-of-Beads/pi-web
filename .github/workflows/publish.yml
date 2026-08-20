@@ -9,11 +9,10 @@ permissions:
   contents: read
   id-token: write
 
-# The fork publishes under its own scope once NPM_TOKEN exists in repo
-# secrets; without it every step but the publish still runs, and the
-# publish itself is skipped rather than failing the release.
-env:
-  NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+# Trusted publishing (OIDC): npm accepts publishes from this workflow via the
+# trust relationship configured with `npm trust github` on @vincenthanxiaodu/pi-web.
+# No NPM_TOKEN secret is used; npm CLI exchanges the GitHub Actions OIDC token
+# for a short-lived publish credential and provenance is attached automatically.
 
 jobs:
   publish:
@@ -42,8 +41,9 @@ jobs:
       - name: Smoke test npm 12 global package install
         run: npm run smoke:package-install
 
+      # With trusted publishing the OIDC token is detected automatically;
+      # provenance is generated automatically for public repos/packages.
       - name: Publish
-        if: env.NPM_TOKEN != ''
         run: npm publish --access public --provenance
 
   deploy-docs:

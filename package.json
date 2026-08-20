@@ -1,6 +1,6 @@
 {
   "name": "@vincenthanxiaodu/pi-web",
-  "version": "1.202608.1",
+  "version": "1.202608.2",
   "description": "Web UI for persistent Pi Coding Agent sessions in real workspaces.",
   "license": "MIT",
   "author": "Federico Jaramillo Martinez",
@@ -134,7 +134,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jmfederico/pi-web.git"
+    "url": "git+https://github.com/VincentHanxiaoDu/pi-web.git"
   },
   "bugs": {
     "url": "https://github.com/jmfederico/pi-web/issues"
