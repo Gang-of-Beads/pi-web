@@ -484,7 +484,7 @@ describe("PluginRegistry", () => {
     const { context, calls } = createContext({ selectedWorkspace: testWorkspace() });
     const action = registry.getActions(context).find((candidate) => candidate.id === "core:view.terminal");
 
-    expect(action?.shortcut).toBe("mod+4");
+    expect(action?.shortcut).toBe("mod+3");
     if (action !== undefined) void action.run();
 
     expect(calls).toEqual(["selectMainView:core:workspace.terminal"]);
@@ -503,7 +503,7 @@ describe("PluginRegistry", () => {
       ["core:settings.open", "mod+,"],
       ["core:view.chat", "mod+1"],
       ["core:view.files", "mod+2"],
-      ["core:view.terminal", "mod+4"],
+      ["core:view.terminal", "mod+3"],
       ["core:workspace.refresh-files", "mod+shift+f"],
       ["core:session.start", "mod+enter"],
       ["core:session.stop", "mod+."],

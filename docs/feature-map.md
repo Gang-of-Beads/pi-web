@@ -43,7 +43,7 @@ gains a visible one.
 | Machine refresh / open remote PI WEB | Palette only | ✅ "Check again" / "Open PI WEB" in the machine row menu, plus the fleet panel |
 | Machine add / remove | Palette; row `⋯`; Settings ▸ Machines | ✅ inline `+` on the machine step of the context row |
 | Fleet status, update, restart across machines | `/pi-web` slash command only | ✅ Settings ▸ Machines ▸ "Machines and updates" (`SettingsFleetSection`) |
-| Panel size reset (×3 actions) | Palette only, duplicating an undocumented double-click | Context menu on the panel edge control; palette entries stay |
+| Panel size reset | "Reset Panel Sizes" in the palette, plus an undocumented double-click on the handle | ✅ palette entry kept; the handle now states the gesture in its tooltip and accessible name ("Double-click or double-tap to reset"), so the shortcut is no longer folklore |
 | Refresh current panel | `⌘⇧R` only | Kept, plus the existing per-panel refresh buttons |
 | Session bulk selection | Long-press with no hint | Explicit select control in the session list header (the header's checkbox); long-press keeps entering selection here, while the other lists use long-press for their row menu |
 | Workspace trust toggle and details | Inside the workspace row `⋯` menu | Same menu, surfaced as a workspace detail sheet with the trust state visible on the row |
@@ -53,7 +53,7 @@ gains a visible one.
 | Goals: refresh | Button in the goal panel | Same, plus archive/clear (task-6) |
 | Dictation | Composer, only when speech-to-text is configured server-side | Same, with the reason shown when it is unavailable rather than the control vanishing |
 | Deep links (`?tool=`, `?view=`, `?settings=`) | URL only, undocumented ids | Unchanged; documented in the settings panel that owns each id |
-| `⌘3` | Unassigned — the numeric view shortcuts skip it | Assign to the third workspace panel so the mapping is learnable |
+| `⌘3` | Unassigned — the numeric view shortcuts skipped it (chat 1, files 2, terminal **4**) | ✅ Terminal moved to `⌘3`, so the number names the view's position instead of being memorised one at a time |
 
 ## Programmatic and plugin surfaces
 
@@ -73,8 +73,11 @@ panel body, and carries the inline create controls. The session list keeps the
 body the rest of the time. Rows answer hold (touch) and right-click (mouse) with
 the menu their `⋯` button opens.
 
-Still to place, by task: panel-size resets and the unassigned `⌘3`
-(task-9 cleanup).
+Everything in this table now has a visible entry point. The last two holes
+closed in task-10: Terminal took `⌘3`, so the view numbers name positions
+instead of being memorised one at a time, and the resize handle states its
+reset gesture in its tooltip and accessible name rather than leaving it as
+folklore beside the palette entry.
 
 ## Rules this map enforces
 

@@ -111,8 +111,10 @@ export function createCoreActions(): PluginAction[] {
     },
     {
       id: "view.terminal",
+      // Third view, third number. This was mod+4 with nothing on mod+3, so the
+      // numbers named no position and had to be memorised one at a time.
       title: "Go to Terminal",
-      shortcut: "mod+4",
+      shortcut: "mod+3",
       group: "Navigation",
       enabled: hasWorkspace,
       run: (context) => { context.selectMainView("core:workspace.terminal"); },
