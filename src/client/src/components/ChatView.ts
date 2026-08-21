@@ -33,6 +33,7 @@ import type { SessionStateBadgeKind } from "./activityBadge";
 import "./AskUserCard";
 import "./ExtensionDialogCard";
 import type { ExtensionDialogAnswerCallback, ExtensionDialogCancelCallback, ExtensionDialogDismissCallback } from "./ExtensionDialogCard";
+import { queuedMessagesWithoutBubbles } from "../messageDelivery";
 import { registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
 import "./ConversationMeter";
 import "./FormattedText";
@@ -471,11 +472,11 @@ export class ChatView extends LitElement {
               return this.renderMessage(group.message, group.index);
             },
           )}
+          ${this.renderQueuedMessages()}
           ${this.renderSessionActivity()}
           ${this.renderOpenAsk()}
           ${this.renderExtensionDialogs()}
         </div>
-        ${this.renderQueuedMessages()}
         ${this.renderActivityDock()}
       </div>
       ${this.renderImageZoom()}
@@ -752,29 +753,17 @@ export class ChatView extends LitElement {
    * the moment it actually became part of the conversation.
    */
   /**
-   * Messages the server is still holding are rendered in the pinned dock
-   * instead of the transcript, so they do not scroll away before the agent
-   * takes them.
+   * The transcript renders every message it has, queued ones included.
    *
-   * The test is the server's queue, never the bubble's own delivery state.
-   * Hiding on local state made a message disappear outright whenever that
-   * state was not cleared - the queue had moved on, the bubble still said
-   * "queued", and nothing showed it until a reload rebuilt the transcript from
-   * the server. Keying on the queue means the worst case is a message that
-   * shows twice for one render, not one that vanishes.
+   * 1.202608.5-.7 kept queued messages out of it and showed them in a panel
+   * pinned above the composer. On a phone that panel covered the conversation
+   * it was supposed to annotate, and the version before that hid messages
+   * outright when the state driving it went stale. A queued message is
+   * therefore drawn where it always was - in place, marked - and the panel is
+   * back to listing only what has no bubble here.
    */
   private transcriptMessages(): ChatLine[] {
-    const queued = this.status?.queuedMessages ?? [];
-    if (queued.length === 0) return this.messages;
-    const queuedIds = new Set<string>();
-    for (const message of queued) {
-      if (message.clientMessageId !== undefined) queuedIds.add(message.clientMessageId);
-    }
-    if (queuedIds.size === 0) return this.messages;
-    return this.messages.filter((line) => {
-      const clientMessageId = line.meta?.delivery?.clientMessageId;
-      return clientMessageId === undefined || !queuedIds.has(clientMessageId);
-    });
+    return this.messages;
   }
 
   private groupedMessages(): ChatGroup[] {
@@ -851,21 +840,12 @@ export class ChatView extends LitElement {
   }
 
   private renderQueuedMessages() {
-    // Everything still queued shows here, including the sender's own messages.
-    // They used to be filtered out because they also render as marked bubbles,
-    // which fixed a double render but took the recall affordance with it: the
-    // action lives on this panel, so a message you sent yourself became the one
-    // kind of queued message you could not take back.
-    //
-    // The panel is outside the scroll container on purpose. A queued message
-    // has not happened yet - it is pending intent, not transcript - so letting
-    // it scroll away with the history meant the only handle on it disappeared
-    // as soon as the agent produced a few lines. Pinned above the composer it
-    // stays where the text will land when it is recalled.
-    const queued = this.status?.queuedMessages ?? [];
-    const sections = chatQueuedMessageSections(this.clientQueuedMessages, queued);
-    if (sections.length === 0) return null;
-    return html`<div class="queued-dock">${sections.map((section) => this.renderQueuedMessageList(section))}</div>`;
+    // Queued entries with no bubble in this transcript: another device, an
+    // injected command, a client too old to mint a correlation id. A message
+    // this browser sent is marked in place and carries its own recall action,
+    // so nothing listed here is a second copy of something already visible.
+    const serverQueued = queuedMessagesWithoutBubbles(this.status?.queuedMessages ?? [], this.messages);
+    return html`${chatQueuedMessageSections(this.clientQueuedMessages, serverQueued).map((section) => this.renderQueuedMessageList(section))}`;
   }
 
   private renderQueuedMessageList(section: QueuedMessageSection) {
@@ -1114,12 +1094,23 @@ export class ChatView extends LitElement {
     `;
   }
 
+  /** The queued bubble's own recall action; see renderQueuedMessages. */
+  private renderQueuedBubbleRecall(line: ChatLine) {
+    const delivery = line.meta?.delivery;
+    if (delivery?.state !== "queued" || this.onRecallQueuedMessage === undefined) return null;
+    const queued = (this.status?.queuedMessages ?? []).find((message) => message.clientMessageId === delivery.clientMessageId);
+    if (queued === undefined) return null;
+    return html`<button type="button" class="msg-action queued-recall-button" title="Take this message back and put it in the composer" @click=${() => { this.onRecallQueuedMessage?.(queued); }}>Recall</button>`;
+  }
+
   private renderMessageActions(message: ChatLine, key: string) {
     const resendable = this.onResendMessage !== undefined && isResendableLine(message);
-    if (!this.isCopyableMessage(message) && !resendable) return null;
+    const recall = this.renderQueuedBubbleRecall(message);
+    if (!this.isCopyableMessage(message) && !resendable && recall === null) return null;
     const copied = this.copiedMessageKey === key;
     return html`
       <div class="msg-actions" aria-label="Message actions">
+        ${recall}
         ${resendable
           ? html`<button type="button" class="msg-action" title="Edit and send again" aria-label="Put this message back in the composer to send again" @click=${(event: MouseEvent) => { this.resendMessage(message, event); }}>
               <span aria-hidden="true">↻</span>

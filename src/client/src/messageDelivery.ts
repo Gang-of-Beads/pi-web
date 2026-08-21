@@ -92,6 +92,21 @@ function advancesDelivery(current: MessageDeliveryState, next: MessageDeliverySt
  * taken into the turn.
  */
 /**
+ * Queue entries with no bubble in this transcript: another device, an injected
+ * command, a client too old to mint a correlation id. A message this browser
+ * sent is marked in place instead, so listing it here as well was the double
+ * render people reported.
+ */
+export function queuedMessagesWithoutBubbles(queued: readonly QueuedSessionMessage[], messages: readonly ChatLine[]): QueuedSessionMessage[] {
+  const tracked = new Set<string>();
+  for (const line of messages) {
+    const id = line.meta?.delivery?.clientMessageId;
+    if (id !== undefined) tracked.add(id);
+  }
+  return queued.filter((message) => message.clientMessageId === undefined || !tracked.has(message.clientMessageId));
+}
+
+/**
  * Drop the optimistic bubble for a message that was pulled back out of the
  * queue. It has to go rather than change state: the bubble says "the server has
  * this and the agent will take it next", which stopped being true, and

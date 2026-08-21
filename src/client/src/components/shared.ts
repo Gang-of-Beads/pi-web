@@ -549,18 +549,7 @@ export const chatStyles = css`
   }
   .chat { --pi-chat-sticky-top: -26px; height: 100%; min-height: 0; overflow: auto; overflow-anchor: none; padding: 26px var(--pi-space-7) 64px; box-sizing: border-box; }
   .scroll-marker { display: block; height: 0; overflow: hidden; pointer-events: none; }
-  /* Pinned above the composer, not inside the transcript: a queued message is
-     pending intent, so it must stay reachable while the agent keeps writing.
-     max-height keeps a long queue from swallowing the conversation. */
-  .subagent-duration { flex: 0 0 auto; color: var(--pi-muted); font-variant-numeric: tabular-nums; font-size: var(--pi-text-xs); }
-  .subagent-detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-xs); }
-  .subagent-row[disabled] { cursor: default; opacity: .8; }
-  .subagent-dot.running { background: var(--pi-success); }
-  .subagent-dot.failed { background: var(--pi-danger); }
-  .subagent-status.running { color: var(--pi-success); }
-  .subagent-status.failed { color: var(--pi-danger); }
-  .queued-dock { position: absolute; left: 16px; right: 16px; bottom: 56px; z-index: 21; display: flex; flex-direction: column; gap: var(--pi-space-4); max-height: 40%; overflow-y: auto; }
-  .queued-recall-button { flex: 0 0 auto; align-self: flex-start; border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-warning); padding: 2px var(--pi-space-4); font-size: var(--pi-text-xs); cursor: pointer; }
+  .queued-recall-button { flex: 0 0 auto; border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-warning); padding: 2px var(--pi-space-4); font-size: var(--pi-text-xs); cursor: pointer; }
   .queued-recall-button:hover { background: var(--pi-warning-surface); }
   .activity-dock { position: absolute; left: 16px; right: 16px; bottom: 12px; z-index: 20; display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: 0 8px 28px var(--pi-shadow); backdrop-filter: blur(6px); }
   .activity-dock.active { border-color: var(--pi-success-border); color: var(--pi-success); background: var(--pi-success-bg-overlay); }

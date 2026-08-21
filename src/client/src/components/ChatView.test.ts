@@ -20,7 +20,7 @@ import {
   chatQueuedSectionShowsClearAction,
   chatSessionWarningRows,
 } from "./ChatView";
-import { templateEventHandlerAfterMarker, templateEventHandlerNearMarker } from "../templateInspection.testSupport";
+import { templateEventHandlerAfterMarker, templateEventHandlerNearMarker, templateText } from "../templateInspection.testSupport";
 
 describe("chatDeliveryPresentation", () => {
   it("reads as one mark for received and two for taken into the turn", () => {
@@ -105,44 +105,48 @@ describe("ChatView queued-message clear wiring", () => {
   });
 });
 
-describe("ChatView transcript vs queued dock", () => {
-  // The regression that shipped in 1.202608.5: queued messages were hidden from
-  // the transcript by their own bubble's delivery state, which is client-side
-  // and not guaranteed to be cleared. When it was not, the message was in
-  // neither place - the queue had moved on, the bubble still said "queued" -
-  // and only a reload, which rebuilds the transcript from the server without
-  // delivery metadata, brought it back. Every hide decision now comes from the
-  // server's queue, so the failure mode is a duplicate for one render rather
-  // than a message that disappears.
+describe("ChatView queued messages stay in place", () => {
+  // Three shipped attempts, three ways to lose the message. 1.202608.5 hid
+  // queued messages from the transcript based on the bubble's own delivery
+  // state, which goes stale, so a message the queue had released was in
+  // neither place until a reload. 1.202608.6 keyed the same hiding on the
+  // server's queue, which was correct but still moved the message into a panel
+  // pinned above the composer - and on a phone that panel covered the
+  // conversation. So the message is drawn where it was sent, marked, and the
+  // panel lists only what has no bubble here.
   const queuedLine = (clientMessageId: string): ChatLine => ({
     role: "user",
     parts: [{ type: "text", text: "hello" }],
     meta: { delivery: { clientMessageId, state: "queued", kind: "steer" } },
   });
 
-  it("hides a message the server still lists as queued", () => {
+  it("keeps a queued message in the transcript", () => {
     const view = new ChatView();
     view.messages = [queuedLine("cm-1")];
     view.status = queuedStatus([{ kind: "steer", text: "hello", clientMessageId: "cm-1" }]);
 
-    expect(transcriptMessagesOf(view)).toHaveLength(0);
+    expect(transcriptMessagesOf(view)).toHaveLength(1);
   });
 
-  it("shows the message again as soon as the server stops listing it", () => {
+  it("does not list a message that already has a bubble", () => {
+    // The double render: one send appearing as a bubble and as a queue row.
     const view = new ChatView();
     view.messages = [queuedLine("cm-1")];
-    view.status = queuedStatus([]);
+    view.status = queuedStatus([{ kind: "steer", text: "hello", clientMessageId: "cm-1" }]);
+    view.onClearServerQueue = vi.fn();
 
-    expect(transcriptMessagesOf(view)).toHaveLength(1);
+    expect(templateText(renderQueuedMessages(view))).not.toContain("hello");
   });
 
-  it("never hides a message on a stale local delivery state alone", () => {
-    // Same bubble, different queue: another message is queued, this one is not.
+  it("lists a queued message that came from somewhere else", () => {
+    // Another device, or an injected command: no bubble here, so the panel is
+    // the only place it can be seen or recalled from.
     const view = new ChatView();
-    view.messages = [queuedLine("cm-stale")];
-    view.status = queuedStatus([{ kind: "steer", text: "other", clientMessageId: "cm-other" }]);
+    view.messages = [];
+    view.status = queuedStatus([{ kind: "steer", text: "from my phone" }]);
+    view.onClearServerQueue = vi.fn();
 
-    expect(transcriptMessagesOf(view)).toHaveLength(1);
+    expect(templateText(renderQueuedMessages(view))).toContain("from my phone");
   });
 });
 

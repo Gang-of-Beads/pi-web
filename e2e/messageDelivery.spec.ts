@@ -89,7 +89,7 @@ test.describe("delivery marks (UI)", () => {
   // this walks past the default per-test budget.
   test.describe.configure({ timeout: 120_000 });
 
-  test("shows a queued message in the dock only, then in the transcript once taken", async ({ page }) => {
+  test("marks a queued message in place, offers to recall it, and reaches Read", async ({ page }) => {
     // The route addresses a session by project and workspace id, so the session
     // has to live in a registered project rather than an arbitrary cwd.
     const workspace = await deliveryWorkspace(page.request);
@@ -106,22 +106,27 @@ test.describe("delivery marks (UI)", () => {
       await openSession(page, session, workspace);
       await sendFromComposer(page, "queued from the browser");
 
-      // Exactly one representation at a time. While the server holds the
-      // message it belongs to the pinned dock, where it stays reachable and
-      // recallable instead of scrolling away with the history.
-      await expect.poll(async () => await chatState(page), { timeout: 20_000, message: "one queued row in the dock and no transcript bubble" })
-        .toMatchObject({ bubbles: 0, queuedRows: 1 });
-
-      // ...and it must be recallable while it is there, which is the whole
-      // point of keeping it out of the transcript.
-      expect(await recallButtons(page)).toBeGreaterThan(0);
-
-      // The moment the agent takes it, it becomes ordinary history: the dock
-      // empties and the message appears in the transcript. 1.202608.5 shipped a
-      // version of this that hid the bubble on client-side state alone, so a
-      // message the queue had already released stayed invisible until a reload.
-      await expect.poll(async () => await chatState(page), { timeout: 60_000, message: "the message must reach the transcript once the turn takes it" })
+      // One representation: a bubble in place, marked, never a second copy in
+      // the queue panel. Moving it out of the transcript was tried twice and
+      // failed twice - hidden on stale state in 1.202608.5, and in 1.202608.6
+      // pinned above the composer where it covered the conversation on a phone.
+      await expect.poll(async () => await chatState(page), { timeout: 20_000, message: "one marked bubble and no duplicate queue row" })
         .toMatchObject({ bubbles: 1, queuedRows: 0 });
+
+      const marks = await deliveryMarks(page);
+      expect(marks.length).toBe(1);
+      expect(["Sent", "Queued", "Queued to steer", "Read"]).toContain(marks[0]);
+
+      // Recallable while the server still holds it: that affordance was the
+      // point of the whole exercise and it now lives on the bubble. Polled, not
+      // sampled: the bubble is optimistic and appears before the server has
+      // acknowledged the queue, so the button trails it by a round trip.
+      await expect.poll(async () => await recallButtons(page), { timeout: 20_000, message: "a queued message must offer a recall action" })
+        .toBeGreaterThan(0);
+
+      // The mark has to survive the moment the agent commits its own copy.
+      await expect.poll(async () => (await deliveryMarks(page))[0], { timeout: 60_000, message: "the mark must reach Read once the turn takes the message" })
+        .toBe("Read");
     } finally {
       await archive(page.request, session, workspace.path);
     }
