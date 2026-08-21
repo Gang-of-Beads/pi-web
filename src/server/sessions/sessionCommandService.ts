@@ -47,6 +47,9 @@ export interface CommandEventPublisher {
   publishGlobal?(event: Extract<SessionUiEvent, { type: "session.name" }>): void;
 }
 
+/** Reported both by an immediate /reload and by one that ran off the queue. */
+const RELOAD_DONE_MESSAGE = "Session runtime resources reloaded. Extensions, skills, prompt templates, themes, and context/system prompt files are refreshed for this session. Reload the browser page separately for PI WEB browser plugin changes.";
+
 export interface SessionCommandLifecycle<TSession extends CommandSession = CommandSession> {
   onCompactionStart?: (session: TSession) => void;
   onCompactionEnd?: (session: TSession, result: "success" | "error", detail?: string) => void;
@@ -75,6 +78,15 @@ interface PendingCommandSelect {
 
 export class SessionCommandService<TSession extends CommandSession = CommandSession> {
   private readonly pendingSelects = new Map<string, PendingCommandSelect>();
+  /**
+   * Sessions with a /reload waiting for the session to go quiet.
+   *
+   * Reload replaces the session's runtime resources, so it genuinely cannot run
+   * mid-turn - but "come back and type it again later" put the cost of that on
+   * the person, who then had to watch the session and remember. Holding the
+   * intent is the same answer the queue gives a message sent while busy.
+   */
+  private readonly pendingReloads = new Set<string>();
 
   constructor(
     private readonly getActive: GetCommandActiveSession<TSession>,
@@ -180,8 +192,19 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
   }
 
   private async reload(session: TSession): Promise<ClientCommandResult> {
-    if (this.hasActiveWork(session)) return { type: "unsupported", message: "Cannot reload while the session is active. Stop current activity before reloading." };
     if (this.lifecycle.reloadSession === undefined) return { type: "unsupported", message: "/reload is not available for this session runtime." };
+    if (this.hasActiveWork(session)) {
+      // Asking twice is not an error and must not queue twice: the second
+      // /reload wants the same thing the first one is already waiting for.
+      const alreadyQueued = this.pendingReloads.has(session.sessionId);
+      this.pendingReloads.add(session.sessionId);
+      return {
+        type: "done",
+        message: alreadyQueued
+          ? "Reload is already queued and will run when the session goes idle."
+          : "Session is busy - reload queued. It will run automatically once the session goes idle.",
+      };
+    }
 
     try {
       await this.lifecycle.reloadSession(session);
@@ -189,7 +212,38 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
       const message = error instanceof Error ? error.message : String(error);
       return { type: "unsupported", message: `Reload failed: ${message}` };
     }
-    return { type: "done", message: "Session runtime resources reloaded. Extensions, skills, prompt templates, themes, and context/system prompt files are refreshed for this session. Reload the browser page separately for PI WEB browser plugin changes." };
+    return { type: "done", message: RELOAD_DONE_MESSAGE };
+  }
+
+  /**
+   * Called on the session's idle edge. Runs a queued /reload if there is one
+   * and the session really is quiet - the caller's idea of idle can be a
+   * moment early (an agent_end still inside a turn), and reloadSession throws
+   * in that case, so the check is repeated here rather than trusted.
+   */
+  runQueuedReload(session: TSession): void {
+    if (!this.pendingReloads.has(session.sessionId)) return;
+    if (this.hasActiveWork(session)) return;
+    const reloadSession = this.lifecycle.reloadSession;
+    if (reloadSession === undefined) {
+      this.pendingReloads.delete(session.sessionId);
+      return;
+    }
+    this.pendingReloads.delete(session.sessionId);
+    void reloadSession(session)
+      .then(() => {
+        this.events.publish(session.sessionId, { type: "command.output", level: "success", message: RELOAD_DONE_MESSAGE });
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        this.events.publish(session.sessionId, { type: "command.output", level: "error", message: `Reload failed: ${message}` });
+      });
+  }
+
+  /** Forget a queued reload for a session that is going away or being replaced. */
+  cancelQueuedReload(sessionId: string): void {
+    if (!this.pendingReloads.delete(sessionId)) return;
+    this.events.publish(sessionId, { type: "command.output", level: "info", message: "Queued reload cancelled." });
   }
 
   private async clone(active: CommandActiveSession<TSession>): Promise<ClientCommandResult> {

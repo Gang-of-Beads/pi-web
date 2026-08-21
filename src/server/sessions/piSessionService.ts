@@ -3198,6 +3198,9 @@ export class PiSessionService implements SessionRouteService {
     this.workspaceActivity?.removeSession(sessionId, active.runtime.session.sessionManager.getCwd());
     this.clearAuthLossWarningsForSession(sessionId);
     this.clearCompactionPromptQueue(sessionId);
+    // A reload queued against a session that is going away has nothing left to
+    // reload; saying so beats leaving the person waiting for it.
+    this.commandService.cancelQueuedReload(sessionId);
     // Disarm subsession notification before teardown so the abort below cannot
     // emit a "stopped working" event that notifies the parent (e.g. on archive).
     // The parent/children link is kept so the parent can still see the child.
@@ -3484,6 +3487,7 @@ export class PiSessionService implements SessionRouteService {
         this.activities.delete(sessionId);
         this.clearAuthLossWarningsForSession(sessionId);
         this.clearCompactionPromptQueue(sessionId);
+        this.commandService.cancelQueuedReload(sessionId);
         removedActive = true;
       }
       if (removedActive) {
@@ -3724,6 +3728,11 @@ export class PiSessionService implements SessionRouteService {
       if (eventType === "agent_end") this.abortRunScopedExtensionDialogs(session.sessionId);
       if (eventType === "compaction_end") this.scheduleCompactionQueueDrain(session.sessionId);
       if (eventType === "agent_start" || eventType === "agent_end") this.scheduleCompactionQueueDrain(session.sessionId);
+      // A /reload issued mid-turn waits here. agent_end can fire while the turn
+      // is still winding down, so runQueuedReload re-checks for active work and
+      // simply returns if it is early; the heartbeat below is what makes sure a
+      // session that goes quiet without another event still gets its reload.
+      if (eventType === "agent_end" || eventType === "turn_end") this.commandService.runQueuedReload(session);
       // Delta-only events (streaming text/thinking) carry no status change:
       // publishing the full status for every token would synchronously
       // re-serialize and broadcast the session state on the agent's own event
@@ -4147,6 +4156,10 @@ export class PiSessionService implements SessionRouteService {
   private clearStaleActiveActivity(session: PiAgentSession): void {
     const current = this.activities.get(session.sessionId);
     if (current?.phase !== "active" || this.hasActiveWork(session)) return;
+    // Same edge, second path: this runs off the heartbeat, so it also covers a
+    // session that fell idle without emitting a terminal event (an aborted run,
+    // a bash command that ended between beats).
+    this.commandService.runQueuedReload(session);
     const at = new Date().toISOString();
     const stored = { phase: "idle" as const, label: "idle", at };
     this.activities.set(session.sessionId, stored);

@@ -127,15 +127,84 @@ describe("SessionCommandService", () => {
     expect(reloadSession).toHaveBeenCalledWith(active.runtime.session);
   });
 
-  it("rejects runtime reload while the session has active work", async () => {
-    const active = activeSession({ isBashRunning: true });
+  it("queues a reload requested while the session is busy and runs it on the idle edge", async () => {
+    // The old answer was "stop what you are doing and ask again", which made
+    // the person the scheduler. The intent is now held until the session is
+    // actually quiet.
+    // Busyness is expressed through the lifecycle hook alone: the session mock
+    // itself stays idle so that flipping the flag is the only thing that
+    // changes between the queue and the run.
+    const active = activeSession();
     const reloadSession = vi.fn(async () => { await Promise.resolve(); });
-    const service = new SessionCommandService(() => getActive(active), vi.fn(), eventPublisher(), { reloadSession });
+    let busy = true;
+    const events = eventPublisher();
+    const service = new SessionCommandService(() => getActive(active), vi.fn(), events, { reloadSession, hasActiveWork: () => busy });
 
     await expect(service.run("s1", "/reload")).resolves.toEqual({
-      type: "unsupported",
-      message: "Cannot reload while the session is active. Stop current activity before reloading.",
+      type: "done",
+      message: "Session is busy - reload queued. It will run automatically once the session goes idle.",
     });
+    expect(reloadSession).not.toHaveBeenCalled();
+
+    // Still busy: an idle signal that arrives too early must not fire it.
+    service.runQueuedReload(active.runtime.session);
+    expect(reloadSession).not.toHaveBeenCalled();
+
+    busy = false;
+    service.runQueuedReload(active.runtime.session);
+    await vi.waitFor(() => {
+      expect(reloadSession).toHaveBeenCalledWith(active.runtime.session);
+      expect(events.publish).toHaveBeenCalledWith("s1", {
+        type: "command.output",
+        level: "success",
+        message: "Session runtime resources reloaded. Extensions, skills, prompt templates, themes, and context/system prompt files are refreshed for this session. Reload the browser page separately for PI WEB browser plugin changes.",
+      });
+    });
+  });
+
+  it("does not queue a second reload when one is already waiting", async () => {
+    const active = activeSession();
+    const reloadSession = vi.fn(async () => { await Promise.resolve(); });
+    const service = new SessionCommandService(() => getActive(active), vi.fn(), eventPublisher(), { reloadSession, hasActiveWork: () => true });
+
+    await service.run("s1", "/reload");
+    await expect(service.run("s1", "/reload")).resolves.toEqual({
+      type: "done",
+      message: "Reload is already queued and will run when the session goes idle.",
+    });
+
+    // hasActiveWork still reports busy, so the queued reload stays queued.
+    service.runQueuedReload(active.runtime.session);
+    expect(reloadSession).not.toHaveBeenCalled();
+  });
+
+  it("reports a queued reload that failed once it ran", async () => {
+    const active = activeSession();
+    const reloadSession = vi.fn(async () => { await Promise.resolve(); throw new Error("extension boom"); });
+    let busy = true;
+    const events = eventPublisher();
+    const service = new SessionCommandService(() => getActive(active), vi.fn(), events, { reloadSession, hasActiveWork: () => busy });
+
+    await service.run("s1", "/reload");
+    busy = false;
+    service.runQueuedReload(active.runtime.session);
+
+    await vi.waitFor(() => {
+      expect(events.publish).toHaveBeenCalledWith("s1", { type: "command.output", level: "error", message: "Reload failed: extension boom" });
+    });
+  });
+
+  it("cancels a queued reload for a session that goes away", async () => {
+    const active = activeSession();
+    const reloadSession = vi.fn(async () => { await Promise.resolve(); });
+    const events = eventPublisher();
+    const service = new SessionCommandService(() => getActive(active), vi.fn(), events, { reloadSession, hasActiveWork: () => true });
+
+    await service.run("s1", "/reload");
+    service.cancelQueuedReload("s1");
+
+    expect(events.publish).toHaveBeenCalledWith("s1", { type: "command.output", level: "info", message: "Queued reload cancelled." });
+    service.runQueuedReload(active.runtime.session);
     expect(reloadSession).not.toHaveBeenCalled();
   });
 
