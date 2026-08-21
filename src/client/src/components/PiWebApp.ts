@@ -2233,7 +2233,7 @@ export class PiWebApp extends LitElement {
       archiveSession: () => this.sessions.archiveSession(),
       reloadSession: () => this.sessions.reloadSession(),
       deleteCachedNewSession: () => this.sessions.deleteCachedNewSession(),
-      stopActiveWork: () => this.sessions.stopActiveWork(),
+      stopActiveWork: async () => { await this.sessions.stopActiveWork(); },
     }, createContext);
     return createContext("core");
   }
@@ -2562,18 +2562,30 @@ export class PiWebApp extends LitElement {
   private readonly handleSendPrompt = (text: string, streamingBehavior?: "steer" | "followUp", attachments?: import("../api").PromptAttachment[], delivery?: import("../../../shared/apiTypes").PromptAttachmentDelivery): Promise<boolean> =>
     this.sendPrompt(text, streamingBehavior, attachments, delivery);
 
+  /**
+   * Put messages that left the queue back where they can be edited and sent
+   * again.
+   *
+   * Recalling one, clearing the queue and pressing stop are the same
+   * transition with three triggers - a message the server was holding is no
+   * longer held - and the product owes the sender the same thing in all three:
+   * the text, not a deletion. Keeping that in one place is what stops the next
+   * caller from being the one that forgets.
+   */
+  private restoreToComposer(messages: readonly QueuedSessionMessage[]): void {
+    const texts = messages.map((message) => message.text).filter((text) => text.trim() !== "");
+    if (texts.length === 0) return;
+    this.promptEditor?.replaceText(texts.join("\n\n"));
+    this.promptEditor?.focusInput();
+  }
+
   private readonly handleStopActiveWork = (): void => {
-    void this.sessions.stopActiveWork();
+    // Stop cancels the turn, so the queue written for that turn goes with it.
+    void this.sessions.stopActiveWork().then((discarded) => { this.restoreToComposer(discarded); });
   };
 
   private readonly handleClearServerQueue = (queued: QueuedSessionMessage[]): void => {
-    // Recall the queued messages into the composer so the user can edit and
-    // resend rather than losing them. Replace semantics match restorePrompt.
-    const texts = queued.map((message) => message.text).filter((text) => text.trim() !== "");
-    if (texts.length > 0) {
-      this.promptEditor?.replaceText(texts.join("\n\n"));
-      this.promptEditor?.focusInput();
-    }
+    this.restoreToComposer(queued);
     void this.sessions.clearServerQueue();
   };
 
@@ -2592,14 +2604,12 @@ export class PiWebApp extends LitElement {
   };
 
   private readonly handleRecallQueuedMessage = (message: QueuedSessionMessage): void => {
-    // Same contract as clearing the whole queue, one message at a time: the
-    // text comes back to the composer so it can be edited and sent again, and
-    // the rest of the queue keeps its order.
-    if (message.text.trim() !== "") {
-      this.promptEditor?.replaceText(message.text);
-      this.promptEditor?.focusInput();
-    }
-    void this.sessions.recallQueuedMessage(message);
+    // The composer is filled only once the server confirms the message left the
+    // queue, so a recall that lost the race to the agent does not offer the
+    // text for a second send.
+    void this.sessions.recallQueuedMessage(message).then((recalled) => {
+      if (recalled) this.restoreToComposer([message]);
+    });
   };
 
   private readonly handleDismissWarning = (dismissId: string): void => {

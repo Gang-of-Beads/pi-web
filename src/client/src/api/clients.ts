@@ -43,6 +43,7 @@ import {
   parseSessionNotificationInboxSnapshot,
   parseSessionStatus,
   parseSessionStatusCatalogSnapshot,
+  parseRecallQueuedMessageResult,
   parseSessionSubagentsSnapshot,
   parseSubagentRunOutput,
   parseInterruptedRunSnapshot,
@@ -285,7 +286,7 @@ export const sessionsApi = {
   // Same route as clearQueue: a body carrying `text` means "take this one
   // back", an empty one still means "empty the queue".
   recallQueuedMessage: (session: SessionRef, message: QueuedSessionMessage, machineId = "local") =>
-    request(sessionPath(session, "queue/clear", machineId), parseSessionStatus, {
+    request(sessionPath(session, "queue/clear", machineId), parseRecallQueuedMessageResult, {
       method: "POST",
       body: sessionBody(session, {
         text: message.text,

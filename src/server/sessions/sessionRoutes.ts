@@ -357,11 +357,15 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
       if (typeof text !== "string" || text === "") return await sessions.clearQueue(ref);
       const kind = body["kind"];
       const clientMessageId = body["clientMessageId"];
-      return await sessions.recallQueuedMessage(ref, {
+      // The response says whether anything was taken back, because the agent
+      // can read the message between the click and this request; a client that
+      // assumed success would delete a bubble the conversation already has.
+      const { recalled, status } = await sessions.recallQueuedMessage(ref, {
         text,
         ...(kind === "steer" || kind === "followUp" ? { kind } : {}),
         ...(typeof clientMessageId === "string" && clientMessageId !== "" ? { clientMessageId } : {}),
       });
+      return { ...status, recalled };
     } catch (error) {
       return reply.code(mutationErrorStatus(error)).send({ error: errorMessage(error) });
     }
@@ -475,8 +479,11 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
 
   app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/abort`, async (request, reply) => {
     try {
-      await sessions.abort(sessionRefFromBody(request.params.sessionId, optionalRecord(request.body)));
-      return { aborted: true };
+      // The queue the abort emptied comes back with the response: those
+      // messages were typed for a turn that is being cancelled, and the client
+      // puts them in the composer rather than letting stop delete work.
+      const { discarded } = await sessions.abort(sessionRefFromBody(request.params.sessionId, optionalRecord(request.body)));
+      return { aborted: true, discarded };
     } catch (error) {
       return reply.code(mutationErrorStatus(error)).send({ error: errorMessage(error) });
     }

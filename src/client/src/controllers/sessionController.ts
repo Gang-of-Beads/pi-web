@@ -1037,22 +1037,28 @@ export class SessionController {
    * should not keep a place in the transcript - and a bubble left behind would
    * be read as delivered the moment the queue no longer lists it.
    */
-  async recallQueuedMessage(message: QueuedSessionMessage) {
+  async recallQueuedMessage(message: QueuedSessionMessage): Promise<boolean> {
     const state = this.getState();
     const session = state.selectedSession;
-    if (session === undefined || session.archived === true || isClientPendingStartSessionInfo(session)) return;
+    if (session === undefined || session.archived === true || isClientPendingStartSessionInfo(session)) return false;
     const machineId = selectedMachineId(state);
     const selectionSeq = this.selectionSeq;
     try {
-      const status = await this.api.recallQueuedMessage(session, message, machineId);
-      if (!this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) return;
+      const { recalled, status } = await this.api.recallQueuedMessage(session, message, machineId);
+      if (!this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) return false;
+      // Only a message that really left the queue loses its bubble. The agent
+      // can read it between the click and the request; deleting the bubble then
+      // would remove a message the conversation already contains and offer it
+      // back for a second send.
       const clientMessageId = message.clientMessageId;
-      if (clientMessageId !== undefined) {
+      if (recalled && clientMessageId !== undefined) {
         this.setState({ messages: removeDeliveryLine(this.getState().messages, clientMessageId) });
       }
       this.applyStatus(status);
+      return recalled;
     } catch (error) {
       if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState({ error: String(error) });
+      return false;
     }
   }
 
@@ -1188,13 +1194,24 @@ export class SessionController {
     }
   }
 
-  async stopActiveWork() {
+  /**
+   * Stop the current work. Anything that was queued comes back rather than
+   * being deleted: those messages were typed for the turn being cancelled, so
+   * the sender gets them back the same way a recall returns one.
+   */
+  async stopActiveWork(): Promise<QueuedSessionMessage[]> {
     const session = this.getState().selectedSession;
-    if (!session) return;
+    if (!session) return [];
     try {
-      await this.api.abort(session, selectedMachineId(this.getState()));
+      const result = await this.api.abort(session, selectedMachineId(this.getState()));
+      for (const message of result.discarded) {
+        if (message.clientMessageId === undefined) continue;
+        this.setState({ messages: removeDeliveryLine(this.getState().messages, message.clientMessageId) });
+      }
+      return result.discarded;
     } catch (error) {
       this.setState({ error: String(error) });
+      return [];
     }
   }
 
