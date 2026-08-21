@@ -285,7 +285,7 @@ describe("SessionController session tree navigation", () => {
     let state: AppState = { ...initialAppState(), selectedWorkspace: workspace, selectedSession: oldSession, sessions: [oldSession], treeDialog: tree };
     const navigateTree = vi.fn<typeof defaultApi.navigateTree>();
     navigateTree.mockResolvedValueOnce({ cancelled: true, aborted: true }).mockRejectedValueOnce(new Error("The session changed; reopen /tree"));
-    const abort = vi.fn<typeof defaultApi.abort>(() => Promise.resolve({ aborted: true }));
+    const abort = vi.fn<typeof defaultApi.abort>(() => Promise.resolve({ aborted: true, discarded: [] }));
     const api: typeof defaultApi = { ...defaultApi, navigateTree, abort };
     const controller = new SessionController(
       () => state,

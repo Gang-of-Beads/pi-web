@@ -2127,10 +2127,13 @@ export function parseClosed(value: unknown): { closed: true } {
   return { closed: true };
 }
 
-export function parseAborted(value: unknown): { aborted: true } {
+export function parseAborted(value: unknown): { aborted: true; discarded: QueuedSessionMessage[] } {
   const record = requireRecord(value);
   if (record["aborted"] !== true) throw new Error("Expected aborted response");
-  return { aborted: true };
+  // Older daemons answer without the queue they emptied; an absent list means
+  // "nothing to hand back", not a protocol error.
+  const discarded = record["discarded"];
+  return { aborted: true, discarded: Array.isArray(discarded) ? arrayOf(parseQueuedSessionMessage)(discarded) : [] };
 }
 
 export function parseStopped(value: unknown): { stopped: true } {
@@ -2230,6 +2233,15 @@ export function parseSessionSubagentsSnapshot(value: unknown): SessionSubagentsS
     }
   }
   return { subsessions: parsed, toolRuns: parseSubagentRuns(value["toolRuns"]) };
+}
+
+/**
+ * A recall answers with the queue *and* whether anything was taken back: the
+ * agent can read the message between the click and the request landing.
+ */
+export function parseRecallQueuedMessageResult(value: unknown): { recalled: boolean; status: SessionStatus } {
+  const status = parseSessionStatus(value);
+  return { recalled: isRecord(value) && value["recalled"] === true, status };
 }
 
 export function parseSubagentRunOutput(value: unknown): string {

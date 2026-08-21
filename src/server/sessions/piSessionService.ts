@@ -1088,6 +1088,8 @@ export class PiSessionService implements SessionRouteService {
   private readonly startupSessions = new Map<string, PiAgentSession>();
   /** Session ids currently marked in flight on disk, to write only on change. */
   private readonly runInFlight = new Set<string>();
+  /** Per-session tail of the queue-rewrite chain; see withQueueLock. */
+  private readonly queueLocks = new Map<string, Promise<void>>();
   private readonly activities = new Map<string, { phase: "active" | "idle" | "error"; label: string; detail?: string; at: string }>();
   private readonly heartbeat: NodeJS.Timeout;
   private readonly commandService: SessionCommandService<PiAgentSession>;
@@ -1109,6 +1111,18 @@ export class PiSessionService implements SessionRouteService {
    * Entries are dropped as soon as their text leaves the queue.
    */
   private readonly queuedPromptClientIds = new Map<string, { clientMessageId: string; text: string }[]>();
+  /**
+   * Images that queued prompts carried, keyed by session and matched on text.
+   *
+   * The runtime's queue is text-only - `clearQueue()` hands back strings - so a
+   * recall, which has to clear and replay, would put every *surviving* message
+   * back without its attachments. Nothing in the UI would say so: the bubble
+   * still reads "queued", the count is unchanged, and the image is simply
+   * absent when the agent finally reads it. Remembering them here is what makes
+   * the replay lossless for messages whose only crime was being queued next to
+   * a message someone recalled.
+   */
+  private readonly queuedPromptImages = new Map<string, { text: string; images: ImageContent[] }[]>();
   private readonly compactionDrainTimers = new Map<string, NodeJS.Timeout>();
   private readonly authLossWarnings = new Set<string>();
   /** Tracked subsession id -> the parent session id that spawned it. */
@@ -2371,6 +2385,7 @@ export class PiSessionService implements SessionRouteService {
       return;
     }
     if (isQueued && clientMessageId !== undefined) this.recordQueuedPromptClientId(session.sessionId, clientMessageId, promptText);
+    if (isQueued && images.length > 0) this.recordQueuedPromptImages(session.sessionId, promptText, images);
     // A chat message answers the session's open ask in the user's own words, so
     // the form is void: keeping it open would invite answers to questions the
     // conversation has already moved past. Ignored duplicates skip this on
@@ -2408,6 +2423,23 @@ export class PiSessionService implements SessionRouteService {
 
   private hasQueuedPromptClientId(sessionId: string, clientMessageId: string): boolean {
     return this.queuedPromptClientIds.get(sessionId)?.some((record) => record.clientMessageId === clientMessageId) === true;
+  }
+
+  private recordQueuedPromptImages(sessionId: string, text: string, images: ImageContent[]): void {
+    const records = this.queuedPromptImages.get(sessionId) ?? [];
+    records.push({ text, images });
+    this.queuedPromptImages.set(sessionId, records);
+  }
+
+  /** Take back the images recorded for one queued text, first match wins. */
+  private takeQueuedPromptImages(sessionId: string, text: string): ImageContent[] {
+    const records = this.queuedPromptImages.get(sessionId);
+    if (records === undefined) return [];
+    const index = records.findIndex((record) => record.text === text);
+    if (index === -1) return [];
+    const [record] = records.splice(index, 1);
+    if (records.length === 0) this.queuedPromptImages.delete(sessionId);
+    return record?.images ?? [];
   }
 
   private recordQueuedPromptClientId(sessionId: string, clientMessageId: string, text: string): void {
@@ -2933,7 +2965,7 @@ export class PiSessionService implements SessionRouteService {
    * texts are therefore indistinguishable; taking the first keeps the visible
    * order stable and the caller re-renders from the returned status either way.
    */
-  async recallQueuedMessage(ref: PiSessionRef, target: { kind?: QueuedPromptKind; text: string; clientMessageId?: string }): Promise<ClientSessionStatus> {
+  async recallQueuedMessage(ref: PiSessionRef, target: { kind?: QueuedPromptKind; text: string; clientMessageId?: string }): Promise<{ recalled: boolean; status: ClientSessionStatus }> {
     await this.assertWritable(ref);
     const session = await this.getOrOpen(ref);
 
@@ -2948,36 +2980,55 @@ export class PiSessionService implements SessionRouteService {
         else this.compactionPromptQueues.set(session.sessionId, compactionQueue);
         this.forgetQueuedPromptClientId(session.sessionId, target.text, target.clientMessageId);
         this.publishStatus(session);
-        return this.statusFromSession(session);
+        return { recalled: true, status: this.statusFromSession(session) };
       }
     }
 
-    const { steering, followUp } = session.clearQueue();
-    const lanes: { kind: QueuedPromptKind; texts: string[] }[] = [
-      { kind: "steer", texts: [...steering] },
-      { kind: "followUp", texts: [...followUp] },
-    ];
-    let removed = false;
-    for (const lane of lanes) {
-      if (removed) break;
-      if (target.kind !== undefined && target.kind !== lane.kind) continue;
-      const index = lane.texts.indexOf(target.text);
-      if (index === -1) continue;
-      lane.texts.splice(index, 1);
-      removed = true;
-    }
-    // Order matters more than speed here: the survivors go back one at a time,
-    // in the order the runtime handed them over, so a queue of three that loses
-    // its middle entry still runs first-then-third.
-    for (const lane of lanes) {
-      for (const text of lane.texts) {
-        await session.prompt(text, buildPromptOptions(lane.kind, []));
+    // Inside the session-entry mutation, because the queue is empty in the
+    // middle of this: a prompt that arrives between the clear and the last
+    // replay would either be pushed behind messages that were queued before it
+    // or be dropped by the replay's own writes. Everything else that touches
+    // session entries is serialized the same way.
+    const removed = await this.withQueueLock(session, async () => {
+      const { steering, followUp } = session.clearQueue();
+      const lanes: { kind: QueuedPromptKind; texts: string[] }[] = [
+        { kind: "steer", texts: [...steering] },
+        { kind: "followUp", texts: [...followUp] },
+      ];
+      let found = false;
+      for (const lane of lanes) {
+        if (found) break;
+        if (target.kind !== undefined && target.kind !== lane.kind) continue;
+        const index = lane.texts.indexOf(target.text);
+        if (index === -1) continue;
+        lane.texts.splice(index, 1);
+        found = true;
       }
-    }
+      // Order matters more than speed here: the survivors go back one at a
+      // time, in the order the runtime handed them over, so a queue of three
+      // that loses its middle entry still runs first-then-third.
+      for (const lane of lanes) {
+        for (const text of lane.texts) {
+          // Survivors go back with whatever they arrived with. Replaying them
+          // as bare text is how someone else's recall used to strip your
+          // screenshot out of a message you had already sent.
+          const images = this.takeQueuedPromptImages(session.sessionId, text);
+          await session.prompt(text, buildPromptOptions(lane.kind, images));
+          if (images.length > 0) this.recordQueuedPromptImages(session.sessionId, text, images);
+        }
+      }
+      if (found) this.takeQueuedPromptImages(session.sessionId, target.text);
+      return found;
+    });
     if (removed) this.forgetQueuedPromptClientId(session.sessionId, target.text, target.clientMessageId);
     this.publishActivity(session, removed ? "queued message recalled" : "queued message already gone", "active");
     this.publishStatus(session);
-    return this.statusFromSession(session);
+    // Whether anything was actually taken back is the caller's business: the
+    // agent can read a message between the click and this request, and a client
+    // that assumes success would delete a bubble the conversation already
+    // contains - the message would vanish from the transcript and reappear in
+    // the composer, ready to be sent a second time.
+    return { recalled: removed, status: this.statusFromSession(session) };
   }
 
   /**
@@ -3004,10 +3055,20 @@ export class PiSessionService implements SessionRouteService {
     return this.statusFromSession(session);
   }
 
-  async abort(ref: PiSessionRef): Promise<void> {
+  /**
+   * Stop the current work and hand back anything that was waiting.
+   *
+   * Aborting has to empty the queue - those messages were written for a turn
+   * that is being cancelled - but emptying it used to destroy them outright, so
+   * pressing stop silently deleted work the user had already typed and could
+   * not get back. The texts are returned instead, and the caller puts them in
+   * the composer: same transition as a recall, different trigger.
+   */
+  async abort(ref: PiSessionRef): Promise<{ discarded: QueuedSessionMessage[] }> {
     const active = this.activeForRef(ref);
-    if (active === undefined) return;
+    if (active === undefined) return { discarded: [] };
     const sessionId = active.runtime.session.sessionId;
+    const discarded = this.queuedMessagesWithClientIds(active.runtime.session);
     this.clearCompactionPromptQueue(sessionId);
     clearSessionQueue(active.runtime.session);
     // Settle run-scoped dialogs now, at abort-request time: pi's agent loop
@@ -3026,6 +3087,7 @@ export class PiSessionService implements SessionRouteService {
     } finally {
       this.publishStatus(active.runtime.session);
     }
+    return { discarded };
   }
 
   async stop(ref: PiSessionRef): Promise<void> {
@@ -4262,6 +4324,49 @@ export class PiSessionService implements SessionRouteService {
     const anthropic = anthropicSubscriptionWarning(session, join(this.agentDir, "auth.json"));
     if (anthropic !== undefined) warnings.push(anthropic);
     return warnings;
+  }
+
+  /**
+   * Everything this session is holding, as the browser sees it: both queues
+   * merged and stamped with the correlation ids their senders minted. One
+   * reader for both callers that have to hand the queue back - the status
+   * projection and abort - so a message can never be reported by one and
+   * dropped by the other.
+   */
+  /**
+   * Serialize the operations that rewrite the whole queue.
+   *
+   * Recall has to empty the queue and put the survivors back, because the
+   * runtime only offers "clear all and return them". While that is in flight
+   * the queue is empty, so a prompt landing in the middle is either overtaken
+   * by messages queued minutes earlier or lost behind them - the browser sees
+   * its newest message read first.
+   *
+   * This is a real serializer, unlike runSessionEntryMutation, which is a
+   * reference count feeding the activity label and waits on nothing. It is
+   * deliberately narrow: it may never be held across `session.prompt()` for a
+   * fresh submission, because that promise resolves when the *turn* ends, so a
+   * lock around it would block every later queue operation for minutes. What
+   * it protects is the rewrite window, and the enqueue call itself - not the
+   * turn that follows.
+   */
+  private async withQueueLock<T>(session: PiAgentSession, operation: () => Promise<T> | T): Promise<T> {
+    const previous = this.queueLocks.get(session.sessionId) ?? Promise.resolve();
+    let release = (): void => undefined;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    this.queueLocks.set(session.sessionId, previous.then(() => held));
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
+  }
+
+  private queuedMessagesWithClientIds(session: PiAgentSession): QueuedSessionMessage[] {
+    const queued = queuedMessagesFromSession(session, this.compactionQueuedMessages(session.sessionId));
+    this.attachQueuedPromptClientIds(session.sessionId, queued);
+    return queued;
   }
 
   private pendingMessageCount(session: PiAgentSession): number {

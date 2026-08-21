@@ -441,6 +441,135 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
     await service.dispose();
   });
 
+  it("reports whether the message was actually taken back", async () => {
+    // The agent can read the message between the click and the request. Saying
+    // "recalled" anyway is how a client ends up deleting a bubble the
+    // conversation already contains and offering the text for a second send.
+    const steeringMessages = ["still here"];
+    const hub = new CapturingSessionEventHub();
+    const fake = fakeRuntime("recall-report-session", {
+      isStreaming: true,
+      getSteeringMessages: () => steeringMessages,
+      getFollowUpMessages: () => [],
+    });
+    fake.session.clearQueue = vi.fn(() => {
+      const cleared: { steering: string[]; followUp: string[] } = { steering: [...steeringMessages], followUp: [] };
+      steeringMessages.length = 0;
+      return cleared;
+    });
+    // A replayed prompt lands back in the queue, as it does in the runtime;
+    // without that the first recall would leave the queue permanently empty and
+    // the second assertion would pass for the wrong reason.
+    const originalPrompt = fake.session.prompt.bind(fake.session);
+    type PromptOptions = Parameters<typeof originalPrompt>[1];
+    fake.session.prompt = vi.fn(async (text: string, options?: PromptOptions) => {
+      if (options?.streamingBehavior === "steer") steeringMessages.push(text);
+      return originalPrompt(text, options);
+    });
+    const service = new PiSessionService(hub, {
+      agentDir: TEST_AGENT_DIR,
+      modelRuntime: testModelRuntime,
+      createAgentRuntime: runtimeCreator(fake.runtime),
+      sessionManager: sessionGateway([sessionRecord("recall-report-session")]),
+      heartbeatIntervalMs: 60_000,
+    });
+
+    await expect(service.recallQueuedMessage(sessionRef("recall-report-session"), { text: "already read" }))
+      .resolves.toMatchObject({ recalled: false });
+    await expect(service.recallQueuedMessage(sessionRef("recall-report-session"), { text: "still here" }))
+      .resolves.toMatchObject({ recalled: true });
+    await service.dispose();
+  });
+
+  it("replays surviving messages with the images they were sent with", async () => {
+    // The runtime's queue is text-only, so a replay that rebuilds it from
+    // strings silently strips attachments off messages nobody recalled - the
+    // bubble still says "queued" and the image is simply missing when the agent
+    // reads it.
+    // The queue starts with only the message that will be recalled; the one
+    // carrying the image is added through the real prompt path, so this covers
+    // the same route a browser takes.
+    const steeringMessages = ["and this"];
+    const hub = new CapturingSessionEventHub();
+    const fake = fakeRuntime("recall-images-session", {
+      isStreaming: true,
+      getSteeringMessages: () => steeringMessages,
+      getFollowUpMessages: () => [],
+    });
+    fake.session.clearQueue = vi.fn(() => {
+      const cleared: { steering: string[]; followUp: string[] } = { steering: [...steeringMessages], followUp: [] };
+      steeringMessages.length = 0;
+      return cleared;
+    });
+    const service = new PiSessionService(hub, {
+      agentDir: TEST_AGENT_DIR,
+      modelRuntime: testModelRuntime,
+      createAgentRuntime: runtimeCreator(fake.runtime),
+      sessionManager: sessionGateway([sessionRecord("recall-images-session")]),
+      heartbeatIntervalMs: 60_000,
+    });
+    const originalPrompt = fake.session.prompt.bind(fake.session);
+    type PromptOptions = Parameters<typeof originalPrompt>[1];
+    fake.session.prompt = vi.fn(async (text: string, options?: PromptOptions) => {
+      if (options?.streamingBehavior === "steer") steeringMessages.push(text);
+      return originalPrompt(text, options);
+    });
+    // A real 1x1 PNG: the attachment pipeline decodes and re-encodes, and
+    // silently drops anything it cannot read as an image.
+    const attachment = { kind: "image" as const, data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", mimeType: "image/png" };
+    await service.prompt(sessionRef("recall-images-session"), "look at this", "steer", [attachment]);
+    fake.calls.prompt.length = 0;
+
+    await service.recallQueuedMessage(sessionRef("recall-images-session"), { text: "and this" });
+
+    // The replayed prompt carries the image the original was sent with; the
+    // fake records options as unknown, so the shape is asserted rather than
+    // reached into.
+    expect(fake.calls.prompt).toHaveLength(1);
+    expect(fake.calls.prompt[0]).toMatchObject({
+      text: "look at this",
+      options: { streamingBehavior: "steer", images: [{ type: "image", mimeType: "image/png" }] },
+    });
+    await service.dispose();
+  });
+
+  it("hands back the queue it emptied when work is aborted", async () => {
+    // Stop cancels the turn those messages were written for, so the queue does
+    // have to go - but deleting the text outright is data loss wearing a
+    // feature's clothes. The caller puts what comes back into the composer.
+    const steeringMessages = ["adjust this"];
+    const followUpMessages = ["and then this"];
+    const hub = new CapturingSessionEventHub();
+    const fake = fakeRuntime("abort-session", {
+      isStreaming: true,
+      pendingMessageCount: 2,
+      getSteeringMessages: () => steeringMessages,
+      getFollowUpMessages: () => followUpMessages,
+    });
+    fake.session.clearQueue = vi.fn(() => {
+      const cleared = { steering: [...steeringMessages], followUp: [...followUpMessages] };
+      steeringMessages.length = 0;
+      followUpMessages.length = 0;
+      return cleared;
+    });
+    const service = new PiSessionService(hub, {
+      agentDir: TEST_AGENT_DIR,
+      modelRuntime: testModelRuntime,
+      createAgentRuntime: runtimeCreator(fake.runtime),
+      sessionManager: sessionGateway([sessionRecord("abort-session")]),
+      heartbeatIntervalMs: 60_000,
+    });
+    await service.status(sessionRef("abort-session"));
+
+    const { discarded } = await service.abort(sessionRef("abort-session"));
+
+    expect(discarded).toEqual([
+      { kind: "steer", text: "adjust this" },
+      { kind: "followUp", text: "and then this" },
+    ]);
+    await service.dispose();
+  });
+
   it("does not publish full status for streaming text deltas", async () => {
     // Streaming text deltas carry no status change; publishing the full
     // status for every token would re-serialize + broadcast session state on

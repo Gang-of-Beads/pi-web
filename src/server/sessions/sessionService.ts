@@ -34,7 +34,7 @@ import type {
   ClientThinkingLevel,
   SessionStreamSnapshot,
 } from "../types.js";
-import type { SessionSubagentRunInfo } from "../../shared/apiTypes.js";
+import type { QueuedSessionMessage, SessionSubagentRunInfo } from "../../shared/apiTypes.js";
 import type { NormalizedSessionCleanupRequest } from "./sessionCleanup.js";
 import type { SubsessionSummary } from "./spawnSubsessionTool.js";
 
@@ -72,7 +72,7 @@ export interface SessionRouteService {
   subagentRunOutput(ref: SessionRouteRef, runId: string): Promise<string | undefined>;
   clearQueue(ref: SessionRouteRef): Promise<ClientSessionStatus>;
   /** Remove one queued message, leaving the rest of the queue in order. */
-  recallQueuedMessage(ref: SessionRouteRef, target: { kind?: "steer" | "followUp"; text: string; clientMessageId?: string }): Promise<ClientSessionStatus>;
+  recallQueuedMessage(ref: SessionRouteRef, target: { kind?: "steer" | "followUp"; text: string; clientMessageId?: string }): Promise<{ recalled: boolean; status: ClientSessionStatus }>;
   submitAsk(ref: SessionRouteRef, askId: string, submission: AskUserSubmission): Promise<AskUserCloseResponse>;
   cancelAsk(ref: SessionRouteRef, askId: string): Promise<AskUserCloseResponse>;
   answerDialog(ref: SessionRouteRef, dialogId: string, value: ExtensionDialogAnswer): Promise<ExtensionDialogCloseResponse>;
@@ -108,7 +108,8 @@ export interface SessionRouteService {
   respondToCommand(ref: SessionRouteRef, requestId: string, value: string): Promise<ClientCommandResult>;
   navigateTree(ref: SessionRouteRef, request: ClientSessionTreeNavigateRequest): Promise<ClientSessionTreeNavigateResult>;
   forkFromTree(ref: SessionRouteRef, request: ClientSessionTreeForkRequest): Promise<ClientSessionTreeForkResult>;
-  abort(ref: SessionRouteRef): Promise<void>;
+  /** Stops current work and returns whatever was queued, so it is not lost. */
+  abort(ref: SessionRouteRef): Promise<{ discarded: QueuedSessionMessage[] }>;
   stop(ref: SessionRouteRef): void | Promise<void>;
   archive(ref: SessionRouteRef): Promise<void>;
   archiveTree(ref: SessionRouteRef): Promise<ClientArchiveSessionsResponse>;
