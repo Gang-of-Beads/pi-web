@@ -10,6 +10,7 @@ import {
   ensureMockLlm,
   openSession,
   promptPath,
+  queuedBubbles,
   queuedRowTexts,
   recallButtons,
   seedListedSession,
@@ -143,6 +144,9 @@ test.describe("delivery marks (UI)", () => {
       // acknowledged the queue, so the button trails it by a round trip.
       await expect.poll(async () => await recallButtons(page), { timeout: 20_000, message: "a queued message must offer a recall action" })
         .toBeGreaterThan(0);
+
+      // ...and it looks like it is waiting while it waits.
+      expect(await queuedBubbles(page)).toBeGreaterThan(0);
 
       // The mark has to survive the moment the agent commits its own copy.
       await expect.poll(async () => (await deliveryMarks(page, QUEUED_FROM_BROWSER))[0], { timeout: 60_000, message: "the mark must reach Read once the turn takes the message" })

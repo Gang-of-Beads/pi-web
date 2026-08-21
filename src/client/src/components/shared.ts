@@ -549,8 +549,6 @@ export const chatStyles = css`
   }
   .chat { --pi-chat-sticky-top: -26px; height: 100%; min-height: 0; overflow: auto; overflow-anchor: none; padding: 26px var(--pi-space-7) 64px; box-sizing: border-box; }
   .scroll-marker { display: block; height: 0; overflow: hidden; pointer-events: none; }
-  .queued-recall-button { flex: 0 0 auto; border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-warning); padding: 2px var(--pi-space-4); font-size: var(--pi-text-xs); cursor: pointer; }
-  .queued-recall-button:hover { background: var(--pi-warning-surface); }
   .activity-dock { position: absolute; left: 16px; right: 16px; bottom: 12px; z-index: 20; display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: 0 8px 28px var(--pi-shadow); backdrop-filter: blur(6px); }
   .activity-dock.active { border-color: var(--pi-success-border); color: var(--pi-success); background: var(--pi-success-bg-overlay); }
   .activity-dock.sending { border-color: var(--pi-warning-border); color: var(--pi-warning); background: var(--pi-warning-surface); }
@@ -564,6 +562,14 @@ export const chatStyles = css`
   .msg { max-width: 100%; min-width: 0; box-sizing: border-box; margin: 0 0 var(--pi-space-7); padding: var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); overflow: visible; }
   .msg.assistant, .msg.tool-image-output { background: var(--pi-surface); }
   .msg.user { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
+  /* Held by the server, not yet read: the same warning colour the queue panel
+     uses, so "waiting" looks the same wherever it appears. It reverts to the
+     ordinary user colour the moment the agent takes the message, which is also
+     when the recall action disappears - one change of state, said twice. */
+  .msg.user.queued { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); }
+  .msg.user.queued > .msg-header { border-bottom-color: color-mix(in srgb, var(--pi-warning-border) 35%, transparent); background: var(--pi-warning-surface); }
+  .msg.user.queued > .msg-header .label { color: var(--pi-warning); }
+  .msg.user.queued .msg-action { color: var(--pi-warning); }
   .msg.tool { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); color: var(--pi-warning); }
   .msg.tool-execution-shell, .msg.ask-user-record-shell { padding: 0; border: 0; background: transparent; color: var(--pi-text); }
   .msg.ask-user-record-shell ask-user-card { margin: 0 auto; }

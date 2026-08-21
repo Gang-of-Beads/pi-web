@@ -868,7 +868,8 @@ export class ChatView extends LitElement {
             ${canClear ? html`
               <button
                 type="button"
-                class="queued-recall-button"
+                class="queued-panel-recall"
+                data-action="recall"
                 title="Take this message back and put it in the composer"
                 @click=${() => { this.onRecallQueuedMessage?.(message); }}
               >Recall</button>
@@ -1016,9 +1017,15 @@ export class ChatView extends LitElement {
     const toolOnly = this.isToolExecutionOnlyMessage(message);
     const askUserRecordOnly = this.isAskUserRecordOnlyMessage(message);
     const shellClass = toolOnly ? "msg tool-execution-shell" : "msg ask-user-record-shell";
+    // A message the server is still holding is not part of the conversation
+    // yet, and it should not look like one that is. It carries the pending
+    // colour until the agent takes it, then becomes an ordinary user message -
+    // which is also the moment the recall action stops being offered, so the
+    // colour and the affordance say the same thing.
+    const queuedClass = this.isQueuedLine(message) ? " queued" : "";
     return html`
       ${this.renderScrollMarker(this.messageScrollMarkerId(index))}
-      <article class=${toolOnly || askUserRecordOnly ? shellClass : `msg ${message.role}`} data-index=${index} data-scroll-anchor-id=${this.messageAnchorKey(index)}>
+      <article class=${toolOnly || askUserRecordOnly ? shellClass : `msg ${message.role}${queuedClass}`} data-index=${index} data-scroll-anchor-id=${this.messageAnchorKey(index)}>
         ${toolOnly || askUserRecordOnly ? null : this.renderMessageHeader(message, String(index))}
         ${message.parts.map((part) => this.renderPart(part, message))}
         ${this.renderDeliveryMark(message)}
@@ -1094,13 +1101,34 @@ export class ChatView extends LitElement {
     `;
   }
 
+  /**
+   * The queue entry for a bubble, when the server still has one.
+   *
+   * Everything about a queued message keys off this: its colour, its recall
+   * action, and the moment both stop applying. It reads the server's queue
+   * rather than the bubble's own delivery state, which can go stale - a
+   * message the queue has released must not keep either.
+   */
+  private queueEntryFor(line: ChatLine): QueuedSessionMessage | undefined {
+    const clientMessageId = line.meta?.delivery?.clientMessageId;
+    if (clientMessageId === undefined) return undefined;
+    return (this.status?.queuedMessages ?? []).find((message) => message.clientMessageId === clientMessageId);
+  }
+
+  private isQueuedLine(line: ChatLine): boolean {
+    return this.queueEntryFor(line) !== undefined;
+  }
+
   /** The queued bubble's own recall action; see renderQueuedMessages. */
   private renderQueuedBubbleRecall(line: ChatLine) {
-    const delivery = line.meta?.delivery;
-    if (delivery?.state !== "queued" || this.onRecallQueuedMessage === undefined) return null;
-    const queued = (this.status?.queuedMessages ?? []).find((message) => message.clientMessageId === delivery.clientMessageId);
+    if (this.onRecallQueuedMessage === undefined) return null;
+    const queued = this.queueEntryFor(line);
     if (queued === undefined) return null;
-    return html`<button type="button" class="msg-action queued-recall-button" title="Take this message back and put it in the composer" @click=${() => { this.onRecallQueuedMessage?.(queued); }}>Recall</button>`;
+    // data-action, not a styling class: the hook has to survive the button
+    // being restyled, which is exactly what broke its test once already.
+    return html`<button type="button" class="msg-action" data-action="recall" title="Recall: take this message back and put it in the composer" aria-label="Recall this queued message into the composer" @click=${() => { this.onRecallQueuedMessage?.(queued); }}>
+      <span aria-hidden="true">↩</span>
+    </button>`;
   }
 
   private renderMessageActions(message: ChatLine, key: string) {

@@ -307,10 +307,18 @@ export function countContaining(texts: string[], needle: string): number {
   return texts.filter((text) => text.includes(needle)).length;
 }
 
+/** Bubbles the server still holds, which is what the pending colour marks. */
+export async function queuedBubbles(page: Page): Promise<number> {
+  return await page.evaluate(() => {
+    const chat = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("chat-view")?.shadowRoot;
+    return (chat?.querySelectorAll("article.msg.user.queued") ?? []).length;
+  });
+}
+
 export async function recallButtons(page: Page): Promise<number> {
   return await page.evaluate(() => {
     const chat = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("chat-view")?.shadowRoot;
-    return (chat?.querySelectorAll(".queued-recall-button") ?? []).length;
+    return (chat?.querySelectorAll('[data-action="recall"]') ?? []).length;
   });
 }
 
@@ -327,7 +335,7 @@ export async function clickRecall(page: Page, needle: string): Promise<void> {
     // The bubble and the panel row can both match while only one of them owns
     // the action, so the holder is chosen by having it rather than by coming
     // first in the document.
-    const button = holders.map((holder) => holder.querySelector<HTMLElement>(".queued-recall-button")).find((candidate) => candidate !== null);
+    const button = holders.map((holder) => holder.querySelector<HTMLElement>('[data-action="recall"]')).find((candidate) => candidate !== null);
     if (button === null || button === undefined) {
       return { clicked: false, holders: holders.map((holder) => deepText(holder).replace(/\s+/gu, " ").slice(0, 80)) };
     }

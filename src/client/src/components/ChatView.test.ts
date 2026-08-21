@@ -128,6 +128,20 @@ describe("ChatView queued messages stay in place", () => {
     expect(transcriptMessagesOf(view)).toHaveLength(1);
   });
 
+  it("marks a bubble the server still holds, and unmarks it once taken", () => {
+    // Colour and affordance say the same thing: waiting, and recallable. Both
+    // are keyed to the server's queue rather than the bubble's own delivery
+    // state, which can go stale and would otherwise leave a message looking
+    // pending forever.
+    const view = new ChatView();
+    view.messages = [queuedLine("cm-1")];
+    view.status = queuedStatus([{ kind: "steer", text: "hello", clientMessageId: "cm-1" }]);
+    expect(isQueuedLineOf(view, queuedLine("cm-1"))).toBe(true);
+
+    view.status = queuedStatus([]);
+    expect(isQueuedLineOf(view, queuedLine("cm-1"))).toBe(false);
+  });
+
   it("does not list a message that already has a bubble", () => {
     // The double render: one send appearing as a bubble and as a queue row.
     const view = new ChatView();
@@ -418,6 +432,18 @@ type FocusPendingNotificationTarget = (this: ChatView) => void;
 type TemplateEventHandler = (event: Event) => void;
 
 /** The transcript half of the split, reached the same way as the dock half. */
+type IsQueuedLine = (this: ChatView, line: ChatLine) => boolean;
+
+function isIsQueuedLine(value: unknown): value is IsQueuedLine {
+  return typeof value === "function";
+}
+
+function isQueuedLineOf(view: ChatView, line: ChatLine): boolean {
+  const method: unknown = Reflect.get(view, "isQueuedLine");
+  if (!isIsQueuedLine(method)) throw new Error("ChatView.isQueuedLine is not callable");
+  return method.call(view, line);
+}
+
 function transcriptMessagesOf(view: ChatView): ChatLine[] {
   const method: unknown = Reflect.get(view, "transcriptMessages");
   if (!isTranscriptMessages(method)) throw new Error("ChatView.transcriptMessages is not callable");
