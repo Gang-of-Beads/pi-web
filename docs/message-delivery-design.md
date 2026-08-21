@@ -123,6 +123,55 @@ what has been closed is described above as behaviour, not as a promise.
    response carries the resulting queue, but the sender cannot choose which
    copy goes.
 
+## Planned: a queue revision, and an outbox for attachments
+
+Two of the open gaps have a shared shape - the browser cannot tell whether what
+it is looking at is still true - and one obvious ordering between them.
+
+### Queue revision first
+
+`status.queuedMessages` is a bare array today. A monotonic `queueRevision`,
+bumped on every enqueue, drain, recall and clear, buys three things at once:
+
+* **Recall becomes a compare-and-swap.** The client sends the revision it was
+  looking at; a server whose queue has moved since rejects the recall and
+  returns the current queue instead of removing whatever now sits in that
+  position. Today the server takes the first text match, which is right when
+  nothing changed and arbitrary when something did.
+* **A browser can detect a missed update.** A revision that jumps by more than
+  one means events were lost - a dead socket, a slow tab - and the client can
+  refetch instead of waiting for the next full status to happen along.
+* **Duplicate texts stop being ambiguous in practice.** The revision pins the
+  queue the sender was looking at, so "the first match in *that* queue" is a
+  well-defined entry even when two of them read the same.
+
+It is small: one counter beside the queue, one field on the status, one
+optional field on the recall body, one rejection path.
+
+### Then the attachment outbox
+
+A recalled message comes back as text because the runtime's queue holds only
+text. The images exist in exactly one place at that moment: the browser that
+sent them. So the browser keeps them - an outbox keyed by `clientMessageId`,
+written when a prompt is sent, read when a recall succeeds, dropped when the
+message is delivered or the session changes.
+
+Server-side storage was considered and rejected: it would mean holding
+arbitrary image bytes for messages that may never be recalled, in a process
+whose queue is already the runtime's business, and it would still not survive
+the browser being the only party that knows what was attached to a draft.
+
+The outbox has to be bounded (a few messages, a few megabytes) and has to
+expire, because a queued message that is never recalled would otherwise pin its
+attachments for the life of the tab.
+
+### Not planned
+
+Removing one entry by index. The runtime keys its queue on text and exposes
+only "clear all and return them"; a per-entry removal belongs upstream in
+`agent-session`, not in a clear-and-replay dance here. Until it exists, recall
+stays a rewrite and the revision above is what keeps that rewrite honest.
+
 ## Why the marks are worded the way they are
 
 The glyph carries the state at a glance and the words carry it for anyone who
