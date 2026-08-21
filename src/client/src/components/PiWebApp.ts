@@ -648,6 +648,13 @@ export class PiWebApp extends LitElement {
 
   private handleBrowserResumeSignal(): void {
     this.appShell.repairViewportPosition();
+    // Coming back to the foreground is when a connection that died while the
+    // tab was hidden has to be noticed: nothing else will report it, because a
+    // socket dropped by a proxy or NAT without a FIN stays OPEN in the browser
+    // and fires no close event. Both sockets check themselves and reconnect,
+    // which is also what refetches whatever was missed.
+    this.realtime.checkLiveness();
+    this.sessions.checkSocketLiveness();
     this.schedulePiWebStatusRefresh();
     this.retryPendingRemoteRouteRestoreSoon();
   }
@@ -1209,10 +1216,14 @@ export class PiWebApp extends LitElement {
       (event) => { this.handleRealtimeEvent(machineId, event); },
       () => {
         void this.sessionUnread.refresh(machineId);
-        // Status updates that landed during the gap are gone for good, so a
-        // session that started working while disconnected would otherwise show
-        // no work indicator until its next publish.
-        void this.sessions.hydrateSessionStatuses(machineId);
+        // Status updates that landed during the gap are gone for good, so this
+        // has to overwrite what the browser holds rather than fill gaps: a
+        // session that finished while disconnected kept its "working" state
+        // until the page was reloaded.
+        void this.sessions.hydrateSessionStatuses(machineId, { replaceKnown: true });
+        // The list itself can be stale too - sessions created, renamed or
+        // archived during the gap were announced on the socket that was down.
+        void this.sessions.refreshCurrentWorkspaceSessions(machineId);
         this.refreshInterruptedRuns(machineId);
         const workspace = this.state.selectedWorkspace;
         if (workspace !== undefined) void this.refreshActiveTerminals(workspace);

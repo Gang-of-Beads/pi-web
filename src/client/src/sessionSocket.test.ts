@@ -34,6 +34,76 @@ function inboxEvent() {
   };
 }
 
+describe("connection liveness", () => {
+  // A proxy or NAT that drops a silent connection without a FIN leaves the
+  // browser's socket OPEN forever: onclose never fires, the reconnect that
+  // refetches state never runs, and the page only updates when someone reloads
+  // it by hand. The daemon sends a keepalive every 20s precisely so that a gap
+  // in traffic is evidence rather than ambiguity.
+  beforeEach(() => {
+    FakeWebSocket.instances.length = 0;
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("document", { baseURI: "https://pi.example.test/" });
+    vi.stubGlobal("window", { clearTimeout: vi.fn(), setTimeout: vi.fn(() => 1) });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("drops a session socket that has been silent past the keepalive budget", () => {
+    const session = new SessionSocket();
+    session.connect({ id: "session-1", cwd: "/repo" }, () => undefined);
+    const socket = FakeWebSocket.instances[0];
+    if (socket === undefined) throw new Error("expected a session socket");
+    socket.onopen?.();
+
+    session.checkLiveness(Date.now() + 60_000);
+
+    expect(socket.readyState).toBe(3);
+  });
+
+  it("leaves a session socket alone while frames are still arriving", () => {
+    const session = new SessionSocket();
+    session.connect({ id: "session-1", cwd: "/repo" }, () => undefined);
+    const socket = FakeWebSocket.instances[0];
+    if (socket === undefined) throw new Error("expected a session socket");
+    socket.onopen?.();
+    // Any frame counts as proof of life, including the keepalive, which parses
+    // to no event and is dropped.
+    socket.onmessage?.({ data: JSON.stringify({ type: "keepalive" }) });
+
+    session.checkLiveness(Date.now() + 10_000);
+
+    expect(socket.readyState).toBe(1);
+  });
+
+  it("drops a silent realtime socket too", () => {
+    const realtime = new RealtimeSocket();
+    realtime.connect(() => undefined);
+    const socket = FakeWebSocket.instances[0];
+    if (socket === undefined) throw new Error("expected a realtime socket");
+    socket.onopen?.();
+
+    realtime.checkLiveness(Date.now() + 60_000);
+
+    expect(socket.readyState).toBe(3);
+  });
+
+  it("does nothing for a socket that was never opened", () => {
+    // Nothing to prove dead: connect() has not resolved, so silence is expected
+    // and closing here would fight the initial handshake.
+    const session = new SessionSocket();
+    session.connect({ id: "session-1", cwd: "/repo" }, () => undefined);
+    const socket = FakeWebSocket.instances[0];
+    if (socket === undefined) throw new Error("expected a session socket");
+
+    session.checkLiveness(Date.now() + 60_000);
+
+    expect(socket.readyState).toBe(1);
+  });
+});
+
 describe("notification socket guards", () => {
   it("accepts validated selected-session events and drops global notification summaries", () => {
     expect(parseSessionSocketEvent(inboxEvent())).toMatchObject({ type: "notifications.inbox", delta: { kind: "added" } });
@@ -312,6 +382,11 @@ describe("socket stream validation", () => {
 
 class FakeWebSocket {
   static readonly CONNECTING = 0;
+  // The real constructor carries these, and liveness checks read WebSocket.OPEN
+  // to tell "still connecting" from "connected but silent".
+  static readonly OPEN = 1;
+  static readonly CLOSING = 2;
+  static readonly CLOSED = 3;
   static readonly instances: FakeWebSocket[] = [];
 
   readyState = 1;

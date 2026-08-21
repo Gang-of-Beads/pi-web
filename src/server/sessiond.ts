@@ -164,6 +164,9 @@ async function createSessionDaemonRuntime() {
   });
   try {
     const eventHub = new SessionEventHub();
+    // Keepalives start with the daemon: a browser can only notice a dead
+    // connection if it expects traffic (see KEEPALIVE_INTERVAL_MS).
+    eventHub.startKeepalive();
     const notificationStore = new SessionNotificationStore();
     const unreadStore = new SessionUnreadStore({
       persistence: new FileSessionUnreadPersistence(defaultSessionUnreadFilePath(daemonEnvironment)),

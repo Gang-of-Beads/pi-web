@@ -4060,15 +4060,38 @@ export class PiSessionService implements SessionRouteService {
     if (eventType === "message_start") { this.publishActivity(session, "message started", "active"); return; }
     if (eventType === "message_end") { this.publishActivity(session, "message complete", "idle"); return; }
     if (eventType === "message_update") { this.publishActivity(session, "receiving response", "active"); return; }
-    if (eventType === "tool_execution_start") { this.publishActivity(session, "running tool", "active", getString(event, "toolName")); return; }
+    if (eventType === "tool_execution_start") {
+      // Name plus what it was called with, because "running tool: bash" answers
+      // nothing during a long turn - the question a person has while watching a
+      // session work is which command, which file. summarizeToolArgs already
+      // produces exactly that line for the transcript; the dock was simply not
+      // being given it.
+      const toolName = getString(event, "toolName");
+      const summary = summarizeToolArgs(getProperty(event, "args"));
+      const detail = toolName === undefined ? summary : summary === "" ? toolName : `${toolName}: ${summary}`;
+      this.publishActivity(session, "running tool", "active", detail === "" ? undefined : detail);
+      return;
+    }
     if (eventType === "tool_execution_end") {
       const isError = getBoolean(event, "isError") === true;
       this.publishActivity(session, isError ? "tool failed" : "tool complete", isError ? "error" : "idle", getString(event, "toolName"));
       return;
     }
-    if (eventType === "bash_execution_start") { this.publishActivity(session, "running bash", "active"); return; }
+    if (eventType === "bash_execution_start") { this.publishActivity(session, "running bash", "active", getString(event, "command")); return; }
     if (eventType === "bash_execution_end") { this.publishActivity(session, "bash complete", "idle"); return; }
-    if (this.hasActiveWork(session)) this.publishActivity(session, "working", "active");
+    // "working" is the label of last resort and it used to be where every
+    // unrecognised event landed - including the ones that arrive constantly
+    // mid-turn - so the dock would settle on a word that says nothing and stay
+    // there for minutes. Keep a specific label instead of overwriting it with a
+    // vague one: publishActivity dedupes, so re-stating the current label is
+    // free, and only a session with no label at all falls back to "working".
+    if (!this.hasActiveWork(session)) return;
+    const current = this.activities.get(session.sessionId);
+    if (current?.phase === "active" && current.label !== "working") {
+      this.publishActivity(session, current.label, "active", current.detail);
+      return;
+    }
+    this.publishActivity(session, "working", "active");
   }
 
   /**

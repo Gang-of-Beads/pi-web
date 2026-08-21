@@ -34,6 +34,23 @@ describe("SessionController.hydrateSessionStatuses", () => {
     expect(state().sessionStatuses[oldSession.id]).toMatchObject({ isStreaming: true, messageCount: 9 });
   });
 
+  it("replaces a known status after a reconnect", async () => {
+    // The opposite case, and the one that made the UI look broken: while the
+    // socket was down, the status.update saying a session had finished was
+    // published to nobody. Filling only gaps leaves the browser showing that
+    // session as working forever - until someone reloads the page, which is
+    // exactly the complaint. A reconnect asks for the truth, not the gaps.
+    const { controller, state } = harness({
+      statuses: [{ ...status(oldSession.id), isStreaming: false, messageCount: 12 }],
+    });
+    controller.applyGlobalEvent({ type: "status.update", status: { ...status(oldSession.id), isStreaming: true, messageCount: 9 } });
+    runPendingAnimationFrames();
+
+    await controller.hydrateSessionStatuses("local", { replaceKnown: true });
+
+    expect(state().sessionStatuses[oldSession.id]).toMatchObject({ isStreaming: false, messageCount: 12 });
+  });
+
   it("does not write state when the snapshot adds nothing", async () => {
     const { controller, setState } = harness({ statuses: [] });
 

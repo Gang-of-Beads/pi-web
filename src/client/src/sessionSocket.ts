@@ -6,6 +6,18 @@ export type { GlobalSessionEvent, RealtimeEvent, SessionUiEvent } from "../../sh
 
 export type BrowserRealtimeEvent = Exclude<RealtimeEvent, { type: "notifications.summary" }>;
 
+/**
+ * A connection is considered dead when it has been silent for longer than this.
+ *
+ * The daemon sends a keepalive every 20s, so silence past two of them is not
+ * quiet traffic - it is a socket that will never deliver anything again. The
+ * browser cannot see that on its own: a proxy or NAT that drops a connection
+ * without a FIN leaves readyState at OPEN forever, so onclose never fires and
+ * the reconnect that would refetch state never runs. That is the failure people
+ * describe as "the page only updates if I refresh it".
+ */
+const LIVENESS_TIMEOUT_MS = 50_000;
+
 export class SessionSocket {
   private socket: WebSocket | undefined;
   private session: SessionRef | undefined;
@@ -17,6 +29,23 @@ export class SessionSocket {
   private onReconnect: (() => void) | undefined;
   private onInitialOpen: (() => void) | undefined;
   private machineId = "local";
+  private lastFrameAt = 0;
+
+  /**
+   * Drop a connection that has gone silent past the keepalive budget, so the
+   * normal reconnect path (and the refresh it triggers) can run. Called when
+   * the browser comes back to the foreground, which is exactly when a
+   * connection that died while the tab was hidden needs to be noticed.
+   */
+  checkLiveness(now = Date.now()): void {
+    const socket = this.socket;
+    if (socket === undefined || !this.shouldReconnect) return;
+    if (socket.readyState !== WebSocket.OPEN) return;
+    if (this.lastFrameAt === 0 || now - this.lastFrameAt < LIVENESS_TIMEOUT_MS) return;
+    // close() fires onclose, which schedules the reconnect; the reconnect
+    // callback is what refetches everything missed while it was dead.
+    closeSocketQuietly(socket);
+  }
 
   connect(
     session: SessionRef,
@@ -60,6 +89,7 @@ export class SessionSocket {
     socket.onopen = () => {
       if (this.socket !== socket) return;
       this.reconnectDelay = 500;
+      this.lastFrameAt = Date.now();
       const isReconnect = this.hasOpened;
       this.hasOpened = true;
       if (isReconnect) this.onReconnect?.();
@@ -83,6 +113,9 @@ export class SessionSocket {
   }
 
   private async handleMessage(data: MessageEvent["data"], socket: WebSocket, session: SessionRef): Promise<void> {
+    // Any frame is proof of life, including the keepalive, which parses to
+    // nothing and is dropped below.
+    if (this.socket === socket) this.lastFrameAt = Date.now();
     const event = parseSessionSocketEvent(await parseSocketEvent(data));
     if (this.socket !== socket || event === undefined) return;
     if (event.type === "notifications.inbox" && (session.id !== event.summary.sessionId || session.cwd !== event.summary.cwd)) return;
@@ -98,6 +131,16 @@ export class RealtimeSocket {
   private reconnectDelay = 500;
   private shouldReconnect = false;
   private machineId = "local";
+  private lastFrameAt = 0;
+
+  /** Same liveness contract as SessionSocket; see checkLiveness there. */
+  checkLiveness(now = Date.now()): void {
+    const socket = this.socket;
+    if (socket === undefined || !this.shouldReconnect) return;
+    if (socket.readyState !== WebSocket.OPEN) return;
+    if (this.lastFrameAt === 0 || now - this.lastFrameAt < LIVENESS_TIMEOUT_MS) return;
+    closeSocketQuietly(socket);
+  }
 
   connect(onEvent: (event: BrowserRealtimeEvent) => void, onOpen?: () => void, machineId = "local"): void {
     this.close();
@@ -125,6 +168,7 @@ export class RealtimeSocket {
     socket.onopen = () => {
       if (this.socket !== socket) return;
       this.reconnectDelay = 500;
+      this.lastFrameAt = Date.now();
       this.onOpen?.();
     };
     socket.onmessage = (message) => void this.handleMessage(message.data, socket);
@@ -145,6 +189,7 @@ export class RealtimeSocket {
   }
 
   private async handleMessage(data: MessageEvent["data"], socket: WebSocket): Promise<void> {
+    if (this.socket === socket) this.lastFrameAt = Date.now();
     const event = parseRealtimeSocketEvent(await parseSocketEvent(data));
     if (this.socket === socket && event !== undefined) this.onEvent?.(event);
   }

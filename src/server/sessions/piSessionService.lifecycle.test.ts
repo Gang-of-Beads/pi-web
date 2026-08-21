@@ -1243,13 +1243,23 @@ describe("activity labels from raw agent events", () => {
       expect(firstActivity.activity.label).toBe("turn in progress");
       expect(firstActivity.activity.phase).toBe("active");
 
-      // An unknown event type still gets a friendly label, never the raw
-      // snake_case event name (which used to surface as e.g. "turn start").
+      // A tool call reports what it is running, not just that it is running:
+      // "running tool" alone answers nothing while a turn takes minutes.
+      hub.globalEvents.length = 0;
+      listener?.({ type: "tool_execution_start", toolName: "bash", args: { command: "npm test" } });
+      const toolActivity = activityUpdate(hub.globalEvents);
+      if (toolActivity === undefined) throw new Error("expected an activity event");
+      expect(toolActivity.activity.label).toBe("running tool");
+      expect(toolActivity.activity.detail).toBe("bash: npm test");
+
+      // An unknown event type must not overwrite a specific label with a vague
+      // one. Events nobody maps arrive constantly mid-turn, and each used to
+      // reset the dock to "working" - so a session that was in fact running a
+      // named tool reported nothing but the word "working" for minutes. The
+      // label is left alone (publishActivity dedupes, so no event is emitted).
       hub.globalEvents.length = 0;
       listener?.({ type: "run_started_whatever" });
-      const generic = activityUpdate(hub.globalEvents);
-      if (generic === undefined) throw new Error("expected an activity event");
-      expect(generic.activity.label).toBe("working");
+      expect(activityUpdate(hub.globalEvents)).toBeUndefined();
     } finally {
       await service.dispose();
     }
@@ -1312,8 +1322,9 @@ describe("prompt submission for extension-injected user messages", () => {
   });
 });
 
-interface ActivityUpdateEvent { type: string; activity?: { label: string; phase: string; sessionId: string } }
-function activityUpdate(events: readonly ActivityUpdateEvent[]): { activity: { label: string; phase: string; sessionId: string } } | undefined {
+interface ActivityDetail { label: string; phase: string; sessionId: string; detail?: string }
+interface ActivityUpdateEvent { type: string; activity?: ActivityDetail }
+function activityUpdate(events: readonly ActivityUpdateEvent[]): { activity: ActivityDetail } | undefined {
   const event = events.find((candidate) => candidate.type === "activity.update");
   if (event === undefined) return undefined;
   if (event.activity === undefined) return undefined;

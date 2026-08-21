@@ -50,9 +50,12 @@ jobs:
     name: Deploy stable docs to pi-web.dev
     # Stable docs only move on GitHub Releases; the dev variant at pi-web.dev/dev/
     # deploys from main via docs-dev.yml. Skipped on manual workflow_dispatch runs.
-    # The fork does not own pi-web.dev credentials, so this job waits on the
-    # publish job and passes once publish is skipped.
-    if: github.event_name == 'release'
+    # The fork does not own pi-web.dev credentials, so this job is skipped here
+    # rather than left to fail: every release since 1.202608.4 reported a red
+    # workflow whose only failure was a docs site this repository does not
+    # publish, which trains everyone to ignore release failures. Upstream keeps
+    # the job because upstream has the token.
+    if: github.event_name == 'release' && vars.CLOUDFLARE_ACCOUNT_ID != ''
     needs: publish
     runs-on: ubuntu-latest
     steps:

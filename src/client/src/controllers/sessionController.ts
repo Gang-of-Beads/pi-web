@@ -34,6 +34,8 @@ const MESSAGE_PAGE_SIZE = 100;
 const PENDING_FLUSH_DEADLINE_MS = 100;
 
 export interface SessionEventSocket {
+  /** Optional: implementations that own a real connection verify it here. */
+  checkLiveness?(): void;
   connect(
     session: SessionRef,
     onEvent: (event: SessionUiEvent) => void,
@@ -804,7 +806,19 @@ export class SessionController {
     }
   }
 
-  async hydrateSessionStatuses(machineId = selectedMachineId(this.getState())): Promise<void> {
+  /**
+   * Fill in session statuses from the daemon's catalog.
+   *
+   * `replaceKnown` decides what happens to statuses the browser already has.
+   * Filling only the gaps is right on a first load, where a live event may
+   * already have delivered something newer than the catalog. It is wrong after
+   * a reconnect: the status.update that moved a session from working to idle
+   * was published while the socket was down, so the browser keeps a value that
+   * is not stale by a moment but permanently wrong - the session list showed a
+   * finished session as still working until the page was reloaded, which is a
+   * large part of what "you have to refresh it" meant.
+   */
+  async hydrateSessionStatuses(machineId = selectedMachineId(this.getState()), options?: { replaceKnown?: boolean }): Promise<void> {
     let snapshot;
     try {
       snapshot = await this.api.statusCatalog(machineId);
@@ -813,9 +827,10 @@ export class SessionController {
     }
     if (selectedMachineId(this.getState()) !== machineId) return;
     const state = this.getState();
+    const replaceKnown = options?.replaceKnown === true;
     const hydrated: Record<string, SessionStatus> = {};
     for (const status of snapshot.statuses) {
-      if (state.sessionStatuses[status.sessionId] !== undefined) continue;
+      if (!replaceKnown && state.sessionStatuses[status.sessionId] !== undefined) continue;
       hydrated[status.sessionId] = status;
     }
     if (Object.keys(hydrated).length === 0) return;
@@ -995,6 +1010,11 @@ export class SessionController {
     } catch (error) {
       this.setState({ error: String(error) });
     }
+  }
+
+  /** Ask the session socket to verify it is still alive; see SessionSocket. */
+  checkSocketLiveness(): void {
+    this.socket.checkLiveness?.();
   }
 
   async clearServerQueue() {

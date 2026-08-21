@@ -9,11 +9,50 @@ export interface RealtimeSocket {
   on(event: "close", listener: () => void): unknown;
 }
 
+/**
+ * How often every subscriber is sent a keepalive frame.
+ *
+ * Nothing else guarantees traffic: a session can sit idle for minutes, and the
+ * connection usually crosses a proxy (tailscale serve here) and at least one
+ * NAT. When such a path drops a silent connection without sending FIN, the
+ * browser's socket stays OPEN forever, onclose never fires, the reconnect that
+ * would refetch state never runs, and the page shows stale data until someone
+ * reloads it by hand. A frame every 20s keeps the path warm and, more
+ * importantly, gives the client something to miss.
+ */
+export const KEEPALIVE_INTERVAL_MS = 20_000;
+
 export class SessionEventHub {
   private readonly socketsBySession = new Map<string, Set<RealtimeSocket>>();
   private readonly globalSockets = new Set<RealtimeSocket>();
   private readonly seqBySession = new Map<string, number>();
   private globalJoinFrame: (() => RealtimeEvent) | undefined;
+  private keepaliveTimer: ReturnType<typeof setInterval> | undefined;
+
+  /**
+   * Start sending keepalives. Separate from the constructor so tests and
+   * short-lived hubs are not left holding a timer, and unref'd so it never
+   * keeps the process alive on its own.
+   */
+  startKeepalive(intervalMs = KEEPALIVE_INTERVAL_MS): void {
+    if (this.keepaliveTimer !== undefined) return;
+    const timer = setInterval(() => { this.sendKeepalive(); }, intervalMs);
+    if (typeof timer === "object" && "unref" in timer) timer.unref();
+    this.keepaliveTimer = timer;
+  }
+
+  stopKeepalive(): void {
+    if (this.keepaliveTimer === undefined) return;
+    clearInterval(this.keepaliveTimer);
+    this.keepaliveTimer = undefined;
+  }
+
+  /** One tick: a keepalive to every subscriber, session-scoped and global. */
+  sendKeepalive(): void {
+    const payload = JSON.stringify({ type: "keepalive" });
+    for (const sockets of this.socketsBySession.values()) this.sendToSockets(sockets, payload);
+    this.sendToSockets(this.globalSockets, payload);
+  }
 
   add(sessionId: string, socket: RealtimeSocket): void {
     let sockets = this.socketsBySession.get(sessionId);

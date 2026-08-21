@@ -9,6 +9,52 @@ class FakeSocket extends EventEmitter implements RealtimeSocket {
   terminate = vi.fn();
 }
 
+describe("SessionEventHub keepalive", () => {
+  // Without traffic there is no way for a browser to tell a quiet connection
+  // from a dead one, and a connection dropped by a proxy without a FIN stays
+  // OPEN in the browser forever. The keepalive exists to make silence provable.
+  it("sends a keepalive to session and global subscribers alike", () => {
+    const hub = new SessionEventHub();
+    const sessionSocket = new FakeSocket();
+    const globalSocket = new FakeSocket();
+    hub.add("s1", sessionSocket);
+    hub.addGlobal(globalSocket);
+    globalSocket.send.mockClear();
+
+    hub.sendKeepalive();
+
+    expect(sessionSocket.send).toHaveBeenCalledWith(JSON.stringify({ type: "keepalive" }));
+    expect(globalSocket.send).toHaveBeenCalledWith(JSON.stringify({ type: "keepalive" }));
+  });
+
+  it("does not consume sequence numbers", () => {
+    // seq is the join-time watermark for replaying a stream; a keepalive is not
+    // an event and must not move it, or a client would drop real events as
+    // already-seen.
+    const hub = new SessionEventHub();
+    const socket = new FakeSocket();
+    hub.add("s1", socket);
+
+    hub.sendKeepalive();
+
+    expect(hub.currentSeq("s1")).toBe(0);
+  });
+
+  it("stops sending once stopped", () => {
+    const hub = new SessionEventHub();
+    const socket = new FakeSocket();
+    hub.add("s1", socket);
+    hub.startKeepalive(1);
+    hub.stopKeepalive();
+    socket.send.mockClear();
+
+    hub.startKeepalive(1);
+    hub.stopKeepalive();
+
+    expect(socket.send).not.toHaveBeenCalled();
+  });
+});
+
 describe("SessionEventHub", () => {
   it("publishes session events only to sockets for that session", () => {
     const hub = new SessionEventHub();
