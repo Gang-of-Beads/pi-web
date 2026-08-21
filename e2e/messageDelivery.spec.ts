@@ -89,7 +89,7 @@ test.describe("delivery marks (UI)", () => {
   // this walks past the default per-test budget.
   test.describe.configure({ timeout: 120_000 });
 
-  test("renders one bubble that reports the state instead of a second queued copy", async ({ page }) => {
+  test("shows a queued message in the dock only, then in the transcript once taken", async ({ page }) => {
     // The route addresses a session by project and workspace id, so the session
     // has to live in a registered project rather than an arbitrary cwd.
     const workspace = await deliveryWorkspace(page.request);
@@ -106,18 +106,22 @@ test.describe("delivery marks (UI)", () => {
       await openSession(page, session, workspace);
       await sendFromComposer(page, "queued from the browser");
 
-      // One bubble, not a bubble plus a "1 pending" queue row.
-      await expect.poll(async () => await chatState(page), { timeout: 20_000, message: "one marked bubble and no duplicate queue row" })
+      // Exactly one representation at a time. While the server holds the
+      // message it belongs to the pinned dock, where it stays reachable and
+      // recallable instead of scrolling away with the history.
+      await expect.poll(async () => await chatState(page), { timeout: 20_000, message: "one queued row in the dock and no transcript bubble" })
+        .toMatchObject({ bubbles: 0, queuedRows: 1 });
+
+      // ...and it must be recallable while it is there, which is the whole
+      // point of keeping it out of the transcript.
+      expect(await recallButtons(page)).toBeGreaterThan(0);
+
+      // The moment the agent takes it, it becomes ordinary history: the dock
+      // empties and the message appears in the transcript. 1.202608.5 shipped a
+      // version of this that hid the bubble on client-side state alone, so a
+      // message the queue had already released stayed invisible until a reload.
+      await expect.poll(async () => await chatState(page), { timeout: 60_000, message: "the message must reach the transcript once the turn takes it" })
         .toMatchObject({ bubbles: 1, queuedRows: 0 });
-
-      const marks = await deliveryMarks(page);
-      expect(marks.length).toBe(1);
-      expect(["Sent", "Queued", "Queued to steer", "Read"]).toContain(marks[0]);
-
-      // The mark has to survive the moment the agent commits its own copy of
-      // the message - that is precisely when it used to disappear.
-      await expect.poll(async () => (await deliveryMarks(page))[0], { timeout: 60_000, message: "the mark must reach Read once the turn takes the message" })
-        .toBe("Read");
     } finally {
       await archive(page.request, session, workspace.path);
     }
@@ -273,6 +277,13 @@ async function chatState(page: Page): Promise<{ bubbles: number; queuedRows: num
     const queuedRows = [...(chat?.querySelectorAll(".queued-message") ?? [])]
       .filter((row) => deepText(row).includes("queued from the browser")).length;
     return { bubbles, queuedRows };
+  });
+}
+
+async function recallButtons(page: Page): Promise<number> {
+  return await page.evaluate(() => {
+    const chat = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("chat-view")?.shadowRoot;
+    return (chat?.querySelectorAll(".queued-recall-button") ?? []).length;
   });
 }
 

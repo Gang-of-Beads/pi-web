@@ -751,9 +751,30 @@ export class ChatView extends LitElement {
    * loses its queued state here, and it joins the history in place - which is
    * the moment it actually became part of the conversation.
    */
+  /**
+   * Messages the server is still holding are rendered in the pinned dock
+   * instead of the transcript, so they do not scroll away before the agent
+   * takes them.
+   *
+   * The test is the server's queue, never the bubble's own delivery state.
+   * Hiding on local state made a message disappear outright whenever that
+   * state was not cleared - the queue had moved on, the bubble still said
+   * "queued", and nothing showed it until a reload rebuilt the transcript from
+   * the server. Keying on the queue means the worst case is a message that
+   * shows twice for one render, not one that vanishes.
+   */
   private transcriptMessages(): ChatLine[] {
-    if (this.messages.every((line) => line.meta?.delivery?.state !== "queued")) return this.messages;
-    return this.messages.filter((line) => line.meta?.delivery?.state !== "queued");
+    const queued = this.status?.queuedMessages ?? [];
+    if (queued.length === 0) return this.messages;
+    const queuedIds = new Set<string>();
+    for (const message of queued) {
+      if (message.clientMessageId !== undefined) queuedIds.add(message.clientMessageId);
+    }
+    if (queuedIds.size === 0) return this.messages;
+    return this.messages.filter((line) => {
+      const clientMessageId = line.meta?.delivery?.clientMessageId;
+      return clientMessageId === undefined || !queuedIds.has(clientMessageId);
+    });
   }
 
   private groupedMessages(): ChatGroup[] {
