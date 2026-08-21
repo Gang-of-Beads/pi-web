@@ -262,8 +262,32 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
   const packagedClientDist = join(dirname(fileURLToPath(import.meta.url)), "..", "client");
   const clientDist = deps.clientDist ?? (existsSync(packagedClientDist) ? packagedClientDist : join(process.cwd(), "dist", "client"));
   if (clientDist !== false && existsSync(clientDist)) {
-    await app.register(fastifyStatic, { root: clientDist });
-    app.setNotFoundHandler((_request, reply) => reply.sendFile("index.html"));
+    await app.register(fastifyStatic, {
+      root: clientDist,
+      setHeaders: (response, filePath) => {
+        // The document is the one file whose name never changes, so a cached
+        // copy points at asset names from whatever build produced it. Hashed
+        // assets can be cached forever precisely because their names change;
+        // index.html must be re-read every time or an upgrade only reaches
+        // people who clear their cache.
+        if (filePath.endsWith("index.html")) response.header("cache-control", "no-store");
+        else if (filePath.includes("/assets/")) response.header("cache-control", "public, max-age=31536000, immutable");
+      },
+    });
+    app.setNotFoundHandler((request, reply) => {
+      // The SPA fallback must not answer for assets. A browser holding a
+      // cached index.html from a previous build asks for hashed files that no
+      // longer exist; answering those with index.html hands HTML to a <script>
+      // tag, which throws on the first '<' and leaves a blank page - looking
+      // like the app is broken, while an incognito window works because it has
+      // no cached document. A 404 lets the browser fail the request it made,
+      // and the reload it prompts fetches the current index.
+      const path = request.url.split("?")[0] ?? "";
+      if (/\.(?:js|mjs|css|map|json|png|jpg|jpeg|gif|svg|webp|ico|woff2?|ttf)$/i.test(path)) {
+        return reply.code(404).type("text/plain").send("Not found");
+      }
+      return reply.sendFile("index.html");
+    });
   }
 
   return app;
