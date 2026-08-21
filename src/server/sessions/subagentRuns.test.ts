@@ -4,7 +4,12 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { listSubagentRuns } from "./subagentRuns";
 
-const PARENT = "parent-session";
+// The real layout: the run directory is named after the transcript *file*,
+// timestamp prefix and all. The first version of this fixture used a bare id
+// on both sides, which agreed with the code and disagreed with every actual
+// session - the endpoint returned nothing on a session that had run eight
+// subagents.
+const PARENT = "2026-08-20T17-27-53-830Z_01a02037-0ce6-730d-95f5-625c398ae884";
 
 async function sessionDir(): Promise<string> {
   return mkdtemp(join(tmpdir(), "pi-web-subagent-runs-"));
@@ -42,6 +47,20 @@ describe("listSubagentRuns", () => {
       task: "look around",
       hasOutput: true,
     });
+  });
+
+  it("labels a finished run with what it returned, not with a redacted prompt", async () => {
+    // The tool redacts prompts, so every meta.json carries the literal string
+    // "[prompt redacted]" - a row label that says nothing about 14 different
+    // runs. The first line of the result does.
+    const dir = await sessionDir();
+    await writeTranscript(dir, "run-summary", [{ role: "assistant", content: [{ type: "text", text: "x" }] }]);
+    await writeArtifact(dir, "run-summary", "scout", { exitCode: 0, durationMs: 5, task: "[prompt redacted]", timestamp: "2026-08-21T10:00:00.000Z" });
+    await writeFile(join(dir, "subagent-artifacts", "run-summary_scout_0_output.md"), "# Code Context - the live update path\n\nbody", "utf8");
+
+    const [run] = await listSubagentRuns(dir, PARENT);
+
+    expect(run?.task).toBe("Code Context - the live update path");
   });
 
   it("reports a non-zero exit as failed", async () => {

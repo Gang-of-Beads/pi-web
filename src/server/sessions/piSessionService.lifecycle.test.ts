@@ -1,8 +1,9 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve, sep } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { createPiSessionManagerGateway } from "./piSessionManagerGateway.js";
+import { listSubagentRuns } from "./subagentRuns.js";
 import { PiSessionService, type PiAgentSession, type PiSessionRuntime } from "./piSessionService.js";
 import { SessionNotificationStore } from "./sessionNotificationStore.js";
 import { CapturingSessionEventHub, emptyArchiveStore, fakeRuntime, fakeSessionManager, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime, type RuntimeCreator, type SessionGateway } from "./piSessionService.testSupport.js";
@@ -1319,6 +1320,26 @@ describe("prompt submission for extension-injected user messages", () => {
     } finally {
       await service.dispose();
     }
+  });
+});
+
+describe("subagent runs are found where the tool writes them", () => {
+  it("looks them up by the transcript file name, not the session id", async () => {
+    // The bug this pins: the tool names its run directory after the session
+    // *file* ("<timestamp>_<id>"), and looking it up by the bare id returned
+    // nothing for every real session while the unit fixture - built with the
+    // same wrong key - passed.
+    const dir = await mkdtemp(join(tmpdir(), "pi-web-run-lookup-"));
+    const sessionFile = join(dir, "2026-08-20T17-27-53-830Z_01a02037-0ce6-730d-95f5-625c398ae884.jsonl");
+    await writeFile(sessionFile, "", "utf8");
+    const runDir = join(dir, "2026-08-20T17-27-53-830Z_01a02037-0ce6-730d-95f5-625c398ae884", "run-abc", "run-0");
+    await mkdir(runDir, { recursive: true });
+    await writeFile(join(runDir, "session.jsonl"), JSON.stringify({ role: "assistant", content: [{ type: "tool_call", toolName: "grep" }] }), "utf8");
+
+    const runs = await listSubagentRuns(dirname(sessionFile), basename(sessionFile, ".jsonl"));
+
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({ runId: "run-abc", status: "running", lastActivity: "grep" });
   });
 });
 

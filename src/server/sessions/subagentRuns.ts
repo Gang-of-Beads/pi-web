@@ -27,6 +27,7 @@ const TAIL_BYTES = 64 * 1024;
 interface RunArtifact {
   agent?: string;
   task?: string;
+  outputSummary?: string;
   model?: string;
   exitCode?: number;
   durationMs?: number;
@@ -72,6 +73,9 @@ async function describeRun(runsDir: string, runId: string, artifact: RunArtifact
     startedAt = dirStats.birthtime.toISOString();
   }
   const status = runStatus(artifact, lastWriteMs, now);
+  // What the row says this run was: its own description when the tool kept one,
+  // otherwise the first line of what it returned.
+  const label = artifact?.task ?? artifact?.outputSummary;
   const elapsedMs = artifact?.durationMs ?? Math.max(0, (lastWriteMs ?? now) - Date.parse(startedAt));
   const lastActivity = status === "running" && transcript !== undefined ? await lastTranscriptStep(transcript) : undefined;
   return {
@@ -81,7 +85,7 @@ async function describeRun(runsDir: string, runId: string, artifact: RunArtifact
     elapsedMs,
     startedAt,
     ...(lastActivity === undefined ? {} : { lastActivity }),
-    ...(artifact?.task === undefined ? {} : { task: artifact.task }),
+    ...(label === undefined ? {} : { task: label }),
     ...(artifact?.model === undefined ? {} : { model: artifact.model }),
     ...(artifact?.toolCount === undefined ? {} : { toolCount: artifact.toolCount }),
     hasOutput: artifact?.hasOutput === true,
@@ -189,9 +193,15 @@ async function readArtifacts(artifactsDir: string): Promise<Map<string, RunArtif
     }
     if (!isRecord(parsed)) continue;
     const record = parsed;
+    const summaryFromOutput = outputs.has(runId) ? await firstLineOfOutput(artifactsDir, names, runId) : undefined;
     artifacts.set(runId, {
+      ...(summaryFromOutput === undefined ? {} : { outputSummary: summaryFromOutput }),
       ...(typeof record["agent"] === "string" ? { agent: record["agent"] } : {}),
-      ...(typeof record["task"] === "string" ? { task: summarize(record["task"]) } : {}),
+      // The tool redacts prompts, so `task` is the literal string
+      // "[prompt redacted]" for every run - useless as a row label. The first
+      // line of what the run returned says more about it than its own
+      // description would have.
+      ...(typeof record["task"] === "string" && !record["task"].includes("redacted") ? { task: summarize(record["task"]) } : {}),
       ...(typeof record["model"] === "string" ? { model: record["model"] } : {}),
       ...(typeof record["exitCode"] === "number" ? { exitCode: record["exitCode"] } : {}),
       ...(typeof record["durationMs"] === "number" ? { durationMs: record["durationMs"] } : {}),
@@ -223,6 +233,19 @@ export async function readSubagentRunOutput(sessionDir: string, runId: string, m
   try {
     const text = await readFile(join(artifactsDir, name), "utf8");
     return text.length > maxChars ? `${text.slice(0, maxChars)}\n\n[truncated]` : text;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The first meaningful line of a finished run's result, as its row label. */
+async function firstLineOfOutput(artifactsDir: string, names: string[], runId: string): Promise<string | undefined> {
+  const name = names.find((entry) => entry.startsWith(`${runId}_`) && entry.endsWith("_output.md"));
+  if (name === undefined) return undefined;
+  try {
+    const text = await readFile(join(artifactsDir, name), "utf8");
+    const line = text.split("\n").map((entry) => entry.replace(/^#+\s*/, "").trim()).find((entry) => entry !== "");
+    return line === undefined ? undefined : summarize(line);
   } catch {
     return undefined;
   }

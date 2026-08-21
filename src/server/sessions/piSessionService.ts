@@ -1,5 +1,5 @@
 import { statSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
@@ -2339,7 +2339,13 @@ export class PiSessionService implements SessionRouteService {
     const session = await this.getOrOpen(ref);
     const sessionFile = session.sessionManager.getSessionFile();
     if (sessionFile === undefined) return [];
-    return listSubagentRuns(dirname(sessionFile), session.sessionId);
+    // Keyed on the session *file* name, not the session id. The subagent tool
+    // names its run directory after the transcript file - the timestamped form,
+    // "2026-08-20T17-27-53-830Z_01a0...". Looking it up by the bare id found
+    // nothing on every real session, and the unit tests missed it because they
+    // built the fixture with the same key they read it back with: self
+    // consistent, and wrong about the disk.
+    return listSubagentRuns(dirname(sessionFile), basename(sessionFile, ".jsonl"));
   }
 
   async commands(ref: PiSessionRef): Promise<ClientCommand[]> {
