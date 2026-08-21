@@ -103,27 +103,25 @@ no inverse, that has to be visible in the UI rather than discovered.
 
 ## Known gaps
 
-Ordered by how much a user loses when they hit them.
+Ordered by how much a user loses when they hit them. Everything below is open;
+what has been closed is described above as behaviour, not as a promise.
 
-1. **Abort discards the queue.** `abort()` clears both queues and returns
-   nothing, so pressing stop destroys pending messages, attachments included.
-   It should behave as recall-all: hand the content back to the composer.
-2. **A recalled message returns as text.** Images ride on the prompt options and
+1. **A recalled message returns as text.** Images ride on the prompt options and
    the queue projection is text-only, so the message that comes back to the
-   composer comes back without its attachments. The *survivors* no longer lose
-   theirs - the server remembers the images a queued prompt carried and restores
-   them on replay - but the recalled message itself still needs an outbox in the
-   sender's browser to come back whole.
-3. **The queue has no revision.** `status.queuedMessages` is a bare array, so a
+   composer comes back without its attachments. The *survivors* keep theirs -
+   the server remembers the images a queued prompt carried and restores them on
+   replay - but the recalled message itself needs an outbox in the sender's
+   browser to come back whole.
+2. **The queue has no revision.** `status.queuedMessages` is a bare array, so a
    client cannot tell a stale queue from a current one, and recall cannot be a
-   compare-and-swap. A monotonic `queueRevision` on the status would let recall
-   be rejected when the queue moved underneath it, and let a browser detect a
-   missed update instead of waiting for the next full status.
-4. **A recall that loses the race is reported, not hidden.** The agent can read
-   a message between the click and the request landing. The response says
-   whether anything was actually taken back, and the client only removes the
-   bubble when it was: assuming success deleted a message the conversation
-   already contained and offered its text for a second send.
+   compare-and-swap. A monotonic `queueRevision` on the status would let a
+   recall be rejected when the queue moved underneath it, and let a browser
+   detect a missed update instead of waiting for the next full status.
+3. **Two identical queued texts are indistinguishable.** The runtime keys its
+   queue on text and `clientMessageId` is optional, so recalling one of two
+   identical messages removes the first. The visible order stays stable and the
+   response carries the resulting queue, but the sender cannot choose which
+   copy goes.
 
 ## Why the marks are worded the way they are
 
