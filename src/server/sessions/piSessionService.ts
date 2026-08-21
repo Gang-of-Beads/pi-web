@@ -1,5 +1,5 @@
 import { statSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
@@ -27,6 +27,7 @@ import {
   type ProjectTrustEventResult,
   type ResourceDiagnostic,
 } from "@earendil-works/pi-coding-agent";
+import type { SessionSubagentRunInfo } from "../../shared/apiTypes.js";
 import type { ClientArchiveSessionsResponse, ClientCommand, ClientCommandResult, ClientMessagePage, ClientSession, ClientSessionCleanupExecuteResponse, ClientSessionCleanupPreviewResponse, ClientSessionModel, ClientSessionModelCatalogEntry, ClientSessionStatus, ClientSessionTreeForkRequest, ClientSessionTreeForkResult, ClientSessionTreeNavigateRequest, ClientSessionTreeNavigateResult, ClientThinkingLevel, SessionStreamSnapshot, SessionUiEvent } from "../types.js";
 import { projectBrowserMessage } from "../browserMessageProjection.js";
 import { pageMessagesAtSafeBoundary } from "./messagePaging.js";
@@ -79,6 +80,7 @@ import { PendingExtensionDialogStore, type ExtensionDialogCancelReason } from ".
 import { ExtensionDialogWaiters, effectiveExtensionDialogTimeoutMs, extensionDialogCancelValue } from "./extensionDialogWaiters.js";
 import { DEFAULT_EXTENSION_DIALOGS_TIMEOUT_MS } from "../../config.js";
 import { createSpawnSessionToolDefinition, type SpawnSessionInvocation, type SpawnSessionResult } from "./spawnSessionTool.js";
+import { listSubagentRuns, readSubagentRunOutput } from "./subagentRuns.js";
 import { createSubsessionToolDefinitions, type SpawnSubsessionInvocation, type SpawnSubsessionResult, type SubsessionCheckResult, type SubsessionReadQuery, type SubsessionReadResult, type SubsessionStatus, type SubsessionSummary, type SubsessionToolDeps } from "./spawnSubsessionTool.js";
 import { buildTranscriptView } from "./subsessionTranscript.js";
 import { planSessionCleanup, summarizeSessionCleanupExecution, type NormalizedSessionCleanupRequest, type SessionCleanupPlan } from "./sessionCleanup.js";
@@ -2304,6 +2306,26 @@ export class PiSessionService implements SessionRouteService {
   async subsessions(ref: PiSessionRef): Promise<SubsessionSummary[]> {
     const session = await this.getOrOpen(ref);
     return this.listSubsessions(session.sessionId, session.sessionManager.getSessionFile());
+  }
+
+  async subagentRunOutput(ref: PiSessionRef, runId: string): Promise<string | undefined> {
+    const session = await this.getOrOpen(ref);
+    const sessionFile = session.sessionManager.getSessionFile();
+    if (sessionFile === undefined) return undefined;
+    return readSubagentRunOutput(dirname(sessionFile), runId);
+  }
+
+  /**
+   * Subagent-tool runs for this session. The directory they live in is the one
+   * holding the session file, so it is derived from the session rather than
+   * recomputed from the cwd - the encoding of a cwd into a directory name
+   * belongs to the agent, not here.
+   */
+  async subagentRuns(ref: PiSessionRef): Promise<SessionSubagentRunInfo[]> {
+    const session = await this.getOrOpen(ref);
+    const sessionFile = session.sessionManager.getSessionFile();
+    if (sessionFile === undefined) return [];
+    return listSubagentRuns(dirname(sessionFile), session.sessionId);
   }
 
   async commands(ref: PiSessionRef): Promise<ClientCommand[]> {

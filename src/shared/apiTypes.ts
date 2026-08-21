@@ -1429,6 +1429,31 @@ export interface SessionSubagentInfo {
 
 export interface SessionSubagentsSnapshot {
   readonly subsessions: readonly SessionSubagentInfo[];
+  /**
+   * Runs started through the subagent tool, which are not sessions.
+   *
+   * A spawned subsession is a session and shows up wherever sessions do; a
+   * subagent run only ever left artifacts on disk, so the parent conversation
+   * had no way to say what its children were doing - or that it had any.
+   */
+  readonly toolRuns: readonly SessionSubagentRunInfo[];
+}
+
+/** One subagent-tool run belonging to a parent session. */
+export interface SessionSubagentRunInfo {
+  readonly runId: string;
+  readonly agent: string;
+  readonly status: "running" | "done" | "failed" | "unknown";
+  /** Wall-clock milliseconds: reported when finished, elapsed while running. */
+  readonly elapsedMs: number;
+  readonly startedAt: string;
+  /** The child's most recent step, so "running" can say what it is running. */
+  readonly lastActivity?: string;
+  readonly task?: string;
+  readonly model?: string;
+  readonly toolCount?: number;
+  /** Present once the run has written its result. */
+  readonly hasOutput: boolean;
 }
 
 /**

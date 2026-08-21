@@ -1,7 +1,7 @@
 import { LitElement, html, type TemplateResult } from "lit";
 import { customElement, query, state } from "lit/decorators.js";
 import { configApi, effectiveWorkspaceUploadFolder, fleetApi, projectsApi, selfUpdateApi, sessionsApi, terminalsApi, workspacesApi, workspaceEffectiveUploadFolder, type AskUserSubmission, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
-  type QueuedSessionMessage, type SessionSubagentInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
+  type QueuedSessionMessage, type SessionSubagentInfo, type SessionSubagentRunInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
 import type { GoalRecordSummary, PiWebFleetReport, PiWebFleetRunResponse } from "../../../shared/apiTypes";import type { AppAction } from "../actions";
 import { initialAppState, type AppState } from "../appState";
 import { isSessionActive } from "../../../shared/activity";
@@ -422,8 +422,10 @@ export class PiWebApp extends LitElement {
       const machineId = selectedMachineId(this.state);
       const snapshot = await sessionsApi.subsessions(session, machineId);
       if (this.state.selectedSession?.id !== session.id || selectedMachineId(this.state) !== machineId) return;
-      if (sameSubagents(snapshot.subsessions, this.state.subagents)) return;
-      this.setState({ subagents: snapshot.subsessions });
+      const subagentsChanged = !sameSubagents(snapshot.subsessions, this.state.subagents);
+      const runsChanged = !sameSubagentRuns(snapshot.toolRuns, this.state.subagentRuns);
+      if (!subagentsChanged && !runsChanged) return;
+      this.setState({ subagents: snapshot.subsessions, subagentRuns: snapshot.toolRuns });
     } catch {
       // A failed read leaves the previous strip; the error banner shows why.
     }
@@ -2564,6 +2566,20 @@ export class PiWebApp extends LitElement {
     void this.sessions.clearServerQueue();
   };
 
+  /**
+   * Open the artifact a finished subagent run left behind. Running work has
+   * nothing to open yet, which is why those rows are inert rather than absent:
+   * the point of the row is to say that the child exists and what it is doing.
+   */
+  private readonly handleOpenSubagentRun = (run: SessionSubagentRunInfo): void => {
+    if (!run.hasOutput) return;
+    void this.sessions.openSubagentRunOutput(run);
+  };
+
+  private readonly handleOpenSubagentSession = (info: SessionSubagentInfo): void => {
+    this.openSubagent(info);
+  };
+
   private readonly handleRecallQueuedMessage = (message: QueuedSessionMessage): void => {
     // Same contract as clearing the whole queue, one message at a time: the
     // text comes back to the composer so it can be edited and sent again, and
@@ -2632,7 +2648,7 @@ export class PiWebApp extends LitElement {
 
   private renderChatView(state: AppState, session: SessionInfo) {
     return html`
-      <chat-view .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .loadingMore=${state.isLoadingEarlierMessages} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk} .pendingDialogs=${state.pendingDialogs} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onDismissClosedDialog=${this.handleDismissClosedDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .notificationInbox=${selectedNotificationView(state.selectedNotificationInbox)} .onClearServerQueue=${this.handleClearServerQueue} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onDismissWarning=${this.handleDismissWarning} .onDismissNotification=${this.handleDismissNotification} .onDismissAllNotifications=${this.handleDismissAllNotifications} .warningsVisible=${!this.sessionWarningVisibility.collapsed} .onToggleWarnings=${this.handleToggleWarnings} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())}></chat-view>
+      <chat-view .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .loadingMore=${state.isLoadingEarlierMessages} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk} .pendingDialogs=${state.pendingDialogs} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onDismissClosedDialog=${this.handleDismissClosedDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .notificationInbox=${selectedNotificationView(state.selectedNotificationInbox)} .subagents=${state.subagents} .subagentRuns=${state.subagentRuns} .onOpenSubagent=${this.handleOpenSubagentSession} .onOpenSubagentRun=${this.handleOpenSubagentRun} .onClearServerQueue=${this.handleClearServerQueue} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onDismissWarning=${this.handleDismissWarning} .onDismissNotification=${this.handleDismissNotification} .onDismissAllNotifications=${this.handleDismissAllNotifications} .warningsVisible=${!this.sessionWarningVisibility.collapsed} .onToggleWarnings=${this.handleToggleWarnings} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())}></chat-view>
     `;
   }
 
@@ -2849,6 +2865,19 @@ function sameSubagents(left: readonly SessionSubagentInfo[], right: readonly Ses
   return left.every((entry, index) => {
     const other = right[index];
     return other?.sessionId === entry.sessionId && other.status === entry.status;
+  });
+}
+
+/**
+ * Runs compare on what the strip shows, elapsed time included: a running child
+ * has to re-render as its clock moves, or the list would freeze at whatever it
+ * said when the run started.
+ */
+function sameSubagentRuns(left: readonly SessionSubagentRunInfo[], right: readonly SessionSubagentRunInfo[]): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((entry, index) => {
+    const other = right[index];
+    return other?.runId === entry.runId && other.status === entry.status && other.elapsedMs === entry.elapsedMs && other.lastActivity === entry.lastActivity;
   });
 }
 

@@ -302,7 +302,23 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
     const ref = sessionRefFromQueryOr400(request.params.sessionId, request.query, reply);
     if (ref === undefined) return reply;
     try {
-      return { subsessions: await sessions.subsessions(ref) };
+      // Both kinds of child in one payload: a spawned subsession is a session,
+      // a subagent-tool run is a directory of artifacts, and the chat view has
+      // one question about them - who is working for this conversation.
+      const [subsessions, toolRuns] = await Promise.all([sessions.subsessions(ref), sessions.subagentRuns(ref)]);
+      return { subsessions, toolRuns };
+    } catch (error) {
+      return reply.code(503).send({ error: errorMessage(error) });
+    }
+  });
+
+  app.get<{ Params: { sessionId: string; runId: string }; Querystring: SessionQuery }>(`${prefix}/sessions/:sessionId/subagent-runs/:runId/output`, async (request, reply) => {
+    const ref = sessionRefFromQueryOr400(request.params.sessionId, request.query, reply);
+    if (ref === undefined) return reply;
+    try {
+      const output = await sessions.subagentRunOutput(ref, request.params.runId);
+      if (output === undefined) return await reply.code(404).send({ error: "No output for this subagent run" });
+      return { output };
     } catch (error) {
       return reply.code(503).send({ error: errorMessage(error) });
     }

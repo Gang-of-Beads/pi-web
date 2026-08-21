@@ -26,7 +26,7 @@ import {
   type SessionNotificationTarget,
 } from "../sessionNotifications";
 import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
-import type { SessionNotification, SessionSubagentInfo } from "../../../shared/apiTypes";
+import type { SessionNotification, SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
 import type { ChatLine, ChatPart, MessageDelivery } from "./shared";
 import { chatStyles, renderSessionWarningIcon } from "./shared";
 import type { SessionStateBadgeKind } from "./activityBadge";
@@ -240,6 +240,9 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) notificationInbox?: SelectedSessionNotificationView;
   /** Child sessions (subagents) spawned by this session, most urgent first. */
   @property({ attribute: false }) subagents?: readonly SessionSubagentInfo[];
+  /** Subagent-tool runs for this session, newest first, live ones first of all. */
+  @property({ attribute: false }) subagentRuns?: readonly SessionSubagentRunInfo[];
+  @property({ attribute: false }) onOpenSubagentRun?: (run: SessionSubagentRunInfo) => void;
   /** Open a listed subagent in the navigation. */
   @property({ attribute: false }) onOpenSubagent?: (subagent: SessionSubagentInfo) => void;
   @property({ attribute: false }) onClearServerQueue?: (queued: QueuedSessionMessage[]) => void;
@@ -496,10 +499,13 @@ export class ChatView extends LitElement {
    * to one, not to host a transcription next to the parent's.
    */
   private renderSubagents(): TemplateResult | null {
-    const subagents = this.subagents;
-    if (subagents === undefined || subagents.length === 0) return null;
+    const subagents = this.subagents ?? [];
+    const runs = this.subagentRuns ?? [];
+    if (subagents.length === 0 && runs.length === 0) return null;
     const rows = subagentRows(subagents);
-    const heading = `${rows.some((row) => row.status === "working") ? "◌ " : ""}Subagents (${String(rows.length)})`;
+    const runRows = subagentRunRows(runs);
+    const working = rows.some((row) => row.status === "working") || runRows.some((row) => row.status === "running");
+    const heading = `${working ? "◌ " : ""}Subagents (${String(rows.length + runRows.length)})`;
     return html`
       <section class="subagents-strip" role="region" aria-label="Subagents">
         <strong class="subagents-heading">${heading}</strong>
@@ -515,6 +521,23 @@ export class ChatView extends LitElement {
             <span class="subagent-id" dir="ltr">${row.shortId}</span>
             <span class="subagent-status ${row.status}">${row.statusLabel}</span>
             <span class="subagent-chevron" aria-hidden="true">›</span>
+          </button>
+        `)}
+        ${runRows.map((row, index) => html`
+          <button
+            type="button"
+            class="subagent-row subagent-run-${index}"
+            title=${row.run.task ?? row.run.agent}
+            aria-label=${row.ariaLabel}
+            ?disabled=${!row.run.hasOutput}
+            @click=${() => { this.onOpenSubagentRun?.(row.run); }}
+          >
+            <span class="subagent-dot ${row.status}" aria-hidden="true"></span>
+            <span class="subagent-id" dir="ltr">${row.run.agent}</span>
+            <span class="subagent-status ${row.status}">${row.statusLabel}</span>
+            <span class="subagent-duration">${row.duration}</span>
+            ${row.detail === "" ? null : html`<span class="subagent-detail">${row.detail}</span>`}
+            ${row.run.hasOutput ? html`<span class="subagent-chevron" aria-hidden="true">›</span>` : null}
           </button>
         `)}
       </section>
@@ -1589,6 +1612,45 @@ export interface SubagentRow {
   statusLabel: string;
   cwd: string;
   ariaLabel: string;
+}
+
+/** How long a run has been going, in the shortest form that stays readable. */
+export function subagentRunDuration(elapsedMs: number): string {
+  const seconds = Math.max(0, Math.round(elapsedMs / 1000));
+  if (seconds < 60) return `${String(seconds)}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${String(minutes)}m ${String(seconds % 60)}s`;
+  return `${String(Math.floor(minutes / 60))}h ${String(minutes % 60)}m`;
+}
+
+export interface SubagentRunRow {
+  run: SessionSubagentRunInfo;
+  status: SessionSubagentRunInfo["status"];
+  statusLabel: string;
+  duration: string;
+  detail: string;
+  ariaLabel: string;
+}
+
+/**
+ * A row per subagent-tool run. The detail line answers the question the list
+ * exists for: a running child shows the step it is on, a finished one shows
+ * what it was asked to do, because that is what makes its output worth opening.
+ */
+export function subagentRunRows(runs: readonly SessionSubagentRunInfo[]): SubagentRunRow[] {
+  return runs.map((run) => {
+    const statusLabel = run.status === "running" ? "Running" : run.status === "done" ? "Done" : run.status === "failed" ? "Failed" : "Unknown";
+    const duration = subagentRunDuration(run.elapsedMs);
+    const detail = run.status === "running" ? run.lastActivity ?? "working" : run.task ?? "";
+    return {
+      run,
+      status: run.status,
+      statusLabel,
+      duration,
+      detail,
+      ariaLabel: `${statusLabel} ${run.agent} subagent, ${duration}${detail === "" ? "" : `, ${detail}`}`,
+    };
+  });
 }
 
 export function subagentRows(subagents: readonly SessionSubagentInfo[]): SubagentRow[] {

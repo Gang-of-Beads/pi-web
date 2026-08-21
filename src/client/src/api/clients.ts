@@ -44,6 +44,7 @@ import {
   parseSessionStatus,
   parseSessionStatusCatalogSnapshot,
   parseSessionSubagentsSnapshot,
+  parseSubagentRunOutput,
   parseInterruptedRunSnapshot,
   parseWorkspaceGoalsResponse,
   parseSessionUnreadCatalogSnapshot,
@@ -278,6 +279,8 @@ export const sessionsApi = {
   messages: (session: SessionRef, options?: { limit?: number; before?: number }, machineId = "local") => request(messagePath(session, options, machineId), parseMessagePage),
   status: (session: SessionRef, machineId = "local") => request(sessionQueryPath(session, "status", machineId), parseSessionStatus),
   streamSnapshot: (session: SessionRef, machineId = "local") => request(sessionQueryPath(session, "stream-snapshot", machineId), parseSessionStreamSnapshot),
+  subagentRunOutput: (session: SessionRef, runId: string, machineId = "local") =>
+    request(`${sessionPath(session, `subagent-runs/${encodeURIComponent(runId)}/output`, machineId)}?cwd=${encodeURIComponent(session.cwd)}`, parseSubagentRunOutput, { cache: "no-store" }),
   clearQueue: (session: SessionRef, machineId = "local") => request(sessionPath(session, "queue/clear", machineId), parseSessionStatus, { method: "POST", body: sessionBody(session) }),
   // Same route as clearQueue: a body carrying `text` means "take this one
   // back", an empty one still means "empty the queue".

@@ -552,6 +552,13 @@ export const chatStyles = css`
   /* Pinned above the composer, not inside the transcript: a queued message is
      pending intent, so it must stay reachable while the agent keeps writing.
      max-height keeps a long queue from swallowing the conversation. */
+  .subagent-duration { flex: 0 0 auto; color: var(--pi-muted); font-variant-numeric: tabular-nums; font-size: var(--pi-text-xs); }
+  .subagent-detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-xs); }
+  .subagent-row[disabled] { cursor: default; opacity: .8; }
+  .subagent-dot.running { background: var(--pi-success); }
+  .subagent-dot.failed { background: var(--pi-danger); }
+  .subagent-status.running { color: var(--pi-success); }
+  .subagent-status.failed { color: var(--pi-danger); }
   .queued-dock { position: absolute; left: 16px; right: 16px; bottom: 56px; z-index: 21; display: flex; flex-direction: column; gap: var(--pi-space-4); max-height: 40%; overflow-y: auto; }
   .queued-recall-button { flex: 0 0 auto; align-self: flex-start; border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-warning); padding: 2px var(--pi-space-4); font-size: var(--pi-text-xs); cursor: pointer; }
   .queued-recall-button:hover { background: var(--pi-warning-surface); }

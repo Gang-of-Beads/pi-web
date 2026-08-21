@@ -34,6 +34,7 @@ import type {
   ClientThinkingLevel,
   SessionStreamSnapshot,
 } from "../types.js";
+import type { SessionSubagentRunInfo } from "../../shared/apiTypes.js";
 import type { NormalizedSessionCleanupRequest } from "./sessionCleanup.js";
 import type { SubsessionSummary } from "./spawnSubsessionTool.js";
 
@@ -65,6 +66,10 @@ export interface SessionRouteService {
   notificationInbox(ref: SessionRouteRef): SessionNotificationInboxSnapshot | Promise<SessionNotificationInboxSnapshot>;
   dismissNotification(ref: SessionRouteRef, request: Omit<SessionNotificationDismissRequest, "cwd">): SessionNotificationInboxSnapshot | Promise<SessionNotificationInboxSnapshot>;
   dismissAllNotifications(ref: SessionRouteRef, request: Omit<SessionNotificationDismissAllRequest, "cwd">): SessionNotificationInboxSnapshot | Promise<SessionNotificationInboxSnapshot>;
+  /** Subagent-tool runs started by this session; see subagentRuns.ts. */
+  subagentRuns(ref: SessionRouteRef): Promise<SessionSubagentRunInfo[]>;
+  /** The result artifact of one finished run, if it wrote one. */
+  subagentRunOutput(ref: SessionRouteRef, runId: string): Promise<string | undefined>;
   clearQueue(ref: SessionRouteRef): Promise<ClientSessionStatus>;
   /** Remove one queued message, leaving the rest of the queue in order. */
   recallQueuedMessage(ref: SessionRouteRef, target: { kind?: "steer" | "followUp"; text: string; clientMessageId?: string }): Promise<ClientSessionStatus>;
