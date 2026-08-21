@@ -29,7 +29,6 @@ import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from ".
 import type { SessionNotification, SessionSubagentInfo } from "../../../shared/apiTypes";
 import type { ChatLine, ChatPart, MessageDelivery } from "./shared";
 import { chatStyles, renderSessionWarningIcon } from "./shared";
-import { queuedMessagesWithoutBubbles } from "../messageDelivery";
 import type { SessionStateBadgeKind } from "./activityBadge";
 import "./AskUserCard";
 import "./ExtensionDialogCard";
@@ -244,6 +243,8 @@ export class ChatView extends LitElement {
   /** Open a listed subagent in the navigation. */
   @property({ attribute: false }) onOpenSubagent?: (subagent: SessionSubagentInfo) => void;
   @property({ attribute: false }) onClearServerQueue?: (queued: QueuedSessionMessage[]) => void;
+  /** Take one queued message back into the composer, leaving the rest queued. */
+  @property({ attribute: false }) onRecallQueuedMessage?: (message: QueuedSessionMessage) => void;
   @property({ attribute: false }) onDismissWarning?: (dismissId: string) => void;
   @property({ attribute: false }) onDismissNotification?: (notificationId: string) => void;
   @property({ attribute: false }) onDismissAllNotifications?: () => void;
@@ -467,11 +468,11 @@ export class ChatView extends LitElement {
               return this.renderMessage(group.message, group.index);
             },
           )}
-          ${this.renderQueuedMessages()}
           ${this.renderSessionActivity()}
           ${this.renderOpenAsk()}
           ${this.renderExtensionDialogs()}
         </div>
+        ${this.renderQueuedMessages()}
         ${this.renderActivityDock()}
       </div>
       ${this.renderImageZoom()}
@@ -720,23 +721,36 @@ export class ChatView extends LitElement {
     `;
   }
 
+  /**
+   * Messages the server is still holding are not part of the conversation yet,
+   * so they are kept out of the transcript and rendered in the pinned dock
+   * instead. Once the agent takes one, the queue stops listing it, the bubble
+   * loses its queued state here, and it joins the history in place - which is
+   * the moment it actually became part of the conversation.
+   */
+  private transcriptMessages(): ChatLine[] {
+    if (this.messages.every((line) => line.meta?.delivery?.state !== "queued")) return this.messages;
+    return this.messages.filter((line) => line.meta?.delivery?.state !== "queued");
+  }
+
   private groupedMessages(): ChatGroup[] {
-    if (this.groupedMessagesInput === this.messages && this.groupedMessagesStart === this.messageStart) return this.groupedMessagesCache;
+    const source = this.transcriptMessages();
+    if (this.groupedMessagesInput === source && this.groupedMessagesStart === this.messageStart) return this.groupedMessagesCache;
     // Streaming fast path: a pure append reuses the prefix group objects
     // (Lit skips re-templating them, the metadata cache keeps hitting) and
     // only re-groups the tail. Falls back to a full grouping otherwise.
     const previous = this.groupedMessagesInput;
     if (this.groupedMessagesStart === this.messageStart && previous !== undefined) {
-      const appended = tryAppendGroupChatMessage(previous, this.groupedMessagesCache, this.messages);
+      const appended = tryAppendGroupChatMessage(previous, this.groupedMessagesCache, source);
       if (appended !== undefined) {
-        this.groupedMessagesInput = this.messages;
+        this.groupedMessagesInput = source;
         this.groupedMessagesCache = appended;
         return appended;
       }
     }
-    this.groupedMessagesInput = this.messages;
+    this.groupedMessagesInput = source;
     this.groupedMessagesStart = this.messageStart;
-    this.groupedMessagesCache = groupChatMessages(this.messages, this.messageStart);
+    this.groupedMessagesCache = groupChatMessages(source, this.messageStart);
     return this.groupedMessagesCache;
   }
 
@@ -793,10 +807,21 @@ export class ChatView extends LitElement {
   }
 
   private renderQueuedMessages() {
-    // A queued message the sender can already see as a marked bubble is not
-    // listed again here: showing both is what made one send look like two.
-    const serverQueued = queuedMessagesWithoutBubbles(this.status?.queuedMessages ?? [], this.messages);
-    return html`${chatQueuedMessageSections(this.clientQueuedMessages, serverQueued).map((section) => this.renderQueuedMessageList(section))}`;
+    // Everything still queued shows here, including the sender's own messages.
+    // They used to be filtered out because they also render as marked bubbles,
+    // which fixed a double render but took the recall affordance with it: the
+    // action lives on this panel, so a message you sent yourself became the one
+    // kind of queued message you could not take back.
+    //
+    // The panel is outside the scroll container on purpose. A queued message
+    // has not happened yet - it is pending intent, not transcript - so letting
+    // it scroll away with the history meant the only handle on it disappeared
+    // as soon as the agent produced a few lines. Pinned above the composer it
+    // stays where the text will land when it is recalled.
+    const queued = this.status?.queuedMessages ?? [];
+    const sections = chatQueuedMessageSections(this.clientQueuedMessages, queued);
+    if (sections.length === 0) return null;
+    return html`<div class="queued-dock">${sections.map((section) => this.renderQueuedMessageList(section))}</div>`;
   }
 
   private renderQueuedMessageList(section: QueuedMessageSection) {
@@ -816,6 +841,14 @@ export class ChatView extends LitElement {
           <div class="queued-message">
             <span class="queued-kind">${message.kind === "steer" ? "Steer" : "Follow-up"} ${String(index + 1)}</span>
             <formatted-text .text=${message.text}></formatted-text>
+            ${canClear ? html`
+              <button
+                type="button"
+                class="queued-recall-button"
+                title="Take this message back and put it in the composer"
+                @click=${() => { this.onRecallQueuedMessage?.(message); }}
+              >Recall</button>
+            ` : null}
           </div>
         `)}
       </aside>

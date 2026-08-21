@@ -372,6 +372,75 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
     await service.dispose();
   });
 
+  it("recalls one queued message and replays the rest in order", async () => {
+    // The runtime can only empty the whole queue, so removing one entry means
+    // emptying it and putting the survivors back. What this test pins down is
+    // that the survivors come back *in their original order* and that the
+    // replay does not go through the duplicate-suppression in prompt(), which
+    // would see each replayed text as a double-send and drop it.
+    const steeringMessages = ["first steer", "second steer"];
+    const followUpMessages = ["a follow up"];
+    const hub = new CapturingSessionEventHub();
+    const fake = fakeRuntime("recall-session", {
+      isStreaming: true,
+      pendingMessageCount: 3,
+      getSteeringMessages: () => steeringMessages,
+      getFollowUpMessages: () => followUpMessages,
+    });
+    fake.session.clearQueue = vi.fn(() => {
+      const cleared = { steering: [...steeringMessages], followUp: [...followUpMessages] };
+      steeringMessages.length = 0;
+      followUpMessages.length = 0;
+      return cleared;
+    });
+    const service = new PiSessionService(hub, {
+      agentDir: TEST_AGENT_DIR,
+      modelRuntime: testModelRuntime,
+      createAgentRuntime: runtimeCreator(fake.runtime),
+      sessionManager: sessionGateway([sessionRecord("recall-session")]),
+      heartbeatIntervalMs: 60_000,
+    });
+
+    await service.recallQueuedMessage(sessionRef("recall-session"), { kind: "steer", text: "first steer" });
+
+    expect(fake.calls.prompt).toEqual([
+      { text: "second steer", options: { streamingBehavior: "steer" } },
+      { text: "a follow up", options: { streamingBehavior: "followUp" } },
+    ]);
+    await service.dispose();
+  });
+
+  it("leaves the queue untouched when the recalled message is already gone", async () => {
+    // The agent can take a message between the click and the request. Replaying
+    // everything unchanged is the honest outcome: nothing is lost, and the
+    // returned status lets the client re-render whatever is actually queued.
+    const steeringMessages = ["still queued"];
+    const hub = new CapturingSessionEventHub();
+    const fake = fakeRuntime("recall-miss-session", {
+      isStreaming: true,
+      pendingMessageCount: 1,
+      getSteeringMessages: () => steeringMessages,
+      getFollowUpMessages: () => [],
+    });
+    fake.session.clearQueue = vi.fn(() => {
+      const cleared: { steering: string[]; followUp: string[] } = { steering: [...steeringMessages], followUp: [] };
+      steeringMessages.length = 0;
+      return cleared;
+    });
+    const service = new PiSessionService(hub, {
+      agentDir: TEST_AGENT_DIR,
+      modelRuntime: testModelRuntime,
+      createAgentRuntime: runtimeCreator(fake.runtime),
+      sessionManager: sessionGateway([sessionRecord("recall-miss-session")]),
+      heartbeatIntervalMs: 60_000,
+    });
+
+    await service.recallQueuedMessage(sessionRef("recall-miss-session"), { text: "already taken" });
+
+    expect(fake.calls.prompt).toEqual([{ text: "still queued", options: { streamingBehavior: "steer" } }]);
+    await service.dispose();
+  });
+
   it("does not publish full status for streaming text deltas", async () => {
     // Streaming text deltas carry no status change; publishing the full
     // status for every token would re-serialize + broadcast session state on

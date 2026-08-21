@@ -328,9 +328,24 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
     }
   });
 
-  app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/queue/clear`, async (request, reply) => {
+  // One route for both "empty the queue" and "take one message back": the
+  // second is the first plus a replay, and giving it its own path would mean a
+  // second federated-route registration for what the client sees as one
+  // affordance. A body without `text` keeps the original meaning, so older
+  // clients are unaffected.
+  app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; text?: unknown; kind?: unknown; clientMessageId?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/queue/clear`, async (request, reply) => {
     try {
-      return await sessions.clearQueue(sessionRefFromBody(request.params.sessionId, optionalRecord(request.body)));
+      const body = optionalRecord(request.body);
+      const ref = sessionRefFromBody(request.params.sessionId, body);
+      const text = body["text"];
+      if (typeof text !== "string" || text === "") return await sessions.clearQueue(ref);
+      const kind = body["kind"];
+      const clientMessageId = body["clientMessageId"];
+      return await sessions.recallQueuedMessage(ref, {
+        text,
+        ...(kind === "steer" || kind === "followUp" ? { kind } : {}),
+        ...(typeof clientMessageId === "string" && clientMessageId !== "" ? { clientMessageId } : {}),
+      });
     } catch (error) {
       return reply.code(mutationErrorStatus(error)).send({ error: errorMessage(error) });
     }

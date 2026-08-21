@@ -1390,6 +1390,22 @@ class CapturingRouteSessionService implements SessionRouteService {
     });
   }
 
+  readonly recallQueuedMessageCalls: { ref: SessionRouteRef; target: { kind?: "steer" | "followUp"; text: string; clientMessageId?: string } }[] = [];
+
+  recallQueuedMessage(lookup: SessionRouteRef, target: { kind?: "steer" | "followUp"; text: string; clientMessageId?: string }): Promise<SessionStatus> {
+    this.recallQueuedMessageCalls.push({ ref: lookup, target });
+    return Promise.resolve({
+      sessionId: lookup.id,
+      isStreaming: true,
+      isCompacting: false,
+      isBashRunning: false,
+      pendingMessageCount: 0,
+      queuedMessages: [],
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      cost: 0,
+    });
+  }
+
   messages(): Promise<MessagePage> {
     return Promise.resolve(this.messagesResponse);
   }

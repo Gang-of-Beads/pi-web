@@ -91,6 +91,20 @@ function advancesDelivery(current: MessageDeliveryState, next: MessageDeliverySt
  * are marked queued, and a tracked message that has left the queue has been
  * taken into the turn.
  */
+/**
+ * Drop the optimistic bubble for a message that was pulled back out of the
+ * queue. It has to go rather than change state: the bubble says "the server has
+ * this and the agent will take it next", which stopped being true, and
+ * applyQueueToDelivery reads absence from the queue as *delivered* - so leaving
+ * it would promote a recalled message to "Read". The text lands back in the
+ * composer, which is where an unsent message belongs.
+ */
+export function removeDeliveryLine(messages: readonly ChatLine[], clientMessageId: string): ChatLine[] {
+  const index = findDeliveryLineIndex(messages, clientMessageId);
+  if (index === -1) return [...messages];
+  return [...messages.slice(0, index), ...messages.slice(index + 1)];
+}
+
 export function applyQueueToDelivery(messages: ChatLine[], queued: readonly QueuedSessionMessage[]): ChatLine[] {
   let next = messages;
   const queuedIds = new Map<string, "steer" | "followUp">();
@@ -110,21 +124,6 @@ export function applyQueueToDelivery(messages: ChatLine[], queued: readonly Queu
     if (delivery.state === "received" || delivery.state === "queued") next = markDelivery(next, delivery.clientMessageId, "delivered");
   }
   return next;
-}
-
-/**
- * Queue entries that have no bubble in this transcript. The sender already sees
- * its own queued message as a marked bubble, so listing it again is the double
- * render users reported; entries from another device or client still need the
- * list.
- */
-export function queuedMessagesWithoutBubbles(queued: readonly QueuedSessionMessage[], messages: readonly ChatLine[]): QueuedSessionMessage[] {
-  const tracked = new Set<string>();
-  for (const line of messages) {
-    const id = line.meta?.delivery?.clientMessageId;
-    if (id !== undefined) tracked.add(id);
-  }
-  return queued.filter((message) => message.clientMessageId === undefined || !tracked.has(message.clientMessageId));
 }
 
 /**

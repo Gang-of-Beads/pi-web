@@ -6,7 +6,7 @@ import { machineSessionKey } from "../machineKeys";
 import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
 import { clearAskDraft } from "../askDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
-import { applyQueueToDelivery, markDelivery, newClientMessageId, optimisticUserLine } from "../messageDelivery";
+import { applyQueueToDelivery, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine } from "../messageDelivery";
 import type { MessageDeliveryState } from "../components/shared";
 import { isShellInput } from "../inputModes";
 import { fileCompletionInsertText } from "../promptCompletions";
@@ -1006,6 +1006,31 @@ export class SessionController {
     try {
       const status = await this.api.clearQueue(session, machineId);
       if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.applyStatus(status);
+    } catch (error) {
+      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState({ error: String(error) });
+    }
+  }
+
+  /**
+   * Take one queued message back. The bubble is removed before the status is
+   * applied: the caller puts the text in the composer, so an unsent message
+   * should not keep a place in the transcript - and a bubble left behind would
+   * be read as delivered the moment the queue no longer lists it.
+   */
+  async recallQueuedMessage(message: QueuedSessionMessage) {
+    const state = this.getState();
+    const session = state.selectedSession;
+    if (session === undefined || session.archived === true || isClientPendingStartSessionInfo(session)) return;
+    const machineId = selectedMachineId(state);
+    const selectionSeq = this.selectionSeq;
+    try {
+      const status = await this.api.recallQueuedMessage(session, message, machineId);
+      if (!this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) return;
+      const clientMessageId = message.clientMessageId;
+      if (clientMessageId !== undefined) {
+        this.setState({ messages: removeDeliveryLine(this.getState().messages, clientMessageId) });
+      }
+      this.applyStatus(status);
     } catch (error) {
       if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState({ error: String(error) });
     }

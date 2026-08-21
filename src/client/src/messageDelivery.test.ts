@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyQueueToDelivery, carryDeliveryForward, findDeliveryLineIndex, findTrackedUserLineIndex, isEchoOfTrackedMessage, markDelivery, newClientMessageId, optimisticUserLine, queuedMessagesWithoutBubbles } from "./messageDelivery";
+import { applyQueueToDelivery, carryDeliveryForward, findDeliveryLineIndex, findTrackedUserLineIndex, isEchoOfTrackedMessage, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine } from "./messageDelivery";
 import type { ChatLine } from "./components/shared";
 
 const ID = "cm-1";
@@ -81,17 +81,25 @@ describe("applyQueueToDelivery", () => {
   });
 });
 
-describe("queuedMessagesWithoutBubbles", () => {
-  it("hides a queued entry the sender already sees as a bubble", () => {
-    // The duplicate render users reported: one send appearing as a transcript
-    // bubble and as a "1 pending" queue row at the same time.
-    const queued = [{ kind: "steer" as const, text: "hello", clientMessageId: ID }];
-    expect(queuedMessagesWithoutBubbles(queued, [tracked("queued")])).toEqual([]);
+describe("removeDeliveryLine", () => {
+  it("removes the bubble for a message taken back out of the queue", () => {
+    // Recall puts the text back in the composer, so the transcript must not
+    // keep a copy: an unsent message is not history.
+    expect(removeDeliveryLine([tracked("queued"), assistant()], ID)).toEqual([assistant()]);
   });
 
-  it("keeps entries sent from another device or before ids existed", () => {
-    const queued = [{ kind: "followUp" as const, text: "from my phone" }, { kind: "steer" as const, text: "other tab", clientMessageId: "cm-2" }];
-    expect(queuedMessagesWithoutBubbles(queued, [tracked("queued")])).toEqual(queued);
+  it("leaves the transcript alone when the bubble is already gone", () => {
+    // The agent can take the message between the click and the response; the
+    // status that comes back is then the truth and nothing here should change.
+    const messages = [assistant()];
+    expect(removeDeliveryLine(messages, ID)).toEqual(messages);
+  });
+
+  it("keeps a recalled message from being promoted to delivered", () => {
+    // applyQueueToDelivery reads "no longer queued" as delivered, so a bubble
+    // left behind after a recall would claim the agent had read it.
+    const remaining = removeDeliveryLine([tracked("queued")], ID);
+    expect(applyQueueToDelivery(remaining, [])).toEqual([]);
   });
 });
 

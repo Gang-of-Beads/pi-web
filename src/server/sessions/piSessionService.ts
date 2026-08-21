@@ -2894,6 +2894,87 @@ export class PiSessionService implements SessionRouteService {
     return this.statusFromSession(session);
   }
 
+  /**
+   * Take one message back out of the queue, leaving the rest of it alone.
+   *
+   * The runtime has no such operation - `clearQueue()` empties both lanes and
+   * hands them back (agent-session.d.ts: "Clear all queued messages and return
+   * them") - so the only way to remove one entry is to empty the queue and put
+   * the survivors back. That is why this reaches past `prompt()` to
+   * `session.prompt()` directly: the wrapper drops a message whose text is
+   * already queued as a double-send, which is exactly what a replay looks like,
+   * so going through it would silently discard everything being restored.
+   *
+   * Matching is by text within a lane, first occurrence, because
+   * `clientMessageId` is optional (other clients and older ones never mint
+   * one) and the runtime itself keys its queue on text. Two identical queued
+   * texts are therefore indistinguishable; taking the first keeps the visible
+   * order stable and the caller re-renders from the returned status either way.
+   */
+  async recallQueuedMessage(ref: PiSessionRef, target: { kind?: QueuedPromptKind; text: string; clientMessageId?: string }): Promise<ClientSessionStatus> {
+    await this.assertWritable(ref);
+    const session = await this.getOrOpen(ref);
+
+    // The compaction queue is pi-web's own array, so one entry can simply go.
+    const compactionQueue = this.compactionPromptQueues.get(session.sessionId);
+    if (compactionQueue !== undefined) {
+      const index = compactionQueue.findIndex((entry) => entry.text === target.text
+        && (target.clientMessageId === undefined || entry.clientMessageId === target.clientMessageId));
+      if (index !== -1) {
+        compactionQueue.splice(index, 1);
+        if (compactionQueue.length === 0) this.compactionPromptQueues.delete(session.sessionId);
+        else this.compactionPromptQueues.set(session.sessionId, compactionQueue);
+        this.forgetQueuedPromptClientId(session.sessionId, target.text, target.clientMessageId);
+        this.publishStatus(session);
+        return this.statusFromSession(session);
+      }
+    }
+
+    const { steering, followUp } = session.clearQueue();
+    const lanes: { kind: QueuedPromptKind; texts: string[] }[] = [
+      { kind: "steer", texts: [...steering] },
+      { kind: "followUp", texts: [...followUp] },
+    ];
+    let removed = false;
+    for (const lane of lanes) {
+      if (removed) break;
+      if (target.kind !== undefined && target.kind !== lane.kind) continue;
+      const index = lane.texts.indexOf(target.text);
+      if (index === -1) continue;
+      lane.texts.splice(index, 1);
+      removed = true;
+    }
+    // Order matters more than speed here: the survivors go back one at a time,
+    // in the order the runtime handed them over, so a queue of three that loses
+    // its middle entry still runs first-then-third.
+    for (const lane of lanes) {
+      for (const text of lane.texts) {
+        await session.prompt(text, buildPromptOptions(lane.kind, []));
+      }
+    }
+    if (removed) this.forgetQueuedPromptClientId(session.sessionId, target.text, target.clientMessageId);
+    this.publishActivity(session, removed ? "queued message recalled" : "queued message already gone", "active");
+    this.publishStatus(session);
+    return this.statusFromSession(session);
+  }
+
+  /**
+   * Drop the correlation record for a recalled message so the sender's bubble
+   * is not later re-stamped as still queued. Without an id, the first record
+   * with matching text goes, mirroring how the queue itself is matched.
+   */
+  private forgetQueuedPromptClientId(sessionId: string, text: string, clientMessageId?: string): void {
+    const records = this.queuedPromptClientIds.get(sessionId);
+    if (records === undefined) return;
+    const index = clientMessageId === undefined
+      ? records.findIndex((record) => record.text === text)
+      : records.findIndex((record) => record.clientMessageId === clientMessageId);
+    if (index === -1) return;
+    records.splice(index, 1);
+    if (records.length === 0) this.queuedPromptClientIds.delete(sessionId);
+    else this.queuedPromptClientIds.set(sessionId, records);
+  }
+
   async dismissWarning(ref: PiSessionRef, dismissId: string): Promise<ClientSessionStatus> {
     const session = await this.getOrOpen(ref);
     dismissSessionWarning(session, dismissId);
