@@ -72,6 +72,17 @@ export interface SessionControllerDependencies {
   notifications?: SessionNotificationSessionBridge;
   replacePromptEditorText?: (replacement: PromptEditorTextReplacement) => void | Promise<void>;
   onSelectedSessionReady?: (selection: SelectedSessionReady) => void;
+  /**
+   * Called when the selected session stops working.
+   *
+   * Goal state changes inside a turn - /goal-tweak, /goal-resume, a task the
+   * agent completes - and none of that reaches this browser: goals are read
+   * when a workspace is selected and when someone presses refresh, so the
+   * panel kept showing PAUSED 9/10 for a goal that was active and finished.
+   * The end of a turn is when the file has settled, so it is read then rather
+   * than on a timer.
+   */
+  onSelectedSessionIdle?: () => void;
 }
 
 interface BulkSessionMutationResult {
@@ -124,6 +135,7 @@ export class SessionController {
   private readonly notifications: SessionNotificationSessionBridge | undefined;
   private readonly replacePromptEditorText: SessionControllerDependencies["replacePromptEditorText"];
   private readonly onSelectedSessionReady: SessionControllerDependencies["onSelectedSessionReady"];
+  private readonly onSelectedSessionIdle: SessionControllerDependencies["onSelectedSessionIdle"];
   private selectionSeq = 0;
   private disposed = false;
   // Join-time stream watermark for the selected session. `seq` is the
@@ -156,6 +168,7 @@ export class SessionController {
     this.notifications = deps.notifications;
     this.replacePromptEditorText = deps.replacePromptEditorText;
     this.onSelectedSessionReady = deps.onSelectedSessionReady;
+    this.onSelectedSessionIdle = deps.onSelectedSessionIdle;
   }
 
   applyGlobalEvent(event: GlobalSessionEvent): void {
@@ -1573,6 +1586,10 @@ export class SessionController {
     // the bubbles the sender is looking at.
     const messages = isSelected ? applyQueueToDelivery(state.messages, status.queuedMessages) : state.messages;
     const clearsStaleActivity = state.sessionActivities[status.sessionId]?.phase === "active" && !isSessionActive(status);
+    // Falling edge only: a turn that just ended is the one moment worth
+    // re-reading the goal directory for, and every other status update would
+    // make it a poll.
+    const becameIdle = isSelected && isSessionActive(state.status ?? status) && !isSessionActive(status);
     this.setState({
       sessionStatuses: { ...state.sessionStatuses, [status.sessionId]: status },
       ...sessionMessageCountPatch(state, status.sessionId, status.messageCount),
@@ -1588,6 +1605,7 @@ export class SessionController {
       ...(isSelected ? { pendingDialogs: status.pendingDialogs ?? [] } : {}),
       ...(messages === state.messages ? {} : { messages }),
     });
+    if (becameIdle) this.onSelectedSessionIdle?.();
   }
 
   /** Advance one tracked message's delivery mark in the visible transcript. */

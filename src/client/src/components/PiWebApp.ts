@@ -145,6 +145,10 @@ export class PiWebApp extends LitElement {
     new SessionStorageSessionSelectionMemory(),
     {
       notifications: this.notifications,
+      // A finished turn may have changed the goal file (/goal-tweak,
+      // /goal-resume, a completed task), and nothing else tells this browser:
+      // the panel showed PAUSED 9/10 for a goal that was active.
+      onSelectedSessionIdle: () => { void this.workspaces.refreshWorkspaceGoals(); },
       onSelectedSessionReady: ({ machineId, session }) => {
         void this.commitReadyChatAfterRender(machineId, session);
         void this.refreshSelfUpdate();
