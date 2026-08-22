@@ -42,14 +42,23 @@ jobs:
 
       # `npm pack` runs prepack, which builds; packing rather than zipping dist
       # keeps the artefact identical in shape to the published package.
+      #
+      # The filename comes from the pack directory, not from stdout. `--silent`
+      # suppresses npm's own output but not the lifecycle script's, so prepack's
+      # build log lands on stdout too, and every release since this step was
+      # written failed with "Unable to process file command 'output'" on
+      # `Invalid format 'vite v8.1.4 building client environment...'`. Globbing
+      # a directory that holds exactly one tarball cannot be polluted by
+      # anything a build decides to print.
       - name: Pack
-        id: pack
-        run: echo "tarball=$(npm pack --silent)" >> "$GITHUB_OUTPUT"
+        run: |
+          rm -rf pack-out && mkdir pack-out
+          npm pack --silent --pack-destination pack-out
 
       - name: Attach to release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.pack.outputs.tarball }}
+          files: pack-out/*.tgz
           # A tag push with no release yet gets one, so pushing a tag is the
           # whole ritual.
           generate_release_notes: true
