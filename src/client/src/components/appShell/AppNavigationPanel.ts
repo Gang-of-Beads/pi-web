@@ -4,7 +4,6 @@ import type { GoalRecordSummary, Machine, MachineHealth, Project, SessionActivit
 import type { MachineStatusSnapshot } from "../../../../shared/machineStatus";
 import type { WorkspaceLabelItem } from "../../plugins/types";
 import { selectedMachineId } from "../../controllers/types";
-import { shouldShowQuickActions } from "../../appShell/quickActionVisibility";
 import type { NavigationSection } from "../../appShell/navigationState";
 import { NAVIGATION_SECTION_ORDER } from "../../appShell/navigationState";
 import type { KeyboardNavigableSection } from "../navigationFocus";
@@ -151,14 +150,13 @@ export class AppNavigationPanel extends LitElement {
             .onCancelKeyboardNavigation=${() => { this.cancelKeyboardNavigation(); }}
           ></machine-switcher>
         ` : null}
-        ${shouldShowQuickActions({ projectCount: this.projects.length, hasSelectedProject: this.selectedProject !== undefined, canStartSession: this.canStartSession, visibleSection: this.compactVisibleSection() })
-          ? html`
-            <div class="mobile-quick-actions">
-              <button class="quick-action primary" ?disabled=${this.onAddProject === undefined} @click=${() => { this.runMaybeAsync(this.onAddProject); }}>Add project</button>
-              <button class="quick-action" ?disabled=${this.onQuickSwitch === undefined} @click=${() => { this.onQuickSwitch?.(); }}>Open session</button>
-              <button class="quick-action" ?disabled=${!this.canStartSession} @click=${() => { this.runMaybeAsync(this.onStartSession); }}>New session</button>
-            </div>`
-          : null}
+        <!-- No quick-action bar here. It stacked a third bar above the list -
+             a fifth of a phone screen before any content - and duplicated
+             controls that already exist: the context bar opens sessions, the
+             session list starts one, and "Add project" now lives in the
+             Projects heading, where it stays reachable on a machine you have
+             just switched to instead of vanishing whenever no session could be
+             started. -->
         ${this.renderCompactPrimaryList()}
       </div>
     `;
@@ -236,6 +234,7 @@ export class AppNavigationPanel extends LitElement {
         .collapsible=${collapsible && this.collapsible}
         .collapsed=${collapsible ? this.projectsCollapsed : false}
         .onToggleCollapsed=${() => { this.onToggleProjects?.(); }}
+        .onAdd=${this.onAddProject === undefined ? undefined : () => { this.runMaybeAsync(this.onAddProject); }}
         .onSelect=${(project: Project) => this.onSelectProject?.(project)}
         .onClose=${(project: Project) => this.onCloseProject?.(project)}
         .onFocusPreviousSection=${() => { this.focusPreviousFrom("projects"); }}
@@ -374,9 +373,6 @@ export class AppNavigationPanel extends LitElement {
     :host([compact]) { flex: 1 1 auto; }
     header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border-bottom: 1px solid var(--pi-border); }
     .compact-shell { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
-    .mobile-quick-actions { flex: 0 0 auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 10px; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); }
-    .quick-action { min-height: 44px; }
-    .quick-action.primary { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
     header strong { flex: 0 0 auto; }
     machine-switcher { flex: 1 1 auto; min-width: 0; }
     :host([compact]) header { display: none; }

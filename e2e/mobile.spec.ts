@@ -982,3 +982,52 @@ async function holdRow(page: Page, listTag: string, options: { drift: number }):
   await page.waitForTimeout(150);
   return opened;
 }
+
+test.describe("adding a project on a phone", () => {
+  test.skip(({ isMobile }) => isMobile === false, "phone-viewport behaviour");
+
+  /**
+   * The create control must be reachable without a bar of its own.
+   *
+   * It used to live in a stacked quick-action row that was hidden whenever no
+   * session could be started - which is the state of every machine you have
+   * just switched to, so the one route to adding a project vanished exactly
+   * when it was wanted (reported 2026-08-22 on a remote machine). Showing that
+   * row instead cost a fifth of the screen. It now sits in the Projects
+   * heading, which is on screen either way.
+   *
+   * Measured at 390x844, the narrowest screen this has to work on.
+   */
+  test("keeps Add project in the list heading, on screen and tappable", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openApp(page);
+
+    const measured = await page.evaluate(() => {
+      const panelRoot = document.querySelector("pi-web-app")?.shadowRoot
+        ?.querySelector("app-navigation-panel")?.shadowRoot;
+      const listRoot = panelRoot?.querySelector("project-list")?.shadowRoot;
+      const add = listRoot?.querySelector(".section-add");
+      const box = add?.getBoundingClientRect();
+      return {
+        present: add !== null && add !== undefined,
+        label: add?.getAttribute("aria-label") ?? "",
+        right: box === undefined ? null : Math.round(box.right),
+        height: box === undefined ? null : Math.round(box.height),
+        width: box === undefined ? null : Math.round(box.width),
+        viewportWidth: window.innerWidth,
+        quickActionsBar: panelRoot?.querySelector(".mobile-quick-actions") !== null
+          && panelRoot?.querySelector(".mobile-quick-actions") !== undefined,
+      };
+    });
+
+    expect(measured.present, "the Projects heading must carry a create control").toBe(true);
+    expect(measured.label).toBe("Add project");
+    expect(measured.quickActionsBar, "and it must not have brought a bar back with it").toBe(false);
+    expect(measured.right).not.toBeNull();
+    expect(measured.right!, "the control must be inside the viewport").toBeLessThanOrEqual(measured.viewportWidth);
+    // The tap-target floor: a control that exists but cannot be hit reliably
+    // is the same problem in a smaller box.
+    expect(measured.height!).toBeGreaterThanOrEqual(30);
+    expect(measured.width!).toBeGreaterThanOrEqual(30);
+  });
+});

@@ -308,6 +308,13 @@ export const listStyles = css`
   .search-empty { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); }
   section { box-sizing: border-box; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: var(--pi-space-5); }
   h2 { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; gap: var(--pi-space-4); margin: 0 0 var(--pi-space-4); color: var(--pi-muted); font-size: var(--pi-text-xs); text-transform: uppercase; }
+  /* The create control for a section, carried by its heading rather than by a
+     bar of its own: a stacked bar cost a fifth of a phone screen before any
+     content, and the heading was already a flex row with a free trailing edge.
+     Sized to the tap-target floor even though the glyph is small. */
+  .section-add { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; min-width: 32px; min-height: 32px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font-size: var(--pi-text-lg); line-height: 1; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+  .section-add:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -2px; }
+  @media (hover: hover) { .section-add:hover { border-color: var(--pi-accent); } }
   /* On a phone the context row above already names the step being chosen, so a
      heading repeating that word only costs the list its first rows. The row's
      own controls (count, create, clean up) stay, so nothing is lost with it. */

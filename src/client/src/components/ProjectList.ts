@@ -21,6 +21,8 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
   @property({ type: Boolean, reflect: true }) collapsed = false;
   /** Render rows as a responsive tile grid instead of full-width rows. */
   @property({ type: Boolean }) tiles = false;
+  /** Opens the add-project dialog; omitted where a create control would not belong. */
+  @property({ attribute: false }) onAdd?: () => void;
   @property({ attribute: false }) onSelect?: (project: Project) => void;
   @property({ attribute: false }) onClose?: (project: Project) => void;
   @property({ attribute: false }) onToggleCollapsed?: () => void;
@@ -59,7 +61,7 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
     const visible = filterProjects(this.projects, this.searchQuery);
     return html`
       <section>
-        <h2>${this.renderHeading()}</h2>
+        <h2>${this.renderHeading()}${this.renderAdd()}</h2>
         ${this.collapsed ? null : html`
           ${this.renderSearch()}
           <div class="list-body ${this.tiles ? "tiles" : ""}">
@@ -141,6 +143,20 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
         ${hasQuery ? html`<button class="list-search-clear" title="Clear search" aria-label="Clear search" @click=${() => { this.searchQuery = ""; }}>×</button>` : null}
       </div>
     `;
+  }
+
+  /**
+   * The create control lives in this heading rather than in a row of its own.
+   *
+   * A separate bar above the list cost a fifth of a phone screen before any
+   * content, and hiding it whenever a session could be started took the only
+   * route to adding a project with it - on a machine you have just switched to,
+   * which is exactly when you want to add one. The heading is already on
+   * screen and already a flex row with a free trailing edge.
+   */
+  private renderAdd() {
+    if (this.onAdd === undefined) return null;
+    return html`<button class="section-add" title="Add project" aria-label="Add project" @click=${(event: Event) => { event.stopPropagation(); this.onAdd?.(); }}>+</button>`;
   }
 
   private renderHeading() {

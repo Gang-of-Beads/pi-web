@@ -613,12 +613,32 @@ const ANTHROPIC_EXTRA_USAGE_DISMISS_ID = "anthropicExtraUsage";
  * and the documented `sk-ant-oat` key trigger) so warnings stay part of the
  * synchronous live status computation.
  */
+/**
+ * The provider a per-account alias stands for.
+ *
+ * The multi-account extension registers `anthropic-<account>` as real
+ * providers, and this service deliberately keeps the alias as the session's
+ * provider so the session stays pinned to that account (see setModel). That
+ * makes every `provider === "anthropic"` test silently false for anyone using
+ * an account, which is not a display detail: the subscription billing warning
+ * below simply stopped appearing for exactly the sessions that are billed
+ * against a subscription.
+ *
+ * Prefix-based because that is the alias shape the extension documents
+ * (ALIAS_PREFIX = "anthropic-"), and a provider genuinely named
+ * `anthropic-something-else` would still be an Anthropic provider.
+ */
+export function canonicalProviderId(provider: string | undefined): string | undefined {
+  if (provider === undefined) return undefined;
+  return provider.startsWith("anthropic-") ? "anthropic" : provider;
+}
+
 export function anthropicSubscriptionWarning(
   session: Pick<PiAgentSession, "model" | "settingsManager">,
   authPath?: string,
 ): SessionWarning | undefined {
   if (session.settingsManager.getWarnings().anthropicExtraUsage === false) return undefined;
-  if (session.model?.provider !== "anthropic") return undefined;
+  if (canonicalProviderId(session.model?.provider) !== "anthropic") return undefined;
   const credential = readStoredCredential("anthropic", authPath);
   if (credential === undefined) return undefined;
   const isSubscriptionAuth = credential.type === "oauth"

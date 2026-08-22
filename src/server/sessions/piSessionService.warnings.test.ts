@@ -166,9 +166,28 @@ describe("anthropicSubscriptionWarning", () => {
     )).toBeUndefined();
   });
 
+  it("warns for a per-account alias, which is still Anthropic", async () => {
+    // The multi-account extension registers `anthropic-<account>` as real
+    // providers and the session deliberately keeps the alias, so a bare
+    // `provider === "anthropic"` test was false for exactly the sessions
+    // billed against a subscription - the warning stopped appearing for the
+    // people it is for.
+    expect(anthropicSubscriptionWarning(
+      subscriptionSession({ provider: "anthropic-merchant" }),
+      await anthropicAuthPath({ type: "oauth" }),
+    )?.message).toBe(ANTHROPIC_SUBSCRIPTION_AUTH_WARNING);
+  });
+
   it("does not warn when the active provider is not anthropic", async () => {
     expect(anthropicSubscriptionWarning(
       subscriptionSession({ provider: "openai" }),
+      await anthropicAuthPath({ type: "oauth" }),
+    )).toBeUndefined();
+  });
+
+  it("does not mistake another provider whose name merely contains anthropic", async () => {
+    expect(anthropicSubscriptionWarning(
+      subscriptionSession({ provider: "not-anthropic" }),
       await anthropicAuthPath({ type: "oauth" }),
     )).toBeUndefined();
   });
