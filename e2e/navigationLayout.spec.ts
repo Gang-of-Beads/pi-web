@@ -211,3 +211,38 @@ test.describe("context row", () => {
     expect(visible).toEqual(["project-list"]);
   });
 });
+
+/**
+ * One create control per viewport.
+ *
+ * The Projects heading carries a "+" so a phone can add a project without a
+ * bar of its own. The desktop layout already has a context switcher whose
+ * Project step carries the same control, and stacking both is the clutter that
+ * switcher was built to remove - it replaced three frames and two plus-buttons
+ * that "made the row read as five controls".
+ */
+test.describe("project create affordance", () => {
+  test.skip(({ isMobile }) => isMobile === true, "desktop panel composition");
+
+  test("does not repeat Add project beside the switcher that already offers it", async ({ page }) => {
+    await page.goto("/", { waitUntil: "networkidle" });
+    await expect(page.locator("pi-web-app")).toBeAttached();
+    await page.waitForFunction(() => document.querySelector("pi-web-app")?.shadowRoot?.querySelector("app-navigation-panel") !== null);
+
+    const measured = await page.evaluate(() => {
+      const panelRoot = document.querySelector("pi-web-app")?.shadowRoot
+        ?.querySelector("app-navigation-panel")?.shadowRoot;
+      const switcherRoot = panelRoot?.querySelector("app-context-switcher")?.shadowRoot;
+      const listRoot = panelRoot?.querySelector("project-list")?.shadowRoot;
+      return {
+        switcherAdds: [...(switcherRoot?.querySelectorAll(".add") ?? [])]
+          .map((node) => node.getAttribute("aria-label") ?? node.getAttribute("title") ?? ""),
+        headingAdd: listRoot?.querySelector(".section-add") !== null
+          && listRoot?.querySelector(".section-add") !== undefined,
+      };
+    });
+
+    expect(measured.switcherAdds.some((label) => /add project/i.test(label)), "the switcher owns the control here").toBe(true);
+    expect(measured.headingAdd, "so the heading must not add a second one").toBe(false);
+  });
+});

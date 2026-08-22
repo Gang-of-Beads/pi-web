@@ -171,7 +171,11 @@ export class AppNavigationPanel extends LitElement {
     const visible = this.compactVisibleSection();
     return html`
       ${this.renderMachineList(false, visible !== "machines")}
-      ${this.renderProjectList(false, visible !== "projects")}
+      <!-- The create control belongs to the heading here and only here: the
+           desktop layout above has a context switcher whose Project step
+           already carries one, and two of them in one viewport is the clutter
+           that switcher was built to remove. -->
+      ${this.renderProjectList(false, visible !== "projects", true)}
       ${this.renderWorkspaceList(false, visible !== "workspaces")}
       ${this.renderSessionList(false, visible !== "sessions")}
       ${visible === "sessions" ? this.renderGoalPanel() : null}
@@ -224,7 +228,7 @@ export class AppNavigationPanel extends LitElement {
     `;
   }
 
-  private renderProjectList(collapsible: boolean, hidden = false) {
+  private renderProjectList(collapsible: boolean, hidden = false, withCreate = false) {
     return html`
       <project-list
         ?hidden=${hidden}
@@ -234,7 +238,7 @@ export class AppNavigationPanel extends LitElement {
         .collapsible=${collapsible && this.collapsible}
         .collapsed=${collapsible ? this.projectsCollapsed : false}
         .onToggleCollapsed=${() => { this.onToggleProjects?.(); }}
-        .onAdd=${this.onAddProject === undefined ? undefined : () => { this.runMaybeAsync(this.onAddProject); }}
+        .onAdd=${withCreate && this.onAddProject !== undefined ? () => { this.runMaybeAsync(this.onAddProject); } : undefined}
         .onSelect=${(project: Project) => this.onSelectProject?.(project)}
         .onClose=${(project: Project) => this.onCloseProject?.(project)}
         .onFocusPreviousSection=${() => { this.focusPreviousFrom("projects"); }}
