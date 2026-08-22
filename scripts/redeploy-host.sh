@@ -40,6 +40,34 @@ if [ -n "$(git status --porcelain)" ]; then
   echo "    note: working tree has uncommitted changes; building them anyway"
 fi
 
+# Which build the running units actually execute.
+#
+# This script was written when the units ran this checkout, so building it and
+# restarting them shipped the new code. The deployment then moved to the npm
+# package installed through nix, and the units now execute a /nix/store path:
+# building here changes a directory nothing serves, and the restart looks
+# exactly as successful as it did before. That is the silent no-op this script
+# exists to make impossible, so it checks rather than assumes.
+unit_exec=$(systemctl --user show pi-web -p ExecStart --value 2>/dev/null || true)
+case "$unit_exec" in
+  *"$repo_root"*) serves_checkout=true ;;
+  *) serves_checkout=false ;;
+esac
+
+echo "==> Deployment"
+if [ "$serves_checkout" = true ]; then
+  printf '    the pi-web units run this checkout\n'
+else
+  store_path=$(printf '%s' "$unit_exec" | grep -o '/nix/store/[^ ]*pi-web[^ /]*' | head -1)
+  printf '    the pi-web units run %s\n' "${store_path:-a path outside this checkout}"
+  echo "    Building here will NOT change what the browser loads."
+  echo "    Ship through the package instead: scripts/pi-web-update.sh --force <flake-id>"
+  if [ "$dry_run" != true ]; then
+    echo "    Refusing to restart: it would take the services down for no gain."
+    exit 1
+  fi
+fi
+
 echo "==> Build"
 npm run build
 
@@ -92,13 +120,14 @@ done
 # build does not restamp the file, and picking the first of several is arbitrary.
 bundle=$(sed -n 's/.*\/assets\/\(index-[A-Za-z0-9_-]*\.js\).*/\1/p' dist/client/index.html | head -1)
 printf '    bundle on disk     %s\n' "${bundle:-unknown}"
-if [ "$dry_run" != true ]; then
-  served=$(curl -fsS --max-time 5 http://127.0.0.1:8504/ 2>/dev/null \
-    | sed -n 's/.*\/assets\/\(index-[A-Za-z0-9_-]*\.js\).*/\1/p' | head -1 || true)
-  printf '    bundle served      %s\n' "${served:-unreachable}"
-  if [ -n "$served" ] && [ "$served" != "$bundle" ]; then
-    echo "    warning: the service is serving a different bundle than this build"
-  fi
+# Compared even on a dry run: the mismatch between what this checkout builds
+# and what the service serves is the single most useful thing this script can
+# report, and skipping it on the safe path hid it from the safe path.
+served=$(curl -fsS --max-time 5 http://127.0.0.1:8504/ 2>/dev/null \
+  | sed -n 's/.*\/assets\/\(index-[A-Za-z0-9_-]*\.js\).*/\1/p' | head -1 || true)
+printf '    bundle served      %s\n' "${served:-unreachable}"
+if [ -n "$served" ] && [ "$served" != "$bundle" ]; then
+  echo "    warning: the service is serving a different bundle than this build"
 fi
 
 echo
