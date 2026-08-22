@@ -151,7 +151,7 @@ export class AppNavigationPanel extends LitElement {
             .onCancelKeyboardNavigation=${() => { this.cancelKeyboardNavigation(); }}
           ></machine-switcher>
         ` : null}
-        ${shouldShowQuickActions({ projectCount: this.projects.length, canStartSession: this.canStartSession, visibleSection: this.compactVisibleSection() })
+        ${shouldShowQuickActions({ projectCount: this.projects.length, hasSelectedProject: this.selectedProject !== undefined, canStartSession: this.canStartSession, visibleSection: this.compactVisibleSection() })
           ? html`
             <div class="mobile-quick-actions">
               <button class="quick-action primary" ?disabled=${this.onAddProject === undefined} @click=${() => { this.runMaybeAsync(this.onAddProject); }}>Add project</button>

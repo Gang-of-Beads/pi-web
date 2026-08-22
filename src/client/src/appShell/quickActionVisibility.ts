@@ -14,6 +14,8 @@
  */
 export interface QuickActionContext {
   projectCount: number;
+  /** False right after a machine switch, when its projects are listed but none is chosen. */
+  hasSelectedProject: boolean;
   canStartSession: boolean;
   visibleSection: "machines" | "projects" | "workspaces" | "sessions";
 }
@@ -23,6 +25,14 @@ export function shouldShowQuickActions(context: QuickActionContext): boolean {
   if (context.projectCount === 0) return true;
   // The sessions list carries its own "+" affordance, so the row would repeat it.
   if (context.visibleSection === "sessions") return false;
+  // A machine whose projects exist but none is selected still needs the row,
+  // and this is where it used to vanish: switching to a remote machine leaves
+  // no workspace selected, so canStartSession was false, so the row - the only
+  // route to "Add project" on a phone - disappeared. Adding a project is
+  // precisely what someone does on a machine they have just reached, and
+  // requiring a startable session first made that a circle: to add a project
+  // you needed a session, and to have a session you needed a project selected.
+  if (!context.hasSelectedProject) return true;
   // Elsewhere, offer it only when it can actually do something.
   return context.canStartSession;
 }

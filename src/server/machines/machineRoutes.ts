@@ -1,7 +1,14 @@
 import type { FastifyInstance } from "fastify";
 import { MachineService, type CreateMachineInput, type UpdateMachineInput } from "./machineService.js";
 
-export function registerMachineRoutes(app: FastifyInstance, machines = new MachineService()): void {
+/**
+ * What the router needs from the machine service, which is less than all of it.
+ * Stating it here lets a test drive these routes with a stub instead of
+ * fabricating a whole MachineService.
+ */
+export type MachineRouteService = Pick<MachineService, "list" | "add" | "get" | "update" | "remove" | "health" | "runtime">;
+
+export function registerMachineRoutes(app: FastifyInstance, machines: MachineRouteService = new MachineService()): void {
   app.get("/api/machines", async () => ({ machines: await machines.list() }));
 
   app.post<{ Body: CreateMachineInput }>("/api/machines", async (request, reply) => {
@@ -40,6 +47,11 @@ export function registerMachineRoutes(app: FastifyInstance, machines = new Machi
     }
   });
 
+  // Renaming, including the local machine - MachineService.update has always
+  // handled the local case by storing a display alias, and MachineService.list
+  // has always applied it, but nothing ever exposed either over HTTP. The
+  // local machine was therefore stuck reading "Local" on a fleet where telling
+  // the boxes apart is the whole point of the switcher.
   app.delete<{ Params: { machineId: string } }>("/api/machines/:machineId", async (request, reply) => {
     try {
       const removed = await machines.remove(request.params.machineId);
