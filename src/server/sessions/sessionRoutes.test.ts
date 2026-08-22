@@ -3,7 +3,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import fastifyWebsocket from "@fastify/websocket";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ASK_USER_ID_MAX_LENGTH, ASK_USER_OTHER_TEXT_MAX_LENGTH, ASK_USER_QUESTION_LIMIT, EXTENSION_DIALOG_ID_MAX_LENGTH, EXTENSION_DIALOG_INPUT_MAX_LENGTH, SESSION_TREE_CUSTOM_INSTRUCTIONS_MAX_LENGTH, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH } from "../../shared/apiTypes.js";
-import type { SessionSubagentRunInfo } from "../../shared/apiTypes.js";
+import type { SessionBackgroundTaskInfo, SessionSubagentRunInfo } from "../../shared/apiTypes.js";
 import type {
   AskUserCloseResponse,
   AskUserSubmission,
@@ -1450,6 +1450,14 @@ class CapturingRouteSessionService implements SessionRouteService {
   }
 
   subagentRunOutputResponse: string | undefined = undefined;
+
+  backgroundTasks(): Promise<SessionBackgroundTaskInfo[]> {
+    return Promise.resolve([]);
+  }
+
+  backgroundTaskOutput(): Promise<string | undefined> {
+    return Promise.resolve(undefined);
+  }
 
   subagentRunOutput(): Promise<string | undefined> {
     return Promise.resolve(this.subagentRunOutputResponse);

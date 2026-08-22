@@ -1,4 +1,4 @@
-import { api as defaultApi, type AskUserCloseResponse, type AskUserSubmission, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingAskUser, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionSubagentRunInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Workspace } from "../api";
+import { api as defaultApi, type AskUserCloseResponse, type AskUserSubmission, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingAskUser, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionBackgroundTaskInfo, SessionSubagentRunInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Workspace } from "../api";
 import type { AppState, ClosedExtensionDialog } from "../appState";
 import { forgetCachedNewSession, isCachedNewSessionInfo, markCachedNewSessionInfo, mergeCachedNewSessions, rememberCachedNewSession, stripCachedNewSessionMarker } from "../cachedNewSessions";
 import { textMessage } from "../chatMessages";
@@ -1076,6 +1076,24 @@ export class SessionController {
     try {
       const output = await this.api.subagentRunOutput(session, run.runId, machineId);
       this.setState({ messages: [...this.getState().messages, textMessage("tool", `Subagent ${run.agent} (${run.runId.slice(0, 8)}):\n\n${output}`)] });
+    } catch (error) {
+      this.setState({ error: String(error) });
+    }
+  }
+
+  /**
+   * Show a background task's log tail. Like a subagent artifact it is a file
+   * rather than a conversation, so it is appended as tool output instead of
+   * opened as a session.
+   */
+  async openBackgroundTaskOutput(task: SessionBackgroundTaskInfo) {
+    const state = this.getState();
+    const session = state.selectedSession;
+    if (session === undefined || isClientPendingStartSessionInfo(session)) return;
+    const machineId = selectedMachineId(state);
+    try {
+      const output = await this.api.backgroundTaskOutput(session, task.id, machineId);
+      this.setState({ messages: [...this.getState().messages, textMessage("tool", `Background task ${task.name} (${task.id}):\n\n${output}`)] });
     } catch (error) {
       this.setState({ error: String(error) });
     }

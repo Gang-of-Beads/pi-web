@@ -45,6 +45,8 @@ import {
   parseSessionStatusCatalogSnapshot,
   parseRecallQueuedMessageResult,
   parseSessionSubagentsSnapshot,
+  parseBackgroundTasks,
+  parseBackgroundTaskOutput,
   parseSubagentRunOutput,
   parseInterruptedRunSnapshot,
   parseWorkspaceGoalsResponse,
@@ -280,6 +282,10 @@ export const sessionsApi = {
   messages: (session: SessionRef, options?: { limit?: number; before?: number }, machineId = "local") => request(messagePath(session, options, machineId), parseMessagePage),
   status: (session: SessionRef, machineId = "local") => request(sessionQueryPath(session, "status", machineId), parseSessionStatus),
   streamSnapshot: (session: SessionRef, machineId = "local") => request(sessionQueryPath(session, "stream-snapshot", machineId), parseSessionStreamSnapshot),
+  backgroundTasks: (session: SessionRef, machineId = "local") =>
+    request(`${sessionPath(session, "background-tasks", machineId)}?cwd=${encodeURIComponent(session.cwd)}`, parseBackgroundTasks, { cache: "no-store" }),
+  backgroundTaskOutput: (session: SessionRef, taskId: string, machineId = "local") =>
+    request(`${sessionPath(session, `background-tasks/${encodeURIComponent(taskId)}/output`, machineId)}?cwd=${encodeURIComponent(session.cwd)}`, parseBackgroundTaskOutput, { cache: "no-store" }),
   subagentRunOutput: (session: SessionRef, runId: string, machineId = "local") =>
     request(`${sessionPath(session, `subagent-runs/${encodeURIComponent(runId)}/output`, machineId)}?cwd=${encodeURIComponent(session.cwd)}`, parseSubagentRunOutput, { cache: "no-store" }),
   clearQueue: (session: SessionRef, machineId = "local") => request(sessionPath(session, "queue/clear", machineId), parseSessionStatus, { method: "POST", body: sessionBody(session) }),

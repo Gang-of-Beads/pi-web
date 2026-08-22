@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vitest";
-import type { SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
+import type { SessionBackgroundTaskInfo, SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
 import { ChatView, subagentRows, subagentRunDuration, subagentRunRows } from "./ChatView";
 
 const SUBAGENTS: SessionSubagentInfo[] = [
@@ -19,13 +19,26 @@ async function mount(subagents: readonly SessionSubagentInfo[]): Promise<{ host:
   return { host: view.renderRoot, onOpenSubagent };
 }
 
+async function mountTasks(
+  tasks: readonly SessionBackgroundTaskInfo[],
+  onOpen?: (task: SessionBackgroundTaskInfo) => void,
+): Promise<HTMLElement | DocumentFragment> {
+  const view = new ChatView();
+  view.sessionId = "parent-1";
+  view.backgroundTasks = tasks;
+  if (onOpen !== undefined) view.onOpenBackgroundTask = onOpen;
+  document.body.append(view);
+  await view.updateComplete;
+  return view.renderRoot;
+}
+
 describe("subagents strip", () => {
   it("shows each subagent with its status and opens one on tap", async () => {
     const { host, onOpenSubagent } = await mount(SUBAGENTS);
 
     const rows = [...host.querySelectorAll(".subagent-row")];
     expect(rows.length).toBe(2);
-    expect(host.textContent).toContain("Subagents (2)");
+    expect(host.textContent).toContain("Activity (2)");
     expect(host.textContent).toContain("Working");
     expect(rows[0]?.getAttribute("aria-label")).toBe("Working subagent 00000001");
     expect(rows[1]?.getAttribute("aria-label")).toBe("idle subagent 00000002");
@@ -62,7 +75,7 @@ describe("subagent tool runs", () => {
     // visible anywhere in the UI.
     const { host } = await mountRuns(RUNS);
 
-    expect(host.textContent).toContain("Subagents (2)");
+    expect(host.textContent).toContain("Activity (2)");
     expect(host.textContent).toContain("scout");
     expect(host.textContent).toContain("Running");
     expect(host.textContent).toContain("42s");
@@ -104,5 +117,40 @@ describe("subagentRows", () => {
       { subagent: SUBAGENTS[0], shortId: "00000001", status: "working", statusLabel: "Working", cwd: "/repo/.pi/sub", ariaLabel: "Working subagent 00000001" },
       { subagent: SUBAGENTS[1], shortId: "00000002", status: "idle", statusLabel: "idle", cwd: "/repo/.pi/sub", ariaLabel: "idle subagent 00000002" },
     ]);
+  });
+});
+
+describe("background tasks", () => {
+  it("lists tasks with status, duration and exit code, and opens the log", async () => {
+    const opened: string[] = [];
+    const host = await mountTasks([
+      { id: "b96da5ec8", name: "deploy 1.202608.13", command: "bash scripts/deploy.sh", status: "running", startedAt: "2026-08-21T20:00:00.000Z", durationMs: 421_000, bytesWritten: 0, hasOutput: true },
+      { id: "b25b68e87", name: "verify", command: "npm test", status: "completed", startedAt: "2026-08-21T19:00:00.000Z", durationMs: 132_000, exitCode: 0, bytesWritten: 317, hasOutput: true },
+    ], (task) => { opened.push(task.id); });
+
+    const text = host.textContent;
+    expect(text).toContain("Activity (2)");
+    expect(text).toContain("deploy 1.202608.13");
+    expect(text).toContain("Running");
+    // A running task shows what it is running; a finished one shows how it ended.
+    expect(text).toContain("bash scripts/deploy.sh");
+    expect(text).toContain("exit 0");
+    expect(text).toContain("7m 1s");
+
+    const row = host.querySelector<HTMLButtonElement>(".background-task-0");
+    row?.click();
+    expect(opened).toEqual(["b96da5ec8"]);
+  });
+
+  it("reports a running record whose process is gone as lost, not running", async () => {
+    // Nothing corrects a task file when the machine reboots under it, so a
+    // stale "running" would spin forever in the strip.
+    const host = await mountTasks([
+      { id: "dead", name: "old deploy", command: "x", status: "lost", startedAt: "2026-08-01T00:00:00.000Z", durationMs: 10_000, bytesWritten: 0, hasOutput: false },
+    ]);
+
+    expect(host.textContent).toContain("Lost");
+    expect(host.textContent).not.toContain("Running");
+    expect(host.querySelector<HTMLButtonElement>(".background-task-0")?.disabled).toBe(true);
   });
 });

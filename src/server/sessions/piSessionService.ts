@@ -27,7 +27,7 @@ import {
   type ProjectTrustEventResult,
   type ResourceDiagnostic,
 } from "@earendil-works/pi-coding-agent";
-import type { SessionSubagentRunInfo } from "../../shared/apiTypes.js";
+import type { SessionBackgroundTaskInfo, SessionSubagentRunInfo } from "../../shared/apiTypes.js";
 import type { ClientArchiveSessionsResponse, ClientCommand, ClientCommandResult, ClientMessagePage, ClientSession, ClientSessionCleanupExecuteResponse, ClientSessionCleanupPreviewResponse, ClientSessionModel, ClientSessionModelCatalogEntry, ClientSessionStatus, ClientSessionTreeForkRequest, ClientSessionTreeForkResult, ClientSessionTreeNavigateRequest, ClientSessionTreeNavigateResult, ClientThinkingLevel, SessionStreamSnapshot, SessionUiEvent } from "../types.js";
 import { projectBrowserMessage } from "../browserMessageProjection.js";
 import { pageMessagesAtSafeBoundary } from "./messagePaging.js";
@@ -80,6 +80,7 @@ import { PendingExtensionDialogStore, type ExtensionDialogCancelReason } from ".
 import { ExtensionDialogWaiters, effectiveExtensionDialogTimeoutMs, extensionDialogCancelValue } from "./extensionDialogWaiters.js";
 import { DEFAULT_EXTENSION_DIALOGS_TIMEOUT_MS } from "../../config.js";
 import { createSpawnSessionToolDefinition, type SpawnSessionInvocation, type SpawnSessionResult } from "./spawnSessionTool.js";
+import { listBackgroundTasks, readTaskOutput } from "./backgroundTasks.js";
 import { listSubagentRuns, readSubagentRunOutput } from "./subagentRuns.js";
 import { createSubsessionToolDefinitions, type SpawnSubsessionInvocation, type SpawnSubsessionResult, type SubsessionCheckResult, type SubsessionReadQuery, type SubsessionReadResult, type SubsessionStatus, type SubsessionSummary, type SubsessionToolDeps } from "./spawnSubsessionTool.js";
 import { buildTranscriptView } from "./subsessionTranscript.js";
@@ -2346,6 +2347,26 @@ export class PiSessionService implements SessionRouteService {
     // built the fixture with the same key they read it back with: self
     // consistent, and wrong about the disk.
     return listSubagentRuns(dirname(sessionFile), basename(sessionFile, ".jsonl"));
+  }
+
+  /**
+   * Background-task runs for this session.
+   *
+   * Keyed on the transcript rather than the task tool's own directory: that
+   * directory is named after the server process, so every session in this
+   * server shares it and the records carry no session field. The transcript
+   * records each task's output path when it starts, which is what makes the
+   * answer per session rather than per server.
+   */
+  async backgroundTasks(ref: PiSessionRef): Promise<SessionBackgroundTaskInfo[]> {
+    const session = await this.getOrOpen(ref);
+    const sessionFile = session.sessionManager.getSessionFile();
+    if (sessionFile === undefined) return [];
+    return listBackgroundTasks(ref.cwd, sessionFile);
+  }
+
+  async backgroundTaskOutput(ref: PiSessionRef, taskId: string): Promise<string | undefined> {
+    return readTaskOutput(ref.cwd, taskId);
   }
 
   async commands(ref: PiSessionRef): Promise<ClientCommand[]> {

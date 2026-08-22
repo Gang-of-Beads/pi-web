@@ -324,6 +324,31 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
     }
   });
 
+  // Shell commands this session left running outside the turn. Separate from
+  // /subsessions because the two answer different questions and a task list
+  // that is usually empty should not make the subagent call slower.
+  app.get<{ Params: { sessionId: string }; Querystring: SessionQuery }>(`${prefix}/sessions/:sessionId/background-tasks`, async (request, reply) => {
+    const ref = sessionRefFromQueryOr400(request.params.sessionId, request.query, reply);
+    if (ref === undefined) return reply;
+    try {
+      return { tasks: await sessions.backgroundTasks(ref) };
+    } catch (error) {
+      return reply.code(503).send({ error: errorMessage(error) });
+    }
+  });
+
+  app.get<{ Params: { sessionId: string; taskId: string }; Querystring: SessionQuery }>(`${prefix}/sessions/:sessionId/background-tasks/:taskId/output`, async (request, reply) => {
+    const ref = sessionRefFromQueryOr400(request.params.sessionId, request.query, reply);
+    if (ref === undefined) return reply;
+    try {
+      const output = await sessions.backgroundTaskOutput(ref, request.params.taskId);
+      if (output === undefined) return await reply.code(404).send({ error: "No output for this task" });
+      return { output };
+    } catch (error) {
+      return reply.code(503).send({ error: errorMessage(error) });
+    }
+  });
+
   app.get<{ Params: { sessionId: string }; Querystring: SessionQuery }>(`${prefix}/sessions/:sessionId/commands`, async (request, reply) => {
     const ref = sessionRefFromQueryOr400(request.params.sessionId, request.query, reply);
     if (ref === undefined) return reply;

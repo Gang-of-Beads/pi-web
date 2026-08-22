@@ -34,7 +34,7 @@ import type {
   ClientThinkingLevel,
   SessionStreamSnapshot,
 } from "../types.js";
-import type { QueuedSessionMessage, SessionSubagentRunInfo } from "../../shared/apiTypes.js";
+import type { QueuedSessionMessage, SessionBackgroundTaskInfo, SessionSubagentRunInfo } from "../../shared/apiTypes.js";
 import type { NormalizedSessionCleanupRequest } from "./sessionCleanup.js";
 import type { SubsessionSummary } from "./spawnSubsessionTool.js";
 
@@ -70,6 +70,10 @@ export interface SessionRouteService {
   subagentRuns(ref: SessionRouteRef): Promise<SessionSubagentRunInfo[]>;
   /** The result artifact of one finished run, if it wrote one. */
   subagentRunOutput(ref: SessionRouteRef, runId: string): Promise<string | undefined>;
+  /** Background-task runs started by this session; see backgroundTasks.ts. */
+  backgroundTasks(ref: SessionRouteRef): Promise<SessionBackgroundTaskInfo[]>;
+  /** Tail of a background task's log. */
+  backgroundTaskOutput(ref: SessionRouteRef, taskId: string): Promise<string | undefined>;
   clearQueue(ref: SessionRouteRef): Promise<ClientSessionStatus>;
   /** Remove one queued message, leaving the rest of the queue in order. */
   recallQueuedMessage(ref: SessionRouteRef, target: { kind?: "steer" | "followUp"; text: string; clientMessageId?: string }): Promise<{ recalled: boolean; status: ClientSessionStatus }>;

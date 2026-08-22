@@ -26,7 +26,7 @@ import {
   type SessionNotificationTarget,
 } from "../sessionNotifications";
 import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
-import type { SessionNotification, SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
+import type { SessionBackgroundTaskInfo, SessionNotification, SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
 import type { ChatLine, ChatPart, MessageDelivery } from "./shared";
 import { chatStyles, renderSessionWarningIcon } from "./shared";
 import type { SessionStateBadgeKind } from "./activityBadge";
@@ -243,6 +243,8 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) subagents?: readonly SessionSubagentInfo[];
   /** Subagent-tool runs for this session, newest first, live ones first of all. */
   @property({ attribute: false }) subagentRuns?: readonly SessionSubagentRunInfo[];
+  @property({ attribute: false }) backgroundTasks?: readonly SessionBackgroundTaskInfo[];
+  @property({ attribute: false }) onOpenBackgroundTask?: (task: SessionBackgroundTaskInfo) => void;
   @property({ attribute: false }) onOpenSubagentRun?: (run: SessionSubagentRunInfo) => void;
   /** Open a listed subagent in the navigation. */
   @property({ attribute: false }) onOpenSubagent?: (subagent: SessionSubagentInfo) => void;
@@ -502,13 +504,21 @@ export class ChatView extends LitElement {
   private renderSubagents(): TemplateResult | null {
     const subagents = this.subagents ?? [];
     const runs = this.subagentRuns ?? [];
-    if (subagents.length === 0 && runs.length === 0) return null;
+    const tasks = this.backgroundTasks ?? [];
+    if (subagents.length === 0 && runs.length === 0 && tasks.length === 0) return null;
     const rows = subagentRows(subagents);
     const runRows = subagentRunRows(runs);
-    const working = rows.some((row) => row.status === "working") || runRows.some((row) => row.status === "running");
-    const heading = `${working ? "◌ " : ""}Subagents (${String(rows.length + runRows.length)})`;
+    // Background tasks share the strip because they answer the same question a
+    // subagent row does - what is this conversation running that is not the
+    // reply on screen - and a browser had no other way to see them at all.
+    const taskRows = backgroundTaskRows(tasks);
+    const working = rows.some((row) => row.status === "working")
+      || runRows.some((row) => row.status === "running")
+      || taskRows.some((row) => row.status === "running");
+    const total = rows.length + runRows.length + taskRows.length;
+    const heading = `${working ? "◌ " : ""}Activity (${String(total)})`;
     return html`
-      <section class="subagents-strip" role="region" aria-label="Subagents">
+      <section class="subagents-strip" role="region" aria-label="Session activity">
         <strong class="subagents-heading">${heading}</strong>
         ${rows.map((row, index) => html`
           <button
@@ -539,6 +549,23 @@ export class ChatView extends LitElement {
             <span class="subagent-duration">${row.duration}</span>
             ${row.detail === "" ? null : html`<span class="subagent-detail">${row.detail}</span>`}
             ${row.run.hasOutput ? html`<span class="subagent-chevron" aria-hidden="true">›</span>` : null}
+          </button>
+        `)}
+        ${taskRows.map((row, index) => html`
+          <button
+            type="button"
+            class="subagent-row background-task-row background-task-${index}"
+            title=${row.task.command}
+            aria-label=${row.ariaLabel}
+            ?disabled=${!row.task.hasOutput}
+            @click=${() => { this.onOpenBackgroundTask?.(row.task); }}
+          >
+            <span class="subagent-dot ${row.status}" aria-hidden="true"></span>
+            <span class="subagent-id" dir="ltr">${row.task.name}</span>
+            <span class="subagent-status ${row.status}">${row.statusLabel}</span>
+            <span class="subagent-duration">${row.duration}</span>
+            ${row.detail === "" ? null : html`<span class="subagent-detail" dir="ltr">${row.detail}</span>`}
+            ${row.task.hasOutput ? html`<span class="subagent-chevron" aria-hidden="true">›</span>` : null}
           </button>
         `)}
       </section>
@@ -1689,6 +1716,49 @@ export function subagentRunRows(runs: readonly SessionSubagentRunInfo[]): Subage
       duration,
       detail,
       ariaLabel: `${statusLabel} ${run.agent} subagent, ${duration}${detail === "" ? "" : `, ${detail}`}`,
+    };
+  });
+}
+
+export interface BackgroundTaskRow {
+  task: SessionBackgroundTaskInfo;
+  /** Collapsed to the three states a strip can show, from the tool's larger vocabulary. */
+  status: "running" | "done" | "failed" | "unknown";
+  statusLabel: string;
+  duration: string;
+  detail: string;
+  ariaLabel: string;
+}
+
+/**
+ * The task tool reports more statuses than a one-line strip can show, and
+ * "lost" is one this reader adds for a running record whose process is gone.
+ * They collapse onto the three the subagent rows already use, so the strip
+ * stays readable and the styling is shared.
+ */
+export function backgroundTaskRows(tasks: readonly SessionBackgroundTaskInfo[]): BackgroundTaskRow[] {
+  return tasks.map((task) => {
+    const status = task.status === "running" ? "running"
+      : task.status === "completed" ? "done"
+      : task.status === "failed" || task.status === "killed" || task.status === "lost" ? "failed"
+      : "unknown";
+    const statusLabel = task.status === "completed" ? "Done"
+      : task.status === "running" ? "Running"
+      : task.status === "lost" ? "Lost"
+      : task.status.charAt(0).toUpperCase() + task.status.slice(1);
+    const duration = subagentRunDuration(task.durationMs ?? 0);
+    // While it runs the command is what someone wants to see; once it is done
+    // the exit code is, because that is the question they came back to answer.
+    const detail = status === "running"
+      ? task.command.slice(0, 60)
+      : task.exitCode === undefined ? "" : `exit ${String(task.exitCode)}`;
+    return {
+      task,
+      status,
+      statusLabel,
+      duration,
+      detail,
+      ariaLabel: `${statusLabel} background task ${task.name}, ${duration}${detail === "" ? "" : `, ${detail}`}`,
     };
   });
 }

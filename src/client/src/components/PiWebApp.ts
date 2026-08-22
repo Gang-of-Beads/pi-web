@@ -1,7 +1,7 @@
 import { LitElement, html, type TemplateResult } from "lit";
 import { customElement, query, state } from "lit/decorators.js";
 import { configApi, effectiveWorkspaceUploadFolder, fleetApi, projectsApi, selfUpdateApi, sessionsApi, terminalsApi, workspacesApi, workspaceEffectiveUploadFolder, type AskUserSubmission, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
-  type QueuedSessionMessage, type SessionSubagentInfo, type SessionSubagentRunInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
+  type QueuedSessionMessage, type SessionBackgroundTaskInfo, type SessionSubagentInfo, type SessionSubagentRunInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
 import type { GoalRecordSummary, PiWebFleetReport, PiWebFleetRunResponse } from "../../../shared/apiTypes";import type { AppAction } from "../actions";
 import { initialAppState, type AppState } from "../appState";
 import { isSessionActive } from "../../../shared/activity";
@@ -420,12 +420,18 @@ export class PiWebApp extends LitElement {
     if (session === undefined) return;
     try {
       const machineId = selectedMachineId(this.state);
-      const snapshot = await sessionsApi.subsessions(session, machineId);
+      // Both reads on the same tick: they refresh together and the strip never
+      // shows a half-updated mix of the two.
+      const [snapshot, tasks] = await Promise.all([
+        sessionsApi.subsessions(session, machineId),
+        sessionsApi.backgroundTasks(session, machineId).catch(() => this.state.backgroundTasks),
+      ]);
       if (this.state.selectedSession?.id !== session.id || selectedMachineId(this.state) !== machineId) return;
       const subagentsChanged = !sameSubagents(snapshot.subsessions, this.state.subagents);
       const runsChanged = !sameSubagentRuns(snapshot.toolRuns, this.state.subagentRuns);
-      if (!subagentsChanged && !runsChanged) return;
-      this.setState({ subagents: snapshot.subsessions, subagentRuns: snapshot.toolRuns });
+      const tasksChanged = !sameBackgroundTasks(tasks, this.state.backgroundTasks);
+      if (!subagentsChanged && !runsChanged && !tasksChanged) return;
+      this.setState({ subagents: snapshot.subsessions, subagentRuns: snapshot.toolRuns, backgroundTasks: tasks });
     } catch {
       // A failed read leaves the previous strip; the error banner shows why.
     }
@@ -2599,6 +2605,11 @@ export class PiWebApp extends LitElement {
     void this.sessions.openSubagentRunOutput(run);
   };
 
+  private readonly handleOpenBackgroundTask = (task: SessionBackgroundTaskInfo): void => {
+    if (!task.hasOutput) return;
+    void this.sessions.openBackgroundTaskOutput(task);
+  };
+
   private readonly handleOpenSubagentSession = (info: SessionSubagentInfo): void => {
     this.openSubagent(info);
   };
@@ -2669,7 +2680,7 @@ export class PiWebApp extends LitElement {
 
   private renderChatView(state: AppState, session: SessionInfo) {
     return html`
-      <chat-view .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .loadingMore=${state.isLoadingEarlierMessages} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk} .pendingDialogs=${state.pendingDialogs} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onDismissClosedDialog=${this.handleDismissClosedDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .notificationInbox=${selectedNotificationView(state.selectedNotificationInbox)} .subagents=${state.subagents} .subagentRuns=${state.subagentRuns} .onOpenSubagent=${this.handleOpenSubagentSession} .onOpenSubagentRun=${this.handleOpenSubagentRun} .onClearServerQueue=${this.handleClearServerQueue} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onDismissWarning=${this.handleDismissWarning} .onDismissNotification=${this.handleDismissNotification} .onDismissAllNotifications=${this.handleDismissAllNotifications} .warningsVisible=${!this.sessionWarningVisibility.collapsed} .onToggleWarnings=${this.handleToggleWarnings} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())}></chat-view>
+      <chat-view .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .loadingMore=${state.isLoadingEarlierMessages} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk} .pendingDialogs=${state.pendingDialogs} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onDismissClosedDialog=${this.handleDismissClosedDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .notificationInbox=${selectedNotificationView(state.selectedNotificationInbox)} .subagents=${state.subagents} .subagentRuns=${state.subagentRuns} .backgroundTasks=${state.backgroundTasks} .onOpenSubagent=${this.handleOpenSubagentSession} .onOpenSubagentRun=${this.handleOpenSubagentRun} .onOpenBackgroundTask=${this.handleOpenBackgroundTask} .onClearServerQueue=${this.handleClearServerQueue} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onDismissWarning=${this.handleDismissWarning} .onDismissNotification=${this.handleDismissNotification} .onDismissAllNotifications=${this.handleDismissAllNotifications} .warningsVisible=${!this.sessionWarningVisibility.collapsed} .onToggleWarnings=${this.handleToggleWarnings} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())}></chat-view>
     `;
   }
 
@@ -2879,6 +2890,15 @@ function shouldRefreshMachineActivity(machine: Machine, health: MachineHealth | 
 
 function patchChangesState(state: AppState, patch: Partial<AppState>): boolean {
   return Object.entries(patch).some(([key, value]) => Reflect.get(state, key) !== value);
+}
+
+/** Only the fields the strip shows: a byte counter ticking must not re-render. */
+function sameBackgroundTasks(left: readonly SessionBackgroundTaskInfo[], right: readonly SessionBackgroundTaskInfo[]): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((entry, index) => {
+    const other = right[index];
+    return other?.id === entry.id && other.status === entry.status && other.exitCode === entry.exitCode;
+  });
 }
 
 function sameSubagents(left: readonly SessionSubagentInfo[], right: readonly SessionSubagentInfo[]): boolean {

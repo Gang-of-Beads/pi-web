@@ -1,4 +1,4 @@
-import type { AuthProviderOption, CommandOption, CommandResult, ExtensionDialogAnswer, ExtensionDialogCloseReason, FileContentResponse, FileTreeEntry, GoalRecordSummary, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingAskUser, PendingExtensionDialog, PiWebSelfUpdateStatus, PiWebStatusResponse, Project, QueuedSessionMessage, SessionActivity, SessionInfo, SessionModelCatalogEntry, SessionStatus, SessionSubagentInfo, SessionSubagentRunInfo, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";import type { ChatLine } from "./components/shared";
+import type { AuthProviderOption, CommandOption, CommandResult, ExtensionDialogAnswer, ExtensionDialogCloseReason, FileContentResponse, FileTreeEntry, GoalRecordSummary, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingAskUser, PendingExtensionDialog, PiWebSelfUpdateStatus, PiWebStatusResponse, Project, QueuedSessionMessage, SessionActivity, SessionInfo, SessionModelCatalogEntry, SessionStatus, SessionBackgroundTaskInfo, SessionSubagentInfo, SessionSubagentRunInfo, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";import type { ChatLine } from "./components/shared";
 import type { MachineStatusSnapshot } from "../../shared/machineStatus";
 import type { QualifiedContributionId } from "./plugins/ids";
 import type { SelectedSessionNotificationInbox } from "./sessionNotifications";
@@ -33,6 +33,7 @@ export interface AppState {
   selectedSession: SessionInfo | undefined;
   /** Subagents (child sessions) of the selected session, most urgent first. */
   subagents: readonly SessionSubagentInfo[];
+  backgroundTasks: readonly SessionBackgroundTaskInfo[];
   /** Subagent-tool runs for the selected session; see server/sessions/subagentRuns.ts. */
   subagentRuns: readonly SessionSubagentRunInfo[];
   status: SessionStatus | undefined;
@@ -179,6 +180,7 @@ export function initialAppState(): AppState {
     selectedWorkspace: undefined,
     selectedSession: undefined,
     subagents: [],
+    backgroundTasks: [],
     subagentRuns: [],
     status: undefined,
     activity: undefined,

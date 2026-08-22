@@ -1440,6 +1440,28 @@ export interface SessionSubagentsSnapshot {
 }
 
 /** One subagent-tool run belonging to a parent session. */
+/**
+ * A shell command the background-task tool is running outside the turn.
+ *
+ * Reported per session even though the tool's own directory is per server
+ * process: ownership comes from the session transcript, which records the
+ * task's output path when it starts.
+ */
+export interface SessionBackgroundTaskInfo {
+  readonly id: string;
+  readonly name: string;
+  readonly command: string;
+  /** The tool's own status, except that a running record with a dead process reads "lost". */
+  readonly status: string;
+  readonly startedAt?: string | undefined;
+  readonly endedAt?: string | undefined;
+  /** Wall-clock milliseconds: final when finished, elapsed while running. */
+  readonly durationMs?: number | undefined;
+  readonly exitCode?: number | undefined;
+  readonly bytesWritten: number;
+  readonly hasOutput: boolean;
+}
+
 export interface SessionSubagentRunInfo {
   readonly runId: string;
   readonly agent: string;
