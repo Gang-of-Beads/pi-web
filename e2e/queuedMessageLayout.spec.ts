@@ -58,6 +58,7 @@ test.describe("queued messages on a phone", () => {
       await expect.poll(async () => (await queuedRowTexts(page)).length, { timeout: 20_000, message: "the queued panel must be showing before it is measured" })
         .toBe(2);
 
+      await waitForChatAtBottom(page);
       const layout = await chatLayout(page);
       expect(layout.panel, "the queued panel must be on screen to be measured").not.toBeNull();
       // Inside the scroller, not stacked between the transcript and the
@@ -127,6 +128,31 @@ async function chatLayout(page: Page): Promise<ChatLayout> {
       panel: panelBox === undefined ? null : { top: Math.round(panelBox.top), bottom: Math.round(panelBox.bottom) },
     };
   });
+}
+
+/**
+ * Wait for the transcript to settle at the bottom, where the queue lives.
+ *
+ * The panel is part of the conversation, so before the view has finished
+ * auto-scrolling it sits below the fold and its bounding box is naturally past
+ * the composer - which is what the occlusion assertion measures. Measuring
+ * without waiting therefore failed intermittently and instantly (panel bottom
+ * 1443 against a composer top of 686) on a machine busy enough to delay the
+ * scroll by a frame. Seen 2026-08-22, once in two full suite runs.
+ *
+ * Asserting the scroll rather than forcing it: if the view stops following its
+ * own conversation, that is a real defect and this should say so.
+ */
+async function waitForChatAtBottom(page: Page): Promise<void> {
+  await expect.poll(async () => await page.evaluate(() => {
+    const chat = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("chat-view")?.shadowRoot;
+    const scroller = chat?.querySelector(".chat");
+    if (scroller === null || scroller === undefined) return -1;
+    // Distance from the bottom, rounded: sub-pixel layout and smooth scrolling
+    // both leave a fraction that never reaches exactly zero.
+    return Math.round(scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight);
+  }), { timeout: 10_000, message: "the transcript must settle at the bottom, where the queue is rendered" })
+    .toBeLessThanOrEqual(2);
 }
 
 async function scrollChatToTop(page: Page): Promise<{ scrollTop: number; panelTop: number; chatTop: number; chatBottom: number }> {
