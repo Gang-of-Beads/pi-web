@@ -26,6 +26,7 @@ import { selectedMachineId } from "../controllers/types";
 import type { RecoveredPrompt } from "../resendMessage";
 import { keyboardInset } from "../appShell/keyboardInset";
 import { machineSessionKey } from "../machineKeys";
+import { shouldPollSessionActivity } from "../sessionActivityPolling";
 import { sessionCleanupRequestKey } from "../sessionCleanupUi";
 import { selectedNotificationView } from "../sessionNotifications";
 import { SessionUnreadController } from "../sessionUnread";
@@ -87,6 +88,13 @@ import { appStyles } from "./shared";
 
 
 const PI_WEB_STATUS_REFRESH_MS = 15 * 60 * 1000;
+/**
+ * How often the open session re-reads its subagents, tool runs and background
+ * tasks. Fast enough that a child spawned mid-conversation shows up while the
+ * reader is still looking at the answer that announced it, cheap enough to run
+ * for as long as the tab is in front.
+ */
+const SUBAGENT_REFRESH_MS = 4000;
 const PI_WEB_STATUS_DEFER_MS = 750;
 const REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS = [1_000, 3_000, 8_000, 15_000, 30_000] as const;
 const GLOBAL_SHORTCUT_LISTENER_OPTIONS = { capture: true } as const;
@@ -217,6 +225,7 @@ export class PiWebApp extends LitElement {
   private piWebStatusTimer: number | undefined;
   private piWebStatusDeferredTimer: number | undefined;
   private workspaceDeletionPollTimer: number | undefined;
+  private subagentPollTimer: number | undefined;
   private refreshingWorkspaceDeletionRuns = false;
   private readonly handledWorkspaceDeletionRunIds = new Set<string>();
   private readonly terminalCommandRunRuntimes = new Map<string, TerminalCommandRunsInternalRuntime>();
@@ -319,6 +328,12 @@ export class PiWebApp extends LitElement {
     this.appShell.repairViewportPosition();
     this.retryPendingRemoteRouteRestoreSoon();
   };
+
+  /** A tab coming back to the front should show current activity at once. */
+  private readonly onDocumentVisibilityChange = () => {
+    this.updateSubagentPolling();
+    if (document.visibilityState === "visible") void this.refreshSubagents();
+  };
   private readonly onSystemLightThemeChange = () => {
     if (this.themePreference.auto) this.applyPreferredTheme(false);
   };
@@ -405,12 +420,29 @@ export class PiWebApp extends LitElement {
   }
 
   /**
-   * Refresh the subagent strip for the selected session.
+   * Poll the selected session's activity while its tab is on screen.
    *
-   * Fetch-on-select is enough: a subagent appears the moment its parent spawns
-   * it, and opening the parent again is when the user wants to see them. The
-   * strip disappears on its own when a subagent finishes.
+   * Fetch-on-select was not enough. The usual way to get a subagent is to ask
+   * for one in the session you are already reading, and nothing re-read the
+   * list afterwards, so the drawer stayed empty until the reader happened to
+   * switch sessions and come back. Polling stops when the document is hidden
+   * and when no session is selected, so a backgrounded tab costs nothing.
    */
+  private updateSubagentPolling(): void {
+    const shouldPoll = shouldPollSessionActivity({
+      hasSelectedSession: this.state.selectedSession !== undefined,
+      documentVisible: document.visibilityState === "visible",
+    });
+    if (shouldPoll && this.subagentPollTimer === undefined) {
+      this.subagentPollTimer = window.setInterval(() => { void this.refreshSubagents(); }, SUBAGENT_REFRESH_MS);
+      return;
+    }
+    if (!shouldPoll && this.subagentPollTimer !== undefined) {
+      window.clearInterval(this.subagentPollTimer);
+      this.subagentPollTimer = undefined;
+    }
+  }
+
   /** Open a subagent session listed anywhere in the machine. */
   private openSubagent(info: SessionSubagentInfo): void {
     const session = this.quickSwitcherSessions.find((entry) => entry.id === info.sessionId) ??
@@ -568,6 +600,8 @@ export class PiWebApp extends LitElement {
     this.connectRealtime();
     this.syncSessionUnreadMachines();
     this.piWebStatusTimer = window.setInterval(() => { this.schedulePiWebStatusRefresh(); }, PI_WEB_STATUS_REFRESH_MS);
+    document.addEventListener("visibilitychange", this.onDocumentVisibilityChange);
+    this.updateSubagentPolling();
     void this.loadClientConfig();
     void this.refreshSelfUpdate();
     void this.ensureGatewayPluginsLoaded();
@@ -618,6 +652,9 @@ export class PiWebApp extends LitElement {
     this.clearScheduledPiWebStatusRefresh();
     if (this.workspaceDeletionPollTimer !== undefined) window.clearInterval(this.workspaceDeletionPollTimer);
     this.workspaceDeletionPollTimer = undefined;
+    if (this.subagentPollTimer !== undefined) window.clearInterval(this.subagentPollTimer);
+    this.subagentPollTimer = undefined;
+    document.removeEventListener("visibilitychange", this.onDocumentVisibilityChange);
     this.clearPendingRemoteRouteRestore();
     super.disconnectedCallback();
   }
@@ -637,6 +674,10 @@ export class PiWebApp extends LitElement {
     this.handleMachineChange(previous, this.state);
     if (machineActivitySubscriptionInputsChanged(previous, this.state)) this.syncMachineActivitySubscriptions();
     this.notifications.syncEnvironment(previous, this.state);
+    // Only the timer here: `setState` must stay free of network side effects,
+    // and the selection paths that can afford an immediate read already ask for
+    // one. The poll picks up every other path within its interval.
+    if (previous.selectedSession?.id !== this.state.selectedSession?.id) this.updateSubagentPolling();
   }
 
   private async loadProjectsAndRestoreRoute() {
@@ -1513,6 +1554,7 @@ export class PiWebApp extends LitElement {
         .onToggleMachines=${() => { this.navigationSections.toggle("machines"); }}
         .onSelectMachine=${(machine: Machine) => this.selectNavigationItem("machines", "projects", () => this.selectMachineWithMemory(machine))}
         .onRemoveMachine=${(machine: Machine) => { void this.removeMachine(machine); }}
+        .onRenameMachine=${(machine: Machine, name: string) => { void this.renameMachine(machine, name); }}
         .projects=${this.state.projects}
         .selectedProject=${this.state.selectedProject}
         .workspaces=${this.state.workspaces}
@@ -2604,8 +2646,10 @@ export class PiWebApp extends LitElement {
    * nothing to open yet, which is why those rows are inert rather than absent:
    * the point of the row is to say that the child exists and what it is doing.
    */
+  // Openable even without a result file: the server falls back to the run's own
+  // transcript, so a running child shows what it has done so far instead of
+  // being an inert row.
   private readonly handleOpenSubagentRun = (run: SessionSubagentRunInfo): void => {
-    if (!run.hasOutput) return;
     void this.sessions.openSubagentRunOutput(run);
   };
 

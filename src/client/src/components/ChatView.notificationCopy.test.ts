@@ -40,18 +40,18 @@ function viewWithNotification(): ChatView {
 }
 
 function renderTray(view: ChatView): TemplateResult {
-  // The tray renderer is private; reaching it keeps the test at the seam that
+  // The drawer renderer is private; reaching it keeps the test at the seam that
   // actually decides what the row offers.
-  const method: unknown = Reflect.get(view, "renderNotificationTray");
-  if (!isRenderNotificationTray(method)) throw new Error("ChatView.renderNotificationTray is not callable");
+  const method: unknown = Reflect.get(view, "renderTopDrawer");
+  if (!isRenderTopDrawer(method)) throw new Error("ChatView.renderTopDrawer is not callable");
   const rendered = method.call(view);
-  if (rendered === null) throw new Error("expected a notification tray");
+  if (rendered === null) throw new Error("expected a session drawer");
   return rendered;
 }
 
-type RenderNotificationTray = (this: ChatView) => TemplateResult | null;
+type RenderTopDrawer = (this: ChatView) => TemplateResult | null;
 
-function isRenderNotificationTray(value: unknown): value is RenderNotificationTray {
+function isRenderTopDrawer(value: unknown): value is RenderTopDrawer {
   return typeof value === "function";
 }
 

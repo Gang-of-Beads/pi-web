@@ -54,6 +54,8 @@ describe("PiWebApp session unread wiring", () => {
       baseURI: "https://pi.example.test/",
       get visibilityState() { return documentState.visible ? "visible" : "hidden"; },
       hasFocus: () => documentState.focused,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
     });
     const app = createApp();
     enableUnread(app);
@@ -261,11 +263,14 @@ function createApp(storedValues: Record<string, string> = {}, mobileNavigation =
     matchMedia,
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
+    // The app polls the open session's activity, so the fake window has to be
+    // able to hand out and cancel a timer.
+    setInterval: () => 0,
     clearInterval: () => undefined,
     clearTimeout: () => undefined,
   });
   if (typeof document === "undefined") {
-    vi.stubGlobal("document", { baseURI: "https://pi.example.test/", visibilityState: "visible", hasFocus: () => true });
+    vi.stubGlobal("document", { baseURI: "https://pi.example.test/", visibilityState: "visible", hasFocus: () => true, addEventListener: () => undefined, removeEventListener: () => undefined });
   }
   vi.stubGlobal("requestAnimationFrame", () => 1);
   return new PiWebApp();

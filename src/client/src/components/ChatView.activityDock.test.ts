@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
 import type { SessionActivity, SessionStatus } from "../../../shared/apiTypes";
-import { ChatView } from "./ChatView";
+import { backgroundWorkLabel, ChatView } from "./ChatView";
 
 function status(over: Partial<SessionStatus>): SessionStatus {
   return {
@@ -73,5 +73,19 @@ describe("ChatView activity dock states", () => {
     const host = view.renderRoot;
     expect(host.querySelectorAll(".state-dot").length).toBe(3);
     expect(host.querySelector(".activity-text")?.textContent).toContain("Sending");
+  });
+});
+describe("backgroundWorkLabel", () => {
+  // "idle" alone is a lie while this chat's children are still running: the
+  // assistant's turn is over, the work is not.
+  it("names the live background work that outlives the turn", () => {
+    expect(backgroundWorkLabel({ rows: [], runRows: [{ status: "running" }], taskRows: [] })).toBe("idle · 1 background run");
+    expect(backgroundWorkLabel({ rows: [{ status: "working" }], runRows: [{ status: "running" }], taskRows: [{ status: "running" }] }))
+      .toBe("idle · 3 background runs");
+  });
+
+  it("leaves a quiet session alone", () => {
+    expect(backgroundWorkLabel({ rows: [], runRows: [{ status: "done" }], taskRows: [{ status: "failed" }] })).toBeUndefined();
+    expect(backgroundWorkLabel(undefined)).toBeUndefined();
   });
 });

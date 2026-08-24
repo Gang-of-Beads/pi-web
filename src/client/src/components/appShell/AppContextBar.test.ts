@@ -3,12 +3,14 @@ import type { Machine } from "../../api";
 import { shouldShowMachineContext } from "./AppContextBar";
 
 describe("shouldShowMachineContext", () => {
-  it("hides the machine crumb when there is no machine choice", () => {
+  it("hides the machine crumb only before any machine is known", () => {
     expect(shouldShowMachineContext([])).toBe(false);
-    expect(shouldShowMachineContext([machine("local")])).toBe(false);
   });
 
-  it("shows the machine crumb when multiple machines exist", () => {
+  // The crumb is the mobile route to machine management: renaming this device
+  // and adding another one live behind it, so one machine is enough to show it.
+  it("shows the machine crumb as soon as a machine exists", () => {
+    expect(shouldShowMachineContext([machine("local")])).toBe(true);
     expect(shouldShowMachineContext([machine("local"), machine("remote-a")])).toBe(true);
   });
 });

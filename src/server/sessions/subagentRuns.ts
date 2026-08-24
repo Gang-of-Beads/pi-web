@@ -23,6 +23,8 @@ import type { SessionSubagentRunInfo } from "../../shared/apiTypes.js";
 const RUNNING_STALE_AFTER_MS = 10 * 60 * 1000;
 /** Enough of the tail to find the last step without reading a long transcript. */
 const TAIL_BYTES = 64 * 1024;
+/** The session header records sit in the first few lines of a transcript. */
+const HEAD_BYTES = 8 * 1024;
 
 interface RunArtifact {
   agent?: string;
@@ -43,7 +45,7 @@ export async function listSubagentRuns(sessionDir: string, parentSessionId: stri
   const artifacts = await readArtifacts(join(sessionDir, "subagent-artifacts"));
   const runs: SessionSubagentRunInfo[] = [];
   for (const runId of runIds) {
-    const run = await describeRun(runsDir, runId, artifacts.get(runId), now);
+    const run = await describeRun(runsDir, runId, artifacts, now);
     if (run !== undefined) runs.push(run);
   }
   // Live work first, then most recent: the question this answers is usually
@@ -55,9 +57,19 @@ export async function listSubagentRuns(sessionDir: string, parentSessionId: stri
   });
 }
 
-async function describeRun(runsDir: string, runId: string, artifact: RunArtifact | undefined, now: number): Promise<SessionSubagentRunInfo | undefined> {
+async function describeRun(runsDir: string, runId: string, artifacts: Map<string, RunArtifact>, now: number): Promise<SessionSubagentRunInfo | undefined> {
   const runDir = join(runsDir, runId);
   const transcript = await findTranscript(runDir);
+  // The run directory and the artifacts are named in two different id spaces:
+  // the directory carries the child session's id, the artifacts the tool's own
+  // run id. The child's transcript names itself after the tool run
+  // ("subagent-<agent>-<runId>-<attempt>"), which is the only link between
+  // them; without following it every finished run reported "unknown", showed
+  // the generic agent name, and could not be opened because its output looked
+  // absent.
+  const identity = transcript === undefined ? undefined : await readRunIdentity(transcript);
+  const artifact = artifacts.get(identity?.runId ?? runId) ?? artifacts.get(runId);
+  const artifactRunId = identity?.runId !== undefined && artifacts.has(identity.runId) ? identity.runId : runId;
   let startedAt = artifact?.timestamp;
   let lastWriteMs: number | undefined;
   if (transcript !== undefined) {
@@ -79,8 +91,8 @@ async function describeRun(runsDir: string, runId: string, artifact: RunArtifact
   const elapsedMs = artifact?.durationMs ?? Math.max(0, (lastWriteMs ?? now) - Date.parse(startedAt));
   const lastActivity = status === "running" && transcript !== undefined ? await lastTranscriptStep(transcript) : undefined;
   return {
-    runId,
-    agent: artifact?.agent ?? "subagent",
+    runId: artifactRunId,
+    agent: artifact?.agent ?? identity?.agent ?? "subagent",
     status,
     elapsedMs,
     startedAt,
@@ -104,6 +116,45 @@ function runStatus(artifact: RunArtifact | undefined, lastWriteMs: number | unde
   if (artifact !== undefined) return "done";
   if (lastWriteMs === undefined) return "unknown";
   return now - lastWriteMs < RUNNING_STALE_AFTER_MS ? "running" : "unknown";
+}
+
+/** How the subagent tool names a child session: agent and originating run id. */
+export function parseSubagentSessionName(name: string): { agent: string; runId: string } | undefined {
+  const match = /^subagent-(?<agent>.+)-(?<runId>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:-\d+)?$/u.exec(name);
+  const agent = match?.groups?.["agent"];
+  const runId = match?.groups?.["runId"];
+  return agent === undefined || runId === undefined ? undefined : { agent, runId };
+}
+
+/**
+ * The tool run a child transcript belongs to, read from its `session_info`
+ * record. Only the head is read: the record is written before any model output.
+ */
+async function readRunIdentity(transcript: string): Promise<{ agent: string; runId: string } | undefined> {
+  let head: string;
+  try {
+    const text = await readFile(transcript, "utf8");
+    head = text.slice(0, HEAD_BYTES);
+  } catch {
+    return undefined;
+  }
+  for (const line of head.split("\n")) {
+    if (!line.includes("\"session_info\"")) continue;
+    let record: unknown;
+    try {
+      record = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const name = isRecordWithName(record) ? record.name : undefined;
+    const identity = name === undefined ? undefined : parseSubagentSessionName(name);
+    if (identity !== undefined) return identity;
+  }
+  return undefined;
+}
+
+function isRecordWithName(value: unknown): value is { name: string } {
+  return isRecord(value) && typeof value["name"] === "string";
 }
 
 async function findTranscript(runDir: string): Promise<string | undefined> {
@@ -219,23 +270,84 @@ async function readArtifacts(artifactsDir: string): Promise<Map<string, RunArtif
  * capped because a subagent's answer can be long enough to be worth truncating
  * rather than streaming into a chat line.
  */
-export async function readSubagentRunOutput(sessionDir: string, runId: string, maxChars = 20000): Promise<string | undefined> {
+export async function readSubagentRunOutput(
+  sessionDir: string,
+  runId: string,
+  options: { parentSessionId?: string; maxChars?: number } = {},
+): Promise<string | undefined> {
+  const maxChars = options.maxChars ?? 20000;
   if (runId === "" || runId.includes("/") || runId.includes("\\") || runId.includes("..")) return undefined;
   const artifactsDir = join(sessionDir, "subagent-artifacts");
-  let names: string[];
-  try {
-    names = await readdir(artifactsDir);
-  } catch {
-    return undefined;
-  }
+  const names = await listNames(artifactsDir);
   const name = names.find((entry) => entry.startsWith(`${runId}_`) && entry.endsWith("_output.md"));
-  if (name === undefined) return undefined;
+  if (name !== undefined) {
+    try {
+      const text = await readFile(join(artifactsDir, name), "utf8");
+      return clamp(text, maxChars);
+    } catch {
+      return undefined;
+    }
+  }
+  // No result file: the run is still going, or it ended without writing one.
+  // Its transcript is the only account of what it did, and a row that opens
+  // nothing is worse than a row that opens the work in progress.
+  return options.parentSessionId === undefined
+    ? undefined
+    : await readRunProgress(join(sessionDir, options.parentSessionId), runId, maxChars);
+}
+
+/** Directory entries, or none when the directory does not exist yet. */
+async function listNames(dir: string): Promise<string[]> {
   try {
-    const text = await readFile(join(artifactsDir, name), "utf8");
-    return text.length > maxChars ? `${text.slice(0, maxChars)}\n\n[truncated]` : text;
+    return await readdir(dir);
+  } catch {
+    return [];
+  }
+}
+
+/** What a run has said so far, newest last, for a run with no result file. */
+async function readRunProgress(runsDir: string, runId: string, maxChars: number): Promise<string | undefined> {
+  const transcript = await findRunTranscript(runsDir, runId);
+  if (transcript === undefined) return undefined;
+  let text: string;
+  try {
+    const stats = await statOrUndefined(transcript);
+    const contents = await readFile(transcript, "utf8");
+    text = stats !== undefined && stats.size > TAIL_BYTES ? contents.slice(-TAIL_BYTES) : contents;
   } catch {
     return undefined;
   }
+  const steps: string[] = [];
+  for (const line of text.split("\n")) {
+    if (line.trim() === "") continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue; // a truncated first line from slicing, or a partial write
+    }
+    const step = stepFromEntry(parsed);
+    if (step !== undefined) steps.push(step);
+  }
+  if (steps.length === 0) return undefined;
+  return clamp(`_This run has not written a result yet. Its latest steps:_\n\n${steps.slice(-40).map((step) => `- ${step}`).join("\n")}`, maxChars);
+}
+
+/** The transcript of a run, found by directory name or by the tool run it names. */
+async function findRunTranscript(runsDir: string, runId: string): Promise<string | undefined> {
+  const direct = await findTranscript(join(runsDir, runId));
+  if (direct !== undefined) return direct;
+  for (const candidate of await listDirectories(runsDir)) {
+    const transcript = await findTranscript(join(runsDir, candidate));
+    if (transcript === undefined) continue;
+    const identity = await readRunIdentity(transcript);
+    if (identity?.runId === runId) return transcript;
+  }
+  return undefined;
+}
+
+function clamp(text: string, maxChars: number): string {
+  return text.length > maxChars ? `${text.slice(0, maxChars)}\n\n[truncated]` : text;
 }
 
 /** The first meaningful line of a finished run's result, as its row label. */

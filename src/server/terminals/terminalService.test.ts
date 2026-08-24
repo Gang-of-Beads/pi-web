@@ -25,7 +25,12 @@ describe("interactive shell arguments", () => {
 // TerminalService spawns a POSIX shell (/bin/bash with -lc and commands like
 // printf/true/exit). The terminal feature is not supported on native Windows,
 // so these tests are skipped there rather than asserting Unix shell behavior.
-describe.skipIf(process.platform === "win32")("TerminalService command runs", () => {
+// Each case spawns a real PTY and waits for a shell to run and exit. Under the
+// full suite's parallelism that regularly exceeds Vitest's 5s default, and a
+// timeout there reports machine load rather than anything about the service.
+const shellSpawnTimeoutMs = 30_000;
+
+describe.skipIf(process.platform === "win32")("TerminalService command runs", { timeout: shellSpawnTimeoutMs }, () => {
   it("closes all terminal records for a cwd", () => {
     const service = new TerminalService();
     try {

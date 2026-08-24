@@ -2347,7 +2347,9 @@ export class PiSessionService implements SessionRouteService {
     const session = await this.getOrOpen(ref);
     const sessionFile = session.sessionManager.getSessionFile();
     if (sessionFile === undefined) return undefined;
-    return readSubagentRunOutput(dirname(sessionFile), runId);
+    // The run directories sit next to the session file, under a directory named
+    // after it, so a run with no artifact can still be read from its transcript.
+    return readSubagentRunOutput(dirname(sessionFile), runId, { parentSessionId: basename(sessionFile, ".jsonl") });
   }
 
   /**

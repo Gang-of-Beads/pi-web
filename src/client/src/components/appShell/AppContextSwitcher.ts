@@ -31,7 +31,9 @@ export class AppContextSwitcher extends LitElement {
   @property({ attribute: false }) onAddProject?: () => void;
 
   override render() {
-    const showMachines = this.machines.length > 1;
+    // Same rule as the navigation panel: one machine still needs a way to
+    // reach machine management and "Add machine".
+    const showMachines = this.machines.length > 0;
     return html`
       <nav aria-label="Current context">
         ${showMachines

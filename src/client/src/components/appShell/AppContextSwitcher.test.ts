@@ -47,9 +47,16 @@ describe("app-context-switcher", () => {
     expect(values).toEqual(["Project billing", "Workspace main"]);
   });
 
-  it("hides the machine step until there is a machine to choose between", async () => {
-    const one = await mount((el) => { el.machines = [machine("local")]; });
-    expect(chips(one)).toHaveLength(2);
+  // The machine step is how a single-machine install reaches machine
+  // management at all (rename the local machine, add a second one), so it
+  // appears as soon as there is a machine, not only when there is a choice.
+  it("shows the machine step whenever a machine exists, and none before that", async () => {
+    const none = await mount((el) => { el.machines = []; });
+    expect(chips(none)).toHaveLength(2);
+
+    const one = await mount((el) => { el.machines = [machine("local")]; el.selectedMachine = machine("local"); });
+    expect(chips(one)).toHaveLength(3);
+    expect(chips(one)[0]?.textContent).toContain("Machine");
 
     const several = await mount((el) => { el.machines = [machine("local"), machine("remote-a")]; el.selectedMachine = machine("local"); });
     expect(chips(several)[0]?.textContent).toContain("Machine");

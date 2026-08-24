@@ -1,5 +1,5 @@
 import { LitElement, css, html } from "lit";
-import { customElement, property } from "lit/decorators.js";
+import { customElement, property, state } from "lit/decorators.js";
 import type { Machine, MachineHealth } from "../../api";
 import type { PiWebFleetReport, PiWebFleetRunResponse } from "../../../../shared/apiTypes";
 import "./SettingsFleetSection";
@@ -24,8 +24,11 @@ export class SettingsMachinesPanel extends LitElement {
   @property({ attribute: false }) onRefreshFleet?: () => void | Promise<void>;
   @property({ attribute: false }) onRunFleet?: (operation: "restart" | "update", machineIds?: readonly string[]) => Promise<PiWebFleetRunResponse | undefined>;
 
-  private renamingId: string | undefined;
-  private draftName = "";
+  // Reactive: the rename form only exists between these two assignments, so a
+  // plain field left the Rename button looking dead - the click landed and
+  // nothing re-rendered.
+  @state() private renamingId: string | undefined;
+  @state() private draftName = "";
 
   override render() {
     return html`

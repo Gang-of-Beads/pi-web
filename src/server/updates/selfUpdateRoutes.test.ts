@@ -84,7 +84,19 @@ describe("self-update routes", () => {
 describe("self-update command mode", () => {
   afterEach(() => {
     delete process.env["PI_WEB_UPDATE_COMMAND"];
+    restorePlatform();
   });
+
+  const realPlatform = process.platform;
+
+  /** Pin `process.platform` for one test; `restorePlatform` puts it back. */
+  function withPlatform(platform: NodeJS.Platform): void {
+    Object.defineProperty(process, "platform", { value: platform, configurable: true });
+  }
+
+  function restorePlatform(): void {
+    Object.defineProperty(process, "platform", { value: realPlatform, configurable: true });
+  }
 
   it("reports enabled with the built version when a command is configured", async () => {
     process.env["PI_WEB_UPDATE_COMMAND"] = "/nix/store/xxx-pi-web-autoupdate/bin/pi-web-autoupdate --force";
@@ -111,6 +123,9 @@ describe("self-update command mode", () => {
   });
 
   it("hands the configured command to systemd-run, detached", async () => {
+    // Pinned to Linux: the detach strategy is platform-dependent, and this
+    // suite must assert the same thing on a maintainer's Mac as in CI.
+    withPlatform("linux");
     process.env["PI_WEB_UPDATE_COMMAND"] = "/nix/store/xxx/bin/pi-web-autoupdate --force";
     const spawnMock = vi.mocked(childProcess.spawn);
     spawnMock.mockClear();
@@ -123,5 +138,18 @@ describe("self-update command mode", () => {
     // apply identifiable in systemd's journal.
     expect(args).toEqual(expect.arrayContaining(["--unit=pi-web-self-update", "/bin/bash", "-lc"]));
     expect(args?.at(-1)).toBe("/nix/store/xxx/bin/pi-web-autoupdate --force");
+  });
+
+  it("falls back to a detached bash child on macOS, which has no systemd-run", async () => {
+    withPlatform("darwin");
+    process.env["PI_WEB_UPDATE_COMMAND"] = "/opt/homebrew/bin/pi-web-autoupdate --force";
+    const spawnMock = vi.mocked(childProcess.spawn);
+    spawnMock.mockClear();
+    const service = createSelfUpdateService(undefined);
+    await service.apply();
+    expect(spawnMock).toHaveBeenCalledOnce();
+    const [binary, args] = spawnMock.mock.calls[0] ?? [];
+    expect(binary).toBe("/bin/bash");
+    expect(args).toEqual(["-lc", "/opt/homebrew/bin/pi-web-autoupdate --force"]);
   });
 });

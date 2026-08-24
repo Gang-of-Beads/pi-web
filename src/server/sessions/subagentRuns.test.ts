@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, writeFile, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { listSubagentRuns } from "./subagentRuns";
+import { listSubagentRuns, parseSubagentSessionName } from "./subagentRuns";
 
 // The real layout: the run directory is named after the transcript *file*,
 // timestamp prefix and all. The first version of this fixture used a bare id
@@ -140,5 +140,51 @@ describe("listSubagentRuns", () => {
     const [run] = await listSubagentRuns(dir, PARENT);
 
     expect(run?.lastActivity).toBe("grep");
+  });
+});
+
+describe("parseSubagentSessionName", () => {
+  it("reads the agent and originating run id a child session names itself after", () => {
+    expect(parseSubagentSessionName("subagent-researcher-428284b1-2706-46f8-aa1b-b9efc4766fc7-1"))
+      .toEqual({ agent: "researcher", runId: "428284b1-2706-46f8-aa1b-b9efc4766fc7" });
+    // Agent names may contain dashes of their own.
+    expect(parseSubagentSessionName("subagent-code-reviewer-428284b1-2706-46f8-aa1b-b9efc4766fc7"))
+      .toEqual({ agent: "code-reviewer", runId: "428284b1-2706-46f8-aa1b-b9efc4766fc7" });
+  });
+
+  it("ignores names that are not subagent sessions", () => {
+    expect(parseSubagentSessionName("Gree")).toBeUndefined();
+    expect(parseSubagentSessionName("subagent-researcher-not-a-uuid")).toBeUndefined();
+  });
+});
+
+describe("runs whose directory and artifacts use different ids", () => {
+  // The layout this repository actually produces: the run directory carries the
+  // child session id while the artifacts carry the tool's run id. Without
+  // following the child's own session name every finished run reported
+  // "unknown", lost its agent name and task, and could not be opened.
+  it("joins them through the child session name", async () => {
+    const dir = await sessionDir();
+    const childSessionId = "91c34f97-a9a1-4c8c-85b3-2061fe772ae2";
+    const toolRunId = "428284b1-2706-46f8-aa1b-b9efc4766fc7";
+    await writeTranscript(dir, childSessionId, [
+      { type: "session", version: 3, id: "01a02f78-68fa-7385-a64d-9b08b52f7cd7" },
+      { type: "session_info", name: `subagent-researcher-${toolRunId}-1` },
+      { type: "message", role: "assistant" },
+    ]);
+    await writeArtifact(dir, toolRunId, "researcher", { task: "research SpaceX", exitCode: 0, timestamp: "2026-08-23T16:33:34.000Z", durationMs: 5000 });
+
+    const [run] = await listSubagentRuns(dir, PARENT);
+
+    expect(run).toMatchObject({ runId: toolRunId, agent: "researcher", status: "done", task: "research SpaceX", hasOutput: true });
+  });
+
+  it("still describes a run whose transcript names no tool run", async () => {
+    const dir = await sessionDir();
+    await writeTranscript(dir, "91c34f97-a9a1-4c8c-85b3-2061fe772ae2", [{ type: "session", version: 3 }]);
+
+    const [run] = await listSubagentRuns(dir, PARENT);
+
+    expect(run).toMatchObject({ runId: "91c34f97-a9a1-4c8c-85b3-2061fe772ae2", agent: "subagent", hasOutput: false });
   });
 });

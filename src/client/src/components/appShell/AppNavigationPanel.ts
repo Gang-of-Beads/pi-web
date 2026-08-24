@@ -49,6 +49,7 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) onAddMachine?: () => void;
   @property({ attribute: false }) onOpenSessionTree?: (session: SessionInfo) => void | Promise<void>;
   @property({ attribute: false }) onRefreshMachine?: (machine: Machine) => void | Promise<void>;
+  @property({ attribute: false }) onRenameMachine?: (machine: Machine, name: string) => void | Promise<void>;
   @property({ attribute: false }) onOpenMachine?: (machine: Machine) => void;
   @property({ attribute: false }) onQuickSwitch?: () => void;
   @property({ attribute: false }) onAddProject?: () => void;
@@ -219,7 +220,9 @@ export class AppNavigationPanel extends LitElement {
         .collapsed=${collapsible ? this.machinesCollapsed : false}
         .onToggleCollapsed=${() => { this.onToggleMachines?.(); }}
         .onSelect=${(machine: Machine) => this.onSelectMachine?.(machine)}
+        .onAdd=${() => { this.onAddMachine?.(); }}
         .onRemove=${(machine: Machine) => this.onRemoveMachine?.(machine)}
+        .onRename=${(machine: Machine, name: string) => this.onRenameMachine?.(machine, name)}
         .onRefresh=${(machine: Machine) => this.onRefreshMachine?.(machine)}
         .onOpen=${(machine: Machine) => { this.onOpenMachine?.(machine); }}
         .onFocusNextSection=${() => { this.focusNextFrom("machines"); }}
@@ -397,8 +400,16 @@ export class AppNavigationPanel extends LitElement {
   `;
 }
 
+/**
+ * The machines section is shown as soon as there is a machine to show.
+ *
+ * It used to appear only with a second machine, on the grounds that a
+ * single-machine install has no choice to make. That also hid the only place
+ * outside Settings where the local machine can be renamed or another machine
+ * added, so a single-machine user could not find "devices" at all.
+ */
 export function shouldShowMachinesSection(machines: readonly Machine[]): boolean {
-  return machines.length > 1;
+  return machines.length > 0;
 }
 
 function previousVisibleNavigationTarget(section: NavigationSection, machines: readonly Machine[]): NavigationSection | undefined {

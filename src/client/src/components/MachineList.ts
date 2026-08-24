@@ -20,11 +20,15 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
   @property({ type: Boolean, reflect: true }) collapsed = false;
   @property({ attribute: false }) onSelect?: (machine: Machine) => void;
   @property({ attribute: false }) onRemove?: (machine: Machine) => void | Promise<void>;
+  /** Rename any machine, local included: the local one is a display alias. */
+  @property({ attribute: false }) onRename?: (machine: Machine, name: string) => void | Promise<void>;
   /** Re-check one machine's health; previously palette-only. */
   @property({ attribute: false }) onRefresh?: (machine: Machine) => void | Promise<void>;
   /** Open a remote machine's own PI WEB; previously palette-only. */
   @property({ attribute: false }) onOpen?: (machine: Machine) => void;
   @property({ attribute: false }) onToggleCollapsed?: () => void;
+  /** Add a machine from the list itself, not only from Settings. */
+  @property({ attribute: false }) onAdd?: () => void;
   @property({ attribute: false }) onFocusNextSection?: () => void | Promise<void>;
   @property({ attribute: false }) onCancelKeyboardNavigation?: () => void | Promise<void>;
   @state() private openMenuMachineId: string | undefined;
@@ -59,7 +63,7 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
   override render() {
     return html`
       <section>
-        <h2>${this.renderHeading()}</h2>
+        <h2>${this.renderHeading()}${this.renderAdd()}</h2>
         ${this.collapsed ? null : html`
           <div class="list-body">
             ${this.machines.map((machine) => this.renderMachine(machine))}
@@ -72,10 +76,13 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
   private renderMachine(machine: Machine) {
     const status = this.statuses[machine.id]?.status ?? machine.status ?? "unknown";
     const statusLabel = status === "online" ? "online" : status === "offline" ? "offline" : status === "error" ? "error" : "unknown";
-    const hasRemoveAction = canRemoveMachine(machine) && this.onRemove !== undefined;
+    // The local machine used to have no menu at all, so its rename lived only
+    // in a settings panel nobody found. Any machine with at least one action
+    // gets the same menu affordance.
+    const hasActions = machineRowActions(machine, { remove: this.onRemove !== undefined, rename: this.onRename !== undefined, refresh: this.onRefresh !== undefined, open: this.onOpen !== undefined }).length > 0;
     return html`
       <div
-        class=${`action-row machine-row ${this.selected?.id === machine.id ? "selected" : ""} ${hasRemoveAction ? "" : "no-actions"}`}
+        class=${`action-row machine-row ${this.selected?.id === machine.id ? "selected" : ""} ${hasActions ? "" : "no-actions"}`}
         title=${machine.baseUrl ?? machine.name}
         @keydown=${(event: KeyboardEvent) => { this.handleMachineKeydown(event, machine); }}
       >
@@ -93,7 +100,7 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
           <span class="action-name machine-primary"><span class="machine-primary-label">${machine.name}</span></span><small>${machine.kind === "local" ? "Local Pi Web" : machine.baseUrl ?? "Remote Pi Web"} · ${statusLabel}</small>
           ${this.renderActivity(machine)}
         </button>
-        ${hasRemoveAction ? this.renderMachineMenu(machine) : null}
+        ${hasActions ? this.renderMachineMenu(machine) : null}
       </div>
     `;
   }
@@ -124,12 +131,25 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
         ${open ? html`
           <div class="action-menu-panel machine-menu-panel" id=${menuId} style=${this.menuStyle} @click=${(event: MouseEvent) => { event.stopPropagation(); }}>
             ${this.onRefresh === undefined ? null : html`<button title=${`Check ${machine.name} again`} @click=${() => { this.openMenuMachineId = undefined; void this.onRefresh?.(machine); }}>Check again</button>`}
+            ${this.onRename === undefined ? null : html`<button title=${machine.kind === "local" ? "Rename this device (display name only)" : `Rename ${machine.name}`} @click=${() => { this.promptRename(machine); }}>Rename…</button>`}
             ${this.onOpen === undefined || machine.kind !== "remote" ? null : html`<button title=${`Open ${machine.name} in a new tab`} @click=${() => { this.openMenuMachineId = undefined; this.onOpen?.(machine); }}>Open PI WEB</button>`}
-            <button class="danger" title=${`Remove ${machine.name}`} @click=${() => { this.removeMachine(machine); }}>Remove</button>
+            ${canRemoveMachine(machine) && this.onRemove !== undefined ? html`<button class="danger" title=${`Remove ${machine.name}`} @click=${() => { this.removeMachine(machine); }}>Remove</button>` : null}
           </div>
         ` : null}
       </div>
     `;
+  }
+
+  /**
+   * The create control lives in the heading, like the projects list.
+   *
+   * On a phone a heading that is only a word is hidden (the context row
+   * already names the step), so a bare "Machines" heading disappeared and took
+   * the only non-Settings route to adding a machine with it.
+   */
+  private renderAdd() {
+    if (this.onAdd === undefined) return null;
+    return html`<button class="section-add" title="Add machine" aria-label="Add machine" @click=${(event: Event) => { event.stopPropagation(); this.onAdd?.(); }}><span aria-hidden="true">+</span><span class="section-add-label">Add machine</span></button>`;
   }
 
   private renderHeading() {
@@ -152,6 +172,20 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
     }
     this.menuStyle = actionMenuPanelStyle(target, { constrainTo: "viewport" });
     this.openMenuMachineId = machineId;
+  }
+
+  /**
+   * Seeded with the current name so a rename edits rather than retypes, and
+   * Cancel or an unchanged answer cannot clear a name by accident (mirrors the
+   * session list's rename).
+   */
+  private promptRename(machine: Machine): void {
+    this.openMenuMachineId = undefined;
+    const next = prompt(machine.kind === "local" ? "Name for this device:" : `Name for ${machine.name}:`, machine.name);
+    if (next === null) return;
+    const trimmed = next.trim();
+    if (trimmed === "" || trimmed === machine.name) return;
+    void this.onRename?.(machine, trimmed);
   }
 
   private removeMachine(machine: Machine): void {
@@ -189,6 +223,19 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
 
 export function canRemoveMachine(machine: Machine): boolean {
   return machine.kind === "remote";
+}
+
+/**
+ * Which row-menu actions a machine actually offers, so the menu button appears
+ * exactly when there is something behind it.
+ */
+export function machineRowActions(machine: Machine, available: { remove: boolean; rename: boolean; refresh: boolean; open: boolean }): string[] {
+  const actions: string[] = [];
+  if (available.refresh) actions.push("refresh");
+  if (available.rename) actions.push("rename");
+  if (available.open && machine.kind === "remote") actions.push("open");
+  if (available.remove && canRemoveMachine(machine)) actions.push("remove");
+  return actions;
 }
 
 function machineMenuId(machineId: string): string {

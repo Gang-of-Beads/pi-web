@@ -434,8 +434,14 @@ export class AppContextBar extends LitElement {
   `;
 }
 
+/**
+ * The Machine step appears as soon as a machine exists, matching the
+ * navigation panel and the desktop switcher: it is the only route outside
+ * Settings to renaming this device or adding another one, and hiding it left a
+ * single-machine install with no "devices" anywhere in the app.
+ */
 export function shouldShowMachineContext(machines: readonly Machine[]): boolean {
-  return machines.length > 1;
+  return machines.length > 0;
 }
 
 function machineContextLabel(machine: Machine | undefined): string {

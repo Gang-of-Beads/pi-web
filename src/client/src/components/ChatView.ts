@@ -19,8 +19,6 @@ import {
   notificationSeverityLabel,
   notificationTargetKey,
   notificationTrayHeading,
-  notificationTrayIsCollapsed,
-  setNotificationTrayCollapsed,
   type NotificationFocusTarget,
   type SelectedSessionNotificationView,
   type SessionNotificationTarget,
@@ -265,7 +263,13 @@ export class ChatView extends LitElement {
   @state() private copiedNotificationId: string | undefined;
   @state() private copiedMessageKey: string | undefined;
   @state() private currentConversationIndex: number | undefined;
-  @state() private collapsedNotificationTargetKeys: ReadonlySet<string> = new Set();
+  /** Exact chats whose top drawer the reader folded away, so switching
+      conversations does not resurrect a drawer that was dismissed. */
+  @state() private collapsedTopDrawerKeys: ReadonlySet<string> = new Set();
+  /** Exact chats the reader explicitly unfolded, which outranks the default. */
+  @state() private expandedTopDrawerKeys: ReadonlySet<string> = new Set();
+  /** Section the reader last chose; ignored when that section has nothing. */
+  @state() private topDrawerTab: TopDrawerTab | undefined;
   @state() private retainedEmptyNotificationTrayTargetKey: string | undefined;
   private pendingNotificationFocus: PendingNotificationFocus | undefined;
   private imageZoomModalRegistration: RenderedModalRegistration | undefined;
@@ -487,126 +491,231 @@ export class ChatView extends LitElement {
 
   private renderTopNotices() {
     const warnings = this.renderWarnings();
-    const notifications = this.renderNotificationTray();
-    const subagents = this.renderSubagents();
-    if (warnings === null && notifications === null && subagents === null) return null;
-    return html`<div class="top-notices">${warnings}${notifications}${subagents}</div>`;
+    const drawer = this.renderTopDrawer();
+    if (warnings === null && drawer === null) return null;
+    return html`<div class="top-notices">${warnings}${drawer}</div>`;
   }
 
   /**
-   * Compact strip of the subagents this session spawned.
+   * One drawer above the transcript for everything this conversation is doing
+   * besides replying: the subagents/tasks it started, and the notifications it
+   * received.
    *
-   * A parent conversation stays open while its children run; without this the
-   * only way to see them was the agent tools' own output. The strip is small on
-   * purpose -- the point is to know who is still working and to be able to jump
-   * to one, not to host a transcription next to the parent's.
+   * They used to stack, so on a short window each got a sliver and both were
+   * scrolled surfaces inside a scrolled surface. Tabs give whichever one the
+   * reader is asking about the whole drawer, and one control folds the drawer
+   * away entirely.
    */
-  private renderSubagents(): TemplateResult | null {
-    const subagents = this.subagents ?? [];
-    const runs = this.subagentRuns ?? [];
-    const tasks = this.backgroundTasks ?? [];
-    if (subagents.length === 0 && runs.length === 0 && tasks.length === 0) return null;
-    const rows = subagentRows(subagents);
-    const runRows = subagentRunRows(runs);
-    // Background tasks share the strip because they answer the same question a
-    // subagent row does - what is this conversation running that is not the
-    // reply on screen - and a browser had no other way to see them at all.
-    const taskRows = backgroundTaskRows(tasks);
-    const working = rows.some((row) => row.status === "working")
-      || runRows.some((row) => row.status === "running")
-      || taskRows.some((row) => row.status === "running");
-    const total = rows.length + runRows.length + taskRows.length;
-    const heading = `${working ? "◌ " : ""}Activity (${String(total)})`;
+  private renderTopDrawer(): TemplateResult | null {
+    const activity = this.activityPanelState();
+    const inbox = this.visibleNotificationInbox();
+    if (activity === undefined && inbox === undefined) return null;
+    const tab = selectedTopDrawerTab({ activity: activity !== undefined, notifications: inbox !== undefined }, this.topDrawerTab);
+    const key = this.topDrawerKey();
+    const collapsed = this.expandedTopDrawerKeys.has(key)
+      ? false
+      : this.collapsedTopDrawerKeys.has(key) || !topDrawerStartsOpen({ working: activity?.summary.working === true, failed: activity?.summary.failed === true, notifications: inbox !== undefined });
+    const toggleLabel = collapsed ? "Show session activity and notifications" : "Hide session activity and notifications";
+    const notificationCount = inbox === undefined ? 0 : notificationInboxTotalCount(inbox);
     return html`
-      <section class="subagents-strip" role="region" aria-label="Session activity">
-        <strong class="subagents-heading">${heading}</strong>
-        ${rows.map((row, index) => html`
-          <button
-            type="button"
-            class="subagent-row subagent-open-${index}"
-            title=${row.cwd}
-            aria-label=${row.ariaLabel}
-            @click=${() => { this.onOpenSubagent?.(row.subagent); }}
-          >
-            <span class="subagent-dot ${row.status}" aria-hidden="true"></span>
-            <span class="subagent-id" dir="ltr">${row.shortId}</span>
-            <span class="subagent-status ${row.status}">${row.statusLabel}</span>
-            <span class="subagent-chevron" aria-hidden="true">›</span>
-          </button>
-        `)}
-        ${runRows.map((row, index) => html`
-          <button
-            type="button"
-            class="subagent-row subagent-run-${index}"
-            title=${row.run.task ?? row.run.agent}
-            aria-label=${row.ariaLabel}
-            ?disabled=${!row.run.hasOutput}
-            @click=${() => { this.onOpenSubagentRun?.(row.run); }}
-          >
-            <span class="subagent-dot ${row.status}" aria-hidden="true"></span>
-            <span class="subagent-id" dir="ltr">${row.run.agent}</span>
-            <span class="subagent-status ${row.status}">${row.statusLabel}</span>
-            <span class="subagent-duration">${row.duration}</span>
-            ${row.detail === "" ? null : html`<span class="subagent-detail">${row.detail}</span>`}
-            ${row.run.hasOutput ? html`<span class="subagent-chevron" aria-hidden="true">›</span>` : null}
-          </button>
-        `)}
-        ${taskRows.map((row, index) => html`
-          <button
-            type="button"
-            class="subagent-row background-task-row background-task-${index}"
-            title=${row.task.command}
-            aria-label=${row.ariaLabel}
-            ?disabled=${!row.task.hasOutput}
-            @click=${() => { this.onOpenBackgroundTask?.(row.task); }}
-          >
-            <span class="subagent-dot ${row.status}" aria-hidden="true"></span>
-            <span class="subagent-id" dir="ltr">${row.task.name}</span>
-            <span class="subagent-status ${row.status}">${row.statusLabel}</span>
-            <span class="subagent-duration">${row.duration}</span>
-            ${row.detail === "" ? null : html`<span class="subagent-detail" dir="ltr">${row.detail}</span>`}
-            ${row.task.hasOutput ? html`<span class="subagent-chevron" aria-hidden="true">›</span>` : null}
-          </button>
-        `)}
+      <section
+        class=${`top-drawer${collapsed ? " collapsed" : ""}`}
+        role="region"
+        aria-label="Session drawer"
+        @focusout=${(event: FocusEvent) => { this.releaseEmptyNotificationTray(event); }}
+      >
+        <header class="drawer-header" data-notification-focus="header" tabindex="-1">
+          <div class="drawer-tabs" role="tablist" aria-label="Session drawer sections">
+            ${activity === undefined ? null : html`
+              <button
+                type="button"
+                role="tab"
+                id="drawer-tab-activity"
+                class=${`drawer-tab drawer-tab-activity${tab === "activity" ? " selected" : ""}`}
+                aria-selected=${String(tab === "activity")}
+                aria-controls="session-activity-list"
+                @click=${() => { this.selectTopDrawerTab("activity", collapsed); }}
+              >
+                ${activity.summary.working ? html`<span class="subagent-dot working" aria-hidden="true"></span>` : null}
+                <span class="drawer-tab-label">Activity (${String(activity.total)})</span>
+              </button>
+            `}
+            ${inbox === undefined ? null : html`
+              <button
+                type="button"
+                role="tab"
+                id="drawer-tab-notifications"
+                class=${`drawer-tab drawer-tab-notifications${tab === "notifications" ? " selected" : ""}`}
+                aria-selected=${String(tab === "notifications")}
+                aria-controls="session-notification-list"
+                @click=${() => { this.selectTopDrawerTab("notifications", collapsed); }}
+              >
+                <span class="drawer-tab-label">${notificationTrayHeading(inbox)}</span>
+              </button>
+            `}
+          </div>
+          ${collapsed && activity !== undefined && activity.summary.label !== ""
+            ? html`<span class="drawer-summary">${activity.summary.label}</span>`
+            : null}
+          <div class="drawer-header-actions">
+            ${tab === "notifications" && inbox !== undefined ? html`
+              <button
+                type="button"
+                class="notification-control notification-clear"
+                aria-label="Clear all notifications"
+                title="Clear all notifications"
+                ?disabled=${inbox.dismissAllPending || notificationCount === 0 || this.onDismissAllNotifications === undefined}
+                @click=${() => { this.dismissAllNotifications(); }}
+              >Clear</button>
+            ` : null}
+            <button
+              type="button"
+              class="notification-control notification-toggle drawer-toggle"
+              aria-label=${toggleLabel}
+              title=${toggleLabel}
+              aria-expanded=${String(!collapsed)}
+              aria-controls=${tab === "activity" ? "session-activity-list" : "session-notification-list"}
+              @click=${() => { this.toggleTopDrawer(collapsed); }}
+            >${renderNotificationDisclosureIcon(collapsed)}</button>
+          </div>
+        </header>
+        <div class="drawer-body" ?hidden=${collapsed}>
+          ${tab === "activity" && activity !== undefined ? this.renderActivityPanel(activity) : null}
+          ${tab === "notifications" && inbox !== undefined ? this.renderNotificationPanel(inbox) : null}
+        </div>
       </section>
     `;
   }
 
-  private renderNotificationTray() {
+  /** The inbox this chat should show, or undefined when there is nothing to show. */
+  private visibleNotificationInbox(): SelectedSessionNotificationView | undefined {
     const inbox = this.notificationInbox;
-    if (inbox?.sessionId !== this.sessionId) return null;
-    const chatKey = notificationTargetKey(inbox);
+    if (inbox?.sessionId !== this.sessionId) return undefined;
     const hasPendingOverlay = inbox.pendingDismissedIds.size > 0 || inbox.dismissAllPending;
-    const retainsFocusTarget = this.retainedEmptyNotificationTrayTargetKey === chatKey;
-    const totalCount = notificationInboxTotalCount(inbox);
-    if (totalCount === 0 && !hasPendingOverlay && !retainsFocusTarget) return null;
-    const collapsed = notificationTrayIsCollapsed(this.collapsedNotificationTargetKeys, inbox);
-    const toggleLabel = collapsed ? "Expand notifications" : "Collapse notifications";
+    const retainsFocusTarget = this.retainedEmptyNotificationTrayTargetKey === notificationTargetKey(inbox);
+    if (notificationInboxTotalCount(inbox) === 0 && !hasPendingOverlay && !retainsFocusTarget) return undefined;
+    return inbox;
+  }
+
+  /**
+   * Collapse and tab choice follow the exact chat, not just its session id, so
+   * the same session id on another machine or cwd starts fresh.
+   */
+  private topDrawerKey(): string {
+    const inbox = this.notificationInbox;
+    return inbox?.sessionId === this.sessionId ? notificationTargetKey(inbox) : JSON.stringify([null, null, this.sessionId]);
+  }
+
+  /**
+   * Folding is an explicit choice per chat, in both directions: the default
+   * only decides what happens before the reader has said anything, and must
+   * not overrule them later when a subagent happens to start.
+   */
+  private toggleTopDrawer(collapsed: boolean): void {
+    const key = this.topDrawerKey();
+    const collapsedKeys = new Set(this.collapsedTopDrawerKeys);
+    const expandedKeys = new Set(this.expandedTopDrawerKeys);
+    if (collapsed) {
+      collapsedKeys.delete(key);
+      expandedKeys.add(key);
+    } else {
+      expandedKeys.delete(key);
+      collapsedKeys.add(key);
+    }
+    this.collapsedTopDrawerKeys = collapsedKeys;
+    this.expandedTopDrawerKeys = expandedKeys;
+  }
+
+  /** Choosing a section is also how a folded drawer is opened on that section. */
+  private selectTopDrawerTab(tab: TopDrawerTab, collapsed: boolean): void {
+    this.topDrawerTab = tab;
+    if (collapsed) this.toggleTopDrawer(collapsed);
+  }
+
+  /**
+   * The subagents, tool runs and background tasks this session started.
+   *
+   * A parent conversation stays open while its children run; without this the
+   * only way to see them was the agent tools' own output. Background tasks
+   * share the list because they answer the same question a subagent row does -
+   * what is this conversation running that is not the reply on screen - and a
+   * browser had no other way to see them at all.
+   */
+  private activityPanelState(): ActivityPanelState | undefined {
+    const subagents = this.subagents ?? [];
+    const runs = this.subagentRuns ?? [];
+    const tasks = this.backgroundTasks ?? [];
+    if (subagents.length === 0 && runs.length === 0 && tasks.length === 0) return undefined;
+    const rows = subagentRows(subagents);
+    const runRows = subagentRunRows(runs);
+    const taskRows = backgroundTaskRows(tasks);
+    const summary = activityStripSummary([
+      ...rows.map((row) => row.status),
+      ...runRows.map((row) => row.status),
+      ...taskRows.map((row) => row.status),
+    ]);
+    return { rows, runRows, taskRows, summary, total: rows.length + runRows.length + taskRows.length };
+  }
+
+  private renderActivityPanel(activity: ActivityPanelState): TemplateResult {
+    const { rows, runRows, taskRows } = activity;
     return html`
-      <section class=${`notification-tray${collapsed ? " collapsed" : ""}`} role="region" aria-labelledby="session-notifications-heading" @focusout=${(event: FocusEvent) => { this.releaseEmptyNotificationTray(event); }}>
-        <header class="notification-header" data-notification-focus="header" tabindex="-1">
-          <strong class="notification-heading" id="session-notifications-heading">${notificationTrayHeading(inbox)}</strong>
-          <div class="notification-header-actions">
+      <div class="subagents-list" id="session-activity-list" role="tabpanel" aria-labelledby="drawer-tab-activity">
+          <p class="drawer-hint">${ACTIVITY_TAB_HINT}</p>
+          ${rows.map((row, index) => html`
             <button
               type="button"
-              class="notification-control notification-clear"
-              aria-label="Clear all notifications"
-              title="Clear all notifications"
-              ?disabled=${inbox.dismissAllPending || totalCount === 0 || this.onDismissAllNotifications === undefined}
-              @click=${() => { this.dismissAllNotifications(); }}
-            >Clear</button>
+              class="subagent-row status-${row.status} subagent-open-${index}"
+              title=${row.cwd}
+              aria-label=${row.ariaLabel}
+              @click=${() => { this.onOpenSubagent?.(row.subagent); }}
+            >
+              <span class="subagent-dot ${row.status}" aria-hidden="true"></span>
+              <span class="subagent-id" dir="ltr">${row.shortId}</span>
+              <span class="subagent-status ${row.status}">${row.statusLabel}</span>
+              <span class="subagent-chevron" aria-hidden="true">›</span>
+            </button>
+          `)}
+          ${runRows.map((row, index) => html`
             <button
               type="button"
-              class="notification-control notification-toggle"
-              aria-label=${toggleLabel}
-              title=${toggleLabel}
-              aria-expanded=${String(!collapsed)}
-              aria-controls="session-notification-list"
-              @click=${() => { this.toggleNotificationTray(inbox, collapsed); }}
-            >${renderNotificationDisclosureIcon(collapsed)}</button>
-          </div>
-        </header>
-        <div class="notification-list" id="session-notification-list" ?hidden=${collapsed}>
+              class="subagent-row status-${row.status} subagent-run-${index}"
+              title=${row.run.task ?? row.run.agent}
+              aria-label=${row.ariaLabel}
+              @click=${() => { this.onOpenSubagentRun?.(row.run); }}
+            >
+              <span class="subagent-dot ${row.status}" aria-hidden="true"></span>
+              <span class="subagent-id" dir="ltr">${row.run.agent}</span>
+              <span class="subagent-status ${row.status}">${row.statusLabel}</span>
+              <span class="subagent-duration">${row.duration}</span>
+              <span class="subagent-chevron" aria-hidden="true">›</span>
+              ${row.detail === "" ? null : html`<span class="subagent-detail">${row.detail}</span>`}
+            </button>
+          `)}
+          ${taskRows.map((row, index) => html`
+            <button
+              type="button"
+              class="subagent-row status-${row.status} background-task-row background-task-${index}"
+              title=${row.task.command}
+              aria-label=${row.ariaLabel}
+              ?disabled=${!row.task.hasOutput}
+              @click=${() => { this.onOpenBackgroundTask?.(row.task); }}
+            >
+              <span class="subagent-dot ${row.status}" aria-hidden="true"></span>
+              <span class="subagent-id" dir="ltr">${row.task.name}</span>
+              <span class="subagent-status ${row.status}">${row.statusLabel}</span>
+              <span class="subagent-duration">${row.duration}</span>
+              ${row.task.hasOutput ? html`<span class="subagent-chevron" aria-hidden="true">›</span>` : null}
+              ${row.detail === "" ? null : html`<span class="subagent-detail" dir="ltr">${row.detail}</span>`}
+            </button>
+          `)}
+      </div>
+    `;
+  }
+
+  private renderNotificationPanel(inbox: SelectedSessionNotificationView): TemplateResult {
+    return html`
+        <div class="notification-list" id="session-notification-list" role="tabpanel" aria-labelledby="drawer-tab-notifications">
           ${inbox.discardedCount === 0 ? null : html`
             <p class="notification-overflow">${notificationInboxOverflowLabel(inbox.discardedCount)}</p>
           `}
@@ -643,7 +752,6 @@ export class ChatView extends LitElement {
             `;
           })}
         </div>
-      </section>
     `;
   }
 
@@ -655,10 +763,6 @@ export class ChatView extends LitElement {
       <div class="visually-hidden notification-live" aria-live="polite" aria-atomic="false">${repeat(polite, (announcement) => announcement.id, (announcement) => html`<span data-announcement-id=${announcement.id}>${notificationAnnouncementLabel(announcement)}</span>`)}</div>
       <div class="visually-hidden notification-live" aria-live="assertive" aria-atomic="false">${repeat(assertive, (announcement) => announcement.id, (announcement) => html`<span data-announcement-id=${announcement.id}>${notificationAnnouncementLabel(announcement)}</span>`)}</div>
     `;
-  }
-
-  private toggleNotificationTray(inbox: SelectedSessionNotificationView, collapsed: boolean): void {
-    this.collapsedNotificationTargetKeys = setNotificationTrayCollapsed(this.collapsedNotificationTargetKeys, inbox, !collapsed);
   }
 
   private dismissNotification(notificationId: string): void {
@@ -838,12 +942,17 @@ export class ChatView extends LitElement {
     const state = this.activityState();
     if (state === undefined) return null;
     const category = this.activityCategory(state);
+    // "idle" is about the assistant's own turn, and saying it while this chat's
+    // subagents and background tasks are still running reads as "nothing is
+    // happening" when something is.
+    const background = backgroundWorkLabel(this.activityPanelState());
+    const showBackground = background !== undefined && (category === "idle" || category === undefined);
     return html`
-      <div class=${`activity-dock ${category ?? ""}`} aria-live="polite">
+      <div class=${`activity-dock ${showBackground ? "background" : category ?? ""}`} aria-live="polite">
         ${category === "working"
           ? html`<span class="state-dots"><span class="state-dot"></span><span class="state-dot"></span><span class="state-dot"></span></span>`
           : html`<span class="dot"></span>`}
-        <span class="activity-text">${this.activityText(state)}</span>
+        <span class="activity-text">${showBackground ? background : this.activityText(state)}</span>
       </div>
     `;
   }
@@ -1761,6 +1870,72 @@ export function backgroundTaskRows(tasks: readonly SessionBackgroundTaskInfo[]):
       ariaLabel: `${statusLabel} background task ${task.name}, ${duration}${detail === "" ? "" : `, ${detail}`}`,
     };
   });
+}
+
+export type TopDrawerTab = "activity" | "notifications";
+
+/**
+ * "Activity" means nothing on its own -- the reader has to be told, once, in
+ * the panel itself, what these rows are and what tapping one does.
+ */
+const ACTIVITY_TAB_HINT = "Work this chat started in the background: subagents, agent tool runs and terminal tasks. Open one to read its output.";
+
+/**
+ * The drawer opens by itself only when it has something the reader has not
+ * seen yet. Finished work waits behind one line instead of covering the
+ * transcript -- which on a phone is most of the screen.
+ */
+/**
+ * What the dock should say instead of "idle" when the assistant's own turn is
+ * over but this chat still has work in flight, or `undefined` when there is
+ * none and "idle" is the truth.
+ */
+export function backgroundWorkLabel(activity: { rows: readonly { status: string }[]; runRows: readonly { status: string }[]; taskRows: readonly { status: string }[] } | undefined): string | undefined {
+  if (activity === undefined) return undefined;
+  const running = [...activity.rows, ...activity.runRows, ...activity.taskRows]
+    .filter((row) => row.status === "working" || row.status === "running").length;
+  if (running === 0) return undefined;
+  return running === 1 ? "idle · 1 background run" : `idle · ${String(running)} background runs`;
+}
+
+export function topDrawerStartsOpen(attention: { working: boolean; failed: boolean; notifications: boolean }): boolean {
+  return attention.working || attention.failed || attention.notifications;
+}
+
+/** What the drawer renders for the activity section, derived once. */
+export interface ActivityPanelState {
+  rows: SubagentRow[];
+  runRows: SubagentRunRow[];
+  taskRows: BackgroundTaskRow[];
+  summary: { label: string; working: boolean; failed: boolean };
+  total: number;
+}
+
+/**
+ * Which drawer section to show. The reader's last choice wins while it still
+ * has something in it; otherwise the drawer falls back to whichever section
+ * exists, so a section that empties out cannot leave a blank drawer behind.
+ */
+export function selectedTopDrawerTab(available: { activity: boolean; notifications: boolean }, preferred: TopDrawerTab | undefined): TopDrawerTab {
+  if (preferred === "activity" && available.activity) return "activity";
+  if (preferred === "notifications" && available.notifications) return "notifications";
+  return available.notifications ? "notifications" : "activity";
+}
+
+/**
+ * One-line census of the activity section, so a folded drawer still answers
+ * the only question a folded drawer has to answer: is anything still running,
+ * and how much finished work is waiting to be opened.
+ */
+export function activityStripSummary(statuses: readonly string[]): { label: string; working: boolean; failed: boolean } {
+  const running = statuses.filter((status) => status === "working" || status === "running").length;
+  const failed = statuses.filter((status) => status === "error" || status === "failed").length;
+  const finished = statuses.length - running - failed;
+  const parts: string[] = [];
+  if (running > 0) parts.push(`${String(running)} running`);
+  if (failed > 0) parts.push(`${String(failed)} failed`);
+  if (finished > 0) parts.push(`${String(finished)} done`);
+  return { label: parts.join(" \u00b7 "), working: running > 0, failed: failed > 0 };
 }
 
 export function subagentRows(subagents: readonly SessionSubagentInfo[]): SubagentRow[] {

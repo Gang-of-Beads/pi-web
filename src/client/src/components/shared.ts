@@ -312,7 +312,8 @@ export const listStyles = css`
      bar of its own: a stacked bar cost a fifth of a phone screen before any
      content, and the heading was already a flex row with a free trailing edge.
      Sized to the tap-target floor even though the glyph is small. */
-  .section-add { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; min-width: 32px; min-height: 32px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font-size: var(--pi-text-lg); line-height: 1; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+  .section-add-label { font-size: var(--pi-text-xs); white-space: nowrap; }
+  .section-add { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: var(--pi-space-2); min-width: 32px; min-height: 32px; padding: 0 var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font-size: var(--pi-text-lg); line-height: 1; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   .section-add:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -2px; }
   @media (hover: hover) { .section-add:hover { border-color: var(--pi-accent); } }
   /* On a phone the context row above already names the step being chosen, so a
@@ -463,22 +464,61 @@ export const chatStyles = css`
   /* Subagents strip: child sessions spawned by the parent conversation. The
      strip must read at one glance -- who is still working, who finished --
      and every row is a real button large enough to open with a thumb. */
-  .subagents-strip { flex: 0 0 auto; display: grid; gap: var(--pi-space-3); box-sizing: border-box; padding: var(--pi-space-5) var(--pi-space-7) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); }
-  .subagents-heading { min-width: 0; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
-  .subagent-row { box-sizing: border-box; min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: var(--pi-space-4); min-height: 40px; padding: var(--pi-space-3) var(--pi-space-5); border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; text-align: start; }
-  .subagent-row:hover, .subagent-row:focus-visible { background: var(--pi-surface-hover); border-color: var(--pi-accent-border); }
+  /* One drawer, two sections. It is chrome, not transcript: it sits on the app
+     background rather than the message surface so it cannot be mistaken for a
+     reply. Tabs rather than a stack, because two stacked scrollers on a short
+     window give each a sliver and neither is usable. */
+  .top-drawer { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; box-sizing: border-box; background: color-mix(in srgb, var(--pi-purple) 7%, var(--pi-bg)); border-bottom: 1px solid var(--pi-purple-border); }
+  .top-drawer.collapsed { flex: 0 0 auto; }
+  .drawer-header { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: 36px; padding: var(--pi-space-2) var(--pi-space-4); }
+  /* The two sections are told apart by colour, not only by label: activity is
+     violet (work this chat started), notifications keep the app's warning
+     palette (something happened to you). */
+  .drawer-tab-activity.selected { border-color: var(--pi-purple-border); background: var(--pi-purple-surface); color: var(--pi-purple); }
+  .drawer-tab-notifications.selected { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); color: var(--pi-warning); }
+  .drawer-header:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -3px; }
+  .drawer-tabs { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: var(--pi-space-2); overflow-x: auto; scrollbar-width: none; }
+  .drawer-tabs::-webkit-scrollbar { display: none; }
+  .drawer-tab { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: 28px; padding: var(--pi-space-2) var(--pi-space-5); border: 1px solid transparent; border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-2xs); font-weight: 600; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .drawer-tab:hover { color: var(--pi-text-bright); }
+  .drawer-tab:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+  .drawer-tab.selected { border-color: var(--pi-border); background: var(--pi-surface); color: var(--pi-text-bright); }
+  .drawer-summary { flex: 0 1 auto; min-width: 0; overflow: hidden; color: var(--pi-dim); font-size: var(--pi-text-2xs); text-overflow: ellipsis; white-space: nowrap; }
+  .drawer-header-actions { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-1); }
+  .drawer-body { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .drawer-body[hidden] { display: none; }
+  .drawer-hint { margin: 0 0 var(--pi-space-2); color: var(--pi-dim); font-size: var(--pi-text-2xs); line-height: var(--pi-leading-tight); }
+  .subagents-list { flex: 0 1 auto; min-height: 0; max-height: min(30vh, 220px); display: grid; gap: var(--pi-space-2); align-content: start; overflow-y: auto; overscroll-behavior-y: contain; box-sizing: border-box; padding: 0 var(--pi-space-5) var(--pi-space-4); }
+  .subagents-list[hidden] { display: none; }
+  /* Two fixed lines per row: the identity line never reflows, and the detail
+     line is one clipped line, because a subagent's task text is a paragraph
+     and a strip that grows with it is the bug this replaced. */
+  .subagent-row { box-sizing: border-box; min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto; align-items: center; gap: var(--pi-space-2) var(--pi-space-4); min-height: 34px; padding: var(--pi-space-3) var(--pi-space-5); border: 1px solid var(--pi-border-muted); border-inline-start: 4px solid var(--pi-dim); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; text-align: start; }
+  .subagent-row:hover, .subagent-row:focus-visible { background: var(--pi-surface-hover); }
   .subagent-row:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+  /* A row with no output to open is not a button in any useful sense; say so
+     instead of letting a thumb bounce off it. */
+  .subagent-row:disabled { cursor: default; opacity: .72; }
+  .subagent-row:disabled:hover { background: var(--pi-surface); }
+  .subagent-row.status-working, .subagent-row.status-running { border-inline-start-color: var(--pi-accent); background: color-mix(in srgb, var(--pi-accent) 8%, var(--pi-surface)); }
+  .subagent-row.status-idle, .subagent-row.status-done { border-inline-start-color: var(--pi-success); background: color-mix(in srgb, var(--pi-success) 7%, var(--pi-surface)); }
+  .subagent-row.status-error, .subagent-row.status-failed { border-inline-start-color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 8%, var(--pi-surface)); }
   .subagent-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--pi-muted); }
-  .subagent-dot.working { background: var(--pi-accent); animation: pulse 1s ease-in-out infinite; }
-  .subagent-dot.idle { background: var(--pi-success); }
-  .subagent-dot.error { background: var(--pi-danger); }
+  .subagent-dot.working, .subagent-dot.running { background: var(--pi-accent); animation: pulse 1s ease-in-out infinite; }
+  .subagent-dot.idle, .subagent-dot.done { background: var(--pi-success); }
+  .subagent-dot.error, .subagent-dot.failed { background: var(--pi-danger); }
   .subagent-id { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--pi-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: var(--pi-text-sm); color: var(--pi-text-bright); }
-  .subagent-status { color: var(--pi-muted); font-size: var(--pi-text-xs); }
-  .subagent-row .subagent-status.working { color: var(--pi-accent); }
-  .subagent-row .subagent-status.error { color: var(--pi-danger); }
+  .subagent-status { flex: 0 0 auto; padding: 1px var(--pi-space-3); border-radius: var(--pi-radius-pill); background: var(--pi-border-muted); color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: 600; white-space: nowrap; }
+  .subagent-row .subagent-status.working, .subagent-row .subagent-status.running { background: var(--pi-selection-bg); color: var(--pi-accent); }
+  .subagent-row .subagent-status.idle, .subagent-row .subagent-status.done { background: var(--pi-success-surface); color: var(--pi-success); }
+  .subagent-row .subagent-status.error, .subagent-row .subagent-status.failed { background: color-mix(in srgb, var(--pi-danger) 18%, transparent); color: var(--pi-danger); }
+  .subagent-duration { flex: 0 0 auto; color: var(--pi-dim); font-size: var(--pi-text-2xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .subagent-detail { grid-column: 2 / -1; min-width: 0; overflow: hidden; color: var(--pi-muted); font-size: var(--pi-text-xs); line-height: var(--pi-leading-tight); text-overflow: ellipsis; white-space: nowrap; }
   .subagent-chevron { flex: 0 0 auto; color: var(--pi-muted); font-size: var(--pi-text-xs); }
   @media (pointer: coarse) {
-    .subagent-row { min-height: 44px; }
+    .drawer-tab { min-height: 36px; }
+    .drawer-header { min-height: 44px; }
+    .subagent-row { min-height: 40px; }
   }
   .session-warnings { flex: 0 1 auto; display: grid; gap: var(--pi-space-4); max-height: 50%; min-height: 0; overflow-y: auto; box-sizing: border-box; padding: var(--pi-space-5) var(--pi-space-7); border-bottom: 1px solid var(--pi-border-muted); }
   .session-warnings:only-child { flex: 1 1 auto; max-height: 100%; border-bottom: 0; }
@@ -499,13 +539,6 @@ export const chatStyles = css`
   .session-warning-dismiss { position: absolute; top: 6px; right: 6px; display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); font: 15px/1 system-ui, sans-serif; cursor: pointer; }
   .session-warning-dismiss:hover, .session-warning-dismiss:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); background: var(--pi-bg-overlay); }
   .session-warning-dismiss:focus-visible { outline: 1px solid var(--pi-border); outline-offset: 2px; }
-  .notification-tray { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; background: var(--pi-bg-overlay); }
-  .notification-tray.collapsed { flex: 0 0 auto; }
-  .notification-header { position: sticky; top: 0; z-index: 2; flex: 0 0 auto; min-width: 0; display: flex; flex-wrap: nowrap; align-items: center; justify-content: space-between; gap: var(--pi-space-4); box-sizing: border-box; min-height: 40px; padding: var(--pi-space-2) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg-overlay); }
-  .notification-tray.collapsed .notification-header { border-bottom: 0; }
-  .notification-header:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: -3px; }
-  .notification-heading { min-width: 0; flex: 1 1 auto; overflow: hidden; color: var(--pi-text-bright); font-size: var(--pi-text-sm); text-overflow: ellipsis; white-space: nowrap; }
-  .notification-header-actions { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-1); }
   .notification-control, .notification-row-dismiss { box-sizing: border-box; min-height: 32px; border: 0; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); cursor: pointer; }
   .notification-control { padding: 0 var(--pi-space-4); font: var(--pi-text-xs) var(--pi-font-ui); white-space: nowrap; }
   .notification-toggle { display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; }
@@ -515,7 +548,7 @@ export const chatStyles = css`
   .notification-icon { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
   .notification-disclosure-icon.expanded { transform: rotate(90deg); }
   .notification-close-icon { width: 16px; height: 16px; }
-  .notification-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; box-sizing: border-box; padding: 0 var(--pi-space-5) var(--pi-space-3); }
+  .notification-list { flex: 0 1 auto; min-height: 0; max-height: min(38vh, 320px); overflow-y: auto; overscroll-behavior-y: contain; box-sizing: border-box; padding: 0 var(--pi-space-5) var(--pi-space-3); }
   .notification-list[hidden] { display: none; }
   .notification-overflow { margin: 0; padding: var(--pi-space-4) var(--pi-space-1); border-bottom: 1px solid var(--pi-border-muted); color: var(--pi-muted); font-size: var(--pi-text-2xs); overflow-wrap: anywhere; }
   /* Severity is carried by the row itself, not only by a small coloured word:
@@ -546,17 +579,31 @@ export const chatStyles = css`
   .visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0 0 0 0) !important; clip-path: inset(50%) !important; white-space: nowrap !important; border: 0 !important; }
   .notification-live span { display: block; }
   @media (pointer: coarse) {
-    .notification-control, .notification-row-dismiss, .notification-row-copy { min-height: 34px; }
-    .notification-toggle, .notification-row-dismiss, .notification-row-copy { width: 34px; height: 34px; }
-    .notification-row { padding-right: 40px; }
+    .notification-control, .notification-row-dismiss, .notification-row-copy { min-height: 40px; }
+    .notification-toggle, .notification-row-dismiss, .notification-row-copy { width: 40px; height: 40px; }
+    .notification-row { padding-right: 46px; }
   }
   @media (max-width: 520px) {
-    .notification-header { gap: var(--pi-space-2); padding-inline: 8px; }
-    .notification-list { padding-inline: 8px; }
+    .drawer-header { gap: var(--pi-space-2); padding-inline: 8px; }
+    .drawer-tab { padding-inline: var(--pi-space-4); }
+    .notification-list, .subagents-list { padding-inline: 8px; }
+  }
+  /* A short window is the case the drawer was breaking: keep it to a slice of
+     the viewport so the transcript never becomes a letterbox. */
+  @media (max-height: 620px) {
+    .subagents-list { max-height: 26vh; }
+    .notification-list { max-height: 30vh; }
   }
   .chat { --pi-chat-sticky-top: -26px; height: 100%; min-height: 0; overflow: auto; overflow-anchor: none; padding: 26px var(--pi-space-7) 64px; box-sizing: border-box; }
   .scroll-marker { display: block; height: 0; overflow: hidden; pointer-events: none; }
   .activity-dock { position: absolute; left: 16px; right: 16px; bottom: 12px; z-index: 20; display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: 0 8px 28px var(--pi-shadow); backdrop-filter: blur(6px); }
+  /* Idle is the state nobody needs a full-width banner for: keep the signal,
+     drop the bar that looked like an empty card above the composer. */
+  .activity-dock.idle { right: auto; max-width: min(60%, 240px); opacity: .75; padding: var(--pi-space-2) var(--pi-space-5); font-size: var(--pi-text-xs); }
+  /* Idle turn, live children: readable as "waiting on something", not as the
+     assistant working. */
+  .activity-dock.background { right: auto; max-width: min(70%, 300px); border-color: var(--pi-accent-border); color: var(--pi-accent); padding: var(--pi-space-2) var(--pi-space-5); font-size: var(--pi-text-xs); }
+  .activity-dock.background .dot { background: currentColor; opacity: 1; animation: pulse 1s ease-in-out infinite; }
   .activity-dock.active { border-color: var(--pi-success-border); color: var(--pi-success); background: var(--pi-success-bg-overlay); }
   .activity-dock.sending { border-color: var(--pi-warning-border); color: var(--pi-warning); background: var(--pi-warning-surface); }
   .activity-dock.asking { border-color: var(--pi-warning-border); color: var(--pi-warning); background: var(--pi-warning-bg-overlay); }
@@ -825,6 +872,17 @@ export const promptEditorStyles = css`
   .attachment-file-preview { display: grid; place-items: center; width: 34px; height: 26px; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-surface); color: var(--pi-muted); font: 700 10px/1 system-ui, sans-serif; letter-spacing: .03em; }
   .attachment-file-name { position: absolute; right: 4px; bottom: 3px; left: 4px; overflow: hidden; color: var(--pi-muted); font-size: 10px; line-height: 1.2; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
   .attachment-remove { position: absolute; top: 1px; right: 1px; width: 18px; height: 18px; padding: 0; line-height: 16px; border-radius: 50%; border: 1px solid var(--pi-border); background: var(--pi-surface); color: var(--pi-text); font-size: var(--pi-text-sm); cursor: pointer; }
+  /* A thumb is about 9mm wide. An 18px remove badge on a 56px thumbnail means
+     the tap lands on the image instead, so on touch the badge grows and the
+     chip grows with it rather than swallowing its own control. */
+  @media (pointer: coarse) {
+    .attachment-chip { width: 64px; height: 64px; }
+    .attachment-remove { top: 2px; right: 2px; width: 28px; height: 28px; line-height: 26px; font-size: var(--pi-text-md); }
+    .editor-attach, .editor-dictate { width: 40px; height: 40px; }
+    .editor-dictate { right: 54px; }
+    .markdown-editor .cm-content { padding-right: 54px; }
+    .markdown-editor .cm-placeholder { right: 54px; }
+  }
   .attachment-delivery select { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-3) var(--pi-space-4); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); }
   .attachment-error { flex-basis: 100%; color: var(--pi-danger); font-size: var(--pi-text-xs); }
   button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }

@@ -15,12 +15,14 @@ afterEach(() => {
 });
 
 describe("shouldShowMachinesSection", () => {
-  it("hides machine navigation when there is no machine choice", () => {
+  it("hides machine navigation only when there is no machine at all", () => {
     expect(shouldShowMachinesSection([])).toBe(false);
-    expect(shouldShowMachinesSection([machine("local")])).toBe(false);
   });
 
-  it("shows machine navigation when there are multiple machines", () => {
+  // A single-machine install still needs somewhere to rename the local machine
+  // and add a second one; hiding the section left Settings as the only route.
+  it("shows machine navigation for a lone local machine", () => {
+    expect(shouldShowMachinesSection([machine("local")])).toBe(true);
     expect(shouldShowMachinesSection([machine("local"), machine("remote-a")])).toBe(true);
   });
 });

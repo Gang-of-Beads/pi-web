@@ -1,4 +1,4 @@
-import { mkdtemp, rm, symlink } from "node:fs/promises";
+import { mkdtemp, rm, symlink, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -18,10 +18,17 @@ const cleanup: string[] = [];
 
 const TRUST_URL = "/api/projects/p1/workspaces/w1/trust";
 
+/**
+ * A temp dir under its canonical path.
+ *
+ * The trust routes canonicalize the path they are given before answering, and
+ * `os.tmpdir()` is itself a symlink on macOS (`/var` -> `/private/var`), so a
+ * raw `mkdtemp` path would make the route's own answer look wrong.
+ */
 async function tempDir(prefix: string): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), prefix));
   cleanup.push(dir);
-  return dir;
+  return await realpath(dir);
 }
 
 class FakeProjectService extends ProjectService {

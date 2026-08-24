@@ -1,14 +1,14 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vitest";
 import type { SessionBackgroundTaskInfo, SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
-import { ChatView, subagentRows, subagentRunDuration, subagentRunRows } from "./ChatView";
+import { activityStripSummary, ChatView, selectedTopDrawerTab, subagentRows, subagentRunDuration, subagentRunRows, topDrawerStartsOpen } from "./ChatView";
 
 const SUBAGENTS: SessionSubagentInfo[] = [
   { sessionId: "01a0child-0001-0000-000000000001", cwd: "/repo/.pi/sub", status: "working" },
   { sessionId: "01a0child-0002-0000-000000000002", cwd: "/repo/.pi/sub", status: "idle" },
 ];
 
-async function mount(subagents: readonly SessionSubagentInfo[]): Promise<{ host: HTMLElement | DocumentFragment; onOpenSubagent: ReturnType<typeof vi.fn> }> {
+async function mount(subagents: readonly SessionSubagentInfo[]): Promise<{ view: ChatView; host: HTMLElement | DocumentFragment; onOpenSubagent: ReturnType<typeof vi.fn> }> {
   const view = new ChatView();
   view.sessionId = "parent-1";
   view.subagents = subagents;
@@ -16,7 +16,7 @@ async function mount(subagents: readonly SessionSubagentInfo[]): Promise<{ host:
   view.onOpenSubagent = onOpenSubagent;
   document.body.append(view);
   await view.updateComplete;
-  return { host: view.renderRoot, onOpenSubagent };
+  return { view, host: view.renderRoot, onOpenSubagent };
 }
 
 async function mountTasks(
@@ -47,9 +47,88 @@ describe("subagents strip", () => {
     expect(onOpenSubagent).toHaveBeenCalledExactlyOnceWith(SUBAGENTS[0]);
   });
 
+  it("stays folded for finished work and explains itself once opened", async () => {
+    const host = await mountTasks([
+      { id: "a", name: "Verify suite", command: "npm run verify", status: "completed", startedAt: "2026-08-21T19:00:00.000Z", durationMs: 55_000, exitCode: 0, bytesWritten: 12, hasOutput: true },
+      { id: "b", name: "Install deps", command: "npm ci", status: "completed", startedAt: "2026-08-21T19:00:00.000Z", durationMs: 5_000, exitCode: 0, bytesWritten: 12, hasOutput: true },
+    ]);
+
+    expect(host.querySelector<HTMLElement>(".drawer-body")?.hidden).toBe(true);
+    expect(host.textContent).toContain("2 done");
+
+    host.querySelector<HTMLButtonElement>(".drawer-toggle")?.click();
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
+    expect(host.querySelector<HTMLElement>(".drawer-body")?.hidden).toBe(false);
+    expect(host.textContent).toContain("Work this chat started in the background");
+  });
+
   it("renders nothing when the session has no subagents", async () => {
     const { host } = await mount([]);
     expect(host.querySelector(".subagents-strip")).toBeNull();
+  });
+
+  // The strip shares the top of the transcript with the notification tray, so
+  // it has to be foldable or a long-running conversation reads through a
+  // letterbox.
+  it("folds the drawer away to its header and unfolds it again", async () => {
+    const { view, host } = await mount(SUBAGENTS);
+
+    expect(host.querySelector(".drawer-toggle")?.getAttribute("aria-expanded")).toBe("true");
+    expect(host.querySelector<HTMLElement>(".drawer-body")?.hidden).toBe(false);
+
+    host.querySelector<HTMLButtonElement>(".drawer-toggle")?.click();
+    await view.updateComplete;
+    expect(host.querySelector(".drawer-toggle")?.getAttribute("aria-expanded")).toBe("false");
+    expect(host.querySelector<HTMLElement>(".drawer-body")?.hidden).toBe(true);
+    // Folded, the header still reports what is running.
+    expect(host.textContent).toContain("1 running");
+
+    host.querySelector<HTMLButtonElement>(".drawer-toggle")?.click();
+    await view.updateComplete;
+    expect(host.querySelector<HTMLElement>(".drawer-body")?.hidden).toBe(false);
+  });
+});
+
+describe("topDrawerStartsOpen", () => {
+  // The complaint this answers: two finished background tasks covered a third
+  // of a phone screen and could not be closed.
+  it("stays folded when everything is finished", () => {
+    expect(topDrawerStartsOpen({ working: false, failed: false, notifications: false })).toBe(false);
+  });
+
+  it("opens itself only for work in flight, failures, or notifications", () => {
+    expect(topDrawerStartsOpen({ working: true, failed: false, notifications: false })).toBe(true);
+    expect(topDrawerStartsOpen({ working: false, failed: true, notifications: false })).toBe(true);
+    expect(topDrawerStartsOpen({ working: false, failed: false, notifications: true })).toBe(true);
+  });
+});
+
+describe("selectedTopDrawerTab", () => {
+  // The drawer must never show an empty section: a section can empty out while
+  // the reader is looking at it (the last notification is dismissed, the last
+  // subagent finishes and is cleared).
+  it("keeps the reader's section while it has content", () => {
+    expect(selectedTopDrawerTab({ activity: true, notifications: true }, "activity")).toBe("activity");
+    expect(selectedTopDrawerTab({ activity: true, notifications: true }, "notifications")).toBe("notifications");
+  });
+
+  it("falls back to the section that exists", () => {
+    expect(selectedTopDrawerTab({ activity: true, notifications: false }, "notifications")).toBe("activity");
+    expect(selectedTopDrawerTab({ activity: false, notifications: true }, "activity")).toBe("notifications");
+    expect(selectedTopDrawerTab({ activity: true, notifications: false }, undefined)).toBe("activity");
+    expect(selectedTopDrawerTab({ activity: true, notifications: true }, undefined)).toBe("notifications");
+  });
+});
+
+describe("activityStripSummary", () => {
+  it("counts running, failed and finished work for the folded header", () => {
+    expect(activityStripSummary(["working", "running", "failed", "idle", "done"]))
+      .toEqual({ label: "2 running \u00b7 1 failed \u00b7 2 done", working: true, failed: true });
+  });
+
+  it("omits empty groups and reports a quiet strip as not working", () => {
+    expect(activityStripSummary(["done", "done"])).toEqual({ label: "2 done", working: false, failed: false });
+    expect(activityStripSummary([])).toEqual({ label: "", working: false, failed: false });
   });
 });
 
@@ -83,15 +162,18 @@ describe("subagent tool runs", () => {
     expect(host.textContent).toContain("review the diff");
   });
 
-  it("opens the output of a finished run and leaves a running one inert", async () => {
+  // Every run opens, finished or not: a run with no result file yet falls back
+  // to its own transcript, so the row always leads somewhere.
+  it("opens both a finished run and one still going", async () => {
     const { host, onOpenSubagentRun } = await mountRuns(RUNS);
     const rows = [...host.querySelectorAll(".subagent-row")];
 
     rows[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    expect(onOpenSubagentRun).not.toHaveBeenCalled();
+    expect(onOpenSubagentRun).toHaveBeenCalledExactlyOnceWith(RUNS[0]);
 
     rows[1]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    expect(onOpenSubagentRun).toHaveBeenCalledExactlyOnceWith(RUNS[1]);
+    expect(onOpenSubagentRun).toHaveBeenLastCalledWith(RUNS[1]);
+    expect(onOpenSubagentRun).toHaveBeenCalledTimes(2);
   });
 });
 

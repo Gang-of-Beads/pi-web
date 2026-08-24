@@ -156,7 +156,9 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
    */
   private renderAdd() {
     if (this.onAdd === undefined) return null;
-    return html`<button class="section-add" title="Add project" aria-label="Add project" @click=${(event: Event) => { event.stopPropagation(); this.onAdd?.(); }}>+</button>`;
+    // Labelled, not a bare glyph: a lone "+" in a heading is the control
+    // people ask for by saying it is missing.
+    return html`<button class="section-add" title="Add project" aria-label="Add project" @click=${(event: Event) => { event.stopPropagation(); this.onAdd?.(); }}><span aria-hidden="true">+</span><span class="section-add-label">Add project</span></button>`;
   }
 
   private renderHeading() {

@@ -1,7 +1,8 @@
-import { mkdir, mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ProjectTrustStore } from "@earendil-works/pi-coding-agent";
 import { createPiSessionManagerGateway } from "./piSessionManagerGateway.js";
 import { PiSessionService } from "./piSessionService.js";
 import { CapturingSessionEventHub, createTestModelRuntime } from "./piSessionService.testSupport.js";
@@ -41,7 +42,11 @@ async function agentDir(options: { defaultProjectTrust?: "always" | "never" | "a
     await writeFile(join(dir, "settings.json"), `${JSON.stringify({ defaultProjectTrust: options.defaultProjectTrust })}\n`);
   }
   if (options.savedDecision !== undefined) {
-    await writeFile(join(dir, "trust.json"), `${JSON.stringify({ [options.savedDecision.path]: options.savedDecision.trusted })}\n`);
+    // Through the store's own API: it keys decisions by resolved real path, so
+    // a hand-written file holding only the literal cwd is invisible to it
+    // wherever the temp dir is a symlink - every macOS run, where `/var` links
+    // to `/private/var`.
+    new ProjectTrustStore(dir).set(options.savedDecision.path, options.savedDecision.trusted);
   }
   return dir;
 }
@@ -162,7 +167,9 @@ describe("project trust event acceptance", () => {
 
     // `remember` persists the decision to the agent dir's trust.json.
     const trustJson: unknown = JSON.parse(await readFile(join(dir, "trust.json"), "utf8"));
-    expect(trustJson).toEqual({ [cwd]: true });
+    // The store records the resolved real path; on macOS that is not the same
+    // string as the temp cwd handed out here.
+    expect(trustJson).toEqual({ [await realpath(cwd)]: true });
   });
 
   it("lets a user extension refuse trust even with defaultProjectTrust always", async () => {

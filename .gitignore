@@ -21,3 +21,7 @@ dist/
 # Playwright e2e artefacts
 /test-results/
 /playwright-report/
+
+# Local agent runtime artifacts (background task logs, delegate sessions)
+.pi/tasks/
+.pi/delegate/

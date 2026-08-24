@@ -47,6 +47,18 @@ async function agentDir(defaultProjectTrust: "always" | "never" | "ask" = "ask")
   return dir;
 }
 
+/**
+ * Record a saved trust decision through the store's own API.
+ *
+ * The store keys decisions by resolved real path (and writes the unresolved
+ * spelling alongside it), so a hand-written `trust.json` holding only the
+ * literal cwd is invisible to `get()` wherever the temp dir is a symlink -
+ * every macOS run, where `/var` links to `/private/var`.
+ */
+function saveTrustDecision(agentDirPath: string, cwd: string, trusted: boolean): void {
+  new ProjectTrustStore(agentDirPath).set(cwd, trusted);
+}
+
 /** An extension bundle shaped like the SDK `LoadExtensionsResult` slice the emitter reads. */
 function extensionSet(...extensions: WebProjectTrustExtensionSet["extensions"][number][]): WebProjectTrustExtensionSet {
   return { extensions };
@@ -155,7 +167,7 @@ describe("resolveWebProjectTrusted", () => {
   it("lets an extension decision beat a saved decision, mirroring the SDK order", async () => {
     const cwd = await trustRequiringCwd();
     const agent = await agentDir("always");
-    await writeFile(join(agent, "trust.json"), `${JSON.stringify({ [cwd]: true })}\n`);
+    saveTrustDecision(agent, cwd, true);
 
     await expect(
       resolve({ cwd, agentDirPath: agent, extensionsResult: extensionSet(trustExtension("/ext/a.js", () => ({ trusted: "no" }))) }),
@@ -180,7 +192,7 @@ describe("resolveWebProjectTrusted", () => {
   it("falls back to the saved decision when the event is undecided", async () => {
     const cwd = await trustRequiringCwd();
     const agent = await agentDir("never");
-    await writeFile(join(agent, "trust.json"), `${JSON.stringify({ [cwd]: true })}\n`);
+    saveTrustDecision(agent, cwd, true);
 
     await expect(
       resolve({ cwd, agentDirPath: agent, extensionsResult: extensionSet(trustExtension("/ext/a.js", () => ({ trusted: "undecided" }))) }),

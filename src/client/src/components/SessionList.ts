@@ -268,7 +268,8 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
 
   private renderStartButton() {
     const title = this.startingCount > 0 ? "Start another session" : "Start a new session";
-    return html`<button class="start-session-button" title=${title} aria-label=${title} ?disabled=${!this.canStart} @click=${(event: MouseEvent) => { event.stopPropagation(); this.onStart?.(); }}>+</button>`;
+    const label = this.startingCount > 0 ? "Another" : "New session";
+    return html`<button class="start-session-button" title=${title} aria-label=${title} ?disabled=${!this.canStart} @click=${(event: MouseEvent) => { event.stopPropagation(); this.onStart?.(); }}><span aria-hidden="true">+</span><span class="section-add-label">${label}</span></button>`;
   }
 
   private renderStartingSession() {
@@ -640,7 +641,8 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     h2 > .section-count { flex: 0 0 auto; display: inline; color: var(--pi-muted); font-size: inherit; }
     h2 > .section-unread-count { flex: 0 0 auto; display: inline; color: var(--pi-accent); font-size: inherit; text-transform: none; }
     .bulk-select-entry { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; font-size: var(--pi-text-sm); line-height: 1; text-transform: none; }
-    .start-session-button { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; min-width: 30px; height: 30px; padding: 0 var(--pi-space-5); }
+    .start-session-button { box-sizing: border-box; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: var(--pi-space-2); min-width: 30px; height: 30px; padding: 0 var(--pi-space-5); }
+    .section-add-label { font-size: var(--pi-text-xs); white-space: nowrap; }
     .cleanup-entry { flex: 0 0 auto; padding: var(--pi-space-3) var(--pi-space-4); font-size: var(--pi-text-xs); text-transform: none; }
     .bulk-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pi-space-3); margin: 0 0 var(--pi-space-3); }
     .bulk-row button { padding: var(--pi-space-3) var(--pi-space-4); font-size: var(--pi-text-xs); white-space: nowrap; }
@@ -689,7 +691,8 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
          taller controls match the platform minimum touch target. */
       .session-search-input { height: 40px; font-size: 16px; }
       .session-search-clear { width: 40px; height: 40px; }
-      .bulk-select-entry, .start-session-button { width: 36px; min-width: 36px; height: 36px; }
+      .bulk-select-entry { width: 36px; min-width: 36px; height: 36px; }
+      .start-session-button { min-width: 36px; height: 36px; }
       .cleanup-entry { min-height: 36px; padding: var(--pi-space-3) var(--pi-space-5); }
       .action-menu-toggle { min-width: 36px; min-height: 36px; }
       .bulk-row button { min-height: 36px; }

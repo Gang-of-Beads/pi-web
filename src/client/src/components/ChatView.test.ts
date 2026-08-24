@@ -247,7 +247,7 @@ describe("ChatView session-warning dismiss wiring", () => {
   });
 });
 
-describe("ChatView notification tray wiring", () => {
+describe("ChatView session drawer wiring", () => {
   // Escape hatch: these cases verify only the tray buttons' Lit callback wiring.
   // Content and identity decisions use pure seams; Vitest has no shadow-DOM
   // harness, so stable semantic class markers keep handler extraction narrow.
@@ -259,12 +259,12 @@ describe("ChatView notification tray wiring", () => {
     const headerFocus = installNotificationFocusRoot(view);
     view.onDismissNotification = onDismissNotification;
 
-    const rendered = renderNotificationTray(view);
-    if (rendered === null) throw new Error("expected a notification tray");
+    const rendered = renderTopDrawer(view);
+    if (rendered === null) throw new Error("expected a session drawer");
     templateEventHandlerAfterMarker(rendered, "notification-row-dismiss")(new Event("click"));
     view.notificationInbox = emptyNotificationInbox(requireNotificationInbox(view));
 
-    expect(renderNotificationTray(view)).not.toBeNull();
+    expect(renderTopDrawer(view)).not.toBeNull();
     focusPendingNotificationTarget(view);
     expect(onDismissNotification).toHaveBeenCalledExactlyOnceWith("daemon-a:1");
     expect(headerFocus).toHaveBeenCalledOnce();
@@ -276,12 +276,12 @@ describe("ChatView notification tray wiring", () => {
     const headerFocus = installNotificationFocusRoot(view);
     view.onDismissAllNotifications = onDismissAllNotifications;
 
-    const rendered = renderNotificationTray(view);
-    if (rendered === null) throw new Error("expected a notification tray");
+    const rendered = renderTopDrawer(view);
+    if (rendered === null) throw new Error("expected a session drawer");
     templateEventHandlerAfterMarker(rendered, "notification-clear")(new Event("click"));
     view.notificationInbox = emptyNotificationInbox(requireNotificationInbox(view));
 
-    expect(renderNotificationTray(view)).not.toBeNull();
+    expect(renderTopDrawer(view)).not.toBeNull();
     focusPendingNotificationTarget(view);
     expect(onDismissAllNotifications).toHaveBeenCalledOnce();
     expect(headerFocus).toHaveBeenCalledOnce();
@@ -292,8 +292,8 @@ describe("ChatView notification tray wiring", () => {
     const headerFocus = installNotificationFocusRoot(view);
     view.onDismissAllNotifications = vi.fn();
 
-    const rendered = renderNotificationTray(view);
-    if (rendered === null) throw new Error("expected a notification tray");
+    const rendered = renderTopDrawer(view);
+    if (rendered === null) throw new Error("expected a session drawer");
     templateEventHandlerAfterMarker(rendered, "notification-clear")(new Event("click"));
     view.notificationInbox = { ...requireNotificationInbox(view), machineId: "remote" };
     focusPendingNotificationTarget(view);
@@ -304,12 +304,12 @@ describe("ChatView notification tray wiring", () => {
   it("keeps a collapsed tray closed for new arrivals and isolates matching session ids by exact chat", () => {
     const view = withNotificationInbox(new ChatView());
     const inbox = requireNotificationInbox(view);
-    const rendered = renderNotificationTray(view);
-    if (rendered === null) throw new Error("expected a notification tray");
+    const rendered = renderTopDrawer(view);
+    if (rendered === null) throw new Error("expected a session drawer");
 
     templateEventHandlerAfterMarker(rendered, "notification-toggle")(new Event("click"));
 
-    const collapsedTargetKeys: unknown = Reflect.get(view, "collapsedNotificationTargetKeys");
+    const collapsedTargetKeys: unknown = Reflect.get(view, "collapsedTopDrawerKeys");
     if (!(collapsedTargetKeys instanceof Set)) throw new Error("Expected collapsed notification target keys");
     const firstNotification = inbox.notifications[0];
     if (firstNotification === undefined) throw new Error("expected a retained notification");
@@ -427,7 +427,7 @@ type RenderQueuedMessages = (this: ChatView) => TemplateResult;
 type RenderMessageGroup = (this: ChatView, messages: ChatLine[], startIndex: number, endIndex: number, defaultOpen: boolean) => TemplateResult;
 type RenderMessageGroupBody = (this: ChatView, messages: ChatLine[], startIndex: number) => TemplateResult;
 type RenderWarnings = (this: ChatView) => TemplateResult | null;
-type RenderNotificationTray = (this: ChatView) => TemplateResult | null;
+type RenderTopDrawer = (this: ChatView) => TemplateResult | null;
 type FocusPendingNotificationTarget = (this: ChatView) => void;
 type TemplateEventHandler = (event: Event) => void;
 
@@ -474,9 +474,9 @@ function renderWarnings(view: ChatView): TemplateResult | null {
   return method.call(view);
 }
 
-function renderNotificationTray(view: ChatView): TemplateResult | null {
-  const method: unknown = Reflect.get(view, "renderNotificationTray");
-  if (!isRenderNotificationTray(method)) throw new Error("ChatView.renderNotificationTray is not callable");
+function renderTopDrawer(view: ChatView): TemplateResult | null {
+  const method: unknown = Reflect.get(view, "renderTopDrawer");
+  if (!isRenderTopDrawer(method)) throw new Error("ChatView.renderTopDrawer is not callable");
   return method.call(view);
 }
 
@@ -514,7 +514,7 @@ function isRenderWarnings(value: unknown): value is RenderWarnings {
   return typeof value === "function";
 }
 
-function isRenderNotificationTray(value: unknown): value is RenderNotificationTray {
+function isRenderTopDrawer(value: unknown): value is RenderTopDrawer {
   return typeof value === "function";
 }
 
