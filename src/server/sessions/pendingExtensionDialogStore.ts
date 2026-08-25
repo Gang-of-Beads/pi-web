@@ -3,6 +3,7 @@ import {
   EXTENSION_DIALOG_ID_MAX_LENGTH,
   EXTENSION_DIALOG_INPUT_MAX_LENGTH,
   EXTENSION_DIALOG_OPTION_LIMIT,
+  EXTENSION_DIALOG_PROSE_MAX_LENGTH,
   EXTENSION_DIALOG_TEXT_MAX_LENGTH,
   type ExtensionDialogAnswer,
   type ExtensionDialogCloseReason,
@@ -97,7 +98,7 @@ export class PendingExtensionDialogStore {
     const dialog: PendingExtensionDialog = {
       dialogId: requireId(this.createDialogId(), "dialogId"),
       kind,
-      title: requireText(input.title, "dialog title"),
+      title: requireProse(input.title, "dialog title"),
       ...kindFields(kind, input),
       askedAt: now.toISOString(),
       ...timeoutField(input.timeoutMs, now),
@@ -182,7 +183,7 @@ function kindFields(
 ): Pick<PendingExtensionDialog, "message" | "options" | "placeholder"> {
   switch (kind) {
     case "confirm": {
-      const message = optionalText(input.message, "dialog message");
+      const message = optionalProse(input.message, "dialog message");
       return message === undefined ? {} : { message };
     }
     case "select":
@@ -242,15 +243,33 @@ function requireId(value: string, field: string): string {
 }
 
 function requireText(value: string, field: string): string {
+  return requireBoundedText(value, field, EXTENSION_DIALOG_TEXT_MAX_LENGTH);
+}
+
+/** Prose a dialog presents, which the card is built to scroll. */
+function requireProse(value: string, field: string): string {
+  return requireBoundedText(value, field, EXTENSION_DIALOG_PROSE_MAX_LENGTH);
+}
+
+function requireBoundedText(value: string, field: string, maxLength: number): string {
   if (value.trim() === "") throw new PendingExtensionDialogValidationError(`${field} must not be empty`);
-  if (value.length > EXTENSION_DIALOG_TEXT_MAX_LENGTH) throw new PendingExtensionDialogValidationError(`${field} exceeds its length limit`);
+  if (value.length > maxLength) throw new PendingExtensionDialogValidationError(`${field} exceeds its length limit`);
   return value;
 }
 
-/** Optional cosmetic prose: blank means absent rather than being a validation error. */
+/** Optional cosmetic label: blank means absent rather than being a validation error. */
 function optionalText(value: string | undefined, field: string): string | undefined {
+  return optionalBoundedText(value, field, EXTENSION_DIALOG_TEXT_MAX_LENGTH);
+}
+
+/** Optional prose the dialog presents, bounded like the title it accompanies. */
+function optionalProse(value: string | undefined, field: string): string | undefined {
+  return optionalBoundedText(value, field, EXTENSION_DIALOG_PROSE_MAX_LENGTH);
+}
+
+function optionalBoundedText(value: string | undefined, field: string, maxLength: number): string | undefined {
   if (value === undefined || value.trim() === "") return undefined;
-  if (value.length > EXTENSION_DIALOG_TEXT_MAX_LENGTH) {
+  if (value.length > maxLength) {
     throw new PendingExtensionDialogValidationError(`${field} exceeds its length limit`);
   }
   return value;

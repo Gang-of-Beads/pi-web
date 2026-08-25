@@ -885,8 +885,18 @@ export interface AskUserCloseResponse {
 
 /** Length bound for extension-dialog ids. */
 export const EXTENSION_DIALOG_ID_MAX_LENGTH = 128;
-/** Length bound for extension-authored dialog prose: titles, messages, options, placeholders. */
+/** Length bound for extension-authored dialog labels: options and placeholders. */
 export const EXTENSION_DIALOG_TEXT_MAX_LENGTH = 1_000;
+/**
+ * Length bound for the prose a dialog presents: its title and message.
+ *
+ * A label is something the user clicks and has to stay short, but the body of
+ * a decision can legitimately be long - a goal proposal, a diff summary, a
+ * migration plan. The card already renders that shape, splitting the first
+ * line into the heading and scrolling the rest in a focusable detail region,
+ * so the tighter label bound was rejecting content the UI was built to show.
+ */
+export const EXTENSION_DIALOG_PROSE_MAX_LENGTH = 8_000;
 /** Largest option list one `select` dialog may offer. */
 export const EXTENSION_DIALOG_OPTION_LIMIT = 24;
 /** Length bound for the text a user types into an `input` dialog. */

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   EXTENSION_DIALOG_INPUT_MAX_LENGTH,
   EXTENSION_DIALOG_OPTION_LIMIT,
+  EXTENSION_DIALOG_PROSE_MAX_LENGTH,
+  EXTENSION_DIALOG_TEXT_MAX_LENGTH,
   type ExtensionDialogAnswer,
 } from "../../shared/apiTypes.js";
 import {
@@ -125,12 +127,28 @@ describe("PendingExtensionDialogStore open", () => {
     expect(input).not.toHaveProperty("placeholder");
   });
 
+  it("accepts a decision whose body is longer than a label may be", () => {
+    // A goal proposal or a migration plan is legitimately long, and the card
+    // renders exactly that shape: first line as the heading, the rest scrolled
+    // in a detail region. Only the labels the user clicks have to stay short.
+    const store = testStore();
+    const proposal = `Confirm Goal Draft\n\n${"objective and tasks ".repeat(200)}`;
+    expect(proposal.length).toBeGreaterThan(EXTENSION_DIALOG_TEXT_MAX_LENGTH);
+    const dialog = store.open({ sessionId, kind: "select", title: proposal, options: ["Confirm", "Keep refining"], runScoped: false });
+    expect(dialog.title).toBe(proposal);
+    const confirm = store.open({ sessionId, kind: "confirm", title: "Apply?", message: "y".repeat(EXTENSION_DIALOG_PROSE_MAX_LENGTH), runScoped: false });
+    expect(confirm.message).toHaveLength(EXTENSION_DIALOG_PROSE_MAX_LENGTH);
+  });
+
   it("rejects dialogs the user could not meaningfully answer", () => {
     const store = testStore();
     const open = (overrides: Record<string, unknown>) => () =>
       store.open({ sessionId, kind: "confirm", title: "Ok?", runScoped: false, ...overrides });
 
     expect(open({ title: "  " })).toThrow(/dialog title must not be empty/);
+    expect(open({ title: "x".repeat(EXTENSION_DIALOG_PROSE_MAX_LENGTH + 1) })).toThrow(/dialog title exceeds its length limit/);
+    expect(open({ message: "x".repeat(EXTENSION_DIALOG_PROSE_MAX_LENGTH + 1) })).toThrow(/dialog message exceeds its length limit/);
+    expect(open({ kind: "select", options: ["x".repeat(EXTENSION_DIALOG_TEXT_MAX_LENGTH + 1)] })).toThrow(/select option exceeds its length limit/);
     expect(open({ kind: "widget" })).toThrow(/Unknown dialog kind widget/);
     expect(open({ kind: "select", options: undefined })).toThrow(/at least one option/);
     expect(open({ kind: "select", options: [] })).toThrow(/at least one option/);
