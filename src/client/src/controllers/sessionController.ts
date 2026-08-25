@@ -1,5 +1,5 @@
 import { api as defaultApi, type AskUserCloseResponse, type AskUserSubmission, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingAskUser, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionBackgroundTaskInfo, SessionSubagentRunInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Workspace } from "../api";
-import type { AppState, ClosedExtensionDialog } from "../appState";
+import { activityOutputView, type AppState, type ClosedExtensionDialog } from "../appState";
 import { forgetCachedNewSession, isCachedNewSessionInfo, markCachedNewSessionInfo, mergeCachedNewSessions, rememberCachedNewSession, stripCachedNewSessionMarker } from "../cachedNewSessions";
 import { textMessage } from "../chatMessages";
 import { machineSessionKey } from "../machineKeys";
@@ -1108,7 +1108,7 @@ export class SessionController {
     const machineId = selectedMachineId(state);
     try {
       const output = await this.api.subagentRunOutput(session, run.runId, machineId);
-      this.setState({ messages: [...this.getState().messages, textMessage("tool", `Subagent ${run.agent} (${run.runId.slice(0, 8)}):\n\n${output}`)] });
+      this.setState({ activityOutput: activityOutputView(`Subagent ${run.agent} (${run.runId.slice(0, 8)})`, output) });
     } catch (error) {
       this.setState({ error: String(error) });
     }
@@ -1126,10 +1126,15 @@ export class SessionController {
     const machineId = selectedMachineId(state);
     try {
       const output = await this.api.backgroundTaskOutput(session, task.id, machineId);
-      this.setState({ messages: [...this.getState().messages, textMessage("tool", `Background task ${task.name} (${task.id}):\n\n${output}`)] });
+      this.setState({ activityOutput: activityOutputView(`Background task ${task.name} (${task.id})`, output) });
     } catch (error) {
       this.setState({ error: String(error) });
     }
+  }
+
+  /** Put the opened log away again. */
+  closeActivityOutput(): void {
+    if (this.getState().activityOutput !== undefined) this.setState({ activityOutput: undefined });
   }
 
   async dismissWarning(dismissId: string) {

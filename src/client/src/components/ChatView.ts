@@ -8,7 +8,7 @@ import { capturePrependScrollAnchor, PREPEND_RESTORE_SETTLE_FRAMES, restorePrepe
 import { shouldRequestEarlierMessages } from "../chatHistoryLoading";
 import { ChatScrollController, distanceFromScrollBottom, findFirstVisibleArticle, isNearScrollBottom, type ChatAnchorScrollPosition, type ChatScrollRestoreResult } from "../chatScrollPosition";
 import type { AskUserSubmission, PendingAskUser, PendingExtensionDialog, QueuedSessionMessage, SessionActivity, SessionStatus, SessionWarningSeverity } from "../api";
-import type { ClosedExtensionDialog } from "../appState";
+import type { ActivityOutputView, ClosedExtensionDialog } from "../appState";
 import {
   notificationAnnouncementLabel,
   notificationDismissLabel,
@@ -256,8 +256,12 @@ export class ChatView extends LitElement {
   @property({ type: Boolean }) warningsVisible = true;
   @property({ attribute: false }) onToggleWarnings?: () => void;
   @property({ attribute: false }) onLoadMore?: () => void;
+  /** A log or artifact opened from the activity list, read in its own view. */
+  @property({ attribute: false }) activityOutput?: ActivityOutputView | undefined;
+  @property({ attribute: false }) onCloseActivityOutput?: () => void;
   @query(".chat") private chat?: HTMLDivElement;
   @query("dialog.image-zoom") private imageZoomDialog?: HTMLDialogElement;
+  @query("dialog.activity-output") private activityOutputDialog?: HTMLDialogElement;
   @state() private pinnedToBottom = true;
   @state() private zoomedImage: { src: string; alt: string } | undefined = undefined;
   @state() private expandedMetaKey: string | undefined;
@@ -282,6 +286,7 @@ export class ChatView extends LitElement {
   @state() private retainedEmptyNotificationTrayTargetKey: string | undefined;
   private pendingNotificationFocus: PendingNotificationFocus | undefined;
   private imageZoomModalRegistration: RenderedModalRegistration | undefined;
+  private activityOutputModalRegistration: RenderedModalRegistration | undefined;
   private readonly disclosures = new ChatDisclosureController();
   private readonly scrollController = new ChatScrollController();
   private suppressScrollSave = false;
@@ -346,6 +351,7 @@ export class ChatView extends LitElement {
     this.saveScrollPosition();
     this.scrollController.dispose();
     this.releaseImageZoomModal();
+    this.releaseActivityOutputModal();
     this.prependRestoreToken += 1;
     if (this.restoreScrollFrame !== undefined) cancelAnimationFrame(this.restoreScrollFrame);
     if (this.loadMoreCheckFrame !== undefined) cancelAnimationFrame(this.loadMoreCheckFrame);
@@ -430,6 +436,7 @@ export class ChatView extends LitElement {
     if (changed.has("messages") || changed.has("hasMore") || changed.has("loadingMore")) this.requestLoadMoreIfNeeded();
     if (changed.has("notificationInbox") && this.pendingNotificationFocus !== undefined) this.focusPendingNotificationTarget();
     if (changed.has("zoomedImage")) this.syncImageZoomDialog();
+    if (changed.has("activityOutput")) this.syncActivityOutputDialog();
     if (changed.has("status") || changed.has("activity") || changed.has("isSendingPrompt")) this.syncTurnClock();
   }
 
@@ -460,6 +467,41 @@ export class ChatView extends LitElement {
     }
     if (dialog.open) dialog.close();
     this.releaseImageZoomModal();
+  }
+
+  private syncActivityOutputDialog(): void {
+    const dialog = this.activityOutputDialog;
+    if (dialog === undefined) return;
+    if (this.activityOutput !== undefined) {
+      if (this.activityOutputModalRegistration === undefined) {
+        const registration = registerRenderedModal({
+          element: dialog,
+          nativeTopLayer: true,
+          focus: () => {
+            const close = this.renderRoot.querySelector<HTMLElement>(".activity-output-close");
+            (close ?? dialog).focus();
+          },
+        });
+        this.activityOutputModalRegistration = registration;
+        try {
+          if (!dialog.open) dialog.showModal();
+        } catch (error) {
+          this.activityOutputModalRegistration = undefined;
+          registration.unregister();
+          throw error;
+        }
+      }
+      this.activityOutputModalRegistration.focus();
+      return;
+    }
+    if (dialog.open) dialog.close();
+    this.releaseActivityOutputModal();
+  }
+
+  private releaseActivityOutputModal(): void {
+    const registration = this.activityOutputModalRegistration;
+    this.activityOutputModalRegistration = undefined;
+    registration?.unregister();
   }
 
   private releaseImageZoomModal(): void {
@@ -500,6 +542,7 @@ export class ChatView extends LitElement {
         ${this.renderActivityDock()}
       </div>
       ${this.renderImageZoom()}
+      ${this.renderActivityOutput()}
     `;
   }
 
@@ -941,6 +984,35 @@ export class ChatView extends LitElement {
         `;
         })}
       </aside>
+    `;
+  }
+
+  private readonly closeActivityOutput = (): void => {
+    if (this.activityOutput !== undefined) this.onCloseActivityOutput?.();
+  };
+  private readonly onActivityOutputDialogClick = (event: MouseEvent): void => {
+    if (event.target === this.activityOutputDialog) this.closeActivityOutput();
+  };
+
+  /**
+   * A task's log or a run's artifact, read on its own. This is a file rather
+   * than something the agent said, so it gets a view instead of a turn in the
+   * transcript.
+   */
+  private renderActivityOutput() {
+    const output = this.activityOutput;
+    return html`
+      <dialog class="activity-output" @click=${this.onActivityOutputDialogClick} @close=${this.closeActivityOutput} @cancel=${this.closeActivityOutput}>
+        ${output === undefined ? null : html`
+          <header class="activity-output-head">
+            <h2 class="activity-output-title">${output.title}</h2>
+            <button type="button" class="activity-output-close" aria-label="Close output" @click=${this.closeActivityOutput}>×</button>
+          </header>
+          ${output.empty
+            ? html`<p class="activity-output-empty">Nothing has been written to this log yet.</p>`
+            : html`<pre class="activity-output-body">${output.text}</pre>`}
+        `}
+      </dialog>
     `;
   }
 

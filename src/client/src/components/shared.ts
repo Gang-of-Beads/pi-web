@@ -698,6 +698,18 @@ export const chatStyles = css`
   .image-zoom-close { position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; font: 16px/1 system-ui, sans-serif; color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
   .image-zoom-close:hover, .image-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
   .image-zoom-close:focus-visible { outline: 1px solid var(--pi-border); outline-offset: 2px; }
+  /* A log read on its own: wide enough for wrapped command output, and scrollable
+     rather than growing the page, because these files run to thousands of lines. */
+  dialog.activity-output { position: fixed; inset: 0; margin: auto; box-sizing: border-box; width: min(92vw, 900px); max-height: calc(88vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); padding: 0; color: var(--pi-text); background: var(--pi-surface); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); overflow: hidden; }
+  dialog.activity-output[open] { display: flex; flex-direction: column; }
+  dialog.activity-output::backdrop { background: rgba(0, 0, 0, 0.6); }
+  .activity-output-head { display: flex; align-items: center; gap: var(--pi-space-3); padding: var(--pi-space-4) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); }
+  .activity-output-title { flex: 1; min-width: 0; margin: 0; font-size: var(--pi-font-size-sm, 13px); font-weight: 600; color: var(--pi-text-bright); overflow-wrap: anywhere; }
+  .activity-output-close { display: inline-grid; place-items: center; flex: none; width: 44px; height: 44px; margin: calc(-1 * var(--pi-space-2)) calc(-1 * var(--pi-space-2)) calc(-1 * var(--pi-space-2)) 0; padding: 0; font: 18px/1 system-ui, sans-serif; color: var(--pi-muted); background: transparent; border: none; border-radius: var(--pi-radius-sm); cursor: pointer; }
+  .activity-output-close:hover, .activity-output-close:focus-visible { color: var(--pi-text-bright); }
+  .activity-output-close:focus-visible { outline: 1px solid var(--pi-border); outline-offset: -2px; }
+  .activity-output-body { flex: 1; min-height: 0; margin: 0; padding: var(--pi-space-4) var(--pi-space-5); font: var(--pi-code-font-size, 12px)/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; overscroll-behavior: contain; }
+  .activity-output-empty { margin: 0; padding: var(--pi-space-6) var(--pi-space-5); color: var(--pi-muted); text-align: center; }
   .group-msg { max-width: 100%; min-width: 0; box-sizing: border-box; padding: var(--pi-space-5) 0; border-top: 1px solid var(--pi-border-muted); color: var(--pi-text); overflow: visible; }
   .group-msg.tool { color: var(--pi-warning); }
   .group-msg.tool-execution-shell { color: var(--pi-text); }
