@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, writeFile, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { listSubagentRuns, parseSubagentSessionName } from "./subagentRuns";
+import { listSubagentRuns, parseSubagentSessionName, readSubagentRunOutput } from "./subagentRuns";
 
 // The real layout: the run directory is named after the transcript *file*,
 // timestamp prefix and all. The first version of this fixture used a bare id
@@ -85,6 +85,25 @@ describe("listSubagentRuns", () => {
     const [run] = await listSubagentRuns(dir, PARENT);
 
     expect(run).toMatchObject({ runId: "run-c", status: "running", lastActivity: "bash" });
+  });
+
+  it("reads a real transcript line, where the message wraps the content", async () => {
+    // What pi actually writes. The fixtures above use the flat shape the
+    // reader assumed, so they agreed with the bug: every running run reported
+    // no steps at all, its row could not say what the child was doing, and
+    // opening it answered "No output for this subagent run".
+    const dir = await sessionDir();
+    await writeTranscript(dir, "run-live", [
+      { type: "message", message: { role: "assistant", content: [{ type: "text", text: "reading the config" }] } },
+      { type: "message", message: { role: "assistant", content: [{ type: "tool_call", toolName: "grep" }] } },
+    ]);
+
+    const [run] = await listSubagentRuns(dir, PARENT);
+    expect(run).toMatchObject({ status: "running", lastActivity: "grep" });
+
+    const progress = await readSubagentRunOutput(dir, "run-live", { parentSessionId: PARENT });
+    expect(progress).toContain("has not written a result yet");
+    expect(progress).toContain("grep");
   });
 
   it("does not leave a killed run listed as running forever", async () => {

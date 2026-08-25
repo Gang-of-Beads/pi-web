@@ -201,7 +201,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function stepFromEntry(entry: unknown): string | undefined {
   if (!isRecord(entry)) return undefined;
-  const content: unknown = entry["content"];
+  // A transcript line wraps the model message: {"type":"message","message":
+  // {"role":...,"content":[...]}}. Reading `content` off the line itself found
+  // nothing in every real transcript, which is why a run that had not written
+  // its result yet reported no steps at all - the row could not say what the
+  // child was doing, and opening it answered "No output for this subagent
+  // run". The flat shape is still accepted so a caller holding a message can
+  // pass it directly.
+  const message: unknown = entry["message"];
+  const content: unknown = isRecord(message) ? message["content"] : entry["content"];
   if (!Array.isArray(content)) return undefined;
   // Walk backwards over the raw array: the last step is the interesting one,
   // and copying to reverse it would mean spreading values of unknown shape.

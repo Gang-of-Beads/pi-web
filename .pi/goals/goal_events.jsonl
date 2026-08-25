@@ -5,3 +5,5 @@
 {"type":"task_started","goalId":"mt8j52x8-26yyne","taskId":"t2","at":"2026-08-25T10:50:17.612Z"}
 {"type":"task_complete","goalId":"mt8j52x8-26yyne","taskId":"t2","evidence":"浏览器断网复现两份副本(messages 4→5 + 编辑器留字);修复后 copies:0/draft:\"\"/outbox pending:1;3 条控制器单测,移除修复即 2 红(6b432069)","at":"2026-08-25T10:59:42.728Z"}
 {"type":"task_started","goalId":"mt8j52x8-26yyne","taskId":"t3","at":"2026-08-25T11:00:06.197Z"}
+{"type":"task_complete","goalId":"mt8j52x8-26yyne","taskId":"t3","evidence":"复现: dock 显示 'activity-dock idle' 而对话框在等回答;抽出 isWaitingForUser seam 统一 ChatView+PiWebApp 两处;3+2 条测试,移除修复即 2 红(da4ec10b)","at":"2026-08-25T11:03:45.670Z"}
+{"type":"task_started","goalId":"mt8j52x8-26yyne","taskId":"t4","at":"2026-08-25T11:04:07.306Z"}
