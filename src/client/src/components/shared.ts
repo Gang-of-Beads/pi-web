@@ -709,7 +709,7 @@ export const chatStyles = css`
      45-75; 78ch leaves room for code and tables without letting prose sprawl.
      The column centres so the conversation does not sit against one edge. */
   .chat > * { margin-inline: auto; }
-  .msg { max-width: min(100%, 78ch); min-width: 0; box-sizing: border-box; margin: 0 0 var(--pi-space-7); padding: var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); overflow: visible; }
+  .msg { max-width: min(100%, 78ch); min-width: 0; box-sizing: border-box; margin: 0 auto var(--pi-space-7); padding: var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); overflow: visible; }
   .msg.assistant, .msg.tool-image-output { background: var(--pi-surface); }
   .msg.user { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
   /* Held by the server, not yet read: the same warning colour the queue panel
@@ -759,7 +759,7 @@ export const chatStyles = css`
   .group-msg.tool-execution-shell { color: var(--pi-text); }
   .group-msg.system { color: var(--pi-muted); }
   .group-msg.bash { color: var(--pi-success); }
-  .history-boundary { position: relative; z-index: 5; display: grid; gap: 3px; justify-items: center; margin: 0 0 var(--pi-space-7); color: var(--pi-muted); font-size: var(--pi-text-xs); text-align: center; }
+  .history-boundary { position: relative; z-index: 5; display: grid; gap: 3px; justify-items: center; margin: 0 auto var(--pi-space-7); color: var(--pi-muted); font-size: var(--pi-text-xs); text-align: center; }
   .history-load-button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text-secondary); padding: var(--pi-space-3) var(--pi-space-6); font: var(--pi-text-xs) var(--pi-font-ui); cursor: pointer; }
   .history-load-button:hover, .history-load-button:focus { border-color: var(--pi-accent); color: var(--pi-text-bright); }
   .history-load-button:disabled { cursor: default; opacity: .55; }
@@ -779,7 +779,7 @@ export const chatStyles = css`
   .delivery-mark.received { color: var(--pi-muted); }
   .delivery-mark.delivered { color: var(--pi-success); }
   .delivery-mark.failed { color: var(--pi-danger); font-weight: 600; }
-  .session-activity { max-width: 100%; min-width: 0; box-sizing: border-box; display: grid; gap: var(--pi-space-2); margin: 0 0 var(--pi-space-7); padding: var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); overflow: hidden; }
+  .session-activity { max-width: 100%; min-width: 0; box-sizing: border-box; display: grid; gap: var(--pi-space-2); margin: 0 auto var(--pi-space-7); padding: var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); overflow: hidden; }
   .session-activity.compacting { border-color: var(--pi-purple-border); background: var(--pi-purple-surface); }
   .session-activity strong { color: var(--pi-purple); }
   .session-activity span, .session-activity small { color: var(--pi-muted); }
@@ -914,7 +914,7 @@ export const promptEditorStyles = css`
      because shell styles do not cross a component's shadow boundary. */
   button, [role="button"], input, select, summary { touch-action: manipulation; }
   :host { position: relative; z-index: 5; display: block; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
-  footer { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--pi-space-4); padding: var(--pi-space-6); border-top: 1px solid var(--pi-border); }
+  footer { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--pi-space-4); padding: var(--pi-space-6); border-top: 1px solid var(--pi-border); max-width: min(100%, 78ch); margin-inline: auto; }
   /* Collapsed: one line that gives the screen back to whatever input is being
      used, and says what is still in the draft so it does not look lost. */
   footer.collapsed { padding: var(--pi-space-3) var(--pi-space-5); }
