@@ -61,6 +61,7 @@ export class PromptEditor extends LitElement {
   @property({ attribute: false }) availableThinkingLevels: readonly string[] = [];
   @query(".markdown-editor") private editorHost?: HTMLDivElement;
   @query(".attachment-input") private attachmentInput?: HTMLInputElement;
+  @query("dialog.attachment-zoom") private attachmentZoomDialog?: HTMLDialogElement;
   // `draft` is the live document text but is intentionally NOT reactive: it
   // changes on every keystroke and the visible text is owned by CodeMirror, not
   // by Lit's render. Re-rendering the surrounding template on each keystroke is
@@ -74,6 +75,7 @@ export class PromptEditor extends LitElement {
   /** Absent means dictation is not offered at all. */
   @property({ attribute: false }) speechToText?: PiWebSpeechToTextConfig;
   @state() private voiceState: VoiceCaptureState = { kind: "idle" };
+  @state() private zoomedAttachment?: { src: string; alt: string } | undefined;
   private voice?: VoiceController;
   @state() private attachments: PendingAttachment[] = [];
   @state() private attachmentError: string | undefined = undefined;
@@ -141,6 +143,7 @@ export class PromptEditor extends LitElement {
     }
     if (changed.has("disabled")) this.updateEditorDisabledState();
     if (changed.has("sessionId") || changed.has("machineId")) this.syncEditorDoc();
+    this.syncAttachmentZoomDialog();
   }
 
   override disconnectedCallback(): void {
@@ -174,6 +177,7 @@ export class PromptEditor extends LitElement {
           <button class="icon-button stop-button" ?disabled=${this.disabled || !this.canStop} title=${this.canStop ? "Stop current work and clear queued messages" : "Nothing running"} aria-label="Stop current work" @click=${() => this.onStop?.()}>${renderStopIcon()}</button>
         </div>
       </footer>
+      ${this.renderAttachmentZoom()}
     `;
   }
 
@@ -290,7 +294,16 @@ export class PromptEditor extends LitElement {
 
   private renderAttachmentPreview(attachment: PendingAttachment) {
     if (isInlinePromptAttachment(attachment)) {
-      return html`<img src=${`data:${attachment.mimeType};base64,${attachment.data}`} alt=${attachment.name} />`;
+      const src = `data:${attachment.mimeType};base64,${attachment.data}`;
+      return html`<img
+        src=${src}
+        alt=${attachment.name}
+        role="button"
+        tabindex="0"
+        title="Click to enlarge"
+        @click=${() => { this.openAttachmentZoom(src, attachment.name); }}
+        @keydown=${(event: KeyboardEvent) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); this.openAttachmentZoom(src, attachment.name); } }}
+      />`;
     }
     return html`
       <div class="attachment-file-preview" aria-hidden="true">${fileExtensionLabel(attachment.name)}</div>
@@ -300,6 +313,51 @@ export class PromptEditor extends LitElement {
 
   private removeAttachment(id: string) {
     this.attachments = this.attachments.filter((attachment) => attachment.id !== id);
+  }
+
+  private readonly openAttachmentZoom = (src: string, alt: string): void => {
+    this.zoomedAttachment = { src, alt };
+  };
+
+  private readonly closeAttachmentZoom = (): void => {
+    this.zoomedAttachment = undefined;
+  };
+
+  private readonly onAttachmentZoomDialogClick = (event: MouseEvent): void => {
+    if (event.target === this.attachmentZoomDialog) this.closeAttachmentZoom();
+  };
+
+  private syncAttachmentZoomDialog(): void {
+    const dialog = this.attachmentZoomDialog;
+    if (dialog === undefined) return;
+    if (this.zoomedAttachment !== undefined) {
+      // A pending attachment lives only in the composer, so there is exactly
+      // one modal to keep in step: showModal for the native top layer (Esc and
+      // backdrop behaviour included), and focus a labelled control instead of
+      // the bare dialog, which nothing would announce.
+      try {
+        if (!dialog.open) dialog.showModal();
+      } catch {
+        this.zoomedAttachment = undefined;
+        return;
+      }
+      const close = this.renderRoot.querySelector<HTMLElement>(".attachment-zoom-close");
+      (close ?? dialog).focus();
+      return;
+    }
+    if (dialog.open) dialog.close();
+  }
+
+  private renderAttachmentZoom() {
+    const zoomed = this.zoomedAttachment;
+    return html`
+      <dialog class="attachment-zoom" @click=${this.onAttachmentZoomDialogClick} @close=${this.closeAttachmentZoom} @cancel=${this.closeAttachmentZoom}>
+        ${zoomed === undefined ? null : html`
+          <button type="button" class="attachment-zoom-close" aria-label="Close image" @click=${this.closeAttachmentZoom}>×</button>
+          <img class="attachment-zoom-full" src=${zoomed.src} alt=${zoomed.alt} />
+        `}
+      </dialog>
+    `;
   }
 
   private async handlePaste(event: ClipboardEvent) {
