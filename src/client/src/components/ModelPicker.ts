@@ -2,6 +2,7 @@ import { LitElement, css, html, nothing, type PropertyValues, type TemplateResul
 import { customElement, property, state } from "lit/decorators.js";
 import type { CommandOption, SessionModelCatalogEntry } from "../api";
 import { keyboardEventOriginatesFromNativeActivationControl } from "./keyboardEventTarget";
+import { matchesAllQueryWords, normalizeSearchQuery } from "../searchMatching";
 import "./ModalSurface";
 import { scrollWhenSelected } from "./scrollWhenSelected";
 
@@ -24,19 +25,19 @@ export function modelCatalogEntryValue(entry: Pick<SessionModelCatalogEntry, "pr
   return `${entry.provider}/${entry.id}`;
 }
 
-/** Case-insensitive substring filter over the Enabled-mode options (CommandPicker semantics). */
+/** Case-insensitive word filter over the Enabled-mode options (CommandPicker semantics). */
 export function filterModelOptions(options: readonly CommandOption[], query: string): CommandOption[] {
-  const normalized = query.trim().toLowerCase();
+  const normalized = normalizeSearchQuery(query);
   if (normalized === "") return [...options];
-  return options.filter((option) => `${option.label} ${option.description ?? ""} ${option.value}`.toLowerCase().includes(normalized));
+  return options.filter((option) => matchesAllQueryWords(`${option.label} ${option.description ?? ""} ${option.value}`, normalized));
 }
 
-/** Case-insensitive substring filter over the All-mode catalog, mirroring pi's model search text (id, provider, name). */
+/** Case-insensitive word filter over the All-mode catalog, mirroring pi's model search text (id, provider, name). */
 export function modelCatalogView(catalog: readonly SessionModelCatalogEntry[], query: string): ModelCatalogView {
-  const normalized = query.trim().toLowerCase();
+  const normalized = normalizeSearchQuery(query);
   const rows = normalized === ""
     ? [...catalog]
-    : catalog.filter((entry) => `${entry.provider} ${entry.id} ${entry.name ?? ""}`.toLowerCase().includes(normalized));
+    : catalog.filter((entry) => matchesAllQueryWords(`${entry.provider} ${entry.id} ${entry.name ?? ""}`, normalized));
   const showGroupHeaders = normalized === "" && rows.some((entry) => entry.enabled) && rows.some((entry) => !entry.enabled);
   return { rows, showGroupHeaders };
 }

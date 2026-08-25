@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vitest";
 import type { SessionBackgroundTaskInfo, SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
-import { backgroundTaskRows, activityFilterInEffect, activityFilterOptions, activityStripSummary, activityTabLabel, ChatView, subagentStatusLabel, isActiveActivityStatus, orderActivityEntries, type ActivityListEntry, selectedTopDrawerTab, subagentRows, subagentRunDuration, subagentRunRows, topDrawerStartsOpen } from "./ChatView";
+import { backgroundTaskRows, activityFilterInEffect, activityFilterOptions, activityStripSummary, activityTabLabel, ChatView, subagentStatusLabel, isActiveActivityStatus, isFinishedActivityStatus, orderActivityEntries, type ActivityListEntry, selectedTopDrawerTab, subagentRows, subagentRunDuration, subagentRunRows, topDrawerStartsOpen } from "./ChatView";
 
 const SUBAGENTS: SessionSubagentInfo[] = [
   { sessionId: "01a0child-0001-0000-000000000001", cwd: "/repo/.pi/sub", status: "working" },
@@ -35,21 +35,22 @@ async function mountTasks(
 describe("subagents strip", () => {
   // The list answers "what is happening now" first: finished work waits behind
   // one control instead of burying the two rows that are still going.
-  it("lists the working subagent, keeps the finished one behind the history control, and opens one on tap", async () => {
-    const { view, host, onOpenSubagent } = await mount(SUBAGENTS);
+  it("lists both the working and the resting subagent up front, and opens one on tap", async () => {
+    // A subagent has no "done" of its own: it rests at "idle" between turns
+    // and can still be resumed. Hiding it under "Show N finished" made a live
+    // child vanish, so the active view keeps both rows and only shows the
+    // history control when something is truly finished.
+    const { host, onOpenSubagent } = await mount(SUBAGENTS);
 
-    const active = [...host.querySelectorAll(".subagent-row")];
-    expect(active.length).toBe(1);
+    const rows = [...host.querySelectorAll(".subagent-row")];
+    expect(rows.length).toBe(2);
+    expect(rows[0]?.getAttribute("aria-label")).toBe("Working subagent 00000001");
+    expect(rows[1]?.getAttribute("aria-label")).toBe("Idle subagent 00000002");
+    // The strip still counts only work happening right now, not resting children.
     expect(host.textContent).toContain("Activity \u00b7 1 running");
-    expect(active[0]?.getAttribute("aria-label")).toBe("Working subagent 00000001");
+    expect(host.querySelector(".activity-history-toggle")).toBeNull();
 
-    host.querySelector<HTMLButtonElement>(".activity-history-toggle")?.click();
-    await view.updateComplete;
-    const all = [...host.querySelectorAll(".subagent-row")];
-    expect(all.length).toBe(2);
-    expect(all[1]?.getAttribute("aria-label")).toBe("Idle subagent 00000002");
-
-    all[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    rows[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(onOpenSubagent).toHaveBeenCalledExactlyOnceWith(SUBAGENTS[0]);
   });
 
@@ -308,6 +309,15 @@ describe("isActiveActivityStatus", () => {
   });
 });
 
+describe("isFinishedActivityStatus", () => {
+  it("is only the terminal states, so an idle subagent is not finished", () => {
+    // A subagent has no "done": it rests at "idle" between turns and can still
+    // be resumed, so hiding it under "Show N finished" loses a live child.
+    expect(["done", "failed", "error"].every(isFinishedActivityStatus)).toBe(true);
+    expect(["working", "running", "idle", "unknown"].some(isFinishedActivityStatus)).toBe(false);
+  });
+});
+
 describe("orderActivityEntries", () => {
   // Ordering reads only kind, status and start time; the row payload is
   // whatever that kind carries, so a real one keeps the fixture honest.
@@ -354,6 +364,16 @@ describe("orderActivityEntries", () => {
       "2026-08-24T10:00:00.000Z",
       "2026-08-24T09:00:00.000Z",
     ]);
+  });
+
+  // A resting subagent is not finished, so it belongs above work that is,
+  // even though it carries no start time to compare on.
+  it("keeps a resting subagent above finished work", () => {
+    const ordered = orderActivityEntries([
+      entry("runs", "done", "2026-08-24T11:00:00.000Z"),
+      entry("subagents", "idle"),
+    ]);
+    expect(ordered.map((item) => item.status)).toEqual(["idle", "done"]);
   });
 });
 

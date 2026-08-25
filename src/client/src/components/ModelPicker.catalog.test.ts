@@ -31,6 +31,24 @@ describe("filterModelOptions", () => {
     expect(filterModelOptions(options, "openai/g").map((option) => option.value)).toEqual(["openai/gpt-5"]);
     expect(filterModelOptions(options, "gpt").map((option) => option.value)).toEqual(["openai/gpt-5"]);
   });
+
+  // The same model is served by several providers, so narrowing by model and
+  // provider together is the way to tell them apart. Requiring the words to sit
+  // next to each other made that fail: "claude-opus-5 anthropic-merchant" never
+  // contains "opus-5 merchant".
+  it("matches words typed in any order, each somewhere in the row", () => {
+    const options: CommandOption[] = [
+      { value: "anthropic/claude-opus-5", label: "claude-opus-5", description: "anthropic" },
+      { value: "github-copilot/claude-opus-5", label: "claude-opus-5", description: "github-copilot" },
+      { value: "anthropic-merchant/claude-opus-5", label: "claude-opus-5", description: "anthropic-merchant" },
+    ];
+
+    expect(filterModelOptions(options, "opus-5 merchant").map((option) => option.value)).toEqual(["anthropic-merchant/claude-opus-5"]);
+    expect(filterModelOptions(options, "merchant opus").map((option) => option.value)).toEqual(["anthropic-merchant/claude-opus-5"]);
+    expect(filterModelOptions(options, "copilot opus-5").map((option) => option.value)).toEqual(["github-copilot/claude-opus-5"]);
+    // Every word still has to land, so an absent one rules the row out.
+    expect(filterModelOptions(options, "opus-5 gemini")).toEqual([]);
+  });
 });
 
 describe("modelCatalogView", () => {
@@ -45,6 +63,18 @@ describe("modelCatalogView", () => {
     expect(modelCatalogView(catalog, "gpt").rows.map(modelCatalogEntryValue)).toEqual(["openai/gpt-5", "openai/gpt-4o"]);
     expect(modelCatalogView(catalog, "GOOGLE").rows.map(modelCatalogEntryValue)).toEqual(["google/gemini-2.5-pro"]);
     expect(modelCatalogView(catalog, "sonnet 4.5").rows.map(modelCatalogEntryValue)).toEqual(["anthropic/claude-sonnet-4-5"]);
+  });
+
+  it("matches words typed in any order, each somewhere in the entry", () => {
+    const providers: SessionModelCatalogEntry[] = [
+      entry("anthropic", "claude-opus-5", true),
+      entry("github-copilot", "claude-opus-5", true),
+      entry("anthropic-merchant", "claude-opus-5", true),
+    ];
+
+    expect(modelCatalogView(providers, "opus-5 merchant").rows.map(modelCatalogEntryValue)).toEqual(["anthropic-merchant/claude-opus-5"]);
+    expect(modelCatalogView(providers, "merchant opus").rows.map(modelCatalogEntryValue)).toEqual(["anthropic-merchant/claude-opus-5"]);
+    expect(modelCatalogView(providers, "opus-5 gemini").rows).toEqual([]);
   });
 
   it("hides group headers while searching or when only one group exists", () => {

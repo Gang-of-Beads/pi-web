@@ -706,10 +706,10 @@ export class ChatView extends LitElement {
       ...activity.runRows.map((row, index): ActivityListEntry => ({ kind: "runs", index, status: row.status, startedAt: row.run.startedAt, row })),
       ...activity.taskRows.map((row, index): ActivityListEntry => ({ kind: "tasks", index, status: row.status, startedAt: row.task.startedAt, row })),
     ]).filter((entry) => filter === "all" || filter === entry.kind);
-    const entries = inFilter.filter((entry) => scope === "all" || isActiveActivityStatus(entry.status));
+    const entries = inFilter.filter((entry) => scope === "all" || !isFinishedActivityStatus(entry.status));
     // Counted within the filter the reader is looking through: "Show 5 finished"
     // that reveals one row is a button that does not keep its word.
-    const finished = inFilter.filter((entry) => !isActiveActivityStatus(entry.status)).length;
+    const finished = inFilter.filter((entry) => isFinishedActivityStatus(entry.status)).length;
     return html`
       <div class="subagents-list" id="session-activity-list" role="tabpanel" aria-labelledby="drawer-tab-activity">
           ${activity.total === 0 || scope === "empty-active" ? html`<p class="drawer-hint">${ACTIVITY_TAB_HINT}</p>` : null}
@@ -2062,6 +2062,11 @@ export function orderActivityEntries(entries: readonly ActivityListEntry[]): Act
   return [...entries].sort((left, right) => {
     const liveDelta = Number(isActiveActivityStatus(right.status)) - Number(isActiveActivityStatus(left.status));
     if (liveDelta !== 0) return liveDelta;
+    // A subagent resting at "idle" is not finished and carries no start time; a
+    // finished run does. Ranking not-finished first keeps the live child above
+    // completed work instead of letting an empty timestamp sink it below.
+    const finishedDelta = Number(isFinishedActivityStatus(left.status)) - Number(isFinishedActivityStatus(right.status));
+    if (finishedDelta !== 0) return finishedDelta;
     const startedDelta = (right.startedAt ?? "").localeCompare(left.startedAt ?? "");
     if (startedDelta !== 0) return startedDelta;
     return left.kind.localeCompare(right.kind);
@@ -2092,6 +2097,17 @@ export type ActivityScope = "active" | "all";
 /** Statuses that mean "this is happening now". */
 export function isActiveActivityStatus(status: string): boolean {
   return status === "working" || status === "running";
+}
+
+/**
+ * Statuses that mean "this has ended": the only ones "Show N finished" should
+ * hide. A subagent has no "done" of its own; it rests at "idle" between turns
+ * and can still be resumed, so idle is deliberately absent here. Treating idle
+ * as finished hid live children under the fold, which is what this separates
+ * from isActiveActivityStatus: working now and finished are different questions.
+ */
+export function isFinishedActivityStatus(status: string): boolean {
+  return status === "done" || status === "failed" || status === "error";
 }
 
 /**

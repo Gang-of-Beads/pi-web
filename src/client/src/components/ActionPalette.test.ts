@@ -28,6 +28,20 @@ describe("filterActionPaletteActions", () => {
 
     expect(filterActionPaletteActions(actions, "support cleanup").map((item) => item.id)).toEqual(["cleanup"]);
   });
+
+  // Someone recalls the words an action is made of, not the order the title
+  // puts them in, so the words are asked for one at a time.
+  it("matches words typed in any order", () => {
+    const actions: AppAction[] = [
+      action("cleanup", "Clean Up Sessions"),
+      action("new", "New Session"),
+    ];
+
+    expect(filterActionPaletteActions(actions, "sessions clean").map((item) => item.id)).toEqual(["cleanup"]);
+    expect(filterActionPaletteActions(actions, "session new").map((item) => item.id)).toEqual(["new"]);
+    // Every word still has to land somewhere.
+    expect(filterActionPaletteActions(actions, "clean machine")).toEqual([]);
+  });
 });
 
 describe("action-palette modal surface", () => {

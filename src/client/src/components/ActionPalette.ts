@@ -3,6 +3,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import type { AppAction } from "../actions";
 import { formatShortcut } from "../keyboardShortcuts";
 import { keyboardEventOriginatesFromNativeActivationControl } from "./keyboardEventTarget";
+import { matchesAllQueryWords, normalizeSearchQuery } from "../searchMatching";
 import "./ModalSurface";
 import { scrollWhenSelected } from "./scrollWhenSelected";
 
@@ -121,12 +122,12 @@ export class ActionPalette extends LitElement {
 }
 
 export function filterActionPaletteActions(actions: readonly AppAction[], queryText: string): AppAction[] {
-  const query = queryText.trim().toLowerCase();
+  const query = normalizeSearchQuery(queryText);
   return actions
     .filter((action) => action.enabled !== false || action.disabledReason !== undefined)
     .filter((action) => {
       if (query === "") return true;
-      const haystack = [action.title, action.description ?? "", action.disabledReason ?? "", action.group ?? "", action.shortcut ?? ""].join(" ").toLowerCase();
-      return haystack.includes(query);
+      const haystack = [action.title, action.description ?? "", action.disabledReason ?? "", action.group ?? "", action.shortcut ?? ""].join(" ");
+      return matchesAllQueryWords(haystack, query);
     });
 }

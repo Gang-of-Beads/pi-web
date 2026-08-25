@@ -3,6 +3,7 @@ import { customElement, property, query, state } from "lit/decorators.js";
 import type { AuthDialogState } from "../appState";
 import type { AuthProviderOption, OAuthFlowState } from "../api";
 import { LOCAL_MACHINE_ID } from "../machineKeys";
+import { matchesAllQueryWords, normalizeSearchQuery } from "../searchMatching";
 import { keyboardEventOriginatesFromNativeActivationControl } from "./keyboardEventTarget";
 import "./ModalSurface";
 import type { ModalSurface } from "./ModalSurface";
@@ -103,9 +104,9 @@ export class AuthDialog extends LitElement {
   }
 
   private filteredOptions(options: AuthDialogOption[]): AuthDialogOption[] {
-    const query = this.query.trim().toLowerCase();
+    const query = normalizeSearchQuery(this.query);
     if (query === "") return options;
-    return options.filter((option) => `${option.searchText} ${option.detail} ${option.key}`.toLowerCase().includes(query));
+    return options.filter((option) => matchesAllQueryWords(`${option.searchText} ${option.detail} ${option.key}`, query));
   }
 
   /** The options actually rendered for the step: the roving selection and keyboard navigation see these. */
