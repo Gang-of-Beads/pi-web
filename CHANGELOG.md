@@ -1,5 +1,15 @@
 # @jmfederico/pi-web
 
+## 1.202608.28
+
+### Patch Changes
+
+- de2877a: Keep a failed send where it happened. When a message could not reach the server the bubble was withdrawn and only a bare error banner remained: the text vanished from the transcript, so the natural reaction was to retype it, and when the automatic outbox retry then landed, the message ended up sent twice. The bubble now stays in place marked "Not sent", and the outbox retry reuses the message's own correlation id, so the retry revives that same bubble - it reads "Not sent" while the network is down, then advances to sent once the retry lands. One message, one bubble, one place to look. A genuine server rejection still withdraws the bubble, because the composer restoring the text is the actionable home for it.
+- dd08971: Follow a queue that grows into the transcript. A message sent from another device or an injected command reaches this browser through the session status, not through the message list, so its queued row appeared in the transcript below the fold while the view stayed where it was - the row was there but out of sight. The view now follows the queue down when it grows, and stays put when a status refresh just re-reports the same queue.
+- de2877a: Keep long dialogs on the phone screen. A goal plan with its tasks and verification contracts could stretch a confirm dialog to thousands of pixels, pushing the Yes/No buttons and the whole choice list far below the fold - the card did not bend, so there was nothing left to reach. Long messages, choice lists, and long question sets now scroll inside the card, and the answer controls stay on screen.
+- 139c232: Enlarge a pending image attachment. The thumbnails next to the composer were inert pictures: tapping one did nothing, and a keyboard user had no way to see the image at full size. Each thumbnail is now a real button that opens the image in its own dialog, with the close action reachable by keyboard and by Esc, and the backdrop clickable to dismiss.
+- 520a60c: Show queued messages in one place only. The queued-message panel listed messages the transcript already draws, so a message waiting behind a busy turn read twice on the same screen — once in gold in the conversation, once again in the panel. The panel is gone; every queued message is drawn in the transcript, marked, in the order the queue will send it, and the only thing kept beside them is a slim strip with the count and the clear-queue action.
+
 ## 1.202608.27
 
 ### Patch Changes
