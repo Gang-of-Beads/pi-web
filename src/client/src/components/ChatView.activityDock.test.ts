@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionActivity, SessionStatus } from "../../../shared/apiTypes";
 import { backgroundWorkLabel, ChatView, LONG_TURN_AFTER_MS, turnElapsedLabel } from "./ChatView";
 
@@ -132,5 +132,33 @@ describe("turnElapsedLabel", () => {
 
   it("reports nothing when no turn is running", () => {
     expect(turnElapsedLabel(undefined, started)).toBeUndefined();
+  });
+});
+
+describe("elapsed turn time", () => {
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("is shown but never announced", async () => {
+    vi.useFakeTimers();
+    const view = new ChatView();
+    view.sessionId = "s";
+    view.status = status({ isStreaming: true });
+    view.activity = { sessionId: "s", phase: "active", label: "Working", at: "" };
+    document.body.append(view);
+    await view.updateComplete;
+    // The label deliberately waits out the first seconds of a turn, so the
+    // clock has to run before there is anything to assert about.
+    await vi.advanceTimersByTimeAsync(6000);
+    await view.updateComplete;
+    const host = view.renderRoot;
+    const dock = host.querySelector(".activity-dock");
+    const elapsed = host.querySelector(".activity-elapsed");
+    expect(elapsed).not.toBeNull();
+    // The dock is a polite live region and the counter reticks every second,
+    // so announcing it would read the clock aloud once per second for the
+    // whole turn, burying everything else the region exists to report.
+    expect(dock?.getAttribute("aria-live")).toBe("polite");
+    expect(elapsed?.getAttribute("aria-hidden")).toBe("true");
+    view.remove();
   });
 });

@@ -3057,7 +3057,7 @@ function patchChangesState(state: AppState, patch: Partial<AppState>): boolean {
 }
 
 /** Only the fields the strip shows: a byte counter ticking must not re-render. */
-function sameBackgroundTasks(left: readonly SessionBackgroundTaskInfo[], right: readonly SessionBackgroundTaskInfo[]): boolean {
+export function sameBackgroundTasks(left: readonly SessionBackgroundTaskInfo[], right: readonly SessionBackgroundTaskInfo[]): boolean {
   if (left.length !== right.length) return false;
   return left.every((entry, index) => {
     const other = right[index];

@@ -63,7 +63,7 @@ async function phoneChecks() {
 
   // --- dock pill keeps the chosen filter ------------------------------------
   const filterKept = await pillKeepsFilter(page);
-  report("opening the drawer from the dock keeps the chosen filter", filterKept.after === filterKept.before, JSON.stringify(filterKept));
+  report("opening the drawer from the dock keeps the chosen filter and opens it", filterKept.pillPresent && filterKept.listVisible && filterKept.after === filterKept.before, JSON.stringify(filterKept));
 
   // --- elapsed time is not announced every second ---------------------------
   const elapsed = await elapsedAnnouncement(page);
@@ -259,9 +259,11 @@ async function pillKeepsFilter(page) {
     await new Promise((resolve) => { setTimeout(resolve, 300); });
     const before = chat.activityFilter;
     const pill = chat?.shadowRoot?.querySelector(".activity-dock.background");
+    const pillPresent = pill !== null && pill !== undefined;
     if (pill instanceof HTMLElement) pill.click();
     await new Promise((resolve) => { setTimeout(resolve, 400); });
-    return { before, after: chat.activityFilter, opened: chat.topDrawerOpen === true };
+    const list = chat?.shadowRoot?.querySelector(".subagents-list");
+    return { before, after: chat.activityFilter, pillPresent, listVisible: list !== null && list !== undefined && list.clientHeight > 0 };
   });
 }
 
@@ -305,15 +307,23 @@ async function durationAdvances(page) {
 }
 
 async function rowBackgrounds(page) {
+  // Clicking the control is the only way to reach the history: assigning the
+  // scope property is undone by the parent's next render.
+  await page.evaluate(() => {
+    const app = document.querySelector("pi-web-app");
+    const chat = app?.shadowRoot?.querySelector("chat-view");
+    const toggle = chat?.shadowRoot?.querySelector(".activity-history-toggle");
+    if (toggle instanceof HTMLElement) toggle.click();
+  });
+  await page.waitForTimeout(600);
   return await page.evaluate(() => {
     const app = document.querySelector("pi-web-app");
     const chat = app?.shadowRoot?.querySelector("chat-view");
-    chat.activityScope = "all";
     const rows = [...(chat?.shadowRoot?.querySelectorAll(".subagent-row") ?? [])];
     const running = rows.find((row) => row.className.includes("status-running") || row.className.includes("status-working"));
-    const done = rows.find((row) => row.className.includes("status-completed") || row.className.includes("status-done"));
+    const done = rows.find((row) => !row.className.includes("status-running") && !row.className.includes("status-working"));
     const background = (element) => element === undefined ? "" : getComputedStyle(element).backgroundColor;
-    return { running: background(running), done: background(done), rows: rows.length };
+    return { running: background(running), done: background(done), rows: rows.length, classes: rows.slice(0, 6).map((row) => row.className.replace("subagent-row", "").trim()) };
   });
 }
 
