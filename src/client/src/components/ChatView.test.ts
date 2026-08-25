@@ -352,6 +352,13 @@ describe("chatMessageMetadataLabel", () => {
       meta: { timestamp, model: { provider: "provider", id: "model" }, thinkingLevel: "high" },
     })).toBe(`${formattedTimestamp} · provider/model · high`);
   });
+
+  // A message just typed into this browser has no server metadata yet. That is
+  // its normal state, not a fault worth reporting where the timestamp goes.
+  it("says nothing at all when the message carries no metadata", () => {
+    expect(chatMessageMetadataLabel({ role: "user", parts: [] })).toBe("");
+    expect(chatMessageMetadataLabel({ role: "user", parts: [], meta: {} })).toBe("");
+  });
 });
 
 describe("chat event-group content seams", () => {

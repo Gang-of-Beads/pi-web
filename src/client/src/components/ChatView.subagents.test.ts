@@ -316,6 +316,24 @@ describe("isFinishedActivityStatus", () => {
   });
 });
 
+describe("run status labels", () => {
+  // Keyed by the union: adding a status without giving it a word stops
+  // compiling here instead of quietly reading "Unknown" in the drawer.
+  const EXPECTED: Record<SessionSubagentRunInfo["status"], string> = {
+    running: "Running", done: "Done", failed: "Failed", lost: "Stopped", unknown: "Unknown",
+  };
+  const SUBAGENT_RUN_STATUSES: readonly SessionSubagentRunInfo["status"][] = ["running", "done", "failed", "lost", "unknown"];
+
+  it("gives every status its own word", () => {
+    for (const status of Object.keys(EXPECTED)) {
+      const run = SUBAGENT_RUN_STATUSES.find((known) => known === status);
+      if (run === undefined) throw new Error(`unknown status ${status}`);
+      const [row] = subagentRunRows([{ runId: "r", agent: "worker", status: run, elapsedMs: 0, startedAt: "2026-08-25T10:00:00.000Z", hasOutput: false }]);
+      expect(row?.statusLabel).toBe(EXPECTED[run]);
+    }
+  });
+});
+
 describe("a run that stopped without finishing", () => {
   it("is named rather than left a mystery, and is not counted as running", () => {
     const [row] = subagentRunRows([{ runId: "r", agent: "worker", status: "lost", elapsedMs: 1000, startedAt: "2026-08-25T10:00:00.000Z", hasOutput: false }]);

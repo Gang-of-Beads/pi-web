@@ -27,6 +27,7 @@ const executablePath = process.env.PI_WEB_E2E_CHROMIUM
 
 export default defineConfig({
   testDir: "e2e",
+  globalSetup: "./e2e/globalSetup.ts",
   // The suite mutates one shared server instance (projects, sessions, goal
   // files), so parallel workers would race each other's fixtures.
   workers: 1,

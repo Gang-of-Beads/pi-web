@@ -192,7 +192,7 @@ export function chatMessageMetadataLabel(message: ChatLine): string {
   const time = timestamp === undefined ? undefined : formatMessageTimestamp(timestamp);
   const model = chatMessageModelLabel(message);
   const parts = [time, model, message.meta?.thinkingLevel].filter((part): part is string => part !== undefined && part !== "");
-  return parts.length === 0 ? "No Pi message metadata available" : parts.join(" · ");
+  return parts.join(" · ");
 }
 
 function formatMessageTimestamp(timestamp: string): string | undefined {
@@ -1476,7 +1476,7 @@ export class ChatView extends LitElement {
         <b class="label">${label}</b>
         <div class="msg-header-trailing">
           ${this.renderMessageActions(message, key)}
-          <span class=${expanded ? "msg-meta expanded" : "msg-meta"} role="button" tabindex="0" title=${meta} aria-label=${meta} aria-expanded=${String(expanded)} @click=${() => { this.expandedMetaKey = expanded ? undefined : key; }} @keydown=${(event: KeyboardEvent) => { this.onMetaKeydown(event, key, expanded); }}>${meta}</span>
+          ${meta === "" ? null : html`<span class=${expanded ? "msg-meta expanded" : "msg-meta"} role="button" tabindex="0" title=${meta} aria-label=${meta} aria-expanded=${String(expanded)} @click=${() => { this.expandedMetaKey = expanded ? undefined : key; }} @keydown=${(event: KeyboardEvent) => { this.onMetaKeydown(event, key, expanded); }}>${meta}</span>`}
         </div>
       </div>
     `;
