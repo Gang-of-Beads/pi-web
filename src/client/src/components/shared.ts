@@ -477,9 +477,7 @@ export const chatStyles = css`
   .drawer-tab-activity.selected { border-color: var(--pi-purple-border); background: var(--pi-purple-surface); color: var(--pi-purple); }
   .drawer-tab-notifications.selected { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); color: var(--pi-warning); }
   .drawer-header:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -3px; }
-  /* Two tabs need 261px and get 240 on a phone, with the scrollbar hidden: the
-     second one simply was not there. The fade says the row keeps going, the
-     same way the workspace tool tabs and the context bar already do. */
+  /* Two tabs need 261px and get 240 on a phone, with the scrollbar hidden. */
   .drawer-tabs-frame { position: relative; flex: 1 1 auto; min-width: 0; }
   .drawer-tabs-frame::before, .drawer-tabs-frame::after { content: ""; position: absolute; top: 0; bottom: 0; z-index: 2; width: 18px; opacity: 0; pointer-events: none; transition: opacity var(--pi-motion-fast) var(--pi-ease); }
   .drawer-tabs-frame::before { left: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--pi-shadow-strong) 55%, transparent) 0%, transparent 100%); }
@@ -706,8 +704,6 @@ export const chatStyles = css`
   .image-zoom-close { position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; font: 16px/1 system-ui, sans-serif; color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
   .image-zoom-close:hover, .image-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
   .image-zoom-close:focus-visible { outline: 1px solid var(--pi-border); outline-offset: 2px; }
-  /* A log read on its own: wide enough for wrapped command output, and scrollable
-     rather than growing the page, because these files run to thousands of lines. */
   dialog.activity-output { position: fixed; inset: 0; margin: auto; box-sizing: border-box; width: min(92vw, 900px); max-height: calc(88vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); padding: 0; color: var(--pi-text); background: var(--pi-surface); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); overflow: hidden; }
   dialog.activity-output[open] { display: flex; flex-direction: column; }
   dialog.activity-output::backdrop { background: rgba(0, 0, 0, 0.6); }
@@ -887,11 +883,7 @@ export const promptEditorStyles = css`
   .compact-status { display: flex; min-width: 0; align-items: center; gap: var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); flex: 1 1 0; }
   .compact-status > button { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .select-model { max-width: min(42vw, 320px); min-height: 40px; display: inline-flex; align-items: center; box-sizing: border-box; overflow: hidden; }
-  /* The button is a flex box, so the ellipsis the parent rule asks for cannot
-     apply to its text: it wrapped instead and the second line was cut off by
-     the fixed height. The two halves are separate boxes so the shrinking can be
-     aimed: the provider prefix gives way first and the model id, which is what
-     names the choice, stays readable down to the narrowest phone. */
+  /* Separate boxes so the provider gives way first and the model id survives. */
   .select-model-provider { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .select-model-id { flex: 0 0 auto; white-space: nowrap; }
   .icon-button { flex: 0 0 auto; display: inline-grid; place-items: center; width: 36px; height: 36px; box-sizing: border-box; padding: 0; }

@@ -1475,7 +1475,8 @@ export interface SessionBackgroundTaskInfo {
 export interface SessionSubagentRunInfo {
   readonly runId: string;
   readonly agent: string;
-  readonly status: "running" | "done" | "failed" | "unknown";
+  /** "lost": started, wrote, went silent without an outcome. Not "failed", which reported one. */
+  readonly status: "running" | "done" | "failed" | "lost" | "unknown";
   /** Wall-clock milliseconds: reported when finished, elapsed while running. */
   readonly elapsedMs: number;
   readonly startedAt: string;

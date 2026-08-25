@@ -1110,9 +1110,7 @@ export class SessionController {
       const output = await this.api.subagentRunOutput(session, run.runId, machineId);
       this.setState({ activityOutput: activityOutputView(`Subagent ${run.agent} (${run.runId.slice(0, 8)})`, output) });
     } catch (error) {
-      // A run that has written neither a result nor a step yet has nothing to
-      // show, which is an answer rather than a fault: it opens empty and says
-      // so, instead of putting a red banner over the conversation.
+      // Nothing written yet is an answer, not a fault.
       if (isNotFoundError(error)) {
         this.setState({ activityOutput: activityOutputView(`Subagent ${run.agent} (${run.runId.slice(0, 8)})`, "") });
         return;
@@ -1139,7 +1137,6 @@ export class SessionController {
     }
   }
 
-  /** Put the opened log away again. */
   closeActivityOutput(): void {
     if (this.getState().activityOutput !== undefined) this.setState({ activityOutput: undefined });
   }

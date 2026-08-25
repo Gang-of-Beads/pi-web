@@ -441,8 +441,6 @@ export class ChatView extends LitElement {
     if (changed.has("notificationInbox") && this.pendingNotificationFocus !== undefined) this.focusPendingNotificationTarget();
     if (changed.has("zoomedImage")) this.syncImageZoomDialog();
     if (changed.has("activityOutput")) this.syncActivityOutputDialog();
-    // The strip is re-measured after every render: tabs come and go with the
-    // work being reported, and the drawer itself folds away and back.
     this.drawerTabEdgeTracker.observe(this.drawerTabs ?? undefined);
     if (changed.has("status") || changed.has("activity") || changed.has("isSendingPrompt")) this.syncTurnClock();
   }
@@ -1003,11 +1001,6 @@ export class ChatView extends LitElement {
     if (event.target === this.activityOutputDialog) this.closeActivityOutput();
   };
 
-  /**
-   * A task's log or a run's artifact, read on its own. This is a file rather
-   * than something the agent said, so it gets a view instead of a turn in the
-   * transcript.
-   */
   private renderActivityOutput() {
     const output = this.activityOutput;
     return html`
@@ -2067,12 +2060,12 @@ export interface SubagentRunRow {
  */
 export function subagentRunRows(runs: readonly SessionSubagentRunInfo[]): SubagentRunRow[] {
   return runs.map((run) => {
-    const statusLabel = run.status === "running" ? "Running" : run.status === "done" ? "Done" : run.status === "failed" ? "Failed" : "Unknown";
+    const statusLabel = run.status === "running" ? "Running" : run.status === "done" ? "Done" : run.status === "failed" ? "Failed" : run.status === "lost" ? "Stopped" : "Unknown";
     const duration = subagentRunDuration(run.elapsedMs);
     const detail = run.status === "running" ? run.lastActivity ?? "working" : run.task ?? "";
     return {
       run,
-      status: run.status,
+      status: run.status === "lost" ? "failed" : run.status,
       statusLabel,
       duration,
       detail,
@@ -2143,9 +2136,7 @@ export function orderActivityEntries(entries: readonly ActivityListEntry[]): Act
   return [...entries].sort((left, right) => {
     const liveDelta = Number(isActiveActivityStatus(right.status)) - Number(isActiveActivityStatus(left.status));
     if (liveDelta !== 0) return liveDelta;
-    // A subagent resting at "idle" is not finished and carries no start time; a
-    // finished run does. Ranking not-finished first keeps the live child above
-    // completed work instead of letting an empty timestamp sink it below.
+    // Subagents carry no start time, so without this they sink below finished work.
     const finishedDelta = Number(isFinishedActivityStatus(left.status)) - Number(isFinishedActivityStatus(right.status));
     if (finishedDelta !== 0) return finishedDelta;
     const startedDelta = (right.startedAt ?? "").localeCompare(left.startedAt ?? "");
@@ -2180,15 +2171,9 @@ export function isActiveActivityStatus(status: string): boolean {
   return status === "working" || status === "running";
 }
 
-/**
- * Statuses that mean "this has ended": the only ones "Show N finished" should
- * hide. A subagent has no "done" of its own; it rests at "idle" between turns
- * and can still be resumed, so idle is deliberately absent here. Treating idle
- * as finished hid live children under the fold, which is what this separates
- * from isActiveActivityStatus: working now and finished are different questions.
- */
+/** Terminal only. A subagent rests at "idle" between turns, so idle is not finished. */
 export function isFinishedActivityStatus(status: string): boolean {
-  return status === "done" || status === "failed" || status === "error";
+  return status === "done" || status === "failed" || status === "error" || status === "lost";
 }
 
 /**

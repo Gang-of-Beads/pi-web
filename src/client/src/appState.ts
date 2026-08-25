@@ -4,20 +4,12 @@ import type { QualifiedContributionId } from "./plugins/ids";
 import type { SelectedSessionNotificationInbox } from "./sessionNotifications";
 import type { WorkspaceUploadBatchState } from "./workspaceUploadState";
 
-/**
- * A log or artifact opened from the activity list, ready to be read on its own.
- *
- * `empty` is kept apart from an empty `text` because a task can have a log file
- * that has not been written to yet: opening it used to look like nothing had
- * happened at all, so the viewer needs to be able to say so out loud.
- */
 export interface ActivityOutputView {
   readonly title: string;
   readonly text: string;
   readonly empty: boolean;
 }
 
-/** An opened log, told apart from one that has nothing in it yet. */
 export function activityOutputView(title: string, text: string): ActivityOutputView {
   return { title, text, empty: text.trim() === "" };
 }
@@ -54,12 +46,7 @@ export interface AppState {
   backgroundTasks: readonly SessionBackgroundTaskInfo[];
   /** Subagent-tool runs for the selected session; see server/sessions/subagentRuns.ts. */
   subagentRuns: readonly SessionSubagentRunInfo[];
-  /**
-   * The log or artifact the reader opened from the activity list, held for a
-   * viewer of its own. It is a file, not something the agent said, so it is
-   * deliberately kept out of `messages`: writing it into the transcript
-   * invented a turn that never happened and lost it again on the next reload.
-   */
+  /** Kept out of `messages`: a log is a file, not something the agent said. */
   activityOutput: ActivityOutputView | undefined;
   status: SessionStatus | undefined;
   activity: SessionActivity | undefined;

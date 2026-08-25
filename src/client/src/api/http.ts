@@ -1,12 +1,5 @@
 import { resolveAppUrl } from "../appUrl";
 
-/**
- * A failed response, carrying the status the server answered with.
- *
- * Without it every failure looked alike to a caller, so "there is nothing here
- * to show" was reported in the same red banner as "the machine is unreachable".
- * Some callers can answer a 404 gracefully; they need to be able to tell.
- */
 export class HttpError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
@@ -14,7 +7,6 @@ export class HttpError extends Error {
   }
 }
 
-/** Whether a rejection is the server saying it has nothing at that address. */
 export function isNotFoundError(error: unknown): boolean {
   return error instanceof HttpError && error.status === 404;
 }

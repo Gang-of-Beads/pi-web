@@ -30,6 +30,8 @@ import type { SessionSubagentRunInfo } from "../../shared/apiTypes.js";
  * is still running is a fact rather than a guess, so it wins when available.
  */
 const RUNNING_STALE_AFTER_MS = 10 * 60 * 1000;
+/** Measured on a real session: live children were quiet under a minute, dead ones 139+. */
+const PARENT_ACTIVE_STALE_AFTER_MS = 30 * 60 * 1000;
 /** Enough of the tail to find the last step without reading a long transcript. */
 const TAIL_BYTES = 64 * 1024;
 /** The session header records sit in the first few lines of a transcript. */
@@ -71,16 +73,7 @@ export async function listSubagentRuns(
   });
 }
 
-/**
- * Whether a directory beside the session file is one of its runs.
- *
- * Two kinds of directory are not: the one a child died inside before writing
- * anything, and a neighbour like `forks` that holds conversations rather than
- * runs. Listed as runs they became rows that claimed to be running for as long
- * as the parent was, counted themselves into the header, and answered "No
- * output for this subagent run" when opened - there was never anything there to
- * open. A run has left either an attempt to read or a result to show.
- */
+/** Excludes a directory a child died inside before writing, and neighbours like `forks`. */
 async function looksLikeRun(runDir: string, runId: string, artifacts: Map<string, RunArtifact>): Promise<boolean> {
   if (artifacts.has(runId)) return true;
   const attempts = await listDirectories(runDir);
@@ -145,12 +138,14 @@ async function describeRun(runsDir: string, runId: string, artifacts: Map<string
 function runStatus(artifact: RunArtifact | undefined, lastWriteMs: number | undefined, now: number, parentActive: boolean): SessionSubagentRunInfo["status"] {
   if (artifact?.exitCode !== undefined) return artifact.exitCode === 0 ? "done" : "failed";
   if (artifact !== undefined) return "done";
-  // The parent turn is still going and this run never wrote a result: the tool
-  // call it belongs to has not returned, so it is running - however long the
-  // child has been quiet.
-  if (parentActive) return "running";
-  if (lastWriteMs === undefined) return "unknown";
-  return now - lastWriteMs < RUNNING_STALE_AFTER_MS ? "running" : "unknown";
+  // A just-spawned child has written nothing yet, so only the parent can say.
+  if (lastWriteMs === undefined) return parentActive ? "running" : "unknown";
+  const quietMs = now - lastWriteMs;
+  if (quietMs < RUNNING_STALE_AFTER_MS) return "running";
+  // An active parent widens the window rather than overriding it: treating it
+  // as proof of life resurrected runs that had been dead for hours.
+  if (parentActive && quietMs < PARENT_ACTIVE_STALE_AFTER_MS) return "running";
+  return "lost";
 }
 
 /** How the subagent tool names a child session: agent and originating run id. */

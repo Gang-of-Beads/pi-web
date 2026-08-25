@@ -311,10 +311,18 @@ describe("isActiveActivityStatus", () => {
 
 describe("isFinishedActivityStatus", () => {
   it("is only the terminal states, so an idle subagent is not finished", () => {
-    // A subagent has no "done": it rests at "idle" between turns and can still
-    // be resumed, so hiding it under "Show N finished" loses a live child.
-    expect(["done", "failed", "error"].every(isFinishedActivityStatus)).toBe(true);
+    expect(["done", "failed", "error", "lost"].every(isFinishedActivityStatus)).toBe(true);
     expect(["working", "running", "idle", "unknown"].some(isFinishedActivityStatus)).toBe(false);
+  });
+});
+
+describe("a run that stopped without finishing", () => {
+  it("is named rather than left a mystery, and is not counted as running", () => {
+    const [row] = subagentRunRows([{ runId: "r", agent: "worker", status: "lost", elapsedMs: 1000, startedAt: "2026-08-25T10:00:00.000Z", hasOutput: false }]);
+
+    expect(row?.statusLabel).toBe("Stopped");
+    expect(row?.status).toBe("failed");
+    expect(isActiveActivityStatus(row?.status ?? "")).toBe(false);
   });
 });
 

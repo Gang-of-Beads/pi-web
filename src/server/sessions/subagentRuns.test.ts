@@ -119,11 +119,13 @@ describe("listSubagentRuns", () => {
     const longAgo = new Date(Date.now() - 20 * 60 * 1000);
     await utimes(file, longAgo, longAgo);
 
+    // With the parent idle there is no tool call in flight to be waiting on, so
+    // a child that wrote and then went quiet has stopped.
     const [idleParent] = await listSubagentRuns(dir, PARENT);
-    expect(idleParent).toMatchObject({ status: "unknown" });
+    expect(idleParent).toMatchObject({ status: "lost" });
 
-    // The tool call that spawned it has not returned, which is a fact rather
-    // than an inference from how recently a file changed.
+    // While the parent turn runs the window is wider, because a child spends a
+    // long model call writing nothing at all.
     const [activeParent] = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: true });
     expect(activeParent).toMatchObject({ status: "running" });
   });
@@ -150,7 +152,29 @@ describe("listSubagentRuns", () => {
 
     const [run] = await listSubagentRuns(dir, PARENT);
 
-    expect(run?.status).toBe("unknown");
+    expect(run?.status).toBe("lost");
+  });
+
+  // 139 minutes is the shortest quiet time measured on a real dead run.
+  it("does not resurrect a killed run when the parent starts a new turn", async () => {
+    const dir = await sessionDir();
+    const file = await writeTranscript(dir, "run-orphan", [{ type: "message", message: { role: "assistant", content: [{ type: "text", text: "working" }] } }]);
+    const killedLongAgo = new Date(Date.now() - 139 * 60 * 1000);
+    await utimes(file, killedLongAgo, killedLongAgo);
+
+    const [run] = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: true });
+
+    expect(run?.status).toBe("lost");
+  });
+
+  it("reports a child that has just written as running", async () => {
+    const dir = await sessionDir();
+    const file = await writeTranscript(dir, "run-live", [{ type: "message", message: { role: "assistant", content: [{ type: "text", text: "working" }] } }]);
+    const justNow = new Date(Date.now() - 30 * 1000);
+    await utimes(file, justNow, justNow);
+
+    const [idle] = await listSubagentRuns(dir, PARENT);
+    expect(idle?.status).toBe("running");
   });
 
   it("reads the latest attempt of a retried run", async () => {
@@ -241,11 +265,6 @@ describe("runs whose directory and artifacts use different ids", () => {
     expect(run).toMatchObject({ runId: "91c34f97-a9a1-4c8c-85b3-2061fe772ae2", agent: "subagent", hasOutput: false });
   });
 
-  // A child that died before writing anything leaves the directory the tool
-  // made for it and nothing else. Reported as a run it claimed to be "running"
-  // for as long as the parent was, counted itself into the header, and answered
-  // "No output for this subagent run" when opened: a row that can only
-  // disappoint. There is nothing there to report, so it is not a run.
   it("ignores a directory the run never wrote anything into", async () => {
     const dir = await sessionDir();
     await mkdir(join(dir, PARENT, "5d2ddee7-ad67-46e5-82a6-5a89b7e796cb"), { recursive: true });
@@ -253,8 +272,6 @@ describe("runs whose directory and artifacts use different ids", () => {
     expect(await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: true })).toEqual([]);
   });
 
-  // A finished run's transcript can be gone while its artifact remains; the
-  // artifact is the result, so the run is still real and still openable.
   it("keeps a run that left an artifact behind but no transcript", async () => {
     const dir = await sessionDir();
     await mkdir(join(dir, PARENT, "79eeba3d-46c5-45bd-8e74-32a3f1eb7957"), { recursive: true });
@@ -265,8 +282,6 @@ describe("runs whose directory and artifacts use different ids", () => {
     expect(run).toMatchObject({ runId: "79eeba3d-46c5-45bd-8e74-32a3f1eb7957", agent: "worker", hasOutput: true });
   });
 
-  // `forks` sits beside the run directories and holds forked conversations, not
-  // runs. Counted as one it became a phantom "running" agent in the header.
   it("ignores a neighbour directory that holds no run attempts", async () => {
     const dir = await sessionDir();
     const forks = join(dir, PARENT, "forks");
