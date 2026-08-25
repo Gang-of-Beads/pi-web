@@ -162,3 +162,16 @@ describe("elapsed turn time", () => {
     view.remove();
   });
 });
+
+describe("a question the user has not answered", () => {
+  it("marks the dock as asking for an extension dialog, not only for an ask_user set", async () => {
+    const dialog = { dialogId: "d1", kind: "confirm" as const, title: "Update pi 0.84.2 → 0.84.3?", askedAt: "", runScoped: true };
+    const dock = await dockWith(status({ pendingDialogs: [dialog] }), activity("idle", "idle"));
+
+    // A blocking decision with a countdown is the one thing in the app most
+    // deserving of "waiting for you"; reporting it as idle is how a session
+    // that is holding still for an answer looks like a session with nothing
+    // to do.
+    expect(dock.className).toContain("asking");
+  });
+});

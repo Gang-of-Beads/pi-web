@@ -24,6 +24,7 @@ import {
   type SessionNotificationTarget,
 } from "../sessionNotifications";
 import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
+import { isWaitingForUser } from "../sessionWaiting";
 import type { SessionBackgroundTaskInfo, SessionNotification, SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
 import type { ChatLine, ChatPart, MessageDelivery } from "./shared";
 import { chatStyles, renderSessionWarningIcon } from "./shared";
@@ -1221,15 +1222,15 @@ export class ChatView extends LitElement {
   /**
    * Map the coarse dock state onto the shared four-state badge so the dock and
    * the session list rows agree: working (three dots), idle (green), asking
-   * (amber, an ask_user set is waiting), error (red).
+   * (amber, a question set or an extension dialog is waiting), error (red).
    */
   private activityCategory(state: string): SessionStateBadgeKind | undefined {
     if (this.activity?.phase === "error") return "error";
     if (state === "idle" || state === "undefined") {
-      if (this.status?.pendingAsk !== undefined) return "asking";
+      if (isWaitingForUser(this.status)) return "asking";
       return "idle";
     }
-    if (this.status?.pendingAsk !== undefined) return "asking";
+    if (isWaitingForUser(this.status)) return "asking";
     return "working";
   }
 

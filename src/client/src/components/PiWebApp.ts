@@ -28,6 +28,7 @@ import { keyboardInset } from "../appShell/keyboardInset";
 import { machineSessionKey } from "../machineKeys";
 import { composedPathOf, composerCollapsedForFocus } from "../composerCollapse";
 import { shouldPollSessionActivity } from "../sessionActivityPolling";
+import { isWaitingForUser } from "../sessionWaiting";
 import { sessionCleanupRequestKey } from "../sessionCleanupUi";
 import { selectedNotificationView } from "../sessionNotifications";
 import { SessionUnreadController } from "../sessionUnread";
@@ -1817,7 +1818,7 @@ export class PiWebApp extends LitElement {
   private waitingSessionIds(): ReadonlySet<string> {
     const waiting = new Set<string>();
     for (const session of this.quickSwitcherSessions) {
-      if (this.state.sessionStatuses[session.id]?.pendingAsk !== undefined) waiting.add(session.id);
+      if (isWaitingForUser(this.state.sessionStatuses[session.id])) waiting.add(session.id);
     }
     return waiting;
   }

@@ -134,3 +134,46 @@ function templateDialogCallback(template: TemplateResult, marker: string): Dialo
 function isDialogCallback(value: unknown): value is DialogCallback {
   return typeof value === "function";
 }
+
+describe("sessions waiting on the user", () => {
+  it("counts a session parked on an extension dialog as waiting", () => {
+    const app = createApp();
+    const state = stateWithDialogs();
+    const session = state.selectedSession;
+    if (session === undefined) throw new Error("Expected a selected session");
+    setAppState(app, {
+      ...state,
+      sessions: [session],
+      sessionStatuses: {
+        [session.id]: {
+          sessionId: session.id,
+          isStreaming: false,
+          isCompacting: false,
+          isBashRunning: false,
+          pendingMessageCount: 0,
+          queuedMessages: [],
+          tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+          cost: 0,
+          pendingDialogs: state.pendingDialogs,
+        },
+      },
+    });
+
+    // The set is built over the quick switcher's own session list, which the
+    // app fills when that list loads.
+    if (!Reflect.set(app, "quickSwitcherSessions", [session])) throw new Error("Could not seed quickSwitcherSessions");
+
+    // The session list and the quick switcher read this set. Leaving dialogs
+    // out of it meant the one session actually blocked on the user was the one
+    // the list showed as having nothing to report.
+    expect([...waitingSessionIds(app)]).toEqual([session.id]);
+  });
+});
+
+function waitingSessionIds(app: PiWebApp): ReadonlySet<string> {
+  const method: unknown = Reflect.get(app, "waitingSessionIds");
+  if (typeof method !== "function") throw new Error("PiWebApp.waitingSessionIds is not callable");
+  const result: unknown = Reflect.apply(method, app, []);
+  if (!(result instanceof Set)) throw new Error("waitingSessionIds did not return a Set");
+  return result;
+}
