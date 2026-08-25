@@ -239,10 +239,10 @@ export class ProjectDialog extends LitElement {
 
   static override styles = css`
     :host { position: fixed; inset: 0; z-index: 30; color: var(--pi-text); font: 14px system-ui, sans-serif; }
-    modal-surface { --modal-surface-place-items: start center; --modal-surface-backdrop-padding: min(12vh, 90px) 0 0; --modal-surface-width: min(720px, calc(100vw - 40px)); --modal-surface-max-height: min(700px, calc(100vh - 40px)); }
-    header, footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border-bottom: 1px solid var(--pi-border); }
+    modal-surface { --modal-surface-place-items: start center; --modal-surface-backdrop-padding: min(12vh, 90px) 0 0; --modal-surface-width: min(720px, calc(100vw - 40px)); --modal-surface-max-height: calc(100dvh - min(12vh, 90px) - 20px); --modal-surface-max-height: min(700px, calc(100vh - 40px)); }
+    header, footer { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border-bottom: 1px solid var(--pi-border); }
     footer { border-top: 1px solid var(--pi-border); border-bottom: 0; justify-content: end; }
-    .body { display: grid; gap: 12px; padding: 12px; min-height: 0; }
+    .body { flex: 1 1 auto; display: grid; gap: 12px; padding: 12px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
     label { display: grid; gap: 6px; color: var(--pi-muted); }
     input[type="text"], input:not([type]) { box-sizing: border-box; width: 100%; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-bg); color: var(--pi-text); padding: 9px; font: var(--pi-control-font-size, 16px) var(--pi-control-monospace-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
     .check { display: flex; grid-template-columns: auto 1fr; align-items: center; color: var(--pi-text); }
@@ -257,7 +257,9 @@ export class ProjectDialog extends LitElement {
     @media (max-width: 760px) {
       /* Suggestion rows double as the primary navigation control on a phone,
          so they get a full touch target and room for long paths. */
-      .suggestions { max-height: 45dvh; }
+      /* The body scrolls now, so the list does not need to reserve a slice of
+         the viewport for itself. */
+      .suggestions { max-height: 38dvh; }
       .suggestions button { min-height: 44px; padding: 10px 12px; }
       footer button { min-height: 44px; }
     }
