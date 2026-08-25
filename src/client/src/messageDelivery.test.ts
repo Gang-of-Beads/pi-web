@@ -172,3 +172,32 @@ function firstText(line: ChatLine): string {
   const part = line.parts[0];
   return part?.type === "text" ? part.text : "";
 }
+
+describe("optimisticUserLine with attachments", () => {
+  it("keeps the images with the bubble, since the queue only keeps text", () => {
+    // A pending prompt that was mostly a screenshot rendered as an empty-looking
+    // line: the session's queue carries the text of a queued message and nothing
+    // else, so the bubble is the only place the picture can survive until the
+    // agent takes it.
+    const line = optimisticUserLine("look at this", "c1", [
+      { kind: "image", mimeType: "image/png", data: "AAAA", name: "shot.png" },
+      { kind: "file", mimeType: "application/pdf", data: "BBBB", name: "spec.pdf" },
+    ]);
+
+    expect(line.parts).toEqual([
+      { type: "text", text: "look at this" },
+      // Files are referenced from the prompt text once saved, so only images
+      // are carried here.
+      { type: "image", mimeType: "image/png", data: "AAAA" },
+    ]);
+  });
+
+  it("drops the empty text part when the prompt is only a picture", () => {
+    const line = optimisticUserLine("", "c2", [{ kind: "image", mimeType: "image/webp", data: "CCCC" }]);
+    expect(line.parts).toEqual([{ type: "image", mimeType: "image/webp", data: "CCCC" }]);
+  });
+
+  it("is unchanged for a plain text prompt", () => {
+    expect(optimisticUserLine("just words", "c3").parts).toEqual([{ type: "text", text: "just words" }]);
+  });
+});

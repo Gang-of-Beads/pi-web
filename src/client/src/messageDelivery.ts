@@ -1,5 +1,5 @@
-import type { QueuedSessionMessage } from "./api";
-import type { ChatLine, MessageDeliveryState } from "./components/shared";
+import type { PromptAttachment, QueuedSessionMessage } from "./api";
+import type { ChatLine, ChatPart, MessageDeliveryState } from "./components/shared";
 
 /**
  * Delivery marks for messages this browser sent.
@@ -33,8 +33,15 @@ export function newClientMessageId(): string {
 }
 
 /** The bubble shown the instant the user hits send, before any round trip. */
-export function optimisticUserLine(text: string, clientMessageId: string): ChatLine {
-  return { role: "user", parts: [{ type: "text", text }], meta: { delivery: { clientMessageId, state: "sending" } } };
+export function optimisticUserLine(text: string, clientMessageId: string, attachments: readonly PromptAttachment[] = []): ChatLine {
+  // The images travel with the bubble because nothing else will carry them: the
+  // session's queue keeps only the text of a pending message, so a queued
+  // prompt that was mostly a screenshot showed up as an empty-looking line.
+  const images = attachments
+    .filter((attachment) => attachment.kind === "image")
+    .map((attachment): ChatPart => ({ type: "image", mimeType: attachment.mimeType, data: attachment.data }));
+  const parts: ChatPart[] = text === "" ? [...images] : [{ type: "text", text }, ...images];
+  return { role: "user", parts, meta: { delivery: { clientMessageId, state: "sending" } } };
 }
 
 /**

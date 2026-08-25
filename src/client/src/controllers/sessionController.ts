@@ -428,7 +428,7 @@ export class SessionController {
     // later signal (server echo, queue projection, agent copy) is matched
     // against. Without it the composer clears into silence and the user cannot
     // tell a slow network from a lost message.
-    const clientMessageId = this.beginTrackedSend(session, text);
+    const clientMessageId = this.beginTrackedSend(session, text, attachments ?? []);
     try {
       if (hasAttachments && delivery === "folder") {
         const saved = await this.api.saveAttachments(session, attachments, machineId);
@@ -468,11 +468,11 @@ export class SessionController {
    * Only the session on screen gets a bubble: a send to a background session
    * has nothing to attach a mark to, and the id would never be resolved.
    */
-  private beginTrackedSend(session: SessionInfo, text: string): string | undefined {
-    if (text.trim() === "") return undefined;
+  private beginTrackedSend(session: SessionInfo, text: string, attachments: readonly PromptAttachment[] = []): string | undefined {
+    if (text.trim() === "" && attachments.length === 0) return undefined;
     if (this.getState().selectedSession?.id !== session.id) return undefined;
     const clientMessageId = newClientMessageId();
-    this.setState({ messages: [...this.getState().messages, optimisticUserLine(text, clientMessageId)] });
+    this.setState({ messages: [...this.getState().messages, optimisticUserLine(text, clientMessageId, attachments)] });
     return clientMessageId;
   }
 
