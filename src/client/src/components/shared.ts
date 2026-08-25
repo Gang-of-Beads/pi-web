@@ -657,7 +657,13 @@ export const chatStyles = css`
   .activity-dock.active .dot { animation: pulse 1s ease-in-out infinite; opacity: 1; }
   .activity-dock .state-dot { background: currentColor; }
   .activity-dock.working .state-dot { opacity: 1; }
-  .msg { max-width: 100%; min-width: 0; box-sizing: border-box; margin: 0 0 var(--pi-space-7); padding: var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); overflow: visible; }
+  /* Bound the reading measure on a wide screen. At 2560px the transcript is
+     ~1400px across, which sets a line of roughly 150 characters - the eye
+     loses its place returning to the next line. Typography settles around
+     45-75; 78ch leaves room for code and tables without letting prose sprawl.
+     The column centres so the conversation does not sit against one edge. */
+  .chat > * { margin-inline: auto; }
+  .msg { max-width: min(100%, 78ch); min-width: 0; box-sizing: border-box; margin: 0 0 var(--pi-space-7); padding: var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); overflow: visible; }
   .msg.assistant, .msg.tool-image-output { background: var(--pi-surface); }
   .msg.user { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
   /* Held by the server, not yet read: the same warning colour the queue panel
@@ -875,6 +881,15 @@ export const promptEditorStyles = css`
   .editor-attach .prompt-action-icon { width: 16px; height: 16px; }
   textarea, .markdown-editor .cm-editor { box-sizing: border-box; width: 100%; min-height: 54px; max-height: 220px; resize: none; overflow: hidden; border-radius: var(--pi-radius-md); border: 1px solid var(--pi-border); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px)/1.4 var(--pi-control-font-family, system-ui, sans-serif); }
   textarea { overflow-y: auto; padding: var(--pi-space-4); }
+  /* A phone with the keyboard open leaves roughly 400px of viewport, and a
+     composer sized for a full screen took 119px of it - the transcript was
+     left with about two lines. The composer keeps a floor so it stays usable
+     and gives the rest back to what is being read. */
+  @media (max-height: 620px) {
+    textarea, .markdown-editor .cm-editor { min-height: 40px; max-height: 22dvh; }
+    .markdown-editor .cm-scroller { max-height: 22dvh; }
+    .markdown-editor .cm-content { min-height: 28px; }
+  }
   .markdown-editor .cm-scroller { max-height: 220px; overflow-y: auto; font-family: var(--pi-control-font-family, system-ui, sans-serif); line-height: 1.4; }
   .markdown-editor .cm-content { min-height: 38px; padding: var(--pi-space-4) 44px var(--pi-space-4) var(--pi-space-4); caret-color: var(--pi-text); text-align: start; unicode-bidi: plaintext; --pi-composer-pad: 8px; }
   .markdown-editor .cm-cursor, .markdown-editor .cm-dropCursor { border-left-width: 2px; }

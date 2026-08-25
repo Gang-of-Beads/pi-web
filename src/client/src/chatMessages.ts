@@ -69,7 +69,37 @@ function assistantErrorLine(message: unknown): ChatLine | undefined {
   if (getString(message, "role") !== "assistant" || getString(message, "stopReason") !== "error") return undefined;
   const errorMessage = getString(message, "errorMessage")?.trim();
   const detail = errorMessage === undefined || errorMessage === "" ? "The model returned an error." : errorMessage;
-  return textMessage("system", `Model response failed: ${detail}`);
+  return textMessage("system", `Model response failed: ${describeAssistantFailure(detail, message)}`);
+}
+
+/**
+ * Name what stopped, when the failure itself does not.
+ *
+ * An abort arrives as "This operation was aborted" - true of a cancelled turn,
+ * a tool that hung, and a stop the reader pressed themselves, which leaves the
+ * reader to work out which one happened. The message that failed still carries
+ * the tool it was calling, so the turn can say so.
+ */
+export function describeAssistantFailure(detail: string, message: unknown): string {
+  if (!/aborted/iu.test(detail)) return detail;
+  const tool = lastToolCallName(message);
+  return tool === undefined
+    ? `${detail} (the turn was stopped before it finished)`
+    : `${detail} (stopped while running ${tool})`;
+}
+
+/** The last tool this message was calling, if any. */
+function lastToolCallName(message: unknown): string | undefined {
+  const content = getProperty(message, "content");
+  if (!Array.isArray(content)) return undefined;
+  for (let index = content.length - 1; index >= 0; index -= 1) {
+    const part: unknown = content[index];
+    const type = getString(part, "type");
+    if (type !== "toolCall" && type !== "toolExecution") continue;
+    const name = getString(part, "name") ?? getString(part, "toolName");
+    if (name !== undefined && name !== "") return name;
+  }
+  return undefined;
 }
 
 function isChatLine(message: unknown): message is ChatLine {
