@@ -496,7 +496,7 @@ export const chatStyles = css`
   .activity-filter-count { color: var(--pi-muted); font-variant-numeric: tabular-nums; }
   .activity-filter.selected .activity-filter-count { color: inherit; }
   @media (pointer: coarse) {
-    .activity-filter, .activity-history-toggle { min-height: 44px; }
+    .activity-filter { min-height: 44px; }
   }
   .subagents-list { mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent 100%); flex: 0 1 auto; min-height: 0; max-height: min(34vh, 260px); display: grid; gap: var(--pi-space-3); align-content: start; overflow-y: auto; overscroll-behavior-y: contain; box-sizing: border-box; padding: 0 var(--pi-space-5) var(--pi-space-5); }
   .subagents-list[hidden] { display: none; }
@@ -536,9 +536,11 @@ export const chatStyles = css`
   .subagent-chevron { flex: 0 0 auto; color: var(--pi-muted); font-size: var(--pi-text-xs); }
   /* One rule for the whole drawer: the project sets 44px as its touch height
      (--pi-control-height-touch), and controls added a few at a time had drifted
-     to 30, 32, 36 and 40. */
+     to 30, 32, 36 and 40. Placed after every base declaration it overrides -
+     a media query carries no extra specificity, so the same rule written
+     earlier in the sheet loses to the base height it was meant to raise. */
   @media (pointer: coarse) {
-    .drawer-tab, .subagent-row { min-height: 44px; }
+    .drawer-tab, .subagent-row, .activity-history-toggle { min-height: 44px; }
     .drawer-header { min-height: 44px; }
   }
   .session-warnings { flex: 0 1 auto; display: grid; gap: var(--pi-space-4); max-height: 50%; min-height: 0; overflow-y: auto; box-sizing: border-box; padding: var(--pi-space-5) var(--pi-space-7); border-bottom: 1px solid var(--pi-border-muted); }
