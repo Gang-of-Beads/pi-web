@@ -36,6 +36,7 @@ const PENDING_FLUSH_DEADLINE_MS = 100;
 export interface SessionEventSocket {
   /** Optional: implementations that own a real connection verify it here. */
   checkLiveness?(): void;
+  reconnectNow?(): void;
   connect(
     session: SessionRef,
     onEvent: (event: SessionUiEvent) => void,
@@ -1028,6 +1029,11 @@ export class SessionController {
   /** Ask the session socket to verify it is still alive; see SessionSocket. */
   checkSocketLiveness(): void {
     this.socket.checkLiveness?.();
+  }
+
+  /** Retry the session socket at once, for when the network comes back. */
+  reconnectSocketNow(): void {
+    this.socket.reconnectNow?.();
   }
 
   async clearServerQueue() {

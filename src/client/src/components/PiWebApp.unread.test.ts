@@ -266,6 +266,8 @@ function createApp(storedValues: Record<string, string> = {}, mobileNavigation =
     // The app polls the open session's activity, so the fake window has to be
     // able to hand out and cancel a timer.
     setInterval: () => 0,
+    // The app also runs a socket liveness interval; the fake only has to hand
+    // out and cancel timers.
     clearInterval: () => undefined,
     clearTimeout: () => undefined,
   });

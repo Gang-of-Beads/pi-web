@@ -41,6 +41,14 @@ export class PromptEditor extends LitElement {
   @property({ attribute: false }) status?: SessionStatus;
   @property({ type: Boolean }) sending = false;
   /**
+   * Step aside while another input owns the screen.
+   *
+   * On a phone the composer plus its action row is a third of what is left
+   * above the keyboard, and while answering a question form none of it is
+   * usable. Collapsed it keeps one tappable line that restores it.
+   */
+  @property({ type: Boolean, reflect: true }) collapsed = false;
+  /**
    * Send handler. Resolving `false` means the message was not accepted, and the
    * composer puts its contents back rather than losing them.
    */
@@ -48,6 +56,8 @@ export class PromptEditor extends LitElement {
   @property({ attribute: false }) onStop?: () => void;
   @property({ attribute: false }) onSelectModel?: () => void;
   @property({ attribute: false }) onSelectThinking?: () => void;
+  /** Asked to come back, when the reader taps the collapsed composer. */
+  @property({ attribute: false }) onExpand?: () => void;
   @property({ attribute: false }) availableThinkingLevels: readonly string[] = [];
   @query(".markdown-editor") private editorHost?: HTMLDivElement;
   @query(".attachment-input") private attachmentInput?: HTMLInputElement;
@@ -115,6 +125,20 @@ export class PromptEditor extends LitElement {
   }
 
   protected override updated(changed: PropertyValues) {
+    // Collapsing removes the editor's host from the DOM, which detaches the
+    // CodeMirror view; expanding renders a fresh, empty host. Without tearing
+    // the old view down here, `createEditor` sees a live `this.editor` and
+    // declines to rebuild, so the composer came back as an empty strip with no
+    // way to type and no visible draft. The rebuilt view is seeded from
+    // `this.draft`, so the unsent text returns with it.
+    if (changed.has("collapsed")) {
+      if (this.collapsed) {
+        this.editor?.destroy();
+        this.editor = undefined;
+      } else {
+        this.createEditor();
+      }
+    }
     if (changed.has("disabled")) this.updateEditorDisabledState();
     if (changed.has("sessionId") || changed.has("machineId")) this.syncEditorDoc();
   }
@@ -127,6 +151,7 @@ export class PromptEditor extends LitElement {
   }
 
   override render() {
+    if (this.collapsed) return this.renderCollapsed();
     const shellInputMode = this.currentInputMode.kind === "shell" ? this.currentInputMode : undefined;
     const shellMode = shellInputMode !== undefined;
     const queuesInput = this.canSteer || this.isCompacting;
@@ -150,6 +175,30 @@ export class PromptEditor extends LitElement {
         </div>
       </footer>
     `;
+  }
+
+  private renderCollapsed() {
+    return html`
+      <footer class="collapsed">
+        <button
+          type="button"
+          class="expand-composer"
+          title="Write a message"
+          aria-label="Write a message to pi"
+          aria-expanded="false"
+          @click=${() => { this.onExpand?.(); }}
+        >
+          <span class="expand-composer-label">Message pi…</span>
+          ${this.draftPreview === "" ? null : html`<span class="expand-composer-draft" dir="auto">${this.draftPreview}</span>`}
+        </button>
+      </footer>
+    `;
+  }
+
+  /** The start of the unsent draft, so a collapsed composer is not a black box. */
+  private get draftPreview(): string {
+    const text = (this.editor?.state.doc.toString() ?? this.draft).trim().replace(/\s+/gu, " ");
+    return text.length > 60 ? `${text.slice(0, 59)}…` : text;
   }
 
   focusInput() {

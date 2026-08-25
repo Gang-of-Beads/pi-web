@@ -19,6 +19,7 @@ import {
 } from "./piWebVersionReport.js";
 import { checkNodePtyDarwinSpawnHelper, formatNodePtyDarwinSpawnHelperCheck } from "./server/diagnostics/nodePtySpawnHelper.js";
 import { checkNodePtyNativeModule, formatNodePtyNativeModuleCheck } from "./server/diagnostics/nodePtyNativeModule.js";
+import { deploymentServiceEnvironment } from "./nativeServices/serviceEnvironment.js";
 import {
   installNativeServiceCandidate,
   nativeServiceInstallFailureNeedsPathAdvice,
@@ -301,8 +302,17 @@ function describeServiceShell(): string {
   return shell.detectedExecutable === null ? shell.name : `${shell.name} (${shell.detectedExecutable})`;
 }
 
-function configEnvironment(options: InstallOptions, configPath: string): Record<string, string> {
-  return options.config === undefined ? {} : { PI_WEB_CONFIG: configPath };
+/**
+ * The environment a managed service is installed with: the config path when
+ * one was chosen, plus the deployment variables only the installing
+ * environment knows. A service manager does not inherit the installing
+ * shell's environment, so anything left out here is lost at service start.
+ */
+function serviceEnvironment(options: InstallOptions, configPath: string): Record<string, string> {
+  return {
+    ...deploymentServiceEnvironment(process.env),
+    ...(options.config === undefined ? {} : { PI_WEB_CONFIG: configPath }),
+  };
 }
 
 function serviceRefList(ids: ServiceId[]): ServiceRef[] {
@@ -644,7 +654,7 @@ function nativeServiceInstallCandidate(
   devRoot: string | undefined,
 ): NativeServiceInstallCandidate {
   const shell = detectServiceShell();
-  const environment = configEnvironment(options, configPath);
+  const environment = serviceEnvironment(options, configPath);
   if (options.mode === "production") {
     return {
       mode: "production",

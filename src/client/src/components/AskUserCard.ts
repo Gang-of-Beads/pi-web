@@ -35,6 +35,19 @@ interface DisplayedRecordAnswer {
  * daemon outcome and, for a superseded ask, can recover the unsent local draft
  * so text the user had entered is not silently hidden.
  */
+/**
+ * Resize a textarea to its content.
+ *
+ * A fallback for browsers without CSS `field-sizing`: the three-line box made
+ * every longer answer a peephole. The height is read back from `scrollHeight`
+ * after clearing the inline height, and the CSS `max-height` still bounds it.
+ */
+function growToFit(input: HTMLTextAreaElement): void {
+  if (typeof CSS !== "undefined" && CSS.supports("field-sizing", "content")) return;
+  input.style.height = "auto";
+  input.style.height = `${String(input.scrollHeight)}px`;
+}
+
 @customElement("ask-user-card")
 export class AskUserCard extends LitElement {
   @property({ attribute: false }) ask?: PendingAskUser;
@@ -145,7 +158,7 @@ export class AskUserCard extends LitElement {
               <span>Custom answer</span>
               <textarea
                 id=${this.otherInputId(index)}
-                rows="3"
+                rows="2"
                 maxlength=${String(ASK_USER_OTHER_TEXT_MAX_LENGTH)}
                 .value=${answer?.otherText ?? ""}
                 @input=${(event: Event) => { this.changeOtherText(question, event); }}
@@ -259,6 +272,7 @@ export class AskUserCard extends LitElement {
   private changeOtherText(question: AskUserQuestion, event: Event): void {
     const input = event.currentTarget;
     if (!(input instanceof HTMLTextAreaElement)) return;
+    growToFit(input);
     const current = this.answers[question.id];
     this.setAnswer(question, {
       values: [...(current?.values ?? [])],
@@ -482,10 +496,17 @@ export class AskUserCard extends LitElement {
     .option-detail { color: var(--pi-muted); font-size: 12px; line-height: 1.35; }
     .other-answer { display: grid; gap: 5px; color: var(--pi-muted); font-size: 12px; padding: 4px 8px 4px 32px; }
     .other-answer:only-child { padding-left: 0; padding-right: 0; }
+    /* Grows with the answer instead of keeping a long reply behind a
+       three-line slot: field-sizing handles it natively where it exists and
+       the input handler resizes it everywhere else. The cap keeps a very long
+       answer from pushing the submit button off screen. */
     textarea {
       box-sizing: border-box;
       width: 100%;
       min-height: 68px;
+      max-height: 40vh;
+      field-sizing: content;
+      overflow-y: auto;
       resize: vertical;
       border: 1px solid var(--pi-border);
       border-radius: 8px;

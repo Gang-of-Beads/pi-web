@@ -270,6 +270,14 @@ export class ChatView extends LitElement {
   @state() private expandedTopDrawerKeys: ReadonlySet<string> = new Set();
   /** Section the reader last chose; ignored when that section has nothing. */
   @state() private topDrawerTab: TopDrawerTab | undefined;
+  /** Which kinds of activity to list; "all" until the reader narrows it. */
+  @state() private activityFilter: ActivityFilter = "all";
+  /** Live work only, until the reader asks for the history. */
+  @state() private activityScope: ActivityScope = "active";
+  /** When this browser first saw the current turn working, and a clock to age it. */
+  @state() private turnStartedAtMs: number | undefined;
+  @state() private turnNowMs = 0;
+  private turnClockTimer: number | undefined;
   @state() private retainedEmptyNotificationTrayTargetKey: string | undefined;
   private pendingNotificationFocus: PendingNotificationFocus | undefined;
   private imageZoomModalRegistration: RenderedModalRegistration | undefined;
@@ -333,6 +341,7 @@ export class ChatView extends LitElement {
   }
 
   override disconnectedCallback(): void {
+    this.stopTurnClock();
     this.saveScrollPosition();
     this.scrollController.dispose();
     this.releaseImageZoomModal();
@@ -361,6 +370,9 @@ export class ChatView extends LitElement {
   }
 
   private prepareSessionUiState(): void {
+    // The clock measures this session's turn; carrying it across a switch would
+    // date the new session's work from the old one's start.
+    this.turnStartedAtMs = undefined;
     this.disclosures.syncSession(this.sessionId);
     this.pendingNotificationFocus = undefined;
     this.retainedEmptyNotificationTrayTargetKey = undefined;
@@ -417,6 +429,7 @@ export class ChatView extends LitElement {
     if (changed.has("messages") || changed.has("hasMore") || changed.has("loadingMore")) this.requestLoadMoreIfNeeded();
     if (changed.has("notificationInbox") && this.pendingNotificationFocus !== undefined) this.focusPendingNotificationTarget();
     if (changed.has("zoomedImage")) this.syncImageZoomDialog();
+    if (changed.has("status") || changed.has("activity") || changed.has("isSendingPrompt")) this.syncTurnClock();
   }
 
   private syncImageZoomDialog(): void {
@@ -537,7 +550,7 @@ export class ChatView extends LitElement {
                 @click=${() => { this.selectTopDrawerTab("activity", collapsed); }}
               >
                 ${activity.summary.working ? html`<span class="subagent-dot working" aria-hidden="true"></span>` : null}
-                <span class="drawer-tab-label">Activity (${String(activity.total)})</span>
+                <span class="drawer-tab-label">${activityTabLabel({ active: activity.activeCount, total: activity.total })}</span>
               </button>
             `}
             ${inbox === undefined ? null : html`
@@ -641,6 +654,30 @@ export class ChatView extends LitElement {
    * what is this conversation running that is not the reply on screen - and a
    * browser had no other way to see them at all.
    */
+  /**
+   * Kind filter for the activity list.
+   *
+   * A long-running chat accumulates dozens of rows of three different kinds,
+   * and "what are my subagents doing" and "did that build finish" are separate
+   * questions. Kinds with nothing in them are not offered.
+   */
+  private renderActivityFilters(activity: ActivityPanelState, selected: ActivityFilter): TemplateResult | null {
+    const options = activityFilterOptions(activity);
+    if (options.length <= 1) return null;
+    return html`
+      <div class="activity-filters" role="group" aria-label="Filter session activity">
+        ${options.map((option) => html`
+          <button
+            type="button"
+            class=${`activity-filter activity-filter-${option.id}${option.id === selected ? " selected" : ""}`}
+            aria-pressed=${String(option.id === selected)}
+            @click=${() => { this.activityFilter = option.id; }}
+          >${option.label} <span class="activity-filter-count">${String(option.count)}</span></button>
+        `)}
+      </div>
+    `;
+  }
+
   private activityPanelState(): ActivityPanelState | undefined {
     const subagents = this.subagents ?? [];
     const runs = this.subagentRuns ?? [];
@@ -654,62 +691,101 @@ export class ChatView extends LitElement {
       ...runRows.map((row) => row.status),
       ...taskRows.map((row) => row.status),
     ]);
-    return { rows, runRows, taskRows, summary, total: rows.length + runRows.length + taskRows.length };
+    const activeCount = [...rows, ...runRows, ...taskRows].filter((row) => isActiveActivityStatus(row.status)).length;
+    return { rows, runRows, taskRows, summary, total: rows.length + runRows.length + taskRows.length, activeCount };
   }
 
   private renderActivityPanel(activity: ActivityPanelState): TemplateResult {
-    const { rows, runRows, taskRows } = activity;
+    const filter = activityFilterInEffect(this.activityFilter, activity);
+    const scope = activity.activeCount === 0 && this.activityScope === "active" ? "empty-active" : this.activityScope;
+    const inFilter = orderActivityEntries([
+      ...activity.rows.map((row, index): ActivityListEntry => ({ kind: "subagents", index, status: row.status, row })),
+      ...activity.runRows.map((row, index): ActivityListEntry => ({ kind: "runs", index, status: row.status, startedAt: row.run.startedAt, row })),
+      ...activity.taskRows.map((row, index): ActivityListEntry => ({ kind: "tasks", index, status: row.status, startedAt: row.task.startedAt, row })),
+    ]).filter((entry) => filter === "all" || filter === entry.kind);
+    const entries = inFilter.filter((entry) => scope === "all" || isActiveActivityStatus(entry.status));
+    // Counted within the filter the reader is looking through: "Show 5 finished"
+    // that reveals one row is a button that does not keep its word.
+    const finished = inFilter.filter((entry) => !isActiveActivityStatus(entry.status)).length;
     return html`
       <div class="subagents-list" id="session-activity-list" role="tabpanel" aria-labelledby="drawer-tab-activity">
-          <p class="drawer-hint">${ACTIVITY_TAB_HINT}</p>
-          ${rows.map((row, index) => html`
+          ${activity.total === 0 || scope === "empty-active" ? html`<p class="drawer-hint">${ACTIVITY_TAB_HINT}</p>` : null}
+          ${this.renderActivityFilters(activity, filter)}
+          ${scope === "empty-active"
+            ? html`<p class="activity-empty">Nothing running right now.</p>`
+            : null}
+          ${entries.map((entry) => this.renderActivityEntry(entry))}
+          ${finished === 0 ? null : html`
             <button
               type="button"
-              class="subagent-row status-${row.status} subagent-open-${index}"
-              title=${row.cwd}
-              aria-label=${row.ariaLabel}
-              @click=${() => { this.onOpenSubagent?.(row.subagent); }}
-            >
-              <span class="subagent-dot ${row.status}" aria-hidden="true"></span>
-              <span class="subagent-id" dir="ltr">${row.shortId}</span>
-              <span class="subagent-status ${row.status}">${row.statusLabel}</span>
-              <span class="subagent-chevron" aria-hidden="true">›</span>
-            </button>
-          `)}
-          ${runRows.map((row, index) => html`
-            <button
-              type="button"
-              class="subagent-row status-${row.status} subagent-run-${index}"
-              title=${row.run.task ?? row.run.agent}
-              aria-label=${row.ariaLabel}
-              @click=${() => { this.onOpenSubagentRun?.(row.run); }}
-            >
-              <span class="subagent-dot ${row.status}" aria-hidden="true"></span>
-              <span class="subagent-id" dir="ltr">${row.run.agent}</span>
-              <span class="subagent-status ${row.status}">${row.statusLabel}</span>
-              <span class="subagent-duration">${row.duration}</span>
-              <span class="subagent-chevron" aria-hidden="true">›</span>
-              ${row.detail === "" ? null : html`<span class="subagent-detail">${row.detail}</span>`}
-            </button>
-          `)}
-          ${taskRows.map((row, index) => html`
-            <button
-              type="button"
-              class="subagent-row status-${row.status} background-task-row background-task-${index}"
-              title=${row.task.command}
-              aria-label=${row.ariaLabel}
-              ?disabled=${!row.task.hasOutput}
-              @click=${() => { this.onOpenBackgroundTask?.(row.task); }}
-            >
-              <span class="subagent-dot ${row.status}" aria-hidden="true"></span>
-              <span class="subagent-id" dir="ltr">${row.task.name}</span>
-              <span class="subagent-status ${row.status}">${row.statusLabel}</span>
-              <span class="subagent-duration">${row.duration}</span>
-              ${row.task.hasOutput ? html`<span class="subagent-chevron" aria-hidden="true">›</span>` : null}
-              ${row.detail === "" ? null : html`<span class="subagent-detail" dir="ltr">${row.detail}</span>`}
-            </button>
-          `)}
+              class="activity-history-toggle"
+              aria-controls="session-activity-list"
+              aria-expanded=${String(this.activityScope === "all")}
+              @click=${() => { this.activityScope = this.activityScope === "all" ? "active" : "all"; }}
+            >${this.activityScope === "all" ? "Hide finished" : `Show ${String(finished)} finished`}</button>
+          `}
       </div>
+    `;
+  }
+
+  /** One row, in the shape its kind needs; the kind also labels it for a reader. */
+  private renderActivityEntry(entry: ActivityListEntry): TemplateResult {
+    if (entry.kind === "subagents") {
+      const row = entry.row;
+      return html`
+        <button
+          type="button"
+          class="subagent-row status-${row.status} subagent-open-${String(entry.index)}"
+          title=${row.cwd}
+          aria-label=${row.ariaLabel}
+          @click=${() => { this.onOpenSubagent?.(row.subagent); }}
+        >
+          <span class="subagent-dot ${row.status}" aria-hidden="true"></span>
+          <span class="subagent-kind" aria-hidden="true">Subagent</span>
+          <span class="subagent-id" dir="ltr">${row.shortId}</span>
+          <span class="subagent-status ${row.status}">${row.statusLabel}</span>
+          <span class="subagent-chevron" aria-hidden="true">\u203a</span>
+        </button>
+      `;
+    }
+    if (entry.kind === "runs") {
+      const row = entry.row;
+      return html`
+        <button
+          type="button"
+          class="subagent-row status-${row.status} subagent-run-${String(entry.index)}"
+          title=${row.run.task ?? row.run.agent}
+          aria-label=${row.ariaLabel}
+          @click=${() => { this.onOpenSubagentRun?.(row.run); }}
+        >
+          <span class="subagent-dot ${row.status}" aria-hidden="true"></span>
+          <span class="subagent-kind" aria-hidden="true">Agent</span>
+          <span class="subagent-id" dir="ltr">${row.run.agent}</span>
+          <span class="subagent-status ${row.status}">${row.statusLabel}</span>
+          <span class="subagent-duration">${row.duration}</span>
+          <span class="subagent-chevron" aria-hidden="true">\u203a</span>
+          ${row.detail === "" ? null : html`<span class="subagent-detail">${row.detail}</span>`}
+        </button>
+      `;
+    }
+    const row = entry.row;
+    return html`
+      <button
+        type="button"
+        class="subagent-row status-${row.status} background-task-row background-task-${String(entry.index)}"
+        title=${row.task.command}
+        aria-label=${row.ariaLabel}
+        ?disabled=${!row.task.hasOutput}
+        @click=${() => { this.onOpenBackgroundTask?.(row.task); }}
+      >
+        <span class="subagent-dot ${row.status}" aria-hidden="true"></span>
+        <span class="subagent-kind" aria-hidden="true">Task</span>
+        <span class="subagent-id" dir="ltr">${row.task.name}</span>
+        <span class="subagent-status ${row.status}">${row.statusLabel}</span>
+        <span class="subagent-duration">${row.duration}</span>
+        ${row.task.hasOutput ? html`<span class="subagent-chevron" aria-hidden="true">\u203a</span>` : null}
+        ${row.detail === "" ? null : html`<span class="subagent-detail" dir="ltr">${row.detail}</span>`}
+      </button>
     `;
   }
 
@@ -930,7 +1006,34 @@ export class ChatView extends LitElement {
       || this.activity?.phase === "active";
   }
 
+  /**
+   * Keep the turn clock in step with the session's own state: it starts when
+   * work starts, stops when the session goes quiet, and ticks only while the
+   * dock is showing an elapsed time.
+   */
+  private syncTurnClock(): void {
+    const working = this.isSessionLive();
+    if (!working) {
+      this.turnStartedAtMs = undefined;
+      this.stopTurnClock();
+      return;
+    }
+    this.turnStartedAtMs ??= Date.now();
+    this.turnNowMs = Date.now();
+    if (this.turnClockTimer !== undefined) return;
+    this.turnClockTimer = window.setInterval(() => { this.turnNowMs = Date.now(); }, 1000);
+  }
+
+  private stopTurnClock(): void {
+    if (this.turnClockTimer === undefined) return;
+    window.clearInterval(this.turnClockTimer);
+    this.turnClockTimer = undefined;
+  }
+
   private renderActivityDock() {
+    // An open question form owns the bottom of the screen; a floating status
+    // pill there covers the field being typed into.
+    if (this.pendingAsk !== undefined) return null;
     if (this.isSendingPrompt) {
       return html`
         <div class="activity-dock sending" aria-live="polite">
@@ -947,14 +1050,48 @@ export class ChatView extends LitElement {
     // happening" when something is.
     const background = backgroundWorkLabel(this.activityPanelState());
     const showBackground = background !== undefined && (category === "idle" || category === undefined);
+    // Naming live background work and then ignoring a tap on it is a dead end:
+    // the thing it names lives one control away, in the drawer.
+    if (showBackground) {
+      return html`
+        <button
+          type="button"
+          class="activity-dock background"
+          aria-live="polite"
+          title="Show what this chat is running"
+          @click=${() => { this.revealActivity(); }}
+        >
+          <span class="dot"></span>
+          <span class="activity-text">${background}</span>
+          <span class="subagent-chevron" aria-hidden="true">›</span>
+        </button>
+      `;
+    }
+    const elapsed = category === "working" ? turnElapsedLabel(this.turnStartedAtMs, this.turnNowMs) : undefined;
     return html`
-      <div class=${`activity-dock ${showBackground ? "background" : category ?? ""}`} aria-live="polite">
+      <div class=${`activity-dock ${category ?? ""}${elapsed?.long === true ? " long-running" : ""}`} aria-live="polite">
         ${category === "working"
           ? html`<span class="state-dots"><span class="state-dot"></span><span class="state-dot"></span><span class="state-dot"></span></span>`
           : html`<span class="dot"></span>`}
-        <span class="activity-text">${showBackground ? background : this.activityText(state)}</span>
+        <span class="activity-text">${this.activityText(state)}</span>
+        ${elapsed === undefined ? null : html`<span class="activity-elapsed" aria-hidden="true">${elapsed.text}</span>`}
       </div>
     `;
+  }
+
+  /** Open the drawer on the running work the dock just named. */
+  private revealActivity(): void {
+    const key = this.topDrawerKey();
+    const collapsedKeys = new Set(this.collapsedTopDrawerKeys);
+    collapsedKeys.delete(key);
+    const expandedKeys = new Set(this.expandedTopDrawerKeys);
+    expandedKeys.add(key);
+    this.collapsedTopDrawerKeys = collapsedKeys;
+    this.expandedTopDrawerKeys = expandedKeys;
+    this.topDrawerTab = "activity";
+    // Scope, not filter: the reader asked to see what is running, not to have
+    // their chosen kind thrown away.
+    this.activityScope = "active";
   }
 
   /**
@@ -1874,6 +2011,95 @@ export function backgroundTaskRows(tasks: readonly SessionBackgroundTaskInfo[]):
 
 export type TopDrawerTab = "activity" | "notifications";
 
+/** One row of the activity list, tagged with the kind its filter chip names. */
+export type ActivityListEntry =
+  | { kind: "subagents"; index: number; status: string; startedAt?: string | undefined; row: SubagentRow }
+  | { kind: "runs"; index: number; status: string; startedAt?: string | undefined; row: SubagentRunRow }
+  | { kind: "tasks"; index: number; status: string; startedAt?: string | undefined; row: BackgroundTaskRow };
+
+/**
+ * The order the list is read in: running work first, then the most recent.
+ *
+ * Grouping by kind put a finished task above a running subagent purely because
+ * of which list it came from, so the row that mattered was somewhere in the
+ * middle. Kind is a filter, not an ordering.
+ */
+export function orderActivityEntries(entries: readonly ActivityListEntry[]): ActivityListEntry[] {
+  return [...entries].sort((left, right) => {
+    const liveDelta = Number(isActiveActivityStatus(right.status)) - Number(isActiveActivityStatus(left.status));
+    if (liveDelta !== 0) return liveDelta;
+    const startedDelta = (right.startedAt ?? "").localeCompare(left.startedAt ?? "");
+    if (startedDelta !== 0) return startedDelta;
+    return left.kind.localeCompare(right.kind);
+  });
+}
+
+/**
+ * How long the reader has been watching this turn, and whether that is long
+ * enough to be worth questioning.
+ *
+ * A turn that has been running for hours looks exactly like one that started a
+ * second ago: same dots, same wording. That is how a session held open by a
+ * background process nobody can see reads as "still thinking" all night, while
+ * every message typed into it silently queues behind it.
+ */
+export const LONG_TURN_AFTER_MS = 10 * 60 * 1000;
+
+export function turnElapsedLabel(startedAtMs: number | undefined, nowMs: number): { text: string; long: boolean } | undefined {
+  if (startedAtMs === undefined) return undefined;
+  const elapsedMs = Math.max(0, nowMs - startedAtMs);
+  if (elapsedMs < 5000) return undefined;
+  return { text: subagentRunDuration(elapsedMs), long: elapsedMs >= LONG_TURN_AFTER_MS };
+}
+
+/** Whether the list shows only live work or the whole history. */
+export type ActivityScope = "active" | "all";
+
+/** Statuses that mean "this is happening now". */
+export function isActiveActivityStatus(status: string): boolean {
+  return status === "working" || status === "running";
+}
+
+/**
+ * The tab's own label. A chat that has run forty tasks and is running two says
+ * so: the number that matters is what is live, not the size of the history.
+ */
+export function activityTabLabel(counts: { active: number; total: number }): string {
+  return counts.active > 0 ? `Activity · ${String(counts.active)} running` : `Activity (${String(counts.total)})`;
+}
+
+/** Kinds of work the activity list can be narrowed to. */
+export type ActivityFilter = "all" | "subagents" | "runs" | "tasks";
+
+export interface ActivityFilterOption {
+  id: ActivityFilter;
+  label: string;
+  count: number;
+}
+
+/** The filter chips worth offering: "All" plus every kind that has rows. */
+export function activityFilterOptions(activity: { rows: readonly unknown[]; runRows: readonly unknown[]; taskRows: readonly unknown[] }): ActivityFilterOption[] {
+  const kinds: ActivityFilterOption[] = ([
+    { id: "subagents", label: "Subagents", count: activity.rows.length },
+    { id: "runs", label: "Agent runs", count: activity.runRows.length },
+    { id: "tasks", label: "Tasks", count: activity.taskRows.length },
+  ] satisfies ActivityFilterOption[]).filter((kind) => kind.count > 0);
+  if (kinds.length <= 1) return kinds.length === 0 ? [] : kinds;
+  const total = activity.rows.length + activity.runRows.length + activity.taskRows.length;
+  return [{ id: "all", label: "All", count: total }, ...kinds];
+}
+
+/**
+ * The filter actually applied. A chosen kind that has emptied out falls back to
+ * "all", so a filter cannot leave the reader staring at an empty list.
+ */
+export function activityFilterInEffect(chosen: ActivityFilter, activity: { rows: readonly unknown[]; runRows: readonly unknown[]; taskRows: readonly unknown[] }): ActivityFilter {
+  if (chosen === "subagents" && activity.rows.length > 0) return "subagents";
+  if (chosen === "runs" && activity.runRows.length > 0) return "runs";
+  if (chosen === "tasks" && activity.taskRows.length > 0) return "tasks";
+  return "all";
+}
+
 /**
  * "Activity" means nothing on its own -- the reader has to be told, once, in
  * the panel itself, what these rows are and what tapping one does.
@@ -1909,6 +2135,8 @@ export interface ActivityPanelState {
   taskRows: BackgroundTaskRow[];
   summary: { label: string; working: boolean; failed: boolean };
   total: number;
+  /** How many of those are happening now, which is what the tab reports. */
+  activeCount: number;
 }
 
 /**

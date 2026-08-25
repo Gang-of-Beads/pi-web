@@ -254,6 +254,44 @@ describe("PiSessionService.prompt with an open ask", () => {
     await service.dispose();
   });
 
+  // The failure this covers, observed 2026-08-24: a message queued before
+  // `ask_user` ran was delivered by the agent six milliseconds after the form
+  // appeared, because the ask is what ends the run. Nothing voided the ask, so
+  // the reader kept a live form on screen while the model read the queued
+  // message and reported the questions unanswered.
+  it("voids the open ask when a message queued earlier is delivered", async () => {
+    const { service, store, events, fake } = askService({ withActiveSession: true });
+    // Opens the runtime, which is what subscribes to its events.
+    await service.status(sessionRef(ACTIVE_SESSION_ID));
+    await service.openAsk({ sessionId: ACTIVE_SESSION_ID, questions });
+    expect(store.pendingAsk(ACTIVE_SESSION_ID)).toBeDefined();
+
+    fake.emit({ type: "message_start", message: { role: "user", content: "queued before the questions" } });
+    await vi.waitFor(() => { expect(store.pendingAsk(ACTIVE_SESSION_ID)).toBeUndefined(); });
+
+    expect(askEvents(events).map(({ event }) => event)).toEqual([
+      { type: "ask.opened", ask: { askId: "ask-1", askedAt: "2026-02-01T10:00:00.000Z", questions } },
+      { type: "ask.closed", askId: "ask-1", reason: "cancelled" },
+    ]);
+    const [delivered] = fake.calls.sendCustomMessage;
+    expect(delivered?.message.content).toContain("unanswered: db");
+    expect(delivered?.options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
+    await service.dispose();
+  });
+
+  it("leaves an assistant message alone", async () => {
+    const { service, store, fake } = askService({ withActiveSession: true });
+    await service.status(sessionRef(ACTIVE_SESSION_ID));
+    await service.openAsk({ sessionId: ACTIVE_SESSION_ID, questions });
+
+    fake.emit({ type: "message_start", message: { role: "assistant", content: "still working" } });
+    await Promise.resolve();
+
+    expect(store.pendingAsk(ACTIVE_SESSION_ID)).toBeDefined();
+    expect(fake.calls.sendCustomMessage).toEqual([]);
+    await service.dispose();
+  });
+
   it("sends a plain message untouched when no ask is open", async () => {
     const { service, events, fake } = askService({ withActiveSession: true });
 

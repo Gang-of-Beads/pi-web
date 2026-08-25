@@ -117,6 +117,37 @@ describe("ask-user-card live form", () => {
     });
   });
 
+  it("grows the custom textarea with the answer when field-sizing is unavailable", async () => {
+    const card = await mountOpenAsk(openAsk([
+      question("notes", "Anything else?", []),
+    ]));
+    const root = renderRoot(card);
+    const textarea = requiredElement(root.querySelector("textarea"), "custom textarea");
+
+    // Safari < 18.4 has no CSS field-sizing, so a long answer on a phone
+    // would stay trapped behind the three-line slot unless the input handler
+    // sizes the box to its content itself.
+    vi.stubGlobal("CSS", { supports: () => false });
+    try {
+      Object.defineProperty(textarea, "scrollHeight", { configurable: true, value: 240 });
+      textarea.value = "A long answer that would wrap onto several lines in a narrow phone viewport.";
+      textarea.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    await card.updateComplete;
+    expect(textarea.style.height).toBe("240px");
+
+    // Where field-sizing exists, the handler delegates to CSS instead of
+    // fighting it with an inline height.
+    vi.stubGlobal("CSS", { supports: () => true });
+    textarea.style.height = "";
+    textarea.value = "Even longer.";
+    textarea.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+    expect(textarea.style.height).toBe("");
+    vi.unstubAllGlobals();
+  });
+
   it("names unanswered questions before allowing a partial submit", async () => {
     const onSubmit = vi.fn<AskUserSubmitCallback>();
     const card = await mountOpenAsk(openAsk([

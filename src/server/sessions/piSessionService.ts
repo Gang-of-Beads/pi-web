@@ -1694,6 +1694,22 @@ export class PiSessionService implements SessionRouteService {
   }
 
   /**
+   * Void an open ask when a user message the browser did not just send arrives.
+   *
+   * `prompt()` voids the ask for a message sent while the form is on screen,
+   * but a message queued *before* `ask_user` ran is delivered by the agent the
+   * moment the ask ends the run - a few milliseconds after the form appears.
+   * The form was then left open with nobody waiting for it: the model read the
+   * queued message, carried on, and told the reader they had not answered
+   * questions that were still sitting on their screen (observed 2026-08-24,
+   * ask posted at 16:25:45.991, queued message delivered at 16:25:45.997).
+   */
+  private async voidOpenAskForDeliveredMessage(session: PiAgentSession): Promise<void> {
+    if (this.pendingAskStore.pendingAsk(session.sessionId) === undefined) return;
+    await this.voidOpenAskForUserMessage(session);
+  }
+
+  /**
    * Record the user's answer to an open extension dialog and resolve the
    * extension's parked Promise with it. Unlike an ask, nothing is delivered to
    * the model: the waiter is extension code inside an already in-flight run
@@ -3859,6 +3875,7 @@ export class PiSessionService implements SessionRouteService {
       this.publishActivityForEvent(session, event);
       const eventType = getString(event, "type");
       if (eventType === "agent_end") this.abortRunScopedExtensionDialogs(session.sessionId);
+      if (isDeliveredUserMessageEvent(event)) void this.voidOpenAskForDeliveredMessage(session);
       if (eventType === "compaction_end") this.scheduleCompactionQueueDrain(session.sessionId);
       if (eventType === "agent_start" || eventType === "agent_end") this.scheduleCompactionQueueDrain(session.sessionId);
       // A /reload issued mid-turn waits here. agent_end can fire while the turn
@@ -4900,6 +4917,17 @@ function consumedUserMessageTexts(session: PiAgentSession): ReadonlySet<string> 
     }
   }
   return consumed;
+}
+
+/**
+ * A user message entering the transcript, from any route: sent now, or drained
+ * from the agent's queue when a run ended.
+ */
+function isDeliveredUserMessageEvent(event: unknown): boolean {
+  const eventType = getString(event, "type");
+  if (eventType !== "message_start" && eventType !== "message_end") return false;
+  const message = getProperty(event, "message");
+  return isRecord(message) && message["role"] === "user";
 }
 
 function userTextMessage(text: string): { role: "user"; content: string } {

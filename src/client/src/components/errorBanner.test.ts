@@ -92,3 +92,21 @@ describe("daemon restart", () => {
     expect(isTransientError("connect ECONNREFUSED 127.0.0.1:5432")).toBe(false);
   });
 });
+
+describe("dropped-connection failures", () => {
+  // The raw TypeError sat at the top of the screen long after the connection
+  // was back: a phone that slept, a tunnel that blinked, or a web process being
+  // restarted all produce it, and all of them heal by themselves.
+  it("reads every browser's dropped-fetch wording as self-healing", () => {
+    for (const raw of ["TypeError: Failed to fetch", "TypeError: Load failed", "NetworkError when attempting to fetch resource."]) {
+      expect(isTransientError(raw)).toBe(true);
+      const { host } = renderBanner(raw);
+      expect(host.querySelector(".error")?.getAttribute("role")).toBe("status");
+      expect(host.querySelector(".error-text")?.textContent).toContain("Lost connection to PI WEB");
+    }
+  });
+
+  it("still treats an ordinary failure as permanent", () => {
+    expect(isTransientError("TypeError: cannot read properties of undefined")).toBe(false);
+  });
+});

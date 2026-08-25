@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { RealtimeSocket, SessionSocket, parseRealtimeSocketEvent, parseSessionSocketEvent } from "./sessionSocket";
+import { RealtimeSocket, SessionSocket, parseRealtimeSocketEvent, parseSessionSocketEvent, jitteredReconnectDelay } from "./sessionSocket";
 
 function notification(order = 1) {
   return {
@@ -473,5 +473,19 @@ describe("socket instance isolation", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(newHandler).toHaveBeenCalledOnce();
+  });
+});
+
+describe("jitteredReconnectDelay", () => {
+  // A daemon restart drops every tab and device at once; an identical backoff
+  // schedule then aims all of them at a process that is still starting.
+  it("spreads a delay across the lower half of its window", () => {
+    expect(jitteredReconnectDelay(1000, () => 0)).toBe(500);
+    expect(jitteredReconnectDelay(1000, () => 0.5)).toBe(750);
+    expect(jitteredReconnectDelay(1000, () => 0.999)).toBe(1000);
+  });
+
+  it("keeps the delay positive for the smallest window", () => {
+    expect(jitteredReconnectDelay(500, () => 0)).toBe(250);
   });
 });

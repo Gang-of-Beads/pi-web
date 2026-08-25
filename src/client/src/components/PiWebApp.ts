@@ -26,6 +26,7 @@ import { selectedMachineId } from "../controllers/types";
 import type { RecoveredPrompt } from "../resendMessage";
 import { keyboardInset } from "../appShell/keyboardInset";
 import { machineSessionKey } from "../machineKeys";
+import { composedPathOf, composerCollapsedForFocus } from "../composerCollapse";
 import { shouldPollSessionActivity } from "../sessionActivityPolling";
 import { sessionCleanupRequestKey } from "../sessionCleanupUi";
 import { selectedNotificationView } from "../sessionNotifications";
@@ -95,6 +96,28 @@ const PI_WEB_STATUS_REFRESH_MS = 15 * 60 * 1000;
  * for as long as the tab is in front.
  */
 const SUBAGENT_REFRESH_MS = 4000;
+/**
+ * How often an open tab checks that its sockets are still alive.
+ *
+ * A socket dropped by a proxy, a NAT table, or a tunnel that blinked stays
+ * OPEN in the browser and fires no close event, so nothing arrives and nothing
+ * complains: the page simply stops updating until it is reloaded. Resuming the
+ * tab already triggers this check, which left the case nobody thought about -
+ * the tab that never went away. The check itself is a comparison against the
+ * last frame's timestamp; the socket's own 50s staleness window decides.
+ */
+const SOCKET_LIVENESS_CHECK_MS = 15_000;
+
+interface FocusEventTargetLike {
+  addEventListener(type: string, listener: (event: FocusEvent) => void): void;
+  removeEventListener(type: string, listener: (event: FocusEvent) => void): void;
+}
+
+function isEventTargetLike(value: unknown): value is FocusEventTargetLike {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate: { addEventListener?: unknown; removeEventListener?: unknown } = value;
+  return typeof candidate.addEventListener === "function" && typeof candidate.removeEventListener === "function";
+}
 const PI_WEB_STATUS_DEFER_MS = 750;
 const REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS = [1_000, 3_000, 8_000, 15_000, 30_000] as const;
 const GLOBAL_SHORTCUT_LISTENER_OPTIONS = { capture: true } as const;
@@ -226,6 +249,7 @@ export class PiWebApp extends LitElement {
   private piWebStatusDeferredTimer: number | undefined;
   private workspaceDeletionPollTimer: number | undefined;
   private subagentPollTimer: number | undefined;
+  private livenessTimer: number | undefined;
   private refreshingWorkspaceDeletionRuns = false;
   private readonly handledWorkspaceDeletionRunIds = new Set<string>();
   private readonly terminalCommandRunRuntimes = new Map<string, TerminalCommandRunsInternalRuntime>();
@@ -248,6 +272,8 @@ export class PiWebApp extends LitElement {
   private transientErrorTimer: number | undefined;
   private lastScheduledError = "";
   @state() private quickSwitcherOpen = false;
+  /** True while a question form or dialog field has focus (see composerCollapse). */
+  @state() private composerCollapsed = false;
   @state() private mobileToolSheetOpen = false;
   @state() private quickSwitcherLoading = false;
   @state() private quickSwitcherSessions: readonly SessionInfo[] = [];
@@ -330,6 +356,55 @@ export class PiWebApp extends LitElement {
   };
 
   /** A tab coming back to the front should show current activity at once. */
+  /**
+   * The OS says the network is back. Retry immediately rather than waiting out
+   * a backoff window measured against a network that no longer exists, and let
+   * the liveness check retire any socket that only looks alive.
+   */
+  private readonly onBrowserOnline = () => {
+    this.realtime.reconnectNow();
+    this.sessions.reconnectSocketNow();
+    this.checkSocketLiveness();
+  };
+
+  /**
+   * Focus moving inside this element's shadow tree is not redispatched to the
+   * host, so a listener on the host only ever saw focus arriving from outside
+   * the app - which is every case except the one this exists for. The listener
+   * belongs on the shadow root, where the retargeted event actually travels.
+   */
+  private readonly onFocusIn = (event: FocusEvent) => {
+    this.composerCollapsed = composerCollapsedForFocus(event.composedPath());
+  };
+
+  /**
+   * Collapsing is a loan, not a sale: focus leaving the form gives the composer
+   * back. `relatedTarget` is where focus is going, so a move within the same
+   * form keeps it collapsed.
+   */
+  /**
+   * Subscribe the shadow root to focus movement, where a retargeted focus event
+   * actually travels. Tolerates a stand-in render root: node-environment tests
+   * install a minimal object with no event API.
+   */
+  private listenForFormFocus(action: "add" | "remove"): void {
+    const root: unknown = this.renderRoot;
+    if (!isEventTargetLike(root)) return;
+    if (action === "add") {
+      root.addEventListener("focusin", this.onFocusIn);
+      root.addEventListener("focusout", this.onFocusOut);
+      return;
+    }
+    root.removeEventListener("focusin", this.onFocusIn);
+    root.removeEventListener("focusout", this.onFocusOut);
+  }
+
+  private readonly onFocusOut = (event: FocusEvent) => {
+    const next = event.relatedTarget;
+    if (next === null) return;
+    this.composerCollapsed = composerCollapsedForFocus(composedPathOf(next));
+  };
+
   private readonly onDocumentVisibilityChange = () => {
     this.updateSubagentPolling();
     if (document.visibilityState === "visible") void this.refreshSubagents();
@@ -601,11 +676,24 @@ export class PiWebApp extends LitElement {
     this.syncSessionUnreadMachines();
     this.piWebStatusTimer = window.setInterval(() => { this.schedulePiWebStatusRefresh(); }, PI_WEB_STATUS_REFRESH_MS);
     document.addEventListener("visibilitychange", this.onDocumentVisibilityChange);
+    this.listenForFormFocus("add");
+    this.livenessTimer = window.setInterval(() => { this.checkSocketLiveness(); }, SOCKET_LIVENESS_CHECK_MS);
+    window.addEventListener("online", this.onBrowserOnline);
     this.updateSubagentPolling();
     void this.loadClientConfig();
     void this.refreshSelfUpdate();
     void this.ensureGatewayPluginsLoaded();
     void this.loadProjectsAndRestoreRoute().finally(() => { this.schedulePiWebStatusRefresh(); });
+  }
+
+  /** Withdraw a transport complaint that the reconnect has just disproved. */
+  private clearTransientError(): void {
+    if (this.state.error === "" || !isTransientError(this.state.error)) return;
+    if (this.transientErrorTimer !== undefined) {
+      window.clearTimeout(this.transientErrorTimer);
+      this.transientErrorTimer = undefined;
+    }
+    this.setState({ error: "" });
   }
 
   /**
@@ -654,7 +742,11 @@ export class PiWebApp extends LitElement {
     this.workspaceDeletionPollTimer = undefined;
     if (this.subagentPollTimer !== undefined) window.clearInterval(this.subagentPollTimer);
     this.subagentPollTimer = undefined;
+    if (this.livenessTimer !== undefined) window.clearInterval(this.livenessTimer);
+    this.livenessTimer = undefined;
+    window.removeEventListener("online", this.onBrowserOnline);
     document.removeEventListener("visibilitychange", this.onDocumentVisibilityChange);
+    this.listenForFormFocus("remove");
     this.clearPendingRemoteRouteRestore();
     super.disconnectedCallback();
   }
@@ -678,6 +770,9 @@ export class PiWebApp extends LitElement {
     // and the selection paths that can afford an immediate read already ask for
     // one. The poll picks up every other path within its interval.
     if (previous.selectedSession?.id !== this.state.selectedSession?.id) this.updateSubagentPolling();
+    // Nothing left to answer, nothing left to yield to: a form that closed
+    // while its field held focus emits no focusout anyone can act on.
+    if (this.composerCollapsed && this.state.pendingAsk === undefined && this.state.pendingDialogs.length === 0) this.composerCollapsed = false;
   }
 
   private async loadProjectsAndRestoreRoute() {
@@ -695,6 +790,17 @@ export class PiWebApp extends LitElement {
       this.rememberCurrentMachineNavigation();
     }
     await this.refreshWorkspaceDeletionRuns();
+  }
+
+  /**
+   * Both sockets verify themselves; a stale one closes and reconnects, and the
+   * reconnect is what refetches whatever was missed. Skipped while the tab is
+   * hidden, where the resume path takes over.
+   */
+  private checkSocketLiveness(): void {
+    if (document.visibilityState !== "visible") return;
+    this.realtime.checkLiveness();
+    this.sessions.checkSocketLiveness();
   }
 
   private handleBrowserResumeSignal(): void {
@@ -1266,6 +1372,10 @@ export class PiWebApp extends LitElement {
     this.realtime.connect(
       (event) => { this.handleRealtimeEvent(machineId, event); },
       () => {
+        // The socket being back is proof the transport healed, so a transport
+        // complaint on screen is now describing the past. Only self-healing
+        // messages are withdrawn; a real failure stays until it is read.
+        this.clearTransientError();
         void this.sessionUnread.refresh(machineId);
         // Status updates that landed during the gap are gone for good, so this
         // has to overwrite what the browser holds rather than fill gaps: a
@@ -2394,6 +2504,12 @@ export class PiWebApp extends LitElement {
     }
   }
 
+  /** Give the restored composer the caret it was tapped for. */
+  private async focusPromptEditorSoon(): Promise<void> {
+    await this.updateComplete;
+    this.promptEditor?.focusInput();
+  }
+
   private openMachineDialog(): void {
     this.pushModalLayerFrame();
     this.setState({ machineDialogOpen: true, error: "" });
@@ -2839,7 +2955,7 @@ export class PiWebApp extends LitElement {
           <div class="mobile-navigation-panel">${this.appShell.isMobileNavigationLayout ? this.renderNavigationPanel() : null}</div>
           ${state.selectedSession ? html`
             ${this.renderChatView(state, state.selectedSession)}
-            <prompt-editor .sessionId=${state.selectedSession.id} .cwd=${state.selectedWorkspace?.path} .machineId=${selectedMachineId(state)} .projectId=${state.selectedWorkspace?.projectId} .workspaceId=${state.selectedWorkspace?.id} .disabled=${state.selectedSession.archived === true} .canSteer=${state.status?.isStreaming === true} .isCompacting=${state.status?.isCompacting === true} .canStop=${state.status?.isStreaming === true || state.status?.isBashRunning === true || state.status?.isCompacting === true || (state.status?.pendingMessageCount ?? 0) > 0} .status=${state.status} .availableThinkingLevels=${state.availableThinkingLevels} .sending=${state.sendingPrompts[state.selectedSession.id] === true} .onSend=${this.handleSendPrompt} .onStop=${this.handleStopActiveWork} .onSelectModel=${this.handleSelectModel} .onSelectThinking=${this.handleSelectThinking} .speechToText=${this.speechToTextConfig}></prompt-editor>
+            <prompt-editor .sessionId=${state.selectedSession.id} .cwd=${state.selectedWorkspace?.path} .machineId=${selectedMachineId(state)} .projectId=${state.selectedWorkspace?.projectId} .workspaceId=${state.selectedWorkspace?.id} .disabled=${state.selectedSession.archived === true} .canSteer=${state.status?.isStreaming === true} .isCompacting=${state.status?.isCompacting === true} .canStop=${state.status?.isStreaming === true || state.status?.isBashRunning === true || state.status?.isCompacting === true || (state.status?.pendingMessageCount ?? 0) > 0} .status=${state.status} .availableThinkingLevels=${state.availableThinkingLevels} .sending=${state.sendingPrompts[state.selectedSession.id] === true} ?collapsed=${this.composerCollapsed} .onExpand=${() => { this.composerCollapsed = false; void this.focusPromptEditorSoon(); }} .onSend=${this.handleSendPrompt} .onStop=${this.handleStopActiveWork} .onSelectModel=${this.handleSelectModel} .onSelectThinking=${this.handleSelectThinking} .speechToText=${this.speechToTextConfig}></prompt-editor>
             ${this.renderStatusBar(state)}
             ${state.commandDialog !== undefined ? html`<command-picker .title=${state.commandDialog.title} .options=${state.commandDialog.options} .onPick=${(value: string) => this.sessions.respondToCommand(state.commandDialog?.requestId ?? "", value)} .onCancel=${() => { this.sessions.cancelCommand(); }}></command-picker>` : null}
             ${state.modelDialog !== undefined ? html`<model-picker title=${state.modelDialog.title} .options=${state.modelDialog.options} .catalog=${state.modelDialog.catalog} .selectedValue=${state.modelDialog.selectedValue} .onPick=${(value: string) => { void this.pickModel(value); }} .onToggleEnabled=${this.handleToggleModelEnabled} .onCancel=${() => { this.setState({ modelDialog: undefined }); }}></model-picker>` : null}
@@ -2945,7 +3061,7 @@ function sameBackgroundTasks(left: readonly SessionBackgroundTaskInfo[], right: 
   if (left.length !== right.length) return false;
   return left.every((entry, index) => {
     const other = right[index];
-    return other?.id === entry.id && other.status === entry.status && other.exitCode === entry.exitCode;
+    return other?.id === entry.id && other.status === entry.status && other.exitCode === entry.exitCode && other.durationMs === entry.durationMs;
   });
 }
 

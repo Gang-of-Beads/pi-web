@@ -18,6 +18,19 @@ export type BrowserRealtimeEvent = Exclude<RealtimeEvent, { type: "notifications
  */
 const LIVENESS_TIMEOUT_MS = 50_000;
 
+/**
+ * Reconnect delay with jitter.
+ *
+ * Every tab and device reconnects the moment a daemon restart drops them all,
+ * and an identical backoff schedule turns that into a synchronised stampede
+ * against a process that is still starting. Spreading each attempt across its
+ * own delay window is the standard remedy; the shape of the backoff is
+ * unchanged, only its edges are blurred.
+ */
+export function jitteredReconnectDelay(delay: number, random: () => number = Math.random): number {
+  return Math.round(delay * (0.5 + random() * 0.5));
+}
+
 export class SessionSocket {
   private socket: WebSocket | undefined;
   private session: SessionRef | undefined;
@@ -107,9 +120,20 @@ export class SessionSocket {
   private scheduleReconnect(): void {
     if (!this.shouldReconnect) return;
     window.clearTimeout(this.reconnectTimer);
-    const delay = this.reconnectDelay;
+    const delay = jitteredReconnectDelay(this.reconnectDelay);
     this.reconnectDelay = Math.min(this.reconnectDelay * 1.6, 5000);
     this.reconnectTimer = window.setTimeout(() => { this.open(); }, delay);
+  }
+
+  /**
+   * The network is back: retry now instead of sitting out the rest of a
+   * backoff window that was measured against a network that no longer exists.
+   */
+  reconnectNow(): void {
+    if (!this.shouldReconnect || this.socket !== undefined) return;
+    window.clearTimeout(this.reconnectTimer);
+    this.reconnectDelay = 500;
+    this.open();
   }
 
   private async handleMessage(data: MessageEvent["data"], socket: WebSocket, session: SessionRef): Promise<void> {
@@ -183,9 +207,20 @@ export class RealtimeSocket {
   private scheduleReconnect(): void {
     if (!this.shouldReconnect) return;
     window.clearTimeout(this.reconnectTimer);
-    const delay = this.reconnectDelay;
+    const delay = jitteredReconnectDelay(this.reconnectDelay);
     this.reconnectDelay = Math.min(this.reconnectDelay * 1.6, 5000);
     this.reconnectTimer = window.setTimeout(() => { this.open(); }, delay);
+  }
+
+  /**
+   * The network is back: retry now instead of sitting out the rest of a
+   * backoff window that was measured against a network that no longer exists.
+   */
+  reconnectNow(): void {
+    if (!this.shouldReconnect || this.socket !== undefined) return;
+    window.clearTimeout(this.reconnectTimer);
+    this.reconnectDelay = 500;
+    this.open();
   }
 
   private async handleMessage(data: MessageEvent["data"], socket: WebSocket): Promise<void> {

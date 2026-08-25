@@ -1,6 +1,6 @@
 {
   "name": "@vincenthanxiaodu/pi-web",
-  "version": "1.202608.18",
+  "version": "1.202608.19",
   "description": "Web UI for persistent Pi Coding Agent sessions in real workspaces.",
   "license": "MIT",
   "author": "Federico Jaramillo Martinez",
@@ -32,7 +32,6 @@
     "dist",
     "!dist/**/*.testSupport.*",
     "install.sh",
-    "scripts/ensure-node-pty-executable.mjs",
     "README.md",
     "LICENSE",
     "extensions",
@@ -70,7 +69,6 @@
     "smoke:package-install": "node scripts/smoke-package-install.mjs",
     "prepublishOnly": "npm run verify",
     "publish:npm": "npm publish --access public",
-    "postinstall": "node scripts/ensure-node-pty-executable.mjs",
     "prepare": "node scripts/install-git-hooks.mjs",
     "changeset": "changeset",
     "release:version": "changeset version",

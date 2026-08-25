@@ -60,6 +60,23 @@ tailnet `:8506`), never the host installation.
       *Evidence:* `sessionController.backgroundDialogs.test.ts`.
 - [x] **Long dialog text stays readable** — heading plus scrollable detail body
       that preserves newlines. *Evidence:* `ExtensionDialogCard.test.ts`.
+- [x] **The custom answer box grows with the answer.** The `ask_user` free-text
+      field was a three-line slot: a paragraph written on a phone scrolled
+      inside it instead of expanding, so the reply stayed a peephole while
+      typing. The textarea now sizes to its content — CSS `field-sizing:
+      content` where the engine has it (Chrome 131+, Safari 18.4+), and an
+      input-handler fallback (`growToFit`) elsewhere — capped at `40vh` so a
+      very long answer cannot push the submit button off screen. The fallback
+      had been added to the working tree but the served `dist/client` still
+      ran the previous day's build, so the phone kept the old box until the
+      client was rebuilt from the current source.
+      *Evidence:* `AskUserCard.test.ts` "grows the custom textarea with the
+      answer when field-sizing is unavailable" (with `CSS.supports` stubbed
+      off, the handler sets the inline height from `scrollHeight`; stubbed on,
+      it leaves the box to CSS). Measured at 390×844 in the running app:
+      68px → 108px → 152px as typed chunks wrapped onto new lines, and
+      173px — height equal to `scrollHeight` — with `CSS.supports` forced
+      off.
 - [x] **Prompt history** (up/down recall, Ctrl-R search). *Evidence:* `promptHistory.test.ts`.
 
 ## Open — layout and interaction

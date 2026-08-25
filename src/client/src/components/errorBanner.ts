@@ -55,5 +55,13 @@ function normalizeTransientError(error: string): string | undefined {
   if (/remote machine request cancelled/i.test(error)) {
     return "Connection changed while the request was in flight. Retrying is usually enough.";
   }
+  // What a dropped connection looks like from `fetch`: Chrome says "Failed to
+  // fetch", Safari "Load failed", Firefox "NetworkError when attempting to
+  // fetch resource". A phone that slept, a tunnel that blinked, or a web
+  // process being restarted all land here, and all of them heal by themselves -
+  // the raw TypeError text stayed on screen long after the connection was back.
+  if (/failed to fetch|load failed|networkerror when attempting to fetch/i.test(error)) {
+    return "Lost connection to PI WEB. Reconnecting…";
+  }
   return undefined;
 }

@@ -2,6 +2,15 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
 import { apiBaseURL } from "../playwright.config";
 import { CONTAINER_HOME } from "./fixtures";
 
+/**
+ * The container whose filesystem the workspace fixtures are written into.
+ *
+ * Overridable like the session-daemon container in `deliveryDriver`: the name
+ * depends on the compose project that started the stack, so a hardcoded one
+ * fails every fixture-writing test outside the upstream CI stack.
+ */
+const WEB_CONTAINER = process.env["PI_WEB_E2E_WEB_CONTAINER"] ?? "pi-web-fork-verify-web-1";
+
 /** Installed into the page by `installSectionGeometry`. */
 declare function sectionGeometry(panelRoot: ShadowRoot | null | undefined): { tag: string; height: number; top: number }[];
 
@@ -246,7 +255,7 @@ async function writeGoalFixture(workspacePath: string): Promise<void> {
   const { promisify } = await import("node:util");
   const run = promisify(execFile);
   await run("docker", [
-    "exec", "pi-web-fork-verify-web-1",
+    "exec", WEB_CONTAINER,
     "bash", "-lc",
     `mkdir -p ${workspacePath}/.pi/goals && cat > ${workspacePath}/.pi/goals/active_goal_e2e.md <<'GOALEOF'\n${contents}GOALEOF`,
   ]);

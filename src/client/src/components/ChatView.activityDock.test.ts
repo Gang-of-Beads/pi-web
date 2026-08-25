@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
 import type { SessionActivity, SessionStatus } from "../../../shared/apiTypes";
-import { backgroundWorkLabel, ChatView } from "./ChatView";
+import { backgroundWorkLabel, ChatView, LONG_TURN_AFTER_MS, turnElapsedLabel } from "./ChatView";
 
 function status(over: Partial<SessionStatus>): SessionStatus {
   return {
@@ -87,5 +87,50 @@ describe("backgroundWorkLabel", () => {
   it("leaves a quiet session alone", () => {
     expect(backgroundWorkLabel({ rows: [], runRows: [{ status: "done" }], taskRows: [{ status: "failed" }] })).toBeUndefined();
     expect(backgroundWorkLabel(undefined)).toBeUndefined();
+  });
+});
+
+describe("background work dock is a control", () => {
+  // Naming live background work and then ignoring a tap on it is a dead end;
+  // the drawer that lists it is one control away.
+  it("opens the activity drawer on the running work it names", async () => {
+    const view = new ChatView();
+    view.sessionId = "s";
+    view.status = status({});
+    view.activity = activity("idle");
+    view.subagentRuns = [{ runId: "r1", agent: "scout", status: "running", elapsedMs: 1000, startedAt: "2026-08-24T10:00:00.000Z", hasOutput: false }];
+    document.body.append(view);
+    await view.updateComplete;
+
+    const dock = view.renderRoot.querySelector<HTMLButtonElement>(".activity-dock.background");
+    expect(dock?.textContent).toContain("1 background run");
+
+    dock?.click();
+    await view.updateComplete;
+
+    expect(view.renderRoot.querySelector<HTMLElement>(".drawer-body")?.hidden).toBe(false);
+    expect(view.renderRoot.querySelector(".drawer-tab-activity")?.getAttribute("aria-selected")).toBe("true");
+    expect(view.renderRoot.querySelectorAll(".subagent-row").length).toBe(1);
+  });
+});
+
+describe("turnElapsedLabel", () => {
+  const started = 1_000_000;
+
+  // A turn held open by a background process nobody can see reads as "still
+  // thinking" all night, and every message typed into it queues behind it.
+  it("stays quiet for the first seconds, then reports the age of the turn", () => {
+    expect(turnElapsedLabel(started, started + 2_000)).toBeUndefined();
+    expect(turnElapsedLabel(started, started + 42_000)).toEqual({ text: "42s", long: false });
+    expect(turnElapsedLabel(started, started + 125_000)).toEqual({ text: "2m 5s", long: false });
+  });
+
+  it("flags a turn that has run past the point of plausibility", () => {
+    expect(turnElapsedLabel(started, started + LONG_TURN_AFTER_MS)).toMatchObject({ long: true });
+    expect(turnElapsedLabel(started, started + 12 * 60 * 60 * 1000)).toEqual({ text: "12h 0m", long: true });
+  });
+
+  it("reports nothing when no turn is running", () => {
+    expect(turnElapsedLabel(undefined, started)).toBeUndefined();
   });
 });
