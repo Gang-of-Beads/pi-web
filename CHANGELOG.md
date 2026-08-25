@@ -1,5 +1,15 @@
 # @jmfederico/pi-web
 
+## 1.202608.22
+
+### Patch Changes
+
+- 0ded077: Say why adding a project did not work, where it was attempted. A failure was reported through the global banner while the dialog stayed open in front of it, so submitting a path that does not exist looked like the button did nothing — and the message, when it could be seen at all, was a raw `ENOENT ... realpath` string. The dialog now shows the reason itself, in words that name the next move ("Tick 'Create the folder if it does not exist'"), and the button reports that it is working.
+- 3aa8eac: Show pending messages in the order they will be sent. A message this browser sent appeared as a bubble in the transcript while one queued anywhere else appeared in a panel drawn below the whole transcript — so a message sent seconds ago sat above one queued minutes earlier. Every pending message is now drawn in the transcript, ordered by the queue itself; the panel keeps the count and the clear action instead of repeating their text.
+- 3d1d3f2: Keep the Add project buttons on screen. The dialog never bounded itself to the viewport, so a long list of folder suggestions pushed its footer — the only way to finish adding a project — below the fold on a phone, and further still once the keyboard opened. It now uses the same viewport bound the other dialogs already set, and scrolls its body instead of growing past the screen.
+- 63ad445: Stop declaring a thinking subagent dead. Liveness was inferred from how recently the child wrote its transcript, with a ten-minute window — but a child writes only when it calls a tool, so four reviewers reading a long document (silent for 15 minutes) were all reported as `unknown` and the drawer said "Nothing running right now" while they worked. Whether the parent turn is still running is a fact rather than an inference, and it now settles the question: a run with no result, spawned by a turn that has not returned, is running. The mtime window remains only as the fallback for a run whose parent has already gone idle.
+- c609d53: Stop colouring every system line as a fault. A background task that finished with exit code 0 was reported in danger red, which reads as a failure at a glance; system lines now use the muted tone and red stays for actual errors.
+
 ## 1.202608.21
 
 ### Patch Changes
