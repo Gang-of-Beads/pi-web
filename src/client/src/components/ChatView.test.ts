@@ -17,8 +17,6 @@ import {
   chatMessageGroupLabel,
   chatMessageMetadataLabel,
   chatDeliveryPresentation,
-  chatQueuedMessageSections,
-  chatQueuedSectionShowsClearAction,
   chatSessionWarningRows,
 } from "./ChatView";
 import { templateEventHandlerAfterMarker, templateEventHandlerNearMarker, templateText } from "../templateInspection.testSupport";
@@ -45,49 +43,21 @@ describe("chatDeliveryPresentation", () => {
   });
 });
 
-describe("chatQueuedMessageSections", () => {
-  it("labels client-side pending-start sends separately from server queued messages", () => {
-    const sections = chatQueuedMessageSections(
-      [{ kind: "followUp", text: "queued before start" }],
-      [{ kind: "steer", text: "server queued" }],
-    );
+describe("clear-queue action visibility", () => {
+  // The decision to offer the clear-queue action is the same seam that used to
+  // sit on the queued panel; the transcript carries it now.
+  it("shows the strip only while the server queue holds something", () => {
+    // The action visibility seam used to live on the queued panel; the strip
+    // carries the same decision now, so it is asserted through the render.
+    const empty = new ChatView();
+    empty.status = queuedStatus([]);
+    expect(templateText(renderQueuedMessages(empty))).not.toContain("queued");
 
-    expect(sections).toEqual([
-      {
-        source: "client",
-        heading: "Queued until session starts",
-        detail: "Will send once the backend session is ready",
-        messages: [{ kind: "followUp", text: "queued before start" }],
-      },
-      {
-        source: "server",
-        heading: "Queued messages",
-        detail: "1 pending",
-        messages: [{ kind: "steer", text: "server queued" }],
-      },
-    ]);
+    const held = new ChatView();
+    held.status = queuedStatus([{ kind: "steer", text: "server queued" }]);
+    expect(templateText(renderQueuedMessages(held))).toContain("1 queued");
   });
 });
-
-describe("chatQueuedSectionShowsClearAction", () => {
-  // The show/hide decision for the server clear-queue button is content/layout,
-  // so it lives in a pure exported seam instead of scraping rendered markup.
-  const serverSection = requireSection(chatQueuedMessageSections([], [{ kind: "steer", text: "server queued" }])[0]);
-  const clientSection = requireSection(chatQueuedMessageSections([{ kind: "followUp", text: "waiting" }], [])[0]);
-
-  it("shows the action for the server queue when a clear handler is wired", () => {
-    expect(chatQueuedSectionShowsClearAction(serverSection, true)).toBe(true);
-  });
-
-  it("hides the action when no clear handler is wired", () => {
-    expect(chatQueuedSectionShowsClearAction(serverSection, false)).toBe(false);
-  });
-
-  it("never shows the server action for the separate client pending-start queue", () => {
-    expect(chatQueuedSectionShowsClearAction(clientSection, true)).toBe(false);
-  });
-});
-
 describe("ChatView queued-message clear wiring", () => {
   // Escape hatch: this case verifies the Clear queue button's Lit event wiring,
   // whose only observable effect is invoking the injected callback. Vitest runs
@@ -155,16 +125,16 @@ describe("ChatView queued messages stay in place", () => {
 
   it("draws a queued message from somewhere else in the transcript, not twice", () => {
     // Another device, or an injected command: no bubble here, so one is drawn
-    // for it in the transcript, in queue order. The panel keeps the count and
-    // the clear action but no longer repeats the text.
+    // for it in the transcript, in queue order. The strip keeps the count and
+    // the clear action but never repeats the text.
     const view = new ChatView();
     view.messages = [];
     view.status = queuedStatus([{ kind: "steer", text: "from my phone" }]);
     view.onClearServerQueue = vi.fn();
 
-    const panel = templateText(renderQueuedMessages(view));
-    expect(panel).not.toContain("from my phone");
-    expect(panel).toContain("1 pending");
+    const strip = templateText(renderQueuedMessages(view));
+    expect(strip).not.toContain("from my phone");
+    expect(strip).toContain("1 queued");
     expect(transcriptWithPendingInQueueOrder(view.messages, view.status.queuedMessages)).toHaveLength(1);
   });
 });
@@ -553,10 +523,6 @@ function dispatchDetailsToggle(handler: TemplateEventHandler, open: boolean): vo
   }
 }
 
-function requireSection(section: ReturnType<typeof chatQueuedMessageSections>[number] | undefined): ReturnType<typeof chatQueuedMessageSections>[number] {
-  if (section === undefined) throw new Error("expected a queued-message section");
-  return section;
-}
 
 function withStatus(view: ChatView, status: SessionStatus): ChatView {
   view.status = status;

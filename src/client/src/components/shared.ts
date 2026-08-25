@@ -723,16 +723,12 @@ export const chatStyles = css`
   .history-load-button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text-secondary); padding: var(--pi-space-3) var(--pi-space-6); font: var(--pi-text-xs) var(--pi-font-ui); cursor: pointer; }
   .history-load-button:hover, .history-load-button:focus { border-color: var(--pi-accent); color: var(--pi-text-bright); }
   .history-load-button:disabled { cursor: default; opacity: .55; }
-  .queued-messages { max-width: 100%; min-width: 0; box-sizing: border-box; display: grid; gap: var(--pi-space-4); margin: 0 0 var(--pi-space-7); padding: var(--pi-space-6); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-lg); background: var(--pi-warning-surface); color: var(--pi-text); overflow: hidden; }
-  .queued-header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--pi-space-5); }
-  .queued-heading { min-width: 0; flex: 1 1 180px; display: grid; gap: var(--pi-space-1); }
-  .queued-heading strong { color: var(--pi-warning); }
-  .queued-heading small { color: var(--pi-muted); }
-  .queued-clear-button { flex: 0 0 auto; border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-warning); padding: var(--pi-space-3) var(--pi-space-5); font: var(--pi-text-xs) var(--pi-font-ui); white-space: nowrap; cursor: pointer; }
+  /* Queued messages are drawn in the transcript, gold; this slim strip carries
+     only the count and the clear action the queue as a whole needs. */
+  .queued-strip { display: flex; align-items: center; gap: var(--pi-space-3); margin: 0 0 var(--pi-space-4); padding: var(--pi-space-2) var(--pi-space-3); color: var(--pi-warning); font-size: var(--pi-text-xs); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); background: var(--pi-warning-surface); }
+  .queued-strip-count { flex: 1 1 auto; min-width: 0; }
+  .queued-clear-button { flex: 0 0 auto; border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-warning); padding: var(--pi-space-1) var(--pi-space-3); font: inherit; cursor: pointer; }
   .queued-clear-button:hover, .queued-clear-button:focus { border-color: var(--pi-warning); color: var(--pi-text-bright); }
-  .queued-message { display: grid; gap: var(--pi-space-2); padding-top: var(--pi-space-4); border-top: 1px solid var(--pi-border); }
-  .queued-message:first-of-type { padding-top: 0; border-top: 0; }
-  .queued-kind { color: var(--pi-muted); font-size: var(--pi-text-xs); text-transform: uppercase; }
   .queued-dialogs { margin: -8px 0 var(--pi-space-7); padding: 0 var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-xs); text-align: center; }
   /* Delivery mark: bottom-right of the sender's own bubble, quiet enough to
      ignore while reading and specific enough to answer "did that send?". */
@@ -777,7 +773,7 @@ export const chatStyles = css`
     .msg-meta.expanded::before { content: ""; }
   }
   formatted-text.part { display: block; }
-  formatted-text.part, .queued-message formatted-text { text-align: start; unicode-bidi: plaintext; }
+  formatted-text.part { text-align: start; unicode-bidi: plaintext; }
   .part { max-width: 100%; min-width: 0; box-sizing: border-box; overflow: visible; }
   .part + .part { margin-top: var(--pi-space-5); }
   .tool-line { color: var(--pi-warning); }

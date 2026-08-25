@@ -81,19 +81,6 @@ interface PendingNotificationFocus {
   focusTarget: NotificationFocusTarget;
 }
 
-export interface QueuedMessageSection {
-  source: "client" | "server";
-  heading: string;
-  detail: string;
-  messages: QueuedSessionMessage[];
-}
-
-export function chatQueuedMessageSections(clientQueued: QueuedSessionMessage[], serverQueued: QueuedSessionMessage[]): QueuedMessageSection[] {
-  return [
-    clientQueued.length === 0 ? undefined : { source: "client", heading: "Queued until session starts", detail: "Will send once the backend session is ready", messages: clientQueued },
-    serverQueued.length === 0 ? undefined : { source: "server", heading: "Queued messages", detail: `${String(serverQueued.length)} pending`, messages: serverQueued },
-  ].filter((section): section is QueuedMessageSection => section !== undefined);
-}
 
 export interface DeliveryPresentation {
   glyph: string;
@@ -158,11 +145,6 @@ export function chatMessageGroupClassName(defaultOpen: boolean): string {
 /** The disclosure summary label for an event group, distinguishing the live tail. */
 export function chatMessageGroupLabel(defaultOpen: boolean): string {
   return defaultOpen ? "live events" : "events";
-}
-
-/** Whether a queued-message section shows the server clear-queue action. */
-export function chatQueuedSectionShowsClearAction(section: QueuedMessageSection, hasClearHandler: boolean): boolean {
-  return section.source === "server" && hasClearHandler;
 }
 
 /** A rendered session-warning row derived from live status warnings. */
@@ -539,8 +521,8 @@ export class ChatView extends LitElement {
               return this.renderMessage(group.message, group.index);
             },
           )}
-          ${this.renderQueuedMessages()}
           ${this.renderSessionActivity()}
+          ${this.renderQueuedMessages()}
           ${this.renderOpenAsk()}
           ${this.renderExtensionDialogs()}
         </div>
@@ -1047,7 +1029,12 @@ export class ChatView extends LitElement {
    * back to listing only what has no bubble here.
    */
   private transcriptMessages(): ChatLine[] {
-    return transcriptWithPendingInQueueOrder(this.messages, this.status?.queuedMessages ?? []);
+    // Every queued message is drawn in the transcript - the server's, and the
+    // ones this browser held while its session was still starting. Both carry
+    // the same "queued" mark, so there is one home for a message in every
+    // state. A separate panel used to repeat some of them and hide others,
+    // which read as duplicate entries and missing ones on the same screen.
+    return transcriptWithPendingInQueueOrder(this.messages, [...this.clientQueuedMessages, ...(this.status?.queuedMessages ?? [])]);
   }
 
   private groupedMessages(): ChatGroup[] {
@@ -1222,42 +1209,19 @@ export class ChatView extends LitElement {
   }
 
   private renderQueuedMessages() {
-    // Every server-queued message is drawn in the transcript now, in the order
-    // the queue will send them, so the panel no longer repeats their text - it
-    // keeps the count and the action that applies to the queue as a whole.
+    // Every queued message is drawn in the transcript, marked gold, so the only
+    // thing a panel could add is a second listing of the same text. One action
+    // still needs a home: clearing the whole server queue without stopping the
+    // work it is waiting behind. A slim strip carries that, nothing more.
     const serverQueued = this.status?.queuedMessages ?? [];
-    return html`${chatQueuedMessageSections(this.clientQueuedMessages, serverQueued).map((section) => this.renderQueuedMessageList(section))}`;
-  }
-
-  private renderQueuedMessageList(section: QueuedMessageSection) {
-    const canClear = chatQueuedSectionShowsClearAction(section, this.onClearServerQueue !== undefined);
+    if (serverQueued.length === 0) return null;
     return html`
-      <aside class="queued-messages" aria-live="polite">
-        <div class="queued-header">
-          <div class="queued-heading">
-            <strong>${section.heading}</strong>
-            <small>${section.detail}</small>
-          </div>
-          ${canClear ? html`
-            <button type="button" class="queued-clear-button" title="Clear queued messages without stopping active work" @click=${this.handleClearServerQueue}>Clear queue</button>
-          ` : null}
-        </div>
-        ${(section.source === "server" ? [] : section.messages).map((message, index) => html`
-          <div class="queued-message">
-            <span class="queued-kind">${message.kind === "steer" ? "Steer" : "Follow-up"} ${String(index + 1)}</span>
-            <formatted-text .text=${message.text}></formatted-text>
-            ${canClear ? html`
-              <button
-                type="button"
-                class="queued-panel-recall"
-                data-action="recall"
-                title="Take this message back and put it in the composer"
-                @click=${() => { this.onRecallQueuedMessage?.(message); }}
-              >Recall</button>
-            ` : null}
-          </div>
-        `)}
-      </aside>
+      <div class="queued-strip" aria-live="polite">
+        <span class="queued-strip-count">${String(serverQueued.length)} queued</span>
+        ${this.onClearServerQueue === undefined ? null : html`
+          <button type="button" class="queued-clear-button" title="Clear queued messages without stopping active work" @click=${() => { this.onClearServerQueue?.(serverQueued); }}>Clear queue</button>
+        `}
+      </div>
     `;
   }
 
