@@ -1,5 +1,11 @@
 # @jmfederico/pi-web
 
+## 1.202608.21
+
+### Patch Changes
+
+- 2bd7b9b: Accept long extension-dialog prose in the browser. The daemon already bounds a dialog's title and message by the prose limit, but the client parser still held them to the tighter label limit, so a dialog with a long title failed session-status parsing and replaced the chat with "String field exceeds limit: title".
+
 ## 1.202608.20
 
 ### Patch Changes
