@@ -19,7 +19,16 @@ import type { SessionSubagentRunInfo } from "../../shared/apiTypes.js";
  * a server restart.
  */
 
-/** A run with no artifact and no recent write is treated as gone, not running. */
+/**
+ * How long a run with no artifact may stay silent before it is presumed gone,
+ * when nothing better is known.
+ *
+ * Only a fallback: a child writes its transcript when it calls a tool, and a
+ * reviewer reading a long document can think for far longer than this between
+ * calls. Judging liveness by file mtime alone therefore declared exactly the
+ * runs worth watching - the slow, careful ones - dead. Whether the parent turn
+ * is still running is a fact rather than a guess, so it wins when available.
+ */
 const RUNNING_STALE_AFTER_MS = 10 * 60 * 1000;
 /** Enough of the tail to find the last step without reading a long transcript. */
 const TAIL_BYTES = 64 * 1024;
@@ -38,14 +47,19 @@ interface RunArtifact {
   hasOutput: boolean;
 }
 
-export async function listSubagentRuns(sessionDir: string, parentSessionId: string, now = Date.now()): Promise<SessionSubagentRunInfo[]> {
+export async function listSubagentRuns(
+  sessionDir: string,
+  parentSessionId: string,
+  now = Date.now(),
+  options: { parentActive?: boolean } = {},
+): Promise<SessionSubagentRunInfo[]> {
   const runsDir = join(sessionDir, parentSessionId);
   const runIds = await listDirectories(runsDir);
   if (runIds.length === 0) return [];
   const artifacts = await readArtifacts(join(sessionDir, "subagent-artifacts"));
   const runs: SessionSubagentRunInfo[] = [];
   for (const runId of runIds) {
-    const run = await describeRun(runsDir, runId, artifacts, now);
+    const run = await describeRun(runsDir, runId, artifacts, now, options.parentActive === true);
     if (run !== undefined) runs.push(run);
   }
   // Live work first, then most recent: the question this answers is usually
@@ -57,7 +71,7 @@ export async function listSubagentRuns(sessionDir: string, parentSessionId: stri
   });
 }
 
-async function describeRun(runsDir: string, runId: string, artifacts: Map<string, RunArtifact>, now: number): Promise<SessionSubagentRunInfo | undefined> {
+async function describeRun(runsDir: string, runId: string, artifacts: Map<string, RunArtifact>, now: number, parentActive: boolean): Promise<SessionSubagentRunInfo | undefined> {
   const runDir = join(runsDir, runId);
   const transcript = await findTranscript(runDir);
   // The run directory and the artifacts are named in two different id spaces:
@@ -84,7 +98,7 @@ async function describeRun(runsDir: string, runId: string, artifacts: Map<string
     if (dirStats === undefined) return undefined;
     startedAt = dirStats.birthtime.toISOString();
   }
-  const status = runStatus(artifact, lastWriteMs, now);
+  const status = runStatus(artifact, lastWriteMs, now, parentActive);
   // What the row says this run was: its own description when the tool kept one,
   // otherwise the first line of what it returned.
   const label = artifact?.task ?? artifact?.outputSummary;
@@ -111,9 +125,13 @@ async function describeRun(runsDir: string, runId: string, artifacts: Map<string
  * ever reporting was killed with its parent - saying "unknown" is honest, where
  * "running" would leave a ghost in the list forever.
  */
-function runStatus(artifact: RunArtifact | undefined, lastWriteMs: number | undefined, now: number): SessionSubagentRunInfo["status"] {
+function runStatus(artifact: RunArtifact | undefined, lastWriteMs: number | undefined, now: number, parentActive: boolean): SessionSubagentRunInfo["status"] {
   if (artifact?.exitCode !== undefined) return artifact.exitCode === 0 ? "done" : "failed";
   if (artifact !== undefined) return "done";
+  // The parent turn is still going and this run never wrote a result: the tool
+  // call it belongs to has not returned, so it is running - however long the
+  // child has been quiet.
+  if (parentActive) return "running";
   if (lastWriteMs === undefined) return "unknown";
   return now - lastWriteMs < RUNNING_STALE_AFTER_MS ? "running" : "unknown";
 }

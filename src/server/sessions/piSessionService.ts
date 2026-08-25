@@ -2384,7 +2384,10 @@ export class PiSessionService implements SessionRouteService {
     // nothing on every real session, and the unit tests missed it because they
     // built the fixture with the same key they read it back with: self
     // consistent, and wrong about the disk.
-    return listSubagentRuns(dirname(sessionFile), basename(sessionFile, ".jsonl"));
+    // The parent's own state settles what a silent child means: while the turn
+    // that spawned them is still running, a run without a result is still
+    // running too, however long it has been thinking.
+    return listSubagentRuns(dirname(sessionFile), basename(sessionFile, ".jsonl"), Date.now(), { parentActive: session.isStreaming });
   }
 
   /**

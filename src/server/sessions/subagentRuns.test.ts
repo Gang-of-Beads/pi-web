@@ -106,6 +106,40 @@ describe("listSubagentRuns", () => {
     expect(progress).toContain("grep");
   });
 
+  it("keeps a quiet child running while the parent turn still is", async () => {
+    // Measured from a real session: four reviewers reading a long design
+    // document had been silent for 884-928s, past the 600s staleness window,
+    // and were all reported "unknown" - so the drawer said "Nothing running"
+    // while four agents were working. A child writes its transcript when it
+    // calls a tool; thinking makes no writes at all.
+    const dir = await sessionDir();
+    const file = await writeTranscript(dir, "run-thinking", [
+      { type: "message", message: { role: "assistant", content: [{ type: "text", text: "reading" }] } },
+    ]);
+    const longAgo = new Date(Date.now() - 20 * 60 * 1000);
+    await utimes(file, longAgo, longAgo);
+
+    const [idleParent] = await listSubagentRuns(dir, PARENT);
+    expect(idleParent).toMatchObject({ status: "unknown" });
+
+    // The tool call that spawned it has not returned, which is a fact rather
+    // than an inference from how recently a file changed.
+    const [activeParent] = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: true });
+    expect(activeParent).toMatchObject({ status: "running" });
+  });
+
+  it("still reports a finished run from its artifact while the parent runs", async () => {
+    const dir = await sessionDir();
+    await writeTranscript(dir, "run-done", [{ role: "assistant", content: [{ type: "text", text: "x" }] }]);
+    await writeArtifact(dir, "run-done", "reviewer", { exitCode: 0 });
+
+    const [run] = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: true });
+
+    // A result outranks the parent's state: the run is over even if the turn
+    // that started it is still going.
+    expect(run).toMatchObject({ status: "done" });
+  });
+
   it("does not leave a killed run listed as running forever", async () => {
     // No artifact and no writes for a long time means the child died with its
     // parent. Claiming it is still working would be a ghost in the list.
