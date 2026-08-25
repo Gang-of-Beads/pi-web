@@ -12,9 +12,22 @@ export type SessionActivityCategory = "error" | "asking" | "working" | "idle";
 export function sessionActivityCategory(status: SessionStatus | undefined, activity: SessionActivity | undefined): SessionActivityCategory | undefined {
   if (activity?.phase === "error") return "error";
   if (status === undefined) return activity?.phase === "active" ? "working" : undefined;
-  if (status.pendingAsk !== undefined) return "asking";
+  if (isWaitingForUser(status)) return "asking";
   const working = status.isStreaming || status.isBashRunning || status.isCompacting || status.pendingMessageCount > 0;
   if (working) return "working";
   if (activity?.phase === "active") return "working";
   return "idle";
+}
+
+/**
+ * Whether a session is holding still for the user rather than for itself.
+ *
+ * Two things park a run on an answer: an `ask_user` question set and an
+ * extension dialog (`ctx.ui.confirm`/`select`/`input`). They arrive on the
+ * status through different fields, and a surface that consults only the first
+ * reports a session blocked on a countdown dialog as idle.
+ */
+export function isWaitingForUser(status: Pick<SessionStatus, "pendingAsk" | "pendingDialogs"> | undefined): boolean {
+  if (status === undefined) return false;
+  return status.pendingAsk !== undefined || (status.pendingDialogs?.length ?? 0) > 0;
 }
