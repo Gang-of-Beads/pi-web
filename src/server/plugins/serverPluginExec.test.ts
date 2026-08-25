@@ -93,7 +93,7 @@ describe("server plugin execFile helper", () => {
     const pidPath = join(tempDir, "descendant.pid");
     let descendantPid: number | undefined;
     try {
-      const execFile = createServerPluginExecFile({ maxTimeoutMs: 200 });
+      const execFile = createServerPluginExecFile({ maxTimeoutMs: 1500 });
       const parentSource = `
         const { spawn } = require("node:child_process");
         const { writeFileSync } = require("node:fs");
@@ -102,11 +102,17 @@ describe("server plugin execFile helper", () => {
         setInterval(() => {}, 1000);
       `;
 
+      // The parent must spawn its offline child and write the pid file before
+      // the deadline fires; a 200ms cut leaves that dependent on how fast a
+      // cold node start is, which is a machine-load race (the failure was an
+      // ENOENT on the pid path under a loaded verify run). 1500ms is still far
+      // shorter than the host cap and keeps the assertion about process-group
+      // termination, not about startup speed.
       await expect(execFile({
         file: process.execPath,
         args: ["-e", parentSource],
         signal: new AbortController().signal,
-      })).rejects.toThrow("200ms");
+      })).rejects.toThrow("1500ms");
       descendantPid = Number(await readFile(pidPath, "utf8"));
 
       await expectProcessExit(descendantPid);
