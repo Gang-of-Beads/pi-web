@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyQueueToDelivery, transcriptWithPendingInQueueOrder, carryDeliveryForward, findDeliveryLineIndex, findTrackedUserLineIndex, isEchoOfTrackedMessage, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine } from "./messageDelivery";
+import { applyQueueToDelivery, transcriptWithPendingInQueueOrder, carryDeliveryForward, findDeliveryLineIndex, findTrackedUserLineIndex, isEchoOfTrackedMessage, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery } from "./messageDelivery";
 import type { ChatLine } from "./components/shared";
 
 const ID = "cm-1";
@@ -56,6 +56,22 @@ describe("markDelivery", () => {
   it("records the lane a queued message is waiting in", () => {
     const queued = markDelivery([tracked("received")], ID, "queued", "steer");
     expect(queued[0]?.meta?.delivery).toEqual({ clientMessageId: ID, state: "queued", kind: "steer" });
+  });
+});
+
+describe("restartDelivery", () => {
+  it("sends a failed bubble back to in-flight for a deliberate retry", () => {
+    const restarted = restartDelivery([tracked("failed")], ID);
+    expect(restarted[0]?.meta?.delivery?.state).toBe("sending");
+  });
+
+  // The retry is a fresh attempt, so it must survive the same way the first
+  // send did: a bubble already in flight is left alone, and an unknown id
+  // changes nothing.
+  it("only restarts a message that actually failed", () => {
+    expect(restartDelivery([tracked("sending")], ID)[0]?.meta?.delivery?.state).toBe("sending");
+    expect(restartDelivery([tracked("received")], ID)[0]?.meta?.delivery?.state).toBe("received");
+    expect(restartDelivery([tracked("failed")], "other-id")[0]?.meta?.delivery?.state).toBe("failed");
   });
 });
 

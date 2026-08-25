@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { initialAppState } from "../appState";
 import { SessionController } from "./sessionController";
 import { defaultApi, FakeSocket, oldSession, status, workspace, type AppState } from "./sessionController.testSupport";
+import { NetworkSendError } from "../pendingOutbox";
 
 /**
  * A send that fails leaves the message in exactly one place the user can act
@@ -11,8 +12,7 @@ import { defaultApi, FakeSocket, oldSession, status, workspace, type AppState } 
  * never reached, because the connectivity failure was reported rather than
  * thrown.
  */
-function controllerWith(api: typeof defaultApi): { controller: SessionController; read: () => AppState } {
-  let state: AppState = {
+function controllerWith(api: typeof defaultApi): { controller: SessionController; read: () => AppState } {  let state: AppState = {
     ...initialAppState(),
     selectedWorkspace: workspace,
     selectedSession: oldSession,
@@ -31,20 +31,57 @@ function controllerWith(api: typeof defaultApi): { controller: SessionController
 }
 
 describe("SessionController send failure", () => {
-  it("rethrows a dropped connection so the outbox can retry it, and withdraws the bubble", async () => {
+  it("keeps the bubble marked not sent on a dropped connection, and says which id the outbox owns", async () => {
     const api: typeof defaultApi = { ...defaultApi, prompt: () => Promise.reject(new TypeError("Failed to fetch")) };
     const { controller, read } = controllerWith(api);
 
-    await expect(controller.send("typed while offline")).rejects.toThrow(/Failed to fetch/u);
+    let error: unknown;
+    try {
+      await controller.send("typed while offline");
+      throw new Error("expected a connectivity failure");
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(NetworkSendError);
+    if (!(error instanceof NetworkSendError)) throw new Error("expected a NetworkSendError");
+    expect(typeof error.clientMessageId).toBe("string");
+    expect(error.cause).toBeInstanceOf(TypeError);
 
-    // Nothing is left claiming the message was not sent: the outbox owns it
-    // now and will send it when the network returns, and a stale bubble would
-    // then sit above the real one contradicting it.
-    expect(read().messages.filter((line) => line.role === "user")).toHaveLength(0);
+    // The bubble stays where the user put it, now saying "Not sent": the
+    // failed attempt is the same message the outbox will retry, not a mistake
+    // to smooth over, and removing it would make the drop look like nothing
+    // had ever been sent.
+    const [bubble] = read().messages.filter((line) => line.role === "user");
+    expect(bubble?.meta?.delivery?.state).toBe("failed");
     expect(read().error).toMatch(/Failed to fetch/u);
   });
 
-  it("reports other failures without keeping a second copy in the transcript", async () => {
+  it("revives the same bubble on an outbox retry and advances it once the server takes the message", async () => {
+    const api: typeof defaultApi = { ...defaultApi, prompt: () => Promise.reject(new TypeError("Failed to fetch")) };
+    const { controller, read } = controllerWith(api);
+
+    let error: unknown;
+    try { await controller.send("typed while offline"); } catch (caught) { error = caught; }
+    const failedBubble = read().messages.find((line) => line.role === "user");
+    const failedId = failedBubble?.meta?.delivery?.clientMessageId;
+    expect(failedId).toBeDefined();
+
+    const replayApi: typeof defaultApi = { ...defaultApi, prompt: () => Promise.resolve({ accepted: true }) };
+    const replay = controllerWith(replayApi);
+    // A live reloaded page starts from bubble-less server state; a bubble that
+    // only this browser ever saw is rebuilt from the outbox entry, carrying
+    // the id the failed attempt minted.
+    const replayId = error instanceof NetworkSendError ? error.clientMessageId : undefined;
+    if (replayId === undefined) throw new Error("the network error must carry the correlation id");
+    replay.read().messages.push({ role: "user", parts: [{ type: "text", text: "typed while offline" }], meta: { delivery: { clientMessageId: replayId, state: "failed" } } });
+
+    await expect(replay.controller.send("typed while offline", undefined, undefined, "inline", { clientMessageId: replayId })).resolves.toBe(true);
+
+    const [bubble] = replay.read().messages.filter((line) => line.role === "user");
+    expect(bubble?.meta?.delivery?.state).toBe("received");
+  });
+
+  it("withdraws the bubble on non-network failures, leaving the composer to restore the text", async () => {
     const api: typeof defaultApi = { ...defaultApi, prompt: () => Promise.reject(new Error("400 Bad Request")) };
     const { controller, read } = controllerWith(api);
 

@@ -445,7 +445,15 @@ export class AskUserCard extends LitElement {
     .header-status { flex: 0 1 auto; color: var(--pi-muted); font-size: 11px; text-align: end; }
     .header-status.submitted { color: var(--pi-success); }
     .header-status.superseded { color: var(--pi-warning); }
-    .questions { display: grid; padding-top: 8px; }
+    .questions {
+      display: grid;
+      padding-top: 8px;
+      /* A long ask (many questions) must scroll inside the card, or its submit
+         button lands screens below the fold. */
+      max-height: min(46vh, 420px);
+      overflow: auto;
+      overscroll-behavior: contain;
+    }
     fieldset.question {
       min-width: 0;
       margin: 0;

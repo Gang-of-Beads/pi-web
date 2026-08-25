@@ -2718,18 +2718,18 @@ export class PiWebApp extends LitElement {
   }
 
   /** Resolves false when the message was not accepted, so the composer can restore it. */
-  private async sendPrompt(text: string, streamingBehavior?: "steer" | "followUp", attachments?: import("../api").PromptAttachment[], delivery?: import("../../../shared/apiTypes").PromptAttachmentDelivery): Promise<boolean> {
+  private async sendPrompt(text: string, streamingBehavior?: "steer" | "followUp", attachments?: import("../api").PromptAttachment[], delivery?: import("../../../shared/apiTypes").PromptAttachmentDelivery, replay?: { clientMessageId?: string }): Promise<boolean> {
     const hasAttachments = attachments !== undefined && attachments.length > 0;
     // Handled locally by the auth flow; nothing to restore.
     if (!hasAttachments && streamingBehavior === undefined && this.auth.handleSlashCommand(text)) return true;
-    return await this.sessions.send(text, streamingBehavior, attachments, delivery);
+    return await this.sessions.send(text, streamingBehavior, attachments, delivery, replay);
   }
 
   // Stable handler identities for child components. Inlined arrow closures
   // would be a fresh reference on every render, forcing Lit to re-commit the
   // bindings each time the app re-renders; bound class fields keep them constant.
-  private readonly handleSendPrompt = (text: string, streamingBehavior?: "steer" | "followUp", attachments?: import("../api").PromptAttachment[], delivery?: import("../../../shared/apiTypes").PromptAttachmentDelivery): Promise<boolean> =>
-    this.sendPrompt(text, streamingBehavior, attachments, delivery);
+  private readonly handleSendPrompt = (text: string, streamingBehavior?: "steer" | "followUp", attachments?: import("../api").PromptAttachment[], delivery?: import("../../../shared/apiTypes").PromptAttachmentDelivery, replay?: { clientMessageId?: string }): Promise<boolean> =>
+    this.sendPrompt(text, streamingBehavior, attachments, delivery, replay);
 
   /**
    * Put messages that left the queue back where they can be edited and sent

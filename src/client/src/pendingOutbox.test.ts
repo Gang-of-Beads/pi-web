@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clearPendingPrompts, isNetworkFailure, loadPendingPrompts, savePendingPrompt, type PendingPrompt } from "./pendingOutbox";
+import { clearPendingPrompts, isNetworkFailure, loadPendingPrompts, NetworkSendError, savePendingPrompt, type PendingPrompt } from "./pendingOutbox";
 
 function memoryStorage(): Storage & { data: Map<string, string> } {
   const data = new Map<string, string>();
@@ -44,6 +44,7 @@ describe("pendingOutbox", () => {
     expect(isNetworkFailure(new Error("ECONNREFUSED connect"))).toBe(true);
     expect(isNetworkFailure(new Error("400 Bad Request"))).toBe(false);
     expect(isNetworkFailure(new Error("boom"))).toBe(false);
+    expect(isNetworkFailure(new NetworkSendError("boom", "cm-1", { cause: new Error("boom") }))).toBe(true);
   });
 
   it("round-trips a full PendingPrompt", () => {
@@ -51,5 +52,27 @@ describe("pendingOutbox", () => {
     const prompt: PendingPrompt = { text: "hello", behavior: "followUp", at: "2026-08-19T01:00:00.000Z" };
     savePendingPrompt("k", prompt, storage);
     expect(loadPendingPrompts("k", storage)).toEqual([prompt]);
+  });
+
+  // A retry that failed again saves the same message. Appending would build a
+  // duplicate entry per failed attempt; replacing keeps one line per message.
+  it("replaces a pending prompt that shares its correlation id", () => {
+    const storage = memoryStorage();
+    savePendingPrompt("k", { text: "first", clientMessageId: "cm-1", at: "2026-08-19T01:00:00.000Z" }, storage);
+    savePendingPrompt("k", { text: "first again", clientMessageId: "cm-1", at: "2026-08-19T02:00:00.000Z" }, storage);
+    savePendingPrompt("k", { text: "another", at: "2026-08-19T03:00:00.000Z" }, storage);
+
+    expect(loadPendingPrompts("k", storage)).toEqual([
+      { text: "first again", clientMessageId: "cm-1", at: "2026-08-19T02:00:00.000Z" },
+      { text: "another", at: "2026-08-19T03:00:00.000Z" },
+    ]);
+  });
+
+  it("keeps the correlation id when the retry fails again", () => {
+    const storage = memoryStorage();
+    const original = { text: "stay", clientMessageId: "cm-9", at: "2026-08-19T01:00:00.000Z" };
+    savePendingPrompt("k", original, storage);
+    savePendingPrompt("k", { text: "stay", clientMessageId: "cm-9", at: "2026-08-19T02:00:00.000Z" }, storage);
+    expect(loadPendingPrompts("k", storage)).toEqual([{ text: "stay", clientMessageId: "cm-9", at: "2026-08-19T02:00:00.000Z" }]);
   });
 });

@@ -12,7 +12,7 @@ import { inputModeForDraft, inputModesEqual, type InputMode } from "../inputMode
 import { machineSessionKey } from "../machineKeys";
 import { detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletionChoices, type PromptCompletionTrigger } from "../promptCompletions";
 import { clearDraft, loadDraft, saveDraft } from "../promptDraftStorage";
-import { clearPendingPrompts, isNetworkFailure, loadPendingPrompts, savePendingPrompt, type PendingPrompt } from "../pendingOutbox";
+import { clearPendingPrompts, isNetworkFailure, loadPendingPrompts, NetworkSendError, savePendingPrompt, type PendingPrompt } from "../pendingOutbox";
 import { historyIndexStep, type HistoryDirection, loadPromptHistory, rememberPromptHistory, searchPromptHistory } from "../promptHistory";
 import { createMobilePromptEnterMedia, readPromptEnterPreference, shouldSendPromptOnEnterShortcut, shouldUsePromptEnterShiftShortcut } from "../promptEnterBehavior";
 import { createBrowserVoiceRecorder } from "../browserVoiceRecorder";
@@ -52,7 +52,7 @@ export class PromptEditor extends LitElement {
    * Send handler. Resolving `false` means the message was not accepted, and the
    * composer puts its contents back rather than losing them.
    */
-  @property({ attribute: false }) onSend?: (text: string, streamingBehavior?: "steer" | "followUp", attachments?: PromptAttachment[], delivery?: PromptAttachmentDelivery) => Promise<boolean | undefined> | boolean | undefined;
+  @property({ attribute: false }) onSend?: (text: string, streamingBehavior?: "steer" | "followUp", attachments?: PromptAttachment[], delivery?: PromptAttachmentDelivery, replay?: { clientMessageId?: string }) => Promise<boolean | undefined> | boolean | undefined;
   @property({ attribute: false }) onStop?: () => void;
   @property({ attribute: false }) onSelectModel?: () => void;
   @property({ attribute: false }) onSelectThinking?: () => void;
@@ -686,7 +686,7 @@ export class PromptEditor extends LitElement {
       let networkFailed = false;
       for (const prompt of remaining) {
         try {
-          const accepted = await this.onSend?.(prompt.text, prompt.behavior);
+          const accepted = await this.onSend?.(prompt.text, prompt.behavior, undefined, undefined, prompt.clientMessageId === undefined ? undefined : { clientMessageId: prompt.clientMessageId });
           if (accepted === false) stillPending.push(prompt);
         } catch (error) {
           networkFailed = networkFailed || isNetworkFailure(error);
@@ -749,7 +749,8 @@ export class PromptEditor extends LitElement {
     if (isNetworkFailure(failure)) {
       const key = machineSessionKey(this.machineId, this.sessionId ?? "");
       if (key !== "") {
-        savePendingPrompt(key, { text, ...(behavior === undefined ? {} : { behavior }), at: new Date().toISOString() });
+        const clientMessageId = failure instanceof NetworkSendError ? failure.clientMessageId : undefined;
+        savePendingPrompt(key, { text, ...(behavior === undefined ? {} : { behavior }), ...(clientMessageId === undefined ? {} : { clientMessageId }), at: new Date().toISOString() });
         this.pendingPrompts = loadPendingPrompts(key);
         return;
       }

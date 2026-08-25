@@ -128,8 +128,32 @@ function advancesDelivery(current: MessageDeliveryState, next: MessageDeliverySt
   // but a late success event must not resurrect a message the user was told to
   // retry, and nothing recovers from "delivered".
   if (next === "failed") return current !== "delivered";
+  // Deliberate retries go through restartDelivery, which takes the bubble back
+  // to sending; a late event still cannot resurrect a failed message.
   if (current === "failed") return false;
   return DELIVERY_ORDER[next] > DELIVERY_ORDER[current];
+}
+
+/**
+ * Send a failed bubble back to in-flight for a deliberate retry.
+ *
+ * `markDelivery` never leaves "failed", because a late success event must not
+ * resurrect a message the user was told to retry. A retry is not a late event:
+ * the outbox is acting on the message again, so the bubble goes through
+ * sending/received itself rather than being jumped to a result.
+ */
+export function restartDelivery(messages: readonly ChatLine[], clientMessageId: string): ChatLine[] {
+  const index = findDeliveryLineIndex(messages, clientMessageId);
+  if (index === -1) return [...messages];
+  const line = messages[index];
+  if (line?.meta?.delivery?.state !== "failed") return [...messages];
+  const current = line.meta.delivery;
+  const next = [...messages];
+  next[index] = {
+    ...line,
+    meta: { ...line.meta, delivery: { clientMessageId, state: "sending", ...(current.kind === undefined ? {} : { kind: current.kind }) } },
+  };
+  return next;
 }
 
 /**

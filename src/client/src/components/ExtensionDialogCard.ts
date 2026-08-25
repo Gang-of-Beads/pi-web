@@ -366,7 +366,14 @@ export class ExtensionDialogCard extends LitElement {
          turns a formatted plan into an unreadable run-on paragraph. */
       white-space: pre-wrap;
       overflow-wrap: anywhere;
+      /* Bounded like the detail body: a goal plan runs to hundreds of lines
+         and would push the confirm buttons a dozen screens below the fold. */
+      max-height: min(46vh, 420px);
+      overflow: auto;
+      overscroll-behavior: contain;
+      border-bottom: 1px solid var(--pi-border-muted);
     }
+    .dialog-message + .dialog-message { border-bottom: 0; }
     .dialog-detail {
       /* Bounded so a long document scrolls inside the card instead of pushing
          the choices below the fold on a phone. */
@@ -381,7 +388,15 @@ export class ExtensionDialogCard extends LitElement {
       overflow-wrap: anywhere;
     }
     .dialog-detail:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: -2px; }
-    .dialog-options { display: grid; gap: 7px; padding: 12px 16px; }
+    .dialog-options {
+      display: grid;
+      gap: 7px;
+      padding: 12px 16px;
+      max-height: min(46vh, 420px);
+      overflow: auto;
+      overscroll-behavior: contain;
+      border-bottom: 1px solid var(--pi-border-muted);
+    }
     .option-button {
       display: block;
       width: 100%;

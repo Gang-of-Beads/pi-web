@@ -12,6 +12,8 @@ const outboxPrefix = "pi-web:pending-prompt:";
 export interface PendingPrompt {
   text: string;
   behavior?: "steer" | "followUp";
+  /** The bubble's correlation id, so the retry lands on the same tracking. */
+  clientMessageId?: string;
   at: string;
 }
 
@@ -33,9 +35,23 @@ function isPendingPrompt(value: unknown): value is PendingPrompt {
 }
 
 export function isNetworkFailure(error: unknown): boolean {
+  if (error instanceof NetworkSendError) return true;
   if (error instanceof TypeError && /fetch|network|load failed|failed to fetch/i.test(error.message)) return true;
   if (error instanceof Error && /ECONNREFUSED|ENOTFOUND|socket hang up|network.*down/i.test(error.message)) return true;
   return false;
+}
+
+/**
+ * A connectivity failure on send, carrying the bubble's correlation id so the
+ * outbox can retry the *same* message. Retrying under a fresh id would leave
+ * the "Not sent" bubble behind and, once the retry landed, show the message
+ * twice; reusing it makes the retry advance the one bubble that is there.
+ */
+export class NetworkSendError extends Error {
+  constructor(message: string, readonly clientMessageId: string | undefined, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "NetworkSendError";
+  }
 }
 
 export function loadPendingPrompts(sessionKey: string, storage = browserStorage()): PendingPrompt[] {
@@ -53,7 +69,13 @@ export function loadPendingPrompts(sessionKey: string, storage = browserStorage(
 export function savePendingPrompt(sessionKey: string, prompt: PendingPrompt, storage = browserStorage()): void {
   try {
     const pending = loadPendingPrompts(sessionKey, storage);
-    pending.push(prompt);
+    // A retry that failed again saves the same message; replacing rather than
+    // appending keeps one line per unsent message.
+    const index = prompt.clientMessageId === undefined
+      ? -1
+      : pending.findIndex((entry) => entry.clientMessageId === prompt.clientMessageId);
+    if (index === -1) pending.push(prompt);
+    else pending[index] = prompt;
     storage?.setItem(outboxKey(sessionKey), JSON.stringify(pending));
   } catch {
     // localStorage unavailable (private mode/quota): the message is still in

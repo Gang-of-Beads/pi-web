@@ -6,8 +6,8 @@ import { machineSessionKey } from "../machineKeys";
 import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
 import { clearAskDraft } from "../askDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
-import { applyQueueToDelivery, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine } from "../messageDelivery";
-import { isNetworkFailure } from "../pendingOutbox";
+import { applyQueueToDelivery, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery } from "../messageDelivery";
+import { isNetworkFailure, NetworkSendError } from "../pendingOutbox";
 import type { MessageDeliveryState } from "../components/shared";
 import { isShellInput } from "../inputModes";
 import { fileCompletionInsertText } from "../promptCompletions";
@@ -336,7 +336,7 @@ export class SessionController {
    * attachment with it, leaving the user to retype a long prompt and re-pick
    * images that may no longer be at hand.
    */
-  async send(text: string, streamingBehavior?: "steer" | "followUp", attachments?: PromptAttachment[], delivery: PromptAttachmentDelivery = "inline"): Promise<boolean> {
+  async send(text: string, streamingBehavior?: "steer" | "followUp", attachments?: PromptAttachment[], delivery: PromptAttachmentDelivery = "inline", replay?: { clientMessageId?: string }): Promise<boolean> {
     const session = this.getState().selectedSession;
     if (!session || session.archived === true) return false;
 
@@ -356,7 +356,7 @@ export class SessionController {
     // Capture the originating session/machine before any await so the request
     // and its sending indicator stay bound to the right session even if the
     // user navigates elsewhere mid-upload.
-    return await this.deliverPromptToSession(session, text, streamingBehavior, attachments, delivery, selectedMachineId(this.getState()), { markSending: hasAttachments });
+    return await this.deliverPromptToSession(session, text, streamingBehavior, attachments, delivery, selectedMachineId(this.getState()), { markSending: hasAttachments, ...(replay?.clientMessageId === undefined ? {} : { replayClientMessageId: replay.clientMessageId }) });
   }
 
   private markSendingPrompt(sessionId: string, sending: boolean): void {
@@ -421,14 +421,17 @@ export class SessionController {
     return this.deliverCommandToSession(session, queued.text, machineId, { applyResult: true });
   }
 
-  private async deliverPromptToSession(session: SessionInfo, text: string, streamingBehavior: "steer" | "followUp" | undefined, attachments: PromptAttachment[] | undefined, delivery: PromptAttachmentDelivery, machineId: string, options: { markSending: boolean }): Promise<boolean> {
+  private async deliverPromptToSession(session: SessionInfo, text: string, streamingBehavior: "steer" | "followUp" | undefined, attachments: PromptAttachment[] | undefined, delivery: PromptAttachmentDelivery, machineId: string, options: { markSending: boolean; replayClientMessageId?: string }): Promise<boolean> {
     const hasAttachments = attachments !== undefined && attachments.length > 0;
     if (options.markSending) this.markSendingPrompt(session.id, true);
-    // The bubble goes up before the request does, carrying the id that every
-    // later signal (server echo, queue projection, agent copy) is matched
-    // against. Without it the composer clears into silence and the user cannot
-    // tell a slow network from a lost message.
-    const clientMessageId = this.beginTrackedSend(session, text, attachments ?? []);
+    // A retry from the outbox re-uses the id the failed bubble already carries,
+    // so the bubble that reads "Not sent" is the one that comes to life again.
+    // Minting a fresh id for the retry would leave the old bubble behind and
+    // show the message twice once the retry landed.
+    const clientMessageId = options.replayClientMessageId ?? this.beginTrackedSend(session, text, attachments ?? []);
+    if (options.replayClientMessageId !== undefined) {
+      this.setState({ messages: restartDelivery(this.getState().messages, options.replayClientMessageId) });
+    }
     try {
       if (hasAttachments && delivery === "folder") {
         const saved = await this.api.saveAttachments(session, attachments, machineId);
@@ -443,20 +446,17 @@ export class SessionController {
       return true;
     } catch (error) {
       this.setState({ error: String(error) });
-      // One unsent message, one home for it.
-      //
-      // The optimistic bubble is withdrawn either way, because the message is
-      // about to live somewhere the user can act on it: the outbox retries a
-      // connectivity failure when the network returns, and any other failure
-      // hands the text back to the composer to edit and send again. Leaving a
-      // "Not sent" bubble as well showed the same message twice - and after an
-      // automatic retry succeeded, the stale bubble sat above the real one
-      // still claiming it never went.
+      // A dropped connection keeps the bubble and its "Not sent" mark: the
+      // outbox owns the retry and will revive this same bubble, so the message
+      // stays in exactly one place the whole time. The error travels with the
+      // id so the outbox knows which bubble it is. Other failures hand the
+      // text back to the composer, where a stale "Not sent" bubble would sit
+      // above the restored draft claiming the send never went.
+      if (isNetworkFailure(error)) {
+        if (clientMessageId !== undefined) this.markDelivery(session.id, clientMessageId, "failed");
+        throw new NetworkSendError(String(error), clientMessageId, { cause: error });
+      }
       if (clientMessageId !== undefined) this.setState({ messages: removeDeliveryLine(this.getState().messages, clientMessageId) });
-      // The composer only routes to the outbox on a thrown connectivity
-      // failure; reporting `false` here would send an offline message to the
-      // one place that cannot retry it.
-      if (isNetworkFailure(error)) throw error;
       return false;
     } finally {
       if (options.markSending) this.markSendingPrompt(session.id, false);
