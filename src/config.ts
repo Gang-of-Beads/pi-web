@@ -53,11 +53,18 @@ export const DEFAULT_UPLOADS_FOLDER = ".pi-web/uploads";
 
 /**
  * Default auto-cancel delay for extension dialogs whose extension set no
- * `timeout` of its own: five minutes. `extensionDialogsTimeoutMs: 0` waits
- * forever. Tunes the unattended-dialog safety valve only; dialogs are always
- * enabled.
+ * `timeout` of its own: none. Set `extensionDialogsTimeoutMs` to a positive
+ * number of milliseconds to restore an unattended-dialog safety valve.
+ *
+ * A dialog asks the user a question, and a question that expires unanswered is
+ * answered anyway - with the kind's cancel value, which an extension cannot
+ * tell apart from a deliberate dismissal. A five-minute default meant reading
+ * a long proposal on a phone silently discarded it and reported it as the
+ * user's own choice. Waiting is the safer failure: a dialog opened during a
+ * run is still settled when the run ends or is stopped, and every dialog is
+ * settled when the session ends, so nothing parks forever unattended.
  */
-export const DEFAULT_EXTENSION_DIALOGS_TIMEOUT_MS = 300_000;
+export const DEFAULT_EXTENSION_DIALOGS_TIMEOUT_MS = 0;
 
 export const PI_WEB_AGENT_COMMAND_ENV = "PI_WEB_AGENT_COMMAND";
 export const PI_WEB_AGENT_DIR_ENV = "PI_WEB_AGENT_DIR";

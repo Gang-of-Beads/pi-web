@@ -63,7 +63,7 @@ Process restarts depend on the key:
   "spawnSessions": true,
   "subsessions": true,
   "askUser": true,
-  "extensionDialogsTimeoutMs": 300000,
+  "extensionDialogsTimeoutMs": 0,
   "plugins": {
     "workspace-tasks": { "enabled": true },
     "updates": { "enabled": true },
@@ -359,7 +359,7 @@ Restart the session daemon after changing `askUser` or after upgrading PI WEB to
 
 Pi extensions can ask the user questions from `ctx.ui.confirm()`, `ctx.ui.select()`, and `ctx.ui.input()` — including from `session_start` hooks and in-flight `tool_call` hooks. PI WEB renders these dialogs inline in the session transcript and answers them through a dedicated session-daemon channel, never the prompt queue, so a dialog parked inside a `tool_call` hook cannot deadlock the run. Dialog support is always on; there is no enable flag. See [Pi extension dialogs in PI WEB](https://pi-web.dev/plugins#pi-extension-dialogs) for behavior details and author guidance.
 
-`extensionDialogsTimeoutMs` is the unattended-dialog safety valve: how long the session daemon waits for an answer before settling the dialog with its kind's cancel value (`false` for confirm, `undefined` for select and input). It defaults to `300000` (5 minutes); set it to `0` to wait forever. An extension's own `timeout` option still applies, and the effective deadline is the sooner of the two.
+`extensionDialogsTimeoutMs` is the unattended-dialog safety valve: how long the session daemon waits for an answer before settling the dialog with its kind's cancel value (`false` for confirm, `undefined` for select and input). It defaults to `0`, which waits for an answer indefinitely; set a positive number of milliseconds to auto-cancel instead. A dialog that expires is settled with its cancel value, which the extension cannot tell apart from a deliberate dismissal, so a timeout short enough to fire while someone is still reading turns their reading time into a silent answer. An extension's own `timeout` option still applies, and the effective deadline is the sooner of the two.
 
 The key is edited directly in the global config file. Restart the session daemon after changing it — for the systemd user service, run `systemctl --user restart pi-web-sessiond`.
 
