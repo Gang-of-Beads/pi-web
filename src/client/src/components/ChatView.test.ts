@@ -113,6 +113,22 @@ describe("ChatView queued messages stay in place", () => {
     expect(isQueuedLineOf(view, queuedLine("cm-1"))).toBe(false);
   });
 
+  it("marks a synthesized row for a queue entry with no sender id", () => {
+    // A message queued by another client or a non-browser caller carries no
+    // clientMessageId, so the synthesized transcript row falls back to the
+    // `queued:kind:text` id. The server's recall matches such entries by
+    // kind+text, so the row must still be recognised as queued - gold mark
+    // and recall affordance included - rather than read as an ordinary user
+    // message that happens to float in the transcript.
+    const view = new ChatView();
+    view.messages = [queuedLine("queued:steer:hello")];
+    view.status = queuedStatus([{ kind: "steer", text: "hello" }]);
+    expect(isQueuedLineOf(view, queuedLine("queued:steer:hello"))).toBe(true);
+
+    view.status = queuedStatus([]);
+    expect(isQueuedLineOf(view, queuedLine("queued:steer:hello"))).toBe(false);
+  });
+
   it("does not list a message that already has a bubble", () => {
     // The double render: one send appearing as a bubble and as a queue row.
     const view = new ChatView();

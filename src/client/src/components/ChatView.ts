@@ -1483,7 +1483,17 @@ export class ChatView extends LitElement {
   private queueEntryFor(line: ChatLine): QueuedSessionMessage | undefined {
     const clientMessageId = line.meta?.delivery?.clientMessageId;
     if (clientMessageId === undefined) return undefined;
-    return (this.status?.queuedMessages ?? []).find((message) => message.clientMessageId === clientMessageId);
+    const queued = this.status?.queuedMessages ?? [];
+    const byId = queued.find((message) => message.clientMessageId === clientMessageId);
+    if (byId !== undefined) return byId;
+    // A message queued by another client or a non-browser caller has no id, so
+    // the synthesized row keys itself as `queued:kind:text`. The server recalls
+    // such entries by kind+text, so match the same way instead of treating the
+    // row as an ordinary user message.
+    const fallback = /^queued:([^:]+):(.*)$/.exec(clientMessageId);
+    if (fallback === null) return undefined;
+    const [, kind, text] = fallback;
+    return queued.find((message) => message.kind === kind && message.text === text);
   }
 
   private isQueuedLine(line: ChatLine): boolean {
