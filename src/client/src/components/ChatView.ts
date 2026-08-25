@@ -539,7 +539,7 @@ export class ChatView extends LitElement {
         @focusout=${(event: FocusEvent) => { this.releaseEmptyNotificationTray(event); }}
       >
         <header class="drawer-header" data-notification-focus="header" tabindex="-1">
-          <div class="drawer-tabs" role="tablist" aria-label="Session drawer sections">
+          <div class="drawer-tabs" role="tablist" aria-label="Session drawer sections" @keydown=${(event: KeyboardEvent) => { this.onDrawerTabsKeydown(event); }}>
             ${activity === undefined ? null : html`
               <button
                 type="button"
@@ -547,6 +547,7 @@ export class ChatView extends LitElement {
                 id="drawer-tab-activity"
                 class=${`drawer-tab drawer-tab-activity${tab === "activity" ? " selected" : ""}`}
                 aria-selected=${String(tab === "activity")}
+                tabindex=${tab === "activity" ? "0" : "-1"}
                 aria-controls="session-activity-list"
                 @click=${() => { this.selectTopDrawerTab("activity", collapsed); }}
               >
@@ -561,6 +562,7 @@ export class ChatView extends LitElement {
                 id="drawer-tab-notifications"
                 class=${`drawer-tab drawer-tab-notifications${tab === "notifications" ? " selected" : ""}`}
                 aria-selected=${String(tab === "notifications")}
+                tabindex=${tab === "notifications" ? "0" : "-1"}
                 aria-controls="session-notification-list"
                 @click=${() => { this.selectTopDrawerTab("notifications", collapsed); }}
               >
@@ -722,7 +724,7 @@ export class ChatView extends LitElement {
               class="activity-history-toggle"
               aria-controls="session-activity-list"
               aria-expanded=${String(this.activityScope === "all")}
-              @click=${() => { this.activityScope = this.activityScope === "all" ? "active" : "all"; }}
+              @click=${(event: MouseEvent) => { this.toggleActivityScope(event.currentTarget); }}
             >${this.activityScope === "all" ? "Hide finished" : `Show ${String(finished)} finished`}</button>
           `}
       </div>
@@ -1111,6 +1113,38 @@ export class ChatView extends LitElement {
         <span class="delivery-text">${presentation.text}</span>
       </div>
     `;
+  }
+
+  /**
+   * Show or hide the finished rows, and keep the control that did it in view.
+   *
+   * It renders under the rows it reveals, so revealing them pushes it out of
+   * the scrolling list: the reader taps "Show 5 finished" and the button they
+   * just pressed is gone, with the keyboard focus left on something offscreen.
+   */
+  private toggleActivityScope(control: EventTarget | null): void {
+    this.activityScope = this.activityScope === "all" ? "active" : "all";
+    if (!(control instanceof HTMLElement)) return;
+    void this.updateComplete.then(() => { control.scrollIntoView({ block: "nearest" }); });
+  }
+
+  /**
+   * Arrow keys move between the drawer's tabs, which is what `role="tablist"`
+   * promises a screen-reader user. Without it the role was a claim the widget
+   * did not honour: the tabs were reachable only by tabbing through each one,
+   * and a reader told "tab, 1 of 2" found the arrows did nothing.
+   */
+  private onDrawerTabsKeydown(event: KeyboardEvent): void {
+    const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+    if (step === 0) return;
+    const tabs = [...this.renderRoot.querySelectorAll<HTMLElement>(".drawer-tab")];
+    if (tabs.length < 2) return;
+    const current = tabs.findIndex((candidate) => candidate === event.target);
+    if (current === -1) return;
+    event.preventDefault();
+    const next = tabs[(current + step + tabs.length) % tabs.length];
+    next?.click();
+    next?.focus();
   }
 
   private renderQueuedMessages() {
@@ -2166,11 +2200,20 @@ export function activityStripSummary(statuses: readonly string[]): { label: stri
   return { label: parts.join(" \u00b7 "), working: running > 0, failed: failed > 0 };
 }
 
+/** A subagent's status in the same voice the other activity rows use. */
+export function subagentStatusLabel(status: string): string {
+  if (status === "") return "Unknown";
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
 export function subagentRows(subagents: readonly SessionSubagentInfo[]): SubagentRow[] {
   return subagents.map((subagent) => {
     const status = subagent.status;
     const shortId = subagent.sessionId.slice(-8);
-    const statusLabel = status === "working" ? "Working" : status;
+    // Every other row in the same column reports a capitalised status
+    // (Running, Done, Failed), so passing the raw value through put "Working"
+    // directly above "idle" and "error".
+    const statusLabel = subagentStatusLabel(status);
     return {
       subagent,
       shortId,

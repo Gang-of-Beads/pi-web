@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vitest";
 import type { SessionBackgroundTaskInfo, SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
-import { backgroundTaskRows, activityFilterInEffect, activityFilterOptions, activityStripSummary, activityTabLabel, ChatView, isActiveActivityStatus, orderActivityEntries, type ActivityListEntry, selectedTopDrawerTab, subagentRows, subagentRunDuration, subagentRunRows, topDrawerStartsOpen } from "./ChatView";
+import { backgroundTaskRows, activityFilterInEffect, activityFilterOptions, activityStripSummary, activityTabLabel, ChatView, subagentStatusLabel, isActiveActivityStatus, orderActivityEntries, type ActivityListEntry, selectedTopDrawerTab, subagentRows, subagentRunDuration, subagentRunRows, topDrawerStartsOpen } from "./ChatView";
 
 const SUBAGENTS: SessionSubagentInfo[] = [
   { sessionId: "01a0child-0001-0000-000000000001", cwd: "/repo/.pi/sub", status: "working" },
@@ -47,7 +47,7 @@ describe("subagents strip", () => {
     await view.updateComplete;
     const all = [...host.querySelectorAll(".subagent-row")];
     expect(all.length).toBe(2);
-    expect(all[1]?.getAttribute("aria-label")).toBe("idle subagent 00000002");
+    expect(all[1]?.getAttribute("aria-label")).toBe("Idle subagent 00000002");
 
     all[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(onOpenSubagent).toHaveBeenCalledExactlyOnceWith(SUBAGENTS[0]);
@@ -217,7 +217,7 @@ describe("subagentRows", () => {
   it("shortens ids and labels status with a caption word", () => {
     expect(subagentRows(SUBAGENTS)).toEqual([
       { subagent: SUBAGENTS[0], shortId: "00000001", status: "working", statusLabel: "Working", cwd: "/repo/.pi/sub", ariaLabel: "Working subagent 00000001" },
-      { subagent: SUBAGENTS[1], shortId: "00000002", status: "idle", statusLabel: "idle", cwd: "/repo/.pi/sub", ariaLabel: "idle subagent 00000002" },
+      { subagent: SUBAGENTS[1], shortId: "00000002", status: "idle", statusLabel: "Idle", cwd: "/repo/.pi/sub", ariaLabel: "Idle subagent 00000002" },
     ]);
   });
 });
@@ -354,5 +354,19 @@ describe("orderActivityEntries", () => {
       "2026-08-24T10:00:00.000Z",
       "2026-08-24T09:00:00.000Z",
     ]);
+  });
+});
+
+describe("subagentStatusLabel", () => {
+  it("speaks in the same voice as the other activity rows", () => {
+    // Agent-run rows report Running / Done / Failed, so passing a subagent's
+    // raw status through put "Working" directly above "idle" in one column.
+    expect(subagentStatusLabel("working")).toBe("Working");
+    expect(subagentStatusLabel("idle")).toBe("Idle");
+    expect(subagentStatusLabel("error")).toBe("Error");
+  });
+
+  it("names an absent status rather than rendering a blank cell", () => {
+    expect(subagentStatusLabel("")).toBe("Unknown");
   });
 });

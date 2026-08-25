@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 import * as pty from "node-pty";
-import { ensureSpawnHelperExecutable } from "./nodePtySpawnHelper.js";
+import { ensureSpawnHelperExecutable, spawnHelperFailureReason } from "./nodePtySpawnHelper.js";
 import type { TerminalCommandRun, TerminalCommandRunFilter, TerminalCommandRunStatus, TerminalUiEvent } from "../../shared/apiTypes.js";
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
 import type { WorkspaceActivityService } from "../activity/workspaceActivityService.js";
@@ -196,13 +196,13 @@ export class TerminalService {
     // node-pty's published helper may lack its execute bit; repair it once
     // before the first spawn (see nodePtySpawnHelper).
     ensureSpawnHelperExecutable();
-    const terminal = pty.spawn(shell, options.shellArgs, {
+    const terminal = spawnWithHelperDiagnostic(() => pty.spawn(shell, options.shellArgs, {
       name: "xterm-256color",
       cwd: options.cwd,
       cols: options.cols ?? 100,
       rows: options.rows ?? 30,
       env: { ...process.env, TERM: "xterm-256color", PI_WEB_TERMINAL: "1" },
-    });
+    }));
     const requestedName = options.name?.trim();
     const record: TerminalRecord = {
       id,
@@ -335,4 +335,25 @@ function copyCommandRun(run: TerminalCommandRun): TerminalCommandRun {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+/**
+ * Spawn a PTY, replacing node-pty's bare failure with the reason when this
+ * process already knows it.
+ *
+ * node-pty reports an unusable helper as "posix_spawnp failed." - which names
+ * neither the file nor the cause, and is what a reader sees in place of a
+ * terminal. When the repair pass found a helper it could not fix, that is
+ * almost certainly this failure, and saying so turns a dead end into an
+ * instruction.
+ */
+function spawnWithHelperDiagnostic<T>(spawn: () => T): T {
+  try {
+    return spawn();
+  } catch (error) {
+    const reason = spawnHelperFailureReason();
+    if (reason === undefined) throw error;
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`${detail}\n\n${reason}`, { cause: error });
+  }
 }
