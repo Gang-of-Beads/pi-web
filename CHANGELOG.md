@@ -1,5 +1,12 @@
 # @jmfederico/pi-web
 
+## 1.202608.23
+
+### Patch Changes
+
+- a43a26d: Keep the pictures with a prompt that is waiting to be sent. A session's queue carries the text of a pending message and nothing else, so a prompt that was mostly a screenshot waited as an empty-looking line. The images now travel with the message's own bubble, where they render as thumbnails and open full size like every other image in the transcript.
+- 6544640: Let the activity surfaces change state visibly rather than instantly. A row going from running to done, the status dock moving between idle, working and asking, and the drawer's tabs and filters changing selection all switched colour between one frame and the next, which reads as a flicker rather than as something happening. They now ease over the project's own motion tokens — colour only, so nothing moves position — and collapse to no transition at all under `prefers-reduced-motion: reduce`.
+
 ## 1.202608.22
 
 ### Patch Changes
