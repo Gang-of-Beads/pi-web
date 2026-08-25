@@ -1,6 +1,9 @@
+import { homedir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { describe, expect, it } from "vitest";
-import { canonicalizeStoredCwd, cwdPathsEqual, normalizeRequestCwd } from "./workingDirectory.js";
+import { canonicalizeStoredCwd, cwdPathsEqual, expandHomePath, normalizeRequestCwd } from "./workingDirectory.js";
+
+const home = homedir();
 
 // resolve() so the base already carries a drive letter on Windows, matching
 // what normalizeRequestCwd/canonicalizeStoredCwd produce.
@@ -27,6 +30,25 @@ describe("normalizeRequestCwd", () => {
     expect(() => normalizeRequestCwd("relative/path")).toThrow("cwd must be an absolute path");
     expect(() => normalizeRequestCwd(".")).toThrow("cwd must be an absolute path");
   });
+
+  it("expands a leading tilde to the home directory", () => {
+    expect(normalizeRequestCwd("~")).toBe(home);
+    expect(normalizeRequestCwd("~/code")).toBe(resolve(home, "code"));
+    expect(normalizeRequestCwd("~/code/")).toBe(resolve(home, "code"));
+    expect(normalizeRequestCwd("~/code/./nested/..")).toBe(resolve(home, "code"));
+  });
+
+  it("still rejects relative paths after tilde handling", () => {
+    expect(() => normalizeRequestCwd("whoami/file")).toThrow("cwd must be an absolute path");
+  });
+});
+
+describe("expandHomePath", () => {
+  it("expands tilde forms and passes absolute paths through", () => {
+    expect(expandHomePath("~")).toBe(home);
+    expect(expandHomePath("~/code")).toBe(resolve(home, "code"));
+    expect(expandHomePath(`${home}/code`)).toBe(`${home}/code`);
+  });
 });
 
 describe("canonicalizeStoredCwd", () => {
@@ -37,6 +59,10 @@ describe("canonicalizeStoredCwd", () => {
   it("preserves legacy empty and relative values instead of resolving against the process cwd", () => {
     expect(canonicalizeStoredCwd("")).toBe("");
     expect(canonicalizeStoredCwd("relative/path")).toBe("relative/path");
+  });
+
+  it("expands a tilde in stored data (external session headers)", () => {
+    expect(canonicalizeStoredCwd("~/code")).toBe(resolve(home, "code"));
   });
 });
 
@@ -52,5 +78,10 @@ describe("cwdPathsEqual", () => {
 
   it("distinguishes different paths", () => {
     expect(cwdPathsEqual(join(absoluteBase, "a"), join(absoluteBase, "b"))).toBe(false);
+  });
+
+  it("matches a tilde form against the expanded absolute path", () => {
+    expect(cwdPathsEqual("~/code", resolve(home, "code"))).toBe(true);
+    expect(cwdPathsEqual("~/code", resolve(home, "elsewhere"))).toBe(false);
   });
 });

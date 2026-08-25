@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import { isAbsolute, resolve } from "node:path";
 
 /**
@@ -19,27 +20,45 @@ import { isAbsolute, resolve } from "node:path";
  */
 
 /**
+ * Expand a leading "~" to the daemon user's home directory, so "~/code" and
+ * "/Users/me/code" address the same directory. Used at the request boundary
+ * and on stored data: clients address their own machine, and session file
+ * headers written by external tools frequently shorten the path. Values that
+ * do not start with "~" pass through unchanged.
+ */
+export function expandHomePath(path: string): string {
+  if (path === "~" || path === "~/") return homedir();
+  if (path.startsWith("~")) return resolve(homedir(), path.slice(2));
+  return path;
+}
+
+/**
  * Strictly normalize a client-supplied working directory at an HTTP boundary.
  * Throws for non-string, empty, or relative input; returns the resolved
- * (separator- and trailing-slash-normalized) absolute path otherwise.
+ * (separator- and trailing-slash-normalized) absolute path otherwise. A
+ * leading "~" is expanded before the absolute check, so clients may address
+ * their own machine either way.
  */
 export function normalizeRequestCwd(cwd: unknown): string {
   if (typeof cwd !== "string" || cwd === "") throw new Error("cwd is required");
-  if (!isAbsolute(cwd)) throw new Error("cwd must be an absolute path");
-  return resolve(cwd);
+  const expanded = expandHomePath(cwd);
+  if (!isAbsolute(expanded)) throw new Error("cwd must be an absolute path");
+  return resolve(expanded);
 }
 
 /**
  * Leniently canonicalize a working directory loaded from stored data.
- * Absolute paths are resolved to canonical form; anything else (legacy empty or
- * relative values) is preserved as-is so a single bad record cannot fail a whole
- * load, and never silently resolves against this process's working directory.
+ * Absolute paths (after "~" expansion) are resolved to canonical form;
+ * anything else (legacy empty or relative values) is preserved as-is so a
+ * single bad record cannot fail a whole load, and never silently resolves
+ * against this process's working directory.
  */
 export function canonicalizeStoredCwd(cwd: string): string {
-  return isAbsolute(cwd) ? resolve(cwd) : cwd;
+  const expanded = expandHomePath(cwd);
+  return isAbsolute(expanded) ? resolve(expanded) : cwd;
 }
 
-/** Compare two working-directory paths, tolerating separator and normalization differences (e.g. Windows backslash vs forward slash). */
+/** Compare two working-directory paths, tolerating separator, "~" and normalization differences (e.g. Windows backslash vs forward slash, a leading home shorthand, or trailing slashes). */
 export function cwdPathsEqual(a: string, b: string): boolean {
-  return resolve(a) === resolve(b);
+  return resolve(expandHomePath(a)) === resolve(expandHomePath(b));
 }
