@@ -1,6 +1,7 @@
 import type { TemplateResult } from "lit";
 import { describe, expect, it, vi } from "vitest";
 import type { QueuedSessionMessage, SessionStatus, SessionWarning } from "../api";
+import { transcriptWithPendingInQueueOrder } from "../messageDelivery";
 import {
   notificationTargetKey,
   notificationTrayIsCollapsed,
@@ -152,15 +153,19 @@ describe("ChatView queued messages stay in place", () => {
     expect(templateText(renderQueuedMessages(view))).not.toContain("hello");
   });
 
-  it("lists a queued message that came from somewhere else", () => {
-    // Another device, or an injected command: no bubble here, so the panel is
-    // the only place it can be seen or recalled from.
+  it("draws a queued message from somewhere else in the transcript, not twice", () => {
+    // Another device, or an injected command: no bubble here, so one is drawn
+    // for it in the transcript, in queue order. The panel keeps the count and
+    // the clear action but no longer repeats the text.
     const view = new ChatView();
     view.messages = [];
     view.status = queuedStatus([{ kind: "steer", text: "from my phone" }]);
     view.onClearServerQueue = vi.fn();
 
-    expect(templateText(renderQueuedMessages(view))).toContain("from my phone");
+    const panel = templateText(renderQueuedMessages(view));
+    expect(panel).not.toContain("from my phone");
+    expect(panel).toContain("1 pending");
+    expect(transcriptWithPendingInQueueOrder(view.messages, view.status.queuedMessages)).toHaveLength(1);
   });
 });
 

@@ -37,6 +37,45 @@ export function optimisticUserLine(text: string, clientMessageId: string): ChatL
   return { role: "user", parts: [{ type: "text", text }], meta: { delivery: { clientMessageId, state: "sending" } } };
 }
 
+/**
+ * The transcript with every pending message at its tail, in the order the
+ * server will send them.
+ *
+ * Pending messages reach the browser two ways: one this browser sent has an
+ * optimistic bubble in place, and one queued anywhere else has only the
+ * server's queue entry. Drawing the first in the transcript and the second in
+ * a panel below it put a message sent seconds ago above one queued minutes
+ * earlier. Both are drawn in the transcript now, ordered by the queue - which
+ * is the order they will actually be delivered in.
+ *
+ * Keeping them in the transcript rather than a pinned panel is deliberate:
+ * 1.202608.5-.7 tried the panel and it covered the conversation on a phone.
+ */
+export function transcriptWithPendingInQueueOrder(messages: readonly ChatLine[], queued: readonly QueuedSessionMessage[]): ChatLine[] {
+  if (queued.length === 0) return [...messages];
+  const bubbles = new Map<string, ChatLine>();
+  for (const line of messages) {
+    const delivery = line.meta?.delivery;
+    if (delivery?.state === "queued") bubbles.set(delivery.clientMessageId, line);
+  }
+  const pending: ChatLine[] = [];
+  for (const message of queued) {
+    const bubble = message.clientMessageId === undefined ? undefined : bubbles.get(message.clientMessageId);
+    pending.push(bubble ?? queuedUserLine(message));
+  }
+  const moved = new Set(pending);
+  return [...messages.filter((line) => !moved.has(line)), ...pending];
+}
+
+/**
+ * A queued message with no bubble here, drawn like one. It carries the queue's
+ * own kind so the mark reads the same as a locally sent message's.
+ */
+function queuedUserLine(message: QueuedSessionMessage): ChatLine {
+  const clientMessageId = message.clientMessageId ?? `queued:${message.kind}:${message.text}`;
+  return { role: "user", parts: [{ type: "text", text: message.text }], meta: { delivery: { clientMessageId, state: "queued", kind: message.kind } } };
+}
+
 export function findDeliveryLineIndex(messages: readonly ChatLine[], clientMessageId: string): number {
   return messages.findIndex((line) => line.meta?.delivery?.clientMessageId === clientMessageId);
 }
@@ -91,20 +130,6 @@ function advancesDelivery(current: MessageDeliveryState, next: MessageDeliverySt
  * are marked queued, and a tracked message that has left the queue has been
  * taken into the turn.
  */
-/**
- * Queue entries with no bubble in this transcript: another device, an injected
- * command, a client too old to mint a correlation id. A message this browser
- * sent is marked in place instead, so listing it here as well was the double
- * render people reported.
- */
-export function queuedMessagesWithoutBubbles(queued: readonly QueuedSessionMessage[], messages: readonly ChatLine[]): QueuedSessionMessage[] {
-  const tracked = new Set<string>();
-  for (const line of messages) {
-    const id = line.meta?.delivery?.clientMessageId;
-    if (id !== undefined) tracked.add(id);
-  }
-  return queued.filter((message) => message.clientMessageId === undefined || !tracked.has(message.clientMessageId));
-}
 
 /**
  * Drop the optimistic bubble for a message that was pulled back out of the

@@ -32,7 +32,7 @@ import type { SessionStateBadgeKind } from "./activityBadge";
 import "./AskUserCard";
 import "./ExtensionDialogCard";
 import type { ExtensionDialogAnswerCallback, ExtensionDialogCancelCallback, ExtensionDialogDismissCallback } from "./ExtensionDialogCard";
-import { queuedMessagesWithoutBubbles } from "../messageDelivery";
+import { transcriptWithPendingInQueueOrder } from "../messageDelivery";
 import { registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
 import "./ConversationMeter";
 import "./FormattedText";
@@ -971,7 +971,7 @@ export class ChatView extends LitElement {
    * back to listing only what has no bubble here.
    */
   private transcriptMessages(): ChatLine[] {
-    return this.messages;
+    return transcriptWithPendingInQueueOrder(this.messages, this.status?.queuedMessages ?? []);
   }
 
   private groupedMessages(): ChatGroup[] {
@@ -1114,11 +1114,10 @@ export class ChatView extends LitElement {
   }
 
   private renderQueuedMessages() {
-    // Queued entries with no bubble in this transcript: another device, an
-    // injected command, a client too old to mint a correlation id. A message
-    // this browser sent is marked in place and carries its own recall action,
-    // so nothing listed here is a second copy of something already visible.
-    const serverQueued = queuedMessagesWithoutBubbles(this.status?.queuedMessages ?? [], this.messages);
+    // Every server-queued message is drawn in the transcript now, in the order
+    // the queue will send them, so the panel no longer repeats their text - it
+    // keeps the count and the action that applies to the queue as a whole.
+    const serverQueued = this.status?.queuedMessages ?? [];
     return html`${chatQueuedMessageSections(this.clientQueuedMessages, serverQueued).map((section) => this.renderQueuedMessageList(section))}`;
   }
 
@@ -1135,7 +1134,7 @@ export class ChatView extends LitElement {
             <button type="button" class="queued-clear-button" title="Clear queued messages without stopping active work" @click=${this.handleClearServerQueue}>Clear queue</button>
           ` : null}
         </div>
-        ${section.messages.map((message, index) => html`
+        ${(section.source === "server" ? [] : section.messages).map((message, index) => html`
           <div class="queued-message">
             <span class="queued-kind">${message.kind === "steer" ? "Steer" : "Follow-up"} ${String(index + 1)}</span>
             <formatted-text .text=${message.text}></formatted-text>

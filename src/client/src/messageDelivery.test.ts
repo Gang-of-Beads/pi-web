@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyQueueToDelivery, carryDeliveryForward, findDeliveryLineIndex, findTrackedUserLineIndex, isEchoOfTrackedMessage, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine } from "./messageDelivery";
+import { applyQueueToDelivery, transcriptWithPendingInQueueOrder, carryDeliveryForward, findDeliveryLineIndex, findTrackedUserLineIndex, isEchoOfTrackedMessage, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine } from "./messageDelivery";
 import type { ChatLine } from "./components/shared";
 
 const ID = "cm-1";
@@ -141,3 +141,34 @@ describe("findTrackedUserLineIndex", () => {
     expect(findTrackedUserLineIndex([{ role: "user", parts: [{ type: "text", text: "hello" }] }], "hello")).toBe(-1);
   });
 });
+
+describe("transcriptWithPendingInQueueOrder", () => {
+  it("puts a locally sent message after one queued earlier elsewhere", () => {
+    // The reported symptom: a message sent seconds ago rendered above one
+    // queued minutes earlier, because the first had a bubble in the transcript
+    // and the second was drawn in a panel below the whole transcript.
+    const mine = { role: "user" as const, parts: [{ type: "text" as const, text: "mine, just now" }], meta: { delivery: { clientMessageId: "c1", state: "queued" as const, kind: "steer" as const } } };
+    const ordered = transcriptWithPendingInQueueOrder([mine], [
+      { kind: "steer", text: "queued earlier, from my phone" },
+      { kind: "steer", text: "mine, just now", clientMessageId: "c1" },
+    ]);
+
+    expect(ordered.map(firstText)).toEqual(["queued earlier, from my phone", "mine, just now"]);
+  });
+
+  it("leaves delivered history alone and keeps it before the pending tail", () => {
+    const delivered = { role: "assistant" as const, parts: [{ type: "text" as const, text: "an answer" }] };
+    const ordered = transcriptWithPendingInQueueOrder([delivered], [{ kind: "followUp", text: "waiting" }]);
+    expect(ordered.map(firstText)).toEqual(["an answer", "waiting"]);
+  });
+
+  it("is a no-op with an empty queue", () => {
+    const line = { role: "user" as const, parts: [{ type: "text" as const, text: "said" }] };
+    expect(transcriptWithPendingInQueueOrder([line], [])).toEqual([line]);
+  });
+});
+
+function firstText(line: ChatLine): string {
+  const part = line.parts[0];
+  return part?.type === "text" ? part.text : "";
+}
