@@ -292,14 +292,27 @@ export async function userBubbleTexts(page: Page): Promise<string[]> {
 }
 
 /**
- * Rows of the queued-message panel, which lists only queue entries with no
- * bubble in this transcript: another device, an injected command, a client too
- * old to mint a correlation id.
+ * Rows of the queued-message panel. A message that already has a bubble must
+ * never appear here as well, so this is what "no duplicate" is measured against.
  */
 export async function queuedRowTexts(page: Page): Promise<string[]> {
   return await page.evaluate(() => {
     const chat = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("chat-view")?.shadowRoot;
     return [...(chat?.querySelectorAll(".queued-message") ?? [])].map((row) => deepText(row));
+  });
+}
+
+/**
+ * Messages the server is holding, as the reader sees them: each is drawn in the
+ * transcript in the order the queue will send it, carrying a "Queued" mark. One
+ * posted by another client is given a line of its own rather than a panel row.
+ */
+export async function queuedTranscriptTexts(page: Page): Promise<string[]> {
+  return await page.evaluate(() => {
+    const chat = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("chat-view")?.shadowRoot;
+    return [...(chat?.querySelectorAll("article.msg.user") ?? [])]
+      .filter((row) => (row.querySelector(".delivery-text")?.textContent ?? "").startsWith("Queued"))
+      .map((row) => deepText(row));
   });
 }
 

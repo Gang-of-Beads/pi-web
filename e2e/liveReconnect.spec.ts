@@ -7,7 +7,7 @@ import {
   ensureMockLlm,
   openSession,
   promptPath,
-  queuedRowTexts,
+  queuedTranscriptTexts,
   seedListedSession,
   setMockModel,
   startSlowTurn,
@@ -60,13 +60,13 @@ test.describe("live updates", () => {
       // Nothing reaches the page while the channel is down - there is no poll
       // to fall back on, which is exactly why the reconnect has to reconcile.
       await page.waitForTimeout(3000);
-      expect(countContaining(await queuedRowTexts(page), missed), "a dead socket cannot deliver news").toBe(0);
+      expect(countContaining(await queuedTranscriptTexts(page), missed), "a dead socket cannot deliver news").toBe(0);
 
       await setSocketsBlocked(page, false);
 
       // No reload, no navigation: the reconnect and the refresh it triggers are
       // the only things that can put this on the screen.
-      await expect.poll(async () => countContaining(await queuedRowTexts(page), missed), { timeout: 60_000, message: "the queue missed while offline must arrive on its own" })
+      await expect.poll(async () => countContaining(await queuedTranscriptTexts(page), missed), { timeout: 60_000, message: "the queue missed while offline must arrive on its own" })
         .toBe(1);
       expect((await socketState(page)).opened, "the app must have opened a fresh socket").toBeGreaterThan(beforeReconnect.opened);
     } finally {

@@ -6,7 +6,7 @@ import {
   ensureMockLlm,
   openSession,
   promptPath,
-  queuedRowTexts,
+  queuedTranscriptTexts,
   seedListedSession,
   setMockModel,
   startSlowTurn,
@@ -55,7 +55,7 @@ test.describe("queued messages on a phone", () => {
         expect(sent.ok(), "queue a message from another client").toBe(true);
       }
       await waitForQueued(page.request, session, workspace.path, 2);
-      await expect.poll(async () => (await queuedRowTexts(page)).length, { timeout: 20_000, message: "the queued panel must be showing before it is measured" })
+      await expect.poll(async () => (await queuedTranscriptTexts(page)).length, { timeout: 20_000, message: "the queued panel must be showing before it is measured" })
         .toBe(2);
 
       await waitForChatAtBottom(page);

@@ -11,7 +11,7 @@ import {
   ensureMockLlm,
   openSession,
   promptPath,
-  queuedRowTexts,
+  queuedTranscriptTexts,
   readUserMessages,
   recallButtons,
   seedListedSession,
@@ -114,7 +114,7 @@ test.describe("recall", () => {
         expect(sent.ok(), `queue message ${String(index + 1)}`).toBe(true);
       }
       await waitForQueued(page.request, session, workspace.path, 3);
-      await expect.poll(async () => (await queuedRowTexts(page)).length, { timeout: 20_000, message: "all three must be listed before one is taken back" })
+      await expect.poll(async () => (await queuedTranscriptTexts(page)).length, { timeout: 20_000, message: "all three must be listed before one is taken back" })
         .toBe(3);
 
       await clickRecall(page, queued[1]!);
@@ -124,7 +124,7 @@ test.describe("recall", () => {
       // is still a message the user thinks the agent will read next.
       await expect.poll(async () => (await status(page.request, session, workspace.path)).queuedMessages?.map((message) => message.text), { timeout: 20_000, message: "the survivors keep their order" })
         .toEqual([queued[0], queued[2]]);
-      await expect.poll(async () => (await queuedRowTexts(page)).map((row) => row.includes(queued[0]!) ? "one" : row.includes(queued[1]!) ? "two" : row.includes(queued[2]!) ? "three" : "?"), { timeout: 20_000, message: "the panel shows the survivors in order" })
+      await expect.poll(async () => (await queuedTranscriptTexts(page)).map((row) => row.includes(queued[0]!) ? "one" : row.includes(queued[1]!) ? "two" : row.includes(queued[2]!) ? "three" : "?"), { timeout: 20_000, message: "the panel shows the survivors in order" })
         .toEqual(["one", "three"]);
       await expect.poll(async () => await composerText(page), { timeout: 20_000, message: "the recalled text must come back" })
         .toContain(queued[1]!);
