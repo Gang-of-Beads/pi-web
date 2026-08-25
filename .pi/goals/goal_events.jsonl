@@ -7,3 +7,4 @@
 {"type":"task_started","goalId":"mt8j52x8-26yyne","taskId":"t3","at":"2026-08-25T11:00:06.197Z"}
 {"type":"task_complete","goalId":"mt8j52x8-26yyne","taskId":"t3","evidence":"复现: dock 显示 'activity-dock idle' 而对话框在等回答;抽出 isWaitingForUser seam 统一 ChatView+PiWebApp 两处;3+2 条测试,移除修复即 2 红(da4ec10b)","at":"2026-08-25T11:03:45.670Z"}
 {"type":"task_started","goalId":"mt8j52x8-26yyne","taskId":"t4","at":"2026-08-25T11:04:07.306Z"}
+{"type":"task_started","goalId":"mt8j52x8-26yyne","taskId":"t7","at":"2026-08-25T11:08:42.597Z"}

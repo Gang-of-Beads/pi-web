@@ -929,7 +929,7 @@ export class PiWebApp extends LitElement {
       const route = resolveAppRoute(parsedRoute, (value) => this.plugins.resolveWorkspacePanelRouteId(value, selectedMachineId(this.state)));
       this.setState({
         workspaceTool: route.tool ?? this.state.workspaceTool,
-        mainView: this.resolveRestoredMainView(restoredMainView) ?? route.view ?? this.defaultRouteView(),
+        mainView: this.resolveRestoredMainView(restoredMainView) ?? route.view ?? this.defaultRouteView(route),
         selectedFilePath: routeSurface.selectedFilePath,
         selectedTerminalId: routeSurface.selectedTerminalId,
       });
@@ -1151,8 +1151,8 @@ export class PiWebApp extends LitElement {
     await this.chatView?.updateComplete;
   }
 
-  private defaultRouteView(): AppState["mainView"] {
-    return this.appShell.defaultRouteView();
+  private defaultRouteView(route: { readonly sessionId?: string | undefined } = {}): AppState["mainView"] {
+    return this.appShell.defaultRouteView(route);
   }
 
   private updateUrl(options?: { replace?: boolean | undefined }) {

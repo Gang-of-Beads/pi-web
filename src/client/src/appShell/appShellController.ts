@@ -50,8 +50,8 @@ export class AppShellController implements ReactiveController {
     return this.isPwaDisplayMode && this.isMobileNavigationLayout;
   }
 
-  defaultRouteView(): AppState["mainView"] {
-    return this.isMobileNavigationLayout ? "navigation" : "chat";
+  defaultRouteView(route: { readonly sessionId?: string | undefined } = {}): AppState["mainView"] {
+    return defaultRouteView(this.isMobileNavigationLayout, route);
   }
 
   repairViewportPosition(): void {
@@ -79,4 +79,19 @@ export class AppShellController implements ReactiveController {
 function createMobileNavigationMedia(): MediaQueryList | undefined {
   if (typeof window === "undefined" || !("matchMedia" in window)) return undefined;
   return window.matchMedia(MOBILE_NAVIGATION_MEDIA_QUERY);
+}
+
+/**
+ * Where a route with no explicit view should land.
+ *
+ * A narrow layout opens on navigation, because there is no room to show the
+ * list and the chat at once - but a link that names a session has already made
+ * that choice. Ignoring it meant a shared deep link put the reader in the
+ * session list with the session they asked for hidden behind one more tap,
+ * while the same link on a desktop opened the conversation directly.
+ */
+export function defaultRouteView(isMobileNavigationLayout: boolean, route: { readonly sessionId?: string | undefined }): AppState["mainView"] {
+  if (!isMobileNavigationLayout) return "chat";
+  const sessionId = route.sessionId ?? "";
+  return sessionId === "" ? "navigation" : "chat";
 }
