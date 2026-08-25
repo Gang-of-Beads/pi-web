@@ -1,5 +1,12 @@
 # @jmfederico/pi-web
 
+## 1.202608.25
+
+### Patch Changes
+
+- 6cd3181: Say what an aborted turn was doing when it stopped. "Model response failed: This operation was aborted" is equally true of a cancelled turn, a tool that hung, and a stop the reader pressed — so on its own it left the reader to reconstruct which. The failed message still carries the tool it was calling, so the line now names it: "(stopped while running bash)", or "(the turn was stopped before it finished)" when no tool was in flight.
+- 6cd3181: Adapt the transcript to the screen it is on. On a wide display a message stretched the full width — about 150 characters a line at 2560px, where the eye loses its place returning to the next line — so the reading column is now bounded near 78 characters and centred. On a short one (a phone with the keyboard up, ~400px) the composer's input area is allowed to shrink so the transcript keeps more than a couple of visible lines.
+
 ## 1.202608.24
 
 ### Patch Changes
