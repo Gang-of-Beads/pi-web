@@ -105,3 +105,31 @@ describe("app-context-switcher", () => {
     expect(addButtons(element).some((button) => button.getAttribute("aria-label")?.includes("workspace") === true)).toBe(false);
   });
 });
+
+describe("steps with nothing chosen yet", () => {
+  it("says what each unset step would choose, because the label may be hidden", async () => {
+    const element = await mount((instance) => {
+      instance.machines = [machine("local")];
+      instance.selectedMachine = machine("local");
+    });
+
+    const values = [...(element.shadowRoot?.querySelectorAll(".chip-value") ?? [])].map((node) => node.textContent);
+
+    // Three steps sharing a 1440px bar are 103px each, under the 140px
+    // container query that hides the label - so the first screen a new user
+    // sees read "Local | Choose | Choose", with nothing saying which was the
+    // project and which the workspace.
+    expect(values).toEqual(["local", "Choose project", "Choose workspace"]);
+  });
+
+  it("shows the value itself once a step has one", async () => {
+    const element = await mount((instance) => {
+      instance.machines = [machine("local")];
+      instance.selectedMachine = machine("local");
+      instance.selectedProject = { id: "p1", name: "pi-web", path: "/repo", createdAt: "2026-08-01T00:00:00.000Z" };
+    });
+
+    const values = [...(element.shadowRoot?.querySelectorAll(".chip-value") ?? [])].map((node) => node.textContent);
+    expect(values).toEqual(["local", "pi-web", "Choose workspace"]);
+  });
+});

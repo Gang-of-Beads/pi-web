@@ -69,7 +69,12 @@ export class AppContextSwitcher extends LitElement {
             @click=${() => { this.onOpenSection?.(section); }}
           >
             <span class="chip-label">${label}</span>
-            <span class="chip-value">${value ?? "Choose"}</span>
+            <!-- With no value the label is the only thing telling two steps
+                 apart, and the container query hides it: three steps sharing a
+                 1440px-wide bar are 103px each, under the 140px threshold, so
+                 the first screen read "Local | Choose | Choose". An unset step
+                 says what it would choose. -->
+            <span class="chip-value">${value ?? `Choose ${label.toLowerCase()}`}</span>
           </button>
           ${onAdd === undefined || addLabel === undefined
             ? nothing
