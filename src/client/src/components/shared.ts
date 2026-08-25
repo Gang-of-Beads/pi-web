@@ -482,6 +482,7 @@ export const chatStyles = css`
   .drawer-tab { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: 28px; padding: var(--pi-space-2) var(--pi-space-5); border: 1px solid transparent; border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-2xs); font-weight: 600; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .drawer-tab:hover { color: var(--pi-text-bright); }
   .drawer-tab:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+  .drawer-tab, .activity-filter, .activity-history-toggle { transition: background-color var(--pi-motion-fast) var(--pi-ease), border-color var(--pi-motion-fast) var(--pi-ease), color var(--pi-motion-fast) var(--pi-ease); }
   .drawer-tab.selected { border-color: var(--pi-border); background: var(--pi-surface); color: var(--pi-text-bright); }
   .drawer-summary { flex: 0 1 auto; min-width: 0; overflow: hidden; color: var(--pi-muted); font-size: var(--pi-text-2xs); text-overflow: ellipsis; white-space: nowrap; }
   .drawer-header-actions { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-1); }
@@ -510,6 +511,11 @@ export const chatStyles = css`
      instead of letting a thumb bounce off it. */
   .subagent-row:disabled { cursor: default; opacity: .72; }
   .subagent-row:disabled:hover { background: var(--pi-surface); }
+  /* Status changes under the reader's eyes - a row goes running to done while
+     the drawer is open - so the colours that carry that meaning move rather
+     than jump. Paint only: animating the row's size would shift every row
+     below it. The reduced-motion block above collapses these to nothing. */
+  .subagent-row { transition: background-color var(--pi-motion-base) var(--pi-ease), border-color var(--pi-motion-base) var(--pi-ease); }
   .subagent-row.status-working, .subagent-row.status-running { border-color: var(--pi-accent-border); border-inline-start-color: var(--pi-accent); background: color-mix(in srgb, var(--pi-accent) 14%, var(--pi-surface)); }
   .subagent-row.status-idle, .subagent-row.status-done { border-inline-start-color: var(--pi-success); background: color-mix(in srgb, var(--pi-success) 7%, var(--pi-surface)); }
   .subagent-row.status-error, .subagent-row.status-failed { border-inline-start-color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 8%, var(--pi-surface)); }
@@ -632,6 +638,7 @@ export const chatStyles = css`
   /* The one dock state that is a control, so it opts back into pointer events
      and carries an affordance. */
   .activity-dock.background { right: auto; max-width: min(70%, 300px); border-color: var(--pi-purple-border); color: var(--pi-purple); padding: var(--pi-space-2) var(--pi-space-5); font: inherit; font-size: var(--pi-text-xs); pointer-events: auto; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .activity-dock { transition: color var(--pi-motion-base) var(--pi-ease), background-color var(--pi-motion-base) var(--pi-ease), border-color var(--pi-motion-base) var(--pi-ease); }
   .activity-dock.background:hover, .activity-dock.background:focus-visible { border-color: var(--pi-purple); background: var(--pi-purple-surface); }
   @media (pointer: coarse) { .activity-dock.background { min-height: 44px; padding-block: var(--pi-space-4); } }
   .activity-dock.background:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 2px; }
