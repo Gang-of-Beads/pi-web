@@ -603,3 +603,38 @@ function queuedStatus(queuedMessages: QueuedSessionMessage[]): SessionStatus {
     cost: 0,
   };
 }
+
+describe("ChatView queue-follow scroll (queueGrew)", () => {
+  // A message queued from elsewhere arrives via status.queuedMessages, not via
+  // `messages`. Without a growth check the view would sit at the old bottom
+  // while a new queued row appears below the fold; with an any-change check it
+  // would chase every polling tick and drag the transcript down while the user
+  // reads something above it.
+  function queueGrewOf(view: ChatView, previous: unknown): boolean {
+    const method: unknown = Reflect.get(view, "queueGrew");
+    if (typeof method !== "function") throw new Error("ChatView.queueGrew is not callable");
+    const result: unknown = method.call(view, previous);
+    return result === true;
+  }
+
+  it("is true when the queue grew", () => {
+    const view = new ChatView();
+    view.status = queuedStatus([{ kind: "steer", text: "first" }, { kind: "followUp", text: "second" }]);
+
+    expect(queueGrewOf(view, queuedStatus([{ kind: "steer", text: "first" }]))).toBe(true);
+    expect(queueGrewOf(view, queuedStatus([]))).toBe(true);
+  });
+
+  it("is false when the queue is unchanged, smaller, or absent before", () => {
+    const view = new ChatView();
+    view.status = queuedStatus([{ kind: "steer", text: "first" }]);
+
+    expect(queueGrewOf(view, queuedStatus([{ kind: "steer", text: "first" }]))).toBe(false);
+    expect(queueGrewOf(view, queuedStatus([{ kind: "steer", text: "first" }, { kind: "followUp", text: "second" }]))).toBe(false);
+    // First sight of a non-empty queue is growth from nothing: the rows below
+    // the fold need the same pull as any later addition.
+    expect(queueGrewOf(view, undefined)).toBe(true);
+    expect(queueGrewOf(view, null)).toBe(true);
+    expect(queueGrewOf(view, { notAStatus: true })).toBe(true);
+  });
+});

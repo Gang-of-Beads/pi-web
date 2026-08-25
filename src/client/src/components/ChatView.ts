@@ -42,6 +42,14 @@ import "./ToolExecutionView";
 const messageTimestampFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "medium" });
 const notificationTimestampFormatter = new Intl.DateTimeFormat(undefined, { timeStyle: "short" });
 
+/** Narrow the previous-status slot of a change to the one field queueGrew reads. */
+function recordWithQueuedMessages(value: unknown): { queuedMessages?: readonly QueuedSessionMessage[] } | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const queued: unknown = Reflect.get(value, "queuedMessages");
+  if (!Array.isArray(queued)) return undefined;
+  return { queuedMessages: queued };
+}
+
 function renderNotificationDisclosureIcon(collapsed: boolean) {
   return html`
     <svg class=${`notification-icon notification-disclosure-icon${collapsed ? "" : " expanded"}`} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -416,7 +424,10 @@ export class ChatView extends LitElement {
     // one rather than applying the usual live-tail scroll and landing at its end.
     if (!changed.has("sessionId") && openedAsk && this.pinnedToBottom) this.scrollToOpenAsk();
     else if (!changed.has("sessionId") && openedDialog && this.pinnedToBottom) this.scrollToOpenDialog();
-    else if (!changed.has("sessionId") && (changed.has("messages") || changed.has("pendingAsk") || changed.has("pendingDialogs") || changed.has("closedDialogs")) && this.pinnedToBottom) this.scrollToBottom();
+    // A message queued from elsewhere grows the transcript from the bottom. It
+    // arrives via the status (status.queuedMessages), not via `messages`, so it
+    // would otherwise appear below the fold while the view stays put.
+    else if (!changed.has("sessionId") && (changed.has("messages") || this.queueGrew(changed.get("status")) || changed.has("pendingAsk") || changed.has("pendingDialogs") || changed.has("closedDialogs")) && this.pinnedToBottom) this.scrollToBottom();
     if (changed.has("messages") || changed.has("messageStart") || changed.has("messageTotal") || changed.has("hasMore") || changed.has("loadingMore")) this.scheduleConversationRailUpdate();
     if (changed.has("messages") || changed.has("messageStart") || changed.has("hasMore") || changed.has("loadingMore") || changed.has("pendingAsk") || changed.has("pendingDialogs") || changed.has("closedDialogs")) this.continuePendingScrollRestore();
     if (changed.has("messages") || changed.has("hasMore") || changed.has("loadingMore")) this.requestLoadMoreIfNeeded();
@@ -1035,6 +1046,21 @@ export class ChatView extends LitElement {
     // state. A separate panel used to repeat some of them and hide others,
     // which read as duplicate entries and missing ones on the same screen.
     return transcriptWithPendingInQueueOrder(this.messages, [...this.clientQueuedMessages, ...(this.status?.queuedMessages ?? [])]);
+  }
+
+  /**
+   * Whether a status refresh added queued messages to the transcript.
+   *
+   * A message queued from another client shows up first in the status, and the
+   * transcript row for it is drawn below the fold. Only a growth (or a change
+   * while the queue is empty) should pull the view down after it; a status
+   * polling tick that just re-reports the same queue must not.
+   */
+  private queueGrew(previousStatus: unknown): boolean {
+    const previous = recordWithQueuedMessages(previousStatus);
+    const was = previous?.queuedMessages?.length ?? 0;
+    const now = (this.status?.queuedMessages ?? []).length;
+    return now > was;
   }
 
   private groupedMessages(): ChatGroup[] {

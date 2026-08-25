@@ -20,10 +20,11 @@ import {
  * 1.202608.6 moved them into a panel pinned above the composer. It was correct
  * about the data and wrong about the screen: on a phone the panel covered the
  * conversation it was annotating, so the messages the queue described could not
- * be read while they were waiting. The panel now lives at the end of the
- * transcript, inside the scroller, which is what these assertions pin down -
- * measured geometry rather than the presence of a class, because the regression
- * was a correctly-rendered panel in the wrong place.
+ * be read while they were waiting. The panel is gone since 1.202608.28: each
+ * queued message is drawn in the transcript, marked gold, in queue order, so
+ * these assertions pin the geometry of those rows down - measured geometry
+ * rather than the presence of a class, because the regression was a
+ * correctly-rendered panel in the wrong place.
  */
 
 test.describe("queued messages on a phone", () => {
@@ -48,39 +49,37 @@ test.describe("queued messages on a phone", () => {
       await startSlowTurn(page.request, session, workspace.path);
       await waitForBusyComposer(page);
 
-      // Sent from elsewhere, so they land in the panel rather than as bubbles:
-      // the panel is the surface that covered the chat.
+      // Sent from elsewhere, so they have no bubble of their own: each one is
+      // given a transcript row in the order the queue will send it.
       for (const text of queued) {
         const sent = await page.request.post(promptPath(session), { data: { cwd: workspace.path, text } });
         expect(sent.ok(), "queue a message from another client").toBe(true);
       }
       await waitForQueued(page.request, session, workspace.path, 2);
-      await expect.poll(async () => (await queuedTranscriptTexts(page)).length, { timeout: 20_000, message: "the queued panel must be showing before it is measured" })
+      await expect.poll(async () => (await queuedTranscriptTexts(page)).length, { timeout: 20_000, message: "the queued rows must be showing before they are measured" })
         .toBe(2);
 
       await waitForChatAtBottom(page);
       const layout = await chatLayout(page);
-      expect(layout.panel, "the queued panel must be on screen to be measured").not.toBeNull();
-      // Inside the scroller, not stacked between the transcript and the
-      // composer: that containment is what makes the rest of the assertions
-      // about scrolling meaningful.
-      expect(layout.panelInsideScroller).toBe(true);
+      // The queued rows live inside the scroller, not stacked between the
+      // transcript and the composer: that containment is what makes the rest
+      // of the assertions about scrolling meaningful.
+      expect(layout.queuedRowInsideScroller).toBe(true);
       // The transcript keeps the majority of a phone screen while the queue is
       // full. When the panel was pinned it took the chat down with it.
       expect(layout.chatHeight / layout.viewport).toBeGreaterThan(0.5);
       // Nothing overlaps the composer, and the composer does not overlap the
       // transcript: they are neighbours, not layers.
       expect(layout.composerTop).toBeGreaterThanOrEqual(layout.chatBottom - 1);
-      expect(layout.panel!.bottom).toBeLessThanOrEqual(layout.composerTop + 1);
       // ...and the conversation is longer than the window, which is the case
       // that made the occlusion visible in the first place.
       expect(layout.scrollHeight).toBeGreaterThan(layout.clientHeight);
 
-      // A pinned panel does not move when the transcript scrolls. This one has
-      // to, because it is part of the conversation.
+      // A pinned panel does not move when the transcript scrolls. These rows
+      // have to, because they are part of the conversation.
       const scrolled = await scrollChatToTop(page);
       expect(scrolled.scrollTop).toBe(0);
-      expect(scrolled.panelTop, "the panel scrolls with the transcript").toBeGreaterThan(layout.panel!.top);
+      expect(scrolled.queuedRowTop, "the queued rows scroll with the transcript").toBeGreaterThan(layout.queuedRowTop);
 
       // And the top of the conversation is reachable: the first message is
       // inside the visible chat area once scrolled to it, rather than behind
@@ -103,8 +102,8 @@ interface ChatLayout {
   composerTop: number;
   scrollHeight: number;
   clientHeight: number;
-  panelInsideScroller: boolean;
-  panel: { top: number; bottom: number } | null;
+  queuedRowInsideScroller: boolean;
+  queuedRowTop: number;
 }
 
 async function chatLayout(page: Page): Promise<ChatLayout> {
@@ -112,10 +111,14 @@ async function chatLayout(page: Page): Promise<ChatLayout> {
     const app = document.querySelector("pi-web-app")?.shadowRoot;
     const chat = app?.querySelector("chat-view")?.shadowRoot;
     const scroller = chat?.querySelector(".chat");
-    const panel = chat?.querySelector(".queued-messages");
     const composer = app?.querySelector("prompt-editor");
+    // A queued message drawn from the server's queue carries the queued mark;
+    // this browser's own bubble would too, so either way the row is the one
+    // the user reads "while waiting".
+    const queuedRow = [...(scroller?.querySelectorAll("article.msg") ?? [])]
+      .find((row) => row.querySelector(".delivery-text")?.textContent?.startsWith("Queued"));
     const scrollerBox = scroller?.getBoundingClientRect();
-    const panelBox = panel?.getBoundingClientRect();
+    const rowBox = queuedRow?.getBoundingClientRect();
     return {
       viewport: window.innerHeight,
       chatTop: Math.round(scrollerBox?.top ?? 0),
@@ -124,8 +127,8 @@ async function chatLayout(page: Page): Promise<ChatLayout> {
       composerTop: Math.round(composer?.getBoundingClientRect().top ?? 0),
       scrollHeight: Math.round(scroller?.scrollHeight ?? 0),
       clientHeight: Math.round(scroller?.clientHeight ?? 0),
-      panelInsideScroller: scroller !== null && scroller !== undefined && panel !== null && panel !== undefined && scroller.contains(panel),
-      panel: panelBox === undefined ? null : { top: Math.round(panelBox.top), bottom: Math.round(panelBox.bottom) },
+      queuedRowInsideScroller: scroller !== null && scroller !== undefined && queuedRow !== null && queuedRow !== undefined && scroller.contains(queuedRow),
+      queuedRowTop: Math.round(rowBox?.top ?? 0),
     };
   });
 }
@@ -133,12 +136,13 @@ async function chatLayout(page: Page): Promise<ChatLayout> {
 /**
  * Wait for the transcript to settle at the bottom, where the queue lives.
  *
- * The panel is part of the conversation, so before the view has finished
- * auto-scrolling it sits below the fold and its bounding box is naturally past
- * the composer - which is what the occlusion assertion measures. Measuring
- * without waiting therefore failed intermittently and instantly (panel bottom
- * 1443 against a composer top of 686) on a machine busy enough to delay the
- * scroll by a frame. Seen 2026-08-22, once in two full suite runs.
+ * The queued rows are part of the conversation, so before the view has
+ * finished auto-scrolling they sit below the fold and their bounding boxes are
+ * naturally past the composer - which is what the occlusion assertion
+ * measures. Measuring without waiting therefore failed intermittently and
+ * instantly (panel bottom 1443 against a composer top of 686) on a machine
+ * busy enough to delay the scroll by a frame. Seen 2026-08-22, once in two
+ * full suite runs.
  *
  * Asserting the scroll rather than forcing it: if the view stops following its
  * own conversation, that is a real defect and this should say so.
@@ -155,17 +159,19 @@ async function waitForChatAtBottom(page: Page): Promise<void> {
     .toBeLessThanOrEqual(2);
 }
 
-async function scrollChatToTop(page: Page): Promise<{ scrollTop: number; panelTop: number; chatTop: number; chatBottom: number }> {
+async function scrollChatToTop(page: Page): Promise<{ scrollTop: number; queuedRowTop: number; chatTop: number; chatBottom: number }> {
   const measured = await page.evaluate(async () => {
     const chat = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("chat-view")?.shadowRoot;
     const scroller = chat?.querySelector(".chat");
-    if (scroller === null || scroller === undefined) return { scrollTop: -1, panelTop: -1, chatTop: -1, chatBottom: -1 };
+    if (scroller === null || scroller === undefined) return { scrollTop: -1, queuedRowTop: -1, chatTop: -1, chatBottom: -1 };
     scroller.scrollTop = 0;
     await new Promise((resolve) => requestAnimationFrame(() => { resolve(undefined); }));
     const box = scroller.getBoundingClientRect();
+    const queuedRow = [...(scroller.querySelectorAll("article.msg") ?? [])]
+      .find((row) => row.querySelector(".delivery-text")?.textContent?.startsWith("Queued"));
     return {
       scrollTop: Math.round(scroller.scrollTop),
-      panelTop: Math.round(chat?.querySelector(".queued-messages")?.getBoundingClientRect().top ?? -1),
+      queuedRowTop: Math.round(queuedRow?.getBoundingClientRect().top ?? -1),
       chatTop: Math.round(box.top),
       chatBottom: Math.round(box.bottom),
     };
