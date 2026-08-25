@@ -71,8 +71,25 @@ export async function listSubagentRuns(
   });
 }
 
+/**
+ * Whether a directory beside the session file is one of its runs.
+ *
+ * Two kinds of directory are not: the one a child died inside before writing
+ * anything, and a neighbour like `forks` that holds conversations rather than
+ * runs. Listed as runs they became rows that claimed to be running for as long
+ * as the parent was, counted themselves into the header, and answered "No
+ * output for this subagent run" when opened - there was never anything there to
+ * open. A run has left either an attempt to read or a result to show.
+ */
+async function looksLikeRun(runDir: string, runId: string, artifacts: Map<string, RunArtifact>): Promise<boolean> {
+  if (artifacts.has(runId)) return true;
+  const attempts = await listDirectories(runDir);
+  return attempts.some((name) => name.startsWith("run-"));
+}
+
 async function describeRun(runsDir: string, runId: string, artifacts: Map<string, RunArtifact>, now: number, parentActive: boolean): Promise<SessionSubagentRunInfo | undefined> {
   const runDir = join(runsDir, runId);
+  if (!await looksLikeRun(runDir, runId, artifacts)) return undefined;
   const transcript = await findTranscript(runDir);
   // The run directory and the artifacts are named in two different id spaces:
   // the directory carries the child session's id, the artifacts the tool's own

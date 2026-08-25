@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { initialAppState } from "../appState";
 import { SessionController } from "./sessionController";
+import { HttpError } from "../api";
 import { defaultApi, FakeSocket, oldSession, workspace, type AppState } from "./sessionController.testSupport";
 
 const task = { id: "b84060a70", name: "sleep timer B", command: "sleep 120", status: "running" as const, startedAt: "2026-08-25T19:00:00.000Z", bytesWritten: 0, hasOutput: true };
@@ -84,6 +85,30 @@ describe("reading a subagent run's output", () => {
     expect(read().messages).toEqual([]);
     expect(read().activityOutput?.text).toBe("# report\n");
     expect(read().activityOutput?.title).toContain("worker");
+  });
+
+  // A run that has written neither a result nor a step has nothing to show.
+  // That is an answer, not a fault: it used to put "Error: No output for this
+  // subagent run" in a red banner across the conversation.
+  it("opens empty when the run has written nothing, instead of raising an error", async () => {
+    const api: typeof defaultApi = { ...defaultApi, subagentRunOutput: () => Promise.reject(new HttpError("No output for this subagent run", 404)) };
+    const { controller, read } = controllerWith(api);
+
+    await controller.openSubagentRunOutput(run);
+
+    expect(read().error).toBe("");
+    expect(read().activityOutput?.empty).toBe(true);
+    expect(read().activityOutput?.title).toContain("worker");
+  });
+
+  it("still reports a run it could not reach", async () => {
+    const api: typeof defaultApi = { ...defaultApi, subagentRunOutput: () => Promise.reject(new HttpError("machine unreachable", 503)) };
+    const { controller, read } = controllerWith(api);
+
+    await controller.openSubagentRunOutput(run);
+
+    expect(read().error).toContain("machine unreachable");
+    expect(read().activityOutput).toBeUndefined();
   });
 
   it("closes back to nothing", async () => {

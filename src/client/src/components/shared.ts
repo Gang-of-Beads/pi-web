@@ -477,7 +477,15 @@ export const chatStyles = css`
   .drawer-tab-activity.selected { border-color: var(--pi-purple-border); background: var(--pi-purple-surface); color: var(--pi-purple); }
   .drawer-tab-notifications.selected { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); color: var(--pi-warning); }
   .drawer-header:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -3px; }
-  .drawer-tabs { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: var(--pi-space-2); overflow-x: auto; scrollbar-width: none; }
+  /* Two tabs need 261px and get 240 on a phone, with the scrollbar hidden: the
+     second one simply was not there. The fade says the row keeps going, the
+     same way the workspace tool tabs and the context bar already do. */
+  .drawer-tabs-frame { position: relative; flex: 1 1 auto; min-width: 0; }
+  .drawer-tabs-frame::before, .drawer-tabs-frame::after { content: ""; position: absolute; top: 0; bottom: 0; z-index: 2; width: 18px; opacity: 0; pointer-events: none; transition: opacity var(--pi-motion-fast) var(--pi-ease); }
+  .drawer-tabs-frame::before { left: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--pi-shadow-strong) 55%, transparent) 0%, transparent 100%); }
+  .drawer-tabs-frame::after { right: 0; background: linear-gradient(270deg, color-mix(in srgb, var(--pi-shadow-strong) 55%, transparent) 0%, transparent 100%); }
+  .drawer-tabs-frame.can-scroll-left::before, .drawer-tabs-frame.can-scroll-right::after { opacity: 1; }
+  .drawer-tabs { min-width: 0; display: flex; align-items: center; gap: var(--pi-space-2); overflow-x: auto; scrollbar-width: none; }
   .drawer-tabs::-webkit-scrollbar { display: none; }
   .drawer-tab { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: 28px; padding: var(--pi-space-2) var(--pi-space-5); border: 1px solid transparent; border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-2xs); font-weight: 600; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .drawer-tab:hover { color: var(--pi-text-bright); }
@@ -878,7 +886,14 @@ export const promptEditorStyles = css`
   .actions { display: flex; gap: var(--pi-space-4); align-items: center; justify-content: flex-end; flex-wrap: nowrap; white-space: nowrap; }
   .compact-status { display: flex; min-width: 0; align-items: center; gap: var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); flex: 1 1 0; }
   .compact-status > button { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .select-model { max-width: min(42vw, 320px); min-height: 40px; display: inline-flex; align-items: center; box-sizing: border-box; }
+  .select-model { max-width: min(42vw, 320px); min-height: 40px; display: inline-flex; align-items: center; box-sizing: border-box; overflow: hidden; }
+  /* The button is a flex box, so the ellipsis the parent rule asks for cannot
+     apply to its text: it wrapped instead and the second line was cut off by
+     the fixed height. The two halves are separate boxes so the shrinking can be
+     aimed: the provider prefix gives way first and the model id, which is what
+     names the choice, stays readable down to the narrowest phone. */
+  .select-model-provider { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .select-model-id { flex: 0 0 auto; white-space: nowrap; }
   .icon-button { flex: 0 0 auto; display: inline-grid; place-items: center; width: 36px; height: 36px; box-sizing: border-box; padding: 0; }
   .icon-button .prompt-action-icon, .icon-button .prompt-thinking-gauge { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
   .icon-button .prompt-action-icon-filled { fill: currentColor; stroke: none; }

@@ -7,6 +7,7 @@ import { writeClipboardText } from "../clipboard";
 import { capturePrependScrollAnchor, PREPEND_RESTORE_SETTLE_FRAMES, restorePrependScrollAnchor, type PrependScrollAnchor } from "../chatScrollAnchoring";
 import { shouldRequestEarlierMessages } from "../chatHistoryLoading";
 import { ChatScrollController, distanceFromScrollBottom, findFirstVisibleArticle, isNearScrollBottom, type ChatAnchorScrollPosition, type ChatScrollRestoreResult } from "../chatScrollPosition";
+import { scrollEdgeClasses, ScrollEdgeTracker } from "../scrollEdges";
 import type { AskUserSubmission, PendingAskUser, PendingExtensionDialog, QueuedSessionMessage, SessionActivity, SessionStatus, SessionWarningSeverity } from "../api";
 import type { ActivityOutputView, ClosedExtensionDialog } from "../appState";
 import {
@@ -260,6 +261,7 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) activityOutput?: ActivityOutputView | undefined;
   @property({ attribute: false }) onCloseActivityOutput?: () => void;
   @query(".chat") private chat?: HTMLDivElement;
+  @query(".drawer-tabs") private drawerTabs?: HTMLElement | null;
   @query("dialog.image-zoom") private imageZoomDialog?: HTMLDialogElement;
   @query("dialog.activity-output") private activityOutputDialog?: HTMLDialogElement;
   @state() private pinnedToBottom = true;
@@ -289,6 +291,7 @@ export class ChatView extends LitElement {
   private activityOutputModalRegistration: RenderedModalRegistration | undefined;
   private readonly disclosures = new ChatDisclosureController();
   private readonly scrollController = new ChatScrollController();
+  private readonly drawerTabEdgeTracker = new ScrollEdgeTracker(() => { this.requestUpdate(); });
   private suppressScrollSave = false;
   private suppressLoadMoreRequests = false;
   private loadMoreCheckFrame: number | undefined;
@@ -350,6 +353,7 @@ export class ChatView extends LitElement {
     this.stopTurnClock();
     this.saveScrollPosition();
     this.scrollController.dispose();
+    this.drawerTabEdgeTracker.dispose();
     this.releaseImageZoomModal();
     this.releaseActivityOutputModal();
     this.prependRestoreToken += 1;
@@ -437,6 +441,9 @@ export class ChatView extends LitElement {
     if (changed.has("notificationInbox") && this.pendingNotificationFocus !== undefined) this.focusPendingNotificationTarget();
     if (changed.has("zoomedImage")) this.syncImageZoomDialog();
     if (changed.has("activityOutput")) this.syncActivityOutputDialog();
+    // The strip is re-measured after every render: tabs come and go with the
+    // work being reported, and the drawer itself folds away and back.
+    this.drawerTabEdgeTracker.observe(this.drawerTabs ?? undefined);
     if (changed.has("status") || changed.has("activity") || changed.has("isSendingPrompt")) this.syncTurnClock();
   }
 
@@ -582,7 +589,8 @@ export class ChatView extends LitElement {
         @focusout=${(event: FocusEvent) => { this.releaseEmptyNotificationTray(event); }}
       >
         <header class="drawer-header" data-notification-focus="header" tabindex="-1">
-          <div class="drawer-tabs" role="tablist" aria-label="Session drawer sections" @keydown=${(event: KeyboardEvent) => { this.onDrawerTabsKeydown(event); }}>
+          <div class=${`drawer-tabs-frame${scrollEdgeClasses(this.drawerTabEdgeTracker.edges)}`}>
+          <div class="drawer-tabs" role="tablist" aria-label="Session drawer sections" @scroll=${() => { this.drawerTabEdgeTracker.refresh(); }} @keydown=${(event: KeyboardEvent) => { this.onDrawerTabsKeydown(event); }}>
             ${activity === undefined ? null : html`
               <button
                 type="button"
@@ -612,6 +620,7 @@ export class ChatView extends LitElement {
                 <span class="drawer-tab-label">${notificationTrayHeading(inbox)}</span>
               </button>
             `}
+          </div>
           </div>
           ${collapsed && activity !== undefined && activity.summary.label !== ""
             ? html`<span class="drawer-summary">${activity.summary.label}</span>`

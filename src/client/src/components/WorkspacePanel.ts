@@ -1,7 +1,8 @@
 import { LitElement, html, type TemplateResult } from "lit";
-import { customElement, property, query, state } from "lit/decorators.js";
+import { customElement, property, query } from "lit/decorators.js";
 import type { Workspace } from "../api";
 import type { QualifiedContributionId, QualifiedWorkspacePanelContribution, WorkspacePanelContext } from "../plugins/types";
+import { scrollEdgeClasses, ScrollEdgeTracker } from "../scrollEdges";
 import { workspacePanelStyles } from "./shared";
 
 export interface WorkspacePanelEmptyState {
@@ -21,29 +22,18 @@ export class WorkspacePanel extends LitElement {
   @property({ type: Boolean }) hideToolTabs = false;
   @property({ attribute: false }) onSelectTool: (tool: QualifiedContributionId) => void = () => undefined;
   @query(".workspace-header-strip") private workspaceHeaderStrip?: HTMLElement | null;
-  @state() private workspaceHeaderCanScrollLeft = false;
-  @state() private workspaceHeaderCanScrollRight = false;
 
-  private observedWorkspaceHeaderStrip: HTMLElement | undefined;
-  private workspaceHeaderResizeObserver: ResizeObserver | undefined;
+  private readonly workspaceHeaderEdges = new ScrollEdgeTracker(() => { this.requestUpdate(); });
   private readonly onWorkspaceHeaderScroll = () => {
-    this.updateWorkspaceHeaderScrollState();
+    this.workspaceHeaderEdges.refresh();
   };
 
-  override firstUpdated(): void {
-    this.observeWorkspaceHeaderStrip();
-    this.updateWorkspaceHeaderScrollState();
-  }
-
   override updated(): void {
-    this.observeWorkspaceHeaderStrip();
-    this.updateWorkspaceHeaderScrollState();
+    this.workspaceHeaderEdges.observe(this.workspaceHeaderStripElement());
   }
 
   override disconnectedCallback(): void {
-    this.workspaceHeaderResizeObserver?.disconnect();
-    this.workspaceHeaderResizeObserver = undefined;
-    this.observedWorkspaceHeaderStrip = undefined;
+    this.workspaceHeaderEdges.dispose();
     super.disconnectedCallback();
   }
 
@@ -127,30 +117,10 @@ export class WorkspacePanel extends LitElement {
   }
 
   private workspaceHeaderFrameClass(): string {
-    return `workspace-header-scroll-frame${this.workspaceHeaderCanScrollLeft ? " can-scroll-left" : ""}${this.workspaceHeaderCanScrollRight ? " can-scroll-right" : ""}`;
+    return `workspace-header-scroll-frame${scrollEdgeClasses(this.workspaceHeaderEdges.edges)}`;
   }
 
-  private observeWorkspaceHeaderStrip(): void {
-    const strip = this.workspaceHeaderStripElement();
-    if (this.observedWorkspaceHeaderStrip === strip) return;
-    this.workspaceHeaderResizeObserver?.disconnect();
-    this.observedWorkspaceHeaderStrip = strip;
-    this.workspaceHeaderResizeObserver = undefined;
-    if (strip === undefined || typeof ResizeObserver === "undefined") return;
-    this.workspaceHeaderResizeObserver = new ResizeObserver(() => {
-      this.updateWorkspaceHeaderScrollState();
-    });
-    this.workspaceHeaderResizeObserver.observe(strip);
-  }
 
-  private updateWorkspaceHeaderScrollState(): void {
-    const strip = this.workspaceHeaderStripElement();
-    const maxScrollLeft = strip === undefined ? 0 : Math.max(0, strip.scrollWidth - strip.clientWidth);
-    const canScrollLeft = strip !== undefined && strip.scrollLeft > 1;
-    const canScrollRight = strip !== undefined && maxScrollLeft - strip.scrollLeft > 1;
-    if (this.workspaceHeaderCanScrollLeft !== canScrollLeft) this.workspaceHeaderCanScrollLeft = canScrollLeft;
-    if (this.workspaceHeaderCanScrollRight !== canScrollRight) this.workspaceHeaderCanScrollRight = canScrollRight;
-  }
 
   private workspaceHeaderStripElement(): HTMLElement | undefined {
     const strip = this.workspaceHeaderStrip;

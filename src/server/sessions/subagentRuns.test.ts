@@ -240,4 +240,39 @@ describe("runs whose directory and artifacts use different ids", () => {
 
     expect(run).toMatchObject({ runId: "91c34f97-a9a1-4c8c-85b3-2061fe772ae2", agent: "subagent", hasOutput: false });
   });
+
+  // A child that died before writing anything leaves the directory the tool
+  // made for it and nothing else. Reported as a run it claimed to be "running"
+  // for as long as the parent was, counted itself into the header, and answered
+  // "No output for this subagent run" when opened: a row that can only
+  // disappoint. There is nothing there to report, so it is not a run.
+  it("ignores a directory the run never wrote anything into", async () => {
+    const dir = await sessionDir();
+    await mkdir(join(dir, PARENT, "5d2ddee7-ad67-46e5-82a6-5a89b7e796cb"), { recursive: true });
+
+    expect(await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: true })).toEqual([]);
+  });
+
+  // A finished run's transcript can be gone while its artifact remains; the
+  // artifact is the result, so the run is still real and still openable.
+  it("keeps a run that left an artifact behind but no transcript", async () => {
+    const dir = await sessionDir();
+    await mkdir(join(dir, PARENT, "79eeba3d-46c5-45bd-8e74-32a3f1eb7957"), { recursive: true });
+    await writeArtifact(dir, "79eeba3d-46c5-45bd-8e74-32a3f1eb7957", "worker", { exitCode: 0, timestamp: "2026-08-25T10:00:00.000Z" });
+
+    const [run] = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: true });
+
+    expect(run).toMatchObject({ runId: "79eeba3d-46c5-45bd-8e74-32a3f1eb7957", agent: "worker", hasOutput: true });
+  });
+
+  // `forks` sits beside the run directories and holds forked conversations, not
+  // runs. Counted as one it became a phantom "running" agent in the header.
+  it("ignores a neighbour directory that holds no run attempts", async () => {
+    const dir = await sessionDir();
+    const forks = join(dir, PARENT, "forks");
+    await mkdir(forks, { recursive: true });
+    await writeFile(join(forks, "2026-08-25T15-06-10-152Z_01a03975.jsonl"), "{}", "utf8");
+
+    expect(await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: true })).toEqual([]);
+  });
 });
