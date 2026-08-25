@@ -1,3 +1,5 @@
 {"type":"goal_created","goalId":"mt8j52x8-26yyne","objective":"逐条复核三份前端评审报告中未处理的发现并修复：先在 8505 预览实例复现或证伪，真 bug 按最小改动修复并补测试，误判记录理由后关闭。\n\n成功标准：每条发现有明确结论（修复／证伪／推迟）；每条修复有一个修复前会失败的测试或可复跑脚本输出；verify 与 build 全绿；e2e 与 70 passed／1 failed 基线逐项对比。\n\n范围外：架构重构、新依赖、视觉语言变更、新功能。\n\n约束：先复现再改，未复现的不照报告改；禁类型断言；只在 8505 实验，不碰 8504 数据；服务端改动提醒重启 sessiond；不掩盖既有失败，时序 flaky 需三条证据；每条修复单独提交。\n\n遇阻：停下来问我。","sisyphus":false,"autoContinue":true,"at":"2026-08-25T10:36:17.035Z"}
 {"type":"task_list_set","goalId":"mt8j52x8-26yyne","taskCount":9,"blockCompletion":false,"at":"2026-08-25T10:36:17.035Z"}
 {"type":"task_started","goalId":"mt8j52x8-26yyne","taskId":"t1","at":"2026-08-25T10:36:33.368Z"}
+{"type":"task_complete","goalId":"mt8j52x8-26yyne","taskId":"t1","evidence":"浏览器实测 7 项通过(scripts/verify-shipped-fixes.mjs)；补 2 项单测(elapsed aria-hidden、durationMs 比较,移除修复即红)；抓到并修复真实缺陷: history toggle 触屏 30px→44px(403eb3ac)","at":"2026-08-25T10:49:50.188Z"}
+{"type":"task_started","goalId":"mt8j52x8-26yyne","taskId":"t2","at":"2026-08-25T10:50:17.612Z"}

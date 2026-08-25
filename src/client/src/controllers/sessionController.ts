@@ -7,6 +7,7 @@ import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
 import { clearAskDraft } from "../askDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
 import { applyQueueToDelivery, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine } from "../messageDelivery";
+import { isNetworkFailure } from "../pendingOutbox";
 import type { MessageDeliveryState } from "../components/shared";
 import { isShellInput } from "../inputModes";
 import { fileCompletionInsertText } from "../promptCompletions";
@@ -441,8 +442,21 @@ export class SessionController {
       this.markCachedNewSessionPersisted(session);
       return true;
     } catch (error) {
-      if (clientMessageId !== undefined) this.markDelivery(session.id, clientMessageId, "failed");
       this.setState({ error: String(error) });
+      // One unsent message, one home for it.
+      //
+      // The optimistic bubble is withdrawn either way, because the message is
+      // about to live somewhere the user can act on it: the outbox retries a
+      // connectivity failure when the network returns, and any other failure
+      // hands the text back to the composer to edit and send again. Leaving a
+      // "Not sent" bubble as well showed the same message twice - and after an
+      // automatic retry succeeded, the stale bubble sat above the real one
+      // still claiming it never went.
+      if (clientMessageId !== undefined) this.setState({ messages: removeDeliveryLine(this.getState().messages, clientMessageId) });
+      // The composer only routes to the outbox on a thrown connectivity
+      // failure; reporting `false` here would send an offline message to the
+      // one place that cannot retry it.
+      if (isNetworkFailure(error)) throw error;
       return false;
     } finally {
       if (options.markSending) this.markSendingPrompt(session.id, false);
