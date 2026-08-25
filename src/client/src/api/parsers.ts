@@ -2293,7 +2293,7 @@ function parseSubagentRuns(value: unknown): SessionSubagentRunInfo[] {
     const startedAt = entry["startedAt"];
     if (typeof runId !== "string" || runId === "") continue;
     if (typeof agent !== "string" || agent === "") continue;
-    if (status !== "running" && status !== "done" && status !== "failed" && status !== "unknown") continue;
+    if (status !== "running" && status !== "done" && status !== "failed" && status !== "lost" && status !== "unknown") continue;
     if (typeof elapsedMs !== "number" || typeof startedAt !== "string") continue;
     const lastActivity = entry["lastActivity"];
     const task = entry["task"];
