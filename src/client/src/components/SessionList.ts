@@ -176,6 +176,12 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
               ` : null}
             ` : null}
             ${noMatches ? html`<div class="search-empty" role="status">No sessions match “${this.searchQuery.trim()}”.</div>` : null}
+            <!-- A workspace with no sessions rendered nothing at all: the
+                 heading, then blank space, with the only way forward being a
+                 button in the heading the eye had already passed. -->
+            ${allCurrentRows.length === 0 && allArchivedRows.length === 0 && this.startingCount === 0
+              ? html`<div class="list-empty" role="status">No sessions yet. Start one to begin working here.</div>`
+              : null}
           </div>
         `}
       </section>
@@ -686,6 +692,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .session-search-input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
     .session-search-clear { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; font-size: var(--pi-text-lg); line-height: 1; }
     .search-empty { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); }
+    .list-empty { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-sm); }
     @media (max-width: 760px) {
       /* 16px keeps iOS Safari from zooming the viewport on focus, and the
          taller controls match the platform minimum touch target. */

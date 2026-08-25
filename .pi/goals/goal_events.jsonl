@@ -10,3 +10,5 @@
 {"type":"task_started","goalId":"mt8j52x8-26yyne","taskId":"t7","at":"2026-08-25T11:08:42.597Z"}
 {"type":"task_complete","goalId":"mt8j52x8-26yyne","taskId":"t7","evidence":"深链已修并浏览器实测(带session→editorVisible:true;不带→navVisible:true),4f9e0a71;抽屉推走阅读位置一条判定为未复现:实测 distanceFromBottom=0,量到的位移属贴底读者的正常表现,已撤回未验证的补偿代码","at":"2026-08-25T11:16:23.716Z"}
 {"type":"task_started","goalId":"mt8j52x8-26yyne","taskId":"t5","at":"2026-08-25T11:16:54.943Z"}
+{"type":"task_complete","goalId":"mt8j52x8-26yyne","taskId":"t5","evidence":"M1 已修并浏览器实测(103px 三步 Choose/Choose→Choose project/Choose workspace,19c9db4f);共享分类器补 pendingDialogs(500cb3d8,移除即红);M5 后台任务计数部分需 SessionStatus 增字段,超出最小改动,已记录待议","at":"2026-08-25T11:22:14.863Z"}
+{"type":"task_started","goalId":"mt8j52x8-26yyne","taskId":"t8","at":"2026-08-25T11:22:47.352Z"}

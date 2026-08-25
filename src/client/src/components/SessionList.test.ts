@@ -319,3 +319,25 @@ describe("session tree entry point", () => {
     expect(findOptionalTemplateClickHandlerForText(renderList(list), "History and branches")).toBeUndefined();
   });
 });
+
+describe("a workspace with no sessions", () => {
+  it("says so instead of rendering nothing", () => {
+    // The list rendered its heading and then blank space, leaving the only way
+    // forward in a heading control the eye had already passed.
+    expect(renderedText(renderList(sessionList([], new Set())))).toContain("No sessions yet");
+  });
+
+  it("does not say it while sessions exist", () => {
+    expect(renderedText(renderList(sessionList([session("s1")], new Set())))).not.toContain("No sessions yet");
+  });
+});
+
+/** Every literal a template renders, including the templates nested in it. */
+function renderedText(template: TemplateResult): string {
+  const parts: string[] = [...templateStrings(template)];
+  for (const value of templateValues(template)) {
+    if (isTemplateResult(value)) parts.push(renderedText(value));
+    else if (Array.isArray(value)) for (const entry of value) if (isTemplateResult(entry)) parts.push(renderedText(entry));
+  }
+  return parts.join(" ");
+}
