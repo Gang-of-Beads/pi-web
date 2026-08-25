@@ -149,7 +149,7 @@ describe("project-dialog modal surface", () => {
 });
 
 interface ProjectDialogProps {
-  onSubmit?: (path: string, create: boolean, trust: ProjectTrustChoice | undefined) => void;
+  onSubmit?: (path: string, create: boolean, trust: ProjectTrustChoice | undefined) => unknown;
   onCancel?: () => void;
 }
 

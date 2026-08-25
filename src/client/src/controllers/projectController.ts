@@ -33,7 +33,7 @@ export class ProjectController {
     this.setState({ error: "", isLoadingProjects: true });
     try {
       const projects = await this.api.projects(machineId);
-      if (selectedMachineId(this.getState()) !== machineId) return;
+      if (selectedMachineId(this.getState()) !== machineId) return undefined;
       const projectIds = new Set(projects.map((project) => project.id));
       const workspacesByProjectId = Object.fromEntries(Object.entries(this.getState().workspacesByProjectId).filter(([projectId]) => projectIds.has(projectId)));
       this.setState({ projects, workspacesByProjectId });
@@ -44,20 +44,26 @@ export class ProjectController {
     }
   }
 
-  async addProject(path: string, create?: boolean, trustChoice?: ProjectTrustChoice) {
-    if (path.trim() === "") return;
+  /**
+   * Add a project, reporting failure to the caller rather than to the global
+   * banner: the dialog stays open on failure, and a message rendered behind it
+   * is a message nobody reads - the submit looked like it did nothing.
+   */
+  async addProject(path: string, create?: boolean, trustChoice?: ProjectTrustChoice): Promise<string | undefined> {
+    if (path.trim() === "") return undefined;
     const machineId = selectedMachineId(this.getState());
     try {
       const project = await this.api.addProject(path.trim(), undefined, create, machineId);
-      if (selectedMachineId(this.getState()) !== machineId) return;
+      if (selectedMachineId(this.getState()) !== machineId) return undefined;
       const projects = this.getState().projects;
       this.setState({ projects: [...projects.filter((p) => p.id !== project.id), project], projectDialogOpen: false });
       await this.workspaces.selectProject(project);
       if (trustChoice?.changed === true) {
         await this.applyTrustChoice(project, trustChoice.trusted, machineId);
       }
+      return undefined;
     } catch (error) {
-      if (selectedMachineId(this.getState()) === machineId) this.setState({ error: String(error) });
+      return addProjectFailureMessage(error);
     }
   }
 
@@ -77,7 +83,7 @@ export class ProjectController {
     const machineId = selectedMachineId(this.getState());
     try {
       await this.api.closeProject(projectId, machineId);
-      if (selectedMachineId(this.getState()) !== machineId) return;
+      if (selectedMachineId(this.getState()) !== machineId) return undefined;
       this.workspaces.forgetProject(projectId);
       const state = this.getState();
       this.setState({ projects: state.projects.filter((p) => p.id !== projectId) });
@@ -86,4 +92,21 @@ export class ProjectController {
       if (selectedMachineId(this.getState()) === machineId) this.setState({ error: String(error) });
     }
   }
+}
+
+/**
+ * What went wrong, in words that name the next action.
+ *
+ * The server reports a missing folder as a raw `ENOENT ... realpath` string,
+ * which describes a system call rather than the choice in front of the user:
+ * the folder is not there, and the dialog has a checkbox that would create it.
+ */
+export function addProjectFailureMessage(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error);
+  if (/ENOENT|no such file or directory/u.test(text)) {
+    return "That folder does not exist. Tick \u201cCreate the folder if it does not exist\u201d to make it, or correct the path.";
+  }
+  if (text.includes("ENOTDIR")) return "That path is a file, not a folder.";
+  if (/EACCES|EPERM/u.test(text)) return "That folder cannot be read with this account's permissions.";
+  return text.replace(/^Error:\s*/u, "");
 }

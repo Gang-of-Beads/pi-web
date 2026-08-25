@@ -18,11 +18,14 @@ interface ProjectTrustState {
 
 @customElement("project-dialog")
 export class ProjectDialog extends LitElement {
-  @property({ attribute: false }) onSubmit?: (path: string, create: boolean, trust: ProjectTrustChoice | undefined) => void;
+  @property({ attribute: false }) onSubmit?: (path: string, create: boolean, trust: ProjectTrustChoice | undefined) => unknown;
   @property({ attribute: false }) onCancel?: () => void;
   @property() machineId = "local";
   @state() private path = "";
   @state() private createMissing = true;
+  /** Why the last submit did not go through, shown where the submit happened. */
+  @state() private submitError: string | undefined = undefined;
+  @state() private submitting = false;
   @state() private suggestions: FileSuggestion[] = [];
   @state() private selected = 0;
   @state() private loading = false;
@@ -100,8 +103,22 @@ export class ProjectDialog extends LitElement {
   }
 
   private submit() {
-    if (this.path.trim() === "") return;
-    this.onSubmit?.(this.path, this.createMissing, this.trust === undefined ? undefined : { trusted: this.trust.trusted, changed: this.trustTouched });
+    if (this.path.trim() === "" || this.submitting) return;
+    this.submitError = undefined;
+    this.submitting = true;
+    void (async () => {
+      try {
+        // `unknown` because a caller may report nothing at all; a string is
+        // read as the reason the submit did not go through.
+        const failure: unknown = await this.onSubmit?.(this.path, this.createMissing, this.trust === undefined ? undefined : { trusted: this.trust.trusted, changed: this.trustTouched });
+        // A dialog that stays open owes the reader a reason; the global banner
+        // renders behind it, so reporting there alone read as "nothing
+        // happened".
+        this.submitError = typeof failure === "string" && failure !== "" ? failure : undefined;
+      } finally {
+        this.submitting = false;
+      }
+    })();
   }
 
   private onPathInput(event: InputEvent) {
@@ -229,9 +246,10 @@ export class ProjectDialog extends LitElement {
           </label>
           ${this.renderTrustChoice()}
         </div>
+        ${this.submitError === undefined ? null : html`<p class="submit-error" role="alert">${this.submitError}</p>`}
         <footer>
           <button @click=${() => { this.onCancel?.(); }}>Cancel</button>
-          <button class="primary" ?disabled=${this.path.trim() === ""} @click=${() => { this.submit(); }}>Add project</button>
+          <button class="primary" ?disabled=${this.path.trim() === "" || this.submitting} @click=${() => { this.submit(); }}>${this.submitting ? "Adding\u2026" : "Add project"}</button>
         </footer>
       </modal-surface>
     `;
@@ -252,6 +270,7 @@ export class ProjectDialog extends LitElement {
     .hint { padding: 12px; color: var(--pi-muted); }
     small.hint { padding: 0; line-height: 1.4; }
     .trust-error { color: var(--pi-danger, #c0392b); }
+    .submit-error { flex: 0 0 auto; margin: 0; padding: 0 12px 12px; color: var(--pi-danger); line-height: 1.35; }
     .trust-hint { color: var(--pi-muted); line-height: 1.3; }
     .trust-hint a { color: var(--pi-accent); }
     @media (max-width: 760px) {

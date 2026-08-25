@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AppState } from "../appState";
 import { initialAppState } from "../appState";
 import type { Project, Workspace } from "../api";
-import { ProjectController } from "./projectController";
+import { addProjectFailureMessage, ProjectController } from "./projectController";
 
 function project(id: string, path: string): Project {
   return { id, name: id, path, createdAt: "now" };
@@ -172,5 +172,23 @@ describe("ProjectController", () => {
     expect(state.projects).toEqual([remainingProject]);
     expect(state.workspacesByProjectId[closedProject.id]).toBeUndefined();
     expect(clearSelection).toHaveBeenCalledOnce();
+  });
+});
+
+describe("addProjectFailureMessage", () => {
+  it("names the folder and the checkbox that would create it", () => {
+    // The server reports this as "ENOENT ... realpath '/path'", which
+    // describes a system call rather than the choice in front of the reader.
+    expect(addProjectFailureMessage(new Error("ENOENT: no such file or directory, realpath '/x'")))
+      .toMatch(/folder does not exist.*Create the folder/u);
+  });
+
+  it("distinguishes a file and a permission problem", () => {
+    expect(addProjectFailureMessage(new Error("ENOTDIR: not a directory"))).toMatch(/file, not a folder/u);
+    expect(addProjectFailureMessage(new Error("EACCES: permission denied"))).toMatch(/permissions/u);
+  });
+
+  it("passes anything else through without the Error prefix", () => {
+    expect(addProjectFailureMessage(new Error("Machine is offline"))).toBe("Machine is offline");
   });
 });
