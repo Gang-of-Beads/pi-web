@@ -208,6 +208,14 @@ export class AppPanelEdgeControl extends LitElement {
     .resize-handle::after { content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; transform: translateX(-50%); background: transparent; transition: width .12s ease, background .12s ease, opacity .12s ease; }
     .resize-handle:hover::after, .resize-handle:focus-visible::after, :host([resizing]) .resize-handle::after { width: 3px; background: var(--pi-accent); opacity: .72; }
     .edge-button { position: relative; z-index: 1; box-sizing: border-box; display: grid; place-items: center; width: 18px; height: 48px; padding: 0; border: 1px solid var(--pi-border-muted); border-radius: 999px; background: var(--pi-bg); color: var(--pi-muted); opacity: .75; cursor: pointer; }
+    /* The handle is deliberately a sliver so it does not sit on top of the
+       panel it belongs to, and it paints narrower still than the 18px below:
+       the host is a flex container sized to the divider column, so the button
+       is shrunk to 14px. Either way it is under the 24px minimum target size,
+       so the hit area is widened without widening the paint. 5px each side
+       reaches 24 from the measured 14, while staying clear of the rows behind
+       the edge. */
+    .edge-button::after { content: ""; position: absolute; inset: 0 -5px; }
     .edge-button:hover, .edge-button:focus-visible { color: var(--pi-text); background: var(--pi-surface-hover); opacity: 1; }
     :host([side="navigation"][collapsed]) .edge-button { transform: translateX(calc(50% - .5px)); }
     :host([side="workspace"][collapsed]) .edge-button { transform: translateX(calc(-50% + .5px)); }
