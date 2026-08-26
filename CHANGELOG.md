@@ -1,5 +1,98 @@
 # @jmfederico/pi-web
 
+## 1.202608.36
+
+### Patch Changes
+
+- 9dd667c: Keep the transcript in the order the messages were made
+
+  Messages were appended as they arrived, and a streaming reply arrives only once
+  it has finished. Send something while one is in flight and your own message was
+  appended first, so the reply that started before you typed sat underneath it:
+  the transcript claimed you spoke first when the record said otherwise.
+
+  Arriving messages are now placed by the timestamp they carry. Messages sharing
+  a timestamp keep arrival order, and a message carrying none is appended rather
+  than guessed at, so nothing is reordered on no evidence.
+
+- 9dd667c: Support Azure Speech for live transcription
+
+  Azure's socket speaks a third vocabulary: a hypothesis while a phrase is still
+  forming, and a recognised phrase once it settles. Its hypotheses re-send the
+  whole phrase, so they replace the current guess rather than extending it. A
+  turn that recognised nothing is ignored rather than treated as an empty final,
+  which would have wiped what had already been dictated.
+
+- 2ddc8e7: Add live transcription using the browser's own recogniser
+
+  The one streaming path that needs nothing configured, so an install can try
+  dictation before choosing a service. The browser reports a growing list of
+  results where settled entries stay put and the last keeps changing, which is
+  neither socket protocol's shape; it is translated into the same delta and final
+  events the rest of the code already understands. Interim results are requested
+  explicitly, without which nothing arrives until the speaker stops - the batch
+  behaviour this exists to replace.
+
+- e3f23ec: Show the workspace's goals on a phone
+
+  Goals lived in the navigation panel, which a phone never shows, so a running
+  goal was invisible on the device most likely to be asking what the session is
+  working towards. They now appear as a tab in the drawer above the transcript,
+  beside activity and notifications, with the same Resume, Pause and Abandon
+  controls.
+
+  The tab is offered only when the workspace has a goal, and never takes the
+  drawer from work in flight. The drawer itself used to render only when there
+  was activity or a notification, which hid goals in exactly the case where
+  nothing else was running.
+
+- 60ea5f1: Add the protocol layer for live transcription
+
+  Dictation transcribed only after the recording stopped, so a long thought
+  arrived as a wall of text minutes after it was spoken. Live transcription needs
+  a different protocol per service, so this adds the part worth getting right
+  first: decoding each service's messages, accumulating the text they produce,
+  and deciding what an install has actually configured.
+
+  The two services disagree about what a delta means - one appends fragments, the
+  other re-sends the whole phrase - so that difference is held in one place
+  rather than in the composer. A socket protocol with no token endpoint is
+  refused rather than downgraded, because the only other way to authenticate from
+  a page is to ship an account key to it.
+
+- 787bbc4: Convert microphone audio into what a transcription socket expects
+
+  The browser hands out float samples at whatever rate the device runs at; the
+  services want signed 16-bit integers at a rate they name. Getting this subtly
+  wrong does not fail loudly - it produces audio that transcribes as plausible
+  nonsense - so each hazard is pinned by a test: the ends of the float range are
+  scaled separately, because the usual symmetric multiply overflows a full-scale
+  positive sample to the most negative one and is heard as a click on the loudest
+  part of a phrase; overshoot is clamped rather than wrapped; and upsampling is
+  refused rather than approximated.
+
+- 186f7c9: Say whether dictation will write as you speak
+
+  Batch dictation says nothing until it is stopped; live dictation writes as it
+  hears. The control looked identical either way, so there was no way to know
+  which one you were speaking into until you had already spoken. It now reads
+  "Dictate live" when streaming is configured, and keeps the plain label
+  otherwise. Once capture is under way both read "Listening…", because by then
+  the mode no longer matters.
+
+- cb7bffe: Stop discarding speech-to-text config on the way in
+
+  The config parser builds its result field by field, so a key it does not name
+  is dropped in silence. `speechToText` was never named: an install could write
+  the setting, restart, and find no microphone in the composer, with nothing
+  anywhere to say the setting had been thrown away when it was read. Dictation
+  could not be switched on at all.
+
+  The setting is now parsed and written back, with the streaming protocol
+  validated by name. An empty endpoint is rejected rather than stored: a config
+  that half-enables dictation produces a control that cannot work, which is worse
+  than no control at all.
+
 ## 1.202608.35
 
 ### Patch Changes
