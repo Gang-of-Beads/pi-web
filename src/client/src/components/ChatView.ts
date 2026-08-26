@@ -25,6 +25,7 @@ import {
   type SessionNotificationTarget,
 } from "../sessionNotifications";
 import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
+import { describeRunModel } from "../modelIdentity";
 import { turnEndedUnanswered, isWaitingForUser } from "../sessionWaiting";
 import type { SessionBackgroundTaskInfo, SessionNotification, SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
 import type { ChatLine, ChatPart, MessageDelivery } from "./shared";
@@ -807,6 +808,9 @@ export class ChatView extends LitElement {
           <span class="subagent-dot ${row.status}" aria-hidden="true"></span>
           <span class="subagent-kind" aria-hidden="true">Agent</span>
           <span class="subagent-id" dir="ltr">${row.run.agent}</span>
+          ${row.modelLabel === undefined
+            ? null
+            : html`<span class="subagent-model" dir="ltr" title=${row.modelTitle ?? row.modelLabel}>${row.modelLabel}</span>`}
           <span class="subagent-status ${row.status}">${row.statusLabel}</span>
           <span class="subagent-duration">${row.duration}</span>
           <span class="subagent-chevron" aria-hidden="true">\u203a</span>
@@ -2054,6 +2058,9 @@ export interface SubagentRunRow {
   statusLabel: string;
   duration: string;
   detail: string;
+  /** Model and thinking level, when the run recorded what it ran on. */
+  modelLabel?: string;
+  modelTitle?: string;
   ariaLabel: string;
 }
 
@@ -2067,13 +2074,17 @@ export function subagentRunRows(runs: readonly SessionSubagentRunInfo[]): Subage
     const statusLabel = run.status === "running" ? "Running" : run.status === "done" ? "Done" : run.status === "failed" ? "Failed" : run.status === "lost" ? "Stopped" : "Unknown";
     const duration = subagentRunDuration(run.elapsedMs);
     const detail = run.status === "running" ? run.lastActivity ?? "working" : run.task ?? "";
+    const model = describeRunModel(run.model);
     return {
       run,
       status: run.status === "lost" ? "failed" : run.status,
       statusLabel,
       duration,
       detail,
-      ariaLabel: `${statusLabel} ${run.agent} subagent, ${duration}${detail === "" ? "" : `, ${detail}`}`,
+      ...(model === undefined ? {} : { modelLabel: model.label, modelTitle: run.model ?? model.label }),
+      ariaLabel: `${statusLabel} ${run.agent} subagent, ${duration}`
+        + (model === undefined ? "" : `, on ${model.label}`)
+        + (detail === "" ? "" : `, ${detail}`),
     };
   });
 }

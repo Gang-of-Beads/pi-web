@@ -1,3 +1,4 @@
+import type { PromptAttachment } from "./api";
 /**
  * Pending-message outbox: survives network drops so a send is never silently
  * lost. When a prompt fails with a network error, its contents are persisted
@@ -14,6 +15,13 @@ export interface PendingPrompt {
   behavior?: "steer" | "followUp";
   /** The bubble's correlation id, so the retry lands on the same tracking. */
   clientMessageId?: string;
+  /**
+   * What was attached to the message. The outbox used to store text alone and
+   * the replay sent text alone, so a retried message came back as prose about
+   * a screenshot nobody could see - and nothing said so, because the bubble
+   * replayed and the send succeeded.
+   */
+  attachments?: PromptAttachment[];
   at: string;
 }
 

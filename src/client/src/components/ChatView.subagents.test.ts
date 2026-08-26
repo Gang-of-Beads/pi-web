@@ -416,3 +416,39 @@ describe("subagentStatusLabel", () => {
     expect(subagentStatusLabel("")).toBe("Unknown");
   });
 });
+
+describe("a run says what it is running on", () => {
+  /**
+   * A fleet of agents on screen gave no way to tell which was on which model,
+   * or at what thinking level - the two things that decide what a run costs
+   * and how long it takes. The run records it as `provider/model:thinking`.
+   */
+  it("shows the model and thinking level, and keeps the full id in the title", () => {
+    const [row] = subagentRunRows([{
+      runId: "r1",
+      agent: "opus-design-reviewer-a",
+      status: "running",
+      elapsedMs: 103_000,
+      startedAt: "2026-08-26T10:00:00.000Z",
+      model: "anthropic-merchant/claude-opus-5:medium",
+      hasOutput: false,
+    }]);
+
+    expect(row?.modelLabel).toBe("claude-opus-5 · medium");
+    expect(row?.modelTitle).toBe("anthropic-merchant/claude-opus-5:medium");
+    expect(row?.ariaLabel).toContain("claude-opus-5 · medium");
+  });
+
+  it("says nothing when the run recorded no model", () => {
+    const [row] = subagentRunRows([{
+      runId: "r2",
+      agent: "reviewer",
+      status: "done",
+      elapsedMs: 1000,
+      startedAt: "2026-08-26T10:00:00.000Z",
+      hasOutput: true,
+    }]);
+
+    expect(row?.modelLabel).toBeUndefined();
+  });
+});

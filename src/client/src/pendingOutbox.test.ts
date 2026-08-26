@@ -76,3 +76,39 @@ describe("pendingOutbox", () => {
     expect(loadPendingPrompts("k", storage)).toEqual([{ text: "stay", clientMessageId: "cm-9", at: "2026-08-19T02:00:00.000Z" }]);
   });
 });
+describe("a retried message keeps what was attached to it", () => {
+  /**
+   * The outbox stored only text, and the replay sent only text, so a message
+   * that carried a screenshot came back as prose about a screenshot nobody
+   * could see. Nothing said so: the bubble replayed, the send succeeded, and
+   * the image was simply not there.
+   */
+  it("round-trips attachments through storage", () => {
+    const storage = new MemoryStorage();
+    const attachment = { kind: "file" as const, name: "shot.png", mimeType: "image/png", data: "AAAA" };
+
+    savePendingPrompt("k", { text: "look at this", at: "2026-08-26T10:00:00.000Z", attachments: [attachment] }, storage);
+
+    const [restored] = loadPendingPrompts("k", storage);
+    expect(restored?.attachments).toEqual([attachment]);
+  });
+
+  it("still reads an entry saved before attachments were stored", () => {
+    const storage = new MemoryStorage();
+    storage.setItem("pi-web:pending-prompt:k", JSON.stringify([{ text: "older", at: "2026-08-26T10:00:00.000Z" }]));
+
+    const [restored] = loadPendingPrompts("k", storage);
+    expect(restored?.text).toBe("older");
+    expect(restored?.attachments).toBeUndefined();
+  });
+});
+
+class MemoryStorage implements Storage {
+  private readonly map = new Map<string, string>();
+  get length(): number { return this.map.size; }
+  clear(): void { this.map.clear(); }
+  getItem(key: string): string | null { return this.map.get(key) ?? null; }
+  key(index: number): string | null { return [...this.map.keys()][index] ?? null; }
+  removeItem(key: string): void { this.map.delete(key); }
+  setItem(key: string, value: string): void { this.map.set(key, value); }
+}

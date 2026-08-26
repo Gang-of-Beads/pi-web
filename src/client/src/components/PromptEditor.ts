@@ -739,7 +739,7 @@ export class PromptEditor extends LitElement {
       let networkFailed = false;
       for (const prompt of remaining) {
         try {
-          const accepted = await this.onSend?.(prompt.text, prompt.behavior, undefined, undefined, prompt.clientMessageId === undefined ? undefined : { clientMessageId: prompt.clientMessageId });
+          const accepted = await this.onSend?.(prompt.text, prompt.behavior, prompt.attachments, prompt.attachments === undefined ? undefined : this.effectiveAttachmentDelivery(), prompt.clientMessageId === undefined ? undefined : { clientMessageId: prompt.clientMessageId });
           if (accepted === false) stillPending.push(prompt);
         } catch (error) {
           networkFailed = networkFailed || isNetworkFailure(error);
@@ -803,7 +803,7 @@ export class PromptEditor extends LitElement {
       const key = machineSessionKey(this.machineId, this.sessionId ?? "");
       if (key !== "") {
         const clientMessageId = failure instanceof NetworkSendError ? failure.clientMessageId : undefined;
-        savePendingPrompt(key, { text, ...(behavior === undefined ? {} : { behavior }), ...(clientMessageId === undefined ? {} : { clientMessageId }), at: new Date().toISOString() });
+        savePendingPrompt(key, { text, ...(behavior === undefined ? {} : { behavior }), ...(clientMessageId === undefined ? {} : { clientMessageId }), ...(attachments === undefined || attachments.length === 0 ? {} : { attachments }), at: new Date().toISOString() });
         this.pendingPrompts = loadPendingPrompts(key);
         return;
       }

@@ -576,6 +576,10 @@ export const chatStyles = css`
   /* The kind, in a word: the filter chips name the same three categories, so a
      row says which one it is without the reader inferring it from the shape. */
   .subagent-kind { flex: 0 0 auto; color: var(--pi-muted); font-size: var(--pi-text-2xs); text-transform: uppercase; letter-spacing: .04em; }
+  /* What the run is on. Quiet: it answers "which model, at what thinking
+     level" for a reader scanning a fleet, without competing with the agent's
+     own name. */
+  .subagent-model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-variant-numeric: tabular-nums; }
   .subagent-id { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--pi-font-ui); font-size: var(--pi-text-sm); font-weight: var(--pi-weight-medium); letter-spacing: -0.01em; color: var(--pi-text-bright); }
   .subagent-status { flex: 0 0 auto; padding: 1px var(--pi-space-4); border-radius: var(--pi-radius-pill); background: var(--pi-border-muted); color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: 600; letter-spacing: .02em; white-space: nowrap; }
   .subagent-row .subagent-status.working, .subagent-row .subagent-status.running { background: var(--pi-selection-bg); color: var(--pi-accent); }
