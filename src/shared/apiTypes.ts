@@ -146,6 +146,36 @@ export interface PiWebSpeechToTextConfig {
   model?: string;
   /** Language hint, e.g. "en" or "zh"; omitted means let the service decide. */
   language?: string;
+  /**
+   * Optional live transcription, which shows words as they are spoken instead
+   * of after the recording stops.
+   *
+   * Separate from `endpoint` because it is a different protocol, not a
+   * different URL: an install can have batch dictation without streaming, and
+   * turning streaming on must not silently change what `endpoint` means.
+   */
+  streaming?: PiWebSpeechStreamingConfig;
+}
+
+/**
+ * How live transcription reaches a service.
+ *
+ * `browser` needs nothing configured and streams natively, but sends audio to
+ * the browser vendor. The socket protocols connect from the page for latency,
+ * so they take a short-lived credential minted by this server rather than an
+ * API key, which must never reach a browser.
+ */
+export interface PiWebSpeechStreamingConfig {
+  protocol: "browser" | "openai-realtime" | "deepgram";
+  /** Socket URL for the socket protocols. Ignored by `browser`. */
+  url?: string;
+  /** Model hint for the streaming service, when it differs from the batch one. */
+  model?: string;
+  /**
+   * Where the browser asks this server for a short-lived credential. Required
+   * for the socket protocols so the account key stays on the server.
+   */
+  tokenEndpoint?: string;
 }
 
 export interface PiWebUploadsConfig {
