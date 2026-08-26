@@ -983,6 +983,12 @@ export const promptEditorStyles = css`
      overlapping the first character. */
   .markdown-editor .cm-placeholder { position: absolute; inset-block: 0; left: 8px; right: 44px; display: flex; align-items: center; pointer-events: none; }
   .markdown-editor .cm-placeholder { color: var(--pi-dim); }
+  /* Two parts, not one sentence: the prompt sits at the reading edge and the
+     trigger characters group at the trailing edge, quiet enough to read as a
+     hint. */
+  .composer-placeholder { display: flex; flex: 1 1 auto; align-items: center; justify-content: space-between; gap: var(--pi-space-4); min-width: 0; }
+  .composer-placeholder-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .composer-placeholder-hints { flex: 0 0 auto; color: color-mix(in srgb, var(--pi-dim) 70%, transparent); font-size: var(--pi-text-xs); letter-spacing: 0.12em; }
   /* CodeMirror suppresses its own outline, so the focus ring belongs on the
      bordered box the user actually sees. Without this the composer was the one
      control in the app that gave no sign of being focused. */

@@ -472,12 +472,7 @@ export class PromptEditor extends LitElement {
             keyup: (event) => this.handleEditorKeyUp(event),
             blur: () => this.resetEditorModifierState(),
           }),
-          // Short enough to read at a glance on a phone. The full syntax was
-          // three wrapped lines of hint above an empty input, which both
-          // truncated once the placeholder was taken out of flow and buried the
-          // one thing the field is for. The affordances are discoverable by
-          // typing the trigger characters, which is how people find them anyway.
-          placeholder("Message pi\u2026  /  @  #"),
+          placeholder(composerPlaceholder()),
           this.editableCompartment.of(EditorView.editable.of(!this.disabled)),
           this.readOnlyCompartment.of(EditorState.readOnly.of(this.disabled)),
           EditorView.updateListener.of((update) => {
@@ -926,3 +921,22 @@ function inputAssistanceContentAttributes(draftBeforeCursor: string): Record<str
   return inputModeForDraft(draftBeforeCursor).kind === "normal" ? proseInputAssistanceAttributes : codeLikeInputAssistanceAttributes;
 }
 
+
+/**
+ * The empty composer says what the field is for, and shows the three trigger
+ * characters as a separate hint. Appending them to the sentence read as part
+ * of it - "Message pi… / @ #" - so the symbols looked like stray punctuation
+ * rather than the affordances they are.
+ */
+export function composerPlaceholder(): HTMLElement {
+  const wrap = document.createElement("span");
+  wrap.className = "composer-placeholder";
+  const label = document.createElement("span");
+  label.className = "composer-placeholder-label";
+  label.textContent = "Message pi…";
+  const hints = document.createElement("span");
+  hints.className = "composer-placeholder-hints";
+  hints.textContent = "/ @ #";
+  wrap.append(label, hints);
+  return wrap;
+}

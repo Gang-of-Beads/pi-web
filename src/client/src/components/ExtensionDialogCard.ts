@@ -366,20 +366,10 @@ export class ExtensionDialogCard extends LitElement {
          turns a formatted plan into an unreadable run-on paragraph. */
       white-space: pre-wrap;
       overflow-wrap: anywhere;
-      /* Bounded like the detail body: a goal plan runs to hundreds of lines
-         and would push the confirm buttons a dozen screens below the fold. */
-      max-height: min(46vh, 420px);
-      overflow: auto;
-      overscroll-behavior: contain;
       border-bottom: 1px solid var(--pi-border-muted);
     }
     .dialog-message + .dialog-message { border-bottom: 0; }
     .dialog-detail {
-      /* Bounded so a long document scrolls inside the card instead of pushing
-         the choices below the fold on a phone. */
-      max-height: min(46vh, 420px);
-      overflow: auto;
-      overscroll-behavior: contain;
       border-bottom: 1px solid var(--pi-border-muted);
       padding: 12px 16px;
       font-size: 13px;
@@ -392,9 +382,6 @@ export class ExtensionDialogCard extends LitElement {
       display: grid;
       gap: 7px;
       padding: 12px 16px;
-      max-height: min(46vh, 420px);
-      overflow: auto;
-      overscroll-behavior: contain;
       border-bottom: 1px solid var(--pi-border-muted);
     }
     .option-button {
@@ -418,12 +405,21 @@ export class ExtensionDialogCard extends LitElement {
       font: var(--pi-control-font-size, 16px)/1.4 var(--pi-control-font-family, system-ui, sans-serif);
     }
     .dialog-footer {
+      /* The card sits in the transcript, which is already the scroller. Inner
+         scroll windows made the reader cross a scroll boundary mid-plan; the
+         answer controls stay reachable by sticking to the bottom instead. */
+      position: sticky;
+      bottom: 0;
+      z-index: 6;
       display: flex;
       flex-wrap: wrap;
       align-items: center;
       justify-content: flex-end;
       gap: 8px;
       border-top: 1px solid var(--pi-border-muted);
+      border-radius: 0 0 9px 9px;
+      background: var(--pi-surface);
+      box-shadow: 0 -8px 18px var(--pi-shadow-soft);
       padding: 12px 16px;
     }
     .dialog-message + .dialog-footer, .dialog-options + .dialog-footer { border-top: 0; }

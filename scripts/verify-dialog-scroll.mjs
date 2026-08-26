@@ -47,7 +47,18 @@ try {
     if (card === undefined || card === null || yes === undefined) return { missing: true };
     const yesRect = yes.getBoundingClientRect();
     const cardRect = card.getBoundingClientRect();
-    return { winH: window.innerHeight, cardBottom: cardRect.bottom, yesTop: yesRect.top, yesBottom: yesRect.bottom };
+    const innerScrollers = [...card.shadowRoot.querySelectorAll("*")].filter((node) => {
+      const style = getComputedStyle(node);
+      const scrolls = style.overflowY === "auto" || style.overflowY === "scroll";
+      return scrolls && node.scrollHeight > node.clientHeight + 1;
+    }).length;
+    return {
+      winH: window.innerHeight,
+      cardBottom: cardRect.bottom,
+      yesTop: yesRect.top,
+      yesBottom: yesRect.bottom,
+      innerScrollers,
+    };
   });
 
   if (metrics.missing === true) failures.push("confirm card did not render");
@@ -55,8 +66,13 @@ try {
     if (metrics.yesBottom > metrics.winH) {
       failures.push(`confirm buttons below the fold: yesBottom=${Math.round(metrics.yesBottom)} > winH=${metrics.winH}`);
     }
-    if (metrics.cardBottom > metrics.winH) {
-      failures.push(`card taller than the window: ${Math.round(metrics.cardBottom)} > ${metrics.winH}`);
+    // The card may be taller than the window: it lives in the transcript, which
+    // is the scroller. What must hold is that the answer controls stay in the
+    // viewport (sticky footer) and that the card adds no scroller of its own -
+    // a second scroll region inside the first is what made reading the plan
+    // jump between contexts.
+    if (metrics.innerScrollers > 0) {
+      failures.push(`confirm card nests ${metrics.innerScrollers} inner scroll region(s) inside the transcript`);
     }
   }
 
@@ -78,11 +94,27 @@ try {
     const card = el?.shadowRoot?.querySelector("extension-dialog-card.open-dialog-card");
     if (card === undefined || card === null) return { missing: true };
     const rect = card.getBoundingClientRect();
-    return { winH: window.innerHeight, cardBottom: rect.bottom };
+    const cancel = [...card.shadowRoot.querySelectorAll("button")].find((button) => button.textContent.trim() === "Cancel");
+    const innerScrollers = [...card.shadowRoot.querySelectorAll("*")].filter((node) => {
+      const style = getComputedStyle(node);
+      const scrolls = style.overflowY === "auto" || style.overflowY === "scroll";
+      return scrolls && node.scrollHeight > node.clientHeight + 1;
+    }).length;
+    return {
+      winH: window.innerHeight,
+      cardBottom: rect.bottom,
+      cancelBottom: cancel === undefined ? 0 : cancel.getBoundingClientRect().bottom,
+      innerScrollers,
+    };
   });
   if (selectMetrics.missing === true) failures.push("select card did not render");
-  else if (selectMetrics.cardBottom > selectMetrics.winH) {
-    failures.push(`select card taller than the window: ${Math.round(selectMetrics.cardBottom)} > ${selectMetrics.winH}`);
+  else {
+    if (selectMetrics.cancelBottom > selectMetrics.winH) {
+      failures.push(`select card controls below the fold: ${Math.round(selectMetrics.cancelBottom)} > ${selectMetrics.winH}`);
+    }
+    if (selectMetrics.innerScrollers > 0) {
+      failures.push(`select card nests ${selectMetrics.innerScrollers} inner scroll region(s) inside the transcript`);
+    }
   }
 } catch (error) {
   failures.push(String(error));

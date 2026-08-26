@@ -448,11 +448,6 @@ export class AskUserCard extends LitElement {
     .questions {
       display: grid;
       padding-top: 8px;
-      /* A long ask (many questions) must scroll inside the card, or its submit
-         button lands screens below the fold. */
-      max-height: min(46vh, 420px);
-      overflow: auto;
-      overscroll-behavior: contain;
     }
     fieldset.question {
       min-width: 0;
@@ -524,11 +519,21 @@ export class AskUserCard extends LitElement {
       font: var(--pi-control-font-size, 16px)/1.4 var(--pi-control-font-family, system-ui, sans-serif);
     }
     .form-footer {
+      /* The card lives inside the transcript, which is already the scroller. A
+         second scroller inside it made the reader cross a scroll boundary
+         mid-question; the submit control stays reachable by sticking to the
+         bottom of the viewport instead, mirroring the sticky header. */
+      position: sticky;
+      bottom: 0;
+      z-index: 6;
       display: flex;
       align-items: center;
       justify-content: flex-end;
       gap: 12px;
       border-top: 1px solid var(--pi-border-muted);
+      border-radius: 0 0 9px 9px;
+      background: var(--pi-surface);
+      box-shadow: 0 -8px 18px var(--pi-shadow-soft);
       padding: 12px 16px;
     }
     button {
