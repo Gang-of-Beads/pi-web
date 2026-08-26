@@ -386,17 +386,21 @@ export const listStyles = css`
   .section-toggle .section-selected { display: block; color: var(--pi-text); font-size: var(--pi-text-xs); font-weight: 600; line-height: 1.25; text-transform: none; }
   .section-toggle .section-count { flex: 0 0 auto; display: inline; color: var(--pi-muted); font-size: inherit; }
   .section-toggle small { display: inline; color: inherit; font-size: inherit; }
-  .action-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; margin: var(--pi-space-3) 0; cursor: pointer; }
+  /* One surface per row. The body and the overflow menu used to be two
+     outlined boxes butted together, so their shared edge stacked into a hard
+     rule and the row read as a table cell. The border and the radius belong to
+     the row; what sits inside it is transparent. */
+  .action-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; margin: var(--pi-space-3) 0; cursor: pointer; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); overflow: hidden; }
   .action-row:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); border-radius: var(--pi-radius-md); }
-  .action-row.selected .action-main, .action-row.selected .action-menu-toggle { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
+  .action-row.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
   .action-row.archived .action-main { color: var(--pi-muted); }
   /* Written to work whether the primary region is a div or a real <button>:
      the font and cursor resets are inert on a div and stop a button from
      inheriting the UA's centred, small-font control styling. */
-  .action-main { position: relative; box-sizing: border-box; min-width: 0; width: 100%; display: block; border: 1px solid var(--pi-border); border-top-right-radius: 0; border-bottom-right-radius: 0; border-top-left-radius: var(--pi-radius-md); border-bottom-left-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-9) var(--pi-space-4) calc(var(--pi-space-5) + var(--depth, 0) * var(--pi-space-7)); font: inherit; text-align: left; cursor: pointer; }
+  .action-main { position: relative; box-sizing: border-box; min-width: 0; width: 100%; display: block; border: 0; background: transparent; color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-9) var(--pi-space-4) calc(var(--pi-space-5) + var(--depth, 0) * var(--pi-space-7)); font: inherit; text-align: left; cursor: pointer; }
   button.action-main:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: calc(var(--pi-focus-ring-offset) * -1); }
   .action-name { display: -webkit-box; max-height: 2.5em; overflow: hidden; overflow-wrap: anywhere; line-height: 1.25; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-  .action-row:not(.selected):hover .action-main { background: var(--pi-surface-hover); }
+  .action-row:not(.selected):hover { background: var(--pi-surface-hover); }
   .workspace-row .action-main { border-radius: var(--pi-radius-md) 0 0 var(--pi-radius-md); }
   .workspace-primary { min-width: 0; display: flex; align-items: baseline; gap: var(--pi-space-3); }
   .workspace-primary-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -427,17 +431,17 @@ export const listStyles = css`
    * for the detail; the rail is what the eye follows down the list, and it is
    * the one place this design spends colour on identity.
    */
-  .action-row .action-main { border-left: var(--pi-rail-width, 3px) solid transparent; transition: border-left-color var(--pi-motion-fast) var(--pi-ease); }
-  .action-row:has(.activity-indicator.session) .action-main { border-left-color: var(--pi-success); }
-  .action-row:has(.activity-indicator.terminal) .action-main { border-left-color: var(--pi-accent); }
-  .action-row:has(.activity-indicator.sending) .action-main { border-left-color: var(--pi-warning); }
+  .action-row { border-left: var(--pi-rail-width, 3px) solid transparent; transition: border-left-color var(--pi-motion-fast) var(--pi-ease); }
+  .action-row:has(.activity-indicator.session) { border-left-color: var(--pi-success); }
+  .action-row:has(.activity-indicator.terminal) { border-left-color: var(--pi-accent); }
+  .action-row:has(.activity-indicator.sending) { border-left-color: var(--pi-warning); }
   .action-row:has(.activity-indicator.unread) .action-main,
-  .action-row:has(.unread-ring) .action-main { border-left-color: var(--pi-accent); }
+  .action-row:has(.unread-ring) { border-left-color: var(--pi-accent); }
   /* Rows report unread as their own class rather than a child indicator, so
      the rail reads it there too; the two paths cover every list. */
-  .action-row.unread .action-main { border-left-color: var(--pi-accent); }
-  .action-row.archived .action-main { border-left-color: var(--pi-border); }
-  .action-row.selected .action-main { border-left-color: var(--pi-accent); }
+  .action-row.unread { border-left-color: var(--pi-accent); }
+  .action-row.archived { border-left-color: var(--pi-border); }
+  .action-row.selected { border-left-color: var(--pi-accent); }
   .activity-indicator.session { border-radius: 50%; background: var(--pi-success); }
   .activity-indicator.terminal { border-radius: var(--pi-radius-xs); background: var(--pi-accent); }
   /* Client-side sending (upload in flight); distinct from server activity, which propagates to workspace/machine rows. */
@@ -449,7 +453,7 @@ export const listStyles = css`
   .unread-ring .activity-indicator { width: 5px; height: 5px; margin: 0; vertical-align: 0; }
   .action-activity .unread-ring { margin: 0; vertical-align: 0; }
   .action-menu { position: relative; align-self: stretch; }
-  .action-menu-toggle { display: grid; place-items: center; height: 100%; min-width: 32px; padding: 0; color: var(--pi-muted); border-left: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+  .action-menu-toggle { display: grid; place-items: center; height: 100%; min-width: 32px; padding: 0; color: var(--pi-muted); border: 0; border-radius: 0; background: transparent; }
   .action-menu-toggle:hover { color: var(--pi-text); background: var(--pi-surface-hover); }
   .action-menu-panel { position: fixed; z-index: 50; box-sizing: border-box; min-width: min(120px, calc(100vw - 16px)); overflow: auto; padding: var(--pi-space-2); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); box-shadow: 0 8px 24px var(--pi-shadow); overflow-wrap: anywhere; }
   .action-menu-panel button { display: block; width: 100%; text-align: left; white-space: normal; overflow-wrap: anywhere; border: 0; background: transparent; color: var(--pi-text); }
