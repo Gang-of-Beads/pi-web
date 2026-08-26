@@ -1,5 +1,37 @@
 # @jmfederico/pi-web
 
+## 1.202608.35
+
+### Patch Changes
+
+- b3f16c8: Keep attachments on a message that has to be retried
+
+  The offline outbox stored a pending message as text alone, and the replay sent
+  text alone, so a message that carried a screenshot came back as prose about a
+  screenshot nobody could see. Nothing said so: the bubble replayed and the send
+  succeeded. Pending messages now carry their attachments through storage and
+  back out on retry, and entries written before this still load.
+
+- 578e548: Stop one send with an attachment from becoming two messages
+
+  Attaching a file is asynchronous: it is read to base64 before it joins the
+  composer. Pressing send inside that window sent the text on its own, because
+  the composer still held no attachments - and the image, landing a moment later
+  in a composer whose text had just been cleared, went out as a second message
+  with no body at all. In the transcript that reads as one text message followed
+  by a bodiless image, which is why "I only sent it once" looked wrong.
+
+  A send now waits for a file that is still being read, so one submission is one
+  message.
+
+- b3f16c8: Show which model and thinking level a subagent run is using
+
+  A fleet of running agents gave no way to tell which was on which model, or at
+  what thinking level - the two things that decide what a run costs and how long
+  it takes. The run already recorded it as `provider/model:thinking`; the row
+  just never showed it. Rows now read "claude-opus-5 · medium", keep the full
+  identifier in the tooltip, and say it to assistive technology too.
+
 ## 1.202608.34
 
 ### Patch Changes
