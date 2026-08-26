@@ -77,6 +77,7 @@ export class AppNavigationPanel extends LitElement {
   @property({ type: Boolean }) goalsLoading = false;
   @property({ attribute: false }) onRefreshGoals?: () => void | Promise<void>;
   @property({ attribute: false }) onArchiveGoal?: (goal: GoalRecordSummary) => void | Promise<void>;
+  @property({ attribute: false }) onRunGoalCommand?: (goal: GoalRecordSummary, command: string) => void | Promise<void>;
   @property({ attribute: false }) onMarkSessionRead?: (session: SessionInfo) => void | Promise<void>;
   @property({ attribute: false }) onMarkSessionsRead?: (sessions: SessionInfo[]) => void | Promise<void>;
   @property({ attribute: false }) onReloadSession?: (session: SessionInfo) => void | Promise<void>;
@@ -304,6 +305,8 @@ export class AppNavigationPanel extends LitElement {
       <goal-panel
         .goals=${this.goals}
         ?loading=${this.goalsLoading}
+        ?canRunCommands=${this.selectedSession !== undefined}
+        .onRunCommand=${(goal: GoalRecordSummary, command: string) => this.onRunGoalCommand?.(goal, command)}
         .onRefresh=${() => this.onRefreshGoals?.()}
         .onArchive=${(goal: GoalRecordSummary) => this.onArchiveGoal?.(goal)}
       ></goal-panel>

@@ -5,6 +5,7 @@ import {
   findCurrentTask,
   flattenGoalTasks,
   formatGoalTokens,
+  goalCommandsFor,
   goalProgressFraction,
   goalProgressLabel,
   goalStatusLabel,
@@ -35,6 +36,14 @@ export class GoalPanel extends LitElement {
   @property({ attribute: false }) onRefresh?: () => void | Promise<void>;
   /** Archive a goal the agent is not going to finish; confirmed before it runs. */
   @property({ attribute: false }) onArchive?: (goal: GoalRecordSummary) => void | Promise<void>;
+  /**
+   * Runs a goal slash command in the focused session. The panel lists goals for
+   * the whole workspace, but a command only means something inside a session,
+   * so a panel with no session to run in shows its controls disabled rather
+   * than hiding them.
+   */
+  @property({ attribute: false }) onRunCommand?: (goal: GoalRecordSummary, command: string) => void | Promise<void>;
+  @property({ type: Boolean }) canRunCommands = true;
 
   /** Expanded goal ids. Collapsed by default so many goals stay scannable. */
   @state() private expanded = new Set<string>();
@@ -58,6 +67,24 @@ export class GoalPanel extends LitElement {
         </h2>
         ${this.goals.length === 0 ? this.renderEmpty() : html`<div class="goal-list">${this.goals.map((goal) => this.renderGoal(goal))}</div>`}
       </section>
+    `;
+  }
+
+  private renderCommands(goal: GoalRecordSummary): TemplateResult | null {
+    const commands = goalCommandsFor(goal);
+    if (commands.length === 0) return null;
+    return html`
+      <div class="goal-commands">
+        ${commands.map((entry) => html`
+          <button
+            class=${`goal-command ${entry.destructive ? "destructive" : ""}`}
+            type="button"
+            ?disabled=${!this.canRunCommands}
+            title=${this.canRunCommands ? entry.description : "Open a session in this workspace to run goal commands"}
+            @click=${() => { void this.onRunCommand?.(goal, entry.command); }}
+          >${entry.label}</button>
+        `)}
+      </div>
     `;
   }
 
@@ -95,6 +122,7 @@ export class GoalPanel extends LitElement {
         >
           <span class="goal-bar-fill" style=${`transform: scaleX(${String(fraction)})`}></span>
         </div>
+        ${this.renderCommands(goal)}
         ${open ? this.renderDetail(goal, current, tokens) : this.renderCollapsedMeta(goal, current, tokens)}
       </article>
     `;
@@ -189,6 +217,11 @@ export class GoalPanel extends LitElement {
     h2 > .section-count { flex: 0 0 auto; color: var(--pi-muted); font-size: inherit; }
     .refresh-entry { flex: 0 0 auto; display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; font-size: var(--pi-text-sm); }
 
+    .goal-commands { display: flex; gap: var(--pi-space-2); padding: var(--pi-space-3) var(--pi-space-4) 0; }
+    .goal-command { flex: 0 0 auto; padding: var(--pi-space-2) var(--pi-space-4); border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-text-secondary); font-size: var(--pi-text-2xs); cursor: pointer; }
+    .goal-command:hover:not(:disabled) { border-color: var(--pi-border-strong, var(--pi-accent)); color: var(--pi-text); }
+    .goal-command:disabled { opacity: .45; cursor: default; }
+    .goal-command.destructive:hover:not(:disabled) { border-color: var(--pi-danger-border, var(--pi-warning)); color: var(--pi-danger, var(--pi-warning)); }
     .goal-list { display: grid; gap: var(--pi-space-4); }
     .goal { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-md); background: var(--pi-surface); overflow: hidden; }
     .goal.blocked { border-color: color-mix(in srgb, var(--pi-warning) 45%, var(--pi-border-muted)); }

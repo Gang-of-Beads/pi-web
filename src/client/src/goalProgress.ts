@@ -84,3 +84,45 @@ export function formatGoalTokens(tokens: number | undefined): string | undefined
   if (tokens >= 1_000) return `${String(Math.round(tokens / 1_000))}k tokens`;
   return `${String(tokens)} tokens`;
 }
+
+/**
+ * The lifecycle commands a goal can accept, as the slash commands a person
+ * would type.
+ *
+ * The extension owns goal state. Its commands are the only entry point that
+ * keeps the audit trail, token accounting and per-session focus rules intact,
+ * so the panel sends command text rather than editing the record on disk.
+ *
+ * `/goal-clear` is the one that abandons a goal. `/goal-cancel` cancels an
+ * in-progress draft, which is a different thing that reads almost the same.
+ */
+export interface GoalCommand {
+  readonly label: string;
+  readonly command: string;
+  readonly description: string;
+  readonly destructive: boolean;
+}
+
+export function goalCommandsFor(goal: Pick<GoalRecordSummary, "status">): GoalCommand[] {
+  if (isGoalFinished(goal)) return [];
+  const commands: GoalCommand[] = isGoalBlocked(goal)
+    ? [{
+        label: "Resume",
+        command: "/goal-resume",
+        description: "Resume this goal in the focused session",
+        destructive: false,
+      }]
+    : [{
+        label: "Pause",
+        command: "/goal-pause",
+        description: "Pause this goal",
+        destructive: false,
+      }];
+  commands.push({
+    label: "Abandon",
+    command: "/goal-clear",
+    description: "Archive this goal after confirmation",
+    destructive: true,
+  });
+  return commands;
+}

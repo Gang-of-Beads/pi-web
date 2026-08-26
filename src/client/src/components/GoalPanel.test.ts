@@ -117,15 +117,81 @@ describe("goal-panel", () => {
   });
 });
 
+describe("goal lifecycle controls", () => {
+  it("offers resume for a paused goal and pause for a running one", async () => {
+    const paused = await mount([goal({ status: "paused" })]);
+    expect(commandLabels(paused)).toContain("Resume");
+    expect(commandLabels(paused)).not.toContain("Pause");
+
+    const active = await mount([goal({ status: "active" })]);
+    expect(commandLabels(active)).toContain("Pause");
+    expect(commandLabels(active)).not.toContain("Resume");
+  });
+
+  it("offers nothing to run once a goal is finished", async () => {
+    const done = await mount([goal({ status: "complete" })]);
+    expect(commandLabels(done)).toEqual([]);
+  });
+
+  /**
+   * The command text is the contract. The extension owns goal state, and its
+   * slash commands are the only entry point that keeps the audit, accounting
+   * and focus rules intact, so the button must send exactly what a person
+   * would type rather than reach for the record on disk.
+   */
+  it("runs the same slash command a person would type, for that goal", async () => {
+    const onRunCommand = vi.fn();
+    const panel = await mountPanel([goal({ status: "paused" })], undefined, undefined, onRunCommand);
+    button(shadow(panel), "Resume").click();
+
+    expect(onRunCommand).toHaveBeenCalledOnce();
+    expect(onRunCommand).toHaveBeenCalledWith(expect.objectContaining({ id: "g1" }), "/goal-resume");
+  });
+
+  it("sends the abandon command rather than the draft-cancel command", async () => {
+    const onRunCommand = vi.fn();
+    const panel = await mountPanel([goal({ status: "paused" })], undefined, undefined, onRunCommand);
+    button(shadow(panel), "Abandon").click();
+
+    // `/goal-cancel` cancels an in-progress draft; abandoning a goal is
+    // `/goal-clear`. The two read alike and do different things.
+    expect(onRunCommand).toHaveBeenCalledWith(expect.anything(), "/goal-clear");
+  });
+
+  it("disables the controls when there is no session to run them in", async () => {
+    const panel = new GoalPanel();
+    panel.goals = [goal({ status: "paused" })];
+    panel.canRunCommands = false;
+    document.body.append(panel);
+    await panel.updateComplete;
+
+    const resume = button(shadow(panel), "Resume");
+    expect(resume.disabled).toBe(true);
+    expect(resume.title).toMatch(/session/iu);
+  });
+});
+
+function commandLabels(root: ShadowRoot): string[] {
+  return [...root.querySelectorAll(".goal-command")].map((el) => el.textContent.trim());
+}
+
+function button(root: ShadowRoot, label: string): HTMLButtonElement {
+  const found = [...root.querySelectorAll<HTMLButtonElement>(".goal-command")]
+    .find((el) => el.textContent.trim() === label);
+  if (found === undefined) throw new Error(`Expected a ${label} control`);
+  return found;
+}
+
 async function mount(goals: GoalRecordSummary[]): Promise<ShadowRoot> {
   return shadow(await mountPanel(goals));
 }
 
-async function mountPanel(goals: GoalRecordSummary[], onRefresh?: () => void, onArchive?: (goal: GoalRecordSummary) => void): Promise<GoalPanel> {
+async function mountPanel(goals: GoalRecordSummary[], onRefresh?: () => void, onArchive?: (goal: GoalRecordSummary) => void, onRunCommand?: (goal: GoalRecordSummary, command: string) => void): Promise<GoalPanel> {
   const panel = new GoalPanel();
   panel.goals = goals;
   if (onRefresh !== undefined) panel.onRefresh = onRefresh;
   if (onArchive !== undefined) panel.onArchive = onArchive;
+  if (onRunCommand !== undefined) panel.onRunCommand = onRunCommand;
   document.body.append(panel);
   await panel.updateComplete;
   return panel;

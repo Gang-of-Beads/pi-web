@@ -1742,6 +1742,7 @@ export class PiWebApp extends LitElement {
         ?goalsLoading=${this.state.workspaceGoalsLoading}
         .onRefreshGoals=${() => this.workspaces.refreshWorkspaceGoals()}
         .onArchiveGoal=${(goal: GoalRecordSummary) => this.workspaces.archiveWorkspaceGoal(goal.id)}
+        .onRunGoalCommand=${(_goal: GoalRecordSummary, command: string) => this.runGoalCommand(command)}
         .onReloadSession=${(session: SessionInfo) => this.sessions.reloadSession(session)}
         .onOpenSessionTree=${(session: SessionInfo) => this.openSessionTree(session)}
         .onCleanupSessions=${() => { this.openSessionCleanupDialog(); }}
@@ -2736,6 +2737,19 @@ export class PiWebApp extends LitElement {
   }
 
   /** Resolves false when the message was not accepted, so the composer can restore it. */
+  /**
+   * Runs a goal slash command in the focused session.
+   *
+   * The extension owns goal state, so the command text is sent exactly as a
+   * person would type it: the same audit trail, token accounting and focus
+   * rules apply, including the picker the extension raises when a session has
+   * no focused goal and the workspace has more than one open.
+   */
+  private async runGoalCommand(command: string): Promise<void> {
+    if (this.state.selectedSession === undefined) return;
+    await this.sendPrompt(command);
+  }
+
   private async sendPrompt(text: string, streamingBehavior?: "steer" | "followUp", attachments?: import("../api").PromptAttachment[], delivery?: import("../../../shared/apiTypes").PromptAttachmentDelivery, replay?: { clientMessageId?: string }): Promise<boolean> {
     const hasAttachments = attachments !== undefined && attachments.length > 0;
     // Handled locally by the auth flow; nothing to restore.
