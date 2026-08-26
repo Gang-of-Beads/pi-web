@@ -79,6 +79,13 @@ export class PromptEditor extends LitElement {
   private voice?: VoiceController;
   @state() private attachments: PendingAttachment[] = [];
   @state() private attachmentError: string | undefined = undefined;
+  /**
+   * Files still being read into the composer. Attaching is asynchronous, and a
+   * send inside that window used to go out as text alone, leaving the image to
+   * follow as a second message with no body.
+   */
+  @state() private attachingCount = 0;
+  private attachingSettled: Promise<void> = Promise.resolve();
   private attachmentSeq = 0;
   private requestVersion = 0;
   private historyIndex: number | undefined;
@@ -388,7 +395,18 @@ export class PromptEditor extends LitElement {
 
   private async addAttachmentFiles(files: File[]) {
     this.attachmentError = undefined;
-    const { attachments, error } = await capturePromptAttachments(files, readFileAsBase64);
+    this.attachingCount += 1;
+    const capture = capturePromptAttachments(files, readFileAsBase64);
+    this.attachingSettled = this.attachingSettled
+      .then(async () => { await capture; })
+      .catch(() => undefined);
+    let captured: Awaited<typeof capture>;
+    try {
+      captured = await capture;
+    } finally {
+      this.attachingCount -= 1;
+    }
+    const { attachments, error } = captured;
     if (attachments.length > 0) {
       this.attachments = [...this.attachments, ...attachments.map((attachment) => ({ id: `attachment-${String(++this.attachmentSeq)}`, ...attachment }))];
     }
@@ -755,6 +773,12 @@ export class PromptEditor extends LitElement {
 
   private send(streamingBehavior?: "steer" | "followUp") {
     if (this.disabled || this.sending) return;
+    // A file still being read belongs to this message. Sending without it is
+    // how one submission became a text message plus a bodiless image.
+    if (this.attachingCount > 0) {
+      void this.attachingSettled.then(() => { this.send(streamingBehavior); });
+      return;
+    }
     const text = this.draft.trim();
     const pending = this.attachments;
     if (text === "" && pending.length === 0) return;
