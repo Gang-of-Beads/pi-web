@@ -1,5 +1,40 @@
 # @jmfederico/pi-web
 
+## 1.202608.38
+
+### Patch Changes
+
+- 878cb16: Give the session name the room to be read, and lay sessions out as tiles
+
+  Three things a phone made worse. The context row gave every chip the same 42vw,
+  so the session name - the one chip that answers "which of these am I looking
+  at" - was truncated to "pi-...", while the machine and project names beside it
+  were recognisable from a few characters anyway. The session chip now takes the
+  width it needs; the row already scrolls, so this costs the others nothing.
+
+  The session switcher listed one session per row, a column of wide, mostly empty
+  cards, so choosing between a dozen sessions meant scrolling a list that wasted
+  half its width on every row. Sessions are now tiles that take as many columns
+  as fit, which is two on a phone and one when there is only room for one.
+
+  Opening the switcher no longer leaves the on-screen keyboard covering the list
+  it exists to show. Only text entry is blurred: taking focus off a button would
+  cost someone on a physical keyboard their place for no benefit.
+
+- 58ea615: The activity drawer now starts folded and opens when you tap it, instead of
+  opening itself whenever work was running or a notification had arrived. The
+  folded strip still reports what is happening.
+
+  Session names get room to show in full on a phone, the session list lays out
+  as tiles (two columns on a phone), and opening a session no longer leaves the
+  keyboard up.
+
+  The "ended without a reply" badge has been withdrawn. It inferred a stalled
+  run from the newest record being tool output, but a turn that ends on purpose
+  looks exactly the same, so it reported ordinary turns as failures. Runs that a
+  restart or crash actually interrupted are still marked, from a record kept for
+  that purpose rather than guessed from the transcript.
+
 ## 1.202608.37
 
 ### Patch Changes
