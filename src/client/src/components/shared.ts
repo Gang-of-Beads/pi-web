@@ -208,7 +208,7 @@ export const appStyles = css`
   status-bar { flex: 0 0 auto; }
   chat-view { flex: 1 1 auto; min-height: 0; overflow: hidden; }
   prompt-editor { flex: 0 0 auto; }
-  button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
+  button { font: var(--pi-text-xs) var(--pi-font-ui); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
   .empty { margin: auto; color: var(--pi-muted); }
   .error { display: flex; gap: var(--pi-space-4); align-items: flex-start; padding: var(--pi-space-5) var(--pi-space-7); border-bottom: 1px solid var(--pi-border); color: var(--pi-danger); }
   .error.transient { color: var(--pi-warning); background: color-mix(in srgb, var(--pi-warning) 8%, transparent); }
@@ -253,7 +253,7 @@ export const workspacePanelStyles = css`
   .tabs { flex: 0 0 auto; display: flex; gap: var(--pi-space-3); align-items: center; }
   .tabs button { flex: 0 0 auto; white-space: nowrap; }
   .tabs button.icon-tab { min-width: 34px; }
-  button { display: inline-flex; align-items: center; gap: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-3) var(--pi-space-4); cursor: pointer; }
+  button { font: var(--pi-text-xs) var(--pi-font-ui); display: inline-flex; align-items: center; gap: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-3) var(--pi-space-4); cursor: pointer; }
   button.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
   .tab-icon { flex: 0 0 auto; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
   .tab-custom-icon { flex: 0 0 auto; width: 16px; height: 16px; display: inline-grid; place-items: center; color: currentColor; pointer-events: none; }
@@ -295,7 +295,7 @@ export const listStyles = css`
      over a round or rounded control. Suppressed in favour of the app's own
      pressed and focus styling; :focus-visible still shows keyboard focus, so
      nothing is lost for keyboard users. */
-  button, [role="button"], a, summary, label, input, select { -webkit-tap-highlight-color: transparent; }
+  button, [role="button"], a, summary, label, input, select { font: var(--pi-text-xs) var(--pi-font-ui); -webkit-tap-highlight-color: transparent; }
   /* Follows the control's own shape rather than boxing a circle. */
   button:focus-visible, [role="button"]:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); border-radius: inherit; }
   /* Motion is a preference, not a decoration: a user who asks for less of it
@@ -319,7 +319,7 @@ export const listStyles = css`
      Scoped to controls, so scrollable and pannable surfaces keep the gestures
      they set for themselves; and it lives here rather than on the app shell
      because shell styles do not cross a component's shadow boundary. */
-  button, [role="button"], input, select, summary { touch-action: manipulation; }
+  button, [role="button"], input, select, summary { font: var(--pi-text-xs) var(--pi-font-ui); touch-action: manipulation; }
   :host { display: flex; flex-direction: column; min-height: 0; overflow: hidden; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
   /* A host \`display\` beats the UA stylesheet's \`[hidden] { display: none }\`, so
      without this every "hidden" list still occupies its full height: the mobile
@@ -377,7 +377,7 @@ export const listStyles = css`
     .list-body.tiles .action-menu { top: 4px; right: 4px; }
   }
   .list-body.tiles .action-activity { top: 7px; right: 32px; }
-  button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
+  button { font: var(--pi-text-xs) var(--pi-font-ui); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
   section > button { display: block; width: 100%; text-align: left; margin: var(--pi-space-3) 0; }
   .subheading { margin-top: var(--pi-space-7); }
   .section-toggle { display: flex; flex: 1 1 auto; min-width: 0; align-items: center; justify-content: space-between; gap: var(--pi-space-4); width: 100%; border: 0; background: transparent; color: inherit; padding: 0; font: inherit; text-align: left; text-transform: inherit; }
@@ -473,7 +473,7 @@ export const chatStyles = css`
      over a round or rounded control. Suppressed in favour of the app's own
      pressed and focus styling; :focus-visible still shows keyboard focus, so
      nothing is lost for keyboard users. */
-  button, [role="button"], a, summary, label, input, select { -webkit-tap-highlight-color: transparent; }
+  button, [role="button"], a, summary, label, input, select { font: var(--pi-text-xs) var(--pi-font-ui); -webkit-tap-highlight-color: transparent; }
   /* Follows the control's own shape rather than boxing a circle. */
   button:focus-visible, [role="button"]:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); border-radius: inherit; }
   /* Motion is a preference, not a decoration: a user who asks for less of it
@@ -497,7 +497,7 @@ export const chatStyles = css`
      Scoped to controls, so scrollable and pannable surfaces keep the gestures
      they set for themselves; and it lives here rather than on the app shell
      because shell styles do not cross a component's shadow boundary. */
-  button, [role="button"], input, select, summary { touch-action: manipulation; }
+  button, [role="button"], input, select, summary { font: var(--pi-text-xs) var(--pi-font-ui); touch-action: manipulation; }
   :host { position: relative; z-index: 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
   .chat-wrap { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; }
   .top-notices { box-sizing: border-box; flex: 0 0 auto; max-height: 40%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border-bottom: 1px solid var(--pi-border); background: var(--pi-bg-overlay); }
@@ -876,7 +876,7 @@ export const statusBarStyles = css`
 export const autocompleteStyles = css`
   :host { display: block; }
   .menu { position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); z-index: 10; max-height: 260px; overflow: auto; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); box-shadow: 0 10px 30px var(--pi-shadow); }
-  button { display: grid; grid-template-columns: minmax(120px, 1fr) auto; gap: var(--pi-space-2) var(--pi-space-5); width: 100%; border: 0; border-bottom: 1px solid var(--pi-border); border-radius: 0; background: transparent; color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); text-align: left; cursor: pointer; }
+  button { font: var(--pi-text-xs) var(--pi-font-ui); display: grid; grid-template-columns: minmax(120px, 1fr) auto; gap: var(--pi-space-2) var(--pi-space-5); width: 100%; border: 0; border-bottom: 1px solid var(--pi-border); border-radius: 0; background: transparent; color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); text-align: left; cursor: pointer; }
   button:last-child { border-bottom: 0; }
   button.selected, button:hover { background: var(--pi-selection-bg); }
   span { color: var(--pi-muted); font-size: var(--pi-text-xs); }
@@ -888,7 +888,7 @@ export const promptEditorStyles = css`
      over a round or rounded control. Suppressed in favour of the app's own
      pressed and focus styling; :focus-visible still shows keyboard focus, so
      nothing is lost for keyboard users. */
-  button, [role="button"], a, summary, label, input, select { -webkit-tap-highlight-color: transparent; }
+  button, [role="button"], a, summary, label, input, select { font: var(--pi-text-xs) var(--pi-font-ui); -webkit-tap-highlight-color: transparent; }
   /* Follows the control's own shape rather than boxing a circle. */
   button:focus-visible, [role="button"]:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); border-radius: inherit; }
   /* Motion is a preference, not a decoration: a user who asks for less of it
@@ -912,7 +912,7 @@ export const promptEditorStyles = css`
      Scoped to controls, so scrollable and pannable surfaces keep the gestures
      they set for themselves; and it lives here rather than on the app shell
      because shell styles do not cross a component's shadow boundary. */
-  button, [role="button"], input, select, summary { touch-action: manipulation; }
+  button, [role="button"], input, select, summary { font: var(--pi-text-xs) var(--pi-font-ui); touch-action: manipulation; }
   :host { position: relative; z-index: 5; display: block; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
   footer { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--pi-space-4); padding: var(--pi-space-6) var(--pi-chat-gutter); border-top: 1px solid var(--pi-border); max-width: var(--pi-chat-measure, 100%); margin-inline: auto; }
   /* Collapsed: one line that gives the screen back to whatever input is being
@@ -1026,7 +1026,7 @@ export const promptEditorStyles = css`
   }
   .attachment-delivery select { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-3) var(--pi-space-4); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); }
   .attachment-error { flex-basis: 100%; color: var(--pi-danger); font-size: var(--pi-text-xs); }
-  button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
+  button { font: var(--pi-text-xs) var(--pi-font-ui); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
   button:disabled, textarea:disabled, .markdown-editor-disabled .cm-editor { opacity: .5; cursor: not-allowed; }
       footer { gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-chat-gutter); }
     .actions { gap: var(--pi-space-3); }

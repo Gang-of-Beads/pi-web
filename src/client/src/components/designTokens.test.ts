@@ -147,3 +147,22 @@ describe("panel headers share one height", () => {
     expect(navigationPanel).toContain("height: var(--pi-panel-header-control-height)");
   });
 });
+
+/**
+ * A button with no font of its own falls back to the user agent's, which on
+ * Chrome is 13.333px in the platform UI face - a size that is on no scale and
+ * a face that is not the app's. It is easy to miss because it looks close
+ * enough to 13px until it sits beside real 13px text.
+ *
+ * The same omission produced a 56px navigation header out of buttons nobody
+ * had sized, so this is asserted on the shared sheets rather than fixed one
+ * component at a time.
+ */
+describe("controls inherit the app's type rather than the user agent's", () => {
+  it.each(SHARED_SHEETS)("%s gives buttons a font", (_name, css) => {
+    const rules = [...css.matchAll(/(^|[\s,}])button[^{]*\{([^}]*)\}/gu)].map((match) => match[2] ?? "");
+    if (rules.length === 0) return;
+    const declaresFont = rules.some((rule) => /(^|;|\s)(font|font-family|font-size)\s*:/u.test(rule));
+    expect(declaresFont, "no button rule in this sheet sets a font").toBe(true);
+  });
+});

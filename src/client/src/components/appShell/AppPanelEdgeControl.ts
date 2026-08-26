@@ -207,7 +207,7 @@ export class AppPanelEdgeControl extends LitElement {
     .resize-handle { position: absolute; inset: 0 -6px; z-index: 0; cursor: col-resize; touch-action: none; outline: none; }
     .resize-handle::after { content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; transform: translateX(-50%); background: transparent; transition: width .12s ease, background .12s ease, opacity .12s ease; }
     .resize-handle:hover::after, .resize-handle:focus-visible::after, :host([resizing]) .resize-handle::after { width: 3px; background: var(--pi-accent); opacity: .72; }
-    .edge-button { position: relative; z-index: 1; box-sizing: border-box; display: grid; place-items: center; width: 18px; height: 48px; padding: 0; border: 1px solid var(--pi-border-muted); border-radius: 999px; background: var(--pi-bg); color: var(--pi-muted); opacity: .75; cursor: pointer; }
+    .edge-button { font: var(--pi-text-xs) var(--pi-font-ui); position: relative; z-index: 1; box-sizing: border-box; display: grid; place-items: center; width: 18px; height: 48px; padding: 0; border: 1px solid var(--pi-border-muted); border-radius: 999px; background: var(--pi-bg); color: var(--pi-muted); opacity: .75; cursor: pointer; }
     /* The handle is deliberately a sliver so it does not sit on top of the
        panel it belongs to, and it paints narrower still than the 18px below:
        the host is a flex container sized to the divider column, so the button
