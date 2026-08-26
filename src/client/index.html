@@ -51,6 +51,11 @@
         --pi-radius-pill: 999px;
         /* One height for every panel header, so the left rail and the chat
            drawer share a horizontal rule instead of each picking its own. */
+        /* The conversation column: the transcript, the composer and the
+           status dock all measure from these, so they share one left edge at
+           every window size. */
+        --pi-chat-measure: 100%;
+        --pi-chat-gutter: 16px;
         --pi-panel-header-height: 36px;
         --pi-panel-header-control-height: 28px;
         /* Touch floor first: a control is 44px on a finger, 32px under a mouse. */

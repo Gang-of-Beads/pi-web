@@ -37,6 +37,8 @@ try {
       { role: "user", parts: [{ type: "text", text: "hello" }] },
       { role: "assistant", parts: [{ type: "text", text: "lorem ipsum dolor sit amet consectetur adipiscing elit" }] },
     ];
+    el.status = { state: "idle" };
+    el.activity = { phase: "idle", label: "idle" };
     const composer = document.createElement("prompt-editor");
     host.append(el, composer);
     document.body.append(host);
@@ -50,6 +52,7 @@ try {
     const editor = footer?.querySelector(".editor-wrap");
     const send = footer?.querySelector(".send-button");
     if (!msg || !footer || !editor || !send) return null;
+    const dock = host?.querySelector("chat-view")?.shadowRoot?.querySelector(".activity-dock");
     const msgRect = msg.getBoundingClientRect();
     const editorRect = editor.getBoundingClientRect();
     const sendRect = send.getBoundingClientRect();
@@ -60,6 +63,7 @@ try {
       editorRight: Math.round(editorRect.right),
       sendVisible: sendRect.width > 0 && sendRect.height > 0,
       sendInFooter: sendRect.right <= footer.getBoundingClientRect().right + 1,
+      dockLeft: dock === null || dock === undefined ? null : Math.round(dock.getBoundingClientRect().left),
     };
   });
 
@@ -77,6 +81,19 @@ try {
     if (!measured.sendVisible || !measured.sendInFooter) {
       failures.push("send button is clipped or pushed out of the footer by the reading column");
     }
+    // The status dock floats over the transcript rather than sitting in it, so
+    // it is positioned rather than laid out. It still belongs to the same
+    // column: a dock pinned to the viewport edge reads as a stray chip.
+    if (measured.dockLeft !== null && Math.abs(measured.dockLeft - measured.msgLeft) > 1) {
+      failures.push(
+        `status dock is not in the conversation column (dock ${String(measured.dockLeft)}, `
+        + `messages ${String(measured.msgLeft)})`,
+      );
+    }
+    console.log(
+      `column left=${String(measured.msgLeft)} right=${String(measured.msgRight)} `
+      + `dock-left=${String(measured.dockLeft)}`,
+    );
   }
 } finally {
   await browser.close();

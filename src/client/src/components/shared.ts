@@ -673,9 +673,9 @@ export const chatStyles = css`
     .notification-list { max-height: 30vh; min-height: 96px; }
     .activity-filters { position: static; }
   }
-  .chat { --pi-chat-sticky-top: -26px; height: 100%; min-height: 0; overflow: auto; overflow-anchor: none; padding: 26px var(--pi-space-7) 64px; box-sizing: border-box; }
+  .chat { --pi-chat-sticky-top: -26px; height: 100%; min-height: 0; overflow: auto; overflow-anchor: none; padding: 26px var(--pi-chat-gutter) 64px; box-sizing: border-box; }
   .scroll-marker { display: block; height: 0; overflow: hidden; pointer-events: none; }
-  .activity-dock { position: absolute; left: 16px; right: 16px; bottom: 12px; z-index: 20; display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: 0 8px 28px var(--pi-shadow); backdrop-filter: blur(6px); }
+  .activity-dock { position: absolute; left: var(--pi-chat-gutter); right: var(--pi-chat-gutter); bottom: 12px; z-index: 20; display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: 0 8px 28px var(--pi-shadow); backdrop-filter: blur(6px); }
   /* Idle is the state nobody needs a full-width banner for: keep the signal,
      drop the bar that looked like an empty card above the composer. */
   .activity-dock.idle { right: auto; max-width: min(60%, 240px); opacity: .75; padding: var(--pi-space-2) var(--pi-space-5); font-size: var(--pi-text-xs); }
@@ -703,13 +703,13 @@ export const chatStyles = css`
   .activity-dock.active .dot { animation: pulse 1s ease-in-out infinite; opacity: 1; }
   .activity-dock .state-dot { background: currentColor; }
   .activity-dock.working .state-dot { opacity: 1; }
-  /* Bound the reading measure on a wide screen. At 2560px the transcript is
-     ~1400px across, which sets a line of roughly 150 characters - the eye
-     loses its place returning to the next line. Typography settles around
-     45-75; 78ch leaves room for code and tables without letting prose sprawl.
-     The column centres so the conversation does not sit against one edge. */
+  /* One column, shared by the transcript, the composer and the status dock.
+     A wide screen is bought to be used, so the column takes the width it is
+     given and keeps only a gutter at each edge. Everything that belongs to
+     the conversation measures from this one value, so the three surfaces line
+     up on a single left edge at every window size. */
   .chat > * { margin-inline: auto; }
-  .msg { max-width: min(100%, 78ch); min-width: 0; box-sizing: border-box; margin: 0 auto var(--pi-space-7); padding: var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); overflow: visible; }
+  .msg { max-width: var(--pi-chat-measure); min-width: 0; box-sizing: border-box; margin: 0 auto var(--pi-space-7); padding: var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); overflow: visible; }
   .msg.assistant, .msg.tool-image-output { background: var(--pi-surface); }
   .msg.user { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
   /* Held by the server, not yet read: the same warning colour the queue panel
@@ -914,7 +914,7 @@ export const promptEditorStyles = css`
      because shell styles do not cross a component's shadow boundary. */
   button, [role="button"], input, select, summary { touch-action: manipulation; }
   :host { position: relative; z-index: 5; display: block; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
-  footer { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--pi-space-4); padding: var(--pi-space-6); border-top: 1px solid var(--pi-border); max-width: min(100%, 78ch); margin-inline: auto; }
+  footer { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--pi-space-4); padding: var(--pi-space-6) var(--pi-chat-gutter); border-top: 1px solid var(--pi-border); max-width: var(--pi-chat-measure, 100%); margin-inline: auto; }
   /* Collapsed: one line that gives the screen back to whatever input is being
      used, and says what is still in the draft so it does not look lost. */
   footer.collapsed { padding: var(--pi-space-3) var(--pi-space-5); }
@@ -1028,7 +1028,7 @@ export const promptEditorStyles = css`
   .attachment-error { flex-basis: 100%; color: var(--pi-danger); font-size: var(--pi-text-xs); }
   button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
   button:disabled, textarea:disabled, .markdown-editor-disabled .cm-editor { opacity: .5; cursor: not-allowed; }
-      footer { gap: var(--pi-space-4); padding: var(--pi-space-4); }
+      footer { gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-chat-gutter); }
     .actions { gap: var(--pi-space-3); }
     .compact-status { flex: 1 1 220px; gap: var(--pi-space-2); }
     .select-model { max-width: min(58vw, 260px); }
