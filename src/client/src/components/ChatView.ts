@@ -28,7 +28,7 @@ import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from ".
 import "./GoalPanel";
 import type { GoalRecordSummary } from "../api";
 import { describeRunModel } from "../modelIdentity";
-import { turnEndedUnanswered, isWaitingForUser } from "../sessionWaiting";
+import { isWaitingForUser } from "../sessionWaiting";
 import type { SessionBackgroundTaskInfo, SessionNotification, SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
 import type { ChatLine, ChatPart, MessageDelivery } from "./shared";
 import { chatStyles, renderSessionWarningIcon } from "./shared";
@@ -582,7 +582,7 @@ export class ChatView extends LitElement {
     const key = this.topDrawerKey();
     const collapsed = this.expandedTopDrawerKeys.has(key)
       ? false
-      : this.collapsedTopDrawerKeys.has(key) || !topDrawerStartsOpen({ working: activity?.summary.working === true, failed: activity?.summary.failed === true, notifications: inbox !== undefined });
+      : this.collapsedTopDrawerKeys.has(key) || !topDrawerStartsOpen();
     const toggleLabel = collapsed ? "Show session activity and notifications" : "Hide session activity and notifications";
     const notificationCount = inbox === undefined ? 0 : notificationInboxTotalCount(inbox);
     return html`
@@ -1364,9 +1364,6 @@ export class ChatView extends LitElement {
     if (this.activity?.phase === "error") return "error";
     if (state === "idle" || state === "undefined") {
       if (isWaitingForUser(this.status)) return "asking";
-      // A run that stopped after a tool call, owing a reply, is not the same
-      // thing as a run that finished; showing both as "idle" hid the failure.
-      if (turnEndedUnanswered(this.messages)) return "stalled";
       return "idle";
     }
     if (isWaitingForUser(this.status)) return "asking";
@@ -1374,7 +1371,6 @@ export class ChatView extends LitElement {
   }
 
   private activityText(state: string): string {
-    if (this.activityCategory(state) === "stalled") return "ended without a reply";
     const activity = this.activity;
     if (activity === undefined) return state;
     if (state !== "idle" && activity.phase === "idle") return state;
@@ -2290,8 +2286,18 @@ export function backgroundWorkLabel(activity: { rows: readonly { status: string 
   return running === 1 ? "idle · 1 background run" : `idle · ${String(running)} background runs`;
 }
 
-export function topDrawerStartsOpen(attention: { working: boolean; failed: boolean; notifications: boolean }): boolean {
-  return attention.working || attention.failed || attention.notifications;
+/**
+ * The drawer starts shut, whatever is happening.
+ *
+ * It used to open itself whenever something was running, had failed, or a
+ * notification had arrived - which on a busy session is most of the time. That
+ * took a fifth of a phone screen from the conversation to report things the
+ * collapsed strip already summarises, and the reader had to close it again on
+ * every visit. Attention belongs in the strip; taking the screen belongs to
+ * the reader.
+ */
+export function topDrawerStartsOpen(): boolean {
+  return false;
 }
 
 /** What the drawer renders for the activity section, derived once. */

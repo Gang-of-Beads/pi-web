@@ -298,7 +298,10 @@ describe("ChatView session drawer wiring", () => {
     const rendered = renderTopDrawer(view);
     if (rendered === null) throw new Error("expected a session drawer");
 
+    // The drawer starts folded now, so the first click opens it; the second is
+    // the one that records a deliberate collapse.
     templateEventHandlerAfterMarker(rendered, "notification-toggle")(new Event("click"));
+    templateEventHandlerAfterMarker(renderTopDrawer(view) ?? rendered, "notification-toggle")(new Event("click"));
 
     const collapsedTargetKeys: unknown = Reflect.get(view, "collapsedTopDrawerKeys");
     if (!(collapsedTargetKeys instanceof Set)) throw new Error("Expected collapsed notification target keys");

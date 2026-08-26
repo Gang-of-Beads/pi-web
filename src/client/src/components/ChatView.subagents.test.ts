@@ -87,19 +87,21 @@ describe("subagents strip", () => {
   it("folds the drawer away to its header and unfolds it again", async () => {
     const { view, host } = await mount(SUBAGENTS);
 
+    // The drawer starts folded now, whatever is running; the header carries
+    // the report until the reader asks for the body.
+    expect(host.querySelector(".drawer-toggle")?.getAttribute("aria-expanded")).toBe("false");
+    expect(host.querySelector<HTMLElement>(".drawer-body")?.hidden).toBe(true);
+    expect(host.textContent).toContain("1 running");
+
+    host.querySelector<HTMLButtonElement>(".drawer-toggle")?.click();
+    await view.updateComplete;
     expect(host.querySelector(".drawer-toggle")?.getAttribute("aria-expanded")).toBe("true");
     expect(host.querySelector<HTMLElement>(".drawer-body")?.hidden).toBe(false);
 
     host.querySelector<HTMLButtonElement>(".drawer-toggle")?.click();
     await view.updateComplete;
-    expect(host.querySelector(".drawer-toggle")?.getAttribute("aria-expanded")).toBe("false");
+    // Back where it started: folded.
     expect(host.querySelector<HTMLElement>(".drawer-body")?.hidden).toBe(true);
-    // Folded, the header still reports what is running.
-    expect(host.textContent).toContain("1 running");
-
-    host.querySelector<HTMLButtonElement>(".drawer-toggle")?.click();
-    await view.updateComplete;
-    expect(host.querySelector<HTMLElement>(".drawer-body")?.hidden).toBe(false);
   });
 });
 
@@ -107,14 +109,9 @@ describe("topDrawerStartsOpen", () => {
   // The complaint this answers: two finished background tasks covered a third
   // of a phone screen and could not be closed.
   it("stays folded when everything is finished", () => {
-    expect(topDrawerStartsOpen({ working: false, failed: false, notifications: false })).toBe(false);
+    expect(topDrawerStartsOpen()).toBe(false);
   });
 
-  it("opens itself only for work in flight, failures, or notifications", () => {
-    expect(topDrawerStartsOpen({ working: true, failed: false, notifications: false })).toBe(true);
-    expect(topDrawerStartsOpen({ working: false, failed: true, notifications: false })).toBe(true);
-    expect(topDrawerStartsOpen({ working: false, failed: false, notifications: true })).toBe(true);
-  });
 });
 
 describe("selectedTopDrawerTab", () => {
@@ -480,5 +477,19 @@ describe("the goals tab", () => {
 
   it("falls back off a goals tab that has emptied out", () => {
     expect(selectedTopDrawerTab({ activity: true, notifications: false, goals: false }, "goals")).toBe("activity");
+  });
+});
+
+describe("the drawer opens only when asked", () => {
+  /**
+   * The drawer opened itself whenever something was running, had failed, or a
+   * notification had arrived - which on a busy session is most of the time. It
+   * took a fifth of a phone screen from the conversation to report things the
+   * collapsed strip already summarises, and the reader had to close it again
+   * on every visit. Attention belongs in the strip; taking the screen belongs
+   * to the reader.
+   */
+  it("never opens itself, whatever is happening", () => {
+    expect(topDrawerStartsOpen()).toBe(false);
   });
 });
