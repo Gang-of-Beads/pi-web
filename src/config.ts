@@ -256,6 +256,7 @@ function piWebConfigRecord(config: PiWebConfig): Record<string, unknown> {
     ...(config.askUser !== undefined ? { askUser: config.askUser } : {}),
     ...(config.environmentFacts !== undefined ? { environmentFacts: config.environmentFacts } : {}),
     ...(config.speechToText !== undefined ? { speechToText: config.speechToText } : {}),
+    ...(config.azureSpeech !== undefined ? { azureSpeech: config.azureSpeech } : {}),
     ...(config.agent !== undefined ? { agent: config.agent } : {}),
   };
 }
@@ -279,6 +280,25 @@ function parseSpeechToTextConfig(value: unknown, path: string): NonNullable<PiWe
     ...(model === undefined ? {} : { model: parseString(model, "speechToText.model", path) }),
     ...(language === undefined ? {} : { language: parseString(language, "speechToText.language", path) }),
     ...(streaming === undefined ? {} : { streaming: parseSpeechStreamingConfig(streaming, path) }),
+  };
+}
+
+/**
+ * A credential with no region could not have a token issued against it, and a
+ * token is only accepted by the host that issued it, so an empty region is
+ * rejected rather than stored.
+ */
+function parseAzureSpeechConfig(value: unknown, path: string): NonNullable<PiWebConfig["azureSpeech"]> {
+  if (!isRecord(value)) throw new Error(`PI WEB config azureSpeech must be an object: ${path}`);
+  const region = parseString(value["region"], "azureSpeech.region", path);
+  if (region.trim() === "") throw new Error(`PI WEB config azureSpeech.region must not be empty: ${path}`);
+  const key = parseString(value["key"], "azureSpeech.key", path);
+  if (key.trim() === "") throw new Error(`PI WEB config azureSpeech.key must not be empty: ${path}`);
+  const resource = value["resource"];
+  return {
+    region,
+    key,
+    ...(resource === undefined ? {} : { resource: parseString(resource, "azureSpeech.resource", path) }),
   };
 }
 
@@ -326,6 +346,7 @@ function parsePiWebConfig(value: Record<string, unknown>, path: string): PiWebCo
     ...(value["environmentFacts"] !== undefined ? { environmentFacts: parseBooleanKey(value["environmentFacts"], "environmentFacts", path) } : {}),
     ...(value["extensionDialogsTimeoutMs"] !== undefined ? { extensionDialogsTimeoutMs: parseExtensionDialogsTimeoutMs(value["extensionDialogsTimeoutMs"], path) } : {}),
     ...(value["speechToText"] !== undefined ? { speechToText: parseSpeechToTextConfig(value["speechToText"], path) } : {}),
+    ...(value["azureSpeech"] !== undefined ? { azureSpeech: parseAzureSpeechConfig(value["azureSpeech"], path) } : {}),
     ...(value["agent"] !== undefined ? { agent: parseAgentConfig(value["agent"], path) } : {}),
   };
 }

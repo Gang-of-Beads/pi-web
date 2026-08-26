@@ -19,6 +19,7 @@ import { registerWorkspaceExplorerRoutes } from "./workspaceExplorerRoutes.js";
 import { registerProjectTrustRoutes } from "./projectTrustRoutes.js";
 import { registerTerminalProxyRoutes } from "./terminalProxyRoutes.js";
 import { registerWorkspaceDeletionRoutes } from "./workspaces/workspaceDeletionRoutes.js";
+import { registerSpeechRoutes } from "./speechRoutes.js";
 import { createFilePiWebConfigService, registerConfigRoutes, registerLocalMachineConfigRoutes, type PiWebConfigService } from "./configRoutes.js";
 import { PiWebPluginService } from "./piWebPluginService.js";
 import { createActiveProfilePiPackageService, type PiPackageService } from "./piPackageService.js";
@@ -227,6 +228,9 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
   const invalidatingConfigService = invalidatePiWebStatusOnWrite(configService, piWebStatusCache);
   registerConfigRoutes(app, invalidatingConfigService);
   registerLocalMachineConfigRoutes(app, invalidatingConfigService);
+  // Live dictation connects from the browser straight to Azure; this hands it
+  // a ten-minute token so the subscription key never leaves the machine.
+  registerSpeechRoutes(app, async () => (await invalidatingConfigService.read()).effectiveConfig.azureSpeech);
 
   registerMachineRoutes(app, machines);
   registerMachinePluginProxyRoutes(app, machines);

@@ -385,3 +385,29 @@ describe("speech-to-text config survives a round trip", () => {
       .toThrow(/speechToText/iu);
   });
 });
+
+describe("azure speech credentials", () => {
+  /**
+   * The browser talks to Azure directly for latency, so it needs a credential -
+   * but not this one. The subscription key stays here and is exchanged for a
+   * ten-minute token, so the key that could be used for anything never reaches
+   * a page. Storing it means naming it in the parser: a key the parser does not
+   * name is dropped in silence, which is how dictation was unreachable for its
+   * whole life so far.
+   */
+  it("keeps the region, resource and key", () => {
+    const requestedConfig = {
+      azureSpeech: { region: "swedencentral", resource: "res-1", key: "k".repeat(84) },
+    };
+
+    const saved = savePiWebConfig(requestedConfig, testOptions());
+
+    expect(saved.config.azureSpeech).toEqual(requestedConfig.azureSpeech);
+    expect(loadPiWebConfig(testOptions()).config.azureSpeech).toEqual(requestedConfig.azureSpeech);
+  });
+
+  it("rejects a credential with no region, which no token could be issued against", () => {
+    expect(() => savePiWebConfig({ azureSpeech: { region: "", key: "k" } }, testOptions()))
+      .toThrow(/azureSpeech/iu);
+  });
+});

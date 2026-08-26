@@ -139,6 +139,23 @@ export interface PiWebPathAccessConfig {
  * `endpoint` is the whole feature switch: without it there is no dictation
  * control at all, so an install that has not opted in never records anything.
  */
+/**
+ * The Azure resource that issues short-lived tokens for live transcription.
+ *
+ * The browser connects to Azure directly for latency, so it needs a
+ * credential - but not this one. The subscription key stays on the server and
+ * is exchanged for a ten-minute token, so the key that could be used for
+ * anything never reaches a page.
+ */
+export interface PiWebAzureSpeechConfig {
+  /** Region the socket and the token endpoint both live in. */
+  region: string;
+  /** Resource name, used for the custom-subdomain token endpoint. */
+  resource?: string;
+  /** Subscription key. Never sent to a browser. */
+  key: string;
+}
+
 export interface PiWebSpeechToTextConfig {
   /** Absolute URL accepting the audio and returning a transcription. */
   endpoint: string;
@@ -210,6 +227,7 @@ export interface PiWebConfigValues {
   port?: number;
   allowedHosts?: string[] | true;
   shortcuts?: PiWebShortcutConfig;
+  azureSpeech?: PiWebAzureSpeechConfig;
   plugins?: PiWebPluginConfigMap;
   /** External filesystem roots PI WEB may expose outside a workspace. */
   pathAccess?: PiWebPathAccessConfig;
