@@ -117,6 +117,30 @@ describe("goal-panel", () => {
   });
 });
 
+describe("the goals heading", () => {
+  /**
+   * A bare numeral beside a heading states nothing: it could be a count, an
+   * index, or a badge. It also counted every record, so a workspace whose
+   * goals were all finished still advertised a number as if work were
+   * outstanding.
+   */
+  it("says what it counts, and counts only unfinished goals", async () => {
+    const root = await mount([
+      goal({ id: "g1", status: "paused" }),
+      goal({ id: "g2", status: "complete" }),
+    ]);
+
+    const count = root.querySelector(".section-count");
+    expect(count?.textContent.trim()).toBe("1 open");
+  });
+
+  it("says nothing when every goal is finished", async () => {
+    const root = await mount([goal({ id: "g1", status: "complete" })]);
+
+    expect(root.querySelector(".section-count")?.textContent.trim() ?? "").toBe("");
+  });
+});
+
 describe("goal lifecycle controls", () => {
   it("offers resume for a paused goal and pause for a running one", async () => {
     const paused = await mount([goal({ status: "paused" })]);

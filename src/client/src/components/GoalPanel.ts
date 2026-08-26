@@ -55,7 +55,7 @@ export class GoalPanel extends LitElement {
       <section>
         <h2>
           Goals
-          <span class="section-count">${this.goals.length === 0 ? "" : String(this.goals.length)}</span>
+          <span class="section-count">${this.openGoalsLabel()}</span>
           <button
             class="refresh-entry"
             type="button"
@@ -68,6 +68,15 @@ export class GoalPanel extends LitElement {
         ${this.goals.length === 0 ? this.renderEmpty() : html`<div class="goal-list">${this.goals.map((goal) => this.renderGoal(goal))}</div>`}
       </section>
     `;
+  }
+
+  /**
+   * What the number beside the heading counts. Finished goals stay listed for
+   * the record, so counting them would advertise work that is over.
+   */
+  private openGoalsLabel(): string {
+    const open = this.goals.filter((goal) => !isGoalFinished(goal)).length;
+    return open === 0 ? "" : `${String(open)} open`;
   }
 
   private renderCommands(goal: GoalRecordSummary): TemplateResult | null {
@@ -214,7 +223,7 @@ export class GoalPanel extends LitElement {
 
   static override styles = [listStyles, css`
     h2 { min-height: 30px; }
-    h2 > .section-count { flex: 0 0 auto; color: var(--pi-muted); font-size: inherit; }
+    h2 > .section-count { flex: 1 1 auto; margin-inline-start: var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: 400; letter-spacing: normal; }
     .refresh-entry { flex: 0 0 auto; display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; font-size: var(--pi-text-sm); }
 
     .goal-commands { display: flex; gap: var(--pi-space-2); padding: var(--pi-space-3) var(--pi-space-4) 0; }
