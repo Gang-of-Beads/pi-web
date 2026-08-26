@@ -85,6 +85,7 @@ import "./appShell/AppRefreshControl";
 import { quickSwitcherSessionStates, renameSessionInList } from "../quickSwitcher";
 import { readPinnedSessionIds, togglePinnedSessionId, writePinnedSessionIds } from "../sessionPins";
 import { observeTransportRecovery } from "../api/transportHealth";
+import { dismissKeyboardIfRaised } from "../keyboardDismissal";
 import { errorBanner, isTransientError, TRANSIENT_ERROR_TIMEOUT_MS } from "./errorBanner";
 import { deprecatedAgentInputsBanner, deprecatedAgentInputsWarnings } from "./deprecatedAgentInputsBanner";
 import { appStyles } from "./shared";
@@ -1884,6 +1885,9 @@ export class PiWebApp extends LitElement {
   }
 
   private openQuickSwitcher(): void {
+    // The composer usually still holds focus, which leaves the on-screen
+    // keyboard covering the list this exists to show.
+    dismissKeyboardIfRaised();
     this.quickSwitcherOpen = true;
     this.pushModalLayerFrame();
     // Show what is cached, then refresh behind it. The cache was previously

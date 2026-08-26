@@ -361,3 +361,30 @@ describe("quick-switcher row actions", () => {
     expect(sessionRows(switcher).map(rowTitle)).toEqual(["stuck", "running"]);
   });
 });
+
+describe("the session list uses the width it has", () => {
+  /**
+   * The switcher listed one session per row. On a phone that is a column of
+   * wide, mostly empty cards: four fit on screen, so choosing between a dozen
+   * sessions meant scrolling a list whose every row wasted half its width.
+   */
+  it("lays sessions out as tiles that fit two across a phone", () => {
+    const sheet = String(QuickSwitcher.styles);
+    const rule = /\.rows\s*\{([^}]*)\}/u.exec(sheet)?.[1] ?? "";
+
+    expect(rule).toContain("grid-template-columns");
+    // auto-fit with a minimum keeps one column on a narrow screen and takes
+    // more as the width allows, rather than forcing two at any size.
+    expect(rule).toMatch(/auto-fit/u);
+  });
+
+  it("keeps a tile narrow enough that two fit side by side on a phone", () => {
+    const sheet = String(QuickSwitcher.styles);
+    const rule = /\.rows\s*\{([^}]*)\}/u.exec(sheet)?.[1] ?? "";
+    const minimum = /minmax\((\d+)px/u.exec(rule)?.[1];
+
+    expect(minimum).toBeDefined();
+    // A 390px phone minus padding and a gap leaves about 180px per tile.
+    expect(Number(minimum)).toBeLessThanOrEqual(170);
+  });
+});

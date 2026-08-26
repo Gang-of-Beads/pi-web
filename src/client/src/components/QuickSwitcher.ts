@@ -364,7 +364,11 @@ export class QuickSwitcher extends LitElement {
     .close { border: 0; background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); line-height: 1; padding: 0 var(--pi-space-4); cursor: pointer; }
     .body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: var(--pi-space-5); overscroll-behavior: contain; }
     h3 { margin: var(--pi-space-7) var(--pi-space-2) var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: 600; text-transform: uppercase; }
-    .rows { display: grid; gap: var(--pi-space-3); }
+    /* Tiles rather than one session per row. A phone showed four wide,
+       mostly empty cards at a time, so choosing between a dozen sessions meant
+       scrolling a list that wasted half its width on every row. auto-fit keeps
+       a single column when there is only room for one. */
+    .rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--pi-space-3); align-content: start; }
     .row { position: relative; display: grid; gap: var(--pi-space-1); width: 100%; min-height: 52px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-5) 34px var(--pi-space-5) var(--pi-space-6); text-align: left; cursor: pointer; }
     .row:hover:not(:disabled) { background: var(--pi-surface-hover); }
     .row:disabled { opacity: .55; cursor: not-allowed; }

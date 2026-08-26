@@ -228,7 +228,7 @@ export class AppContextBar extends LitElement {
             <li class="context-item">
               <button type="button" class="context-chip" title=${sessionContextTitle(this.session)} aria-label=${`Session: ${sessionLabel}. Open session selection.`} @click=${() => { this.openSessions(); }}>
                 <span class="context-kind">Session</span>
-                <span class="context-value">${sessionLabel}</span>
+                <span class="context-value session-value">${sessionLabel}</span>
               </button>
             </li>
           ` : null}
@@ -430,6 +430,11 @@ export class AppContextBar extends LitElement {
        scrolling chip strip that no longer exists. */
     .context-actions.inline { position: static; flex: 0 0 auto; }
     .context-value { min-width: 0; max-width: 42vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* The session is the one chip that answers "which of these am I looking
+       at". Machine and project repeat across every session and are recognised
+       from a few characters; a session name truncated to "pi-..." is not.
+       The row scrolls, so the extra width costs the others nothing. */
+    .context-value.session-value { max-width: min(70vw, 32ch); }
     button { cursor: pointer; }
   `;
 }
