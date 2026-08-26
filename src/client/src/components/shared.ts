@@ -784,8 +784,8 @@ export const chatStyles = css`
   .session-activity strong { color: var(--pi-purple); }
   .session-activity span, .session-activity small { color: var(--pi-muted); }
   .history-boundary small { color: var(--pi-dim); }
-  .msg-header { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-5); min-height: 22px; margin-bottom: var(--pi-space-4); }
-  .msg > .msg-header { position: sticky; top: -26px; z-index: 4; margin: -12px -12px var(--pi-space-4); padding: var(--pi-space-4) var(--pi-space-5) var(--pi-space-3); border-radius: var(--pi-radius-md) var(--pi-radius-md) 0 0; border-bottom: 1px solid color-mix(in srgb, var(--pi-border-muted) 35%, transparent); background: var(--pi-surface); box-shadow: 0 8px 18px var(--pi-shadow-soft); }
+  .msg-header { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-5); min-height: 18px; margin-bottom: var(--pi-space-3); }
+  .msg > .msg-header { position: sticky; top: -16px; z-index: 4; margin: -12px -12px var(--pi-space-3); padding: var(--pi-space-1) var(--pi-space-5); border-radius: var(--pi-radius-md) var(--pi-radius-md) 0 0; border-bottom: 1px solid color-mix(in srgb, var(--pi-border-muted) 35%, transparent); background: var(--pi-surface); box-shadow: 0 8px 18px var(--pi-shadow-soft); }
   .msg.user > .msg-header { border-bottom-color: color-mix(in srgb, var(--pi-accent-border) 35%, transparent); background: var(--pi-selection-bg); }
   .msg.assistant > .msg-header .label, .msg.tool-image-output > .msg-header .label { color: var(--pi-text-secondary); }
   .msg.user > .msg-header .label { color: var(--pi-accent); }
@@ -795,7 +795,7 @@ export const chatStyles = css`
   .group-msg > .msg-header { position: sticky; top: -26px; z-index: 4; margin: -10px 0 var(--pi-space-4); padding: var(--pi-space-4) 0 var(--pi-space-3); border-bottom: 1px solid color-mix(in srgb, var(--pi-border-muted) 35%, transparent); background: var(--pi-bg); }
   .msg-header-trailing { min-width: 0; flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: flex-end; gap: var(--pi-space-4); }
   .msg-actions { flex: 0 0 auto; display: inline-flex; gap: var(--pi-space-3); opacity: 0; transition: opacity var(--pi-motion-fast) var(--pi-ease); }
-  .msg-action { display: inline-grid; place-items: center; width: 32px; height: 32px; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); padding: 0; font: var(--pi-text-base) var(--pi-font-ui); line-height: 1; cursor: pointer; }
+  .msg-action { display: inline-grid; place-items: center; width: 24px; height: 24px; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); padding: 0; font: var(--pi-text-base) var(--pi-font-ui); line-height: 1; cursor: pointer; }
   .msg-action:hover, .msg-action:focus { color: var(--pi-text); border-color: var(--pi-accent); }
   .msg:hover > .msg-header .msg-actions, .msg:focus-within > .msg-header .msg-actions, .group-msg:hover > .msg-header .msg-actions, .group-msg:focus-within > .msg-header .msg-actions { opacity: 1; }
   .label { display: block; color: var(--pi-muted); font-size: var(--pi-text-xs); text-transform: uppercase; }
