@@ -434,6 +434,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
       <button
         type="button"
         class="subtree-toggle"
+        title=${collapsed ? "Show subagents" : "Hide subagents"}
         aria-label=${collapsed ? `Expand subagents under ${sessionLabel(row.session)}` : `Collapse subagents under ${sessionLabel(row.session)}`}
         aria-expanded=${collapsed ? "false" : "true"}
         @pointerdown=${(event: PointerEvent) => { event.stopPropagation(); }}
@@ -673,7 +674,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .pending-session-row.starting-session .activity-indicator { flex: 0 0 auto; margin: 0; }
     .action-main.selecting { padding-left: calc(32px + var(--depth, 0) * 16px); }
 .session-checkbox { position: absolute; top: 9px; left: calc(8px + var(--depth, 0) * 16px); z-index: 2; margin: 0; }
-    .subtree-toggle, .subtree-toggle.inert { position: absolute; top: 8px; left: calc(6px + var(--depth, 0) * 16px); z-index: 2; box-sizing: border-box; width: 24px; height: 24px; padding: 0; display: inline-grid; place-items: center; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: 1; }
+    .subtree-toggle, .subtree-toggle.inert { position: absolute; top: 8px; left: calc(6px + var(--depth, 0) * 16px); z-index: 2; box-sizing: border-box; width: 24px; height: 24px; padding: 0; display: inline-grid; place-items: center; border: 1px solid transparent; border-radius: var(--pi-radius-sm); background: color-mix(in srgb, var(--pi-muted) 14%, transparent); color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: 1; }
     /* Formerly the toggle floated over the row's leading text and swallowed
        taps aimed at the session name. Reserve the gutter in the padding so
        the toggle sits over empty space. */
