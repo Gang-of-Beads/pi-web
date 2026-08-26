@@ -1,5 +1,75 @@
 # @jmfederico/pi-web
 
+## 1.202608.34
+
+### Patch Changes
+
+- 83ceb5d: Draw a list row as one surface instead of two boxes glued together
+
+  A row was two separately outlined boxes butted against each other: the body
+  carried `border: 1px 1px 1px 3px` and the overflow menu carried `1px 1px 1px 0`,
+  so their shared edge stacked into a hard vertical rule and the row read as a
+  table cell rather than as one thing to click. Selection painted both boxes,
+  which is what made the seam visible in the first place.
+
+  The border, the radius, the background, the hover state and the status rail now
+  belong to the row; the parts inside it are transparent. An unselected row has no
+  outlined children at all.
+
+- 56d035e: Give the panel collapse handle a hit area you can actually hit
+
+  The control that collapses a side panel is a sliver pinned to the panel edge.
+  It declares 18px of width and renders at 14px - the flex host shrinks it to the
+  divider column - against a 24px minimum target size, with no hit area beyond
+  its own box. The handle stays as narrow as it looks, but now takes a 24px-wide
+  target so a pointer does not have to be precise about it.
+
+- a39dd21: Give every button the app's type instead of the user agent's
+
+  None of the shared button rules set a font, so buttons fell back to Chrome's
+  13.333px in the platform UI face - a size on no scale, in a face that is not
+  the app's. It reads as almost-right, which is why it survived: 13.333px only
+  looks wrong beside real 13px text.
+
+  This is the same omission that made the navigation header 56px out of buttons
+  nobody had sized, so it is fixed in the shared sheets and held there by a test
+  rather than patched per component. No button in the rendered app now falls back
+  to the user agent's type.
+
+- 4547f38: Ask one question at a time so the answer field stays above the keyboard
+
+  The question card laid every question out at once. On a phone that made it
+  taller than the screen, and the field being typed into sat below the virtual
+  keyboard: the only way to read your own answer was to dismiss the keyboard,
+  scroll to find the field, and open the keyboard again to keep editing.
+
+  Each question now gets its own step, with Back and Next between them and the
+  submit control on the last one. A single question still shows no navigation.
+  Measured on a 375x360 viewport - a phone whose height has been taken by the
+  keyboard - the card went from 509px to 354px and now fits, with no scroll
+  region of its own.
+
+- 7cb8403: Rank the actions in the sessions heading
+
+  Starting a session, deleting old ones and switching into multi-select were
+  drawn identically: same border, same background, same text colour, same weight,
+  differing only in width. Nothing said which one you normally came here to do,
+  or which one destroys something. Starting a session now carries the accent;
+  the other two are quiet until hovered, and cleanup warms to the danger colour
+  when it is.
+
+- 7cb8403: Clear a lost-connection banner as soon as anything reaches the server again
+
+  The banner a dropped connection leaves behind was withdrawn only when the
+  realtime socket reconnected. A failure raised by a request left the socket
+  untouched - a phone that slept, a tunnel that blinked, a web process
+  restarting - so nothing ever disproved the message and the only way to clear
+  it was to reload the page by hand.
+
+  Any successful request now reports that the server is reachable, and the banner
+  is withdrawn on that. A real failure is left alone: it is not a transport
+  problem and still waits to be read.
+
 ## 1.202608.33
 
 ### Patch Changes
