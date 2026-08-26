@@ -118,9 +118,17 @@ export function isVoiceCaptureActive(state: VoiceCaptureState): boolean {
  * What to tell the user. Every non-idle state says something: a microphone that
  * silently does nothing is the worst version of this feature.
  */
-export function voiceCaptureLabel(state: VoiceCaptureState): string {
+/**
+ * @param options.streaming Whether live transcription is configured. The two
+ * modes behave differently enough that a user should know which one they are
+ * speaking into - batch dictation says nothing until it is stopped, live
+ * dictation writes as it hears - and this label is the only thing that says so
+ * before they start talking. Once capture is under way the mode no longer
+ * matters, so the running states read the same either way.
+ */
+export function voiceCaptureLabel(state: VoiceCaptureState, options?: { streaming?: boolean }): string {
   switch (state.kind) {
-    case "idle": return "Dictate";
+    case "idle": return options?.streaming === true ? "Dictate live" : "Dictate";
     case "listening": return "Listening…";
     case "speaking": return "Listening…";
     case "trailing": return "Listening…";

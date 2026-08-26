@@ -108,3 +108,25 @@ describe("state reporting", () => {
     for (const state of states) expect(voiceCaptureLabel(state)).not.toBe("");
   });
 });
+
+describe("the label says which kind of dictation this is", () => {
+  /**
+   * The two modes behave differently enough that a user should know which one
+   * they are speaking into: batch dictation says nothing until it is stopped,
+   * while live dictation writes as it hears. The label is the only thing that
+   * says so before they start talking.
+   */
+  it("promises live text when streaming is configured", () => {
+    expect(voiceCaptureLabel({ kind: "idle" }, { streaming: true })).toBe("Dictate live");
+  });
+
+  it("keeps the plain label when only batch transcription is configured", () => {
+    expect(voiceCaptureLabel({ kind: "idle" }, { streaming: false })).toBe("Dictate");
+    expect(voiceCaptureLabel({ kind: "idle" })).toBe("Dictate");
+  });
+
+  it("says the same thing in both modes once it is listening", () => {
+    // Mid-capture the mode no longer matters; what matters is that it is on.
+    expect(voiceCaptureLabel({ kind: "listening" }, { streaming: true })).toBe("Listening…");
+  });
+});

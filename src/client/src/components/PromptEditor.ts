@@ -17,6 +17,7 @@ import { historyIndexStep, type HistoryDirection, loadPromptHistory, rememberPro
 import { createMobilePromptEnterMedia, readPromptEnterPreference, shouldSendPromptOnEnterShortcut, shouldUsePromptEnterShiftShortcut } from "../promptEnterBehavior";
 import { createBrowserVoiceRecorder } from "../browserVoiceRecorder";
 import { isDictationConfigured } from "../speechToText";
+import { resolveSpeechStreaming } from "../speechStreamProtocols";
 import { isVoiceCaptureActive, voiceCaptureLabel, type VoiceCaptureState } from "../voiceCapture";
 import { VoiceController } from "../voiceController";
 import type { PiWebSpeechToTextConfig } from "../../../shared/apiTypes";
@@ -424,7 +425,8 @@ export class PromptEditor extends LitElement {
    */
   private renderDictateButton(busy: boolean) {
     if (!isDictationConfigured(this.speechToText)) return null;
-    const label = voiceCaptureLabel(this.voiceState);
+    const streaming = resolveSpeechStreaming(this.speechToText.streaming).kind !== "unavailable";
+    const label = voiceCaptureLabel(this.voiceState, { streaming });
     const active = isVoiceCaptureActive(this.voiceState);
     return html`
       <button

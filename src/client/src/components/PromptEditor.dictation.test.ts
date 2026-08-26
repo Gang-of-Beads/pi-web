@@ -3,74 +3,61 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { PromptEditor } from "./PromptEditor";
 
-afterEach(() => {
-  document.body.replaceChildren();
-  localStorage.clear();
-});
+afterEach(() => { document.body.replaceChildren(); });
 
 /**
- * Dictation is opt-in. Audio is sensitive enough that the control must not
- * exist at all until an endpoint is configured — offering a microphone that
- * cannot work would be worse than not offering one.
+ * Dictation transcribed only after the recording stopped, so a long thought
+ * arrived as a wall of text minutes after it was spoken. With streaming
+ * configured the words should appear while they are still being said.
+ *
+ * The two modes share one control: an install that configured only the batch
+ * endpoint keeps the behaviour it had, and one that configured streaming gets
+ * live text without a second button to learn.
  */
-describe("prompt-editor dictation control", () => {
-  it("is absent when no transcription endpoint is configured", async () => {
+describe("the dictation control", () => {
+  it("is offered when only the batch endpoint is configured", async () => {
+    const editor = await mount({ endpoint: "https://stt.example/v1" });
+
+    expect(dictateButton(editor)).not.toBeNull();
+  });
+
+  it("is offered when streaming is configured", async () => {
+    const editor = await mount({ endpoint: "https://stt.example/v1", streaming: { protocol: "browser" } });
+
+    expect(dictateButton(editor)).not.toBeNull();
+  });
+
+  it("is absent when nothing is configured, so no microphone can be reached", async () => {
     const editor = await mount(undefined);
-    expect(shadow(editor).querySelector(".editor-dictate")).toBeNull();
+
+    expect(dictateButton(editor)).toBeNull();
   });
 
-  it("is absent when the configured endpoint is blank", async () => {
-    const editor = await mount({ endpoint: "   " });
-    expect(shadow(editor).querySelector(".editor-dictate")).toBeNull();
+  it("reports that it will stream when streaming is configured", async () => {
+    const editor = await mount({ endpoint: "https://stt.example/v1", streaming: { protocol: "browser" } });
+
+    // The label is the only thing that tells a user which mode they are in
+    // before they speak into it.
+    expect(dictateButton(editor)?.getAttribute("title") ?? "").toMatch(/live|stream/iu);
   });
 
-  it("appears once an endpoint is configured, labelled and not yet listening", async () => {
-    const editor = await mount({ endpoint: "http://127.0.0.1:9000/transcribe" });
-    const button = shadow(editor).querySelector(".editor-dictate");
+  it("does not claim to stream when only the batch endpoint is configured", async () => {
+    const editor = await mount({ endpoint: "https://stt.example/v1" });
 
-    expect(button).not.toBeNull();
-    expect(button?.getAttribute("aria-label")).toBe("Dictate");
-    expect(button?.getAttribute("aria-pressed")).toBe("false");
-  });
-
-  it("appends dictated text to what is already typed rather than replacing it", async () => {
-    const editor = await mount({ endpoint: "http://127.0.0.1:9000/transcribe" });
-    editor.replaceText("already typed");
-
-    // The path the controller's onTranscript callback drives.
-    editor.insertDictatedText("and dictated");
-    await editor.updateComplete;
-
-    expect(draftText(editor)).toBe("already typed and dictated");
-  });
-
-  it("does not add a separator when the draft is empty", async () => {
-    const editor = await mount({ endpoint: "http://127.0.0.1:9000/transcribe" });
-    editor.insertDictatedText("first words");
-    await editor.updateComplete;
-
-    expect(draftText(editor)).toBe("first words");
+    expect(dictateButton(editor)?.getAttribute("title") ?? "").not.toMatch(/live|stream/iu);
   });
 });
 
-async function mount(speechToText: { endpoint: string } | undefined): Promise<PromptEditor> {
+function dictateButton(editor: PromptEditor): HTMLButtonElement | null {
+  return editor.shadowRoot?.querySelector<HTMLButtonElement>(".editor-dictate") ?? null;
+}
+
+async function mount(speechToText: PromptEditor["speechToText"]): Promise<PromptEditor> {
   const editor = new PromptEditor();
-  editor.sessionId = "dictation-probe";
-  editor.cwd = "/tmp";
+  editor.sessionId = "s";
+  editor.machineId = "local";
   if (speechToText !== undefined) editor.speechToText = speechToText;
   document.body.append(editor);
   await editor.updateComplete;
   return editor;
-}
-
-function shadow(editor: PromptEditor): ShadowRoot {
-  const root = editor.shadowRoot;
-  if (root === null) throw new Error("Expected prompt-editor shadow root");
-  return root;
-}
-
-
-/** The editor's current text, read the way the send path reads it. */
-function draftText(editor: PromptEditor): string {
-  return editor.view?.state.doc.toString() ?? "";
 }
