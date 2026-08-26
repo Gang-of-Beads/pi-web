@@ -38,44 +38,6 @@ async function dockWith(status: SessionStatus | undefined, activity: SessionActi
   };
 }
 
-describe("a turn that ended owing a reply", () => {
-  /**
-   * A tool ran, returned, and the run stopped there: no assistant message, no
-   * error, every request a 200. The dock said "idle", which is what it says
-   * when a run finishes normally, so the only signal was that no answer had
-   * arrived. The dock is the surface that claims to say what the session is
-   * doing, so it is the one that has to tell the two apart.
-   */
-  it("does not report itself as idle", async () => {
-    const view = new ChatView();
-    view.sessionId = "s";
-    view.status = status({});
-    view.messages = [
-      { role: "assistant", parts: [{ type: "text", text: "running it" }] },
-      { role: "tool", parts: [{ type: "text", text: "done" }] },
-    ];
-    document.body.append(view);
-    await view.updateComplete;
-
-    const dock = view.renderRoot.querySelector(".activity-dock");
-    expect(dock?.getAttribute("class") ?? "").toContain("stalled");
-    expect(view.renderRoot.querySelector(".activity-text")?.textContent ?? "").toMatch(/without a reply/iu);
-  });
-
-  it("still reports idle once the assistant has answered", async () => {
-    const view = new ChatView();
-    view.sessionId = "s";
-    view.status = status({});
-    view.messages = [
-      { role: "tool", parts: [{ type: "text", text: "done" }] },
-      { role: "assistant", parts: [{ type: "text", text: "here is what it said" }] },
-    ];
-    document.body.append(view);
-    await view.updateComplete;
-
-    expect(view.renderRoot.querySelector(".activity-dock")?.getAttribute("class") ?? "").toContain("idle");
-  });
-});
 
 describe("ChatView activity dock states", () => {
   it("shows three bouncing dots while streaming", async () => {

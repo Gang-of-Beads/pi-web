@@ -64,16 +64,12 @@ export function hasStatusUnread(flags: StatusFlags | undefined): boolean {
  * to work). Unread still wins as a separate attention ring, exactly like the
  * work indicators above.
  */
-export type SessionStateBadgeKind = "working" | "idle" | "asking" | "stalled" | "error";
+export type SessionStateBadgeKind = "working" | "idle" | "asking" | "error";
 
 const SESSION_STATE_LABELS: Record<SessionStateBadgeKind, string> = {
   working: "Session is working",
   idle: "Session is done",
   asking: "Waiting for your answer",
-  // Not "stalled": the reader needs to know a reply is owed, not to learn a
-  // vocabulary. The run ended after a tool call without the model answering,
-  // which is a thing to act on rather than a state to recognise.
-  stalled: "Turn ended without a reply - send again to continue",
   error: "Session hit an error",
 };
 

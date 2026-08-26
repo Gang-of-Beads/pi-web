@@ -21,9 +21,6 @@ export const sessionStateBadgeStyles = css`
   .session-state.idle { background: var(--pi-dim); animation: none; }
   .session-state.idle.unread { background: var(--pi-success); }
   .session-state.asking { background: var(--pi-warning); animation: none; }
-  /* Hollow rather than filled: the run did not fail, it stopped short. A
-     filled dot would read as another finished state. */
-  .session-state.stalled { background: transparent; border: 1.5px solid var(--pi-warning); animation: none; }
   .session-state.error { background: var(--pi-danger); animation: none; }
   .session-state.unread { background: var(--pi-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--pi-accent) 22%, transparent); }
   .state-dots { display: inline-flex; align-items: center; gap: 2px; }

@@ -82,29 +82,6 @@ describe("statusActivityKind", () => {
   });
 });
 
-describe("a stalled session", () => {
-  /**
-   * "idle" is what a finished session shows. A turn that ended owing a reply
-   * looked exactly the same, so the badge could not tell "done" from "the run
-   * vanished after a tool call" - the one case where the user has to act.
-   */
-  it("does not look like a session that finished", () => {
-    const stalled = renderInto(renderSessionStateBadge("stalled"));
-    const idle = renderInto(renderSessionStateBadge("idle"));
-
-    const stalledEl = stalled.querySelector(".session-state");
-    expect(stalledEl?.className).toContain("stalled");
-    expect(stalledEl?.className).not.toBe(idle.querySelector(".session-state")?.className);
-  });
-
-  it("says what happened rather than naming a state", () => {
-    const container = renderInto(renderSessionStateBadge("stalled"));
-
-    const label = container.querySelector(".session-state")?.getAttribute("aria-label") ?? "";
-    expect(label).toMatch(/without/iu);
-    expect(label).not.toMatch(/^stalled$/iu);
-  });
-});
 
 function renderInto(template: TemplateResult | undefined): HTMLElement {
   const container = document.createElement("div");
