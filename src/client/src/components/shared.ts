@@ -510,7 +510,7 @@ export const chatStyles = css`
      window give each a sliver and neither is usable. */
   .top-drawer { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; box-sizing: border-box; background: color-mix(in srgb, var(--pi-purple) 7%, var(--pi-bg)); border-bottom: 1px solid var(--pi-purple-border); }
   .top-drawer.collapsed { flex: 0 0 auto; }
-  .drawer-header { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: 36px; padding: var(--pi-space-2) var(--pi-space-4); }
+  .drawer-header { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: var(--pi-space-2) var(--pi-space-4); }
   /* The two sections are told apart by colour, not only by label: activity is
      violet (work this chat started), notifications keep the app's warning
      palette (something happened to you). */

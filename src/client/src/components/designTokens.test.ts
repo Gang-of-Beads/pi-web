@@ -116,3 +116,34 @@ describe("accessibility floors", () => {
     }
   });
 });
+
+/**
+ * Panel headers are a role, not a per-component decision.
+ *
+ * The navigation rail and the chat drawer sit either side of one vertical
+ * divider, so their headers share a horizontal rule only while they agree on a
+ * height. They did not: the rail was 56px because its buttons were never sized
+ * and inherited the user agent's 31px, while the drawer had a hand-written
+ * 36px. Both now read the same token, and this asserts they still do rather
+ * than that they happen to compute equal today.
+ */
+describe("panel headers share one height", () => {
+  const navigationPanel = readFileSync(
+    join(process.cwd(), "src/client/src/components/appShell/AppNavigationPanel.ts"),
+    "utf8",
+  );
+
+  it("publishes the panel-header scale on :root", () => {
+    expect(indexHtml).toContain("--pi-panel-header-height:");
+    expect(indexHtml).toContain("--pi-panel-header-control-height:");
+  });
+
+  it("sizes the navigation header and the drawer header from that token", () => {
+    expect(navigationPanel).toContain("min-height: var(--pi-panel-header-height)");
+    expect(String(chatStyles)).toContain("min-height: var(--pi-panel-header-height)");
+  });
+
+  it("sizes the navigation header controls from the token rather than the user agent", () => {
+    expect(navigationPanel).toContain("height: var(--pi-panel-header-control-height)");
+  });
+});

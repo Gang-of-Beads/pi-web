@@ -397,7 +397,8 @@ export class AppNavigationPanel extends LitElement {
 
     :host { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
     :host([compact]) { flex: 1 1 auto; }
-    header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border-bottom: 1px solid var(--pi-border); }
+    header { flex: 0 0 auto; box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: 0 var(--pi-space-6); border-bottom: 1px solid var(--pi-border); }
+    header button { box-sizing: border-box; height: var(--pi-panel-header-control-height); padding: 0 var(--pi-space-4); font-size: var(--pi-text-xs); }
     .compact-shell { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
     header strong { flex: 0 0 auto; }
     machine-switcher { flex: 1 1 auto; min-width: 0; }
