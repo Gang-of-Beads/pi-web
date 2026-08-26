@@ -452,3 +452,33 @@ describe("a run says what it is running on", () => {
     expect(row?.modelLabel).toBeUndefined();
   });
 });
+
+describe("the goals tab", () => {
+  /**
+   * On a phone the navigation panel is not on screen, and the goals panel lives
+   * inside it, so a running goal was invisible on the device most likely to be
+   * asking "what is this session even doing". The drawer above the transcript
+   * already carries the session's other cross-cutting context.
+   *
+   * It is offered only when the workspace has a goal: an empty tab is a tab
+   * that teaches the reader to ignore the row it sits in.
+   */
+  it("is available only when the workspace has goals", () => {
+    expect(selectedTopDrawerTab({ activity: false, notifications: false, goals: true }, undefined)).toBe("goals");
+    expect(selectedTopDrawerTab({ activity: false, notifications: false, goals: false }, undefined)).not.toBe("goals");
+  });
+
+  it("is kept when it is the tab the reader chose", () => {
+    expect(selectedTopDrawerTab({ activity: true, notifications: true, goals: true }, "goals")).toBe("goals");
+  });
+
+  it("does not steal the drawer from activity or notifications by default", () => {
+    // Goals change slowly; work in flight is what a reader opens the drawer for.
+    expect(selectedTopDrawerTab({ activity: true, notifications: false, goals: true }, undefined)).toBe("activity");
+    expect(selectedTopDrawerTab({ activity: false, notifications: true, goals: true }, undefined)).toBe("notifications");
+  });
+
+  it("falls back off a goals tab that has emptied out", () => {
+    expect(selectedTopDrawerTab({ activity: true, notifications: false, goals: false }, "goals")).toBe("activity");
+  });
+});

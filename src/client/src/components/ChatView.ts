@@ -25,6 +25,8 @@ import {
   type SessionNotificationTarget,
 } from "../sessionNotifications";
 import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
+import "./GoalPanel";
+import type { GoalRecordSummary } from "../api";
 import { describeRunModel } from "../modelIdentity";
 import { turnEndedUnanswered, isWaitingForUser } from "../sessionWaiting";
 import type { SessionBackgroundTaskInfo, SessionNotification, SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
@@ -267,6 +269,13 @@ export class ChatView extends LitElement {
   /** Exact chats the reader explicitly unfolded, which outranks the default. */
   @state() private expandedTopDrawerKeys: ReadonlySet<string> = new Set();
   /** Section the reader last chose; ignored when that section has nothing. */
+  /**
+   * The workspace's goals. On a phone the navigation panel that normally shows
+   * them is not on screen at all, so a running goal was invisible on the device
+   * most likely to be asking what the session is working towards.
+   */
+  @property({ attribute: false }) goals: GoalRecordSummary[] = [];
+  @property({ attribute: false }) onRunGoalCommand?: (goal: GoalRecordSummary, command: string) => void | Promise<void>;
   @state() private topDrawerTab: TopDrawerTab | undefined;
   /** Which kinds of activity to list; "all" until the reader narrows it. */
   @state() private activityFilter: ActivityFilter = "all";
@@ -565,8 +574,11 @@ export class ChatView extends LitElement {
   private renderTopDrawer(): TemplateResult | null {
     const activity = this.activityPanelState();
     const inbox = this.visibleNotificationInbox();
-    if (activity === undefined && inbox === undefined) return null;
-    const tab = selectedTopDrawerTab({ activity: activity !== undefined, notifications: inbox !== undefined }, this.topDrawerTab);
+    // Goals count as a reason to have a drawer: on a phone this is the only
+    // place they appear, so gating the drawer on the other two sections hid
+    // them exactly when nothing else was running.
+    if (activity === undefined && inbox === undefined && this.goals.length === 0) return null;
+    const tab = selectedTopDrawerTab({ activity: activity !== undefined, notifications: inbox !== undefined, goals: this.goals.length > 0 }, this.topDrawerTab);
     const key = this.topDrawerKey();
     const collapsed = this.expandedTopDrawerKeys.has(key)
       ? false
@@ -612,6 +624,20 @@ export class ChatView extends LitElement {
                 <span class="drawer-tab-label">${notificationTrayHeading(inbox)}</span>
               </button>
             `}
+            ${this.goals.length === 0 ? null : html`
+              <button
+                type="button"
+                role="tab"
+                id="drawer-tab-goals"
+                class=${`drawer-tab drawer-tab-goals${tab === "goals" ? " selected" : ""}`}
+                aria-selected=${String(tab === "goals")}
+                tabindex=${tab === "goals" ? "0" : "-1"}
+                aria-controls="session-goal-list"
+                @click=${() => { this.selectTopDrawerTab("goals", collapsed); }}
+              >
+                <span class="drawer-tab-label">Goals ${this.goals.length}</span>
+              </button>
+            `}
           </div>
           </div>
           ${collapsed && activity !== undefined && activity.summary.label !== ""
@@ -642,6 +668,15 @@ export class ChatView extends LitElement {
         <div class="drawer-body" ?hidden=${collapsed}>
           ${tab === "activity" && activity !== undefined ? this.renderActivityPanel(activity) : null}
           ${tab === "notifications" && inbox !== undefined ? this.renderNotificationPanel(inbox) : null}
+          ${tab === "goals" && this.goals.length > 0 ? html`
+            <div class="goal-drawer-panel" id="session-goal-list" role="tabpanel" aria-labelledby="drawer-tab-goals">
+              <goal-panel
+                .goals=${this.goals}
+                ?canRunCommands=${true}
+                .onRunCommand=${(goal: GoalRecordSummary, command: string) => this.onRunGoalCommand?.(goal, command)}
+              ></goal-panel>
+            </div>
+          ` : null}
         </div>
       </section>
     `;
@@ -2132,7 +2167,7 @@ export function backgroundTaskRows(tasks: readonly SessionBackgroundTaskInfo[]):
   });
 }
 
-export type TopDrawerTab = "activity" | "notifications";
+export type TopDrawerTab = "activity" | "notifications" | "goals";
 
 /** One row of the activity list, tagged with the kind its filter chip names. */
 export type ActivityListEntry =
@@ -2275,10 +2310,15 @@ export interface ActivityPanelState {
  * has something in it; otherwise the drawer falls back to whichever section
  * exists, so a section that empties out cannot leave a blank drawer behind.
  */
-export function selectedTopDrawerTab(available: { activity: boolean; notifications: boolean }, preferred: TopDrawerTab | undefined): TopDrawerTab {
+export function selectedTopDrawerTab(available: { activity: boolean; notifications: boolean; goals?: boolean }, preferred: TopDrawerTab | undefined): TopDrawerTab {
   if (preferred === "activity" && available.activity) return "activity";
   if (preferred === "notifications" && available.notifications) return "notifications";
-  return available.notifications ? "notifications" : "activity";
+  if (preferred === "goals" && available.goals === true) return "goals";
+  if (available.notifications) return "notifications";
+  if (available.activity) return "activity";
+  // Goals change slowly, so they never take the drawer from work in flight -
+  // but they are better than handing back a tab that has nothing behind it.
+  return available.goals === true ? "goals" : "activity";
 }
 
 /**
