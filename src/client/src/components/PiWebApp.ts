@@ -84,6 +84,7 @@ import "./appShell/AppPanelEdgeControl";
 import "./appShell/AppRefreshControl";
 import { quickSwitcherSessionStates, renameSessionInList } from "../quickSwitcher";
 import { readPinnedSessionIds, togglePinnedSessionId, writePinnedSessionIds } from "../sessionPins";
+import { observeTransportRecovery } from "../api/transportHealth";
 import { errorBanner, isTransientError, TRANSIENT_ERROR_TIMEOUT_MS } from "./errorBanner";
 import { deprecatedAgentInputsBanner, deprecatedAgentInputsWarnings } from "./deprecatedAgentInputsBanner";
 import { appStyles } from "./shared";
@@ -681,6 +682,10 @@ export class PiWebApp extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
+    // Recovery is noticed by whichever channel succeeds next, which is often
+    // not the one that failed; the realtime socket alone was leaving a banner
+    // on screen until the page was reloaded by hand.
+    observeTransportRecovery(() => { this.clearTransientError(); });
     this.unreadConnected = true;
     window.visualViewport?.addEventListener("resize", this.onVisualViewportChange);
     window.visualViewport?.addEventListener("scroll", this.onVisualViewportChange);
@@ -705,7 +710,7 @@ export class PiWebApp extends LitElement {
     void this.loadProjectsAndRestoreRoute().finally(() => { this.schedulePiWebStatusRefresh(); });
   }
 
-  /** Withdraw a transport complaint that the reconnect has just disproved. */
+  /** Withdraw a transport complaint that a successful exchange has disproved. */
   private clearTransientError(): void {
     if (this.state.error === "" || !isTransientError(this.state.error)) return;
     if (this.transientErrorTimer !== undefined) {
@@ -736,6 +741,7 @@ export class PiWebApp extends LitElement {
   }
 
   override disconnectedCallback(): void {
+    observeTransportRecovery(undefined);
     if (this.transientErrorTimer !== undefined) window.clearTimeout(this.transientErrorTimer);
     window.visualViewport?.removeEventListener("resize", this.onVisualViewportChange);
     window.visualViewport?.removeEventListener("scroll", this.onVisualViewportChange);

@@ -650,7 +650,17 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .bulk-select-entry { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; font-size: var(--pi-text-sm); line-height: 1; text-transform: none; }
     .start-session-button { box-sizing: border-box; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: var(--pi-space-2); min-width: 30px; height: 30px; padding: 0 var(--pi-space-5); }
     .section-add-label { font-size: var(--pi-text-xs); white-space: nowrap; }
-    .cleanup-entry { flex: 0 0 auto; padding: var(--pi-space-3) var(--pi-space-4); font-size: var(--pi-text-xs); text-transform: none; }
+    /* Quiet by default. Three outlined buttons of equal weight said nothing
+       about which one starts work and which one deletes it; a secondary action
+       states itself with text and earns its outline on hover. */
+    .cleanup-entry { flex: 0 0 auto; padding: var(--pi-space-3) var(--pi-space-4); font-size: var(--pi-text-xs); text-transform: none; border: 0; background: transparent; color: var(--pi-muted); }
+    .cleanup-entry:hover:not(:disabled), .cleanup-entry:focus-visible { color: var(--pi-danger, var(--pi-text)); background: var(--pi-surface-hover); }
+    .bulk-select-entry { border: 0; background: transparent; color: var(--pi-muted); }
+    .bulk-select-entry:hover:not(:disabled), .bulk-select-entry:focus-visible { color: var(--pi-text); background: var(--pi-surface-hover); }
+    /* The one action this panel exists for. */
+    .start-session-button { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-accent-contrast, #fff); font-weight: 600; }
+    .start-session-button:hover:not(:disabled), .start-session-button:focus-visible { background: color-mix(in srgb, var(--pi-accent) 88%, black); }
+    .start-session-button:disabled { border-color: var(--pi-border); background: var(--pi-surface); color: var(--pi-muted); font-weight: 400; }
     .bulk-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pi-space-3); margin: 0 0 var(--pi-space-3); }
     .bulk-row button { padding: var(--pi-space-3) var(--pi-space-4); font-size: var(--pi-text-xs); white-space: nowrap; }
     .bulk-actions { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-3); margin-left: auto; }

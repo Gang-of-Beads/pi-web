@@ -1,4 +1,5 @@
 import { resolveAppUrl } from "../appUrl";
+import { reportTransportReachable } from "./transportHealth";
 
 export class HttpError extends Error {
   constructor(message: string, readonly status: number) {
@@ -20,6 +21,9 @@ export async function request<T>(url: string, parse: (value: unknown) => T, init
     throw new HttpError(errorMessage(body) ?? response.statusText, response.status);
   }
   const body: unknown = await response.json();
+  // The server answered, so whatever transport complaint is on screen is now
+  // describing the past.
+  reportTransportReachable();
   return parse(body);
 }
 
