@@ -25,7 +25,7 @@ import {
   type SessionNotificationTarget,
 } from "../sessionNotifications";
 import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
-import { isWaitingForUser } from "../sessionWaiting";
+import { turnEndedUnanswered, isWaitingForUser } from "../sessionWaiting";
 import type { SessionBackgroundTaskInfo, SessionNotification, SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
 import type { ChatLine, ChatPart, MessageDelivery } from "./shared";
 import { chatStyles, renderSessionWarningIcon } from "./shared";
@@ -1325,6 +1325,9 @@ export class ChatView extends LitElement {
     if (this.activity?.phase === "error") return "error";
     if (state === "idle" || state === "undefined") {
       if (isWaitingForUser(this.status)) return "asking";
+      // A run that stopped after a tool call, owing a reply, is not the same
+      // thing as a run that finished; showing both as "idle" hid the failure.
+      if (turnEndedUnanswered(this.messages)) return "stalled";
       return "idle";
     }
     if (isWaitingForUser(this.status)) return "asking";
@@ -1332,6 +1335,7 @@ export class ChatView extends LitElement {
   }
 
   private activityText(state: string): string {
+    if (this.activityCategory(state) === "stalled") return "ended without a reply";
     const activity = this.activity;
     if (activity === undefined) return state;
     if (state !== "idle" && activity.phase === "idle") return state;
