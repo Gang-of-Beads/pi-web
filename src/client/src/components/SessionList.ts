@@ -363,7 +363,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     const canDeleteTransient = isTransientNewSessionInfo(session, status);
     return html`
       <div
-        class="action-row ${this.selected?.id === session.id ? "selected" : ""} ${bulkSelected ? "bulk-selected" : ""} ${session.archived === true ? "archived" : ""} ${selectionActive ? "selecting" : ""} ${unread ? "unread" : ""} ${hasSubagents ? "has-subtree-toggle" : ""}"
+        class="action-row ${this.selected?.id === session.id ? "selected" : ""} ${bulkSelected ? "bulk-selected" : ""} ${session.archived === true ? "archived" : ""} ${selectionActive ? "selecting" : ""} ${unread ? "unread" : ""} ${hasSubagents ? "has-subtree-toggle" : ""} ${row.depth > 0 ? "is-child" : ""}"
         style=${`--depth:${String(cappedDepth)}`}
         title=${session.path}
         @keydown=${(event: KeyboardEvent) => { this.handleSessionKeydown(event, session, scope); }}
@@ -678,6 +678,14 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
        taps aimed at the session name. Reserve the gutter in the padding so
        the toggle sits over empty space. */
     .action-row.has-subtree-toggle .action-main { padding-left: calc(38px + var(--depth, 0) * 16px); }
+    /* A child is a detail of the row above it, so it is drawn lighter rather
+       than smaller: the type size stays on the scale and the hierarchy is
+       carried by weight, colour and surface. Indent alone could not do it -
+       a parent reserves a gutter for its disclosure control, which pushed the
+       child's name further left than its parent's. */
+    .action-row.is-child .action-name { color: var(--pi-muted); font-weight: 400; }
+    .action-row.is-child .action-main { background: transparent; border-color: var(--pi-border-muted); }
+    .action-row.is-child .action-main { padding-left: calc(38px + var(--depth, 0) * 16px); }
     .subtree-toggle { cursor: pointer; }
     .subtree-toggle:hover { border-color: var(--pi-border-strong, var(--pi-accent)); color: var(--pi-text); }
     .subtree-toggle.inert { visibility: hidden; }
