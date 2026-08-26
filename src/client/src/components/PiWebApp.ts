@@ -87,6 +87,7 @@ import { readPinnedSessionIds, togglePinnedSessionId, writePinnedSessionIds } fr
 import { errorBanner, isTransientError, TRANSIENT_ERROR_TIMEOUT_MS } from "./errorBanner";
 import { deprecatedAgentInputsBanner, deprecatedAgentInputsWarnings } from "./deprecatedAgentInputsBanner";
 import { appStyles } from "./shared";
+import { documentTitleFor } from "../contextName";
 
 
 const PI_WEB_STATUS_REFRESH_MS = 15 * 60 * 1000;
@@ -437,6 +438,23 @@ export class PiWebApp extends LitElement {
     this.committedChatIdentity = selectedChatIdentity(this.state);
     this.syncSelectedSessionReadState();
     this.syncFleetOnSettingsSection();
+    this.syncDocumentTitle();
+  }
+
+  /**
+   * The tab says which context is focused. A reader with several PI WEB tabs
+   * open cannot tell them apart from the product name they all share.
+   */
+  private syncDocumentTitle(): void {
+    const state = this.state;
+    const title = documentTitleFor({
+      mainView: state.mainView,
+      selectedMachine: state.selectedMachine,
+      selectedProject: state.selectedProject,
+      selectedWorkspace: state.selectedWorkspace,
+      selectedSession: state.selectedSession,
+    });
+    if (document.title !== title) document.title = title;
   }
 
   /**

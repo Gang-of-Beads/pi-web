@@ -1,4 +1,5 @@
 import { LitElement, css, html } from "lit";
+import { focusedContextName } from "../../contextName";
 import { customElement, property, query } from "lit/decorators.js";
 import type { GoalRecordSummary, Machine, MachineHealth, Project, SessionActivity, SessionInfo, SessionStatus, Workspace } from "../../api";
 import type { MachineStatusSnapshot } from "../../../../shared/machineStatus";
@@ -102,6 +103,21 @@ export class AppNavigationPanel extends LitElement {
     }
   }
 
+  /**
+   * The panel header names the focused context. "PI WEB" is what the reader
+   * already knows: the app is on screen. Which machine, project, workspace or
+   * session is in focus is what the header can add.
+   */
+  private headerName(): string {
+    return focusedContextName({
+      mainView: this.selectedSession === undefined ? "navigation" : "chat",
+      selectedMachine: this.selectedMachine,
+      selectedProject: this.selectedProject,
+      selectedWorkspace: this.selectedWorkspace,
+      selectedSession: this.selectedSession,
+    });
+  }
+
   override render() {
     if (this.compact) return this.renderCompact();
     // One body at a time: the context row above says where you are and opens
@@ -110,7 +126,7 @@ export class AppNavigationPanel extends LitElement {
     const visible = this.compactVisibleSection();
     return html`
       <header>
-        <strong>PI WEB</strong>
+        <strong title=${this.headerName()}>${this.headerName()}</strong>
         <div class="header-actions">
           ${this.refreshControl}
           <button title="Open settings" aria-label="Open settings" @click=${() => { this.onOpenSettings?.(); }}>⚙</button>
