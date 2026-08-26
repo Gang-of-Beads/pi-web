@@ -1,5 +1,37 @@
 # @jmfederico/pi-web
 
+## 1.202608.37
+
+### Patch Changes
+
+- 75c321b: Hand the browser a short-lived token for live transcription
+
+  Live transcription connects from the page straight to Azure, because putting
+  this server in the audio path would add a hop to every syllable for nothing.
+  That means the page needs a credential - but not the subscription key, which
+  could be used for anything and would be readable by anyone who opened the
+  developer tools.
+
+  The key now stays on the server and is exchanged for a ten-minute token. The
+  token endpoint is derived from the same config the socket url is, so the two
+  cannot drift apart, and an upstream refusal is reported by status without
+  forwarding the body of an authentication error to a browser.
+
+- 4008570: Wire live dictation from the microphone to the service
+
+  The last piece: token, socket, microphone and text, sequenced. Audio goes from
+  the page straight to the service, because a relay would add a hop to every
+  syllable for nothing; the page never holds the account key, only a ten-minute
+  token.
+
+  Azure's socket does not carry bare JSON - each message is a text frame of
+  headers, a blank line, and a body - so a decoder that assumed JSON would report
+  a broken socket for a service that was working. The order is asserted too:
+  asking for the microphone before there is anywhere to send audio makes a
+  browser request permission it may never use, and stopping keeps only settled
+  text, because the half-formed guess on screen is not something the speaker
+  said.
+
 ## 1.202608.36
 
 ### Patch Changes
