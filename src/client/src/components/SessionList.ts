@@ -144,7 +144,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     const allCurrentRows = sessionRowsForCurrentTree(this.sessions);
     const currentRowIds = new Set(allCurrentRows.map((row) => row.session.id));
     const currentSelectableSessions = allCurrentRows.map((row) => row.session).filter((session) => sessionSelectionScope(session) === "current");
-    const allArchivedRows = sessionRows(this.sessions.filter((session) => session.archived === true && !currentRowIds.has(session.id)));
+    const allArchivedRows = sessionRows(this.sessions.filter((session) => session.archived === true && !currentRowIds.has(session.id)), this.sessions);
     const descendantCounts = unarchivedDescendantCounts(this.sessions);
     const unreadCount = unreadSessionCount(currentSelectableSessions, this.unreadSessionIds);
 
@@ -825,8 +825,16 @@ export function sessionRowsForCurrentTree(sessions: SessionInfo[]): SessionRow[]
   return sessionRows(sessions.filter((session) => visible.has(session.id)));
 }
 
-function sessionRows(sessions: SessionInfo[]): SessionRow[] {
+/**
+ * @param knownSessions Every session in the workspace, used only to answer
+ * whether a parent exists at all. The rows themselves are built from
+ * `sessions`, which is one section's worth: the current list and the archived
+ * list are separate trees, so a parent outside this section is still present
+ * and its child is not an orphan.
+ */
+function sessionRows(sessions: SessionInfo[], knownSessions: SessionInfo[] = sessions): SessionRow[] {
   const byPath = sessionsByNormalizedPath(sessions);
+  const knownByPath = knownSessions === sessions ? byPath : sessionsByNormalizedPath(knownSessions);
   const childrenByPath = new Map<string, SessionInfo[]>();
   const roots: SessionInfo[] = [];
   for (const session of sessions) {
@@ -847,7 +855,7 @@ function sessionRows(sessions: SessionInfo[]): SessionRow[] {
     const sessionKey = normalizeSessionPath(session.path);
     if (stack.has(sessionKey)) return;
     const parentPath = session.parentSessionPath;
-    rows.push({ session, depth, hasMissingParent: parentPath !== undefined && !byPath.has(normalizeSessionPath(parentPath)) });
+    rows.push({ session, depth, hasMissingParent: parentPath !== undefined && !knownByPath.has(normalizeSessionPath(parentPath)) });
     const nextStack = new Set(stack);
     nextStack.add(sessionKey);
     for (const child of childrenByPath.get(sessionKey) ?? []) visit(child, depth + 1, nextStack);
