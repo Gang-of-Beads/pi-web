@@ -1,5 +1,106 @@
 # @jmfederico/pi-web
 
+## 1.202608.33
+
+### Patch Changes
+
+- d0cc1ec: Make a subagent row read as subordinate to the session that started it
+
+  A child row and its parent were drawn identically - same height, same type
+  size, same weight, same colour - with 16px of indent as the only difference.
+  Even that inverted: a parent reserves a gutter for its disclosure control, so
+  the child's name began 12px further left than its parent's and read as the more
+  important row.
+
+  Depth is now marked on the row itself, and the child is drawn lighter rather
+  than smaller: the type size stays on the scale while colour and indent carry
+  the relationship.
+
+- 6748654: Make the subagent disclosure control findable
+
+  The control that expands a session's subagents painted the same background as
+  the row it sat on and outlined itself in a border one shade off the row's own,
+  so the only thing separating a control from its surroundings was a line that
+  was almost the same colour. It was found by hunting rather than by looking.
+
+  It now carries a tint of its own instead of borrowing the row's, and says
+  "Show subagents" or "Hide subagents" on hover as well as to a screen reader.
+
+- 4121924: Say what the goals count counts
+
+  The goals heading carried a bare numeral adrift between the title and the
+  refresh control, which stated nothing: a reader could not tell a count from an
+  index. It also counted finished goals, so a workspace whose work was over still
+  advertised a number. The heading now reads "1 open", sits beside the title, and
+  counts only goals that are still open.
+
+- 86c6d70: Shrink the message header to the size of a label
+
+  Every message reserved 47px above its first word for one line of small text.
+  The height came from a 32px icon button rather than from the text, so the row
+  read as a title bar rather than as a label. The action button is now 24px, the
+  WCAG 2.2 AA minimum target size, and the header is 29px. The sticky offset
+  moved with it so the role label still shows while a long message scrolls.
+
+- 1275471: Tell a finished run apart from one that stopped owing a reply
+
+  A tool ran, returned successfully, and the run ended there: no assistant
+  message, no error record, every request a 200. The dock showed "idle", which is
+  exactly what it shows when a run finishes normally, so a turn that vanished and
+  a turn that completed looked identical and the only clue was that no answer had
+  arrived.
+
+  A recorded tool result with no assistant message after it means the model still
+  owes a response. That case now reads "ended without a reply" with its own
+  badge, so it can be seen and acted on instead of being mistaken for a finished
+  session.
+
+- 5a7d5f4: Stop telling the user an archived child has lost its parent
+
+  Archiving a subagent on its own moved its row into the archived section, which
+  is built as a separate tree. The parent was not in that tree, so the row was
+  marked an orphan and read "Parent session is not available in this workspace" -
+  while the parent sat unarchived one row above.
+
+  Whether a parent exists is now answered against every session in the workspace
+  rather than against whichever section the row landed in. A child whose parent
+  really is absent is still marked.
+
+- c185945: Operate a goal from the goals panel
+
+  The panel listed goals and their progress but offered no way to act on them, so
+  resuming or pausing meant typing a slash command into the composer. Each open
+  goal now carries Resume or Pause and Abandon controls that run the extension's
+  own commands in the focused session, keeping its audit trail, token accounting
+  and goal-focus rules intact. Controls are disabled, with the reason, when no
+  session is open to run them in.
+
+- 5f60aa1: Align the navigation and chat headers on one height
+
+  The two headers sit either side of the main divider, so their bottom borders
+  read as one horizontal rule - except they were 56px and 36px. The rail was
+  taller because its buttons were never given a size and inherited the user
+  agent's 31px. Both headers and the rail's controls now size from shared
+  panel-header tokens, so the rule lines up and stays lined up.
+
+- f3c7d53: Let the conversation use the width of the screen, and keep the status dock in it
+
+  The transcript was capped at a 78ch reading measure and centred, so a wide
+  monitor showed a narrow column between two large empty margins. The column now
+  takes the width it is given and keeps a gutter at each edge. The status dock
+  was positioned against the viewport rather than the column, so "idle" sat far
+  to the left of every message it described; it now measures from the same
+  gutter. Transcript, composer and dock share one token, so they line up at every
+  window size instead of by coincidence.
+
+- 8ea5d9c: Name the browser tab and the navigation header after the focused context
+
+  Every tab and every panel header read "PI WEB", which is the one thing a reader
+  already knows. With several sessions open in several tabs, nothing in the tab
+  strip said which was which. Both surfaces now name the focused context - the
+  session being read, else the workspace, project, or remote machine - and fall
+  back to the product name only when nothing is selected.
+
 ## 1.202608.32
 
 ### Patch Changes
