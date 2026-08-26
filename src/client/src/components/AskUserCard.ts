@@ -57,6 +57,14 @@ export class AskUserCard extends LitElement {
   @property({ attribute: false }) onSubmit?: AskUserSubmitCallback;
 
   @state() private answers: AskDraftAnswers = {};
+  /**
+   * Which question is on screen. The card used to lay every question out at
+   * once, which on a phone put the field being typed into below the virtual
+   * keyboard: the answer could not be read without dismissing the keyboard,
+   * scrolling, and opening it again. One question per step keeps each step
+   * short enough that the field stays above the keyboard.
+   */
+  @state() private step = 0;
   @state() private confirmingPartialSubmit = false;
   @state() private submitting = false;
   private modelIdentity: string | undefined;
@@ -85,21 +93,19 @@ export class AskUserCard extends LitElement {
         <header class="card-header">
           <h2 id="ask-user-heading">Questions</h2>
           <span class="header-status" role="status" aria-live="polite" aria-atomic="true">
-            ${count} of ${ask.questions.length} answered
+            ${ask.questions.length > 1
+              ? html`${this.stepIndex(ask) + 1} of ${ask.questions.length} · ${count} answered`
+              : html`${count} of ${ask.questions.length} answered`}
           </span>
         </header>
         <form class="ask-form" @submit=${(event: SubmitEvent) => { this.handleSubmit(event, ask); }}>
           <div class="questions">
-            ${ask.questions.map((question, index) => this.renderQuestion(ask, question, index))}
+            ${this.renderCurrentStep(ask)}
           </div>
           <footer class="form-footer">
             ${this.confirmingPartialSubmit && unanswered.length > 0
               ? this.renderPartialSubmitConfirmation(ask, unanswered)
-              : html`
-                  <button class="primary-action" type="submit" ?disabled=${this.submitting}>
-                    ${this.submitting ? "Sending…" : "Send answers"}
-                  </button>
-                `}
+              : this.renderStepActions(ask)}
           </footer>
         </form>
       </article>
@@ -168,6 +174,43 @@ export class AskUserCard extends LitElement {
         </div>
       </fieldset>
     `;
+  }
+
+  private renderCurrentStep(ask: PendingAskUser): TemplateResult | null {
+    const index = this.stepIndex(ask);
+    const question = ask.questions[index];
+    if (question === undefined) return null;
+    return this.renderQuestion(ask, question, index);
+  }
+
+  private stepIndex(ask: PendingAskUser): number {
+    return Math.min(Math.max(this.step, 0), Math.max(ask.questions.length - 1, 0));
+  }
+
+  /**
+   * Back and Next only exist when there is somewhere to go; the last step
+   * submits rather than offering a step that is not there.
+   */
+  private renderStepActions(ask: PendingAskUser): TemplateResult {
+    const index = this.stepIndex(ask);
+    const isLast = index >= ask.questions.length - 1;
+    return html`
+      <div class="step-actions">
+        ${index > 0
+          ? html`<button class="secondary-action" type="button" @click=${() => { this.goToStep(ask, index - 1); }}>Back</button>`
+          : null}
+        ${isLast
+          ? html`<button class="primary-action" type="submit" ?disabled=${this.submitting}>
+              ${this.submitting ? "Sending…" : "Send answers"}
+            </button>`
+          : html`<button class="primary-action" type="button" @click=${() => { this.goToStep(ask, index + 1); }}>Next</button>`}
+      </div>
+    `;
+  }
+
+  private goToStep(ask: PendingAskUser, next: number): void {
+    this.step = Math.min(Math.max(next, 0), Math.max(ask.questions.length - 1, 0));
+    this.focusQuestion(this.step);
   }
 
   private renderPartialSubmitConfirmation(ask: PendingAskUser, unanswered: AskUserQuestion[]): TemplateResult {
@@ -518,6 +561,11 @@ export class AskUserCard extends LitElement {
       padding: 8px;
       font: var(--pi-control-font-size, 16px)/1.4 var(--pi-control-font-family, system-ui, sans-serif);
     }
+    /* Back sits beside the forward action rather than under it: the pair is
+       one decision, and a phone keyboard leaves little height to spend. */
+    .step-actions { display: flex; gap: var(--pi-space-4); width: 100%; }
+    .step-actions .primary-action { flex: 1 1 auto; }
+    .step-actions .secondary-action { flex: 0 0 auto; }
     .form-footer {
       /* The card lives inside the transcript, which is already the scroller. A
          second scroller inside it made the reader cross a scroll boundary
@@ -574,7 +622,12 @@ export class AskUserCard extends LitElement {
     @container (max-width: 580px) {
       fieldset.question, .record-question { padding: 14px 12px; }
       .record-summary { padding-inline: 12px; }
-      .form-footer { align-items: stretch; flex-direction: column; padding: 12px; }
+      /* Stacking made every action its own row, which on a phone with the
+         keyboard open is height the question needs. Back and Next are one
+         decision and stay on one row. */
+      .form-footer { align-items: stretch; flex-direction: column; padding: var(--pi-space-5) 12px; }
+      .form-footer .step-actions { flex-direction: row; }
+      fieldset.question { padding: 10px 12px; }
       .partial-confirmation { align-items: stretch; flex-direction: column; }
       .confirmation-actions { justify-content: flex-end; }
       .primary-action { min-height: 42px; }

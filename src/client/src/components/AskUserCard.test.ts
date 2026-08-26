@@ -23,17 +23,15 @@ describe("ask-user-card live form", () => {
     const legends = root.querySelectorAll("legend");
     const vim = inputWithValue(root, "vim");
     const code = inputWithValue(root, "code");
-    const web = inputWithValue(root, "web");
 
-    expect(fieldsets).toHaveLength(2);
+    // One question is on screen at a time, so this step holds one fieldset.
+    expect(fieldsets).toHaveLength(1);
     expect(legends[0]?.textContent).toContain("Choose an editor");
     expect(fieldsets[0]?.getAttribute("aria-describedby")).toBe("ask-user-question-detail-0");
     expect(root.querySelector("#ask-user-question-detail-0")?.textContent).toBe("Used for examples.");
     expect(vim.type).toBe("radio");
     expect(code.name).toBe(vim.name);
-    expect(web.type).toBe("checkbox");
-    expect(web.name).not.toBe(vim.name);
-    expect(root.querySelector("[aria-live='polite']")?.textContent).toContain("0 of 2 answered");
+    expect(root.querySelector("[aria-live='polite']")?.textContent).toContain("1 of 2");
 
     // Focus and interaction run through the rendered native control rather than
     // extracting Lit handlers, so this exercises the form's browser boundary.
@@ -44,7 +42,17 @@ describe("ask-user-card live form", () => {
 
     expect(vim.checked).toBe(true);
     expect(code.checked).toBe(false);
-    expect(root.querySelector("[aria-live='polite']")?.textContent).toContain("1 of 2 answered");
+    expect(root.querySelector("[aria-live='polite']")?.textContent).toContain("1 answered");
+
+    // The next question's controls are native too, on their own step. Lit
+    // reuses nodes across renders, so the element must be looked up again
+    // rather than compared against a reference captured on the last step.
+    const vimName = vim.name;
+    buttonWithText(root, "Next").click();
+    await card.updateComplete;
+    const web = inputWithValue(root, "web");
+    expect(web.type).toBe("checkbox");
+    expect(web.name).not.toBe(vimName);
   });
 
   it("accumulates several checkbox values for a multi-select question", async () => {
@@ -158,6 +166,12 @@ describe("ask-user-card live form", () => {
     const root = renderRoot(card);
 
     inputWithValue(root, "vim").click();
+    await card.updateComplete;
+    // Submit lives on the last step, so the two later questions are left
+    // unanswered by walking past them rather than by ignoring them in place.
+    buttonWithText(root, "Next").click();
+    await card.updateComplete;
+    buttonWithText(root, "Next").click();
     await card.updateComplete;
     buttonWithText(root, "Send answers").click();
     await card.updateComplete;
