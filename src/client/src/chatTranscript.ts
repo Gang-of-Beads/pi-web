@@ -1,4 +1,5 @@
 import { appendText, appendThinking, askUserRecordFromToolDetails, normalizeMessage, normalizeMessages, previewFromDetails, summarizeArgs, textMessage } from "./chatMessages";
+import { placeByTimestamp } from "./transcriptOrder";
 import type { ChatLine, ToolExecutionPart } from "./components/shared";
 import { carryDeliveryForward, findTrackedUserLineIndex, isEchoOfTrackedMessage } from "./messageDelivery";
 import { appendShellChunk, finalizeShellMessage, shellStartMessage } from "./shellMessages";
@@ -381,7 +382,11 @@ function appendNewMessage(messages: ChatLine[], rawMessage: unknown, clientMessa
     const last = messages.at(-1);
     if (last?.role === "user" && newText !== "" && messageText(last) === newText) return messages;
   }
-  return [...messages, ...lines];
+  // A streaming reply only arrives once it has finished, so a message sent
+  // while one was in flight would otherwise sit above the reply that started
+  // before it - the transcript claiming the user spoke first when the record
+  // says otherwise.
+  return lines.reduce<ChatLine[]>((transcript, line) => placeByTimestamp(transcript, line), messages);
 }
 
 function appendEchoedMessage(messages: ChatLine[], lines: ChatLine[], clientMessageId: string | undefined): ChatLine[] {

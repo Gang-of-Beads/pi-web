@@ -166,7 +166,7 @@ export interface PiWebSpeechToTextConfig {
  * API key, which must never reach a browser.
  */
 export interface PiWebSpeechStreamingConfig {
-  protocol: "browser" | "openai-realtime" | "deepgram";
+  protocol: "browser" | "openai-realtime" | "deepgram" | "azure-speech";
   /** Socket URL for the socket protocols. Ignored by `browser`. */
   url?: string;
   /** Model hint for the streaming service, when it differs from the batch one. */

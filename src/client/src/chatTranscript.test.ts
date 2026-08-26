@@ -674,3 +674,25 @@ describe("queued-message echo dedupe", () => {
 function userMessage(text: string) {
   return { role: "user", content: [{ type: "text", text }] };
 }
+
+describe("a reply that finished after a message was sent", () => {
+  /**
+   * The case from a real transcript: an assistant reply began at 16:16:34, the
+   * user sent at 16:16:40, and the reply - which only arrives once it has
+   * finished streaming - was appended afterwards. The record had the right
+   * order; the screen showed the user speaking first.
+   */
+  it("still reads in the order the messages were made", () => {
+    const withUserMessage = applyTranscriptEvent([], {
+      type: "message.append",
+      message: { role: "user", content: [{ type: "text", text: "用这个" }], timestamp: "2026-08-26T16:16:40.000Z" },
+    }) ?? [];
+
+    const withReply = applyTranscriptEvent(withUserMessage, {
+      type: "message.append",
+      message: { role: "assistant", content: [{ type: "text", text: "已提交" }], timestamp: "2026-08-26T16:16:34.000Z" },
+    }) ?? [];
+
+    expect(withReply.map((line) => line.role)).toEqual(["assistant", "user"]);
+  });
+});

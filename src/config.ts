@@ -282,14 +282,22 @@ function parseSpeechToTextConfig(value: unknown, path: string): NonNullable<PiWe
   };
 }
 
+type SpeechStreamingProtocol = NonNullable<NonNullable<PiWebConfig["speechToText"]>["streaming"]>["protocol"];
+
+function isSpeechStreamingProtocol(value: string): value is SpeechStreamingProtocol {
+  return value === "browser" || value === "openai-realtime" || value === "deepgram" || value === "azure-speech";
+}
+
 function parseSpeechStreamingConfig(
   value: unknown,
   path: string,
 ): NonNullable<NonNullable<PiWebConfig["speechToText"]>["streaming"]> {
   if (!isRecord(value)) throw new Error(`PI WEB config speechToText.streaming must be an object: ${path}`);
   const protocol = parseString(value["protocol"], "speechToText.streaming.protocol", path);
-  if (protocol !== "browser" && protocol !== "openai-realtime" && protocol !== "deepgram") {
-    throw new Error(`PI WEB config speechToText.streaming.protocol must be browser, openai-realtime or deepgram: ${path}`);
+  if (!isSpeechStreamingProtocol(protocol)) {
+    throw new Error(
+      `PI WEB config speechToText.streaming.protocol must be browser, openai-realtime, deepgram or azure-speech: ${path}`,
+    );
   }
   const url = value["url"];
   const model = value["model"];

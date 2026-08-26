@@ -114,3 +114,43 @@ describe("choosing how to stream", () => {
     expect(resolveSpeechStreaming(undefined)).toEqual({ kind: "unavailable", reason: "Live transcription is not configured." });
   });
 });
+
+describe("azure speech", () => {
+  /**
+   * Azure's socket speaks a different vocabulary again: a hypothesis while the
+   * phrase is still forming, and a recognised result once it settles. Its
+   * hypotheses re-send the whole phrase, so they replace rather than append.
+   */
+  it("reads a hypothesis as a replaceable guess", () => {
+    expect(decodeSpeechStreamEvent("azure-speech", {
+      Type: "speech.hypothesis",
+      Text: "hello",
+    })).toEqual({ kind: "delta", text: "hello" });
+  });
+
+  it("reads a recognised phrase as settled", () => {
+    expect(decodeSpeechStreamEvent("azure-speech", {
+      Type: "speech.phrase",
+      RecognitionStatus: "Success",
+      DisplayText: "hello there",
+    })).toEqual({ kind: "final", text: "hello there" });
+  });
+
+  it("ignores a phrase that recognised nothing rather than clearing the text", () => {
+    // NoMatch arrives on silence between phrases; treating it as an empty
+    // final would wipe what had already been dictated.
+    expect(decodeSpeechStreamEvent("azure-speech", {
+      Type: "speech.phrase",
+      RecognitionStatus: "NoMatch",
+      DisplayText: "",
+    })).toBeUndefined();
+  });
+
+  it("reports a turn that ended in an error", () => {
+    expect(decodeSpeechStreamEvent("azure-speech", {
+      Type: "speech.phrase",
+      RecognitionStatus: "Error",
+      DisplayText: "",
+    })).toEqual({ kind: "error", message: "Speech recognition reported an error." });
+  });
+});

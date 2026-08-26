@@ -9,7 +9,7 @@ import { SPEECH_DELTA_MODES, type SpeechDeltaMode } from "./speechTranscriptBuff
  * a protocol can be verified against its documented message shapes without a
  * microphone, a socket, or an account.
  */
-export type SpeechStreamProtocol = "openai-realtime" | "deepgram";
+export type SpeechStreamProtocol = "openai-realtime" | "deepgram" | "azure-speech";
 
 export type SpeechStreamEvent =
   | { kind: "delta"; text: string }
@@ -21,7 +21,30 @@ export function decodeSpeechStreamEvent(
   message: unknown,
 ): SpeechStreamEvent | undefined {
   if (!isRecord(message)) return undefined;
-  return protocol === "openai-realtime" ? decodeOpenAiRealtime(message) : decodeDeepgram(message);
+  if (protocol === "openai-realtime") return decodeOpenAiRealtime(message);
+  if (protocol === "azure-speech") return decodeAzureSpeech(message);
+  return decodeDeepgram(message);
+}
+
+/**
+ * Azure's socket speaks a different vocabulary again: a hypothesis while the
+ * phrase is still forming, and a recognised phrase once it settles. Hypotheses
+ * re-send the whole phrase, so they replace rather than append.
+ */
+function decodeAzureSpeech(message: Record<string, unknown>): SpeechStreamEvent | undefined {
+  const type = stringAt(message, "Type");
+  if (type === "speech.hypothesis") {
+    const text = stringAt(message, "Text");
+    return text === undefined || text === "" ? undefined : { kind: "delta", text };
+  }
+  if (type !== "speech.phrase") return undefined;
+  const status = stringAt(message, "RecognitionStatus");
+  if (status === "Error") return { kind: "error", message: "Speech recognition reported an error." };
+  // NoMatch arrives on the silence between phrases; treating it as an empty
+  // final would wipe what had already been dictated.
+  if (status !== "Success") return undefined;
+  const text = stringAt(message, "DisplayText");
+  return text === undefined || text === "" ? undefined : { kind: "final", text };
 }
 
 function decodeOpenAiRealtime(message: Record<string, unknown>): SpeechStreamEvent | undefined {

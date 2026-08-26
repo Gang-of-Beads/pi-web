@@ -12,6 +12,8 @@ export type SpeechDeltaMode = "append" | "replace";
 export const SPEECH_DELTA_MODES: Record<SpeechStreamProtocol, SpeechDeltaMode> = {
   "openai-realtime": "append",
   deepgram: "replace",
+  // Azure re-sends the whole phrase in each hypothesis, like Deepgram.
+  "azure-speech": "replace",
 };
 
 /**
