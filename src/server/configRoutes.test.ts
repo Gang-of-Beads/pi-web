@@ -262,3 +262,36 @@ function responseFor(config: PiWebConfigValues, exists: boolean): PiWebConfigRes
     envOverrides: { host: false, port: false, allowedHosts: false, spawnSessions: false, subsessions: false, askUser: false },
   };
 }
+
+describe("speech-to-text config reaches the browser", () => {
+  /**
+   * The composer renders its dictation control only when it has been handed a
+   * speech-to-text config, and the browser only ever sees the keys this route
+   * forwards. `speechToText` was not among them, so an install could write the
+   * setting, restart, and still never see a microphone: the config was read,
+   * stored, and then dropped on the way out.
+   */
+  it("forwards the speech-to-text settings", async () => {
+    savedConfig = {
+      ...savedConfig,
+      speechToText: {
+        endpoint: "https://stt.example/v1/transcribe",
+        streaming: { protocol: "browser" },
+      },
+    };
+
+    const response = await app.inject({ method: "GET", url: "/api/config" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json<PiWebConfigResponse>().config.speechToText).toEqual({
+      endpoint: "https://stt.example/v1/transcribe",
+      streaming: { protocol: "browser" },
+    });
+  });
+
+  it("says nothing about speech when nothing is configured", async () => {
+    const response = await app.inject({ method: "GET", url: "/api/config" });
+
+    expect(response.json<PiWebConfigResponse>().config.speechToText).toBeUndefined();
+  });
+});

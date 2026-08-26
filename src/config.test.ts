@@ -356,3 +356,32 @@ describe("offlineModeEnabled", () => {
 function testOptions(): { env: NodeJS.ProcessEnv } {
   return { env: { PI_WEB_CONFIG: configPath } };
 }
+
+describe("speech-to-text config survives a round trip", () => {
+  /**
+   * The parser builds its result field by field, so a key it does not name is
+   * dropped in silence. `speechToText` was never named: an install could write
+   * the setting, restart, and find no microphone in the composer, with nothing
+   * anywhere to say the setting had been discarded on the way in.
+   */
+  it("keeps the batch endpoint and the streaming settings", () => {
+    const requestedConfig = {
+      speechToText: {
+        endpoint: "https://stt.example/v1/transcribe",
+        model: "whisper-1",
+        language: "zh",
+        streaming: { protocol: "deepgram" as const, url: "wss://api.deepgram.com/v1/listen", tokenEndpoint: "api/speech/token" },
+      },
+    };
+
+    const saved = savePiWebConfig(requestedConfig, testOptions());
+
+    expect(saved.config.speechToText).toEqual(requestedConfig.speechToText);
+    expect(loadPiWebConfig(testOptions()).config.speechToText).toEqual(requestedConfig.speechToText);
+  });
+
+  it("rejects a config that names no endpoint rather than half-enabling dictation", () => {
+    expect(() => savePiWebConfig({ speechToText: { endpoint: "" } }, testOptions()))
+      .toThrow(/speechToText/iu);
+  });
+});

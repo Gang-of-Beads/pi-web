@@ -255,7 +255,50 @@ function piWebConfigRecord(config: PiWebConfig): Record<string, unknown> {
     ...(config.subsessions !== undefined ? { subsessions: config.subsessions } : {}),
     ...(config.askUser !== undefined ? { askUser: config.askUser } : {}),
     ...(config.environmentFacts !== undefined ? { environmentFacts: config.environmentFacts } : {}),
+    ...(config.speechToText !== undefined ? { speechToText: config.speechToText } : {}),
     ...(config.agent !== undefined ? { agent: config.agent } : {}),
+  };
+}
+
+/**
+ * Dictation settings.
+ *
+ * `endpoint` is the whole feature switch, so an empty one is rejected rather
+ * than stored: a config that half-enables dictation produces a control that
+ * cannot work, which is worse than no control at all.
+ */
+function parseSpeechToTextConfig(value: unknown, path: string): NonNullable<PiWebConfig["speechToText"]> {
+  if (!isRecord(value)) throw new Error(`PI WEB config speechToText must be an object: ${path}`);
+  const endpoint = parseString(value["endpoint"], "speechToText.endpoint", path);
+  if (endpoint.trim() === "") throw new Error(`PI WEB config speechToText.endpoint must not be empty: ${path}`);
+  const model = value["model"];
+  const language = value["language"];
+  const streaming = value["streaming"];
+  return {
+    endpoint,
+    ...(model === undefined ? {} : { model: parseString(model, "speechToText.model", path) }),
+    ...(language === undefined ? {} : { language: parseString(language, "speechToText.language", path) }),
+    ...(streaming === undefined ? {} : { streaming: parseSpeechStreamingConfig(streaming, path) }),
+  };
+}
+
+function parseSpeechStreamingConfig(
+  value: unknown,
+  path: string,
+): NonNullable<NonNullable<PiWebConfig["speechToText"]>["streaming"]> {
+  if (!isRecord(value)) throw new Error(`PI WEB config speechToText.streaming must be an object: ${path}`);
+  const protocol = parseString(value["protocol"], "speechToText.streaming.protocol", path);
+  if (protocol !== "browser" && protocol !== "openai-realtime" && protocol !== "deepgram") {
+    throw new Error(`PI WEB config speechToText.streaming.protocol must be browser, openai-realtime or deepgram: ${path}`);
+  }
+  const url = value["url"];
+  const model = value["model"];
+  const tokenEndpoint = value["tokenEndpoint"];
+  return {
+    protocol,
+    ...(url === undefined ? {} : { url: parseString(url, "speechToText.streaming.url", path) }),
+    ...(model === undefined ? {} : { model: parseString(model, "speechToText.streaming.model", path) }),
+    ...(tokenEndpoint === undefined ? {} : { tokenEndpoint: parseString(tokenEndpoint, "speechToText.streaming.tokenEndpoint", path) }),
   };
 }
 
@@ -274,6 +317,7 @@ function parsePiWebConfig(value: Record<string, unknown>, path: string): PiWebCo
     ...(value["askUser"] !== undefined ? { askUser: parseAskUser(value["askUser"], path) } : {}),
     ...(value["environmentFacts"] !== undefined ? { environmentFacts: parseBooleanKey(value["environmentFacts"], "environmentFacts", path) } : {}),
     ...(value["extensionDialogsTimeoutMs"] !== undefined ? { extensionDialogsTimeoutMs: parseExtensionDialogsTimeoutMs(value["extensionDialogsTimeoutMs"], path) } : {}),
+    ...(value["speechToText"] !== undefined ? { speechToText: parseSpeechToTextConfig(value["speechToText"], path) } : {}),
     ...(value["agent"] !== undefined ? { agent: parseAgentConfig(value["agent"], path) } : {}),
   };
 }
