@@ -279,6 +279,10 @@ export const workspacePanelStyles = css`
   .toolbar button { margin-left: auto; }
   .stale { border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); color: var(--pi-warning); padding: 1px var(--pi-space-3); font-size: var(--pi-text-xs); }
   .split { flex: 1 1 auto; min-height: 0; display: grid; grid-template-rows: minmax(160px, 34%) minmax(0, 1fr); }
+  /* With nothing selected there is no second pane to show, so the list takes
+     the panel rather than sitting above an empty one. */
+  .split.list-only { grid-template-rows: minmax(0, 1fr) 0; }
+  .split.list-only > :nth-child(2) { display: none; }
   .list { min-height: 0; overflow: auto; border-bottom: 1px solid var(--pi-border); padding: var(--pi-space-3); }
   .row { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: var(--pi-space-2); width: 100%; border: 0; border-radius: var(--pi-radius-sm); background: transparent; text-align: left; padding: 4px 6px 4px calc(6px + var(--depth, 0) * 14px); }
   .row:hover, .row.selected { background: var(--pi-selection-bg); }

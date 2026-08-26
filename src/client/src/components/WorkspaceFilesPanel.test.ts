@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { filesSplitClass } from "./filesSplitLayout";
 import type { FileContentResponse, FileTreeEntry } from "../api";
 import { initialAppState } from "../appState";
 import type { WorkspacePanelContext } from "../plugins/types";
@@ -446,3 +447,22 @@ function uploadBatch(patch: Partial<WorkspaceUploadBatchState> = {}): WorkspaceU
     ...(patch.error === undefined ? {} : { error: patch.error }),
   };
 }
+
+describe("the files panel with nothing chosen", () => {
+  /**
+   * The split gave the tree a third of the height and the viewer the rest, at
+   * every size. On a phone that showed a short tree in a pane with room for
+   * more, above two thirds of a screen reading "Select a file." - two
+   * stretches of empty space stacked on top of each other.
+   *
+   * With nothing selected there is no second pane to show, so the tree should
+   * have the panel.
+   */
+  it("gives the tree the whole panel until a file is chosen", () => {
+    expect(filesSplitClass(undefined)).toBe("split list-only");
+  });
+
+  it("splits once a file is chosen", () => {
+    expect(filesSplitClass("src/app.ts")).toBe("split");
+  });
+});

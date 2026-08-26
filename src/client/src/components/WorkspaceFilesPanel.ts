@@ -1,4 +1,5 @@
 import { css, html, LitElement, type PropertyValues, type TemplateResult } from "lit";
+import { filesSplitClass } from "./filesSplitLayout";
 import { customElement, property, query, state } from "lit/decorators.js";
 import type { FileTreeEntry } from "../api";
 import { workspaceUploadPath } from "../api/workspaceUploads";
@@ -70,7 +71,7 @@ export class WorkspaceFilesPanel extends LitElement {
           <input id="workspace-upload-input" class="visually-hidden" type="file" multiple @change=${this.handleFileInputChange} />
         </section>
         ${this.renderUploadProgress(context)}
-        <section class="split">
+        <section class=${filesSplitClass(context.selectedFilePath)}>
           <div class="list tree">
             ${context.fileTree.length === 0 ? html`<p class="muted">No files loaded.</p>` : context.fileTree.map((entry) => this.renderTreeEntry(context, entry, 0))}
           </div>

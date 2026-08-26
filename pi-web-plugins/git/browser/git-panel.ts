@@ -1,3 +1,4 @@
+import { gitSplitClass } from "./gitSplitLayout.js";
 import type {
   HtmlTemplateTag,
   JsonValue,
@@ -409,7 +410,7 @@ function renderGitPanel(html: HtmlTemplateTag, controller: GitUiController, cont
         </div>
       </section>
       ${state.error === undefined ? null : html`<div class="git-error" role="alert">${state.error}</div>`}
-      <section class="git-split">
+      <section class=${gitSplitClass(state.selectedDiffPath)}>
         <div class="git-file-list">${renderFileList(html, controller, context, state, viewState)}</div>
         <div class="git-viewer">${renderDiffViewer(html, state)}</div>
       </section>
@@ -708,6 +709,10 @@ const gitPanelStyles = `
   .git-panel .git-stale { border: 1px solid var(--pi-warning-border); border-radius: 999px; color: var(--pi-warning); padding: 1px 6px; font-size: 12px; }
   .git-panel .git-error { flex: 0 0 auto; margin: 8px; border: 1px solid var(--pi-danger); border-radius: 7px; color: var(--pi-danger); padding: 8px; }
   .git-panel .git-split { flex: 1 1 auto; min-height: 0; display: grid; grid-template-rows: minmax(160px, 34%) minmax(0, 1fr); }
+  /* With nothing selected there is no diff to show, so the list takes the
+     panel rather than sitting above an empty pane. */
+  .git-panel .git-split.list-only { grid-template-rows: minmax(0, 1fr) 0; }
+  .git-panel .git-split.list-only .git-viewer { display: none; }
   .git-panel .git-file-list { min-height: 0; overflow: auto; border-bottom: 1px solid var(--pi-border); padding: 6px; }
   .git-panel .git-row { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 4px; width: 100%; border: 0; border-radius: 5px; background: transparent; text-align: left; padding: 4px 6px 4px calc(6px + var(--depth, 0) * 14px); }
   .git-panel .git-row:hover, .git-panel .git-row.is-selected { background: var(--pi-selection-bg); }
