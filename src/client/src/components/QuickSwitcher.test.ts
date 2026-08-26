@@ -388,3 +388,23 @@ describe("the session list uses the width it has", () => {
     expect(Number(minimum)).toBeLessThanOrEqual(170);
   });
 });
+
+describe("tiles on a small phone", () => {
+  /**
+   * Two tiles only fitted from about 360px up, because each tile carried its
+   * own 40px menu button in a column of its own. A phone reporting ~320 CSS
+   * pixels - common once the system display size is enlarged - still got one
+   * session per row, which is the layout the tiles were meant to replace.
+   *
+   * On a narrow screen the menu button moves into the tile's corner, so the
+   * tile's whole width goes to the name instead of being split with a control
+   * that is only occasionally used.
+   */
+  it("gives the tile's width to the name on a narrow screen", () => {
+    const sheet = String(QuickSwitcher.styles);
+    const narrow = /@media\s*\(max-width:\s*\d+px\)\s*\{([\s\S]*?)\n\s*\}\s*\n/u.exec(sheet)?.[1] ?? "";
+
+    expect(narrow).toContain(".row-wrap");
+    expect(narrow).toMatch(/\.row-menu-toggle[^}]*position:\s*absolute/u);
+  });
+});
