@@ -177,11 +177,16 @@ describe("the activity drawer on a phone", () => {
    * one item's detail or to go back to the chat. That is a page, so on a phone
    * it becomes one.
    */
-  it("takes the screen instead of a strip above the transcript", () => {
+  it("takes the whole area below the app header, keeping the way back in view", () => {
     const narrow = /@media\s*\(max-width:\s*640px\)\s*\{([\s\S]*?)\n\s{2}\}/u.exec(String(chatStyles))?.[1] ?? "";
 
-    expect(narrow).toMatch(/\.top-drawer:not\(\.collapsed\)[^}]*position:\s*fixed/u);
-    expect(narrow).toMatch(/\.top-drawer:not\(\.collapsed\)[^}]*inset:\s*0/u);
+    // Covering the frame was tried first and did not work: the drawer's
+    // z-index lives inside the chat view's stacking context, so the app header
+    // painted over the drawer's own header - and with it the only control that
+    // closes the drawer. It fills the column instead.
+    expect(narrow).not.toMatch(/\.top-drawer:not\(\.collapsed\)[^}]*position:\s*fixed/u);
+    expect(narrow).toMatch(/\.top-drawer:not\(\.collapsed\)\s*\{[^}]*flex:\s*1 1 auto/u);
+    expect(narrow).toMatch(/\.drawer-header[^}]*position:\s*sticky/u);
   });
 
   /**
