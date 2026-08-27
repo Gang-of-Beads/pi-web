@@ -1,4 +1,5 @@
 import { api as defaultApi, isNotFoundError, type AskUserCloseResponse, type AskUserSubmission, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingAskUser, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionBackgroundTaskInfo, SessionSubagentRunInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Workspace } from "../api";
+import { ancestorsForSession } from "../sessionAncestors";
 import { refreshMayReplaceSelection } from "./sessionRefreshScope";
 import { activityOutputView, type AppState, type ClosedExtensionDialog } from "../appState";
 import { forgetCachedNewSession, isCachedNewSessionInfo, markCachedNewSessionInfo, mergeCachedNewSessions, rememberCachedNewSession, stripCachedNewSessionMarker } from "../cachedNewSessions";
@@ -250,8 +251,13 @@ export class SessionController {
     this.notifications?.prepareSelectedSession(session, machineId);
     const transcriptKey = this.sessionCacheKey(session.id);
     const cached = this.transcripts.cachedView(transcriptKey);
+    // Choosing a session moves where you are, not just what you are reading:
+    // the lists beside the conversation have to describe the same place.
+    const state = this.getState();
+    const ancestors = ancestorsForSession(session, { workspaces: state.workspaces, projects: state.projects });
     this.setState({
       selectedSession: session,
+      ...(ancestors === undefined ? {} : { selectedWorkspace: ancestors.workspace, selectedProject: ancestors.project }),
       ...cached,
       isLoadingEarlierMessages: false,
       ...(options?.preserveTreeDialog === true ? {} : { treeDialog: undefined }),

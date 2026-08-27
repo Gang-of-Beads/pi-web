@@ -71,9 +71,11 @@
   - 16 个组件迁移;三条测试守住:尺度已发布、顺序单调、**没有组件再自己挑数字**(>9 即红)
 - [ ] **通知盖住模态层** —— 待复现。通知面板在活动坞(sticky),低于 QuickSwitcher(overlay),按代码盖不住
   - 截图 2:45:后台任务完成通知("Verify route and scope fixes / VERIFY_EXIT=0")盖在快速切换面板的会话列表上
-- [ ] **跨工作区选会话不同步祖先**
+- [x] **跨工作区选会话不同步祖先**
   - 截图 2:13:在 be-dev 会话的对话里,切到 Sessions 视图显示的是 pi-web 工作区的列表
-  - `selectSession` 只写 `selectedSession`,不更新 project/workspace/sessions
+  - `selectSession` 只写 `selectedSession`;现由会话的 cwd 反查工作区、再由工作区反查项目(`sessionAncestors.ts`)
+  - 目录未编目时**不动选择**(未编目 ≠ 当前选择是错的)
+  - 4 条纯函数测试 + 2 条控制器测试;变异检验:去掉接线立刻红
 - [ ] **非对话视图无常驻返回**
   - 截图 2:15:GOALS 面板打开后关不掉,"必须一直切直到他没了才回到 chat"
   - 截图 12:35:抽屉展开后同样没有出路
