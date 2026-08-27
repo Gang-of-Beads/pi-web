@@ -83,6 +83,8 @@ export interface ChatLine {
   source?: "compaction" | "branch_summary";
   meta?: {
     timestamp?: string;
+    /** The provider's id for the reply this line belongs to; see messageIdentity.ts. */
+    responseId?: string;
     /** Present only on messages this browser sent; see MessageDelivery. */
     delivery?: MessageDelivery;
     /**

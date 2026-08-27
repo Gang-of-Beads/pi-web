@@ -1,5 +1,6 @@
 import type { ChatLine } from "./components/shared";
 import { ChatRole } from "./chatRole";
+import { indexOfIdentity, messageIdentity } from "./messageIdentity";
 import { carryDeliveryForward } from "./messageDelivery";
 import { messageText } from "./chatTranscript";
 
@@ -16,10 +17,6 @@ export type ArrivalOutcome =
   | { kind: "place" };
 
 type ArrivalRule = (arrival: Arrival) => ArrivalOutcome | undefined;
-
-function identity(line: ChatLine): string {
-  return `${line.role}\u0000${line.meta?.timestamp ?? ""}\u0000${messageText(line)}`;
-}
 
 /**
  * The committed copy of a message this client sent optimistically. It carries
@@ -54,15 +51,16 @@ const alreadyShownAsOwnSend: ArrivalRule = ({ transcript, lines }) => {
 };
 
 /**
- * The same message delivered again - a redelivered event, or a reload landing
- * beside a live one. Role, moment and words together identify it; a reply that
- * genuinely repeats itself carries a different moment.
+ * The same message delivered again - a redelivered event, a reload landing
+ * beside a live one, the server's copy of what this browser already sent.
+ * Identity says so; before it existed each delivery path had its own test and
+ * every duplicate reported was one of those tests' blind spots.
  */
 const alreadyInTranscript: ArrivalRule = ({ transcript, lines }) => {
   const arriving = lines[0];
-  if (arriving?.meta?.timestamp === undefined) return undefined;
-  const key = identity(arriving);
-  return transcript.some((line) => identity(line) === key) ? { kind: "ignore" } : undefined;
+  const identity = arriving === undefined ? undefined : messageIdentity(arriving);
+  if (identity === undefined) return undefined;
+  return indexOfIdentity(transcript, identity) === -1 ? undefined : { kind: "ignore" };
 };
 
 /**
