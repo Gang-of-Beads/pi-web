@@ -499,7 +499,6 @@ export class AskUserCard extends LitElement {
       border-top: 1px solid var(--pi-border-muted);
       padding: 16px;
       background: transparent;
-      scroll-margin-bottom: 72px;
     }
     fieldset.question:first-child { border-top: 0; }
     fieldset.question:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: -3px; }
@@ -568,13 +567,11 @@ export class AskUserCard extends LitElement {
     .step-actions .primary-action { flex: 0 1 auto; min-width: 140px; }
     .step-actions .secondary-action { flex: 0 1 auto; min-width: 96px; }
     .form-footer {
-      /* The card lives inside the transcript, which is already the scroller. A
-         second scroller inside it made the reader cross a scroll boundary
-         mid-question; the submit control stays reachable by sticking to the
-         bottom of the viewport instead, mirroring the sticky header. */
-      position: sticky;
-      bottom: 0;
-      z-index: 6;
+      /* The card lives inside the transcript, which is already the scroller, so
+         the footer sits at the end of the card rather than over it. Sticking it
+         to the bottom of the viewport kept the submit control in reach but hid
+         whichever option happened to be behind it, with no scroll position that
+         showed that option whole. */
       display: flex;
       align-items: center;
       justify-content: flex-end;

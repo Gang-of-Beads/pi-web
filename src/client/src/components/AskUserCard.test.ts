@@ -288,21 +288,18 @@ function unansweredRecord(questionValue: AskUserQuestion): AskUserOutcome["quest
 
 describe("the step footer", () => {
   /**
-   * The footer sticks to the bottom so the submit control stays reachable, but
-   * content earlier in the flow scrolls underneath it. A custom answer box
-   * taller than the remaining viewport was cut in half by the footer: its top
-   * and bottom edges were visible above and below, the middle was covered, and
-   * there was no scroll position that cleared it.
-   *
-   * A sticky footer has to leave room for what it covers.
+   * The footer used to stick to the bottom of the viewport so the submit
+   * control stayed in reach. Everything earlier in the flow then scrolled
+   * underneath it: an option or a custom answer box could show its top edge
+   * above the footer and its bottom edge below, with no scroll position that
+   * showed it whole.
    */
-  it("leaves room below the questions for the footer it sticks over", () => {
-    const sheet = String(AskUserCard.styles);
-    // Clearance must not come from extra height: the card already has to fit a
-    // 360px viewport, so scroll-margin is what buys room without growing it.
-    const question = /fieldset\.question\s*\{([^}]*)\}/u.exec(sheet)?.[1] ?? "";
+  it("does not float over the options it sits below", () => {
+    // Scroll margin was tried here first. It only moves programmatic scrolling,
+    // so the reader's own scrolling still parked an option behind the footer.
+    const rule = /\.form-footer\s*\{([^}]*)\}/u.exec(String(AskUserCard.styles))?.[1] ?? "";
 
-    expect(question).toMatch(/scroll-margin-bottom/u);
+    expect(rule).not.toMatch(/position:\s*sticky/u);
   });
 
   /**

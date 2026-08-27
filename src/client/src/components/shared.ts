@@ -984,7 +984,9 @@ export const promptEditorStyles = css`
   .editor-dictate.listening { color: var(--pi-danger); border-color: var(--pi-danger); }
   .editor-attach .prompt-action-icon { width: 16px; height: 16px; }
   textarea, .markdown-editor .cm-editor { box-sizing: border-box; width: 100%; min-height: 54px; max-height: 220px; resize: none; overflow: hidden; border-radius: var(--pi-radius-md); border: 1px solid var(--pi-border); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px)/1.4 var(--pi-control-font-family, system-ui, sans-serif); }
-  textarea { overflow-y: auto; padding: var(--pi-space-4); }
+  /* The dictate and attach buttons float over the bottom right corner; the
+     text has to be paid room for them or it runs underneath. */
+  textarea { overflow-y: auto; padding: var(--pi-space-4); padding-right: calc(var(--pi-space-4) + 74px); }
   /* A phone with the keyboard open leaves roughly 400px of viewport, and a
      composer sized for a full screen took 119px of it - the transcript was
      left with about two lines. The composer keeps a floor so it stays usable

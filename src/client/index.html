@@ -130,6 +130,13 @@
         --pi-success-bg-overlay: #0f1b12ee;
         --pi-terminal-selection: #264f78;
       }
+
+      /* A phone has no width to spare: 32px of a 393px screen went to margins.
+         The conversation and the composer share this gutter, so narrowing it
+         widens both together and keeps them lined up. */
+      @media (max-width: 640px) {
+        :root { --pi-chat-gutter: 6px; }
+      }
       html, body { margin: 0; height: 100%; overflow: hidden; background: var(--pi-bg); color: var(--pi-text); }
       body { min-height: 100dvh; }
     </style>
