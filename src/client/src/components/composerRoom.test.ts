@@ -53,3 +53,27 @@ describe("the drawer's section strip", () => {
     expect(rule).toMatch(/min-width:\s*0/u);
   });
 });
+
+describe("the button that returns you to the newest message", () => {
+  /**
+   * It sat in the bottom right, the same corner the composer controls and the
+   * activity dock occupy, and it was round where every other floating control
+   * on that edge is round too - so it read as one more of them.
+   *
+   * It belongs at the top right instead: away from the controls, on the edge
+   * you are scrolling away from, shaped like a panel affordance rather than a
+   * pill.
+   */
+  it("sits at the top right, out of the way of the controls", () => {
+    const rule = /\.jump-to-bottom\s*\{([^}]*)\}/u.exec(sheets)?.[1] ?? "";
+
+    expect(rule).toMatch(/top:/u);
+    expect(rule).not.toMatch(/bottom:/u);
+  });
+
+  it("is square rather than a pill", () => {
+    const rule = /\.jump-to-bottom\s*\{([^}]*)\}/u.exec(sheets)?.[1] ?? "";
+
+    expect(rule).toMatch(/border-radius:\s*var\(--pi-radius-(xs|sm|md)\)/u);
+  });
+});

@@ -511,11 +511,14 @@ export const chatStyles = css`
   /* Sits over the transcript's bottom-right corner, clear of the reading
      column, and only while the newest message is out of reach. 40px keeps it
      above the 24px minimum target without becoming a second composer. */
+  /* Top right, not bottom right: the bottom edge already carries the composer
+     controls and the activity dock, and a round button among round buttons
+     read as one more of them. */
   .jump-to-bottom {
-    position: absolute; right: 12px; bottom: 12px; z-index: 4;
+    position: absolute; right: 12px; top: 12px; z-index: 4;
     display: flex; align-items: center; justify-content: center;
     width: 40px; height: 40px; padding: 0;
-    border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill);
+    border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md);
     background: var(--pi-surface); color: var(--pi-text);
     font-size: 18px; line-height: 1; cursor: pointer;
     box-shadow: 0 2px 8px rgb(0 0 0 / 25%);
