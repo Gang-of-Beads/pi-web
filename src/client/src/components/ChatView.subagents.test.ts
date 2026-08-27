@@ -493,3 +493,30 @@ describe("the drawer opens only when asked", () => {
     expect(topDrawerStartsOpen()).toBe(false);
   });
 });
+
+describe("the drawer gives the screen back", () => {
+  /**
+   * The pure rule is worth nothing unless the view drops the expansion. This
+   * drives the transition the reader meets: they open the drawer to watch a
+   * subagent, and the subagent finishes.
+   */
+  it("folds a drawer it opened once the work finishes", async () => {
+    const { view } = await mount(SUBAGENTS);
+    const key: unknown = Reflect.get(view, "topDrawerKey");
+    if (typeof key !== "function") throw new Error("expected a drawer key");
+    const drawerKey: unknown = Reflect.apply(key, view, []);
+    if (typeof drawerKey !== "string") throw new Error("expected a drawer key string");
+
+    Reflect.set(view, "expandedTopDrawerKeys", new Set([drawerKey]));
+    Reflect.set(view, "drawerWorkWasRunning", true);
+
+    view.subagents = [];
+    view.subagentRuns = [];
+    view.backgroundTasks = [];
+    await view.updateComplete;
+
+    const expanded: unknown = Reflect.get(view, "expandedTopDrawerKeys");
+    if (!(expanded instanceof Set)) throw new Error("expected the expanded keys");
+    expect(expanded.has(drawerKey)).toBe(false);
+  });
+});

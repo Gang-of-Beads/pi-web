@@ -1,4 +1,5 @@
 import { LitElement, html, type TemplateResult } from "lit";
+import { dropsExpansionAsWorkFinishes } from "../topDrawerExpansion";
 import { showsJumpToBottom } from "../chatScrollPosition";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
@@ -271,6 +272,8 @@ export class ChatView extends LitElement {
   @state() private collapsedTopDrawerKeys: ReadonlySet<string> = new Set();
   /** Exact chats the reader explicitly unfolded, which outranks the default. */
   @state() private expandedTopDrawerKeys: ReadonlySet<string> = new Set();
+  /** Whether the drawer's work was running last time this was looked at. */
+  private drawerWorkWasRunning = false;
   /** Section the reader last chose; ignored when that section has nothing. */
   /**
    * The workspace's goals. On a phone the navigation panel that normally shows
@@ -411,6 +414,7 @@ export class ChatView extends LitElement {
   }
 
   protected override willUpdate(changed: Map<string, unknown>): void {
+    this.foldDrawerAsWorkFinishes();
     if (changed.has("sessionId")) {
       this.savePreviousSessionScrollPosition(changed.get("sessionId"));
       this.prepareSessionUiState();
@@ -1231,6 +1235,26 @@ export class ChatView extends LitElement {
         ${elapsed === undefined ? null : html`<span class="activity-elapsed" aria-hidden="true">${elapsed.text}</span>`}
       </div>
     `;
+  }
+
+  /**
+   * Give the screen back when the work the drawer was opened for ends.
+   *
+   * Opening the drawer used to be permanent, so a reader who opened it to
+   * watch a subagent kept it open for the rest of the chat - on a tab left
+   * open for days, always open, holding a block of screen to report that
+   * nothing is running.
+   */
+  private foldDrawerAsWorkFinishes(): void {
+    const working = this.activityPanelState()?.summary.working === true;
+    const drop = dropsExpansionAsWorkFinishes({ wasWorking: this.drawerWorkWasRunning, working });
+    this.drawerWorkWasRunning = working;
+    if (!drop) return;
+    const key = this.topDrawerKey();
+    if (!this.expandedTopDrawerKeys.has(key)) return;
+    const expandedKeys = new Set(this.expandedTopDrawerKeys);
+    expandedKeys.delete(key);
+    this.expandedTopDrawerKeys = expandedKeys;
   }
 
   /** Open the drawer on the running work the dock just named. */
