@@ -425,6 +425,17 @@ export class AppContextBar extends LitElement {
       white-space: nowrap;
       cursor: pointer;
     }
+    /* The header read "machine / … pi…": the breadcrumb took 42% of the row,
+       the round actions took their share, and the session name - the one part
+       that says which conversation this is - was left with a few characters.
+       Messages went to the wrong session because of it.
+
+       The machine and project are usually the same across a day's work and can
+       be opened when they are needed; the session name is read every time. */
+    @media (max-width: 640px) {
+      .context-breadcrumb { max-width: 22%; }
+      .context-session-title { font-weight: 700; }
+    }
     .context-breadcrumb:focus-visible, .context-session-title:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: -2px; }
     /* Session-led layout keeps the actions in flow rather than overlaying a
        scrolling chip strip that no longer exists. */
