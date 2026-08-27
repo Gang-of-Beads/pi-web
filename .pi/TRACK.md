@@ -66,7 +66,10 @@
   - 预览里状态条是窄条,量到 overlaps=[];**不能靠挪位置**,要构造上不可能重叠
 - [ ] **抽屉展开后不能切 ACTIVITY/GOALS/NOTIFICATIONS** —— 待复现。标签条始终渲染,是横向滚动条(`overflow-x: auto`),预览无活动数据无法验证
   - 截图 2:44:展开后顶部只剩范围码(All 205 / Subagents 1 / Agent runs 14 / Tasks 190),标签条不见了
-- [ ] **通知盖住模态层** —— 待复现。通知面板在活动坞(z-index 20),低于 QuickSwitcher 的 25,按代码盖不住。但层级各写各的、无统一标度:10001/10000/50/30/25/20/10 并存,`AuthDialog` 只有 10,会被面板盖住
+- [x] **层级失控** —— 原本 10001/10000/100/50/40/30/26/25/20/15/10 各写各的,**`AuthDialog` 只有 10,被 QuickSwitcher(25)盖住**:让你重新登录的框开在你正在读的面板后面
+  - 改为一条尺度(`index.html` 的 `:root`),按"打断到什么程度"分层:raised 10 / sticky 20 / popover 30 / overlay 40 / dialog 50 / blocking 60
+  - 16 个组件迁移;三条测试守住:尺度已发布、顺序单调、**没有组件再自己挑数字**(>9 即红)
+- [ ] **通知盖住模态层** —— 待复现。通知面板在活动坞(sticky),低于 QuickSwitcher(overlay),按代码盖不住
   - 截图 2:45:后台任务完成通知("Verify route and scope fixes / VERIFY_EXIT=0")盖在快速切换面板的会话列表上
 - [ ] **跨工作区选会话不同步祖先**
   - 截图 2:13:在 be-dev 会话的对话里,切到 Sessions 视图显示的是 pi-web 工作区的列表

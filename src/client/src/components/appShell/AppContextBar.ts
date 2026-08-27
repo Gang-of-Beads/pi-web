@@ -362,7 +362,7 @@ export class AppContextBar extends LitElement {
        suppression is repeated for components that define their own. */
     button, [role="button"], a, summary, label, input { -webkit-tap-highlight-color: transparent; }
     /* Keep the refresh menu in this shadow tree above the following mobile tab strip. */
-    :host { position: relative; z-index: 20; flex: 0 0 auto; min-width: 0; }
+    :host { position: relative; z-index: var(--pi-layer-sticky); flex: 0 0 auto; min-width: 0; }
     .context-bar { position: relative; flex: 0 0 auto; min-width: 0; display: flex; align-items: center; gap: 0; padding: var(--pi-space-3) 0; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); }
     .context-bar::before, .context-bar::after { content: ""; position: absolute; top: 0; bottom: 0; z-index: 2; width: 20px; opacity: 0; pointer-events: none; transition: opacity .15s ease; }
     .context-bar::before { left: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--pi-shadow-strong) 55%, transparent) 0%, transparent 100%); }

@@ -49,6 +49,16 @@
         --pi-radius-lg: 12px;
         --pi-radius-xl: 16px;
         --pi-radius-pill: 999px;
+
+        /* Layers, in the order they interrupt: what is written on a surface,
+           what floats above it, what covers it, and what demands an answer
+           before anything else. */
+        --pi-layer-raised: 10;
+        --pi-layer-sticky: 20;
+        --pi-layer-popover: 30;
+        --pi-layer-overlay: 40;
+        --pi-layer-dialog: 50;
+        --pi-layer-blocking: 60;
         /* One height for every panel header, so the left rail and the chat
            drawer share a horizontal rule instead of each picking its own. */
         /* The conversation column: the transcript, the composer and the

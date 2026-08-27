@@ -739,7 +739,7 @@ export class TerminalPanel extends LitElement {
     .terminal-host .xterm-screen { position: relative; }
     .terminal-host .xterm-screen canvas { position: absolute; left: 0; top: 0; }
     .terminal-host .xterm-char-measure-element { display: inline-block; visibility: hidden; position: absolute; top: 0; left: -9999em; line-height: normal; }
-    .terminal-host .xterm-accessibility:not(.debug), .terminal-host .xterm-message { position: absolute; inset: 0; z-index: 10; color: transparent; pointer-events: none; }
+    .terminal-host .xterm-accessibility:not(.debug), .terminal-host .xterm-message { position: absolute; inset: 0; z-index: var(--pi-layer-raised); color: transparent; pointer-events: none; }
     .terminal-host .xterm-accessibility-tree:not(.debug) *::selection { color: transparent; }
     .terminal-host .xterm-accessibility-tree { font-family: monospace; user-select: text; white-space: pre; }
     .terminal-host .xterm-accessibility-tree > div { transform-origin: left; width: fit-content; }

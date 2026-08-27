@@ -520,7 +520,7 @@ export class SessionTreeNavigator extends LitElement {
   }
 
   static override styles = css`
-    :host { position: fixed; inset: 0; z-index: 40; color: var(--pi-text); font: 14px system-ui, sans-serif; }
+    :host { position: fixed; inset: 0; z-index: var(--pi-layer-popover); color: var(--pi-text); font: 14px system-ui, sans-serif; }
     * { box-sizing: border-box; }
     /* Full-viewport shell: the surface's centered-card defaults are overridden
        so the dialog keeps covering the whole viewport. */

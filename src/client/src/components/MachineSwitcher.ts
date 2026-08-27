@@ -300,7 +300,7 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     .activity-indicator.unread { border-radius: 50%; background: var(--pi-accent); animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--pi-accent) 20%, transparent); }
     .unread-ring { flex: 0 0 auto; box-sizing: border-box; display: inline-grid; place-items: center; width: 9px; height: 9px; border: 1.5px solid var(--pi-accent); border-radius: 50%; }
     .unread-ring .activity-indicator { width: 5px; height: 5px; }
-    .machine-switcher-menu { position: fixed; z-index: 10000; box-sizing: border-box; width: min(420px, calc(100vw - 16px)); overflow: auto; padding: 8px; border: 1px solid var(--pi-border-muted); border-radius: 14px; background: var(--pi-surface); box-shadow: 0 12px 40px var(--pi-shadow-strong, var(--pi-shadow)); display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 6px; }
+    .machine-switcher-menu { position: fixed; z-index: var(--pi-layer-overlay); box-sizing: border-box; width: min(420px, calc(100vw - 16px)); overflow: auto; padding: 8px; border: 1px solid var(--pi-border-muted); border-radius: 14px; background: var(--pi-surface); box-shadow: 0 12px 40px var(--pi-shadow-strong, var(--pi-shadow)); display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 6px; }
     .machine-option { position: relative; display: grid; gap: 4px; box-sizing: border-box; border: 1px solid var(--pi-border-muted); border-radius: 10px; background: var(--pi-surface); }
     .machine-option:hover { background: var(--pi-surface-hover); }
     .machine-option.selected { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
@@ -320,7 +320,7 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     .machine-option-actions { position: absolute; top: 4px; right: 4px; }
     .machine-option-actions-toggle { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; color: var(--pi-muted); border-radius: 6px; }
     .machine-option.no-actions .machine-option-actions { display: none; }
-    .machine-option-actions-panel { position: fixed; z-index: 10001; box-sizing: border-box; min-width: min(120px, calc(100vw - 16px)); overflow: auto; padding: 4px; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); box-shadow: 0 8px 24px var(--pi-shadow); }
+    .machine-option-actions-panel { position: fixed; z-index: var(--pi-layer-popover); box-sizing: border-box; min-width: min(120px, calc(100vw - 16px)); overflow: auto; padding: 4px; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); box-shadow: 0 8px 24px var(--pi-shadow); }
     .machine-option-actions-panel button { display: block; width: 100%; padding: 7px 9px; text-align: left; white-space: nowrap; }
     .machine-option-actions-panel button.danger { color: var(--pi-danger); }
     .machine-option-main:hover, .machine-option-main:focus-visible, .machine-option-actions-toggle:hover, .machine-option-actions-toggle:focus-visible, .machine-option.selected .machine-option-main { background: var(--pi-selection-bg); }

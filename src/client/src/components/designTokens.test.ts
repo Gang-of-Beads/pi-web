@@ -200,3 +200,52 @@ describe("the activity drawer on a phone", () => {
     expect(narrow).toMatch(/\.drawer-body[^}]*overflow:\s*auto/u);
   });
 });
+
+/**
+ * Stacking was decided one component at a time, and the numbers stopped
+ * agreeing: 10001, 10000, 100, 50, 40, 30, 26, 25, 20, 15, 10. The auth dialog
+ * sat at 10 while the session switcher sat at 25, so the dialog asking you to
+ * sign in again opened behind the panel you were reading.
+ *
+ * Layers now come from one published scale, in the order they interrupt: what
+ * is written on a surface, what floats above it, what covers it, and what
+ * demands an answer before anything else.
+ */
+describe("the layer scale", () => {
+  const LAYERS = ["--pi-layer-raised", "--pi-layer-sticky", "--pi-layer-popover", "--pi-layer-overlay", "--pi-layer-dialog", "--pi-layer-blocking"];
+
+  it("is published to every shadow root", () => {
+    for (const token of LAYERS) expect(indexHtml).toContain(`${token}:`);
+  });
+
+  it("orders the layers by how much they interrupt", () => {
+    const values = LAYERS.map((token) => {
+      const found = new RegExp(`${token}:\\s*(\\d+)`, "u").exec(indexHtml);
+      return Number(found?.[1] ?? "0");
+    });
+
+    expect(values).toEqual([...values].sort((a, b) => a - b));
+    expect(new Set(values).size).toBe(LAYERS.length);
+  });
+
+  it("leaves no component picking its own stacking number", () => {
+    const root = join(process.cwd(), "src/client/src/components");
+    const offScale: string[] = [];
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) { walk(path); continue; }
+        if (!entry.name.endsWith(".ts") || entry.name.includes(".test.")) continue;
+        for (const match of readFileSync(path, "utf8").matchAll(/z-index:\s*(\d+)/gu)) {
+          const value = Number(match[1] ?? "0");
+          // Single digits order siblings inside one component; they never
+          // decide which component covers which.
+          if (value > 9) offScale.push(`${entry.name}:${String(value)}`);
+        }
+      }
+    };
+    walk(root);
+
+    expect(offScale).toEqual([]);
+  });
+});

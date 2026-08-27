@@ -352,7 +352,7 @@ export class QuickSwitcher extends LitElement {
   }
 
   static override styles = [sessionStateBadgeStyles, css`
-    :host { position: fixed; inset: 0; z-index: 25; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
+    :host { position: fixed; inset: 0; z-index: var(--pi-layer-overlay); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
     modal-surface {
       --modal-surface-place-items: end center;
       --modal-surface-backdrop-padding: 0;
