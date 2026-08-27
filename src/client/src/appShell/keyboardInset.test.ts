@@ -111,3 +111,25 @@ describe("the height the shell is given", () => {
     expect(handler).toMatch(/--pi-app-visible-height/u);
   });
 });
+
+describe("pinch zoom", () => {
+  /**
+   * Pinching moves the visual viewport under the layout viewport, which is the
+   * same signal a soft keyboard produces, so the shell shortens itself for a
+   * keyboard that is not there. The app carries its own scale control in
+   * settings, so the browser's gesture only competes with it.
+   */
+  it("is not offered by the page", () => {
+    const html = readFileSync(join(process.cwd(), "src/client/index.html"), "utf8");
+    const viewport = /<meta name="viewport" content="([^"]*)"/u.exec(html)?.[1] ?? "";
+
+    expect(viewport).toMatch(/user-scalable=no/u);
+    expect(viewport).toMatch(/maximum-scale=1/u);
+  });
+
+  it("is blocked by touch handling as well, since the meta tag alone is advisory", () => {
+    const html = readFileSync(join(process.cwd(), "src/client/index.html"), "utf8");
+
+    expect(html).toMatch(/touch-action:\s*pan-x pan-y/u);
+  });
+});

@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>PI WEB</title>
     <meta name="theme-color" content="#0d1117" />
     <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />
@@ -139,6 +139,10 @@
       }
       html, body { margin: 0; height: 100%; overflow: hidden; background: var(--pi-bg); color: var(--pi-text); }
       body { min-height: 100dvh; }
+      /* Pinching moves the visual viewport under the layout viewport, which is
+         the signal a soft keyboard gives, so the shell shortens for a keyboard
+         that is not there. Scale belongs to the app's own control. */
+      html { touch-action: pan-x pan-y; }
     </style>
   </head>
   <body>
