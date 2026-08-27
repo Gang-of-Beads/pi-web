@@ -531,25 +531,19 @@ export const chatStyles = css`
      window give each a sliver and neither is usable. */
   .top-drawer { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; box-sizing: border-box; background: color-mix(in srgb, var(--pi-purple) 7%, var(--pi-bg)); border-bottom: 1px solid var(--pi-purple-border); }
   .top-drawer.collapsed { flex: 0 0 auto; }
-  /* On a phone the drawer shared the chat column, so expanded it got whatever
-     height was left: a goal's own title was clipped mid-line and its tasks
-     were cut off, and reading anything meant scrolling a letterbox above the
-     transcript.
+  /* On a phone the drawer used to get whatever height was left, which clipped
+     a goal's title mid-line. Taking the whole column instead was worse: the
+     way back went off the top of a tab strip that scrolls sideways, and the
+     transcript disappeared, so the reader was stranded.
 
-     It is not glanced at often, and when it is opened the reader wants either
-     one item's detail or to go back to the chat. So it takes the whole area
-     below the app header - which keeps the way back and the name of the
-     session in view, and keeps the drawer inside the frame rather than
-     covering it. Covering the frame was tried first and did not work: the
-     drawer's z-index lives inside the chat view's stacking context, so the
-     app header painted over the drawer's own header, and with it the only
-     control that closes the drawer. */
+     It stays a drawer over the transcript - which is what makes leaving it
+     obvious - and simply gets room: up to three fifths of the screen, with its
+     own scroll, and a header that stays put so the control that closes it is
+     always where it was. */
   @media (max-width: 640px) {
-    .top-drawer:not(.collapsed) { flex: 1 1 auto; min-height: 0; }
+    .top-drawer:not(.collapsed) { flex: 0 1 auto; max-height: 60vh; }
     .top-drawer:not(.collapsed) .drawer-header { position: sticky; top: 0; z-index: 1; background: var(--pi-bg); }
-    .top-drawer:not(.collapsed) .drawer-body { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; padding-bottom: env(safe-area-inset-bottom); }
-    /* The transcript gives way while the drawer is the page. */
-    .top-drawer:not(.collapsed) ~ .chat-wrap { display: none; }
+    .top-drawer:not(.collapsed) .drawer-body { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
   }
   .drawer-header { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: var(--pi-space-2) var(--pi-space-4); }
   /* The two sections are told apart by colour, not only by label: activity is
