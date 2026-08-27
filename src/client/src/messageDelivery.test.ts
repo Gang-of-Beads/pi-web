@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyQueueToDelivery, splitTranscriptAndPending, carryDeliveryForward, findDeliveryLineIndex, findTrackedUserLineIndex, isEchoOfTrackedMessage, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery } from "./messageDelivery";
+import { applyQueueToDelivery, deliverySettled, deliveryTaken, deliveryWaiting, splitTranscriptAndPending, carryDeliveryForward, findDeliveryLineIndex, findTrackedUserLineIndex, isEchoOfTrackedMessage, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery } from "./messageDelivery";
 import type { ChatLine } from "./components/shared";
 
 const ID = "cm-1";
@@ -320,5 +320,40 @@ describe("where a claimed bubble ends up", () => {
 
     expect(split.settled).toEqual([older]);
     expect(split.pending).toEqual([claimed]);
+  });
+});
+
+describe("the stages of a delivery", () => {
+  /**
+   * The states were compared as string literals at twenty-two call sites, each
+   * restating what "settled" or "still waiting" means. One of them disagreed
+   * with the others and drew a queued message twice.
+   */
+  it("knows which states are settled", () => {
+    expect(deliverySettled("delivered")).toBe(true);
+    expect(deliverySettled("failed")).toBe(true);
+    expect(deliverySettled("queued")).toBe(false);
+    expect(deliverySettled("sending")).toBe(false);
+    expect(deliverySettled("received")).toBe(false);
+  });
+
+  it("knows which states are still waiting on the agent", () => {
+    expect(deliveryWaiting("queued")).toBe(true);
+    expect(deliveryWaiting("sending")).toBe(true);
+    expect(deliveryWaiting("received")).toBe(true);
+    expect(deliveryWaiting("delivered")).toBe(false);
+    expect(deliveryWaiting("failed")).toBe(false);
+  });
+});
+
+describe("a failure is settled but not silent", () => {
+  /**
+   * Claiming treats a failure as settled - nothing more will happen to it - and
+   * that is not the same as having nothing to say. Reusing one predicate for
+   * both hid the "Not sent" mark, which is the one mark that has to be seen.
+   */
+  it("is settled, and still not taken", () => {
+    expect(deliverySettled("failed")).toBe(true);
+    expect(deliveryTaken("failed")).toBe(false);
   });
 });

@@ -58,6 +58,21 @@ export function optimisticUserLine(text: string, clientMessageId: string, attach
  * Keeping them in the transcript rather than a pinned panel is deliberate:
  * 1.202608.5-.7 tried the panel and it covered the conversation on a phone.
  */
+/** The agent has taken it: there is nothing left to report. */
+export function deliveryTaken(state: MessageDeliveryState): boolean {
+  return state === "delivered";
+}
+
+/** The agent has taken it, or it never arrived: nothing more will happen. */
+export function deliverySettled(state: MessageDeliveryState): boolean {
+  return state === "delivered" || state === "failed";
+}
+
+/** Sent, or waiting to be: the agent has not taken it yet. */
+export function deliveryWaiting(state: MessageDeliveryState): boolean {
+  return !deliverySettled(state);
+}
+
 /** Settled messages, and the ones the agent has not started. */
 export function splitTranscriptAndPending(messages: readonly ChatLine[], queued: readonly QueuedSessionMessage[]): { settled: ChatLine[]; pending: ChatLine[] } {
   if (queued.length === 0) return { settled: [...messages], pending: [] };
@@ -66,10 +81,10 @@ export function splitTranscriptAndPending(messages: readonly ChatLine[], queued:
   for (const line of messages) {
     const delivery = line.meta?.delivery;
     if (delivery === undefined) continue;
-    // A bubble carrying the id is that message whatever its mark says: the
-    // server can still hold a message it has already echoed back.
+    // The server can still hold a message it has already echoed back, so the id
+    // claims it whatever the mark says.
     bubbles.set(delivery.clientMessageId, line);
-    if (delivery.state !== "delivered" && delivery.state !== "failed") unclaimed.push(line);
+    if (deliveryWaiting(delivery.state)) unclaimed.push(line);
   }
   const pending: ChatLine[] = [];
   for (const message of queued) {

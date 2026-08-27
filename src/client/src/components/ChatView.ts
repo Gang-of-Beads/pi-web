@@ -39,7 +39,7 @@ import type { SessionStateBadgeKind } from "./activityBadge";
 import "./AskUserCard";
 import "./ExtensionDialogCard";
 import type { ExtensionDialogAnswerCallback, ExtensionDialogCancelCallback, ExtensionDialogDismissCallback } from "./ExtensionDialogCard";
-import { splitTranscriptAndPending } from "../messageDelivery";
+import { deliveryTaken, splitTranscriptAndPending } from "../messageDelivery";
 import { registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
 import "./ConversationMeter";
 import "./FormattedText";
@@ -115,7 +115,7 @@ export interface DeliveryPresentation {
  * looked one way before a reload and another way after.
  */
 export function chatDeliveryMarkerVisible(delivery: MessageDelivery | undefined): boolean {
-  return delivery !== undefined && delivery.state !== "delivered";
+  return delivery !== undefined && !deliveryTaken(delivery.state);
 }
 
 export function chatDeliveryPresentation(delivery: MessageDelivery): DeliveryPresentation {

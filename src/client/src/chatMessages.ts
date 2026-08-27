@@ -1,4 +1,5 @@
 import { ASK_USER_ANSWERS_CUSTOM_TYPE } from "../../shared/apiTypes";
+import { deliverySettled } from "./messageDelivery";
 import { parseAskUserOutcome } from "./api/parsers";
 import type { ChatLine, ChatPart, ToolExecutionPart, ToolPreview } from "./components/shared";
 
@@ -22,7 +23,7 @@ function unansweredTail(messages: ChatLine[]): number {
     const line = messages[index - 1];
     if (line === undefined) break;
     const state = line.meta?.delivery?.state;
-    if (line.role !== "user" || state === undefined || state === "delivered") break;
+    if (line.role !== "user" || state === undefined || deliverySettled(state)) break;
     index -= 1;
   }
   return index;
