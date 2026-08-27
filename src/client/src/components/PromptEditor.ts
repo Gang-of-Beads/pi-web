@@ -11,7 +11,7 @@ import { capturePromptAttachments, effectivePromptAttachmentDelivery, isInlinePr
 import { inputModeForDraft, inputModesEqual, type InputMode } from "../inputModes";
 import { machineSessionKey } from "../machineKeys";
 import { detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletionChoices, type PromptCompletionTrigger } from "../promptCompletions";
-import { clearDraft, loadDraft, saveDraft } from "../promptDraftStorage";
+import { clearDraft, loadDraft, restoresDraftOnFirstRender, savesOutgoingDraft, saveDraft } from "../promptDraftStorage";
 import { clearPendingPrompts, isNetworkFailure, loadPendingPrompts, NetworkSendError, savePendingPrompt, type PendingPrompt } from "../pendingOutbox";
 import { historyIndexStep, type HistoryDirection, loadPromptHistory, rememberPromptHistory, searchPromptHistory } from "../promptHistory";
 import { createMobilePromptEnterMedia, readPromptEnterPreference, shouldSendPromptOnEnterShortcut, shouldUsePromptEnterShiftShortcut } from "../promptEnterBehavior";
@@ -70,6 +70,8 @@ export class PromptEditor extends LitElement {
   // long-press edit/paste callout). Only `currentInputMode` (shell vs. normal)
   // is reactive, since that is the only draft-derived value the template shows.
   private draft = "";
+  /** Whether a draft has already been read back into this editor. */
+  private hasRenderedOnce = false;
   @state() private currentInputMode: InputMode = { kind: "normal" };
   @state() private completions: CompletionItem[] = [];
   @state() private selectedIndex = 0;
@@ -98,11 +100,15 @@ export class PromptEditor extends LitElement {
   private explicitShiftKeyActive = false;
 
   protected override willUpdate(changed: PropertyValues<this>) {
-    if (!changed.has("sessionId") && !changed.has("machineId")) return;
-    const previousSessionId = changed.has("sessionId") ? changed.get("sessionId") : this.sessionId;
-    const previousMachineId = changed.has("machineId") ? changed.get("machineId") : this.machineId;
+    const sessionChanged = changed.has("sessionId");
+    const machineChanged = changed.has("machineId");
+    const hadRendered = this.hasRenderedOnce;
+    if (!restoresDraftOnFirstRender({ hasRendered: hadRendered, sessionChanged, machineChanged })) return;
+    this.hasRenderedOnce = true;
+    const previousSessionId = sessionChanged ? changed.get("sessionId") : this.sessionId;
+    const previousMachineId = machineChanged ? changed.get("machineId") : this.machineId;
     const previousKey = draftStorageKey(previousMachineId, previousSessionId);
-    if (previousKey !== undefined) saveDraft(previousKey, this.draft);
+    if (previousKey !== undefined && savesOutgoingDraft({ hasRendered: hadRendered })) saveDraft(previousKey, this.draft);
     const currentKey = draftStorageKey(this.machineId, this.sessionId);
     this.draft = currentKey !== undefined ? loadDraft(currentKey) : "";
     this.currentInputMode = inputModeForDraft(this.draft);
