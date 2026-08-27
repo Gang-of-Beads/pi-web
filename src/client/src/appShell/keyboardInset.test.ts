@@ -97,7 +97,7 @@ describe("the height the shell is given", () => {
    * be read, and `100dvh` remains for engines that cannot report it.
    */
   it("prefers a measured visible height over the assumption", () => {
-    const sheet = readFileSync(join(process.cwd(), "src/client/src/components/shared.ts"), "utf8");
+    const sheet = readFileSync(join(process.cwd(), "src/client/src/components/PiWebApp.ts"), "utf8");
     const host = /:host \{ --pi-app-safe-area-bottom[^}]*\}/u.exec(sheet)?.[0] ?? "";
 
     expect(host).toMatch(/height:\s*var\(--pi-app-visible-height,/u);

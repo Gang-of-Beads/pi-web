@@ -1,7 +1,10 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { appStyles, chatStyles, listStyles, promptEditorStyles, workspacePanelStyles } from "./shared";
+import { listStyles, workspacePanelStyles} from "./shared";
+import { appStyles } from "./PiWebApp";
+import { chatStyles } from "./ChatView";
+import { promptEditorStyles } from "./PromptEditor";
 
 /**
  * The scale, as a contract.
@@ -258,7 +261,7 @@ describe("the layer scale", () => {
  */
 describe("what a notice may cover", () => {
   it("keeps the drawer below anything that covers the conversation", () => {
-    const chat = readFileSync(join(process.cwd(), "src/client/src/components/shared.ts"), "utf8");
+    const chat = readFileSync(join(process.cwd(), "src/client/src/components/ChatView.ts"), "utf8");
     const dock = /\.activity-dock\s*\{[^}]*z-index:\s*var\(--pi-layer-([a-z]+)\)/u.exec(chat)?.[1] ?? "";
     const switcher = readFileSync(join(process.cwd(), "src/client/src/components/QuickSwitcher.ts"), "utf8");
     const over = /:host\s*\{[^}]*z-index:\s*var\(--pi-layer-([a-z]+)\)/u.exec(switcher)?.[1] ?? "";

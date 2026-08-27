@@ -1,4 +1,4 @@
-import { LitElement, html, type TemplateResult } from "lit";
+import { css, LitElement, html, type TemplateResult } from "lit";
 import { scrollbarWidthOf } from "../scrollbarWidth";
 import { dropsExpansionAsWorkFinishes } from "../topDrawerExpansion";
 import { showsJumpToBottom } from "../chatScrollPosition";
@@ -34,7 +34,7 @@ import { describeRunModel } from "../modelIdentity";
 import { isWaitingForUser } from "../sessionWaiting";
 import type { SessionBackgroundTaskInfo, SessionNotification, SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
 import type { ChatLine, ChatPart, MessageDelivery } from "./shared";
-import { chatStyles, renderSessionWarningIcon } from "./shared";
+import { renderSessionWarningIcon} from "./shared";
 import type { SessionStateBadgeKind } from "./activityBadge";
 import "./AskUserCard";
 import "./ExtensionDialogCard";
@@ -44,6 +44,413 @@ import { registerRenderedModal, type RenderedModalRegistration } from "./modalLa
 import "./ConversationMeter";
 import "./FormattedText";
 import "./ToolExecutionView";
+import { sessionStateBadgeStyles as SessionStateBadgeStyles } from "./sessionStateBadgeStyles";
+
+export const chatStyles = css`
+  ${SessionStateBadgeStyles}
+  /* Mobile browsers paint a rectangular highlight on tap, which looks pasted-on
+     over a round or rounded control. Suppressed in favour of the app's own
+     pressed and focus styling; :focus-visible still shows keyboard focus, so
+     nothing is lost for keyboard users. */
+  button, [role="button"], a, summary, label, input, select { font: var(--pi-text-xs) var(--pi-font-ui); -webkit-tap-highlight-color: transparent; }
+  /* Follows the control's own shape rather than boxing a circle. */
+  button:focus-visible, [role="button"]:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); border-radius: inherit; }
+  /* Motion is a preference, not a decoration: a user who asks for less of it
+     gets none. Kept to a blanket rule because every animation here is
+     ornamental — progress bars, pulses, fades — so there is no reduced variant
+     worth designing separately. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+  }
+
+  /* A pending image attachment opens full-size in its own dialog: the native
+     top layer covers the page, Esc and a backdrop click close it, and the
+     controls are reachable by keyboard like every other control in the app. */
+  dialog.attachment-zoom { position: fixed; inset: 0; margin: auto; max-width: calc(96vw - env(safe-area-inset-left) - env(safe-area-inset-right)); max-height: calc(96vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); width: fit-content; height: fit-content; padding: 0; border: none; background: transparent; overflow: visible; }
+  dialog.attachment-zoom[open] { display: flex; }
+  dialog.attachment-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
+  .attachment-zoom-full { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: var(--pi-radius-md); object-fit: contain; }
+  .attachment-zoom-close { position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: 44px; height: 44px; padding: 0; font: 16px/1 system-ui, sans-serif; color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
+  .attachment-zoom-close:hover, .attachment-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
+  /* Tap targets should not wait for a double-tap-zoom gesture to be ruled out.
+     Scoped to controls, so scrollable and pannable surfaces keep the gestures
+     they set for themselves; and it lives here rather than on the app shell
+     because shell styles do not cross a component's shadow boundary. */
+  button, [role="button"], input, select, summary { font: var(--pi-text-xs) var(--pi-font-ui); touch-action: manipulation; }
+  :host { position: relative; z-index: 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
+  .chat-wrap { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+  /* Sits over the transcript's bottom-right corner, clear of the reading
+     column, and only while the newest message is out of reach. 40px keeps it
+     above the 24px minimum target without becoming a second composer. */
+  /* Top right, not bottom right: the bottom edge already carries the composer
+     controls and the activity dock, and a round button among round buttons
+     read as one more of them.
+
+     Its edges come from the conversation rather than from the panel. A fixed
+     offset from the panel measured correctly here, where the scrollbar floats
+     over the content, and sat on top of a real scrollbar elsewhere. */
+  .jump-to-bottom {
+    position: absolute;
+    right: calc(var(--pi-chat-gutter) + var(--pi-chat-scrollbar, 0px));
+    top: var(--pi-space-9); z-index: var(--pi-layer-sticky);
+    display: flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px; padding: 0;
+    border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md);
+    background: var(--pi-surface); color: var(--pi-text);
+    font-size: 18px; line-height: 1; cursor: pointer;
+    box-shadow: 0 2px 8px rgb(0 0 0 / 25%);
+  }
+  .jump-to-bottom:hover, .jump-to-bottom:focus-visible { border-color: var(--pi-accent); }
+  .top-notices { box-sizing: border-box; flex: 0 0 auto; max-height: 40%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border-bottom: 1px solid var(--pi-border); background: var(--pi-bg-overlay); }
+  /* Subagents strip: child sessions spawned by the parent conversation. The
+     strip must read at one glance -- who is still working, who finished --
+     and every row is a real button large enough to open with a thumb. */
+  /* One drawer, two sections. It is chrome, not transcript: it sits on the app
+     background rather than the message surface so it cannot be mistaken for a
+     reply. Tabs rather than a stack, because two stacked scrollers on a short
+     window give each a sliver and neither is usable. */
+  .top-drawer { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; box-sizing: border-box; background: color-mix(in srgb, var(--pi-purple) 7%, var(--pi-bg)); border-bottom: 1px solid var(--pi-purple-border); }
+  .top-drawer.collapsed { flex: 0 0 auto; }
+  /* On a phone the drawer used to get whatever height was left, which clipped
+     a goal's title mid-line. Taking the whole column instead was worse: the
+     way back went off the top of a tab strip that scrolls sideways, and the
+     transcript disappeared, so the reader was stranded.
+
+     It stays a drawer over the transcript - which is what makes leaving it
+     obvious - and simply gets room: up to three fifths of the screen, with its
+     own scroll, and a header that stays put so the control that closes it is
+     always where it was. */
+  @media (max-width: 640px) {
+    .top-drawer:not(.collapsed) { flex: 0 1 auto; max-height: 60vh; }
+    .top-drawer:not(.collapsed) .drawer-header { position: sticky; top: 0; z-index: 1; background: var(--pi-bg); }
+    .top-drawer:not(.collapsed) .drawer-body { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+  }
+  .drawer-header { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: var(--pi-space-2) var(--pi-space-4); }
+  /* The two sections are told apart by colour, not only by label: activity is
+     violet (work this chat started), notifications keep the app's warning
+     palette (something happened to you). */
+  .drawer-tab-activity.selected { border-color: var(--pi-purple-border); background: var(--pi-purple-surface); color: var(--pi-purple); }
+  .drawer-tab-notifications.selected { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); color: var(--pi-warning); }
+  .drawer-header:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -3px; }
+  /* Two tabs need 261px and get 240 on a phone, with the scrollbar hidden. */
+  .drawer-tabs-frame { position: relative; flex: 1 1 auto; min-width: 0; }
+  .drawer-tabs-frame::before, .drawer-tabs-frame::after { content: ""; position: absolute; top: 0; bottom: 0; z-index: 2; width: 18px; opacity: 0; pointer-events: none; transition: opacity var(--pi-motion-fast) var(--pi-ease); }
+  .drawer-tabs-frame::before { left: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--pi-shadow-strong) 55%, transparent) 0%, transparent 100%); }
+  .drawer-tabs-frame::after { right: 0; background: linear-gradient(270deg, color-mix(in srgb, var(--pi-shadow-strong) 55%, transparent) 0%, transparent 100%); }
+  .drawer-tabs-frame.can-scroll-left::before, .drawer-tabs-frame.can-scroll-right::after { opacity: 1; }
+  .drawer-tabs { min-width: 0; display: flex; align-items: center; gap: var(--pi-space-2); overflow-x: auto; scrollbar-width: none; }
+  .drawer-tabs::-webkit-scrollbar { display: none; }
+  /* A section that shortens stays reachable. Refusing to shrink pushed the
+     others off a narrow screen, where the selected one scrolled into view and
+     took the rest out of sight - which read as the strip disappearing. */
+  /* A section name is short and carries a count; cutting it to "ACTIVITY (..."
+     loses the number, which is the part worth reading. The names keep their
+     width and the running summary beside them gives way instead. */
+  .drawer-tab { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: 22px; padding: var(--pi-space-1) var(--pi-space-4); border: 1px solid transparent; border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-2xs); font-weight: 600; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .drawer-tab:hover { color: var(--pi-text-bright); }
+  .drawer-tab:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+  .drawer-tab, .activity-filter, .activity-history-toggle { transition: background-color var(--pi-motion-fast) var(--pi-ease), border-color var(--pi-motion-fast) var(--pi-ease), color var(--pi-motion-fast) var(--pi-ease); }
+  .drawer-tab.selected { border-color: var(--pi-border); background: var(--pi-surface); color: var(--pi-text-bright); }
+  .drawer-header-actions { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-1); }
+  .drawer-body { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .drawer-body[hidden] { display: none; }
+  .activity-filters { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; gap: var(--pi-space-2); margin-bottom: var(--pi-space-2); padding-bottom: var(--pi-space-2); background: color-mix(in srgb, var(--pi-purple) 7%, var(--pi-bg)); }
+  .activity-filter { display: inline-flex; align-items: center; gap: var(--pi-space-2); min-height: 26px; padding: var(--pi-space-1) var(--pi-space-4); border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-2xs); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .activity-filter:hover { color: var(--pi-text-bright); }
+  .activity-filter:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+  .activity-filter.selected { border-color: var(--pi-purple-border); background: var(--pi-purple-surface); color: var(--pi-purple); }
+  .activity-filter-count { color: var(--pi-muted); font-variant-numeric: tabular-nums; }
+  .activity-filter.selected .activity-filter-count { color: inherit; }
+  @media (pointer: coarse) {
+    .activity-filter { min-height: 44px; }
+  }
+  .subagents-list { mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent 100%); flex: 0 1 auto; min-height: 0; max-height: min(34vh, 260px); display: grid; gap: var(--pi-space-3); align-content: start; overflow-y: auto; overscroll-behavior-y: contain; box-sizing: border-box; padding: 0 var(--pi-space-5) var(--pi-space-5); }
+  .subagents-list[hidden] { display: none; }
+  /* Two fixed lines per row: the identity line never reflows, and the detail
+     line is one clipped line, because a subagent's task text is a paragraph
+     and a strip that grows with it is the bug this replaced. */
+  .subagent-row { box-sizing: border-box; min-width: 0; display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto auto auto; align-items: center; gap: var(--pi-space-2) var(--pi-space-4); min-height: 38px; padding: var(--pi-space-4) var(--pi-space-5); border: 1px solid var(--pi-border-muted); border-inline-start: 4px solid var(--pi-dim); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; text-align: start; transition: background var(--pi-motion-fast) var(--pi-ease), border-color var(--pi-motion-fast) var(--pi-ease); }
+  .subagent-row:hover, .subagent-row:focus-visible { background: var(--pi-surface-hover); }
+  .subagent-row:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+  /* A row with no output to open is not a button in any useful sense; say so
+     instead of letting a thumb bounce off it. */
+  .subagent-row:disabled { cursor: default; opacity: .72; }
+  .subagent-row:disabled:hover { background: var(--pi-surface); }
+  /* Status changes under the reader's eyes - a row goes running to done while
+     the drawer is open - so the colours that carry that meaning move rather
+     than jump. Paint only: animating the row's size would shift every row
+     below it. The reduced-motion block above collapses these to nothing. */
+  .subagent-row { transition: background-color var(--pi-motion-base) var(--pi-ease), border-color var(--pi-motion-base) var(--pi-ease); }
+  .subagent-row.status-working, .subagent-row.status-running { border-color: var(--pi-accent-border); border-inline-start-color: var(--pi-accent); background: color-mix(in srgb, var(--pi-accent) 14%, var(--pi-surface)); }
+  .subagent-row.status-idle, .subagent-row.status-done { border-inline-start-color: var(--pi-success); background: color-mix(in srgb, var(--pi-success) 7%, var(--pi-surface)); }
+  .subagent-row.status-error, .subagent-row.status-failed { border-inline-start-color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 8%, var(--pi-surface)); }
+  .subagent-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--pi-muted); }
+  .subagent-dot.working, .subagent-dot.running { background: var(--pi-accent); animation: pulse 1s ease-in-out infinite; }
+  .subagent-dot.idle, .subagent-dot.done { background: var(--pi-success); }
+  .subagent-dot.error, .subagent-dot.failed { background: var(--pi-danger); }
+  /* The kind, in a word: the filter chips name the same three categories, so a
+     row says which one it is without the reader inferring it from the shape. */
+  .subagent-kind { flex: 0 0 auto; color: var(--pi-muted); font-size: var(--pi-text-2xs); text-transform: uppercase; letter-spacing: .04em; }
+  /* What the run is on. Quiet: it answers "which model, at what thinking
+     level" for a reader scanning a fleet, without competing with the agent's
+     own name. */
+  .subagent-model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-variant-numeric: tabular-nums; }
+  .subagent-id { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--pi-font-ui); font-size: var(--pi-text-sm); font-weight: var(--pi-weight-medium); letter-spacing: -0.01em; color: var(--pi-text-bright); }
+  .subagent-status { flex: 0 0 auto; padding: 1px var(--pi-space-4); border-radius: var(--pi-radius-pill); background: var(--pi-border-muted); color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: 600; letter-spacing: .02em; white-space: nowrap; }
+  .subagent-row .subagent-status.working, .subagent-row .subagent-status.running { background: var(--pi-selection-bg); color: var(--pi-accent); }
+  .subagent-row .subagent-status.idle, .subagent-row .subagent-status.done { background: var(--pi-success-surface); color: var(--pi-success); }
+  .subagent-row .subagent-status.error, .subagent-row .subagent-status.failed { background: color-mix(in srgb, var(--pi-danger) 18%, transparent); color: var(--pi-danger); }
+  .subagent-duration { flex: 0 0 auto; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .subagent-detail { grid-column: 3 / -1; min-width: 0; overflow: hidden; color: var(--pi-muted); font-size: var(--pi-text-xs); line-height: var(--pi-leading-tight); text-overflow: ellipsis; white-space: nowrap; }
+  .activity-empty { margin: var(--pi-space-2) 0; color: var(--pi-muted); font-size: var(--pi-text-xs); }
+  /* Quiet, full-width and last: the history is available without competing
+     with the work that is actually running. */
+  .activity-history-toggle { justify-self: stretch; min-height: 30px; margin-top: var(--pi-space-1); border: 1px dashed var(--pi-border); border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-2xs); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .activity-history-toggle:hover, .activity-history-toggle:focus-visible { border-color: var(--pi-purple-border); color: var(--pi-purple); }
+  .activity-history-toggle:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+  .subagent-chevron { flex: 0 0 auto; color: var(--pi-muted); font-size: var(--pi-text-xs); }
+  /* One rule for the whole drawer: the project sets 44px as its touch height
+     (--pi-control-height-touch), and controls added a few at a time had drifted
+     to 30, 32, 36 and 40. Placed after every base declaration it overrides -
+     a media query carries no extra specificity, so the same rule written
+     earlier in the sheet loses to the base height it was meant to raise. */
+  @media (pointer: coarse) {
+    .drawer-tab, .subagent-row, .activity-history-toggle { min-height: 44px; }
+    .drawer-header { min-height: 44px; }
+  }
+  .session-warnings { flex: 0 1 auto; display: grid; gap: var(--pi-space-4); max-height: 50%; min-height: 0; overflow-y: auto; box-sizing: border-box; padding: var(--pi-space-5) var(--pi-space-7); border-bottom: 1px solid var(--pi-border-muted); }
+  .session-warnings:only-child { flex: 1 1 auto; max-height: 100%; border-bottom: 0; }
+  .session-warnings-controls { display: flex; justify-content: flex-end; }
+  .session-warnings-collapse { display: inline-flex; align-items: center; gap: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); padding: var(--pi-space-2) var(--pi-space-4); font: var(--pi-text-xs) var(--pi-font-ui); cursor: pointer; }
+  .session-warnings-collapse:hover, .session-warnings-collapse:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); background: var(--pi-bg-overlay); }
+  .session-warnings-collapse:focus-visible { outline: 1px solid var(--pi-border); outline-offset: 2px; }
+  .session-warnings-collapse-icon { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+  .session-warning { position: relative; display: grid; gap: var(--pi-space-2); box-sizing: border-box; padding: var(--pi-space-5) 34px var(--pi-space-5) var(--pi-space-6); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-lg); background: var(--pi-warning-surface); color: var(--pi-text); }
+  .session-warning.error { border-color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 12%, var(--pi-surface)); }
+  .session-warning.info { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
+  .session-warning-head { display: flex; align-items: center; gap: var(--pi-space-4); min-height: 16px; }
+  .session-warning-icon { flex: 0 0 auto; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .session-warning-body { min-width: 0; display: grid; gap: 3px; }
+  .session-warning-message { margin: 0; overflow-wrap: anywhere; }
+  .session-warning-path { margin: 0; color: var(--pi-muted); font-size: var(--pi-text-xs); font-family: var(--pi-mono, ui-monospace, monospace); overflow-wrap: anywhere; }
+  .session-warning-source { color: var(--pi-muted); font-size: var(--pi-text-2xs); text-transform: uppercase; letter-spacing: .04em; }
+  .session-warning-dismiss { position: absolute; top: 6px; right: 6px; display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); font: 15px/1 system-ui, sans-serif; cursor: pointer; }
+  .session-warning-dismiss:hover, .session-warning-dismiss:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); background: var(--pi-bg-overlay); }
+  .session-warning-dismiss:focus-visible { outline: 1px solid var(--pi-border); outline-offset: 2px; }
+  .notification-control, .notification-row-dismiss { box-sizing: border-box; min-height: 32px; border: 0; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); cursor: pointer; }
+  .notification-control { padding: 0 var(--pi-space-4); font: var(--pi-text-xs) var(--pi-font-ui); white-space: nowrap; }
+  .notification-toggle { display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; }
+  .notification-control:hover, .notification-control:focus-visible, .notification-row-dismiss:hover, .notification-row-dismiss:focus-visible { background: var(--pi-selection-bg); color: var(--pi-text-bright); }
+  .notification-control:focus-visible, .notification-row-dismiss:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+  .notification-control:disabled, .notification-row-dismiss:disabled { opacity: .5; background: transparent; cursor: default; }
+  .notification-icon { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+  .notification-disclosure-icon.expanded { transform: rotate(90deg); }
+  .notification-close-icon { width: 16px; height: 16px; }
+  .notification-list { flex: 0 1 auto; min-height: 0; max-height: min(38vh, 320px); overflow-y: auto; overscroll-behavior-y: contain; box-sizing: border-box; padding: 0 var(--pi-space-5) var(--pi-space-3); }
+  .notification-list[hidden] { display: none; }
+  .notification-overflow { margin: 0; padding: var(--pi-space-4) var(--pi-space-1); border-bottom: 1px solid var(--pi-border-muted); color: var(--pi-muted); font-size: var(--pi-text-2xs); overflow-wrap: anywhere; }
+  /* Severity is carried by the row itself, not only by a small coloured word:
+     an error and a routine notice were otherwise structurally identical, so the
+     tray had to be read to be triaged. The accent is a left border plus a very
+     light wash, which stays legible in both themes without shouting. */
+  .notification-row { position: relative; min-width: 0; display: grid; gap: var(--pi-space-2); box-sizing: border-box; margin: var(--pi-space-3) 0; padding: var(--pi-space-5) var(--pi-space-5) var(--pi-space-5) var(--pi-space-6); border: 1px solid var(--pi-border-muted); border-left: 3px solid var(--pi-border); border-radius: var(--pi-radius-md); color: var(--pi-text); }
+  .notification-row.warning { border-left-color: var(--pi-warning); background: color-mix(in srgb, var(--pi-warning) 6%, transparent); }
+  .notification-row.error { border-left-color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 7%, transparent); }
+  .notification-row:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: calc(var(--pi-focus-ring-offset) * -1); }
+  .notification-metadata { min-width: 0; display: flex; align-items: baseline; gap: var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-2xs); }
+  .notification-severity { color: var(--pi-muted); font-size: inherit; font-weight: 600; }
+  .notification-row.warning .notification-severity { color: var(--pi-warning); }
+  .notification-row.error .notification-severity { color: var(--pi-danger); }
+  .notification-message { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; text-align: start; unicode-bidi: plaintext; -webkit-user-select: text; user-select: text; }
+  /* Only the first line needs to clear the buttons; later lines use the full
+     width, so a long error does not wrap into a narrow column. */
+  .notification-metadata { padding-right: 72px; }
+  .notification-truncated { margin: 0; color: var(--pi-muted); font-size: var(--pi-text-2xs); overflow-wrap: anywhere; }
+  /* Copy and dismiss sit together in one cluster rather than one floating over
+     the text: the message wraps under them, so an absolute button either
+     overlapped the text or forced padding that made every row look ragged. */
+  .notification-row-actions { position: absolute; top: 4px; right: 4px; display: flex; gap: var(--pi-space-1); }
+  .notification-row-dismiss, .notification-row-copy { display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; }
+  .notification-row-copy { min-height: 32px; border: 0; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); font-size: var(--pi-text-base); cursor: pointer; }
+  .notification-row-copy:hover, .notification-row-copy:focus-visible { background: var(--pi-selection-bg); color: var(--pi-text-bright); }
+  .notification-row-copy:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+  .visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0 0 0 0) !important; clip-path: inset(50%) !important; white-space: nowrap !important; border: 0 !important; }
+  .notification-live span { display: block; }
+  @media (pointer: coarse) {
+    .notification-control, .notification-row-dismiss, .notification-row-copy { min-height: 40px; }
+    .notification-toggle, .notification-row-dismiss, .notification-row-copy { width: 40px; height: 40px; }
+    .notification-row { padding-right: 46px; }
+  }
+  @media (max-width: 520px) {
+    .drawer-header { gap: var(--pi-space-2); padding-inline: 8px; }
+    .drawer-tab { padding-inline: var(--pi-space-4); }
+    .notification-list, .subagents-list { padding-inline: 8px; }
+  }
+  /* A short window is the case the drawer was breaking: keep it to a slice of
+     the viewport so the transcript never becomes a letterbox. */
+  @media (max-height: 620px) {
+    /* Enough for two rows, or the drawer is a header with nothing under it -
+       measured at 390x400 (a phone with the keyboard up): 28px of viewport for
+       456px of content, and the sticky filter row alone was taller than that. */
+    .subagents-list { max-height: 26vh; min-height: 96px; }
+    .notification-list { max-height: 30vh; min-height: 96px; }
+    .activity-filters { position: static; }
+  }
+  .chat { --pi-chat-sticky-top: -26px; height: 100%; min-height: 0; overflow: auto; overflow-anchor: none; padding: 26px var(--pi-chat-gutter) 64px; box-sizing: border-box; }
+  .scroll-marker { display: block; height: 0; overflow: hidden; pointer-events: none; }
+  .activity-dock { position: absolute; left: var(--pi-chat-gutter); right: var(--pi-chat-gutter); bottom: 12px; z-index: var(--pi-layer-sticky); display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: 0 8px 28px var(--pi-shadow); backdrop-filter: blur(6px); }
+  /* Idle is the state nobody needs a full-width banner for: keep the signal,
+     drop the bar that looked like an empty card above the composer. */
+  .activity-dock.idle { right: auto; max-width: min(60%, 240px); opacity: .75; padding: var(--pi-space-2) var(--pi-space-5); font-size: var(--pi-text-xs); }
+  /* Idle turn, live children: readable as "waiting on something", not as the
+     assistant working. */
+  /* The one dock state that is a control, so it opts back into pointer events
+     and carries an affordance. */
+  .activity-dock.background { right: auto; max-width: min(70%, 300px); border-color: var(--pi-purple-border); color: var(--pi-purple); padding: var(--pi-space-2) var(--pi-space-5); font: inherit; font-size: var(--pi-text-xs); pointer-events: auto; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .activity-dock { transition: color var(--pi-motion-base) var(--pi-ease), background-color var(--pi-motion-base) var(--pi-ease), border-color var(--pi-motion-base) var(--pi-ease); }
+  .activity-dock.background:hover, .activity-dock.background:focus-visible { border-color: var(--pi-purple); background: var(--pi-purple-surface); }
+  @media (pointer: coarse) { .activity-dock.background { min-height: 44px; padding-block: var(--pi-space-4); } }
+  .activity-dock.background:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 2px; }
+  .activity-dock.background .subagent-chevron { color: inherit; }
+  .activity-dock.background .dot { background: currentColor; opacity: 1; animation: pulse 1s ease-in-out infinite; }
+  .activity-elapsed { flex: 0 0 auto; margin-left: auto; color: inherit; font-size: var(--pi-text-2xs); font-variant-numeric: tabular-nums; opacity: .85; }
+  /* A turn that has run for ten minutes without finishing is worth a second
+     look; the reader has no other way to tell it from one that just started. */
+  .activity-dock.long-running { border-color: var(--pi-warning-border); color: var(--pi-warning); }
+  .activity-dock.active { border-color: var(--pi-success-border); color: var(--pi-success); background: var(--pi-success-bg-overlay); }
+  .activity-dock.sending { border-color: var(--pi-warning-border); color: var(--pi-warning); background: var(--pi-warning-surface); }
+  .activity-dock.asking { border-color: var(--pi-warning-border); color: var(--pi-warning); background: var(--pi-warning-bg-overlay); }
+  .activity-dock.error { border-color: var(--pi-danger-border); color: var(--pi-danger); background: var(--pi-danger-bg-overlay); }
+  .activity-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; opacity: .45; flex: 0 0 auto; }
+  .activity-dock.active .dot { animation: pulse 1s ease-in-out infinite; opacity: 1; }
+  .activity-dock .state-dot { background: currentColor; }
+  .activity-dock.working .state-dot { opacity: 1; }
+  /* One column, shared by the transcript, the composer and the status dock.
+     A wide screen is bought to be used, so the column takes the width it is
+     given and keeps only a gutter at each edge. Everything that belongs to
+     the conversation measures from this one value, so the three surfaces line
+     up on a single left edge at every window size. */
+  .chat > * { margin-inline: auto; }
+  .msg { max-width: var(--pi-chat-measure); min-width: 0; box-sizing: border-box; margin: 0 auto var(--pi-space-7); padding: var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); overflow: visible; }
+  .msg.assistant, .msg.tool-image-output { background: var(--pi-surface); }
+  .msg.user { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
+  /* Held by the server, not yet read: the same warning colour the queue panel
+     uses, so "waiting" looks the same wherever it appears. It reverts to the
+     ordinary user colour the moment the agent takes the message, which is also
+     when the recall action disappears - one change of state, said twice. */
+  .msg.user.queued { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); }
+  .msg.user.queued > .msg-header { border-bottom-color: color-mix(in srgb, var(--pi-warning-border) 35%, transparent); background: var(--pi-warning-surface); }
+  .msg.user.queued > .msg-header .label { color: var(--pi-warning); }
+  .msg.user.queued .msg-action { color: var(--pi-warning); }
+  .msg.tool { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); color: var(--pi-warning); }
+  .msg.tool-execution-shell, .msg.ask-user-record-shell { padding: 0; border: 0; background: transparent; color: var(--pi-text); }
+  .msg.ask-user-record-shell ask-user-card { margin: 0 auto; }
+  /* A system line reports whatever the runtime has to say - a background task
+     that finished with exit 0 as often as a failure - so it is not coloured as
+     a fault. A genuine error arrives as an error line and keeps the red. */
+  .msg.system { color: var(--pi-muted); }
+  .msg.bash { border-color: var(--pi-success); background: var(--pi-success-bg); }
+  .msg.skill { border-color: var(--pi-purple-border); background: var(--pi-purple-surface); }
+  .msg.event-group { padding: 0; border-color: var(--pi-border); background: var(--pi-bg); color: var(--pi-muted); }
+  .msg.event-group.live { border-color: var(--pi-success-border); background: var(--pi-success-bg); }
+  .msg.event-group > summary { position: sticky; top: -26px; z-index: 5; display: flex; align-items: center; gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-space-6); border-radius: var(--pi-radius-md) var(--pi-radius-md) 0 0; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); color: var(--pi-muted); }
+  .msg.event-group.live > summary { border-bottom-color: var(--pi-success-border); background: var(--pi-success-bg); color: var(--pi-success); }
+  .msg.event-group > summary .label { margin: 0; }
+  .group-body { padding: 0 var(--pi-space-6) var(--pi-space-6); }
+  .chat-image { display: block; max-width: 100%; max-height: 320px; margin: var(--pi-space-4) 0 0; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-md); object-fit: contain; cursor: zoom-in; }
+  .chat-image:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent, var(--pi-success-border)); outline-offset: var(--pi-focus-ring-offset); }
+  dialog.image-zoom { position: fixed; inset: 0; margin: auto; max-width: calc(96vw - env(safe-area-inset-left) - env(safe-area-inset-right)); max-height: calc(96vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); width: fit-content; height: fit-content; padding: 0; border: none; background: transparent; overflow: visible; }
+  dialog.image-zoom[open] { display: flex; }
+  dialog.image-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
+  .image-zoom-full { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: var(--pi-radius-md); object-fit: contain; cursor: zoom-out; }
+  .image-zoom-close { position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; font: 16px/1 system-ui, sans-serif; color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
+  .image-zoom-close:hover, .image-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
+  .image-zoom-close:focus-visible { outline: 1px solid var(--pi-border); outline-offset: 2px; }
+  dialog.activity-output { position: fixed; inset: 0; margin: auto; box-sizing: border-box; width: min(92vw, 900px); max-height: calc(88vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); padding: 0; color: var(--pi-text); background: var(--pi-surface); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); overflow: hidden; }
+  dialog.activity-output[open] { display: flex; flex-direction: column; }
+  dialog.activity-output::backdrop { background: rgba(0, 0, 0, 0.6); }
+  .activity-output-head { display: flex; align-items: center; gap: var(--pi-space-3); padding: var(--pi-space-4) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); }
+  .activity-output-title { flex: 1; min-width: 0; margin: 0; font-size: var(--pi-font-size-sm, 13px); font-weight: 600; color: var(--pi-text-bright); overflow-wrap: anywhere; }
+  .activity-output-close { display: inline-grid; place-items: center; flex: none; width: 44px; height: 44px; margin: calc(-1 * var(--pi-space-2)) calc(-1 * var(--pi-space-2)) calc(-1 * var(--pi-space-2)) 0; padding: 0; font: 18px/1 system-ui, sans-serif; color: var(--pi-muted); background: transparent; border: none; border-radius: var(--pi-radius-sm); cursor: pointer; }
+  .activity-output-close:hover, .activity-output-close:focus-visible { color: var(--pi-text-bright); }
+  .activity-output-close:focus-visible { outline: 1px solid var(--pi-border); outline-offset: -2px; }
+  .activity-output-body { flex: 1; min-height: 0; margin: 0; padding: var(--pi-space-4) var(--pi-space-5); font: var(--pi-code-font-size, 12px)/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; overscroll-behavior: contain; }
+  .activity-output-empty { margin: 0; padding: var(--pi-space-6) var(--pi-space-5); color: var(--pi-muted); text-align: center; }
+  .group-msg { max-width: 100%; min-width: 0; box-sizing: border-box; padding: var(--pi-space-5) 0; border-top: 1px solid var(--pi-border-muted); color: var(--pi-text); overflow: visible; }
+  .group-msg.tool { color: var(--pi-warning); }
+  .group-msg.tool-execution-shell { color: var(--pi-text); }
+  .group-msg.system { color: var(--pi-muted); }
+  .group-msg.bash { color: var(--pi-success); }
+  .history-boundary { position: relative; z-index: 5; display: grid; gap: 3px; justify-items: center; margin: 0 auto var(--pi-space-7); color: var(--pi-muted); font-size: var(--pi-text-xs); text-align: center; }
+  .history-load-button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text-secondary); padding: var(--pi-space-3) var(--pi-space-6); font: var(--pi-text-xs) var(--pi-font-ui); cursor: pointer; }
+  .history-load-button:hover, .history-load-button:focus { border-color: var(--pi-accent); color: var(--pi-text-bright); }
+  .history-load-button:disabled { cursor: default; opacity: .55; }
+  /* Queued messages are drawn in the transcript, gold; this slim strip carries
+     only the count and the clear action the queue as a whole needs. */
+  .queued-strip { display: flex; align-items: center; gap: var(--pi-space-3); margin: 0 0 var(--pi-space-4); padding: var(--pi-space-2) var(--pi-space-3); color: var(--pi-warning); font-size: var(--pi-text-xs); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); background: var(--pi-warning-surface); }
+  .queued-strip-count { flex: 1 1 auto; min-width: 0; }
+  .queued-clear-button { flex: 0 0 auto; border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-warning); padding: var(--pi-space-1) var(--pi-space-3); font: inherit; cursor: pointer; }
+  .queued-clear-button:hover, .queued-clear-button:focus { border-color: var(--pi-warning); color: var(--pi-text-bright); }
+  .queued-dialogs { margin: -8px 0 var(--pi-space-7); padding: 0 var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-xs); text-align: center; }
+  /* Delivery mark: bottom-right of the sender's own bubble, quiet enough to
+     ignore while reading and specific enough to answer "did that send?". */
+  .delivery-mark { display: flex; align-items: center; justify-content: flex-end; gap: var(--pi-space-3); margin: var(--pi-space-3) -2px -4px 0; color: var(--pi-dim); font: var(--pi-text-2xs) var(--pi-font-ui); }
+  .delivery-mark .delivery-glyph { font-size: var(--pi-text-xs); letter-spacing: -1px; line-height: 1; }
+  .delivery-mark.pending { color: var(--pi-dim); }
+  .delivery-mark.pending .delivery-glyph { animation: pulse 1.4s ease-in-out infinite; }
+  .delivery-mark.received { color: var(--pi-muted); }
+  .delivery-mark.delivered { color: var(--pi-success); }
+  .delivery-mark.failed { color: var(--pi-danger); font-weight: 600; }
+  .session-activity { max-width: 100%; min-width: 0; box-sizing: border-box; display: grid; gap: var(--pi-space-2); margin: 0 auto var(--pi-space-7); padding: var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); overflow: hidden; }
+  .session-activity.compacting { border-color: var(--pi-purple-border); background: var(--pi-purple-surface); }
+  .session-activity strong { color: var(--pi-purple); }
+  .session-activity span, .session-activity small { color: var(--pi-muted); }
+  .history-boundary small { color: var(--pi-dim); }
+  .msg-header { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-5); min-height: 18px; margin-bottom: var(--pi-space-3); }
+  .msg > .msg-header { position: sticky; top: -16px; z-index: 4; margin: -12px -12px var(--pi-space-3); padding: var(--pi-space-1) var(--pi-space-5); border-radius: var(--pi-radius-md) var(--pi-radius-md) 0 0; border-bottom: 1px solid color-mix(in srgb, var(--pi-border-muted) 35%, transparent); background: var(--pi-surface); box-shadow: 0 8px 18px var(--pi-shadow-soft); }
+  .msg.user > .msg-header { border-bottom-color: color-mix(in srgb, var(--pi-accent-border) 35%, transparent); background: var(--pi-selection-bg); }
+  .msg.assistant > .msg-header .label, .msg.tool-image-output > .msg-header .label { color: var(--pi-text-secondary); }
+  .msg.user > .msg-header .label { color: var(--pi-accent); }
+  .msg.tool > .msg-header { border-bottom-color: color-mix(in srgb, var(--pi-warning-border) 35%, transparent); background: var(--pi-warning-surface); }
+  .msg.bash > .msg-header { border-bottom-color: color-mix(in srgb, var(--pi-success) 35%, transparent); background: var(--pi-success-bg); }
+  .msg.skill > .msg-header { border-bottom-color: color-mix(in srgb, var(--pi-purple-border) 35%, transparent); background: var(--pi-purple-surface); }
+  .group-msg > .msg-header { position: sticky; top: -26px; z-index: 4; margin: -10px 0 var(--pi-space-4); padding: var(--pi-space-4) 0 var(--pi-space-3); border-bottom: 1px solid color-mix(in srgb, var(--pi-border-muted) 35%, transparent); background: var(--pi-bg); }
+  .msg-header-trailing { min-width: 0; flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: flex-end; gap: var(--pi-space-4); }
+  .msg-actions { flex: 0 0 auto; display: inline-flex; gap: var(--pi-space-3); opacity: 0; transition: opacity var(--pi-motion-fast) var(--pi-ease); }
+  .msg-action { display: inline-grid; place-items: center; width: 24px; height: 24px; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); padding: 0; font: var(--pi-text-base) var(--pi-font-ui); line-height: 1; cursor: pointer; }
+  .msg-action:hover, .msg-action:focus { color: var(--pi-text); border-color: var(--pi-accent); }
+  .msg:hover > .msg-header .msg-actions, .msg:focus-within > .msg-header .msg-actions, .group-msg:hover > .msg-header .msg-actions, .group-msg:focus-within > .msg-header .msg-actions { opacity: 1; }
+  .label { display: block; color: var(--pi-muted); font-size: var(--pi-text-xs); text-transform: uppercase; }
+  .msg-header .label { margin: 0; }
+  .msg-meta { min-width: 0; opacity: .28; border: 0; background: transparent; color: var(--pi-dim); padding: 0; font: var(--pi-text-2xs) var(--pi-font-ui); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity var(--pi-motion-fast) var(--pi-ease); cursor: pointer; user-select: text; -webkit-user-select: text; }
+  .msg:hover > .msg-header .msg-meta, .msg:focus-within > .msg-header .msg-meta, .group-msg:hover > .msg-header .msg-meta, .group-msg:focus-within > .msg-header .msg-meta, .msg-meta:focus, .msg-meta.expanded { opacity: 1; }
+  .msg-meta.expanded { flex: 1 1 auto; max-width: 100%; white-space: normal; overflow: visible; overflow-wrap: anywhere; text-overflow: clip; }
+  .msg-meta:focus { outline: 1px solid var(--pi-border); outline-offset: 3px; border-radius: var(--pi-radius-xs); }
+  @media (hover: none) {
+    .msg-actions { opacity: 1; }
+    .msg-meta { opacity: .75; max-width: 26px; }
+    .msg-meta:not(.expanded) { display: inline-grid; width: 26px; height: 22px; place-items: center; font-size: 0; text-overflow: clip; }
+    .msg-meta::before { content: "ⓘ"; font-size: var(--pi-text-sm); }
+    .msg-meta.expanded { opacity: 1; max-width: 100%; }
+    .msg-meta.expanded::before { content: ""; }
+  }
+  formatted-text.part { display: block; }
+  formatted-text.part { text-align: start; unicode-bidi: plaintext; }
+  .part { max-width: 100%; min-width: 0; box-sizing: border-box; overflow: visible; }
+  .part + .part { margin-top: var(--pi-space-5); }
+  .tool-line { color: var(--pi-warning); }
+  .summary { color: var(--pi-muted); margin-left: var(--pi-space-3); }
+  .part:is(details) { border-top: 1px solid var(--pi-border); padding-top: var(--pi-space-4); }
+  .part > formatted-text { display: block; max-width: 100%; min-width: 0; overflow: visible; }
+  .skill-invocation, .skill-read { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); padding: var(--pi-space-4) var(--pi-space-5); }
+  .skill-invocation > summary, .skill-read > strong { color: var(--pi-purple); }
+  .skill-invocation > small, .skill-read > small { display: block; margin: var(--pi-space-3) 0 0; color: var(--pi-muted); }
+  summary { cursor: pointer; color: var(--pi-muted); }
+  pre { margin: var(--pi-space-3) 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; direction: ltr; text-align: left; unicode-bidi: isolate; }
+  .shell-output { color: var(--pi-text); font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; line-height: 1.45; direction: ltr; text-align: left; unicode-bidi: isolate; }
+  @keyframes pulse { 0%, 100% { transform: scale(.75); opacity: .55; } 50% { transform: scale(1.2); opacity: 1; } }
+`;
 
 const messageTimestampFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "medium" });
 const notificationTimestampFormatter = new Intl.DateTimeFormat(undefined, { timeStyle: "short" });

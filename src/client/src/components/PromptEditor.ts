@@ -3,7 +3,7 @@ import { markdown, deleteMarkupBackward, insertNewlineContinueMarkup } from "@co
 import { EditorSelection, EditorState, Compartment } from "@codemirror/state";
 import { drawSelection, EditorView, keymap, placeholder } from "@codemirror/view";
 import { defaultHighlightStyle, indentOnInput, indentUnit, syntaxHighlighting } from "@codemirror/language";
-import { LitElement, html, type PropertyValues } from "lit";
+import { css, LitElement, html, type PropertyValues } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { api, type FileSuggestion, type PromptAttachment, type SessionModel, type SessionStatus, type SlashCommand } from "../api";
 import type { PromptAttachmentDelivery } from "../../../shared/apiTypes";
@@ -21,10 +21,182 @@ import { resolveSpeechStreaming } from "../speechStreamProtocols";
 import { isVoiceCaptureActive, voiceCaptureLabel, type VoiceCaptureState } from "../voiceCapture";
 import { VoiceController } from "../voiceController";
 import type { PiWebSpeechToTextConfig } from "../../../shared/apiTypes";
-import { promptEditorStyles, type CompletionItem } from "./shared";
+import { type CompletionItem} from "./shared";
 import { renderAttachIcon, renderSendIcon, renderQueueIcon, renderSteerIcon, renderStopIcon, renderThinkingGauge } from "./promptEditorIcons";
 import { thinkingGauge, thinkingLevelLabel } from "../../../shared/thinkingLevels";
 import "./AutocompleteMenu";
+
+export const promptEditorStyles = css`
+  /* Mobile browsers paint a rectangular highlight on tap, which looks pasted-on
+     over a round or rounded control. Suppressed in favour of the app's own
+     pressed and focus styling; :focus-visible still shows keyboard focus, so
+     nothing is lost for keyboard users. */
+  button, [role="button"], a, summary, label, input, select { font: var(--pi-text-xs) var(--pi-font-ui); -webkit-tap-highlight-color: transparent; }
+  /* Follows the control's own shape rather than boxing a circle. */
+  button:focus-visible, [role="button"]:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); border-radius: inherit; }
+  /* Motion is a preference, not a decoration: a user who asks for less of it
+     gets none. Kept to a blanket rule because every animation here is
+     ornamental — progress bars, pulses, fades — so there is no reduced variant
+     worth designing separately. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+  }
+
+  /* A pending image attachment opens full-size in its own dialog: the native
+     top layer covers the page, Esc and a backdrop click close it, and the
+     controls are reachable by keyboard like every other control in the app. */
+  dialog.attachment-zoom { position: fixed; inset: 0; margin: auto; max-width: calc(96vw - env(safe-area-inset-left) - env(safe-area-inset-right)); max-height: calc(96vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); width: fit-content; height: fit-content; padding: 0; border: none; background: transparent; overflow: visible; }
+  dialog.attachment-zoom[open] { display: flex; }
+  dialog.attachment-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
+  .attachment-zoom-full { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: var(--pi-radius-md); object-fit: contain; }
+  .attachment-zoom-close { position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: 44px; height: 44px; padding: 0; font: 16px/1 system-ui, sans-serif; color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
+  .attachment-zoom-close:hover, .attachment-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
+  /* Tap targets should not wait for a double-tap-zoom gesture to be ruled out.
+     Scoped to controls, so scrollable and pannable surfaces keep the gestures
+     they set for themselves; and it lives here rather than on the app shell
+     because shell styles do not cross a component's shadow boundary. */
+  button, [role="button"], input, select, summary { font: var(--pi-text-xs) var(--pi-font-ui); touch-action: manipulation; }
+  :host { position: relative; z-index: 5; display: block; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
+  footer { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--pi-space-4); padding: var(--pi-space-6) var(--pi-chat-gutter); border-top: 1px solid var(--pi-border); max-width: var(--pi-chat-measure, 100%); margin-inline: auto; }
+  /* Collapsed: one line that gives the screen back to whatever input is being
+     used, and says what is still in the draft so it does not look lost. */
+  footer.collapsed { padding: var(--pi-space-3) var(--pi-space-5); }
+  .expand-composer { display: flex; align-items: center; gap: var(--pi-space-4); width: 100%; min-height: 44px; padding: var(--pi-space-2) var(--pi-space-5); border: 1px dashed var(--pi-border); border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-sm); text-align: start; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .expand-composer:hover, .expand-composer:focus-visible { border-color: var(--pi-accent); color: var(--pi-text-bright); }
+  .expand-composer:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+  .expand-composer-label { flex: 0 0 auto; }
+  .expand-composer-draft { min-width: 0; overflow: hidden; color: var(--pi-dim); font-size: var(--pi-text-xs); text-overflow: ellipsis; white-space: nowrap; }
+  footer.shell-mode { border-top-color: var(--pi-success); background: var(--pi-success-bg); }
+  .editor-wrap { position: relative; min-width: 0; }
+  .actions { display: flex; gap: var(--pi-space-4); align-items: center; justify-content: flex-end; flex-wrap: nowrap; white-space: nowrap; }
+  .compact-status { display: flex; min-width: 0; align-items: center; gap: var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); flex: 1 1 0; }
+  .compact-status > button { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .select-model { max-width: min(42vw, 320px); min-height: 40px; display: inline-flex; align-items: center; box-sizing: border-box; overflow: hidden; }
+  /* Separate boxes so the provider gives way first and the model id survives. */
+  .select-model-provider { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .select-model-id { flex: 0 0 auto; white-space: nowrap; }
+  .icon-button { flex: 0 0 auto; display: inline-grid; place-items: center; width: 36px; height: 36px; box-sizing: border-box; padding: 0; }
+  .icon-button .prompt-action-icon, .icon-button .prompt-thinking-gauge { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+  .icon-button .prompt-action-icon-filled { fill: currentColor; stroke: none; }
+  .send-button:not(:disabled) { color: var(--pi-accent, var(--pi-text)); }
+  .stop-button:not(:disabled) { color: var(--pi-danger); }
+  .select-thinking .prompt-thinking-gauge .gauge-bar { fill: currentColor; stroke: none; opacity: .28; }
+  .select-thinking .prompt-thinking-gauge .gauge-bar-active { opacity: 1; }
+  .editor-attach { position: absolute; right: var(--pi-space-4); bottom: var(--pi-space-4); z-index: 2; width: 32px; height: 32px; }
+  .editor-attach .prompt-action-icon { width: 16px; height: 16px; }
+  .editor-dictate { font-size: var(--pi-text-2xs); }
+  .editor-dictate.listening { color: var(--pi-danger); border-color: var(--pi-danger); }
+  textarea, .markdown-editor .cm-editor { box-sizing: border-box; width: 100%; min-height: 54px; max-height: 220px; resize: none; overflow: hidden; border-radius: var(--pi-radius-md); border: 1px solid var(--pi-border); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px)/1.4 var(--pi-control-font-family, system-ui, sans-serif); }
+  textarea { overflow-y: auto; padding: var(--pi-space-4); padding-right: calc(var(--pi-space-4) + 36px); }
+  /* A phone with the keyboard open leaves roughly 400px of viewport, and a
+     composer sized for a full screen took 119px of it - the transcript was
+     left with about two lines. The composer keeps a floor so it stays usable
+     and gives the rest back to what is being read. */
+  @media (max-height: 620px) {
+    textarea, .markdown-editor .cm-editor { min-height: 40px; max-height: 22dvh; }
+    .markdown-editor .cm-scroller { max-height: 22dvh; }
+    .markdown-editor .cm-content { min-height: 28px; }
+  }
+  .markdown-editor .cm-scroller { max-height: 220px; overflow-y: auto; font-family: var(--pi-control-font-family, system-ui, sans-serif); line-height: 1.4; }
+  .markdown-editor .cm-content { min-height: 38px; padding: var(--pi-space-4) 44px var(--pi-space-4) var(--pi-space-4); caret-color: var(--pi-text); text-align: start; unicode-bidi: plaintext; --pi-composer-pad: 8px; }
+  .markdown-editor .cm-cursor, .markdown-editor .cm-dropCursor { border-left-width: 2px; }
+  /* The caret should sit on the line the text will occupy: 1.4 * font-size is
+     the line's height, and centering a caret of that height in the line box
+     keeps it visually aligned with the surrounding text instead of hanging
+     lower -- the old 1.25em + margin approach drifted as the font size changed. */
+  .markdown-editor .cm-cursor { height: 1.4em !important; }
+  /* An empty document still has one line, and a min-height on the content
+     stretches that single line box to fill it. The caret is sized from the line
+     box, so before the first keystroke it rendered at the full height of the
+     editor and then snapped down once text arrived. Pinning the line box to the
+     text's own line-height keeps the caret the same size whether or not
+     anything has been typed; the editor keeps its minimum size through the
+     container, not by inflating the line. */
+  .markdown-editor .cm-line { padding: 0; min-height: calc(var(--pi-control-font-size, 16px) * 1.4); line-height: 1.4; unicode-bidi: plaintext; }
+  /* The placeholder renders inside the first line, so a hint long enough to
+     wrap made the empty line as tall as the wrapped text. The caret is sized
+     from that line box, which is why it towered over the input until the first
+     keystroke removed the placeholder. Taking it out of flow lets the empty
+     line keep the height of a single line of text, and the caret with it. */
+  /* Out of flow so a wrapped hint cannot inflate the empty line (and with it
+     the caret), but still anchored to the content's text area: the content has
+     8px of left padding, and a placeholder spanning the box edge paints the
+     hint 8px left of where the first keystroke will land -- the caret visibly
+     overlapping the first character. */
+  .markdown-editor .cm-placeholder { position: absolute; inset-block: 0; left: 8px; right: 44px; display: flex; align-items: center; pointer-events: none; }
+  .markdown-editor .cm-placeholder { color: var(--pi-dim); }
+  /* Two parts, not one sentence: the prompt sits at the reading edge and the
+     trigger characters group at the trailing edge, quiet enough to read as a
+     hint. */
+  .composer-placeholder { display: flex; flex: 1 1 auto; align-items: center; justify-content: space-between; gap: var(--pi-space-4); min-width: 0; }
+  .composer-placeholder-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .composer-placeholder-hints { flex: 0 0 auto; color: color-mix(in srgb, var(--pi-dim) 70%, transparent); font-size: var(--pi-text-xs); letter-spacing: 0.12em; }
+  /* CodeMirror suppresses its own outline, so the focus ring belongs on the
+     bordered box the user actually sees. Without this the composer was the one
+     control in the app that gave no sign of being focused. */
+  .markdown-editor .cm-focused { outline: none; }
+  .markdown-editor:focus-within .cm-editor { border-color: var(--pi-accent); box-shadow: 0 0 0 1px var(--pi-accent-ring, var(--pi-accent)); }
+  /* drawSelection() renders the caret and selection itself, and CodeMirror's
+     base colors for them assume a light editor (black caret, pale selection).
+     Re-theme them so they stay readable in every pi-web theme. The focused
+     selection rule must outspecify CodeMirror's base rule for the focused
+     selection background. */
+  .markdown-editor .cm-cursor { border-left-color: var(--pi-text); }
+  .markdown-editor .cm-editor .cm-selectionBackground { background: color-mix(in srgb, var(--pi-text) 18%, transparent); }
+  .markdown-editor .cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground { background: color-mix(in srgb, var(--pi-accent) 32%, transparent); }  .shell-mode textarea, .shell-mode .markdown-editor .cm-editor { border-color: var(--pi-success); box-shadow: 0 0 0 1px var(--pi-success-ring); }
+  .mode-hint-problem { border-color: var(--pi-danger); background: var(--pi-danger-bg, var(--pi-surface)); color: var(--pi-danger); }
+  .mode-hint { justify-self: start; border: 1px solid var(--pi-success-border); border-radius: var(--pi-radius-pill); background: var(--pi-success-surface); color: var(--pi-success); padding: var(--pi-space-1) var(--pi-space-4); font-size: var(--pi-text-xs); pointer-events: none; margin: 0 0 var(--pi-space-2); }
+  /* Attachments live above the text box, so pasted images/files are visible
+     before the user starts editing the message body and never get hidden below
+     the keyboard/action row on mobile. */
+  .attachments { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pi-space-4); margin: 0; padding: 0 0 var(--pi-space-1); }
+  .attachment-chip { position: relative; width: 56px; height: 56px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); overflow: hidden; background: var(--pi-bg); }
+  .attachment-chip img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .attachment-chip-file { display: grid; place-items: center; }
+  .attachment-file-preview { display: grid; place-items: center; width: 34px; height: 26px; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-surface); color: var(--pi-muted); font: 700 10px/1 system-ui, sans-serif; letter-spacing: .03em; }
+  .attachment-file-name { position: absolute; right: 4px; bottom: 3px; left: 4px; overflow: hidden; color: var(--pi-muted); font-size: 10px; line-height: 1.2; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+  .attachment-remove { position: absolute; top: 1px; right: 1px; width: 18px; height: 18px; padding: 0; line-height: 16px; border-radius: 50%; border: 1px solid var(--pi-border); background: var(--pi-surface); color: var(--pi-text); font-size: var(--pi-text-sm); cursor: pointer; }
+  /* A thumb is about 9mm wide. An 18px remove badge on a 56px thumbnail means
+     the tap lands on the image instead, so on touch the badge grows and the
+     chip grows with it rather than swallowing its own control. */
+  @media (pointer: coarse) {
+    .attachment-chip { width: 64px; height: 64px; }
+    .attachment-remove { top: 2px; right: 2px; width: 28px; height: 28px; line-height: 26px; font-size: var(--pi-text-md); }
+    .editor-attach { width: 40px; height: 40px; }
+    .markdown-editor .cm-content { padding-right: 54px; }
+    .markdown-editor .cm-placeholder { right: 54px; }
+  }
+  .attachment-error { flex-basis: 100%; color: var(--pi-danger); font-size: var(--pi-text-xs); }
+  button { font: var(--pi-text-xs) var(--pi-font-ui); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
+  button:disabled, textarea:disabled, .markdown-editor-disabled .cm-editor { opacity: .5; cursor: not-allowed; }
+      footer { gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-chat-gutter); }
+    .actions { gap: var(--pi-space-3); }
+    .compact-status { flex: 1 1 220px; gap: var(--pi-space-2); }
+    .select-model { max-width: min(58vw, 260px); }
+    button { padding: var(--pi-space-3) var(--pi-space-4); }
+  }
+  @media (max-width: 430px) {
+    .compact-status { flex-basis: 170px; font-size: var(--pi-text-2xs); }
+    .select-model { max-width: 48vw; }
+    button { padding: var(--pi-space-3) var(--pi-space-4); }
+    /* Narrow screens are phones: the touch targets get *bigger*, not smaller,
+       and the caret keeps the line height it has on wide screens. */
+    .icon-button { width: 40px; height: 40px; }
+    .markdown-editor .cm-cursor { height: 1.4em !important; }
+  }
+
+  /* Hold the whole list layout still while the user is selecting rows: the
+     checkbox and toolbar must not make rows jump between drags. */
+  @media (max-width: 760px) {
+    section { padding: var(--pi-space-4); }
+    h2 { margin: 0 0 var(--pi-space-3); }
+    .action-row { margin: var(--pi-space-2) 0; }
+    .action-main { padding: 6px 20px 6px calc(8px + var(--depth, 0) * 14px); }
+    .list-search-input { height: 30px; font-size: var(--pi-text-sm); padding: 0 var(--pi-space-4); }
+    .list-search-clear { width: 30px; height: 30px; }
+    .list-body.tiles { gap: var(--pi-space-3); grid-template-columns: 1fr; }
+    .list-body.tiles .action-main { min-height: 48px; padding: var(--pi-space-4) 28px var(--pi-space-4) var(--pi-space-4); }
+  }`;
 
 type PendingAttachment = CapturedAttachment & { id: string };
 

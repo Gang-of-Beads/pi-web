@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { appStyles, chatStyles, promptEditorStyles } from "./shared";
+import {} from "./shared";
+import { appStyles } from "./PiWebApp";
+import { chatStyles } from "./ChatView";
+import { promptEditorStyles } from "./PromptEditor";
 
 const sheets = `${String(appStyles)}\n${String(promptEditorStyles)}\n${String(chatStyles)}`;
 
