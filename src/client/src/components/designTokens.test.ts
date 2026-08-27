@@ -166,3 +166,31 @@ describe("controls inherit the app's type rather than the user agent's", () => {
     expect(declaresFont, "no button rule in this sheet sets a font").toBe(true);
   });
 });
+
+describe("the activity drawer on a phone", () => {
+  /**
+   * Expanded, the drawer shared the chat column, so on a phone it got whatever
+   * was left: a goal's own title was clipped mid-line and its tasks were cut
+   * off. Reading anything meant scrolling a letterbox above the transcript.
+   *
+   * It is not glanced at often, and when it is opened the reader wants either
+   * one item's detail or to go back to the chat. That is a page, so on a phone
+   * it becomes one.
+   */
+  it("takes the screen instead of a strip above the transcript", () => {
+    const narrow = /@media\s*\(max-width:\s*640px\)\s*\{([\s\S]*?)\n\s{2}\}/u.exec(String(chatStyles))?.[1] ?? "";
+
+    expect(narrow).toMatch(/\.top-drawer:not\(\.collapsed\)[^}]*position:\s*fixed/u);
+    expect(narrow).toMatch(/\.top-drawer:not\(\.collapsed\)[^}]*inset:\s*0/u);
+  });
+
+  /**
+   * A page the reader cannot leave is worse than a strip. The body has to
+   * scroll on its own so the header, which carries the way back, stays put.
+   */
+  it("keeps the way back in view while the page scrolls", () => {
+    const narrow = /@media\s*\(max-width:\s*640px\)\s*\{([\s\S]*?)\n\s{2}\}/u.exec(String(chatStyles))?.[1] ?? "";
+
+    expect(narrow).toMatch(/\.drawer-body[^}]*overflow:\s*auto/u);
+  });
+});

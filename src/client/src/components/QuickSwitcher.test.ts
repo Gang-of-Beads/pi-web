@@ -380,8 +380,10 @@ describe("the session list uses the width it has", () => {
 
   it("keeps a tile narrow enough that two fit side by side on a phone", () => {
     const sheet = String(QuickSwitcher.styles);
-    const rule = /\.rows\s*\{([^}]*)\}/u.exec(sheet)?.[1] ?? "";
-    const minimum = /minmax\((\d+)px/u.exec(rule)?.[1];
+    // The phone's tile width now lives in the narrow rule; the base rule keeps
+    // a tile wide enough to read on a desktop panel.
+    const narrow = /@media\s*\(max-width:\s*\d+px\)\s*\{([\s\S]*?)\n\s*\}\s*\n/u.exec(sheet)?.[1] ?? "";
+    const minimum = /\.rows[^}]*minmax\((\d+)px/u.exec(narrow)?.[1];
 
     expect(minimum).toBeDefined();
     // A 390px phone minus padding and a gap leaves about 180px per tile.
@@ -404,7 +406,49 @@ describe("tiles on a small phone", () => {
     const sheet = String(QuickSwitcher.styles);
     const narrow = /@media\s*\(max-width:\s*\d+px\)\s*\{([\s\S]*?)\n\s*\}\s*\n/u.exec(sheet)?.[1] ?? "";
 
-    expect(narrow).toContain(".row-wrap");
-    expect(narrow).toMatch(/\.row-menu-toggle[^}]*position:\s*absolute/u);
+    // The menu button is now in the tile's corner at every width, so the
+    // narrow rule only has to give the name two lines.
+    expect(narrow).toMatch(/\.row-title[^}]*line-clamp/u);
+    const sheetText = String(QuickSwitcher.styles);
+    expect(sheetText).toMatch(/\.row-menu-toggle[^}]*position:\s*absolute/u);
+  });
+});
+
+describe("tiles on a wide panel", () => {
+  /**
+   * The tile minimum was chosen so two would fit a 320px phone. On the desktop
+   * panel, which is about 550px, that same minimum fitted three columns of
+   * ~140px and truncated every name to "Call ask u…" while horizontal room sat
+   * unused. A tile should be as wide as a name needs; how many fit follows
+   * from that, rather than the other way round.
+   */
+  it("keeps a tile wide enough to read a name on a desktop panel", () => {
+    const sheet = String(QuickSwitcher.styles);
+    const rows = /\.rows\s*\{([^}]*)\}/u.exec(sheet)?.[1] ?? "";
+    const minimum = /minmax\((\d+)px/u.exec(rows)?.[1];
+
+    expect(Number(minimum)).toBeGreaterThanOrEqual(240);
+  });
+
+  /**
+   * The phone still needs the smaller tile, so the narrow rule must lower the
+   * minimum rather than the other way round.
+   */
+  it("lowers the minimum only on a narrow screen", () => {
+    const sheet = String(QuickSwitcher.styles);
+    const narrow = /@media\s*\(max-width:\s*\d+px\)\s*\{([\s\S]*?)\n\s*\}\s*\n/u.exec(sheet)?.[1] ?? "";
+
+    expect(narrow).toMatch(/\.rows[^}]*minmax\(1\d\dpx/u);
+  });
+
+  /**
+   * The menu button had a column of its own outside the tile at desktop
+   * widths, so each row read as six boxes rather than three sessions.
+   */
+  it("keeps the menu button inside the tile at every width", () => {
+    const sheet = String(QuickSwitcher.styles);
+    const wrap = /\.row-wrap\s*\{([^}]*)\}/u.exec(sheet)?.[1] ?? "";
+
+    expect(wrap).not.toContain("grid-template-columns");
   });
 });

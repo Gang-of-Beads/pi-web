@@ -531,6 +531,23 @@ export const chatStyles = css`
      window give each a sliver and neither is usable. */
   .top-drawer { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; box-sizing: border-box; background: color-mix(in srgb, var(--pi-purple) 7%, var(--pi-bg)); border-bottom: 1px solid var(--pi-purple-border); }
   .top-drawer.collapsed { flex: 0 0 auto; }
+  /* On a phone the drawer shared the chat column, so expanded it got whatever
+     was left: a goal's own title clipped mid-line, its tasks cut off, and
+     reading anything meant scrolling a letterbox above the transcript.
+
+     It is not glanced at often, and when it is opened the reader wants either
+     one item's detail or to go back to the chat. That is a page, so here it
+     becomes one: the header keeps the way back in view while the body
+     scrolls. */
+  @media (max-width: 640px) {
+    .top-drawer:not(.collapsed) {
+      position: fixed; inset: 0; z-index: 40;
+      background: var(--pi-bg);
+      border-radius: 0; border-width: 0;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .top-drawer:not(.collapsed) .drawer-body { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+  }
   .drawer-header { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: var(--pi-space-2) var(--pi-space-4); }
   /* The two sections are told apart by colour, not only by label: activity is
      violet (work this chat started), notifications keep the app's warning

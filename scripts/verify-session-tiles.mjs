@@ -15,15 +15,19 @@ const p = await b.newPage({ viewport: { width: W, height: 844 } });
 await p.goto("http://127.0.0.1:8505/", { waitUntil: "networkidle" });
 await p.waitForTimeout(2500);
 // 打开快速切换器：找到打开会话列表的控件
-await p.evaluate(() => {
-  const walk = (root, out = []) => {
-    for (const el of root.querySelectorAll("button,[role=button]")) out.push(el);
-    for (const el of root.querySelectorAll("*")) if (el.shadowRoot) walk(el.shadowRoot, out);
-    return out;
-  };
-  const b = walk(document).find((x) => /session|switch/i.test(`${x.getAttribute("aria-label") ?? ""} ${x.title ?? ""}`));
-  b?.click();
-});
+// 窄屏入口在头部按钮；桌面侧栏已列出会话，入口只有快捷键。
+if (W < 900) {
+  await p.evaluate(() => {
+    const walk = (root, out = []) => {
+      for (const el of root.querySelectorAll("button,[role=button]")) out.push(el);
+      for (const el of root.querySelectorAll("*")) if (el.shadowRoot) walk(el.shadowRoot, out);
+      return out;
+    };
+    walk(document).find((x) => /session|switch/i.test(`${x.getAttribute("aria-label") ?? ""} ${x.title ?? ""}`))?.click();
+  });
+  await p.waitForTimeout(1200);
+}
+await p.keyboard.press("Meta+p");
 await p.waitForTimeout(1500);
 const found = await p.evaluate(() => {
   const walk = (root, out = []) => {

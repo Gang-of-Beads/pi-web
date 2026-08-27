@@ -1,4 +1,5 @@
 import { LitElement, css, html, nothing } from "lit";
+import { switcherInitialFocus, touchPrimaryPointer } from "../keyboardDismissal";
 import { customElement, property, state } from "lit/decorators.js";
 import type { Project, SessionInfo, Workspace } from "../api";
 import { quickSwitcherFilterActive, quickSwitcherFilterSessions, quickSwitcherModel, quickSwitcherSessionSubtitle, quickSwitcherWorkspaces, type QuickSwitcherFilter, type QuickSwitcherGroup } from "../quickSwitcher";
@@ -68,7 +69,7 @@ export class QuickSwitcher extends LitElement {
     return html`
       <modal-surface
         .onClose=${() => this.onClose?.()}
-        .initialFocus=${"input"}
+        .initialFocus=${switcherInitialFocus({ touchPrimary: touchPrimaryPointer() })}
         .label=${"Sessions"}
         @keydown=${(event: KeyboardEvent) => { this.handleKeyDown(event); }}
       >
@@ -368,7 +369,7 @@ export class QuickSwitcher extends LitElement {
        mostly empty cards at a time, so choosing between a dozen sessions meant
        scrolling a list that wasted half its width on every row. auto-fit keeps
        a single column when there is only room for one. */
-    .rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--pi-space-3); align-content: start; }
+    .rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--pi-space-3); align-content: start; }
     .row { position: relative; display: grid; gap: var(--pi-space-1); width: 100%; min-height: 52px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-5) 34px var(--pi-space-5) var(--pi-space-6); text-align: left; cursor: pointer; }
     .row:hover:not(:disabled) { background: var(--pi-surface-hover); }
     .row:disabled { opacity: .55; cursor: not-allowed; }
@@ -394,7 +395,10 @@ export class QuickSwitcher extends LitElement {
     /* Nested chips read as a second level, not as peers of the projects. */
     .chip.nested { border-style: dashed; font-size: var(--pi-text-xs); }
     .chip:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
-    .row-wrap { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--pi-space-3); }
+    /* One box per session. The menu button used to have a column of its own
+       beside the tile, so a row of three sessions read as six boxes; it is
+       used occasionally, while the name is read every time. */
+    .row-wrap { position: relative; display: block; }
     /* A long press must not race the platform's own text callout. */
     .row-wrap .session-row { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
     .row-menu-toggle { flex: 0 0 auto; width: 40px; min-height: 52px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-muted); font-size: var(--pi-text-lg); line-height: 1; cursor: pointer; }
@@ -403,14 +407,14 @@ export class QuickSwitcher extends LitElement {
        hundred pixels, so two tiles read worse than one. The button moves into
        the tile's corner instead: it is used occasionally, the name is read
        every time. */
+    .row-title { padding-right: 30px; }
+    .row-menu-toggle { position: absolute; top: 0; right: 0; width: 32px; min-height: 32px; border-color: transparent; background: transparent; }
+    /* A half-width tile on a small phone shows about nine characters on one
+       line, fewer than the single-column row it replaced. Two lines give the
+       name back that room while still fitting twice as many sessions. */
     @media (max-width: 420px) {
-      .row-wrap { display: block; }
-      /* A half-width tile on one line shows about nine characters, which is
-         fewer than the single-column row it replaced. Two lines give the name
-         back the same room while still fitting twice as many sessions on the
-         screen. */
-      .row-title { padding-right: 26px; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-      .row-menu-toggle { position: absolute; top: 0; right: 0; width: 32px; min-height: 32px; border-color: transparent; background: transparent; }
+      .rows { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+      .row-title { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
     }
     .row-menu { position: absolute; top: calc(100% - 4px); right: 0; z-index: 3; display: grid; gap: var(--pi-space-1); min-width: 160px; padding: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); box-shadow: 0 10px 26px var(--pi-shadow); }
     .row-menu button { min-height: 40px; border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-text); padding: 0 var(--pi-space-5); font: inherit; text-align: left; cursor: pointer; }
