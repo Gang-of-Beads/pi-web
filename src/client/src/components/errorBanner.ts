@@ -42,7 +42,13 @@ function normalizeTransientError(error: string): string | undefined {
   // ENOENT when the socket file is gone, ECONNREFUSED while the daemon is
   // restarting and nothing is listening on it yet. The second is the one a user
   // is guaranteed to meet, because it is what an update looks like.
-  if (/session daemon workspace authority unavailable: connect (enoent|econnrefused)/i.test(error) && /sessiond\.sock/i.test(error)) {
+  //
+  // The wording between "session daemon" and "unavailable" varies by the route
+  // that reports it: the workspace catalog says "workspace authority", while
+  // the session proxy, the plugin backend proxy and workspace deletion say
+  // nothing at all. Naming one of them, as this rule first did, left the
+  // commonest banner sitting on the screen long after the daemon was back.
+  if (/session daemon\b.*\bunavailable: connect (enoent|econnrefused)/i.test(error) && /sessiond\.sock/i.test(error)) {
     return "Reconnecting to the session daemon…";
   }
   // Matches the DOMException text a cancelled fetch stringifies to, with or

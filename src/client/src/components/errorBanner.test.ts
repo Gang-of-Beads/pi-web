@@ -110,3 +110,37 @@ describe("dropped-connection failures", () => {
     expect(isTransientError("TypeError: cannot read properties of undefined")).toBe(false);
   });
 });
+
+describe("the daemon-unavailable banner the server actually sends", () => {
+  /**
+   * The self-healing rule was written against one wording - "Session daemon
+   * workspace authority unavailable" - which only the workspace catalog sends.
+   * The session proxy, the plugin backend proxy and workspace deletion all
+   * send the plain "Session daemon unavailable", which is what a reader meets
+   * whenever the daemon restarts. That banner never matched, so it never
+   * withdrew itself: it sat at the top of the screen long after the daemon was
+   * back, and only a click would remove it.
+   *
+   * This is the second time this rule has been written from an imagined string
+   * rather than the emitted one; these cases are copied from the server.
+   */
+  it("heals the message the session proxy sends", () => {
+    expect(isTransientError("HttpError: Session daemon unavailable: connect ENOENT /Users/me/.pi-web/sessiond.sock")).toBe(true);
+  });
+
+  it("heals it while the daemon is still starting up", () => {
+    expect(isTransientError("Session daemon unavailable: connect ECONNREFUSED /Users/me/.pi-web/sessiond.sock")).toBe(true);
+  });
+
+  it("still heals the workspace authority wording", () => {
+    expect(isTransientError("Session daemon workspace authority unavailable: connect ENOENT /Users/me/.pi-web/sessiond.sock")).toBe(true);
+  });
+
+  /**
+   * A failure that is not the daemon being briefly away must still wait for
+   * the reader, or a real problem disappears before it is read.
+   */
+  it("leaves a failure that will not heal itself alone", () => {
+    expect(isTransientError("Session daemon unavailable: permission denied")).toBe(false);
+  });
+});
