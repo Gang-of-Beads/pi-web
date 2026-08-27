@@ -1,4 +1,5 @@
 import { LitElement, html, type TemplateResult } from "lit";
+import { showsJumpToBottom } from "../chatScrollPosition";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import { ChatDisclosureController } from "../chatDisclosure";
@@ -258,6 +259,8 @@ export class ChatView extends LitElement {
   @query("dialog.image-zoom") private imageZoomDialog?: HTMLDialogElement;
   @query("dialog.activity-output") private activityOutputDialog?: HTMLDialogElement;
   @state() private pinnedToBottom = true;
+  /** Whether the newest message is far enough away to be worth a button. */
+  @state() private jumpToBottomVisible = false;
   @state() private zoomedImage: { src: string; alt: string } | undefined = undefined;
   @state() private expandedMetaKey: string | undefined;
   @state() private copiedNotificationId: string | undefined;
@@ -547,10 +550,32 @@ export class ChatView extends LitElement {
           ${this.renderOpenAsk()}
           ${this.renderExtensionDialogs()}
         </div>
+        ${this.renderJumpToBottom()}
         ${this.renderActivityDock()}
       </div>
       ${this.renderImageZoom()}
       ${this.renderActivityOutput()}
+    `;
+  }
+
+  /**
+   * A way back to the newest message, offered only while it is out of reach.
+   *
+   * A long transcript can be thousands of messages deep, so returning to the
+   * newest one otherwise means dragging the whole way back. Near the bottom
+   * the button would be covering the transcript to offer a scroll the reader
+   * can make by flicking once, so it is not shown there.
+   */
+  private renderJumpToBottom() {
+    if (!this.jumpToBottomVisible) return null;
+    return html`
+      <button
+        class="jump-to-bottom"
+        type="button"
+        title="Jump to the newest message"
+        aria-label="Jump to the newest message"
+        @click=${() => { this.pinnedToBottom = true; this.scrollToBottom(); this.jumpToBottomVisible = false; }}
+      >↓</button>
     `;
   }
 
@@ -1725,6 +1750,7 @@ export class ChatView extends LitElement {
     if (this.isAtBottom()) this.pinnedToBottom = true;
     else if (scrollingUp) this.pinnedToBottom = false;
     else this.pinnedToBottom = this.isNearBottom();
+    this.jumpToBottomVisible = showsJumpToBottom(chat);
     this.lastScrollTop = chat.scrollTop;
     this.lastClientHeight = chat.clientHeight;
   }

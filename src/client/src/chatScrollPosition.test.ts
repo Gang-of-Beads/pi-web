@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { showsJumpToBottom } from "./chatScrollPosition";
 import { ChatScrollController, captureScrollPosition, chatScrollStorageKey, findFirstVisibleArticle, findVisibleScrollAnchor, type ChatScrollElement, type ChatScrollScheduler, type ChatScrollStorage, type ChatScrollViewport } from "./chatScrollPosition";
 
 class MemoryScrollStorage implements ChatScrollStorage {
@@ -168,5 +169,30 @@ describe("chat scroll helpers", () => {
 
   it("captures an anchor-relative scroll position", () => {
     expect(captureScrollPosition(new FakeScroller(0, 1000, 100, 100, 200), new FakeArticle(140, 180, "m:3"))).toEqual({ mode: "anchor", anchorId: "m:3", offset: 40 });
+  });
+});
+
+describe("offering a way back to the newest message", () => {
+  /**
+   * A long transcript can be thousands of messages deep, and returning to the
+   * newest one meant dragging the whole way back. A button does it in one tap.
+   *
+   * It only earns its place while the newest message is genuinely out of
+   * reach. Near the bottom the reader can see it, so a button pointing at it
+   * would be covering the transcript to offer a scroll they no longer need.
+   */
+  it("stays hidden while the newest message is within reach", () => {
+    expect(showsJumpToBottom({ scrollHeight: 2000, scrollTop: 1200, clientHeight: 800 })).toBe(false);
+  });
+
+  it("appears once the newest message is a screenful or more away", () => {
+    expect(showsJumpToBottom({ scrollHeight: 4000, scrollTop: 1200, clientHeight: 800 })).toBe(true);
+  });
+
+  /**
+   * A transcript that does not scroll has nothing to return to.
+   */
+  it("stays hidden when the transcript fits the screen", () => {
+    expect(showsJumpToBottom({ scrollHeight: 800, scrollTop: 0, clientHeight: 800 })).toBe(false);
   });
 });

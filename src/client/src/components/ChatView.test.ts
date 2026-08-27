@@ -657,3 +657,44 @@ describe("ChatView queue-follow scroll (queueGrew)", () => {
     expect(queueGrewOf(view, { notAStatus: true })).toBe(true);
   });
 });
+
+describe("the way back to the newest message", () => {
+  /**
+   * The button is worth nothing if it does not actually return the reader, and
+   * it must not linger once they are back.
+   */
+  const isTemplate = (value: unknown): value is TemplateResult =>
+    typeof value === "object" && value !== null && "strings" in value && "values" in value;
+
+  const jumpTemplate = (view: ChatView): TemplateResult | null => {
+    const render: unknown = Reflect.get(view, "renderJumpToBottom");
+    if (typeof render !== "function") throw new Error("expected a jump-to-bottom renderer");
+    const template: unknown = Reflect.apply(render, view, []);
+    if (template === null) return null;
+    if (!isTemplate(template)) throw new Error("expected a template");
+    return template;
+  };
+
+  it("returns to the newest message and stops offering to", () => {
+    const view = new ChatView();
+    Reflect.set(view, "jumpToBottomVisible", true);
+    Reflect.set(view, "pinnedToBottom", false);
+    let scrolled = false;
+    Reflect.set(view, "scrollToBottom", () => { scrolled = true; });
+
+    const template = jumpTemplate(view);
+    if (template === null) throw new Error("expected the button while the newest message is out of reach");
+    templateEventHandlerNearMarker(template, "jump-to-bottom")(new Event("click"));
+
+    expect(scrolled).toBe(true);
+    expect(Reflect.get(view, "pinnedToBottom")).toBe(true);
+    expect(Reflect.get(view, "jumpToBottomVisible")).toBe(false);
+  });
+
+  it("offers nothing while the newest message is within reach", () => {
+    const view = new ChatView();
+    Reflect.set(view, "jumpToBottomVisible", false);
+
+    expect(jumpTemplate(view)).toBe(null);
+  });
+});

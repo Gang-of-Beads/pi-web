@@ -228,3 +228,25 @@ function findAnchorById<T extends ChatScrollElement>(anchors: T[], anchorId: str
 function anchorIdForElement(element: ChatScrollElement): string | undefined {
   return element.dataset.scrollAnchorId !== undefined && element.dataset.scrollAnchorId !== "" ? element.dataset.scrollAnchorId : undefined;
 }
+
+/**
+ * How far from the newest message the reader must be before offering a way
+ * back to it.
+ *
+ * One screenful: below that the newest message is on its way into view, and a
+ * button pointing at it would cover the transcript to offer a scroll the
+ * reader can already make by flicking once.
+ */
+export const JUMP_TO_BOTTOM_DISTANCE_SCREENFULS = 1;
+
+/**
+ * Whether to offer a way back to the newest message.
+ *
+ * A long transcript can be thousands of messages deep, and returning to the
+ * newest one otherwise means dragging the whole way back.
+ */
+export function showsJumpToBottom(
+  scroller: Pick<ChatScrollViewport, "scrollHeight" | "scrollTop" | "clientHeight">,
+): boolean {
+  return distanceFromScrollBottom(scroller) >= scroller.clientHeight * JUMP_TO_BOTTOM_DISTANCE_SCREENFULS;
+}

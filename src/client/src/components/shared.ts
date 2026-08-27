@@ -508,6 +508,19 @@ export const chatStyles = css`
   button, [role="button"], input, select, summary { font: var(--pi-text-xs) var(--pi-font-ui); touch-action: manipulation; }
   :host { position: relative; z-index: 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
   .chat-wrap { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+  /* Sits over the transcript's bottom-right corner, clear of the reading
+     column, and only while the newest message is out of reach. 40px keeps it
+     above the 24px minimum target without becoming a second composer. */
+  .jump-to-bottom {
+    position: absolute; right: 12px; bottom: 12px; z-index: 4;
+    display: flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px; padding: 0;
+    border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill);
+    background: var(--pi-surface); color: var(--pi-text);
+    font-size: 18px; line-height: 1; cursor: pointer;
+    box-shadow: 0 2px 8px rgb(0 0 0 / 25%);
+  }
+  .jump-to-bottom:hover, .jump-to-bottom:focus-visible { border-color: var(--pi-accent); }
   .top-notices { box-sizing: border-box; flex: 0 0 auto; max-height: 40%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border-bottom: 1px solid var(--pi-border); background: var(--pi-bg-overlay); }
   /* Subagents strip: child sessions spawned by the parent conversation. The
      strip must read at one glance -- who is still working, who finished --
