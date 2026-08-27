@@ -38,6 +38,7 @@ gains a visible one.
 | **Open settings** | `⌘,`, palette, `?settings=` — no button anywhere | ✅ gear control in the navigation panel header (`AppNavigationPanel`) |
 | Keyboard shortcut rebinding | Settings ▸ Shortcuts, itself invisible | Same panel, now reachable from the visible settings control |
 | **Theme selection** | Palette action only | ✅ Settings ▸ Appearance: every contributed theme as a card with a live colour preview, plus a follow-the-system switch (`SettingsAppearancePanel`) |
+| **Interface size** | The browser's own zoom, which an installed PWA does not offer | ✅ Settings ▸ Appearance: an 80–150% slider, applied as `zoom` on the document and remembered per device (`uiScale.ts`). It scales what is drawn; layout breakpoints stay in CSS pixels, so a window keeps the layout its width earns |
 | Provider auth (login/logout) | Palette only; usually discovered via an error | Settings ▸ Providers, plus the existing error-driven prompt |
 | **Session tree navigator** (history, branches, fork) | Only by typing a `/tree` command | ✅ "History and branches" in the session row menu (`SessionList`), which runs the same command |
 | Machine refresh / open remote PI WEB | Palette only | ✅ "Check again" / "Open PI WEB" in the machine row menu, plus the fleet panel |

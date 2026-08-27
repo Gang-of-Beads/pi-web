@@ -1,6 +1,7 @@
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import type { QualifiedContributionId, QualifiedThemeContribution, ThemeTokens } from "../../plugins/types";
+import { DEFAULT_UI_SCALE, MAX_UI_SCALE, MIN_UI_SCALE, UI_SCALE_STEP, uiScaleLabel } from "../../uiScale";
 
 /**
  * Choosing how the app looks, where looking for it makes sense.
@@ -24,6 +25,9 @@ export class SettingsAppearancePanel extends LitElement {
   @property({ type: Boolean }) followSystem = false;
   @property({ attribute: false }) onSelectTheme?: (themeId: QualifiedContributionId) => void;
   @property({ attribute: false }) onToggleFollowSystem?: (follow: boolean) => void;
+  /** Interface size, 1 being the size the design scale was drawn at. */
+  @property({ type: Number }) uiScale = DEFAULT_UI_SCALE;
+  @property({ attribute: false }) onChangeUiScale?: (scale: number) => void;
 
   override render() {
     return html`
@@ -34,6 +38,8 @@ export class SettingsAppearancePanel extends LitElement {
             <p class="muted">Pick a theme, or let the system's light and dark preference choose between a matching pair.</p>
           </div>
         </div>
+
+        ${this.renderScale()}
 
         <label class="follow">
           <input
@@ -52,6 +58,36 @@ export class SettingsAppearancePanel extends LitElement {
           ${this.themes.length === 0 ? html`<p class="muted">No themes are installed.</p>` : nothing}
         </div>
       </settings-panel-frame>
+    `;
+  }
+
+  /**
+   * Size is not zoom-with-reflow: it enlarges what is drawn and leaves the
+   * layout breakpoints where they are, so the hint says so rather than letting
+   * someone discover it by dragging the slider and getting a cramped desktop.
+   */
+  private renderScale() {
+    return html`
+      <div class="scale">
+        <label class="scale-label" for="ui-scale">
+          <span class="follow-title">Interface size</span>
+          <span class="scale-value">${uiScaleLabel(this.uiScale)}</span>
+        </label>
+        <input
+          id="ui-scale"
+          type="range"
+          min=${MIN_UI_SCALE}
+          max=${MAX_UI_SCALE}
+          step=${UI_SCALE_STEP}
+          .value=${String(this.uiScale)}
+          aria-valuetext=${uiScaleLabel(this.uiScale)}
+          @input=${(event: Event) => { if (event.target instanceof HTMLInputElement) this.onChangeUiScale?.(Number.parseFloat(event.target.value)); }}
+        >
+        <p class="muted">Scales everything this device draws, and is remembered on this device only. It does not change the layout: a window stays as wide as it is, so a desktop keeps its columns.</p>
+        ${this.uiScale === DEFAULT_UI_SCALE ? nothing : html`
+          <button type="button" class="scale-reset" @click=${() => { this.onChangeUiScale?.(DEFAULT_UI_SCALE); }}>Reset to 100%</button>
+        `}
+      </div>
     `;
   }
 
@@ -111,6 +147,14 @@ export class SettingsAppearancePanel extends LitElement {
     .follow input { width: 18px; height: 18px; margin: var(--pi-space-1) 0 0; accent-color: var(--pi-accent); }
     .follow span { display: grid; gap: var(--pi-space-1); }
     .follow-title { font-weight: 600; }
+    .scale { display: grid; gap: var(--pi-space-3); margin-bottom: var(--pi-space-7); padding: var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); }
+    .scale-label { display: flex; align-items: baseline; justify-content: space-between; gap: var(--pi-space-4); cursor: pointer; }
+    .scale-value { color: var(--pi-muted); font-variant-numeric: tabular-nums; }
+    .scale input { width: 100%; margin: 0; accent-color: var(--pi-accent); }
+    .scale input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
+    .scale-reset { justify-self: start; min-height: var(--pi-control-height); padding: var(--pi-space-2) var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-bg); color: var(--pi-text); font: inherit; font-size: var(--pi-text-xs); cursor: pointer; }
+    .scale-reset:hover { border-color: var(--pi-accent); }
+    .scale-reset:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
     .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--pi-space-5); }
     .theme { display: grid; gap: var(--pi-space-2); padding: var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); font: inherit; text-align: left; cursor: pointer; }
     .theme:hover { border-color: var(--pi-accent); }
