@@ -153,24 +153,9 @@ export const appStyles = css`
   .context-chip.empty { border-style: dashed; color: var(--pi-muted); }
   .context-kind { display: none; }
   .context-value { min-width: 0; overflow: visible; text-overflow: clip; white-space: nowrap; }
-  .mobile-tabs-frame { position: relative; display: none; flex: 0 0 auto; min-width: 0; border-bottom: 1px solid var(--pi-border); background: var(--pi-bg); }
-  .mobile-tabs-frame::before, .mobile-tabs-frame::after { content: ""; position: absolute; top: 0; bottom: 0; z-index: 2; width: 20px; opacity: 0; pointer-events: none; transition: opacity var(--pi-motion-fast) var(--pi-ease); }
-  .mobile-tabs-frame::before { left: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--pi-shadow-strong) 55%, transparent) 0%, transparent 100%); }
-  .mobile-tabs-frame::after { right: 0; background: linear-gradient(270deg, color-mix(in srgb, var(--pi-shadow-strong) 55%, transparent) 0%, transparent 100%); }
-  .mobile-tabs-frame.can-scroll-left::before, .mobile-tabs-frame.can-scroll-right::after { opacity: 1; }
-  .mobile-tabs { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: var(--pi-space-3); padding: var(--pi-space-4); overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; }
-  .mobile-tabs button { flex: 0 0 auto; white-space: nowrap; }
-  .mobile-navigation-tab, .mobile-navigation-panel { display: none; }
-  .mobile-tabs button.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
   .tab-badge { display: inline-block; min-width: 14px; margin-left: var(--pi-space-2); border: 1px solid var(--pi-success-border); border-radius: var(--pi-radius-pill); background: var(--pi-success-surface); color: var(--pi-success); padding: 0 var(--pi-space-3); font-size: var(--pi-text-2xs); line-height: 16px; text-align: center; }
-  .navigation-panel-edge, .workspace-panel-edge { min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: visible; background: var(--pi-border-muted); z-index: 2; }
-  .navigation-panel-edge { grid-column: 2; }
   .workspace-panel-edge { grid-column: 4; }
-  .navigation-panel-edge-button, .workspace-panel-edge-button { position: relative; z-index: 1; box-sizing: border-box; display: grid; place-items: center; width: 18px; height: 48px; padding: 0; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-pill); background: var(--pi-bg); color: var(--pi-muted); opacity: .75; cursor: pointer; }
-  .navigation-panel-edge-button:hover, .navigation-panel-edge-button:focus-visible, .workspace-panel-edge-button:hover, .workspace-panel-edge-button:focus-visible { color: var(--pi-text); background: var(--pi-surface-hover); opacity: 1; }
-  .shell.navigation-panel-collapsed .navigation-panel-edge-button { transform: translateX(calc(50% - .5px)); }
   .shell.workspace-panel-collapsed .workspace-panel-edge-button { transform: translateX(calc(-50% + .5px)); }
-  .navigation-panel-edge-icon, .workspace-panel-edge-icon { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
   workspace-panel { grid-column: 5; min-width: 0; min-height: 0; overflow: hidden; }
   @media (min-width: 1181px) {
     .shell.navigation-panel-collapsed { --navigation-panel-width: 0px; }
@@ -183,9 +168,7 @@ export const appStyles = css`
     .shell.navigation-panel-collapsed { --navigation-panel-width: 0px; }
     .shell.navigation-panel-collapsed > aside { display: none; }
     aside { grid-row: 1 / 3; }
-    .navigation-panel-edge { grid-row: 1 / 3; }
     main { grid-column: 3; grid-row: 1 / 3; }
-    .mobile-tabs-frame { display: flex; }
     .shell.workspace-view main { grid-row: 1; min-height: auto; }
     .shell.workspace-view > workspace-panel { grid-column: 3; grid-row: 2; display: flex; border-left: 0; }
     .shell:not(.workspace-view) > workspace-panel { display: none; }
@@ -196,10 +179,9 @@ export const appStyles = css`
   }
   @media (max-width: 760px) {
     .shell { grid-template-columns: minmax(0, 1fr); }
-    aside, .navigation-panel-edge { display: none; }
+    aside { display: none; }
     main, .shell.workspace-view > workspace-panel { grid-column: 1; }
     .context-bar { display: flex; }
-    .mobile-navigation-tab { display: block; }
     main.navigation-view chat-view, main.navigation-view prompt-editor, main.navigation-view status-bar,
     main.navigation-view .empty { display: none; }
     main.navigation-view .mobile-navigation-panel { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
@@ -521,7 +503,7 @@ export const chatStyles = css`
   .jump-to-bottom {
     position: absolute;
     right: calc(var(--pi-chat-gutter) + var(--pi-chat-scrollbar, 0px));
-    top: var(--pi-space-9); z-index: 4;
+    top: var(--pi-space-9); z-index: var(--pi-layer-sticky);
     display: flex; align-items: center; justify-content: center;
     width: 40px; height: 40px; padding: 0;
     border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md);
@@ -1071,12 +1053,10 @@ export const promptEditorStyles = css`
   @media (pointer: coarse) {
     .attachment-chip { width: 64px; height: 64px; }
     .attachment-remove { top: 2px; right: 2px; width: 28px; height: 28px; line-height: 26px; font-size: var(--pi-text-md); }
-    .editor-attach, .editor-dictate { width: 40px; height: 40px; }
-    .editor-dictate { right: 54px; }
+    .editor-attach { width: 40px; height: 40px; }
     .markdown-editor .cm-content { padding-right: 54px; }
     .markdown-editor .cm-placeholder { right: 54px; }
   }
-  .attachment-delivery select { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-3) var(--pi-space-4); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); }
   .attachment-error { flex-basis: 100%; color: var(--pi-danger); font-size: var(--pi-text-xs); }
   button { font: var(--pi-text-xs) var(--pi-font-ui); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
   button:disabled, textarea:disabled, .markdown-editor-disabled .cm-editor { opacity: .5; cursor: not-allowed; }

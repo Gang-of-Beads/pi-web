@@ -116,3 +116,17 @@ describe("the size of a drawer section button", () => {
     expect(Number(height)).toBeLessThanOrEqual(24);
   });
 });
+
+describe("the buttons in the control row", () => {
+  /**
+   * Dictate kept overrides from when it floated over the corner of the text:
+   * 40px on a touch screen while every other control in the row is 36px, and
+   * an offset for a position it no longer has. Attach still floats inside the
+   * composer, so its own size is its own business.
+   */
+  it("leaves dictation the size of the row it sits in", () => {
+    const coarse = /@media \(pointer: coarse\) \{([\s\S]*?)\n {2}\}/u.exec(sheets)?.[1] ?? "";
+
+    expect(coarse).not.toMatch(/\.editor-dictate/u);
+  });
+});

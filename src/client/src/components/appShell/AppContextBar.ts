@@ -138,14 +138,6 @@ export class AppContextBar extends LitElement {
               aria-label=${`Session: ${label}. Open session selection.`}
               @click=${() => { this.openSessions(); }}
             >${label}</button>`}
-        ${this.isWorking
-          ? html`<span
-              class="context-working"
-              role="status"
-              aria-label="Session is working"
-              title="Session is working"
-            ><span class="context-working-dot"></span><span class="context-working-dot"></span><span class="context-working-dot"></span></span>`
-          : null}
         ${this.onRenameSession === undefined || this.session === undefined || this.renamingSession
           ? null
           : html`<button
@@ -155,6 +147,14 @@ export class AppContextBar extends LitElement {
               aria-label=${`Rename session ${label}`}
               @click=${() => { this.renameSeed = label; this.renamingSession = true; }}
             >✎</button>`}
+        ${this.isWorking
+          ? html`<span
+              class="context-working"
+              role="status"
+              aria-label="Session is working"
+              title="Session is working"
+            ><span class="context-working-dot"></span><span class="context-working-dot"></span><span class="context-working-dot"></span></span>`
+          : null}
         ${this.hasContextActions() ? html`<div class="context-actions inline">${this.renderQuickSwitchButton()}${this.renderToolsButton()}${this.renderActionsButton()}${this.refreshControl}</div>` : null}
       </nav>
     `;

@@ -59,6 +59,8 @@ for (const width of widths) {
         onScreen: r.width > 0 && r.left >= -1 && r.right <= window.innerWidth + 1,
         visible: style.visibility !== "hidden" && Number(style.opacity) > 0.2 && style.display !== "none",
         enabled: !el.disabled,
+        size: `${String(Math.round(r.width))}x${String(Math.round(r.height))}`,
+        icon: el.classList.contains("icon-button"),
       };
     });
     // Overlap is what the reader sees, and it is not the same as overflow: a
@@ -84,6 +86,10 @@ for (const width of widths) {
   const send = row.controls.find((control) => control.name.toLowerCase().includes("send") || control.name.toLowerCase().includes("steer"));
   console.log(`${width}px x${process.argv[3] ?? "1"}  控件=${row.controls.length}  溢出=${row.overflow}  看不见=${offScreen.length === 0 ? "无" : JSON.stringify(offScreen)}  发送键=${send === undefined ? "缺失" : `可见${String(send.visible)}/可用${String(send.enabled)}`}`);
   if (send === undefined || !send.visible) { console.error(`  FAIL: no usable send control at ${width}px while the agent is answering`); failed = true; }
+  // Only the icon buttons are the same kind of control; the model picker and
+  // the thinking gauge are shaped by what they say.
+  const sizes = [...new Set(row.controls.filter((control) => control.icon).map((control) => control.size))];
+  if (sizes.length > 1) { console.error(`  FAIL: the row mixes control sizes: ${sizes.join(", ")}`); failed = true; }
   if (row.collisions.length > 0) { console.error(`  FAIL: controls overlap each other: ${row.collisions.join(", ")}`); failed = true; }
   if (row.room !== null && row.room < 0) { console.error(`  FAIL: the row runs ${String(-row.room)}px past the composer`); failed = true; }
   if (row.controls.length < 4) { console.error(`  FAIL: only ${row.controls.length} controls rendered, so the full row was not measured`); failed = true; }

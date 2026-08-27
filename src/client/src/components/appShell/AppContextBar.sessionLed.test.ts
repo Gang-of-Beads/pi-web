@@ -291,3 +291,18 @@ describe("working indicator", () => {
     expect(idle.querySelector(".context-working")).toBeNull();
   });
 });
+
+describe("the order of the session controls", () => {
+  /**
+   * The pencil renames the session name, and the dots report that the session
+   * is working. With the dots between them, the control sat next to a state it
+   * has nothing to do with and away from the name it edits.
+   */
+  it("puts the rename control beside the name it renames", async () => {
+    const bar = await mount({ emphasizeSession: true, onRenameSession: () => undefined, isWorking: true });
+    const order = [...(bar.querySelectorAll(".context-session-title, .context-session-rename, .context-working"))]
+      .map((el) => el.className.split(" ")[0]);
+
+    expect(order).toEqual(["context-session-title", "context-session-rename", "context-working"]);
+  });
+});
