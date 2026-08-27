@@ -56,7 +56,13 @@ export function switcherInitialFocus(environment: { touchPrimary: boolean }): st
   return environment.touchPrimary ? undefined : "input";
 }
 
-/** Whether this device's main pointer is a finger. */
-export function touchPrimaryPointer(view: Pick<Window, "matchMedia"> = window): boolean {
-  return view.matchMedia("(pointer: coarse)").matches;
+/**
+ * Whether this device's main pointer is a finger.
+ *
+ * Reports false where the question cannot be asked - a test DOM without
+ * `matchMedia`, an older engine - because that is the answer that keeps a
+ * keyboard-driven environment behaving as it did.
+ */
+export function touchPrimaryPointer(view: Partial<Pick<Window, "matchMedia">> = window): boolean {
+  return typeof view.matchMedia === "function" && view.matchMedia("(pointer: coarse)").matches;
 }

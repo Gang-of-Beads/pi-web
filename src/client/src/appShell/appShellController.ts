@@ -95,3 +95,19 @@ export function defaultRouteView(isMobileNavigationLayout: boolean, route: { rea
   const sessionId = route.sessionId ?? "";
   return sessionId === "" ? "navigation" : "chat";
 }
+
+/**
+ * Whether to put the caret in the composer without being asked.
+ *
+ * Focusing it is right where typing is the way in: the reader opens a session
+ * and carries on typing. Where a finger is the pointer it raises the on-screen
+ * keyboard over the conversation they just navigated to, and they have to
+ * dismiss it before they can read.
+ *
+ * Which pointer the device leads with decides it, rather than how wide the
+ * window is: a narrow desktop window still has a keyboard attached, and a
+ * tablet in landscape does not.
+ */
+export function autoFocusesComposer(environment: { touchPrimary: boolean; modalOpen: boolean }): boolean {
+  return !environment.touchPrimary && !environment.modalOpen;
+}

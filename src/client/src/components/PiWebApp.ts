@@ -1,4 +1,6 @@
 import { LitElement, html, type TemplateResult } from "lit";
+import { autoFocusesComposer } from "../appShell/appShellController";
+import { touchPrimaryPointer } from "../keyboardDismissal";
 import { customElement, query, state } from "lit/decorators.js";
 import { configApi, effectiveWorkspaceUploadFolder, fleetApi, projectsApi, selfUpdateApi, sessionsApi, terminalsApi, workspacesApi, workspaceEffectiveUploadFolder, type AskUserSubmission, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
   type QueuedSessionMessage, type SessionBackgroundTaskInfo, type SessionSubagentInfo, type SessionSubagentRunInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
@@ -1170,7 +1172,8 @@ export class PiWebApp extends LitElement {
   }
 
   private shouldAutoFocusPrompt(): boolean {
-    return !this.isRenderedModalOpen() && this.appShell.shouldAutoFocusPrompt();
+    return autoFocusesComposer({ touchPrimary: touchPrimaryPointer(), modalOpen: this.isRenderedModalOpen() })
+      && this.appShell.shouldAutoFocusPrompt();
   }
 
   private async withChatPrependTransition(action: () => Promise<void>) {
@@ -1996,7 +1999,7 @@ export class PiWebApp extends LitElement {
     // Recheck the rendered boundary at the final side-effect point so a newer
     // or surviving modal keeps visual and keyboard focus ownership.
     if (this.isRenderedModalOpen()) return;
-    this.promptEditor?.focusInput();
+    if (this.shouldAutoFocusPrompt()) this.promptEditor?.focusInput();
   }
 
   private async navigateSessionTree(targetId: string, summaryChoice: SessionTreeSummaryChoice): Promise<SessionTreeNavigateResult> {
@@ -2540,7 +2543,7 @@ export class PiWebApp extends LitElement {
   /** Give the restored composer the caret it was tapped for. */
   private async focusPromptEditorSoon(): Promise<void> {
     await this.updateComplete;
-    this.promptEditor?.focusInput();
+    if (this.shouldAutoFocusPrompt()) this.promptEditor?.focusInput();
   }
 
   private openMachineDialog(): void {
@@ -2801,7 +2804,7 @@ export class PiWebApp extends LitElement {
     const texts = messages.map((message) => message.text).filter((text) => text.trim() !== "");
     if (texts.length === 0) return;
     this.promptEditor?.replaceText(texts.join("\n\n"));
-    this.promptEditor?.focusInput();
+    if (this.shouldAutoFocusPrompt()) this.promptEditor?.focusInput();
   }
 
   private readonly handleStopActiveWork = (): void => {
