@@ -1,0 +1,2154 @@
+{
+  "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+  "clientMessageIdB": "cm-record-b",
+  "frames": [
+    {
+      "at": 1787841906395,
+      "frame": {
+        "type": "activity.update",
+        "activity": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "phase": "active",
+          "label": "prompt accepted",
+          "at": "2026-08-27T14:45:06.394Z"
+        },
+        "seq": 2
+      }
+    },
+    {
+      "at": 1787841906395,
+      "frame": {
+        "type": "message.append",
+        "message": {
+          "role": "user",
+          "content": "Count from 1 to 40, one number per line. Use no tools."
+        },
+        "echo": true,
+        "clientMessageId": "cm-record-a",
+        "seq": 3
+      }
+    },
+    {
+      "at": 1787841906402,
+      "frame": {
+        "type": "agent.start",
+        "seq": 4
+      }
+    },
+    {
+      "at": 1787841906402,
+      "frame": {
+        "type": "activity.update",
+        "activity": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "phase": "active",
+          "label": "agent running",
+          "at": "2026-08-27T14:45:06.402Z"
+        },
+        "seq": 5
+      }
+    },
+    {
+      "at": 1787841906402,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": false,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 0,
+          "queuedMessages": [],
+          "messageCount": 0,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          },
+          "cost": 0,
+          "contextUsage": {
+            "tokens": 0,
+            "contextWindow": 1000000,
+            "percent": 0
+          }
+        },
+        "seq": 6
+      }
+    },
+    {
+      "at": 1787841906402,
+      "frame": {
+        "type": "pi.event",
+        "eventType": "turn_start",
+        "seq": 7
+      }
+    },
+    {
+      "at": 1787841906402,
+      "frame": {
+        "type": "activity.update",
+        "activity": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "phase": "active",
+          "label": "turn in progress",
+          "at": "2026-08-27T14:45:06.402Z"
+        },
+        "seq": 8
+      }
+    },
+    {
+      "at": 1787841906402,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": false,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 0,
+          "queuedMessages": [],
+          "messageCount": 0,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          },
+          "cost": 0,
+          "contextUsage": {
+            "tokens": 0,
+            "contextWindow": 1000000,
+            "percent": 0
+          }
+        },
+        "seq": 9
+      }
+    },
+    {
+      "at": 1787841906402,
+      "frame": {
+        "type": "pi.event",
+        "eventType": "message_start",
+        "seq": 10
+      }
+    },
+    {
+      "at": 1787841906402,
+      "frame": {
+        "type": "activity.update",
+        "activity": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "phase": "active",
+          "label": "message started",
+          "at": "2026-08-27T14:45:06.402Z"
+        },
+        "seq": 11
+      }
+    },
+    {
+      "at": 1787841906402,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": false,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 0,
+          "queuedMessages": [],
+          "messageCount": 0,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          },
+          "cost": 0,
+          "contextUsage": {
+            "tokens": 0,
+            "contextWindow": 1000000,
+            "percent": 0
+          }
+        },
+        "seq": 12
+      }
+    },
+    {
+      "at": 1787841906402,
+      "frame": {
+        "type": "message.end",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Count from 1 to 40, one number per line. Use no tools."
+            }
+          ],
+          "timestamp": 1787841906394
+        },
+        "seq": 13
+      }
+    },
+    {
+      "at": 1787841906402,
+      "frame": {
+        "type": "activity.update",
+        "activity": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "phase": "idle",
+          "label": "message complete",
+          "at": "2026-08-27T14:45:06.402Z"
+        },
+        "seq": 14
+      }
+    },
+    {
+      "at": 1787841906402,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": false,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 0,
+          "queuedMessages": [],
+          "messageCount": 1,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          },
+          "cost": 0,
+          "contextUsage": {
+            "tokens": 14,
+            "contextWindow": 1000000,
+            "percent": 0.0014
+          }
+        },
+        "seq": 15
+      }
+    },
+    {
+      "at": 1787841906910,
+      "frame": {
+        "type": "activity.update",
+        "activity": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "phase": "active",
+          "label": "message queued",
+          "at": "2026-08-27T14:45:06.909Z"
+        },
+        "seq": 16
+      }
+    },
+    {
+      "at": 1787841906910,
+      "frame": {
+        "type": "message.append",
+        "message": {
+          "role": "user",
+          "content": "Then say DONE."
+        },
+        "echo": true,
+        "clientMessageId": "cm-record-b",
+        "seq": 17
+      }
+    },
+    {
+      "at": 1787841906910,
+      "frame": {
+        "type": "pi.event",
+        "eventType": "queue_update",
+        "seq": 18
+      }
+    },
+    {
+      "at": 1787841906910,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": false,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 1,
+          "queuedMessages": [
+            {
+              "kind": "followUp",
+              "text": "Then say DONE.",
+              "clientMessageId": "cm-record-b"
+            }
+          ],
+          "messageCount": 1,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          },
+          "cost": 0,
+          "contextUsage": {
+            "tokens": 14,
+            "contextWindow": 1000000,
+            "percent": 0.0014
+          }
+        },
+        "seq": 19
+      }
+    },
+    {
+      "at": 1787841906915,
+      "frame": {
+        "type": "message.append",
+        "message": {
+          "role": "user",
+          "content": "Then say DONE."
+        },
+        "echo": true,
+        "clientMessageId": "cm-record-c",
+        "seq": 20
+      }
+    },
+    {
+      "at": 1787841906915,
+      "frame": {
+        "type": "pi.event",
+        "eventType": "queue_update",
+        "seq": 21
+      }
+    },
+    {
+      "at": 1787841906916,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": false,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 2,
+          "queuedMessages": [
+            {
+              "kind": "followUp",
+              "text": "Then say DONE.",
+              "clientMessageId": "cm-record-b"
+            },
+            {
+              "kind": "followUp",
+              "text": "Then say DONE.",
+              "clientMessageId": "cm-record-c"
+            }
+          ],
+          "messageCount": 1,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          },
+          "cost": 0,
+          "contextUsage": {
+            "tokens": 14,
+            "contextWindow": 1000000,
+            "percent": 0.0014
+          }
+        },
+        "seq": 22
+      }
+    },
+    {
+      "at": 1787841907690,
+      "frame": {
+        "type": "pi.event",
+        "eventType": "message_start",
+        "seq": 23
+      }
+    },
+    {
+      "at": 1787841907690,
+      "frame": {
+        "type": "activity.update",
+        "activity": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "phase": "active",
+          "label": "message started",
+          "at": "2026-08-27T14:45:07.685Z"
+        },
+        "seq": 24
+      }
+    },
+    {
+      "at": 1787841907690,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": false,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 2,
+          "queuedMessages": [
+            {
+              "kind": "followUp",
+              "text": "Then say DONE.",
+              "clientMessageId": "cm-record-b"
+            },
+            {
+              "kind": "followUp",
+              "text": "Then say DONE.",
+              "clientMessageId": "cm-record-c"
+            }
+          ],
+          "messageCount": 1,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          },
+          "cost": 0,
+          "contextUsage": {
+            "tokens": 14,
+            "contextWindow": 1000000,
+            "percent": 0.0014
+          }
+        },
+        "seq": 25
+      }
+    },
+    {
+      "at": 1787841907690,
+      "frame": {
+        "type": "pi.event",
+        "eventType": "message_update",
+        "seq": 26
+      }
+    },
+    {
+      "at": 1787841907690,
+      "frame": {
+        "type": "activity.update",
+        "activity": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "phase": "active",
+          "label": "receiving response",
+          "at": "2026-08-27T14:45:07.685Z"
+        },
+        "seq": 27
+      }
+    },
+    {
+      "at": 1787841907690,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": false,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 2,
+          "queuedMessages": [
+            {
+              "kind": "followUp",
+              "text": "Then say DONE.",
+              "clientMessageId": "cm-record-b"
+            },
+            {
+              "kind": "followUp",
+              "text": "Then say DONE.",
+              "clientMessageId": "cm-record-c"
+            }
+          ],
+          "messageCount": 1,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          },
+          "cost": 0,
+          "contextUsage": {
+            "tokens": 14,
+            "contextWindow": 1000000,
+            "percent": 0.0014
+          }
+        },
+        "seq": 28
+      }
+    },
+    {
+      "at": 1787841907690,
+      "frame": {
+        "type": "assistant.delta",
+        "text": "1",
+        "seq": 29
+      }
+    },
+    {
+      "at": 1787841907761,
+      "frame": {
+        "type": "assistant.delta",
+        "text": "\n2",
+        "seq": 30
+      }
+    },
+    {
+      "at": 1787841907903,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": false,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 2,
+          "queuedMessages": [
+            {
+              "kind": "followUp",
+              "text": "Then say DONE.",
+              "clientMessageId": "cm-record-b"
+            },
+            {
+              "kind": "followUp",
+              "text": "Then say DONE.",
+              "clientMessageId": "cm-record-c"
+            }
+          ],
+          "messageCount": 1,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          },
+          "cost": 0,
+          "contextUsage": {
+            "tokens": 14,
+            "contextWindow": 1000000,
+            "percent": 0.0014
+          }
+        },
+        "seq": 31
+      }
+    },
+    {
+      "at": 1787841908102,
+      "frame": {
+        "type": "pi.event",
+        "eventType": "session_info_changed",
+        "seq": 32
+      }
+    },
+    {
+      "at": 1787841908102,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": false,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 2,
+          "queuedMessages": [
+            {
+              "kind": "followUp",
+              "text": "Then say DONE.",
+              "clientMessageId": "cm-record-b"
+            },
+            {
+              "kind": "followUp",
+              "text": "Then say DONE.",
+              "clientMessageId": "cm-record-c"
+            }
+          ],
+          "messageCount": 1,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          },
+          "cost": 0,
+          "contextUsage": {
+            "tokens": 14,
+            "contextWindow": 1000000,
+            "percent": 0.0014
+          }
+        },
+        "seq": 33
+      }
+    },
+    {
+      "at": 1787841908102,
+      "frame": {
+        "type": "session.name",
+        "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+        "name": "Count 1 to 40",
+        "seq": 34
+      }
+    },
+    {
+      "at": 1787841908706,
+      "frame": {
+        "type": "assistant.delta",
+        "text": "\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23\n24\n25\n26\n27\n28\n29\n30\n31\n32\n33\n34\n35\n36\n37\n38\n39\n40",
+        "seq": 35
+      }
+    },
+    {
+      "at": 1787841908706,
+      "frame": {
+        "type": "pi.event",
+        "eventType": "message_update",
+        "seq": 36
+      }
+    },
+    {
+      "at": 1787841908706,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": false,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 2,
+          "queuedMessages": [
+            {
+              "kind": "followUp",
+              "text": "Then say DONE.",
+              "clientMessageId": "cm-record-b"
+            },
+            {
+              "kind": "followUp",
+              "text": "Then say DONE.",
+              "clientMessageId": "cm-record-c"
+            }
+          ],
+          "messageCount": 1,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          },
+          "cost": 0,
+          "contextUsage": {
+            "tokens": 14,
+            "contextWindow": 1000000,
+            "percent": 0.0014
+          }
+        },
+        "seq": 37
+      }
+    },
+    {
+      "at": 1787841908731,
+      "frame": {
+        "type": "message.end",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23\n24\n25\n26\n27\n28\n29\n30\n31\n32\n33\n34\n35\n36\n37\n38\n39\n40"
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic-work",
+          "model": "claude-opus-5",
+          "usage": {
+            "input": 2,
+            "output": 81,
+            "cacheRead": 0,
+            "cacheWrite": 40850,
+            "totalTokens": 40933,
+            "cost": {
+              "input": 0.00001,
+              "output": 0.002025,
+              "cacheRead": 0,
+              "cacheWrite": 0.2553125,
+              "total": 0.2573475
+            },
+            "cacheWrite1h": 0,
+            "reasoning": 0
+          },
+          "stopReason": "stop",
+          "timestamp": 1787841906403,
+          "responseId": "msg_011CeTS4qV2ZVGtqfDTpEVi5",
+          "rawStopReason": "end_turn",
+          "thinkingLevel": "medium"
+        },
+        "seq": 38
+      }
+    },
+    {
+      "at": 1787841908731,
+      "frame": {
+        "type": "activity.update",
+        "activity": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "phase": "idle",
+          "label": "message complete",
+          "at": "2026-08-27T14:45:08.730Z"
+        },
+        "seq": 39
+      }
+    },
+    {
+      "at": 1787841908734,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": false,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 2,
+          "queuedMessages": [
+            {
+              "kind": "followUp",
+              "text": "Then say DONE.",
+              "clientMessageId": "cm-record-b"
+            },
+            {
+              "kind": "followUp",
+              "text": "Then say DONE.",
+              "clientMessageId": "cm-record-c"
+            }
+          ],
+          "messageCount": 2,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          },
+          "cost": 0,
+          "contextUsage": {
+            "tokens": 40933,
+            "contextWindow": 1000000,
+            "percent": 4.093299999999999
+          }
+        },
+        "seq": 40
+      }
+    },
+    {
+      "at": 1787841908734,
+      "frame": {
+        "type": "pi.event",
+        "eventType": "turn_end",
+        "seq": 41
+      }
+    },
+    {
+      "at": 1787841908734,
+      "frame": {
+        "type": "activity.update",
+        "activity": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "phase": "idle",
+          "label": "turn complete",
+          "at": "2026-08-27T14:45:08.733Z"
+        },
+        "seq": 42
+      }
+    },
+    {
+      "at": 1787841908734,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": true,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 2,
+          "queuedMessages": [
+            {
+              "kind": "followUp",
+              "text": "Then say DONE.",
+              "clientMessageId": "cm-record-b"
+            },
+            {
+              "kind": "followUp",
+              "text": "Then say DONE.",
+              "clientMessageId": "cm-record-c"
+            }
+          ],
+          "messageCount": 2,
+          "tokens": {
+            "input": 2,
+            "output": 81,
+            "cacheRead": 0,
+            "cacheWrite": 40850,
+            "total": 40933
+          },
+          "cost": 0.2573475,
+          "contextUsage": {
+            "tokens": 40933,
+            "contextWindow": 1000000,
+            "percent": 4.093299999999999
+          }
+        },
+        "seq": 43
+      }
+    },
+    {
+      "at": 1787841908734,
+      "frame": {
+        "type": "pi.event",
+        "eventType": "turn_start",
+        "seq": 44
+      }
+    },
+    {
+      "at": 1787841908734,
+      "frame": {
+        "type": "activity.update",
+        "activity": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "phase": "active",
+          "label": "turn in progress",
+          "at": "2026-08-27T14:45:08.734Z"
+        },
+        "seq": 45
+      }
+    },
+    {
+      "at": 1787841908734,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": true,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 2,
+          "queuedMessages": [
+            {
+              "kind": "followUp",
+              "text": "Then say DONE.",
+              "clientMessageId": "cm-record-b"
+            },
+            {
+              "kind": "followUp",
+              "text": "Then say DONE.",
+              "clientMessageId": "cm-record-c"
+            }
+          ],
+          "messageCount": 2,
+          "tokens": {
+            "input": 2,
+            "output": 81,
+            "cacheRead": 0,
+            "cacheWrite": 40850,
+            "total": 40933
+          },
+          "cost": 0.2573475,
+          "contextUsage": {
+            "tokens": 40933,
+            "contextWindow": 1000000,
+            "percent": 4.093299999999999
+          }
+        },
+        "seq": 46
+      }
+    },
+    {
+      "at": 1787841908734,
+      "frame": {
+        "type": "pi.event",
+        "eventType": "queue_update",
+        "seq": 47
+      }
+    },
+    {
+      "at": 1787841908734,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": true,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 1,
+          "queuedMessages": [
+            {
+              "kind": "followUp",
+              "text": "Then say DONE.",
+              "clientMessageId": "cm-record-b"
+            }
+          ],
+          "messageCount": 2,
+          "tokens": {
+            "input": 2,
+            "output": 81,
+            "cacheRead": 0,
+            "cacheWrite": 40850,
+            "total": 40933
+          },
+          "cost": 0.2573475,
+          "contextUsage": {
+            "tokens": 40933,
+            "contextWindow": 1000000,
+            "percent": 4.093299999999999
+          }
+        },
+        "seq": 48
+      }
+    },
+    {
+      "at": 1787841908734,
+      "frame": {
+        "type": "pi.event",
+        "eventType": "message_start",
+        "seq": 49
+      }
+    },
+    {
+      "at": 1787841908735,
+      "frame": {
+        "type": "activity.update",
+        "activity": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "phase": "active",
+          "label": "message started",
+          "at": "2026-08-27T14:45:08.734Z"
+        },
+        "seq": 50
+      }
+    },
+    {
+      "at": 1787841908735,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": true,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 1,
+          "queuedMessages": [
+            {
+              "kind": "followUp",
+              "text": "Then say DONE.",
+              "clientMessageId": "cm-record-b"
+            }
+          ],
+          "messageCount": 2,
+          "tokens": {
+            "input": 2,
+            "output": 81,
+            "cacheRead": 0,
+            "cacheWrite": 40850,
+            "total": 40933
+          },
+          "cost": 0.2573475,
+          "contextUsage": {
+            "tokens": 40933,
+            "contextWindow": 1000000,
+            "percent": 4.093299999999999
+          }
+        },
+        "seq": 51
+      }
+    },
+    {
+      "at": 1787841908735,
+      "frame": {
+        "type": "message.end",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Then say DONE."
+            }
+          ],
+          "timestamp": 1787841906910
+        },
+        "seq": 52
+      }
+    },
+    {
+      "at": 1787841908735,
+      "frame": {
+        "type": "activity.update",
+        "activity": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "phase": "idle",
+          "label": "message complete",
+          "at": "2026-08-27T14:45:08.735Z"
+        },
+        "seq": 53
+      }
+    },
+    {
+      "at": 1787841908735,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": true,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 0,
+          "queuedMessages": [],
+          "messageCount": 3,
+          "tokens": {
+            "input": 2,
+            "output": 81,
+            "cacheRead": 0,
+            "cacheWrite": 40850,
+            "total": 40933
+          },
+          "cost": 0.2573475,
+          "contextUsage": {
+            "tokens": 40937,
+            "contextWindow": 1000000,
+            "percent": 4.0937
+          }
+        },
+        "seq": 54
+      }
+    },
+    {
+      "at": 1787841908736,
+      "frame": {
+        "type": "pi.event",
+        "eventType": "queue_update",
+        "seq": 55
+      }
+    },
+    {
+      "at": 1787841908736,
+      "frame": {
+        "type": "activity.update",
+        "activity": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "phase": "active",
+          "label": "working",
+          "at": "2026-08-27T14:45:08.735Z"
+        },
+        "seq": 56
+      }
+    },
+    {
+      "at": 1787841908737,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": true,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 0,
+          "queuedMessages": [],
+          "messageCount": 3,
+          "tokens": {
+            "input": 2,
+            "output": 81,
+            "cacheRead": 0,
+            "cacheWrite": 40850,
+            "total": 40933
+          },
+          "cost": 0.2573475,
+          "contextUsage": {
+            "tokens": 40937,
+            "contextWindow": 1000000,
+            "percent": 4.0937
+          }
+        },
+        "seq": 57
+      }
+    },
+    {
+      "at": 1787841908737,
+      "frame": {
+        "type": "pi.event",
+        "eventType": "message_start",
+        "seq": 58
+      }
+    },
+    {
+      "at": 1787841908737,
+      "frame": {
+        "type": "activity.update",
+        "activity": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "phase": "active",
+          "label": "message started",
+          "at": "2026-08-27T14:45:08.736Z"
+        },
+        "seq": 59
+      }
+    },
+    {
+      "at": 1787841908737,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": true,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 0,
+          "queuedMessages": [],
+          "messageCount": 3,
+          "tokens": {
+            "input": 2,
+            "output": 81,
+            "cacheRead": 0,
+            "cacheWrite": 40850,
+            "total": 40933
+          },
+          "cost": 0.2573475,
+          "contextUsage": {
+            "tokens": 40937,
+            "contextWindow": 1000000,
+            "percent": 4.0937
+          }
+        },
+        "seq": 60
+      }
+    },
+    {
+      "at": 1787841908737,
+      "frame": {
+        "type": "message.end",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Then say DONE."
+            }
+          ],
+          "timestamp": 1787841906915
+        },
+        "seq": 61
+      }
+    },
+    {
+      "at": 1787841908737,
+      "frame": {
+        "type": "activity.update",
+        "activity": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "phase": "idle",
+          "label": "message complete",
+          "at": "2026-08-27T14:45:08.736Z"
+        },
+        "seq": 62
+      }
+    },
+    {
+      "at": 1787841908737,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": true,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 0,
+          "queuedMessages": [],
+          "messageCount": 4,
+          "tokens": {
+            "input": 2,
+            "output": 81,
+            "cacheRead": 0,
+            "cacheWrite": 40850,
+            "total": 40933
+          },
+          "cost": 0.2573475,
+          "contextUsage": {
+            "tokens": 40941,
+            "contextWindow": 1000000,
+            "percent": 4.0941
+          }
+        },
+        "seq": 63
+      }
+    },
+    {
+      "at": 1787841908932,
+      "frame": {
+        "type": "dialog.opened",
+        "dialog": {
+          "dialogId": "f41efee4-b785-4d23-b6a7-57fe8556497d",
+          "kind": "select",
+          "title": "Extension updates available: github.com/nicobailon/pi-subagents",
+          "options": [
+            "Update now",
+            "Skip"
+          ],
+          "askedAt": "2026-08-27T14:45:08.931Z",
+          "timeoutAt": "2026-08-27T14:50:08.931Z",
+          "runScoped": true
+        },
+        "seq": 64
+      }
+    },
+    {
+      "at": 1787841908932,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": true,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 0,
+          "queuedMessages": [],
+          "messageCount": 4,
+          "tokens": {
+            "input": 2,
+            "output": 81,
+            "cacheRead": 0,
+            "cacheWrite": 40850,
+            "total": 40933
+          },
+          "cost": 0.2573475,
+          "contextUsage": {
+            "tokens": 40941,
+            "contextWindow": 1000000,
+            "percent": 4.0941
+          },
+          "pendingDialogs": [
+            {
+              "dialogId": "f41efee4-b785-4d23-b6a7-57fe8556497d",
+              "kind": "select",
+              "title": "Extension updates available: github.com/nicobailon/pi-subagents",
+              "options": [
+                "Update now",
+                "Skip"
+              ],
+              "askedAt": "2026-08-27T14:45:08.931Z",
+              "timeoutAt": "2026-08-27T14:50:08.931Z",
+              "runScoped": true
+            }
+          ]
+        },
+        "seq": 65
+      }
+    },
+    {
+      "at": 1787841909819,
+      "frame": {
+        "type": "pi.event",
+        "eventType": "message_start",
+        "seq": 66
+      }
+    },
+    {
+      "at": 1787841909819,
+      "frame": {
+        "type": "activity.update",
+        "activity": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "phase": "active",
+          "label": "message started",
+          "at": "2026-08-27T14:45:09.819Z"
+        },
+        "seq": 67
+      }
+    },
+    {
+      "at": 1787841909819,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": true,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 0,
+          "queuedMessages": [],
+          "messageCount": 4,
+          "tokens": {
+            "input": 2,
+            "output": 81,
+            "cacheRead": 0,
+            "cacheWrite": 40850,
+            "total": 40933
+          },
+          "cost": 0.2573475,
+          "contextUsage": {
+            "tokens": 40941,
+            "contextWindow": 1000000,
+            "percent": 4.0941
+          },
+          "pendingDialogs": [
+            {
+              "dialogId": "f41efee4-b785-4d23-b6a7-57fe8556497d",
+              "kind": "select",
+              "title": "Extension updates available: github.com/nicobailon/pi-subagents",
+              "options": [
+                "Update now",
+                "Skip"
+              ],
+              "askedAt": "2026-08-27T14:45:08.931Z",
+              "timeoutAt": "2026-08-27T14:50:08.931Z",
+              "runScoped": true
+            }
+          ]
+        },
+        "seq": 68
+      }
+    },
+    {
+      "at": 1787841909820,
+      "frame": {
+        "type": "pi.event",
+        "eventType": "message_update",
+        "seq": 69
+      }
+    },
+    {
+      "at": 1787841909820,
+      "frame": {
+        "type": "activity.update",
+        "activity": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "phase": "active",
+          "label": "receiving response",
+          "at": "2026-08-27T14:45:09.820Z"
+        },
+        "seq": 70
+      }
+    },
+    {
+      "at": 1787841909820,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": true,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 0,
+          "queuedMessages": [],
+          "messageCount": 4,
+          "tokens": {
+            "input": 2,
+            "output": 81,
+            "cacheRead": 0,
+            "cacheWrite": 40850,
+            "total": 40933
+          },
+          "cost": 0.2573475,
+          "contextUsage": {
+            "tokens": 40941,
+            "contextWindow": 1000000,
+            "percent": 4.0941
+          },
+          "pendingDialogs": [
+            {
+              "dialogId": "f41efee4-b785-4d23-b6a7-57fe8556497d",
+              "kind": "select",
+              "title": "Extension updates available: github.com/nicobailon/pi-subagents",
+              "options": [
+                "Update now",
+                "Skip"
+              ],
+              "askedAt": "2026-08-27T14:45:08.931Z",
+              "timeoutAt": "2026-08-27T14:50:08.931Z",
+              "runScoped": true
+            }
+          ]
+        },
+        "seq": 71
+      }
+    },
+    {
+      "at": 1787841909821,
+      "frame": {
+        "type": "assistant.delta",
+        "text": "D",
+        "seq": 72
+      }
+    },
+    {
+      "at": 1787841909905,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": true,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 0,
+          "queuedMessages": [],
+          "messageCount": 4,
+          "tokens": {
+            "input": 2,
+            "output": 81,
+            "cacheRead": 0,
+            "cacheWrite": 40850,
+            "total": 40933
+          },
+          "cost": 0.2573475,
+          "contextUsage": {
+            "tokens": 40941,
+            "contextWindow": 1000000,
+            "percent": 4.0941
+          },
+          "pendingDialogs": [
+            {
+              "dialogId": "f41efee4-b785-4d23-b6a7-57fe8556497d",
+              "kind": "select",
+              "title": "Extension updates available: github.com/nicobailon/pi-subagents",
+              "options": [
+                "Update now",
+                "Skip"
+              ],
+              "askedAt": "2026-08-27T14:45:08.931Z",
+              "timeoutAt": "2026-08-27T14:50:08.931Z",
+              "runScoped": true
+            }
+          ]
+        },
+        "seq": 73
+      }
+    },
+    {
+      "at": 1787841910025,
+      "frame": {
+        "type": "keepalive"
+      }
+    },
+    {
+      "at": 1787841910374,
+      "frame": {
+        "type": "assistant.delta",
+        "text": "ONE",
+        "seq": 74
+      }
+    },
+    {
+      "at": 1787841910375,
+      "frame": {
+        "type": "pi.event",
+        "eventType": "message_update",
+        "seq": 75
+      }
+    },
+    {
+      "at": 1787841910375,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": true,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 0,
+          "queuedMessages": [],
+          "messageCount": 4,
+          "tokens": {
+            "input": 2,
+            "output": 81,
+            "cacheRead": 0,
+            "cacheWrite": 40850,
+            "total": 40933
+          },
+          "cost": 0.2573475,
+          "contextUsage": {
+            "tokens": 40941,
+            "contextWindow": 1000000,
+            "percent": 4.0941
+          },
+          "pendingDialogs": [
+            {
+              "dialogId": "f41efee4-b785-4d23-b6a7-57fe8556497d",
+              "kind": "select",
+              "title": "Extension updates available: github.com/nicobailon/pi-subagents",
+              "options": [
+                "Update now",
+                "Skip"
+              ],
+              "askedAt": "2026-08-27T14:45:08.931Z",
+              "timeoutAt": "2026-08-27T14:50:08.931Z",
+              "runScoped": true
+            }
+          ]
+        },
+        "seq": 76
+      }
+    },
+    {
+      "at": 1787841910444,
+      "frame": {
+        "type": "message.end",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "DONE"
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic-work",
+          "model": "claude-opus-5",
+          "usage": {
+            "input": 2,
+            "output": 5,
+            "cacheRead": 40850,
+            "cacheWrite": 98,
+            "totalTokens": 40955,
+            "cost": {
+              "input": 0.00001,
+              "output": 0.000125,
+              "cacheRead": 0.020425,
+              "cacheWrite": 0.0006125,
+              "total": 0.021172499999999997
+            },
+            "cacheWrite1h": 0,
+            "reasoning": 0
+          },
+          "stopReason": "stop",
+          "timestamp": 1787841908738,
+          "responseId": "msg_011CeTS513zrZEEiFs26BBTF",
+          "rawStopReason": "end_turn",
+          "thinkingLevel": "medium"
+        },
+        "seq": 77
+      }
+    },
+    {
+      "at": 1787841910444,
+      "frame": {
+        "type": "activity.update",
+        "activity": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "phase": "idle",
+          "label": "message complete",
+          "at": "2026-08-27T14:45:10.443Z"
+        },
+        "seq": 78
+      }
+    },
+    {
+      "at": 1787841910444,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": true,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 0,
+          "queuedMessages": [],
+          "messageCount": 5,
+          "tokens": {
+            "input": 2,
+            "output": 81,
+            "cacheRead": 0,
+            "cacheWrite": 40850,
+            "total": 40933
+          },
+          "cost": 0.2573475,
+          "contextUsage": {
+            "tokens": 40955,
+            "contextWindow": 1000000,
+            "percent": 4.0954999999999995
+          },
+          "pendingDialogs": [
+            {
+              "dialogId": "f41efee4-b785-4d23-b6a7-57fe8556497d",
+              "kind": "select",
+              "title": "Extension updates available: github.com/nicobailon/pi-subagents",
+              "options": [
+                "Update now",
+                "Skip"
+              ],
+              "askedAt": "2026-08-27T14:45:08.931Z",
+              "timeoutAt": "2026-08-27T14:50:08.931Z",
+              "runScoped": true
+            }
+          ]
+        },
+        "seq": 79
+      }
+    },
+    {
+      "at": 1787841910445,
+      "frame": {
+        "type": "pi.event",
+        "eventType": "turn_end",
+        "seq": 80
+      }
+    },
+    {
+      "at": 1787841910445,
+      "frame": {
+        "type": "activity.update",
+        "activity": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "phase": "idle",
+          "label": "turn complete",
+          "at": "2026-08-27T14:45:10.445Z"
+        },
+        "seq": 81
+      }
+    },
+    {
+      "at": 1787841910445,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": true,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 0,
+          "queuedMessages": [],
+          "messageCount": 5,
+          "tokens": {
+            "input": 4,
+            "output": 86,
+            "cacheRead": 40850,
+            "cacheWrite": 40948,
+            "total": 81888
+          },
+          "cost": 0.27852,
+          "contextUsage": {
+            "tokens": 40955,
+            "contextWindow": 1000000,
+            "percent": 4.0954999999999995
+          },
+          "pendingDialogs": [
+            {
+              "dialogId": "f41efee4-b785-4d23-b6a7-57fe8556497d",
+              "kind": "select",
+              "title": "Extension updates available: github.com/nicobailon/pi-subagents",
+              "options": [
+                "Update now",
+                "Skip"
+              ],
+              "askedAt": "2026-08-27T14:45:08.931Z",
+              "timeoutAt": "2026-08-27T14:50:08.931Z",
+              "runScoped": true
+            }
+          ]
+        },
+        "seq": 82
+      }
+    },
+    {
+      "at": 1787841910454,
+      "frame": {
+        "type": "agent.end",
+        "seq": 83
+      }
+    },
+    {
+      "at": 1787841910454,
+      "frame": {
+        "type": "activity.update",
+        "activity": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "phase": "idle",
+          "label": "idle",
+          "at": "2026-08-27T14:45:10.454Z"
+        },
+        "seq": 84
+      }
+    },
+    {
+      "at": 1787841910454,
+      "frame": {
+        "type": "dialog.closed",
+        "dialogId": "f41efee4-b785-4d23-b6a7-57fe8556497d",
+        "reason": "aborted",
+        "seq": 85
+      }
+    },
+    {
+      "at": 1787841910454,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": true,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 0,
+          "queuedMessages": [],
+          "messageCount": 5,
+          "tokens": {
+            "input": 4,
+            "output": 86,
+            "cacheRead": 40850,
+            "cacheWrite": 40948,
+            "total": 81888
+          },
+          "cost": 0.27852,
+          "contextUsage": {
+            "tokens": 40955,
+            "contextWindow": 1000000,
+            "percent": 4.0954999999999995
+          }
+        },
+        "seq": 86
+      }
+    },
+    {
+      "at": 1787841910454,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": true,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": true,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 0,
+          "queuedMessages": [],
+          "messageCount": 5,
+          "tokens": {
+            "input": 4,
+            "output": 86,
+            "cacheRead": 40850,
+            "cacheWrite": 40948,
+            "total": 81888
+          },
+          "cost": 0.27852,
+          "contextUsage": {
+            "tokens": 40955,
+            "contextWindow": 1000000,
+            "percent": 4.0954999999999995
+          }
+        },
+        "seq": 87
+      }
+    },
+    {
+      "at": 1787841910455,
+      "frame": {
+        "type": "pi.event",
+        "eventType": "agent_settled",
+        "seq": 88
+      }
+    },
+    {
+      "at": 1787841910455,
+      "frame": {
+        "type": "activity.update",
+        "activity": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "phase": "active",
+          "label": "working",
+          "at": "2026-08-27T14:45:10.454Z"
+        },
+        "seq": 89
+      }
+    },
+    {
+      "at": 1787841910455,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": true,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": false,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 0,
+          "queuedMessages": [],
+          "messageCount": 5,
+          "tokens": {
+            "input": 4,
+            "output": 86,
+            "cacheRead": 40850,
+            "cacheWrite": 40948,
+            "total": 81888
+          },
+          "cost": 0.27852,
+          "contextUsage": {
+            "tokens": 40955,
+            "contextWindow": 1000000,
+            "percent": 4.0954999999999995
+          }
+        },
+        "seq": 90
+      }
+    },
+    {
+      "at": 1787841910708,
+      "frame": {
+        "type": "activity.update",
+        "activity": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "phase": "idle",
+          "label": "idle",
+          "at": "2026-08-27T14:45:10.707Z"
+        },
+        "seq": 91
+      }
+    },
+    {
+      "at": 1787841910708,
+      "frame": {
+        "type": "status.update",
+        "status": {
+          "sessionId": "01a043ae-8094-7dc7-99e5-6239116c1105",
+          "persisted": true,
+          "model": {
+            "provider": "anthropic-work",
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "contextWindow": 1000000,
+            "reasoning": true
+          },
+          "thinkingLevel": "medium",
+          "isStreaming": false,
+          "isCompacting": false,
+          "isBashRunning": false,
+          "pendingMessageCount": 0,
+          "queuedMessages": [],
+          "messageCount": 5,
+          "tokens": {
+            "input": 4,
+            "output": 86,
+            "cacheRead": 40850,
+            "cacheWrite": 40948,
+            "total": 81888
+          },
+          "cost": 0.27852,
+          "contextUsage": {
+            "tokens": 40955,
+            "contextWindow": 1000000,
+            "percent": 4.0954999999999995
+          }
+        },
+        "seq": 92
+      }
+    }
+  ],
+  "statuses": [
+    {
+      "at": 1787841909433,
+      "isStreaming": true,
+      "queuedMessages": []
+    },
+    {
+      "at": 1787841910439,
+      "isStreaming": true,
+      "queuedMessages": []
+    },
+    {
+      "at": 1787841911446,
+      "isStreaming": false,
+      "queuedMessages": []
+    },
+    {
+      "at": 1787841912453,
+      "isStreaming": false,
+      "queuedMessages": []
+    },
+    {
+      "at": 1787841913459,
+      "isStreaming": false,
+      "queuedMessages": []
+    },
+    {
+      "at": 1787841914464,
+      "isStreaming": false,
+      "queuedMessages": []
+    },
+    {
+      "at": 1787841915472,
+      "isStreaming": false,
+      "queuedMessages": []
+    }
+  ]
+}

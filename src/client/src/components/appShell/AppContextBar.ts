@@ -1,4 +1,5 @@
 import { LitElement, css, html } from "lit";
+import { sessionChipDestination } from "./sessionChipDestination";
 import { customElement, property, query, state } from "lit/decorators.js";
 import type { Machine, Project, SessionInfo, Workspace } from "../../api";
 import { shortSessionId } from "../../sessionLabels";
@@ -20,6 +21,9 @@ export class AppContextBar extends LitElement {
    * should never cost a walk through the navigation accordion.
    */
   @property({ attribute: false }) onQuickSwitch?: () => void;
+  /** Which view the breadcrumb sits above; the session chip goes elsewhere from each. */
+  @property({ attribute: false }) mainView = "chat";
+  @property({ attribute: false }) onShowConversation?: () => void;
   /** Opens the workspace views sheet; replaces the old icon strip. */
   @property({ attribute: false }) onOpenTools?: () => void;
   /** Rename the session being read. Absent when renaming is not available. */
@@ -226,7 +230,7 @@ export class AppContextBar extends LitElement {
           </li>
           ${showSessionChip ? html`
             <li class="context-item">
-              <button type="button" class="context-chip" title=${sessionContextTitle(this.session)} aria-label=${`Session: ${sessionLabel}. Open session selection.`} @click=${() => { this.openSessions(); }}>
+              <button type="button" class="context-chip" title=${sessionContextTitle(this.session)} aria-label=${`Session: ${sessionLabel}. ${sessionChipDestination(this.mainView) === "conversation" ? "Back to the conversation." : "Open session selection."}`} @click=${() => { this.followSessionChip(); }}>
                 <span class="context-kind">Session</span>
                 <span class="context-value session-value">${sessionLabel}</span>
               </button>
@@ -236,6 +240,15 @@ export class AppContextBar extends LitElement {
         ${this.hasContextActions() ? html`<div class="context-actions">${this.renderQuickSwitchButton()}${this.renderToolsButton()}${this.renderActionsButton()}${this.refreshControl}</div>` : null}
       </nav>
     `;
+  }
+
+  /** The session chip goes to the session it names, or to the others once there. */
+  private followSessionChip(): void {
+    if (sessionChipDestination(this.mainView) === "conversation" && this.onShowConversation !== undefined) {
+      this.onShowConversation();
+      return;
+    }
+    this.openSessions();
   }
 
   private openSessions(): void {

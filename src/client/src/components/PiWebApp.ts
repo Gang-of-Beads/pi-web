@@ -2972,6 +2972,8 @@ export class PiWebApp extends LitElement {
         ?emphasizeSession=${this.state.mainView === "chat"}
         ?isWorking=${this.state.mainView === "chat" && this.state.selectedSession !== undefined && isActive(this.state)}
         .refreshControl=${this.appShell.shouldShowAppRefreshInContextBar() ? this.renderAppRefresh() : undefined}
+        .mainView=${this.state.mainView}
+        .onShowConversation=${() => { this.selectMainView("chat"); }}
         .onOpenSection=${(section: NavigationSection) => { this.openNavigationSection(section); }}
         .onQuickSwitch=${() => { this.openQuickSwitcher(); }}
         .onRenameSession=${(name: string) => {

@@ -51,7 +51,9 @@
   - 截图 2:53 / 2:38:同一条文本两个气泡,一个 `Queued to steer`、一个 `Read`
   - 我推测的两个成因**已被证伪**(实测:append 带 clientMessageId 能对上;刷新时队列只有自己)
   - 新线索:`attachQueuedPromptClientIds` 按**文本**配对 → 同文本两条会张冠李戴。触发条件:排队时连发两条相同文本。
-  - 另一条:`piSessionService.ts:3927/3934` 压缩队列排空丢 `clientMessageId`
+  - **第三个成因也证伪**:实测排两条完全相同的文本,各自拿到自己的 id(`followUp:Then say DONE.:cm-record-b` / `:cm-record-c`),`scripts/verify-duplicate-queued-bubble.mjs`
+  - 另一条未验:`piSessionService.ts:3927/3934` 压缩队列排空丢 `clientMessageId`
+  - **需要现场证据**:哪个会话、当时在做什么。三个推测全部被实测推翻,继续猜没有意义
 - [x] **问题卡片:选 Custom 后输入框被底栏压住** —— sticky 底栏会被前面的内容滚过;用 `scroll-margin-bottom` 让出余量(不增高卡片,354px 仍装得下 360px 视口)
   - 截图(桌面):`Custom answer` 文本域与 sticky 底栏(Back / Next)重叠,输入框只露出上下两条边
 - [x] **问题卡片:Back 与 Next 尺寸悬殊** —— 两者同档 `flex: 0 1 auto` + 各自最小宽
@@ -79,10 +81,13 @@
   - `selectSession` 只写 `selectedSession`;现由会话的 cwd 反查工作区、再由工作区反查项目(`sessionAncestors.ts`)
   - 目录未编目时**不动选择**(未编目 ≠ 当前选择是错的)
   - 4 条纯函数测试 + 2 条控制器测试;变异检验:去掉接线立刻红
-- [ ] **非对话视图无常驻返回**
+- [x] **非对话视图无常驻返回**
   - 截图 2:15:GOALS 面板打开后关不掉,"必须一直切直到他没了才回到 chat"
   - 截图 12:35:抽屉展开后同样没有出路
-  - 我加过一版未验证成功已撤回;面包屑 chip 点了跳 navigation 而非回对话
+  - 复现:`scripts/verify-way-back-to-chat.mjs` 在 Files 视图下找不到任何回对话的控件
+  - 修复:**面包屑去它所指之处** —— 不在对话里时会话面包屑回对话,在对话里时才列出别的会话;无障碍名同步说明去向
+  - 脚本先假通过过一次(把 `background` 里的 "back" 当成出口),已收紧为整词 + 只看无障碍名 + **按下去验证真的落在对话**
+  - 变异检验:改回"永远列会话"立刻 FAIL
 - [~] **761–1180px 死胡同** —— **证伪**。实测 700/900/1100/1200px 每档都有出口(`scripts/verify-navigation-reach.mjs`)。那条 `max-width:1180px` 隐藏的 `header` 不是应用外壳的那个,报告的推断没落到实处
 - [ ] **跨机器加载 / 消除 N+1** —— 服务端函数就绪(实测 34ms vs 395ms,11.6×),未接线;接口加到 gateway 会牵动 6 文件 40 处测试替身
 
