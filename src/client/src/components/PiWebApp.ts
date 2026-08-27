@@ -713,7 +713,17 @@ export class PiWebApp extends LitElement {
     this.unreadConnected = true;
     window.visualViewport?.addEventListener("resize", this.onVisualViewportChange);
     window.visualViewport?.addEventListener("scroll", this.onVisualViewportChange);
+    // The layout viewport changes on its own when a phone's address bar hides,
+    // and that arrives as a window resize rather than a visual viewport one.
+    // Without this the shell kept a height the screen no longer had and its
+    // bottom sat off screen until a keyboard was opened and closed by hand.
+    window.addEventListener("resize", this.onVisualViewportChange);
+    window.addEventListener("orientationchange", this.onVisualViewportChange);
     this.onVisualViewportChange();
+    // Browser chrome is still settling on the first frames, so the height read
+    // at connect can be one nobody ever sees.
+    requestAnimationFrame(() => { this.onVisualViewportChange(); });
+    window.setTimeout(() => { this.onVisualViewportChange(); }, 400);
     window.addEventListener("popstate", this.onPopState);
     window.addEventListener("pageshow", this.onPageShow);
     this.browserResume.connect();
@@ -768,6 +778,8 @@ export class PiWebApp extends LitElement {
   override disconnectedCallback(): void {
     observeTransportRecovery(undefined);
     if (this.transientErrorTimer !== undefined) window.clearTimeout(this.transientErrorTimer);
+    window.removeEventListener("resize", this.onVisualViewportChange);
+    window.removeEventListener("orientationchange", this.onVisualViewportChange);
     window.visualViewport?.removeEventListener("resize", this.onVisualViewportChange);
     window.visualViewport?.removeEventListener("scroll", this.onVisualViewportChange);
     this.unreadConnected = false;

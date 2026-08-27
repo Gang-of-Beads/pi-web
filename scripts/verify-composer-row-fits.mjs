@@ -14,7 +14,8 @@ const exe = `${process.env.HOME}/Library/Caches/ms-playwright/chromium-1234/chro
 const b = await chromium.launch({ executablePath: exe });
 let failed = false;
 
-for (const width of [320, 360, 393]) {
+const widths = (process.env.WIDTHS ?? "320,360,393").split(",").map(Number);
+for (const width of widths) {
   const ctx = await b.newContext({ viewport: { width, height: 760 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
   const p = await ctx.newPage();
   // The reader can scale the interface. Type grows but the row does not, so a

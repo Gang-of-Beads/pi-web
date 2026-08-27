@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { keyboardInset } from "./keyboardInset";
 
@@ -45,5 +47,41 @@ describe("keyboardInset", () => {
 
   it("never shortens the shell past its own height", () => {
     expect(keyboardInset(839, { height: 10, offsetTop: -5000 })).toBeLessThanOrEqual(839);
+  });
+});
+
+describe("what has to be watched for the shell to keep the right height", () => {
+  /**
+   * A phone hides its address bar while you scroll, which changes the layout
+   * viewport without touching the visual one. Only the visual viewport was
+   * watched, so the shell kept a height the screen no longer had and its
+   * bottom - the composer - sat off screen until a keyboard was opened and
+   * closed by hand, which finally forced a recalculation.
+   */
+  it("recomputes on a window resize, not only a visual viewport one", () => {
+    const source = readFileSync(join(process.cwd(), "src/client/src/components/PiWebApp.ts"), "utf8");
+    const connect = /connectedCallback\(\)[\s\S]*?\n {2}\}/u.exec(source)?.[0] ?? "";
+
+    expect(connect).toMatch(/window\.addEventListener\("resize", this\.onVisualViewportChange\)/u);
+    expect(connect).toMatch(/window\.addEventListener\("orientationchange", this\.onVisualViewportChange\)/u);
+  });
+
+  /**
+   * Browser chrome is still settling on the first frames, so the height read at
+   * connect can be one nobody ever sees.
+   */
+  it("reads the height again once the first frames have settled", () => {
+    const source = readFileSync(join(process.cwd(), "src/client/src/components/PiWebApp.ts"), "utf8");
+    const connect = /connectedCallback\(\)[\s\S]*?\n {2}\}/u.exec(source)?.[0] ?? "";
+
+    expect(connect).toMatch(/requestAnimationFrame\(\(\) => \{ this\.onVisualViewportChange\(\); \}\)/u);
+  });
+
+  it("stops watching when the shell goes away", () => {
+    const source = readFileSync(join(process.cwd(), "src/client/src/components/PiWebApp.ts"), "utf8");
+    const disconnect = /disconnectedCallback\(\)[\s\S]*?\n {2}\}/u.exec(source)?.[0] ?? "";
+
+    expect(disconnect).toMatch(/window\.removeEventListener\("resize", this\.onVisualViewportChange\)/u);
+    expect(disconnect).toMatch(/window\.removeEventListener\("orientationchange", this\.onVisualViewportChange\)/u);
   });
 });
