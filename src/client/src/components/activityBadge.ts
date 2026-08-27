@@ -54,20 +54,27 @@ export function hasStatusUnread(flags: StatusFlags | undefined): boolean {
  * Four-state session badge, shared by list rows, the quick switcher, and the
  * chat dock so every surface tells the same story about a session:
  *
- *   working -> three bouncing dots (the AI is generating/tooling right now)
- *   idle    -> static green dot (done; nothing in flight)
- *   asking  -> amber dot (an ask_user question set is waiting on the user)
- *   error   -> red dot (activity phase error, e.g. a model error)
+ *   working    -> three bouncing dots (the AI is generating/tooling right now)
+ *   background -> hollow purple ring (the turn ended, but subagents or
+ *                 background tasks this session started are still running)
+ *   idle       -> static green dot (done; nothing in flight)
+ *   asking     -> amber dot (an ask_user question set is waiting on the user)
+ *   error      -> red dot (activity phase error, e.g. a model error)
+ *
+ * Background is hollow rather than filled on purpose: the session is not
+ * working, so it must not look like it is. Nothing there will advance the
+ * conversation on its own.
  *
  * The old single pulse-on-green dot could not express "done" (a finished
  * session never stopped pulsing) or "waiting on me" (an ask looked identical
  * to work). Unread still wins as a separate attention ring, exactly like the
  * work indicators above.
  */
-export type SessionStateBadgeKind = "working" | "idle" | "asking" | "error";
+export type SessionStateBadgeKind = "working" | "background" | "idle" | "asking" | "error";
 
 const SESSION_STATE_LABELS: Record<SessionStateBadgeKind, string> = {
   working: "Session is working",
+  background: "Turn ended; background work still running",
   idle: "Session is done",
   asking: "Waiting for your answer",
   error: "Session hit an error",

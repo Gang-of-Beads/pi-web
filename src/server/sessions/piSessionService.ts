@@ -80,6 +80,7 @@ import { PendingExtensionDialogStore, type ExtensionDialogCancelReason } from ".
 import { ExtensionDialogWaiters, effectiveExtensionDialogTimeoutMs, extensionDialogCancelValue } from "./extensionDialogWaiters.js";
 import { DEFAULT_EXTENSION_DIALOGS_TIMEOUT_MS } from "../../config.js";
 import { createSpawnSessionToolDefinition, type SpawnSessionInvocation, type SpawnSessionResult } from "./spawnSessionTool.js";
+import { countBackgroundRuns } from "./backgroundRunCount.js";
 import { listBackgroundTasks, readTaskOutput } from "./backgroundTasks.js";
 import { listSubagentRuns, readSubagentRunOutput } from "./subagentRuns.js";
 import { createSubsessionToolDefinitions, type SpawnSubsessionInvocation, type SpawnSubsessionResult, type SubsessionCheckResult, type SubsessionReadQuery, type SubsessionReadResult, type SubsessionStatus, type SubsessionSummary, type SubsessionToolDeps } from "./spawnSubsessionTool.js";
@@ -1112,6 +1113,9 @@ export class PiSessionService implements SessionRouteService {
   /** Per-session tail of the queue-rewrite chain; see withQueueLock. */
   private readonly queueLocks = new Map<string, Promise<void>>();
   private readonly activities = new Map<string, { phase: "active" | "idle" | "error"; label: string; detail?: string; at: string }>();
+  /** Last counted background runs per open session; see refreshBackgroundRunCounts. */
+  private readonly backgroundRunCounts = new Map<string, number>();
+  private backgroundRunScanInFlight = false;
   private readonly heartbeat: NodeJS.Timeout;
   private readonly commandService: SessionCommandService<PiAgentSession>;
   /** Runtime-identity gate held while Pi may await abandoned-branch summarization. */
@@ -4057,6 +4061,7 @@ export class PiSessionService implements SessionRouteService {
   }
 
   private publishHeartbeats(): void {
+    void this.refreshBackgroundRunCounts();
     for (const active of this.active.values()) {
       const { session } = active.runtime;
       // Re-evaluate subsession completion here too: agent_end can arrive while
@@ -4361,6 +4366,7 @@ export class PiSessionService implements SessionRouteService {
       if (!consumed.has(message.text)) visibleQueued.push(message);
     }
     this.attachQueuedPromptClientIds(session.sessionId, visibleQueued);
+    const backgroundRunCount = this.backgroundRunCounts.get(session.sessionId) ?? 0;
     return {
       sessionId: session.sessionId,
       persisted: sessionFileExists(session.sessionFile),
@@ -4378,7 +4384,44 @@ export class PiSessionService implements SessionRouteService {
       ...(warnings.length === 0 ? {} : { warnings }),
       ...(pendingAsk === undefined ? {} : { pendingAsk }),
       ...(pendingDialogs.length === 0 ? {} : { pendingDialogs }),
+      ...(backgroundRunCount === 0 ? {} : { backgroundRunCount }),
     };
+  }
+
+  /**
+   * Recount work that outlives each open session's turn, and publish the
+   * sessions whose count moved.
+   *
+   * Driven off the heartbeat rather than events because nothing tells this
+   * process when a detached child finishes: a subagent run and a background
+   * shell task both report only by writing files. The counting itself is
+   * written to be cheap when the answer is zero, which is the normal case, and
+   * only one scan is ever in flight so a slow disk cannot pile them up.
+   */
+  private async refreshBackgroundRunCounts(): Promise<void> {
+    if (this.backgroundRunScanInFlight) return;
+    this.backgroundRunScanInFlight = true;
+    try {
+      const open = [...this.active.values()].map((active) => active.runtime.session);
+      const openIds = new Set(open.map((session) => session.sessionId));
+      for (const sessionId of [...this.backgroundRunCounts.keys()]) {
+        if (!openIds.has(sessionId)) this.backgroundRunCounts.delete(sessionId);
+      }
+      for (const session of open) {
+        const count = await countBackgroundRuns({
+          cwd: session.sessionManager.getCwd(),
+          sessionFile: session.sessionManager.getSessionFile(),
+          parentActive: session.isStreaming,
+          workingSubsessionCount: this.workingSubsessionIds(session.sessionId).length,
+        }).catch(() => this.backgroundRunCounts.get(session.sessionId) ?? 0);
+        if (count === (this.backgroundRunCounts.get(session.sessionId) ?? 0)) continue;
+        this.backgroundRunCounts.set(session.sessionId, count);
+        // The session may have been closed while the scan was reading disk.
+        if (this.active.has(session.sessionId)) this.publishStatus(session);
+      }
+    } finally {
+      this.backgroundRunScanInFlight = false;
+    }
   }
 
   /**

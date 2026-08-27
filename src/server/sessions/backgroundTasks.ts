@@ -128,6 +128,25 @@ export async function readTaskRecords(cwd: string): Promise<Map<string, { task: 
   return records;
 }
 
+/**
+ * Ids of task records under this workspace whose process is running right now,
+ * regardless of which session started them.
+ *
+ * Deliberately cheap: the registry files are small, and the answer is almost
+ * always the empty set. Only a non-empty answer justifies reading a transcript
+ * to find out which session owns the task, which is the expensive half of
+ * {@link listBackgroundTasks} and far too costly to repeat on a timer.
+ */
+export async function runningTaskIds(cwd: string): Promise<Set<string>> {
+  const running = new Set<string>();
+  for (const [id, record] of await readTaskRecords(cwd)) {
+    if (asString(record.task.status) !== "running") continue;
+    if (!processAlive(asNumber(record.task.pid))) continue;
+    running.add(id);
+  }
+  return running;
+}
+
 /** The tail of a task's log, for showing what it is doing without opening a file. */
 export async function readTaskOutput(cwd: string, taskId: string, maxBytes = TAIL_BYTES): Promise<string | undefined> {
   const records = await readTaskRecords(cwd);

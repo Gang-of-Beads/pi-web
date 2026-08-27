@@ -1,13 +1,18 @@
 import type { SessionActivity, SessionStatus } from "./apiTypes.js";
 
 /**
- * User-facing session state, one of four, in precedence order.
+ * User-facing session state, one of five, in precedence order.
  *
  * The precedence matters: an ask is also "not working", an error is often the
  * end of a turn, and a queued prompt is still work. Classifying once here keeps
  * every surface (rows, dock, header) agreeing on what the session is doing.
+ *
+ * "background" sits between working and idle on purpose. The turn really has
+ * ended — nothing will move without the user — so reporting it as working
+ * would promise progress that is not coming; but children are still running,
+ * so reporting it as idle hides work the user may be waiting on.
  */
-export type SessionActivityCategory = "error" | "asking" | "working" | "idle";
+export type SessionActivityCategory = "error" | "asking" | "working" | "background" | "idle";
 
 /**
  * Whether the run ended owing the user a reply.
@@ -29,6 +34,7 @@ export function sessionActivityCategory(
   const working = status.isStreaming || status.isBashRunning || status.isCompacting || status.pendingMessageCount > 0;
   if (working) return "working";
   if (activity?.phase === "active") return "working";
+  if ((status.backgroundRunCount ?? 0) > 0) return "background";
   return "idle";
 }
 

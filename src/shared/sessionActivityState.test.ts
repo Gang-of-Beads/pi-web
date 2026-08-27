@@ -26,4 +26,25 @@ describe("a session parked on an extension dialog", () => {
   });
 });
 
+describe("a session whose turn ended while its children run on", () => {
+  const activity = { sessionId: "s", phase: "idle" as const, label: "idle", at: "" };
+
+  it("is background, not idle", () => {
+    // The chat says "idle · 1 background run"; the rows said nothing at all,
+    // because neither status nor activity carried the count.
+    expect(sessionActivityCategory(status({ backgroundRunCount: 1 }), activity)).toBe("background");
+    expect(sessionActivityCategory(status({ backgroundRunCount: 0 }), activity)).toBe("idle");
+    expect(sessionActivityCategory(status(), activity)).toBe("idle");
+  });
+
+  it("still reports the work the user is actually blocked on", () => {
+    // Background is the weakest signal there is: it must never hide an error,
+    // a question, or a turn that is genuinely still running.
+    expect(sessionActivityCategory(status({ backgroundRunCount: 2, isStreaming: true }), activity)).toBe("working");
+    expect(sessionActivityCategory(status({ backgroundRunCount: 2 }), { ...activity, phase: "error" })).toBe("error");
+    const dialog = { dialogId: "d1", kind: "confirm" as const, title: "?", askedAt: "", runScoped: true };
+    expect(sessionActivityCategory(status({ backgroundRunCount: 2, pendingDialogs: [dialog] }), activity)).toBe("asking");
+  });
+});
+
 

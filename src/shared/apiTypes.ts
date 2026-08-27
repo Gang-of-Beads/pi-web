@@ -1254,6 +1254,17 @@ export interface SessionStatus {
    * restarts. Several may be open at once; the UI presents them as a queue.
    */
   pendingDialogs?: PendingExtensionDialog[];
+  /**
+   * Work this session started that outlives its turn: working subsessions,
+   * running subagent-tool runs, running background shell tasks. Absent when
+   * there is none.
+   *
+   * Published so surfaces that never load a session's activity panel — the
+   * session list, the quick switcher — can still tell "finished" apart from
+   * "turn over, children still running". See
+   * server/sessions/backgroundRunCount.ts for how it is counted.
+   */
+  backgroundRunCount?: number;
 }
 
 export interface SlashCommand {

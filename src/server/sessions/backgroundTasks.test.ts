@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { listBackgroundTasks, readTaskOutput, taskIdsForSession } from "./backgroundTasks.js";
+import { listBackgroundTasks, readTaskOutput, runningTaskIds, taskIdsForSession } from "./backgroundTasks.js";
 
 /**
  * These fixtures copy a real registry directory rather than the reader's own
@@ -107,6 +107,15 @@ describe("background tasks", () => {
     const tasks = await listBackgroundTasks(cwd, await transcript(cwd), 1_700_000_421_000);
 
     expect(tasks.find((task) => task.id === "b96da5ec8")?.durationMs).toBe(421_000);
+  });
+
+  it("names the live tasks in a workspace without reading any transcript", async () => {
+    const cwd = await fixture();
+
+    // stale111 still says "running" on disk and other999/b25b68e87 are done, so
+    // only the record whose process really exists may be reported live. This is
+    // the cheap probe the per-session count uses before paying for a transcript.
+    expect(await runningTaskIds(cwd)).toEqual(new Set(["b96da5ec8"]));
   });
 
   it("finds task ids in the output paths the tool reports", async () => {

@@ -7,6 +7,7 @@ import { css } from "lit";
  * context bar) so the same state never reads differently in two places:
  *
  *   working -> three bouncing dots (AI generating or tooling right now)
+ *   background -> hollow purple ring (turn over, children still running)
  *   idle    -> static gray dot when read, green when unread (done; the color
  *              also says whether you have seen the finished turn)
  *   asking  -> amber dot (ask_user waiting on the user)
@@ -19,6 +20,9 @@ import { css } from "lit";
 export const sessionStateBadgeStyles = css`
   .session-state { box-sizing: border-box; display: inline-grid; place-items: center; width: 9px; height: 9px; flex: 0 0 auto; border-radius: 50%; vertical-align: 1px; }
   .session-state.idle { background: var(--pi-dim); animation: none; }
+  /* Hollow, so "still running" cannot be mistaken for "working": the ring is
+     the same purple the chat dock uses for background work. */
+  .session-state.background { background: transparent; border: 2px solid var(--pi-purple); animation: none; }
   .session-state.idle.unread { background: var(--pi-success); }
   .session-state.asking { background: var(--pi-warning); animation: none; }
   .session-state.error { background: var(--pi-danger); animation: none; }
