@@ -72,3 +72,41 @@ function textOf(entry: ChatLine): string {
   const part = entry.parts[0];
   return part?.type === "text" ? part.text : "";
 }
+
+describe("a message the reader queued while a reply was running", () => {
+  /**
+   * A user message carries the moment it was typed, not the moment it was
+   * delivered. Queue one while a reply is in flight and it is sent minutes
+   * later, still stamped with when it was written.
+   *
+   * Measured in a real session record: user timestamps run backwards against
+   * the preceding line 92 times, for example a line at 17:28:33 followed by a
+   * user message stamped 17:28:19. Placing that by its timestamp puts the
+   * reader's message above the reply they were waiting for, which is the
+   * opposite of what happened.
+   *
+   * Only a message that genuinely arrived late may move backwards. A reply
+   * arrives when it finishes, so it can; the reader's own message is delivered
+   * when it is sent, so it cannot.
+   */
+  const at = (iso: string, role: "user" | "assistant"): ChatLine =>
+    ({ role, parts: [], meta: { timestamp: iso } });
+
+  it("keeps a queued message below the reply that finished before it was sent", () => {
+    const transcript = [at("2026-08-27T17:28:33.000Z", "assistant")];
+    const queued = at("2026-08-27T17:28:19.000Z", "user");
+
+    expect(placeByTimestamp(transcript, queued).at(-1)).toBe(queued);
+  });
+
+  /**
+   * The case this rule was written for must keep working: a reply that only
+   * arrives once it has finished still lands under the message it answers.
+   */
+  it("still lifts a late reply above the message typed while it ran", () => {
+    const typed = at("2026-08-27T17:28:40.000Z", "user");
+    const reply = at("2026-08-27T17:28:20.000Z", "assistant");
+
+    expect(placeByTimestamp([typed], reply).at(0)).toBe(reply);
+  });
+});

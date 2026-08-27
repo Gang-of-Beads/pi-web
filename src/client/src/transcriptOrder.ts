@@ -18,6 +18,15 @@ import type { ChatLine } from "./components/shared";
  * position for it would reorder the transcript on no evidence.
  */
 export function placeByTimestamp(transcript: readonly ChatLine[], arriving: ChatLine): ChatLine[] {
+  // Only a message that genuinely arrived late may move backwards. The
+  // reader's own message carries the moment it was typed, not the moment it
+  // was delivered: queue one while a reply is running and it is sent later,
+  // still stamped with when it was written. Measured in a real session record,
+  // user timestamps run backwards against the preceding line 92 times, so
+  // placing them by timestamp lifted the reader's message above the reply they
+  // had been waiting for.
+  if (arriving.role === "user") return [...transcript, arriving];
+
   const arrivingAt = timestampOf(arriving);
   if (arrivingAt === undefined) return [...transcript, arriving];
 
