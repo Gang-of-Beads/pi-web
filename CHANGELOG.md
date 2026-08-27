@@ -1,5 +1,16 @@
 # @jmfederico/pi-web
 
+## 1.202608.58
+
+### Patch Changes
+
+- 192c8a9: Messages carry an identity, so a message delivered twice is drawn once. A message reaches the browser through several independent paths — an optimistic bubble, the server's echo, the agent's committed copy, streaming deltas, a history load, the server's queue — and without an identity each path had its own test for "have I seen this?", each with a different blind spot.
+- ebfe4af: The button that returns you to the newest message appears when the transcript grows, not only when you scroll. A reply that grew the page produced no scroll event, so a reader who stopped following ended up four screens from the newest message with no way back.
+
+  The drawer's section buttons round to the radius scale instead of being pills, matching the controls around them.
+
+  Messages carry an identity, so a message delivered twice is drawn once.
+
 ## 1.202608.57
 
 ### Patch Changes
