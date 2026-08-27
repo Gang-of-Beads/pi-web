@@ -5,20 +5,23 @@ const sheets = `${String(appStyles)}\n${String(promptEditorStyles)}\n${String(ch
 
 describe("what floats over the composer", () => {
   /**
-   * The dictate and attach buttons used to float over the bottom right corner
-   * of the text area, and typed text ran underneath them. Room was bought for
-   * them in the text area's padding.
+   * Attach floats over the bottom right corner of the box it attaches to, so
+   * the text is paid room for it. An earlier version reserved room for two
+   * buttons and then moved both away, leaving a strip of empty space the text
+   * was not allowed to use.
    *
-   * Both have since left that corner - attach sits in the control row and
-   * dictation is a hold on the composer itself - so the reserved strip is
-   * empty space the text is not allowed to use.
+   * Dictation is not one of them: a microphone is not a property of the text,
+   * so it is a control in the row below.
    */
-  it("has nothing floating over it to make room for", () => {
+  it("makes room for the one control that floats over it", () => {
     const rule = /(?:^|\})\s*textarea\s*\{([^}]*)\}/mu.exec(sheets)?.[1] ?? "";
-    const floating = /\.editor-(dictate|attach)\s*\{([^}]*)\}/u.exec(sheets)?.[2] ?? "";
+    const attach = /\.editor-attach\s*\{([^}]*)\}/u.exec(sheets)?.[1] ?? "";
+    const dictate = /\.editor-dictate\s*\{([^}]*)\}/u.exec(sheets)?.[1] ?? "";
 
-    expect(rule).not.toMatch(/padding-right/u);
-    expect(floating).not.toMatch(/position:\s*absolute/u);
+    expect(attach).toMatch(/position:\s*absolute/u);
+    expect(dictate).not.toMatch(/position:\s*absolute/u);
+    // Room for one button, not two.
+    expect(rule).toMatch(/padding-right:\s*calc\(var\(--pi-space-4\) \+ 36px\)/u);
   });
 });
 
@@ -102,5 +105,21 @@ describe("the header's action cluster", () => {
     const narrow = /@media \(max-width: (?:430|640)px\)[^{]*\{([\s\S]*?)\n {4}\}/u.exec(sheet)?.[1] ?? "";
 
     expect(narrow).toMatch(/context-action-button/u);
+  });
+});
+
+describe("controls that were moved into the row", () => {
+  /**
+   * Dictate was moved into the control row but its absolute positioning was
+   * left behind. Absolute positioning takes an element out of the row's queue,
+   * so it flew back to the bottom right and landed on top of the send button,
+   * hiding it behind a microphone.
+   *
+   * A control in a row is positioned by the row.
+   */
+  it("is positioned by the row rather than by coordinates", () => {
+    const rule = /\.editor-dictate\s*\{([^}]*)\}/u.exec(sheets)?.[1] ?? "";
+
+    expect(rule).not.toMatch(/position:\s*absolute/u);
   });
 });

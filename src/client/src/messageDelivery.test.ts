@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyQueueToDelivery, transcriptWithPendingInQueueOrder, carryDeliveryForward, findDeliveryLineIndex, findTrackedUserLineIndex, isEchoOfTrackedMessage, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery } from "./messageDelivery";
+import { applyQueueToDelivery, splitTranscriptAndPending, carryDeliveryForward, findDeliveryLineIndex, findTrackedUserLineIndex, isEchoOfTrackedMessage, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery } from "./messageDelivery";
 import type { ChatLine } from "./components/shared";
 
 const ID = "cm-1";
@@ -158,29 +158,29 @@ describe("findTrackedUserLineIndex", () => {
   });
 });
 
-describe("transcriptWithPendingInQueueOrder", () => {
+describe("splitTranscriptAndPending", () => {
   it("puts a locally sent message after one queued earlier elsewhere", () => {
     // The reported symptom: a message sent seconds ago rendered above one
     // queued minutes earlier, because the first had a bubble in the transcript
     // and the second was drawn in a panel below the whole transcript.
     const mine = { role: "user" as const, parts: [{ type: "text" as const, text: "mine, just now" }], meta: { delivery: { clientMessageId: "c1", state: "queued" as const, kind: "steer" as const } } };
-    const ordered = transcriptWithPendingInQueueOrder([mine], [
+    const ordered = splitTranscriptAndPending([mine], [
       { kind: "steer", text: "queued earlier, from my phone" },
       { kind: "steer", text: "mine, just now", clientMessageId: "c1" },
     ]);
 
-    expect(ordered.map(firstText)).toEqual(["queued earlier, from my phone", "mine, just now"]);
+    expect([...ordered.settled, ...ordered.pending].map(firstText)).toEqual(["queued earlier, from my phone", "mine, just now"]);
   });
 
-  it("leaves delivered history alone and keeps it before the pending tail", () => {
+  it("keeps what is waiting out of the settled transcript, so it can be drawn below the work in flight", () => {
     const delivered = { role: "assistant" as const, parts: [{ type: "text" as const, text: "an answer" }] };
-    const ordered = transcriptWithPendingInQueueOrder([delivered], [{ kind: "followUp", text: "waiting" }]);
-    expect(ordered.map(firstText)).toEqual(["an answer", "waiting"]);
+    const ordered = splitTranscriptAndPending([delivered], [{ kind: "followUp", text: "waiting" }]);
+    expect([...ordered.settled, ...ordered.pending].map(firstText)).toEqual(["an answer", "waiting"]);
   });
 
   it("is a no-op with an empty queue", () => {
     const line = { role: "user" as const, parts: [{ type: "text" as const, text: "said" }] };
-    expect(transcriptWithPendingInQueueOrder([line], [])).toEqual([line]);
+    expect(splitTranscriptAndPending([line], [])).toEqual({ settled: [line], pending: [] });
   });
 });
 
@@ -235,7 +235,7 @@ describe("a queued message that already has a bubble", () => {
     ];
     const queued = [{ text: "do the thing", kind: "steer" as const, clientMessageId: "cm-1" }];
 
-    expect(transcriptWithPendingInQueueOrder(messages, queued)).toHaveLength(1);
+    expect([...splitTranscriptAndPending(messages, queued).settled, ...splitTranscriptAndPending(messages, queued).pending]).toHaveLength(1);
   });
 
   it("finds the bubble for a queue entry that carries no id", () => {
@@ -244,7 +244,7 @@ describe("a queued message that already has a bubble", () => {
     ];
     const queued = [{ text: "do the thing", kind: "steer" as const }];
 
-    expect(transcriptWithPendingInQueueOrder(messages, queued)).toHaveLength(1);
+    expect([...splitTranscriptAndPending(messages, queued).settled, ...splitTranscriptAndPending(messages, queued).pending]).toHaveLength(1);
   });
 
   /**
@@ -258,7 +258,7 @@ describe("a queued message that already has a bubble", () => {
     ];
     const queued = [{ text: "again", kind: "steer" as const }, { text: "again", kind: "steer" as const }];
 
-    expect(transcriptWithPendingInQueueOrder(messages, queued)).toHaveLength(2);
+    expect([...splitTranscriptAndPending(messages, queued).settled, ...splitTranscriptAndPending(messages, queued).pending]).toHaveLength(2);
   });
 });
 

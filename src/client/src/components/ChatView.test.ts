@@ -1,7 +1,7 @@
 import type { TemplateResult } from "lit";
 import { describe, expect, it, vi } from "vitest";
 import type { QueuedSessionMessage, SessionStatus, SessionWarning } from "../api";
-import { transcriptWithPendingInQueueOrder } from "../messageDelivery";
+import { splitTranscriptAndPending } from "../messageDelivery";
 import {
   notificationTargetKey,
   notificationTrayIsCollapsed,
@@ -91,12 +91,18 @@ describe("ChatView queued messages stay in place", () => {
     meta: { delivery: { clientMessageId, state: "queued", kind: "steer" } },
   });
 
-  it("keeps a queued message in the transcript", () => {
+  /**
+   * A message the agent has not started is drawn below whatever it is working
+   * on, so it is kept out of the settled transcript rather than appended to it.
+   * Appended, it sat above the reply being written, and a message the model had
+   * not been given yet looked as though it had already been answered.
+   */
+  it("keeps a queued message out of the settled transcript", () => {
     const view = new ChatView();
     view.messages = [queuedLine("cm-1")];
     view.status = queuedStatus([{ kind: "steer", text: "hello", clientMessageId: "cm-1" }]);
 
-    expect(transcriptMessagesOf(view)).toHaveLength(1);
+    expect(transcriptMessagesOf(view)).toHaveLength(0);
   });
 
   it("marks a bubble the server still holds, and unmarks it once taken", () => {
@@ -151,7 +157,7 @@ describe("ChatView queued messages stay in place", () => {
     const strip = templateText(renderQueuedMessages(view));
     expect(strip).not.toContain("from my phone");
     expect(strip).toContain("1 queued");
-    expect(transcriptWithPendingInQueueOrder(view.messages, view.status.queuedMessages)).toHaveLength(1);
+    expect([...splitTranscriptAndPending(view.messages, view.status.queuedMessages).settled, ...splitTranscriptAndPending(view.messages, view.status.queuedMessages).pending]).toHaveLength(1);
   });
 });
 

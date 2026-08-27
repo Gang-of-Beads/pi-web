@@ -41,9 +41,6 @@ export function optimisticUserLine(text: string, clientMessageId: string, attach
     .filter((attachment) => attachment.kind === "image")
     .map((attachment): ChatPart => ({ type: "image", mimeType: attachment.mimeType, data: attachment.data }));
   const parts: ChatPart[] = text === "" ? [...images] : [{ type: "text", text }, ...images];
-  // Stamped here because placement depends on it: a reply that finishes after
-  // this was written arrives later and has to walk back past it, and the walk
-  // stops at any line it cannot compare.
   return { role: "user", parts, meta: { timestamp: new Date().toISOString(), delivery: { clientMessageId, state: "sending" } } };
 }
 
@@ -61,12 +58,9 @@ export function optimisticUserLine(text: string, clientMessageId: string, attach
  * Keeping them in the transcript rather than a pinned panel is deliberate:
  * 1.202608.5-.7 tried the panel and it covered the conversation on a phone.
  */
-export function transcriptWithPendingInQueueOrder(messages: readonly ChatLine[], queued: readonly QueuedSessionMessage[]): ChatLine[] {
-  if (queued.length === 0) return [...messages];
-  // A bubble is a bubble whatever its mark says. Only queued ones used to
-  // count, so a message still marked sending - the state it holds between
-  // leaving the browser and the next status frame - matched nothing and got a
-  // second row synthesized beside it.
+/** Settled messages, and the ones the agent has not started. */
+export function splitTranscriptAndPending(messages: readonly ChatLine[], queued: readonly QueuedSessionMessage[]): { settled: ChatLine[]; pending: ChatLine[] } {
+  if (queued.length === 0) return { settled: [...messages], pending: [] };
   const bubbles = new Map<string, ChatLine>();
   const unclaimed: ChatLine[] = [];
   for (const line of messages) {
@@ -78,14 +72,13 @@ export function transcriptWithPendingInQueueOrder(messages: readonly ChatLine[],
   const pending: ChatLine[] = [];
   for (const message of queued) {
     const byId = message.clientMessageId === undefined ? undefined : bubbles.get(message.clientMessageId);
-    // Messages queued by another caller carry no id. Claim one unclaimed
-    // bubble with the same words, so two identical messages stay two.
+    // Claimed, not matched: two identical messages stay two.
     const byWords = byId ?? unclaimed.find((line) => line.meta?.delivery?.kind === message.kind && chatLineText(line) === message.text);
     if (byWords !== undefined) unclaimed.splice(unclaimed.indexOf(byWords), 1);
     pending.push(byWords ?? queuedUserLine(message));
   }
   const moved = new Set(pending);
-  return [...messages.filter((line) => !moved.has(line)), ...pending];
+  return { settled: messages.filter((line) => !moved.has(line)), pending };
 }
 
 /** The words of a bubble, for matching a queue entry that carries no id. */

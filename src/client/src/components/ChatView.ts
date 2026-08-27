@@ -39,7 +39,7 @@ import type { SessionStateBadgeKind } from "./activityBadge";
 import "./AskUserCard";
 import "./ExtensionDialogCard";
 import type { ExtensionDialogAnswerCallback, ExtensionDialogCancelCallback, ExtensionDialogDismissCallback } from "./ExtensionDialogCard";
-import { transcriptWithPendingInQueueOrder } from "../messageDelivery";
+import { splitTranscriptAndPending } from "../messageDelivery";
 import { registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
 import "./ConversationMeter";
 import "./FormattedText";
@@ -572,6 +572,7 @@ export class ChatView extends LitElement {
             },
           )}
           ${this.renderSessionActivity()}
+          ${this.renderPendingMessages()}
           ${this.renderQueuedMessages()}
           ${this.renderOpenAsk()}
           ${this.renderExtensionDialogs()}
@@ -1135,7 +1136,11 @@ export class ChatView extends LitElement {
     // the same "queued" mark, so there is one home for a message in every
     // state. A separate panel used to repeat some of them and hide others,
     // which read as duplicate entries and missing ones on the same screen.
-    return transcriptWithPendingInQueueOrder(this.messages, [...this.clientQueuedMessages, ...(this.status?.queuedMessages ?? [])]);
+    return this.transcriptSplit().settled;
+  }
+
+  private transcriptSplit(): { settled: ChatLine[]; pending: ChatLine[] } {
+    return splitTranscriptAndPending(this.messages, [...this.clientQueuedMessages, ...(this.status?.queuedMessages ?? [])]);
   }
 
   /**
@@ -1343,6 +1348,13 @@ export class ChatView extends LitElement {
     const next = tabs[(current + step + tabs.length) % tabs.length];
     next?.click();
     next?.focus();
+  }
+
+  private renderPendingMessages() {
+    const pending = this.transcriptSplit().pending;
+    if (pending.length === 0) return null;
+    const base = this.messages.length;
+    return html`${repeat(pending, (line, index) => this.messageAnchorKey(base + index), (line, index) => this.renderMessage(line, base + index))}`;
   }
 
   private renderQueuedMessages() {
