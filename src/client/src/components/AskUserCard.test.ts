@@ -285,3 +285,35 @@ function option(value: string, label: string): AskUserQuestion["options"][number
 function unansweredRecord(questionValue: AskUserQuestion): AskUserOutcome["questions"][number] {
   return { question: questionValue, answered: false, values: [] };
 }
+
+describe("the step footer", () => {
+  /**
+   * The footer sticks to the bottom so the submit control stays reachable, but
+   * content earlier in the flow scrolls underneath it. A custom answer box
+   * taller than the remaining viewport was cut in half by the footer: its top
+   * and bottom edges were visible above and below, the middle was covered, and
+   * there was no scroll position that cleared it.
+   *
+   * A sticky footer has to leave room for what it covers.
+   */
+  it("leaves room below the questions for the footer it sticks over", () => {
+    const sheet = String(AskUserCard.styles);
+    // Clearance must not come from extra height: the card already has to fit a
+    // 360px viewport, so scroll-margin is what buys room without growing it.
+    const question = /fieldset\.question\s*\{([^}]*)\}/u.exec(sheet)?.[1] ?? "";
+
+    expect(question).toMatch(/scroll-margin-bottom/u);
+  });
+
+  /**
+   * "Back" and "Next" are both steps through the same list. Letting one take
+   * every spare pixel while the other shrinks to its text read as two
+   * different kinds of control.
+   */
+  it("does not let the forward step swallow the row", () => {
+    const sheet = String(AskUserCard.styles);
+    const primary = /\.step-actions\s+\.primary-action\s*\{([^}]*)\}/u.exec(sheet)?.[1] ?? "";
+
+    expect(primary).not.toMatch(/flex:\s*1 1 auto/u);
+  });
+});

@@ -499,6 +499,7 @@ export class AskUserCard extends LitElement {
       border-top: 1px solid var(--pi-border-muted);
       padding: 16px;
       background: transparent;
+      scroll-margin-bottom: 72px;
     }
     fieldset.question:first-child { border-top: 0; }
     fieldset.question:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: -3px; }
@@ -564,8 +565,8 @@ export class AskUserCard extends LitElement {
     /* Back sits beside the forward action rather than under it: the pair is
        one decision, and a phone keyboard leaves little height to spend. */
     .step-actions { display: flex; gap: var(--pi-space-4); width: 100%; }
-    .step-actions .primary-action { flex: 1 1 auto; }
-    .step-actions .secondary-action { flex: 0 0 auto; }
+    .step-actions .primary-action { flex: 0 1 auto; min-width: 140px; }
+    .step-actions .secondary-action { flex: 0 1 auto; min-width: 96px; }
     .form-footer {
       /* The card lives inside the transcript, which is already the scroller. A
          second scroller inside it made the reader cross a scroll boundary
