@@ -1,5 +1,4 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab, insertNewlineAndIndent } from "@codemirror/commands";
-import { LongPressTracker } from "../longPress";
 import { markdown, deleteMarkupBackward, insertNewlineContinueMarkup } from "@codemirror/lang-markdown";
 import { EditorSelection, EditorState, Compartment } from "@codemirror/state";
 import { drawSelection, EditorView, keymap, placeholder } from "@codemirror/view";
@@ -183,12 +182,8 @@ export class PromptEditor extends LitElement {
           ${this.isCompacting && !shellMode ? html`<div class="mode-hint">Compacting history · message will be queued</div>` : null}
           <div
             class=${`markdown-editor${this.disabled ? " markdown-editor-disabled" : ""}`}
-            aria-label="Message pi. Hold to dictate."
+            aria-label="Message pi"
             aria-disabled=${this.disabled ? "true" : "false"}
-            @pointerdown=${(event: PointerEvent) => { if (!this.disabled) this.holdToDictate.start({ clientX: event.clientX, clientY: event.clientY }); }}
-            @pointermove=${(event: PointerEvent) => { this.holdToDictate.move({ clientX: event.clientX, clientY: event.clientY }); }}
-            @pointerup=${() => { this.holdToDictate.cancel(); }}
-            @pointercancel=${() => { this.holdToDictate.cancel(); }}
           ></div>
           <autocomplete-menu .items=${this.completions} .selectedIndex=${this.selectedIndex} .onPick=${(item: CompletionItem) => { this.pick(item); }}></autocomplete-menu>
         </div>
@@ -439,13 +434,12 @@ export class PromptEditor extends LitElement {
    * microphone that cannot work would be worse than not offering it.
    */
   /**
-   * Only while recording. Holding the composer starts dictation, so an idle
-   * composer needs no control for it; a recording one needs a way to stop and
-   * something that says recording is happening.
+   * A control of its own, in the row with the others. Starting dictation by
+   * holding the composer was tried and taken back: holding a text field is how
+   * a phone selects text, so the two gestures fought over the same press.
    */
   private renderDictateButton(busy: boolean) {
     if (!isDictationConfigured(this.speechToText)) return null;
-    if (this.voiceState.kind === "idle") return null;
     const streaming = resolveSpeechStreaming(this.speechToText.streaming).kind !== "unavailable";
     const label = voiceCaptureLabel(this.voiceState, { streaming });
     const active = isVoiceCaptureActive(this.voiceState);
@@ -461,13 +455,6 @@ export class PromptEditor extends LitElement {
       >${active ? "\u25A0" : "\u25CF"}</button>
     `;
   }
-
-  /** Holding the composer dictates; nothing floats over the text to say so. */
-  private readonly holdToDictate = new LongPressTracker({
-    onLongPress: () => { void this.toggleDictation(); },
-    setTimer: (callback, ms) => window.setTimeout(callback, ms),
-    clearTimer: (handle) => { window.clearTimeout(handle); },
-  });
 
   private async toggleDictation(): Promise<void> {
     this.voice ??= new VoiceController(
