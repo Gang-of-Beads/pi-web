@@ -1,5 +1,12 @@
 # @jmfederico/pi-web
 
+## 1.202608.56
+
+### Patch Changes
+
+- 71d076b: Thinking text no longer drops a message that is waiting to be sent. One of the three branches that place streaming text kept the queued messages and the other did not.
+- aba5e7b: The unread dot on a project tile no longer sits on the actions button. Both are pinned to the same corner and the dot was offset by a guess at the button's width; measured on the running app, a 7px dot overlapped the button by 5x7px.
+
 ## 1.202608.55
 
 ### Patch Changes
