@@ -1,4 +1,5 @@
 import { LitElement, html, type TemplateResult } from "lit";
+import { bannerHoldDecision } from "./bannerHold";
 import { routeMatchesUrl } from "../routeMatch";
 import { autoFocusesComposer } from "../appShell/appShellController";
 import { touchPrimaryPointer } from "../keyboardDismissal";
@@ -279,6 +280,9 @@ export class PiWebApp extends LitElement {
   @state() private activeThemeId: QualifiedContributionId = CLASSIC_THEME_ID;
   @state() private isRefreshingApp = false;
   private transientErrorTimer: number | undefined;
+  private bannerShownAt: number | undefined;
+  private bannerHoldTimer: number | undefined;
+  private heldErrorBanner: TemplateResult | null = null;
   private lastScheduledError = "";
   @state() private quickSwitcherOpen = false;
   /** True while a question form or dialog field has focus (see composerCollapse). */
@@ -2932,11 +2936,24 @@ export class PiWebApp extends LitElement {
   }
 
   private renderErrorBanner(error: string) {
+    const decision = bannerHoldDecision({ shownAt: this.bannerShownAt, now: Date.now(), next: error });
+    if (decision.kind === "hold") {
+      if (this.bannerHoldTimer !== undefined) window.clearTimeout(this.bannerHoldTimer);
+      this.bannerHoldTimer = window.setTimeout(() => { this.bannerHoldTimer = undefined; this.requestUpdate(); }, decision.retryInMs);
+      return this.heldErrorBanner;
+    }
+    if (decision.kind === "hide") {
+      this.bannerShownAt = undefined;
+      this.heldErrorBanner = null;
+      return null;
+    }
+    this.bannerShownAt ??= Date.now();
     if (error !== this.lastScheduledError) {
       this.lastScheduledError = error;
       this.scheduleTransientErrorDismissal(error);
     }
-    return errorBanner(error, () => { this.setState({ error: "" }); });
+    this.heldErrorBanner = errorBanner(error, () => { this.setState({ error: "" }); });
+    return this.heldErrorBanner;
   }
 
   private renderContextBar() {
