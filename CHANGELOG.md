@@ -1,5 +1,23 @@
 # @jmfederico/pi-web
 
+## 1.202608.48
+
+### Patch Changes
+
+- 2333cd9: Hold the composer to dictate. The dictate and attach buttons floated over the corner of the text area, where they covered what you were typing; attach moves down to the row of controls that already exists.
+
+  On a phone the conversation and the composer are wider. Thirty-two pixels of a 393px screen went to margins; both now use the same, narrower gutter and stay exactly aligned.
+
+  A question card's footer no longer floats over its own options. It used to hide whichever option sat behind it, with no scroll position that showed that option whole.
+
+  The activity summary stops calling deliberate acts failures. A task you stopped reads as stopped, a run nobody can account for reads as lost, and only what actually failed is counted as failed.
+
+- 2333cd9: A queued message is drawn once. Only bubbles already marked queued were matched against the server's queue, so a message still marked sending — the state it holds between leaving the browser and the next status frame — was drawn a second time beside itself.
+
+  The drawer's sections stay reachable on a narrow screen. They refused to shrink, so the selected one scrolled into view and took the others out of sight, which read as the strip disappearing.
+
+- 7e293d0: The button that returns you to the newest message moves to the top right and is square. It used to sit in the bottom right, the corner the composer controls and the activity dock already occupy, shaped like the round buttons beside it.
+
 ## 1.202608.47
 
 ### Patch Changes
