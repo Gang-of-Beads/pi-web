@@ -41,7 +41,10 @@ export function optimisticUserLine(text: string, clientMessageId: string, attach
     .filter((attachment) => attachment.kind === "image")
     .map((attachment): ChatPart => ({ type: "image", mimeType: attachment.mimeType, data: attachment.data }));
   const parts: ChatPart[] = text === "" ? [...images] : [{ type: "text", text }, ...images];
-  return { role: "user", parts, meta: { delivery: { clientMessageId, state: "sending" } } };
+  // Stamped here because placement depends on it: a reply that finishes after
+  // this was written arrives later and has to walk back past it, and the walk
+  // stops at any line it cannot compare.
+  return { role: "user", parts, meta: { timestamp: new Date().toISOString(), delivery: { clientMessageId, state: "sending" } } };
 }
 
 /**

@@ -513,9 +513,15 @@ export const chatStyles = css`
      above the 24px minimum target without becoming a second composer. */
   /* Top right, not bottom right: the bottom edge already carries the composer
      controls and the activity dock, and a round button among round buttons
-     read as one more of them. */
+     read as one more of them.
+
+     Its edges come from the conversation rather than from the panel. A fixed
+     offset from the panel measured correctly here, where the scrollbar floats
+     over the content, and sat on top of a real scrollbar elsewhere. */
   .jump-to-bottom {
-    position: absolute; right: 12px; top: 12px; z-index: 4;
+    position: absolute;
+    right: calc(var(--pi-chat-gutter) + var(--pi-chat-scrollbar, 0px));
+    top: var(--pi-space-9); z-index: 4;
     display: flex; align-items: center; justify-content: center;
     width: 40px; height: 40px; padding: 0;
     border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md);
@@ -566,8 +572,10 @@ export const chatStyles = css`
   /* A section that shortens stays reachable. Refusing to shrink pushed the
      others off a narrow screen, where the selected one scrolled into view and
      took the rest out of sight - which read as the strip disappearing. */
-  .drawer-tab-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .drawer-tab { flex: 0 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: 28px; padding: var(--pi-space-2) var(--pi-space-5); border: 1px solid transparent; border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-2xs); font-weight: 600; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  /* A section name is short and carries a count; cutting it to "ACTIVITY (..."
+     loses the number, which is the part worth reading. The names keep their
+     width and the running summary beside them gives way instead. */
+  .drawer-tab { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: 28px; padding: var(--pi-space-2) var(--pi-space-5); border: 1px solid transparent; border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-2xs); font-weight: 600; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .drawer-tab:hover { color: var(--pi-text-bright); }
   .drawer-tab:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
   .drawer-tab, .activity-filter, .activity-history-toggle { transition: background-color var(--pi-motion-fast) var(--pi-ease), border-color var(--pi-motion-fast) var(--pi-ease), color var(--pi-motion-fast) var(--pi-ease); }
@@ -985,15 +993,11 @@ export const promptEditorStyles = css`
   .stop-button:not(:disabled) { color: var(--pi-danger); }
   .select-thinking .prompt-thinking-gauge .gauge-bar { fill: currentColor; stroke: none; opacity: .28; }
   .select-thinking .prompt-thinking-gauge .gauge-bar-active { opacity: 1; }
-  .editor-attach { position: absolute; right: 8px; bottom: 8px; z-index: 2; width: 30px; height: 30px; }
-  /* Sits beside the attach control, inside the editor box. */
-  .editor-dictate { position: absolute; right: 44px; bottom: 8px; z-index: 2; width: 30px; height: 30px; font-size: var(--pi-text-2xs); }
+  /* Both live in the control row now: nothing floats over the text. */
+  .editor-dictate { font-size: var(--pi-text-2xs); }
   .editor-dictate.listening { color: var(--pi-danger); border-color: var(--pi-danger); }
-  .editor-attach .prompt-action-icon { width: 16px; height: 16px; }
   textarea, .markdown-editor .cm-editor { box-sizing: border-box; width: 100%; min-height: 54px; max-height: 220px; resize: none; overflow: hidden; border-radius: var(--pi-radius-md); border: 1px solid var(--pi-border); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px)/1.4 var(--pi-control-font-family, system-ui, sans-serif); }
-  /* The dictate and attach buttons float over the bottom right corner; the
-     text has to be paid room for them or it runs underneath. */
-  textarea { overflow-y: auto; padding: var(--pi-space-4); padding-right: calc(var(--pi-space-4) + 74px); }
+  textarea { overflow-y: auto; padding: var(--pi-space-4); }
   /* A phone with the keyboard open leaves roughly 400px of viewport, and a
      composer sized for a full screen took 119px of it - the transcript was
      left with about two lines. The composer keeps a floor so it stays usable

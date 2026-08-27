@@ -261,3 +261,21 @@ describe("a queued message that already has a bubble", () => {
     expect(transcriptWithPendingInQueueOrder(messages, queued)).toHaveLength(2);
   });
 });
+
+describe("the bubble the browser draws for what you just sent", () => {
+  /**
+   * A streaming reply reaches the transcript only when it finishes, so it can
+   * arrive after a message sent while waiting for it. Placement walks back over
+   * anything newer, but stops at a line it cannot compare - and this bubble
+   * carried no timestamp at all.
+   *
+   * So a reply landed underneath a message written after it, and the record
+   * read as though the assistant had answered something it never saw.
+   */
+  it("carries the moment it was written", () => {
+    const line = optimisticUserLine("hello", "cm-1", []);
+
+    expect(line.meta?.timestamp).toBeTypeOf("string");
+    expect(Date.parse(line.meta?.timestamp ?? "")).not.toBeNaN();
+  });
+});

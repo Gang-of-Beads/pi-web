@@ -387,6 +387,14 @@ export class AppContextBar extends LitElement {
     .context-bar.has-context-actions-double .context-items { padding-right: 102px; scroll-padding-inline: 8px 102px; }
     .context-item { flex: 0 0 auto; min-width: 0; display: flex; }
     .context-actions { position: absolute; top: 6px; right: 0; bottom: 6px; z-index: 3; display: flex; align-items: center; gap: var(--pi-space-3); padding: 0 var(--pi-space-4); background: var(--pi-bg); pointer-events: none; }
+    /* Measured at 393px the bar was exactly full: 60px of location, 163px of
+       session name - both already cut short - 34px of rename, and 136px of
+       actions. The actions keep their size whatever the screen does, so every
+       pixel they take comes out of the words that say where you are. */
+    @media (max-width: 430px) {
+      .context-actions { gap: var(--pi-space-2); }
+      .context-actions .context-action-button { width: 32px; height: 32px; min-width: 32px; min-height: 32px; }
+    }
     .context-actions::before { content: ""; position: absolute; top: 0; bottom: 0; left: -24px; z-index: 0; width: 24px; background: linear-gradient(90deg, transparent, var(--pi-bg)); pointer-events: none; }
     app-refresh-control, .context-action-button { position: relative; z-index: 1; pointer-events: auto; }
     .context-action-button { box-sizing: border-box; width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text); padding: 0; line-height: 1; }

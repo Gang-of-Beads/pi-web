@@ -38,7 +38,15 @@ const probe = () => p.evaluate(() => {
     return out;
   };
   const { chat, button } = walk(document);
+  const message = chat?.querySelector(".msg");
   return {
+    // The button belongs to the conversation, so its right edge is the
+    // conversation's right edge. Measuring against the panel instead let it
+    // hang past the messages and sit on the scrollbar.
+    alignment: button === undefined || message === null || message === undefined
+      ? null
+      : Math.round(message.getBoundingClientRect().right - button.getBoundingClientRect().right),
+    scrollbar: chat === undefined ? null : chat.offsetWidth - chat.clientWidth,
     scrollable: chat === undefined ? null : chat.scrollHeight > chat.clientHeight + 4,
     distance: chat === undefined ? null : Math.round(chat.scrollHeight - chat.scrollTop - chat.clientHeight),
     button: button !== undefined,
@@ -123,4 +131,36 @@ if (returned.button === true) {
   console.error("FAIL: the button is still offering a scroll the reader has made");
   process.exitCode = 1;
 }
+if (scrolledUp.alignment === null) {
+  console.error("FAIL: no message to line the button up against, so alignment was not checked");
+  process.exitCode = 1;
+} else if (Math.abs(scrolledUp.alignment) > 1) {
+  console.error(`FAIL: the button's right edge is ${String(scrolledUp.alignment)}px from the conversation's`);
+  process.exitCode = 1;
+}
+// This engine draws overlay scrollbars, so the scrollbar measures zero and the
+// case that put the button on top of one cannot occur here. Feed the width in
+// directly to prove the button actually spends it.
+const moved = await p.evaluate(() => {
+  let button;
+  const walk = (root) => {
+    for (const el of root.querySelectorAll(".jump-to-bottom")) { button ??= el; }
+    for (const el of root.querySelectorAll("*")) if (el.shadowRoot) walk(el.shadowRoot);
+  };
+  walk(document);
+  if (button === undefined) return null;
+  const host = button.getRootNode().host;
+  if (host === undefined || host === null) return null;
+  const before = button.getBoundingClientRect().right;
+  host.style.setProperty("--pi-chat-scrollbar", "15px");
+  return Math.round(before - button.getBoundingClientRect().right);
+});
+if (moved === null) {
+  console.error("FAIL: could not feed a scrollbar width in, so that case is unproven");
+  process.exitCode = 1;
+} else if (moved !== 15) {
+  console.error(`FAIL: a 15px scrollbar moved the button ${String(moved)}px; it would sit on the scrollbar`);
+  process.exitCode = 1;
+}
+if (process.exitCode === undefined || process.exitCode === 0) console.log(`PASS  对齐差=${String(scrolledUp.alignment)}px  满滚动条时让开=${String(moved)}px`);
 await b.close();

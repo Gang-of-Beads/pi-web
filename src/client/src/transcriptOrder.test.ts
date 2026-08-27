@@ -110,3 +110,37 @@ describe("a message the reader queued while a reply was running", () => {
     expect(placeByTimestamp([typed], reply).at(0)).toBe(reply);
   });
 });
+
+describe("a reply that finishes after the reader has typed again", () => {
+  /**
+   * A streaming reply reaches the transcript only when it finishes, so it can
+   * arrive after a message the reader sent while waiting. It is placed by
+   * timestamp, walking back over anything newer - but the walk stops at a line
+   * it cannot compare, and the reader's own bubble is built locally with no
+   * timestamp at all.
+   *
+   * So the reply landed under the message that came after it, and the
+   * transcript read as though the assistant had answered something it had
+   * never seen.
+   */
+  it("lands above a message the reader sent while it was still being written", () => {
+    const typedWhileWaiting = sentAt("later question", "2026-08-27T12:05:00.000Z");
+    const replyThatStartedFirst: ChatLine = {
+      role: "assistant",
+      parts: [{ type: "text", text: "answer to the earlier one" }],
+      meta: { timestamp: "2026-08-27T12:04:00.000Z" },
+    };
+
+    const placed = placeByTimestamp([typedWhileWaiting], replyThatStartedFirst);
+
+    expect(placed.map((line) => line.role)).toEqual(["assistant", "user"]);
+  });
+});
+
+function sentAt(text: string, timestamp: string): ChatLine {
+  return {
+    role: "user",
+    parts: [{ type: "text", text }],
+    meta: { timestamp, delivery: { clientMessageId: "cm-1", state: "sending" } },
+  };
+}

@@ -5,16 +5,20 @@ const sheets = `${String(appStyles)}\n${String(promptEditorStyles)}\n${String(ch
 
 describe("what floats over the composer", () => {
   /**
-   * The dictate and attach buttons are positioned over the bottom right corner
-   * of the text area. The text area padded all four sides equally, so typed
-   * text ran underneath them and the last words of a line were unreadable.
+   * The dictate and attach buttons used to float over the bottom right corner
+   * of the text area, and typed text ran underneath them. Room was bought for
+   * them in the text area's padding.
    *
-   * Anything floating over an input has to be paid for in that input's padding.
+   * Both have since left that corner - attach sits in the control row and
+   * dictation is a hold on the composer itself - so the reserved strip is
+   * empty space the text is not allowed to use.
    */
-  it("keeps the text clear of the buttons over it", () => {
+  it("has nothing floating over it to make room for", () => {
     const rule = /(?:^|\})\s*textarea\s*\{([^}]*)\}/mu.exec(sheets)?.[1] ?? "";
+    const floating = /\.editor-(dictate|attach)\s*\{([^}]*)\}/u.exec(sheets)?.[2] ?? "";
 
-    expect(rule).toMatch(/padding-right/u);
+    expect(rule).not.toMatch(/padding-right/u);
+    expect(floating).not.toMatch(/position:\s*absolute/u);
   });
 });
 
@@ -46,11 +50,16 @@ describe("the drawer's section strip", () => {
    * A name that has to shorten is still reachable; a name scrolled off screen
    * is not.
    */
-  it("lets a section shorten rather than scroll out of reach", () => {
-    const rule = /\.drawer-tab\s*\{([^}]*)\}/u.exec(sheets)?.[1] ?? "";
+  it("gives way in the running summary rather than in the section names", () => {
+    // Shrinking the names was tried and cut them to "ACTIVITY (...", which
+    // loses the count - the part worth reading. The summary beside them is
+    // prose and can be trimmed without losing a number.
+    const name = /\.drawer-tab\s*\{([^}]*)\}/u.exec(sheets)?.[1] ?? "";
+    const summary = /\.drawer-summary\s*\{([^}]*)\}/u.exec(sheets)?.[1] ?? "";
 
-    expect(rule).not.toMatch(/flex:\s*0 0 auto/u);
-    expect(rule).toMatch(/min-width:\s*0/u);
+    expect(name).toMatch(/flex:\s*0 0 auto/u);
+    expect(summary).toMatch(/flex:\s*0 1 auto/u);
+    expect(summary).toMatch(/text-overflow:\s*ellipsis/u);
   });
 });
 
@@ -75,5 +84,23 @@ describe("the button that returns you to the newest message", () => {
     const rule = /\.jump-to-bottom\s*\{([^}]*)\}/u.exec(sheets)?.[1] ?? "";
 
     expect(rule).toMatch(/border-radius:\s*var\(--pi-radius-(xs|sm|md)\)/u);
+  });
+});
+
+describe("the header's action cluster", () => {
+  /**
+   * Measured at 393px the bar was exactly full: 60px of location, 163px of
+   * session name - both already cut short - 34px of rename, and 136px of
+   * circular actions. The actions keep their size whatever the screen does, so
+   * every pixel they take comes out of the words that say where you are.
+   *
+   * On a phone they give up a little of their own room instead.
+   */
+  it("takes less room on a narrow screen", async () => {
+    const { AppContextBar } = await import("./appShell/AppContextBar");
+    const sheet = String(AppContextBar.styles);
+    const narrow = /@media \(max-width: (?:430|640)px\)[^{]*\{([\s\S]*?)\n {4}\}/u.exec(sheet)?.[1] ?? "";
+
+    expect(narrow).toMatch(/context-action-button/u);
   });
 });

@@ -6,23 +6,27 @@ import { PromptEditor } from "./PromptEditor";
 afterEach(() => { document.body.replaceChildren(); });
 
 /**
- * Dictation transcribed only after the recording stopped, so a long thought
- * arrived as a wall of text minutes after it was spoken. With streaming
- * configured the words should appear while they are still being said.
+ * Dictation used to need a button of its own, sitting in the composer whether
+ * or not anyone was speaking. Holding the composer is the gesture now, so an
+ * idle composer carries no dictation control at all.
  *
- * The two modes share one control: an install that configured only the batch
- * endpoint keeps the behaviour it had, and one that configured streaming gets
- * live text without a second button to learn.
+ * While recording there has to be a way to stop, and something has to say that
+ * recording is happening - so the control appears for exactly as long as it is
+ * needed.
  */
 describe("the dictation control", () => {
-  it("is offered when only the batch endpoint is configured", async () => {
+  it("is absent while nobody is speaking", async () => {
     const editor = await mount({ endpoint: "https://stt.example/v1" });
 
-    expect(dictateButton(editor)).not.toBeNull();
+    expect(dictateButton(editor)).toBeNull();
   });
 
-  it("is offered when streaming is configured", async () => {
-    const editor = await mount({ endpoint: "https://stt.example/v1", streaming: { protocol: "browser" } });
+  it("appears while recording, so there is a way to stop", async () => {
+    const editor = await mount({ endpoint: "https://stt.example/v1" });
+
+    Reflect.set(editor, "voiceState", { kind: "listening" });
+    editor.requestUpdate();
+    await editor.updateComplete;
 
     expect(dictateButton(editor)).not.toBeNull();
   });
@@ -30,21 +34,18 @@ describe("the dictation control", () => {
   it("is absent when nothing is configured, so no microphone can be reached", async () => {
     const editor = await mount(undefined);
 
+    Reflect.set(editor, "voiceState", { kind: "listening" });
+    editor.requestUpdate();
+    await editor.updateComplete;
+
     expect(dictateButton(editor)).toBeNull();
   });
 
-  it("reports that it will stream when streaming is configured", async () => {
-    const editor = await mount({ endpoint: "https://stt.example/v1", streaming: { protocol: "browser" } });
-
-    // The label is the only thing that tells a user which mode they are in
-    // before they speak into it.
-    expect(dictateButton(editor)?.getAttribute("title") ?? "").toMatch(/live|stream/iu);
-  });
-
-  it("does not claim to stream when only the batch endpoint is configured", async () => {
+  it("says the composer is what starts it", async () => {
     const editor = await mount({ endpoint: "https://stt.example/v1" });
+    const field = editor.shadowRoot?.querySelector(".markdown-editor");
 
-    expect(dictateButton(editor)?.getAttribute("title") ?? "").not.toMatch(/live|stream/iu);
+    expect(field?.getAttribute("aria-label") ?? "").toMatch(/hold/iu);
   });
 });
 

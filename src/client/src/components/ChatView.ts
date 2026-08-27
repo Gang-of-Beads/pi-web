@@ -1,4 +1,5 @@
 import { LitElement, html, type TemplateResult } from "lit";
+import { scrollbarWidthOf } from "../scrollbarWidth";
 import { dropsExpansionAsWorkFinishes } from "../topDrawerExpansion";
 import { showsJumpToBottom } from "../chatScrollPosition";
 import { customElement, property, query, state } from "lit/decorators.js";
@@ -462,7 +463,18 @@ export class ChatView extends LitElement {
     if (changed.has("zoomedImage")) this.syncImageZoomDialog();
     if (changed.has("activityOutput")) this.syncActivityOutputDialog();
     this.drawerTabEdgeTracker.observe(this.drawerTabs ?? undefined);
+    this.publishScrollbarWidth();
     if (changed.has("status") || changed.has("activity") || changed.has("isSendingPrompt")) this.syncTurnClock();
+  }
+
+  /**
+   * Controls pinned to the right edge of the conversation line up with the
+   * messages, which sit inside the scrollbar. CSS cannot measure it, so it is
+   * measured here and spent as a length.
+   */
+  private publishScrollbarWidth(): void {
+    const width = scrollbarWidthOf(this.chat);
+    this.style.setProperty("--pi-chat-scrollbar", `${String(width)}px`);
   }
 
   private syncImageZoomDialog(): void {

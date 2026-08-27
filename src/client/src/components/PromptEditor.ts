@@ -438,8 +438,14 @@ export class PromptEditor extends LitElement {
    * configured: without one there is nothing to send audio to, and offering a
    * microphone that cannot work would be worse than not offering it.
    */
+  /**
+   * Only while recording. Holding the composer starts dictation, so an idle
+   * composer needs no control for it; a recording one needs a way to stop and
+   * something that says recording is happening.
+   */
   private renderDictateButton(busy: boolean) {
     if (!isDictationConfigured(this.speechToText)) return null;
+    if (this.voiceState.kind === "idle") return null;
     const streaming = resolveSpeechStreaming(this.speechToText.streaming).kind !== "unavailable";
     const label = voiceCaptureLabel(this.voiceState, { streaming });
     const active = isVoiceCaptureActive(this.voiceState);
