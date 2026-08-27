@@ -317,7 +317,9 @@ describe("run status labels", () => {
   // Keyed by the union: adding a status without giving it a word stops
   // compiling here instead of quietly reading "Unknown" in the drawer.
   const EXPECTED: Record<SessionSubagentRunInfo["status"], string> = {
-    running: "Running", done: "Done", failed: "Failed", lost: "Stopped", unknown: "Unknown",
+    // Stopped now means the reader stopped it. A run whose tracking was lost
+    // is reported as lost: saying "Stopped" claimed an action nobody took.
+    running: "Running", done: "Done", failed: "Failed", lost: "Lost", unknown: "Unknown",
   };
   const SUBAGENT_RUN_STATUSES: readonly SessionSubagentRunInfo["status"][] = ["running", "done", "failed", "lost", "unknown"];
 
@@ -331,12 +333,13 @@ describe("run status labels", () => {
   });
 });
 
-describe("a run that stopped without finishing", () => {
+describe("a run whose tracking was lost", () => {
   it("is named rather than left a mystery, and is not counted as running", () => {
     const [row] = subagentRunRows([{ runId: "r", agent: "worker", status: "lost", elapsedMs: 1000, startedAt: "2026-08-25T10:00:00.000Z", hasOutput: false }]);
 
-    expect(row?.statusLabel).toBe("Stopped");
-    expect(row?.status).toBe("failed");
+    expect(row?.statusLabel).toBe("Lost");
+    // Losing track of a run is not the run failing, so it is not filed as one.
+    expect(row?.status).toBe("lost");
     expect(isActiveActivityStatus(row?.status ?? "")).toBe(false);
   });
 });

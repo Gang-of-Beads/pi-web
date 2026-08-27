@@ -96,6 +96,12 @@
 - [~] **761–1180px 死胡同** —— **证伪**。实测 700/900/1100/1200px 每档都有出口(`scripts/verify-navigation-reach.mjs`)。那条 `max-width:1180px` 隐藏的 `header` 不是应用外壳的那个,报告的推断没落到实处
 - [~] **跨机器加载 / 消除 N+1** —— 推迟 —— 服务端函数就绪(实测 34ms vs 395ms,11.6×),未接线;接口加到 gateway 会牵动 6 文件 40 处测试替身
 
+- [x] **活动汇总把人为动作报成故障** —— 截图显示 "46 failed · 166 done"
+  - `killed`(你主动停的)与 `lost`(跟丢了)都被并入 **failed**;`lost` 的标签又写作 "Stopped",把"我们跟丢"说成"你停了"
+  - 现在四种各归各:Running / Done / **Stopped**(你停的)/ **Lost**(跟丢的)/ Failed
+  - 另修:`stopped`/`lost` 原本落进 "done" 堆;`stopped` 未被认作终态,会永远算作未完成的活
+  - 5 条新测试;两条既有测试的期望按新词表订正(旧表让 killed 与 lost 同名为 Stopped)
+
 ## 已量过、未发现缺陷(不改)
 
 - 竖直空间:对话占屏高 **65%**(469/727),上下文条 53 + 抽屉 53 + 输入区 119 + 状态条 32(`scripts/verify-vertical-budget.mjs`)

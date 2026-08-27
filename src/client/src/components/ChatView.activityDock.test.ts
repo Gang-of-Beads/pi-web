@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionActivity, SessionStatus } from "../../../shared/apiTypes";
-import { backgroundWorkLabel, ChatView, LONG_TURN_AFTER_MS, turnElapsedLabel } from "./ChatView";
+import { activityStripSummary, backgroundTaskRows, isActiveActivityStatus, isFinishedActivityStatus, subagentRunRows, backgroundWorkLabel, ChatView, LONG_TURN_AFTER_MS, turnElapsedLabel } from "./ChatView";
 
 function status(over: Partial<SessionStatus>): SessionStatus {
   return {
@@ -174,5 +174,79 @@ describe("a question the user has not answered", () => {
     // that is holding still for an answer looks like a session with nothing
     // to do.
     expect(dock.className).toContain("asking");
+  });
+});
+
+describe("what counts as a failure in the activity summary", () => {
+  /**
+   * Stopping a background task is something the reader did on purpose. Folding
+   * killed tasks in with failed ones made the drawer report dozens of
+   * failures for a session where nothing had gone wrong, which is the same
+   * mistake as calling a deliberately ended turn an error: a human action
+   * reported as a fault teaches the reader to ignore the count.
+   *
+   * Lost is kept separate too: losing track of a task is not the task failing.
+   */
+  it("does not call a stopped task a failure", () => {
+    const rows = backgroundTaskRows([
+      { id: "a", name: "one", status: "killed", startedAt: "", durationMs: 0, command: "true", bytesWritten: 0, hasOutput: false },
+      { id: "b", name: "two", status: "failed", startedAt: "", durationMs: 0, command: "true", bytesWritten: 0, hasOutput: false },
+      { id: "c", name: "three", status: "completed", startedAt: "", durationMs: 0, command: "true", bytesWritten: 0, hasOutput: false },
+    ]);
+
+    expect(rows.map((row) => row.status)).toEqual(["stopped", "failed", "done"]);
+  });
+
+  it("says a stopped task was stopped", () => {
+    const rows = backgroundTaskRows([{ id: "a", name: "one", status: "killed", startedAt: "", durationMs: 0, command: "true", bytesWritten: 0, hasOutput: false }]);
+
+    expect(rows[0]?.statusLabel).toBe("Stopped");
+  });
+
+  it("keeps a stopped task out of the failure count", () => {
+    expect(activityStripSummary(["stopped", "done", "failed"])).toEqual({
+      label: "1 failed · 1 done · 1 stopped",
+      working: false,
+      failed: true,
+    });
+  });
+});
+
+describe("a subagent run whose fate is unknown", () => {
+  /**
+   * Losing track of a run is the reader losing information, not the run
+   * failing. Reporting it as failed put a fault on the board for something
+   * nobody had established had gone wrong.
+   */
+  it("does not call a lost run a failure", () => {
+    const rows = subagentRunRows([
+      { runId: "r1", status: "lost", elapsedMs: 0, startedAt: "", agent: "reviewer", task: "look", hasOutput: false },
+    ]);
+
+    expect(rows[0]?.status).toBe("lost");
+    expect(rows[0]?.statusLabel).toBe("Lost");
+  });
+});
+
+describe("the one-line activity summary", () => {
+  /**
+   * Everything that is neither running nor failed used to be counted as done,
+   * so a stopped task and a task nobody can account for were both reported as
+   * finished work.
+   */
+  it("counts stopped and lost as neither done nor failed", () => {
+    expect(activityStripSummary(["running", "failed", "done", "stopped", "lost"]).label)
+      .toBe("1 running · 1 failed · 1 done · 1 stopped · 1 lost");
+  });
+});
+
+describe("whether a stopped task is over", () => {
+  /**
+   * A task the reader stopped will not do anything else. Leaving it out of the
+   * terminal statuses would have kept it listed as unfinished work forever.
+   */
+  it("treats a stopped task as finished", () => {
+    expect(isFinishedActivityStatus("stopped")).toBe(true);
+    expect(isActiveActivityStatus("stopped")).toBe(false);
   });
 });

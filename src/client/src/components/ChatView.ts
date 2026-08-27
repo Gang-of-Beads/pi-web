@@ -2163,13 +2163,15 @@ export interface SubagentRunRow {
  */
 export function subagentRunRows(runs: readonly SessionSubagentRunInfo[]): SubagentRunRow[] {
   return runs.map((run) => {
-    const statusLabel = run.status === "running" ? "Running" : run.status === "done" ? "Done" : run.status === "failed" ? "Failed" : run.status === "lost" ? "Stopped" : "Unknown";
+    const statusLabel = run.status === "running" ? "Running" : run.status === "done" ? "Done" : run.status === "failed" ? "Failed" : run.status === "lost" ? "Lost" : "Unknown";
     const duration = subagentRunDuration(run.elapsedMs);
     const detail = run.status === "running" ? run.lastActivity ?? "working" : run.task ?? "";
     const model = describeRunModel(run.model);
     return {
       run,
-      status: run.status === "lost" ? "failed" : run.status,
+      // Losing track of a run is the reader losing information, not the run
+      // failing; it is reported as what it is.
+      status: run.status,
       statusLabel,
       duration,
       detail,
@@ -2184,7 +2186,7 @@ export function subagentRunRows(runs: readonly SessionSubagentRunInfo[]): Subage
 export interface BackgroundTaskRow {
   task: SessionBackgroundTaskInfo;
   /** Collapsed to the three states a strip can show, from the tool's larger vocabulary. */
-  status: "running" | "done" | "failed" | "unknown";
+  status: "running" | "done" | "failed" | "stopped" | "lost" | "unknown";
   statusLabel: string;
   duration: string;
   detail: string;
@@ -2199,12 +2201,18 @@ export interface BackgroundTaskRow {
  */
 export function backgroundTaskRows(tasks: readonly SessionBackgroundTaskInfo[]): BackgroundTaskRow[] {
   return tasks.map((task) => {
+    // Stopping a task is something the reader did on purpose, and losing track
+    // of one is not the task failing. Counting either as a failure taught the
+    // reader to ignore a count that said dozens had failed when none had.
     const status = task.status === "running" ? "running"
       : task.status === "completed" ? "done"
-      : task.status === "failed" || task.status === "killed" || task.status === "lost" ? "failed"
+      : task.status === "killed" ? "stopped"
+      : task.status === "failed" ? "failed"
+      : task.status === "lost" ? "lost"
       : "unknown";
     const statusLabel = task.status === "completed" ? "Done"
       : task.status === "running" ? "Running"
+      : task.status === "killed" ? "Stopped"
       : task.status === "lost" ? "Lost"
       : task.status.charAt(0).toUpperCase() + task.status.slice(1);
     const duration = subagentRunDuration(task.durationMs ?? 0);
@@ -2280,7 +2288,7 @@ export function isActiveActivityStatus(status: string): boolean {
 
 /** Terminal only. A subagent rests at "idle" between turns, so idle is not finished. */
 export function isFinishedActivityStatus(status: string): boolean {
-  return status === "done" || status === "failed" || status === "error" || status === "lost";
+  return status === "done" || status === "failed" || status === "error" || status === "lost" || status === "stopped";
 }
 
 /**
@@ -2394,13 +2402,21 @@ export function selectedTopDrawerTab(available: { activity: boolean; notificatio
  * and how much finished work is waiting to be opened.
  */
 export function activityStripSummary(statuses: readonly string[]): { label: string; working: boolean; failed: boolean } {
-  const running = statuses.filter((status) => status === "working" || status === "running").length;
-  const failed = statuses.filter((status) => status === "error" || status === "failed").length;
-  const finished = statuses.length - running - failed;
+  const count = (match: (status: string) => boolean): number => statuses.filter(match).length;
+  const running = count((status) => status === "working" || status === "running");
+  const failed = count((status) => status === "error" || status === "failed");
+  const stopped = count((status) => status === "stopped");
+  const lost = count((status) => status === "lost");
+  // Anything left is finished work. Stopped and lost used to land here, so the
+  // summary claimed as done both what the reader had cancelled and what nobody
+  // could account for.
+  const finished = statuses.length - running - failed - stopped - lost;
   const parts: string[] = [];
   if (running > 0) parts.push(`${String(running)} running`);
   if (failed > 0) parts.push(`${String(failed)} failed`);
   if (finished > 0) parts.push(`${String(finished)} done`);
+  if (stopped > 0) parts.push(`${String(stopped)} stopped`);
+  if (lost > 0) parts.push(`${String(lost)} lost`);
   return { label: parts.join(" \u00b7 "), working: running > 0, failed: failed > 0 };
 }
 
