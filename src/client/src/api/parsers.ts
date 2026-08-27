@@ -551,6 +551,11 @@ export function parseSessionStatus(value: unknown): SessionStatus {
     isCompacting: requireBoolean(record, "isCompacting"),
     isBashRunning: requireBoolean(record, "isBashRunning"),
     pendingMessageCount: requireNumber(record, "pendingMessageCount"),
+    // Named explicitly because this parser builds its result field by field: a
+    // field it does not name is dropped in silence, and the session row then
+    // shows the grey dot that means nothing is happening while the
+    // conversation says "idle . 3 background runs".
+    ...optionalField("backgroundRunCount", optionalNumber(record, "backgroundRunCount")),
     queuedMessages: record["queuedMessages"] === undefined ? [] : arrayOf(parseQueuedSessionMessage)(record["queuedMessages"]),
     ...optionalField("messageCount", optionalNumber(record, "messageCount")),
     tokens: parseTokens(record["tokens"]),
