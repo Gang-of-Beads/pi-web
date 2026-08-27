@@ -692,9 +692,6 @@ export class ChatView extends LitElement {
             `}
           </div>
           </div>
-          ${collapsed && activity !== undefined && activity.summary.label !== ""
-            ? html`<span class="drawer-summary">${activity.summary.label}</span>`
-            : null}
           <div class="drawer-header-actions">
             ${tab === "notifications" && inbox !== undefined ? html`
               <button
@@ -843,7 +840,6 @@ export class ChatView extends LitElement {
     const finished = inFilter.filter((entry) => isFinishedActivityStatus(entry.status)).length;
     return html`
       <div class="subagents-list" id="session-activity-list" role="tabpanel" aria-labelledby="drawer-tab-activity">
-          ${activity.total === 0 || scope === "empty-active" ? html`<p class="drawer-hint">${ACTIVITY_TAB_HINT}</p>` : null}
           ${this.renderActivityFilters(activity, filter)}
           ${scope === "empty-active"
             ? html`<p class="activity-empty">Nothing running right now.</p>`
@@ -2207,10 +2203,13 @@ export function subagentRunRows(runs: readonly SessionSubagentRunInfo[]): Subage
   });
 }
 
+/** What a piece of background work is doing, in the words the drawer uses. */
+export type ActivityStatus = "running" | "working" | "idle" | "done" | "failed" | "error" | "stopped" | "lost" | "unknown";
+
 export interface BackgroundTaskRow {
   task: SessionBackgroundTaskInfo;
   /** Collapsed to the three states a strip can show, from the tool's larger vocabulary. */
-  status: "running" | "done" | "failed" | "stopped" | "lost" | "unknown";
+  status: ActivityStatus;
   statusLabel: string;
   duration: string;
   detail: string;
@@ -2260,9 +2259,9 @@ export type TopDrawerTab = "activity" | "notifications" | "goals";
 
 /** One row of the activity list, tagged with the kind its filter chip names. */
 export type ActivityListEntry =
-  | { kind: "subagents"; index: number; status: string; startedAt?: string | undefined; row: SubagentRow }
-  | { kind: "runs"; index: number; status: string; startedAt?: string | undefined; row: SubagentRunRow }
-  | { kind: "tasks"; index: number; status: string; startedAt?: string | undefined; row: BackgroundTaskRow };
+  | { kind: "subagents"; index: number; status: ActivityStatus; startedAt?: string | undefined; row: SubagentRow }
+  | { kind: "runs"; index: number; status: ActivityStatus; startedAt?: string | undefined; row: SubagentRunRow }
+  | { kind: "tasks"; index: number; status: ActivityStatus; startedAt?: string | undefined; row: BackgroundTaskRow };
 
 /**
  * The order the list is read in: running work first, then the most recent.
@@ -2306,12 +2305,12 @@ export function turnElapsedLabel(startedAtMs: number | undefined, nowMs: number)
 export type ActivityScope = "active" | "all";
 
 /** Statuses that mean "this is happening now". */
-export function isActiveActivityStatus(status: string): boolean {
+export function isActiveActivityStatus(status: ActivityStatus): boolean {
   return status === "working" || status === "running";
 }
 
 /** Terminal only. A subagent rests at "idle" between turns, so idle is not finished. */
-export function isFinishedActivityStatus(status: string): boolean {
+export function isFinishedActivityStatus(status: ActivityStatus): boolean {
   return status === "done" || status === "failed" || status === "error" || status === "lost" || status === "stopped";
 }
 
@@ -2359,7 +2358,6 @@ export function activityFilterInEffect(chosen: ActivityFilter, activity: { rows:
  * "Activity" means nothing on its own -- the reader has to be told, once, in
  * the panel itself, what these rows are and what tapping one does.
  */
-const ACTIVITY_TAB_HINT = "Work this chat started in the background: subagents, agent tool runs and terminal tasks. Open one to read its output.";
 
 /**
  * The drawer opens by itself only when it has something the reader has not
@@ -2398,7 +2396,7 @@ export interface ActivityPanelState {
   rows: SubagentRow[];
   runRows: SubagentRunRow[];
   taskRows: BackgroundTaskRow[];
-  summary: { label: string; working: boolean; failed: boolean };
+  summary: { working: boolean; failed: boolean };
   total: number;
   /** How many of those are happening now, which is what the tab reports. */
   activeCount: number;
@@ -2425,23 +2423,11 @@ export function selectedTopDrawerTab(available: { activity: boolean; notificatio
  * the only question a folded drawer has to answer: is anything still running,
  * and how much finished work is waiting to be opened.
  */
-export function activityStripSummary(statuses: readonly string[]): { label: string; working: boolean; failed: boolean } {
-  const count = (match: (status: string) => boolean): number => statuses.filter(match).length;
-  const running = count((status) => status === "working" || status === "running");
-  const failed = count((status) => status === "error" || status === "failed");
-  const stopped = count((status) => status === "stopped");
-  const lost = count((status) => status === "lost");
-  // Anything left is finished work. Stopped and lost used to land here, so the
-  // summary claimed as done both what the reader had cancelled and what nobody
-  // could account for.
-  const finished = statuses.length - running - failed - stopped - lost;
-  const parts: string[] = [];
-  if (running > 0) parts.push(`${String(running)} running`);
-  if (failed > 0) parts.push(`${String(failed)} failed`);
-  if (finished > 0) parts.push(`${String(finished)} done`);
-  if (stopped > 0) parts.push(`${String(stopped)} stopped`);
-  if (lost > 0) parts.push(`${String(lost)} lost`);
-  return { label: parts.join(" \u00b7 "), working: running > 0, failed: failed > 0 };
+export function activityStripSummary(statuses: readonly ActivityStatus[]): { working: boolean; failed: boolean } {
+  return {
+    working: statuses.some((status) => status === "working" || status === "running"),
+    failed: statuses.some((status) => status === "error" || status === "failed"),
+  };
 }
 
 /** A subagent's status in the same voice the other activity rows use. */

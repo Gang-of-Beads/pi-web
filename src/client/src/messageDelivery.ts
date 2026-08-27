@@ -65,9 +65,11 @@ export function splitTranscriptAndPending(messages: readonly ChatLine[], queued:
   const unclaimed: ChatLine[] = [];
   for (const line of messages) {
     const delivery = line.meta?.delivery;
-    if (delivery === undefined || delivery.state === "delivered" || delivery.state === "failed") continue;
+    if (delivery === undefined) continue;
+    // A bubble carrying the id is that message whatever its mark says: the
+    // server can still hold a message it has already echoed back.
     bubbles.set(delivery.clientMessageId, line);
-    unclaimed.push(line);
+    if (delivery.state !== "delivered" && delivery.state !== "failed") unclaimed.push(line);
   }
   const pending: ChatLine[] = [];
   for (const message of queued) {

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vitest";
 import type { SessionBackgroundTaskInfo, SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
-import { backgroundTaskRows, activityFilterInEffect, activityFilterOptions, activityStripSummary, activityTabLabel, ChatView, subagentStatusLabel, isActiveActivityStatus, isFinishedActivityStatus, orderActivityEntries, type ActivityListEntry, selectedTopDrawerTab, subagentRows, subagentRunDuration, subagentRunRows, topDrawerStartsOpen } from "./ChatView";
+import { type ActivityStatus, backgroundTaskRows, activityFilterInEffect, activityFilterOptions, activityStripSummary, activityTabLabel, ChatView, subagentStatusLabel, isActiveActivityStatus, isFinishedActivityStatus, orderActivityEntries, type ActivityListEntry, selectedTopDrawerTab, subagentRows, subagentRunDuration, subagentRunRows, topDrawerStartsOpen } from "./ChatView";
 
 const SUBAGENTS: SessionSubagentInfo[] = [
   { sessionId: "01a0child-0001-0000-000000000001", cwd: "/repo/.pi/sub", status: "working" },
@@ -54,21 +54,18 @@ describe("subagents strip", () => {
     expect(onOpenSubagent).toHaveBeenCalledExactlyOnceWith(SUBAGENTS[0]);
   });
 
-  it("stays folded for finished work and explains itself once opened", async () => {
+  it("stays folded for finished work", async () => {
     const host = await mountTasks([
       { id: "a", name: "Verify suite", command: "npm run verify", status: "completed", startedAt: "2026-08-21T19:00:00.000Z", durationMs: 55_000, exitCode: 0, bytesWritten: 12, hasOutput: true },
       { id: "b", name: "Install deps", command: "npm ci", status: "completed", startedAt: "2026-08-21T19:00:00.000Z", durationMs: 5_000, exitCode: 0, bytesWritten: 12, hasOutput: true },
     ]);
 
     expect(host.querySelector<HTMLElement>(".drawer-body")?.hidden).toBe(true);
-    expect(host.textContent).toContain("2 done");
 
     host.querySelector<HTMLButtonElement>(".drawer-toggle")?.click();
     await new Promise((resolve) => { setTimeout(resolve, 0); });
     expect(host.querySelector<HTMLElement>(".drawer-body")?.hidden).toBe(false);
-    // Nothing is running, so the panel says so and explains what it is for.
     expect(host.textContent).toContain("Nothing running right now");
-    expect(host.textContent).toContain("Work this chat started in the background");
     expect(host.querySelectorAll(".subagent-row").length).toBe(0);
 
     host.querySelector<HTMLButtonElement>(".activity-history-toggle")?.click();
@@ -132,14 +129,13 @@ describe("selectedTopDrawerTab", () => {
 });
 
 describe("activityStripSummary", () => {
-  it("counts running, failed and finished work for the folded header", () => {
-    expect(activityStripSummary(["working", "running", "failed", "idle", "done"]))
-      .toEqual({ label: "2 running \u00b7 1 failed \u00b7 2 done", working: true, failed: true });
+  it("reports that work is running and that some of it failed", () => {
+    expect(activityStripSummary(["working", "running", "failed", "idle", "done"])).toEqual({ working: true, failed: true });
   });
 
-  it("omits empty groups and reports a quiet strip as not working", () => {
-    expect(activityStripSummary(["done", "done"])).toEqual({ label: "2 done", working: false, failed: false });
-    expect(activityStripSummary([])).toEqual({ label: "", working: false, failed: false });
+  it("reports a quiet strip as neither working nor failed", () => {
+    expect(activityStripSummary(["done", "done"])).toEqual({ working: false, failed: false });
+    expect(activityStripSummary([])).toEqual({ working: false, failed: false });
   });
 });
 
@@ -301,15 +297,15 @@ describe("activityTabLabel", () => {
 
 describe("isActiveActivityStatus", () => {
   it("counts only work that is happening now", () => {
-    expect(["working", "running"].every(isActiveActivityStatus)).toBe(true);
-    expect(["idle", "done", "failed", "unknown", "lost"].some(isActiveActivityStatus)).toBe(false);
+    expect((["working", "running"] as const).every(isActiveActivityStatus)).toBe(true);
+    expect((["idle", "done", "failed", "unknown", "lost"] as const).some(isActiveActivityStatus)).toBe(false);
   });
 });
 
 describe("isFinishedActivityStatus", () => {
   it("is only the terminal states, so an idle subagent is not finished", () => {
-    expect(["done", "failed", "error", "lost"].every(isFinishedActivityStatus)).toBe(true);
-    expect(["working", "running", "idle", "unknown"].some(isFinishedActivityStatus)).toBe(false);
+    expect((["done", "failed", "error", "lost"] as const).every(isFinishedActivityStatus)).toBe(true);
+    expect((["working", "running", "idle", "unknown"] as const).some(isFinishedActivityStatus)).toBe(false);
   });
 });
 
@@ -340,16 +336,16 @@ describe("a run whose tracking was lost", () => {
     expect(row?.statusLabel).toBe("Lost");
     // Losing track of a run is not the run failing, so it is not filed as one.
     expect(row?.status).toBe("lost");
-    expect(isActiveActivityStatus(row?.status ?? "")).toBe(false);
+    expect(isActiveActivityStatus(row?.status ?? "unknown")).toBe(false);
   });
 });
 
 describe("orderActivityEntries", () => {
   // Ordering reads only kind, status and start time; the row payload is
   // whatever that kind carries, so a real one keeps the fixture honest.
-  function entry(kind: "runs", status: string, startedAt?: string): ActivityListEntry;
-  function entry(kind: "subagents" | "tasks", status: string, startedAt?: string): ActivityListEntry;
-  function entry(kind: "subagents" | "runs" | "tasks", status: string, startedAt?: string): ActivityListEntry {
+  function entry(kind: "runs", status: ActivityStatus, startedAt?: string): ActivityListEntry;
+  function entry(kind: "subagents" | "tasks", status: ActivityStatus, startedAt?: string): ActivityListEntry;
+  function entry(kind: "subagents" | "runs" | "tasks", status: ActivityStatus, startedAt?: string): ActivityListEntry {
     const started = startedAt === undefined ? {} : { startedAt };
     if (kind === "subagents") {
       const [row] = subagentRows([{ sessionId: "01a0child-0001-0000-000000000001", cwd: "/repo", status: "working" }]);

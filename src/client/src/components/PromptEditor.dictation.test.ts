@@ -92,3 +92,41 @@ describe("what dictation tells you while it runs", () => {
     expect(editor.shadowRoot?.querySelector(".mode-hint")).toBeNull();
   });
 });
+
+describe("what a running turn is allowed to disable", () => {
+  /**
+   * Dictation and attachment put things into the composer. Neither sends
+   * anything, so neither has anything to do with a turn being in flight - but
+   * both were greyed out the moment one started, which meant you could not
+   * prepare the next message while waiting.
+   *
+   * Transcribing still disables dictation: it is already busy with itself.
+   */
+  it("leaves dictation usable while the agent is answering", async () => {
+    const editor = await mount({ endpoint: "https://stt.example/v1" });
+
+    editor.sending = true;
+    await editor.updateComplete;
+
+    expect(dictateButton(editor)?.disabled).toBe(false);
+  });
+
+  it("leaves attachment usable while the agent is answering", async () => {
+    const editor = await mount({ endpoint: "https://stt.example/v1" });
+
+    editor.sending = true;
+    await editor.updateComplete;
+
+    expect(editor.shadowRoot?.querySelector<HTMLButtonElement>(".editor-attach")?.disabled).toBe(false);
+  });
+
+  it("still disables dictation while it is transcribing", async () => {
+    const editor = await mount({ endpoint: "https://stt.example/v1" });
+
+    Reflect.set(editor, "voiceState", { kind: "transcribing" });
+    editor.requestUpdate();
+    await editor.updateComplete;
+
+    expect(dictateButton(editor)?.disabled).toBe(true);
+  });
+});

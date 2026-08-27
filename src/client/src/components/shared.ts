@@ -575,16 +575,14 @@ export const chatStyles = css`
   /* A section name is short and carries a count; cutting it to "ACTIVITY (..."
      loses the number, which is the part worth reading. The names keep their
      width and the running summary beside them gives way instead. */
-  .drawer-tab { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: 28px; padding: var(--pi-space-2) var(--pi-space-5); border: 1px solid transparent; border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-2xs); font-weight: 600; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .drawer-tab { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: 22px; padding: var(--pi-space-1) var(--pi-space-4); border: 1px solid transparent; border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-2xs); font-weight: 600; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .drawer-tab:hover { color: var(--pi-text-bright); }
   .drawer-tab:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
   .drawer-tab, .activity-filter, .activity-history-toggle { transition: background-color var(--pi-motion-fast) var(--pi-ease), border-color var(--pi-motion-fast) var(--pi-ease), color var(--pi-motion-fast) var(--pi-ease); }
   .drawer-tab.selected { border-color: var(--pi-border); background: var(--pi-surface); color: var(--pi-text-bright); }
-  .drawer-summary { flex: 0 1 auto; min-width: 0; overflow: hidden; color: var(--pi-muted); font-size: var(--pi-text-2xs); text-overflow: ellipsis; white-space: nowrap; }
   .drawer-header-actions { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-1); }
   .drawer-body { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
   .drawer-body[hidden] { display: none; }
-  .drawer-hint { margin: 0 0 var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: var(--pi-leading-tight); }
   .activity-filters { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; gap: var(--pi-space-2); margin-bottom: var(--pi-space-2); padding-bottom: var(--pi-space-2); background: color-mix(in srgb, var(--pi-purple) 7%, var(--pi-bg)); }
   .activity-filter { display: inline-flex; align-items: center; gap: var(--pi-space-2); min-height: 26px; padding: var(--pi-space-1) var(--pi-space-4); border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-2xs); cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .activity-filter:hover { color: var(--pi-text-bright); }

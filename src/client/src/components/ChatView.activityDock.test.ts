@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionActivity, SessionStatus } from "../../../shared/apiTypes";
-import { activityStripSummary, backgroundTaskRows, isActiveActivityStatus, isFinishedActivityStatus, subagentRunRows, backgroundWorkLabel, ChatView, LONG_TURN_AFTER_MS, turnElapsedLabel } from "./ChatView";
+import { backgroundTaskRows, isActiveActivityStatus, isFinishedActivityStatus, subagentRunRows, backgroundWorkLabel, ChatView, LONG_TURN_AFTER_MS, turnElapsedLabel } from "./ChatView";
 
 function status(over: Partial<SessionStatus>): SessionStatus {
   return {
@@ -202,14 +202,6 @@ describe("what counts as a failure in the activity summary", () => {
 
     expect(rows[0]?.statusLabel).toBe("Stopped");
   });
-
-  it("keeps a stopped task out of the failure count", () => {
-    expect(activityStripSummary(["stopped", "done", "failed"])).toEqual({
-      label: "1 failed · 1 done · 1 stopped",
-      working: false,
-      failed: true,
-    });
-  });
 });
 
 describe("a subagent run whose fate is unknown", () => {
@@ -228,17 +220,7 @@ describe("a subagent run whose fate is unknown", () => {
   });
 });
 
-describe("the one-line activity summary", () => {
-  /**
-   * Everything that is neither running nor failed used to be counted as done,
-   * so a stopped task and a task nobody can account for were both reported as
-   * finished work.
-   */
-  it("counts stopped and lost as neither done nor failed", () => {
-    expect(activityStripSummary(["running", "failed", "done", "stopped", "lost"]).label)
-      .toBe("1 running · 1 failed · 1 done · 1 stopped · 1 lost");
-  });
-});
+
 
 describe("whether a stopped task is over", () => {
   /**

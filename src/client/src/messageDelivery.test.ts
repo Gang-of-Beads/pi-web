@@ -279,3 +279,46 @@ describe("the bubble the browser draws for what you just sent", () => {
     expect(Date.parse(line.meta?.timestamp ?? "")).not.toBeNaN();
   });
 });
+
+describe("a bubble the server still holds after marking it taken", () => {
+  /**
+   * The queue is claimed against bubbles that have not settled. A bubble marked
+   * delivered was skipped, so when the server still listed the same message as
+   * queued - which is what a steer queue does - a second row was drawn for it
+   * and the same words appeared twice, one plain and one marked queued.
+   *
+   * A bubble carrying the id is that message, whatever its mark says.
+   */
+  it("is claimed by its id even after it was marked delivered", () => {
+    const messages: ChatLine[] = [
+      { role: "user", parts: [{ type: "text", text: "make them smaller" }], meta: { delivery: { clientMessageId: "cm-1", state: "delivered", kind: "steer" } } },
+    ];
+    const queued = [{ text: "make them smaller", kind: "steer" as const, clientMessageId: "cm-1" }];
+
+    const split = splitTranscriptAndPending(messages, queued);
+
+    expect([...split.settled, ...split.pending]).toHaveLength(1);
+  });
+});
+
+describe("where a claimed bubble ends up", () => {
+  /**
+   * Claiming moves the bubble out of the settled transcript and into the
+   * pending list, which is drawn below the work in flight. That is where a
+   * message the agent has not finished with belongs, above or below its own
+   * history.
+   */
+  it("moves the claimed bubble to the pending list, not both", () => {
+    const older: ChatLine = { role: "assistant", parts: [{ type: "text", text: "an answer" }] };
+    const claimed: ChatLine = {
+      role: "user",
+      parts: [{ type: "text", text: "waiting" }],
+      meta: { delivery: { clientMessageId: "cm-1", state: "queued", kind: "steer" } },
+    };
+
+    const split = splitTranscriptAndPending([older, claimed], [{ text: "waiting", kind: "steer", clientMessageId: "cm-1" }]);
+
+    expect(split.settled).toEqual([older]);
+    expect(split.pending).toEqual([claimed]);
+  });
+});

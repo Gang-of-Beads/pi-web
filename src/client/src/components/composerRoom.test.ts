@@ -43,28 +43,7 @@ describe("the step footer of a question card", () => {
   });
 });
 
-describe("the drawer's section strip", () => {
-  /**
-   * The sections never shrank, so on a narrow screen they overflowed and the
-   * strip scrolled. Whichever section was selected scrolled into view and took
-   * the others out of sight, which read as the strip disappearing and left the
-   * reader unable to reach Goals or Notifications without collapsing first.
-   *
-   * A name that has to shorten is still reachable; a name scrolled off screen
-   * is not.
-   */
-  it("gives way in the running summary rather than in the section names", () => {
-    // Shrinking the names was tried and cut them to "ACTIVITY (...", which
-    // loses the count - the part worth reading. The summary beside them is
-    // prose and can be trimmed without losing a number.
-    const name = /\.drawer-tab\s*\{([^}]*)\}/u.exec(sheets)?.[1] ?? "";
-    const summary = /\.drawer-summary\s*\{([^}]*)\}/u.exec(sheets)?.[1] ?? "";
 
-    expect(name).toMatch(/flex:\s*0 0 auto/u);
-    expect(summary).toMatch(/flex:\s*0 1 auto/u);
-    expect(summary).toMatch(/text-overflow:\s*ellipsis/u);
-  });
-});
 
 describe("the button that returns you to the newest message", () => {
   /**
@@ -121,5 +100,19 @@ describe("controls that were moved into the row", () => {
     const rule = /\.editor-dictate\s*\{([^}]*)\}/u.exec(sheets)?.[1] ?? "";
 
     expect(rule).not.toMatch(/position:\s*absolute/u);
+  });
+});
+
+describe("the size of a drawer section button", () => {
+  /**
+   * They are a strip of section names above the conversation, not primary
+   * actions, and at full size they took a band of a phone screen that the
+   * conversation needed.
+   */
+  it("is smaller than a control you press to act", () => {
+    const rule = /\.drawer-tab\s*\{([^}]*)\}/u.exec(sheets)?.[1] ?? "";
+    const height = /min-height:\s*(\d+)px/u.exec(rule)?.[1] ?? "";
+
+    expect(Number(height)).toBeLessThanOrEqual(24);
   });
 });
