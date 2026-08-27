@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { quickSwitcherFilterProjects } from "../quickSwitcher";
 import type { Project, SessionInfo, Workspace } from "../api";
 import { QuickSwitcher } from "./QuickSwitcher";
 
@@ -450,5 +451,29 @@ describe("tiles on a wide panel", () => {
     const wrap = /\.row-wrap\s*\{([^}]*)\}/u.exec(sheet)?.[1] ?? "";
 
     expect(wrap).not.toContain("grid-template-columns");
+  });
+});
+
+describe("the filter chips", () => {
+  /**
+   * The chips listed only those projects whose workspaces had already arrived.
+   * Workspaces load per project, one request each, so the row grew as the
+   * responses came back: the same panel showed a different set of filters
+   * depending on when it was looked at, and a project the reader was about to
+   * pick could appear or vanish under their finger.
+   *
+   * Which projects exist is not a function of what has loaded. The chips come
+   * from the project list itself.
+   */
+  it("offers every project, not only those whose workspaces have arrived", () => {
+    const projects = [
+      { id: "a", name: "alpha" },
+      { id: "b", name: "beta" },
+    ];
+    expect(quickSwitcherFilterProjects(projects).map((project) => project.id)).toEqual(["a", "b"]);
+  });
+
+  it("still offers nothing when there are no projects", () => {
+    expect(quickSwitcherFilterProjects([])).toEqual([]);
   });
 });

@@ -245,3 +245,18 @@ export function quickSwitcherSessionStates(
   }
   return kinds;
 }
+
+/**
+ * Which projects the filter chips offer.
+ *
+ * The chips used to list only those projects whose workspaces had already
+ * arrived. Workspaces load per project, one request each, so the row grew as
+ * the responses came back: the same panel showed a different set of filters
+ * depending on when it was looked at, and a project the reader was about to
+ * pick could appear or vanish under their finger.
+ *
+ * Which projects exist is not a function of what has loaded.
+ */
+export function quickSwitcherFilterProjects<P extends { id: string }>(projects: readonly P[]): readonly P[] {
+  return projects;
+}

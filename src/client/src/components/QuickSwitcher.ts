@@ -1,4 +1,5 @@
 import { LitElement, css, html, nothing } from "lit";
+import { quickSwitcherFilterProjects } from "../quickSwitcher";
 import { switcherInitialFocus, touchPrimaryPointer } from "../keyboardDismissal";
 import { customElement, property, state } from "lit/decorators.js";
 import type { Project, SessionInfo, Workspace } from "../api";
@@ -269,7 +270,7 @@ export class QuickSwitcher extends LitElement {
    * me anywhere" and narrowing is a deliberate act.
    */
   private renderFilters() {
-    const projects = this.projects.filter((project) => this.workspaces.some((workspace) => workspace.projectId === project.id));
+    const projects = quickSwitcherFilterProjects(this.projects);
     if (projects.length === 0 && this.workspaces.length < 2) return nothing;
     const active = quickSwitcherFilterActive(this.filter);
     return html`
