@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { showsJumpToBottom } from "./chatScrollPosition";
 import { ChatScrollController, captureScrollPosition, chatScrollStorageKey, findFirstVisibleArticle, findVisibleScrollAnchor, type ChatScrollElement, type ChatScrollScheduler, type ChatScrollStorage, type ChatScrollViewport } from "./chatScrollPosition";
@@ -194,5 +196,23 @@ describe("offering a way back to the newest message", () => {
    */
   it("stays hidden when the transcript fits the screen", () => {
     expect(showsJumpToBottom({ scrollHeight: 800, scrollTop: 0, clientHeight: 800 })).toBe(false);
+  });
+});
+
+describe("when the button to reach the newest message is decided", () => {
+  /**
+   * Visibility was recomputed only while scrolling. A reply that grows the
+   * transcript produces no scroll event, so a reader who sent a prompt and
+   * stopped following ended up far from the newest content with no way back:
+   * measured on a phone, 2953px - four and a half screens - from the newest
+   * message, with the button never rendered.
+   *
+   * Growth is exactly when it is needed, so growth has to recompute it.
+   */
+  it("is recomputed when the transcript grows, not only when the reader scrolls", () => {
+    const source = readFileSync(join(process.cwd(), "src/client/src/components/ChatView.ts"), "utf8");
+    const updated = /override updated\([\s\S]*?\n {2}\}/u.exec(source)?.[0] ?? "";
+
+    expect(updated).toMatch(/showsJumpToBottom|refreshJumpToBottom/u);
   });
 });

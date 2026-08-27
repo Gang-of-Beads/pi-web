@@ -146,7 +146,7 @@ export const chatStyles = css`
   /* A section name is short and carries a count; cutting it to "ACTIVITY (..."
      loses the number, which is the part worth reading. The names keep their
      width and the running summary beside them gives way instead. */
-  .drawer-tab { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: 22px; padding: var(--pi-space-1) var(--pi-space-4); border: 1px solid transparent; border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-2xs); font-weight: 600; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .drawer-tab { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: 22px; padding: var(--pi-space-1) var(--pi-space-4); border: 1px solid transparent; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-2xs); font-weight: 600; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .drawer-tab:hover { color: var(--pi-text-bright); }
   .drawer-tab:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
   .drawer-tab, .activity-filter, .activity-history-toggle { transition: background-color var(--pi-motion-fast) var(--pi-ease), border-color var(--pi-motion-fast) var(--pi-ease), color var(--pi-motion-fast) var(--pi-ease); }
@@ -871,6 +871,11 @@ export class ChatView extends LitElement {
     if (changed.has("activityOutput")) this.syncActivityOutputDialog();
     this.drawerTabEdgeTracker.observe(this.drawerTabs ?? undefined);
     this.publishScrollbarWidth();
+    // A reply that grows the transcript fires no scroll event, so deciding this
+    // only while scrolling left a reader who stopped following four screens
+    // from the newest message with no way back.
+    const chat = this.chat;
+    if (chat !== undefined) this.jumpToBottomVisible = showsJumpToBottom(chat);
     if (changed.has("status") || changed.has("activity") || changed.has("isSendingPrompt")) this.syncTurnClock();
   }
 
