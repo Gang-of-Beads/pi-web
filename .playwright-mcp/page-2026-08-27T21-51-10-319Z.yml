@@ -1,0 +1,67 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - strong [ref=e7]: PI WEB
+        - generic [ref=e8]:
+          - button "Open settings" [ref=e9] [cursor=pointer]: ⚙
+          - button "Show Actions" [ref=e10] [cursor=pointer]: Actions
+      - navigation "Current context" [ref=e12]:
+        - generic [ref=e14]:
+          - 'button "Machine: hxd-work-mbp. Change it" [ref=e15] [cursor=pointer]':
+            - generic [ref=e16]: hxd-work-mbp
+          - button "Add machine" [ref=e17] [cursor=pointer]: +
+        - generic [ref=e19]:
+          - button "Choose project" [expanded] [ref=e20] [cursor=pointer]
+          - button "Add project" [ref=e22] [cursor=pointer]: +
+        - button "Choose workspace" [ref=e25] [cursor=pointer]
+      - generic [ref=e28]:
+        - heading "Projects" [level=2] [ref=e29]
+        - searchbox "Search projects" [ref=e32]
+        - generic [ref=e33]:
+          - generic "/Users/hanxiao.du" [ref=e34] [cursor=pointer]:
+            - button "hanxiao.du /Users/hanxiao.du" [ref=e35]:
+              - generic [ref=e36]: hanxiao.du
+              - generic [ref=e38]: /Users/hanxiao.du
+            - button "Actions for hanxiao.du" [ref=e40]: ⋯
+          - generic "/Users/hanxiao.du/Desktop/work/projects/botim-eclipse" [ref=e41] [cursor=pointer]:
+            - button "botim-eclipse /Users/hanxiao.du/Desktop/work/projects/botim-eclipse Unread sessions in this project" [ref=e42]:
+              - generic [ref=e43]: botim-eclipse
+              - generic [ref=e45]: /Users/hanxiao.du/Desktop/work/projects/botim-eclipse
+              - img "Unread sessions in this project" [ref=e47]
+            - button "Actions for botim-eclipse" [ref=e49]: ⋯
+          - generic "/Users/hanxiao.du/Desktop/vincent/projects/pi-web" [ref=e50] [cursor=pointer]:
+            - button "pi-web /Users/hanxiao.du/Desktop/vincent/projects/pi-web Project active" [ref=e51]:
+              - generic [ref=e52]: pi-web
+              - generic [ref=e54]: /Users/hanxiao.du/Desktop/vincent/projects/pi-web
+              - img "Project active" [ref=e56]
+            - button "Actions for pi-web" [ref=e58]: ⋯
+          - generic "/Users/hanxiao.du/nix-config" [ref=e59] [cursor=pointer]:
+            - button "nix-config /Users/hanxiao.du/nix-config" [ref=e60]:
+              - generic [ref=e61]: nix-config
+              - generic [ref=e63]: /Users/hanxiao.du/nix-config
+            - button "Actions for nix-config" [ref=e65]: ⋯
+          - generic "/Users/hanxiao.du/Desktop/work/projects/org_hub" [ref=e66] [cursor=pointer]:
+            - button "org_hub /Users/hanxiao.du/Desktop/work/projects/org_hub Unread sessions in this project" [ref=e67]:
+              - generic [ref=e68]: org_hub
+              - generic [ref=e70]: /Users/hanxiao.du/Desktop/work/projects/org_hub
+              - img "Unread sessions in this project" [ref=e72]
+            - button "Actions for org_hub" [ref=e74]: ⋯
+          - generic "/Users/hanxiao.du/Desktop/vincent/projects/trade" [ref=e75] [cursor=pointer]:
+            - button "trade /Users/hanxiao.du/Desktop/vincent/projects/trade" [ref=e76]:
+              - generic [ref=e77]: trade
+              - generic [ref=e79]: /Users/hanxiao.du/Desktop/vincent/projects/trade
+            - button "Actions for trade" [ref=e81]: ⋯
+          - generic "/private/tmp/fe-review/opus-b-mobile" [ref=e82] [cursor=pointer]:
+            - button "opus-b-mobile /private/tmp/fe-review/opus-b-mobile" [ref=e83]:
+              - generic [ref=e84]: opus-b-mobile
+              - generic [ref=e86]: /private/tmp/fe-review/opus-b-mobile
+            - button "Actions for opus-b-mobile" [ref=e88]: ⋯
+  - generic [ref=e89]:
+    - separator "Resize navigation panel" [ref=e90]
+    - button "Collapse navigation panel" [expanded] [ref=e91] [cursor=pointer]
+  - main [ref=e92]:
+    - generic [ref=e93]: Select a project and workspace to start a session.
+  - generic [ref=e94]:
+    - separator "Resize workspace panel" [ref=e95]
+    - button "Collapse workspace panel" [expanded] [ref=e96] [cursor=pointer]

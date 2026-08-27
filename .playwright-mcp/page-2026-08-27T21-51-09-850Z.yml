@@ -1,0 +1,16 @@
+- main [ref=e4]:
+  - navigation "Current location" [ref=e6]:
+    - list [ref=e7]:
+      - listitem [ref=e8]:
+        - 'button "Project: No project. Open project selection." [ref=e9] [cursor=pointer]':
+          - generic [ref=e10]: Project
+          - generic [ref=e11]: No project
+      - listitem [ref=e12]:
+        - 'button "Workspace: No workspace. Open workspace selection." [ref=e13] [cursor=pointer]':
+          - generic [ref=e14]: Workspace
+          - generic [ref=e15]: No workspace
+    - generic:
+      - button "Open sessions" [ref=e16] [cursor=pointer]
+      - button "Go to a view" [ref=e17] [cursor=pointer]
+      - button "Show Actions" [ref=e18] [cursor=pointer]
+  - generic [ref=e19]: Add a project to start a session.

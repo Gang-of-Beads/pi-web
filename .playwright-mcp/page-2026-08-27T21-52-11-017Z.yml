@@ -1,0 +1,77 @@
+- main [ref=e4]:
+  - navigation "Current location" [ref=e6]:
+    - list [ref=e7]:
+      - listitem [ref=e20]:
+        - 'button "Machine: hxd-work-mbp. Open machine selection." [ref=e21] [cursor=pointer]':
+          - generic [ref=e22]: Machine
+          - generic [ref=e23]: hxd-work-mbp
+      - listitem [ref=e8]:
+        - 'button "Project: pi-web. Open project selection." [ref=e92] [cursor=pointer]':
+          - generic [ref=e10]: Project
+          - generic [ref=e11]: pi-web
+      - listitem [ref=e12]:
+        - 'button "Workspace: main · main. Open workspace selection." [ref=e93] [cursor=pointer]':
+          - generic [ref=e14]: Workspace
+          - generic [ref=e15]: main · main
+      - listitem [ref=e94]:
+        - button [ref=e95] [cursor=pointer]:
+          - generic [ref=e96]: Session
+          - generic [ref=e97]: "Test the live app at https://hxd-work-mbp.tailc9e96c.ts.net:8504 as a USER on MOBILE (393x850). Use the Playwright MCP tools. Report only what you OBSERVE. If a check cannot be run because a precondition is missing, say so - never report it as passing. 1. Resize to 393x850, load the app. Note anything broken, overlapping, cut off, or stacked. 2. Open a project, a workspace, then a session with many messages. 3. Read the conversation: any message shown twice? anything drawn over anything else? text clipped? 4. Scroll up far, then use the return-to-newest control. Does it work? Is it covered? 5. Type in the composer: are the row's buttons the same size and reachable? does any cover the text? 6. Top bar: is the machine/project/session identity readable or crushed? 7. Drawer sections: can you reach every section while it is open? Finish with problems worst first, each with: what you did, what you saw, where. If nothing is wrong, say so and list what you checked. MOBILE-SPECIFIC, most important: is more than one surface shown at once - a session list stacked above a conversation with the conversation squeezed into a strip? Describe what occupies the screen top to bottom with rough heights, and say how much vertical space the conversation actually gets. Also check whether anything is cut off below the visible area."
+    - generic:
+      - button "Open sessions" [ref=e16] [cursor=pointer]
+      - button "Go to a view" [ref=e17] [cursor=pointer]
+      - button "Show Actions" [ref=e18] [cursor=pointer]
+  - generic [ref=e99]:
+    - heading "Sessions Select current sessions 1 unread Clean up Start a new session" [level=2] [ref=e100]:
+      - generic [ref=e101]: Sessions
+      - button "Select current sessions" [ref=e102] [cursor=pointer]: ☑
+      - generic "1 unread" [ref=e103]
+      - button "Clean up" [ref=e104] [cursor=pointer]
+      - button "Start a new session" [ref=e105] [cursor=pointer]:
+        - generic [ref=e106]: +
+        - generic [ref=e107]: New session
+    - generic [ref=e108]:
+      - searchbox "Search sessions" [ref=e110]
+      - generic "/Users/hanxiao.du/.pi/agent/sessions/--Users-hanxiao.du-Desktop-vincent-projects-pi-web--/2026-08-27T21-51-00-837Z_01a04534-74e5-7fc0-9bb5-901ff6956027.jsonl" [ref=e111] [cursor=pointer]:
+        - button [ref=e112]:
+          - generic [ref=e113]: "Test the live app at https://hxd-work-mbp.tailc9e96c.ts.net:8504 as a USER on MOBILE (393x850). Use the Playwright MCP tools. Report only what you OBSERVE. If a check cannot be run because a precondition is missing, say so - never report it as passing. 1. Resize to 393x850, load the app. Note anything broken, overlapping, cut off, or stacked. 2. Open a project, a workspace, then a session with many messages. 3. Read the conversation: any message shown twice? anything drawn over anything else? text clipped? 4. Scroll up far, then use the return-to-newest control. Does it work? Is it covered? 5. Type in the composer: are the row's buttons the same size and reachable? does any cover the text? 6. Top bar: is the machine/project/session identity readable or crushed? 7. Drawer sections: can you reach every section while it is open? Finish with problems worst first, each with: what you did, what you saw, where. If nothing is wrong, say so and list what you checked. MOBILE-SPECIFIC, most important: is more than one surface shown at once - a session list stacked above a conversation with the conversation squeezed into a strip? Describe what occupies the screen top to bottom with rough heights, and say how much vertical space the conversation actually gets. Also check whether anything is cut off below the visible area."
+          - generic [ref=e115]: 28 messages
+          - img "Session is done" [ref=e116]
+        - button "⋯" [ref=e118]
+      - generic "/Users/hanxiao.du/.pi/agent/sessions/--Users-hanxiao.du-Desktop-vincent-projects-pi-web--/2026-08-27T21-51-00-817Z_01a04534-74d1-7f57-80b3-1971d5d17c71.jsonl" [ref=e119] [cursor=pointer]:
+        - button [ref=e120]:
+          - generic [ref=e121]: "Test the live app at https://hxd-work-mbp.tailc9e96c.ts.net:8504 as a USER on DESKTOP (1440x900). Use the Playwright MCP tools. Report only what you OBSERVE. If a check cannot be run because a precondition is missing, say so - never report it as passing. 1. Resize to 1440x900, load the app. Note anything broken, overlapping, cut off, or stacked. 2. Open a project, a workspace, then a session with many messages. 3. Read the conversation: any message shown twice? anything drawn over anything else? text clipped? 4. Scroll up far, then use the return-to-newest control. Does it work? Is it covered? 5. Type in the composer: are the row's buttons the same size and reachable? does any cover the text? 6. Top bar: is the machine/project/session identity readable or crushed? 7. Drawer sections: can you reach every section while it is open? Finish with problems worst first, each with: what you did, what you saw, where. If nothing is wrong, say so and list what you checked."
+          - generic [ref=e123]: 29 messages
+          - img "Session is done" [ref=e124]
+        - button "⋯" [ref=e126]
+      - generic "/Users/hanxiao.du/.pi/agent/sessions/--Users-hanxiao.du-Desktop-vincent-projects-pi-web--/2026-08-23T11-22-08-184Z_01a02e5b-43b8-7d44-a672-2873ca900876.jsonl" [ref=e127] [cursor=pointer]:
+        - button "Collapse subagents under pi-web" [expanded] [ref=e128]:
+          - generic [ref=e129]: ▾
+        - button "pi-web 13662 messages Unread session activity · Turn ended; background work still running" [ref=e130]:
+          - generic [ref=e131]: pi-web
+          - generic [ref=e133]: 13662 messages
+          - img "Unread session activity · Turn ended; background work still running" [ref=e134]
+        - button "⋯" [ref=e137]
+      - generic "/Users/hanxiao.du/.pi/agent/sessions/--Users-hanxiao.du-Desktop-vincent-projects-pi-web--/2026-08-27T10-58-33-654Z_01a042df-1e36-7a79-ad9c-5bed25d76ff3.jsonl" [ref=e138] [cursor=pointer]:
+        - button "↳Fix HANDOFF todos then release 218 messages" [ref=e139]:
+          - generic [ref=e140]: ↳Fix HANDOFF todos then release
+          - generic [ref=e142]: 218 messages
+        - button "⋯" [ref=e144]
+      - generic "/Users/hanxiao.du/.pi/agent/sessions/--Users-hanxiao.du-Desktop-vincent-projects-pi-web--/2026-08-27T07-43-24-895Z_01a0422c-74df-73d2-ba74-9f7f583feaa8.jsonl" [ref=e145] [cursor=pointer]:
+        - button "↳Implement HANDOFF tasks for pi-web 334 messages" [ref=e146]:
+          - generic [ref=e147]: ↳Implement HANDOFF tasks for pi-web
+          - generic [ref=e149]: 334 messages
+        - button "⋯" [ref=e151]
+      - generic "/Users/hanxiao.du/.pi/agent/sessions/--Users-hanxiao.du-Desktop-vincent-projects-pi-web--/2026-08-27T21-50-26-051Z_01a04533-ed03-7b2a-be2a-09c547ece841.jsonl" [ref=e152] [cursor=pointer]:
+        - 'button "reply with exactly: ALIVE 2 messages" [ref=e153]':
+          - generic [ref=e154]: "reply with exactly: ALIVE"
+          - generic [ref=e156]: 2 messages
+        - button "⋯" [ref=e158]
+      - generic "/Users/hanxiao.du/.pi/agent/sessions/--Users-hanxiao.du-Desktop-vincent-projects-pi-web--/2026-08-26T10-17-52-596Z_01a03d93-82d3-7f47-b801-02802606369e.jsonl" [ref=e159] [cursor=pointer]:
+        - button "Disable browser auto-open in web search plugin 68 messages" [ref=e160]:
+          - generic [ref=e161]: Disable browser auto-open in web search plugin
+          - generic [ref=e163]: 68 messages
+        - button "⋯" [ref=e165]
+      - heading "▸ Archived 4" [level=2] [ref=e166]:
+        - button "▸ Archived" [ref=e167] [cursor=pointer]
+        - generic [ref=e169]: "4"

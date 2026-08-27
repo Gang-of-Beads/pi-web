@@ -1,0 +1,522 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - strong [ref=e7]: Implement HANDOFF tasks for pi-web
+        - generic [ref=e8]:
+          - button "Open settings" [ref=e9] [cursor=pointer]: ⚙
+          - button "Show Actions" [ref=e10] [cursor=pointer]: Actions
+      - navigation "Current context" [ref=e12]:
+        - generic [ref=e14]:
+          - 'button "Machine: hxd-work-mbp. Change it" [ref=e15] [cursor=pointer]':
+            - generic [ref=e16]: hxd-work-mbp
+          - button "Add machine" [ref=e17] [cursor=pointer]: +
+        - generic [ref=e19]:
+          - 'button "Project: pi-web. Change it" [ref=e97] [cursor=pointer]':
+            - generic [ref=e21]: pi-web
+          - button "Add project" [ref=e22] [cursor=pointer]: +
+        - 'button "Workspace: main. Change it" [ref=e98] [cursor=pointer]':
+          - generic [ref=e26]: main
+      - generic [ref=e100]:
+        - heading "Sessions Select current sessions Clean up Start a new session" [level=2] [ref=e589]:
+          - generic [ref=e102]: Sessions
+          - button "Select current sessions" [ref=e103] [cursor=pointer]: ☑
+          - button "Clean up" [ref=e105] [cursor=pointer]
+          - button "Start a new session" [ref=e106] [cursor=pointer]:
+            - generic [ref=e107]: +
+            - generic [ref=e108]: New session
+        - generic [ref=e109]:
+          - searchbox "Search sessions" [ref=e111]
+          - generic "/Users/hanxiao.du/.pi/agent/sessions/--Users-hanxiao.du-Desktop-vincent-projects-pi-web--/2026-08-27T21-51-00-817Z_01a04534-74d1-7f57-80b3-1971d5d17c71.jsonl" [ref=e112] [cursor=pointer]:
+            - button [ref=e113]:
+              - generic [ref=e114]: "Test the live app at https://hxd-work-mbp.tailc9e96c.ts.net:8504 as a USER on DESKTOP (1440x900). Use the Playwright MCP tools. Report only what you OBSERVE. If a check cannot be run because a precondition is missing, say so - never report it as passing. 1. Resize to 1440x900, load the app. Note anything broken, overlapping, cut off, or stacked. 2. Open a project, a workspace, then a session with many messages. 3. Read the conversation: any message shown twice? anything drawn over anything else? text clipped? 4. Scroll up far, then use the return-to-newest control. Does it work? Is it covered? 5. Type in the composer: are the row's buttons the same size and reachable? does any cover the text? 6. Top bar: is the machine/project/session identity readable or crushed? 7. Drawer sections: can you reach every section while it is open? Finish with problems worst first, each with: what you did, what you saw, where. If nothing is wrong, say so and list what you checked."
+              - generic [ref=e116]: 24 messages
+              - img "Session is done" [ref=e117]
+            - button "⋯" [ref=e119]
+          - generic "/Users/hanxiao.du/.pi/agent/sessions/--Users-hanxiao.du-Desktop-vincent-projects-pi-web--/2026-08-27T21-51-00-837Z_01a04534-74e5-7fc0-9bb5-901ff6956027.jsonl" [ref=e120] [cursor=pointer]:
+            - button [ref=e466]:
+              - generic [ref=e122]: "Test the live app at https://hxd-work-mbp.tailc9e96c.ts.net:8504 as a USER on MOBILE (393x850). Use the Playwright MCP tools. Report only what you OBSERVE. If a check cannot be run because a precondition is missing, say so - never report it as passing. 1. Resize to 393x850, load the app. Note anything broken, overlapping, cut off, or stacked. 2. Open a project, a workspace, then a session with many messages. 3. Read the conversation: any message shown twice? anything drawn over anything else? text clipped? 4. Scroll up far, then use the return-to-newest control. Does it work? Is it covered? 5. Type in the composer: are the row's buttons the same size and reachable? does any cover the text? 6. Top bar: is the machine/project/session identity readable or crushed? 7. Drawer sections: can you reach every section while it is open? Finish with problems worst first, each with: what you did, what you saw, where. If nothing is wrong, say so and list what you checked. MOBILE-SPECIFIC, most important: is more than one surface shown at once - a session list stacked above a conversation with the conversation squeezed into a strip? Describe what occupies the screen top to bottom with rough heights, and say how much vertical space the conversation actually gets. Also check whether anything is cut off below the visible area."
+              - generic [ref=e124]: 28 messages
+              - img "Session is done" [ref=e467]
+            - button "⋯" [ref=e126]
+          - generic "/Users/hanxiao.du/.pi/agent/sessions/--Users-hanxiao.du-Desktop-vincent-projects-pi-web--/2026-08-23T11-22-08-184Z_01a02e5b-43b8-7d44-a672-2873ca900876.jsonl" [ref=e127] [cursor=pointer]:
+            - button "Collapse subagents under pi-web" [expanded] [ref=e128]:
+              - generic [ref=e129]: ▾
+            - button "pi-web 13662 messages Turn ended; background work still running" [ref=e590]:
+              - generic [ref=e131]: pi-web
+              - generic [ref=e133]: 13662 messages
+              - img "Turn ended; background work still running" [ref=e591]
+            - button "⋯" [ref=e137]
+          - generic "/Users/hanxiao.du/.pi/agent/sessions/--Users-hanxiao.du-Desktop-vincent-projects-pi-web--/2026-08-27T10-58-33-654Z_01a042df-1e36-7a79-ad9c-5bed25d76ff3.jsonl" [ref=e138] [cursor=pointer]:
+            - button "↳Fix HANDOFF todos then release 218 messages" [ref=e139]:
+              - generic [ref=e140]: ↳Fix HANDOFF todos then release
+              - generic [ref=e142]: 218 messages
+            - button "⋯" [ref=e144]
+          - generic "/Users/hanxiao.du/.pi/agent/sessions/--Users-hanxiao.du-Desktop-vincent-projects-pi-web--/2026-08-27T07-43-24-895Z_01a0422c-74df-73d2-ba74-9f7f583feaa8.jsonl" [ref=e145] [cursor=pointer]:
+            - button "↳Implement HANDOFF tasks for pi-web 337 messages Session is done" [ref=e468]:
+              - generic [ref=e147]: ↳Implement HANDOFF tasks for pi-web
+              - generic [ref=e149]: 337 messages
+              - img "Session is done" [ref=e469]
+            - button "⋯" [ref=e151]
+          - generic "/Users/hanxiao.du/.pi/agent/sessions/--Users-hanxiao.du-Desktop-vincent-projects-pi-web--/2026-08-27T21-50-26-051Z_01a04533-ed03-7b2a-be2a-09c547ece841.jsonl" [ref=e152] [cursor=pointer]:
+            - 'button "reply with exactly: ALIVE 2 messages" [ref=e153]':
+              - generic [ref=e154]: "reply with exactly: ALIVE"
+              - generic [ref=e156]: 2 messages
+            - button "⋯" [ref=e158]
+          - generic "/Users/hanxiao.du/.pi/agent/sessions/--Users-hanxiao.du-Desktop-vincent-projects-pi-web--/2026-08-26T10-17-52-596Z_01a03d93-82d3-7f47-b801-02802606369e.jsonl" [ref=e159] [cursor=pointer]:
+            - button "Disable browser auto-open in web search plugin 68 messages" [ref=e160]:
+              - generic [ref=e161]: Disable browser auto-open in web search plugin
+              - generic [ref=e163]: 68 messages
+            - button "⋯" [ref=e165]
+          - heading "▸ Archived 4" [level=2] [ref=e166]:
+            - button "▸ Archived" [ref=e167] [cursor=pointer]
+            - generic [ref=e169]: "4"
+  - generic [ref=e89]:
+    - separator "Resize navigation panel" [ref=e90]
+    - button "Collapse navigation panel" [expanded] [ref=e91] [cursor=pointer]
+  - main [ref=e92]:
+    - generic [ref=e170]:
+      - region "Session drawer" [ref=e593]:
+        - generic [ref=e594]:
+          - tablist "Session drawer sections" [ref=e596]:
+            - tab "Activity (3)" [selected] [ref=e597] [cursor=pointer]
+          - button "Show session activity and notifications" [ref=e600] [cursor=pointer]
+      - generic [ref=e173]:
+        - 'meter "Message position: about 100% through conversation. 100% of messages loaded." [ref=e602]'
+        - generic [ref=e179]:
+          - generic [ref=e606]:
+            - generic [ref=e607]: Beginning of session
+            - generic [ref=e608]: Showing messages 1–337 of 337
+          - article [ref=e609]:
+            - generic [ref=e610]:
+              - generic [ref=e611]: user
+              - generic [ref=e612]:
+                - generic "Message actions" [ref=e613]:
+                  - button "Put this message back in the composer to send again" [ref=e614] [cursor=pointer]:
+                    - generic [ref=e615]: ↻
+                  - button "Copy user message" [ref=e616] [cursor=pointer]:
+                    - generic [ref=e617]: ⧉
+                - button "Aug 27, 2026, 11:43:26 AM" [ref=e618] [cursor=pointer]
+            - generic [ref=e620]:
+              - paragraph [ref=e621]:
+                - text: 读
+                - code [ref=e622]: /Users/hanxiao.du/Desktop/vincent/projects/pi-web/.pi/HANDOFF.md
+                - text: ",按里面的五件事全部实现、测试、发布并更新本机。"
+              - paragraph [ref=e623]:
+                - text: 那份文档是权威交接,包含环境、铁律、每条的根因定位和关键文件行号。
+                - strong [ref=e624]: 先完整读它,再动手。
+              - paragraph [ref=e625]: "要点重申(这些是今天真栽过的):"
+              - list [ref=e626]:
+                - listitem [ref=e627]: 先复现再改,不复现的不照报告改
+                - listitem [ref=e628]: 写文件前先查是否已存在(今天用 Write 覆盖过已有模块并删掉它的测试)
+                - listitem [ref=e629]: 每条修复要有"修复前会红"的测试,或做变异检验
+                - listitem [ref=e630]: tsc 与 lint 才是真检验,测试全绿仍可能类型错
+                - listitem [ref=e631]: verify 跑动时不要改仓库
+                - listitem [ref=e632]: 每条修复单独提交
+                - listitem [ref=e633]: 只在 8505 实验,不碰 8504
+                - listitem [ref=e634]: 服务端改动要提醒用户重启 sessiond
+                - listitem [ref=e635]: nix-config 里有 sops 密钥,绝不能泄露到 pi* 仓库
+              - paragraph [ref=e636]: 遇到无法复现或需要用户决策的,停下来汇报,不要猜着改。
+          - article [ref=e637]:
+            - generic [ref=e638]:
+              - generic [ref=e639]: assistant
+              - generic [ref=e640]:
+                - generic "Message actions" [ref=e641]:
+                  - button "Copy assistant message" [ref=e642] [cursor=pointer]:
+                    - generic [ref=e643]: ⧉
+                - button "Aug 27, 2026, 11:43:26 AM · anthropic-merchant/claude-opus-5 · medium" [ref=e644] [cursor=pointer]
+            - paragraph [ref=e647]: I'll start by reading the handoff document.
+          - group [ref=e648]:
+            - generic "events 40 events · 28 tool · 12 assistant" [ref=e649] [cursor=pointer]:
+              - generic [ref=e650]: events
+              - generic [ref=e651]: 40 events · 28 tool · 12 assistant
+          - article [ref=e652]:
+            - generic [ref=e653]:
+              - generic [ref=e654]: assistant
+              - generic [ref=e655]:
+                - generic "Message actions" [ref=e656]:
+                  - button "Copy assistant message" [ref=e657] [cursor=pointer]:
+                    - generic [ref=e658]: ⧉
+                - button "Aug 27, 2026, 11:45:40 AM · anthropic-merchant/claude-opus-5 · medium" [ref=e659] [cursor=pointer]
+            - paragraph [ref=e662]:
+              - text: Now let me find
+              - code [ref=e663]: statusFromSession
+              - text: on the server.
+          - group [ref=e664]:
+            - generic "events 14 events · 10 tool · 4 assistant" [ref=e665] [cursor=pointer]:
+              - generic [ref=e666]: events
+              - generic [ref=e667]: 14 events · 10 tool · 4 assistant
+          - article [ref=e668]:
+            - generic [ref=e669]:
+              - generic [ref=e670]: assistant
+              - generic [ref=e671]:
+                - generic "Message actions" [ref=e672]:
+                  - button "Copy assistant message" [ref=e673] [cursor=pointer]:
+                    - generic [ref=e674]: ⧉
+                - button "Aug 27, 2026, 11:46:55 AM · anthropic-merchant/claude-opus-5 · medium" [ref=e675] [cursor=pointer]
+            - paragraph [ref=e678]: Now the shared type and category.
+          - group [ref=e679]:
+            - generic "events 2 events · 2 tool" [ref=e680] [cursor=pointer]:
+              - generic [ref=e681]: events
+              - generic [ref=e682]: 2 events · 2 tool
+          - article [ref=e683]:
+            - generic [ref=e684]:
+              - generic [ref=e685]: assistant
+              - generic [ref=e686]:
+                - generic "Message actions" [ref=e687]:
+                  - button "Copy assistant message" [ref=e688] [cursor=pointer]:
+                    - generic [ref=e689]: ⧉
+                - button "Aug 27, 2026, 11:47:09 AM · anthropic-merchant/claude-opus-5 · medium" [ref=e690] [cursor=pointer]
+            - paragraph [ref=e693]:
+              - text: Now the server wiring in
+              - code [ref=e694]: piSessionService.ts
+              - text: .
+          - group [ref=e695]:
+            - generic "events 16 events · 12 tool · 4 assistant" [ref=e696] [cursor=pointer]:
+              - generic [ref=e697]: events
+              - generic [ref=e698]: 16 events · 12 tool · 4 assistant
+          - article [ref=e699]:
+            - generic [ref=e700]:
+              - generic [ref=e701]: assistant
+              - generic [ref=e702]:
+                - generic "Message actions" [ref=e703]:
+                  - button "Copy assistant message" [ref=e704] [cursor=pointer]:
+                    - generic [ref=e705]: ⧉
+                - button "Aug 27, 2026, 11:48:23 AM · anthropic-merchant/claude-opus-5 · medium" [ref=e706] [cursor=pointer]
+            - paragraph [ref=e709]: Now a test for the counting module.
+          - group [ref=e710]:
+            - generic "events 34 events · 22 tool · 12 assistant" [ref=e711] [cursor=pointer]:
+              - generic [ref=e712]: events
+              - generic [ref=e713]: 34 events · 22 tool · 12 assistant
+          - article [ref=e714]:
+            - generic [ref=e715]:
+              - generic [ref=e716]: assistant
+              - generic [ref=e717]:
+                - generic "Message actions" [ref=e718]:
+                  - button "Copy assistant message" [ref=e719] [cursor=pointer]:
+                    - generic [ref=e720]: ⧉
+                - button "Aug 27, 2026, 11:50:50 AM · anthropic-merchant/claude-opus-5 · medium" [ref=e721] [cursor=pointer]
+            - paragraph [ref=e724]: Verify is running on pi-web, so I'll work on item 4 (nix-config) meanwhile — a separate repo.
+          - group [ref=e725]:
+            - generic "events 53 events · 35 tool · 18 assistant" [ref=e726] [cursor=pointer]:
+              - generic [ref=e727]: events
+              - generic [ref=e728]: 53 events · 35 tool · 18 assistant
+          - article [ref=e729]:
+            - generic [ref=e730]:
+              - generic [ref=e731]: tool output
+              - button "Aug 27, 2026, 11:55:54 AM" [ref=e733] [cursor=pointer]
+            - button "attached image" [ref=e734]
+          - group [ref=e735]:
+            - generic "events 2 events · 1 assistant · 1 tool" [ref=e736] [cursor=pointer]:
+              - generic [ref=e737]: events
+              - generic [ref=e738]: 2 events · 1 assistant · 1 tool
+          - article [ref=e739]:
+            - generic [ref=e740]:
+              - generic [ref=e741]: assistant
+              - generic [ref=e742]:
+                - generic "Message actions" [ref=e743]:
+                  - button "Copy assistant message" [ref=e744] [cursor=pointer]:
+                    - generic [ref=e745]: ⧉
+                - button "Aug 27, 2026, 11:56:03 AM · anthropic-merchant/claude-opus-5 · medium" [ref=e746] [cursor=pointer]
+            - paragraph [ref=e749]: Now let me write the UI scale module.
+          - group [ref=e750]:
+            - generic "events 1 event · 1 tool" [ref=e751] [cursor=pointer]:
+              - generic [ref=e752]: events
+              - generic [ref=e753]: 1 event · 1 tool
+          - article [ref=e754]:
+            - generic [ref=e755]:
+              - generic [ref=e756]: assistant
+              - generic [ref=e757]:
+                - generic "Message actions" [ref=e758]:
+                  - button "Copy assistant message" [ref=e759] [cursor=pointer]:
+                    - generic [ref=e760]: ⧉
+                - button "Aug 27, 2026, 11:56:21 AM · anthropic-merchant/claude-opus-5 · medium" [ref=e761] [cursor=pointer]
+            - paragraph [ref=e764]: Now add the slider to the Appearance panel.
+          - group [ref=e765]:
+            - generic "events 2 events · 2 tool" [ref=e766] [cursor=pointer]:
+              - generic [ref=e767]: events
+              - generic [ref=e768]: 2 events · 2 tool
+          - article [ref=e769]:
+            - generic [ref=e770]:
+              - generic [ref=e771]: assistant
+              - generic [ref=e772]:
+                - generic "Message actions" [ref=e773]:
+                  - button "Copy assistant message" [ref=e774] [cursor=pointer]:
+                    - generic [ref=e775]: ⧉
+                - button "Aug 27, 2026, 11:56:43 AM · anthropic-merchant/claude-opus-5 · medium" [ref=e776] [cursor=pointer]
+            - paragraph [ref=e779]:
+              - text: Now wire through
+              - code [ref=e780]: SettingsDialog
+              - text: and
+              - code [ref=e781]: PiWebApp
+              - text: .
+          - group [ref=e782]:
+            - generic "events 75 events · 56 tool · 19 assistant" [ref=e783] [cursor=pointer]:
+              - generic [ref=e784]: events
+              - generic [ref=e785]: 75 events · 56 tool · 19 assistant
+          - article [ref=e786]:
+            - generic [ref=e787]:
+              - generic [ref=e788]: assistant
+              - generic [ref=e789]:
+                - generic "Message actions" [ref=e790]:
+                  - button "Copy assistant message" [ref=e791] [cursor=pointer]:
+                    - generic [ref=e792]: ⧉
+                - button "Aug 27, 2026, 12:03:38 PM · anthropic-merchant/claude-opus-5 · medium" [ref=e793] [cursor=pointer]
+            - paragraph [ref=e796]: I've completed items 1, 4 and 5. Two blockers need your call before I continue.
+          - group [ref=e797]:
+            - generic "events 1 event · 1 tool" [ref=e798] [cursor=pointer]:
+              - generic [ref=e799]: events
+              - generic [ref=e800]: 1 event · 1 tool
+          - article [ref=e801]:
+            - generic [ref=e802]: system
+            - generic [ref=e805]:
+              - text: <background-task-notification> <task-id>bdec17944</task-id> <task-name>verify item 1</task-name> <status>completed</status>
+              - paragraph [ref=e806]: <exit-code>0</exit-code> <output-file>.pi/tasks/session-48282-48282/bdec17944.output</output-file> <summary>Background task "verify item 1" completed</summary> <guidance>Terminal state and output metadata are durable. Do not call bg_status to reconfirm; use bg_logs only if output is needed.</guidance></background-task-notification>
+          - article [ref=e807]:
+            - generic [ref=e808]: system
+            - generic [ref=e811]:
+              - text: <background-task-notification> <task-id>b7d858d7c</task-id> <task-name>build for preview</task-name> <status>completed</status>
+              - paragraph [ref=e812]: <exit-code>0</exit-code> <output-file>.pi/tasks/session-48282-48282/b7d858d7c.output</output-file> <summary>Background task "build for preview" completed</summary> <guidance>Terminal state and output metadata are durable. Do not call bg_status to reconfirm; use bg_logs only if output is needed.</guidance></background-task-notification>
+          - article [ref=e813]:
+            - generic [ref=e814]: system
+            - generic [ref=e817]:
+              - text: <background-task-notification> <task-id>b3a727174</task-id> <task-name>verify item 5</task-name> <status>completed</status>
+              - paragraph [ref=e818]: <exit-code>0</exit-code> <output-file>.pi/tasks/session-48282-48282/b3a727174.output</output-file> <summary>Background task "verify item 5" completed</summary> <guidance>Terminal state and output metadata are durable. Do not call bg_status to reconfirm; use bg_logs only if output is needed.</guidance></background-task-notification>
+          - group [ref=e819]:
+            - generic "events 1 event · 1 assistant" [ref=e820] [cursor=pointer]:
+              - generic [ref=e821]: events
+              - generic [ref=e822]: 1 event · 1 assistant
+          - article [ref=e823]:
+            - generic [ref=e824]:
+              - generic [ref=e825]: assistant
+              - generic [ref=e826]:
+                - generic "Message actions" [ref=e827]:
+                  - button "Copy assistant message" [ref=e828] [cursor=pointer]:
+                    - generic [ref=e829]: ⧉
+                - button "Aug 27, 2026, 12:04:24 PM · anthropic-merchant/claude-opus-5 · medium" [ref=e830] [cursor=pointer]
+            - generic [ref=e832]:
+              - paragraph [ref=e833]: These three background tasks were the ones I already consumed (verify item 1 ✓, build ✓, verify item 5 ✓ — all exit 0, 428 test files / 4171 tests green).
+              - paragraph [ref=e834]: "Current state:"
+              - region "Table" [ref=e835]:
+                - table [ref=e836]:
+                  - rowgroup [ref=e837]:
+                    - row [ref=e838]:
+                      - columnheader "条" [ref=e839]
+                      - columnheader "状态" [ref=e840]
+                  - rowgroup [ref=e841]:
+                    - row [ref=e842]:
+                      - cell "1 后台运行显灰" [ref=e843]
+                      - cell [ref=e844]:
+                        - text: ✅ 已提交
+                        - code [ref=e845]: b0473aa9
+                        - text: — 服务端计数 +
+                        - code [ref=e846]: background
+                        - text: 紫色空心档;含变异检验(去掉判断→测试变红)
+                    - row [ref=e847]:
+                      - cell "2 快速搜索面板重做" [ref=e848]
+                      - cell "⏸ 等你定范围" [ref=e849]
+                    - row [ref=e850]:
+                      - cell "3 终端双滚动条" [ref=e851]
+                      - cell "⏸ 本机复现不出(Chromium 全是 overlay 滚动条),等你定" [ref=e852]
+                    - row [ref=e853]:
+                      - cell "4 更新杀会话" [ref=e854]
+                      - cell [ref=e855]:
+                        - text: ✅ 已在
+                        - code [ref=e856]: ~/nix-config
+                        - text: 提交
+                        - code [ref=e857]: 4c87637
+                        - text: (未 push);只重载 web,不碰 sessiond
+                    - row [ref=e858]:
+                      - cell "5 前端缩放滑条" [ref=e859]
+                      - cell [ref=e860]:
+                        - text: ✅ 已提交
+                        - code [ref=e861]: c02108df
+                        - text: — Settings ▸ Appearance 80–150% 滑条,localStorage 按设备存;
+                        - code [ref=e862]: scripts/verify-ui-scale.mjs
+                        - text: 在 8505 实测 91.52px → 118.91px 并通过重载,变异检验也红了
+              - paragraph [ref=e863]: 未发布、未更新本机 —— 等你回答后继续。
+        - generic: idle
+    - generic [ref=e278]:
+      - generic [ref=e279]:
+        - generic "Message pi" [ref=e280]:
+          - textbox [ref=e283]:
+            - generic [ref=e284]:
+              - generic:
+                - generic:
+                  - generic: Message pi…
+                  - generic: "/ @ #"
+        - button "Attach files" [ref=e285] [cursor=pointer]
+      - generic [ref=e286]:
+        - generic "Session status" [ref=e287]:
+          - button "anthropic-merchant/ claude-opus-5" [ref=e864] [cursor=pointer]:
+            - generic [ref=e289]: anthropic-merchant/
+            - generic [ref=e290]: claude-opus-5
+          - 'button "Thinking level: medium" [ref=e865] [cursor=pointer]'
+        - button "Dictate live" [ref=e292] [cursor=pointer]: ●
+        - button "Send message" [ref=e293] [cursor=pointer]
+        - button "Stop current work" [disabled] [ref=e294]
+    - generic [ref=e296]:
+      - generic [ref=e297]: ↑326
+      - generic [ref=e298]: ↓71k
+      - generic [ref=e299]: 23.0%/1.0M
+      - generic [ref=e300]: $14.79
+  - generic [ref=e94]:
+    - separator "Resize workspace panel" [ref=e95]
+    - button "Collapse workspace panel" [expanded] [ref=e96] [cursor=pointer]
+  - generic [ref=e301]:
+    - banner [ref=e302]:
+      - generic [ref=e305]:
+        - button "Files" [pressed] [ref=e306] [cursor=pointer]
+        - button "Git" [ref=e308] [cursor=pointer]
+        - button "Terminal" [ref=e310] [cursor=pointer]
+        - button "Tasks" [ref=e312] [cursor=pointer]
+        - button "Relays" [ref=e314] [cursor=pointer]
+        - button "Updates" [ref=e316] [cursor=pointer]
+        - button "Info" [ref=e318] [cursor=pointer]
+    - generic [ref=e322]:
+      - generic [ref=e323]:
+        - strong [ref=e324]: Files
+        - generic [ref=e325]:
+          - button "Upload" [ref=e326] [cursor=pointer]
+          - button "Refresh" [ref=e327] [cursor=pointer]
+        - button "Choose File" [ref=e328]
+      - generic [ref=e330]:
+        - button "▸ .agents" [ref=e331] [cursor=pointer]:
+          - generic [ref=e332]: ▸
+          - generic [ref=e333]: .agents
+        - button "▸ .changeset" [ref=e334] [cursor=pointer]:
+          - generic [ref=e335]: ▸
+          - generic [ref=e336]: .changeset
+        - button "▸ .git" [ref=e337] [cursor=pointer]:
+          - generic [ref=e338]: ▸
+          - generic [ref=e339]: .git
+        - button "▸ .githooks" [ref=e340] [cursor=pointer]:
+          - generic [ref=e341]: ▸
+          - generic [ref=e342]: .githooks
+        - button "▸ .github" [ref=e343] [cursor=pointer]:
+          - generic [ref=e344]: ▸
+          - generic [ref=e345]: .github
+        - button "▸ .pi" [ref=e346] [cursor=pointer]:
+          - generic [ref=e347]: ▸
+          - generic [ref=e348]: .pi
+        - button "▸ .pi-web" [ref=e349] [cursor=pointer]:
+          - generic [ref=e350]: ▸
+          - generic [ref=e351]: .pi-web
+        - button "▸ .playwright-mcp" [ref=e352] [cursor=pointer]:
+          - generic [ref=e353]: ▸
+          - generic [ref=e354]: .playwright-mcp
+        - button "▸ dist" [ref=e355] [cursor=pointer]:
+          - generic [ref=e356]: ▸
+          - generic [ref=e357]: dist
+        - button "▸ docker" [ref=e358] [cursor=pointer]:
+          - generic [ref=e359]: ▸
+          - generic [ref=e360]: docker
+        - button "▸ docs" [ref=e361] [cursor=pointer]:
+          - generic [ref=e362]: ▸
+          - generic [ref=e363]: docs
+        - button "▸ e2e" [ref=e364] [cursor=pointer]:
+          - generic [ref=e365]: ▸
+          - generic [ref=e366]: e2e
+        - button "▸ examples" [ref=e367] [cursor=pointer]:
+          - generic [ref=e368]: ▸
+          - generic [ref=e369]: examples
+        - button "▸ extensions" [ref=e370] [cursor=pointer]:
+          - generic [ref=e371]: ▸
+          - generic [ref=e372]: extensions
+        - button "▸ node_modules" [ref=e373] [cursor=pointer]:
+          - generic [ref=e374]: ▸
+          - generic [ref=e375]: node_modules
+        - button "▸ pi-web-plugins" [ref=e376] [cursor=pointer]:
+          - generic [ref=e377]: ▸
+          - generic [ref=e378]: pi-web-plugins
+        - button "▸ scripts" [ref=e379] [cursor=pointer]:
+          - generic [ref=e380]: ▸
+          - generic [ref=e381]: scripts
+        - button "▸ skills" [ref=e382] [cursor=pointer]:
+          - generic [ref=e383]: ▸
+          - generic [ref=e384]: skills
+        - button "▸ src" [ref=e385] [cursor=pointer]:
+          - generic [ref=e386]: ▸
+          - generic [ref=e387]: src
+        - button "▸ test-fixtures" [ref=e388] [cursor=pointer]:
+          - generic [ref=e389]: ▸
+          - generic [ref=e390]: test-fixtures
+        - button "▸ test-results" [ref=e391] [cursor=pointer]:
+          - generic [ref=e392]: ▸
+          - generic [ref=e393]: test-results
+        - button "· .dockerignore" [ref=e394] [cursor=pointer]:
+          - generic [ref=e395]: ·
+          - generic [ref=e396]: .dockerignore
+        - button "· .gitignore" [ref=e397] [cursor=pointer]:
+          - generic [ref=e398]: ·
+          - generic [ref=e399]: .gitignore
+        - button "· 01-initial-1440x900.png" [ref=e400] [cursor=pointer]:
+          - generic [ref=e401]: ·
+          - generic [ref=e402]: 01-initial-1440x900.png
+        - button "· AGENTS.md" [ref=e403] [cursor=pointer]:
+          - generic [ref=e404]: ·
+          - generic [ref=e405]: AGENTS.md
+        - button "· CHANGELOG.md" [ref=e406] [cursor=pointer]:
+          - generic [ref=e407]: ·
+          - generic [ref=e408]: CHANGELOG.md
+        - button "· eslint.config.js" [ref=e409] [cursor=pointer]:
+          - generic [ref=e410]: ·
+          - generic [ref=e411]: eslint.config.js
+        - button "· GOAL-STATUS.md" [ref=e412] [cursor=pointer]:
+          - generic [ref=e413]: ·
+          - generic [ref=e414]: GOAL-STATUS.md
+        - button "· install.sh" [ref=e415] [cursor=pointer]:
+          - generic [ref=e416]: ·
+          - generic [ref=e417]: install.sh
+        - button "· knip.json" [ref=e418] [cursor=pointer]:
+          - generic [ref=e419]: ·
+          - generic [ref=e420]: knip.json
+        - button "· LICENSE" [ref=e421] [cursor=pointer]:
+          - generic [ref=e422]: ·
+          - generic [ref=e423]: LICENSE
+        - button "· m01-initial.png" [ref=e424] [cursor=pointer]:
+          - generic [ref=e425]: ·
+          - generic [ref=e426]: m01-initial.png
+        - button "· MOBILE-UX-CHECKLIST.md" [ref=e427] [cursor=pointer]:
+          - generic [ref=e428]: ·
+          - generic [ref=e429]: MOBILE-UX-CHECKLIST.md
+        - button "· package-lock.json" [ref=e430] [cursor=pointer]:
+          - generic [ref=e431]: ·
+          - generic [ref=e432]: package-lock.json
+        - button "· package.json" [ref=e433] [cursor=pointer]:
+          - generic [ref=e434]: ·
+          - generic [ref=e435]: package.json
+        - button "· playwright.config.ts" [ref=e436] [cursor=pointer]:
+          - generic [ref=e437]: ·
+          - generic [ref=e438]: playwright.config.ts
+        - button "· plugin-api.d.ts" [ref=e439] [cursor=pointer]:
+          - generic [ref=e440]: ·
+          - generic [ref=e441]: plugin-api.d.ts
+        - button "· README.md" [ref=e442] [cursor=pointer]:
+          - generic [ref=e443]: ·
+          - generic [ref=e444]: README.md
+        - button "· server-plugin-api.d.ts" [ref=e445] [cursor=pointer]:
+          - generic [ref=e446]: ·
+          - generic [ref=e447]: server-plugin-api.d.ts
+        - button "· tsconfig.build.json" [ref=e448] [cursor=pointer]:
+          - generic [ref=e449]: ·
+          - generic [ref=e450]: tsconfig.build.json
+        - button "· tsconfig.json" [ref=e451] [cursor=pointer]:
+          - generic [ref=e452]: ·
+          - generic [ref=e453]: tsconfig.json
+        - button "· tsconfig.plugin-api.json" [ref=e454] [cursor=pointer]:
+          - generic [ref=e455]: ·
+          - generic [ref=e456]: tsconfig.plugin-api.json
+        - button "· tsconfig.plugins.json" [ref=e457] [cursor=pointer]:
+          - generic [ref=e458]: ·
+          - generic [ref=e459]: tsconfig.plugins.json
+        - button "· vite.config.ts" [ref=e460] [cursor=pointer]:
+          - generic [ref=e461]: ·
+          - generic [ref=e462]: vite.config.ts
+        - button "· vitest.config.ts" [ref=e463] [cursor=pointer]:
+          - generic [ref=e464]: ·
+          - generic [ref=e465]: vitest.config.ts
+      - generic:
+        - generic:
+          - strong: Drop files to upload
+          - generic: Uploads immediately to the default folder.
