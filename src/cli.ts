@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
+import { hostingServiceId } from "./nativeServices/serviceEnvironment.js";
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { homedir, userInfo } from "node:os";
@@ -420,7 +421,7 @@ function currentLaunchdServiceTarget(ref: ServiceRef): string {
 }
 
 function launchdActionContext(): LaunchdServiceContext {
-  return { domain: launchdDomain(), plistPath: launchdPlistPath };
+  return { domain: launchdDomain(), plistPath: launchdPlistPath, hostingServiceId: hostingServiceId(process.env) };
 }
 
 function serviceActionDeps(

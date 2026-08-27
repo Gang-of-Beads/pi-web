@@ -6,6 +6,8 @@ import {
   launchdBootstrapArgs,
   launchdEnableArgs,
   launchdKickstartArgs,
+  launchdRestartInPlaceArgs,
+  restartsInPlace,
   launchdPrintArgs,
   launchdServiceTarget,
   orderServices,
@@ -417,5 +419,73 @@ describe("performServiceAction", () => {
     );
     expect(result.unreadyServices).toEqual([]);
     expect(env.calls).toEqual([]);
+  });
+});
+
+describe("restarting the service that hosts the running command", () => {
+  /**
+   * `restart` booted the service out, waited for launchd to unload it, then
+   * bootstrapped it again. When the command was itself running inside that
+   * service - a self-update started from a pi-web session, which runs in the
+   * session daemon - the bootout killed the command, so the wait and the
+   * bootstrap never ran. Both labels were left not-loaded, and KeepAlive does
+   * not restart a service that is not loaded, so nothing brought it back.
+   *
+   * Handing the whole restart to launchd fixes that: `kickstart -k` stops and
+   * starts the job itself, so it does not matter that the caller dies partway.
+   */
+  it("asks launchd to restart the job rather than tearing it down itself", () => {
+    expect(launchdRestartInPlaceArgs("gui/501/com.pi-web.sessiond")).toEqual([
+      "kickstart",
+      "-k",
+      "gui/501/com.pi-web.sessiond",
+    ]);
+  });
+
+  it("restarts in place only for the service hosting the command", () => {
+    expect(restartsInPlace("sessiond", "sessiond")).toBe(true);
+    expect(restartsInPlace("web", "sessiond")).toBe(false);
+    expect(restartsInPlace("sessiond", undefined)).toBe(false);
+  });
+});
+
+describe("restartLaunchdService inside its own service", () => {
+  /**
+   * The bootout is what kills the caller, so the fix is worth nothing unless
+   * restartLaunchdService stops issuing one for the hosting service.
+   */
+  it("issues no bootout for the service hosting the command", async () => {
+    const calls: string[][] = [];
+    const deps = {
+      run: (_cmd: string, args: readonly string[]) => { calls.push([...args]); return 0; },
+      runQuiet: (_cmd: string, args: readonly string[]) => { calls.push([...args]); return 0; },
+      sleep: () => Promise.resolve(undefined),
+    };
+
+    await restartLaunchdService(
+      { id: "sessiond", ...nativeServiceManagerRefs.sessiond },
+      { domain: "gui/501", plistPath: () => "/tmp/com.pi-web.sessiond.plist", hostingServiceId: "sessiond" },
+      deps,
+    );
+
+    expect(calls.some((args) => args[0] === "bootout")).toBe(false);
+    expect(calls).toContainEqual(["kickstart", "-k", "gui/501/com.pi-web.sessiond"]);
+  });
+
+  it("still tears down and rebuilds a service it is not running inside", async () => {
+    const calls: string[][] = [];
+    const deps = {
+      run: (_cmd: string, args: readonly string[]) => { calls.push([...args]); return 0; },
+      runQuiet: (_cmd: string, args: readonly string[]) => { calls.push([...args]); return 1; },
+      sleep: () => Promise.resolve(undefined),
+    };
+
+    await restartLaunchdService(
+      { id: "web", ...nativeServiceManagerRefs.web },
+      { domain: "gui/501", plistPath: () => "/tmp/com.pi-web.web.plist", hostingServiceId: "sessiond" },
+      deps,
+    );
+
+    expect(calls.some((args) => args[0] === "bootout")).toBe(true);
   });
 });

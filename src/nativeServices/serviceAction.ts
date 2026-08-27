@@ -51,6 +51,13 @@ export interface ServiceActionDeps {
 export interface LaunchdServiceContext {
   domain: string;
   plistPath(ref: LifecycleServiceRef): string;
+  /**
+   * The service this command is running inside, when it is one of them.
+   *
+   * Restarting that service cannot be done in steps, because the teardown
+   * kills the command before it can start the service again.
+   */
+  hostingServiceId?: string | undefined;
 }
 
 /** A service-manager command exited nonzero; carries the exact invocation for diagnosis. */
@@ -90,6 +97,26 @@ export function launchdEnableArgs(target: string): string[] {
 
 export function launchdKickstartArgs(target: string): string[] {
   return ["kickstart", target];
+}
+
+/**
+ * Restart a job without the caller having to survive it.
+ *
+ * `bootout` then `bootstrap` needs the command to be alive for the second
+ * step. A command running inside the service it is restarting is killed by the
+ * bootout, so the bootstrap never runs and the label is left not-loaded, where
+ * KeepAlive cannot bring it back. `kickstart -k` hands the stop and the start
+ * to launchd in one instruction instead.
+ */
+export function launchdRestartInPlaceArgs(target: string): string[] {
+  return ["kickstart", "-k", target];
+}
+
+/**
+ * Whether restarting this service would kill the command doing the restarting.
+ */
+export function restartsInPlace(serviceId: string, hostingServiceId: string | undefined): boolean {
+  return hostingServiceId !== undefined && serviceId === hostingServiceId;
 }
 
 export function launchdServiceTarget(domain: string, ref: LifecycleServiceRef): string {
@@ -184,6 +211,13 @@ export async function restartLaunchdService(
   timing: ServiceActionTiming = {},
 ): Promise<void> {
   const target = launchdServiceTarget(context.domain, ref);
+  // Restarting the service this command runs inside cannot be done in steps:
+  // the bootout kills the command, and the bootstrap that would bring the
+  // service back never runs. launchd does both itself instead.
+  if (restartsInPlace(ref.id, context.hostingServiceId)) {
+    deps.run("launchctl", launchdRestartInPlaceArgs(target));
+    return;
+  }
   deps.runQuiet("launchctl", launchdBootoutArgs(target));
   await settleLaunchdServiceUnload(target, deps, timing);
   startLaunchdService(ref, context, deps);
