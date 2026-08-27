@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import {} from "./shared";
+import { listStyles } from "./shared";
 import { appStyles } from "./PiWebApp";
 import { chatStyles } from "./ChatView";
 import { promptEditorStyles } from "./PromptEditor";
 
-const sheets = `${String(appStyles)}\n${String(promptEditorStyles)}\n${String(chatStyles)}`;
+const sheets = `${String(appStyles)}\n${String(listStyles)}\n${String(promptEditorStyles)}\n${String(chatStyles)}`;
 
 describe("what floats over the composer", () => {
   /**
@@ -131,5 +131,20 @@ describe("the buttons in the control row", () => {
     const coarse = /@media \(pointer: coarse\) \{([\s\S]*?)\n {2}\}/u.exec(sheets)?.[1] ?? "";
 
     expect(coarse).not.toMatch(/\.editor-dictate/u);
+  });
+});
+
+describe("the unread dot on a project tile", () => {
+  /**
+   * Measured on the running app: a 7px dot overlapping the actions button by
+   * 5x7px, so most of it sat on a control it has nothing to do with. Both are
+   * pinned to the same corner, and the dot was offset by a guess at the
+   * button's width rather than by the width itself.
+   */
+  it("is offset by the button beside it rather than by a guess", () => {
+    const rule = /\.list-body\.tiles \.action-activity\s*\{([^}]*)\}/u.exec(sheets)?.[1] ?? "";
+
+    expect(rule).toMatch(/right:\s*calc\(/u);
+    expect(rule).toMatch(/--pi-tile-menu-size/u);
   });
 });

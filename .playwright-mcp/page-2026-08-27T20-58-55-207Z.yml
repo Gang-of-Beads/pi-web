@@ -1,0 +1,24 @@
+- main [ref=e4]:
+  - navigation "Current location" [ref=e6]:
+    - list [ref=e7]:
+      - listitem [ref=e8]:
+        - 'button "Machine: hxd-work-mbp. Open machine selection." [ref=e9] [cursor=pointer]':
+          - generic [ref=e10]: Machine
+          - generic [ref=e11]: hxd-work-mbp
+      - listitem [ref=e12]:
+        - 'button "Project: No project. Open project selection." [ref=e13] [cursor=pointer]':
+          - generic [ref=e14]: Project
+          - generic [ref=e15]: No project
+      - listitem [ref=e16]:
+        - 'button "Workspace: No workspace. Open workspace selection." [ref=e17] [cursor=pointer]':
+          - generic [ref=e18]: Workspace
+          - generic [ref=e19]: No workspace
+    - generic:
+      - button "Open sessions" [ref=e20] [cursor=pointer]
+      - button "Go to a view" [ref=e21] [cursor=pointer]
+      - button "Show Actions" [ref=e22] [cursor=pointer]
+  - heading "Projects Add project" [level=2] [ref=e28]:
+    - generic [ref=e29]: Projects
+    - button "Add project" [ref=e30] [cursor=pointer]:
+      - generic [ref=e31]: +
+  - generic [ref=e34]: Loading projects…

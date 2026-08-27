@@ -258,10 +258,15 @@ export const listStyles = css`
   /* Touch needs a bigger target than a mouse; 32px is the smallest a finger
      hits reliably next to a tile's own tap area. */
   @media (pointer: coarse) {
+    .list-body.tiles { --pi-tile-menu-size: 36px; --pi-tile-menu-inset: 4px; }
     .list-body.tiles .action-menu-toggle { height: 36px; min-width: 36px; }
     .list-body.tiles .action-menu { top: 4px; right: 4px; }
   }
-  .list-body.tiles .action-activity { top: 7px; right: 32px; }
+  /* Clear of the actions button rather than a guess at its width: it is 32px
+     wide, 36px on a touch screen, and the dot was pinned at 32px from the same
+     edge, which put most of it on the button. */
+  .list-body.tiles { --pi-tile-menu-size: 32px; --pi-tile-menu-inset: 6px; }
+  .list-body.tiles .action-activity { top: 7px; right: calc(var(--pi-tile-menu-inset) + var(--pi-tile-menu-size) + var(--pi-space-3)); }
   button { font: var(--pi-text-xs) var(--pi-font-ui); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
   section > button { display: block; width: 100%; text-align: left; margin: var(--pi-space-3) 0; }
   .subheading { margin-top: var(--pi-space-7); }
