@@ -1,5 +1,23 @@
 # @jmfederico/pi-web
 
+## 1.202608.49
+
+### Patch Changes
+
+- 0192eea: Dictation has no button of its own. Holding the composer starts it, and a control appears only while recording, so there is a way to stop.
+
+  Nothing floats over the composer text any more, so the strip of padding reserved for the buttons that used to sit there is gone.
+
+  The header's actions take less room on a phone. At 393px the bar was exactly full, and every pixel the fixed-size buttons took came out of the words saying which machine, project and session you are in.
+
+  A reply that finishes after you have typed again lands above your new message rather than below it: the bubble the browser draws now carries the moment it was written, which is what placement needs.
+
+  Drawer section names keep their counts. Letting them shrink cut them to "ACTIVITY (...", losing the number.
+
+- 420fee2: The bottom of the page stops sliding off screen. A phone hides its address bar as you scroll, which changes the layout viewport without touching the visual one, and only the visual viewport was being watched — so the shell kept a height the screen no longer had until a keyboard was opened and closed by hand.
+
+  Dictation is a button again. Starting it by holding the composer was tried and taken back: holding a text field is how a phone selects text, and the two gestures fought over the same press.
+
 ## 1.202608.48
 
 ### Patch Changes
