@@ -1,5 +1,16 @@
 # @jmfederico/pi-web
 
+## 1.202608.41
+
+### Patch Changes
+
+- d6453e0: A button returns you to the newest message, shown only while it is a screenful
+  or more away.
+
+  The "Session daemon unavailable" banner now withdraws itself once the daemon is
+  back. It previously stayed until it was clicked, because the self-healing rule
+  recognised only one of the wordings the server sends.
+
 ## 1.202608.40
 
 ### Patch Changes
