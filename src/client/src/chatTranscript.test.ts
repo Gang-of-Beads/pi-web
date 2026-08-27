@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { SessionUiEvent } from "../../shared/apiTypes";
 import { ASK_USER_ANSWERS_CUSTOM_TYPE, type AskUserOutcome } from "../../shared/apiTypes";
 import { groupChatMessages } from "./chatGroups";
 import { normalizeMessages, textMessage } from "./chatMessages";
@@ -696,3 +697,53 @@ describe("a reply that finished after a message was sent", () => {
     expect(withReply.map((line) => line.role)).toEqual(["assistant", "user"]);
   });
 });
+
+describe("the same assistant message delivered twice", () => {
+  /**
+   * Duplicate detection only ever looked at user messages, so a reply that
+   * arrived a second time - a redelivered event, a reload landing beside a
+   * live one - was appended again. Consecutive same-role lines merge, so it
+   * only became visible when something else arrived between them: a tool
+   * event, and then the same reply word for word a second time.
+   *
+   * Reported six times before it was found.
+   */
+  it("is not appended a second time when an event lands between", () => {
+    const reply = {
+      role: "assistant",
+      content: [{ type: "text", text: "the same words" }],
+      timestamp: "2026-08-28T01:08:49.000Z",
+    };
+
+    let messages = appended([], reply);
+    messages = toolStarted(messages);
+    messages = appended(messages, reply);
+
+    expect(messages.filter((line) => line.role === "assistant")).toHaveLength(1);
+  });
+
+  /**
+   * Saying the same thing twice on purpose is a different message, and it
+   * carries its own moment.
+   */
+  it("keeps a genuinely repeated reply", () => {
+    const first = { role: "assistant", content: [{ type: "text", text: "again" }], timestamp: "2026-08-28T01:08:49.000Z" };
+    const later = { role: "assistant", content: [{ type: "text", text: "again" }], timestamp: "2026-08-28T01:09:30.000Z" };
+
+    let messages = appended([], first);
+    messages = toolStarted(messages);
+    messages = appended(messages, later);
+
+    expect(messages.filter((line) => line.role === "assistant")).toHaveLength(2);
+  });
+});
+
+function appended(messages: ChatLine[], message: unknown): ChatLine[] {
+  const event: SessionUiEvent = { type: "message.append", message };
+  return applyTranscriptEvent(messages, event) ?? messages;
+}
+
+function toolStarted(messages: ChatLine[]): ChatLine[] {
+  const event: SessionUiEvent = { type: "tool.start", toolCallId: "t1", toolName: "bash", args: {}, summary: "bash" };
+  return applyTranscriptEvent(messages, event) ?? messages;
+}

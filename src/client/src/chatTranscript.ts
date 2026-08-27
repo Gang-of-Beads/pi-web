@@ -1,4 +1,5 @@
 import { appendText, appendThinking, askUserRecordFromToolDetails, normalizeMessage, normalizeMessages, previewFromDetails, summarizeArgs, textMessage } from "./chatMessages";
+import { resolveArrival } from "./transcriptArrival";
 import { placeByTimestamp } from "./transcriptOrder";
 import type { ChatLine, ToolExecutionPart } from "./components/shared";
 import { carryDeliveryForward, findTrackedUserLineIndex, isEchoOfTrackedMessage } from "./messageDelivery";
@@ -342,7 +343,7 @@ function sameMessageText(left: ChatLine, right: ChatLine): boolean {
   return messageText(left) === messageText(right);
 }
 
-function messageText(message: ChatLine): string {
+export function messageText(message: ChatLine): string {
   return message.parts
     .filter((part): part is Extract<ChatLine["parts"][number], { type: "text" }> => part.type === "text")
     .map((part) => part.text)
@@ -352,40 +353,13 @@ function messageText(message: ChatLine): string {
 function appendNewMessage(messages: ChatLine[], rawMessage: unknown, clientMessageId?: string, isEcho = false): ChatLine[] {
   const lines = normalizeMessage(rawMessage);
   if (lines.length === 0) return messages;
-  // Mark the server's optimistic copy so the agent's later, committed copy can
-  // replace it instead of appearing as a second message. Without this, a client
-  // that did not send the prompt (another device, or this one after a reload)
-  // has no way to tell the two apart, and both render.
   if (isEcho) return appendEchoedMessage(messages, lines, clientMessageId);
-  const superseded = findEchoLineIndex(messages, lines[0]);
-  if (superseded !== -1) {
-    const previous = messages[superseded];
-    const committed = lines[0];
-    if (previous !== undefined && committed !== undefined) {
-      return [...messages.slice(0, superseded), carryDeliveryForward(previous, committed), ...messages.slice(superseded + 1), ...lines.slice(1)];
-    }
+
+  const outcome = resolveArrival({ transcript: messages, lines, clientMessageId });
+  if (outcome.kind === "ignore") return messages;
+  if (outcome.kind === "replace") {
+    return [...messages.slice(0, outcome.at), outcome.line, ...messages.slice(outcome.at + 1), ...outcome.rest];
   }
-  // The sender already rendered this message the moment it was sent, and both
-  // the server echo and the agent's committed copy come back afterwards. The
-  // correlation id resolves it exactly; text matching is the fallback for a
-  // copy that carries no id (the agent's own), and unlike the old trailing-line
-  // check it still holds when tool or assistant lines land in between.
-  if (isEchoOfTrackedMessage(messages, clientMessageId)) return messages;
-  const firstNew = lines[0];
-  if (firstNew?.role === "user") {
-    const newText = messageText(firstNew);
-    if (newText !== "" && messages.some((line) => line.role === "user" && line.meta?.delivery !== undefined && messageText(line) === newText)) {
-      return messages;
-    }
-    // Untracked echo of the immediately preceding line (another client's send,
-    // or a reload that dropped delivery state).
-    const last = messages.at(-1);
-    if (last?.role === "user" && newText !== "" && messageText(last) === newText) return messages;
-  }
-  // A streaming reply only arrives once it has finished, so a message sent
-  // while one was in flight would otherwise sit above the reply that started
-  // before it - the transcript claiming the user spoke first when the record
-  // says otherwise.
   return lines.reduce<ChatLine[]>((transcript, line) => placeByTimestamp(transcript, line), messages);
 }
 

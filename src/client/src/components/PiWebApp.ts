@@ -1,4 +1,5 @@
 import { css, LitElement, html, type TemplateResult } from "lit";
+import { RetiredBy } from "../notice";
 import { clearPlaceholderFrame, notePlaceholderFrame } from "../historyWrites";
 import { bannerHoldDecision } from "./bannerHold";
 import { routeMatchesUrl } from "../routeMatch";
@@ -173,6 +174,9 @@ export const appStyles = css`
     .context-bar { display: flex; }
     main.navigation-view chat-view, main.navigation-view prompt-editor, main.navigation-view status-bar,
     main.navigation-view .empty { display: none; }
+    /* One place at a time: a div shows by default, so without this the session
+       list sat above the conversation and left it a strip at the bottom. */
+    main:not(.navigation-view) .mobile-navigation-panel { display: none; }
     main.navigation-view .mobile-navigation-panel { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
     main.navigation-view .mobile-navigation-panel app-navigation-panel { flex: 1 1 auto; min-height: 0; }
   }
@@ -850,7 +854,7 @@ export class PiWebApp extends LitElement {
 
   /** Withdraw a transport complaint that a successful exchange has disproved. */
   private clearTransientError(): void {
-    if (this.state.error === "" || !isTransientError(this.state.error)) return;
+    if (this.state.error === "" || this.state.errorRetiredBy !== RetiredBy.reply) return;
     if (this.transientErrorTimer !== undefined) {
       window.clearTimeout(this.transientErrorTimer);
       this.transientErrorTimer = undefined;

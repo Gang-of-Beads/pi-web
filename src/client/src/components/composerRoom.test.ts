@@ -148,3 +148,20 @@ describe("the unread dot on a project tile", () => {
     expect(rule).toMatch(/--pi-tile-menu-size/u);
   });
 });
+
+describe("the mobile navigation panel", () => {
+  /**
+   * A phone shows one place at a time: the list, or the conversation. The panel
+   * had a rule that laid it out inside the navigation view and no rule that
+   * took it away anywhere else, and a div defaults to being shown - so the
+   * session list sat above the conversation, leaving the conversation a strip
+   * at the bottom of the screen and neither surface making sense.
+   */
+  it("is shown only in the view that is about navigating", () => {
+    const app = /main\.navigation-view \.mobile-navigation-panel[^}]*\}/u.exec(sheets)?.[0] ?? "";
+    const hidden = /main:not\(\.navigation-view\) \.mobile-navigation-panel\s*\{[^}]*display:\s*none/u.exec(sheets)?.[0] ?? "";
+
+    expect(app).not.toBe("");
+    expect(hidden).not.toBe("");
+  });
+});

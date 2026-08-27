@@ -1,4 +1,5 @@
 import { css, svg, type TemplateResult } from "lit";
+import type { ChatRole } from "../chatRole";
 import type { AskUserOutcome } from "../../../shared/apiTypes";
 import type { SessionWarningSeverity } from "../api";
 
@@ -77,7 +78,7 @@ export interface MessageDelivery {
 }
 
 export interface ChatLine {
-  role: "user" | "assistant" | "tool" | "system" | "bash" | "skill";
+  role: ChatRole;
   parts: ChatPart[];
   source?: "compaction" | "branch_summary";
   meta?: {

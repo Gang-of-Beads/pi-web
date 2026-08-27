@@ -1,4 +1,5 @@
 import type { AuthProviderOption, CommandOption, CommandResult, ExtensionDialogAnswer, ExtensionDialogCloseReason, FileContentResponse, FileTreeEntry, GoalRecordSummary, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingAskUser, PendingExtensionDialog, PiWebSelfUpdateStatus, PiWebStatusResponse, Project, QueuedSessionMessage, SessionActivity, SessionInfo, SessionModelCatalogEntry, SessionStatus, SessionBackgroundTaskInfo, SessionSubagentInfo, SessionSubagentRunInfo, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";import type { ChatLine } from "./components/shared";
+import { RetiredBy } from "./notice";
 import type { MachineStatusSnapshot } from "../../shared/machineStatus";
 import type { QualifiedContributionId } from "./plugins/ids";
 import type { SelectedSessionNotificationInbox } from "./sessionNotifications";
@@ -108,6 +109,8 @@ export interface AppState {
   selectedTerminalId: string | undefined;
   piWebStatus: PiWebStatusResponse | undefined;
   error: string;
+  /** What retires the error notice; see notice.ts. */
+  errorRetiredBy: RetiredBy;
 }
 
 /** A closed extension dialog paired with the record the browser rendered while it was open. */
@@ -230,5 +233,6 @@ export function initialAppState(): AppState {
     selectedTerminalId: undefined,
     piWebStatus: undefined,
     error: "",
+    errorRetiredBy: RetiredBy.reader,
   };
 }

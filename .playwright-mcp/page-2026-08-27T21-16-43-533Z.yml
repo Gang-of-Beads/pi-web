@@ -1,0 +1,26 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - strong [ref=e7]: PI WEB
+        - generic [ref=e8]:
+          - button "Open settings" [ref=e9] [cursor=pointer]: ⚙
+          - button "Show Actions" [ref=e10] [cursor=pointer]: Actions
+      - navigation "Current context" [ref=e12]:
+        - generic [ref=e14]:
+          - 'button "Machine: hxd-work-mbp. Change it" [ref=e15] [cursor=pointer]':
+            - generic [ref=e16]: hxd-work-mbp
+          - button "Add machine" [ref=e17] [cursor=pointer]: +
+        - generic [ref=e19]:
+          - button "Choose project" [expanded] [ref=e20] [cursor=pointer]
+          - button "Add project" [ref=e22] [cursor=pointer]: +
+        - button "Choose workspace" [ref=e25] [cursor=pointer]
+      - heading "Projects" [level=2] [ref=e29]
+  - generic [ref=e32]:
+    - separator "Resize navigation panel" [ref=e33]
+    - button "Collapse navigation panel" [expanded] [ref=e34] [cursor=pointer]
+  - main [ref=e35]:
+    - generic [ref=e36]: Loading projects…
+  - generic [ref=e37]:
+    - separator "Resize workspace panel" [ref=e38]
+    - button "Collapse workspace panel" [expanded] [ref=e39] [cursor=pointer]
