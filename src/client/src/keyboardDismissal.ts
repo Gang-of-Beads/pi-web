@@ -41,3 +41,22 @@ export function dismissKeyboardIfRaised(root: Document = document): void {
   if (!shouldDismissKeyboard(facts)) return;
   if (active instanceof HTMLElement) active.blur();
 }
+
+/**
+ * What the session switcher should focus when it opens.
+ *
+ * Focusing the search box is right where typing is how you got there: the
+ * shortcut opens the switcher and the reader carries on typing. On a touch
+ * screen it raised the on-screen keyboard over the list the switcher exists to
+ * show, hiding half the sessions behind a keyboard nobody asked for, when the
+ * reader usually just wants to tap one. The keyboard is one tap away for
+ * anyone who does want to search.
+ */
+export function switcherInitialFocus(environment: { touchPrimary: boolean }): string | undefined {
+  return environment.touchPrimary ? undefined : "input";
+}
+
+/** Whether this device's main pointer is a finger. */
+export function touchPrimaryPointer(view: Pick<Window, "matchMedia"> = window): boolean {
+  return view.matchMedia("(pointer: coarse)").matches;
+}

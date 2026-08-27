@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { switcherInitialFocus } from "./keyboardDismissal";
 import { shouldDismissKeyboard } from "./keyboardDismissal";
 
 /**
@@ -33,5 +34,24 @@ describe("dismissing the on-screen keyboard", () => {
 
   it("has nothing to dismiss when nothing is focused", () => {
     expect(shouldDismissKeyboard(undefined)).toBe(false);
+  });
+});
+
+describe("what the session switcher should focus when it opens", () => {
+  /**
+   * The switcher focused its search box on open, which is right on a desktop:
+   * the shortcut opens it and the reader types. On a phone it raised the
+   * on-screen keyboard over the list the switcher exists to show, so half the
+   * sessions were hidden behind a keyboard nobody had asked for - and the
+   * reader usually just wants to tap one.
+   *
+   * The keyboard is one tap away for anyone who does want to search.
+   */
+  it("focuses the search box where typing is how you got here", () => {
+    expect(switcherInitialFocus({ touchPrimary: false })).toBe("input");
+  });
+
+  it("focuses nothing on a touch screen, so the keyboard stays down", () => {
+    expect(switcherInitialFocus({ touchPrimary: true })).toBe(undefined);
   });
 });
