@@ -450,7 +450,12 @@ export class ExtensionDialogCard extends LitElement {
       /* Every actionable control is a touch target on a phone, not just the
          primary one: the options are the whole point of a select dialog. */
       .primary-action, .secondary-action, .option-button { min-height: 42px; }
-      .dialog-detail { max-height: min(40vh, 320px); }
+      /* A cap alone contains nothing: overflow is visible by default, so the
+         text kept painting past the bottom of its box and straight through the
+         option buttons below it. A goal draft showed its wording between and
+         behind the answers. A height limit has to say what happens to what
+         does not fit. */
+      .dialog-detail { max-height: min(40vh, 320px); overflow-y: auto; overscroll-behavior: contain; }
     }
   `;
 }

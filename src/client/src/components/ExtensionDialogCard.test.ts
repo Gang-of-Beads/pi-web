@@ -400,3 +400,23 @@ function closedDialog(reason: ClosedExtensionDialog["reason"], answer?: ClosedEx
     ...(answer === undefined ? {} : { answer }),
   };
 }
+
+describe("a dialog whose text is longer than the room it was given", () => {
+  /**
+   * On a phone the detail is capped at 40vh so the options stay reachable. But
+   * a cap alone does not contain anything: overflow is visible by default, so
+   * the text kept painting past the bottom of its box and straight through the
+   * option buttons below it. A goal draft - which is pages of objective and
+   * constraints - showed its wording between and behind "Confirm", "Continue
+   * chatting" and "Cancel".
+   *
+   * A height limit has to say what happens to what does not fit.
+   */
+  it("scrolls the detail it has capped rather than letting it paint over the options", () => {
+    const sheet = String(ExtensionDialogCard.styles);
+    const capped = /\.dialog-detail\s*\{[^}]*max-height[^}]*\}/u.exec(sheet)?.[0] ?? "";
+
+    expect(capped).not.toBe("");
+    expect(capped).toMatch(/overflow-y:\s*auto/u);
+  });
+});
