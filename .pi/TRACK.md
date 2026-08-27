@@ -72,7 +72,9 @@
   - 截图 2:46:圆钮与跨屏宽的 "receiving response" 状态条重合
   - 回底按钮在 `.chat-wrap` 内(`position: relative`),状态条是它的**兄弟节点且在流内**,两者不共享定位上下文;实测 overlaps=[]
   - 若你仍能看到重叠,需要当时的屏宽与状态条文案
-- [ ] **抽屉展开后不能切 ACTIVITY/GOALS/NOTIFICATIONS** —— 待复现。标签条始终渲染,是横向滚动条(`overflow-x: auto`),预览无活动数据无法验证
+- [ ] **抽屉展开后不能切 ACTIVITY/GOALS/NOTIFICATIONS** —— 待复现
+  - `scripts/verify-drawer-tabs-stay.mjs`:展开前后分区数不减即通过;**少于两个分区时判"无法作答"而非通过**
+  - 预览实例只有 1 个分区(Activity),证明不了"展开后少了分区",需要你那台有 GOALS/NOTIFICATIONS 的实例
   - 截图 2:44:展开后顶部只剩范围码(All 205 / Subagents 1 / Agent runs 14 / Tasks 190),标签条不见了
 - [x] **层级失控** —— 原本 10001/10000/100/50/40/30/26/25/20/15/10 各写各的,**`AuthDialog` 只有 10,被 QuickSwitcher(25)盖住**:让你重新登录的框开在你正在读的面板后面
   - 改为一条尺度(`index.html` 的 `:root`),按"打断到什么程度"分层:raised 10 / sticky 20 / popover 30 / overlay 40 / dialog 50 / blocking 60
@@ -93,6 +95,12 @@
   - 变异检验:改回"永远列会话"立刻 FAIL
 - [~] **761–1180px 死胡同** —— **证伪**。实测 700/900/1100/1200px 每档都有出口(`scripts/verify-navigation-reach.mjs`)。那条 `max-width:1180px` 隐藏的 `header` 不是应用外壳的那个,报告的推断没落到实处
 - [~] **跨机器加载 / 消除 N+1** —— 推迟 —— 服务端函数就绪(实测 34ms vs 395ms,11.6×),未接线;接口加到 gateway 会牵动 6 文件 40 处测试替身
+
+## 已量过、未发现缺陷(不改)
+
+- 竖直空间:对话占屏高 **65%**(469/727),上下文条 53 + 抽屉 53 + 输入区 119 + 状态条 32(`scripts/verify-vertical-budget.mjs`)
+- 输入区控件行:381px 宽、**零溢出**,五个控件全可见;320/360/393 三档发送键均在
+- 回底按钮与状态条:构造上不可能重叠(兄弟节点、不共享定位上下文)
 
 ## 待用户验收
 
