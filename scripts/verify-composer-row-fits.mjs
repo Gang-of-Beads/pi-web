@@ -17,6 +17,10 @@ let failed = false;
 for (const width of [320, 360, 393]) {
   const ctx = await b.newContext({ viewport: { width, height: 760 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
   const p = await ctx.newPage();
+  // The reader can scale the interface. Type grows but the row does not, so a
+  // row that fits at 100% is not evidence that it fits at all.
+  const scale = process.argv[3] ?? "1";
+  await p.addInitScript((value) => { window.localStorage.setItem("pi-web-app-scale", value); }, scale);
   await p.goto(`http://127.0.0.1:${port}/?project=${P}&workspace=${W}&session=${S}`, { waitUntil: "networkidle" });
   await p.waitForTimeout(3000);
 
@@ -32,6 +36,13 @@ for (const width of [320, 360, 393]) {
   });
   if (!driven) { console.error(`FAIL: ${width}px - no composer, so nothing was measured`); failed = true; await ctx.close(); continue; }
   await p.waitForTimeout(500);
+
+  // A scale that did not take hold would make every measurement below a lie.
+  const applied = await p.evaluate(() => String(getComputedStyle(document.documentElement).zoom ?? ""));
+  if (scale !== "1" && (applied === "" || applied === "1" || applied === "normal")) {
+    console.error(`FAIL: asked for scale ${scale} but the document reports ${applied || "nothing"}, so this run proves nothing`);
+    failed = true;
+  }
 
   const row = await p.evaluate(() => {
     const editor = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("prompt-editor")?.shadowRoot;
@@ -70,7 +81,7 @@ for (const width of [320, 360, 393]) {
   if (row === undefined) { console.error(`FAIL: ${width}px - no control row`); failed = true; await ctx.close(); continue; }
   const offScreen = row.controls.filter((control) => !control.onScreen || !control.visible).map((control) => control.name);
   const send = row.controls.find((control) => control.name.toLowerCase().includes("send") || control.name.toLowerCase().includes("steer"));
-  console.log(`${width}px  控件=${row.controls.length}  溢出=${row.overflow}  看不见=${offScreen.length === 0 ? "无" : JSON.stringify(offScreen)}  发送键=${send === undefined ? "缺失" : `可见${String(send.visible)}/可用${String(send.enabled)}`}`);
+  console.log(`${width}px x${process.argv[3] ?? "1"}  控件=${row.controls.length}  溢出=${row.overflow}  看不见=${offScreen.length === 0 ? "无" : JSON.stringify(offScreen)}  发送键=${send === undefined ? "缺失" : `可见${String(send.visible)}/可用${String(send.enabled)}`}`);
   if (send === undefined || !send.visible) { console.error(`  FAIL: no usable send control at ${width}px while the agent is answering`); failed = true; }
   if (row.collisions.length > 0) { console.error(`  FAIL: controls overlap each other: ${row.collisions.join(", ")}`); failed = true; }
   if (row.room !== null && row.room < 0) { console.error(`  FAIL: the row runs ${String(-row.room)}px past the composer`); failed = true; }
