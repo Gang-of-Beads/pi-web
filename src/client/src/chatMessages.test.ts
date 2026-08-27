@@ -290,3 +290,16 @@ describe("thinking that arrives while a message waits", () => {
     expect(after.at(-1)).toBe(queued);
   });
 });
+
+describe("thinking that lands on an assistant line with other parts", () => {
+  it("keeps a waiting message instead of dropping it", () => {
+    const queued: ChatLine = {
+      role: "user",
+      parts: [{ type: "text", text: "waiting" }],
+      meta: { delivery: { clientMessageId: "cm-1", state: "queued" } },
+    };
+    const before: ChatLine[] = [{ role: "assistant", parts: [{ type: "text", text: "said something" }] }, queued];
+
+    expect(appendThinking(before, "now thinking")).toHaveLength(2);
+  });
+});

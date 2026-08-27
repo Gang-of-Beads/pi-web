@@ -61,7 +61,7 @@ export function appendThinking(messages: ChatLine[], text: string): ChatLine[] {
       ...tail,
     ];
   }
-  if (last?.role === "assistant") return [...head.slice(0, -1), { ...last, parts: [...last.parts, { type: "thinking", text }] }];
+  if (last?.role === "assistant") return [...head.slice(0, -1), { ...last, parts: [...last.parts, { type: "thinking", text }] }, ...tail];
   return [...head, { role: "assistant", parts: [{ type: "thinking", text }] }, ...tail];
 }
 
