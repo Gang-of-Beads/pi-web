@@ -1,4 +1,5 @@
 import { RowMenuGestures } from "./rowMenuGestures";
+import { filterMachines, shouldShowContextSearch } from "../contextSearch";
 import { LitElement, css, html, type PropertyValues, nothing} from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { Machine, MachineHealth } from "../api";
@@ -12,6 +13,8 @@ import { listStyles } from "./shared";
 @customElement("machine-list")
 export class MachineList extends LitElement implements KeyboardNavigableSection {
   @property({ attribute: false }) machines: Machine[] = [];
+  /** What the reader has typed to narrow a long fleet. */
+  @state() private searchQuery = "";
   @property({ attribute: false }) selected?: Machine;
   @property({ attribute: false }) statuses: Record<string, MachineHealth> = {};
   /** Per-machine status trees, keyed by machine id; a machine without one shows no indicator. */
@@ -60,13 +63,38 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
     return focusSelectedOrFirstSelectableRow(this.renderRoot, { fallbackSelector: ".section-toggle" });
   }
 
+  /** Shown once the fleet is long enough to scan, and while a query is active. */
+  private renderSearch() {
+    if (!shouldShowContextSearch(this.machines.length, this.searchQuery)) return null;
+    const hasQuery = this.searchQuery !== "";
+    return html`
+      <div class="list-search">
+        <input
+          class="list-search-input"
+          type="search"
+          inputmode="search"
+          autocomplete="off"
+          spellcheck="false"
+          enterkeyhint="search"
+          aria-label="Search machines"
+          placeholder="Search machines"
+          .value=${this.searchQuery}
+          @input=${(event: Event) => { if (event.target instanceof HTMLInputElement) this.searchQuery = event.target.value; }}
+          @keydown=${(event: KeyboardEvent) => { if (event.key === "Escape") { event.stopPropagation(); this.searchQuery = ""; } }}
+        >
+        ${hasQuery ? html`<button class="list-search-clear" title="Clear search" aria-label="Clear search" @click=${() => { this.searchQuery = ""; }}>×</button>` : null}
+      </div>
+    `;
+  }
+
   override render() {
     return html`
       <section>
         <h2>${this.renderHeading()}${this.renderAdd()}</h2>
         ${this.collapsed ? null : html`
+          ${this.renderSearch()}
           <div class="list-body">
-            ${this.machines.map((machine) => this.renderMachine(machine))}
+            ${filterMachines(this.machines, this.searchQuery).map((machine) => this.renderMachine(machine))}
           </div>
         `}
       </section>

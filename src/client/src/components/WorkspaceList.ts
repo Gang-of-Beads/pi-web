@@ -1,4 +1,5 @@
 import { RowMenuGestures } from "./rowMenuGestures";
+import { filterWorkspaces, shouldShowContextSearch } from "../contextSearch";
 import { LitElement, css, html, type PropertyValues, type TemplateResult, nothing} from "lit";import { customElement, property, state } from "lit/decorators.js";
 import { trustApi } from "../api";
 import type { Workspace } from "../api";
@@ -30,6 +31,8 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
   @property({ type: Boolean, reflect: true }) collapsed = false;
   /** Render rows as a responsive tile grid instead of full-width rows. */
   @property({ type: Boolean }) tiles = false;
+  /** What the reader has typed to narrow a long list of worktrees. */
+  @state() private searchQuery = "";
   @property({ attribute: false }) workspaceLabelItems: (workspace: Workspace) => WorkspaceLabelItem[] = () => [];
   /** Status tree of the machine these workspaces belong to; absent means no indicators. */
   @property({ attribute: false }) statusSnapshot: MachineStatusSnapshot | undefined;
@@ -84,13 +87,44 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
     return focusSelectedOrFirstSelectableRow(this.renderRoot, { fallbackSelector: ".section-toggle" });
   }
 
+  /**
+   * The search field, shown once the list is long enough to be a nuisance to
+   * scan and while a query is active so it can always be cleared.
+   *
+   * A project with dozens of worktrees is the case this exists for: branch
+   * names differ in the middle, so scrolling past them reads every one.
+   */
+  private renderSearch() {
+    if (!shouldShowContextSearch(this.workspaces.length, this.searchQuery)) return null;
+    const hasQuery = this.searchQuery !== "";
+    return html`
+      <div class="list-search">
+        <input
+          class="list-search-input"
+          type="search"
+          inputmode="search"
+          autocomplete="off"
+          spellcheck="false"
+          enterkeyhint="search"
+          aria-label="Search workspaces"
+          placeholder="Search workspaces"
+          .value=${this.searchQuery}
+          @input=${(event: Event) => { if (event.target instanceof HTMLInputElement) this.searchQuery = event.target.value; }}
+          @keydown=${(event: KeyboardEvent) => { if (event.key === "Escape") { event.stopPropagation(); this.searchQuery = ""; } }}
+        >
+        ${hasQuery ? html`<button class="list-search-clear" title="Clear search" aria-label="Clear search" @click=${() => { this.searchQuery = ""; }}>×</button>` : null}
+      </div>
+    `;
+  }
+
   override render() {
     return html`
       <section>
         <h2>${this.renderHeading()}</h2>
         ${this.collapsed ? null : html`
+          ${this.renderSearch()}
           <div class="list-body ${this.tiles ? "tiles" : ""}">
-            ${this.workspaces.map((workspace) => {
+            ${filterWorkspaces(this.workspaces, this.searchQuery).map((workspace) => {
               const label = workspacePrimaryLabel(workspace);
               const items = this.workspaceLabelItems(workspace);
               return html`
