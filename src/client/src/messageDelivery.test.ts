@@ -217,3 +217,47 @@ describe("optimisticUserLine with attachments", () => {
     expect(optimisticUserLine("just words", "c3").parts).toEqual([{ type: "text", text: "just words" }]);
   });
 });
+
+describe("a queued message that already has a bubble", () => {
+  /**
+   * The queue is matched to bubbles by client id, and only bubbles already
+   * marked queued were considered. A message still marked sending - the state
+   * it holds between leaving the browser and the next status frame - matched
+   * nothing, so a second row was synthesized for it and the same words
+   * appeared twice, one above the other.
+   *
+   * The server also lists messages queued by other callers, which carry no id
+   * at all. Those must still find their bubble here rather than duplicate it.
+   */
+  it("does not draw a second row for a message still marked sending", () => {
+    const messages: ChatLine[] = [
+      { role: "user", parts: [{ type: "text", text: "do the thing" }], meta: { delivery: { clientMessageId: "cm-1", state: "sending", kind: "steer" } } },
+    ];
+    const queued = [{ text: "do the thing", kind: "steer" as const, clientMessageId: "cm-1" }];
+
+    expect(transcriptWithPendingInQueueOrder(messages, queued)).toHaveLength(1);
+  });
+
+  it("finds the bubble for a queue entry that carries no id", () => {
+    const messages: ChatLine[] = [
+      { role: "user", parts: [{ type: "text", text: "do the thing" }], meta: { delivery: { clientMessageId: "cm-1", state: "queued", kind: "steer" } } },
+    ];
+    const queued = [{ text: "do the thing", kind: "steer" as const }];
+
+    expect(transcriptWithPendingInQueueOrder(messages, queued)).toHaveLength(1);
+  });
+
+  /**
+   * Two identical texts are two messages. Matching by words must not collapse
+   * them into one.
+   */
+  it("keeps two identical messages as two", () => {
+    const messages: ChatLine[] = [
+      { role: "user", parts: [{ type: "text", text: "again" }], meta: { delivery: { clientMessageId: "cm-1", state: "queued", kind: "steer" } } },
+      { role: "user", parts: [{ type: "text", text: "again" }], meta: { delivery: { clientMessageId: "cm-2", state: "queued", kind: "steer" } } },
+    ];
+    const queued = [{ text: "again", kind: "steer" as const }, { text: "again", kind: "steer" as const }];
+
+    expect(transcriptWithPendingInQueueOrder(messages, queued)).toHaveLength(2);
+  });
+});

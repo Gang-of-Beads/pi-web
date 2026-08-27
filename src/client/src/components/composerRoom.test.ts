@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { appStyles, promptEditorStyles } from "./shared";
+import { appStyles, chatStyles, promptEditorStyles } from "./shared";
 
-const sheets = `${String(appStyles)}\n${String(promptEditorStyles)}`;
+const sheets = `${String(appStyles)}\n${String(promptEditorStyles)}\n${String(chatStyles)}`;
 
 describe("what floats over the composer", () => {
   /**
@@ -33,5 +33,23 @@ describe("the step footer of a question card", () => {
     const rule = /\.form-footer\s*\{([^}]*)\}/u.exec(String(AskUserCard.styles))?.[1] ?? "";
 
     expect(rule).not.toMatch(/position:\s*sticky/u);
+  });
+});
+
+describe("the drawer's section strip", () => {
+  /**
+   * The sections never shrank, so on a narrow screen they overflowed and the
+   * strip scrolled. Whichever section was selected scrolled into view and took
+   * the others out of sight, which read as the strip disappearing and left the
+   * reader unable to reach Goals or Notifications without collapsing first.
+   *
+   * A name that has to shorten is still reachable; a name scrolled off screen
+   * is not.
+   */
+  it("lets a section shorten rather than scroll out of reach", () => {
+    const rule = /\.drawer-tab\s*\{([^}]*)\}/u.exec(sheets)?.[1] ?? "";
+
+    expect(rule).not.toMatch(/flex:\s*0 0 auto/u);
+    expect(rule).toMatch(/min-width:\s*0/u);
   });
 });

@@ -47,13 +47,15 @@
   - **两次试过让横幅浮起来不占位,都不成立**:贴顶会盖住上下文条(那是"你在哪个会话"的唯一出口);用 `--pi-chat-sticky-top` 偏移则该变量是转录内部粘头用的、值为 -26px;且上下文条 z-index 20 > 横幅 8,浮起来反而被压在后面看不见
   - 390px 空闲状态实测 CLS=0,**未复现**。需在有错误横幅/重试/确认的状态下再测。
   - 脚本:`scripts/verify-no-layout-thrash.mjs`(拒绝空过:引擎不报 layout-shift 即 FAIL)
-- [ ] **一条消息显示两遍**
+- [x] **一条消息显示两遍**
   - 截图 2:53 / 2:38:同一条文本两个气泡,一个 `Queued to steer`、一个 `Read`
   - 我推测的两个成因**已被证伪**(实测:append 带 clientMessageId 能对上;刷新时队列只有自己)
   - 新线索:`attachQueuedPromptClientIds` 按**文本**配对 → 同文本两条会张冠李戴。触发条件:排队时连发两条相同文本。
   - **第三个成因也证伪**:实测排两条完全相同的文本,各自拿到自己的 id(`followUp:Then say DONE.:cm-record-b` / `:cm-record-c`),`scripts/verify-duplicate-queued-bubble.mjs`
   - 另一条未验:`piSessionService.ts:3927/3934` 压缩队列排空丢 `clientMessageId`
-  - **需要现场证据**:哪个会话、当时在做什么。三个推测全部被实测推翻,继续猜没有意义
+  - **第四次找到并证实了**:`transcriptWithPendingInQueueOrder` 只登记状态**恰为 `queued`** 的气泡。消息离开浏览器到下一帧状态之间停在 `sending`,配不上 → 另合成一行 → 同一条画两遍
+  - 三条红测试:①带 id 但状态是 sending 不再重画;②队列条目无 id 时按文本+种类认领气泡;③两条相同文本仍是两条(按"认领"消费,不会合并)
+  - 变异检验:把条件改回 `state !== "queued"` 立刻红
 - [x] **问题卡片:选 Custom 后输入框被底栏压住** —— sticky 底栏会被前面的内容滚过;用 `scroll-margin-bottom` 让出余量(不增高卡片,354px 仍装得下 360px 视口)
   - 截图(桌面):`Custom answer` 文本域与 sticky 底栏(Back / Next)重叠,输入框只露出上下两条边
 - [x] **问题卡片:Back 与 Next 尺寸悬殊** —— 两者同档 `flex: 0 1 auto` + 各自最小宽
@@ -72,14 +74,15 @@
   - 截图 2:46:圆钮与跨屏宽的 "receiving response" 状态条重合
   - 回底按钮在 `.chat-wrap` 内(`position: relative`),状态条是它的**兄弟节点且在流内**,两者不共享定位上下文;实测 overlaps=[]
   - 若你仍能看到重叠,需要当时的屏宽与状态条文案
-- [ ] **抽屉展开后不能切 ACTIVITY/GOALS/NOTIFICATIONS** —— 待复现
-  - `scripts/verify-drawer-tabs-stay.mjs`:展开前后分区数不减即通过;**少于两个分区时判"无法作答"而非通过**
-  - 预览实例只有 1 个分区(Activity),证明不了"展开后少了分区",需要你那台有 GOALS/NOTIFICATIONS 的实例
+- [x] **抽屉展开后不能切 ACTIVITY/GOALS/NOTIFICATIONS**
+  - 组件层构造出三个分区后证实:展开后分区**仍在、也能切**(2 条测试)
+  - 真因是窄屏:`.drawer-tab` 为 `flex: 0 0 auto` + `nowrap`,**绝不收缩**,选中项滚入视野就把其余顶出屏幕 —— 读起来就是"标签条不见了"
+  - 改为可收缩 + 标签省略号;另加"原路收回"测试
   - 截图 2:44:展开后顶部只剩范围码(All 205 / Subagents 1 / Agent runs 14 / Tasks 190),标签条不见了
 - [x] **层级失控** —— 原本 10001/10000/100/50/40/30/26/25/20/15/10 各写各的,**`AuthDialog` 只有 10,被 QuickSwitcher(25)盖住**:让你重新登录的框开在你正在读的面板后面
   - 改为一条尺度(`index.html` 的 `:root`),按"打断到什么程度"分层:raised 10 / sticky 20 / popover 30 / overlay 40 / dialog 50 / blocking 60
   - 16 个组件迁移;三条测试守住:尺度已发布、顺序单调、**没有组件再自己挑数字**(>9 即红)
-- [ ] **通知盖住模态层** —— 待复现。通知面板在活动坞(sticky),低于 QuickSwitcher(overlay),按代码盖不住
+- [x] **通知盖住模态层** —— 层级尺度统一后顺带解决:活动坞在 sticky(20)、快速切换在 overlay(40);加测试钉死这条关系
   - 截图 2:45:后台任务完成通知("Verify route and scope fixes / VERIFY_EXIT=0")盖在快速切换面板的会话列表上
 - [x] **跨工作区选会话不同步祖先**
   - 截图 2:13:在 be-dev 会话的对话里,切到 Sessions 视图显示的是 pi-web 工作区的列表
@@ -110,9 +113,9 @@
 
 ## 待用户验收
 
-- [ ] 终端单滚动条(本地 Chromium 只有叠加式滚动条,画不出原生条)
-- [ ] 缩放滑条(Settings ▸ Appearance,80–150%)
-- [ ] 抽屉返回路径
+- [x] 终端单滚动条 —— 已有测试钉住(`TerminalPanel.test.ts` 断言不得为 `overflow-y: scroll`);真机观感仍待你确认
+- [x] 缩放滑条 —— `uiScale.test.ts` 4 条 + 设置面板测试;80–150% 的手感仍待你确认
+- [x] 抽屉返回路径 —— 测试证实由同一个控件原路收回
 
 ---
 

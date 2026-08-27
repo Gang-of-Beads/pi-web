@@ -249,3 +249,23 @@ describe("the layer scale", () => {
     expect(offScale).toEqual([]);
   });
 });
+
+/**
+ * The reported shape was a completion notice drawn over the session switcher.
+ * Notices live in the drawer that sticks to the top of the conversation, and a
+ * switcher covers the conversation entirely, so the two must not be on the
+ * same layer.
+ */
+describe("what a notice may cover", () => {
+  it("keeps the drawer below anything that covers the conversation", () => {
+    const chat = readFileSync(join(process.cwd(), "src/client/src/components/shared.ts"), "utf8");
+    const dock = /\.activity-dock\s*\{[^}]*z-index:\s*var\(--pi-layer-([a-z]+)\)/u.exec(chat)?.[1] ?? "";
+    const switcher = readFileSync(join(process.cwd(), "src/client/src/components/QuickSwitcher.ts"), "utf8");
+    const over = /:host\s*\{[^}]*z-index:\s*var\(--pi-layer-([a-z]+)\)/u.exec(switcher)?.[1] ?? "";
+
+    const order = ["raised", "sticky", "popover", "overlay", "dialog", "blocking"];
+
+    expect(order.indexOf(dock)).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf(dock)).toBeLessThan(order.indexOf(over));
+  });
+});

@@ -560,7 +560,11 @@ export const chatStyles = css`
   .drawer-tabs-frame.can-scroll-left::before, .drawer-tabs-frame.can-scroll-right::after { opacity: 1; }
   .drawer-tabs { min-width: 0; display: flex; align-items: center; gap: var(--pi-space-2); overflow-x: auto; scrollbar-width: none; }
   .drawer-tabs::-webkit-scrollbar { display: none; }
-  .drawer-tab { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: 28px; padding: var(--pi-space-2) var(--pi-space-5); border: 1px solid transparent; border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-2xs); font-weight: 600; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  /* A section that shortens stays reachable. Refusing to shrink pushed the
+     others off a narrow screen, where the selected one scrolled into view and
+     took the rest out of sight - which read as the strip disappearing. */
+  .drawer-tab-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .drawer-tab { flex: 0 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: 28px; padding: var(--pi-space-2) var(--pi-space-5); border: 1px solid transparent; border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-2xs); font-weight: 600; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .drawer-tab:hover { color: var(--pi-text-bright); }
   .drawer-tab:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
   .drawer-tab, .activity-filter, .activity-history-toggle { transition: background-color var(--pi-motion-fast) var(--pi-ease), border-color var(--pi-motion-fast) var(--pi-ease), color var(--pi-motion-fast) var(--pi-ease); }

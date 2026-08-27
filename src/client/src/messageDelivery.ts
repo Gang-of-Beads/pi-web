@@ -60,18 +60,34 @@ export function optimisticUserLine(text: string, clientMessageId: string, attach
  */
 export function transcriptWithPendingInQueueOrder(messages: readonly ChatLine[], queued: readonly QueuedSessionMessage[]): ChatLine[] {
   if (queued.length === 0) return [...messages];
+  // A bubble is a bubble whatever its mark says. Only queued ones used to
+  // count, so a message still marked sending - the state it holds between
+  // leaving the browser and the next status frame - matched nothing and got a
+  // second row synthesized beside it.
   const bubbles = new Map<string, ChatLine>();
+  const unclaimed: ChatLine[] = [];
   for (const line of messages) {
     const delivery = line.meta?.delivery;
-    if (delivery?.state === "queued") bubbles.set(delivery.clientMessageId, line);
+    if (delivery === undefined || delivery.state === "delivered" || delivery.state === "failed") continue;
+    bubbles.set(delivery.clientMessageId, line);
+    unclaimed.push(line);
   }
   const pending: ChatLine[] = [];
   for (const message of queued) {
-    const bubble = message.clientMessageId === undefined ? undefined : bubbles.get(message.clientMessageId);
-    pending.push(bubble ?? queuedUserLine(message));
+    const byId = message.clientMessageId === undefined ? undefined : bubbles.get(message.clientMessageId);
+    // Messages queued by another caller carry no id. Claim one unclaimed
+    // bubble with the same words, so two identical messages stay two.
+    const byWords = byId ?? unclaimed.find((line) => line.meta?.delivery?.kind === message.kind && chatLineText(line) === message.text);
+    if (byWords !== undefined) unclaimed.splice(unclaimed.indexOf(byWords), 1);
+    pending.push(byWords ?? queuedUserLine(message));
   }
   const moved = new Set(pending);
   return [...messages.filter((line) => !moved.has(line)), ...pending];
+}
+
+/** The words of a bubble, for matching a queue entry that carries no id. */
+function chatLineText(line: ChatLine): string {
+  return line.parts.filter((part) => part.type === "text").map((part) => part.text).join("");
 }
 
 /**
