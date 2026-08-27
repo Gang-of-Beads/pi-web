@@ -111,3 +111,4 @@ export function defaultRouteView(isMobileNavigationLayout: boolean, route: { rea
 export function autoFocusesComposer(environment: { touchPrimary: boolean; modalOpen: boolean }): boolean {
   return !environment.touchPrimary && !environment.modalOpen;
 }
+

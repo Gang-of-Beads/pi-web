@@ -342,3 +342,33 @@ describe("renamed sessions", () => {
     expect(renameSessionInList(sessions, "absent", "new name")).toBe(sessions);
   });
 });
+
+describe("filtering to a project whose workspaces have not arrived", () => {
+  /**
+   * The filter keeps a session when its cwd equals one of the project's
+   * workspace paths. Workspaces load per project, one request each, so before
+   * that project's response lands the set of paths is empty - and an empty set
+   * matches nothing. Picking a project showed "No sessions yet." for a project
+   * full of sessions, including the one the reader was sitting in.
+   *
+   * An empty set is the absence of an answer, not the answer "none". Until the
+   * workspaces are known the sessions cannot be judged, so they are shown.
+   */
+  const sessions = [
+    { id: "a", path: "/a.jsonl", cwd: "/repo/pi-web", name: "one", created: "2026-08-27T00:00:00.000Z", modified: "2026-08-27T00:00:00.000Z", messageCount: 1, firstMessage: "" },
+    { id: "b", path: "/b.jsonl", cwd: "/repo/other", name: "two", created: "2026-08-27T00:00:00.000Z", modified: "2026-08-27T00:00:00.000Z", messageCount: 1, firstMessage: "" },
+  ];
+
+  it("shows the sessions rather than claiming there are none", () => {
+    const filtered = quickSwitcherFilterSessions(sessions, { projectId: "pi-web" }, []);
+
+    expect(filtered.map((session) => session.id)).toEqual(["a", "b"]);
+  });
+
+  it("filters properly once the workspaces are known", () => {
+    const workspaces = [{ id: "w1", projectId: "pi-web", path: "/repo/pi-web", label: "main", isMain: true, effectiveConfig: {} }];
+    const filtered = quickSwitcherFilterSessions(sessions, { projectId: "pi-web" }, workspaces);
+
+    expect(filtered.map((session) => session.id)).toEqual(["a"]);
+  });
+});

@@ -169,9 +169,14 @@ export function quickSwitcherFilterSessions(
   filter: QuickSwitcherFilter,
   workspaces: readonly Workspace[],
 ): SessionInfo[] {
-  const projectPaths = filter.projectId === undefined
-    ? undefined
-    : new Set(workspaces.filter((workspace) => workspace.projectId === filter.projectId).map((workspace) => workspace.path));
+  // An empty set is the absence of an answer, not the answer "none". Workspaces
+  // load per project, one request each, so a project picked before its response
+  // lands has no known paths yet - and matching against nothing hid every
+  // session, including the one the reader was sitting in.
+  const knownPaths = new Set(
+    workspaces.filter((workspace) => workspace.projectId === filter.projectId).map((workspace) => workspace.path),
+  );
+  const projectPaths = filter.projectId === undefined || knownPaths.size === 0 ? undefined : knownPaths;
   return sessions.filter((session) => {
     if (filter.workspacePath !== undefined && session.cwd !== filter.workspacePath) return false;
     if (projectPaths !== undefined && !projectPaths.has(session.cwd)) return false;

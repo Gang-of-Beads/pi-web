@@ -31,7 +31,7 @@ describe("PiWebApp back gesture", () => {
   it("ignores a placeholder frame left by a layer closed through its own cancel", () => {
     const app = createApp();
     setAppState(app, stateWithSession());
-    setUrl("?project=project-1&workspace=workspace-1&session=session-1");
+    setUrl("?project=project-1&workspace=workspace-1&session=session-1&view=chat");
     const restoreRoute = stubRestoreRoute(app);
 
     popState(app);

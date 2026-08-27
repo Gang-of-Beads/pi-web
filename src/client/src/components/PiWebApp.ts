@@ -1,4 +1,5 @@
 import { LitElement, html, type TemplateResult } from "lit";
+import { routeMatchesUrl } from "../routeMatch";
 import { autoFocusesComposer } from "../appShell/appShellController";
 import { touchPrimaryPointer } from "../keyboardDismissal";
 import { customElement, query, state } from "lit/decorators.js";
@@ -331,10 +332,21 @@ export class PiWebApp extends LitElement {
     // absent machine parameter matches the local machine.
     const machine = state.selectedMachine === undefined ? undefined : state.selectedMachine.id;
     const machineMatches = param("machine") === (machine === "local" ? undefined : machine);
-    return machineMatches
-      && param("project") === (state.selectedProject === undefined ? undefined : state.selectedProject.id)
-      && param("workspace") === (state.selectedWorkspace === undefined ? undefined : state.selectedWorkspace.id)
-      && param("session") === (state.selectedSession === undefined ? undefined : state.selectedSession.id);
+    if (!machineMatches) return false;
+    return routeMatchesUrl(
+      {
+        project: param("project"),
+        workspace: param("workspace"),
+        session: param("session"),
+        view: param("view"),
+      },
+      {
+        project: state.selectedProject?.id,
+        workspace: state.selectedWorkspace?.id,
+        session: state.selectedSession?.id,
+        view: state.mainView,
+      },
+    );
   }
 
   /** Close the topmost modal layer; popstate is the only caller. */

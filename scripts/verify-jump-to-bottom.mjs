@@ -42,6 +42,34 @@ const probe = () => p.evaluate(() => {
     scrollable: chat === undefined ? null : chat.scrollHeight > chat.clientHeight + 4,
     distance: chat === undefined ? null : Math.round(chat.scrollHeight - chat.scrollTop - chat.clientHeight),
     button: button !== undefined,
+    box: button === undefined ? null : (() => { const r = button.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) }; })(),
+    overlaps: button === undefined ? null : (() => {
+      const r = button.getBoundingClientRect();
+      const hits = [];
+      const walk = (root) => {
+        for (const el of root.querySelectorAll(".activity-dock, .idle-dock, [class*=dock], [class*=status]")) {
+          const o = el.getBoundingClientRect();
+          if (o.width > 40 && o.height > 10 && !(o.right < r.left || o.left > r.right || o.bottom < r.top || o.top > r.bottom)) {
+            hits.push(String(el.className).slice(0, 24));
+          }
+        }
+        for (const el of root.querySelectorAll("*")) if (el.shadowRoot) walk(el.shadowRoot);
+      };
+      walk(document);
+      return hits;
+    })(),
+    docks: (() => {
+      const found = [];
+      const walk = (root) => {
+        for (const el of root.querySelectorAll(".activity-dock, .idle-dock, [class*=dock], [class*=status]")) {
+          const o = el.getBoundingClientRect();
+          if (o.width > 40 && o.height > 10) found.push(String(el.className).slice(0, 24));
+        }
+        for (const el of root.querySelectorAll("*")) if (el.shadowRoot) walk(el.shadowRoot);
+      };
+      walk(document);
+      return found;
+    })(),
   };
 });
 
@@ -81,6 +109,14 @@ const returned = await probe();
 console.log("点击后:", JSON.stringify(returned));
 if (returned.distance !== null && returned.distance > 40) {
   console.error(`FAIL: the button left the reader ${returned.distance}px from the newest message`);
+  process.exitCode = 1;
+}
+if (Array.isArray(scrolledUp.docks) && scrolledUp.docks.length === 0) {
+  console.error("FAIL: no status dock was on screen, so the overlap check proves nothing");
+  process.exitCode = 1;
+}
+if (Array.isArray(scrolledUp.overlaps) && scrolledUp.overlaps.length > 0) {
+  console.error(`FAIL: the button overlaps ${scrolledUp.overlaps.join(", ")}`);
   process.exitCode = 1;
 }
 if (returned.button === true) {

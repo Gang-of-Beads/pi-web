@@ -51,3 +51,4 @@ describe("raising the keyboard where a finger is the pointer", () => {
     expect(autoFocusesComposer({ touchPrimary: false, modalOpen: true })).toBe(false);
   });
 });
+

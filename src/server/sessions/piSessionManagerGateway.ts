@@ -111,6 +111,20 @@ class SettingsAwarePiSessionManagerGateway implements PiSessionManagerGateway {
     return SessionManager.create(cwd, resolution.sessionDir, options?.parentSession === undefined ? undefined : { parentSession: options.parentSession });
   }
 
+  /**
+   * Every session on this machine, in one pass, with the same fields a single
+   * workspace listing returns and without the SDK's full-transcript parse.
+   */
+  async listAllSummaries(): Promise<PiSessionListEntry[]> {
+    const storeRoot = this.resolver.defaultSessionsRoot();
+    const sessions = await scanStoreSessionSummaries(
+      storeRoot,
+      readSessionDirNames,
+      async (dir) => this.summaryScanner.scanSessionSummariesInDir(dir),
+    );
+    return sessions.map((session) => ({ ...session, cwd: canonicalizeStoredCwd(session.cwd) }));
+  }
+
   async listAll(): Promise<PiSessionListEntry[]> {
     const envSessionDir = this.resolver.globalEnvSessionDir();
     const [defaultSessions, envSessions] = await Promise.all([
@@ -135,15 +149,47 @@ export async function listSessionsInDir(sessionDir: string): Promise<PiSessionLi
   return sessions.map((session) => ({ ...session, cwd: canonicalizeStoredCwd(session.cwd) }));
 }
 
-export async function listSessionsInDefaultPiStore(storeRoot: string): Promise<PiSessionListEntry[]> {
+/**
+ * Every session in the store, read the cheap way.
+ *
+ * The switcher used to load sessions one workspace at a time: the projects,
+ * then one request per project for its workspaces, then one per workspace for
+ * its sessions. The list arrived in pieces and only ever covered the machine
+ * in front of the reader.
+ *
+ * The directory enumeration is the same one the cross-project cleanup listing
+ * uses. The reading is not: that goes through the SDK, which parses every
+ * transcript in full, and for a session with tens of thousands of messages
+ * that costs more than the requests it would replace. The scanner used for a
+ * single workspace stops reading each file once it has the first user message
+ * and returns the same fields, so it is used here too.
+ *
+ * The directories and the scanner are parameters so this can be tested without
+ * a store on disk.
+ */
+export async function scanStoreSessionSummaries(
+  storeRoot: string,
+  readSessionDirNames: (storeRoot: string) => Promise<string[]>,
+  scanDir: (sessionDir: string) => Promise<PiSessionListEntry[]>,
+): Promise<PiSessionListEntry[]> {
+  const names = await readSessionDirNames(storeRoot);
+  const perDir = await Promise.all(names.map(async (name) => scanDir(join(storeRoot, name))));
+  return perDir.flat().sort((a, b) => b.modified.getTime() - a.modified.getTime());
+}
+
+/** The store keeps one directory per working directory; a missing store is empty, not an error. */
+export async function readSessionDirNames(storeRoot: string): Promise<string[]> {
   let entries: Dirent[];
   try {
     entries = await readdir(storeRoot, { withFileTypes: true });
   } catch {
     return [];
   }
+  return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+}
 
-  const sessionDirs = entries.filter((entry) => entry.isDirectory()).map((entry) => join(storeRoot, entry.name));
+export async function listSessionsInDefaultPiStore(storeRoot: string): Promise<PiSessionListEntry[]> {
+  const sessionDirs = (await readSessionDirNames(storeRoot)).map((name) => join(storeRoot, name));
   const sessions = (await Promise.all(sessionDirs.map((dir) => listSessionsInDir(dir)))).flat();
   return sessions.sort((a, b) => b.modified.getTime() - a.modified.getTime());
 }

@@ -1,4 +1,5 @@
 import { api as defaultApi, isNotFoundError, type AskUserCloseResponse, type AskUserSubmission, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingAskUser, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionBackgroundTaskInfo, SessionSubagentRunInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Workspace } from "../api";
+import { refreshMayReplaceSelection } from "./sessionRefreshScope";
 import { activityOutputView, type AppState, type ClosedExtensionDialog } from "../appState";
 import { forgetCachedNewSession, isCachedNewSessionInfo, markCachedNewSessionInfo, mergeCachedNewSessions, rememberCachedNewSession, stripCachedNewSessionMarker } from "../cachedNewSessions";
 import { textMessage } from "../chatMessages";
@@ -791,6 +792,7 @@ export class SessionController {
         if (refreshedSelected !== selectedSession) this.setState({ selectedSession: refreshedSelected });
         return;
       }
+      if (!refreshMayReplaceSelection({ refreshedWorkspacePath: workspace.path, selectedSessionCwd: selectedSession.cwd })) return;
       const next = sessions.find((session) => session.archived !== true) ?? sessions[0];
       if (next !== undefined) await this.selectSession(next);
       else this.deselectSession({ forgetRememberedSelection: true });

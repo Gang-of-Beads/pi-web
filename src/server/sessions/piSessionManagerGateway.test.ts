@@ -1,4 +1,5 @@
 import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { scanStoreSessionSummaries } from "./piSessionManagerGateway";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -426,3 +427,49 @@ async function writeNamedSessionFile(dir: string, fileName: string, header: { id
   await writeFile(path, `${JSON.stringify(line)}\n`, "utf8");
   return path;
 }
+
+describe("listing a whole machine's sessions at once", () => {
+  /**
+   * The switcher loaded sessions one workspace at a time: a request for the
+   * projects, then one per project for its workspaces, then one per workspace
+   * for its sessions. The list arrived in pieces, only ever covered the
+   * machine in front of the reader, and a session on another machine could not
+   * be searched at all.
+   *
+   * The store already keeps one directory per working directory, and there is
+   * already a helper that enumerates them - the cross-project cleanup listing
+   * uses it. What that helper cannot be reused for is the reading: it goes
+   * through the SDK, which parses every transcript in full. For a session with
+   * tens of thousands of messages that is slower than the requests it would
+   * replace. The scanner used for a single workspace stops reading each file
+   * once it has the first user message, and returns the same fields.
+   */
+  it("scans every session directory with the streaming scanner", async () => {
+    const scanned: string[] = [];
+    const entries = await scanStoreSessionSummaries(
+      "/store",
+      () => Promise.resolve(["a-dir", "b-dir"]),
+      (dir) => {
+        scanned.push(dir);
+        return Promise.resolve([{ id: dir, path: `${dir}/s.jsonl`, cwd: "/cwd", created: new Date(0), modified: new Date(0), messageCount: 1, firstMessage: "", allMessagesText: "" }]);
+      },
+    );
+
+    expect(scanned).toEqual(["/store/a-dir", "/store/b-dir"]);
+    expect(entries).toHaveLength(2);
+  });
+
+  it("returns the newest session first, as a reader expects a list of them", async () => {
+    const entry = (id: string, modifiedMs: number) => ({
+      id, path: `${id}.jsonl`, cwd: "/cwd", created: new Date(0), modified: new Date(modifiedMs),
+      messageCount: 1, firstMessage: "", allMessagesText: "",
+    });
+    const entries = await scanStoreSessionSummaries(
+      "/store",
+      () => Promise.resolve(["old", "new"]),
+      (dir) => Promise.resolve([dir.endsWith("old") ? entry("old", 1000) : entry("new", 2000)]),
+    );
+
+    expect(entries.map((session) => session.id)).toEqual(["new", "old"]);
+  });
+});
