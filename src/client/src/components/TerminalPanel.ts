@@ -729,7 +729,13 @@ export class TerminalPanel extends LitElement {
     /* The composition view shows pending dead-key/IME input. Without these rules it renders as a static block in the top-left corner instead of overlaying the cursor. */
     .terminal-host .composition-view { position: absolute; display: none; white-space: nowrap; z-index: 1; background: var(--pi-terminal-bg, #000); color: var(--pi-terminal-text, #fff); }
     .terminal-host .composition-view.active { display: block; }
-    .terminal-host .xterm-viewport { position: absolute; inset: 0; overflow-y: scroll; cursor: default; background-color: var(--pi-terminal-bg); }
+    /* xterm draws its own scrollbar into the element it scrolls, so asking for
+       a permanent one here painted a second, native bar beside it on any
+       platform with classic scrollbars. Measured: this viewport's scrollHeight
+       equals its clientHeight, so that bar was an empty track scrolling
+       nothing. Letting it be automatic keeps a bar available if this element ever
+       does overflow, without reserving one that never moves. */
+    .terminal-host .xterm-viewport { position: absolute; inset: 0; overflow-y: auto; cursor: default; background-color: var(--pi-terminal-bg); }
     .terminal-host .xterm-screen { position: relative; }
     .terminal-host .xterm-screen canvas { position: absolute; left: 0; top: 0; }
     .terminal-host .xterm-char-measure-element { display: inline-block; visibility: hidden; position: absolute; top: 0; left: -9999em; line-height: normal; }
