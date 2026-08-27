@@ -107,6 +107,16 @@ export interface DeliveryPresentation {
  * glance and the words carry it for anyone who cannot tell one tick from two -
  * both are needed, so neither is decoration.
  */
+/**
+ * A marker reports an outcome that is not settled yet. Messages read back from
+ * the transcript carry no delivery record and showed nothing, while messages
+ * sent this session kept a double tick forever, so the same settled message
+ * looked one way before a reload and another way after.
+ */
+export function chatDeliveryMarkerVisible(delivery: MessageDelivery | undefined): boolean {
+  return delivery !== undefined && delivery.state !== "delivered";
+}
+
 export function chatDeliveryPresentation(delivery: MessageDelivery): DeliveryPresentation {
   if (delivery.state === "sending") return { glyph: "◌", text: "Sending", label: "Sending", tone: "pending" };
   if (delivery.state === "failed") return { glyph: "!", text: "Not sent", label: "Not sent - the server never received this message", tone: "failed" };
@@ -1276,11 +1286,12 @@ export class ChatView extends LitElement {
    * Delivery mark for a message this browser sent, in the corner of its own
    * bubble the way a messaging app reports a send. Messages loaded from history
    * carry no delivery state and stay unmarked: they arrived long ago, and a
-   * transcript of check marks would be noise.
+   * transcript of check marks would be noise. A message the agent has taken
+   * looks the same, so a bubble does not change appearance across a reload.
    */
   private renderDeliveryMark(message: ChatLine) {
     const delivery = message.meta?.delivery;
-    if (delivery === undefined) return null;
+    if (!chatDeliveryMarkerVisible(delivery) || delivery === undefined) return null;
     const presentation = chatDeliveryPresentation(delivery);
     return html`
       <div class=${`delivery-mark ${presentation.tone}`} role="status" aria-label=${presentation.label}>

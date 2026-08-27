@@ -2,6 +2,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import { ChatView } from "./ChatView";
+import { chatDeliveryMarkerVisible } from "./ChatView";
 import type { ChatLine } from "./shared";
 
 afterEach(() => {
@@ -54,5 +55,34 @@ describe("the message header's metadata", () => {
     ]);
 
     expect(metaSpans(view).length).toBe(1);
+  });
+});
+
+describe("which messages carry a delivery marker", () => {
+  /**
+   * Messages read back from the transcript have no delivery record and showed
+   * nothing, while messages sent this session kept a double tick forever. The
+   * same settled message therefore looked one way before a reload and another
+   * way after, and the transcript was a mix of ticks, yellow queue chips and
+   * bare bubbles with no rule connecting them.
+   *
+   * A marker says the outcome is not settled yet. Once the agent has taken the
+   * message, there is nothing left to report, and the bubble looks like every
+   * other message the agent has taken - including the ones from before the
+   * reload.
+   */
+  it("marks a message whose outcome is still open", () => {
+    expect(chatDeliveryMarkerVisible({ state: "queued", kind: "steer", clientMessageId: "m1" })).toBe(true);
+    expect(chatDeliveryMarkerVisible({ state: "sending", clientMessageId: "m1" })).toBe(true);
+    expect(chatDeliveryMarkerVisible({ state: "failed", clientMessageId: "m1" })).toBe(true);
+    expect(chatDeliveryMarkerVisible({ state: "received", clientMessageId: "m1" })).toBe(true);
+  });
+
+  it("says nothing once the agent has taken the message", () => {
+    expect(chatDeliveryMarkerVisible({ state: "delivered", clientMessageId: "m1" })).toBe(false);
+  });
+
+  it("says nothing about a message with no delivery record", () => {
+    expect(chatDeliveryMarkerVisible(undefined)).toBe(false);
   });
 });
