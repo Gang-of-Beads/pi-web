@@ -1,4 +1,5 @@
 import { LitElement, html, type TemplateResult } from "lit";
+import { clearPlaceholderFrame, notePlaceholderFrame } from "../historyWrites";
 import { bannerHoldDecision } from "./bannerHold";
 import { routeMatchesUrl } from "../routeMatch";
 import { autoFocusesComposer } from "../appShell/appShellController";
@@ -307,6 +308,7 @@ export class PiWebApp extends LitElement {
     if (this.modalLayerOpen()) {
       // The back gesture pops the placeholder frame we pushed when the layer
       // opened: consume it by closing the layer, never by moving the route.
+      clearPlaceholderFrame();
       this.closeModalLayer();
       return;
     }
@@ -350,6 +352,7 @@ export class PiWebApp extends LitElement {
         session: state.selectedSession?.id,
         view: state.mainView,
       },
+      this.appShell.defaultRouteView({ sessionId: state.selectedSession?.id }),
     );
   }
 
@@ -1894,6 +1897,7 @@ export class PiWebApp extends LitElement {
   private pushModalLayerFrame(): void {
     // Same URL, new frame: writeRoute dedupes identical URLs, so push directly.
     window.history.pushState({}, "");
+    notePlaceholderFrame();
   }
 
   private openActionPalette(): void {

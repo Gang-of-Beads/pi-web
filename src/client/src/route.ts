@@ -1,4 +1,5 @@
 import type { QualifiedContributionId } from "./plugins/types";
+import { writeRouteUrl } from "./historyWrites";
 
 interface AppRouteLocation {
   machineId: string | undefined;
@@ -69,8 +70,7 @@ export function writeRoute(route: ParsedAppRoute, options?: { replace?: boolean 
   const next = `${url.pathname}${url.search}${url.hash}`;
   const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
   if (next === current) return;
-  if (options?.replace === true) window.history.replaceState({}, "", url);
-  else window.history.pushState({}, "", url);
+  writeRouteUrl(String(url), options?.replace === true);
 }
 
 function nonEmpty(value: string | null): string | undefined {

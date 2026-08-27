@@ -1,3 +1,4 @@
+import { writeRouteUrl } from "./historyWrites";
 export type SettingsSection = "general" | "appearance" | "sessiond" | "machines" | "packages" | "plugins" | "shortcuts";
 
 export function readSettingsSection(): SettingsSection | undefined {
@@ -11,8 +12,7 @@ export function writeSettingsSection(section: SettingsSection | undefined, optio
   const next = `${url.pathname}${url.search}${url.hash}`;
   const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
   if (next === current) return;
-  if (options?.replace === true) window.history.replaceState({}, "", url);
-  else window.history.pushState({}, "", url);
+  writeRouteUrl(String(url), options?.replace === true);
 }
 
 export function parseSettingsSection(value: string | null): SettingsSection | undefined {
