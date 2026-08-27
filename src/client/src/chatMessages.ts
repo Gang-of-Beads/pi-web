@@ -15,32 +15,53 @@ export function withMessageMeta(line: ChatLine, rawMessage: unknown): ChatLine {
   return meta === undefined ? line : { ...line, meta };
 }
 
+/** Messages sent while a reply is in flight sit after it without ending it. */
+function unansweredTail(messages: ChatLine[]): number {
+  let index = messages.length;
+  while (index > 0) {
+    const line = messages[index - 1];
+    if (line === undefined) break;
+    const state = line.meta?.delivery?.state;
+    if (line.role !== "user" || state === undefined || state === "delivered") break;
+    index -= 1;
+  }
+  return index;
+}
+
 export function appendText(messages: ChatLine[], role: ChatLine["role"], text: string): ChatLine[] {
   if (text === "") return messages;
-  const last = messages.at(-1);
+  const at = role === "assistant" ? unansweredTail(messages) : messages.length;
+  const head = messages.slice(0, at);
+  const tail = messages.slice(at);
+  const last = head.at(-1);
   const lastPart = last?.parts.at(-1);
   if (last?.role === role && lastPart?.type === "text") {
     return [
-      ...messages.slice(0, -1),
+      ...head.slice(0, -1),
       { ...last, parts: [...last.parts.slice(0, -1), { ...lastPart, text: lastPart.text + text }] },
+      ...tail,
     ];
   }
-  if (last?.role === role) return [...messages.slice(0, -1), { ...last, parts: [...last.parts, { type: "text", text }] }];
-  return [...messages, textMessage(role, text)];
+  if (last?.role === role) return [...head.slice(0, -1), { ...last, parts: [...last.parts, { type: "text", text }] }, ...tail];
+  return [...head, textMessage(role, text), ...tail];
 }
 
 export function appendThinking(messages: ChatLine[], text: string): ChatLine[] {
   if (text === "") return messages;
-  const last = messages.at(-1);
+  const at = unansweredTail(messages);
+  const head = messages.slice(0, at);
+  const tail = messages.slice(at);
+  const last = head.at(-1);
   const lastPart = last?.parts.at(-1);
   if (last?.role === "assistant" && lastPart?.type === "thinking") {
     return [
-      ...messages.slice(0, -1),
+      ...head.slice(0, -1),
       { ...last, parts: [...last.parts.slice(0, -1), { ...lastPart, text: lastPart.text + text }] },
+      ...tail,
     ];
   }
-  if (last?.role === "assistant") return [...messages.slice(0, -1), { ...last, parts: [...last.parts, { type: "thinking", text }] }];
-  return [...messages, { role: "assistant", parts: [{ type: "thinking", text }] }];
+  if (last?.role === "assistant") return [...head.slice(0, -1), { ...last, parts: [...last.parts, { type: "thinking", text }] }];
+  return [...head, { role: "assistant", parts: [{ type: "thinking", text }] }, ...tail];
 }
 
 export function normalizeMessage(message: unknown): ChatLine[] {

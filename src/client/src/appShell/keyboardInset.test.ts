@@ -85,3 +85,29 @@ describe("what has to be watched for the shell to keep the right height", () => 
     expect(disconnect).toMatch(/window\.removeEventListener\("orientationchange", this\.onVisualViewportChange\)/u);
   });
 });
+
+describe("the height the shell is given", () => {
+  /**
+   * The shell was sized with `100dvh`, on the assumption that a mobile browser
+   * subtracts its own toolbar from it. Where that does not hold, the shell is
+   * taller than the screen and its bottom - the composer - is cut off, which no
+   * amount of recalculating fixes because the number itself is wrong.
+   *
+   * The visual viewport is what is actually visible, so it is used when it can
+   * be read, and `100dvh` remains for engines that cannot report it.
+   */
+  it("prefers a measured visible height over the assumption", () => {
+    const sheet = readFileSync(join(process.cwd(), "src/client/src/components/shared.ts"), "utf8");
+    const host = /:host \{ --pi-app-safe-area-bottom[^}]*\}/u.exec(sheet)?.[0] ?? "";
+
+    expect(host).toMatch(/height:\s*var\(--pi-app-visible-height,/u);
+    expect(host).toMatch(/100dvh/u);
+  });
+
+  it("publishes what the visual viewport reports", () => {
+    const source = readFileSync(join(process.cwd(), "src/client/src/components/PiWebApp.ts"), "utf8");
+    const handler = /onVisualViewportChange = \(\): void => \{[\s\S]*?\n {2}\};/u.exec(source)?.[0] ?? "";
+
+    expect(handler).toMatch(/--pi-app-visible-height/u);
+  });
+});

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { ChatLine } from "./components/shared";
 import { ASK_USER_ANSWERS_CUSTOM_TYPE, type AskUserOutcome } from "../../shared/apiTypes";
 import { groupChatMessages } from "./chatGroups";
 import { appendText, appendThinking, describeAssistantFailure, normalizeMessage, normalizeMessages, textMessage } from "./chatMessages";
@@ -230,5 +231,62 @@ describe("appendThinking", () => {
     expect(appendThinking([textMessage("assistant", "answer")], "plan")).toEqual([
       { role: "assistant", parts: [{ type: "text", text: "answer" }, { type: "thinking", text: "plan" }] },
     ]);
+  });
+});
+
+describe("a reply that is still being written when the reader sends something", () => {
+  /**
+   * Streaming text was appended to whatever line was last. Send a message
+   * while a reply is in flight and that message becomes last, so the rest of
+   * the reply started a second assistant line: the transcript showed the first
+   * half of an answer, then the message, then the other half, as though the
+   * agent had answered before it was asked.
+   *
+   * A message that is still queued has not been answered, so the reply
+   * continues in the line it was already writing.
+   */
+  it("continues the reply rather than starting a second one", () => {
+    const streaming: ChatLine[] = [{ role: "assistant", parts: [{ type: "text", text: "the first half" }] }];
+    const queued: ChatLine = {
+      role: "user",
+      parts: [{ type: "text", text: "sent while waiting" }],
+      meta: { delivery: { clientMessageId: "cm-1", state: "queued" } },
+    };
+
+    const after = appendText([...streaming, queued], "assistant", " and the rest");
+
+    expect(after.filter((line) => line.role === "assistant")).toHaveLength(1);
+    expect(after.at(-1)?.role).toBe("user");
+  });
+
+  /**
+   * Once a message has been taken into the conversation, the next reply is a
+   * new one and must not be glued onto the previous answer.
+   */
+  it("starts a new reply after a message the agent has taken", () => {
+    const answered: ChatLine[] = [
+      { role: "assistant", parts: [{ type: "text", text: "an answer" }] },
+      { role: "user", parts: [{ type: "text", text: "a new question" }], meta: { delivery: { clientMessageId: "cm-2", state: "delivered" } } },
+    ];
+
+    const after = appendText(answered, "assistant", "a new answer");
+
+    expect(after.filter((line) => line.role === "assistant")).toHaveLength(2);
+  });
+});
+
+describe("thinking that arrives while a message waits", () => {
+  it("keeps the waiting message in the transcript", () => {
+    const queued: ChatLine = {
+      role: "user",
+      parts: [{ type: "text", text: "sent while waiting" }],
+      meta: { delivery: { clientMessageId: "cm-1", state: "queued" } },
+    };
+    const before: ChatLine[] = [{ role: "assistant", parts: [{ type: "thinking", text: "half a thought" }] }, queued];
+
+    const after = appendThinking(before, " and the rest");
+
+    expect(after).toHaveLength(2);
+    expect(after.at(-1)).toBe(queued);
   });
 });

@@ -179,6 +179,7 @@ export class PromptEditor extends LitElement {
         ${this.renderAttachments()}
         <div class="editor-wrap">
           ${shellMode ? html`<div class="mode-hint">Shell command${shellInputMode.excludeFromContext ? " · excluded from context" : ""}</div>` : null}
+          ${this.renderVoiceHint()}
           ${this.isCompacting && !shellMode ? html`<div class="mode-hint">Compacting history · message will be queued</div>` : null}
           <div
             class=${`markdown-editor${this.disabled ? " markdown-editor-disabled" : ""}`}
@@ -438,6 +439,17 @@ export class PromptEditor extends LitElement {
    * holding the composer was tried and taken back: holding a text field is how
    * a phone selects text, so the two gestures fought over the same press.
    */
+  private renderVoiceHint() {
+    const state = this.voiceState;
+    if (state.kind === "idle") return null;
+    const text = state.kind === "error" ? state.message
+      : state.kind === "unavailable" ? state.reason
+      : state.kind === "denied" ? "Microphone permission refused"
+      : state.kind === "transcribing" ? "Transcribing…"
+      : "Listening…";
+    return html`<div class=${`mode-hint${state.kind === "error" || state.kind === "denied" || state.kind === "unavailable" ? " mode-hint-problem" : ""}`} role="status">${text}</div>`;
+  }
+
   private renderDictateButton(busy: boolean) {
     if (!isDictationConfigured(this.speechToText)) return null;
     const streaming = resolveSpeechStreaming(this.speechToText.streaming).kind !== "unavailable";

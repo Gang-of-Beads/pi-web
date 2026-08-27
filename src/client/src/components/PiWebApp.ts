@@ -702,6 +702,9 @@ export class PiWebApp extends LitElement {
   private readonly onVisualViewportChange = (): void => {
     const inset = keyboardInset(window.innerHeight, window.visualViewport ?? undefined);
     this.style.setProperty("--pi-app-keyboard-inset", `${String(Math.round(inset))}px`);
+    const visible = window.visualViewport?.height;
+    if (visible === undefined || !Number.isFinite(visible) || visible <= 0) this.style.removeProperty("--pi-app-visible-height");
+    else this.style.setProperty("--pi-app-visible-height", `${String(Math.round(visible))}px`);
   };
 
   override connectedCallback(): void {

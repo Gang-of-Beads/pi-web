@@ -57,3 +57,38 @@ async function mount(speechToText: PromptEditor["speechToText"]): Promise<Prompt
   await editor.updateComplete;
   return editor;
 }
+
+describe("what dictation tells you while it runs", () => {
+  /**
+   * Every voice state - listening, transcribing, a microphone that could not be
+   * opened, a permission that was refused, a transcription that failed - was
+   * written only into the button's title and aria-label. A phone has no
+   * tooltips, so pressing the button, speaking, and getting nothing back was
+   * indistinguishable from the feature not existing.
+   */
+  it("says on screen that it is listening", async () => {
+    const editor = await mount({ endpoint: "https://stt.example/v1" });
+
+    Reflect.set(editor, "voiceState", { kind: "listening" });
+    editor.requestUpdate();
+    await editor.updateComplete;
+
+    expect(editor.shadowRoot?.querySelector(".mode-hint")?.textContent ?? "").toMatch(/listening/iu);
+  });
+
+  it("shows the reason when the microphone could not be opened", async () => {
+    const editor = await mount({ endpoint: "https://stt.example/v1" });
+
+    Reflect.set(editor, "voiceState", { kind: "error", message: "Microphone unavailable: NotFoundError" });
+    editor.requestUpdate();
+    await editor.updateComplete;
+
+    expect(editor.shadowRoot?.querySelector(".mode-hint")?.textContent ?? "").toMatch(/microphone unavailable/iu);
+  });
+
+  it("stays quiet when nobody is dictating", async () => {
+    const editor = await mount({ endpoint: "https://stt.example/v1" });
+
+    expect(editor.shadowRoot?.querySelector(".mode-hint")).toBeNull();
+  });
+});
