@@ -1,5 +1,19 @@
 # @jmfederico/pi-web
 
+## 1.202608.54
+
+### Patch Changes
+
+- 40287ab: The dictation button is the size of the row it sits in. It kept a larger size and an offset from when it floated over the corner of the text.
+
+  The return-to-newest button is no longer painted over by the transcript it floats above.
+
+  The rename control sits beside the name it renames rather than across a status indicator from it.
+
+  Seven rules for elements that no longer exist are gone.
+
+- 5c1bf6e: Component styles live with the component that renders them. A control and its rules were 1109 lines apart in a sheet shared by fifteen components, which is how moving one button left three rules behind it.
+
 ## 1.202608.53
 
 ### Patch Changes
