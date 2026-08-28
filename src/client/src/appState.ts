@@ -71,6 +71,13 @@ export interface AppState {
   projects: Project[];
   workspaces: Workspace[];
   sessions: SessionInfo[];
+  /**
+   * Three-state discipline for `sessions` (unloaded/loading/loaded). The empty
+   * list is only a claim the browser may make once a listing has completed and
+   * returned zero; before that the list carries a cached previous listing or a
+   * quiet loading state. See workspaceSessionsCache and SessionList.
+   */
+  sessionsLoad: SessionsLoadState;
   messages: ChatLine[];
   messagePageStart: number;
   messagePageEnd: number;
@@ -186,8 +193,16 @@ export type AuthDialogState =
   | { step: "oauth"; flow: OAuthFlowState; machineId: string; responding?: boolean; inputValue?: string; error?: string }
   | { step: "logout"; machineId: string; providers: AuthProviderOption[] };
 
+/**
+ * Whether a workspace's session listing has completed. `loaded` is the only
+ * state in which `sessions: []` means "this workspace has no sessions";
+ * `unloaded` and `loading` mean the browser does not know yet.
+ */
+export type SessionsLoadState = "unloaded" | "loading" | "loaded";
+
 export type WorkspaceScopedStateReset = Pick<AppState,
   | "sessions"
+  | "sessionsLoad"
   | "workspaceGoals"
   | "workspaceGoalsLoading"
   | "clientQueuedSessionMessages"
@@ -207,6 +222,8 @@ export type WorkspaceScopedStateReset = Pick<AppState,
 export function resetWorkspaceScopedState(): WorkspaceScopedStateReset {
   return {
     sessions: [],
+    // The workspace is being left; the next list is not loaded, not empty.
+    sessionsLoad: "unloaded",
     // Goals belong to the workspace being left, so they must not linger over
     // the next one while its own records load.
     workspaceGoals: [],
@@ -239,6 +256,7 @@ export function initialAppState(): AppState {
     projects: [],
     workspaces: [],
     sessions: [],
+    sessionsLoad: "unloaded",
     messages: [],
     messagePageStart: 0,
     messagePageEnd: 0,

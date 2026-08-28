@@ -1845,6 +1845,7 @@ export class PiWebApp extends LitElement {
         .selectedWorkspace=${this.state.selectedWorkspace}
         .deletingWorkspaceIds=${pendingWorkspaceDeletionIds(this.state.workspaceDeletionRuns)}
         .sessions=${this.state.sessions}
+        .sessionsLoad=${this.state.sessionsLoad}
         .sessionStatuses=${this.state.sessionStatuses}
         .sessionActivities=${this.state.sessionActivities}
         .sendingPrompts=${this.state.sendingPrompts}

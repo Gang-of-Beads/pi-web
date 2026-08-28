@@ -29,6 +29,8 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) workspaces: Workspace[] = [];
   @property({ attribute: false }) selectedWorkspace?: Workspace;
   @property({ attribute: false }) sessions: SessionInfo[] = [];
+  /** Three-state load discipline threaded from app state; see SessionList. */
+  @property({ attribute: false }) sessionsLoad: "unloaded" | "loading" | "loaded" = "unloaded";
   @property({ attribute: false }) selectedSession?: SessionInfo;
   @property({ attribute: false }) sessionActivities: Record<string, SessionActivity> = {};
   @property({ attribute: false }) sessionStatuses: Record<string, SessionStatus> = {};
@@ -318,6 +320,7 @@ export class AppNavigationPanel extends LitElement {
       <session-list
         ?hidden=${hidden}
         .sessions=${this.sessions}
+        .sessionsLoad=${this.sessionsLoad}
         .statuses=${this.sessionStatuses}
         .activities=${this.sessionActivities}
         .sending=${this.sendingPrompts}

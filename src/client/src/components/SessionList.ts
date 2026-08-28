@@ -36,6 +36,13 @@ type SessionSelectionScope = "current" | "archived";
 @customElement("session-list")
 export class SessionList extends LitElement implements KeyboardNavigableSection {
   @property({ attribute: false }) sessions: SessionInfo[] = [];
+  /**
+   * Whether the sessions reaching this list have been loaded. `loaded` is the
+   * only state in which the empty claim "No sessions yet" may render; the
+   * unloaded and loading states show the cached rows, a quiet loading line, or
+   * nothing — never the claim.
+   */
+  @property({ attribute: false }) sessionsLoad: "unloaded" | "loading" | "loaded" = "unloaded";
   @property({ attribute: false }) statuses: Record<string, SessionStatus> = {};
   @property({ attribute: false }) activities: Record<string, SessionActivity> = {};
   @property({ attribute: false }) sending: Record<string, true> = {};
@@ -177,16 +184,26 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
               ` : null}
             ` : null}
             ${noMatches ? html`<div class="search-empty" role="status">No sessions match “${this.searchQuery.trim()}”.</div>` : null}
-            <!-- A workspace with no sessions rendered nothing at all: the
-                 heading, then blank space, with the only way forward being a
-                 button in the heading the eye had already passed. -->
-            ${allCurrentRows.length === 0 && allArchivedRows.length === 0 && this.startingCount === 0
-              ? html`<div class="list-empty" role="status">No sessions yet. Start one to begin working here.</div>`
-              : null}
+            ${allCurrentRows.length === 0 && allArchivedRows.length === 0 && this.startingCount === 0 ? this.renderEmptyListBody() : null}
           </div>
         `}
       </section>
     `;
+  }
+
+  /**
+   * The body an empty row area gets, per the load discipline: a completed
+   * listing that returned zero may say so; while nothing is known the list
+   * shows a quiet loading line or nothing — never the empty claim.
+   */
+  private renderEmptyListBody() {
+    if (this.sessionsLoad === "loaded") {
+      return html`<div class="list-empty" role="status">No sessions yet. Start one to begin working here.</div>`;
+    }
+    if (this.sessionsLoad === "loading") {
+      return html`<div class="list-loading" role="status">Loading sessions…</div>`;
+    }
+    return null;
   }
 
   private renderSearch(sessionCount: number) {
@@ -717,7 +734,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .session-search-input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
     .session-search-clear { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; font-size: var(--pi-text-lg); line-height: 1; }
     .search-empty { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); }
-    .list-empty { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-sm); }
+    .list-empty, .list-loading { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-sm); }
     @media (max-width: 760px) {
       /* 16px keeps iOS Safari from zooming the viewport on focus, and the
          taller controls match the platform minimum touch target. */

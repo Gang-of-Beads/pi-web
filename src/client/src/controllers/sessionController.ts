@@ -7,6 +7,7 @@ import { activityOutputView, subagentRunConversationView, type AppState, type Cl
 import { forgetCachedNewSession, isCachedNewSessionInfo, markCachedNewSessionInfo, mergeCachedNewSessions, rememberCachedNewSession, stripCachedNewSessionMarker } from "../cachedNewSessions";
 import { textMessage } from "../chatMessages";
 import { machineSessionKey } from "../machineKeys";
+import { rememberWorkspaceSessions } from "../workspaceSessionsCache";
 import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
 import { clearAskDraft } from "../askDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
@@ -794,7 +795,8 @@ export class SessionController {
       if (selectedMachineId(this.getState()) !== machineId || this.getState().selectedWorkspace?.id !== workspace.id) return;
       const sessions = this.mergePendingStartSessions(workspace.path, listedSessions, machineId);
       const selectedSession = this.getState().selectedSession;
-      this.setState({ sessions });
+      rememberWorkspaceSessions(machineId, workspace.path, sessions);
+      this.setState({ sessions, sessionsLoad: "loaded" });
       if (selectedSession === undefined) return;
       const refreshedSelected = sessions.find((session) => session.id === selectedSession.id);
       if (refreshedSelected !== undefined) {

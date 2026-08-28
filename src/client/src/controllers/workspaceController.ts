@@ -4,6 +4,7 @@ import { errorNoticePatch } from "../errorNotice";
 import { describeError } from "../notice";
 import { mergeCachedNewSessions } from "../cachedNewSessions";
 import { machineProjectKey } from "../machineKeys";
+import { cachedSessionsFor, rememberWorkspaceSessions } from "../workspaceSessionsCache";
 import { selectedMachineId, type GetState, type RouteTarget, type SetState, type UpdateUrl } from "./types";
 import type { SessionController } from "./sessionController";
 import { TrailingRefreshCoordinator } from "./trailingRefreshCoordinator";
@@ -69,16 +70,25 @@ export class WorkspaceController {
     const machineId = selectedMachineId(this.getState());
     this.workspaceSelection.rememberWorkspace({ ...workspace, projectId: machineProjectKey(machineId, workspace.projectId) });
     this.sessions.clearActiveSession();
-    this.setState({ selectedWorkspace: workspace, isLoadingWorkspaces: false, ...resetWorkspaceScopedState() });
+    // The cache answers before the listing does: a revisited workspace shows
+    // its previous list immediately, and a first visit shows the loading state
+    // the reset below leaves, never the empty claim.
+    const cached = cachedSessionsFor(machineId, workspace.path);
+    this.setState({ selectedWorkspace: workspace, isLoadingWorkspaces: false, ...resetWorkspaceScopedState(), sessions: cached === undefined ? [] : [...cached], sessionsLoad: "loading" });
     try {
       const sessions = mergeCachedNewSessions(workspace.path, await this.api.sessions(workspace.path, machineId), machineId);
       if (selectedMachineId(this.getState()) !== machineId || this.getState().selectedWorkspace?.id !== workspace.id || this.getState().selectedProject?.id !== workspace.projectId) return;
-      this.setState({ sessions });
+      rememberWorkspaceSessions(machineId, workspace.path, sessions);
+      this.setState({ sessions, sessionsLoad: "loaded" });
       const session = this.sessions.preferredSession(workspace.path, sessions, target?.sessionId);
       if (session) await this.sessions.selectSession(session, { updateUrl: target?.updateUrl });
       else if (target?.updateUrl !== false) this.updateUrl();
     } catch (error) {
-      if (selectedMachineId(this.getState()) === machineId && this.getState().selectedWorkspace?.id === workspace.id) this.setState(errorNoticePatch(error));
+      if (selectedMachineId(this.getState()) === machineId && this.getState().selectedWorkspace?.id === workspace.id) {
+        // The stale rows stay on screen and the state drops back to unloaded:
+        // a failed listing is not evidence that the workspace is empty.
+        this.setState({ ...errorNoticePatch(error), sessionsLoad: "unloaded" });
+      }
     } finally {
       void this.refreshWorkspaceGoals(workspace, machineId);
     }

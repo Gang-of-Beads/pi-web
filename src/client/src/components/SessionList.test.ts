@@ -321,14 +321,19 @@ describe("session tree entry point", () => {
 });
 
 describe("a workspace with no sessions", () => {
-  it("says so instead of rendering nothing", () => {
+  it("says so once its listing completed and returned zero", () => {
     // The list rendered its heading and then blank space, leaving the only way
-    // forward in a heading control the eye had already passed.
-    expect(renderedText(renderList(sessionList([], new Set())))).toContain("No sessions yet");
+    // forward in a heading control the eye had already passed. The claim is
+    // gated on the load discipline: a completed listing that returned zero.
+    const list = sessionList([], new Set());
+    list.sessionsLoad = "loaded";
+    expect(renderedText(renderList(list))).toContain("No sessions yet");
   });
 
   it("does not say it while sessions exist", () => {
-    expect(renderedText(renderList(sessionList([session("s1")], new Set())))).not.toContain("No sessions yet");
+    const list = sessionList([session("s1")], new Set());
+    list.sessionsLoad = "loaded";
+    expect(renderedText(renderList(list))).not.toContain("No sessions yet");
   });
 });
 
