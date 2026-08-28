@@ -169,6 +169,56 @@ describe("SessionController extension dialog state", () => {
 
     expect(harness.state().closedDialogs).toEqual([]);
   });
+
+  it("keeps a dismissed card gone when a status snapshot from before the close arrives after it", async () => {
+    const staleStatus = statusWithDialogs(oldSession.id, [dialog("dialog-1")]);
+    const harness = await liveSession({}, staleStatus);
+    harness.socket.emit({ type: "dialog.closed", dialogId: "dialog-1", reason: "answered", answer: true });
+    harness.controller.dismissClosedDialog("dialog-1");
+
+    // The daemon built this snapshot before the close, so it still lists the
+    // dialog as open; it is unordered against the socket frame that closed it.
+    harness.controller.applySessionStatus(staleStatus);
+
+    expect(harness.state().pendingDialogs).toEqual([]);
+    expect(harness.state().closedDialogs).toEqual([]);
+  });
+
+  it("costs the reader only one tap when a stale status and its close both follow the dismissal", async () => {
+    const staleStatus = statusWithDialogs(oldSession.id, [dialog("dialog-1")]);
+    const harness = await liveSession({}, staleStatus);
+    harness.socket.emit({ type: "dialog.closed", dialogId: "dialog-1", reason: "answered", answer: true });
+    harness.controller.dismissClosedDialog("dialog-1");
+
+    harness.controller.applySessionStatus(staleStatus);
+    harness.socket.emit({ type: "dialog.closed", dialogId: "dialog-1", reason: "answered", answer: true });
+
+    expect(harness.state().closedDialogs).toEqual([]);
+  });
+
+  it("still shows a card when an extension opens the same dialog id again after a dismissal", async () => {
+    const harness = await liveSession();
+    harness.socket.emit({ type: "dialog.opened", dialog: dialog("dialog-1") });
+    harness.socket.emit({ type: "dialog.closed", dialogId: "dialog-1", reason: "answered", answer: true });
+    harness.controller.dismissClosedDialog("dialog-1");
+
+    // A live open is news the projection cannot be stale about, so the reader's
+    // earlier dismissal must not suppress a genuinely new ask.
+    harness.socket.emit({ type: "dialog.opened", dialog: dialog("dialog-1") });
+
+    expect(harness.state().pendingDialogs.map((pending) => pending.dialogId)).toEqual(["dialog-1"]);
+  });
+
+  it("forgets dismissals when the session is deselected so a later session starts clean", async () => {
+    const harness = await liveSession({}, statusWithDialogs(oldSession.id, [dialog("dialog-1")]));
+    harness.socket.emit({ type: "dialog.closed", dialogId: "dialog-1", reason: "answered", answer: true });
+    harness.controller.dismissClosedDialog("dialog-1");
+    expect(harness.state().dismissedDialogIds).toEqual(["dialog-1"]);
+
+    harness.controller.deselectSession({ updateUrl: false });
+
+    expect(harness.state().dismissedDialogIds).toEqual([]);
+  });
 });
 
 describe("SessionController extension dialog answers", () => {

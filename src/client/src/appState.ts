@@ -118,6 +118,17 @@ export interface AppState {
    * the closed card; deselection and reloads drop these.
    */
   closedDialogs: ClosedExtensionDialog[];
+  /**
+   * Dialog ids the reader dismissed from the settled-card list. A dismissal has
+   * to be remembered rather than merely applied: the daemon's status projection
+   * is unordered against socket frames, so a snapshot taken before the close can
+   * land after it and re-open a dialog this browser already settled. Without the
+   * memory the re-open records a second outcome card and the reader has to tap
+   * Dismiss again. Bounded by and cleared with `closedDialogs`, whose ids these
+   * are: both describe the selected session's settled cards and nothing outlives
+   * that selection.
+   */
+  dismissedDialogIds: readonly string[];
   /** Thinking levels available for the selected session's current model. */
   availableThinkingLevels: readonly string[];
   /** Goals recorded for the selected workspace, newest unfinished first. */
@@ -251,6 +262,7 @@ export function initialAppState(): AppState {
     pendingAsk: undefined,
     pendingDialogs: [],
     closedDialogs: [],
+    dismissedDialogIds: [],
     availableThinkingLevels: [],
     workspaceGoals: [],
     workspaceGoalsLoading: false,

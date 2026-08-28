@@ -202,7 +202,7 @@ export class SessionController {
     // session must not cancel the in-flight upload indicator of the session
     // that is still sending; the per-session entry is cleared by send()'s
     // finally block when the request settles.
-    this.setState({ selectedSession: undefined, messages: [], messagePageStart: 0, messagePageEnd: 0, messagePageTotal: 0, isLoadingEarlierMessages: false, status: undefined, activity: undefined, pendingAsk: undefined, pendingDialogs: [], closedDialogs: [], availableThinkingLevels: [], treeDialog: undefined });
+    this.setState({ selectedSession: undefined, messages: [], messagePageStart: 0, messagePageEnd: 0, messagePageTotal: 0, isLoadingEarlierMessages: false, status: undefined, activity: undefined, pendingAsk: undefined, pendingDialogs: [], closedDialogs: [], dismissedDialogIds: [], availableThinkingLevels: [], treeDialog: undefined });
   }
 
   deselectSession(options?: { forgetRememberedSelection?: boolean | undefined; updateUrl?: boolean | undefined }) {
@@ -268,6 +268,7 @@ export class SessionController {
       pendingAsk: session.archived === true ? undefined : this.getState().sessionStatuses[session.id]?.pendingAsk,
       pendingDialogs: session.archived === true ? [] : (this.getState().sessionStatuses[session.id]?.pendingDialogs ?? []),
       closedDialogs: [],
+      dismissedDialogIds: [],
       availableThinkingLevels: [],
     });
     let buffered: SessionUiEvent[] | undefined;
@@ -276,7 +277,7 @@ export class SessionController {
         const page = await this.api.messages(session, { limit: MESSAGE_PAGE_SIZE }, selectedMachineId(this.getState()));
         if (seq !== this.selectionSeq || this.getState().selectedSession?.id !== session.id) return;
         const history = this.transcripts.mergeHistory(transcriptKey, page);
-        this.setState({ ...history, isLoadingEarlierMessages: false, status: undefined, activity: undefined, pendingAsk: undefined, pendingDialogs: [], closedDialogs: [] });
+        this.setState({ ...history, isLoadingEarlierMessages: false, status: undefined, activity: undefined, pendingAsk: undefined, pendingDialogs: [], closedDialogs: [], dismissedDialogIds: [] });
         this.onSelectedSessionReady?.({ machineId, session });
         if (options?.updateUrl !== false) this.updateUrl();
         return;
@@ -768,7 +769,7 @@ export class SessionController {
         sessions: nextSessions,
         sessionStatuses: omitKeys(state.sessionStatuses, affectedIds),
         sessionActivities: omitKeys(state.sessionActivities, affectedIds),
-        ...(selectedAffected ? { status: undefined, activity: undefined, pendingAsk: undefined, pendingDialogs: [], closedDialogs: [] } : {}),
+        ...(selectedAffected ? { status: undefined, activity: undefined, pendingAsk: undefined, pendingDialogs: [], closedDialogs: [], dismissedDialogIds: [] } : {}),
       });
 
       if (state.selectedSession !== undefined && deletedIdSet.has(state.selectedSession.id)) {
@@ -1463,6 +1464,7 @@ export class SessionController {
       pendingAsk: undefined,
       pendingDialogs: [],
       closedDialogs: [],
+      dismissedDialogIds: [],
       availableThinkingLevels: [],
       treeDialog: undefined,
       ...(activity === undefined ? {} : { sessionActivities: { ...state.sessionActivities, [session.id]: activity } }),
@@ -1506,7 +1508,7 @@ export class SessionController {
       sessionActivities: omitSessionActivity(state.sessionActivities, tempId),
       sendingPrompts: moveRecordKey(state.sendingPrompts, tempId, cachedSession.id),
       clientQueuedSessionMessages: moveRecordKey(state.clientQueuedSessionMessages, tempId, cachedSession.id),
-      ...(wasSelected ? { selectedSession: cachedSession, status: state.sessionStatuses[cachedSession.id], activity: state.sessionActivities[cachedSession.id], pendingAsk: state.sessionStatuses[cachedSession.id]?.pendingAsk, pendingDialogs: state.sessionStatuses[cachedSession.id]?.pendingDialogs ?? [], closedDialogs: [] } : {}),
+      ...(wasSelected ? { selectedSession: cachedSession, status: state.sessionStatuses[cachedSession.id], activity: state.sessionActivities[cachedSession.id], pendingAsk: state.sessionStatuses[cachedSession.id]?.pendingAsk, pendingDialogs: state.sessionStatuses[cachedSession.id]?.pendingDialogs ?? [], closedDialogs: [], dismissedDialogIds: [] } : {}),
       error: "",
     });
     this.applyReleasedCreatedSessions(releasedCreatedSessions, pending.machineId);
@@ -1679,7 +1681,12 @@ export class SessionController {
       // Same for extension dialogs: the status projection is authoritative for
       // the open list. Closed-card outcomes are event/response-driven instead,
       // so a status without the dialog simply drops it from the open list.
-      ...(isSelected ? { pendingDialogs: status.pendingDialogs ?? [] } : {}),
+      // A dialog this browser already settled is the one thing the projection
+      // cannot speak for: the snapshot is unordered against socket frames, so
+      // one taken before the close can arrive after it. Re-opening a dismissed
+      // dialog would record its outcome card again and cost the reader a second
+      // tap, so those ids are held back.
+      ...(isSelected ? { pendingDialogs: openDialogsAfterDismissals(status.pendingDialogs, state.dismissedDialogIds) } : {}),
       ...(messages === state.messages ? {} : { messages }),
     });
     if (becameIdle) this.onSelectedSessionIdle?.();
@@ -1721,11 +1728,18 @@ export class SessionController {
     });
   }
 
-  /** Drop a closed dialog's transient outcome card (e.g. the user dismissed it). */
+  /**
+   * Drop a closed dialog's transient outcome card (e.g. the user dismissed it).
+   * The id is remembered so a status snapshot that predates the close cannot
+   * re-open the dialog and deposit the same card a second time.
+   */
   dismissClosedDialog(dialogId: string): void {
     const state = this.getState();
     if (!state.closedDialogs.some((entry) => entry.dialog.dialogId === dialogId)) return;
-    this.setState({ closedDialogs: state.closedDialogs.filter((entry) => entry.dialog.dialogId !== dialogId) });
+    this.setState({
+      closedDialogs: state.closedDialogs.filter((entry) => entry.dialog.dialogId !== dialogId),
+      dismissedDialogIds: [...state.dismissedDialogIds, dialogId],
+    });
   }
 
   private applyOpenedAsk(ask: PendingAskUser): void {
@@ -2058,6 +2072,21 @@ export class SessionController {
  */
 function leavesOutcomeCard(closed: ClosedExtensionDialog): boolean {
   return closed.reason !== "timeout" || closed.dialog.runScoped;
+}
+
+/**
+ * The daemon's open list minus the dialogs this reader already dismissed. The
+ * status projection describes what the daemon believed when it was built, which
+ * for a dialog settled here is older news than the close this browser applied.
+ */
+function openDialogsAfterDismissals(
+  pendingDialogs: readonly PendingExtensionDialog[] | undefined,
+  dismissedDialogIds: readonly string[],
+): PendingExtensionDialog[] {
+  const open = pendingDialogs ?? [];
+  if (dismissedDialogIds.length === 0) return [...open];
+  const dismissed = new Set(dismissedDialogIds);
+  return open.filter((dialog) => !dismissed.has(dialog.dialogId));
 }
 
 function omitSessionActivity(activities: Record<string, SessionActivity>, sessionId: string): Record<string, SessionActivity> {
