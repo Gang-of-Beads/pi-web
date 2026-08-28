@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Machine } from "../../api";
 import { AppContextBar, shouldShowMachineContext } from "./AppContextBar";
@@ -42,5 +44,21 @@ describe("which part of the trail gets the room on a phone", () => {
     const width = /\.context-breadcrumb\s*\{[^}]*max-width:\s*(\d+)%/u.exec(narrow)?.[1];
 
     expect(Number(width)).toBeLessThanOrEqual(25);
+  });
+});
+
+describe("room for the buttons that float over the context bar", () => {
+  /**
+   * The buttons are absolutely positioned and the text was kept clear of them
+   * by two guessed widths, 58px and 102px. Measured on a phone the three
+   * buttons occupied 120px, so every label - machine, project and workspace -
+   * sat underneath them and the text ran 44px past the edge of the screen.
+   */
+  it("keeps clear of whatever the buttons actually measure", () => {
+    const sheet = readFileSync(join(process.cwd(), "src/client/src/components/appShell/AppContextBar.ts"), "utf8");
+
+    expect(sheet).toMatch(/padding-right:\s*var\(--pi-context-actions-room/u);
+    expect(sheet).not.toMatch(/padding-right:\s*58px/u);
+    expect(sheet).not.toMatch(/padding-right:\s*102px/u);
   });
 });

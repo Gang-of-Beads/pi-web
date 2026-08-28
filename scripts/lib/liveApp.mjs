@@ -20,6 +20,21 @@ export async function openApp({ port = "8504", phone = false } = {}) {
   return { browser, context, page, close: async () => { await context.close(); await browser.close(); } };
 }
 
+/**
+ * Source for page-side use: a scroller reports rectangles for children it has
+ * clipped away, so any measurement of "what is on screen" has to intersect a
+ * candidate with its scrolling ancestor before believing its rectangle.
+ */
+export const VISIBLE_IN_SCROLLER_FN = `
+function visibleInScroller(el, scroller) {
+  const r = el.getBoundingClientRect();
+  if (r.width === 0 || r.height === 0) return false;
+  const view = scroller?.getBoundingClientRect();
+  if (view && (r.bottom <= view.top || r.top >= view.bottom)) return false;
+  return r.top >= 0 && r.bottom <= window.innerHeight;
+}
+`;
+
 /** Every element matching `match`, across shadow roots. */
 export function deepQuery(page, selector, matchText) {
   return page.evaluate(

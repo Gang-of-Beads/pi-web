@@ -179,3 +179,46 @@ describe("the shape of the drawer's section buttons", () => {
     expect(rule).not.toMatch(/--pi-radius-pill/u);
   });
 });
+
+function allRulesFor(selector: string): string[] {
+  const pattern = new RegExp(`\\${selector}\\s*\\{([^}]*)\\}`, "gu");
+  return [...sheets.matchAll(pattern)].map((match) => match[1] ?? "");
+}
+
+describe("where the activity marker lives", () => {
+  /**
+   * Anchored to the bottom of the viewport, it passed over the conversation at
+   * every scroll position but the very bottom: measured live at 1440x900 it
+   * covered three lines including an assistant header, and reserving room at
+   * the end of the transcript could not help text in the middle.
+   *
+   * A row of its own cannot cover anything.
+   */
+  it("occupies a row instead of floating over the words", () => {
+    const rules = allRulesFor(".activity-dock");
+
+    expect(rules.length).toBeGreaterThan(0);
+    expect(rules.some((rule) => /position:\s*absolute/u.test(rule))).toBe(false);
+  });
+
+  it("lets the conversation and the marker share the column", () => {
+    const rules = allRulesFor(".chat-wrap");
+
+    expect(rules.length).toBeGreaterThan(0);
+    expect(rules.some((rule) => /flex-direction:\s*column/u.test(rule))).toBe(true);
+  });
+});
+
+describe("the size of a target on a touch screen", () => {
+  /**
+   * Copy and resend measured 24x24 on a phone. A fingertip covers far more
+   * than that, so the tap either misses or lands on the message underneath.
+   * The drawn button stays small; only what a finger can hit grows.
+   */
+  it("gives message actions a finger-sized reach without redrawing them", () => {
+    const rules = allRulesFor(".msg-action");
+
+    expect(rules.some((rule) => /width:\s*24px/u.test(rule))).toBe(true);
+    expect(sheets).toMatch(/\.msg-action::after\s*\{[^}]*inset:\s*-10px/u);
+  });
+});

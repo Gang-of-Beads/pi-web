@@ -32,3 +32,13 @@
 {"type":"task_started","goalId":"mtchb0xl-acd2vn","taskId":"task-1","at":"2026-08-28T04:56:04.529Z"}
 {"type":"task_complete","goalId":"mtchb0xl-acd2vn","taskId":"task-1","evidence":"8504 跑 1.202608.58 且返回 200(api 也 200)。分区标签形状的实机实测未取得:分区仅在有 activity 数据时渲染,headless 里进不去该状态,脚本按约定判 FAIL 而非空过。","at":"2026-08-28T05:02:06.073Z"}
 {"type":"task_started","goalId":"mtchb0xl-acd2vn","taskId":"task-2","at":"2026-08-28T05:02:40.186Z"}
+{"type":"task_complete","goalId":"mtchb0xl-acd2vn","taskId":"task-2","evidence":"浮标从绝对定位改为流内一行(.chat-wrap 改列布局)。实测:8504(.58 未修)FAIL —— 浮标伸入阅读区 34px;8505(新构建)桌面 42→705 vs 浮标 705 PASS,手机 107→532 vs 532 PASS。脚本在缺少任一矩形时判 FAIL。","at":"2026-08-28T05:41:48.439Z"}
+{"type":"task_started","goalId":"mtchb0xl-acd2vn","taskId":"task-3","at":"2026-08-28T05:41:50.893Z"}
+{"type":"task_complete","goalId":"mtchb0xl-acd2vn","taskId":"task-3","evidence":"根因:.context-actions 绝对定位,让位靠写死的 58px/102px,实测三个按钮占 120px。改为量测发布 --pi-context-actions-room(实测 128px),删掉两个魔数与 has-context-actions-double 类。实测:8504 未修 FAIL(项目名 pi-web 被压),8505 新构建 PASS(6 标签零重叠,滚到尽头仍 0)。","at":"2026-08-28T05:50:19.534Z"}
+{"type":"task_started","goalId":"mtchb0xl-acd2vn","taskId":"task-4","at":"2026-08-28T05:50:43.912Z"}
+{"type":"task_complete","goalId":"mtchb0xl-acd2vn","taskId":"task-4","evidence":"根因:renderContextBar 曾是 if (!isMobileNavigationLayout) return null —— 桌面永不显示顶栏。改为 showsWhereAmIBar(手机 或 折叠)。实测对比:8504(.60)折叠后 main 子元素为 div,chat-view,prompt-editor,status-bar 无顶栏;8505(新构建)为 app-context","at":"2026-08-28T05:57:10.122Z"}
+{"type":"task_started","goalId":"mtchb0xl-acd2vn","taskId":"task-5","at":"2026-08-28T05:57:13.168Z"}
+{"type":"task_complete","goalId":"mtchb0xl-acd2vn","taskId":"task-5","evidence":"复现:8504 实测 Copy assistant message 等按钮 24×24。修法:.msg-action 加 position:relative + ::after{inset:-10px},绘制尺寸不变、命中区 24+20=44。实机取证:8505 上 getComputedStyle(el,\"::after\").inset 返回 -10px。直接 elementFromPoint ","at":"2026-08-28T06:03:00.262Z"}
+{"type":"task_started","goalId":"mtchb0xl-acd2vn","taskId":"task-6","at":"2026-08-28T06:03:03.281Z"}
+{"type":"task_complete","goalId":"mtchb0xl-acd2vn","taskId":"task-6","evidence":"证伪,非缺陷。实测:1440 下 7 个分区(Files/Git/Terminal/Tasks/Relays/Updates/Info)scrollIntoView 后全部落在条带可视框内,unreachable=0,页面不横向溢出(documentElement.scrollWidth == innerWidth)。8504 未修版本同样 7/7 可达。报告中的\"Info 在屏幕外\"是 getB","at":"2026-08-28T06:07:00.325Z"}
+{"type":"task_started","goalId":"mtchb0xl-acd2vn","taskId":"task-7","at":"2026-08-28T06:07:03.232Z"}

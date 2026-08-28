@@ -53,6 +53,7 @@ import { queryNamespace, readNamespacedString, setNamespacedQueryKey } from "../
 import { AppShellController } from "../appShell/appShellController";
 import { BrowserResumeController } from "../appShell/browserResumeController";
 import { NavigationSectionsController, type NavigationSection } from "../appShell/navigationState";
+import { showsWhereAmIBar } from "../appShell/whereAmIBar";
 import { PanelCollapseController, mainViewClass } from "../appShell/panelCollapseController";
 import { PanelResizeController, type PanelResizeConstraints, type ResizablePanelSide } from "../appShell/panelResizeController";
 import { readRoute, resolveAppRoute, resolveWorkspacePanelRouteValue, writeRoute, type AppRoute, type ParsedAppRoute } from "../route";
@@ -3080,7 +3081,11 @@ export class PiWebApp extends LitElement {
   }
 
   private renderContextBar() {
-    if (!this.appShell.isMobileNavigationLayout) return null;
+    const layout = {
+      isMobileNavigationLayout: this.appShell.isMobileNavigationLayout,
+      navigationCollapsed: this.panelCollapse.navigationPanelCollapsed,
+    };
+    if (!showsWhereAmIBar(layout)) return null;
     return html`
       <app-context-bar
         .machines=${this.state.machines}

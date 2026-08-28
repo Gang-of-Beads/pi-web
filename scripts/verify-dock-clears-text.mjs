@@ -31,40 +31,30 @@ await app.page.waitForTimeout(1200);
 const seen = await app.page.evaluate(() => {
   const root = document.querySelector("pi-web-app")?.shadowRoot?.querySelector("chat-view")?.shadowRoot;
   const dock = root?.querySelector(".activity-dock");
-  if (!dock) return { dock: undefined };
-  const d = dock.getBoundingClientRect();
-  if (d.height === 0) return { dock: undefined };
+  const chat = root?.querySelector(".chat");
+  if (!dock || !chat) return undefined;
 
-  const overlapped = [];
-  let considered = 0;
-  for (const el of root?.querySelectorAll(".chat *") ?? []) {
-    if (el.closest(".activity-dock") !== null) continue;
-    const ownText = [...el.childNodes].some((node) => node.nodeType === 3 && (node.textContent ?? "").trim().length > 0);
-    if (!ownText) continue;
-    const r = el.getBoundingClientRect();
-    if (r.height === 0) continue;
-    considered += 1;
-    const overlaps = r.left < d.right && r.right > d.left && r.top < d.bottom && r.bottom > d.top;
-    if (overlaps) overlapped.push({ text: (el.textContent ?? "").trim().slice(0, 32), y: Math.round(r.y), h: Math.round(r.height) });
-  }
-  return { dock: { y: Math.round(d.y), h: Math.round(d.height), x: Math.round(d.x), w: Math.round(d.width) }, overlapped, considered };
+  const d = dock.getBoundingClientRect();
+  const c = chat.getBoundingClientRect();
+  if (d.height === 0 || c.height === 0) return undefined;
+
+  return {
+    dock: { y: Math.round(d.y), h: Math.round(d.height) },
+    reading: { y: Math.round(c.y), h: Math.round(c.height) },
+    intrudes: Math.round(Math.min(d.bottom, c.bottom) - Math.max(d.top, c.top)),
+  };
 });
 
-if (seen.dock === undefined) {
-  console.error("FAIL: the activity marker was not on screen, so nothing was measured");
+if (seen === undefined) {
+  console.error("FAIL: the marker or the reading area was not on screen, so nothing was measured");
   await app.close();
   process.exit(1);
 }
 
-console.log("dock:", JSON.stringify(seen.dock), "text lines measured:", seen.considered, "overlapped:", seen.overlapped.length);
-if (seen.considered === 0) {
-  console.error("FAIL: no text was measured, so clearing it was never demonstrated");
-  await app.close();
-  process.exit(1);
-}
-if (seen.overlapped.length > 0) {
-  console.error(`FAIL: the marker covers ${String(seen.overlapped.length)} line(s): ${seen.overlapped.map((o) => o.text).join(" | ").slice(0, 120)}`);
+console.log("reading area:", JSON.stringify(seen.reading), "marker:", JSON.stringify(seen.dock));
+if (seen.intrudes > 0) {
+  console.error(`FAIL: the marker sits ${String(seen.intrudes)}px inside the reading area, so text passes under it`);
   process.exitCode = 1;
-} else console.log("PASS: the marker clears the text");
+} else console.log("PASS: the marker sits below the reading area");
 
 await app.close();

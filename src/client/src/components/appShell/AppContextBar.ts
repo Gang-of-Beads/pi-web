@@ -5,6 +5,9 @@ import type { Machine, Project, SessionInfo, Workspace } from "../../api";
 import { shortSessionId } from "../../sessionLabels";
 import type { NavigationSection } from "../../appShell/navigationState";
 
+/** Gap between the floating buttons and the words beside them. */
+const CONTEXT_ACTIONS_CLEARANCE_PX = 8;
+
 @customElement("app-context-bar")
 export class AppContextBar extends LitElement {
   @property({ attribute: false }) machines: Machine[] = [];
@@ -61,11 +64,13 @@ export class AppContextBar extends LitElement {
   override firstUpdated(): void {
     this.observeContextItems();
     this.updateScrollState();
+    this.publishActionsRoom();
   }
 
   override updated(): void {
     this.observeContextItems();
     this.updateScrollState();
+    this.publishActionsRoom();
     // Select the text exactly once, when the input first appears, so the tap
     // that starts the edit also opens the keyboard and a correction can be
     // typed straight away. Every later render -- a fresh token streaming in,
@@ -300,7 +305,6 @@ export class AppContextBar extends LitElement {
   private contextBarClass(): string {
     const classes = ["context-bar"];
     if (this.hasContextActions()) classes.push("has-context-actions");
-    if (this.refreshControl !== undefined && this.onShowActions !== undefined) classes.push("has-context-actions-double");
     if (this.canScrollLeft) classes.push("can-scroll-left");
     if (this.canScrollRight) classes.push("can-scroll-right");
     return classes.join(" ");
@@ -321,6 +325,17 @@ export class AppContextBar extends LitElement {
       this.updateScrollState();
     });
     this.contextItemsResizeObserver.observe(contextItems);
+  }
+
+  /**
+   * The buttons float over the bar, so the words beside them have to know how
+   * much of the row is already taken. Two guessed widths left every label
+   * underneath three buttons that measured 120px.
+   */
+  private publishActionsRoom(): void {
+    const actions = this.renderRoot.querySelector(".context-actions");
+    const room = actions === null ? 0 : Math.ceil(actions.getBoundingClientRect().width) + CONTEXT_ACTIONS_CLEARANCE_PX;
+    this.style.setProperty("--pi-context-actions-room", `${String(room)}px`);
   }
 
   private updateScrollState(): void {
@@ -383,8 +398,7 @@ export class AppContextBar extends LitElement {
     .context-bar.can-scroll-left::before, .context-bar.can-scroll-right::after { opacity: 1; }
     .context-bar-label { display: none; }
     .context-items { flex: 1 1 auto; min-width: 0; display: flex; align-items: stretch; gap: var(--pi-space-3); margin: 0; padding: 0 var(--pi-space-4); list-style: none; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scroll-padding-inline: 8px; scrollbar-width: thin; }
-    .context-bar.has-context-actions .context-items { padding-right: 58px; scroll-padding-inline: 8px 58px; }
-    .context-bar.has-context-actions-double .context-items { padding-right: 102px; scroll-padding-inline: 8px 102px; }
+    .context-bar.has-context-actions .context-items { padding-right: var(--pi-context-actions-room, 58px); scroll-padding-inline: 8px var(--pi-context-actions-room, 58px); }
     .context-item { flex: 0 0 auto; min-width: 0; display: flex; }
     .context-actions { position: absolute; top: 6px; right: 0; bottom: 6px; z-index: 3; display: flex; align-items: center; gap: var(--pi-space-3); padding: 0 var(--pi-space-4); background: var(--pi-bg); pointer-events: none; }
     /* Measured at 393px the bar was exactly full: 60px of location, 163px of

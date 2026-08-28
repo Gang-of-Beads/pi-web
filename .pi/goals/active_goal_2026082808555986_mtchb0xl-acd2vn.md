@@ -5,13 +5,13 @@
   "status": "active",
   "autoContinue": true,
   "usage": {
-    "tokensUsed": 55893,
-    "activeSeconds": 2051
+    "tokensUsed": 142426,
+    "activeSeconds": 5351
   },
   "sisyphus": false,
-  "revision": 136,
+  "revision": 336,
   "createdAt": "2026-08-28T04:55:59.865Z",
-  "updatedAt": "2026-08-28T05:31:17.308Z",
+  "updatedAt": "2026-08-28T06:07:34.254Z",
   "taskList": {
     "tasks": [
       {
@@ -25,32 +25,42 @@
       {
         "id": "task-2",
         "title": "P0:活动浮标不再压住正文(桌面与手机)",
-        "status": "pending",
-        "verificationContract": "实测脚本证明浮标矩形与正文文字矩形不重叠,或正文有等高的底部内边距;修复前该脚本会 FAIL"
+        "status": "complete",
+        "verificationContract": "实测脚本证明浮标矩形与正文文字矩形不重叠,或正文有等高的底部内边距;修复前该脚本会 FAIL",
+        "completedAt": "2026-08-28T05:41:48.439Z",
+        "evidence": "浮标从绝对定位改为流内一行(.chat-wrap 改列布局)。实测:8504(.58 未修)FAIL —— 浮标伸入阅读区 34px;8505(新构建)桌面 42→705 vs 浮标 705 PASS,手机 107→532 vs 532 PASS。脚本在缺少任一矩形时判 FAIL。"
       },
       {
         "id": "task-3",
         "title": "P1:顶栏身份可读 —— 项目名不再消失,圆钮不再压住 chip 条",
-        "status": "pending",
-        "verificationContract": "393px 下量到 chip 与按钮矩形零重叠,且项目名在可见文本中出现;修复前会红"
+        "status": "complete",
+        "verificationContract": "393px 下量到 chip 与按钮矩形零重叠,且项目名在可见文本中出现;修复前会红",
+        "completedAt": "2026-08-28T05:50:19.534Z",
+        "evidence": "根因:.context-actions 绝对定位,让位靠写死的 58px/102px,实测三个按钮占 120px。改为量测发布 --pi-context-actions-room(实测 128px),删掉两个魔数与 has-context-actions-double 类。实测:8504 未修 FAIL(项目名 pi-web 被压),8505 新构建 PASS(6 标签零重叠,滚到尽头仍 0)。"
       },
       {
         "id": "task-4",
         "title": "P1:桌面折叠左栏后仍能看到当前机器/项目/工作区/会话",
-        "status": "pending",
-        "verificationContract": "折叠后可见文本中包含会话标识;修复前该断言会红"
+        "status": "complete",
+        "verificationContract": "折叠后可见文本中包含会话标识;修复前该断言会红",
+        "completedAt": "2026-08-28T05:57:10.122Z",
+        "evidence": "根因:renderContextBar 曾是 if (!isMobileNavigationLayout) return null —— 桌面永不显示顶栏。改为 showsWhereAmIBar(手机 或 折叠)。实测对比:8504(.60)折叠后 main 子元素为 div,chat-view,prompt-editor,status-bar 无顶栏;8505(新构建)为 app-context"
       },
       {
         "id": "task-5",
         "title": "P1:消息操作按钮的命中区扩到 44×44",
-        "status": "pending",
-        "verificationContract": "实测命中区尺寸 ≥44;视觉尺寸不变;修复前量到 24×24"
+        "status": "complete",
+        "verificationContract": "实测命中区尺寸 ≥44;视觉尺寸不变;修复前量到 24×24",
+        "completedAt": "2026-08-28T06:03:00.262Z",
+        "evidence": "复现:8504 实测 Copy assistant message 等按钮 24×24。修法:.msg-action 加 position:relative + ::after{inset:-10px},绘制尺寸不变、命中区 24+20=44。实机取证:8505 上 getComputedStyle(el,\"::after\").inset 返回 -10px。直接 elementFromPoint "
       },
       {
         "id": "task-6",
         "title": "P2:工作区 tab 行在 1440 下每个分区都够得着(Info 不在屏幕外)",
-        "status": "pending",
-        "verificationContract": "1440 下所有 tab 的 right ≤ innerWidth,或提供可点的滚动出口并实测可达"
+        "status": "complete",
+        "verificationContract": "1440 下所有 tab 的 right ≤ innerWidth,或提供可点的滚动出口并实测可达",
+        "completedAt": "2026-08-28T06:07:00.325Z",
+        "evidence": "证伪,非缺陷。实测:1440 下 7 个分区(Files/Git/Terminal/Tasks/Relays/Updates/Info)scrollIntoView 后全部落在条带可视框内,unreachable=0,页面不横向溢出(documentElement.scrollWidth == innerWidth)。8504 未修版本同样 7/7 可达。报告中的\"Info 在屏幕外\"是 getB"
       },
       {
         "id": "task-7",
@@ -75,7 +85,7 @@
     "proposedAt": "2026-08-28T04:47:55.380Z"
   },
   "activePath": ".pi/goals/active_goal_2026082808555986_mtchb0xl-acd2vn.md",
-  "currentTaskId": "task-2"
+  "currentTaskId": "task-7"
 }
 
 # Goal Prompt
@@ -115,17 +125,17 @@
 - Status: running
 - Auto-continue: on
 - Sisyphus mode: no
-- Time spent: 34m11s
-- Tokens used: 56K (55,893) tokens
+- Time spent: 1h29m11s
+- Tokens used: 142K (142,426) tokens
 ## Tasks
 
 <!-- blockCompletion: false -->
 - [x] task-1: 确认 .58 已装上,并在实机实测分区标签形状(当前唯一欠账的证据) — evidence: 8504 跑 1.202608.58 且返回 200(api 也 200)。分区标签形状的实机实测未取得:分区仅在有 activity 数据时渲染,headless 里进不去该状态,脚本按约定判 FAIL 而非空过。
-- [ ] task-2: P0:活动浮标不再压住正文(桌面与手机) — contract: 实测脚本证明浮标矩形与正文文字矩形不重叠,或正文有等高的底部内边距;修复前该脚本会 FAIL
-- [ ] task-3: P1:顶栏身份可读 —— 项目名不再消失,圆钮不再压住 chip 条 — contract: 393px 下量到 chip 与按钮矩形零重叠,且项目名在可见文本中出现;修复前会红
-- [ ] task-4: P1:桌面折叠左栏后仍能看到当前机器/项目/工作区/会话 — contract: 折叠后可见文本中包含会话标识;修复前该断言会红
-- [ ] task-5: P1:消息操作按钮的命中区扩到 44×44 — contract: 实测命中区尺寸 ≥44;视觉尺寸不变;修复前量到 24×24
-- [ ] task-6: P2:工作区 tab 行在 1440 下每个分区都够得着(Info 不在屏幕外) — contract: 1440 下所有 tab 的 right ≤ innerWidth,或提供可点的滚动出口并实测可达
+- [x] task-2: P0:活动浮标不再压住正文(桌面与手机) — evidence: 浮标从绝对定位改为流内一行(.chat-wrap 改列布局)。实测:8504(.58 未修)FAIL —— 浮标伸入阅读区 34px;8505(新构建)桌面 42→705 vs 浮标 705 PASS,手机 107→532 vs 532 PASS。脚本在缺少任一矩形时判 FAIL。
+- [x] task-3: P1:顶栏身份可读 —— 项目名不再消失,圆钮不再压住 chip 条 — evidence: 根因:.context-actions 绝对定位,让位靠写死的 58px/102px,实测三个按钮占 120px。改为量测发布 --pi-context-actions-room(实测 128px),删掉两个魔数与 has-context-actions-double 类。实测:8504 未修 FAIL(项目名 pi-web 被压),8505 新构建 PASS(6 标签零重叠,滚到尽头仍 0)。
+- [x] task-4: P1:桌面折叠左栏后仍能看到当前机器/项目/工作区/会话 — evidence: 根因:renderContextBar 曾是 if (!isMobileNavigationLayout) return null —— 桌面永不显示顶栏。改为 showsWhereAmIBar(手机 或 折叠)。实测对比:8504(.60)折叠后 main 子元素为 div,chat-view,prompt-editor,status-bar 无顶栏;8505(新构建)为 app-context
+- [x] task-5: P1:消息操作按钮的命中区扩到 44×44 — evidence: 复现:8504 实测 Copy assistant message 等按钮 24×24。修法:.msg-action 加 position:relative + ::after{inset:-10px},绘制尺寸不变、命中区 24+20=44。实机取证:8505 上 getComputedStyle(el,"::after").inset 返回 -10px。直接 elementFromPoint 
+- [x] task-6: P2:工作区 tab 行在 1440 下每个分区都够得着(Info 不在屏幕外) — evidence: 证伪,非缺陷。实测:1440 下 7 个分区(Files/Git/Terminal/Tasks/Relays/Updates/Info)scrollIntoView 后全部落在条带可视框内,unreachable=0,页面不横向溢出(documentElement.scrollWidth == innerWidth)。8504 未修版本同样 7/7 可达。报告中的"Info 在屏幕外"是 getB
 - [ ] task-7: P2:两处"消息数"不再互相矛盾 — contract: 同一会话两处计数一致,或用词区分开(entries vs messages);有测试锁定
 - [ ] task-8: P2/P3 批次:空会话状态说明原因并给出口、未命名会话不显示十六进制 ID、命令面板不列自己、触控端不显示键盘徽章、文案大小写统一、GO TO 图标槽、快速切换器网格、附件按钮跨线、助手时间戳记完成时间 — contract: 逐条给出"修了"或"不修 + 理由";修了的每条有测试或实测;不修的写明依据
 - [ ] task-9: 发布新版本、在 tmux 里装到 8504,并让两个 subagent 重跑桌面与手机复测 — contract: GitHub Actions 发布成功;8504 跑新版本且 200;两份复测报告确认原问题不复现、无新问题

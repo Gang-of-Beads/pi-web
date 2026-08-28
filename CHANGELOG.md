@@ -1,5 +1,17 @@
 # @jmfederico/pi-web
 
+## 1.202608.61
+
+### Patch Changes
+
+- The activity marker takes a row of its own instead of floating over the conversation, where it covered lines of tool output and message headers at every scroll position but the very bottom.
+
+  Collapsing the navigation panel on a desktop no longer hides where you are: the shell keeps a line naming the machine, project, workspace and session.
+
+  The context bar keeps its words clear of the buttons beside them by measuring the buttons instead of guessing 58px for three that occupy 120px.
+
+  Copy and resend keep their small drawing but can be hit with a finger.
+
 ## 1.202608.60
 
 ### Patch Changes
