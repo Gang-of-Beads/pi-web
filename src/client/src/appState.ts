@@ -1,4 +1,5 @@
 import type { AuthProviderOption, CommandOption, CommandResult, ExtensionDialogAnswer, ExtensionDialogCloseReason, FileContentResponse, FileTreeEntry, GoalRecordSummary, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingAskUser, PendingExtensionDialog, PiWebSelfUpdateStatus, PiWebStatusResponse, Project, QueuedSessionMessage, SessionActivity, SessionInfo, SessionModelCatalogEntry, SessionStatus, SessionBackgroundTaskInfo, SessionSubagentInfo, SessionSubagentRunInfo, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";import type { ChatLine } from "./components/shared";
+import { normalizeMessages } from "./chatMessages";
 import { RetiredBy } from "./notice";
 import type { MachineStatusSnapshot } from "../../shared/machineStatus";
 import type { QualifiedContributionId } from "./plugins/ids";
@@ -28,7 +29,11 @@ export function activityOutputView(title: string, text: string): ActivityOutputV
 export interface ActivityConversationView {
   readonly title: string;
   readonly subtitle: string;
-  readonly messages: readonly unknown[];
+  /**
+   * Normalized here rather than in the view, so a child's turns travel as the
+   * same `ChatLine` the transcript is built from and reach the same renderer.
+   */
+  readonly messages: readonly ChatLine[];
   readonly total: number;
   readonly empty: boolean;
   /** Why this conversation cannot be joined, shown with it. */
@@ -41,12 +46,16 @@ export function subagentRunConversationView(
   run: { runId: string; agent: string; status: string },
   page: { messages: readonly unknown[]; total: number },
 ): ActivityConversationView {
+  // The same normalization the transcript store applies to a session's own
+  // page. A fork-context child's event log has already been adapted into this
+  // shape server-side, so both kinds of child arrive here identical.
+  const messages = normalizeMessages([...page.messages]);
   return {
     title: `${run.agent} · ${run.runId.slice(0, 8)}`,
     subtitle: `Child run of this session · ${run.status}`,
-    messages: page.messages,
+    messages,
     total: page.total,
-    empty: page.messages.length === 0,
+    empty: messages.length === 0,
     interventionUnavailable: SUBAGENT_INTERVENTION_UNAVAILABLE,
   };
 }

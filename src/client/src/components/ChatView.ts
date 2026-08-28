@@ -13,7 +13,7 @@ import { shouldRequestEarlierMessages } from "../chatHistoryLoading";
 import { ChatScrollController, distanceFromScrollBottom, findFirstVisibleArticle, isNearScrollBottom, type ChatAnchorScrollPosition, type ChatScrollRestoreResult } from "../chatScrollPosition";
 import { scrollEdgeClasses, ScrollEdgeTracker } from "../scrollEdges";
 import type { AskUserSubmission, PendingAskUser, PendingExtensionDialog, QueuedSessionMessage, SessionActivity, SessionStatus, SessionWarningSeverity } from "../api";
-import type { ActivityOutputView, ClosedExtensionDialog } from "../appState";
+import type { ActivityConversationView, ActivityOutputView, ClosedExtensionDialog } from "../appState";
 import {
   notificationAnnouncementLabel,
   notificationDismissLabel,
@@ -405,6 +405,22 @@ export const chatStyles = css`
   .activity-output-close:focus-visible { outline: 1px solid var(--pi-border); outline-offset: -2px; }
   .activity-output-body { flex: 1; min-height: 0; margin: 0; padding: var(--pi-space-4) var(--pi-space-5); font: var(--pi-code-font-size, 12px)/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; overscroll-behavior: contain; }
   .activity-output-empty { margin: 0; padding: var(--pi-space-6) var(--pi-space-5); color: var(--pi-muted); text-align: center; }
+  /* A child's conversation, over the parent's. It borrows the output viewer's
+     frame because it is the same kind of thing - something opened from an
+     activity row - but its body is a message list rather than a log. */
+  dialog.activity-conversation { position: fixed; inset: 0; margin: auto; box-sizing: border-box; width: min(92vw, 900px); max-height: calc(88vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); padding: 0; color: var(--pi-text); background: var(--pi-surface); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); overflow: hidden; }
+  dialog.activity-conversation[open] { display: flex; flex-direction: column; }
+  dialog.activity-conversation::backdrop { background: rgba(0, 0, 0, 0.6); }
+  .activity-conversation-head { display: flex; align-items: flex-start; gap: var(--pi-space-3); padding: var(--pi-space-4) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); }
+  .activity-conversation-identity { flex: 1; min-width: 0; }
+  .activity-conversation-title { margin: 0; font-size: var(--pi-font-size-sm, 13px); font-weight: 600; color: var(--pi-text-bright); overflow-wrap: anywhere; }
+  .activity-conversation-subtitle { margin: var(--pi-space-1) 0 0; font-size: var(--pi-text-xs); color: var(--pi-muted); overflow-wrap: anywhere; }
+  .activity-conversation-close { display: inline-grid; place-items: center; flex: none; width: 44px; height: 44px; margin: calc(-1 * var(--pi-space-2)) calc(-1 * var(--pi-space-2)) calc(-1 * var(--pi-space-2)) 0; padding: 0; font: 18px/1 system-ui, sans-serif; color: var(--pi-muted); background: transparent; border: none; border-radius: var(--pi-radius-sm); cursor: pointer; }
+  .activity-conversation-close:hover, .activity-conversation-close:focus-visible { color: var(--pi-text-bright); }
+  .activity-conversation-close:focus-visible { outline: 1px solid var(--pi-border); outline-offset: -2px; }
+  .activity-conversation-boundary { flex: none; margin: 0; padding: var(--pi-space-3) var(--pi-space-5); font-size: var(--pi-text-xs); color: var(--pi-muted); background: var(--pi-bg-overlay); border-bottom: 1px solid var(--pi-border-muted); }
+  .activity-conversation-body { flex: 1; min-height: 0; padding: var(--pi-space-5) var(--pi-chat-gutter); overflow: auto; overscroll-behavior: contain; }
+  .activity-conversation-empty { margin: 0; padding: var(--pi-space-6) var(--pi-space-5); color: var(--pi-muted); text-align: center; }
   .group-msg { max-width: 100%; min-width: 0; box-sizing: border-box; padding: var(--pi-space-5) 0; border-top: 1px solid var(--pi-border-muted); color: var(--pi-text); overflow: visible; }
   .group-msg.tool { color: var(--pi-warning); }
   .group-msg.tool-execution-shell { color: var(--pi-text); }
@@ -715,10 +731,14 @@ export class ChatView extends LitElement {
   /** A log or artifact opened from the activity list, read in its own view. */
   @property({ attribute: false }) activityOutput?: ActivityOutputView | undefined;
   @property({ attribute: false }) onCloseActivityOutput?: () => void;
+  /** A child run's conversation, opened from its activity row. */
+  @property({ attribute: false }) activityConversation?: ActivityConversationView | undefined;
+  @property({ attribute: false }) onCloseActivityConversation?: () => void;
   @query(".chat") private chat?: HTMLDivElement;
   @query(".drawer-tabs") private drawerTabs?: HTMLElement | null;
   @query("dialog.image-zoom") private imageZoomDialog?: HTMLDialogElement;
   @query("dialog.activity-output") private activityOutputDialog?: HTMLDialogElement;
+  @query("dialog.activity-conversation") private activityConversationDialog?: HTMLDialogElement;
   @state() private pinnedToBottom = true;
   private readonly followGate = new ScrollFollowGate();
   /** Whether the newest message is far enough away to be worth a button. */
@@ -756,6 +776,7 @@ export class ChatView extends LitElement {
   private pendingNotificationFocus: PendingNotificationFocus | undefined;
   private imageZoomModalRegistration: RenderedModalRegistration | undefined;
   private activityOutputModalRegistration: RenderedModalRegistration | undefined;
+  private activityConversationModalRegistration: RenderedModalRegistration | undefined;
   private readonly disclosures = new ChatDisclosureController();
   private readonly scrollController = new ChatScrollController();
   private readonly drawerTabEdgeTracker = new ScrollEdgeTracker(() => { this.requestUpdate(); });
@@ -912,6 +933,7 @@ export class ChatView extends LitElement {
     if (changed.has("notificationInbox") && this.pendingNotificationFocus !== undefined) this.focusPendingNotificationTarget();
     if (changed.has("zoomedImage")) this.syncImageZoomDialog();
     if (changed.has("activityOutput")) this.syncActivityOutputDialog();
+    if (changed.has("activityConversation")) this.syncActivityConversationDialog();
     this.drawerTabEdgeTracker.observe(this.drawerTabs ?? undefined);
     this.publishScrollbarWidth();
     this.publishDockRoom();
@@ -1015,6 +1037,41 @@ export class ChatView extends LitElement {
     registration?.unregister();
   }
 
+  private syncActivityConversationDialog(): void {
+    const dialog = this.activityConversationDialog;
+    if (dialog === undefined) return;
+    if (this.activityConversation !== undefined) {
+      if (this.activityConversationModalRegistration === undefined) {
+        const registration = registerRenderedModal({
+          element: dialog,
+          nativeTopLayer: true,
+          focus: () => {
+            const close = this.renderRoot.querySelector<HTMLElement>(".activity-conversation-close");
+            (close ?? dialog).focus();
+          },
+        });
+        this.activityConversationModalRegistration = registration;
+        try {
+          if (!dialog.open) dialog.showModal();
+        } catch (error) {
+          this.activityConversationModalRegistration = undefined;
+          registration.unregister();
+          throw error;
+        }
+      }
+      this.activityConversationModalRegistration.focus();
+      return;
+    }
+    if (dialog.open) dialog.close();
+    this.releaseActivityConversationModal();
+  }
+
+  private releaseActivityConversationModal(): void {
+    const registration = this.activityConversationModalRegistration;
+    this.activityConversationModalRegistration = undefined;
+    registration?.unregister();
+  }
+
   private releaseImageZoomModal(): void {
     const registration = this.imageZoomModalRegistration;
     this.imageZoomModalRegistration = undefined;
@@ -1056,6 +1113,7 @@ export class ChatView extends LitElement {
       </div>
       ${this.renderImageZoom()}
       ${this.renderActivityOutput()}
+      ${this.renderActivityConversation()}
     `;
   }
 
@@ -1569,6 +1627,60 @@ export class ChatView extends LitElement {
             : html`<pre class="activity-output-body">${output.text}</pre>`}
         `}
       </dialog>
+    `;
+  }
+
+  private readonly closeActivityConversation = (): void => {
+    if (this.activityConversation !== undefined) this.onCloseActivityConversation?.();
+  };
+  private readonly onActivityConversationDialogClick = (event: MouseEvent): void => {
+    if (event.target === this.activityConversationDialog) this.closeActivityConversation();
+  };
+
+  /**
+   * A child run's conversation, over the parent's rather than inside it.
+   *
+   * The turns are drawn by the same header and part renderers the transcript
+   * uses, so a child's tool calls, thinking and text look like what they are.
+   * What is deliberately not reused is `renderMessage`: it stamps scroll
+   * markers and anchor ids belonging to the parent's scroller, and a second
+   * list carrying them would corrupt the restore position of the conversation
+   * underneath. This is the same split `renderMessageGroupBody` already makes.
+   */
+  private renderActivityConversation() {
+    const conversation = this.activityConversation;
+    return html`
+      <dialog class="activity-conversation" @click=${this.onActivityConversationDialogClick} @close=${this.closeActivityConversation} @cancel=${this.closeActivityConversation}>
+        ${conversation === undefined ? null : html`
+          <header class="activity-conversation-head">
+            <div class="activity-conversation-identity">
+              <h2 class="activity-conversation-title">${conversation.title}</h2>
+              <p class="activity-conversation-subtitle">${conversation.subtitle}</p>
+            </div>
+            <button type="button" class="activity-conversation-close" aria-label="Close conversation" @click=${this.closeActivityConversation}>×</button>
+          </header>
+          <p class="activity-conversation-boundary" role="note">${conversation.interventionUnavailable}</p>
+          ${conversation.empty
+            ? html`<p class="activity-conversation-empty">This run has not written anything yet.</p>`
+            : html`
+              <div class="activity-conversation-body">
+                ${conversation.messages.map((message, index) => this.renderActivityConversationMessage(message, index))}
+              </div>
+            `}
+        `}
+      </dialog>
+    `;
+  }
+
+  private renderActivityConversationMessage(message: ChatLine, index: number) {
+    const toolOnly = this.isToolExecutionOnlyMessage(message);
+    const askUserRecordOnly = this.isAskUserRecordOnlyMessage(message);
+    const shellClass = toolOnly ? "msg tool-execution-shell" : "msg ask-user-record-shell";
+    return html`
+      <article class=${toolOnly || askUserRecordOnly ? shellClass : `msg ${message.role}`}>
+        ${toolOnly || askUserRecordOnly ? null : this.renderMessageHeader(message, `child:${String(index)}`)}
+        ${message.parts.map((part) => this.renderPart(part, message))}
+      </article>
     `;
   }
 

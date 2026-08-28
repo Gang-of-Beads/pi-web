@@ -1185,6 +1185,10 @@ export class SessionController {
     if (this.getState().activityOutput !== undefined) this.setState({ activityOutput: undefined });
   }
 
+  closeActivityConversation(): void {
+    if (this.getState().activityConversation !== undefined) this.setState({ activityConversation: undefined });
+  }
+
   async dismissWarning(dismissId: string) {
     const state = this.getState();
     const session = state.selectedSession;
