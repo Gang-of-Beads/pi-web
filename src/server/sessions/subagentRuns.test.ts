@@ -336,9 +336,13 @@ describe("runs whose directory and artifacts use different ids", () => {
     const dir = await sessionDir();
     const runDir = join(dir, PARENT, "5d2ddee7-ad67-46e5-82a6-5a89b7e796cb");
     await mkdir(runDir, { recursive: true });
-    await ageDirectory(runDir, 158 * 60 * 1000);
+    // Aged by moving the clock, not the directory: the age comes from birthtime,
+    // and utimes cannot set that. macOS drags birthtime back with mtime so the
+    // fixture appeared to work there, while on Linux the directory stayed newly
+    // born and the run was still called running - green locally, red in CI.
+    const silentFor = 158 * 60 * 1000;
 
-    const [run] = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: true });
+    const [run] = await listSubagentRuns(dir, PARENT, Date.now() + silentFor, { parentActive: true });
 
     expect(run).toMatchObject({ runId: "5d2ddee7-ad67-46e5-82a6-5a89b7e796cb", status: "lost" });
   });
