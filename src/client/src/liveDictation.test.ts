@@ -111,6 +111,39 @@ describe("text arriving", () => {
   });
 });
 
+/**
+ * A socket that fails while it is closing still has the handler attached, so a
+ * dictation the user already finished can put an error on screen afterwards -
+ * next to a composer they are no longer dictating into.
+ */
+describe("a dictation that has been stopped", () => {
+  it("reports nothing when its socket fails after the stop", async () => {
+    const onError = vi.fn();
+    const socket = new FakeSocket();
+    const dictation = new LiveDictation(deps({ openSocket: () => socket.asWebSocket(), onError }));
+    await dictation.start("wss://example/stt");
+
+    dictation.stop();
+    socket.fail();
+
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("closes a socket that was still connecting when the user stopped", async () => {
+    const socket = new FakeSocket();
+    const dictation = new LiveDictation(deps({ openSocket: () => socket.asWebSocket() }));
+    await dictation.start("wss://example/stt");
+
+    // readyState 0 is CONNECTING: close() is ignored there, so a socket that
+    // finishes connecting after the stop would otherwise stay open with a live
+    // microphone behind it.
+    dictation.stop();
+    socket.open();
+
+    expect(socket.readyState).toBe(3);
+  });
+});
+
 class FakeSocket {
   readyState = 0;
   sent: string[] = [];
@@ -140,6 +173,7 @@ class FakeSocket {
 
   open(): void { this.readyState = 1; this.onopen?.(); }
   receive(frame: string): void { this.onmessage?.({ data: frame }); }
+  fail(): void { this.onerror?.(); }
 }
 
 function isWebSocketLike(value: unknown): value is WebSocket {

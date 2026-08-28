@@ -43,6 +43,24 @@ export class LiveDictation {
     this.buffer = new SpeechTranscriptBuffer(SPEECH_DELTA_MODES[protocol]);
   }
 
+  /**
+   * Closing is not immediate, and a socket that fails on the way down still has
+   * its handlers attached. Without dropping them a dictation the user already
+   * finished can put "The dictation connection failed." on screen afterwards,
+   * beside a composer they are no longer dictating into.
+   */
+  private static closeQuietly(socket: WebSocket | undefined): void {
+    if (socket === undefined) return;
+    socket.onmessage = null;
+    socket.onerror = null;
+    if (socket.readyState === WebSocket.CONNECTING) {
+      socket.onopen = () => { socket.close(); };
+      return;
+    }
+    socket.onopen = null;
+    socket.close();
+  }
+
   async start(socketUrl: string): Promise<void> {
     this.buffer = new SpeechTranscriptBuffer(SPEECH_DELTA_MODES[this.protocol]);
     let credential: { token: string; region: string };
@@ -75,8 +93,9 @@ export class LiveDictation {
   stop(): void {
     this.stopCapture?.();
     this.stopCapture = undefined;
-    this.socket?.close();
+    const socket = this.socket;
     this.socket = undefined;
+    LiveDictation.closeQuietly(socket);
     // Only settled text survives a stop: a half-formed guess that happened to
     // be on screen is not something the speaker said.
     const settled = this.buffer.settledText();

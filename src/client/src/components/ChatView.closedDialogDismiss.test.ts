@@ -1,0 +1,76 @@
+// @vitest-environment happy-dom
+
+import { afterEach, describe, expect, it } from "vitest";
+import type { PendingExtensionDialog } from "../api";
+import type { ClosedExtensionDialog } from "../appState";
+import { ChatView } from "./ChatView";
+import type { ExtensionDialogCard } from "./ExtensionDialogCard";
+
+afterEach(() => {
+  document.body.replaceChildren();
+});
+
+/**
+ * The owner tapped Dismiss on a settled extension-dialog card and the card was
+ * still on screen afterwards, so he tapped again. These pin the two things that
+ * would produce that: a dismissal that reports the wrong card, and a second
+ * card taking the first one's place so the tap looks like it did nothing.
+ */
+describe("ChatView settled extension dialog dismissal", () => {
+  it("dismisses the card whose control was pressed and leaves the other one alone", async () => {
+    const view = await mountView();
+    const dismissed: string[] = [];
+    view.onDismissClosedDialog = (dialogId: string) => { dismissed.push(dialogId); };
+    view.closedDialogs = [closedDialog("dlg-a"), closedDialog("dlg-b")];
+    await view.updateComplete;
+
+    pressDismiss(cardFor(view, "dlg-b"));
+
+    expect(dismissed).toEqual(["dlg-b"]);
+  });
+
+  it("keeps each settled card bound to its own dialog id when one is removed", async () => {
+    const view = await mountView();
+    view.closedDialogs = [closedDialog("dlg-a"), closedDialog("dlg-b")];
+    await view.updateComplete;
+
+    view.closedDialogs = [closedDialog("dlg-b")];
+    await view.updateComplete;
+
+    const cards = [...(view.shadowRoot?.querySelectorAll("extension-dialog-card.closed-dialog-card") ?? [])];
+    expect(cards).toHaveLength(1);
+    expect(cards[0]?.getAttribute("data-scroll-anchor-id")).toBe("closed-dialog:dlg-b");
+  });
+});
+
+async function mountView(): Promise<ChatView> {
+  const view = new ChatView();
+  document.body.append(view);
+  await view.updateComplete;
+  return view;
+}
+
+function closedDialog(dialogId: string): ClosedExtensionDialog {
+  return {
+    dialog: openDialog(dialogId, "Extension updates available: github.com/nicobailon/pi-subagents"),
+    reason: "answered",
+    answer: "Update now",
+  };
+}
+
+function openDialog(dialogId: string, title: string): PendingExtensionDialog {
+  return { dialogId, title, kind: "confirm", options: ["Update now", "Skip"], askedAt: "2026-08-28T09:00:00.000Z", runScoped: false };
+}
+
+function cardFor(view: ChatView, dialogId: string): ExtensionDialogCard {
+  const card = view.shadowRoot?.querySelector<ExtensionDialogCard>(`extension-dialog-card[data-scroll-anchor-id="closed-dialog:${dialogId}"]`);
+  if (card === null || card === undefined) throw new Error(`No settled card rendered for ${dialogId}`);
+  return card;
+}
+
+function pressDismiss(card: ExtensionDialogCard): void {
+  const button = [...(card.shadowRoot?.querySelectorAll("button") ?? [])]
+    .find((el) => el.textContent.trim().toLowerCase() === "dismiss");
+  if (button === undefined) throw new Error("The settled card rendered no Dismiss control");
+  button.click();
+}
