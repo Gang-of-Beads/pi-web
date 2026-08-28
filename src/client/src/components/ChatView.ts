@@ -2,6 +2,7 @@ import { css, LitElement, html, type TemplateResult } from "lit";
 import { scrollbarWidthOf } from "../scrollbarWidth";
 import { dropsExpansionAsWorkFinishes } from "../topDrawerExpansion";
 import { showsJumpToBottom } from "../chatScrollPosition";
+import { ScrollFollowGate } from "../scrollFollowGate";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import { ChatDisclosureController } from "../chatDisclosure";
@@ -678,6 +679,7 @@ export class ChatView extends LitElement {
   @query("dialog.image-zoom") private imageZoomDialog?: HTMLDialogElement;
   @query("dialog.activity-output") private activityOutputDialog?: HTMLDialogElement;
   @state() private pinnedToBottom = true;
+  private readonly followGate = new ScrollFollowGate();
   /** Whether the newest message is far enough away to be worth a button. */
   @state() private jumpToBottomVisible = false;
   @state() private zoomedImage: { src: string; alt: string } | undefined = undefined;
@@ -972,7 +974,7 @@ export class ChatView extends LitElement {
       ${this.renderNotificationLiveRegions()}
       <div class="chat-wrap">
         ${this.renderConversationRail()}
-        <div class="chat" @scroll=${() => { this.onScroll(); }} @wheel=${(event: WheelEvent) => { this.onWheel(event); }} @touchstart=${(event: TouchEvent) => { this.onTouchStart(event); }} @touchmove=${(event: TouchEvent) => { this.onTouchMove(event); }}>
+        <div class="chat" @scroll=${() => { this.onScroll(); }} @wheel=${(event: WheelEvent) => { this.onWheel(event); }} @touchend=${() => { this.onTouchEnd(); }} @touchcancel=${() => { this.onTouchEnd(); }} @pointerdown=${() => { this.followGate.notePointerDown(Date.now()); }} @pointerup=${() => { this.followGate.notePointerUp(Date.now()); }} @touchstart=${(event: TouchEvent) => { this.onTouchStart(event); }} @touchmove=${(event: TouchEvent) => { this.onTouchMove(event); }}>
           ${this.renderHistoryBoundary()}
           ${repeat(
             groups,
@@ -1071,7 +1073,7 @@ export class ChatView extends LitElement {
                 @click=${() => { this.selectTopDrawerTab("activity", collapsed); }}
               >
                 ${activity.summary.working ? html`<span class="subagent-dot working" aria-hidden="true"></span>` : null}
-                <span class="drawer-tab-label">${activityTabLabel({ active: activity.activeCount, total: activity.total })}</span>
+                <span class="drawer-tab-label">${activityTabLabel({ active: activity.activeCount })}</span>
               </button>
             `}
             ${inbox === undefined ? null : html`
@@ -2196,6 +2198,11 @@ export class ChatView extends LitElement {
 
   private onTouchStart(event: TouchEvent) {
     this.touchStartY = event.touches[0]?.clientY;
+    this.followGate.notePointerDown(Date.now());
+  }
+
+  private onTouchEnd(): void {
+    this.followGate.notePointerUp(Date.now());
   }
 
   private onTouchMove(event: TouchEvent) {
@@ -2280,6 +2287,7 @@ export class ChatView extends LitElement {
       this.scrollToBottomFrame = undefined;
       const chat = this.chat;
       if (!chat) return;
+      if (!this.followGate.followsNewest(Date.now())) return;
       this.withSuppressedScrollSave(() => {
         chat.scrollTop = chat.scrollHeight;
         this.lastScrollTop = chat.scrollTop;
@@ -2730,8 +2738,8 @@ export function isFinishedActivityStatus(status: ActivityStatus): boolean {
  * The tab's own label. A chat that has run forty tasks and is running two says
  * so: the number that matters is what is live, not the size of the history.
  */
-export function activityTabLabel(counts: { active: number; total: number }): string {
-  return counts.active > 0 ? `Activity · ${String(counts.active)} running` : `Activity (${String(counts.total)})`;
+export function activityTabLabel(counts: { active: number }): string {
+  return counts.active > 0 ? `Activity · ${String(counts.active)} running` : "Activity";
 }
 
 /** Kinds of work the activity list can be narrowed to. */

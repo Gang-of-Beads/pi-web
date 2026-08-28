@@ -114,3 +114,31 @@ function sentForm(fetch: ReturnType<typeof vi.fn>): FormData {
   if (!(body instanceof FormData)) throw new Error("Expected the audio to be posted as FormData");
   return body;
 }
+
+describe("the fetch handed to the transcriber", () => {
+  /**
+   * A browser refuses `fetch` invoked with anything but the window as its
+   * receiver, and storing it in a dependency object makes every call a method
+   * call on that object. Dictation failed with "Failed to execute 'fetch' on
+   * 'Window': Illegal invocation" for exactly that reason.
+   */
+  it("survives being called as a property of the dependency object", async () => {
+    const browserFetch = function (this: unknown): Promise<Response> {
+      if (this !== undefined && this !== globalThis) {
+        throw new TypeError("Failed to execute 'fetch' on 'Window': Illegal invocation");
+      }
+      return Promise.resolve(new Response(JSON.stringify({ text: "hello" }), { status: 200 }));
+    };
+    const original = globalThis.fetch;
+    globalThis.fetch = browserFetch;
+    try {
+      const module = await import("./voiceController");
+      const injected = module.transcriberFetch();
+      const carrier = { fetch: injected };
+
+      await expect(carrier.fetch("https://example.test")).resolves.toBeInstanceOf(Response);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+});

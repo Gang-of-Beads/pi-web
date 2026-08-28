@@ -17,6 +17,22 @@ const S = process.argv[5] ?? "01a02e5b-43b8-7d44-a672-2873ca900876";
 await p.goto(`http://127.0.0.1:${port}/?project=${P}&workspace=${W}&session=${S}`, { waitUntil: "networkidle" });
 await p.waitForTimeout(5000);
 
+// The sections only exist once the session has activity, notifications or a
+// goal, so a page without them proves nothing about their shape.
+const opened = await p.evaluate(() => {
+  const walk = (root) => {
+    for (const el of root.querySelectorAll("button, summary, [role='button']")) {
+      const label = `${el.getAttribute("aria-label") ?? ""} ${el.textContent ?? ""}`.toLowerCase();
+      if (label.includes("activity") || label.includes("drawer") || label.includes("background run")) { el.click(); return true; }
+    }
+    for (const el of root.querySelectorAll("*")) if (el.shadowRoot && walk(el.shadowRoot)) return true;
+    return false;
+  };
+  return walk(document);
+});
+console.log("opened drawer:", opened);
+await p.waitForTimeout(2500);
+
 const seen = await p.evaluate(() => {
   const found = [];
   const walk = (root) => {

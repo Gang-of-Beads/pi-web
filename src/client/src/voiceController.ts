@@ -28,6 +28,15 @@ export interface VoiceRecorder {
   cancel(): void;
 }
 
+/**
+ * A browser rejects `fetch` called with any receiver but the window, and
+ * storing it on a dependency object turns every call into a method call on
+ * that object.
+ */
+export function transcriberFetch(): typeof globalThis.fetch {
+  return globalThis.fetch.bind(globalThis);
+}
+
 export interface VoiceControllerDeps {
   recorder: VoiceRecorder;
   transcribe?: typeof transcribeAudio;
@@ -140,7 +149,7 @@ export class VoiceController {
     }
 
     const transcribe = this.deps.transcribe ?? transcribeAudio;
-    const result: TranscriptionResult = await transcribe(audio, config, { fetch: this.deps.fetch ?? globalThis.fetch });
+    const result: TranscriptionResult = await transcribe(audio, config, { fetch: this.deps.fetch ?? transcriberFetch() });
     if (!result.ok) {
       this.setState({ kind: "error", message: result.message });
       return;

@@ -287,11 +287,13 @@ describe("activity filters", () => {
 });
 
 describe("activityTabLabel", () => {
-  // The number that matters is what is live: a chat that has run forty tasks
-  // and is running two should say two.
-  it("counts live work when there is any, and the history when there is not", () => {
-    expect(activityTabLabel({ active: 2, total: 42 })).toBe("Activity · 2 running");
-    expect(activityTabLabel({ active: 0, total: 42 })).toBe("Activity (42)");
+  /**
+   * A count on a tab reads as work waiting for you. Showing the size of the
+   * history put "228" next to a session where nothing was running at all.
+   */
+  it("counts live work, and says nothing when none is live", () => {
+    expect(activityTabLabel({ active: 2 })).toBe("Activity · 2 running");
+    expect(activityTabLabel({ active: 0 })).toBe("Activity");
   });
 });
 
