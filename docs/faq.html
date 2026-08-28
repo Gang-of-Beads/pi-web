@@ -104,6 +104,7 @@
             <a href="#plugins">Can I use local plugins?</a>
             <a href="#worktree-list-out-of-date">A worktree I created is missing</a>
             <a href="#sessions-stop">Sessions stop unexpectedly</a>
+            <a href="#session-row-marks">What do the marks on session rows mean?</a>
             <a href="#model-response-terminated">Model responses fail with 'terminated'</a>
             <a href="#logs">Where are logs?</a>
           </aside>
@@ -346,6 +347,34 @@
                 <pre id="session-logs"><code><span class="prompt">$</span> pi-web status
 <span class="prompt">$</span> pi-web logs</code></pre>
               </div>
+            </article>
+
+            <article id="session-row-marks" class="faq-item">
+              <h2>What do the marks on session rows mean?</h2>
+              <p>
+                Each session row shows at most one status mark. When several signals are true at once — a session that
+                is asking a question and also has a turn you have not read, for example — the higher-priority one wins
+                and the row never stacks two marks.
+              </p>
+              <div class="doc-content table-scroll" role="region" aria-label="Session row status marks" tabindex="0">
+                <table class="marks-table">
+                  <thead>
+                    <tr><th>Mark</th><th>Color</th><th>Meaning</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td>Dot</td><td>Amber</td><td>The session is waiting for your answer.</td></tr>
+                    <tr><td>Three pulsing dots</td><td>Blue</td><td>The session is working, or a message you sent is still being delivered.</td></tr>
+                    <tr><td>Dot</td><td>Purple</td><td>The last turn finished and you have not opened it yet.</td></tr>
+                    <tr><td>Dot</td><td>Red</td><td>The session hit an error.</td></tr>
+                    <tr><td>Hollow ring</td><td>Purple</td><td>Your turn ended, but background work this session started is still running.</td></tr>
+                    <tr><td>Dot</td><td>Gray</td><td>The session is done; nothing is in flight.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <p>
+                Unread sessions also show their name in bold, and the Sessions heading counts them, so a finished turn
+                stays visible even when a higher-priority mark covers the dot.
+              </p>
             </article>
 
             <article id="model-response-terminated" class="faq-item">

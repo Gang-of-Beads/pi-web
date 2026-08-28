@@ -340,6 +340,17 @@ describe("a run whose tracking was lost", () => {
     expect(row?.status).toBe("lost");
     expect(isActiveActivityStatus(row?.status ?? "unknown")).toBe(false);
   });
+
+  it("does not draw an unknown run the same settled gray a lost one gets", () => {
+    // Unknown means no evidence either way — the run may still be alive — so
+    // it carries the app's unsettled language (hollow mark, dashed edge) while
+    // Lost keeps the flat gray of a settled fact. The drawer drew both
+    // identically, and only the word differed.
+    const sheet = String(ChatView.styles);
+    expect(sheet).toMatch(/\.subagent-row\.status-unknown[^{]*\{/u);
+    expect(sheet).toMatch(/\.subagent-dot\.unknown[^{]*\{/u);
+    expect(sheet).toMatch(/\.subagent-status\.unknown[^{]*\{/u);
+  });
 });
 
 describe("orderActivityEntries", () => {

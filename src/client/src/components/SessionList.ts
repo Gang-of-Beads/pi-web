@@ -9,8 +9,9 @@ import { normalizeSessionPath } from "../sessionPaths";
 import { filterSessionRows, hideCollapsedSubtreeRows, shouldShowSessionSearch } from "../sessionSearch";
 import { isSessionActive } from "../../../shared/activity";
 import { actionMenuPanelStyle } from "./actionMenu";
-import { renderSessionStateBadge, type SessionStateBadgeKind } from "./activityBadge";
 import { sessionActivityCategory } from "../../../shared/sessionActivityState";
+import { renderSessionRowIndicator, sessionRowIndicator } from "./sessionRowIndicator";
+import type { SessionStateBadgeKind } from "./activityBadge";
 import { sessionStateBadgeStyles } from "./sessionStateBadgeStyles";
 import type { KeyboardNavigableSection } from "./navigationFocus";
 import { focusSelectedOrFirstSelectableRow, handleSelectableRowKeyboard } from "./selectableRow";
@@ -391,7 +392,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
           }}
         >
           <span class="action-name-line"><span class="action-name" dir="auto">${this.renderRowMarker(row)}${sessionLabel(session)}</span>${this.renderRowBadges(row)}</span><small>${this.renderSessionMetaPrefix(session, status, activity)}${this.renderSessionMetaPrefixDetail(session)}${String(session.messageCount)} messages</small>
-          ${this.renderActivity(stateKind, unread)}
+          ${renderSessionRowIndicator(sessionRowIndicator(stateKind, unread))}
         </button>
         <div class="action-menu">
           <button class="action-menu-toggle" title="Session actions" @click=${(event: MouseEvent) => { event.stopPropagation(); this.toggleMenu(session.id, event.currentTarget); }}>⋯</button>
@@ -643,10 +644,6 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     return "";
   }
 
-  private renderActivity(kind: SessionStateBadgeKind | "sending" | undefined, unread: boolean) {
-    return renderSessionStateBadge(kind, unread ? "Unread session activity" : undefined);
-  }
-
   static override styles = [listStyles, sessionStateBadgeStyles, css`
     h2 { min-height: 30px; gap: var(--pi-space-2); }
     /* The shared heading spreads its children across the full width, which
@@ -784,9 +781,11 @@ function unarchivedDescendantCounts(sessions: SessionInfo[]): Map<string, number
  *
  * "sending" (client-side upload in flight) is reported with its own kind, and
  * takes precedence over server activity, so it can be colored distinctly to
- * signal that it is not yet propagated to workspace/machine activity. Unread
- * is not a kind: it is an attention flag resolved by `sessionRowUnread` and
- * rendered as a ring around this dot (or a filled dot when this is undefined).
+ * signal that it is not yet propagated to workspace/machine activity.
+ *
+ * This resolves the work state only. Unread is an attention flag resolved by
+ * `sessionRowUnread`; `sessionRowIndicator` ranks the two against each other
+ * and renders at most one mark, where a ring used to be drawn around this one.
  */
 export function sessionRowStateKind(
   session: SessionInfo,

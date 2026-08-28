@@ -200,6 +200,13 @@ export const chatStyles = css`
   .subagent-row.status-working, .subagent-row.status-running { border-color: var(--pi-accent-border); border-inline-start-color: var(--pi-accent); background: color-mix(in srgb, var(--pi-accent) 14%, var(--pi-surface)); }
   .subagent-row.status-idle, .subagent-row.status-done { border-inline-start-color: var(--pi-success); background: color-mix(in srgb, var(--pi-success) 7%, var(--pi-surface)); }
   .subagent-row.status-error, .subagent-row.status-failed { border-inline-start-color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 8%, var(--pi-surface)); }
+  /* Unknown: no evidence either way. The hollow dot and the dashed edge are
+     the app's unsettled language — the run may still be alive — where Lost's
+     flat gray records a settled fact: the process is gone. Without this the
+     two states drew identically and only the word differed. */
+  .subagent-row.status-unknown { border-inline-start-style: dashed; }
+  .subagent-dot.unknown { background: transparent; border: 1.5px solid var(--pi-muted); box-sizing: border-box; }
+  .subagent-row .subagent-status.unknown { background: transparent; border: 1px dashed var(--pi-border); }
   .subagent-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--pi-muted); }
   .subagent-dot.working, .subagent-dot.running { background: var(--pi-accent); animation: pulse 1s ease-in-out infinite; }
   .subagent-dot.idle, .subagent-dot.done { background: var(--pi-success); }
