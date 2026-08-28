@@ -46,6 +46,30 @@ import type { SessionSubagentRunInfo } from "../../shared/apiTypes.js";
 const RUNNING_STALE_AFTER_MS = 10 * 60 * 1000;
 /** Measured on a real session: live children were quiet under a minute, dead ones 139+. */
 const PARENT_ACTIVE_STALE_AFTER_MS = 30 * 60 * 1000;
+/**
+ * How long a run that has written nothing at all may still be explained by
+ * "it only just started".
+ *
+ * A run directory with no transcript and no artifact has no evidence of its own
+ * about whether the child lives, so the parent is asked instead. But the parent
+ * streaming is a fact about the *parent*: it says a conversation is busy now,
+ * not that some particular child spawned hours ago is the one keeping it busy.
+ * Left unbounded, that inference read six directories abandoned by children
+ * that died before writing - empty for 158, 218, 230, 231, 274 and 274 minutes
+ * - as agents still working, and the drawer offered them for hours under the
+ * generic name, with no output and nothing to open.
+ *
+ * The bound is the run's own age, because a child that is genuinely mid-launch
+ * is young. Measured across 198 real runs on this machine, the gap between a
+ * run directory being created and its first transcript line appearing was a
+ * median of 7s, a 95th percentile of 28s and a maximum of 55s. Five minutes is
+ * an order of magnitude beyond the slowest observed start, so a child still
+ * silent past it did not start slowly - it never started. That also keeps this
+ * the tightest of the three windows here, below RUNNING_STALE_AFTER_MS, which
+ * is right: those two judge a child that has proved it can write, and this one
+ * judges a child that has never written at all.
+ */
+const SILENT_LAUNCH_GRACE_MS = 5 * 60 * 1000;
 /** Enough of the tail to find the last step without reading a long transcript. */
 const TAIL_BYTES = 64 * 1024;
 /** The session header records sit in the first few lines of a transcript. */
@@ -293,7 +317,7 @@ async function describeRun(runsDir: string, runId: string, artifacts: Map<string
     if (dirStats === undefined && artifact === undefined) return undefined;
     startedAt = (dirStats?.birthtime ?? new Date(now)).toISOString();
   }
-  const status = runStatus(artifact, lastWriteMs, now, parentActive);
+  const status = runStatus(artifact, lastWriteMs, Date.parse(startedAt), now, parentActive);
   const agent = artifact?.agent ?? identity?.agent ?? running?.agent ?? "subagent";
   // What the row says this run was: its own description when the tool kept one,
   // otherwise the first line of what it returned.
@@ -327,17 +351,32 @@ async function describeRun(runsDir: string, runId: string, artifacts: Map<string
  * child done the moment it started - worse than leaving it out, because the
  * row would claim work had finished while it was still being done.
  */
-function runStatus(artifact: RunArtifact | undefined, lastWriteMs: number | undefined, now: number, parentActive: boolean): SessionSubagentRunInfo["status"] {
+function runStatus(artifact: RunArtifact | undefined, lastWriteMs: number | undefined, startedAtMs: number, now: number, parentActive: boolean): SessionSubagentRunInfo["status"] {
   if (artifact?.exitCode !== undefined) return artifact.exitCode === 0 ? "done" : "failed";
   if (artifact?.reported === true) return "done";
-  // A just-spawned child has written nothing yet, so only the parent can say.
-  if (lastWriteMs === undefined) return parentActive ? "running" : "unknown";
+  // A just-spawned child has written nothing yet, so only the parent can say -
+  // and only while the child is young enough for that to be the explanation.
+  // Past the grace period the silence is the answer: it died before writing,
+  // which is what `lost` already means everywhere else in this module.
+  if (lastWriteMs === undefined) {
+    if (!parentActive) return "unknown";
+    return silentSinceLaunch(startedAtMs, now) ? "lost" : "running";
+  }
   const quietMs = now - lastWriteMs;
   if (quietMs < RUNNING_STALE_AFTER_MS) return "running";
   // An active parent widens the window rather than overriding it: treating it
   // as proof of life resurrected runs that had been dead for hours.
   if (parentActive && quietMs < PARENT_ACTIVE_STALE_AFTER_MS) return "running";
   return "lost";
+}
+
+/**
+ * Whether a run has been silent for longer than a launch can account for. An
+ * unreadable or future-dated start is not evidence of death, so it is not
+ * treated as any: only a start we can place in the past can expire.
+ */
+function silentSinceLaunch(startedAtMs: number, now: number): boolean {
+  return Number.isFinite(startedAtMs) && now - startedAtMs > SILENT_LAUNCH_GRACE_MS;
 }
 
 /** How the subagent tool names a child session: agent and originating run id. */

@@ -37,6 +37,17 @@ async function writeArtifact(dir: string, runId: string, agent: string, meta: Re
  * Measured on a live child: exactly `_input.md` and `_transcript.jsonl`, with
  * no run directory anywhere.
  */
+/**
+ * Move a run directory's creation time into the past. A run that has written
+ * nothing is dated by its directory alone, so this is the only way to build the
+ * one shape that matters here: a child that was spawned long ago and never
+ * wrote. `utimes` moves `birthtime` back on the filesystems this runs on.
+ */
+async function ageDirectory(path: string, ageMs: number): Promise<void> {
+  const when = new Date(Date.now() - ageMs);
+  await utimes(path, when, when);
+}
+
 async function writeRunningArtifact(dir: string, runId: string, agent: string, ageMs = 0): Promise<void> {
   const artifacts = join(dir, "subagent-artifacts");
   await mkdir(artifacts, { recursive: true });
@@ -313,6 +324,53 @@ describe("runs whose directory and artifacts use different ids", () => {
     expect(run).toMatchObject({ runId: "5d2ddee7-ad67-46e5-82a6-5a89b7e796cb", status: "unknown" });
   });
 
+  // The parent streaming is a fact about the parent. Letting it vouch for a
+  // child of any age turned six directories abandoned by children that died
+  // before writing - empty for 158 to 274 minutes - into rows that claimed to
+  // be running agents, and the owner asked why nobody was handling agents that
+  // had been working for hours. Measured across 198 real runs on this machine,
+  // a child's first transcript line lands a median of 7s and at most 55s after
+  // its directory appears, so silence past the grace period is not a slow
+  // start.
+  it("stops calling a run that never wrote anything running once a launch cannot explain the silence", async () => {
+    const dir = await sessionDir();
+    const runDir = join(dir, PARENT, "5d2ddee7-ad67-46e5-82a6-5a89b7e796cb");
+    await mkdir(runDir, { recursive: true });
+    await ageDirectory(runDir, 158 * 60 * 1000);
+
+    const [run] = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: true });
+
+    expect(run).toMatchObject({ runId: "5d2ddee7-ad67-46e5-82a6-5a89b7e796cb", status: "lost" });
+  });
+
+  // Being wrong in the other direction is worse than the bug: a child really is
+  // silent for the first seconds of its life, and calling that dead would hide
+  // every run at the moment it starts.
+  it("still vouches for a child young enough to be mid-launch", async () => {
+    const dir = await sessionDir();
+    const runDir = join(dir, PARENT, "5d2ddee7-ad67-46e5-82a6-5a89b7e796cb");
+    await mkdir(runDir, { recursive: true });
+    await ageDirectory(runDir, 30 * 1000);
+
+    const [run] = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: true });
+
+    expect(run).toMatchObject({ runId: "5d2ddee7-ad67-46e5-82a6-5a89b7e796cb", status: "running" });
+  });
+
+  // The row is the point: a dead child should be reported as dead, not dropped.
+  // Hiding it again is the defect the empty-directory admission was fixing.
+  it("keeps reporting the abandoned run rather than hiding it", async () => {
+    const dir = await sessionDir();
+    const runDir = join(dir, PARENT, "5d2ddee7-ad67-46e5-82a6-5a89b7e796cb");
+    await mkdir(runDir, { recursive: true });
+    await ageDirectory(runDir, 274 * 60 * 1000);
+
+    const runs = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: true });
+
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.hasOutput).toBe(false);
+  });
+
   it("keeps a run that left an artifact behind but no transcript", async () => {
     const dir = await sessionDir();
     await mkdir(join(dir, PARENT, "79eeba3d-46c5-45bd-8e74-32a3f1eb7957"), { recursive: true });
@@ -475,6 +533,26 @@ describe("whose run an artifact belongs to", () => {
     const runs = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: true });
 
     expect(runs).toEqual([]);
+  });
+
+  /**
+   * The grace period that stops an empty directory claiming to run forever must
+   * not reach a run that is demonstrably alive. This path only admits a run
+   * whose transcript was written moments ago, and that write is evidence about
+   * the child itself - exactly what an empty directory lacks - so it decides
+   * the status and the launch grace period never applies. A run whose directory
+   * is hours old but which is writing right now is working, not lost.
+   */
+  it("keeps a run that is still writing alive however old its directory is", async () => {
+    const dir = await sessionDir();
+    const runDir = join(dir, PARENT, "c8b9220c-4f1a-4e2b-9d3c-7a6b5c4d3e2f");
+    await mkdir(runDir, { recursive: true });
+    await ageDirectory(runDir, 274 * 60 * 1000);
+    await writeRunningArtifact(dir, "c8b9220c-4f1a-4e2b-9d3c-7a6b5c4d3e2f", "worker");
+
+    const [run] = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: true });
+
+    expect(run).toMatchObject({ runId: "c8b9220c-4f1a-4e2b-9d3c-7a6b5c4d3e2f", status: "running" });
   });
 
   /** A directory is proof of ownership, so an idle parent still keeps its own. */
