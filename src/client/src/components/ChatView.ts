@@ -2,7 +2,7 @@ import { css, LitElement, html, type TemplateResult } from "lit";
 import { scrollbarWidthOf } from "../scrollbarWidth";
 import { dropsExpansionAsWorkFinishes } from "../topDrawerExpansion";
 import { showsJumpToBottom } from "../chatScrollPosition";
-import { ScrollFollowGate } from "../scrollFollowGate";
+import { ScrollFollowGate, TOUCH_SETTLE_MS } from "../scrollFollowGate";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import { ChatDisclosureController } from "../chatDisclosure";
@@ -784,6 +784,7 @@ export class ChatView extends LitElement {
   private suppressLoadMoreRequests = false;
   private loadMoreCheckFrame: number | undefined;
   private scrollToBottomFrame: number | undefined;
+  private catchUpFollowTimer: ReturnType<typeof setTimeout> | undefined;
   private scrollToOpenAskFrame: number | undefined;
   private scrollToOpenDialogFrame: number | undefined;
   private conversationRailFrame: number | undefined;
@@ -857,6 +858,10 @@ export class ChatView extends LitElement {
       this.scrollToOpenDialogFrame = undefined;
     }
     if (this.conversationRailFrame !== undefined) cancelAnimationFrame(this.conversationRailFrame);
+    if (this.catchUpFollowTimer !== undefined) {
+      clearTimeout(this.catchUpFollowTimer);
+      this.catchUpFollowTimer = undefined;
+    }
     window.removeEventListener("resize", this.onViewportResize);
     window.removeEventListener("pagehide", this.onPageHide);
     window.visualViewport?.removeEventListener("resize", this.onViewportResize);
@@ -1091,7 +1096,7 @@ export class ChatView extends LitElement {
       ${this.renderNotificationLiveRegions()}
       <div class="chat-wrap">
         ${this.renderConversationRail()}
-        <div class="chat" @scroll=${() => { this.onScroll(); }} @wheel=${(event: WheelEvent) => { this.onWheel(event); }} @touchend=${() => { this.onTouchEnd(); }} @touchcancel=${() => { this.onTouchEnd(); }} @pointerdown=${() => { this.followGate.notePointerDown(Date.now()); }} @pointerup=${() => { this.followGate.notePointerUp(Date.now()); }} @touchstart=${(event: TouchEvent) => { this.onTouchStart(event); }} @touchmove=${(event: TouchEvent) => { this.onTouchMove(event); }}>
+        <div class="chat" @scroll=${() => { this.onScroll(); }} @wheel=${(event: WheelEvent) => { this.onWheel(event); }} @touchend=${() => { this.onTouchEnd(); }} @touchcancel=${() => { this.onTouchEnd(); }} @pointerdown=${() => { this.followGate.notePointerDown(Date.now()); }} @pointerup=${() => { this.releasePointer(); }} @pointercancel=${() => { this.releasePointer(); }} @touchstart=${(event: TouchEvent) => { this.onTouchStart(event); }} @touchmove=${(event: TouchEvent) => { this.onTouchMove(event); }}>
           ${this.renderHistoryBoundary()}
           ${repeat(
             groups,
@@ -2394,7 +2399,27 @@ export class ChatView extends LitElement {
   }
 
   private onTouchEnd(): void {
+    this.releasePointer();
+  }
+
+  /**
+   * Every way a press can end routes here, including the pointercancel a phone
+   * fires instead of pointerup once a press turns into a scroll gesture. A
+   * release path that did not run would leave the gate holding and the
+   * transcript frozen, which is worse than the movement it prevents.
+   */
+  private releasePointer(): void {
     this.followGate.notePointerUp(Date.now());
+    // A reader who scrolled away during the press is no longer pinned, so the
+    // suppressed follow is dropped rather than dragging them back down.
+    if (!this.followGate.takeSuppressedFollow() || !this.pinnedToBottom) return;
+    // The settle grace still refuses following, which is what lets the tap land;
+    // the catch-up therefore waits for it to expire instead of being dropped.
+    if (this.catchUpFollowTimer !== undefined) clearTimeout(this.catchUpFollowTimer);
+    this.catchUpFollowTimer = setTimeout(() => {
+      this.catchUpFollowTimer = undefined;
+      if (this.pinnedToBottom) this.scrollToBottom();
+    }, TOUCH_SETTLE_MS);
   }
 
   private onTouchMove(event: TouchEvent) {
