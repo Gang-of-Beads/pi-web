@@ -5,12 +5,24 @@
  * rendered, so a row that used to open a block of text opened nothing at all.
  * A row is therefore clicked for real and the dialog is measured afterwards.
  *
+ * The run is chosen rather than stumbled upon. An activity list mixes runs that
+ * have a transcript with husks - empty run directories left by a child that died
+ * before writing anything - and a husk has no conversation to draw: the server
+ * answers 404 and the client falls back to the log viewer, which is correct
+ * behaviour, not the regression. Clicking whichever row came first therefore
+ * asserted against a row that could never satisfy it, and the outcome depended
+ * on whether a live run happened to be at the top. The run is now picked from
+ * the API by asking which ones actually serve messages, and the check FAILS when
+ * none do rather than quietly testing a husk.
+ *
  * Usage: node scripts/verify-child-conversation-opens.mjs [port]
  */
 import { chromium } from "@playwright/test";
 
 const PORT = process.argv[2] ?? "8505";
 const EXE = `${process.env.HOME}/Library/Caches/ms-playwright/chromium-1234/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`;
+const CWD = process.env.PI_WEB_VERIFY_CWD ?? "/Users/hanxiao.du/Desktop/vincent/projects/pi-web";
+const API = `http://127.0.0.1:${PORT}/api/machines/local`;
 
 const DEEP_CLICK = (needle) => {
   const walk = (root, out = []) => {
@@ -23,6 +35,30 @@ const DEEP_CLICK = (needle) => {
   return hit !== undefined;
 };
 
+async function readJson(url) {
+  const response = await fetch(url);
+  if (!response.ok) return undefined;
+  return response.json();
+}
+
+/**
+ * The runs of this session that actually have a conversation to open, newest
+ * first. Asking the messages route is the only honest test: `hasOutput` is
+ * about the result artifact, and a live child has a transcript before it has
+ * any result at all.
+ */
+async function runsWithATranscript(sessionId) {
+  const query = `cwd=${encodeURIComponent(CWD)}`;
+  const snapshot = await readJson(`${API}/sessions/${encodeURIComponent(sessionId)}/subsessions?${query}`);
+  const runs = snapshot?.toolRuns ?? [];
+  const withTranscript = [];
+  for (const run of runs) {
+    const page = await readJson(`${API}/sessions/${encodeURIComponent(sessionId)}/subagent-runs/${encodeURIComponent(run.runId)}/messages?${query}&limit=1`);
+    if (page !== undefined && (page.total ?? 0) > 0) withTranscript.push({ ...run, total: page.total });
+  }
+  return { total: runs.length, withTranscript };
+}
+
 const browser = await chromium.launch({ executablePath: EXE });
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
@@ -34,7 +70,7 @@ try {
   await page.evaluate(DEEP_CLICK, "main");
   await page.waitForTimeout(2500);
 
-  const sessionMessages = await page.evaluate(() => {
+  const opened = await page.evaluate(() => {
     const walk = (root, out = []) => {
       for (const el of root.querySelectorAll("button,[role=listitem],li")) out.push(el);
       for (const el of root.querySelectorAll("*")) if (el.shadowRoot) walk(el.shadowRoot, out);
@@ -49,46 +85,78 @@ try {
   });
   await page.waitForTimeout(9000);
 
-  if (sessionMessages === 0) {
+  if (opened === 0) {
     console.error("FAIL: no conversation was opened, so no activity row was reachable");
-    process.exitCode = 1;
+    process.exit(1);
   }
 
-  // Open the activity drawer, then click a run row the way a reader would.
+  const sessionId = await page.evaluate(() => new URL(window.location.href).searchParams.get("session"));
+  if (sessionId === null) {
+    console.error("FAIL: the opened session is not in the url, so no run could be chosen deliberately");
+    process.exit(1);
+  }
+
+  const { total, withTranscript } = await runsWithATranscript(sessionId);
+  console.log(`runs: ${String(total)} listed, ${String(withTranscript.length)} with a transcript`);
+
+  // An empty pass is worse than a red: without a run that has a conversation,
+  // this check cannot say anything about the view.
+  if (withTranscript.length === 0) {
+    console.error(`FAIL: none of the ${String(total)} runs on this session has a transcript, so the conversation view was not exercised.`);
+    console.error("       Start a subagent in the sandbox session and run this again.");
+    process.exit(1);
+  }
+
+  const target = withTranscript[0];
+  const shortId = target.runId.slice(0, 8);
+  console.log(`target: ${shortId} agent=${target.agent} status=${target.status} messages=${String(target.total)}`);
+
   await page.evaluate(DEEP_CLICK, "Activity");
   await page.waitForTimeout(2000);
 
-  const clicked = await page.evaluate(() => {
+  // Matched on what the row draws for this run - its agent name and status -
+  // rather than on position, so the click lands on the run that was chosen.
+  const clicked = await page.evaluate(({ agent, status }) => {
     const walk = (root, out = []) => {
-      for (const el of root.querySelectorAll(".subagent-row")) out.push(el);
+      for (const el of root.querySelectorAll("button.subagent-row")) out.push(el);
       for (const el of root.querySelectorAll("*")) if (el.shadowRoot) walk(el.shadowRoot, out);
       return out;
     };
     const rows = walk(document);
-    const run = rows.find((el) => (el.className ?? "").includes("subagent-run") || el.getAttribute("data-run-id") !== null) ?? rows[0];
-    if (run === undefined) return { found: false, rowCount: rows.length };
+    const candidates = rows.filter((el) => {
+      const id = el.querySelector(".subagent-id")?.textContent?.trim();
+      return id === agent && el.className.includes(`status-${status}`);
+    });
+    const run = candidates[0];
+    if (run === undefined) {
+      return { found: false, rowCount: rows.length, seen: rows.map((el) => `${el.querySelector(".subagent-id")?.textContent?.trim() ?? "?"}/${el.className.replace(/^.*status-/u, "")}`).slice(0, 8) };
+    }
     run.click();
     return { found: true, rowCount: rows.length, label: (run.textContent ?? "").replace(/\s+/gu, " ").trim().slice(0, 60) };
-  });
+  }, { agent: target.agent, status: target.status });
   await page.waitForTimeout(4000);
 
   const measured = await page.evaluate(() => {
-    let dialog;
+    let conversation;
+    let blob;
     const walk = (root) => {
-      for (const el of root.querySelectorAll("dialog.activity-conversation")) dialog ??= el;
+      for (const el of root.querySelectorAll("dialog.activity-conversation")) conversation ??= el;
+      for (const el of root.querySelectorAll("dialog.activity-output")) blob ??= el;
       for (const el of root.querySelectorAll("*")) if (el.shadowRoot) walk(el.shadowRoot);
     };
     walk(document);
-    if (dialog === undefined) return { dialogPresent: false };
+    if (conversation === undefined) return { dialogPresent: false };
     return {
       dialogPresent: true,
-      open: dialog.open,
-      title: dialog.querySelector(".activity-conversation-title")?.textContent?.trim(),
-      subtitle: dialog.querySelector(".activity-conversation-subtitle")?.textContent?.trim(),
-      boundary: dialog.querySelector(".activity-conversation-boundary")?.textContent?.trim(),
-      messageRows: dialog.querySelectorAll(".activity-conversation-body article.msg").length,
-      blobPresent: dialog.querySelector("pre") !== null,
-      closePresent: dialog.querySelector(".activity-conversation-close") !== null,
+      open: conversation.open,
+      title: conversation.querySelector(".activity-conversation-title")?.textContent?.trim(),
+      subtitle: conversation.querySelector(".activity-conversation-subtitle")?.textContent?.trim(),
+      boundary: conversation.querySelector(".activity-conversation-boundary")?.textContent?.trim(),
+      messageRows: conversation.querySelectorAll(".activity-conversation-body article.msg").length,
+      blobPresent: conversation.querySelector("pre") !== null,
+      closePresent: conversation.querySelector(".activity-conversation-close") !== null,
+      // A run with a transcript must not land in the log viewer.
+      blobDialogOpen: blob?.open ?? false,
     };
   });
 
@@ -96,10 +164,16 @@ try {
   console.log("dialog :", JSON.stringify(measured));
 
   if (!clicked.found) {
-    console.error("FAIL: no activity row was found to click, so the click was not exercised");
+    console.error(`FAIL: no row for the chosen run (agent=${target.agent}, status=${target.status}) was found, so the click was not exercised`);
     process.exitCode = 1;
   } else if (measured.dialogPresent !== true || measured.open !== true) {
-    console.error("FAIL: clicking a run row did not open the conversation - this is the regression");
+    console.error("FAIL: clicking a run that has a transcript did not open the conversation - this is the regression");
+    process.exitCode = 1;
+  } else if (measured.blobDialogOpen === true) {
+    console.error("FAIL: a run with a transcript opened the log viewer instead of its conversation");
+    process.exitCode = 1;
+  } else if (measured.title === undefined || !measured.title.includes(shortId)) {
+    console.error(`FAIL: the conversation that opened is not the run that was chosen (wanted ${shortId}, got ${String(measured.title)})`);
     process.exitCode = 1;
   } else if (measured.messageRows === 0) {
     console.error("FAIL: the conversation opened with no turns in it");

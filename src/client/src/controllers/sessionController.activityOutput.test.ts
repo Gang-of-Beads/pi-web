@@ -196,4 +196,27 @@ describe("opening a subagent run's conversation", () => {
     expect(read().error).toContain("machine unreachable");
     expect(read().activityConversation).toBeUndefined();
   });
+
+  /**
+   * A husk - an empty run directory left by a child that died before writing
+   * anything - has neither a transcript nor a result, so both reads answer 404.
+   * Opening it must still say something: the click that led here was inert
+   * once, and "nothing happens" is the failure this whole path exists to fix.
+   */
+  it("says a run left nothing behind rather than doing nothing at all", async () => {
+    const api: typeof defaultApi = {
+      ...defaultApi,
+      subagentRunMessages: () => Promise.reject(new HttpError("No transcript for this subagent run", 404)),
+      subagentRunOutput: () => Promise.reject(new HttpError("No output for this subagent run", 404)),
+    };
+    const { controller, read } = controllerWith(api);
+
+    await controller.openSubagentRunConversation(run);
+
+    expect(read().activityConversation).toBeUndefined();
+    expect(read().activityOutput).toBeDefined();
+    expect(read().activityOutput?.empty).toBe(true);
+    expect(read().activityOutput?.title).toContain(run.runId.slice(0, 8));
+    expect(read().error).toBe("");
+  });
 });
