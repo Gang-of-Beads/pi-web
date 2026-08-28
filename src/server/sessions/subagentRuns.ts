@@ -1,4 +1,4 @@
-import { readdir, readFile, stat } from "node:fs/promises";
+import { open, readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { SessionSubagentRunInfo } from "../../shared/apiTypes.js";
 
@@ -36,6 +36,36 @@ const PARENT_ACTIVE_STALE_AFTER_MS = 30 * 60 * 1000;
 const TAIL_BYTES = 64 * 1024;
 /** The session header records sit in the first few lines of a transcript. */
 const HEAD_BYTES = 8 * 1024;
+/** A result's first line is its row label; the rest of the document is not read. */
+const OUTPUT_HEAD_BYTES = 8 * 1024;
+
+/**
+ * A window of a file, read as a window.
+ *
+ * Every caller here wants a few kilobytes of a file that can be megabytes, and
+ * each of them used to ask for the whole thing and then slice the part it
+ * wanted - which reads the file into memory first, so the slice saved nothing.
+ * One open session with 129 finished runs made that 170MB of reads on every
+ * four-second poll, and the activity list fell so far behind that it looked
+ * frozen until the reader reloaded the page.
+ */
+async function readWindow(path: string, bytes: number, edge: "head" | "tail"): Promise<string | undefined> {
+  let handle;
+  try {
+    handle = await open(path, "r");
+    const { size } = await handle.stat();
+    const length = Math.min(size, bytes);
+    if (length === 0) return "";
+    const buffer = Buffer.alloc(length);
+    const position = edge === "head" ? 0 : size - length;
+    const { bytesRead } = await handle.read(buffer, 0, length, position);
+    return buffer.subarray(0, bytesRead).toString("utf8");
+  } catch {
+    return undefined;
+  } finally {
+    await handle?.close().catch(() => undefined);
+  }
+}
 
 interface RunArtifact {
   agent?: string;
@@ -161,13 +191,8 @@ export function parseSubagentSessionName(name: string): { agent: string; runId: 
  * record. Only the head is read: the record is written before any model output.
  */
 async function readRunIdentity(transcript: string): Promise<{ agent: string; runId: string } | undefined> {
-  let head: string;
-  try {
-    const text = await readFile(transcript, "utf8");
-    head = text.slice(0, HEAD_BYTES);
-  } catch {
-    return undefined;
-  }
+  const head = await readWindow(transcript, HEAD_BYTES, "head");
+  if (head === undefined) return undefined;
   for (const line of head.split("\n")) {
     if (!line.includes("\"session_info\"")) continue;
     let record: unknown;
@@ -202,15 +227,8 @@ async function findTranscript(runDir: string): Promise<string | undefined> {
  * read - these transcripts reach megabytes and this runs on every poll.
  */
 async function lastTranscriptStep(transcript: string): Promise<string | undefined> {
-  const stats = await statOrUndefined(transcript);
-  if (stats === undefined) return undefined;
-  let text: string;
-  try {
-    const handle = await readFile(transcript, "utf8");
-    text = stats.size > TAIL_BYTES ? handle.slice(-TAIL_BYTES) : handle;
-  } catch {
-    return undefined;
-  }
+  const text = await readWindow(transcript, TAIL_BYTES, "tail");
+  if (text === undefined) return undefined;
   const lines = text.split("\n").filter((line) => line.trim() !== "");
   for (const line of lines.reverse()) {
     let parsed: unknown;
@@ -347,14 +365,8 @@ async function listNames(dir: string): Promise<string[]> {
 async function readRunProgress(runsDir: string, runId: string, maxChars: number): Promise<string | undefined> {
   const transcript = await findRunTranscript(runsDir, runId);
   if (transcript === undefined) return undefined;
-  let text: string;
-  try {
-    const stats = await statOrUndefined(transcript);
-    const contents = await readFile(transcript, "utf8");
-    text = stats !== undefined && stats.size > TAIL_BYTES ? contents.slice(-TAIL_BYTES) : contents;
-  } catch {
-    return undefined;
-  }
+  const text = await readWindow(transcript, TAIL_BYTES, "tail");
+  if (text === undefined) return undefined;
   const steps: string[] = [];
   for (const line of text.split("\n")) {
     if (line.trim() === "") continue;
@@ -392,13 +404,10 @@ function clamp(text: string, maxChars: number): string {
 async function firstLineOfOutput(artifactsDir: string, names: string[], runId: string): Promise<string | undefined> {
   const name = names.find((entry) => entry.startsWith(`${runId}_`) && entry.endsWith("_output.md"));
   if (name === undefined) return undefined;
-  try {
-    const text = await readFile(join(artifactsDir, name), "utf8");
-    const line = text.split("\n").map((entry) => entry.replace(/^#+\s*/, "").trim()).find((entry) => entry !== "");
-    return line === undefined ? undefined : summarize(line);
-  } catch {
-    return undefined;
-  }
+  const text = await readWindow(join(artifactsDir, name), OUTPUT_HEAD_BYTES, "head");
+  if (text === undefined) return undefined;
+  const line = text.split("\n").map((entry) => entry.replace(/^#+\s*/, "").trim()).find((entry) => entry !== "");
+  return line === undefined ? undefined : summarize(line);
 }
 
 async function listDirectories(path: string): Promise<string[]> {

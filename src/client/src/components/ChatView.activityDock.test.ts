@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionActivity, SessionStatus } from "../../../shared/apiTypes";
-import { backgroundTaskRows, isActiveActivityStatus, isFinishedActivityStatus, subagentRunRows, backgroundWorkLabel, ChatView, LONG_TURN_AFTER_MS, turnElapsedLabel } from "./ChatView";
+import { activityDockLabel, backgroundTaskRows, isActiveActivityStatus, isFinishedActivityStatus, subagentRunRows, backgroundWorkLabel, ChatView, LONG_TURN_AFTER_MS, turnElapsedLabel } from "./ChatView";
 
 function status(over: Partial<SessionStatus>): SessionStatus {
   return {
@@ -174,6 +174,37 @@ describe("a question the user has not answered", () => {
     // that is holding still for an answer looks like a session with nothing
     // to do.
     expect(dock.className).toContain("asking");
+  });
+
+  /**
+   * The badge and the word were worked out separately and disagreed: the dock
+   * was painted "waiting for you" and captioned "idle". Measured on the running
+   * app, that is what a run parked on an extension dialog looked like - a
+   * marker saying nothing was happening, on a session that could not move
+   * until someone answered.
+   */
+  it("says it is waiting rather than saying it is idle", async () => {
+    const dialog = { dialogId: "d1", kind: "confirm" as const, title: "Update pi 0.84.2 → 0.84.3?", askedAt: "", runScoped: true };
+
+    const dock = await dockWith(status({ pendingDialogs: [dialog] }), activity("idle", "idle"));
+
+    expect(dock.text).not.toBe("idle");
+    expect(dock.text.toLowerCase()).toContain("waiting");
+  });
+
+  it("leaves every other state's words alone", () => {
+    expect(activityDockLabel("idle", "idle", "idle")).toBe("idle");
+    expect(activityDockLabel("working", "running", "reading a file")).toBe("reading a file");
+    expect(activityDockLabel("asking", "compacting", "compacting")).toBe("compacting");
+  });
+
+  /**
+   * The words are whatever the activity feed last called the turn, so a feed
+   * that labels the idle state anything but the bare word would have slipped
+   * past a check written against the words.
+   */
+  it("reads the state rather than the words drawn from it", () => {
+    expect(activityDockLabel("asking", "idle", "waiting on the model")).toBe("Waiting for your answer");
   });
 });
 

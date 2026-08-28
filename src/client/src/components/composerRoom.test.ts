@@ -70,6 +70,21 @@ describe("the button that returns you to the newest message", () => {
 
     expect(rule).toMatch(/border-radius:\s*var\(--pi-radius-(xs|sm|md)\)/u);
   });
+
+  /**
+   * The reading column takes the whole width it is given, so the gutter that
+   * positions the button is also where the message's right border is drawn.
+   * Offsetting the button by the gutter alone therefore landed its edge on
+   * that border, and the two lines read as one welded control.
+   */
+  it("is inset from the message's own border rather than sitting on it", () => {
+    const rule = /\.jump-to-bottom\s*\{([^}]*)\}/u.exec(sheets)?.[1] ?? "";
+    const right = /right:\s*calc\(([^;]*)\)/u.exec(rule)?.[1] ?? "";
+
+    expect(right).toMatch(/--pi-chat-gutter/u);
+    expect(right).toMatch(/--pi-chat-scrollbar/u);
+    expect(right).toMatch(/\+\s*var\(--pi-space-\d\)/u);
+  });
 });
 
 describe("the header's action cluster", () => {
@@ -206,6 +221,26 @@ describe("where the activity marker lives", () => {
 
     expect(rules.length).toBeGreaterThan(0);
     expect(rules.some((rule) => /flex-direction:\s*column/u.test(rule))).toBe(true);
+  });
+
+  /**
+   * The quiet states hugged their words while the dock was placed by
+   * coordinates, because an absolute box with one edge left free shrinks to
+   * fit. Moving the dock into the column made it a row, and a row stretches:
+   * "idle" became a 240px stub with one word in its left corner, which is the
+   * empty card the max-width was added to remove.
+   *
+   * A row that should hug has to say so.
+   */
+  it("lets the quiet states hug their words instead of drawing an empty stub", () => {
+    for (const state of [".activity-dock.idle", ".activity-dock.background"]) {
+      const rules = allRulesFor(state);
+
+      expect(rules.length).toBeGreaterThan(0);
+      expect(rules.some((rule) => /width:\s*fit-content/u.test(rule))).toBe(true);
+      // `right` places nothing in a row; leaving it behind hides the bug again.
+      expect(rules.some((rule) => /(^|;)\s*right:/u.test(rule))).toBe(false);
+    }
   });
 });
 

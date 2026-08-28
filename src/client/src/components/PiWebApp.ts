@@ -33,7 +33,7 @@ import type { RecoveredPrompt } from "../resendMessage";
 import { keyboardInset } from "../appShell/keyboardInset";
 import { machineSessionKey } from "../machineKeys";
 import { composedPathOf, composerCollapsedForFocus } from "../composerCollapse";
-import { shouldPollSessionActivity } from "../sessionActivityPolling";
+import { oneReadAtATime, shouldPollSessionActivity } from "../sessionActivityPolling";
 import { isWaitingForUser } from "../sessionWaiting";
 import { sessionCleanupRequestKey } from "../sessionCleanupUi";
 import { selectedNotificationView } from "../sessionNotifications";
@@ -675,7 +675,9 @@ export class PiWebApp extends LitElement {
     void this.selectNavigationItem("sessions", "chat", () => this.sessions.selectSession(session));
   }
 
-  private async refreshSubagents(): Promise<void> {
+  private readonly refreshSubagents = oneReadAtATime(() => this.readSubagents());
+
+  private async readSubagents(): Promise<void> {
     const session = this.state.selectedSession;
     if (session === undefined) return;
     try {

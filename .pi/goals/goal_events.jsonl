@@ -42,3 +42,4 @@
 {"type":"task_started","goalId":"mtchb0xl-acd2vn","taskId":"task-6","at":"2026-08-28T06:03:03.281Z"}
 {"type":"task_complete","goalId":"mtchb0xl-acd2vn","taskId":"task-6","evidence":"证伪,非缺陷。实测:1440 下 7 个分区(Files/Git/Terminal/Tasks/Relays/Updates/Info)scrollIntoView 后全部落在条带可视框内,unreachable=0,页面不横向溢出(documentElement.scrollWidth == innerWidth)。8504 未修版本同样 7/7 可达。报告中的\"Info 在屏幕外\"是 getB","at":"2026-08-28T06:07:00.325Z"}
 {"type":"task_started","goalId":"mtchb0xl-acd2vn","taskId":"task-7","at":"2026-08-28T06:07:03.232Z"}
+{"type":"task_complete","goalId":"mtchb0xl-acd2vn","taskId":"task-7","evidence":"根因:列表用 session.messages.length(会话文件原始行数,含 thinking_level_change/summary 等),正文用 historyMessages(getBranch 过滤后),两处都叫 messages。新增 readableMessageCount(branch) 并接到 3 处计数点。实测:8504(.60 未修)14526 vs 14412 差 1","at":"2026-08-28T06:13:44.090Z"}

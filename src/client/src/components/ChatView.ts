@@ -89,10 +89,15 @@ export const chatStyles = css`
 
      Its edges come from the conversation rather than from the panel. A fixed
      offset from the panel measured correctly here, where the scrollbar floats
-     over the content, and sat on top of a real scrollbar elsewhere. */
+     over the content, and sat on top of a real scrollbar elsewhere.
+
+     The measure is the full column, so the gutter alone put the button's right
+     edge exactly on the message's own right border: two edges on one line,
+     reading as a button welded to the card rather than one floating over it.
+     It is inset by a step of the scale so the border stays visible. */
   .jump-to-bottom {
     position: absolute;
-    right: calc(var(--pi-chat-gutter) + var(--pi-chat-scrollbar, 0px));
+    right: calc(var(--pi-chat-gutter) + var(--pi-chat-scrollbar, 0px) + var(--pi-space-4));
     top: var(--pi-space-9); z-index: var(--pi-layer-sticky);
     display: flex; align-items: center; justify-content: center;
     width: 40px; height: 40px; padding: 0;
@@ -301,13 +306,25 @@ export const chatStyles = css`
   .scroll-marker { display: block; height: 0; overflow: hidden; pointer-events: none; }
   .activity-dock { flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) 10px; z-index: var(--pi-layer-sticky); display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: 0 8px 28px var(--pi-shadow); backdrop-filter: blur(6px); }
   /* Idle is the state nobody needs a full-width banner for: keep the signal,
-     drop the bar that looked like an empty card above the composer. */
-  .activity-dock.idle { right: auto; max-width: min(60%, 240px); opacity: .75; padding: var(--pi-space-2) var(--pi-space-5); font-size: var(--pi-text-xs); }
+     drop the bar that looked like an empty card above the composer.
+
+     Setting the right edge to auto was how that worked while the dock was
+     placed by coordinates: an absolute box with a free edge shrinks to fit.
+     The dock is a row in the column now, and a row stretches, so the rule
+     stopped hugging and started drawing a fixed 240px stub with one word in
+     its left corner - the empty card again, only narrower. A row hugs when it
+     is told to. */
+  .activity-dock.idle { width: fit-content; max-width: min(60%, 240px); opacity: .75; padding: var(--pi-space-2) var(--pi-space-5); font-size: var(--pi-text-xs); }
+  /* Waiting on an answer is one short phrase too, and a phrase stretched over
+     1223px of empty bar is the same empty card in a different colour. Only the
+     working state keeps the full row, because it carries the elapsed clock at
+     the far end and needs the distance between the two. */
+  .activity-dock.asking { width: fit-content; max-width: min(80%, 420px); }
   /* Idle turn, live children: readable as "waiting on something", not as the
      assistant working. */
   /* The one dock state that is a control, so it opts back into pointer events
      and carries an affordance. */
-  .activity-dock.background { right: auto; max-width: min(70%, 300px); border-color: var(--pi-purple-border); color: var(--pi-purple); padding: var(--pi-space-2) var(--pi-space-5); font: inherit; font-size: var(--pi-text-xs); pointer-events: auto; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .activity-dock.background { width: fit-content; max-width: min(70%, 300px); border-color: var(--pi-purple-border); color: var(--pi-purple); padding: var(--pi-space-2) var(--pi-space-5); font: inherit; font-size: var(--pi-text-xs); pointer-events: auto; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .activity-dock { transition: color var(--pi-motion-base) var(--pi-ease), background-color var(--pi-motion-base) var(--pi-ease), border-color var(--pi-motion-base) var(--pi-ease); }
   .activity-dock.background:hover, .activity-dock.background:focus-visible { border-color: var(--pi-purple); background: var(--pi-purple-surface); }
   @media (pointer: coarse) { .activity-dock.background { min-height: 44px; padding-block: var(--pi-space-4); } }
@@ -1671,7 +1688,7 @@ export class ChatView extends LitElement {
         ${category === "working"
           ? html`<span class="state-dots"><span class="state-dot"></span><span class="state-dot"></span><span class="state-dot"></span></span>`
           : html`<span class="dot"></span>`}
-        <span class="activity-text">${this.activityText(state)}</span>
+        <span class="activity-text">${activityDockLabel(category, state, this.activityText(state))}</span>
         ${elapsed === undefined ? null : html`<span class="activity-elapsed" aria-hidden="true">${elapsed.text}</span>`}
       </div>
     `;
@@ -2798,6 +2815,28 @@ export function backgroundWorkLabel(activity: { rows: readonly { status: string 
     .filter((row) => row.status === "working" || row.status === "running").length;
   if (running === 0) return undefined;
   return running === 1 ? "idle · 1 background run" : `idle · ${String(running)} background runs`;
+}
+
+/**
+ * What the dock says, once the state and the badge it was mapped to are both
+ * known.
+ *
+ * The two were computed apart and could disagree. A run parked on an extension
+ * dialog is "waiting for the user", so the badge said asking - but the state
+ * behind it is still the word idle, and that word is what got drawn. The
+ * reader was told nothing was happening by a marker that knew something was:
+ * the run was holding still for an answer nobody was being asked for.
+ *
+ * The ask card takes the bottom of the screen when the question is a question
+ * set, and the dock steps aside for it. A dialog has no such card here, which
+ * is why this is the only place left to say it.
+ *
+ * The decision reads the state rather than the words drawn from it: the words
+ * are whatever the activity feed last called itself, so matching on them would
+ * miss the case as soon as a feed labelled the same state differently.
+ */
+export function activityDockLabel(category: string | undefined, state: string, text: string): string {
+  return category === "asking" && state === "idle" ? "Waiting for your answer" : text;
 }
 
 /**
