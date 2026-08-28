@@ -407,7 +407,12 @@ export class ExtensionDialogCard extends LitElement {
     .dialog-footer {
       /* The card sits in the transcript, which is already the scroller. Inner
          scroll windows made the reader cross a scroll boundary mid-plan; the
-         answer controls stay reachable by sticking to the bottom instead. */
+         answer controls stay reachable by sticking to the bottom instead.
+
+         A bottom-sticky footer is held at the viewport bottom for as long as the
+         card's end is below the fold, so it necessarily covers the card's own
+         earlier rows - and in a select dialog those rows are the options. See
+         the coarse-pointer rule below for why that is withdrawn on phones. */
       position: sticky;
       bottom: 0;
       z-index: 6;
@@ -423,6 +428,18 @@ export class ExtensionDialogCard extends LitElement {
       padding: 12px 16px;
     }
     .dialog-message + .dialog-footer, .dialog-options + .dialog-footer { border-top: 0; }
+    /* Measured at 393x850 with a 12-option select dialog: while the card's end
+       was below the fold the footer stayed pinned at y=784 and document
+       hit-testing put Cancel on top of an option row, so a tap aimed at that
+       option would have ANSWERED the dialog with Cancel. Reaching the wrong
+       answer is worse than reaching nothing, and a finger has no hover to
+       reveal the overlap first, so the footer returns to normal flow where
+       taps are imprecise. Scrolling to it costs nothing here because the card
+       has no inner scroller of its own - the transcript is the scroller. */
+    @media (pointer: coarse) {
+      .dialog-footer { position: static; box-shadow: none; }
+      .card-header { position: static; }
+    }
     button {
       border: 1px solid var(--pi-border);
       border-radius: 8px;

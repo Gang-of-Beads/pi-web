@@ -420,3 +420,49 @@ describe("a dialog whose text is longer than the room it was given", () => {
     expect(capped).toMatch(/overflow-y:\s*auto/u);
   });
 });
+
+/**
+ * A bottom-sticky footer is held against the viewport bottom for as long as the
+ * card's end is below the fold, so it sits on top of the card's own earlier
+ * rows. In a select dialog those rows are the options, and the footer holds
+ * Cancel.
+ *
+ * Measured against the built bundle at 393x850 with a 12-option dialog
+ * (scripts/probe-dialog-footer-overlap.mjs): at scrollTop 0, 200 and 320 the
+ * footer stayed pinned at y=784 and document hit-testing returned Cancel at the
+ * centre of an option row - so a tap aimed at that option would have ANSWERED
+ * the dialog with Cancel, not merely missed. The sticky header does the same on
+ * the top edge, covering "Skip" once it pinned to y=0.
+ *
+ * Reaching the wrong answer is worse than reaching nothing, and a finger gets no
+ * hover to reveal the overlap first, so both are returned to normal flow where
+ * pointers are coarse. happy-dom has no layout, so this pins the rule that the
+ * browser measurement showed to be the cause; the probe re-measures the
+ * geometry itself.
+ */
+describe("answer controls that float over the choices they sit above", () => {
+  it("stops pinning the footer and header over the card's own rows on a coarse pointer", () => {
+    const coarse = coarsePointerRules();
+
+    expect(coarse).not.toBe("");
+    expect(coarse).toMatch(/\.dialog-footer\s*\{[^}]*position:\s*static/u);
+    expect(coarse).toMatch(/\.card-header\s*\{[^}]*position:\s*static/u);
+  });
+
+  it("keeps the footer sticky by default, where a pointer is precise and hover shows the overlap", () => {
+    const sheet = String(ExtensionDialogCard.styles);
+    const base = /\.dialog-footer\s*\{[^}]*\}/u.exec(sheet)?.[0] ?? "";
+
+    expect(base).toMatch(/position:\s*sticky/u);
+  });
+});
+
+/** The card's own coarse-pointer block, or "" when it has none. */
+function coarsePointerRules(): string {
+  const sheet = String(ExtensionDialogCard.styles);
+  const start = sheet.indexOf("@media (pointer: coarse)");
+  if (start === -1) return "";
+  const open = sheet.indexOf("{", start);
+  const close = sheet.indexOf("\n    }", open);
+  return close === -1 ? "" : sheet.slice(open + 1, close);
+}
