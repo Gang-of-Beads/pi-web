@@ -19,6 +19,9 @@ import { createBrowserVoiceRecorder } from "../browserVoiceRecorder";
 import { isDictationConfigured } from "../speechToText";
 import { resolveSpeechStreaming } from "../speechStreamProtocols";
 import { isVoiceCaptureActive, voiceCaptureLabel, type VoiceCaptureState } from "../voiceCapture";
+import { requestSpeechToken } from "../api/speechToken";
+import { LiveDictation } from "../liveDictation";
+import { captureMicrophoneSamples } from "../microphoneSamples";
 import { VoiceController } from "../voiceController";
 import type { PiWebSpeechToTextConfig } from "../../../shared/apiTypes";
 import { type CompletionItem} from "./shared";
@@ -642,7 +645,17 @@ export class PromptEditor extends LitElement {
 
   private async toggleDictation(): Promise<void> {
     this.voice ??= new VoiceController(
-      { recorder: createBrowserVoiceRecorder() },
+      {
+        recorder: createBrowserVoiceRecorder(),
+        createLiveDictation: (onText, onError) => new LiveDictation({
+          requestToken: requestSpeechToken,
+          openSocket: (url) => new WebSocket(url),
+          captureAudio: captureMicrophoneSamples,
+          onText,
+          onError,
+          newRequestId: () => crypto.randomUUID().replaceAll("-", ""),
+        }),
+      },
       {
         onState: (state) => { this.voiceState = state; },
         // Inserted, never sent: the user reads what was heard before it goes

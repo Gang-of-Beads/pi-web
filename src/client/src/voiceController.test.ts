@@ -143,3 +143,45 @@ describe("VoiceController", () => {
     expect(h.states.length).toBe(before);
   });
 });
+
+describe("speaking into a deployment that can stream", () => {
+  /**
+   * A speaker who pauses, resumes, or changes language wants to see the
+   * sentence forming. The whole-clip path shows nothing until they stop, and
+   * every streaming part existed but nothing reached it.
+   */
+  it("delivers words while the speaker is still talking", async () => {
+    const streamed: string[] = [];
+    let seenStates = 0;
+    let feedText: ((text: string) => void) | undefined;
+    let stopped = false;
+    const live = {
+      start: () => Promise.resolve(),
+      stop: () => { stopped = true; },
+    };
+
+    const controller = new VoiceController(
+      { recorder: silentRecorder(), createLiveDictation: (onText) => { feedText = onText; return live; } },
+      { onState: () => { seenStates += 1; }, onTranscript: (text) => { streamed.push(text); } },
+    );
+
+    await controller.toggle({
+      endpoint: "https://example.test/speech",
+      streaming: { protocol: "azure-speech", url: "wss://example.test/stream", tokenEndpoint: "api/speech/token" },
+    });
+    feedText?.("你好");
+    feedText?.("你好，世界");
+
+    expect(streamed).toEqual(["你好", "你好，世界"]);
+    expect(seenStates).toBeGreaterThan(0);
+    expect(stopped).toBe(false);
+  });
+});
+
+function silentRecorder(): VoiceRecorder {
+  return {
+    start: () => Promise.resolve(),
+    stop: () => Promise.resolve(new Blob(["audio"])),
+    cancel: () => { /* nothing is held when the microphone never opened */ },
+  };
+}

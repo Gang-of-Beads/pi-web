@@ -1,4 +1,6 @@
 import type { PiWebSpeechToTextConfig } from "../../shared/apiTypes";
+import { chooseDictationRoute, DictationRoute } from "./dictationRoute";
+import { resolveSpeechStreaming } from "./speechStreamProtocols";
 import { isDictationConfigured, transcribeAudio, type TranscriptionResult } from "./speechToText";
 import {
   advanceVoiceCapture,
@@ -37,8 +39,15 @@ export function transcriberFetch(): typeof globalThis.fetch {
   return globalThis.fetch.bind(globalThis);
 }
 
+/** A live transcriber, injected so tests can speak without a microphone. */
+export interface LiveDictationSession {
+  start: (socketUrl: string) => Promise<void>;
+  stop: () => void;
+}
+
 export interface VoiceControllerDeps {
   recorder: VoiceRecorder;
+  createLiveDictation?: (onText: (text: string) => void, onError: (message: string) => void) => LiveDictationSession;
   transcribe?: typeof transcribeAudio;
   fetch?: typeof globalThis.fetch;
   captureConfig?: VoiceCaptureConfig;
@@ -55,6 +64,7 @@ export class VoiceController {
   private state: VoiceCaptureState = { kind: "idle" };
   /** Captured when listening starts, for an utterance that ends on its own. */
   private activeConfig: PiWebSpeechToTextConfig | undefined;
+  private live: LiveDictationSession | undefined;
   private elapsedMs = 0;
 
   constructor(
@@ -80,20 +90,58 @@ export class VoiceController {
 
     const next = toggleVoiceCapture(this.state);
     if (next.kind === "listening" && !isVoiceCaptureActive(this.state)) {
-      await this.startListening(config);
+      if (chooseDictationRoute(config) === DictationRoute.live) await this.startLive(config);
+      else await this.startListening(config);
       return;
     }
     if (next.kind === "idle") {
       // Abandoned before saying anything: release the device, keep nothing.
+      this.closeLive();
       this.deps.recorder.cancel();
       this.setState({ kind: "idle" });
       return;
     }
     if (next.kind === "transcribing") {
+      // Live text is already in the composer, so stopping is the whole ending.
+      if (this.live !== undefined) {
+        this.closeLive();
+        this.setState({ kind: "idle" });
+        return;
+      }
       await this.finish(config);
       return;
     }
     this.setState(next);
+  }
+
+  private closeLive(): void {
+    const live = this.live;
+    if (live === undefined) return;
+    this.live = undefined;
+    live.stop();
+  }
+
+  private async startLive(config: PiWebSpeechToTextConfig): Promise<void> {
+    const streaming = resolveSpeechStreaming(config.streaming);
+    const create = this.deps.createLiveDictation;
+    if (streaming.kind !== "socket" || create === undefined) {
+      await this.startListening(config);
+      return;
+    }
+
+    this.activeConfig = config;
+    this.elapsedMs = 0;
+    this.setState({ kind: "listening" });
+    this.live = create(
+      (text) => { this.callbacks.onTranscript(text); },
+      (message) => { this.setState({ kind: "error", message }); },
+    );
+    try {
+      await this.live.start(streaming.url);
+    } catch (error) {
+      this.live = undefined;
+      this.setState({ kind: "error", message: `Live transcription failed: ${errorText(error)}` });
+    }
   }
 
   private async startListening(config: PiWebSpeechToTextConfig): Promise<void> {
