@@ -13,6 +13,7 @@ import type {
   SessionNotificationInboxSnapshot,
   SessionUnreadAcknowledgeRequest,
   SessionStatusCatalogSnapshot,
+  SessionUnreadAcknowledgeResponse,
   SessionUnreadCatalogSnapshot,
 } from "../../shared/apiTypes.js";
 import type {
@@ -62,7 +63,7 @@ export interface SessionRouteService {
   unreadCatalog(): Promise<SessionUnreadCatalogSnapshot>;
   /** Status of every currently loaded session, for browser hydration. */
   sessionStatusCatalog(): SessionStatusCatalogSnapshot | Promise<SessionStatusCatalogSnapshot>;
-  acknowledgeUnread(sessionId: string, request: SessionUnreadAcknowledgeRequest): Promise<SessionUnreadCatalogSnapshot>;
+  acknowledgeUnread(sessionId: string, request: SessionUnreadAcknowledgeRequest): Promise<SessionUnreadAcknowledgeResponse>;
   notificationInbox(ref: SessionRouteRef): SessionNotificationInboxSnapshot | Promise<SessionNotificationInboxSnapshot>;
   dismissNotification(ref: SessionRouteRef, request: Omit<SessionNotificationDismissRequest, "cwd">): SessionNotificationInboxSnapshot | Promise<SessionNotificationInboxSnapshot>;
   dismissAllNotifications(ref: SessionRouteRef, request: Omit<SessionNotificationDismissAllRequest, "cwd">): SessionNotificationInboxSnapshot | Promise<SessionNotificationInboxSnapshot>;

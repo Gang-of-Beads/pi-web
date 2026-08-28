@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vitest";
 import type { SessionBackgroundTaskInfo, SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
-import { type ActivityStatus, backgroundTaskRows, activityFilterInEffect, activityFilterOptions, activityStripSummary, activityTabLabel, ChatView, subagentStatusLabel, isActiveActivityStatus, isFinishedActivityStatus, orderActivityEntries, type ActivityListEntry, selectedTopDrawerTab, subagentRows, subagentRunDuration, subagentRunRows, topDrawerStartsOpen } from "./ChatView";
+import { activityEntryKey, type ActivityStatus, backgroundTaskRows, activityFilterInEffect, activityFilterOptions, activityStripSummary, activityTabLabel, ChatView, subagentStatusLabel, isActiveActivityStatus, isFinishedActivityStatus, orderActivityEntries, type ActivityListEntry, selectedTopDrawerTab, subagentRows, subagentRunDuration, subagentRunRows, topDrawerStartsOpen } from "./ChatView";
 
 const SUBAGENTS: SessionSubagentInfo[] = [
   { sessionId: "01a0child-0001-0000-000000000001", cwd: "/repo/.pi/sub", status: "working" },
@@ -519,5 +519,65 @@ describe("the drawer gives the screen back", () => {
     const expanded: unknown = Reflect.get(view, "expandedTopDrawerKeys");
     if (!(expanded instanceof Set)) throw new Error("expected the expanded keys");
     expect(expanded.has(drawerKey)).toBe(false);
+  });
+});
+
+/**
+ * The owner's second symptom: "it keeps running away - the screen jitters and I
+ * have to tap again." The list re-sorts on live status every poll, so a run
+ * finishing moves the rows under it. Rendered by position, Lit keeps the DOM at
+ * each index and rewrites its text, so the element a finger is travelling
+ * towards becomes a different row mid-tap.
+ */
+describe("rows that move when the list re-sorts", () => {
+  function runInfo(runId: string, status: SessionSubagentRunInfo["status"], startedAt: string): SessionSubagentRunInfo {
+    return { runId, agent: "worker", status, elapsedMs: 1000, startedAt, hasOutput: false };
+  }
+
+  it("keeps a row's element when a finished run pushes it up the list", async () => {
+    const view = new ChatView();
+    view.sessionId = "parent-1";
+    view.subagentRuns = [
+      runInfo("run-older", "running", "2026-08-25T10:00:00.000Z"),
+      runInfo("run-newer", "running", "2026-08-25T10:05:00.000Z"),
+    ];
+    document.body.append(view);
+    await view.updateComplete;
+
+    const before = [...view.renderRoot.querySelectorAll(".subagent-row")];
+    expect(before).toHaveLength(2);
+    // The older run sorts second while both are live; it is the one that moves.
+    const movingRow = before[1];
+
+    // The newer run finishes, so it sorts below the one still going and the
+    // remaining running row moves into the slot the finished one vacated.
+    view.subagentRuns = [
+      runInfo("run-older", "running", "2026-08-25T10:00:00.000Z"),
+      runInfo("run-newer", "done", "2026-08-25T10:05:00.000Z"),
+    ];
+    await view.updateComplete;
+    await view.updateComplete;
+
+    const after = [...view.renderRoot.querySelectorAll(".subagent-row")];
+    const stillRunning = after.find((row) => row.className.includes("status-running"));
+    // Same element, not a recycled neighbour wearing this row's text.
+    expect(stillRunning).toBe(movingRow);
+  });
+
+  it("gives every row a key that follows what it is rather than where it sits", () => {
+    const [subagentRow] = subagentRows([{ sessionId: "child-1", cwd: "/repo", status: "working" }]);
+    const [runRow] = subagentRunRows([runInfo("run-1", "running", "2026-08-25T10:00:00.000Z")]);
+    const [taskRow] = backgroundTaskRows([{ id: "task-1", name: "t", command: "x", status: "running", startedAt: "2026-08-25T10:00:00.000Z", bytesWritten: 0, hasOutput: false }]);
+    if (subagentRow === undefined || runRow === undefined || taskRow === undefined) throw new Error("expected one row of each kind");
+
+    const keys = [
+      activityEntryKey({ kind: "subagents", index: 0, status: "working", row: subagentRow }),
+      activityEntryKey({ kind: "runs", index: 9, status: "running", row: runRow }),
+      activityEntryKey({ kind: "tasks", index: 4, status: "running", row: taskRow }),
+    ];
+
+    expect(keys).toEqual(["subagents:child-1", "runs:run-1", "tasks:task-1"]);
+    // Index moves with the sort; the key must not.
+    expect(activityEntryKey({ kind: "runs", index: 0, status: "done", row: runRow })).toBe("runs:run-1");
   });
 });

@@ -66,6 +66,7 @@ import type {
   SessionNotificationInboxSnapshot,
   SessionUnreadAcknowledgeRequest,
   SessionStatusCatalogSnapshot,
+  SessionUnreadAcknowledgeResponse,
   SessionUnreadCatalogSnapshot,
   SessionWarning,
 } from "../../shared/apiTypes.js";
@@ -1298,13 +1299,15 @@ export class PiSessionService implements SessionRouteService {
     return { statuses, generatedAt: new Date(this.now()).toISOString() };
   }
 
-  async acknowledgeUnread(sessionId: string, request: SessionUnreadAcknowledgeRequest): Promise<SessionUnreadCatalogSnapshot> {
+  async acknowledgeUnread(sessionId: string, request: SessionUnreadAcknowledgeRequest): Promise<SessionUnreadAcknowledgeResponse> {
     const result = this.unreadStore.acknowledge(sessionId, {
       ...request,
       cwd: canonicalizeStoredCwd(request.cwd),
     });
     await this.publishUnreadMutations(result.mutations);
-    return this.unreadStore.durableCatalogSnapshot();
+    // The outcome rides with the snapshot because the snapshot cannot carry it:
+    // a refusal and an acceptance both answer with the current catalog.
+    return { ...(await this.unreadStore.durableCatalogSnapshot()), outcome: result.outcome };
   }
 
   notificationInbox(ref: PiSessionRef): SessionNotificationInboxSnapshot {

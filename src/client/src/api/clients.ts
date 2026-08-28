@@ -50,6 +50,7 @@ import {
   parseSubagentRunOutput,
   parseInterruptedRunSnapshot,
   parseWorkspaceGoalsResponse,
+  parseSessionUnreadAcknowledgeResponse,
   parseSessionUnreadCatalogSnapshot,
   parseSessionStreamSnapshot,
   parseSessionTreeForkResult,
@@ -269,7 +270,7 @@ export const sessionsApi = {
     request(`${sessionPath(session, "subsessions", machineId)}?cwd=${encodeURIComponent(session.cwd)}`, parseSessionSubagentsSnapshot, { cache: "no-store" }),
   acknowledgeUnread: (session: SessionRef, catalogId: string, throughCompletionOrder: number, machineId = "local") => {
     const body: SessionUnreadAcknowledgeRequest = { cwd: session.cwd, catalogId, throughCompletionOrder };
-    return request(sessionPath(session, "unread/acknowledge", machineId), parseSessionUnreadCatalogSnapshot, { method: "POST", body: JSON.stringify(body) });
+    return request(sessionPath(session, "unread/acknowledge", machineId), parseSessionUnreadAcknowledgeResponse, { method: "POST", body: JSON.stringify(body) });
   },
   notificationInbox: (session: SessionRef, machineId = "local") => request(sessionQueryPath(session, "notifications", machineId), parseSessionNotificationInboxSnapshot),
   dismissNotification: (session: SessionRef, daemonInstanceId: string, notificationId: string, machineId = "local") => request(sessionPath(session, "notifications/dismiss", machineId), parseSessionNotificationInboxSnapshot, { method: "POST", body: sessionBody(session, { daemonInstanceId, notificationId }) }),

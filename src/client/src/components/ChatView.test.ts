@@ -246,26 +246,11 @@ describe("ChatView session-warning dismiss wiring", () => {
 
 describe("ChatView session drawer wiring", () => {
   // Escape hatch: these cases verify only the tray buttons' Lit callback wiring.
-  // Content and identity decisions use pure seams; Vitest has no shadow-DOM
-  // harness, so stable semantic class markers keep handler extraction narrow.
-  // A minimal render-root fake verifies the resulting focus move without
-  // recreating a browser DOM harness.
-  it("wires individual dismissal and recovers header focus after the final row", () => {
-    const view = withNotificationInbox(new ChatView());
-    const onDismissNotification = vi.fn();
-    const headerFocus = installNotificationFocusRoot(view);
-    view.onDismissNotification = onDismissNotification;
-
-    const rendered = renderTopDrawer(view);
-    if (rendered === null) throw new Error("expected a session drawer");
-    templateEventHandlerAfterMarker(rendered, "notification-row-dismiss")(new Event("click"));
-    view.notificationInbox = emptyNotificationInbox(requireNotificationInbox(view));
-
-    expect(renderTopDrawer(view)).not.toBeNull();
-    focusPendingNotificationTarget(view);
-    expect(onDismissNotification).toHaveBeenCalledExactlyOnceWith("daemon-a:1");
-    expect(headerFocus).toHaveBeenCalledOnce();
-  });
+  // Content and identity decisions use pure seams, and stable semantic class
+  // markers keep handler extraction narrow. A minimal render-root fake verifies
+  // the resulting focus move. Per-row wiring is not testable this way - the rows
+  // are a keyed list, whose directive holds its raw inputs rather than rendered
+  // templates - so that case renders for real in ChatView.notifications.test.ts.
 
   it("wires clear-all and recovers header focus while the emptied tray is retained", () => {
     const view = withNotificationInbox(new ChatView());

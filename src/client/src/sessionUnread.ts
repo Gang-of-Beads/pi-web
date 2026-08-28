@@ -1,5 +1,16 @@
 import { sessionsApi } from "./api";
-import { SESSION_UNREAD_LIMIT, type SessionRef, type SessionUnreadCatalogSnapshot, type SessionUnreadEvent, type SessionUnreadSummary } from "../../shared/apiTypes";
+import { SESSION_UNREAD_LIMIT, type SessionRef, type SessionUnreadAcknowledgeResponse, type SessionUnreadCatalogSnapshot, type SessionUnreadEvent, type SessionUnreadSummary } from "../../shared/apiTypes";
+
+/**
+ * How many times a dismissal may chase work that keeps arriving.
+ *
+ * A session that completes work while the reader is dismissing it supersedes
+ * the acknowledgement, and the honest answer is to acknowledge the newer order
+ * instead of leaving the row on screen. That has to be bounded: a session
+ * completing continuously would otherwise chase it forever, which is the same
+ * unbounded loop as tapping, only invisible.
+ */
+const MAX_ACKNOWLEDGEMENT_CHASES = 2;
 
 const EMPTY_SESSION_IDS: ReadonlySet<string> = new Set();
 const MAX_BUFFERED_NETWORK_EVENTS = SESSION_UNREAD_LIMIT + 1;
@@ -8,7 +19,7 @@ export type SessionUnreadProjectionStatus = "loading" | "fresh" | "stale";
 
 export interface SessionUnreadApi {
   unreadCatalog(machineId: string): Promise<SessionUnreadCatalogSnapshot>;
-  acknowledgeUnread(session: SessionRef, catalogId: string, throughCompletionOrder: number, machineId: string): Promise<SessionUnreadCatalogSnapshot>;
+  acknowledgeUnread(session: SessionRef, catalogId: string, throughCompletionOrder: number, machineId: string): Promise<SessionUnreadAcknowledgeResponse>;
 }
 
 export interface SessionUnreadControllerOptions {
@@ -213,21 +224,36 @@ export class SessionUnreadController {
     session: SessionRef,
     catalogId: string,
     throughCompletionOrder: number,
+    chasesLeft = MAX_ACKNOWLEDGEMENT_CHASES,
   ): Promise<void> {
     const observer = this.beginNetworkObservation(state, generation);
+    let chase: { catalogId: string; throughCompletionOrder: number } | undefined;
     try {
-      const snapshot = await this.api.acknowledgeUnread(
+      const response = await this.api.acknowledgeUnread(
         session,
         catalogId,
         throughCompletionOrder,
         state.machineId,
       );
       if (!this.isCurrent(state, generation)) return;
-      if (this.applyNetworkSnapshot(state, snapshot, observer)) void this.refresh(state.machineId);
+      if (this.applyNetworkSnapshot(state, response, observer)) void this.refresh(state.machineId);
+      // The daemon declined because work landed between the order the reader
+      // saw and the tap. Leaving it at that is what made the row come back and
+      // the reader tap again, so the newer order is acknowledged instead.
+      if (response.outcome === "superseded" && chasesLeft > 0) {
+        const summary = state.projection?.summariesByIdentity.get(sessionIdentityKey(session));
+        const nextCatalogId = state.projection?.catalogId;
+        if (summary !== undefined && nextCatalogId !== undefined && summary.completionOrder > throughCompletionOrder) {
+          chase = { catalogId: nextCatalogId, throughCompletionOrder: summary.completionOrder };
+        }
+      }
     } catch (error: unknown) {
       if (this.isCurrent(state, generation)) this.reportError("acknowledge", state.machineId, error);
     } finally {
       state.observers.delete(observer);
+    }
+    if (chase !== undefined && this.isCurrent(state, generation)) {
+      await this.runAcknowledgement(state, generation, session, chase.catalogId, chase.throughCompletionOrder, chasesLeft - 1);
     }
   }
 

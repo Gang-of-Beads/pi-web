@@ -41,8 +41,30 @@ export interface SessionUnreadMutation {
   event: SessionUnreadEvent;
 }
 
+/**
+ * What became of an acknowledgement.
+ *
+ * Declining a stale acknowledgement is correct - neither an old completion nor
+ * a client from reset state may clear newer work. Declining it *silently* is
+ * what left the reader tapping: the row was removed optimistically, the store
+ * kept it, and the next poll put it back with nothing in the answer to say the
+ * request had been refused.
+ */
+export const SessionUnreadAcknowledgeOutcome = {
+  /** The identity is clear: either this call cleared it, or it already was. */
+  acknowledged: "acknowledged",
+  /** Work completed after the order the client observed, so the row stands. */
+  superseded: "superseded",
+  /** The acknowledgement belongs to a catalog epoch that has since been reset. */
+  staleEpoch: "stale-epoch",
+} as const;
+
+export type SessionUnreadAcknowledgeOutcome =
+  (typeof SessionUnreadAcknowledgeOutcome)[keyof typeof SessionUnreadAcknowledgeOutcome];
+
 export interface SessionUnreadAcknowledgeResult {
   mutations: SessionUnreadMutation[];
+  outcome: SessionUnreadAcknowledgeOutcome;
 }
 
 interface SessionUnreadIdentity {
@@ -181,19 +203,27 @@ export class SessionUnreadStore {
     const identity = requireIdentity(sessionId, request.cwd);
     requireCatalogId(request.catalogId);
     requirePositiveSafeInteger(request.throughCompletionOrder, "throughCompletionOrder");
-    if (request.catalogId !== this.catalogId) return { mutations: [] };
+    if (request.catalogId !== this.catalogId) {
+      return { mutations: [], outcome: SessionUnreadAcknowledgeOutcome.staleEpoch };
+    }
 
     const key = sessionIdentityKey(identity);
     const current = this.unreadByIdentity.get(key);
-    if (current === undefined || current.completionOrder > request.throughCompletionOrder) {
-      return { mutations: [] };
+    // Nothing to clear is the state the caller asked for, so it is settled. A
+    // row that outlived the request is not: that is the case the reader sees
+    // as a dismissal that did not take.
+    if (current === undefined) {
+      return { mutations: [], outcome: SessionUnreadAcknowledgeOutcome.acknowledged };
+    }
+    if (current.completionOrder > request.throughCompletionOrder) {
+      return { mutations: [], outcome: SessionUnreadAcknowledgeOutcome.superseded };
     }
 
     this.assertRevisionCapacity(1);
     this.unreadByIdentity.delete(key);
     const mutations = [this.mutation(identity, null)];
     this.schedulePersist();
-    return { mutations };
+    return { mutations, outcome: SessionUnreadAcknowledgeOutcome.acknowledged };
   }
 
   /** Remove durable unread and all transient lifecycle state for one identity. */

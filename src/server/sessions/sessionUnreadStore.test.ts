@@ -98,6 +98,75 @@ describe("SessionUnreadStore", () => {
     expect(currentOrder(store, "session-1", "/repo")).toBe(current);
   });
 
+  /**
+   * Declining is right; declining silently is not. The reader taps dismiss, the
+   * row goes away optimistically, the store refuses because work completed
+   * between the catalog read and the tap, and the next poll puts the row back -
+   * so the reader taps again, and again. Nothing in the answer distinguishes
+   * "cleared" from "refused", so the browser cannot resync or say why.
+   */
+  it("says an acknowledgement was declined because newer work arrived", () => {
+    const store = storeAt("2026-07-20T00:00:00.000Z", "catalog-a");
+    complete(store, "session-1", "/repo");
+    const seen = currentOrder(store, "session-1", "/repo");
+    // Background work lands between reading the catalog and tapping dismiss.
+    complete(store, "session-1", "/repo");
+
+    const declined = store.acknowledge("session-1", {
+      cwd: "/repo",
+      catalogId: "catalog-a",
+      throughCompletionOrder: seen,
+    });
+
+    expect(declined.mutations).toEqual([]);
+    expect(declined.outcome).toBe("superseded");
+  });
+
+  it("says an acknowledgement was declined because the epoch moved", () => {
+    const store = storeAt("2026-07-20T00:00:00.000Z", "catalog-new");
+    complete(store, "session-1", "/repo");
+
+    const declined = store.acknowledge("session-1", {
+      cwd: "/repo",
+      catalogId: "catalog-old",
+      throughCompletionOrder: Number.MAX_SAFE_INTEGER,
+    });
+
+    expect(declined.outcome).toBe("stale-epoch");
+  });
+
+  /**
+   * The reader is only left tapping when the row survives. An acknowledgement
+   * for an identity that is already clear asked for a state it is already in,
+   * so it is settled rather than declined - resyncing on it would be noise.
+   */
+  it("treats an acknowledgement of nothing as settled rather than declined", () => {
+    const store = storeAt("2026-07-20T00:00:00.000Z", "catalog-a");
+
+    const acknowledged = store.acknowledge("session-1", {
+      cwd: "/repo",
+      catalogId: "catalog-a",
+      throughCompletionOrder: 1,
+    });
+
+    expect(acknowledged.mutations).toEqual([]);
+    expect(acknowledged.outcome).toBe("acknowledged");
+  });
+
+  it("says an acknowledgement that cleared the row was accepted", () => {
+    const store = storeAt("2026-07-20T00:00:00.000Z", "catalog-a");
+    complete(store, "session-1", "/repo");
+
+    const acknowledged = store.acknowledge("session-1", {
+      cwd: "/repo",
+      catalogId: "catalog-a",
+      throughCompletionOrder: currentOrder(store, "session-1", "/repo"),
+    });
+
+    expect(acknowledged.mutations).toHaveLength(1);
+    expect(acknowledged.outcome).toBe("acknowledged");
+  });
+
   it("scopes lifecycle and acknowledgements to the canonical id and cwd pair", () => {
     const store = storeAt("2026-07-20T00:00:00.000Z", "catalog-a");
     complete(store, "session-1", "/repo-a");

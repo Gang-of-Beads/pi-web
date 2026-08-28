@@ -144,6 +144,64 @@ describe("SessionUnreadController", () => {
     });
   });
 
+  /**
+   * The owner's report: "I tap dismiss and it comes back, so I have to tap
+   * again." His sessions complete background work constantly, so an order
+   * advances between reading the catalog and the tap; the daemon rightly
+   * declines to clear work the reader never saw, and the row returns. Chasing
+   * the newer order settles it in one tap instead of leaving him to it.
+   */
+  it("acknowledges the newer order when work landed between reading and tapping", async () => {
+    const acknowledgeUnread = vi.fn()
+      .mockResolvedValueOnce({ ...snapshot("catalog-a", 2, [summary("session-1", 2)]), outcome: "superseded" })
+      .mockResolvedValueOnce({ ...snapshot("catalog-a", 3, []), outcome: "acknowledged" });
+    const controller = new SessionUnreadController({ api: fakeApi({ acknowledgeUnread }) });
+    const session = ref("session-1");
+    controller.applyEvent("local", unreadEvent("catalog-a", 1, summary(session.id, 1)));
+
+    await controller.acknowledge("local", session);
+
+    expect(acknowledgeUnread).toHaveBeenCalledTimes(2);
+    expect(acknowledgeUnread).toHaveBeenLastCalledWith(session, "catalog-a", 2, "local");
+    expect(controller.isUnread("local", session)).toBe(false);
+  });
+
+  /**
+   * Chasing has to stop. A session completing without pause would otherwise
+   * turn one tap into an unbounded request loop - the same fault as tapping
+   * forever, only nobody can see it happening.
+   */
+  it("stops chasing a session that keeps completing rather than looping", async () => {
+    let order = 1;
+    const acknowledgeUnread = vi.fn(() => {
+      order += 1;
+      return Promise.resolve({ ...snapshot("catalog-a", order, [summary("session-1", order)]), outcome: "superseded" as const });
+    });
+    const controller = new SessionUnreadController({ api: fakeApi({ acknowledgeUnread }) });
+    const session = ref("session-1");
+    controller.applyEvent("local", unreadEvent("catalog-a", 1, summary(session.id, 1)));
+
+    await controller.acknowledge("local", session);
+
+    expect(acknowledgeUnread.mock.calls.length).toBeLessThanOrEqual(3);
+  });
+
+  /**
+   * A host that predates the outcome field says nothing, and the old behaviour
+   * was to treat the answer as accepted. Reading silence as a refusal would
+   * make every dismissal on such a host issue a second request.
+   */
+  it("treats a host that reports no outcome as having accepted", async () => {
+    const acknowledgeUnread = vi.fn().mockResolvedValue(snapshot("catalog-a", 2, []));
+    const controller = new SessionUnreadController({ api: fakeApi({ acknowledgeUnread }) });
+    const session = ref("session-1");
+    controller.applyEvent("local", unreadEvent("catalog-a", 1, summary(session.id, 1)));
+
+    await controller.acknowledge("local", session);
+
+    expect(acknowledgeUnread).toHaveBeenCalledOnce();
+  });
+
   it("does not let a delayed acknowledgement response regress an epoch installed by another request", async () => {
     const acknowledgementResponse = deferred<SessionUnreadCatalogSnapshot>();
     const unreadCatalog = vi.fn().mockResolvedValue(snapshot("catalog-b", 1, [summary("epoch-b", 1)]));

@@ -1318,7 +1318,7 @@ export class ChatView extends LitElement {
           ${scope === "empty-active"
             ? html`<p class="activity-empty">Nothing running right now.</p>`
             : null}
-          ${entries.map((entry) => this.renderActivityEntry(entry))}
+          ${repeat(entries, activityEntryKey, (entry) => this.renderActivityEntry(entry))}
           ${finished === 0 ? null : html`
             <button
               type="button"
@@ -1339,7 +1339,7 @@ export class ChatView extends LitElement {
       return html`
         <button
           type="button"
-          class="subagent-row status-${row.status} subagent-open-${String(entry.index)}"
+          class="subagent-row status-${row.status}"
           title=${row.cwd}
           aria-label=${row.ariaLabel}
           @click=${() => { this.onOpenSubagent?.(row.subagent); }}
@@ -1357,7 +1357,7 @@ export class ChatView extends LitElement {
       return html`
         <button
           type="button"
-          class="subagent-row status-${row.status} subagent-run-${String(entry.index)}"
+          class="subagent-row status-${row.status}"
           title=${row.run.task ?? row.run.agent}
           aria-label=${row.ariaLabel}
           @click=${() => { this.onOpenSubagentRun?.(row.run); }}
@@ -1402,7 +1402,7 @@ export class ChatView extends LitElement {
           ${inbox.discardedCount === 0 ? null : html`
             <p class="notification-overflow">${notificationInboxOverflowLabel(inbox.discardedCount)}</p>
           `}
-          ${inbox.notifications.map((notification) => {
+          ${repeat(inbox.notifications, (notification) => notification.id, (notification) => {
             const label = notificationSeverityLabel(notification.severity);
             const truncationLabel = notificationMessageTruncationLabel(notification);
             return html`
@@ -2762,6 +2762,22 @@ export type ActivityListEntry =
   | { kind: "subagents"; index: number; status: ActivityStatus; startedAt?: string | undefined; row: SubagentRow }
   | { kind: "runs"; index: number; status: ActivityStatus; startedAt?: string | undefined; row: SubagentRunRow }
   | { kind: "tasks"; index: number; status: ActivityStatus; startedAt?: string | undefined; row: BackgroundTaskRow };
+
+/**
+ * What this row is, independent of where it currently sits.
+ *
+ * The list re-sorts on live status, so a run finishing moves every row below
+ * it. Rendered by position, Lit reuses the DOM of whatever used to be at that
+ * index and only patches the text - so a control the reader is reaching for
+ * becomes a different control under the finger, which is what the owner saw as
+ * the list jittering and the button running away. Keyed by identity, a row that
+ * moves takes its element with it.
+ */
+export function activityEntryKey(entry: ActivityListEntry): string {
+  if (entry.kind === "subagents") return `subagents:${entry.row.subagent.sessionId}`;
+  if (entry.kind === "runs") return `runs:${entry.row.run.runId}`;
+  return `tasks:${entry.row.task.id}`;
+}
 
 /**
  * The order the list is read in: running work first, then the most recent.

@@ -1,8 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
-import type { TemplateResult } from "lit";
+// @vitest-environment happy-dom
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatView } from "./ChatView";
 import type { SelectedSessionNotificationView } from "../sessionNotifications";
-import { templateEventHandlerAfterMarker } from "../templateInspection.testSupport";
 
 // The clipboard itself belongs to the browser; what is worth pinning here is
 // that the button hands it the right text.
@@ -11,10 +10,12 @@ vi.mock("../clipboard", () => ({ writeClipboardText }));
 
 const MESSAGE = 'Anthropic account "personal" failed closed: token refresh request failed.\nurl=https://platform.claude.com/v1/oauth/token';
 
-function viewWithNotification(): ChatView {
-  const view = new ChatView();
-  view.sessionId = "session-1";
-  const inbox: SelectedSessionNotificationView = {
+afterEach(() => {
+  document.body.replaceChildren();
+});
+
+function inboxWithNotification(): SelectedSessionNotificationView {
+  return {
     machineId: "local",
     sessionId: "session-1",
     cwd: "/repo",
@@ -35,24 +36,16 @@ function viewWithNotification(): ChatView {
     dismissAllPending: false,
     announcements: [],
   };
-  view.notificationInbox = inbox;
+}
+
+async function renderedView(): Promise<ChatView> {
+  const view = new ChatView();
+  view.sessionId = "session-1";
+  view.notificationInbox = inboxWithNotification();
+  document.body.append(view);
+  await view.updateComplete;
+  await view.updateComplete;
   return view;
-}
-
-function renderTray(view: ChatView): TemplateResult {
-  // The drawer renderer is private; reaching it keeps the test at the seam that
-  // actually decides what the row offers.
-  const method: unknown = Reflect.get(view, "renderTopDrawer");
-  if (!isRenderTopDrawer(method)) throw new Error("ChatView.renderTopDrawer is not callable");
-  const rendered = method.call(view);
-  if (rendered === null) throw new Error("expected a session drawer");
-  return rendered;
-}
-
-type RenderTopDrawer = (this: ChatView) => TemplateResult | null;
-
-function isRenderTopDrawer(value: unknown): value is RenderTopDrawer {
-  return typeof value === "function";
 }
 
 describe("notification copy", () => {
@@ -62,9 +55,11 @@ describe("notification copy", () => {
   // where the drag fights the scroll.
   it("copies the message alone, without severity or timestamp decoration", async () => {
     writeClipboardText.mockClear();
-    const view = viewWithNotification();
+    const view = await renderedView();
 
-    templateEventHandlerAfterMarker(renderTray(view), "notification-row-copy")(new Event("click"));
+    const copy = view.renderRoot.querySelector<HTMLButtonElement>(".notification-row-copy");
+    if (copy === null) throw new Error("expected a copy control on the notification row");
+    copy.click();
     await Promise.resolve();
 
     // What gets pasted into a bug report or a search box should be what went

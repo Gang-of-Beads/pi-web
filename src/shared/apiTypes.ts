@@ -510,6 +510,21 @@ export interface SessionUnreadCatalogSnapshot {
 }
 
 /**
+ * What the daemon did with an acknowledgement.
+ *
+ * The snapshot alone cannot say: a refused acknowledgement and an accepted one
+ * both answer with the current catalog, so a browser that removed the row
+ * optimistically could not tell that the row was coming back. Saying which it
+ * was lets the reader be told, instead of being left tapping.
+ */
+export type SessionUnreadAcknowledgeOutcomeValue = "acknowledged" | "superseded" | "stale-epoch";
+
+export interface SessionUnreadAcknowledgeResponse extends SessionUnreadCatalogSnapshot {
+  /** Absent from hosts predating this field, which is read as "acknowledged". */
+  outcome?: SessionUnreadAcknowledgeOutcomeValue;
+}
+
+/**
  * One task of a goal, as recorded by the `pi-goal-x` extension.
  *
  * `status` is passed through as written rather than narrowed to a union: the
