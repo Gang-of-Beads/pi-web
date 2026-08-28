@@ -1,5 +1,101 @@
 # @jmfederico/pi-web
 
+## 1.202608.67
+
+### Patch Changes
+
+- f67344b: Let a running subagent vouch for itself.
+
+  A child that runs in a fork of the parent context never creates its own run
+  directory, so it is listed only through the transcript it writes in the shared
+  artifacts directory. That path admitted such a run only while the parent session
+  was streaming — and the reader watches precisely when the parent is idle, having
+  asked for something and waiting. So every running fork child disappeared at the
+  moment someone looked for it, and the drawer answered "Nothing running right
+  now" while children were working.
+
+  The precedence was backwards. A transcript appended to seconds ago proves the
+  child is alive whatever the parent is doing; the parent's activity is a fallback
+  for a child that has produced no evidence of its own, which is what the code
+  already said about a run that has written nothing at all. Measured on the live
+  session directory: with the parent idle the list reported no running work, and
+  now reports the child whose transcript had been touched moments earlier, while
+  ten husks left by children that died before writing stay `unknown` and
+  transcripts silent for twelve hours are still left alone.
+
+- d1bd7f1: Open a subagent run as the conversation it is, and say where its limits are.
+
+  A subsession row opened the session it named while an agent-run row only ever
+  offered a block of text — the same work told two different ways. The row now
+  opens the child's own conversation: its turns, its tool calls, and its thinking,
+  drawn by the same renderers the transcript uses. Both kinds of child arrive the
+  same way, whether the run kept a session file or the subagent tool's event log.
+
+  The view names the run it belongs to and offers a way back, because it sits over
+  a different conversation and must not be mistaken for the one underneath.
+
+  It reads and does not steer. Steering, resuming and interrupting a live child
+  travel over the subagent extension's RPC on the in-process Pi event bus
+  (`pi.events`), which the web server does not hold, so the view says so rather
+  than offering a control that would do nothing. The bridge is not impossible —
+  the session daemon hosts the agent process that loaded the extension — but it
+  belongs on the daemon's socket rather than in the browser.
+
+  The log viewer stays where a log is genuinely a file: background task output,
+  and runs that ended without writing a transcript at all.
+
+- d76c6e0: Open a subagent run as the conversation it is.
+
+  The two kinds of activity row told the same work two different ways: a
+  subsession row opened the session it named, while an agent-run row opened a
+  block of text. A run does have a conversation, so clicking one now shows it,
+  labelled as a child run of the session it belongs to. A run that never opened a
+  transcript still falls back to whatever it returned.
+
+  Two kinds of child write two different files under names that look alike. A
+  fresh-context child gets a run directory holding an ordinary session `jsonl`. A
+  fork-context child — which is what the builtin `worker` and `oracle` agents are,
+  so the common case — never creates that directory; the subagent tool keeps its
+  own event log in the shared artifacts directory instead. The two were assumed to
+  be the same file because of the name: projected as a session branch, a real fork
+  transcript of 254 entries yielded zero messages. The event log is adapted rather
+  than the session walk being widened, because the difference is in the data.
+
+  Reading only, and the view says so. Steering, resuming or interrupting a live
+  child travels over the subagent extension's RPC — `SUBAGENT_RPC_METHODS` at
+  `src/extension/rpc.ts:34` — which rides the in-process Pi event bus:
+  `SUBAGENT_RPC_REQUEST_EVENT` at `rpc.ts:30`, subscribed at `rpc.ts:776`, wired
+  through `pi.events` at `src/extension/index.ts:668-778`. A caller must hold that
+  bus inside the agent process that loaded the extension, and the web/API process
+  never does. The session daemon is a different matter: it hosts the Pi agent
+  process that loaded the extension in the first place, so the way to offer
+  intervention is to expose that RPC over the socket the daemon already serves —
+  not to give the web server `pi.events`. An unexplained missing control reads as
+  an unfinished feature, so the conversation states the boundary instead.
+
+- 62fca71: Say when a dismissal was refused, and keep a row under the finger that is
+  reaching for it.
+
+  Dismissing took several taps, for two independent reasons.
+
+  The daemon is right to refuse an acknowledgement that would clear work the
+  reader never saw, and a session that completes background work constantly
+  advances the completion order between the moment the browser reads the catalog
+  and the moment the reader taps. It refused silently, though: the answer to a
+  refusal and the answer to an acceptance were both the current catalog, so the
+  browser removed the row optimistically, the next poll put it back, and nothing
+  said why. The acknowledgement now reports what became of it, and a browser told
+  its request was superseded acknowledges the newer order instead of leaving the
+  row on screen. The chase is bounded, so a session that never stops completing
+  cannot turn one tap into an unbounded loop.
+
+  The activity list also re-sorts on live status every few seconds while rendering
+  rows by position, so a run finishing moved every row below it and Lit rewrote
+  the text of whatever element already sat at each index. The control a finger was
+  travelling towards became a different control mid-tap. Activity rows and
+  notification rows are now keyed by what they are - the child session, the run,
+  the task, the notification - so a row that moves takes its element with it.
+
 ## 1.202608.66
 
 ### Patch Changes
