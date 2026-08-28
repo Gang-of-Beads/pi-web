@@ -1,5 +1,82 @@
 # @jmfederico/pi-web
 
+## 1.202608.68
+
+### Patch Changes
+
+- 3624fa7: Return a pinned reader to the bottom after a press that held the transcript still.
+
+  Opening a phone keyboard grows the transcript's scrollable range. Following that
+  growth while a finger is already down would move the control the reader is aiming
+  at, so it is suppressed - but the suppressed scroll was dropped rather than
+  deferred. Measured at 393x850, a reader pinned at 27612 of 27612 was left at
+  27612 of 27948 once the press ended: still short of the bottom they were pinned
+  to, with no later event to correct it.
+
+  The follow refused during a press is now applied when the press ends, after the
+  grace that lets the tap land. A reader who scrolled away during the press keeps
+  their position instead of being pulled back down.
+
+  The scroller also had no `pointercancel` binding, which is what a phone fires
+  instead of `pointerup` once a press becomes a scroll gesture. Every way a press
+  can end now releases the gate.
+
+- 2a6a505: Stop losing the first tap on a notification after the daemon restarts.
+
+  Dismissing a notification took two taps whenever the browser tab had been open
+  across a daemon restart. The tab sends the daemon instance id it read when it
+  loaded the inbox; the daemon mints a new one every time it starts; the store
+  compared the two, refused, and answered 200 with the current inbox and nothing
+  to say it had refused. The row was removed optimistically, the next poll put it
+  back, and the reader tapped again. The second tap worked because the refusal had
+  carried the current id, which the client installs — so the cost was exactly one
+  silent wasted tap per restart, on a phone that keeps a tab open for hours while
+  this daemon restarts on every update.
+
+  For a single dismissal the guard was protecting nothing. A notification id is
+  minted as `${daemonInstanceId}:${order}`, so it already names one notification
+  of one instance and cannot reach a newer one; naming a notification the daemon
+  never minted simply finds nothing. That dismissal is now accepted whatever
+  instance the caller last saw.
+
+  Dismiss-all is not the same and keeps its guard: it names an order range rather
+  than an id, and order restarts at zero with the process, so a range read before
+  a restart covers notifications the reader has never seen. Measured on the real
+  store, an accepted stale range would have cleared an unseen notification. The
+  refusal now names itself instead of being silent, and the client reissues once
+  against the range the refusal reports, so the inbox still clears in one gesture.
+
+  This is the same fault, and the same fix, as the unread acknowledgement one
+  release earlier; both stores now report the outcome of a dismissal rather than
+  declining in silence. These are the only two places in the server that refused a
+  request on a stale identifier with an empty result.
+
+- 2f6c683: Stop a finished dictation from reporting a failure afterwards.
+
+  Stopping a live dictation closed its socket but left the handlers attached.
+  Closing is not immediate, so a socket that failed on the way down still ran
+  `onerror` and put "The dictation connection failed." above the composer — for a
+  dictation the user had already finished, next to a composer they were no longer
+  dictating into. A socket still connecting when the user stopped was left open
+  entirely, because `close()` does nothing in that state.
+
+  Stopping now drops the handlers before closing, and closes a still-connecting
+  socket once it opens.
+
+- 8e594a3: Keep a dismissed extension-dialog card from coming back.
+
+  Dismissing a settled dialog card removed it from the list that was also the only
+  record that the dialog had already been settled here. The daemon's status
+  projection is unordered against socket frames, so a snapshot built before the
+  close could arrive after the dismissal, put the dialog back on the open list, and
+  let the following close record its outcome card a second time — a card the reader
+  had to dismiss again.
+
+  A dismissal is now remembered for as long as the settled cards themselves live,
+  so a status that predates the close can no longer re-open the dialog. A live
+  `dialog.opened` frame still shows a card, because an extension asking again is
+  news the projection cannot be stale about.
+
 ## 1.202608.67
 
 ### Patch Changes
