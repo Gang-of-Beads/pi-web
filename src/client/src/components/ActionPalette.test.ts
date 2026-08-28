@@ -29,6 +29,28 @@ describe("filterActionPaletteActions", () => {
     expect(filterActionPaletteActions(actions, "support cleanup").map((item) => item.id)).toEqual(["cleanup"]);
   });
 
+  /**
+   * The palette's first entry was "Show Actions / Open the command palette",
+   * one of 36: an offer to open the surface the reader is already looking at.
+   * The action itself stays registered because it owns the Ctrl+K shortcut
+   * that opens the palette from everywhere else - it just does not list
+   * itself.
+   */
+  it("does not offer to open the surface it is already showing", () => {
+    const actions: AppAction[] = [
+      action("core:actions.show", "Show actions", { description: "Open the command palette" }),
+      action("core:prompt.focus", "Focus prompt"),
+    ];
+
+    expect(filterActionPaletteActions(actions, "").map((item) => item.id)).toEqual(["core:prompt.focus"]);
+  });
+
+  it("hides it however the plugin id is namespaced", () => {
+    const actions: AppAction[] = [action("actions.show", "Show actions")];
+
+    expect(filterActionPaletteActions(actions, "")).toEqual([]);
+  });
+
   // Someone recalls the words an action is made of, not the order the title
   // puts them in, so the words are asked for one at a time.
   it("matches words typed in any order", () => {
@@ -43,6 +65,37 @@ describe("filterActionPaletteActions", () => {
     expect(filterActionPaletteActions(actions, "clean machine")).toEqual([]);
   });
 });
+
+describe("keyboard shortcut badges on a device with no keyboard", () => {
+  /**
+   * Measured on a phone: every row rendered a <kbd> the reader cannot press,
+   * and the badge column held 101px open that the title needed - titles were
+   * being truncated to make room for a control that does not apply.
+   *
+   * The badge is keyboard affordance, so it belongs to devices that have one.
+   */
+  it("hides the badges on a coarse pointer", () => {
+    expect(coarsePointerRules()).toMatch(/kbd\s*\{[^}]*display:\s*none/u);
+  });
+
+  /**
+   * Hiding the badge is only half of it: the grid still reserved the column,
+   * so the title gained nothing. The row collapses to one column instead.
+   */
+  it("gives the reclaimed width back to the title", () => {
+    expect(coarsePointerRules()).toMatch(/grid-template-columns:\s*minmax\(0,\s*1fr\)\s*;/u);
+  });
+});
+
+/** The palette's own coarse-pointer block, or "" when it has none. */
+function coarsePointerRules(): string {
+  const sheet = String(ActionPalette.styles);
+  const start = sheet.indexOf("@media (pointer: coarse)");
+  if (start === -1) return "";
+  const open = sheet.indexOf("{", start);
+  const close = sheet.indexOf("\n    }", open);
+  return close === -1 ? "" : sheet.slice(open + 1, close);
+}
 
 describe("action-palette modal surface", () => {
   it("focuses the search input when opened", async () => {

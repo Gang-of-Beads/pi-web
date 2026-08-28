@@ -55,7 +55,7 @@ interface ModelPickerRow {
  */
 @customElement("model-picker")
 export class ModelPicker extends LitElement {
-  @property() override title = "Select Model";
+  @property() override title = "Select model";
   /** Enabled-mode rows: the session's pickable models, pre-labeled by the host. */
   @property({ attribute: false }) options: CommandOption[] = [];
   /** All-mode rows: the machine's catalog, already grouped enabled-first by the server. */

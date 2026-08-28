@@ -2340,7 +2340,7 @@ export class PiWebApp extends LitElement {
   private workspaceSurfaceActions(): AppAction[] {
     return [{
       id: "core:workspace.refresh-current",
-      title: "Refresh Current Panel",
+      title: "Refresh current panel",
       shortcut: "mod+shift+r",
       group: "Workspace",
       enabled: this.state.selectedWorkspace !== undefined,
@@ -2352,7 +2352,7 @@ export class PiWebApp extends LitElement {
     return [
       {
         id: "app.sessions.quick-switch",
-        title: "Open Session",
+        title: "Open session",
         description: "Search and open a session, or start a new one, without walking the navigation panel",
         // mod+k already opens the action palette (core plugin); mod+p keeps the
         // familiar "quick open" meaning for jumping straight to a session.
@@ -2362,7 +2362,7 @@ export class PiWebApp extends LitElement {
       },
       {
         id: "app.sessions.new",
-        title: "New Session",
+        title: "New session",
         description: "Start a session in the selected workspace",
         shortcut: "mod+shift+n",
         group: "Sessions",
@@ -2372,7 +2372,7 @@ export class PiWebApp extends LitElement {
       },
       {
         id: "app.sessions.cleanup",
-        title: "Clean Up Sessions",
+        title: "Clean up sessions",
         description: "Preview and manually clean up idle or archived sessions on the selected machine",
         group: "Sessions",
         run: () => { this.openSessionCleanupDialog(); },
@@ -2384,21 +2384,21 @@ export class PiWebApp extends LitElement {
     return [
       {
         id: "app.layout.reset-navigation-panel-size",
-        title: "Reset Navigation Panel Size",
+        title: "Reset navigation panel size",
         description: "Restore the navigation panel to its default width",
         group: "View",
         run: () => { this.resetResizablePanel("navigation"); },
       },
       {
         id: "app.layout.reset-workspace-panel-size",
-        title: "Reset Workspace Panel Size",
+        title: "Reset workspace panel size",
         description: "Restore the workspace panel to its default width",
         group: "View",
         run: () => { this.resetResizablePanel("workspace"); },
       },
       {
         id: "app.layout.reset-panel-sizes",
-        title: "Reset Panel Sizes",
+        title: "Reset panel sizes",
         description: "Restore all side panels to their default widths",
         group: "View",
         run: () => { this.resetResizablePanels(); },
@@ -2410,7 +2410,7 @@ export class PiWebApp extends LitElement {
     return [
       {
         id: "app.navigation.focus-machines",
-        title: "Focus Machines",
+        title: "Focus machines",
         description: "Move keyboard focus to the machine selector",
         shortcut: "mod+g m",
         group: "Navigation",
@@ -2418,7 +2418,7 @@ export class PiWebApp extends LitElement {
       },
       {
         id: "app.navigation.focus-projects",
-        title: "Focus Projects",
+        title: "Focus projects",
         description: "Move keyboard focus to the projects list",
         shortcut: "mod+g p",
         group: "Navigation",
@@ -2426,7 +2426,7 @@ export class PiWebApp extends LitElement {
       },
       {
         id: "app.navigation.focus-workspaces",
-        title: "Focus Workspaces",
+        title: "Focus workspaces",
         description: "Move keyboard focus to the workspaces list",
         shortcut: "mod+g w",
         group: "Navigation",
@@ -2434,7 +2434,7 @@ export class PiWebApp extends LitElement {
       },
       {
         id: "app.navigation.focus-sessions",
-        title: "Focus Sessions",
+        title: "Focus sessions",
         description: "Move keyboard focus to the sessions list",
         shortcut: "mod+g s",
         group: "Navigation",
@@ -2737,7 +2737,7 @@ export class PiWebApp extends LitElement {
     const [models, catalog] = await Promise.all([this.sessions.listModels(), this.sessions.listModelCatalog()]);
     const selectedValue = this.currentModelValue();    this.setState({
       modelDialog: {
-        title: "Select Model",
+        title: "Select model",
         ...(selectedValue !== undefined ? { selectedValue } : {}),
         options: this.modelDialogOptions(models),
         catalog,
@@ -2776,7 +2776,7 @@ export class PiWebApp extends LitElement {
     this.pushModalLayerFrame();
     this.setState({
       themeDialog: {
-        title: "Select Theme",
+        title: "Select theme",
         selectedValue: selectedThemeId === undefined ? autoValue : `${THEME_OPTION_PREFIX}${selectedThemeId}`,
         options: [
           {
@@ -2893,7 +2893,7 @@ export class PiWebApp extends LitElement {
     this.pushModalLayerFrame();
     this.setState({
       thinkingDialog: {
-        title: "Select Thinking Level",
+        title: "Select thinking level",
         selectedValue: current,
         options: levels.map((level) => { const description = thinkingDescription(level); return { value: level, label: `${level}${level === current ? " ✓ current" : ""}`, ...(description === undefined ? {} : { description }) }; }),
       },
@@ -3050,7 +3050,7 @@ export class PiWebApp extends LitElement {
 
   private renderChatView(state: AppState, session: SessionInfo) {
     return html`
-      <chat-view .goals=${this.state.workspaceGoals} .onRunGoalCommand=${(_goal: GoalRecordSummary, command: string) => this.runGoalCommand(command)} .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .loadingMore=${state.isLoadingEarlierMessages} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk} .pendingDialogs=${state.pendingDialogs} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onDismissClosedDialog=${this.handleDismissClosedDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .notificationInbox=${selectedNotificationView(state.selectedNotificationInbox)} .subagents=${state.subagents} .subagentRuns=${state.subagentRuns} .backgroundTasks=${state.backgroundTasks} .activityOutput=${state.activityOutput} .onCloseActivityOutput=${this.handleCloseActivityOutput} .onOpenSubagent=${this.handleOpenSubagentSession} .onOpenSubagentRun=${this.handleOpenSubagentRun} .onOpenBackgroundTask=${this.handleOpenBackgroundTask} .onClearServerQueue=${this.handleClearServerQueue} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onDismissWarning=${this.handleDismissWarning} .onDismissNotification=${this.handleDismissNotification} .onDismissAllNotifications=${this.handleDismissAllNotifications} .warningsVisible=${!this.sessionWarningVisibility.collapsed} .onToggleWarnings=${this.handleToggleWarnings} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())}></chat-view>
+      <chat-view .goals=${this.state.workspaceGoals} .onRunGoalCommand=${(_goal: GoalRecordSummary, command: string) => this.runGoalCommand(command)} .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .loadingMore=${state.isLoadingEarlierMessages} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk} .pendingDialogs=${state.pendingDialogs} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onDismissClosedDialog=${this.handleDismissClosedDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .notificationInbox=${selectedNotificationView(state.selectedNotificationInbox)} .subagents=${state.subagents} .subagentRuns=${state.subagentRuns} .backgroundTasks=${state.backgroundTasks} .activityOutput=${state.activityOutput} .onCloseActivityOutput=${this.handleCloseActivityOutput} .onOpenSubagent=${this.handleOpenSubagentSession} .onOpenSubagentRun=${this.handleOpenSubagentRun} .onOpenBackgroundTask=${this.handleOpenBackgroundTask} .onClearServerQueue=${this.handleClearServerQueue} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onDismissWarning=${this.handleDismissWarning} .onDismissNotification=${this.handleDismissNotification} .onDismissAllNotifications=${this.handleDismissAllNotifications} .warningsVisible=${!this.sessionWarningVisibility.collapsed} .onToggleWarnings=${this.handleToggleWarnings} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }}></chat-view>
     `;
   }
 

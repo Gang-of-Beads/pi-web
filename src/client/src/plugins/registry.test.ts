@@ -316,7 +316,7 @@ describe("PluginRegistry", () => {
     }) }).context);
     const removalAction = deletable.find((action) => action.id === "core:workspace.delete");
     expect(removalAction?.enabled).toBe(true);
-    expect(removalAction?.title).toBe("Remove Workspace");
+    expect(removalAction?.title).toBe("Remove workspace");
   });
 
   it("routes workspace delete through the runtime context", () => {
@@ -378,7 +378,7 @@ describe("PluginRegistry", () => {
     const reloadable = registry.getActions(createContext({ selectedSession: testSession({ persisted: true }) }).context);
     const reloadableAction = reloadable.find((action) => action.id === "core:session.reload");
     expect(reloadableAction?.enabled).toBe(true);
-    expect(reloadableAction?.title).toBe("Reload Session from Disk");
+    expect(reloadableAction?.title).toBe("Reload session from disk");
     expect(reloadableAction?.description).toContain("Use /reload in the prompt for Pi runtime resources");
 
     const noRuntime = registry.getActions(createContext({ selectedSession: testSession({ persisted: true }) }).context);
@@ -454,9 +454,9 @@ describe("PluginRegistry", () => {
     const actions = registry.getActions(context);
     const modelAction = actions.find((action) => action.id === "core:model.select");
     const thinkingAction = actions.find((action) => action.id === "core:thinking.select");
-    expect(modelAction).toMatchObject({ title: "Select Model", enabled: true });
+    expect(modelAction).toMatchObject({ title: "Select model", enabled: true });
     expect(modelAction?.shortcut).toBeUndefined();
-    expect(thinkingAction).toMatchObject({ title: "Select Thinking Level", enabled: true });
+    expect(thinkingAction).toMatchObject({ title: "Select thinking level", enabled: true });
     expect(thinkingAction?.shortcut).toBeUndefined();
 
     if (modelAction !== undefined) void modelAction.run();

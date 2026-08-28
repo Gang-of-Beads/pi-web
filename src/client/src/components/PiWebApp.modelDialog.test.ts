@@ -36,7 +36,7 @@ describe("PiWebApp model dialog", () => {
     expect(listModels).toHaveBeenCalledOnce();
     expect(listModelCatalog).toHaveBeenCalledOnce();
     const dialog = appModelDialog(app);
-    expect(dialog?.title).toBe("Select Model");
+    expect(dialog?.title).toBe("Select model");
     expect(dialog?.selectedValue).toBe("openai/gpt-5");
     expect(dialog?.options).toEqual([
       { value: "openai/gpt-5", label: "gpt-5 ✓ current", description: "openai" },
@@ -53,7 +53,7 @@ describe("PiWebApp model dialog", () => {
       sessions: [selectedSession],
       status: sessionStatus(selectedSession.id, { provider: "openai", id: "gpt-5" }),
       modelDialog: {
-        title: "Select Model",
+        title: "Select model",
         selectedValue: "openai/gpt-5",
         options: [{ value: "openai/gpt-5", label: "gpt-5 ✓ current", description: "openai" }],
         catalog: [
@@ -88,7 +88,7 @@ describe("PiWebApp model dialog", () => {
     setAppState(app, {
       selectedSession,
       sessions: [selectedSession],
-      modelDialog: { title: "Select Model", options: [], catalog: [] },
+      modelDialog: { title: "Select model", options: [], catalog: [] },
     });
     const before = appModelDialog(app);
     vi.spyOn(SessionController.prototype, "setModelEnabled").mockResolvedValue(undefined);

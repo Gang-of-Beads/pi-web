@@ -3,7 +3,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import type { SessionActivity, SessionInfo, SessionStatus } from "../api";
 import { isCachedNewSessionInfo } from "../cachedNewSessions";
 import { LongPressTracker } from "../longPress";
-import { sessionLabel } from "../sessionLabels";
+import { sessionLabel, sessionLabelDetail } from "../sessionLabels";
 import { isArchivableSessionInfo, isTransientNewSessionInfo } from "../sessionPersistence";
 import { normalizeSessionPath } from "../sessionPaths";
 import { filterSessionRows, hideCollapsedSubtreeRows, shouldShowSessionSearch } from "../sessionSearch";
@@ -390,7 +390,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
             this.activateSessionRow(session, scope);
           }}
         >
-          <span class="action-name-line"><span class="action-name" dir="auto">${this.renderRowMarker(row)}${sessionLabel(session)}</span>${this.renderRowBadges(row)}</span><small>${this.renderSessionMetaPrefix(session, status, activity)}${String(session.messageCount)} messages</small>
+          <span class="action-name-line"><span class="action-name" dir="auto">${this.renderRowMarker(row)}${sessionLabel(session)}</span>${this.renderRowBadges(row)}</span><small>${this.renderSessionMetaPrefix(session, status, activity)}${this.renderSessionMetaPrefixDetail(session)}${String(session.messageCount)} messages</small>
           ${this.renderActivity(stateKind, unread)}
         </button>
         <div class="action-menu">
@@ -622,6 +622,15 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
 
   private scrollSelectedIntoView(): void {
     this.renderRoot.querySelector<HTMLElement>(".action-row.selected")?.scrollIntoView({ block: "nearest" });
+  }
+
+  /**
+   * Every session waiting for its first message is called the same thing, so
+   * the meta line carries the id that tells two of them apart.
+   */
+  private renderSessionMetaPrefixDetail(session: SessionInfo): string {
+    const detail = sessionLabelDetail(session);
+    return detail === undefined ? "" : `${detail} \u00b7 `;
   }
 
   private renderSessionMetaPrefix(session: SessionInfo, status: SessionStatus | undefined, activity: SessionActivity | undefined) {

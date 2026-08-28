@@ -27,7 +27,7 @@ export class ActionPalette extends LitElement {
         <header>
           <input
             .value=${this.queryText}
-            placeholder="Search actions..."
+            placeholder="Search actions…"
             @input=${(event: Event) => {
               if (event.target instanceof HTMLInputElement) {
                 this.queryText = event.target.value;
@@ -118,12 +118,34 @@ export class ActionPalette extends LitElement {
     .group { grid-column: 1 / -1; font-size: 12px; }
     kbd { align-self: center; border: 1px solid var(--pi-border); border-radius: 6px; background: var(--pi-surface); color: var(--pi-muted); padding: 2px 6px; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: nowrap; }
     .empty { padding: 24px; color: var(--pi-muted); text-align: center; }
+    /* A shortcut badge is an affordance for a keyboard. On a touch screen it
+       is a label for a key nobody can press, and the column it holds open was
+       measured at 101px - width the title was being truncated to give up. */
+    @media (pointer: coarse) {
+      kbd { display: none; }
+      .options button { grid-template-columns: minmax(0, 1fr); }
+    }
   `;
+}
+
+/**
+ * The action that opens this palette, which the palette does not list.
+ *
+ * It stays registered because it owns the shortcut that opens the palette from
+ * everywhere else; it is only the offer to open the surface already on screen
+ * that is worth nothing. Matched on the unqualified tail so the plugin
+ * namespace a host prefixes (`core:`) does not decide whether it is hidden.
+ */
+const OPEN_PALETTE_ACTION_ID = "actions.show";
+
+function opensThisPalette(action: AppAction): boolean {
+  return action.id === OPEN_PALETTE_ACTION_ID || action.id.endsWith(`:${OPEN_PALETTE_ACTION_ID}`);
 }
 
 export function filterActionPaletteActions(actions: readonly AppAction[], queryText: string): AppAction[] {
   const query = normalizeSearchQuery(queryText);
   return actions
+    .filter((action) => !opensThisPalette(action))
     .filter((action) => action.enabled !== false || action.disabledReason !== undefined)
     .filter((action) => {
       if (query === "") return true;

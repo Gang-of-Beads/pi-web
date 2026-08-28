@@ -425,6 +425,13 @@ export const chatStyles = css`
   .session-activity strong { color: var(--pi-purple); }
   .session-activity span, .session-activity small { color: var(--pi-muted); }
   .history-boundary small { color: var(--pi-dim); }
+  /* Centred in the room the transcript is not using, so the words land where
+     the reader is already looking rather than clinging to the top edge. */
+  .empty-session { display: grid; justify-items: center; gap: var(--pi-space-5); margin: var(--pi-space-9) auto; max-width: var(--pi-chat-measure); padding: var(--pi-space-7); color: var(--pi-muted); text-align: center; }
+  .empty-session p { margin: 0; }
+  .empty-session button { min-height: var(--pi-control-height); padding: var(--pi-space-3) var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
+  .empty-session button:hover, .empty-session button:focus-visible { border-color: var(--pi-accent); }
+  @media (pointer: coarse) { .empty-session button { min-height: var(--pi-control-height-touch); } }
   .msg-header { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-5); min-height: 18px; margin-bottom: var(--pi-space-3); }
   .msg > .msg-header { position: sticky; top: -16px; z-index: 4; margin: -12px -12px var(--pi-space-3); padding: var(--pi-space-1) var(--pi-space-5); border-radius: var(--pi-radius-md) var(--pi-radius-md) 0 0; border-bottom: 1px solid color-mix(in srgb, var(--pi-border-muted) 35%, transparent); background: var(--pi-surface); box-shadow: 0 8px 18px var(--pi-shadow-soft); }
   .msg.user > .msg-header { border-bottom-color: color-mix(in srgb, var(--pi-accent-border) 35%, transparent); background: var(--pi-selection-bg); }
@@ -690,6 +697,8 @@ export class ChatView extends LitElement {
   @property({ type: Boolean }) warningsVisible = true;
   @property({ attribute: false }) onToggleWarnings?: () => void;
   @property({ attribute: false }) onLoadMore?: () => void;
+  /** Puts the cursor in the composer, for the empty session's way forward. */
+  @property({ attribute: false }) onFocusComposer?: () => void;
   /** A log or artifact opened from the activity list, read in its own view. */
   @property({ attribute: false }) activityOutput?: ActivityOutputView | undefined;
   @property({ attribute: false }) onCloseActivityOutput?: () => void;
@@ -1922,7 +1931,27 @@ export class ChatView extends LitElement {
       </div>
     `;
     if (this.messages.length) return html`<div class="history-boundary"><span>Beginning of session</span>${range}</div>`;
-    return null;
+    return this.renderEmptySession();
+  }
+
+  /**
+   * What a session with nothing in it says for itself.
+   *
+   * Rendering nothing left roughly 1160px of blank screen between the header
+   * and the composer, which reads the same as a session that failed to load.
+   * An empty session is a normal state with an obvious next step, so it says
+   * which one it is and points at the composer.
+   */
+  private renderEmptySession() {
+    if (this.loadingMore) return null;
+    return html`
+      <div class="empty-session" role="status">
+        <p>This session is empty. Send a message to start it.</p>
+        ${this.onFocusComposer === undefined
+          ? null
+          : html`<button type="button" @click=${() => { this.onFocusComposer?.(); }}>Write the first message</button>`}
+      </div>
+    `;
   }
 
   private historyRangeLabel() {

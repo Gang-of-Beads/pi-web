@@ -2,7 +2,7 @@ import { LitElement, css, html } from "lit";
 import { sessionChipDestination } from "./sessionChipDestination";
 import { customElement, property, query, state } from "lit/decorators.js";
 import type { Machine, Project, SessionInfo, Workspace } from "../../api";
-import { shortSessionId } from "../../sessionLabels";
+import { sessionLabel } from "../../sessionLabels";
 import type { NavigationSection } from "../../appShell/navigationState";
 
 /** Gap between the floating buttons and the words beside them. */
@@ -204,7 +204,7 @@ export class AppContextBar extends LitElement {
     const machineLabel = machineContextLabel(this.machine);
     const projectLabel = projectContextLabel(this.project);
     const workspaceLabel = workspaceContextLabel(this.workspace);
-    const sessionLabel = sessionContextLabel(this.session);
+    const sessionName = sessionContextLabel(this.session);
     // The empty session pill said "No session" and read like an error beside
     // a working session list; the quick-switch control already opens sessions.
     // The pill returns only when there is a session to name.
@@ -235,9 +235,9 @@ export class AppContextBar extends LitElement {
           </li>
           ${showSessionChip ? html`
             <li class="context-item">
-              <button type="button" class="context-chip" title=${sessionContextTitle(this.session)} aria-label=${`Session: ${sessionLabel}. ${sessionChipDestination(this.mainView) === "conversation" ? "Back to the conversation." : "Open session selection."}`} @click=${() => { this.followSessionChip(); }}>
+              <button type="button" class="context-chip" title=${sessionContextTitle(this.session)} aria-label=${`Session: ${sessionName}. ${sessionChipDestination(this.mainView) === "conversation" ? "Back to the conversation." : "Open session selection."}`} @click=${() => { this.followSessionChip(); }}>
                 <span class="context-kind">Session</span>
-                <span class="context-value session-value">${sessionLabel}</span>
+                <span class="context-value session-value">${sessionName}</span>
               </button>
             </li>
           ` : null}
@@ -547,10 +547,15 @@ function breadcrumbTitle(workspace: Workspace | undefined, project: Project | un
   return "No workspace selected";
 }
 
-function sessionContextLabel(session: SessionInfo | undefined): string {
-  const name = session?.name?.trim();
-  const firstMessage = session?.firstMessage.trim();
-  return name !== undefined && name !== "" ? name : firstMessage !== undefined && firstMessage !== "" ? firstMessage : session === undefined ? "No session" : shortSessionId(session.id);
+/**
+ * What the location trail calls the session.
+ *
+ * The fallback chain belongs to `sessionLabels`, so the header and the session
+ * list cannot disagree about the name of the same session. This adds only the
+ * case the shared helper has no opinion about: no session selected at all.
+ */
+export function sessionContextLabel(session: SessionInfo | undefined): string {
+  return session === undefined ? "No session" : sessionLabel(session);
 }
 
 function sessionContextTitle(session: SessionInfo | undefined): string {
