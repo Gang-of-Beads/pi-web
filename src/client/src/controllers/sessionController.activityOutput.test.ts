@@ -69,7 +69,7 @@ describe("reading a background task's output", () => {
 
     await controller.openBackgroundTaskOutput(task);
 
-    expect(read().error).toBe("Error: gone");
+    expect(read().error).toBe("gone");
     expect(read().activityOutput).toBeUndefined();
     expect(read().messages).toEqual([]);
   });
@@ -88,7 +88,7 @@ describe("reading a subagent run's output", () => {
   });
 
   // A run that has written neither a result nor a step has nothing to show.
-  // That is an answer, not a fault: it used to put "Error: No output for this
+  // That is an answer, not a fault: it used to put "No output for this
   // subagent run" in a red banner across the conversation.
   it("opens empty when the run has written nothing, instead of raising an error", async () => {
     const api: typeof defaultApi = { ...defaultApi, subagentRunOutput: () => Promise.reject(new HttpError("No output for this subagent run", 404)) };

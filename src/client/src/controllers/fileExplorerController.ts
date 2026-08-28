@@ -16,6 +16,7 @@ import {
   updateWorkspaceUploadBatchProgress,
   type WorkspaceUploadBatchState,
 } from "../workspaceUploadState";
+import { describeError } from "../notice";
 import { ReportedError } from "./reportedError";
 import { selectedMachineId, type GetState, type SetState, type UpdateUrl } from "./types";
 
@@ -89,7 +90,7 @@ export class FileExplorerController {
       this.setState({ fileTree: root.entries, expandedDirs: expanded, fileTreeStale: false });
       this.reportedError.clear();
     } catch (error) {
-      this.reportedError.report(String(error));
+      this.reportedError.report(describeError(error));
     }
   }
 
@@ -106,7 +107,7 @@ export class FileExplorerController {
       this.setState({ expandedDirs: { ...this.getState().expandedDirs, [path]: response.entries } });
       this.reportedError.clear();
     } catch (error) {
-      this.reportedError.report(String(error));
+      this.reportedError.report(describeError(error));
     }
   }
 
@@ -183,7 +184,7 @@ export class FileExplorerController {
         startedAt: this.now(),
       });
     } catch (error) {
-      this.reportedError.report(String(error));
+      this.reportedError.report(describeError(error));
       return undefined;
     }
 
@@ -281,8 +282,9 @@ function isWorkspaceUploadCancelled(error: unknown): boolean {
   return error instanceof WorkspaceUploadCancelledError;
 }
 
+/** Interpolated into sentences, so an empty message would read as a gap. */
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return describeError(error);
 }
 
 function omitKey<T>(record: Record<string, T>, keyToOmit: string): Record<string, T> {

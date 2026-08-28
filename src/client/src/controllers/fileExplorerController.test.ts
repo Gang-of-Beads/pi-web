@@ -91,7 +91,7 @@ describe("FileExplorerController file tree workflows", () => {
     const harness = createHarness({ api: createApi({ workspaceTree }) });
 
     await harness.controller.refreshFiles();
-    expect(harness.state.error).toBe("Error: tree unavailable");
+    expect(harness.state.error).toBe("tree unavailable");
 
     await harness.controller.refreshFiles();
     expect(harness.state.error).toBe("");

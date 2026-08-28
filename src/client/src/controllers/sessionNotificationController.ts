@@ -1,5 +1,6 @@
 import { api as defaultApi, type SessionInfo } from "../api";
 import type { AppState } from "../appState";
+import { describeError } from "../notice";
 import {
   applySelectedNotificationEvent,
   installSelectedNotificationSnapshot,
@@ -325,6 +326,11 @@ function shouldInstallSelectedSnapshot(
     || snapshot.summary.inboxRevision >= current.summary.inboxRevision;
 }
 
+/**
+ * Sentences here read "Failed to dismiss notification: <this>", so an empty
+ * message would leave a colon with nothing after it. `describeError` supplies
+ * words for the shapes that carry none.
+ */
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return describeError(error);
 }

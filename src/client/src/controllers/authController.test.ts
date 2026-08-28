@@ -584,7 +584,7 @@ describe("AuthController", () => {
       flow,
       inputValue: "https://callback",
       responding: false,
-      error: "Error: Invalid callback",
+      error: "Invalid callback",
     });
   });
 
@@ -694,7 +694,7 @@ describe("AuthController", () => {
 
     await controller.respondOAuth();
 
-    expect(getState().authDialog).toMatchObject({ step: "oauth", responding: false, error: "Error: Invalid callback" });
+    expect(getState().authDialog).toMatchObject({ step: "oauth", responding: false, error: "Invalid callback" });
 
     await controller.respondOAuth();
 

@@ -1,4 +1,6 @@
 import { api as defaultApi, isNotFoundError, type AskUserCloseResponse, type AskUserSubmission, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingAskUser, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionBackgroundTaskInfo, SessionSubagentRunInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Workspace } from "../api";
+import { errorNoticePatch } from "../errorNotice";
+import { describeError } from "../notice";
 import { ancestorsForSession } from "../sessionAncestors";
 import { refreshMayReplaceSelection } from "./sessionRefreshScope";
 import { activityOutputView, type AppState, type ClosedExtensionDialog } from "../appState";
@@ -313,7 +315,7 @@ export class SessionController {
         for (const event of buffered) this.applyEvent(event);
         this.socket.setHandler((event) => { this.applyEvent(event); });
       }
-      this.setState({ error: String(error) });
+      this.setState(errorNoticePatch(error));
       if (options?.propagateRefreshError === true) throw error;
     }
   }
@@ -329,7 +331,7 @@ export class SessionController {
       const history = this.transcripts.mergeHistory(this.sessionCacheKey(session.id), page);
       this.setState(history);
     } catch (error) {
-      this.setState({ error: String(error) });
+      this.setState(errorNoticePatch(error));
     } finally {
       if (this.getState().selectedSession?.id === session.id) this.setState({ isLoadingEarlierMessages: false });
     }
@@ -452,7 +454,7 @@ export class SessionController {
       this.markCachedNewSessionPersisted(session);
       return true;
     } catch (error) {
-      this.setState({ error: String(error) });
+      this.setState(errorNoticePatch(error));
       // A dropped connection keeps the bubble and its "Not sent" mark: the
       // outbox owns the retry and will revive this same bubble, so the message
       // stays in exactly one place the whole time. The error travels with the
@@ -492,8 +494,8 @@ export class SessionController {
       this.markCachedNewSessionPersisted(session);
       return true;
     } catch (error) {
-      if (this.getState().selectedSession?.id === session.id) this.setState({ messages: [...this.getState().messages, textMessage("system", String(error))] });
-      this.setState({ error: String(error) });
+      if (this.getState().selectedSession?.id === session.id) this.setState({ messages: [...this.getState().messages, textMessage("system", describeError(error))] });
+      this.setState(errorNoticePatch(error));
       return false;
     }
   }
@@ -513,8 +515,8 @@ export class SessionController {
       this.markCachedNewSessionPersisted(session);
       return true;
     } catch (error) {
-      if (this.getState().selectedSession?.id === session.id) this.setState({ messages: [...this.getState().messages, textMessage("system", String(error))] });
-      this.setState({ error: String(error) });
+      if (this.getState().selectedSession?.id === session.id) this.setState({ messages: [...this.getState().messages, textMessage("system", describeError(error))] });
+      this.setState(errorNoticePatch(error));
       return false;
     } finally {
       this.markSendingPrompt(session.id, false);
@@ -536,7 +538,7 @@ export class SessionController {
     try {
       this.applyCommandResult(await this.api.respondToCommand(session, requestId, value, selectedMachineId(this.getState())));
     } catch (error) {
-      this.setState({ error: String(error) });
+      this.setState(errorNoticePatch(error));
     }
   }
 
@@ -559,7 +561,7 @@ export class SessionController {
     try {
       result = await this.api.navigateTree(session, { targetId, expectedLeafId: tree.activeLeafId, summary }, machineId);
     } catch (error) {
-      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState({ error: String(error) });
+      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState(errorNoticePatch(error));
       throw error;
     }
 
@@ -585,11 +587,11 @@ export class SessionController {
     try {
       await this.replacePromptEditorText?.({ machineId, sessionId: session.id, text: editorText });
     } catch (error) {
-      if (this.isSelectedSessionIdentity(session.id, machineId)) this.setState({ error: String(error) });
+      if (this.isSelectedSessionIdentity(session.id, machineId)) this.setState(errorNoticePatch(error));
       throw error;
     }
     if (authoritativeRefreshFailure !== undefined) {
-      if (this.isSelectedSessionIdentity(session.id, machineId)) this.setState({ error: String(authoritativeRefreshFailure.error) });
+      if (this.isSelectedSessionIdentity(session.id, machineId)) this.setState(errorNoticePatch(authoritativeRefreshFailure.error));
       throw authoritativeRefreshFailure.error;
     }
     if (this.isSelectedSessionIdentity(session.id, machineId) && this.getState().treeDialog === tree) this.setState({ treeDialog: undefined });
@@ -611,7 +613,7 @@ export class SessionController {
     try {
       result = await this.api.forkTree(session, { entryId, expectedLeafId: tree.activeLeafId }, machineId);
     } catch (error) {
-      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState({ error: String(error) });
+      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState(errorNoticePatch(error));
       throw error;
     }
 
@@ -644,7 +646,7 @@ export class SessionController {
     try {
       await this.api.abort(session, machineId);
     } catch (error) {
-      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState({ error: String(error) });
+      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState(errorNoticePatch(error));
       throw error;
     }
   }
@@ -675,7 +677,7 @@ export class SessionController {
       if (selectionChange.type === "select") await this.selectSession(selectionChange.session);
       else if (selectionChange.type === "clear") this.deselectSession({ forgetRememberedSelection: true });
     } catch (error) {
-      this.setState({ error: String(error) });
+      this.setState(errorNoticePatch(error));
     }
   }
 
@@ -692,7 +694,7 @@ export class SessionController {
       if (selectionChange.type === "select") await this.selectSession(selectionChange.session);
       else if (selectionChange.type === "clear") this.deselectSession({ forgetRememberedSelection: true });
     } catch (error) {
-      this.setState({ error: String(error) });
+      this.setState(errorNoticePatch(error));
     }
   }
 
@@ -803,7 +805,7 @@ export class SessionController {
       if (next !== undefined) await this.selectSession(next);
       else this.deselectSession({ forgetRememberedSelection: true });
     } catch (error) {
-      if (selectedMachineId(this.getState()) === machineId && this.getState().selectedWorkspace?.id === workspace.id) this.setState({ error: String(error) });
+      if (selectedMachineId(this.getState()) === machineId && this.getState().selectedWorkspace?.id === workspace.id) this.setState(errorNoticePatch(error));
     } finally {
       // Independent of the listing outcome: a listing failure is exactly when a
       // stale work indicator is most misleading.
@@ -915,7 +917,7 @@ export class SessionController {
       this.replaceSession(restored);
       if (this.getState().selectedSession?.id === restored.id) await this.selectSession(restored);
     } catch (error) {
-      this.setState({ error: String(error) });
+      this.setState(errorNoticePatch(error));
     }
   }
 
@@ -929,7 +931,7 @@ export class SessionController {
         await this.selectSession(session, { updateUrl: false });
       }
     } catch (error) {
-      this.setState({ error: String(error) });
+      this.setState(errorNoticePatch(error));
     }
   }
 
@@ -941,7 +943,7 @@ export class SessionController {
       delete detached.parentSessionPath;
       this.replaceSession(detached);
     } catch (error) {
-      this.setState({ error: String(error) });
+      this.setState(errorNoticePatch(error));
     }
   }
 
@@ -951,7 +953,7 @@ export class SessionController {
     try {
       return (await this.api.models(session, selectedMachineId(this.getState()))).models;
     } catch (error) {
-      this.setState({ error: String(error) });
+      this.setState(errorNoticePatch(error));
       return [];
     }
   }
@@ -962,7 +964,7 @@ export class SessionController {
     try {
       return (await this.api.modelCatalog(session, selectedMachineId(this.getState()))).models;
     } catch (error) {
-      this.setState({ error: String(error) });
+      this.setState(errorNoticePatch(error));
       return [];
     }
   }
@@ -978,7 +980,7 @@ export class SessionController {
     try {
       return (await this.api.setModelEnabled(session, provider, modelId, enabled, selectedMachineId(this.getState()))).models;
     } catch (error) {
-      this.setState({ error: String(error) });
+      this.setState(errorNoticePatch(error));
       return undefined;
     }
   }
@@ -990,7 +992,7 @@ export class SessionController {
       this.applyStatus(await this.api.setModel(session, provider, modelId, selectedMachineId(this.getState())));
       await this.refreshAvailableThinkingLevels();
     } catch (error) {
-      this.setState({ error: String(error) });
+      this.setState(errorNoticePatch(error));
     }
   }
 
@@ -1001,7 +1003,7 @@ export class SessionController {
       this.applyStatus(await this.api.cycleModel(session, direction, selectedMachineId(this.getState())));
       await this.refreshAvailableThinkingLevels();
     } catch (error) {
-      this.setState({ error: String(error) });
+      this.setState(errorNoticePatch(error));
     }
   }
 
@@ -1011,7 +1013,7 @@ export class SessionController {
     try {
       return (await this.api.thinkingLevels(session, selectedMachineId(this.getState()))).levels;
     } catch (error) {
-      this.setState({ error: String(error) });
+      this.setState(errorNoticePatch(error));
       return [];
     }
   }
@@ -1034,7 +1036,7 @@ export class SessionController {
     try {
       this.applyStatus(await this.api.setThinkingLevel(session, level, selectedMachineId(this.getState())));
     } catch (error) {
-      this.setState({ error: String(error) });
+      this.setState(errorNoticePatch(error));
     }
   }
 
@@ -1044,7 +1046,7 @@ export class SessionController {
     try {
       this.applyStatus(await this.api.cycleThinkingLevel(session, selectedMachineId(this.getState())));
     } catch (error) {
-      this.setState({ error: String(error) });
+      this.setState(errorNoticePatch(error));
     }
   }
 
@@ -1068,7 +1070,7 @@ export class SessionController {
       const status = await this.api.clearQueue(session, machineId);
       if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.applyStatus(status);
     } catch (error) {
-      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState({ error: String(error) });
+      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState(errorNoticePatch(error));
     }
   }
 
@@ -1098,7 +1100,7 @@ export class SessionController {
       this.applyStatus(status);
       return recalled;
     } catch (error) {
-      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState({ error: String(error) });
+      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState(errorNoticePatch(error));
       return false;
     }
   }
@@ -1123,7 +1125,7 @@ export class SessionController {
         this.setState({ activityOutput: activityOutputView(`Subagent ${run.agent} (${run.runId.slice(0, 8)})`, "") });
         return;
       }
-      this.setState({ error: String(error) });
+      this.setState(errorNoticePatch(error));
     }
   }
 
@@ -1141,7 +1143,7 @@ export class SessionController {
       const output = await this.api.backgroundTaskOutput(session, task.id, machineId);
       this.setState({ activityOutput: activityOutputView(`Background task ${task.name} (${task.id})`, output) });
     } catch (error) {
-      this.setState({ error: String(error) });
+      this.setState(errorNoticePatch(error));
     }
   }
 
@@ -1159,7 +1161,7 @@ export class SessionController {
       const status = await this.api.dismissWarning(session, dismissId, machineId);
       if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.applyStatus(status);
     } catch (error) {
-      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState({ error: String(error) });
+      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState(errorNoticePatch(error));
     }
   }
 
@@ -1208,7 +1210,7 @@ export class SessionController {
       // request is needed to learn what the session's open dialogs are now.
       this.applyStatus(response.sessionStatus);
     } catch (error) {
-      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState({ error: String(error) });
+      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState(errorNoticePatch(error));
     }
   }
 
@@ -1238,7 +1240,7 @@ export class SessionController {
       }
       this.applyPendingStartStatus(pending, response.sessionStatus);
     } catch (error) {
-      if (selectionSeq === this.selectionSeq && this.getState().selectedSession?.id === session.id) this.setState({ error: String(error) });
+      if (selectionSeq === this.selectionSeq && this.getState().selectedSession?.id === session.id) this.setState(errorNoticePatch(error));
     }
   }
 
@@ -1258,7 +1260,7 @@ export class SessionController {
       // request is needed to learn what the session's open ask is now.
       if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.applyStatus(response.sessionStatus);
     } catch (error) {
-      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState({ error: String(error) });
+      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState(errorNoticePatch(error));
     }
   }
 
@@ -1278,7 +1280,7 @@ export class SessionController {
       }
       return result.discarded;
     } catch (error) {
-      this.setState({ error: String(error) });
+      this.setState(errorNoticePatch(error));
       return [];
     }
   }
@@ -1292,7 +1294,7 @@ export class SessionController {
       selectionSeq: this.selectionSeq,
     };
     return this.requestSelectedSessionRefresh(target).catch((error: unknown) => {
-      if (this.isCurrentRefreshTarget(target)) this.setState({ error: String(error) });
+      if (this.isCurrentRefreshTarget(target)) this.setState(errorNoticePatch(error));
     });
   }
 
@@ -1564,7 +1566,7 @@ export class SessionController {
       await this.selectSession(cachedReplacement, { updateUrl: false });
       this.updateUrl(options?.updateUrl === false ? { replace: true } : undefined);
     } catch (error) {
-      this.setState({ error: String(error) });
+      this.setState(errorNoticePatch(error));
     }
   }
 
@@ -1724,7 +1726,7 @@ export class SessionController {
       await this.api.runCommand({ id: session.id, cwd: session.cwd }, `/name ${trimmed}`, machineId);
     } catch (error) {
       this.applySessionName(session.id, previous);
-      this.setState({ error: String(error) });
+      this.setState(errorNoticePatch(error));
     }
   }
 
@@ -2142,8 +2144,13 @@ function bulkFailureMessages(failures: readonly SessionBulkFailure[]): string[] 
   return failures.map((failure) => `${failure.sessionId}: ${failure.error}`);
 }
 
+/**
+ * Sentences here read "Archive failed: <this>", so an empty message would leave
+ * a colon with nothing after it. `describeError` supplies words for the shapes
+ * that carry none - chiefly an HttpError whose body had no error field.
+ */
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return describeError(error);
 }
 
 function sessionMessageCountPatch(state: AppState, sessionId: string, messageCount: number | undefined): Pick<Partial<AppState>, "sessions" | "selectedSession"> {

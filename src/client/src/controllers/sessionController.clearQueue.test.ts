@@ -141,7 +141,7 @@ describe("SessionController server queue clearing", () => {
 
     await controller.clearServerQueue();
 
-    expect(state.error).toBe("Error: queue clear failed");
+    expect(state.error).toBe("queue clear failed");
     expect(state.status).toBe(queuedStatus);
   });
 

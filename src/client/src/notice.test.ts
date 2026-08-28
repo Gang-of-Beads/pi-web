@@ -42,3 +42,51 @@ describe("a notice made from a thrown error", () => {
     expect(retiresOnReply(noticeFromError(new Error("Rename failed")))).toBe(false);
   });
 });
+
+describe("a failure that never said what went wrong", () => {
+  /**
+   * Over HTTP/2 `response.statusText` is always the empty string, so a body
+   * carrying no error field builds an HttpError whose message is "". An Error
+   * with a name and no message stringifies to just its name, which is where a
+   * red banner reading the bare word "HttpError" came from - nobody wrote that
+   * text, it is the class name leaking through `String(error)`.
+   *
+   * A reader cannot act on a class name, so the notice has to say what failed
+   * in words a reader can use.
+   */
+  it("says what failed instead of showing the error class name", () => {
+    const notice = noticeFromError(new HttpError("", 502));
+
+    expect(notice.text).not.toBe("HttpError");
+    expect(notice.text).not.toBe("");
+    expect(notice.text).toContain("502");
+  });
+
+  it("names the status even when the body is silent for other codes", () => {
+    expect(noticeFromError(new HttpError("", 503)).text).toContain("503");
+  });
+
+  /**
+   * A thrown non-Error stringifies to things like "[object Object]", which is
+   * the same failure in a different costume.
+   */
+  it("refuses to show a stringified object as a message", () => {
+    const notice = noticeFromError({ unexpected: true });
+
+    expect(notice.text).not.toContain("[object");
+    expect(notice.text).not.toBe("");
+  });
+
+  it("keeps a real message when the server sent one", () => {
+    expect(noticeFromError(new HttpError("Workspace is locked", 409)).text).toBe("Workspace is locked");
+  });
+
+  /**
+   * The empty-text guard in retiresOnReply meant a notice with no words could
+   * never retire itself. Now that a notice always carries words, a transport
+   * failure retires on the next reply whatever the server said.
+   */
+  it("still retires on the next reply", () => {
+    expect(retiresOnReply(noticeFromError(new HttpError("", 502)))).toBe(true);
+  });
+});

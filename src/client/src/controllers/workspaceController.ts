@@ -1,5 +1,7 @@
 import { api as defaultApi, type GoalRecordSummary, type Project, type Workspace } from "../api";
 import { resetWorkspaceScopedState, type AppState } from "../appState";
+import { errorNoticePatch } from "../errorNotice";
+import { describeError } from "../notice";
 import { mergeCachedNewSessions } from "../cachedNewSessions";
 import { machineProjectKey } from "../machineKeys";
 import { selectedMachineId, type GetState, type RouteTarget, type SetState, type UpdateUrl } from "./types";
@@ -59,7 +61,7 @@ export class WorkspaceController {
       if (workspace) await this.selectWorkspace(workspace, { sessionId: target?.sessionId, updateUrl: target?.updateUrl });
       else if (target?.updateUrl !== false) this.updateUrl();
     } catch (error) {
-      if (selectedMachineId(this.getState()) === machineId && this.getState().selectedProject?.id === project.id) this.setState({ error: String(error), isLoadingWorkspaces: false });
+      if (selectedMachineId(this.getState()) === machineId && this.getState().selectedProject?.id === project.id) this.setState({ ...errorNoticePatch(error), isLoadingWorkspaces: false });
     }
   }
 
@@ -76,7 +78,7 @@ export class WorkspaceController {
       if (session) await this.sessions.selectSession(session, { updateUrl: target?.updateUrl });
       else if (target?.updateUrl !== false) this.updateUrl();
     } catch (error) {
-      if (selectedMachineId(this.getState()) === machineId && this.getState().selectedWorkspace?.id === workspace.id) this.setState({ error: String(error) });
+      if (selectedMachineId(this.getState()) === machineId && this.getState().selectedWorkspace?.id === workspace.id) this.setState(errorNoticePatch(error));
     } finally {
       void this.refreshWorkspaceGoals(workspace, machineId);
     }
@@ -125,7 +127,7 @@ export class WorkspaceController {
         this.setState({ error: "Goal archived. A session already working it keeps its own copy until it reloads, so run /goal-refresh there if it comes back." });
       }
     } catch (error) {
-      this.setState({ error: `Could not archive the goal: ${error instanceof Error ? error.message : String(error)}` });
+      this.setState({ error: `Could not archive the goal: ${describeError(error)}` });
     }
     await this.refreshWorkspaceGoals(workspace, machineId);
   }

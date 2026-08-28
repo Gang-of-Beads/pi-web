@@ -1,5 +1,6 @@
 import { css, LitElement, html, type TemplateResult } from "lit";
-import { RetiredBy } from "../notice";
+import { errorNoticePatch } from "../errorNotice";
+import { describeError, RetiredBy } from "../notice";
 import { clearPlaceholderFrame, notePlaceholderFrame } from "../historyWrites";
 import { bannerHoldDecision } from "./bannerHold";
 import { routeMatchesUrl } from "../routeMatch";
@@ -1466,7 +1467,7 @@ export class PiWebApp extends LitElement {
     try {
       this.fleetReport = await fleetApi.report();
     } catch (error) {
-      this.fleetError = error instanceof Error ? error.message : String(error);
+      this.fleetError = describeError(error);
     } finally {
       this.fleetLoading = false;
     }
@@ -1484,7 +1485,7 @@ export class PiWebApp extends LitElement {
     try {
       return await fleetApi.run(operation, machineIds);
     } catch (error) {
-      this.fleetError = error instanceof Error ? error.message : String(error);
+      this.fleetError = describeError(error);
       return undefined;
     } finally {
       void this.refreshFleet();
@@ -1637,7 +1638,7 @@ export class PiWebApp extends LitElement {
       }
       this.setState({ activeTerminalCount: this.activeTerminalIds.size });
     } catch (error) {
-      this.setState({ error: String(error) });
+      this.setState(errorNoticePatch(error));
     }
   }
 
@@ -2106,7 +2107,7 @@ export class PiWebApp extends LitElement {
     // `startSession()` remains in flight until the backend session resolves;
     // open the chat as soon as the controller has inserted the temporary row.
     const start = this.sessions.startSession().catch((error: unknown) => {
-      if (shouldComplete()) this.setState({ error: String(error) });
+      if (shouldComplete()) this.setState(errorNoticePatch(error));
     });
     if (shouldComplete()) await this.focusChatComposer();
     void start;
@@ -2727,7 +2728,7 @@ export class PiWebApp extends LitElement {
     void Promise.resolve()
       .then(() => action.run())
       .catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = describeError(error);
         console.warn(`Action failed: ${action.id}`, error);
         this.setState({ error: `Action failed: ${message}` });
       });
@@ -3347,8 +3348,9 @@ function remoteRouteRestoreRetryDelay(attempt: number): number {
   return REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS[index] ?? 30_000;
 }
 
+/** Interpolated into sentences, so an empty message would read as a gap. */
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return describeError(error);
 }
 
 function omitWorkspaceDeletionRun(runs: Record<string, TerminalCommandRun>, workspaceId: string): Record<string, TerminalCommandRun> {

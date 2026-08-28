@@ -66,6 +66,12 @@ export class LongPressTracker {
     if (dx > LONG_PRESS_MOVE_TOLERANCE_PX || dy > LONG_PRESS_MOVE_TOLERANCE_PX) this.cancel();
   }
 
+  /**
+   * Ends the press without spending its suppression: every row ends its press
+   * on `pointerup`, which the browser delivers *before* the click that a
+   * completed hold must swallow. Clearing the flag here would let that click
+   * through and activate the row the hold had just answered.
+   */
   cancel(): void {
     if (this.handle !== undefined) this.callbacks.clearTimer(this.handle);
     this.handle = undefined;

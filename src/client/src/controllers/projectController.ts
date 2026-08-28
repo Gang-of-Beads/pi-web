@@ -1,4 +1,6 @@
 import { api as defaultApi, type Project } from "../api";
+import { errorNoticePatch } from "../errorNotice";
+import { describeError } from "../notice";
 import { selectedMachineId, type GetState, type SetState } from "./types";
 import type { WorkspaceController } from "./workspaceController";
 
@@ -38,7 +40,7 @@ export class ProjectController {
       const workspacesByProjectId = Object.fromEntries(Object.entries(this.getState().workspacesByProjectId).filter(([projectId]) => projectIds.has(projectId)));
       this.setState({ projects, workspacesByProjectId });
     } catch (error) {
-      if (selectedMachineId(this.getState()) === machineId) this.setState({ error: String(error) });
+      if (selectedMachineId(this.getState()) === machineId) this.setState(errorNoticePatch(error));
     } finally {
       if (selectedMachineId(this.getState()) === machineId) this.setState({ isLoadingProjects: false });
     }
@@ -89,7 +91,7 @@ export class ProjectController {
       this.setState({ projects: state.projects.filter((p) => p.id !== projectId) });
       if (state.selectedProject?.id === projectId) this.workspaces.clearSelection();
     } catch (error) {
-      if (selectedMachineId(this.getState()) === machineId) this.setState({ error: String(error) });
+      if (selectedMachineId(this.getState()) === machineId) this.setState(errorNoticePatch(error));
     }
   }
 }
@@ -102,7 +104,7 @@ export class ProjectController {
  * the folder is not there, and the dialog has a checkbox that would create it.
  */
 export function addProjectFailureMessage(error: unknown): string {
-  const text = error instanceof Error ? error.message : String(error);
+  const text = describeError(error);
   if (/ENOENT|no such file or directory/u.test(text)) {
     return "That folder does not exist. Tick \u201cCreate the folder if it does not exist\u201d to make it, or correct the path.";
   }

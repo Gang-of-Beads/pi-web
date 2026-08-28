@@ -135,7 +135,7 @@ describe("MachineController", () => {
     expect(machine).toBeUndefined();
     expect(state.machines).toEqual([localMachine]);
     expect(state.selectedMachine).toEqual(localMachine);
-    expect(state.error).toBe("Error: Remote rejected");
+    expect(state.error).toBe("Remote rejected");
     expect(projects.loadProjects).not.toHaveBeenCalled();
     expect(updateUrl).not.toHaveBeenCalled();
     expect(health).not.toHaveBeenCalled();

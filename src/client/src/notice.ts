@@ -32,9 +32,34 @@ export function noticeForReader(text: string): Notice {
   return { text, retiredBy: RetiredBy.reader };
 }
 
+/** Shown when a failure carried no words of its own; see describeError. */
+const UNDESCRIBED_FAILURE = "The request failed";
+
+/**
+ * What a thrown value says to a reader.
+ *
+ * Two shapes arrive here with nothing to say. Over HTTP/2 `response.statusText`
+ * is always the empty string, so a response whose body carries no error field
+ * builds an `HttpError` with an empty message - and an Error with a name and no
+ * message stringifies to just its name, which put a red banner reading the bare
+ * word "HttpError" on screen. A thrown non-Error is the same failure in another
+ * costume: `String(value)` yields "[object Object]".
+ *
+ * Neither is something a reader can act on, so a failure that did not describe
+ * itself is described by its status instead.
+ */
+export function describeError(error: unknown): string {
+  if (error instanceof HttpError) {
+    return error.message === "" ? `${UNDESCRIBED_FAILURE} (${String(error.status)})` : error.message;
+  }
+  if (error instanceof Error) return error.message === "" ? UNDESCRIBED_FAILURE : error.message;
+  const text = String(error);
+  return text === "" || text.startsWith("[object") ? UNDESCRIBED_FAILURE : text;
+}
+
 /** A request that did not get through is retired by one that does. */
 export function noticeFromError(error: unknown): Notice {
-  const text = error instanceof Error ? error.message : String(error);
+  const text = describeError(error);
   return error instanceof HttpError ? noticeFromTransport(text) : noticeForReader(text);
 }
 

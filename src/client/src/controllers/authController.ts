@@ -1,5 +1,7 @@
 import { api as defaultApi, type AuthProviderOption, type AuthType, type OAuthFlowState, type SessionStatus } from "../api";
 import type { AuthDialogState } from "../appState";
+import { errorNoticePatch } from "../errorNotice";
+import { describeError } from "../notice";
 import { selectedMachineId, type GetState, type SetState } from "./types";
 
 type OAuthDialogState = Extract<AuthDialogState, { step: "oauth" }>;
@@ -71,7 +73,7 @@ export class AuthController {
       if (!this.isCurrentAuthOperation(operationGeneration) || this.getState().authDialog !== dialog) return;
       this.setState({ authDialog: { step: "providers", mode: "login", machineId, authType, providers } });
     } catch (error) {
-      if (this.isCurrentAuthOperation(operationGeneration) && this.getState().authDialog === dialog) this.setState({ error: String(error) });
+      if (this.isCurrentAuthOperation(operationGeneration) && this.getState().authDialog === dialog) this.setState(errorNoticePatch(error));
     }
   }
 
@@ -100,7 +102,7 @@ export class AuthController {
       }
       this.setState({ authDialog: { step: "logout", machineId, providers } });
     } catch (error) {
-      if (this.isCurrentAuthOperation(operationGeneration)) this.setState({ error: String(error) });
+      if (this.isCurrentAuthOperation(operationGeneration)) this.setState(errorNoticePatch(error));
     }
   }
 
@@ -142,7 +144,7 @@ export class AuthController {
     } catch (error) {
       const current = this.currentOAuthDialog(operationGeneration, flowId);
       if (current === undefined || oauthRequestId(current.flow) !== requestId) return;
-      this.setState({ authDialog: { ...current, responding: false, error: String(error) } });
+      this.setState({ authDialog: { ...current, responding: false, error: describeError(error) } });
     } finally {
       // Only release the guard this call took: a later request may already own it.
       if (isSameOAuthResponseTarget(this.inFlightResponse, target)) this.inFlightResponse = undefined;
@@ -187,7 +189,7 @@ export class AuthController {
       if (provider === undefined) return;
       if (provider.authType === "oauth" || provider.loginFlow === "interactive") await this.startLoginFlow(provider, machineId, operationGeneration);
     } catch (error) {
-      if (this.isCurrentAuthOperation(operationGeneration)) this.setState({ error: String(error) });
+      if (this.isCurrentAuthOperation(operationGeneration)) this.setState(errorNoticePatch(error));
     }
   }
 
@@ -199,7 +201,7 @@ export class AuthController {
       this.closeDialog();
       void this.refreshStatus(machineId);
     } catch (error) {
-      if (this.isCurrentAuthOperation(operationGeneration)) this.setState({ error: String(error) });
+      if (this.isCurrentAuthOperation(operationGeneration)) this.setState(errorNoticePatch(error));
     }
   }
 
@@ -224,7 +226,7 @@ export class AuthController {
       this.updateOAuthFlow(flow, machineId);
       if (flow.status === "running") this.startPolling(flow.flowId, machineId);
     } catch (error) {
-      if (this.isCurrentAuthOperation(operationGeneration)) this.setState({ error: String(error) });
+      if (this.isCurrentAuthOperation(operationGeneration)) this.setState(errorNoticePatch(error));
     }
   }
 
@@ -277,7 +279,7 @@ export class AuthController {
       const current = this.currentOAuthDialog(operationGeneration, flowId);
       if (pollGeneration !== this.pollGeneration || current?.machineId !== machineId || oauthRequestId(current.flow) !== requestId) return;
       this.stopPolling();
-      this.setState({ authDialog: { ...current, error: String(error) } });
+      this.setState({ authDialog: { ...current, error: describeError(error) } });
     }
   }
 

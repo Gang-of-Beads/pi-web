@@ -1,5 +1,7 @@
 import { api, type Machine, type MachineHealth, type MachineRuntime } from "../api";
 import { resetWorkspaceScopedState } from "../appState";
+import { errorNoticePatch } from "../errorNotice";
+import { describeError } from "../notice";
 import type { GetState, SetState, UpdateUrl } from "./types";
 import type { ProjectController } from "./projectController";
 
@@ -23,7 +25,7 @@ export class MachineController {
       void this.refreshMachineHealthFor(machines);
       void this.refreshMachineRuntimeFor(machines);
     } catch (error) {
-      this.setState({ error: String(error) });
+      this.setState(errorNoticePatch(error));
     } finally {
       this.setState({ isLoadingMachines: false });
     }
@@ -65,7 +67,7 @@ export class MachineController {
       this.setState({ machines: this.getState().machines.map((candidate) => (candidate.id === updated.id ? updated : candidate)) });
       return updated;
     } catch (error) {
-      this.setState({ error: String(error) });
+      this.setState(errorNoticePatch(error));
       return undefined;
     }
   }
@@ -78,7 +80,7 @@ export class MachineController {
       await this.selectMachine(machine);
       return machine;
     } catch (error) {
-      this.setState({ error: String(error) });
+      this.setState(errorNoticePatch(error));
       return undefined;
     }
   }
@@ -102,7 +104,7 @@ export class MachineController {
       }
       return undefined;
     } catch (error) {
-      this.setState({ error: String(error) });
+      this.setState(errorNoticePatch(error));
       return undefined;
     }
   }
@@ -113,7 +115,7 @@ export class MachineController {
       this.setState({ machineStatuses: { ...this.getState().machineStatuses, [health.machineId]: health } });
       return health;
     } catch (error) {
-      this.setState({ error: String(error) });
+      this.setState(errorNoticePatch(error));
       return undefined;
     }
   }
@@ -127,7 +129,7 @@ export class MachineController {
       this.setState({ machineRuntimes: { ...this.getState().machineRuntimes, [runtime.machineId]: runtime } });
       return runtime;
     } catch (error) {
-      if (this.runtimeRefreshSeqByMachine.get(machineId) === seq) this.setState({ error: String(error) });
+      if (this.runtimeRefreshSeqByMachine.get(machineId) === seq) this.setState(errorNoticePatch(error));
       return undefined;
     }
   }
@@ -154,7 +156,7 @@ export class MachineController {
         ok: false,
         checkedAt: new Date().toISOString(),
         status: "offline",
-        error: error instanceof Error ? error.message : String(error),
+        error: describeError(error),
       };
     }
   }

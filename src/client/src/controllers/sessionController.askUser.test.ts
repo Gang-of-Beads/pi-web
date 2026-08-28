@@ -226,7 +226,7 @@ describe("SessionController ask submission", () => {
 
     await controller.submitAsk("ask-1", { answers: [{ id: "q1", values: ["pg"] }] });
 
-    expect(state.error).toBe("Error: submit failed");
+    expect(state.error).toBe("submit failed");
     expect(loadAskDraft(sessionKey(oldSession.id), "ask-1")).toEqual({ q1: { values: ["pg"] } });
     expect(state.pendingAsk?.askId).toBe("ask-1");
   });

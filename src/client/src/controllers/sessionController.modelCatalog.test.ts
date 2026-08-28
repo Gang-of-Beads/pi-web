@@ -50,7 +50,7 @@ describe("SessionController model catalog", () => {
     const models = await controller.listModelCatalog();
 
     expect(models).toEqual([]);
-    expect(state.error).toBe("Error: catalog failed");
+    expect(state.error).toBe("catalog failed");
   });
 
   it("toggles one model's membership and returns the fresh catalog", async () => {
@@ -80,7 +80,7 @@ describe("SessionController model catalog", () => {
     const models = await controller.setModelEnabled("openai", "gpt-4o", true);
 
     expect(models).toBeUndefined();
-    expect(state.error).toBe("Error: toggle failed");
+    expect(state.error).toBe("toggle failed");
   });
 
   it("lists and toggles nothing without a selected session", async () => {
