@@ -1805,7 +1805,7 @@ export class PiWebApp extends LitElement {
       if (selectedMachineId(this.state) !== machineId) return;
       this.sessionCleanupDialog = { ...this.sessionCleanupDialog, preview, previewRequest: request, result: undefined, loading: false, error: "" };
     } catch (error) {
-      if (selectedMachineId(this.state) === machineId) this.sessionCleanupDialog = { ...this.sessionCleanupDialog, loading: false, error: `Failed to preview cleanup: ${errorMessage(error)}` };
+      if (selectedMachineId(this.state) === machineId) this.sessionCleanupDialog = { ...this.sessionCleanupDialog, loading: false, error: `Failed to preview cleanup: ${describeError(error)}` };
     }
   }
 
@@ -1823,7 +1823,7 @@ export class PiWebApp extends LitElement {
       this.sessionCleanupDialog = { ...this.sessionCleanupDialog, preview: result, previewRequest: request, result, running: false, error: "" };
       await this.sessions.applySessionCleanupResult(result, machineId);
     } catch (error) {
-      if (selectedMachineId(this.state) === machineId) this.sessionCleanupDialog = { ...this.sessionCleanupDialog, running: false, error: `Failed to run cleanup: ${errorMessage(error)}` };
+      if (selectedMachineId(this.state) === machineId) this.sessionCleanupDialog = { ...this.sessionCleanupDialog, running: false, error: `Failed to run cleanup: ${describeError(error)}` };
     }
   }
 
@@ -2087,7 +2087,7 @@ export class PiWebApp extends LitElement {
       this.quickSwitcherWorkspaces = workspaces;
       this.quickSwitcherSessions = dedupeById(sessionLists.flat()).sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified));
     } catch (error) {
-      if (selectedMachineId(this.state) === machineId) this.setState({ error: `Failed to load sessions: ${errorMessage(error)}` });
+      if (selectedMachineId(this.state) === machineId) this.setState({ error: `Failed to load sessions: ${describeError(error)}` });
     } finally {
       if (selectedMachineId(this.state) === machineId) this.quickSwitcherLoading = false;
     }
@@ -2604,7 +2604,7 @@ export class PiWebApp extends LitElement {
       if (selectedMachineId(this.state) !== machineId) return;
       if (commandWorkspace !== undefined) void this.openRuntimeTerminal(machineId, commandWorkspace, { terminalId: run.terminalId });
     } catch (error) {
-      if (selectedMachineId(this.state) === machineId) this.setState({ error: `Failed to start workspace removal: ${errorMessage(error)}` });
+      if (selectedMachineId(this.state) === machineId) this.setState({ error: `Failed to start workspace removal: ${describeError(error)}` });
     }
   }
 
@@ -3346,11 +3346,6 @@ function machineScopedKey(machineId: string, value: string): string {
 function remoteRouteRestoreRetryDelay(attempt: number): number {
   const index = Math.min(attempt, REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS.length - 1);
   return REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS[index] ?? 30_000;
-}
-
-/** Interpolated into sentences, so an empty message would read as a gap. */
-function errorMessage(error: unknown): string {
-  return describeError(error);
 }
 
 function omitWorkspaceDeletionRun(runs: Record<string, TerminalCommandRun>, workspaceId: string): Record<string, TerminalCommandRun> {

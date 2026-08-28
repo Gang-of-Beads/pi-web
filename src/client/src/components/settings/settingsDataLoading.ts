@@ -1,5 +1,6 @@
 import type { PiPackagesResponse, PiWebConfigResponse, PiWebPluginsResponse } from "../../api";
 import { friendlyPiPackageErrorMessage, piPackageTargetLabel, type PiPackageTargetContext } from "./piPackageSettings";
+import { describeError } from "../../notice";
 
 export interface GatewaySettingsLoaders {
   loadConfig: () => Promise<PiWebConfigResponse>;
@@ -23,10 +24,10 @@ export async function loadGatewaySettingsData(loaders: GatewaySettingsLoaders): 
   const errors: string[] = [];
 
   if (config.status === "fulfilled") result.config = config.value;
-  else errors.push(`config: ${errorMessage(config.reason)}`);
+  else errors.push(`config: ${describeError(config.reason)}`);
 
   if (plugins.status === "fulfilled") result.plugins = plugins.value;
-  else errors.push(`PI WEB plugins: ${errorMessage(plugins.reason)}`);
+  else errors.push(`PI WEB plugins: ${describeError(plugins.reason)}`);
 
   if (errors.length > 0) result.error = `Failed to load settings: ${errors.join("; ")}`;
   return result;
@@ -36,10 +37,6 @@ export async function loadPiPackagesData(target: PiPackageTargetContext, loadPac
   try {
     return { packagesResponse: await loadPackages(target.id), error: "" };
   } catch (error) {
-    return { error: `Failed to load Pi packages from ${piPackageTargetLabel(target)}: ${friendlyPiPackageErrorMessage(errorMessage(error), target)}` };
+    return { error: `Failed to load Pi packages from ${piPackageTargetLabel(target)}: ${friendlyPiPackageErrorMessage(describeError(error), target)}` };
   }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

@@ -173,7 +173,7 @@ export class SessionNotificationController {
           ...current,
           optimisticDismissedIds: current.optimisticDismissedIds.filter((id) => id !== notificationId),
         }));
-        this.setState({ error: `Failed to dismiss notification: ${errorMessage(error)}` });
+        this.setState({ error: `Failed to dismiss notification: ${describeError(error)}` });
         await this.refreshSelectedSession({ id: target.sessionId, cwd: target.cwd }, target.machineId);
       }
     } finally {
@@ -204,7 +204,7 @@ export class SessionNotificationController {
           delete next.optimisticDismissAllThrough;
           return next;
         });
-        this.setState({ error: `Failed to dismiss session notifications: ${errorMessage(error)}` });
+        this.setState({ error: `Failed to dismiss session notifications: ${describeError(error)}` });
         await this.refreshSelectedSession({ id: target.sessionId, cwd: target.cwd }, target.machineId);
       }
     } finally {
@@ -324,13 +324,4 @@ function shouldInstallSelectedSnapshot(
     || current.daemonInstanceId !== snapshot.daemonInstanceId
     || current.summary === undefined
     || snapshot.summary.inboxRevision >= current.summary.inboxRevision;
-}
-
-/**
- * Sentences here read "Failed to dismiss notification: <this>", so an empty
- * message would leave a colon with nothing after it. `describeError` supplies
- * words for the shapes that carry none.
- */
-function errorMessage(error: unknown): string {
-  return describeError(error);
 }

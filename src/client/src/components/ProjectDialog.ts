@@ -4,6 +4,7 @@ import { api, trustApi, type FileSuggestion } from "../api";
 import type { ProjectTrustChoice } from "../controllers/projectController";
 import { css } from "lit";
 import "./ModalSurface";
+import { describeError } from "../notice";
 
 const SUGGESTION_DEBOUNCE_MS = 120;
 
@@ -158,7 +159,7 @@ export class ProjectDialog extends LitElement {
       this.trust = { path: result.path, decision: result.decision, trusted: result.trusted, loading: false };
     } catch (error) {
       if (requestId !== this.trustRequestId || this.trustTouched) return;
-      this.trust = { path: trimmed, decision: null, trusted: false, loading: false, error: error instanceof Error ? error.message : String(error) };
+      this.trust = { path: trimmed, decision: null, trusted: false, loading: false, error: describeError(error) };
     }
   }
 

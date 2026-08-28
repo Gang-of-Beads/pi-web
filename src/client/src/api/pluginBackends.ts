@@ -11,6 +11,7 @@ import {
   utf8ByteLength,
 } from "../../../shared/pluginBackendProtocol";
 import { resolveAppUrl, type AppUrlContext } from "../appUrl";
+import { describeError } from "../notice";
 
 export interface PluginBackendRequestTarget {
   pluginId: string;
@@ -64,7 +65,7 @@ export async function requestPluginBackend(
       body,
     });
   } catch (error) {
-    throw new Error(`Plugin backend request unavailable: ${errorMessage(error)}`, { cause: error });
+    throw new Error(`Plugin backend request unavailable: ${describeError(error)}`, { cause: error });
   }
 
   const text = await readBoundedResponseText(response);
@@ -118,10 +119,6 @@ function pluginBackendErrorMessage(text: string): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

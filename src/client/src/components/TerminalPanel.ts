@@ -11,6 +11,7 @@ import { createTerminalCopySnapshot, DEFAULT_TERMINAL_ANSI_THEME, type TerminalC
 import { createTerminalSoftKeysDefaultEnvironmentMedia, hasTerminalSoftKeysPreference, initialTerminalSoftKeysEnabled, isTerminalSoftKeysDefaultEnvironment, writeTerminalSoftKeysPreference } from "../terminalSoftKeysPreference";
 import "./TerminalSoftKeys";
 import type { TerminalSoftKeyInputOptions } from "./TerminalSoftKeys";
+import { describeError } from "../notice";
 
 const TERMINAL_OPTIONS_BASE: ITerminalOptions = {
   cursorBlink: true,
@@ -158,7 +159,7 @@ export class TerminalPanel extends LitElement {
       this.updateCommandRunPolling(this.hasPendingCommandRuns(commandRuns));
       if (terminals.length === 0 && shouldAutoStart) await this.startTerminal();
     } catch (error) {
-      this.error = error instanceof Error ? error.message : String(error);
+      this.error = describeError(error);
     } finally {
       this.loading = false;
     }
@@ -210,7 +211,7 @@ export class TerminalPanel extends LitElement {
       this.terminals = [...this.terminals, terminal];
       this.selectTerminal(terminal.id);
     } catch (error) {
-      this.error = error instanceof Error ? error.message : String(error);
+      this.error = describeError(error);
     }
   }
 
@@ -227,7 +228,7 @@ export class TerminalPanel extends LitElement {
         this.onSelectTerminal(nextSelectedId, { replace: true });
       }
     } catch (error) {
-      this.error = error instanceof Error ? error.message : String(error);
+      this.error = describeError(error);
     }
   }
 
@@ -255,7 +256,7 @@ export class TerminalPanel extends LitElement {
       this.cancellingRunIds = this.cancellingRunIds.filter((runId) => commandRuns.some((run) => run.id === runId && isCommandRunPending(run)));
       this.updateCommandRunPolling(this.hasPendingCommandRuns(commandRuns));
     } catch (error) {
-      this.error = error instanceof Error ? error.message : String(error);
+      this.error = describeError(error);
     }
   }
 
@@ -282,7 +283,7 @@ export class TerminalPanel extends LitElement {
       await terminalsApi.cancelCommandRun(run.id, this.machineId);
       await this.loadCommandRuns();
     } catch (error) {
-      this.error = error instanceof Error ? error.message : String(error);
+      this.error = describeError(error);
     } finally {
       this.cancellingRunIds = this.cancellingRunIds.filter((runId) => runId !== run.id);
     }
@@ -299,7 +300,7 @@ export class TerminalPanel extends LitElement {
       this.fitAndNotify();
       this.terminal?.focus();
     } catch (error) {
-      this.error = error instanceof Error ? error.message : String(error);
+      this.error = describeError(error);
     } finally {
       this.continuingTerminalIds = this.continuingTerminalIds.filter((terminalId) => terminalId !== id);
     }
@@ -353,7 +354,7 @@ export class TerminalPanel extends LitElement {
       }
       if (message.type === "error") terminal.writeln(`\r\n[terminal error: ${message.message}]`);
     } catch (error) {
-      terminal.writeln(`\r\n[terminal error: ${error instanceof Error ? error.message : String(error)}]`);
+      terminal.writeln(`\r\n[terminal error: ${describeError(error)}]`);
     }
   }
 

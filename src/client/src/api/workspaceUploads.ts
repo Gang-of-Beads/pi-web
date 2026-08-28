@@ -1,6 +1,7 @@
 import type { WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "../../../shared/apiTypes";
 import { parseWriteWorkspaceFileResponse } from "./parsers";
 import { workspaceFileWriteUrl } from "./urls";
+import { describeError } from "../notice";
 
 export const DEFAULT_WORKSPACE_UPLOADS_FOLDER = ".pi-web/uploads";
 
@@ -225,7 +226,7 @@ export function uploadWorkspaceFiles(
         emit();
       } catch (error) {
         if (isUploadCancellation(error, cancellation)) throw error;
-        const message = errorMessage(error);
+        const message = describeError(error);
         progressFile.loaded = progressFile.total;
         progressFile.percent = 1;
         progressFile.lengthComputable = true;
@@ -298,10 +299,6 @@ function percentFor(loaded: number, total: number): number {
 function uploadBatchErrorMessage(failures: readonly WorkspaceUploadFileFailure[]): string {
   if (failures.length === 1) return failures[0]?.error ?? "Workspace upload failed";
   return `${String(failures.length)} files failed to upload`;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function isUploadCancellation(error: unknown, cancellation: { requested: boolean }): boolean {

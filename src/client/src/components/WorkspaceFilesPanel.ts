@@ -9,6 +9,7 @@ import { formatFileSize } from "../utils/format";
 import { registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
 import { workspacePanelStyles } from "./shared";
 import "./WorkspaceFileViewer";
+import { describeError } from "../notice";
 
 interface PendingWorkspaceUploadReview {
   files: File[];
@@ -420,7 +421,7 @@ export function workspaceUploadReviewError(files: readonly File[], destinationFo
     try {
       workspaceUploadPath(destinationFolder, file.name);
     } catch (error) {
-      return error instanceof Error ? error.message : String(error);
+      return describeError(error);
     }
   }
   return undefined;

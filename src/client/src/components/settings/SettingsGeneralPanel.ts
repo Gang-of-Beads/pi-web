@@ -13,6 +13,7 @@ import {
   type GatewayServerConfigDraft,
   type MachineAccessConfigDraft,
 } from "./settingsConfigDraft";
+import { describeError } from "../../notice";
 
 function generalDescription(targetLabel: string): TemplateResult {
   return html`Gateway server fields edit this local gateway. File access and upload defaults edit ${targetLabel}.`;
@@ -224,7 +225,7 @@ export class SettingsGeneralPanel extends LitElement {
     try {
       await this.onSave?.(gatewayServerConfigFromDraft(this.gatewayDraft, this.configResponse?.config ?? {}));
     } catch (error) {
-      this.gatewayLocalError = errorMessage(error);
+      this.gatewayLocalError = describeError(error);
     }
   }
 
@@ -234,7 +235,7 @@ export class SettingsGeneralPanel extends LitElement {
     try {
       await this.onSaveMachineConfig?.(machineAccessConfigPatchFromDraft(this.machineDraft));
     } catch (error) {
-      this.machineLocalError = errorMessage(error);
+      this.machineLocalError = describeError(error);
     }
   }
 
@@ -311,8 +312,4 @@ function selectValue(event: Event): string {
 
 function textAreaValue(event: Event): string {
   return event.target instanceof HTMLTextAreaElement ? event.target.value : "";
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

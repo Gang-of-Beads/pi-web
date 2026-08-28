@@ -145,7 +145,7 @@ export class FileExplorerController {
       this.reportedError.clear();
     } catch (error) {
       if (!this.isCurrentFileRequest(request)) return;
-      this.setState({ selectedFileContent: undefined, selectedFileLoadError: errorMessage(error) });
+      this.setState({ selectedFileContent: undefined, selectedFileLoadError: describeError(error) });
     }
   }
 
@@ -257,7 +257,7 @@ export class FileExplorerController {
       this.setUploadBatch(cancelled);
       return cancelled;
     }
-    const message = errorMessage(error);
+    const message = describeError(error);
     const failed = failWorkspaceUploadBatch(batch, message, this.now());
     this.setUploadBatch(failed);
     this.reportedError.report(message);
@@ -280,11 +280,6 @@ export class FileExplorerController {
 
 function isWorkspaceUploadCancelled(error: unknown): boolean {
   return error instanceof WorkspaceUploadCancelledError;
-}
-
-/** Interpolated into sentences, so an empty message would read as a gap. */
-function errorMessage(error: unknown): string {
-  return describeError(error);
 }
 
 function omitKey<T>(record: Record<string, T>, keyToOmit: string): Record<string, T> {

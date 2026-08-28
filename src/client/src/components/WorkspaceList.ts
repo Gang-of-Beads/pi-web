@@ -13,6 +13,7 @@ import type { KeyboardNavigableSection } from "./navigationFocus";
 import { focusSelectedOrFirstSelectableRow, handleSelectableRowKeyboard } from "./selectableRow";
 import { listStyles } from "./shared";
 import { renderWorkspaceLabelInlineItems } from "./workspaceLabel";
+import { describeError } from "../notice";
 
 interface WorkspaceTrustState {
   loading?: boolean;
@@ -264,7 +265,7 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
       const result = await trustApi.workspaceTrust(workspace.projectId, workspace.id, this.machineId);
       this.setTrustState(workspace.id, { trusted: result.trusted });
     } catch (error) {
-      this.setTrustState(workspace.id, { error: error instanceof Error ? error.message : String(error) });
+      this.setTrustState(workspace.id, { error: describeError(error) });
     }
   }
 
@@ -276,7 +277,7 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
       this.setTrustState(workspace.id, { trusted: result.trusted });
     } catch (error) {
       // Keep the prior checkbox value (revert the optimistic flip) and surface why.
-      this.setTrustState(workspace.id, { ...this.trustBase(existing), error: error instanceof Error ? error.message : String(error) });
+      this.setTrustState(workspace.id, { ...this.trustBase(existing), error: describeError(error) });
     }
   }
 

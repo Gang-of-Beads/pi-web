@@ -716,7 +716,7 @@ export class SessionController {
       }
       this.applyBulkSessionFailures("Archive", failures);
     } catch (error) {
-      this.setState({ error: `Archive failed: ${errorMessage(error)}` });
+      this.setState({ error: `Archive failed: ${describeError(error)}` });
     }
   }
 
@@ -740,7 +740,7 @@ export class SessionController {
       }
       this.applyBulkSessionFailures("Delete", failures);
     } catch (error) {
-      this.setState({ error: `Delete failed: ${errorMessage(error)}` });
+      this.setState({ error: `Delete failed: ${describeError(error)}` });
     }
   }
 
@@ -1496,7 +1496,7 @@ export class SessionController {
       return;
     }
     const state = this.getState();
-    const message = errorMessage(error);
+    const message = describeError(error);
     const activity = failedPendingSessionActivity(tempId, message, pending.queuedSends.length);
     const hasPendingRow = state.sessions.some((session) => session.id === tempId);
     this.setState({
@@ -2142,15 +2142,6 @@ function uniqueSessionsById(sessions: readonly SessionInfo[]): SessionInfo[] {
 
 function bulkFailureMessages(failures: readonly SessionBulkFailure[]): string[] {
   return failures.map((failure) => `${failure.sessionId}: ${failure.error}`);
-}
-
-/**
- * Sentences here read "Archive failed: <this>", so an empty message would leave
- * a colon with nothing after it. `describeError` supplies words for the shapes
- * that carry none - chiefly an HttpError whose body had no error field.
- */
-function errorMessage(error: unknown): string {
-  return describeError(error);
 }
 
 function sessionMessageCountPatch(state: AppState, sessionId: string, messageCount: number | undefined): Pick<Partial<AppState>, "sessions" | "selectedSession"> {

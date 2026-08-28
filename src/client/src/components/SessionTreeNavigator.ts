@@ -6,6 +6,7 @@ import { buildSessionTreeModel, initialSessionTreeSelection, toggleSessionTreeFo
 // Side-effect import: registers <modal-surface> (a value import would be dropped
 // by esbuild under vitest because nothing from the module is referenced).
 import "./ModalSurface";
+import { describeError } from "../notice";
 
 const EMPTY_TREE: SessionTreeSnapshot = { nodes: [], activeLeafId: null, activePathIds: [] };
 const MAX_SESSION_TREE_VISUAL_DEPTH = 8;
@@ -437,7 +438,7 @@ export class SessionTreeNavigator extends LitElement {
       this.busy = false;
       this.aborting = false;
       this.statusMessage = "";
-      this.error = `Could not navigate session history: ${errorMessage(error)}`;
+      this.error = `Could not navigate session history: ${describeError(error)}`;
     }
   }
 
@@ -466,7 +467,7 @@ export class SessionTreeNavigator extends LitElement {
       if (generation !== this.operationGeneration) return;
       this.busy = false;
       this.statusMessage = "";
-      this.error = errorMessage(error);
+      this.error = describeError(error);
     }
   }
 
@@ -487,7 +488,7 @@ export class SessionTreeNavigator extends LitElement {
       if (generation !== this.operationGeneration) return;
       this.aborting = false;
       this.statusMessage = "";
-      this.error = `Could not cancel summarization: ${errorMessage(error)}`;
+      this.error = `Could not cancel summarization: ${describeError(error)}`;
     }
   }
 
@@ -632,8 +633,4 @@ export function sessionTreeEntryReturnsToEditor(kind: SessionTreeNodeKind): bool
 
 export function sessionTreeKindPresentation(kind: SessionTreeNodeKind): SessionTreeKindPresentation {
   return SESSION_TREE_KIND_PRESENTATION[kind];
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
