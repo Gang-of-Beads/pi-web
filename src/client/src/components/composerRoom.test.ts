@@ -50,19 +50,31 @@ describe("the step footer of a question card", () => {
 
 describe("the button that returns you to the newest message", () => {
   /**
-   * It sat in the bottom right, the same corner the composer controls and the
-   * activity dock occupy, and it was round where every other floating control
-   * on that edge is round too - so it read as one more of them.
-   *
-   * It belongs at the top right instead: away from the controls, on the edge
-   * you are scrolling away from, shaped like a panel affordance rather than a
-   * pill.
+   * It belongs in the corner a reader scrolling down is already watching. It
+   * was moved to the top once because the bottom edge carried the composer
+   * controls and a full-width activity dock; the dock is its own row now and
+   * its quiet states hug their words, so that corner is free again.
    */
-  it("sits at the top right, out of the way of the controls", () => {
+  it("sits at the bottom right, where the reader is heading", () => {
     const rule = /\.jump-to-bottom\s*\{([^}]*)\}/u.exec(sheets)?.[1] ?? "";
 
-    expect(rule).toMatch(/top:/u);
-    expect(rule).not.toMatch(/bottom:/u);
+    expect(rule).toMatch(/bottom:/u);
+    expect(rule).not.toMatch(/(^|;)\s*top:/u);
+  });
+
+  /**
+   * The dock shares that corner and is not one height: a hugging pill when the
+   * turn is quiet, a full row while the assistant works, taller again on a
+   * touch screen. A fixed offset is wrong in most of those states, so the row
+   * is measured and spent as a length - the same treatment the scrollbar gets
+   * two properties above.
+   */
+  it("clears the activity dock by measuring it rather than guessing", () => {
+    const rule = /\.jump-to-bottom\s*\{([^}]*)\}/u.exec(sheets)?.[1] ?? "";
+    const bottom = /bottom:\s*calc\(([^;]*)\)/u.exec(rule)?.[1] ?? "";
+
+    expect(bottom).toMatch(/--pi-chat-dock-room/u);
+    expect(bottom).toMatch(/\+\s*var\(--pi-space-\d\)/u);
   });
 
   it("is square rather than a pill", () => {

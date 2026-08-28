@@ -83,9 +83,19 @@ export const chatStyles = css`
   /* Sits over the transcript's bottom-right corner, clear of the reading
      column, and only while the newest message is out of reach. 40px keeps it
      above the 24px minimum target without becoming a second composer. */
-  /* Top right, not bottom right: the bottom edge already carries the composer
-     controls and the activity dock, and a round button among round buttons
-     read as one more of them.
+  /* Bottom right, the corner a reader scrolling down already watches.
+
+     It was moved to the top once, because the bottom edge was where the
+     composer controls and a full-width activity dock all lived and one more
+     round control there read as one of them. Two of those three reasons are
+     gone: the dock is a row of its own now and the quiet states hug their
+     words, so the corner is free. The third is answered by shape - this is a
+     square panel affordance, not another pill.
+
+     What it must not do is land on the dock, which changes height with its
+     state and grows on a touch screen. CSS cannot measure that, so the row it
+     has to clear is measured and spent as a length, the same way the scrollbar
+     is.
 
      Its edges come from the conversation rather than from the panel. A fixed
      offset from the panel measured correctly here, where the scrollbar floats
@@ -98,7 +108,7 @@ export const chatStyles = css`
   .jump-to-bottom {
     position: absolute;
     right: calc(var(--pi-chat-gutter) + var(--pi-chat-scrollbar, 0px) + var(--pi-space-4));
-    top: var(--pi-space-9); z-index: var(--pi-layer-sticky);
+    bottom: calc(var(--pi-chat-dock-room, 0px) + var(--pi-space-4)); z-index: var(--pi-layer-sticky);
     display: flex; align-items: center; justify-content: center;
     width: 40px; height: 40px; padding: 0;
     border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md);
@@ -478,6 +488,9 @@ export const chatStyles = css`
   .shell-output { color: var(--pi-text); font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; line-height: 1.45; direction: ltr; text-align: left; unicode-bidi: isolate; }
   @keyframes pulse { 0%, 100% { transform: scale(.75); opacity: .55; } 50% { transform: scale(1.2); opacity: 1; } }
 `;
+
+/** Gap between the activity dock and the control that floats above it. */
+const DOCK_CLEARANCE_PX = 8;
 
 const messageTimestampFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "medium" });
 const notificationTimestampFormatter = new Intl.DateTimeFormat(undefined, { timeStyle: "short" });
@@ -901,6 +914,7 @@ export class ChatView extends LitElement {
     if (changed.has("activityOutput")) this.syncActivityOutputDialog();
     this.drawerTabEdgeTracker.observe(this.drawerTabs ?? undefined);
     this.publishScrollbarWidth();
+    this.publishDockRoom();
     // A reply that grows the transcript fires no scroll event, so deciding this
     // only while scrolling left a reader who stopped following four screens
     // from the newest message with no way back.
@@ -917,6 +931,23 @@ export class ChatView extends LitElement {
   private publishScrollbarWidth(): void {
     const width = scrollbarWidthOf(this.chat);
     this.style.setProperty("--pi-chat-scrollbar", `${String(width)}px`);
+  }
+
+  /**
+   * How much of the bottom edge the activity dock has taken.
+   *
+   * The way back to the newest message sits in that same corner, and the dock
+   * is not one height: it is a hugging pill when the turn is quiet, a full row
+   * while the assistant works, and taller again on a touch screen. A guessed
+   * offset is therefore wrong in most states - the guess this repository made
+   * for a different floating control was out by 62px on three buttons. The row
+   * is measured instead, and the button is placed above whatever it turns out
+   * to be.
+   */
+  private publishDockRoom(): void {
+    const dock = this.renderRoot.querySelector(".activity-dock");
+    const room = dock === null ? 0 : Math.ceil(dock.getBoundingClientRect().height) + DOCK_CLEARANCE_PX;
+    this.style.setProperty("--pi-chat-dock-room", `${String(room)}px`);
   }
 
 
