@@ -21,10 +21,11 @@ import type { SessionSubagentRunInfo } from "../../shared/apiTypes.js";
  * until an artifact lands. That is worth it: the alternative was being absent
  * from the list for the whole time it was working.
  *
- * Some fork children never get a run directory at all, so a run is looked for
- * in two places: the directories beside the parent session, and the run ids
- * named by the artifacts. See `claimableArtifactRunIds` for why the second
- * source is only trusted while the parent is streaming.
+ * Attribution is by recorded fact, never by timing. Two records exist: a run
+ * directory under <sessionDir>/<parentSessionFile>/, and the spawn the parent
+ * wrote into its own transcript. The shared artifacts directory records no
+ * owner at all, so it supplies detail about runs this session already owns and
+ * never membership - see `runIdsNamedByParent` for the measurements.
  *
  * So the parent conversation could not say what its children were doing, or
  * even that it had any. Reading the directory is deliberate rather than
@@ -149,8 +150,12 @@ export async function listSubagentRuns(
   const artifactsDir = join(sessionDir, "subagent-artifacts");
   const directoryRunIds = await listDirectories(runsDir);
   const artifacts = await readArtifacts(artifactsDir);
-  const running = await readRunningArtifacts(artifactsDir, now);
-  const runIds = [...directoryRunIds, ...unlistedRunIds(artifacts, running, directoryRunIds, now)];
+  const running = await readRunningArtifacts(artifactsDir);
+  // Both records of ownership, and nothing else: a directory under this parent,
+  // or a spawn this parent wrote into its own transcript.
+  const named = await runIdsNamedByParent(join(sessionDir, `${parentSessionId}.jsonl`));
+  const owned = new Set(directoryRunIds);
+  const runIds = [...directoryRunIds, ...[...named].filter((runId) => !owned.has(runId) && (running.has(runId) || artifacts.has(runId)))];
   if (runIds.length === 0) return [];
   const runs: SessionSubagentRunInfo[] = [];
   for (const runId of runIds) {
@@ -197,7 +202,7 @@ async function looksLikeRun(runDir: string, runId: string, artifacts: Map<string
  * The agent name comes from the filename, so a run with no directory of its own
  * can still be named rather than falling back to the generic label.
  */
-async function readRunningArtifacts(artifactsDir: string, now: number): Promise<Map<string, RunningArtifact>> {
+async function readRunningArtifacts(artifactsDir: string): Promise<Map<string, RunningArtifact>> {
   const running = new Map<string, RunningArtifact>();
   const names = await listNames(artifactsDir);
   const reported = new Set(names.filter((name) => name.endsWith("_meta.json")).map((name) => name.slice(0, name.indexOf("_"))));
@@ -208,10 +213,9 @@ async function readRunningArtifacts(artifactsDir: string, now: number): Promise<
     const path = join(artifactsDir, name);
     const stats = await statOrUndefined(path);
     if (stats === undefined) continue;
-    // A transcript that stopped growing is a run that died without reporting,
-    // and it belongs to whichever session owns its directory - not to whoever
-    // happens to be streaming now.
-    if (now - stats.mtimeMs > ARTIFACT_CLAIM_WINDOW_MS) continue;
+    // Read for every unreported run, with no age filter: this only ever
+    // describes a run the caller already owns by directory, so the mtime is a
+    // liveness signal for `runStatus` and never a reason to list anything.
     const agent = agentFromArtifactName(name, runId);
     running.set(runId, { ...(agent === undefined ? {} : { agent }), transcriptPath: path, lastWriteMs: stats.mtimeMs });
   }
@@ -226,68 +230,119 @@ function agentFromArtifactName(name: string, runId: string): string | undefined 
 }
 
 /**
- * How recently a transcript must have been written for its run to be treated as
- * this session's.
+ * Why membership comes from the run directory and from nothing else.
  *
- * The artifacts directory is shared by every session in the project, and
- * nothing in an artifact names the session that started the run: `meta.json`
- * carries the run id, the agent, a `cwd` that is the whole project, and a
- * `transcriptPath` pointing back into the artifacts directory itself. Measured
- * on one project, two sessions shared 35 artifacts of which 19 belonged to the
- * other session, and the two sessions' lifetimes overlapped - so neither the
- * files nor a time window can attribute a *finished* run to its parent.
+ * A subagent's result returns to the session that started it and to no other,
+ * so which session a run belongs to is a fact fixed when it is spawned. The
+ * only place that fact is written down is the run directory's location:
+ * <sessionDir>/<parentSessionFile>/<runId>/, created under the parent that
+ * started it.
  *
- * A run still being written to is a different matter. The child appends to its
- * transcript as it works, so a transcript touched moments ago belongs to work
- * happening now, under the parent that is streaming now. Runs whose transcript
- * has gone quiet are left to the directory that owns them: measured on the same
- * project, three runs had a transcript and no `meta.json`, and two of them had
- * been silent for twelve hours - dead, not running.
+ * The artifacts directory records nothing about it. Read across all 53
+ * transcripts and 50 `meta.json` files of one real project: `meta.json` carries
+ * runId, agent, a `cwd` that is the whole project and a `transcriptPath`
+ * pointing back into the artifacts directory, and the transcript records carry
+ * runId, agent, childIndex, cwd - no session or parent field in any of them.
+ * The directory is shared by every session in the project, so an artifact alone
+ * cannot say whose run it is.
+ *
+ * A liveness window was tried here and was wrong by construction: it treated "a
+ * transcript is being appended to right now" as "this belongs to whoever is
+ * asking", so while any one session's child streamed, every session that listed
+ * claimed it. The owner saw two sessions show a running ring at once and a
+ * session with no children of its own report "1 background run". The evidence
+ * that seemed to justify it - no foreign runs claimed - had been measured while
+ * no foreign run was live, which is the one condition under which the bug
+ * cannot appear.
+ *
+ * There is a second record, and it is what a fork-context child leaves: the
+ * parent's own transcript. When its agent spawns a run, the `subagent` tool's
+ * result is written into the parent's session file naming the run id
+ * ("Async: worker [<runId>]"), so the parent has written down which runs are
+ * its own. Measured across one project's eight session files, the 18 runs with
+ * no directory of their own each appeared in exactly one parent, none in two -
+ * and the run ids named by the two parents that spawn subagents did not
+ * overlap. This is the same shape background tasks already use, where the
+ * registry directory supplies state and the transcript supplies ownership.
+ *
+ * So a run neither of those records claims is not listed here. It is not hidden
+ * work: it is another session's work, and it is listed there.
  */
-const ARTIFACT_CLAIM_WINDOW_MS = 2 * 60 * 1000;
+
+/** How the subagent tool announces a spawn in its parent's transcript. */
+const RUN_ID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gu;
 
 /**
- * Runs that no directory beside this session accounts for, and that it may
- * still claim.
+ * Run ids this session's own agent started, read from the `subagent` tool
+ * records in its transcript.
  *
- * The evidence is a transcript still being written: that is work happening now.
- * A run keeps its row once it reports, because the alternative is a child
- * vanishing from the list at the moment it finishes - so a claimed run that has
- * since written its `meta.json` stays listed. Everything else is left to the
- * session that owns its directory rather than borrowed from a neighbour's
- * history.
- *
- * A child's own evidence outranks the parent's state. This once required the
- * parent to be streaming before it would admit any of these, which read the
- * precedence backwards: a transcript appended to seconds ago proves the child
- * is alive whatever the parent is doing, and the parent's activity is a
- * fallback for a child that has produced no evidence of its own. The reader
- * watches precisely while the parent is idle - waiting for the children to
- * report - and that is exactly when every running fork child disappeared and
- * the drawer said "Nothing running right now".
- *
- * The window itself is what keeps a neighbour's runs out, and it does that
- * whoever is streaming: a transcript touched within it is being written now,
- * and one that has gone quiet is left to the directory that owns it.
+ * Scoped to those records rather than matched against the whole file: a
+ * transcript is also full of prose, and this session spent a day discussing run
+ * ids belonging to other sessions. Only the tool's own call and result say "I
+ * started this".
  */
-function unlistedRunIds(artifacts: Map<string, RunArtifact>, running: Map<string, RunningArtifact>, directoryRunIds: readonly string[], now: number): string[] {
-  const owned = new Set(directoryRunIds);
-  const claimed = [...running.keys()].filter((runId) => !owned.has(runId));
-  const justReported = [...artifacts.entries()]
-    .filter(([runId, artifact]) => !owned.has(runId) && !running.has(runId) && recentlyReported(artifact, now))
-    .map(([runId]) => runId);
-  return [...claimed, ...justReported];
+async function runIdsNamedByParent(sessionFile: string): Promise<Set<string>> {
+  const stats = await statOrUndefined(sessionFile);
+  if (stats === undefined) return new Set();
+  const cached = spawnedRunIdCache.get(sessionFile);
+  // A transcript is only ever appended to, so everything already scanned stays
+  // true and only the new tail can name a new run.
+  if (cached !== undefined && cached.size <= stats.size && cached.mtimeMs === stats.mtimeMs) return cached.ids;
+  const from = cached === undefined || cached.size > stats.size ? 0 : cached.size;
+  const ids = cached === undefined || from === 0 ? new Set<string>() : cached.ids;
+  const text = await readRange(sessionFile, from, stats.size);
+  if (text !== undefined) {
+    for (const line of text.split("\n")) collectSpawnedRunIds(line, ids);
+  }
+  spawnedRunIdCache.set(sessionFile, { size: stats.size, mtimeMs: stats.mtimeMs, ids });
+  return ids;
 }
 
 /**
- * Whether a run reported within the window a claimed run would still be live
- * in. Only these are adopted without a directory: an older `meta.json` says
- * nothing about which session ran it, and the artifacts directory is shared.
+ * Spawn records already read from each parent transcript.
+ *
+ * Rescanning cost ~300ms of a 129MB read on every four-second poll, which is
+ * the regression `readWindow` exists to prevent. Keyed by size and mtime so a
+ * rewritten or truncated file is rescanned rather than trusted.
  */
-function recentlyReported(artifact: RunArtifact, now: number): boolean {
-  if (artifact.timestamp === undefined) return false;
-  const reportedAtMs = Date.parse(artifact.timestamp);
-  return Number.isFinite(reportedAtMs) && now - reportedAtMs <= ARTIFACT_CLAIM_WINDOW_MS;
+const spawnedRunIdCache = new Map<string, { size: number; mtimeMs: number; ids: Set<string> }>();
+
+/** The bytes appended since the last scan, so a growing transcript is read once. */
+async function readRange(path: string, from: number, to: number): Promise<string | undefined> {
+  if (to <= from) return "";
+  let handle;
+  try {
+    handle = await open(path, "r");
+    const buffer = Buffer.alloc(to - from);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, from);
+    return buffer.subarray(0, bytesRead).toString("utf8");
+  } catch {
+    return undefined;
+  } finally {
+    await handle?.close().catch(() => undefined);
+  }
+}
+
+/** Adds the run ids a single transcript line records this session as spawning. */
+function collectSpawnedRunIds(line: string, ids: Set<string>): void {
+  // Cheap reject first: only a handful of lines in a long transcript mention
+  // the tool at all, and JSON.parse on the rest is the whole cost.
+  if (!line.includes("\"subagent\"")) return;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return;
+  }
+  if (!isRecord(parsed)) return;
+  const message: unknown = parsed["message"];
+  const content: unknown = isRecord(message) ? message["content"] : undefined;
+  if (!Array.isArray(content)) return;
+  for (const part of content) {
+    if (!isRecord(part)) continue;
+    if (part["toolName"] !== "subagent" && part["name"] !== "subagent") continue;
+    for (const id of JSON.stringify(part).matchAll(RUN_ID_PATTERN)) ids.add(id[0]);
+  }
 }
 
 async function describeRun(runsDir: string, runId: string, artifacts: Map<string, RunArtifact>, running: RunningArtifact | undefined, now: number, parentActive: boolean): Promise<SessionSubagentRunInfo | undefined> {

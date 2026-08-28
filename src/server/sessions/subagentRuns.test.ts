@@ -48,7 +48,13 @@ async function ageDirectory(path: string, ageMs: number): Promise<void> {
   await utimes(path, when, when);
 }
 
-async function writeRunningArtifact(dir: string, runId: string, agent: string, ageMs = 0): Promise<void> {
+/**
+ * A fork child in flight: the prompt and transcript it opens in the shared
+ * artifacts directory, plus the spawn its parent recorded. `spawnedByParent`
+ * is false only to model a neighbour's run, which this session has no record
+ * of and must not list.
+ */
+async function writeRunningArtifact(dir: string, runId: string, agent: string, ageMs = 0, spawnedByParent = true): Promise<void> {
   const artifacts = join(dir, "subagent-artifacts");
   await mkdir(artifacts, { recursive: true });
   await writeFile(join(artifacts, `${runId}_${agent}_0_input.md`), "the task", "utf8");
@@ -58,6 +64,24 @@ async function writeRunningArtifact(dir: string, runId: string, agent: string, a
     const when = new Date(Date.now() - ageMs);
     await utimes(transcript, when, when);
   }
+  if (spawnedByParent) await recordSpawn(dir, runId, agent);
+}
+
+/**
+ * The record a parent writes when its agent spawns a run: the `subagent` tool's
+ * result, carrying the run id. Copied from a real session file - a fork-context
+ * child leaves no directory, so this line is the only thing on disk that says
+ * whose run it is.
+ */
+async function recordSpawn(dir: string, runId: string, agent: string): Promise<void> {
+  const line = JSON.stringify({
+    type: "message",
+    message: {
+      role: "toolResult",
+      content: [{ type: "text", toolName: "subagent", text: `Run fan-out: 1/64 used\nAsync: ${agent} [${runId}]` }],
+    },
+  });
+  await writeFile(join(dir, `${PARENT}.jsonl`), `${line}\n`, { flag: "a" });
 }
 
 describe("listSubagentRuns", () => {
@@ -535,16 +559,32 @@ describe("whose run an artifact belongs to", () => {
   });
 
   /**
-   * The same window still does the attributing. A neighbour's finished work is
-   * not borrowed just because this parent went quiet.
+   * A neighbour's finished work is not borrowed just because this parent went
+   * quiet - and now it is not borrowed while this parent is busy either, since
+   * nothing on disk records this session as having started it.
    */
   it("still leaves a silent transcript alone while this parent is idle", async () => {
     const dir = await sessionDir();
-    await writeRunningArtifact(dir, "c0ffee11-5a26-46ec-b1ea-e8b0b7e492cc", "worker", 12 * 60 * 60 * 1000);
+    await writeRunningArtifact(dir, "c0ffee11-5a26-46ec-b1ea-e8b0b7e492cc", "worker", 12 * 60 * 60 * 1000, false);
 
     const runs = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: false });
 
     expect(runs).toEqual([]);
+  });
+
+  /**
+   * This session's own child that died without reporting is still its own. It
+   * is reported `lost` rather than dropped: hiding it is what left the drawer
+   * claiming nothing had happened, and the reader is owed the difference
+   * between "no run" and "a run that died".
+   */
+  it("reports its own long-silent child as lost rather than hiding it", async () => {
+    const dir = await sessionDir();
+    await writeRunningArtifact(dir, "c0ffee11-5a26-46ec-b1ea-e8b0b7e492cc", "worker", 12 * 60 * 60 * 1000);
+
+    const [run] = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: false });
+
+    expect(run).toMatchObject({ status: "lost" });
   });
 
   /**
@@ -554,9 +594,79 @@ describe("whose run an artifact belongs to", () => {
    */
   it("leaves a long-silent transcript to the session that owns its directory", async () => {
     const dir = await sessionDir();
-    await writeRunningArtifact(dir, "33bced81-5997-49c6-9f1a-2b7c4d5e6f70", "worker", 12 * 60 * 60 * 1000);
+    await writeRunningArtifact(dir, "33bced81-5997-49c6-9f1a-2b7c4d5e6f70", "worker", 12 * 60 * 60 * 1000, false);
 
     const runs = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: true });
+
+    expect(runs).toEqual([]);
+  });
+
+  /**
+   * The defect the owner hit: two sessions showed a running ring at once, and a
+   * session whose own agent had started nothing reported "1 background run".
+   *
+   * The artifacts directory is shared by every session in the project, and a
+   * dirless run has no recorded link to any of them - so "its transcript is
+   * being written now" attributed it to whoever happened to ask. While any
+   * session's child streamed, every session listing claimed it.
+   *
+   * A subagent's result returns to the session that started it and to no other,
+   * so a run with nothing on disk tying it to this session is not this
+   * session's to show.
+   */
+  it("leaves a live run this session never started out of its list", async () => {
+    const dir = await sessionDir();
+    await writeRunningArtifact(dir, "8f811415-5a26-46ec-b1ea-e8b0b7e492cc", "worker", 0, false);
+
+    const runs = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: false });
+
+    expect(runs).toEqual([]);
+  });
+
+  /**
+   * The same live run, listed by the session whose transcript records the
+   * spawn. Timing is identical in both tests, so the spawn record is the only
+   * thing deciding membership.
+   */
+  it("lists a live run this session's transcript records it as starting", async () => {
+    const dir = await sessionDir();
+    const runId = "8f811415-5a26-46ec-b1ea-e8b0b7e492cc";
+    await writeRunningArtifact(dir, runId, "worker");
+
+    const [run] = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: false });
+
+    expect(run).toMatchObject({ runId, agent: "worker", status: "running" });
+  });
+
+  /**
+   * Spawn records are cached per transcript so a 129MB parent is not reread on
+   * every four-second poll. A cache that missed the tail would hide a child
+   * that had only just been started, which is the moment someone is watching.
+   */
+  it("finds a run spawned after an earlier listing read the same transcript", async () => {
+    const dir = await sessionDir();
+    await writeRunningArtifact(dir, "11111111-5a26-46ec-b1ea-e8b0b7e492cc", "worker");
+    expect(await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: false })).toHaveLength(1);
+
+    await writeRunningArtifact(dir, "22222222-5a26-46ec-b1ea-e8b0b7e492cc", "scout");
+    const runs = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: false });
+
+    expect(runs.map((run) => run.agent).sort()).toEqual(["scout", "worker"]);
+  });
+
+  /**
+   * A run id the parent only ever discussed - this session spent a day naming
+   * other sessions' run ids in prose - is not a run it started. Only the
+   * `subagent` tool's own records attribute.
+   */
+  it("does not adopt a run id its transcript merely mentions in prose", async () => {
+    const dir = await sessionDir();
+    const runId = "8f811415-5a26-46ec-b1ea-e8b0b7e492cc";
+    await writeRunningArtifact(dir, runId, "worker", 0, false);
+    const prose = JSON.stringify({ type: "message", message: { role: "assistant", content: [{ type: "text", text: `looking at run ${runId}` }] } });
+    await writeFile(join(dir, `${PARENT}.jsonl`), `${prose}\n`, { flag: "a" });
+
+    const runs = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: false });
 
     expect(runs).toEqual([]);
   });
