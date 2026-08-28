@@ -513,12 +513,34 @@ describe("a fork child that never gets a run directory", () => {
  * time window can attribute a finished run to its parent.
  *
  * A transcript still being appended to is different: it is work happening now,
- * under the parent streaming now.
+ * and the window it was written in is what keeps a neighbour's runs out -
+ * whoever happens to be streaming.
  */
 describe("whose run an artifact belongs to", () => {
-  it("claims nothing while this parent is idle", async () => {
+  /**
+   * The child's own evidence outranks the parent's state. Requiring the parent
+   * to be streaming hid every running fork child at exactly the moment someone
+   * was watching for it: the reader waits with the parent idle, and the drawer
+   * answered "Nothing running right now" while a child was working. Measured on
+   * the live session directory, a transcript appended to 0s earlier was listed
+   * as running with the parent streaming and absent without it.
+   */
+  it("claims a run whose transcript is being written even while this parent is idle", async () => {
     const dir = await sessionDir();
     await writeRunningArtifact(dir, "a1948bde-5a26-46ec-b1ea-e8b0b7e492cc", "worker");
+
+    const [run] = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: false });
+
+    expect(run).toMatchObject({ runId: "a1948bde-5a26-46ec-b1ea-e8b0b7e492cc", agent: "worker", status: "running" });
+  });
+
+  /**
+   * The same window still does the attributing. A neighbour's finished work is
+   * not borrowed just because this parent went quiet.
+   */
+  it("still leaves a silent transcript alone while this parent is idle", async () => {
+    const dir = await sessionDir();
+    await writeRunningArtifact(dir, "c0ffee11-5a26-46ec-b1ea-e8b0b7e492cc", "worker", 12 * 60 * 60 * 1000);
 
     const runs = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: false });
 

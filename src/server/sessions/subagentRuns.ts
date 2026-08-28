@@ -150,7 +150,7 @@ export async function listSubagentRuns(
   const directoryRunIds = await listDirectories(runsDir);
   const artifacts = await readArtifacts(artifactsDir);
   const running = await readRunningArtifacts(artifactsDir, now);
-  const runIds = [...directoryRunIds, ...unlistedRunIds(artifacts, running, directoryRunIds, parentActive, now)];
+  const runIds = [...directoryRunIds, ...unlistedRunIds(artifacts, running, directoryRunIds, now)];
   if (runIds.length === 0) return [];
   const runs: SessionSubagentRunInfo[] = [];
   for (const runId of runIds) {
@@ -250,15 +250,27 @@ const ARTIFACT_CLAIM_WINDOW_MS = 2 * 60 * 1000;
  * Runs that no directory beside this session accounts for, and that it may
  * still claim.
  *
- * The evidence is a transcript still being written: that is work happening now,
- * under the parent streaming now. A run keeps its row once it reports, because
- * the alternative is a child vanishing from the list at the moment it finishes
- * - so a claimed run that has since written its `meta.json` stays listed.
- * Everything else is left to the session that owns its directory rather than
- * borrowed from a neighbour's history.
+ * The evidence is a transcript still being written: that is work happening now.
+ * A run keeps its row once it reports, because the alternative is a child
+ * vanishing from the list at the moment it finishes - so a claimed run that has
+ * since written its `meta.json` stays listed. Everything else is left to the
+ * session that owns its directory rather than borrowed from a neighbour's
+ * history.
+ *
+ * A child's own evidence outranks the parent's state. This once required the
+ * parent to be streaming before it would admit any of these, which read the
+ * precedence backwards: a transcript appended to seconds ago proves the child
+ * is alive whatever the parent is doing, and the parent's activity is a
+ * fallback for a child that has produced no evidence of its own. The reader
+ * watches precisely while the parent is idle - waiting for the children to
+ * report - and that is exactly when every running fork child disappeared and
+ * the drawer said "Nothing running right now".
+ *
+ * The window itself is what keeps a neighbour's runs out, and it does that
+ * whoever is streaming: a transcript touched within it is being written now,
+ * and one that has gone quiet is left to the directory that owns it.
  */
-function unlistedRunIds(artifacts: Map<string, RunArtifact>, running: Map<string, RunningArtifact>, directoryRunIds: readonly string[], parentActive: boolean, now: number): string[] {
-  if (!parentActive) return [];
+function unlistedRunIds(artifacts: Map<string, RunArtifact>, running: Map<string, RunningArtifact>, directoryRunIds: readonly string[], now: number): string[] {
   const owned = new Set(directoryRunIds);
   const claimed = [...running.keys()].filter((runId) => !owned.has(runId));
   const justReported = [...artifacts.entries()]
