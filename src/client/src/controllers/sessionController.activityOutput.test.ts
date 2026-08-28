@@ -121,3 +121,79 @@ describe("reading a subagent run's output", () => {
     expect(read().activityOutput).toBeUndefined();
   });
 });
+
+/**
+ * The inconsistency this closes: a subsession row opened the session it named,
+ * while an agent-run row opened a block of text - the same work told two
+ * different ways. A run does have a conversation; the server projects its
+ * transcript into the messages the chat view already renders.
+ */
+describe("opening a subagent run's conversation", () => {
+  const page = { messages: [{ role: "user", content: "go" }, { role: "assistant", content: "done" }], start: 0, total: 2 };
+
+  it("opens the conversation rather than a block of text", async () => {
+    const api: typeof defaultApi = { ...defaultApi, subagentRunMessages: () => Promise.resolve(page) };
+    const { controller, read } = controllerWith(api);
+
+    await controller.openSubagentRunConversation(run);
+
+    expect(read().activityConversation?.messages).toHaveLength(2);
+    expect(read().activityConversation?.total).toBe(2);
+    expect(read().activityOutput).toBeUndefined();
+  });
+
+  /** The row has to say whose run it is, or it is a conversation from nowhere. */
+  it("names the run and says it belongs to this session", async () => {
+    const api: typeof defaultApi = { ...defaultApi, subagentRunMessages: () => Promise.resolve(page) };
+    const { controller, read } = controllerWith(api);
+
+    await controller.openSubagentRunConversation(run);
+
+    expect(read().activityConversation?.title).toContain("worker");
+    expect(read().activityConversation?.subtitle).toContain("Child run");
+  });
+
+  /**
+   * A reader who can watch a child working will reach for a way to steer it.
+   * Steering rides the subagent extension's RPC on the in-process Pi event bus,
+   * which this server does not hold, so the view states the boundary instead of
+   * leaving an unexplained absence that reads as a missing feature.
+   */
+  it("says why the run cannot be steered from here", async () => {
+    const api: typeof defaultApi = { ...defaultApi, subagentRunMessages: () => Promise.resolve(page) };
+    const { controller, read } = controllerWith(api);
+
+    await controller.openSubagentRunConversation(run);
+
+    expect(read().activityConversation?.interventionUnavailable).toMatch(/not available/i);
+  });
+
+  /**
+   * A child that died before opening a transcript has no conversation, but it
+   * may still have written a result. Falling back keeps that reachable rather
+   * than replacing one empty view with another.
+   */
+  it("falls back to the result when the run wrote no transcript", async () => {
+    const api: typeof defaultApi = {
+      ...defaultApi,
+      subagentRunMessages: () => Promise.reject(new HttpError("No transcript for this subagent run", 404)),
+      subagentRunOutput: () => Promise.resolve("# report\n"),
+    };
+    const { controller, read } = controllerWith(api);
+
+    await controller.openSubagentRunConversation(run);
+
+    expect(read().activityConversation).toBeUndefined();
+    expect(read().activityOutput?.text).toBe("# report\n");
+  });
+
+  it("still reports a run it could not reach", async () => {
+    const api: typeof defaultApi = { ...defaultApi, subagentRunMessages: () => Promise.reject(new HttpError("machine unreachable", 503)) };
+    const { controller, read } = controllerWith(api);
+
+    await controller.openSubagentRunConversation(run);
+
+    expect(read().error).toContain("machine unreachable");
+    expect(read().activityConversation).toBeUndefined();
+  });
+});

@@ -2969,7 +2969,7 @@ export class PiWebApp extends LitElement {
   // transcript, so a running child shows what it has done so far instead of
   // being an inert row.
   private readonly handleOpenSubagentRun = (run: SessionSubagentRunInfo): void => {
-    void this.sessions.openSubagentRunOutput(run);
+    void this.sessions.openSubagentRunConversation(run);
   };
 
   private readonly handleOpenBackgroundTask = (task: SessionBackgroundTaskInfo): void => {

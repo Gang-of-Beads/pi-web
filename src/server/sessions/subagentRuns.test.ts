@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, writeFile, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { listSubagentRuns, parseSubagentSessionName, readSubagentRunOutput } from "./subagentRuns";
+import { findSubagentRunTranscript, listSubagentRuns, parseSubagentSessionName, readSessionEntries, readSubagentRunOutput } from "./subagentRuns";
 
 // The real layout: the run directory is named after the transcript *file*,
 // timestamp prefix and all. The first version of this fixture used a bare id
@@ -590,5 +590,83 @@ describe("whose run an artifact belongs to", () => {
     const runs = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: false });
 
     expect(runs.map((run) => run.runId)).toEqual(["79eeba3d-46c5-45bd-8e74-32a3f1eb7957"]);
+  });
+});
+
+/**
+ * Where a run's conversation lives depends on which kind of child wrote it, and
+ * both kinds have to open. A fresh-context child gets a run directory with an
+ * ordinary session file in it; a fork-context child - what the builtin `worker`
+ * and `oracle` agents are - never creates that directory and writes only the
+ * artifact transcript. Measured on a live child run: entry types
+ * {session, model_change, thinking_level_change, session_info, message} and
+ * roles {user, assistant, toolResult}, the same shape a parent session has.
+ */
+describe("finding a run's transcript", () => {
+  it("finds the session file a fresh-context child writes in its run directory", async () => {
+    const dir = await sessionDir();
+    const runId = "0b1c2d3e-4f50-4162-8374-859607a8b9ca";
+    const expected = await writeTranscript(dir, runId, [{ role: "assistant", content: "hello" }]);
+
+    expect(await findSubagentRunTranscript(dir, runId, { parentSessionId: PARENT })).toBe(expected);
+  });
+
+  it("finds the artifact transcript a fork-context child writes instead", async () => {
+    const dir = await sessionDir();
+    const runId = "1c2d3e4f-5061-4273-8485-96a7b8c9dae1";
+    await writeRunningArtifact(dir, runId, "worker");
+
+    const found = await findSubagentRunTranscript(dir, runId, { parentSessionId: PARENT });
+
+    expect(found).toBe(join(dir, "subagent-artifacts", `${runId}_worker_0_transcript.jsonl`));
+  });
+
+  it("reports nothing for a run that has opened no transcript", async () => {
+    const dir = await sessionDir();
+
+    expect(await findSubagentRunTranscript(dir, "2d3e4f50-6172-4384-9596-a7b8c9daeb02", { parentSessionId: PARENT })).toBeUndefined();
+  });
+
+  /** A run id is a path segment, so it must not be able to steer the read out. */
+  it("refuses a run id that would climb out of the directory", async () => {
+    const dir = await sessionDir();
+
+    expect(await findSubagentRunTranscript(dir, "../../etc", { parentSessionId: PARENT })).toBeUndefined();
+    expect(await findSubagentRunTranscript(dir, "", { parentSessionId: PARENT })).toBeUndefined();
+  });
+});
+
+describe("reading a transcript Pi is not holding open", () => {
+  it("returns every entry in order", async () => {
+    const dir = await sessionDir();
+    const path = await writeTranscript(dir, "3e4f5061-7283-4495-a6b7-c8d9eafb0c13", [
+      { type: "session", id: "child" },
+      { type: "message", message: { role: "user", content: "go" } },
+      { type: "message", message: { role: "assistant", content: "done" } },
+    ]);
+
+    const entries = await readSessionEntries(path);
+
+    expect(entries).toHaveLength(3);
+  });
+
+  /**
+   * A transcript being appended to can end mid-write. Losing the partial last
+   * line is better than failing the whole read and showing nothing.
+   */
+  it("skips a line that was still being written", async () => {
+    const dir = await sessionDir();
+    const path = await writeTranscript(dir, "4f506172-8394-45a6-b7c8-d9eafb0c1324", [{ type: "message", message: { role: "user", content: "go" } }]);
+    await writeFile(path, `${JSON.stringify({ type: "message", message: { role: "user", content: "go" } })}\n{"type":"mess`, "utf8");
+
+    const entries = await readSessionEntries(path);
+
+    expect(entries).toHaveLength(1);
+  });
+
+  it("reports nothing for a file that is not there", async () => {
+    const dir = await sessionDir();
+
+    expect(await readSessionEntries(join(dir, "absent.jsonl"))).toBeUndefined();
   });
 });

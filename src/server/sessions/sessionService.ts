@@ -71,6 +71,8 @@ export interface SessionRouteService {
   subagentRuns(ref: SessionRouteRef): Promise<SessionSubagentRunInfo[]>;
   /** The result artifact of one finished run, if it wrote one. */
   subagentRunOutput(ref: SessionRouteRef, runId: string): Promise<string | undefined>;
+  /** One run's conversation, projected like any other transcript; undefined when it has none yet. */
+  subagentRunMessages(ref: SessionRouteRef, runId: string, page?: { before?: number; limit?: number }): Promise<ClientMessagePage | undefined>;
   /** Background-task runs started by this session; see backgroundTasks.ts. */
   backgroundTasks(ref: SessionRouteRef): Promise<SessionBackgroundTaskInfo[]>;
   /** Tail of a background task's log. */

@@ -146,6 +146,37 @@ describe("session routes", () => {
     }
   });
 
+  /**
+   * A subsession row opens the session it names; an agent-run row used to open
+   * a block of text. The run's transcript is an ordinary session file, so it is
+   * served as a message page and the browser renders it as a conversation.
+   */
+  it("serves a subagent run's conversation, and says so when it has none yet", async () => {
+    const routeService = new CapturingRouteSessionService();
+    routeService.subagentRunMessagesResponse = {
+      messages: [{ role: "assistant", content: [{ type: "text", text: "looked around" }] }],
+      start: 0,
+      total: 1,
+    };
+    const routeApp = Fastify({ logger: false });
+    await routeApp.register(fastifyWebsocket);
+    registerSessionRoutes(routeApp, routeService, new SessionEventHub());
+
+    try {
+      const page = await routeApp.inject({ method: "GET", url: "/sessions/session-1/subagent-runs/run-1/messages?cwd=%2Frepo" });
+      expect(page.statusCode).toBe(200);
+      expect(page.json()).toMatchObject({ total: 1, messages: [{ role: "assistant" }] });
+
+      // A run that has not opened a transcript is a 404 rather than an empty
+      // conversation, which would read as a child that had said nothing.
+      routeService.subagentRunMessagesResponse = undefined;
+      const missing = await routeApp.inject({ method: "GET", url: "/sessions/session-1/subagent-runs/run-1/messages?cwd=%2Frepo" });
+      expect(missing.statusCode).toBe(404);
+    } finally {
+      await routeApp.close();
+    }
+  });
+
   it("serves the session status catalog without capturing 'statuses' as a session id", async () => {
     const routeApp = Fastify({ logger: false });
     await routeApp.register(fastifyWebsocket);
@@ -1461,6 +1492,12 @@ class CapturingRouteSessionService implements SessionRouteService {
 
   subagentRunOutput(): Promise<string | undefined> {
     return Promise.resolve(this.subagentRunOutputResponse);
+  }
+
+  subagentRunMessagesResponse: MessagePage | undefined = undefined;
+
+  subagentRunMessages(): Promise<MessagePage | undefined> {
+    return Promise.resolve(this.subagentRunMessagesResponse);
   }
 
   messages(): Promise<MessagePage> {

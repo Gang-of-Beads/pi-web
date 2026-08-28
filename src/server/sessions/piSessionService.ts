@@ -31,6 +31,8 @@ import type { SessionBackgroundTaskInfo, SessionSubagentRunInfo } from "../../sh
 import type { ClientArchiveSessionsResponse, ClientCommand, ClientCommandResult, ClientMessagePage, ClientSession, ClientSessionCleanupExecuteResponse, ClientSessionCleanupPreviewResponse, ClientSessionModel, ClientSessionModelCatalogEntry, ClientSessionStatus, ClientSessionTreeForkRequest, ClientSessionTreeForkResult, ClientSessionTreeNavigateRequest, ClientSessionTreeNavigateResult, ClientThinkingLevel, SessionStreamSnapshot, SessionUiEvent } from "../types.js";
 import { projectBrowserMessage } from "../browserMessageProjection.js";
 import { pageMessagesAtSafeBoundary } from "./messagePaging.js";
+import { annotateAssistantThinkingLevel, branchMessages } from "./branchMessages.js";
+import { runTranscriptMessages } from "./subagentRunTranscript.js";
 import { readableMessageCount } from "./readableMessageCount.js";
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
 import { BUILTIN_COMMANDS } from "./builtinCommands.js";
@@ -84,7 +86,7 @@ import { DEFAULT_EXTENSION_DIALOGS_TIMEOUT_MS } from "../../config.js";
 import { createSpawnSessionToolDefinition, type SpawnSessionInvocation, type SpawnSessionResult } from "./spawnSessionTool.js";
 import { countBackgroundRuns } from "./backgroundRunCount.js";
 import { listBackgroundTasks, readTaskOutput } from "./backgroundTasks.js";
-import { listSubagentRuns, readSubagentRunOutput } from "./subagentRuns.js";
+import { findSubagentRunTranscript, listSubagentRuns, readSessionEntries, readSubagentRunOutput } from "./subagentRuns.js";
 import { createSubsessionToolDefinitions, type SpawnSubsessionInvocation, type SpawnSubsessionResult, type SubsessionCheckResult, type SubsessionReadQuery, type SubsessionReadResult, type SubsessionStatus, type SubsessionSummary, type SubsessionToolDeps } from "./spawnSubsessionTool.js";
 import { buildTranscriptView } from "./subsessionTranscript.js";
 import { planSessionCleanup, summarizeSessionCleanupExecution, type NormalizedSessionCleanupRequest, type SessionCleanupPlan } from "./sessionCleanup.js";
@@ -2374,6 +2376,28 @@ export class PiSessionService implements SessionRouteService {
     // The run directories sit next to the session file, under a directory named
     // after it, so a run with no artifact can still be read from its transcript.
     return readSubagentRunOutput(dirname(sessionFile), runId, { parentSessionId: basename(sessionFile, ".jsonl") });
+  }
+
+  /**
+   * A child run's conversation, in the shape the chat view already renders.
+   *
+   * The transcript is an ordinary session file, so it is projected with the
+   * same walk as a live session rather than a second projection written for
+   * children. Pi does not hold the child open - the run may still be writing,
+   * and its process is owned by the subagent tool - so this reads the file
+   * rather than registering a session.
+   */
+  async subagentRunMessages(ref: PiSessionRef, runId: string, page?: { before?: number; limit?: number }): Promise<ClientMessagePage | undefined> {
+    const session = await this.getOrOpen(ref);
+    const sessionFile = session.sessionManager.getSessionFile();
+    if (sessionFile === undefined) return undefined;
+    const transcript = await findSubagentRunTranscript(dirname(sessionFile), runId, { parentSessionId: basename(sessionFile, ".jsonl") });
+    if (transcript === undefined) return undefined;
+    const entries = await readSessionEntries(transcript);
+    if (entries === undefined) return undefined;
+    // Two kinds of child write two different files under names that look alike;
+    // the records say which this is. See subagentRunTranscript.ts.
+    return pageMessagesAtSafeBoundary(runTranscriptMessages(entries, branchMessages), page);
   }
 
   /**
@@ -5004,21 +5028,6 @@ function buildPromptOptions(behavior: QueuedPromptKind | undefined, images: Imag
   return Object.keys(options).length > 0 ? options : undefined;
 }
 
-function stringValue(value: unknown): string {
-  return typeof value === "string" ? value : "";
-}
-
-/**
- * Attach the thinking level in effect when an assistant message was generated,
- * so chat bubbles can show it next to the model. Non-assistant messages pass
- * through by reference; assistant messages are copied only when a level is set.
- * "off" is the absence of thinking, not a level worth labeling on every bubble.
- */
-function annotateAssistantThinkingLevel(message: unknown, thinkingLevel: string | undefined): unknown {
-  if (thinkingLevel === undefined || thinkingLevel === "" || thinkingLevel === "off") return message;
-  if (!isRecord(message) || message["role"] !== "assistant") return message;
-  return { ...message, thinkingLevel };
-}
 
 /**
  * The transcript, as the browser receives it. What this pushes is what the
@@ -5026,22 +5035,7 @@ function annotateAssistantThinkingLevel(message: unknown, thinkingLevel: string 
  * disagreed for as long as they were written from separate rules.
  */
 function historyMessages(session: PiAgentSession): unknown[] {
-  const messages: unknown[] = [];
-  // Pi records the initial level at session creation and every later change, so
-  // walking the branch yields the level in effect for each assistant message.
-  let thinkingLevel: string | undefined;
-  for (const entry of session.sessionManager.getBranch()) {
-    if (!isRecord(entry)) continue;
-    if (entry["type"] === "message") messages.push(annotateAssistantThinkingLevel(entry["message"], thinkingLevel));
-    else if (entry["type"] === "thinking_level_change") {
-      const level = getString(entry, "thinkingLevel");
-      if (level !== undefined) thinkingLevel = level;
-    }
-    else if (entry["type"] === "custom_message" && entry["display"] === true) messages.push({ role: "custom", content: entry["content"], customType: entry["customType"], details: entry["details"] });
-    else if (entry["type"] === "compaction") messages.push({ role: "system", source: "compaction", content: `Compacted history:\n\n${stringValue(entry["summary"])}` });
-    else if (entry["type"] === "branch_summary") messages.push({ role: "system", source: "branch_summary", content: `Branch summary:\n\n${stringValue(entry["summary"])}` });
-  }
-  return messages;
+  return branchMessages(session.sessionManager.getBranch());
 }
 
 /** custom entry type used to persist parent -> child subsession links outside LLM context. */

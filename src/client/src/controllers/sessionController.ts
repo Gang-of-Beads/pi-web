@@ -3,7 +3,7 @@ import { errorNoticePatch } from "../errorNotice";
 import { describeError } from "../notice";
 import { ancestorsForSession } from "../sessionAncestors";
 import { refreshMayReplaceSelection } from "./sessionRefreshScope";
-import { activityOutputView, type AppState, type ClosedExtensionDialog } from "../appState";
+import { activityOutputView, subagentRunConversationView, type AppState, type ClosedExtensionDialog } from "../appState";
 import { forgetCachedNewSession, isCachedNewSessionInfo, markCachedNewSessionInfo, mergeCachedNewSessions, rememberCachedNewSession, stripCachedNewSessionMarker } from "../cachedNewSessions";
 import { textMessage } from "../chatMessages";
 import { machineSessionKey } from "../machineKeys";
@@ -1106,10 +1106,44 @@ export class SessionController {
   }
 
   /**
-   * Show what a finished subagent run returned. The artifact is a file in the
-   * workspace-independent agent directory, so it is fetched as text rather than
-   * opened as a session: a run is not a session and has no conversation to
-   * resume.
+   * Open a subagent run's conversation.
+   *
+   * A subsession row opens the session it names, while an agent-run row only
+   * ever offered a block of text - the same work, told two different ways. The
+   * run does have a conversation: its transcript is a session file for a
+   * fresh-context child and the subagent tool's event log for a fork-context
+   * one, and the server projects either into the messages the chat view
+   * renders.
+   *
+   * It opens for reading only. Steering, resuming or interrupting a live child
+   * travels over the subagent extension's RPC, which rides the in-process Pi
+   * event bus (`pi.events`); the web server does not hold it, so those
+   * operations cannot be offered from this surface and the view says so rather
+   * than showing a control that would do nothing.
+   */
+  async openSubagentRunConversation(run: SessionSubagentRunInfo) {
+    const state = this.getState();
+    const session = state.selectedSession;
+    if (session === undefined || isClientPendingStartSessionInfo(session)) return;
+    const machineId = selectedMachineId(state);
+    try {
+      const page = await this.api.subagentRunMessages(session, run.runId, undefined, machineId);
+      this.setState({ activityConversation: subagentRunConversationView(run, page) });
+    } catch (error) {
+      // A child that has not opened a transcript yet has nothing to show, which
+      // is an answer rather than a fault - fall back to whatever it returned.
+      if (isNotFoundError(error)) {
+        await this.openSubagentRunOutput(run);
+        return;
+      }
+      this.setState(errorNoticePatch(error));
+    }
+  }
+
+  /**
+   * Show what a finished subagent run returned. Kept for the runs that have no
+   * transcript to open - a child that died before writing one - where the
+   * result artifact is all there is.
    */
   async openSubagentRunOutput(run: SessionSubagentRunInfo) {
     const state = this.getState();

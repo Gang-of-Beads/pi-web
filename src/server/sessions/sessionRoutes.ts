@@ -312,6 +312,23 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
     }
   });
 
+  // The run's conversation, not its result: a subsession row opens the real
+  // session it names, and an agent-run row had only ever offered a block of
+  // text. The transcript is an ordinary session file, so it is paged and
+  // projected exactly like the parent's own.
+  app.get<{ Params: { sessionId: string; runId: string }; Querystring: MessageQuery }>(`${prefix}/sessions/:sessionId/subagent-runs/:runId/messages`, async (request, reply) => {
+    const ref = sessionRefFromQueryOr400(request.params.sessionId, request.query, reply);
+    if (ref === undefined) return reply;
+    try {
+      const page = { ...optionalField("before", optionalNumber(request.query.before)), ...optionalField("limit", optionalNumber(request.query.limit)) };
+      const messages = await sessions.subagentRunMessages(ref, request.params.runId, page);
+      if (messages === undefined) return await reply.code(404).send({ error: "No transcript for this subagent run" });
+      return projectBrowserMessageResponse(messages);
+    } catch (error) {
+      return reply.code(503).send({ error: errorMessage(error) });
+    }
+  });
+
   app.get<{ Params: { sessionId: string; runId: string }; Querystring: SessionQuery }>(`${prefix}/sessions/:sessionId/subagent-runs/:runId/output`, async (request, reply) => {
     const ref = sessionRefFromQueryOr400(request.params.sessionId, request.query, reply);
     if (ref === undefined) return reply;

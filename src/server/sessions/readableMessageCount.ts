@@ -15,24 +15,18 @@
  * entries on that branch.
  *
  * The rule is therefore not "messages" but "entries a reader can see", and it
- * lives in one predicate so the two surfaces cannot drift apart again.
+ * lives beside the walk that renders them (branchMessages) so the two surfaces
+ * cannot drift apart again.
  */
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
+import { isReadableBranchEntry } from "./branchMessages.js";
 
-/** Whether the transcript renders this entry, and so whether it is counted. */
-export function isReadableMessageEntry(entry: unknown): boolean {
-  if (!isRecord(entry)) return false;
-  if (entry["type"] === "message") return true;
-  return entry["type"] === "custom_message" && entry["display"] === true;
-}
+export { isReadableBranchEntry as isReadableMessageEntry };
 
 export function readableMessageCount(branch: readonly unknown[]): number {
   let count = 0;
   for (const entry of branch) {
-    if (isReadableMessageEntry(entry)) count += 1;
+    if (isReadableBranchEntry(entry)) count += 1;
   }
   return count;
 }

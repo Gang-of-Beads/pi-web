@@ -15,6 +15,42 @@ export function activityOutputView(title: string, text: string): ActivityOutputV
   return { title, text, empty: text.trim() === "" };
 }
 
+/**
+ * One subagent run's conversation, opened from its activity row.
+ *
+ * It carries the reason it is read-only rather than leaving the absence to be
+ * guessed at: a reader who can watch a child working will look for a way to
+ * steer it, and a missing control with no explanation reads as an unfinished
+ * feature instead of a boundary. Steering, resuming and interrupting travel
+ * over the subagent extension's RPC on the in-process Pi event bus, which this
+ * server does not hold.
+ */
+export interface ActivityConversationView {
+  readonly title: string;
+  readonly subtitle: string;
+  readonly messages: readonly unknown[];
+  readonly total: number;
+  readonly empty: boolean;
+  /** Why this conversation cannot be joined, shown with it. */
+  readonly interventionUnavailable: string;
+}
+
+export const SUBAGENT_INTERVENTION_UNAVAILABLE = "Steering this run is not available from the web app.";
+
+export function subagentRunConversationView(
+  run: { runId: string; agent: string; status: string },
+  page: { messages: readonly unknown[]; total: number },
+): ActivityConversationView {
+  return {
+    title: `${run.agent} · ${run.runId.slice(0, 8)}`,
+    subtitle: `Child run of this session · ${run.status}`,
+    messages: page.messages,
+    total: page.total,
+    empty: page.messages.length === 0,
+    interventionUnavailable: SUBAGENT_INTERVENTION_UNAVAILABLE,
+  };
+}
+
 export interface AppState {
   machines: Machine[];
   selectedMachine: Machine | undefined;
@@ -49,6 +85,8 @@ export interface AppState {
   subagentRuns: readonly SessionSubagentRunInfo[];
   /** Kept out of `messages`: a log is a file, not something the agent said. */
   activityOutput: ActivityOutputView | undefined;
+  /** A child run's conversation, opened from its activity row. */
+  activityConversation: ActivityConversationView | undefined;
   status: SessionStatus | undefined;
   activity: SessionActivity | undefined;
   /**
@@ -198,6 +236,7 @@ export function initialAppState(): AppState {
     backgroundTasks: [],
     subagentRuns: [],
     activityOutput: undefined,
+    activityConversation: undefined,
     status: undefined,
     activity: undefined,
     pendingAsk: undefined,

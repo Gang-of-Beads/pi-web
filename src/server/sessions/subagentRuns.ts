@@ -547,7 +547,7 @@ export async function readSubagentRunOutput(
   options: { parentSessionId?: string; maxChars?: number } = {},
 ): Promise<string | undefined> {
   const maxChars = options.maxChars ?? 20000;
-  if (runId === "" || runId.includes("/") || runId.includes("\\") || runId.includes("..")) return undefined;
+  if (!isSafeRunId(runId)) return undefined;
   const artifactsDir = join(sessionDir, "subagent-artifacts");
   const names = await listNames(artifactsDir);
   const name = names.find((entry) => entry.startsWith(`${runId}_`) && entry.endsWith("_output.md"));
@@ -609,6 +609,64 @@ async function findRunTranscript(runsDir: string, runId: string): Promise<string
     if (identity?.runId === runId) return transcript;
   }
   return undefined;
+}
+
+/**
+ * Where a run's conversation is, whichever kind of child wrote it.
+ *
+ * A fresh-context child gets a run directory and writes an ordinary session
+ * file inside it. A fork-context child - which is what the builtin `worker` and
+ * `oracle` agents are - never creates that directory at all: its transcript is
+ * the artifact it opens at launch and appends to as it works. Both are session
+ * `jsonl` files of the same shape, so the only difference that matters here is
+ * where to look.
+ */
+export async function findSubagentRunTranscript(
+  sessionDir: string,
+  runId: string,
+  options: { parentSessionId?: string } = {},
+): Promise<string | undefined> {
+  if (!isSafeRunId(runId)) return undefined;
+  if (options.parentSessionId !== undefined) {
+    const owned = await findRunTranscript(join(sessionDir, options.parentSessionId), runId);
+    if (owned !== undefined) return owned;
+  }
+  const artifactsDir = join(sessionDir, "subagent-artifacts");
+  const names = await listNames(artifactsDir);
+  const name = names.find((entry) => entry.startsWith(`${runId}_`) && entry.endsWith("_transcript.jsonl"));
+  return name === undefined ? undefined : join(artifactsDir, name);
+}
+
+/** A run id is a path segment here, so it may not steer the read out of the directory. */
+function isSafeRunId(runId: string): boolean {
+  return runId !== "" && !runId.includes("/") && !runId.includes("\\") && !runId.includes("..");
+}
+
+/**
+ * The entries of a session file, for a transcript Pi is not holding open.
+ *
+ * Read whole rather than windowed: the caller renders the conversation, and a
+ * window would silently drop the beginning of it. A line that does not parse is
+ * skipped - a transcript being appended to can end mid-write, and losing the
+ * partial last line is better than failing the whole read.
+ */
+export async function readSessionEntries(path: string): Promise<unknown[] | undefined> {
+  let text: string;
+  try {
+    text = await readFile(path, "utf8");
+  } catch {
+    return undefined;
+  }
+  const entries: unknown[] = [];
+  for (const line of text.split("\n")) {
+    if (line.trim() === "") continue;
+    try {
+      entries.push(JSON.parse(line));
+    } catch {
+      continue;
+    }
+  }
+  return entries;
 }
 
 function clamp(text: string, maxChars: number): string {

@@ -69,7 +69,7 @@ import {
   parseWorkspaceTrustResponse,
   requireMachineStatusSnapshot,
 } from "./parsers";
-import { messagePath } from "./urls";
+import { messagePath, subagentRunMessagePath } from "./urls";
 
 const machinePrefix = (machineId = "local") => `api/machines/${encodeURIComponent(machineId)}`;
 
@@ -289,6 +289,10 @@ export const sessionsApi = {
     request(`${sessionPath(session, `background-tasks/${encodeURIComponent(taskId)}/output`, machineId)}?cwd=${encodeURIComponent(session.cwd)}`, parseBackgroundTaskOutput, { cache: "no-store" }),
   subagentRunOutput: (session: SessionRef, runId: string, machineId = "local") =>
     request(`${sessionPath(session, `subagent-runs/${encodeURIComponent(runId)}/output`, machineId)}?cwd=${encodeURIComponent(session.cwd)}`, parseSubagentRunOutput, { cache: "no-store" }),
+  // The run's conversation rather than its result. Paged like any transcript,
+  // because a long-running child's is as long as a session's.
+  subagentRunMessages: (session: SessionRef, runId: string, options?: { limit?: number; before?: number }, machineId = "local") =>
+    request(subagentRunMessagePath(session, runId, options, machineId), parseMessagePage, { cache: "no-store" }),
   clearQueue: (session: SessionRef, machineId = "local") => request(sessionPath(session, "queue/clear", machineId), parseSessionStatus, { method: "POST", body: sessionBody(session) }),
   // Same route as clearQueue: a body carrying `text` means "take this one
   // back", an empty one still means "empty the queue".
