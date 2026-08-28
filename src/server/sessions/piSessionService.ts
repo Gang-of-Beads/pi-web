@@ -31,6 +31,7 @@ import type { SessionBackgroundTaskInfo, SessionSubagentRunInfo } from "../../sh
 import type { ClientArchiveSessionsResponse, ClientCommand, ClientCommandResult, ClientMessagePage, ClientSession, ClientSessionCleanupExecuteResponse, ClientSessionCleanupPreviewResponse, ClientSessionModel, ClientSessionModelCatalogEntry, ClientSessionStatus, ClientSessionTreeForkRequest, ClientSessionTreeForkResult, ClientSessionTreeNavigateRequest, ClientSessionTreeNavigateResult, ClientThinkingLevel, SessionStreamSnapshot, SessionUiEvent } from "../types.js";
 import { projectBrowserMessage } from "../browserMessageProjection.js";
 import { pageMessagesAtSafeBoundary } from "./messagePaging.js";
+import { readableMessageCount } from "./readableMessageCount.js";
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
 import { BUILTIN_COMMANDS } from "./builtinCommands.js";
 import { SessionCommandService } from "./sessionCommandService.js";
@@ -1470,7 +1471,7 @@ export class PiSessionService implements SessionRouteService {
       persisted: sessionFileExists(session.sessionFile),
       created: new Date().toISOString(),
       modified: new Date().toISOString(),
-      messageCount: session.messages.length,
+      messageCount: readableMessageCount(session.sessionManager.getBranch()),
       firstMessage: "",
       // Include the parent so listeners can nest the new session in the tree
       // immediately, instead of showing it flat until the next reload.
@@ -4377,7 +4378,7 @@ export class PiSessionService implements SessionRouteService {
       isBashRunning: session.isBashRunning,
       pendingMessageCount: visibleQueued.length,
       queuedMessages: visibleQueued,
-      messageCount: session.messages.length,
+      messageCount: readableMessageCount(session.sessionManager.getBranch()),
       tokens: stats.tokens,
       cost: stats.cost,
       ...(contextUsage === undefined ? {} : { contextUsage }),
@@ -4608,7 +4609,7 @@ function archiveInputFromActiveSession(session: PiAgentSession): ArchiveSessionI
     path: sessionFile,
     created: new Date().toISOString(),
     modified: new Date().toISOString(),
-    messageCount: session.messages.length,
+    messageCount: readableMessageCount(session.sessionManager.getBranch()),
     firstMessage: "",
     ...(session.sessionName === undefined ? {} : { name: session.sessionName }),
     ...(parentSessionPath === undefined ? {} : { parentSessionPath }),
