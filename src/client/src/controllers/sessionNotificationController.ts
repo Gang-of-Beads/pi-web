@@ -191,7 +191,20 @@ export class SessionNotificationController {
     this.dismissAllPending = true;
     this.patchSelectedOverlay(target, (current) => ({ ...current, optimisticDismissAllThrough: through }));
     try {
-      const snapshot = await this.api.dismissAllNotifications({ id: target.sessionId, cwd: target.cwd }, view.daemonInstanceId, through, target.machineId);
+      let snapshot = await this.api.dismissAllNotifications({ id: target.sessionId, cwd: target.cwd }, view.daemonInstanceId, through, target.machineId);
+      // The daemon restarted since this tab read the inbox, so the range it sent
+      // was minted by an instance that no longer exists and was declined. The
+      // refusal carries the current instance id and the orders it knows, so the
+      // request is reissued against those rather than leaving the reader to tap
+      // again - which is what the silent refusal used to cost.
+      if (snapshot.outcome === "stale-instance" && this.isCurrentTarget(target, generation)) {
+        snapshot = await this.api.dismissAllNotifications(
+          { id: target.sessionId, cwd: target.cwd },
+          snapshot.daemonInstanceId,
+          { ...snapshot.dismissThrough },
+          target.machineId,
+        );
+      }
       if (this.isCurrentTarget(target, generation)) this.applyMutationSnapshot(target, snapshot, (current) => {
         const next = { ...current };
         delete next.optimisticDismissAllThrough;

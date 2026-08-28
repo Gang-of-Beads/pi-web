@@ -33,9 +33,32 @@ export interface SessionNotificationAddResult {
   mutations: SessionNotificationMutation[];
 }
 
+/**
+ * What became of a dismissal.
+ *
+ * The same vocabulary the unread catalogue already uses, because it is the same
+ * idea: a store that declines has to say so. Declining silently is what left the
+ * reader tapping - the row was removed optimistically, the store kept it, and
+ * the answer carried nothing to say the request had been refused.
+ */
+export const SessionNotificationDismissOutcome = {
+  /** The inbox is in the state the caller asked for. */
+  dismissed: "dismissed",
+  /**
+   * The request named an order range minted by a daemon that has since
+   * restarted. Order restarts at zero with the process, so an old range covers
+   * notifications the reader has never seen and must not clear them.
+   */
+  staleInstance: "stale-instance",
+} as const;
+
+export type SessionNotificationDismissOutcome =
+  (typeof SessionNotificationDismissOutcome)[keyof typeof SessionNotificationDismissOutcome];
+
 export interface SessionNotificationSnapshotResult {
   snapshot: SessionNotificationInboxSnapshot;
   mutations: SessionNotificationMutation[];
+  outcome: SessionNotificationDismissOutcome;
 }
 
 interface NotificationBucket {
@@ -315,7 +338,14 @@ export class SessionNotificationStore {
     notificationId: string,
   ): SessionNotificationSnapshotResult {
     const projection = this.requireProjection(sessionId, cwd);
-    if (daemonInstanceId !== this.daemonInstanceId) return { snapshot: this.snapshot(projection), mutations: [] };
+    // The instance id is deliberately not consulted here. A notification id is
+    // minted as `${daemonInstanceId}:${order}`, so it already names exactly one
+    // notification of one instance and cannot reach a newer one. Refusing on a
+    // stale instance id therefore protected nothing and cost the reader a tap:
+    // a tab open across a restart sends the id it read before the restart, was
+    // refused in silence, and had to be tapped again. Naming a notification this
+    // daemon never minted simply finds nothing, which is handled below.
+    void daemonInstanceId;
 
     const previouslyRetained = retainedEntries(projection);
     const previouslyRetainedIds = new Set(previouslyRetained.map((entry) => entry.id));
@@ -328,19 +358,20 @@ export class SessionNotificationStore {
       dismissed = true;
       break;
     }
-    if (!dismissed) return { snapshot: this.snapshot(projection), mutations: [] };
+    // Already gone is the state the caller asked for, so it is settled.
+    if (!dismissed) return { snapshot: this.snapshot(projection), mutations: [], outcome: SessionNotificationDismissOutcome.dismissed };
 
     if (projection.buckets.every((bucket) => bucket.entries.length === 0)) clearDiscardedCount(projection);
     const newlyRevealed = retainedEntries(projection).some((entry) => !previouslyRetainedIds.has(entry.id));
     const after = projectionFingerprint(projection);
     if (!previouslyRetainedIds.has(notificationId) && before === after) {
-      return { snapshot: this.snapshot(projection), mutations: [] };
+      return { snapshot: this.snapshot(projection), mutations: [], outcome: SessionNotificationDismissOutcome.dismissed };
     }
     const delta: SessionNotificationInboxDelta = newlyRevealed
       ? { kind: "resync" }
       : { kind: "dismissed", notificationIds: [notificationId] };
     const mutation = this.mutation(projection, delta);
-    return { snapshot: this.snapshot(projection), mutations: [mutation] };
+    return { snapshot: this.snapshot(projection), mutations: [mutation], outcome: SessionNotificationDismissOutcome.dismissed };
   }
 
   dismissAll(
@@ -351,7 +382,14 @@ export class SessionNotificationStore {
     throughOverflowWatermark: number,
   ): SessionNotificationSnapshotResult {
     const projection = this.requireProjection(sessionId, cwd);
-    if (daemonInstanceId !== this.daemonInstanceId) return { snapshot: this.snapshot(projection), mutations: [] };
+    // Unlike a single dismissal, this names an order range rather than an id,
+    // and order restarts at zero with the process. A range from a previous
+    // instance would therefore clear notifications the reader has never seen,
+    // so the refusal stands - but it is now named, and the answer carries the
+    // current instance id, so the caller can reissue against what it can see.
+    if (daemonInstanceId !== this.daemonInstanceId) {
+      return { snapshot: this.snapshot(projection), mutations: [], outcome: SessionNotificationDismissOutcome.staleInstance };
+    }
 
     const visibleIds = new Set(retainedEntries(projection).map((entry) => entry.id));
     const dismissedIds: string[] = [];
@@ -363,10 +401,12 @@ export class SessionNotificationStore {
       });
     }
     const acknowledgedOverflow = acknowledgeDiscardedThrough(projection, throughOverflowWatermark);
-    if (dismissedIds.length === 0 && acknowledgedOverflow === 0) return { snapshot: this.snapshot(projection), mutations: [] };
+    if (dismissedIds.length === 0 && acknowledgedOverflow === 0) {
+      return { snapshot: this.snapshot(projection), mutations: [], outcome: SessionNotificationDismissOutcome.dismissed };
+    }
 
     const mutation = this.mutation(projection, { kind: "dismissed", notificationIds: dismissedIds });
-    return { snapshot: this.snapshot(projection), mutations: [mutation] };
+    return { snapshot: this.snapshot(projection), mutations: [mutation], outcome: SessionNotificationDismissOutcome.dismissed };
   }
 
   clearGeneration(generation: SessionNotificationGeneration, reason: SessionNotificationClearReason): SessionNotificationMutation[] {

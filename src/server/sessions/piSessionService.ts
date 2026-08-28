@@ -65,6 +65,7 @@ import type {
   SessionNotificationClearReason,
   SessionNotificationDismissAllRequest,
   SessionNotificationDismissRequest,
+  SessionNotificationDismissResponse,
   SessionNotificationInboxSnapshot,
   SessionUnreadAcknowledgeRequest,
   SessionStatusCatalogSnapshot,
@@ -1319,7 +1320,7 @@ export class PiSessionService implements SessionRouteService {
   dismissNotification(
     ref: PiSessionRef,
     request: Omit<SessionNotificationDismissRequest, "cwd">,
-  ): SessionNotificationInboxSnapshot {
+  ): SessionNotificationDismissResponse {
     const result = this.notificationStore.dismissNotification(
       ref.id,
       canonicalizeStoredCwd(ref.cwd),
@@ -1327,13 +1328,13 @@ export class PiSessionService implements SessionRouteService {
       request.notificationId,
     );
     this.publishNotificationMutations(result.mutations);
-    return result.snapshot;
+    return { ...result.snapshot, outcome: result.outcome };
   }
 
   dismissAllNotifications(
     ref: PiSessionRef,
     request: Omit<SessionNotificationDismissAllRequest, "cwd">,
-  ): SessionNotificationInboxSnapshot {
+  ): SessionNotificationDismissResponse {
     const result = this.notificationStore.dismissAll(
       ref.id,
       canonicalizeStoredCwd(ref.cwd),
@@ -1342,7 +1343,7 @@ export class PiSessionService implements SessionRouteService {
       request.throughOverflowWatermark,
     );
     this.publishNotificationMutations(result.mutations);
-    return result.snapshot;
+    return { ...result.snapshot, outcome: result.outcome };
   }
 
   async cleanupPreview(request: NormalizedSessionCleanupRequest): Promise<ClientSessionCleanupPreviewResponse> {

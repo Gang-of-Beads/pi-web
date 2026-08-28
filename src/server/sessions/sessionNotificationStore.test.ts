@@ -183,6 +183,63 @@ describe("SessionNotificationStore", () => {
     expect(stale.mutations).toEqual([]);
     expect(unknown.mutations).toEqual([]);
     expect(unknown.snapshot).toEqual(before);
+    // A no-op still has to say which no-op it was, or the caller cannot tell a
+    // refusal from a row that was already gone.
+    expect(stale.outcome).toBe("stale-instance");
+    expect(unknown.outcome).toBe("dismissed");
+  });
+
+  /**
+   * The reported symptom: one wasted tap after every daemon restart. A phone
+   * keeps a tab open for hours and this daemon restarts often, so the tab sends
+   * the instance id it read before the restart. That was refused in silence,
+   * the row came back on the next poll, and the reader tapped again.
+   *
+   * A notification id is minted as `${daemonInstanceId}:${order}`, so it names
+   * one notification of one instance and cannot reach a newer one. The instance
+   * id guarded nothing here and cost a tap.
+   */
+  it("dismisses by id even when the tab's daemon instance is a restart behind", () => {
+    const store = testStore();
+    const generation = register(store);
+    const target = store.addNotification(generation, "dismiss me", "warning").notification;
+
+    const result = store.dismissNotification(identity.sessionId, identity.cwd, "daemon-from-before-the-restart", target?.id ?? "");
+
+    expect(result.outcome).toBe("dismissed");
+    expect(result.mutations).toHaveLength(1);
+    expect(store.inboxSnapshot(identity.sessionId, identity.cwd).summary.retainedCount).toBe(0);
+  });
+
+  /**
+   * The other half of that decision. Dismiss-all names an order range rather
+   * than an id, and order restarts at zero with the process, so a range from a
+   * previous instance covers notifications the reader has never seen. The
+   * refusal is load-bearing here - but it is named, so the caller can reissue
+   * against the range the answer carries instead of leaving the row up.
+   */
+  it("refuses a dismiss-all range minted before a restart, and says so", () => {
+    const store = testStore();
+    const generation = register(store);
+    store.addNotification(generation, "arrived after the restart", "warning");
+    const staleRangeFromAnEarlierInstance = Number.MAX_SAFE_INTEGER;
+
+    const refused = store.dismissAll(identity.sessionId, identity.cwd, "daemon-from-before-the-restart", staleRangeFromAnEarlierInstance, staleRangeFromAnEarlierInstance);
+
+    expect(refused.outcome).toBe("stale-instance");
+    expect(store.inboxSnapshot(identity.sessionId, identity.cwd).summary.retainedCount).toBe(1);
+
+    // Reissuing against what the refusal reported clears it in the same gesture.
+    const reissued = store.dismissAll(
+      identity.sessionId,
+      identity.cwd,
+      refused.snapshot.daemonInstanceId,
+      refused.snapshot.dismissThrough.order,
+      refused.snapshot.dismissThrough.overflowWatermark,
+    );
+
+    expect(reissued.outcome).toBe("dismissed");
+    expect(store.inboxSnapshot(identity.sessionId, identity.cwd).summary.retainedCount).toBe(0);
   });
 
   it("advances catalog and inbox revisions only for visible mutations and emits zero cleanup", () => {

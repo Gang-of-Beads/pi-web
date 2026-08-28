@@ -656,6 +656,22 @@ export interface SessionNotificationInboxSnapshot {
   dismissThrough: SessionNotificationDismissThrough;
 }
 
+/**
+ * What the daemon did with a dismissal.
+ *
+ * The snapshot alone cannot say, for the same reason an acknowledgement could
+ * not: a refused dismissal and an accepted one both answer with the current
+ * inbox, so a browser that removed the row optimistically could not tell the
+ * row was coming back. "stale-instance" means the daemon restarted since the
+ * range was read, not that the request was wrong.
+ */
+export type SessionNotificationDismissOutcomeValue = "dismissed" | "stale-instance";
+
+export interface SessionNotificationDismissResponse extends SessionNotificationInboxSnapshot {
+  /** Absent from hosts predating this field, which is read as "dismissed". */
+  outcome?: SessionNotificationDismissOutcomeValue;
+}
+
 export interface SessionNotificationCatalogSnapshot {
   daemonInstanceId: string;
   catalogRevision: number;

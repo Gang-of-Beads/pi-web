@@ -301,6 +301,38 @@ describe("SessionNotificationController optimistic mutations", () => {
     await dismissal;
     expect(selectedNotificationView(harness.state.selectedNotificationInbox)?.notifications.map((notification) => notification.id)).toEqual(["daemon-a:3"]);
   });
+
+  /**
+   * A tab left open across a daemon restart holds the instance id it read
+   * before the restart. Dismiss-all names an order range rather than an id, and
+   * order restarts with the process, so the daemon refuses it - correctly, or a
+   * stale range would clear notifications the reader has never seen.
+   *
+   * Before the refusal was named, that cost the reader a tap: the row came back
+   * on the next poll with nothing to say why. The answer carries the current
+   * instance and its range, so the request is reissued against those and the
+   * one gesture clears the inbox.
+   */
+  it("reissues dismiss-all against the range a stale-instance refusal reports", async () => {
+    const refusal = { ...inboxSnapshot([entry(1)], { daemonInstanceId: "daemon-b" }), outcome: "stale-instance" as const };
+    const accepted = { ...inboxSnapshot([], { inboxRevision: 2, catalogRevision: 2, daemonInstanceId: "daemon-b" }), outcome: "dismissed" as const };
+    const dismissAllNotifications = vi.fn()
+      .mockResolvedValueOnce(refusal)
+      .mockResolvedValueOnce(accepted);
+    const harness = createHarness(baseState(), {
+      notificationInbox: vi.fn(() => Promise.resolve(inboxSnapshot([entry(1)]))),
+      dismissAllNotifications,
+    });
+    harness.controller.prepareSelectedSession(session, "local");
+    await harness.controller.refreshSelectedSession(session, "local");
+
+    await harness.controller.dismissAll();
+
+    expect(dismissAllNotifications).toHaveBeenCalledTimes(2);
+    expect(dismissAllNotifications.mock.calls[0]?.[1]).toBe("daemon-a");
+    expect(dismissAllNotifications.mock.calls[1]?.[1]).toBe("daemon-b");
+    expect(selectedNotificationView(harness.state.selectedNotificationInbox)?.notifications).toEqual([]);
+  });
 });
 
 interface Deferred<T> {

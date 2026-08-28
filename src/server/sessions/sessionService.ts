@@ -10,6 +10,7 @@ import type {
   SessionNotificationCatalogSnapshot,
   SessionNotificationDismissAllRequest,
   SessionNotificationDismissRequest,
+  SessionNotificationDismissResponse,
   SessionNotificationInboxSnapshot,
   SessionUnreadAcknowledgeRequest,
   SessionStatusCatalogSnapshot,
@@ -65,8 +66,8 @@ export interface SessionRouteService {
   sessionStatusCatalog(): SessionStatusCatalogSnapshot | Promise<SessionStatusCatalogSnapshot>;
   acknowledgeUnread(sessionId: string, request: SessionUnreadAcknowledgeRequest): Promise<SessionUnreadAcknowledgeResponse>;
   notificationInbox(ref: SessionRouteRef): SessionNotificationInboxSnapshot | Promise<SessionNotificationInboxSnapshot>;
-  dismissNotification(ref: SessionRouteRef, request: Omit<SessionNotificationDismissRequest, "cwd">): SessionNotificationInboxSnapshot | Promise<SessionNotificationInboxSnapshot>;
-  dismissAllNotifications(ref: SessionRouteRef, request: Omit<SessionNotificationDismissAllRequest, "cwd">): SessionNotificationInboxSnapshot | Promise<SessionNotificationInboxSnapshot>;
+  dismissNotification(ref: SessionRouteRef, request: Omit<SessionNotificationDismissRequest, "cwd">): SessionNotificationDismissResponse | Promise<SessionNotificationDismissResponse>;
+  dismissAllNotifications(ref: SessionRouteRef, request: Omit<SessionNotificationDismissAllRequest, "cwd">): SessionNotificationDismissResponse | Promise<SessionNotificationDismissResponse>;
   /** Subagent-tool runs started by this session; see subagentRuns.ts. */
   subagentRuns(ref: SessionRouteRef): Promise<SessionSubagentRunInfo[]>;
   /** The result artifact of one finished run, if it wrote one. */
