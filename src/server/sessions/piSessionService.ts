@@ -5017,6 +5017,11 @@ function annotateAssistantThinkingLevel(message: unknown, thinkingLevel: string 
   return { ...message, thinkingLevel };
 }
 
+/**
+ * The transcript, as the browser receives it. What this pushes is what the
+ * reader can see, so `readableMessageCount` counts exactly this set - the two
+ * disagreed for as long as they were written from separate rules.
+ */
 function historyMessages(session: PiAgentSession): unknown[] {
   const messages: unknown[] = [];
   // Pi records the initial level at session creation and every later change, so
