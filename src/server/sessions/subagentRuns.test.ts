@@ -265,11 +265,33 @@ describe("runs whose directory and artifacts use different ids", () => {
     expect(run).toMatchObject({ runId: "91c34f97-a9a1-4c8c-85b3-2061fe772ae2", agent: "subagent", hasOutput: false });
   });
 
-  it("ignores a directory the run never wrote anything into", async () => {
+  // A child that runs in a fork of the parent context writes its transcript to
+  // the sibling `forks/` directory and leaves its own run directory empty for
+  // its whole life. Measured on a real session: two children were working while
+  // the drawer said "Nothing running right now", and six of sixteen run
+  // directories were empty. Dropping the empty directory hid exactly the runs
+  // worth watching, and they appeared only once they finished and wrote an
+  // artifact.
+  it("reports a run that has started but written nothing while the parent is streaming", async () => {
     const dir = await sessionDir();
     await mkdir(join(dir, PARENT, "5d2ddee7-ad67-46e5-82a6-5a89b7e796cb"), { recursive: true });
 
-    expect(await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: true })).toEqual([]);
+    const [run] = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: true });
+
+    expect(run).toMatchObject({ runId: "5d2ddee7-ad67-46e5-82a6-5a89b7e796cb", status: "running", agent: "subagent" });
+  });
+
+  // Only the parent can vouch for a child that has written nothing. Without a
+  // streaming parent the honest answer is that nobody knows, not that it is
+  // working - otherwise a directory left by a crash would claim to be running
+  // forever.
+  it("admits it cannot tell when the parent is not streaming either", async () => {
+    const dir = await sessionDir();
+    await mkdir(join(dir, PARENT, "5d2ddee7-ad67-46e5-82a6-5a89b7e796cb"), { recursive: true });
+
+    const [run] = await listSubagentRuns(dir, PARENT);
+
+    expect(run).toMatchObject({ runId: "5d2ddee7-ad67-46e5-82a6-5a89b7e796cb", status: "unknown" });
   });
 
   it("keeps a run that left an artifact behind but no transcript", async () => {
@@ -289,5 +311,21 @@ describe("runs whose directory and artifacts use different ids", () => {
     await writeFile(join(forks, "2026-08-25T15-06-10-152Z_01a03975.jsonl"), "{}", "utf8");
 
     expect(await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: true })).toEqual([]);
+  });
+
+  // The empty run directory and the `forks` neighbour are both directories with
+  // no run attempt inside, so admitting the first must not admit the second.
+  // What separates them is the name: a run directory carries the child session
+  // id. Checked against every session on this machine - `forks` and
+  // `subagent-artifacts` were the only non-uuid entries.
+  it("tells an empty run directory apart from a neighbour by its name", async () => {
+    const dir = await sessionDir();
+    await mkdir(join(dir, PARENT, "5d2ddee7-ad67-46e5-82a6-5a89b7e796cb"), { recursive: true });
+    await mkdir(join(dir, PARENT, "forks"), { recursive: true });
+    await mkdir(join(dir, PARENT, "scratch"), { recursive: true });
+
+    const runs = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: true });
+
+    expect(runs.map((run) => run.runId)).toEqual(["5d2ddee7-ad67-46e5-82a6-5a89b7e796cb"]);
   });
 });

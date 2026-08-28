@@ -12,6 +12,15 @@ import type { SessionSubagentRunInfo } from "../../shared/apiTypes.js";
  *   <sessionDir>/<parentSessionId>/<runId>/run-N/session.jsonl   (live)
  *   <sessionDir>/subagent-artifacts/<runId>_<agent>_<n>_meta.json (finished)
  *
+ * A child that runs in a fork of the parent context is the exception: it writes
+ * its transcript to <sessionDir>/<parentSessionId>/forks/<timestamp>_<id>.jsonl
+ * and leaves its own run directory empty until it finishes. Nothing in that
+ * file names the run it belongs to - the header carries only the parent
+ * session's path, and its `session_info` name is the parent's name - so such a
+ * run is reported from its directory alone and shows the generic agent name
+ * until an artifact lands. That is worth it: the alternative was being absent
+ * from the list for the whole time it was working.
+ *
  * So the parent conversation could not say what its children were doing, or
  * even that it had any. Reading the directory is deliberate rather than
  * subscribing to the tool: the tool is an extension that may not be installed,
@@ -103,11 +112,29 @@ export async function listSubagentRuns(
   });
 }
 
-/** Excludes a directory a child died inside before writing, and neighbours like `forks`. */
+/**
+ * A run directory is named after the child session, which is a uuid; the
+ * neighbours that share the parent directory (`forks`, and `subagent-artifacts`
+ * one level up) are named for what they hold. The name is the only thing that
+ * separates a run that has not written yet from a neighbour that never will,
+ * because on disk both are simply empty directories.
+ */
+const RUN_DIRECTORY_NAME = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
+
+/**
+ * Whether a directory beside the parent session is one of its runs.
+ *
+ * An artifact or a `run-*` attempt settles it outright. Without either, the
+ * name decides: a just-spawned child - and a fork-context child for its whole
+ * life - has an empty directory, and refusing those hid every running fork
+ * child from the list until it finished. `runStatus` still gets the last word
+ * on what an empty directory means.
+ */
 async function looksLikeRun(runDir: string, runId: string, artifacts: Map<string, RunArtifact>): Promise<boolean> {
   if (artifacts.has(runId)) return true;
   const attempts = await listDirectories(runDir);
-  return attempts.some((name) => name.startsWith("run-"));
+  if (attempts.some((name) => name.startsWith("run-"))) return true;
+  return RUN_DIRECTORY_NAME.test(runId);
 }
 
 async function describeRun(runsDir: string, runId: string, artifacts: Map<string, RunArtifact>, now: number, parentActive: boolean): Promise<SessionSubagentRunInfo | undefined> {
