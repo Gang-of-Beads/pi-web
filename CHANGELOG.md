@@ -1,5 +1,92 @@
 # @jmfederico/pi-web
 
+## 1.202608.64
+
+### Patch Changes
+
+- 757130b: Say what an empty session is, and call it something a person can read.
+
+  A session nobody had spoken to yet showed a blank screen — roughly 1160px of
+  nothing between the header and the composer, which reads the same as a session
+  that failed to load. It now says it is empty and offers a control that puts the
+  cursor in the composer.
+
+  That same session was named after the tail of its id, so the header announced
+  "Session: 7c4dc82f" and offered to rename it by that number. Sessions waiting
+  for their first message are called "New session", and the id moves to the row's
+  detail line, where it still tells two of them apart. The header and the session
+  list now take that name from one place, so they cannot disagree again.
+
+  On a touch screen the action palette drew a keyboard shortcut badge on every
+  row — a label for a key that cannot be pressed, holding open 101px the titles
+  were being truncated to give up. The badges are for pointers that come with a
+  keyboard, and the title takes the width back.
+
+  The palette also listed itself, offering to open the surface already on screen;
+  that entry is gone while the shortcut that opens it from elsewhere stays. Action
+  names are sentence case throughout, and the search box uses a real ellipsis.
+
+- 07ea02d: Say what failed, and let a reply withdraw the saying of it.
+
+  A red banner reading the single word "HttpError" could sit above a session that
+  went on replying normally, with the dismiss button as the only way out. Nobody
+  wrote that text. Over HTTP/2 `response.statusText` is always the empty string,
+  so a response whose body carried no error field built an error with an empty
+  message, and an Error with a name and no message stringifies to just its name.
+  The banner was showing a class name.
+
+  It stayed because the field that marks a complaint as one a successful reply
+  disproves was never set. It was introduced with the notice module, defaulted to
+  "only the reader can clear this", and no call site ever set it, so the code that
+  withdraws such a complaint returned early every time.
+
+  Both halves were decided independently at every call site: 60 of them, built by
+  hand out of `String(error)`. They now go through one function that returns the
+  words and the lifetime together, so neither half can be set without the other
+  and a call site added later cannot reintroduce either fault. A failure that
+  describes itself is quoted as it is; one that does not is described by its
+  status instead of by its class.
+
+  Reported failures lose their `Error: ` prefix, which was the same class name
+  leaking through in a smaller way.
+
+- f44a4d6: Show a subagent run that has started but not written anything yet.
+
+  A child agent that runs in a fork of the parent context writes its transcript to
+  a shared `forks/` directory and leaves its own run directory empty until it
+  finishes. The activity list treated an empty directory as "not a run" and
+  dropped it, so those children were missing from the list for exactly as long as
+  they were working, and appeared only once they were over. Measured on a live
+  session: two children were working while the drawer said "Nothing running right
+  now", and the endpoint reported 12 runs where there were 16.
+
+  An empty run directory is now reported, and the existing rule decides what it
+  means — running while the parent is streaming, unknown when it is not. The
+  neighbouring `forks` directory is still excluded: a run directory is named after
+  the child session, and that name is what tells the two apart.
+
+- 52a7115: Show a subagent that is working but has no run directory.
+
+  A child running in a fork of the parent context may never get a run directory:
+  its transcript goes to the shared `forks/` folder, and the only trace under its
+  own id is what it writes into the project's artifacts directory. Enumeration
+  walked directories only, so such a run was missing from the activity list for
+  its whole life and after it - measured on a live child, the directory was absent
+  for the 90 seconds it ran and stayed absent once it had finished.
+
+  Runs are now found from a live transcript artifact as well as from a directory.
+  A run writes its prompt and opens its transcript when it starts and only writes
+  `meta.json` when it ends, so those two facts are kept apart: a run with a
+  transcript and no report is shown as running rather than done, and its agent
+  name is read from the artifact instead of falling back to the generic label.
+
+  Nothing in an artifact names the session that started the run, and the artifacts
+  directory is shared by the whole project - measured on one project, two sessions
+  with overlapping lifetimes shared 35 artifacts of which 19 belonged to the other
+  session. A run without a directory is therefore only claimed while its transcript
+  is still being written and the parent is streaming, so a neighbouring session's
+  history is never adopted.
+
 ## 1.202608.63
 
 ### Patch Changes
