@@ -21,6 +21,11 @@ import type { SessionSubagentRunInfo } from "../../shared/apiTypes.js";
  * until an artifact lands. That is worth it: the alternative was being absent
  * from the list for the whole time it was working.
  *
+ * Some fork children never get a run directory at all, so a run is looked for
+ * in two places: the directories beside the parent session, and the run ids
+ * named by the artifacts. See `claimableArtifactRunIds` for why the second
+ * source is only trusted while the parent is streaming.
+ *
  * So the parent conversation could not say what its children were doing, or
  * even that it had any. Reading the directory is deliberate rather than
  * subscribing to the tool: the tool is an extension that may not be installed,
@@ -86,6 +91,27 @@ interface RunArtifact {
   toolCount?: number;
   timestamp?: string;
   hasOutput: boolean;
+  /**
+   * Set only once the run wrote its `meta.json`, which the tool does when the
+   * run ends. The other artifacts - the prompt it was given and the transcript
+   * it is filling in - appear at launch, so their presence says a run exists,
+   * never that it is over.
+   */
+  reported: boolean;
+}
+
+/**
+ * What the artifacts directory knows about a run before it has reported.
+ *
+ * A run writes `<runId>_<agent>_<n>_input.md` and `_transcript.jsonl` when it
+ * starts and `_meta.json` only when it finishes, so these two are the only
+ * trace a running fork child leaves under its own id. The transcript's mtime
+ * is the one live signal in the layout: the child appends to it as it works.
+ */
+interface RunningArtifact {
+  agent?: string;
+  transcriptPath: string;
+  lastWriteMs: number;
 }
 
 export async function listSubagentRuns(
@@ -95,12 +121,16 @@ export async function listSubagentRuns(
   options: { parentActive?: boolean } = {},
 ): Promise<SessionSubagentRunInfo[]> {
   const runsDir = join(sessionDir, parentSessionId);
-  const runIds = await listDirectories(runsDir);
+  const parentActive = options.parentActive === true;
+  const artifactsDir = join(sessionDir, "subagent-artifacts");
+  const directoryRunIds = await listDirectories(runsDir);
+  const artifacts = await readArtifacts(artifactsDir);
+  const running = await readRunningArtifacts(artifactsDir, now);
+  const runIds = [...directoryRunIds, ...unlistedRunIds(artifacts, running, directoryRunIds, parentActive, now)];
   if (runIds.length === 0) return [];
-  const artifacts = await readArtifacts(join(sessionDir, "subagent-artifacts"));
   const runs: SessionSubagentRunInfo[] = [];
   for (const runId of runIds) {
-    const run = await describeRun(runsDir, runId, artifacts, now, options.parentActive === true);
+    const run = await describeRun(runsDir, runId, artifacts, running.get(runId), now, parentActive);
     if (run !== undefined) runs.push(run);
   }
   // Live work first, then most recent: the question this answers is usually
@@ -137,9 +167,97 @@ async function looksLikeRun(runDir: string, runId: string, artifacts: Map<string
   return RUN_DIRECTORY_NAME.test(runId);
 }
 
-async function describeRun(runsDir: string, runId: string, artifacts: Map<string, RunArtifact>, now: number, parentActive: boolean): Promise<SessionSubagentRunInfo | undefined> {
+/**
+ * Runs the artifacts directory shows as under way: those with a transcript but
+ * no `meta.json`, which is the shape a child has from launch until it reports.
+ * The agent name comes from the filename, so a run with no directory of its own
+ * can still be named rather than falling back to the generic label.
+ */
+async function readRunningArtifacts(artifactsDir: string, now: number): Promise<Map<string, RunningArtifact>> {
+  const running = new Map<string, RunningArtifact>();
+  const names = await listNames(artifactsDir);
+  const reported = new Set(names.filter((name) => name.endsWith("_meta.json")).map((name) => name.slice(0, name.indexOf("_"))));
+  for (const name of names) {
+    if (!name.endsWith("_transcript.jsonl")) continue;
+    const runId = name.slice(0, name.indexOf("_"));
+    if (runId === "" || reported.has(runId)) continue;
+    const path = join(artifactsDir, name);
+    const stats = await statOrUndefined(path);
+    if (stats === undefined) continue;
+    // A transcript that stopped growing is a run that died without reporting,
+    // and it belongs to whichever session owns its directory - not to whoever
+    // happens to be streaming now.
+    if (now - stats.mtimeMs > ARTIFACT_CLAIM_WINDOW_MS) continue;
+    const agent = agentFromArtifactName(name, runId);
+    running.set(runId, { ...(agent === undefined ? {} : { agent }), transcriptPath: path, lastWriteMs: stats.mtimeMs });
+  }
+  return running;
+}
+
+/** `<runId>_<agent>_<n>_transcript.jsonl`, where the agent may itself contain underscores. */
+function agentFromArtifactName(name: string, runId: string): string | undefined {
+  const rest = name.slice(runId.length + 1).replace(/_transcript\.jsonl$/u, "");
+  const agent = rest.replace(/_\d+$/u, "");
+  return agent === "" ? undefined : agent;
+}
+
+/**
+ * How recently a transcript must have been written for its run to be treated as
+ * this session's.
+ *
+ * The artifacts directory is shared by every session in the project, and
+ * nothing in an artifact names the session that started the run: `meta.json`
+ * carries the run id, the agent, a `cwd` that is the whole project, and a
+ * `transcriptPath` pointing back into the artifacts directory itself. Measured
+ * on one project, two sessions shared 35 artifacts of which 19 belonged to the
+ * other session, and the two sessions' lifetimes overlapped - so neither the
+ * files nor a time window can attribute a *finished* run to its parent.
+ *
+ * A run still being written to is a different matter. The child appends to its
+ * transcript as it works, so a transcript touched moments ago belongs to work
+ * happening now, under the parent that is streaming now. Runs whose transcript
+ * has gone quiet are left to the directory that owns them: measured on the same
+ * project, three runs had a transcript and no `meta.json`, and two of them had
+ * been silent for twelve hours - dead, not running.
+ */
+const ARTIFACT_CLAIM_WINDOW_MS = 2 * 60 * 1000;
+
+/**
+ * Runs that no directory beside this session accounts for, and that it may
+ * still claim.
+ *
+ * The evidence is a transcript still being written: that is work happening now,
+ * under the parent streaming now. A run keeps its row once it reports, because
+ * the alternative is a child vanishing from the list at the moment it finishes
+ * - so a claimed run that has since written its `meta.json` stays listed.
+ * Everything else is left to the session that owns its directory rather than
+ * borrowed from a neighbour's history.
+ */
+function unlistedRunIds(artifacts: Map<string, RunArtifact>, running: Map<string, RunningArtifact>, directoryRunIds: readonly string[], parentActive: boolean, now: number): string[] {
+  if (!parentActive) return [];
+  const owned = new Set(directoryRunIds);
+  const claimed = [...running.keys()].filter((runId) => !owned.has(runId));
+  const justReported = [...artifacts.entries()]
+    .filter(([runId, artifact]) => !owned.has(runId) && !running.has(runId) && recentlyReported(artifact, now))
+    .map(([runId]) => runId);
+  return [...claimed, ...justReported];
+}
+
+/**
+ * Whether a run reported within the window a claimed run would still be live
+ * in. Only these are adopted without a directory: an older `meta.json` says
+ * nothing about which session ran it, and the artifacts directory is shared.
+ */
+function recentlyReported(artifact: RunArtifact, now: number): boolean {
+  if (artifact.timestamp === undefined) return false;
+  const reportedAtMs = Date.parse(artifact.timestamp);
+  return Number.isFinite(reportedAtMs) && now - reportedAtMs <= ARTIFACT_CLAIM_WINDOW_MS;
+}
+
+async function describeRun(runsDir: string, runId: string, artifacts: Map<string, RunArtifact>, running: RunningArtifact | undefined, now: number, parentActive: boolean): Promise<SessionSubagentRunInfo | undefined> {
   const runDir = join(runsDir, runId);
-  if (!await looksLikeRun(runDir, runId, artifacts)) return undefined;
+  // A live transcript is the run announcing itself; it needs no directory.
+  if (running === undefined && !await looksLikeRun(runDir, runId, artifacts)) return undefined;
   const transcript = await findTranscript(runDir);
   // The run directory and the artifacts are named in two different id spaces:
   // the directory carries the child session's id, the artifacts the tool's own
@@ -160,12 +278,23 @@ async function describeRun(runsDir: string, runId: string, artifacts: Map<string
       lastWriteMs = stats.mtimeMs;
     }
   }
+  // A run with no directory of its own is only known through the artifacts it
+  // writes as it goes, so they date it and say when it last moved.
+  if (running !== undefined) {
+    const stats = await statOrUndefined(running.transcriptPath);
+    if (stats !== undefined) startedAt ??= stats.birthtime.toISOString();
+    lastWriteMs ??= running.lastWriteMs;
+  }
   if (startedAt === undefined) {
+    // A run reached through its artifact alone has no directory to date it, but
+    // an artifact without a timestamp is the only case left here: the row is
+    // worth more than the precision, so it falls back to now.
     const dirStats = await statOrUndefined(runDir);
-    if (dirStats === undefined) return undefined;
-    startedAt = dirStats.birthtime.toISOString();
+    if (dirStats === undefined && artifact === undefined) return undefined;
+    startedAt = (dirStats?.birthtime ?? new Date(now)).toISOString();
   }
   const status = runStatus(artifact, lastWriteMs, now, parentActive);
+  const agent = artifact?.agent ?? identity?.agent ?? running?.agent ?? "subagent";
   // What the row says this run was: its own description when the tool kept one,
   // otherwise the first line of what it returned.
   const label = artifact?.task ?? artifact?.outputSummary;
@@ -173,7 +302,7 @@ async function describeRun(runsDir: string, runId: string, artifacts: Map<string
   const lastActivity = status === "running" && transcript !== undefined ? await lastTranscriptStep(transcript) : undefined;
   return {
     runId: artifactRunId,
-    agent: artifact?.agent ?? identity?.agent ?? "subagent",
+    agent,
     status,
     elapsedMs,
     startedAt,
@@ -191,10 +320,16 @@ async function describeRun(runsDir: string, runId: string, artifacts: Map<string
  * that has written recently is working, and one that stopped writing without
  * ever reporting was killed with its parent - saying "unknown" is honest, where
  * "running" would leave a ghost in the list forever.
+ *
+ * "There is an artifact" is not the same fact as "the run reported". A run
+ * writes its prompt and opens its transcript at launch and only writes
+ * `meta.json` when it ends, so treating any artifact as a verdict would mark a
+ * child done the moment it started - worse than leaving it out, because the
+ * row would claim work had finished while it was still being done.
  */
 function runStatus(artifact: RunArtifact | undefined, lastWriteMs: number | undefined, now: number, parentActive: boolean): SessionSubagentRunInfo["status"] {
   if (artifact?.exitCode !== undefined) return artifact.exitCode === 0 ? "done" : "failed";
-  if (artifact !== undefined) return "done";
+  if (artifact?.reported === true) return "done";
   // A just-spawned child has written nothing yet, so only the parent can say.
   if (lastWriteMs === undefined) return parentActive ? "running" : "unknown";
   const quietMs = now - lastWriteMs;
@@ -342,6 +477,8 @@ async function readArtifacts(artifactsDir: string): Promise<Map<string, RunArtif
       ...(typeof record["toolCount"] === "number" ? { toolCount: record["toolCount"] } : {}),
       ...(typeof record["timestamp"] === "string" ? { timestamp: record["timestamp"] } : {}),
       hasOutput: outputs.has(runId),
+      // Reading a `meta.json` at all is the run's own report that it ended.
+      reported: true,
     });
   }
   return artifacts;

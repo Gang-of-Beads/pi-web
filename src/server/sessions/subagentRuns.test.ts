@@ -30,6 +30,25 @@ async function writeArtifact(dir: string, runId: string, agent: string, meta: Re
   if (withOutput) await writeFile(join(artifacts, `${runId}_${agent}_0_output.md`), "result", "utf8");
 }
 
+/**
+ * What a run puts in the shared artifacts directory the moment it launches: the
+ * prompt it was handed and the transcript it will append to. `meta.json` is
+ * absent until it reports, so this is the on-disk shape of a run in flight.
+ * Measured on a live child: exactly `_input.md` and `_transcript.jsonl`, with
+ * no run directory anywhere.
+ */
+async function writeRunningArtifact(dir: string, runId: string, agent: string, ageMs = 0): Promise<void> {
+  const artifacts = join(dir, "subagent-artifacts");
+  await mkdir(artifacts, { recursive: true });
+  await writeFile(join(artifacts, `${runId}_${agent}_0_input.md`), "the task", "utf8");
+  const transcript = join(artifacts, `${runId}_${agent}_0_transcript.jsonl`);
+  await writeFile(transcript, JSON.stringify({ recordType: "message", role: "assistant" }), "utf8");
+  if (ageMs > 0) {
+    const when = new Date(Date.now() - ageMs);
+    await utimes(transcript, when, when);
+  }
+}
+
 describe("listSubagentRuns", () => {
   it("reports a finished run from its artifact", async () => {
     const dir = await sessionDir();
@@ -327,5 +346,145 @@ describe("runs whose directory and artifacts use different ids", () => {
     const runs = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: true });
 
     expect(runs.map((run) => run.runId)).toEqual(["5d2ddee7-ad67-46e5-82a6-5a89b7e796cb"]);
+  });
+});
+
+/**
+ * A fork-context child never gets a run directory at all: its transcript goes
+ * to the shared `forks/` folder and the only trace it leaves under its own id
+ * is the artifact it writes when it finishes. Enumerating directories alone
+ * therefore lost the run permanently, not merely while it was working.
+ *
+ * Measured on this machine's session 01a04701: the run directory for
+ * 49b702d6-836e-4e3b-a1d5-d490ca7464ae was absent for the whole 90s the child
+ * ran and stayed absent afterwards, while four `<runId>_*` artifacts existed.
+ */
+describe("a fork child that never gets a run directory", () => {
+  /**
+   * The reported symptom, in the shape measured on a live child: no directory,
+   * an input and a transcript in the shared artifacts folder, and no
+   * `meta.json` because the run has not finished. Enumerating directories
+   * alone left it out of the list for its whole life.
+   */
+  it("lists it while it is still working", async () => {
+    const dir = await sessionDir();
+    await writeRunningArtifact(dir, "7666849d-3eb3-4daf-b9f4-b8f34a0c4e42", "worker");
+
+    const [run] = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: true });
+
+    expect(run).toMatchObject({ runId: "7666849d-3eb3-4daf-b9f4-b8f34a0c4e42", status: "running" });
+  });
+
+  /**
+   * A run writes its prompt and opens its transcript at launch, so treating
+   * any artifact as the run's verdict would mark a child finished the moment
+   * it started - a row claiming the work was over while it was being done.
+   */
+  it("does not call it done merely because artifacts exist", async () => {
+    const dir = await sessionDir();
+    await writeRunningArtifact(dir, "7666849d-3eb3-4daf-b9f4-b8f34a0c4e42", "worker");
+
+    const [run] = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: true });
+
+    expect(run?.status).not.toBe("done");
+    expect(run?.hasOutput).toBe(false);
+  });
+
+  /** The filename carries the agent, so the row need not say "subagent". */
+  it("names the agent from the artifact it is writing", async () => {
+    const dir = await sessionDir();
+    await writeRunningArtifact(dir, "7666849d-3eb3-4daf-b9f4-b8f34a0c4e42", "worker");
+
+    const [run] = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: true });
+
+    expect(run?.agent).toBe("worker");
+  });
+
+  /**
+   * Once it reports, the artifact's own verdict takes over. The row has to
+   * survive that moment: a child vanishing from the list exactly when it
+   * finishes is the same defect from the other side.
+   */
+  it("switches to the reported result when the run finishes", async () => {
+    const dir = await sessionDir();
+    const reportedAt = "2026-08-28T09:21:42.000Z";
+    await writeRunningArtifact(dir, "49b702d6-836e-4e3b-a1d5-d490ca7464ae", "worker");
+    await writeArtifact(dir, "49b702d6-836e-4e3b-a1d5-d490ca7464ae", "worker", { exitCode: 0, timestamp: reportedAt });
+
+    const [run] = await listSubagentRuns(dir, PARENT, Date.parse(reportedAt) + 1_000, { parentActive: true });
+
+    expect(run).toMatchObject({ agent: "worker", status: "done", hasOutput: true });
+  });
+
+  /**
+   * A run that reported long ago is history, and the artifacts directory is
+   * shared, so it belongs to whichever session owns its directory.
+   */
+  it("does not adopt a run that reported long ago", async () => {
+    const dir = await sessionDir();
+    const reportedAt = "2026-08-28T09:21:42.000Z";
+    await writeArtifact(dir, "a1948bde-5a26-46ec-b1ea-e8b0b7e492cc", "worker", { exitCode: 0, timestamp: reportedAt });
+
+    const runs = await listSubagentRuns(dir, PARENT, Date.parse(reportedAt) + 60 * 60 * 1000, { parentActive: true });
+
+    expect(runs).toEqual([]);
+  });
+
+  /** Reaching a run by artifact must not duplicate the row its directory made. */
+  it("does not list a run twice when it has a directory too", async () => {
+    const dir = await sessionDir();
+    await mkdir(join(dir, PARENT, "79eeba3d-46c5-45bd-8e74-32a3f1eb7957"), { recursive: true });
+    await writeRunningArtifact(dir, "79eeba3d-46c5-45bd-8e74-32a3f1eb7957", "worker");
+
+    const runs = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: true });
+
+    expect(runs.map((run) => run.runId)).toEqual(["79eeba3d-46c5-45bd-8e74-32a3f1eb7957"]);
+  });
+});
+
+/**
+ * Nothing in an artifact names the session that started the run: `meta.json`
+ * carries `runId`, `agent`, a `cwd` that is the whole project, and a
+ * `transcriptPath` pointing back into the shared artifacts folder. Measured on
+ * one project, two sessions shared 35 artifacts of which 19 belonged to the
+ * other session, and their lifetimes overlapped - so neither the files nor a
+ * time window can attribute a finished run to its parent.
+ *
+ * A transcript still being appended to is different: it is work happening now,
+ * under the parent streaming now.
+ */
+describe("whose run an artifact belongs to", () => {
+  it("claims nothing while this parent is idle", async () => {
+    const dir = await sessionDir();
+    await writeRunningArtifact(dir, "a1948bde-5a26-46ec-b1ea-e8b0b7e492cc", "worker");
+
+    const runs = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: false });
+
+    expect(runs).toEqual([]);
+  });
+
+  /**
+   * Measured on the same project: three runs had a transcript and no
+   * `meta.json`, and two had been silent for twelve hours. Those are dead runs
+   * belonging to whichever session owns their directory, not this one's work.
+   */
+  it("leaves a long-silent transcript to the session that owns its directory", async () => {
+    const dir = await sessionDir();
+    await writeRunningArtifact(dir, "33bced81-5997-49c6-9f1a-2b7c4d5e6f70", "worker", 12 * 60 * 60 * 1000);
+
+    const runs = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: true });
+
+    expect(runs).toEqual([]);
+  });
+
+  /** A directory is proof of ownership, so an idle parent still keeps its own. */
+  it("still lists a run this session owns a directory for while idle", async () => {
+    const dir = await sessionDir();
+    await mkdir(join(dir, PARENT, "79eeba3d-46c5-45bd-8e74-32a3f1eb7957"), { recursive: true });
+    await writeArtifact(dir, "79eeba3d-46c5-45bd-8e74-32a3f1eb7957", "worker", { exitCode: 0, timestamp: "2026-08-25T10:00:00.000Z" });
+
+    const runs = await listSubagentRuns(dir, PARENT, Date.now(), { parentActive: false });
+
+    expect(runs.map((run) => run.runId)).toEqual(["79eeba3d-46c5-45bd-8e74-32a3f1eb7957"]);
   });
 });

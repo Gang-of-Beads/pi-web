@@ -50,6 +50,16 @@ describe("requestCancellation", () => {
 
   it("aborts when the client disconnects while the handler is still working", async () => {
     let abortReason = "";
+    // The disconnect must happen while the handler is mid-flight, and the only
+    // party that knows it has reached that point is the handler itself. An
+    // earlier version guessed with a 20ms timer, which raced the request's
+    // arrival: when the machine was loaded enough for the socket to take
+    // longer than that, the abort fired before there was a request to cancel,
+    // the handler then waited on a signal nobody would ever trip, and the case
+    // died on vitest's 5s wall - measured twice in full-suite runs at 5039ms
+    // and 5091ms while passing in 24ms on an idle machine.
+    let announceHandlerReached!: () => void;
+    const handlerReached = new Promise<void>((resolve) => { announceHandlerReached = resolve; });
     const observed = new Promise<void>((resolveObserved) => {
       app.delete("/resource", async (request, reply) => {
         const cancellation = requestCancellation(request, reply);
@@ -59,6 +69,7 @@ describe("requestCancellation", () => {
               abortReason = cancellation.signal.reason instanceof Error ? cancellation.signal.reason.message : "";
               resolveAbort();
             }, { once: true });
+            announceHandlerReached();
           });
           resolveObserved();
           return {};
@@ -76,7 +87,8 @@ describe("requestCancellation", () => {
       body: JSON.stringify({ precondition: "v1.confirmed" }),
       signal: controller.signal,
     });
-    setTimeout(() => { controller.abort(); }, 20);
+    await handlerReached;
+    controller.abort();
     await expect(pending).rejects.toThrow();
 
     await observed;
