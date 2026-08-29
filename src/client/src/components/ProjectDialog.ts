@@ -28,6 +28,10 @@ export class ProjectDialog extends LitElement {
   @state() private submitError: string | undefined = undefined;
   @state() private submitting = false;
   @state() private suggestions: FileSuggestion[] = [];
+  /** The path the rendered suggestions were searched for. */
+  @state() private suggestionsQuery: string | undefined = undefined;
+  /** The search for the current path failed; never read as an empty answer. */
+  @state() private suggestionsFailed = false;
   @state() private selected = 0;
   @state() private loading = false;
   @state() private trust: ProjectTrustState | undefined;
@@ -35,6 +39,9 @@ export class ProjectDialog extends LitElement {
   @query("input") private pathInput?: HTMLInputElement;
 
   private suggestionTimer: ReturnType<typeof setTimeout> | undefined;
+  private trustTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The one in-flight suggestions request; superseded requests are aborted. */
+  private suggestionsAbort: AbortController | undefined;
   // Separate staleness counters: setPath fires both loaders, so a shared one
   // would make the trust read invalidate every in-flight suggestions request
   // (leaving "Loading folders…" up forever).
@@ -48,6 +55,8 @@ export class ProjectDialog extends LitElement {
 
   override disconnectedCallback(): void {
     this.cancelPendingSuggestions();
+    this.cancelPendingTrust();
+    this.abortSuggestions();
     super.disconnectedCallback();
   }
 
@@ -59,6 +68,10 @@ export class ProjectDialog extends LitElement {
    */
   private scheduleSuggestions(): void {
     this.cancelPendingSuggestions();
+    // A keystroke supersedes whatever walk is still running for the previous
+    // one; letting it finish would burn the server's scan budget on an answer
+    // nobody is waiting for.
+    this.abortSuggestions();
     this.suggestionTimer = setTimeout(() => {
       this.suggestionTimer = undefined;
       void this.loadSuggestions();
@@ -71,19 +84,52 @@ export class ProjectDialog extends LitElement {
     this.suggestionTimer = undefined;
   }
 
+  private abortSuggestions(): void {
+    this.suggestionsAbort?.abort();
+    this.suggestionsAbort = undefined;
+  }
+
+  private scheduleTrust(): void {
+    this.cancelPendingTrust();
+    this.trustTimer = setTimeout(() => {
+      this.trustTimer = undefined;
+      void this.loadTrust();
+    }, SUGGESTION_DEBOUNCE_MS);
+  }
+
+  private cancelPendingTrust(): void {
+    if (this.trustTimer === undefined) return;
+    clearTimeout(this.trustTimer);
+    this.trustTimer = undefined;
+  }
+
   private async loadSuggestions() {
+    this.abortSuggestions();
     const requestId = ++this.suggestionRequestId;
+    const query = this.path;
+    const abort = new AbortController();
+    this.suggestionsAbort = abort;
     this.loading = true;
     try {
-      const suggestions = await api.projectDirectories(this.path, this.machineId);
+      const suggestions = await api.projectDirectories(query, this.machineId, { signal: abort.signal });
       if (requestId !== this.suggestionRequestId) return;
       this.suggestions = suggestions;
+      this.suggestionsQuery = query;
+      this.suggestionsFailed = false;
       this.selected = Math.min(this.selected, Math.max(0, suggestions.length - 1));
     } catch {
-      if (requestId === this.suggestionRequestId) this.suggestions = [];
+      if (requestId !== this.suggestionRequestId) return;
+      this.suggestions = [];
+      this.suggestionsQuery = query;
+      this.suggestionsFailed = true;
     } finally {
       if (requestId === this.suggestionRequestId) this.loading = false;
     }
+  }
+
+  /** The rows on screen: only those searched for the path now in the input. */
+  private get displayedSuggestions(): FileSuggestion[] {
+    return this.suggestionsQuery === this.path ? this.suggestions : [];
   }
 
   private setPath(value: string) {
@@ -91,7 +137,7 @@ export class ProjectDialog extends LitElement {
     this.selected = 0;
     this.scheduleSuggestions();
     this.trustTouched = false;
-    void this.loadTrust();
+    this.scheduleTrust();
   }
 
   private pick(suggestion: FileSuggestion) {
@@ -100,7 +146,9 @@ export class ProjectDialog extends LitElement {
     // Picking is an explicit navigation step, so its listing should not wait
     // out the typing debounce.
     this.cancelPendingSuggestions();
+    this.cancelPendingTrust();
     void this.loadSuggestions();
+    void this.loadTrust();
   }
 
   private submit() {
@@ -194,12 +242,12 @@ export class ProjectDialog extends LitElement {
       this.submit();
     } else if (event.key === "ArrowDown") {
       event.preventDefault();
-      this.selected = Math.min(this.selected + 1, Math.max(0, this.suggestions.length - 1));
+      this.selected = Math.min(this.selected + 1, Math.max(0, this.displayedSuggestions.length - 1));
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       this.selected = Math.max(0, this.selected - 1);
     } else if (event.key === "Tab") {
-      const suggestion = this.suggestions[this.selected];
+      const suggestion = this.displayedSuggestions[this.selected];
       if (suggestion === undefined) return;
       event.preventDefault();
       this.pick(suggestion);
@@ -234,12 +282,13 @@ export class ProjectDialog extends LitElement {
           <small class="hint">Type any part of a folder name to search below the path you entered; end with / to browse that folder.</small>
           <div class="suggestions">
             ${this.loading ? html`<div class="hint">Loading folders…</div>` : null}
-            ${this.suggestions.map((suggestion, index) => html`
+            ${this.displayedSuggestions.map((suggestion, index) => html`
               <button class=${index === this.selected ? "selected" : ""} @click=${() => { this.pick(suggestion); }}>
                 ${suggestion.path}
               </button>
             `)}
-            ${!this.loading && this.suggestions.length === 0 ? html`<div class="hint">No matching folders found. Enter a full path to create it.</div>` : null}
+            ${!this.loading && this.suggestionsFailed && this.suggestionsQuery === this.path ? html`<div class="hint">Search failed - try again</div>` : null}
+            ${!this.loading && !this.suggestionsFailed && this.suggestionsQuery === this.path && this.displayedSuggestions.length === 0 ? html`<div class="hint">No matching folders found. Enter a full path to create it.</div>` : null}
           </div>
           <label class="check">
             <input type="checkbox" .checked=${this.createMissing} @change=${(event: InputEvent) => { this.onCreateMissingChange(event); }} />

@@ -16,6 +16,12 @@ import type { ClientFileSuggestion } from "../types.js";
 
 const MAX_SUGGESTIONS = 80;
 const MAX_SCANNED_DIRECTORIES = 4_000;
+/**
+ * Wall-clock twin of the count budget: a frontier of few-but-slow directories
+ * (cold network mounts, spinning rust) could otherwise hold a request open
+ * long past the point where any reader is still waiting.
+ */
+const MAX_SCAN_MS = 2_000;
 const MAX_SEARCH_DEPTH = 3;
 const MAX_MISSING_ANCESTORS = 8;
 
@@ -65,7 +71,7 @@ export function expandUserPath(path: string): string {
   return isAbsolute(path) ? resolve(path) : resolve(process.cwd(), path);
 }
 
-export async function listDirectorySuggestions(query = ""): Promise<ClientFileSuggestion[]> {
+export async function listDirectorySuggestions(query = "", signal?: AbortSignal): Promise<ClientFileSuggestion[]> {
   const raw = query.trim();
   const expanded = expandUserPath(raw);
   const target = isDirectoryListingQuery(raw)
@@ -75,7 +81,9 @@ export async function listDirectorySuggestions(query = ""): Promise<ClientFileSu
 
   // Browsing shows one level, exactly like a file manager. A search term is
   // what unlocks the downward scan.
-  const candidates = await collectDirectories(target.base, target.search === "" ? 0 : MAX_SEARCH_DEPTH);
+  const candidates = await collectDirectories(target.base, target.search === "" ? 0 : MAX_SEARCH_DEPTH, signal);
+  // The client that asked is gone; ranking the remainder is wasted work.
+  if (signal?.aborted === true) return [];
   const ranked = target.search === "" ? sortByPath(candidates) : rankDirectories(candidates, target.search);
   return ranked.slice(0, MAX_SUGGESTIONS).map((candidate) => ({ path: `${candidate.path}/`, kind: "other" }));
 }
@@ -114,14 +122,19 @@ async function isDirectory(path: string): Promise<boolean> {
 
 /**
  * Breadth-first so shallow directories are always gathered before the scan
- * budget can be exhausted by one deep branch.
+ * budget can be exhausted by one deep branch. Both budgets (directories and
+ * wall clock) and a client disconnect are checked between frontier levels —
+ * the granularity at which the walk can actually stop, since an in-flight
+ * readdir cannot be interrupted.
  */
-async function collectDirectories(parent: string, maxDepth: number): Promise<DirectoryCandidate[]> {
+async function collectDirectories(parent: string, maxDepth: number, signal?: AbortSignal): Promise<DirectoryCandidate[]> {
   const collected: DirectoryCandidate[] = [];
   let frontier: { path: string; relativePath: string; depth: number }[] = [{ path: parent, relativePath: "", depth: -1 }];
   let scanned = 0;
+  const startedAt = Date.now();
 
   while (frontier.length > 0 && scanned < MAX_SCANNED_DIRECTORIES) {
+    if (signal?.aborted === true || Date.now() - startedAt >= MAX_SCAN_MS) break;
     const next: typeof frontier = [];
     for (const directory of frontier) {
       if (scanned >= MAX_SCANNED_DIRECTORIES) break;

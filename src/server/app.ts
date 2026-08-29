@@ -83,8 +83,16 @@ function registerLocalProjectRoutes(app: FastifyInstance, projects: ProjectServi
   });
 
   app.get<{ Querystring: { q?: string } }>(`${prefix}/project-directories`, async (request, reply) => {
+    // Every keystroke re-issues this search, so a client that already moved on
+    // (or closed the dialog) must not keep a directory walk running. The
+    // request's 'close' fires both on early disconnect and after a normal
+    // response, so the response boundary decides whether it means "gone".
+    const disconnected = new AbortController();
+    request.raw.once("close", () => {
+      if (!reply.raw.writableEnded) disconnected.abort();
+    });
     try {
-      return await listDirectorySuggestions(request.query.q ?? "");
+      return await listDirectorySuggestions(request.query.q ?? "", disconnected.signal);
     } catch (error) {
       return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });
     }

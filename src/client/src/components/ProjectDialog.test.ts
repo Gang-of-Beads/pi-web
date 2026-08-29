@@ -154,6 +154,64 @@ interface ProjectDialogProps {
 }
 
 /**
+ * The visible list must belong to the text currently in the input: rows for a
+ * query the reader has already left are noise that reads as the answer.
+ */
+describe("folder list freshness", () => {
+  it("drops a superseded query's rows the moment the path changes", async () => {
+    const dialog = await mountDialog();
+    vi.mocked(api.projectDirectories).mockResolvedValueOnce([{ path: "/work/one-place/", kind: "other" }]);
+    const input = pathInput(dialog);
+    input.value = "/work/one";
+    input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+    await vi.waitFor(() => {
+      expect(dialog.shadowRoot?.querySelector(".suggestions button")?.textContent).toContain("/work/one-place/");
+    });
+
+    input.value = "/work/two";
+    input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+    await settleRenderedDialog(dialog);
+
+    expect(dialog.shadowRoot?.querySelectorAll(".suggestions button")).toHaveLength(0);
+  });
+
+  it("reads a failed search as a failure, not as no matches", async () => {
+    const dialog = await mountDialog();
+    vi.mocked(api.projectDirectories).mockRejectedValueOnce(new Error("scan exploded"));
+    const input = pathInput(dialog);
+    input.value = "/work/broken";
+    input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+
+    await vi.waitFor(() => {
+      expect(dialog.shadowRoot?.textContent).toContain("Search failed");
+    });
+
+    expect(dialog.shadowRoot?.textContent).not.toContain("No matching folders found");
+  });
+
+  it("keeps the failure reading as a failure after the search is retried and fails again", async () => {
+    const dialog = await mountDialog();
+    vi.mocked(api.projectDirectories).mockRejectedValue(new Error("scan exploded"));
+    const input = pathInput(dialog);
+    input.value = "/work/broken";
+    input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+    await vi.waitFor(() => {
+      expect(dialog.shadowRoot?.textContent).toContain("Search failed");
+    });
+
+    input.value = "/work/broken2";
+    input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+    input.value = "/work/broken";
+    input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+    await vi.waitFor(() => {
+      expect(dialog.shadowRoot?.textContent).toContain("Search failed");
+    });
+
+    expect(dialog.shadowRoot?.textContent).not.toContain("No matching folders found");
+  });
+});
+
+/**
  * Two keystrokes, two listings in flight.
  */
 describe("folder listing freshness", () => {

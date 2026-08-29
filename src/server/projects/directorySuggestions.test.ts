@@ -107,4 +107,13 @@ describe("project directory suggestions", () => {
       `${join(root, "playria")}/`,
     ]);
   });
+
+  it("stops scanning when the request's abort signal fires", async () => {
+    const root = await tempRoot();
+    await makeTree(root, ["playria", "also-playria"]);
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(listDirectorySuggestions(join(root, "playria"), controller.signal)).resolves.toEqual([]);
+  });
 });
