@@ -1,5 +1,12 @@
 # @jmfederico/pi-web
 
+## 1.202608.69
+
+### Patch Changes
+
+- 92c0aa0: Show a subagent run only in the session that started it. A run with no directory of its own was attributed to whichever session happened to be listing while its transcript was being written, so any session's live child appeared in every session at once - two sessions showing a running ring, and a session with no children of its own reporting a background run. Membership now comes from what is written on disk: the run's directory under its parent, or the spawn the parent recorded in its own transcript. Measured on a real project, three runs were previously claimed by all eight sessions and none is now claimed by more than one.
+- a79ec1b: Stop an extension dialog's answer controls covering the choices above them on a phone. The footer stuck to the bottom of the screen while the card's end was below the fold, so it sat on top of the card's own option rows: a tap aimed at an option reached Cancel and answered the dialog. The footer and the matching sticky header now scroll with the card where pointers are coarse.
+
 ## 1.202608.68
 
 ### Patch Changes
