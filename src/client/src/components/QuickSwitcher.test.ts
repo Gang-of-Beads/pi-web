@@ -403,15 +403,20 @@ describe("tiles on a small phone", () => {
    * tile's whole width goes to the name instead of being split with a control
    * that is only occasionally used.
    */
-  it("gives the tile's width to the name on a narrow screen", () => {
+  it("gives the tile's width to the name, and clamps that name the same way at every width", () => {
     const sheet = String(QuickSwitcher.styles);
     const narrow = /@media\s*\(max-width:\s*\d+px\)\s*\{([\s\S]*?)\n\s*\}\s*\n/u.exec(sheet)?.[1] ?? "";
 
-    // The menu button is now in the tile's corner at every width, so the
-    // narrow rule only has to give the name two lines.
-    expect(narrow).toMatch(/\.row-title[^}]*line-clamp/u);
-    const sheetText = String(QuickSwitcher.styles);
-    expect(sheetText).toMatch(/\.row-menu-toggle[^}]*position:\s*absolute/u);
+    // The menu button is in the tile's corner at every width, so the narrow
+    // rule only has to narrow the columns.
+    expect(narrow).toMatch(/\.rows[^}]*minmax/u);
+    // The clamp is not part of that breakpoint: a title that wraps to two lines
+    // on a phone and one on a desktop makes the same list two different shapes,
+    // and tiles whose height depends on the name are the ones the owner kept
+    // reporting as "different sizes".
+    expect(narrow).not.toMatch(/\.row-title/u);
+    expect(sheet).toMatch(/\.row-title[^}]*line-clamp:\s*2/u);
+    expect(sheet).toMatch(/\.row-menu-toggle[^}]*position:\s*absolute/u);
   });
 });
 

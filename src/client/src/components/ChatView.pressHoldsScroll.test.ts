@@ -110,110 +110,13 @@ describe("ChatView catching up after a press that suppressed following", () => {
  * (the card 300px below the scroller's top) and the assertions read the scroll
  * the component performs, not pixels.
  */
-describe("ChatView holding an opened card's alignment for a press", () => {
-  it("does not align a newly opened dialog while a finger is down, and aligns it on release", async () => {
-    const view = await mountView();
-    const chat = scroller(view);
-    pinToBottom(view);
-    stubAlignmentGeometry(view, 300);
-
-    chat.dispatchEvent(pointerEvent("pointerdown"));
-    view.pendingDialogs = [openDialog()];
-    await settleFrames(view);
-
-    expect(chat.scrollTop).toBe(500);
-
-    chat.dispatchEvent(pointerEvent("pointerup"));
-    await settleCatchUp(view);
-
-    expect(chat.scrollTop).toBe(800);
-  });
-
-  it("does not align a newly opened ask while a finger is down, and aligns it on release", async () => {
-    const view = await mountView();
-    const chat = scroller(view);
-    pinToBottom(view);
-    stubAlignmentGeometry(view, 250);
-
-    chat.dispatchEvent(pointerEvent("pointerdown"));
-    view.pendingAsk = openAsk();
-    await settleFrames(view);
-
-    expect(chat.scrollTop).toBe(500);
-
-    chat.dispatchEvent(pointerEvent("pointerup"));
-    await settleCatchUp(view);
-
-    expect(chat.scrollTop).toBe(750);
-  });
-
-  it("aligns immediately when no finger is down", async () => {
-    const view = await mountView();
-    const chat = scroller(view);
-    pinToBottom(view);
-    stubAlignmentGeometry(view, 300);
-
-    view.pendingDialogs = [openDialog()];
-    await settleFrames(view);
-
-    expect(chat.scrollTop).toBe(800);
-  });
-
-  it("falls back to the bottom when the deferred dialog was answered before the release", async () => {
-    const view = await mountView();
-    const chat = scroller(view);
-    pinToBottom(view);
-    stubAlignmentGeometry(view, 300);
-
-    chat.dispatchEvent(pointerEvent("pointerdown"));
-    view.pendingDialogs = [openDialog()];
-    await settleFrames(view);
-    // Answered elsewhere while the finger is still down: the card is gone.
-    view.pendingDialogs = [];
-    await settleFrames(view);
-
-    chat.dispatchEvent(pointerEvent("pointerup"));
-    await settleCatchUp(view);
-
-    expect(chat.scrollTop).toBe(1000);
-  });
-
-  it("replays an alignment refused by a later press instead of leaving it stale", async () => {
-    const view = await mountView();
-    const chat = scroller(view);
-    pinToBottom(view);
-    stubAlignmentGeometry(view, 300);
-
-    // First press defers the dialog's alignment; the reader scrolled away, so
-    // the release replays nothing - and the deferral must not outlive the press.
-    chat.dispatchEvent(pointerEvent("pointerdown"));
-    view.pendingDialogs = [openDialog()];
-    await settleFrames(view);
-    chat.scrollTop = 10;
-    chat.dispatchEvent(new Event("scroll"));
-    chat.dispatchEvent(pointerEvent("pointerup"));
-    await settleCatchUp(view);
-    expect(chat.scrollTop).toBe(10);
-
-    // A later press with no dialog open must catch up to the bottom, not to a
-    // stale alignment.
-    pinToBottom(view);
-    chat.dispatchEvent(pointerEvent("pointerdown"));
-    window.dispatchEvent(new Event("resize"));
-    await settleFrames(view);
-    chat.dispatchEvent(pointerEvent("pointerup"));
-    await settleCatchUp(view);
-
-    expect(chat.scrollTop).toBe(1000);
-  });
-});
-
-/**
- * The notifications drawer is its own scroller, and a notification arriving
- * while the reader rests on it prepends a row above every settled card. The
- * drawer therefore holds live tray updates while a pointer is down and applies
- * them once the press ends - the same gate discipline the transcript follows.
+/*
+ * The alignment this block guarded is gone: an opened card no longer lives in
+ * the transcript, so there is no scroll to defer and nothing to replay on
+ * release. The release-time replay was itself moving content between the
+ * reader's touchend and the click it produced.
  */
+
 describe("ChatView holding the notification drawer still under a finger", () => {
   it("does not show a notification that arrives during a press until the press ends", async () => {
     const view = await mountViewWithInbox();
@@ -308,24 +211,6 @@ function restoreGeometryStubs(): void {
   clientHeightDescriptor = undefined;
 }
 
-/**
- * The alignment moves the card's top to the scroller's top. happy-dom reports
- * zero for every box, so the scroller reads top 0 and every open ask/dialog
- * card reads top `offset` - installed on the prototype so a card created after
- * the stub (the normal order: the press comes first, then the card opens) is
- * covered too. Everything else reads an all-zero box, which the component
- * treats as "no dock, no room", not as a scroll trigger.
- */
-function stubAlignmentGeometry(view: ChatView, offset: number): void {
-  const chat = scroller(view);
-  const domRect = (top: number): DOMRect => ({ top, bottom: top + 200, left: 0, right: 393, width: 393, height: 200, x: 0, y: top, toJSON: () => ({}) });
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-    if (this === chat) return domRect(0);
-    if (this.classList.contains("open-dialog-card") || this.tagName === "ASK-USER-CARD") return domRect(offset);
-    return domRect(0);
-  });
-}
-
 function holdThroughViewportGrowth(view: ChatView, chat: HTMLElement): void {
   chat.dispatchEvent(pointerEvent("pointerdown"));
   // The viewport resize the keyboard causes, driven at the listener the
@@ -345,14 +230,6 @@ async function settle(): Promise<void> {
   await Promise.resolve();
 }
 
-/** Drive the frame the alignment was scheduled on and the post-release timers. */
-async function settleFrames(view: ChatView): Promise<void> {
-  // Lit renders (and updated() schedules the alignment frame) in a microtask;
-  // flush the render first or the frame fires before the card exists.
-  await view.updateComplete;
-  flushFrames(view);
-  await view.updateComplete;
-}
 
 async function settleCatchUp(view: ChatView): Promise<void> {
   vi.advanceTimersByTime(TOUCH_SETTLE_MS + 32);
@@ -414,12 +291,6 @@ function requiredInbox(view: ChatView): SelectedSessionNotificationView {
   return inbox;
 }
 
-function pinToBottom(view: ChatView): void {
-  const chat = scroller(view);
-  chat.scrollTop = 500;
-  chat.dispatchEvent(new Event("scroll"));
-}
-
 function inboxWithArrival(previous: SelectedSessionNotificationView): SelectedSessionNotificationView {
   return {
     ...previous,
@@ -428,25 +299,6 @@ function inboxWithArrival(previous: SelectedSessionNotificationView): SelectedSe
       ...previous.notifications.filter((notification) => notification.id !== "n-new" && notification.id !== "n-new-2"),
     ],
     retainedCount: previous.notifications.length + 1,
-  };
-}
-
-function openDialog(): import("../../../shared/apiTypes").PendingExtensionDialog {
-  return {
-    dialogId: "dlg-press-1",
-    kind: "select",
-    title: "Deploy where?",
-    askedAt: "2026-08-29T10:00:00.000Z",
-    runScoped: false,
-    options: ["Staging", "Production"],
-  };
-}
-
-function openAsk(): import("../../../shared/apiTypes").PendingAskUser {
-  return {
-    askId: "ask-press-1",
-    askedAt: "2026-08-29T10:00:00.000Z",
-    questions: [{ id: "q1", question: "Proceed?", options: [{ value: "yes", label: "Yes" }, { value: "no", label: "No" }] }],
   };
 }
 

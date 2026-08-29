@@ -11,15 +11,17 @@ afterEach(() => {
 });
 
 describe("ChatView open extension dialogs", () => {
-  it("renders the oldest pending dialog at the transcript foot with a stable chat-scroll anchor", async () => {
+  it("holds the oldest pending dialog outside the transcript so nothing can push it", async () => {
     const view = await mountView();
     const oldest = openDialog("dlg-1", "Allow file writes?");
     view.pendingDialogs = [oldest, openDialog("dlg-2", "Pick a region", { kind: "select", options: ["eu", "us"] })];
     await view.updateComplete;
 
-    const card = requiredElement(view.shadowRoot?.querySelector<ExtensionDialogCard>(".chat > extension-dialog-card.open-dialog-card"), "open dialog card");
+    // Outside the scrolling transcript: a card drawn at the transcript foot is
+    // moved by every reply, tool row and notification that arrives after it.
+    expect(view.shadowRoot?.querySelector(".chat extension-dialog-card.open-dialog-card")).toBeNull();
+    const card = requiredElement(view.shadowRoot?.querySelector<ExtensionDialogCard>(".waiting-slot > extension-dialog-card.open-dialog-card"), "open dialog card");
     expect(card).toBeInstanceOf(ExtensionDialogCard);
-    expect(card.getAttribute("data-scroll-anchor-id")).toBe("dialog:dlg-1");
     expect(card.dialog).toBe(oldest);
     expect(view.shadowRoot?.querySelector(".queued-dialogs")?.textContent).toContain("1 more extension dialog queued");
   });
@@ -29,22 +31,24 @@ describe("ChatView open extension dialogs", () => {
     view.pendingDialogs = [openDialog("dlg-1", "Allow file writes?")];
     await view.updateComplete;
 
-    expect(view.shadowRoot?.querySelector(".chat > extension-dialog-card.open-dialog-card")).not.toBeNull();
+    expect(view.shadowRoot?.querySelector(".waiting-slot > extension-dialog-card.open-dialog-card")).not.toBeNull();
     expect(view.shadowRoot?.querySelector(".queued-dialogs")).toBeNull();
   });
 
-  it("scrolls a newly opened dialog to its start", async () => {
+  it("opens a dialog without scrolling the transcript underneath the reader", async () => {
     const view = await mountView();
     let dialogStartScrolls = 0;
-    let bottomScrolls = 0;
     if (!Reflect.set(view, "scrollToOpenDialog", () => { dialogStartScrolls += 1; })) throw new Error("Could not observe ChatView.scrollToOpenDialog");
+    let bottomScrolls = 0;
     if (!Reflect.set(view, "scrollToBottom", () => { bottomScrolls += 1; })) throw new Error("Could not observe ChatView.scrollToBottom");
 
     view.pendingDialogs = [openDialog("dlg-1", "Allow file writes?")];
     await view.updateComplete;
 
-    expect(dialogStartScrolls).toBe(1);
-    expect(bottomScrolls).toBe(0);
+    expect(dialogStartScrolls).toBe(0);
+    // A transcript that follows its newest message is fine; it no longer
+    // carries the dialog, so it cannot move it.
+    expect(bottomScrolls).toBeLessThanOrEqual(1);
   });
 
   it("forwards the answer and cancel callbacks to the open dialog card", async () => {
@@ -75,7 +79,12 @@ describe("ChatView closed extension dialogs", () => {
     view.pendingDialogs = [openDialog("dlg-1", "Allow file writes?")];
     await view.updateComplete;
 
-    const cards = [...(view.shadowRoot?.querySelectorAll<ExtensionDialogCard>(".chat > extension-dialog-card") ?? [])];
+    // The settled one stays in the transcript where it happened; the open one
+    // waits in its own row, out of reach of anything that arrives.
+    const cards = [
+      ...(view.shadowRoot?.querySelectorAll<ExtensionDialogCard>(".chat > extension-dialog-card") ?? []),
+      ...(view.shadowRoot?.querySelectorAll<ExtensionDialogCard>(".waiting-slot > extension-dialog-card") ?? []),
+    ];
     expect(cards).toHaveLength(2);
     const closedCard = requiredElement(cards[0], "closed dialog card");
     expect(closedCard.classList.contains("closed-dialog-card")).toBe(true);

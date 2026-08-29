@@ -991,12 +991,9 @@ export class ChatView extends LitElement {
     if (changed.has("loadingMore") && !this.loadingMore) this.loadMoreRequested = false;
     if (changed.has("hasMore") && !this.hasMore) this.loadMoreRequested = false;
     if (changed.has("sessionId")) this.restoreScrollPosition();
-    const openedAsk = changed.has("pendingAsk") && this.isNewPendingAsk(changed.get("pendingAsk"));
-    const openedDialog = changed.has("pendingDialogs") && this.isNewOpenDialog(changed.get("pendingDialogs"));
-    // The form uses the transcript scroller. Start a new long form at question
-    // one rather than applying the usual live-tail scroll and landing at its end.
-    if (!changed.has("sessionId") && openedAsk && this.pinnedToBottom) this.scrollToOpenAsk();
-    else if (!changed.has("sessionId") && openedDialog && this.pinnedToBottom) this.scrollToOpenDialog();
+    // A question no longer uses the transcript scroller, so opening one scrolls
+    // nothing: it appears in its own row, already in view. The scroll that used
+    // to bring it into view was itself moving the page under the reader.
     // A message queued from elsewhere grows the transcript from the bottom. It
     // arrives via the status (status.queuedMessages), not via `messages`, so it
     // would otherwise appear below the fold while the view stays put.
