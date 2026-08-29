@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { SessionBackgroundTaskInfo } from "../../shared/apiTypes.js";
 
@@ -26,6 +26,14 @@ import type { SessionBackgroundTaskInfo } from "../../shared/apiTypes.js";
  * ownership: a task belongs to the session whose transcript mentions its
  * output path, which the tool writes into its own result when the task starts.
  * That is exact, survives a restart, and needs no cooperation from the tool.
+ *
+ * But the transcript's proof is perishable: compaction rewrites the session
+ * file and the Output lines are exactly what it deletes, so a task that ran
+ * longer than one compaction cycle lost its owner and vanished from every
+ * list. Ownership that was observed is therefore recorded, once, in a durable
+ * per-workspace file beside the registry, and later lists attribute from the
+ * record. First writer wins: a session that merely quotes another session's
+ * output path must not be able to claim its task.
  */
 
 /** A record claiming to run whose process is gone is reported as it is, not as running. */
@@ -119,6 +127,47 @@ export async function taskIdsForSession(transcriptPath: string): Promise<Set<str
   return ids;
 }
 
+/**
+ * Ownership that was proven once, kept forever: taskId → transcript file name.
+ *
+ * The file lives beside the registry it describes, which is gitignored runtime
+ * state ({@link TASKS_SUBDIR} is already ignored), and is keyed by the
+ * transcript's base name — the one identity this reader is handed. A missing
+ * or unreadable file means nothing was recorded yet, not an error: the
+ * transcript scan still works, and the next sighting re-records.
+ */
+function attributionPath(cwd: string): string {
+  return join(cwd, TASKS_SUBDIR, "attribution.json");
+}
+
+async function readAttributions(cwd: string): Promise<Map<string, string>> {
+  try {
+    const parsed: unknown = JSON.parse(await readFile(attributionPath(cwd), "utf8"));
+    const attributions = new Map<string, string>();
+    if (typeof parsed !== "object" || parsed === null) return attributions;
+    for (const [id, owner] of Object.entries(parsed)) {
+      const ownerFile = asString(owner);
+      if (id !== "" && ownerFile !== undefined) attributions.set(id, ownerFile);
+    }
+    return attributions;
+  } catch {
+    return new Map();
+  }
+}
+
+/** Atomic replace, so a poll landing mid-write cannot hand back a torn file. */
+async function writeAttributions(cwd: string, attributions: Map<string, string>): Promise<void> {
+  const path = attributionPath(cwd);
+  const staged = `${path}.${String(process.pid)}.tmp`;
+  try {
+    await writeFile(staged, JSON.stringify(Object.fromEntries(attributions), null, 2));
+    await rename(staged, path);
+  } catch {
+    // A failed write costs only durability until the next sighting re-records;
+    // it must never fail the list that was trying to maintain it.
+  }
+}
+
 /** Every task record under a workspace, regardless of which session started it. */
 export async function readTaskRecords(cwd: string): Promise<Map<string, { task: StoredTask; file: string }>> {
   const root = join(cwd, TASKS_SUBDIR);
@@ -203,8 +252,27 @@ export async function listBackgroundTasks(
   probeProcessStart: (pid: number) => Promise<number | undefined> = processStartMs,
 ): Promise<SessionBackgroundTaskInfo[]> {
   const [ids, records] = await Promise.all([taskIdsForSession(transcriptPath), readTaskRecords(cwd)]);
-  const tasks: SessionBackgroundTaskInfo[] = [];
+  // Record what this transcript just proved, then attribute from the record.
+  // The key is the transcript's base name, the one session identity this reader
+  // is handed; first writer wins, so a session that quotes another's output
+  // path cannot claim a task it did not start.
+  const session = basename(transcriptPath);
+  const attributions = await readAttributions(cwd);
+  let recorded = false;
   for (const id of ids) {
+    if (!attributions.has(id)) {
+      attributions.set(id, session);
+      recorded = true;
+    }
+  }
+  if (recorded) await writeAttributions(cwd, attributions);
+  const owned = new Set(ids);
+  for (const [id, owner] of attributions) {
+    if (owner === session) owned.add(id);
+    else owned.delete(id); // the record outvotes a quoted mention
+  }
+  const tasks: SessionBackgroundTaskInfo[] = [];
+  for (const id of owned) {
     const record = records.get(id);
     if (record === undefined) continue;
     const { task } = record;
