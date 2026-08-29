@@ -11,7 +11,6 @@ import {
   splitDialogTitle,
   type ExtensionDialogAnswerCallback,
   type ExtensionDialogCancelCallback,
-  type ExtensionDialogDismissCallback,
 } from "./ExtensionDialogCard";
 
 afterEach(() => {
