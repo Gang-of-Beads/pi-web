@@ -366,6 +366,7 @@ export class PromptEditor extends LitElement {
         </div>
         <div class="actions">
           ${this.renderCompactStatus()}
+          ${this.renderHistoryButton()}
           ${this.renderDictateButton()}
           <button class="icon-button send-button" ?disabled=${busy} title=${queuesInput ? "Steer — joins the current turn at the next safe point" : "Send message"} aria-label=${queuesInput ? "Steer current response (queued if busy)" : "Send message"} @click=${() => { this.send(this.canSteer ? "steer" : "followUp"); }}>${this.canSteer ? renderSteerIcon() : queuesInput ? renderQueueIcon() : renderSendIcon()}</button>
           <button class="icon-button stop-button" ?disabled=${this.disabled || !this.canStop} title=${this.canStop ? "Stop current work and clear queued messages" : "Nothing running"} aria-label="Stop current work" @click=${() => this.onStop?.()}>${renderStopIcon()}</button>
@@ -623,6 +624,27 @@ export class PromptEditor extends LitElement {
       : state.kind === "transcribing" ? "Transcribing…"
       : "Listening…";
     return html`<div class=${`mode-hint${state.kind === "error" || state.kind === "denied" || state.kind === "unavailable" ? " mode-hint-problem" : ""}`} role="status">${text}</div>`;
+  }
+
+  /**
+   * Prompt history answers Ctrl/Cmd+R, which a phone cannot type. The same
+   * picker gets a visible door in the controls row whenever this session has
+   * prompts behind it.
+   */
+  private renderHistoryButton() {
+    if (this.disabled) return null;
+    const key = draftStorageKey(this.machineId, this.sessionId);
+    if (key === undefined || loadPromptHistory(key).length === 0) return null;
+    return html`
+      <button
+        class="editor-history icon-button"
+        type="button"
+        ?disabled=${this.disabled}
+        title="Reuse an earlier prompt"
+        aria-label="Reuse an earlier prompt"
+        @click=${() => { this.openPromptHistoryPicker(); }}
+      >⟲</button>
+    `;
   }
 
   private renderDictateButton() {

@@ -1,0 +1,59 @@
+// @vitest-environment happy-dom
+
+import { afterEach, describe, expect, it } from "vitest";
+import { machineSessionKey } from "../machineKeys";
+import { promptHistoryKey } from "../promptHistory";
+import type { AutocompleteMenu } from "./AutocompleteMenu";
+import { PromptEditor } from "./PromptEditor";
+
+afterEach(() => { document.body.replaceChildren(); localStorage.clear(); });
+
+/**
+ * Prompt history answered only to Ctrl/Cmd+R. A phone has no keyboard, so the
+ * sentences it had already typed were unreachable on the device where typing
+ * is hardest.
+ */
+describe("the composer's history entrance", () => {
+  it("appears in the controls row once this session has prompts behind it", async () => {
+    seedHistory("typed on the train earlier");
+    const editor = await mount();
+    const button = historyButton(editor);
+
+    expect(button).not.toBeNull();
+    expect(editor.shadowRoot?.querySelector(".actions")?.contains(button)).toBe(true);
+  });
+
+  it("opens the same history picker the shortcut opens", async () => {
+    seedHistory("typed on the train earlier");
+    const editor = await mount();
+
+    historyButton(editor)?.click();
+    await editor.updateComplete;
+
+    const menu = editor.shadowRoot?.querySelector<AutocompleteMenu>("autocomplete-menu");
+    expect(menu?.items.map((item) => item.kind)).toContain("history");
+  });
+
+  it("is absent when the session has no history yet", async () => {
+    const editor = await mount();
+
+    expect(historyButton(editor)).toBeNull();
+  });
+});
+
+function seedHistory(entry: string): void {
+  localStorage.setItem(promptHistoryKey(machineSessionKey("local", "s")), JSON.stringify([entry]));
+}
+
+function historyButton(editor: PromptEditor): HTMLButtonElement | null {
+  return editor.shadowRoot?.querySelector<HTMLButtonElement>(".editor-history") ?? null;
+}
+
+async function mount(): Promise<PromptEditor> {
+  const editor = new PromptEditor();
+  editor.sessionId = "s";
+  editor.machineId = "local";
+  document.body.append(editor);
+  await editor.updateComplete;
+  return editor;
+}
