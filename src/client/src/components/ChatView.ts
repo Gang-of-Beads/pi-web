@@ -1456,7 +1456,7 @@ export class ChatView extends LitElement {
             class=${`activity-filter activity-filter-${option.id}${option.id === selected ? " selected" : ""}`}
             aria-pressed=${String(option.id === selected)}
             @click=${() => { this.activityFilter = option.id; }}
-          >${option.label} <span class="activity-filter-count">${String(option.count)}</span></button>
+          >${option.label}${option.count === 0 ? null : html` <span class="activity-filter-count">${String(option.count)}</span>`}</button>
         `)}
       </div>
     `;
@@ -1497,8 +1497,9 @@ export class ChatView extends LitElement {
       ...activity.taskRows.map((row, index): ActivityListEntry => ({ kind: "tasks", index, status: row.status, startedAt: row.task.startedAt, row })),
     ]).filter((entry) => filter === "all" || filter === entry.kind);
     const entries = inFilter.filter((entry) => scope === "all" || !isFinishedActivityStatus(entry.status));
-    // Counted within the filter the reader is looking through: "Show 5 finished"
-    // that reveals one row is a button that does not keep its word.
+    // Only whether history exists, not how much: the number belongs to what is
+    // happening now, and a total that counts hundreds of settled rows drowns
+    // the one that is running.
     const finished = inFilter.filter((entry) => isFinishedActivityStatus(entry.status)).length;
     return html`
       <div class="subagents-list" id="session-activity-list" role="tabpanel" aria-labelledby="drawer-tab-activity">
@@ -1514,7 +1515,7 @@ export class ChatView extends LitElement {
               aria-controls="session-activity-list"
               aria-expanded=${String(this.activityScope === "all")}
               @click=${(event: MouseEvent) => { this.toggleActivityScope(event.currentTarget); }}
-            >${this.activityScope === "all" ? "Hide finished" : `Show ${String(finished)} finished`}</button>
+            >${this.activityScope === "all" ? "Hide finished" : "Show finished"}</button>
           `}
       </div>
     `;
@@ -3155,16 +3156,33 @@ export interface ActivityFilterOption {
   count: number;
 }
 
-/** The filter chips worth offering: "All" plus every kind that has rows. */
-export function activityFilterOptions(activity: { rows: readonly unknown[]; runRows: readonly unknown[]; taskRows: readonly unknown[] }): ActivityFilterOption[] {
+/**
+ * The filter chips worth offering: "All" plus every kind that has rows.
+ *
+ * A chip counts what is running, not what has ever run. The totals said 109
+ * while the panel said "Nothing running right now", which is a number
+ * describing history dressed as a number describing the present. A kind that
+ * has only finished rows keeps its chip - the reader still needs it to look
+ * through history - but shows no count.
+ */
+export function activityFilterOptions(activity: { rows: readonly ActivityStatusRow[]; runRows: readonly ActivityStatusRow[]; taskRows: readonly ActivityStatusRow[] }): ActivityFilterOption[] {
   const kinds: ActivityFilterOption[] = ([
-    { id: "subagents", label: "Subagents", count: activity.rows.length },
-    { id: "runs", label: "Agent runs", count: activity.runRows.length },
-    { id: "tasks", label: "Tasks", count: activity.taskRows.length },
-  ] satisfies ActivityFilterOption[]).filter((kind) => kind.count > 0);
-  if (kinds.length <= 1) return kinds.length === 0 ? [] : kinds;
-  const total = activity.rows.length + activity.runRows.length + activity.taskRows.length;
-  return [{ id: "all", label: "All", count: total }, ...kinds];
+    { id: "subagents", label: "Subagents", rows: activity.rows },
+    { id: "runs", label: "Agent runs", rows: activity.runRows },
+    { id: "tasks", label: "Tasks", rows: activity.taskRows },
+  ] as const)
+    .filter((kind) => kind.rows.length > 0)
+    .map((kind) => ({ id: kind.id, label: kind.label, count: activeActivityCount(kind.rows) }));
+  if (kinds.length <= 1) return kinds;
+  return [{ id: "all", label: "All", count: kinds.reduce((running, kind) => running + kind.count, 0) }, ...kinds];
+}
+
+interface ActivityStatusRow {
+  readonly status: ActivityStatus;
+}
+
+function activeActivityCount(rows: readonly ActivityStatusRow[]): number {
+  return rows.filter((row) => !isFinishedActivityStatus(row.status)).length;
 }
 
 /**

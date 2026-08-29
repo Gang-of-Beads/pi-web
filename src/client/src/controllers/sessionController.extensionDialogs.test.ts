@@ -145,13 +145,20 @@ describe("SessionController extension dialog state", () => {
     expect(state.status?.sessionId).toBe(replacementSession.id);
   });
 
-  it("keeps the closed dialog's outcome so the card can render what happened", async () => {
+  it("lets an answered dialog leave instead of parking a row nobody can remove", async () => {
     const harness = await liveSession();
 
     harness.socket.emit({ type: "dialog.opened", dialog: dialog("dialog-1", "select") });
     harness.socket.emit({ type: "dialog.closed", dialogId: "dialog-1", reason: "answered", answer: "SQLite" });
 
-    expect(harness.state().closedDialogs).toEqual([{ dialog: dialog("dialog-1", "select"), reason: "answered", answer: "SQLite" }]);
+    // Outcome cards render after the transcript, so nothing ever pushes them
+    // off screen: an answered dialog that stayed would sit above the composer
+    // for the rest of the session. Its record is the drawer notification.
+    expect(harness.state().closedDialogs).toEqual([]);
+    expect(harness.state().pendingDialogs).toEqual([]);
+    // Suppression cannot depend on the card: a status snapshot built before the
+    // close must not re-open a question that was answered.
+    expect(harness.state().dismissedDialogIds).toEqual(["dialog-1"]);
   });
 
   it("records a close without an answer for cancel-like reasons", async () => {
@@ -288,7 +295,7 @@ describe("SessionController extension dialog state", () => {
 });
 
 describe("SessionController extension dialog answers", () => {
-  it("answers a dialog, records the outcome, and applies the returned status", async () => {
+  it("answers a dialog, suppresses it, and applies the returned status", async () => {
     const answerCalls: { dialogId: string; value: unknown; machineId: string }[] = [];
     const closedStatus = status(oldSession.id);
     let state = selectedState({ status: statusWithDialogs(oldSession.id, [dialog("dialog-1")]), pendingDialogs: [dialog("dialog-1")] });
@@ -310,7 +317,8 @@ describe("SessionController extension dialog answers", () => {
     await controller.answerDialog("dialog-1", true);
 
     expect(answerCalls).toEqual([{ dialogId: "dialog-1", value: true, machineId: "local" }]);
-    expect(state.closedDialogs).toEqual([{ dialog: dialog("dialog-1"), reason: "answered", answer: true }]);
+    expect(state.closedDialogs).toEqual([]);
+    expect(state.dismissedDialogIds).toEqual(["dialog-1"]);
     expect(state.pendingDialogs).toEqual([]);
     expect(state.status).toEqual(closedStatus);
   });

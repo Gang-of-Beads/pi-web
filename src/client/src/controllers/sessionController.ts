@@ -1790,9 +1790,16 @@ export class SessionController {
     const state = this.getState();
     if (state.closedDialogs.some((entry) => entry.dialog.dialogId === closed.dialog.dialogId)) return;
     const sessionId = state.selectedSession?.id;
+    // The outcome card is a display decision; suppressing the dialog is a
+    // correctness one. A dialog that leaves no card must be remembered here and
+    // now, because the id used to reach the suppression list only by way of the
+    // Dismiss button - and a status snapshot built before the close would
+    // otherwise re-open a question the user has already answered.
     this.setState({
       pendingDialogs: state.pendingDialogs.filter((pending) => pending.dialogId !== closed.dialog.dialogId),
-      ...(leavesOutcomeCard(closed) ? { closedDialogs: [...state.closedDialogs, closed] } : {}),
+      ...(leavesOutcomeCard(closed)
+        ? { closedDialogs: [...state.closedDialogs, closed] }
+        : { dismissedDialogIds: [...state.dismissedDialogIds, closed.dialog.dialogId] }),
     });
     // The card is gone; the status map must stop listing the dialog too, or
     // the closed question rides the map back on the next selection and the
@@ -2171,8 +2178,16 @@ export class SessionController {
  *
  * Run-scoped dialogs always leave a card: they belong to work the user started,
  * so even an unanswered timeout there is part of the story.
+ *
+ * An answered dialog leaves none. Answering is its own acknowledgment, and the
+ * outcome is filed in the notification drawer, so a tail card would only be a
+ * row that never leaves: the outcome cards are drawn after the transcript, so
+ * nothing pushes them off the screen. Dropping the Dismiss button without
+ * dropping the card is what pinned an answered update notice to the bottom of
+ * the owner's phone.
  */
 function leavesOutcomeCard(closed: ClosedExtensionDialog): boolean {
+  if (closed.reason === "answered") return false;
   return closed.reason !== "timeout" || closed.dialog.runScoped;
 }
 

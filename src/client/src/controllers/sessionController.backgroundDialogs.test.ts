@@ -34,15 +34,17 @@ describe("SessionController background dialog outcomes", () => {
     expect(harness.state().closedDialogs[0]).toMatchObject({ reason: "cancelled" });
   });
 
-  it("records the decision when a background prompt is answered", async () => {
+  it("suppresses a background prompt once it is answered, without parking a card", async () => {
     const harness = await liveSession();
     harness.socket.emit({ type: "dialog.opened", dialog: dialog({ runScoped: false }) });
 
     harness.socket.emit({ type: "dialog.closed", dialogId: "dlg-1", reason: "answered", answer: "Skip" });
 
     // A choice the user made is worth keeping, even for a background prompt.
-    expect(harness.state().closedDialogs).toHaveLength(1);
-    expect(harness.state().closedDialogs[0]).toMatchObject({ reason: "answered", answer: "Skip" });
+    // Answering is its own acknowledgment and the drawer keeps the record; a
+    // card here would outlive every scroll, because outcome cards render last.
+    expect(harness.state().closedDialogs).toEqual([]);
+    expect(harness.state().dismissedDialogIds).toEqual(["dlg-1"]);
   });
 
   it("still records an aborted run-scoped dialog", async () => {
