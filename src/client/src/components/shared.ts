@@ -253,6 +253,10 @@ export const listStyles = css`
   .list-body.tiles .action-row { grid-template-columns: minmax(0, 1fr); margin: 0; align-self: start; }
   .list-body.tiles .action-main { border-radius: var(--pi-radius-lg); padding: var(--pi-space-5) 30px var(--pi-space-5) var(--pi-space-5); min-height: 56px; align-content: center; }
   .list-body.tiles .action-menu { position: absolute; top: 6px; right: 6px; align-self: auto; }
+  /* One nowrap line cut most tile names to the same prefix; two wrapped lines
+     reach the tail that tells worktree-agent-a0… tiles apart. break-all because
+     branch names have no spaces to wrap at. */
+  .list-body.tiles .workspace-primary-label { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; word-break: break-all; }
   /* In a row the toggle drops its left border on purpose: the primary region
      sits against it and draws the divider. A tile floats it in the corner with
      nothing on its left, so the same rule left the button open on one side.

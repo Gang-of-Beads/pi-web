@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 
+import { listStyles } from "./shared";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { trustApi } from "../api";
 import type { Workspace } from "../api";
@@ -232,3 +233,20 @@ function unreadDot(row: Element): Element | null {
 function workspace(id: string, patch: Partial<Workspace> = {}): Workspace {
   return { id, projectId: "project-1", path: `/repo/${id}`, label: id, isMain: true, effectiveConfig: {}, ...patch };
 }
+
+describe("what a tile shows of a long branch name", () => {
+  /**
+   * One nowrap line cut 19 of 24 visible tiles short, and four
+   * worktree-agent-… tiles truncated to the same prefix were completely
+   * indistinguishable - on a touch screen there is no hover title to rescue
+   * them. Two wrapped lines show roughly twice the name, which reaches the
+   * differing tail.
+   */
+  it("wraps to a second line instead of cutting to one identical prefix", () => {
+    const sheet = String(listStyles);
+    const rule = /\.list-body\.tiles \.workspace-primary-label\s*\{([^}]*)\}/u.exec(sheet)?.[1] ?? "";
+
+    expect(rule).toMatch(/-webkit-line-clamp:\s*2/u);
+    expect(rule).toMatch(/word-break:\s*break-all/u);
+  });
+});
