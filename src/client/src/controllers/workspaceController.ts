@@ -112,7 +112,10 @@ export class WorkspaceController {
     try {
       goals = (await this.api.workspaceGoals(workspace.projectId, workspace.id, machineId)).goals;
     } catch {
-      goals = [];
+      // A failed read is not evidence that the goals are gone; blanking the
+      // panel made "offline" and "no goals" look identical and dropped the
+      // Goals tab. The previous rows stay until a read succeeds.
+      goals = this.getState().workspaceGoals;
     }
     // Discard a response that lost its race with a newer selection.
     if (selectedMachineId(this.getState()) !== machineId || this.getState().selectedWorkspace?.id !== workspace.id) return;

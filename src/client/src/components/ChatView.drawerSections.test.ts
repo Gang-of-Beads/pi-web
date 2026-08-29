@@ -119,3 +119,22 @@ describe("the sections of an expanded drawer", () => {
     expect(view.renderRoot.querySelector<HTMLElement>(".drawer-body")?.hidden).toBe(true);
   });
 });
+
+describe("the goals entrance while its list is in flight", () => {
+  /**
+   * The tab rendered only when goals were already loaded, so the slow first
+   * fetch - or a failed one - removed the entrance entirely: a reader with a
+   * goal in flight watched the tab vanish instead of waiting for it.
+   */
+  it("stays rendered while the goals list is loading", async () => {
+    const view = new ChatView();
+    view.sessionId = "s";
+    view.status = status();
+    view.goals = [];
+    view.goalsLoading = true;
+    document.body.append(view);
+    await view.updateComplete;
+
+    expect(view.shadowRoot?.querySelector("#drawer-tab-goals")).not.toBeNull();
+  });
+});

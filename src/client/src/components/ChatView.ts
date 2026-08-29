@@ -787,6 +787,7 @@ export class ChatView extends LitElement {
    * most likely to be asking what the session is working towards.
    */
   @property({ attribute: false }) goals: GoalRecordSummary[] = [];
+  @property({ type: Boolean, attribute: false }) goalsLoading = false;
   @property({ attribute: false }) onRunGoalCommand?: (goal: GoalRecordSummary, command: string) => void | Promise<void>;
   @state() private topDrawerTab: TopDrawerTab | undefined;
   /** Which kinds of activity to list; "all" until the reader narrows it. */
@@ -1208,7 +1209,7 @@ export class ChatView extends LitElement {
     // Goals count as a reason to have a drawer: on a phone this is the only
     // place they appear, so gating the drawer on the other two sections hid
     // them exactly when nothing else was running.
-    if (activity === undefined && inbox === undefined && this.goals.length === 0) return null;
+    if (activity === undefined && inbox === undefined && this.goals.length === 0 && !this.goalsLoading) return null;
     const tab = selectedTopDrawerTab({ activity: activity !== undefined, notifications: inbox !== undefined, goals: this.goals.length > 0 }, this.topDrawerTab);
     const key = this.topDrawerKey();
     const collapsed = this.expandedTopDrawerKeys.has(key)
@@ -1255,7 +1256,7 @@ export class ChatView extends LitElement {
                 <span class="drawer-tab-label">${notificationTrayHeading(inbox)}</span>
               </button>
             `}
-            ${this.goals.length === 0 ? null : html`
+            ${this.goals.length === 0 && !this.goalsLoading ? null : html`
               <button
                 type="button"
                 role="tab"

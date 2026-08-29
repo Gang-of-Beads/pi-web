@@ -1,4 +1,5 @@
 import { css, LitElement, html, type TemplateResult } from "lit";
+import type { ChatLine } from "./shared";
 import { errorNoticePatch } from "../errorNotice";
 import { describeError, RetiredBy } from "../notice";
 import { clearPlaceholderFrame, notePlaceholderFrame } from "../historyWrites";
@@ -2954,8 +2955,17 @@ export class PiWebApp extends LitElement {
    * no focused goal and the workspace has more than one open.
    */
   private async runGoalCommand(command: string): Promise<void> {
-    if (this.state.selectedSession === undefined) return;
+    if (this.state.selectedSession === undefined) {
+      // A goal belongs to the workspace, but a goal command needs a session to
+      // run in. The silent form of this guard was the dead button: clicking
+      // Resume with no session selected did nothing, said nothing.
+      this.setState({ error: "Open a session in this workspace to run goal commands." });
+      return;
+    }
     await this.sendPrompt(command);
+    // The command may have moved the goal (resume, pause); the panel should
+    // show the goal as it now is, not as the last fetch left it.
+    void this.workspaces.refreshWorkspaceGoals();
   }
 
   private async sendPrompt(text: string, streamingBehavior?: "steer" | "followUp", attachments?: import("../api").PromptAttachment[], delivery?: import("../../../shared/apiTypes").PromptAttachmentDelivery, replay?: { clientMessageId?: string }): Promise<boolean> {

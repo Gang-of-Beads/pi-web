@@ -3,6 +3,7 @@ import type { AppState } from "../appState";
 import { initialAppState } from "../appState";
 import type { Machine, Project, SessionInfo, Workspace } from "../api";
 import type { SessionController } from "./sessionController";
+import type { GoalRecordSummary } from "../api";
 import { WorkspaceController } from "./workspaceController";
 
 function machine(id: string): Machine {
@@ -50,7 +51,7 @@ type ArchiveWorkspaceGoal = (projectId: string, workspaceId: string, goalId: str
 function harness(
   initial: Partial<AppState>,
   loadWorkspaces: LoadWorkspaces,
-  options: { topologyRefreshDebounceMs?: number; archiveWorkspaceGoal?: ArchiveWorkspaceGoal } = {},
+  options: { topologyRefreshDebounceMs?: number; archiveWorkspaceGoal?: ArchiveWorkspaceGoal; workspaceGoals?: () => Promise<{ goals: GoalRecordSummary[]; directory: string; generatedAt: string }> } = {},
 ): Harness {
   let state: AppState = { ...initialAppState(), ...initial };
   const setState = (patch: Partial<AppState>) => { state = { ...state, ...patch }; };
@@ -72,7 +73,7 @@ function harness(
       api: {
         workspaces: loadWorkspaces,
         sessions: vi.fn<(path: string, machineId?: string) => Promise<SessionInfo[]>>().mockResolvedValue([]),
-        workspaceGoals: vi.fn(() => Promise.resolve({ goals: [], directory: "/repo/.pi/goals", generatedAt: "2026-07-27T10:00:00.000Z" })),
+        workspaceGoals: options.workspaceGoals ?? vi.fn(() => Promise.resolve({ goals: [], directory: "/repo/.pi/goals", generatedAt: "2026-07-27T10:00:00.000Z" })),
         archiveWorkspaceGoal: options.archiveWorkspaceGoal ?? vi.fn(() => Promise.resolve({ goalId: "goal-1", archivedPath: "/repo/.pi/goals/archived/goal-1.md", alreadyArchived: false, agentMayRecreate: false })),
       },
       onBackgroundError: (message, error) => { backgroundErrors.push({ message, error }); },
@@ -553,5 +554,31 @@ describe("archiveWorkspaceGoal", () => {
     await controller.archiveWorkspaceGoal("goal-1");
 
     expect(state().error).toContain("goal is locked");
+  });
+});
+
+describe("when the goals listing fails", () => {
+  /**
+   * A failed read is not evidence that the goals are gone. Overwriting the
+   * panel with an empty list made "the reader is offline" and "this workspace
+   * has no goals" look identical, and the Goals tab vanished with them.
+   */
+  it("keeps the previous goals and ends the loading state", async () => {
+    const kept: GoalRecordSummary = {
+      id: "g-kept", objective: "keep me", status: "active", path: "/repo/.pi/goals/g-kept.json",
+      sisyphus: false, autoContinue: false, tasks: [], completedTaskCount: 0, totalTaskCount: 0,
+    };
+    const repo = project("p1", "/repo");
+    const ws = workspace(repo.id, repo.path, { isMain: true });
+    const test = harness(
+      { selectedProject: repo, selectedWorkspace: ws, workspaceGoals: [kept] },
+      vi.fn(),
+      { workspaceGoals: vi.fn().mockRejectedValue(new Error("daemon restarting")) },
+    );
+
+    await test.controller.refreshWorkspaceGoals();
+
+    expect(test.state().workspaceGoals).toEqual([kept]);
+    expect(test.state().workspaceGoalsLoading).toBe(false);
   });
 });
