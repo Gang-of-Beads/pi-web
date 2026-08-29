@@ -79,25 +79,6 @@ async function processStartMs(pid: number | undefined): Promise<number | undefin
 }
 
 /**
- * The status a record deserves. A "running" record whose pid is gone died
- * without being able to record it; a "running" record whose pid now belongs
- * to a process born long after the task started met a recycled pid, which is
- * the same loss wearing a stranger's clothes. Measured live: pid 69946 spent
- * five days counted as a web server it was no longer anywhere near.
- */
-async function resolveTaskStatus(
-  rawStatus: string,
-  pid: number | undefined,
-  startedAtMs: number | undefined,
-): Promise<string> {
-  if (rawStatus !== "running") return rawStatus;
-  const born = await processStartMs(pid);
-  if (born === undefined) return "lost";
-  if (startedAtMs !== undefined && born - startedAtMs > PID_REUSE_TOLERANCE_MS) return "lost";
-  return "running";
-}
-
-/**
  * Whether a pid still belongs to the task's own process.
  *
  * Operating systems recycle pids within days: measured live, a web server

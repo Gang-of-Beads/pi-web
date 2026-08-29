@@ -189,9 +189,19 @@ describe("a running record whose pid was recycled", () => {
     // 把 running 记录的 startTime 挪到 10 天前;pid 仍是本测试进程(活着,
     // 但出生时间远晚于任务开始 —— 与实测的复用现场同构)。
     const file = join(cwd, ".pi", "tasks", "session-494694-494694", "b96da5ec8.json");
-    const record = JSON.parse(await import("node:fs/promises").then((fs) => fs.readFile(file, "utf8")));
-    record.startTime = recent - tenDays;
-    await (await import("node:fs/promises")).writeFile(file, JSON.stringify(record));
+    // 把 running 记录的 startTime 挪到 10 天前;pid 仍是本测试进程(活着,
+    // 但出生时间远晚于任务开始 —— 与实测的复用现场同构)。与 fixture 相同的
+    // 记录整体重写,只改开始时间。
+    await writeFile(file, JSON.stringify({
+      id: "b96da5ec8",
+      name: "deploy 1.202608.13",
+      command: "bash scripts/deploy.sh",
+      status: "running",
+      outputPath: ".pi/tasks/session-494694-494694/b96da5ec8.output",
+      startTime: recent - tenDays,
+      pid: RUNNING_PID,
+      bytesWritten: 0,
+    }));
 
     const tasks = await listBackgroundTasks(cwd, await transcript(cwd), Date.now(), fakeProbe);
 
