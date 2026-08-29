@@ -26,7 +26,7 @@ async function drawerWithEverything(): Promise<ChatView> {
   view.sessionId = "s";
   view.status = status();
   view.activity = activity();
-  view.goals = [{
+  view.goalsLoad = { state: "loaded", key: "test-key", data: [{
     id: "g1",
     objective: "ship it",
     status: "active",
@@ -36,7 +36,7 @@ async function drawerWithEverything(): Promise<ChatView> {
     tasks: [],
     completedTaskCount: 0,
     totalTaskCount: 0,
-  }];
+  }] };
   const inbox: SelectedSessionNotificationView = {
     machineId: "local",
     sessionId: "s",
@@ -130,8 +130,7 @@ describe("the goals entrance while its list is in flight", () => {
     const view = new ChatView();
     view.sessionId = "s";
     view.status = status();
-    view.goals = [];
-    view.goalsLoading = true;
+    view.goalsLoad = { state: "loading", key: "test-key", data: [] };
     document.body.append(view);
     await view.updateComplete;
 
@@ -146,9 +145,7 @@ describe("the goals entrance while its list is in flight", () => {
     const view = new ChatView();
     view.sessionId = "s";
     view.status = status();
-    view.goals = [];
-    view.goalsLoading = false;
-    view.goalsFailed = true;
+    view.goalsLoad = { state: "failed", key: "test-key", data: [] };
     document.body.append(view);
     await view.updateComplete;
 
@@ -170,7 +167,7 @@ describe("the goals entrance while its list is in flight", () => {
     // A working subagent is what justifies the drawer before anything else
     // has arrived; activity, notifications and goals all start empty.
     view.subagents = [{ sessionId: "01a0child-0001-0000-000000000001", cwd: "/repo/.pi/sub", status: "working" }];
-    view.goals = [];
+    view.goalsLoad = { state: "loaded", key: "test-key", data: [] };
     view.goalsKnown = true;
     document.body.append(view);
     await view.updateComplete;
@@ -210,7 +207,7 @@ describe("the goals entrance while its list is in flight", () => {
     view.sessionId = "s";
     view.status = status();
     view.subagents = [{ sessionId: "01a0child-0001-0000-000000000001", cwd: "/repo/.pi/sub", status: "working" }];
-    view.goals = [];
+    view.goalsLoad = { state: "loaded", key: "test-key", data: [] };
     view.goalsKnown = true;
     document.body.append(view);
     await view.updateComplete;

@@ -13,7 +13,7 @@ import { shouldRequestEarlierMessages } from "../chatHistoryLoading";
 import { ChatScrollController, distanceFromScrollBottom, findFirstVisibleArticle, isNearScrollBottom, type ChatAnchorScrollPosition, type ChatScrollRestoreResult } from "../chatScrollPosition";
 import { scrollEdgeClasses, ScrollEdgeTracker } from "../scrollEdges";
 import type { AskUserSubmission, PendingAskUser, PendingExtensionDialog, QueuedSessionMessage, SessionActivity, SessionStatus, SessionWarningSeverity } from "../api";
-import type { ActivityConversationView, ActivityOutputView, ClosedExtensionDialog } from "../appState";
+import type { ActivityConversationView, ActivityOutputView, ClosedExtensionDialog, PanelLoad } from "../appState";
 import {
   notificationAnnouncementLabel,
   notificationDismissLabel,
@@ -808,10 +808,12 @@ export class ChatView extends LitElement {
    * them is not on screen at all, so a running goal was invisible on the device
    * most likely to be asking what the session is working towards.
    */
-  @property({ attribute: false }) goals: GoalRecordSummary[] = [];
-  @property({ type: Boolean, attribute: false }) goalsLoading = false;
-  /** The last goals read failed; the entrance must not read as "no goals". */
-  @property({ type: Boolean, attribute: false }) goalsFailed = false;
+  /**
+   * One keyed load slot for the goals panel. It replaced three separate flags
+   * after the loading flag travelled from state to state and never once
+   * reached this element: props that travel separately get forgotten.
+   */
+  @property({ attribute: false }) goalsLoad: PanelLoad<GoalRecordSummary[]> = { state: "unloaded", key: undefined, data: [] };
   /** Whether the goals list answers for the workspace on screen. The tab's
       count is a claim about this workspace, so it only shows when the state
       behind it is keyed to the current selection (in flight, failed, and
@@ -1234,9 +1236,12 @@ export class ChatView extends LitElement {
     const inbox = this.drawerInbox();
     // Goals count as a reason to have a drawer: on a phone this is the only
     // place they appear, so gating the drawer on the other two sections hid
-    // them exactly when nothing else was running.
-    if (activity === undefined && inbox === undefined && this.goals.length === 0 && !this.goalsLoading && !this.goalsFailed) return null;
-    const tab = selectedTopDrawerTab({ activity: activity !== undefined, notifications: inbox !== undefined, goals: this.goals.length > 0 }, this.topDrawerTab);
+    // them exactly when nothing else was running. A read in flight, or one
+    // that failed, is also a reason: hiding the drawer during flight is how
+    // the loading state went unseen for its whole life.
+    const goalsWorthShowing = this.goalsLoad.data.length > 0 || this.goalsLoad.state === "loading" || this.goalsLoad.state === "failed";
+    if (activity === undefined && inbox === undefined && !goalsWorthShowing) return null;
+    const tab = selectedTopDrawerTab({ activity: activity !== undefined, notifications: inbox !== undefined, goals: this.goalsLoad.data.length > 0 }, this.topDrawerTab);
     const key = this.topDrawerKey();
     const collapsed = this.expandedTopDrawerKeys.has(key)
       ? false
@@ -1293,7 +1298,7 @@ export class ChatView extends LitElement {
               aria-controls="session-goal-list"
               @click=${() => { this.selectTopDrawerTab("goals", collapsed); }}
             >
-              <span class="drawer-tab-label">${goalsDrawerTabLabel(this.goals, this.goalsKnown)}</span>
+              <span class="drawer-tab-label">${goalsDrawerTabLabel(this.goalsLoad.data, this.goalsKnown)}</span>
             </button>
           </div>
           </div>
@@ -1325,9 +1330,7 @@ export class ChatView extends LitElement {
           ${tab === "goals" ? html`
             <div class="goal-drawer-panel" id="session-goal-list" role="tabpanel" aria-labelledby="drawer-tab-goals">
               <goal-panel
-                .goals=${this.goals}
-                .loading=${this.goalsLoading}
-                .loadFailed=${this.goalsFailed}
+                .goalsLoad=${this.goalsLoad}
                 ?canRunCommands=${true}
                 .onRunCommand=${(goal: GoalRecordSummary, command: string) => this.onRunGoalCommand?.(goal, command)}
               ></goal-panel>

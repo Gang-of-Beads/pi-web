@@ -3,13 +3,16 @@ import type { GoalRecordSummary, Workspace } from "./api";
 import { canActOnWorkspaceGoals, goalsForSelectedWorkspace, initialAppState, type AppState, type PanelLoad } from "./appState";
 import { machineWorkspaceKey } from "./machineKeys";
 
-const workspace: Workspace = { id: "ws-1", projectId: "p1", path: "/repo", label: "repo", isMain: true } as Workspace;
+const workspace: Workspace = { id: "ws-1", projectId: "p1", path: "/repo", label: "repo", isMain: true, effectiveConfig: {} };
 
 function stateWith(slot: PanelLoad<GoalRecordSummary[]>, selected: Workspace = workspace): AppState {
   return { ...initialAppState(), selectedWorkspace: selected, workspaceGoalsLoad: slot };
 }
 
-const rows: GoalRecordSummary[] = [{ id: "goal-a", path: "/repo/.pi/goals/goal-a.json", name: "A", status: "active", tasks: [], tokensUsed: 0, pausedReason: undefined, revision: 0 } as unknown as GoalRecordSummary];
+const rows: GoalRecordSummary[] = [{
+  id: "goal-a", objective: "the owner's goal", status: "active", path: "/repo/.pi/goals/goal-a.json",
+  sisyphus: false, autoContinue: false, tasks: [], completedTaskCount: 14, totalTaskCount: 20,
+}];
 
 describe("the goals load slot", () => {
   // "No goals recorded for this workspace" was rendered while the goal file sat

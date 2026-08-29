@@ -1,6 +1,7 @@
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { GoalRecordSummary, GoalTaskSummary } from "../api";
+import type { PanelLoad } from "../appState";
 import {
   findCurrentTask,
   flattenGoalTasks,
@@ -31,10 +32,13 @@ import { listStyles } from "./shared";
  */
 @customElement("goal-panel")
 export class GoalPanel extends LitElement {
-  @property({ attribute: false }) goals: GoalRecordSummary[] = [];
-  @property({ type: Boolean }) loading = false;
-  /** The last read failed; the empty line must say so, not claim "no goals". */
-  @property({ type: Boolean }) loadFailed = false;
+  /**
+   * One keyed load slot, not three flags: the empty claim is reachable only
+   * through `state === "loaded"`, and a slot keyed to another selection reads
+   * as unloaded here. Three travelling flags forgot each other once already -
+   * the loading flag existed in state and never once reached this panel.
+   */
+  @property({ attribute: false }) goalsLoad: PanelLoad<GoalRecordSummary[]> = { state: "unloaded", key: undefined, data: [] };
   @property({ attribute: false }) onRefresh?: () => void | Promise<void>;
   /** Archive a goal the agent is not going to finish; confirmed before it runs. */
   @property({ attribute: false }) onArchive?: (goal: GoalRecordSummary) => void | Promise<void>;
@@ -63,11 +67,11 @@ export class GoalPanel extends LitElement {
             type="button"
             title="Re-read goal records from the workspace"
             aria-label="Refresh goals"
-            ?disabled=${this.loading}
+            ?disabled=${this.isReading}
             @click=${() => { void this.onRefresh?.(); }}
           >↻</button>
         </h2>
-        ${this.goals.length === 0 ? this.renderEmpty() : html`<div class="goal-list">${this.goals.map((goal) => this.renderGoal(goal))}</div>`}
+        ${this.rows.length === 0 ? this.renderEmpty() : html`<div class="goal-list">${this.rows.map((goal) => this.renderGoal(goal))}</div>`}
       </section>
     `;
   }
@@ -76,8 +80,19 @@ export class GoalPanel extends LitElement {
    * What the number beside the heading counts. Finished goals stay listed for
    * the record, so counting them would advertise work that is over.
    */
+  private get rows(): GoalRecordSummary[] {
+    // A slot whose key does not match this panel's selection is unloaded here,
+    // whatever it holds: rows kept across a key change would be another
+    // project's goals rendered as this one's.
+    return this.goalsLoad.state === "loaded" ? this.goalsLoad.data : [];
+  }
+
+  private get isReading(): boolean {
+    return this.goalsLoad.state === "loading" || this.goalsLoad.state === "unloaded";
+  }
+
   private openGoalsLabel(): string {
-    const open = this.goals.filter((goal) => !isGoalFinished(goal)).length;
+    const open = this.rows.filter((goal) => !isGoalFinished(goal)).length;
     return open === 0 ? "" : `${String(open)} open`;
   }
 
@@ -100,7 +115,14 @@ export class GoalPanel extends LitElement {
   }
 
   private renderEmpty(): TemplateResult {
-    return html`<p class="empty">${this.loading ? "Loading goals…" : this.loadFailed ? "Couldn't read goals from this workspace." : "No goals recorded for this workspace."}</p>`;
+    // Three of these four states used to collapse into "No goals recorded":
+    // not read yet, read failed, and another workspace's rows. Only a completed
+    // read over the matching selection may claim emptiness.
+    const line = this.goalsLoad.state === "failed"
+      ? "Couldn't read goals from this workspace."
+      : this.isReading ? "Loading goals…"
+      : "No goals recorded for this workspace.";
+    return html`<p class="empty">${line}</p>`;
   }
 
   private renderGoal(goal: GoalRecordSummary): TemplateResult {

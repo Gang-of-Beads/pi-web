@@ -2,6 +2,7 @@ import { LitElement, css, html } from "lit";
 import { focusedContextName } from "../../contextName";
 import { customElement, property, query } from "lit/decorators.js";
 import type { GoalRecordSummary, Machine, MachineHealth, Project, SessionActivity, SessionInfo, SessionStatus, Workspace } from "../../api";
+import type { PanelLoad } from "../../appState";
 import type { MachineStatusSnapshot } from "../../../../shared/machineStatus";
 import type { WorkspaceLabelItem } from "../../plugins/types";
 import { selectedMachineId } from "../../controllers/types";
@@ -78,10 +79,13 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) onDeleteArchivedSessions?: (sessions: SessionInfo[]) => void | Promise<void>;
   @property({ attribute: false }) onDetachParentSession?: (session: SessionInfo) => void | Promise<void>;
   @property({ attribute: false }) onRenameSession?: (session: SessionInfo, name: string) => void | Promise<void>;
-  @property({ attribute: false }) goals: GoalRecordSummary[] = [];
-  @property({ type: Boolean }) goalsLoading = false;
-  /** The last goals read failed; the section stays with a failure line. */
-  @property({ type: Boolean }) goalsFailed = false;
+  /**
+   * One keyed load slot, carried whole from app state. Splitting it into
+   * separate goals/loading/failed flags is what produced a loading flag that
+   * was set in state and never once reached this panel, so a read in flight
+   * rendered as “no goals”.
+   */
+  @property({ attribute: false }) goalsLoad: PanelLoad<GoalRecordSummary[]> = { state: "unloaded", key: undefined, data: [] };
   /** Whether acting on the listed goals is allowed. Withheld when the goals
    * state answers for a different workspace than the one selected: a stale
    * render must be inert, not merely unlikely. */
@@ -313,12 +317,15 @@ export class AppNavigationPanel extends LitElement {
    */
   private renderGoalPanel() {
     if (this.selectedWorkspace === undefined) return null;
-    if (this.goals.length === 0 && !this.goalsLoading && !this.goalsFailed) return null;
+    // Same test the section always made, read off the slot instead of three
+    // flags: a read in flight, one that failed, and one that found rows are
+    // each worth the section's height. Unloaded, and a completed read that
+    // found nothing, are not.
+    const worthShowing = this.goalsLoad.state === "loading" || this.goalsLoad.state === "failed" || this.goalsLoad.data.length > 0;
+    if (!worthShowing) return null;
     return html`
       <goal-panel
-        .goals=${this.goals}
-        .loading=${this.goalsLoading}
-        .loadFailed=${this.goalsFailed}
+        .goalsLoad=${this.goalsLoad}
         .canRunCommands=${this.selectedSession !== undefined && this.canRunGoalCommands}
         .onRunCommand=${(goal: GoalRecordSummary, command: string) => this.onRunGoalCommand?.(goal, command)}
         .onRefresh=${() => this.onRefreshGoals?.()}

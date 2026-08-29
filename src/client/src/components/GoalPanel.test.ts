@@ -63,11 +63,25 @@ describe("goal-panel", () => {
     expect(shadow(await mountPanel([])).querySelector(".empty")?.textContent).toContain("No goals recorded");
 
     const loading = new GoalPanel();
-    loading.goals = [];
-    loading.loading = true;
+    loading.goalsLoad = { state: "loading", key: "test-key", data: [] };
     document.body.append(loading);
     await loading.updateComplete;
     expect(shadow(loading).querySelector(".empty")?.textContent).toContain("Loading goals");
+  });
+
+  // The owner's screenshot: the goal file was active on disk while the panel
+  // said "No goals recorded for this workspace", because a slot whose key does
+  // not match the selection reached this panel as an empty loaded list. The
+  // key gate lives in the reader (goalsForSelectedWorkspace, tested in
+  // appState.test.ts); this panel's contract is that anything not loaded -
+  // and therefore not a completed read - never claims emptiness.
+  it("never claims an empty workspace for a slot that has not completed its read", async () => {
+    const unloaded = new GoalPanel();
+    unloaded.goalsLoad = { state: "unloaded", key: undefined, data: [] };
+    document.body.append(unloaded);
+    await unloaded.updateComplete;
+    expect(shadow(unloaded).querySelector(".empty")?.textContent).not.toContain("No goals recorded");
+    expect(shadow(unloaded).querySelector(".empty")?.textContent).toContain("Loading goals");
   });
 
   // A paused goal has no other way out of the panel: the extension's own clear
@@ -184,7 +198,7 @@ describe("goal lifecycle controls", () => {
 
   it("disables the controls when there is no session to run them in", async () => {
     const panel = new GoalPanel();
-    panel.goals = [goal({ status: "paused" })];
+    panel.goalsLoad = { state: "loaded", key: "test-key", data: [goal({ status: "paused" })] };
     panel.canRunCommands = false;
     document.body.append(panel);
     await panel.updateComplete;
@@ -212,7 +226,7 @@ async function mount(goals: GoalRecordSummary[]): Promise<ShadowRoot> {
 
 async function mountPanel(goals: GoalRecordSummary[], onRefresh?: () => void, onArchive?: (goal: GoalRecordSummary) => void, onRunCommand?: (goal: GoalRecordSummary, command: string) => void): Promise<GoalPanel> {
   const panel = new GoalPanel();
-  panel.goals = goals;
+  panel.goalsLoad = { state: "loaded", key: "test-key", data: goals };
   if (onRefresh !== undefined) panel.onRefresh = onRefresh;
   if (onArchive !== undefined) panel.onArchive = onArchive;
   if (onRunCommand !== undefined) panel.onRunCommand = onRunCommand;
@@ -259,8 +273,7 @@ describe("goal-panel failure state", () => {
    */
   it("says the read failed instead of claiming there are no goals", async () => {
     const panel = new GoalPanel();
-    panel.goals = [];
-    panel.loadFailed = true;
+    panel.goalsLoad = { state: "failed", key: "test-key", data: [] };
     document.body.append(panel);
     await panel.updateComplete;
 

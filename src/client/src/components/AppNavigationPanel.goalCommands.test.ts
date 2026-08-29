@@ -2,6 +2,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import type { GoalRecordSummary, SessionInfo, Workspace } from "../api";
+import type { PanelLoad } from "../appState";
 import { AppNavigationPanel } from "./appShell/AppNavigationPanel";
 
 afterEach(() => { document.body.replaceChildren(); });
@@ -45,7 +46,7 @@ const goal: GoalRecordSummary = {
  */
 describe("the goals panel's action permission", () => {
   it("disables the commands when the host withholds them", async () => {
-    const panel = await mount({ goals: [goal], selectedSession: session, canRunGoalCommands: false });
+    const panel = await mount({ goalsLoad: loadedSlot([goal]), selectedSession: session, canRunGoalCommands: false });
 
     const inner = goalPanel(panel);
     expect(inner?.canRunCommands).toBe(false);
@@ -55,7 +56,7 @@ describe("the goals panel's action permission", () => {
   });
 
   it("keeps the commands available when the host grants them", async () => {
-    const panel = await mount({ goals: [goal], selectedSession: session, canRunGoalCommands: true });
+    const panel = await mount({ goalsLoad: loadedSlot([goal]), selectedSession: session, canRunGoalCommands: true });
 
     const inner = goalPanel(panel);
     expect(inner?.canRunCommands).toBe(true);
@@ -66,10 +67,16 @@ describe("the goals panel's action permission", () => {
    * "nothing to report" are different answers.
    */
   it("renders the section when the read failed even with no rows", async () => {
-    const panel = await mount({ goals: [], goalsFailed: true });
+    const panel = await mount({ goalsLoad: { state: "failed", key: "/repo", data: [] } });
 
     expect(goalPanel(panel)).not.toBeNull();
   });
+
+  /** A completed read whose key matches the selection is the only path to
+      rows; the panel has no way to receive rows another way. */
+  function loadedSlot(data: GoalRecordSummary[]): PanelLoad<GoalRecordSummary[]> {
+    return { state: "loaded", key: "/repo", data };
+  }
 });
 
 function goalPanel(panel: AppNavigationPanel): import("./GoalPanel").GoalPanel | null | undefined {
@@ -77,10 +84,9 @@ function goalPanel(panel: AppNavigationPanel): import("./GoalPanel").GoalPanel |
 }
 
 interface MountOptions {
-  goals: GoalRecordSummary[];
+  goalsLoad?: PanelLoad<GoalRecordSummary[]>;
   selectedSession?: SessionInfo;
   canRunGoalCommands?: boolean;
-  goalsFailed?: boolean;
 }
 
 async function mount(options: MountOptions): Promise<AppNavigationPanel> {
@@ -90,10 +96,9 @@ async function mount(options: MountOptions): Promise<AppNavigationPanel> {
   panel.projectsCollapsed = true;
   panel.workspacesCollapsed = true;
   panel.sessionsCollapsed = true;
-  panel.goals = options.goals;
+  panel.goalsLoad = options.goalsLoad ?? { state: "unloaded", key: undefined, data: [] };
   if (options.selectedSession !== undefined) panel.selectedSession = options.selectedSession;
   if (options.canRunGoalCommands !== undefined) panel.canRunGoalCommands = options.canRunGoalCommands;
-  if (options.goalsFailed !== undefined) panel.goalsFailed = options.goalsFailed;
   document.body.append(panel);
   await panel.updateComplete;
   return panel;
