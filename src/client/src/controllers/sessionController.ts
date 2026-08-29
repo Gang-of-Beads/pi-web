@@ -1709,7 +1709,16 @@ export class SessionController {
     // was already reflected (e.g. a rehydrated open) and must not duplicate
     // the card.
     if (state.pendingDialogs.some((pending) => pending.dialogId === dialog.dialogId)) return;
-    this.setState({ pendingDialogs: [...state.pendingDialogs, dialog] });
+    // A live open is newer news than any snapshot, so it also forgives the
+    // dismissal this browser recorded: the daemon is asking again, and the next
+    // status frame that carries the dialog must not be filtered as stale news -
+    // that would wipe the genuinely re-opened card the frame after it appeared.
+    this.setState({
+      pendingDialogs: [...state.pendingDialogs, dialog],
+      ...(state.dismissedDialogIds.some((id) => id === dialog.dialogId)
+        ? { dismissedDialogIds: state.dismissedDialogIds.filter((id) => id !== dialog.dialogId) }
+        : {}),
+    });
   }
 
   private applyClosedDialog(dialogId: string, reason: ExtensionDialogCloseReason, answer: ExtensionDialogAnswer | undefined): void {

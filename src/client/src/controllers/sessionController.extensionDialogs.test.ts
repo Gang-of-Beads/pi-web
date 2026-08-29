@@ -209,6 +209,23 @@ describe("SessionController extension dialog state", () => {
     expect(harness.state().pendingDialogs.map((pending) => pending.dialogId)).toEqual(["dialog-1"]);
   });
 
+  it("keeps a genuinely re-opened dialog when the next status frame carries it", async () => {
+    const harness = await liveSession();
+    harness.socket.emit({ type: "dialog.opened", dialog: dialog("dialog-1") });
+    harness.socket.emit({ type: "dialog.closed", dialogId: "dialog-1", reason: "answered", answer: true });
+    harness.controller.dismissClosedDialog("dialog-1");
+    harness.socket.emit({ type: "dialog.opened", dialog: dialog("dialog-1") });
+    expect(harness.state().pendingDialogs.map((pending) => pending.dialogId)).toEqual(["dialog-1"]);
+
+    // The daemon is really asking again, so its next projection - stale or
+    // fresh - agrees with the card on screen. Forgetting the dismissal is what
+    // keeps the live open from being wiped by the very next status frame.
+    harness.controller.applySessionStatus(statusWithDialogs(oldSession.id, [dialog("dialog-1")]));
+
+    expect(harness.state().pendingDialogs.map((pending) => pending.dialogId)).toEqual(["dialog-1"]);
+    expect(harness.state().dismissedDialogIds).toEqual([]);
+  });
+
   it("forgets dismissals when the session is deselected so a later session starts clean", async () => {
     const harness = await liveSession({}, statusWithDialogs(oldSession.id, [dialog("dialog-1")]));
     harness.socket.emit({ type: "dialog.closed", dialogId: "dialog-1", reason: "answered", answer: true });
