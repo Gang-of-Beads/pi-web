@@ -1,4 +1,3 @@
-import { unsupportedSurfaceNotice } from "./extensionUiBoundary.js";
 import { statSync } from "node:fs";
 import { announceUnsupportedSurface, withUnsupportedSurfaceAnnouncement } from "./unsupportedSurface.js";
 import { basename, dirname, join } from "node:path";
@@ -3760,14 +3759,19 @@ export class PiSessionService implements SessionRouteService {
         // for instance - believed the user chose nothing and asked again next
         // session. The cancellation stays; the silence goes.
         if (property === "custom") {
-          return async (...customArgs: unknown[]) => {
-            if (!warnedSurfaces.has("custom")) {
+          const base: unknown = Reflect.get(target, property, receiver);
+          if (typeof base !== "function") return base;
+          // The silent form of this cancel made the updater's prompt return
+          // every session with nothing anywhere saying why. Announced once per
+          // session, so a chatty extension cannot flood the drawer.
+          return withUnsupportedSurfaceAnnouncement(
+            (...args: unknown[]): unknown => Reflect.apply(base, target, args),
+            () => {
+              if (warnedSurfaces.has("custom")) return;
               warnedSurfaces.add("custom");
-              notify(unsupportedSurfaceNotice("ui.custom"), "warning");
-            }
-            const fallback: unknown = Reflect.get(target, property, receiver);
-            return typeof fallback === "function" ? fallback.apply(target, customArgs) : undefined;
-          };
+              notify(announceUnsupportedSurface("custom"), "warning");
+            },
+          );
         }
         if (property === "confirm") {
           return (title: string, message: string, opts?: ExtensionUIDialogOptions) =>
@@ -3780,16 +3784,6 @@ export class PiSessionService implements SessionRouteService {
         if (property === "input") {
           return (title: string, placeholder: string | undefined, opts?: ExtensionUIDialogOptions) =>
             this.openExtensionDialog(session, { kind: "input", title, placeholder }, opts);
-        }
-        if (property === "custom") {
-          const base: unknown = Reflect.get(target, property, receiver);
-          if (typeof base !== "function") return base;
-          // The silent form of this cancel made the updater's prompt return
-          // every session with nothing anywhere saying why.
-          return withUnsupportedSurfaceAnnouncement(
-            (...args: unknown[]): unknown => Reflect.apply(base, target, args),
-            () => { notify(announceUnsupportedSurface("custom"), "warning"); },
-          );
         }
         const value: unknown = Reflect.get(target, property, receiver);
         return value;
