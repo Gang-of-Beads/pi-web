@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionController } from "./sessionController";
 import { initialAppState } from "../appState";
 import { defaultApi, EmitSocket, emptyPage, MemoryStorage, oldSession, status, workspace, type AppState } from "./sessionController.testSupport";
@@ -16,6 +16,7 @@ function api(): typeof defaultApi {
     status: () => Promise.resolve(status(sessionOverThere.id)),
     streamSnapshot: () => Promise.resolve({ seq: 0, partial: null }),
     thinkingLevels: () => Promise.resolve({ levels: [] }),
+    sessions: (path: string) => Promise.resolve(path === "/elsewhere" ? [sessionOverThere] : [oldSession]),
   };
 }
 
@@ -60,5 +61,26 @@ describe("choosing a session from another workspace", () => {
     await run.selectSession({ ...oldSession, id: "unknown", cwd: "/nowhere" }, { updateUrl: false });
 
     expect(read().selectedWorkspace?.id).toBe("workspace-1");
+  });
+
+  /**
+   * The same move that takes the workspace with it must take the session list
+   * with it: rows from the workspace you came from, rendered under the
+   * workspace you chose, are another workspace's data on the wrong surface.
+   */
+  it("leaves the previous workspace's sessions behind", async () => {
+    const { run, read } = controllerOver({
+      workspaces: [workspace, elsewhere],
+      projects: [here, there],
+      sessions: [oldSession],
+      sessionsLoad: "loaded",
+    });
+
+    await run.selectSession(sessionOverThere, { updateUrl: false });
+    await vi.waitFor(() => {
+      if (read().sessions.some((entry) => entry.cwd === "/repo")) throw new Error("the previous workspace's rows are still listed");
+    });
+
+    expect(read().sessions.every((entry) => entry.cwd === "/elsewhere" || entry.cwd === "")).toBe(true);
   });
 });

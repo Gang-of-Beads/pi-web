@@ -137,4 +137,21 @@ describe("the goals entrance while its list is in flight", () => {
 
     expect(view.shadowRoot?.querySelector("#drawer-tab-goals")).not.toBeNull();
   });
+
+  /**
+   * A failed read keeps the entrance too: "the read failed" and "no goals"
+   * are different answers, and only one of them should remove the tab.
+   */
+  it("stays rendered when the goals read failed", async () => {
+    const view = new ChatView();
+    view.sessionId = "s";
+    view.status = status();
+    view.goals = [];
+    view.goalsLoading = false;
+    view.goalsFailed = true;
+    document.body.append(view);
+    await view.updateComplete;
+
+    expect(view.shadowRoot?.querySelector("#drawer-tab-goals")).not.toBeNull();
+  });
 });

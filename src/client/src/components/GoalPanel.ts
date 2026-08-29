@@ -33,6 +33,8 @@ import { listStyles } from "./shared";
 export class GoalPanel extends LitElement {
   @property({ attribute: false }) goals: GoalRecordSummary[] = [];
   @property({ type: Boolean }) loading = false;
+  /** The last read failed; the empty line must say so, not claim "no goals". */
+  @property({ type: Boolean }) loadFailed = false;
   @property({ attribute: false }) onRefresh?: () => void | Promise<void>;
   /** Archive a goal the agent is not going to finish; confirmed before it runs. */
   @property({ attribute: false }) onArchive?: (goal: GoalRecordSummary) => void | Promise<void>;
@@ -98,7 +100,7 @@ export class GoalPanel extends LitElement {
   }
 
   private renderEmpty(): TemplateResult {
-    return html`<p class="empty">${this.loading ? "Loading goals…" : "No goals recorded for this workspace."}</p>`;
+    return html`<p class="empty">${this.loading ? "Loading goals…" : this.loadFailed ? "Couldn't read goals from this workspace." : "No goals recorded for this workspace."}</p>`;
   }
 
   private renderGoal(goal: GoalRecordSummary): TemplateResult {

@@ -1,6 +1,8 @@
 import type { AuthProviderOption, CommandOption, CommandResult, ExtensionDialogAnswer, ExtensionDialogCloseReason, FileContentResponse, FileTreeEntry, GoalRecordSummary, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingAskUser, PendingExtensionDialog, PiWebSelfUpdateStatus, PiWebStatusResponse, Project, QueuedSessionMessage, SessionActivity, SessionInfo, SessionModelCatalogEntry, SessionStatus, SessionBackgroundTaskInfo, SessionSubagentInfo, SessionSubagentRunInfo, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";import type { ChatLine } from "./components/shared";
 import { normalizeMessages } from "./chatMessages";
 import { RetiredBy } from "./notice";
+import { machineWorkspaceKey } from "./machineKeys";
+import { selectedMachineId } from "./controllers/types";
 import type { MachineStatusSnapshot } from "../../shared/machineStatus";
 import type { QualifiedContributionId } from "./plugins/ids";
 import type { SelectedSessionNotificationInbox } from "./sessionNotifications";
@@ -145,6 +147,14 @@ export interface AppState {
   availableThinkingLevels: readonly string[];
   /** Goals recorded for the selected workspace, newest unfinished first. */
   workspaceGoals: GoalRecordSummary[];
+  /** The machine+project+workspace the retained goal list was fetched for.
+   * Retention across a loading or failed read is legitimate only for this
+   * workspace; rendered rows whose key does not match the selection are
+   * another project's data on the wrong surface. */
+  workspaceGoalsKey: string | undefined;
+  /** The last goals read failed; the panel must say so rather than claim the
+   * workspace has no goals. */
+  workspaceGoalsFailed: boolean;
   workspaceGoalsLoading: boolean;
   sessionStatuses: Record<string, SessionStatus>;
   sessionActivities: Record<string, SessionActivity>;
@@ -216,6 +226,8 @@ export type WorkspaceScopedStateReset = Pick<AppState,
   | "sessions"
   | "sessionsLoad"
   | "workspaceGoals"
+  | "workspaceGoalsKey"
+  | "workspaceGoalsFailed"
   | "workspaceGoalsLoading"
   | "clientQueuedSessionMessages"
   | "startingSessionCount"
@@ -231,14 +243,49 @@ export type WorkspaceScopedStateReset = Pick<AppState,
   | "error"
 >;
 
+/**
+ * The selection key the workspace-scoped surfaces answer for, as
+ * machine:project:workspace — the same shape the retained goals state is
+ * keyed by.
+ */
+export function workspaceSelectionKey(state: Pick<AppState, "selectedMachine" | "selectedWorkspace">): string | undefined {
+  const workspace = state.selectedWorkspace;
+  if (workspace === undefined) return undefined;
+  return machineWorkspaceKey(selectedMachineId(state), workspace.projectId, workspace.id);
+}
+
+/**
+ * The goals to render for the current selection. The retained list is shown
+ * only when it was fetched for exactly this machine+project+workspace; on any
+ * other selection it would be another project's goal with live Resume and
+ * Abandon buttons, so it renders as nothing instead.
+ */
+export function goalsForSelectedWorkspace(state: AppState): GoalRecordSummary[] {
+  if (state.workspaceGoalsKey === undefined || state.workspaceGoalsKey !== workspaceSelectionKey(state)) return [];
+  return state.workspaceGoals;
+}
+
+/**
+ * Whether acting on the rendered goals (Resume, Abandon) is allowed: only
+ * when the goals state answers for the current selection. Defense in depth
+ * behind the render gate above — a stale render must be inert, not merely
+ * unlikely.
+ */
+export function canActOnWorkspaceGoals(state: AppState): boolean {
+  return state.workspaceGoalsKey !== undefined && state.workspaceGoalsKey === workspaceSelectionKey(state);
+}
+
 export function resetWorkspaceScopedState(): WorkspaceScopedStateReset {
   return {
     sessions: [],
     // The workspace is being left; the next list is not loaded, not empty.
     sessionsLoad: "unloaded",
     // Goals belong to the workspace being left, so they must not linger over
-    // the next one while its own records load.
+    // the next one while its own records load. The key goes with them: an
+    // unkeyed list would be retained by nothing and owned by no one.
     workspaceGoals: [],
+    workspaceGoalsKey: undefined,
+    workspaceGoalsFailed: false,
     workspaceGoalsLoading: false,
     clientQueuedSessionMessages: {},
     startingSessionCount: 0,
@@ -295,6 +342,8 @@ export function initialAppState(): AppState {
     dismissedDialogIds: [],
     availableThinkingLevels: [],
     workspaceGoals: [],
+    workspaceGoalsKey: undefined,
+    workspaceGoalsFailed: false,
     workspaceGoalsLoading: false,
     sessionStatuses: {},
     sessionActivities: {},

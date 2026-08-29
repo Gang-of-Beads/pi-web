@@ -251,3 +251,20 @@ function goal(overrides: Partial<GoalRecordSummary> = {}): GoalRecordSummary {
     ...overrides,
   };
 }
+
+describe("goal-panel failure state", () => {
+  /**
+   * A failed read must not read as "this workspace has no goals": the empty
+   * line and the failure line answer different questions.
+   */
+  it("says the read failed instead of claiming there are no goals", async () => {
+    const panel = new GoalPanel();
+    panel.goals = [];
+    panel.loadFailed = true;
+    document.body.append(panel);
+    await panel.updateComplete;
+
+    expect(shadow(panel).querySelector(".empty")?.textContent).toContain("Couldn't read");
+    expect(shadow(panel).querySelector(".empty")?.textContent).not.toContain("No goals recorded");
+  });
+});

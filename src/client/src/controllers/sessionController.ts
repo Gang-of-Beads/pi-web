@@ -8,7 +8,7 @@ import { forgetCachedNewSession, isCachedNewSessionInfo, markCachedNewSessionInf
 import { textMessage } from "../chatMessages";
 import { carryUnsettledForward } from "../transcriptReconcile";
 import { machineSessionKey } from "../machineKeys";
-import { rememberWorkspaceSessions } from "../workspaceSessionsCache";
+import { rememberWorkspaceSessions, cachedSessionsFor } from "../workspaceSessionsCache";
 import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
 import { clearAskDraft } from "../askDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
@@ -263,9 +263,16 @@ export class SessionController {
     // the lists beside the conversation have to describe the same place.
     const state = this.getState();
     const ancestors = ancestorsForSession(session, { workspaces: state.workspaces, projects: state.projects });
+    const workspaceMoved = ancestors !== undefined
+      && (ancestors.workspace.id !== state.selectedWorkspace?.id || ancestors.workspace.projectId !== state.selectedProject?.id);
     this.setState({
       selectedSession: session,
       ...(ancestors === undefined ? {} : { selectedWorkspace: ancestors.workspace, selectedProject: ancestors.project }),
+      // A workspace move must not carry the previous workspace's session list
+      // under the new one. Seed from the keyed cache and refresh below.
+      ...(workspaceMoved
+        ? { sessions: [...(cachedSessionsFor(machineId, ancestors.workspace.path) ?? [])], sessionsLoad: "loading" as const }
+        : {}),
       ...cached,
       isLoadingEarlierMessages: false,
       ...(options?.preserveTreeDialog === true ? {} : { treeDialog: undefined }),
@@ -277,6 +284,9 @@ export class SessionController {
       dismissedDialogIds: [],
       availableThinkingLevels: [],
     });
+    // The seeded list is the cache's best guess; the workspace's own listing
+    // replaces it. Race-guarded inside against a newer selection.
+    if (workspaceMoved) void this.refreshCurrentWorkspaceSessions(machineId);
     let buffered: SessionUiEvent[] | undefined;
     try {
       if (session.archived === true) {

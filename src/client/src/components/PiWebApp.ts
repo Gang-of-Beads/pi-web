@@ -11,7 +11,7 @@ import { customElement, query, state } from "lit/decorators.js";
 import { configApi, effectiveWorkspaceUploadFolder, fleetApi, projectsApi, selfUpdateApi, sessionsApi, terminalsApi, workspacesApi, workspaceEffectiveUploadFolder, type AskUserSubmission, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
   type QueuedSessionMessage, type SessionBackgroundTaskInfo, type SessionSubagentInfo, type SessionSubagentRunInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
 import type { GoalRecordSummary, PiWebFleetReport, PiWebFleetRunResponse } from "../../../shared/apiTypes";import type { AppAction } from "../actions";
-import { initialAppState, type AppState } from "../appState";
+import { canActOnWorkspaceGoals, goalsForSelectedWorkspace, initialAppState, type AppState } from "../appState";
 import { isSessionActive } from "../../../shared/activity";
 import type { SessionStateBadgeKind } from "./activityBadge";
 import { PI_WEB_CAPABILITIES, supportsPiWebCapability } from "../../../shared/capabilities";
@@ -307,6 +307,11 @@ export class PiWebApp extends LitElement {
       onSelectedSessionReady: ({ machineId, session }) => {
         void this.commitReadyChatAfterRender(machineId, session);
         void this.refreshSelfUpdate();
+        // Opening a session can move the workspace (a quick switch into another
+        // project): the goals panel must answer for the workspace it now shows,
+        // and until this read lands the gate renders nothing rather than the
+        // previous workspace's goal.
+        void this.workspaces.refreshWorkspaceGoals();
       },
       replacePromptEditorText: async ({ machineId, sessionId, text }) => {
         await this.updateComplete;
@@ -1933,8 +1938,10 @@ export class PiWebApp extends LitElement {
           this.applyRenameToQuickSwitcher(session.id, name);
           return this.sessions.renameSession(session, name);
         }}
-        .goals=${this.state.workspaceGoals}
+        .goals=${goalsForSelectedWorkspace(this.state)}
         ?goalsLoading=${this.state.workspaceGoalsLoading}
+        ?goalsFailed=${this.state.workspaceGoalsFailed}
+        .canRunGoalCommands=${canActOnWorkspaceGoals(this.state)}
         .onRefreshGoals=${() => this.workspaces.refreshWorkspaceGoals()}
         .onArchiveGoal=${(goal: GoalRecordSummary) => this.workspaces.archiveWorkspaceGoal(goal.id)}
         .onRunGoalCommand=${(_goal: GoalRecordSummary, command: string) => this.runGoalCommand(command)}
@@ -3116,7 +3123,7 @@ export class PiWebApp extends LitElement {
 
   private renderChatView(state: AppState, session: SessionInfo) {
     return html`
-      <chat-view .goals=${this.state.workspaceGoals} .onRunGoalCommand=${(_goal: GoalRecordSummary, command: string) => this.runGoalCommand(command)} .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .loadingMore=${state.isLoadingEarlierMessages} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk} .pendingDialogs=${state.pendingDialogs} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onDismissClosedDialog=${this.handleDismissClosedDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .notificationInbox=${selectedNotificationView(state.selectedNotificationInbox)} .subagents=${state.subagents} .subagentRuns=${state.subagentRuns} .backgroundTasks=${state.backgroundTasks} .activityOutput=${state.activityOutput} .onCloseActivityOutput=${this.handleCloseActivityOutput} .activityConversation=${state.activityConversation} .onCloseActivityConversation=${this.handleCloseActivityConversation} .onOpenSubagent=${this.handleOpenSubagentSession} .onOpenSubagentRun=${this.handleOpenSubagentRun} .onOpenBackgroundTask=${this.handleOpenBackgroundTask} .onClearServerQueue=${this.handleClearServerQueue} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onDismissWarning=${this.handleDismissWarning} .onDismissNotification=${this.handleDismissNotification} .onDismissAllNotifications=${this.handleDismissAllNotifications} .warningsVisible=${!this.sessionWarningVisibility.collapsed} .onToggleWarnings=${this.handleToggleWarnings} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }}></chat-view>
+      <chat-view .goals=${goalsForSelectedWorkspace(state)} .goalsFailed=${state.workspaceGoalsFailed} .onRunGoalCommand=${(_goal: GoalRecordSummary, command: string) => this.runGoalCommand(command)} .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .loadingMore=${state.isLoadingEarlierMessages} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk} .pendingDialogs=${state.pendingDialogs} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onDismissClosedDialog=${this.handleDismissClosedDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .notificationInbox=${selectedNotificationView(state.selectedNotificationInbox)} .subagents=${state.subagents} .subagentRuns=${state.subagentRuns} .backgroundTasks=${state.backgroundTasks} .activityOutput=${state.activityOutput} .onCloseActivityOutput=${this.handleCloseActivityOutput} .activityConversation=${state.activityConversation} .onCloseActivityConversation=${this.handleCloseActivityConversation} .onOpenSubagent=${this.handleOpenSubagentSession} .onOpenSubagentRun=${this.handleOpenSubagentRun} .onOpenBackgroundTask=${this.handleOpenBackgroundTask} .onClearServerQueue=${this.handleClearServerQueue} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onDismissWarning=${this.handleDismissWarning} .onDismissNotification=${this.handleDismissNotification} .onDismissAllNotifications=${this.handleDismissAllNotifications} .warningsVisible=${!this.sessionWarningVisibility.collapsed} .onToggleWarnings=${this.handleToggleWarnings} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }}></chat-view>
     `;
   }
 

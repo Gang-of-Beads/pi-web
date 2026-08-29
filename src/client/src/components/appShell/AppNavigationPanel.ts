@@ -80,6 +80,12 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) onRenameSession?: (session: SessionInfo, name: string) => void | Promise<void>;
   @property({ attribute: false }) goals: GoalRecordSummary[] = [];
   @property({ type: Boolean }) goalsLoading = false;
+  /** The last goals read failed; the section stays with a failure line. */
+  @property({ type: Boolean }) goalsFailed = false;
+  /** Whether acting on the listed goals is allowed. Withheld when the goals
+   * state answers for a different workspace than the one selected: a stale
+   * render must be inert, not merely unlikely. */
+  @property({ type: Boolean }) canRunGoalCommands = true;
   @property({ attribute: false }) onRefreshGoals?: () => void | Promise<void>;
   @property({ attribute: false }) onArchiveGoal?: (goal: GoalRecordSummary) => void | Promise<void>;
   @property({ attribute: false }) onRunGoalCommand?: (goal: GoalRecordSummary, command: string) => void | Promise<void>;
@@ -307,12 +313,13 @@ export class AppNavigationPanel extends LitElement {
    */
   private renderGoalPanel() {
     if (this.selectedWorkspace === undefined) return null;
-    if (this.goals.length === 0 && !this.goalsLoading) return null;
+    if (this.goals.length === 0 && !this.goalsLoading && !this.goalsFailed) return null;
     return html`
       <goal-panel
         .goals=${this.goals}
-        ?loading=${this.goalsLoading}
-        ?canRunCommands=${this.selectedSession !== undefined}
+        .loading=${this.goalsLoading}
+        .loadFailed=${this.goalsFailed}
+        .canRunCommands=${this.selectedSession !== undefined && this.canRunGoalCommands}
         .onRunCommand=${(goal: GoalRecordSummary, command: string) => this.onRunGoalCommand?.(goal, command)}
         .onRefresh=${() => this.onRefreshGoals?.()}
         .onArchive=${(goal: GoalRecordSummary) => this.onArchiveGoal?.(goal)}

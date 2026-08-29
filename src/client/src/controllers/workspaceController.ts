@@ -3,7 +3,8 @@ import { resetWorkspaceScopedState, type AppState } from "../appState";
 import { errorNoticePatch } from "../errorNotice";
 import { describeError } from "../notice";
 import { mergeCachedNewSessions } from "../cachedNewSessions";
-import { machineProjectKey } from "../machineKeys";
+import { machineProjectKey, machineWorkspaceKey } from "../machineKeys";
+import { workspaceSelectionKey } from "../appState";
 import { cachedSessionsFor, rememberWorkspaceSessions } from "../workspaceSessionsCache";
 import { selectedMachineId, type GetState, type RouteTarget, type SetState, type UpdateUrl } from "./types";
 import type { SessionController } from "./sessionController";
@@ -107,19 +108,25 @@ export class WorkspaceController {
     machineId = selectedMachineId(this.getState()),
   ): Promise<void> {
     if (workspace === undefined) return;
-    this.setState({ workspaceGoalsLoading: true });
+    const key = machineWorkspaceKey(machineId, workspace.projectId, workspace.id);
+    this.setState({ workspaceGoalsLoading: true, workspaceGoalsFailed: false });
     let goals: GoalRecordSummary[];
+    let failed = false;
     try {
       goals = (await this.api.workspaceGoals(workspace.projectId, workspace.id, machineId)).goals;
     } catch {
       // A failed read is not evidence that the goals are gone; blanking the
       // panel made "offline" and "no goals" look identical and dropped the
-      // Goals tab. The previous rows stay until a read succeeds.
-      goals = this.getState().workspaceGoals;
+      // Goals tab. The previous rows stay until a read succeeds — but only the
+      // rows that answer for THIS workspace: a list carried over from another
+      // workspace must never present as this one's, with its actions live.
+      failed = true;
+      const state = this.getState();
+      goals = state.workspaceGoalsKey === key ? state.workspaceGoals : [];
     }
     // Discard a response that lost its race with a newer selection.
-    if (selectedMachineId(this.getState()) !== machineId || this.getState().selectedWorkspace?.id !== workspace.id) return;
-    this.setState({ workspaceGoals: goals, workspaceGoalsLoading: false });
+    if (workspaceSelectionKey(this.getState()) !== key) return;
+    this.setState({ workspaceGoals: goals, workspaceGoalsKey: key, workspaceGoalsLoading: false, workspaceGoalsFailed: failed });
   }
 
 
