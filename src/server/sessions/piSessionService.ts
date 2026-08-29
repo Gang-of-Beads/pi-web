@@ -1,3 +1,4 @@
+import { unsupportedSurfaceNotice } from "./extensionUiBoundary.js";
 import { statSync } from "node:fs";
 import { announceUnsupportedSurface, withUnsupportedSurfaceAnnouncement } from "./unsupportedSurface.js";
 import { basename, dirname, join } from "node:path";
@@ -3749,10 +3750,25 @@ export class PiSessionService implements SessionRouteService {
     // the browser answers, while every other UI method delegates to Pi's
     // headless defaults so unsupported surfaces cancel safely instead of
     // hanging.
+    const warnedSurfaces = new Set<string>();
     return new Proxy(baseUiContext, {
       get: (target, property, receiver): unknown => {
         if (property === "notify") return notify;
         if (property === "theme") return plainTextTheme;
+        // The headless default resolves `custom` to undefined without a word,
+        // so an extension waiting on an answer - the updater's version prompt,
+        // for instance - believed the user chose nothing and asked again next
+        // session. The cancellation stays; the silence goes.
+        if (property === "custom") {
+          return async (...customArgs: unknown[]) => {
+            if (!warnedSurfaces.has("custom")) {
+              warnedSurfaces.add("custom");
+              notify(unsupportedSurfaceNotice("ui.custom"), "warning");
+            }
+            const fallback: unknown = Reflect.get(target, property, receiver);
+            return typeof fallback === "function" ? fallback.apply(target, customArgs) : undefined;
+          };
+        }
         if (property === "confirm") {
           return (title: string, message: string, opts?: ExtensionUIDialogOptions) =>
             this.openExtensionDialog(session, { kind: "confirm", title, message }, opts);
