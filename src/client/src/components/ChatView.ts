@@ -748,6 +748,16 @@ export class ChatView extends LitElement {
   @query("dialog.activity-conversation") private activityConversationDialog?: HTMLDialogElement;
   @state() private pinnedToBottom = true;
   private readonly followGate = new ScrollFollowGate();
+  /** Same invariant as the transcript's gate, for the notifications drawer's own scroller. */
+  private readonly drawerGate = new ScrollFollowGate();
+  /**
+   * The drawer tray a held press is keeping still, or undefined when the drawer
+   * follows live notifications. While it is set, the drawer renders THIS tray
+   * instead of the newest one: a notification arriving mid-press prepends a row
+   * and would move every card below it, including the one under the finger.
+   */
+  @state() private drawerHold: { inbox: SelectedSessionNotificationView | undefined } | undefined;
+  private drawerCatchUpTimer: ReturnType<typeof setTimeout> | undefined;
   /** Whether the newest message is far enough away to be worth a button. */
   @state() private jumpToBottomVisible = false;
   @state() private zoomedImage: { src: string; alt: string } | undefined = undefined;
@@ -792,6 +802,8 @@ export class ChatView extends LitElement {
   private loadMoreCheckFrame: number | undefined;
   private scrollToBottomFrame: number | undefined;
   private catchUpFollowTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Which open card's alignment a press deferred, so the release can replay it. */
+  private deferredOpenAlign: "ask" | "dialog" | undefined;
   private scrollToOpenAskFrame: number | undefined;
   private scrollToOpenDialogFrame: number | undefined;
   private conversationRailFrame: number | undefined;
@@ -869,6 +881,10 @@ export class ChatView extends LitElement {
       clearTimeout(this.catchUpFollowTimer);
       this.catchUpFollowTimer = undefined;
     }
+    if (this.drawerCatchUpTimer !== undefined) {
+      clearTimeout(this.drawerCatchUpTimer);
+      this.drawerCatchUpTimer = undefined;
+    }
     window.removeEventListener("resize", this.onViewportResize);
     window.removeEventListener("pagehide", this.onPageHide);
     window.visualViewport?.removeEventListener("resize", this.onViewportResize);
@@ -887,6 +903,7 @@ export class ChatView extends LitElement {
     this.disclosures.syncSession(this.sessionId);
     this.pendingNotificationFocus = undefined;
     this.retainedEmptyNotificationTrayTargetKey = undefined;
+    this.drawerHold = undefined;
     this.scrollController.clearScheduledSave();
     this.suppressScrollSave = false;
     this.suppressLoadMoreRequests = false;
@@ -915,6 +932,13 @@ export class ChatView extends LitElement {
     } else if (changed.has("notificationInbox") && this.notificationTargetChanged(changed.get("notificationInbox"))) {
       this.pendingNotificationFocus = undefined;
       this.retainedEmptyNotificationTrayTargetKey = undefined;
+      // Another chat's tray is not a held update of this one.
+      this.drawerHold = undefined;
+    }
+    if (changed.has("notificationInbox")) {
+      // The willUpdate map's values are unknown; the tray guard narrows the shape.
+      const previous = changed.get("notificationInbox");
+      this.offerDrawerInbox(isNotificationTray(previous) ? this.visibleInboxOf(previous) : undefined);
     }
     if (changed.has("messages") || changed.has("pendingAsk") || changed.has("pendingDialogs") || changed.has("closedDialogs")) this.pinnedToBottom = this.pinnedToBottom && (this.didChatHeightChange() || this.isNearBottom());
   }
@@ -942,7 +966,10 @@ export class ChatView extends LitElement {
     if (changed.has("messages") || changed.has("messageStart") || changed.has("messageTotal") || changed.has("hasMore") || changed.has("loadingMore")) this.scheduleConversationRailUpdate();
     if (changed.has("messages") || changed.has("messageStart") || changed.has("hasMore") || changed.has("loadingMore") || changed.has("pendingAsk") || changed.has("pendingDialogs") || changed.has("closedDialogs")) this.continuePendingScrollRestore();
     if (changed.has("messages") || changed.has("hasMore") || changed.has("loadingMore")) this.requestLoadMoreIfNeeded();
-    if (changed.has("notificationInbox") && this.pendingNotificationFocus !== undefined) this.focusPendingNotificationTarget();
+    if (changed.has("notificationInbox") && this.drawerHold === undefined && this.pendingNotificationFocus !== undefined) this.focusPendingNotificationTarget();
+    // The flush of a press-held tray is when the rows the focus handoff looks
+    // for actually appear.
+    if (changed.has("drawerHold") && this.drawerHold === undefined && this.pendingNotificationFocus !== undefined) this.focusPendingNotificationTarget();
     if (changed.has("zoomedImage")) this.syncImageZoomDialog();
     if (changed.has("activityOutput")) this.syncActivityOutputDialog();
     if (changed.has("activityConversation")) this.syncActivityConversationDialog();
@@ -1103,7 +1130,7 @@ export class ChatView extends LitElement {
       ${this.renderNotificationLiveRegions()}
       <div class="chat-wrap">
         ${this.renderConversationRail()}
-        <div class="chat" @scroll=${() => { this.onScroll(); }} @wheel=${(event: WheelEvent) => { this.onWheel(event); }} @touchend=${() => { this.onTouchEnd(); }} @touchcancel=${() => { this.onTouchEnd(); }} @pointerdown=${() => { this.followGate.notePointerDown(Date.now()); }} @pointerup=${() => { this.releasePointer(); }} @pointercancel=${() => { this.releasePointer(); }} @touchstart=${(event: TouchEvent) => { this.onTouchStart(event); }} @touchmove=${(event: TouchEvent) => { this.onTouchMove(event); }}>
+        <div class="chat" @scroll=${() => { this.onScroll(); }} @wheel=${(event: WheelEvent) => { this.onWheel(event); }} @touchend=${() => { this.onTouchEnd(); }} @touchcancel=${() => { this.onTouchEnd(); }} @pointerdown=${() => { this.notePressStart(); }} @pointerup=${() => { this.releasePointer(); }} @pointercancel=${() => { this.releasePointer(); }} @touchstart=${(event: TouchEvent) => { this.onTouchStart(event); }} @touchmove=${(event: TouchEvent) => { this.onTouchMove(event); }}>
           ${this.renderHistoryBoundary()}
           ${repeat(
             groups,
@@ -1169,7 +1196,7 @@ export class ChatView extends LitElement {
    */
   private renderTopDrawer(): TemplateResult | null {
     const activity = this.activityPanelState();
-    const inbox = this.visibleNotificationInbox();
+    const inbox = this.drawerInbox();
     // Goals count as a reason to have a drawer: on a phone this is the only
     // place they appear, so gating the drawer on the other two sections hid
     // them exactly when nothing else was running.
@@ -1277,12 +1304,59 @@ export class ChatView extends LitElement {
 
   /** The inbox this chat should show, or undefined when there is nothing to show. */
   private visibleNotificationInbox(): SelectedSessionNotificationView | undefined {
-    const inbox = this.notificationInbox;
+    return this.visibleInboxOf(this.notificationInbox);
+  }
+
+  private visibleInboxOf(inbox: SelectedSessionNotificationView | undefined): SelectedSessionNotificationView | undefined {
     if (inbox?.sessionId !== this.sessionId) return undefined;
     const hasPendingOverlay = inbox.pendingDismissedIds.size > 0 || inbox.dismissAllPending;
     const retainsFocusTarget = this.retainedEmptyNotificationTrayTargetKey === notificationTargetKey(inbox);
     if (notificationInboxTotalCount(inbox) === 0 && !hasPendingOverlay && !retainsFocusTarget) return undefined;
     return inbox;
+  }
+
+  /** The tray the drawer draws: the held one while a press keeps it still, else the live one. */
+  private drawerInbox(): SelectedSessionNotificationView | undefined {
+    const hold = this.drawerHold;
+    return hold === undefined ? this.visibleNotificationInbox() : hold.inbox;
+  }
+
+  /**
+   * Offer a live tray update to the drawer. A press on the drawer holds it
+   * back - with the same gate and settle grace the transcript uses - so rows
+   * cannot move under a finger that is already down. The update is applied on
+   * release, or immediately once a press outlives the stuck-pointer backstop.
+   */
+  private offerDrawerInbox(previouslyVisible: SelectedSessionNotificationView | undefined): void {
+    if (this.drawerGate.followsNewest(Date.now())) {
+      if (this.drawerHold !== undefined) this.drawerHold = undefined;
+      return;
+    }
+    // Nothing was rendered where the drawer would be - a tray appearing for the
+    // first time, or another chat's - so there is no content under the finger
+    // to keep still, and the tray may show live.
+    if (previouslyVisible === undefined) return;
+    // Hold what was rendered before this change arrived, not the change itself:
+    // the finger's target must stay where it is until the press ends.
+    this.drawerHold ??= { inbox: previouslyVisible };
+    this.scheduleDrawerCatchUp();
+  }
+
+  private releaseDrawerPointer(): void {
+    this.drawerGate.notePointerUp(Date.now());
+    if (!this.drawerGate.takeSuppressedFollow()) return;
+    this.scheduleDrawerCatchUp();
+  }
+
+  /** Apply what the press held back once the settle grace has let the tap land. */
+  private scheduleDrawerCatchUp(): void {
+    if (this.drawerCatchUpTimer !== undefined) clearTimeout(this.drawerCatchUpTimer);
+    this.drawerCatchUpTimer = setTimeout(() => {
+      this.drawerCatchUpTimer = undefined;
+      // A new press re-holds; its own release reschedules this.
+      if (!this.drawerGate.followsNewest(Date.now())) return;
+      if (this.drawerHold !== undefined) this.drawerHold = undefined;
+    }, TOUCH_SETTLE_MS);
   }
 
   /**
@@ -1468,7 +1542,7 @@ export class ChatView extends LitElement {
 
   private renderNotificationPanel(inbox: SelectedSessionNotificationView): TemplateResult {
     return html`
-        <div class="notification-list" id="session-notification-list" role="tabpanel" aria-labelledby="drawer-tab-notifications">
+        <div class="notification-list" id="session-notification-list" role="tabpanel" aria-labelledby="drawer-tab-notifications" @pointerdown=${() => { this.drawerGate.notePointerDown(Date.now()); }} @pointerup=${() => { this.releaseDrawerPointer(); }} @pointercancel=${() => { this.releaseDrawerPointer(); }} @touchstart=${() => { this.drawerGate.notePointerDown(Date.now()); }} @touchend=${() => { this.releaseDrawerPointer(); }} @touchcancel=${() => { this.releaseDrawerPointer(); }}>
           ${inbox.discardedCount === 0 ? null : html`
             <p class="notification-overflow">${notificationInboxOverflowLabel(inbox.discardedCount)}</p>
           `}
@@ -2402,7 +2476,7 @@ export class ChatView extends LitElement {
 
   private onTouchStart(event: TouchEvent) {
     this.touchStartY = event.touches[0]?.clientY;
-    this.followGate.notePointerDown(Date.now());
+    this.notePressStart();
   }
 
   private onTouchEnd(): void {
@@ -2422,11 +2496,30 @@ export class ChatView extends LitElement {
     if (!this.followGate.takeSuppressedFollow() || !this.pinnedToBottom) return;
     // The settle grace still refuses following, which is what lets the tap land;
     // the catch-up therefore waits for it to expire instead of being dropped.
+    const replay = this.deferredOpenAlign;
     if (this.catchUpFollowTimer !== undefined) clearTimeout(this.catchUpFollowTimer);
     this.catchUpFollowTimer = setTimeout(() => {
       this.catchUpFollowTimer = undefined;
-      if (this.pinnedToBottom) this.scrollToBottom();
+      if (!this.pinnedToBottom) return;
+      if (replay !== undefined && this.replayDeferredAlignment(replay)) return;
+      this.scrollToBottom();
     }, TOUCH_SETTLE_MS);
+  }
+
+  /** Apply the alignment a press deferred; false when the card is no longer open. */
+  private replayDeferredAlignment(replay: "ask" | "dialog"): boolean {
+    let aligned = false;
+    this.withSuppressedScrollSave(() => { aligned = replay === "ask" ? this.alignOpenAskToTop() : this.alignOpenDialogToTop(); });
+    return aligned;
+  }
+
+  /**
+   * A press begins a new hold account: an alignment an earlier press deferred
+   * is history, so it cannot hijack a later press's bottom catch-up.
+   */
+  private notePressStart(): void {
+    this.deferredOpenAlign = undefined;
+    this.followGate.notePointerDown(Date.now());
   }
 
   private onTouchMove(event: TouchEvent) {
@@ -2549,6 +2642,10 @@ export class ChatView extends LitElement {
     const chat = this.chat;
     const card = this.renderRoot.querySelector<HTMLElement>(".chat > ask-user-card");
     if (chat === undefined || card === null) return false;
+    if (!this.followGate.followsNewest(Date.now())) {
+      this.deferredOpenAlign = "ask";
+      return false;
+    }
     chat.scrollTop += card.getBoundingClientRect().top - chat.getBoundingClientRect().top;
     this.syncScrollMetrics();
     this.pinnedToBottom = this.isNearBottom();
@@ -2571,6 +2668,10 @@ export class ChatView extends LitElement {
     const chat = this.chat;
     const card = this.renderRoot.querySelector<HTMLElement>(".chat > extension-dialog-card.open-dialog-card");
     if (chat === undefined || card === null) return false;
+    if (!this.followGate.followsNewest(Date.now())) {
+      this.deferredOpenAlign = "dialog";
+      return false;
+    }
     chat.scrollTop += card.getBoundingClientRect().top - chat.getBoundingClientRect().top;
     this.syncScrollMetrics();
     this.pinnedToBottom = this.isNearBottom();
@@ -2972,6 +3073,13 @@ export function isActiveActivityStatus(status: ActivityStatus): boolean {
 /** Terminal only. A subagent rests at "idle" between turns, so idle is not finished. */
 export function isFinishedActivityStatus(status: ActivityStatus): boolean {
   return status === "done" || status === "failed" || status === "error" || status === "lost" || status === "stopped";
+}
+
+/** Whether an unknown willUpdate map value is a session's notification tray. */
+function isNotificationTray(value: unknown): value is SelectedSessionNotificationView {
+  return typeof value === "object" && value !== null
+    && typeof Reflect.get(value, "sessionId") === "string"
+    && Array.isArray(Reflect.get(value, "notifications"));
 }
 
 /**
