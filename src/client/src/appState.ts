@@ -145,17 +145,12 @@ export interface AppState {
   dismissedDialogIds: readonly string[];
   /** Thinking levels available for the selected session's current model. */
   availableThinkingLevels: readonly string[];
-  /** Goals recorded for the selected workspace, newest unfinished first. */
-  workspaceGoals: GoalRecordSummary[];
-  /** The machine+project+workspace the retained goal list was fetched for.
-   * Retention across a loading or failed read is legitimate only for this
-   * workspace; rendered rows whose key does not match the selection are
-   * another project's data on the wrong surface. */
-  workspaceGoalsKey: string | undefined;
-  /** The last goals read failed; the panel must say so rather than claim the
-   * workspace has no goals. */
-  workspaceGoalsFailed: boolean;
-  workspaceGoalsLoading: boolean;
+  /** Goals recorded for the selected workspace, newest unfinished first,
+   * carried with the selection they were read for: the panel's empty claim is
+   * only reachable through a completed read that answers for the workspace on
+   * screen, never through a retained list keyed elsewhere or a read that never
+   * happened. */
+  workspaceGoalsLoad: PanelLoad<GoalRecordSummary[]>;
   sessionStatuses: Record<string, SessionStatus>;
   sessionActivities: Record<string, SessionActivity>;
   /** Authoritative projection plus browser-local optimistic overlays for the selected inbox. */
@@ -222,13 +217,25 @@ export type SessionsLoadState = "unloaded" | "loading" | "loaded";
  */
 export type ProjectsLoadState = "unloaded" | "loading" | "loaded" | "failed";
 
+/**
+ * What a panel knows about its own data: one of four named states, carried
+ * with the selection key the data was read for. An empty array by itself is
+ * "not read yet", "the read failed", and "someone else's rows" just as often
+ * as it is "genuinely empty", and a panel that derives its empty claim from
+ * the shape of the data will render all four as "genuinely empty" - which is
+ * how the goals panel told the owner his active goal did not exist.
+ */
+export interface PanelLoad<T> {
+  state: "unloaded" | "loading" | "loaded" | "failed";
+  /** The selection the data was read, or is being read, for. */
+  key: string | undefined;
+  data: T;
+}
+
 export type WorkspaceScopedStateReset = Pick<AppState,
   | "sessions"
   | "sessionsLoad"
-  | "workspaceGoals"
-  | "workspaceGoalsKey"
-  | "workspaceGoalsFailed"
-  | "workspaceGoalsLoading"
+  | "workspaceGoalsLoad"
   | "clientQueuedSessionMessages"
   | "startingSessionCount"
   | "selectedNotificationInbox"
@@ -255,14 +262,17 @@ export function workspaceSelectionKey(state: Pick<AppState, "selectedMachine" | 
 }
 
 /**
- * The goals to render for the current selection. The retained list is shown
- * only when it was fetched for exactly this machine+project+workspace; on any
- * other selection it would be another project's goal with live Resume and
- * Abandon buttons, so it renders as nothing instead.
+ * The goals load for the current selection. The retained slot is handed
+ * through only when it was fetched for exactly this machine+project+workspace;
+ * on any other selection it would be another project's goal with live Resume
+ * and Abandon buttons, so it reads as "nothing loaded yet" for this selection —
+ * which is a different thing from a read that completed and found nothing.
  */
-export function goalsForSelectedWorkspace(state: AppState): GoalRecordSummary[] {
-  if (state.workspaceGoalsKey === undefined || state.workspaceGoalsKey !== workspaceSelectionKey(state)) return [];
-  return state.workspaceGoals;
+export function goalsForSelectedWorkspace(state: AppState): PanelLoad<GoalRecordSummary[]> {
+  const key = workspaceSelectionKey(state);
+  const slot = state.workspaceGoalsLoad;
+  if (slot.key !== undefined && slot.key === key) return slot;
+  return { state: "unloaded", key, data: [] };
 }
 
 /**
@@ -272,7 +282,8 @@ export function goalsForSelectedWorkspace(state: AppState): GoalRecordSummary[] 
  * unlikely.
  */
 export function canActOnWorkspaceGoals(state: AppState): boolean {
-  return state.workspaceGoalsKey !== undefined && state.workspaceGoalsKey === workspaceSelectionKey(state);
+  const key = workspaceSelectionKey(state);
+  return state.workspaceGoalsLoad.key !== undefined && state.workspaceGoalsLoad.key === key;
 }
 
 export function resetWorkspaceScopedState(): WorkspaceScopedStateReset {
@@ -283,10 +294,7 @@ export function resetWorkspaceScopedState(): WorkspaceScopedStateReset {
     // Goals belong to the workspace being left, so they must not linger over
     // the next one while its own records load. The key goes with them: an
     // unkeyed list would be retained by nothing and owned by no one.
-    workspaceGoals: [],
-    workspaceGoalsKey: undefined,
-    workspaceGoalsFailed: false,
-    workspaceGoalsLoading: false,
+    workspaceGoalsLoad: { state: "unloaded", key: undefined, data: [] },
     clientQueuedSessionMessages: {},
     startingSessionCount: 0,
     selectedNotificationInbox: undefined,
@@ -341,10 +349,7 @@ export function initialAppState(): AppState {
     closedDialogs: [],
     dismissedDialogIds: [],
     availableThinkingLevels: [],
-    workspaceGoals: [],
-    workspaceGoalsKey: undefined,
-    workspaceGoalsFailed: false,
-    workspaceGoalsLoading: false,
+    workspaceGoalsLoad: { state: "unloaded", key: undefined, data: [] },
     sessionStatuses: {},
     sessionActivities: {},
     selectedNotificationInbox: undefined,

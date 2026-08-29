@@ -1,5 +1,5 @@
 import { api as defaultApi, type GoalRecordSummary, type Project, type Workspace } from "../api";
-import { resetWorkspaceScopedState, type AppState } from "../appState";
+import { resetWorkspaceScopedState, type AppState, type PanelLoad } from "../appState";
 import { errorNoticePatch } from "../errorNotice";
 import { describeError } from "../notice";
 import { mergeCachedNewSessions } from "../cachedNewSessions";
@@ -109,24 +109,28 @@ export class WorkspaceController {
   ): Promise<void> {
     if (workspace === undefined) return;
     const key = machineWorkspaceKey(machineId, workspace.projectId, workspace.id);
-    this.setState({ workspaceGoalsLoading: true, workspaceGoalsFailed: false });
-    let goals: GoalRecordSummary[];
-    let failed = false;
+    const previous = this.getState().workspaceGoalsLoad;
+    // Rows this workspace already showed survive a re-read - loading and
+    // failure keep them, so the panel never flashes empty mid-refresh. Rows
+    // keyed to another workspace do not survive: they were never this
+    // selection's, and presenting them here is how another project's goal
+    // ended up on this panel with live controls.
+    const retained = previous.key === key ? previous.data : [];
+    this.setState({ workspaceGoalsLoad: { state: "loading", key, data: retained } });
+    let load: PanelLoad<GoalRecordSummary[]>;
     try {
-      goals = (await this.api.workspaceGoals(workspace.projectId, workspace.id, machineId)).goals;
+      load = { state: "loaded", key, data: (await this.api.workspaceGoals(workspace.projectId, workspace.id, machineId)).goals };
     } catch {
       // A failed read is not evidence that the goals are gone; blanking the
       // panel made "offline" and "no goals" look identical and dropped the
       // Goals tab. The previous rows stay until a read succeeds — but only the
       // rows that answer for THIS workspace: a list carried over from another
       // workspace must never present as this one's, with its actions live.
-      failed = true;
-      const state = this.getState();
-      goals = state.workspaceGoalsKey === key ? state.workspaceGoals : [];
+      load = { state: "failed", key, data: retained };
     }
     // Discard a response that lost its race with a newer selection.
     if (workspaceSelectionKey(this.getState()) !== key) return;
-    this.setState({ workspaceGoals: goals, workspaceGoalsKey: key, workspaceGoalsLoading: false, workspaceGoalsFailed: failed });
+    this.setState({ workspaceGoalsLoad: load });
   }
 
 

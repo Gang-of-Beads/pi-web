@@ -528,7 +528,7 @@ describe("archiveWorkspaceGoal", () => {
     await controller.archiveWorkspaceGoal("goal-1");
 
     expect(archiveWorkspaceGoal).toHaveBeenCalledWith("project-1", "/repo/ws-1", "goal-1", "local");
-    expect(state().workspaceGoalsLoading).toBe(false);
+    expect(state().workspaceGoalsLoad.state).not.toBe("loading");
   });
 
   it("says when a running agent may bring the goal back", async () => {
@@ -574,16 +574,15 @@ describe("when the goals listing fails", () => {
     const repo = project("p1", "/repo");
     const ws = workspace(repo.id, repo.path, { isMain: true });
     const test = harness(
-      { selectedProject: repo, selectedWorkspace: ws, workspaceGoals: [kept], workspaceGoalsKey: machineWorkspaceKey("local", repo.id, ws.id) },
+      { selectedProject: repo, selectedWorkspace: ws, workspaceGoalsLoad: { state: "loaded" as const, key: machineWorkspaceKey("local", repo.id, ws.id), data: [kept] } },
       vi.fn(),
       { workspaceGoals: vi.fn().mockRejectedValue(new Error("daemon restarting")) },
     );
 
     await test.controller.refreshWorkspaceGoals();
 
-    expect(test.state().workspaceGoals).toEqual([kept]);
-    expect(test.state().workspaceGoalsLoading).toBe(false);
-    expect(test.state().workspaceGoalsFailed).toBe(true);
+    expect(test.state().workspaceGoalsLoad.data).toEqual([kept]);
+    expect(test.state().workspaceGoalsLoad.state).toBe("failed");
   });
 });
 
@@ -607,7 +606,7 @@ describe("goals keyed to the workspace they were fetched for", () => {
       {
         selectedProject: project("p2", "/elsewhere"),
         selectedWorkspace: elsewhere,
-        workspaceGoals: [goalA],
+        workspaceGoalsLoad: { state: "loaded" as const, key: machineWorkspaceKey("local", "p3", "ws-x"), data: [goalA] },
       },
       () => Promise.resolve([elsewhere]),
       { workspaceGoals: () => pending.promise },
@@ -615,12 +614,14 @@ describe("goals keyed to the workspace they were fetched for", () => {
 
     const loading = test.controller.refreshWorkspaceGoals(test.state().selectedWorkspace, "local");
 
-    expect(goalsForSelectedWorkspace(test.state())).toEqual([]);
-    expect(test.state().workspaceGoalsLoading).toBe(true);
+    // In flight for THIS workspace the retained rows answer for another key,
+    // so the slot reads as loading with none of them.
+    expect(goalsForSelectedWorkspace(test.state()).state).toBe("loading");
+    expect(goalsForSelectedWorkspace(test.state()).data).toEqual([]);
 
     pending.resolve({ goals: [], directory: "/elsewhere/.pi/goals", generatedAt: "now" });
     await loading;
-    expect(goalsForSelectedWorkspace(test.state())).toEqual([]);
+    expect(goalsForSelectedWorkspace(test.state())).toEqual({ state: "loaded", key: machineWorkspaceKey("local", "p2", elsewhere.id), data: [] });
   });
 
   it("never keeps another workspace's rows when the read fails", async () => {
@@ -629,7 +630,7 @@ describe("goals keyed to the workspace they were fetched for", () => {
       {
         selectedProject: project("p2", "/elsewhere"),
         selectedWorkspace: elsewhere,
-        workspaceGoals: [goalA],
+        workspaceGoalsLoad: { state: "loaded" as const, key: machineWorkspaceKey("local", "p3", "ws-x"), data: [goalA] },
       },
       () => Promise.resolve([]),
       { workspaceGoals: vi.fn().mockRejectedValue(new Error("read failed")) },
@@ -637,10 +638,9 @@ describe("goals keyed to the workspace they were fetched for", () => {
 
     await test.controller.refreshWorkspaceGoals(test.state().selectedWorkspace, "local");
 
-    expect(goalsForSelectedWorkspace(test.state())).toEqual([]);
-    expect(test.state().workspaceGoals.some((goal) => goal.id === "goal-a")).toBe(false);
-    expect(test.state().workspaceGoalsFailed).toBe(true);
-    expect(test.state().workspaceGoalsLoading).toBe(false);
+    expect(goalsForSelectedWorkspace(test.state()).data).toEqual([]);
+    expect(test.state().workspaceGoalsLoad.data.some((goal) => goal.id === "goal-a")).toBe(false);
+    expect(test.state().workspaceGoalsLoad.state).toBe("failed");
   });
 
   it("keeps this workspace's own rows when its read fails", async () => {
@@ -650,8 +650,7 @@ describe("goals keyed to the workspace they were fetched for", () => {
       {
         selectedProject: project("p2", "/elsewhere"),
         selectedWorkspace: elsewhere,
-        workspaceGoals: [own],
-        workspaceGoalsKey: machineWorkspaceKey("local", "p2", elsewhere.id),
+        workspaceGoalsLoad: { state: "loaded" as const, key: machineWorkspaceKey("local", "p2", elsewhere.id), data: [own] },
       },
       () => Promise.resolve([]),
       { workspaceGoals: vi.fn().mockRejectedValue(new Error("read failed")) },
@@ -659,8 +658,7 @@ describe("goals keyed to the workspace they were fetched for", () => {
 
     await test.controller.refreshWorkspaceGoals(test.state().selectedWorkspace, "local");
 
-    expect(goalsForSelectedWorkspace(test.state())).toEqual([own]);
-    expect(test.state().workspaceGoalsFailed).toBe(true);
+    expect(goalsForSelectedWorkspace(test.state())).toEqual({ state: "failed", key: machineWorkspaceKey("local", "p2", elsewhere.id), data: [own] });
   });
 
   it("shows the new workspace's list after a switch, never the old rows", async () => {
@@ -675,13 +673,13 @@ describe("goals keyed to the workspace they were fetched for", () => {
     );
 
     await test.controller.refreshWorkspaceGoals();
-    expect(goalsForSelectedWorkspace(test.state())).toEqual([goalA]);
+    expect(goalsForSelectedWorkspace(test.state())).toEqual({ state: "loaded", key: machineWorkspaceKey("local", repo.id, repoWs.id), data: [goalA] });
 
     goals.length = 0;
     await test.controller.selectWorkspace(elsewhere);
 
-    expect(goalsForSelectedWorkspace(test.state())).toEqual([]);
-    expect(test.state().workspaceGoals.some((goal) => goal.id === "goal-a")).toBe(false);
+    expect(goalsForSelectedWorkspace(test.state()).data).toEqual([]);
+    expect(goalsForSelectedWorkspace(test.state()).state).toBe("loaded");
     expect(canActOnWorkspaceGoals(test.state())).toBe(true);
   });
 
@@ -690,7 +688,7 @@ describe("goals keyed to the workspace they were fetched for", () => {
     const repoWs = workspace(repo.id, repo.path, { isMain: true });
     // Stale rows with no key at all: the state the ancestors switch leaves behind.
     const test = harness(
-      { selectedProject: repo, selectedWorkspace: repoWs, workspaceGoals: [goalA] },
+      { selectedProject: repo, selectedWorkspace: repoWs, workspaceGoalsLoad: { state: "loaded" as const, key: undefined, data: [goalA] } },
       vi.fn(),
       { workspaceGoals: () => Promise.resolve({ goals: [goalA], directory: "/repo/.pi/goals", generatedAt: "now" }) },
     );
@@ -700,6 +698,6 @@ describe("goals keyed to the workspace they were fetched for", () => {
     await test.controller.refreshWorkspaceGoals();
 
     expect(canActOnWorkspaceGoals(test.state())).toBe(true);
-    expect(goalsForSelectedWorkspace(test.state())).toEqual([goalA]);
+    expect(goalsForSelectedWorkspace(test.state()).data).toEqual([goalA]);
   });
 });
