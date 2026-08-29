@@ -1,4 +1,5 @@
 import { statSync } from "node:fs";
+import { announceUnsupportedSurface, withUnsupportedSurfaceAnnouncement } from "./unsupportedSurface.js";
 import { basename, dirname, join } from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
 import type { ImageContent } from "@earendil-works/pi-ai";
@@ -3763,6 +3764,16 @@ export class PiSessionService implements SessionRouteService {
         if (property === "input") {
           return (title: string, placeholder: string | undefined, opts?: ExtensionUIDialogOptions) =>
             this.openExtensionDialog(session, { kind: "input", title, placeholder }, opts);
+        }
+        if (property === "custom") {
+          const base: unknown = Reflect.get(target, property, receiver);
+          if (typeof base !== "function") return base;
+          // The silent form of this cancel made the updater's prompt return
+          // every session with nothing anywhere saying why.
+          return withUnsupportedSurfaceAnnouncement(
+            (...args: unknown[]): unknown => Reflect.apply(base, target, args),
+            () => { notify(announceUnsupportedSurface("custom"), "warning"); },
+          );
         }
         const value: unknown = Reflect.get(target, property, receiver);
         return value;
