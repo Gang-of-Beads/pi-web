@@ -249,7 +249,7 @@ export const listStyles = css`
   /* Tile/card layout for management lists (workspaces, projects, machines).
      Rows become compact cards in an auto-fill grid; the row menu moves into
      the card's corner so the two-column row grid can collapse to one. */
-  .list-body.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--pi-space-4); align-content: start; padding: var(--pi-space-2) var(--pi-space-1); }
+  .list-body.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); grid-auto-rows: min-content; gap: var(--pi-space-4); align-content: start; padding: var(--pi-space-2) var(--pi-space-1); }
   .list-body.tiles .action-row { grid-template-columns: minmax(0, 1fr); margin: 0; align-self: start; }
   .list-body.tiles .action-main { border-radius: var(--pi-radius-lg); padding: var(--pi-space-5) 30px var(--pi-space-5) var(--pi-space-5); min-height: 56px; align-content: center; }
   .list-body.tiles .action-menu { position: absolute; top: 6px; right: 6px; align-self: auto; }
