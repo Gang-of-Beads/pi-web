@@ -15,13 +15,32 @@ afterEach(() => {
  * still on screen afterwards, so he tapped again. These pin the two things that
  * would produce that: a dismissal that reports the wrong card, and a second
  * card taking the first one's place so the tap looks like it did nothing.
+ *
+ * An answered card no longer offers Dismiss at all: it collapses to a quiet
+ * row the moment it settles (the owner chose that), and its durable record is
+ * the notification the daemon filed in the drawer. Dismiss survives only on
+ * cards that settled without an answer.
  */
 describe("ChatView settled extension dialog dismissal", () => {
-  it("dismisses the card whose control was pressed and leaves the other one alone", async () => {
+  it("renders an answered card as a row with no Dismiss to tap", async () => {
     const view = await mountView();
     const dismissed: string[] = [];
     view.onDismissClosedDialog = (dialogId: string) => { dismissed.push(dialogId); };
-    view.closedDialogs = [closedDialog("dlg-a"), closedDialog("dlg-b")];
+    view.closedDialogs = [closedDialog("dlg-a")];
+    await view.updateComplete;
+
+    const card = cardFor(view, "dlg-a");
+    expect(card.shadowRoot?.querySelector(".answered-row")).not.toBeNull();
+    expect([...(card.shadowRoot?.querySelectorAll("button") ?? [])]).toEqual([]);
+
+    expect(dismissed).toEqual([]);
+  });
+
+  it("still dismisses exactly the unanswered card whose control was pressed", async () => {
+    const view = await mountView();
+    const dismissed: string[] = [];
+    view.onDismissClosedDialog = (dialogId: string) => { dismissed.push(dialogId); };
+    view.closedDialogs = [closedDialog("dlg-a"), cancelledDialog("dlg-b")];
     await view.updateComplete;
 
     pressDismiss(cardFor(view, "dlg-b"));
@@ -55,6 +74,13 @@ function closedDialog(dialogId: string): ClosedExtensionDialog {
     dialog: openDialog(dialogId, "Extension updates available: github.com/nicobailon/pi-subagents"),
     reason: "answered",
     answer: "Update now",
+  };
+}
+
+function cancelledDialog(dialogId: string): ClosedExtensionDialog {
+  return {
+    dialog: openDialog(dialogId, "Extension updates available: github.com/nicobailon/pi-subagents"),
+    reason: "cancelled",
   };
 }
 

@@ -241,6 +241,12 @@ export class ExtensionDialogCard extends LitElement {
   }
 
   private renderClosed(closed: ClosedExtensionDialog): TemplateResult {
+    // An answered dialog needs nothing further from the reader, so it stops
+    // being a card: the outcome is one quiet row the transcript keeps, with no
+    // Dismiss to tap. Requiring that tap made every answer cost a second
+    // interaction and left a live button on a settled fact; the durable record
+    // is the notification the daemon files in the drawer.
+    if (closed.reason === "answered") return this.renderAnsweredRow(closed);
     return html`
       <article class="card closed-card" aria-labelledby="extension-dialog-closed-heading">
         <header class="card-header">
@@ -251,6 +257,16 @@ export class ExtensionDialogCard extends LitElement {
         <footer class="dialog-footer">
           <button class="secondary-action" type="button" @click=${() => { this.dismissClosed(closed); }}>Dismiss</button>
         </footer>
+      </article>
+    `;
+  }
+
+  private renderAnsweredRow(closed: ClosedExtensionDialog): TemplateResult {
+    return html`
+      <article class="answered-row" aria-labelledby="extension-dialog-answered-heading">
+        <span class="header-status answered">Answered</span>
+        <h2 id="extension-dialog-answered-heading">${splitDialogTitle(closed.dialog.title).heading}</h2>
+        <p class="answered-answer">${extensionDialogCloseSummary(closed)}</p>
       </article>
     `;
   }
@@ -463,6 +479,35 @@ export class ExtensionDialogCard extends LitElement {
       white-space: pre-wrap;
       overflow-wrap: anywhere;
     }
+    .answered-row {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      min-width: 0;
+      padding: 6px 12px;
+      border: 1px solid var(--pi-border-muted);
+      border-radius: 8px;
+      background: var(--pi-surface);
+    }
+    .answered-row h2 {
+      min-width: 0;
+      margin: 0;
+      font-size: 12px;
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .answered-row .answered-answer {
+      min-width: 0;
+      margin: 0;
+      color: var(--pi-muted);
+      font-size: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .answered-row .header-status { flex: 0 0 auto; }
     @container (max-width: 580px) {
       /* Every actionable control is a touch target on a phone, not just the
          primary one: the options are the whole point of a select dialog. */
