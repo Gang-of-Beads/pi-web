@@ -808,6 +808,11 @@ export class ChatView extends LitElement {
   @property({ type: Boolean, attribute: false }) goalsLoading = false;
   /** The last goals read failed; the entrance must not read as "no goals". */
   @property({ type: Boolean, attribute: false }) goalsFailed = false;
+  /** Whether the goals list answers for the workspace on screen. The tab's
+      count is a claim about this workspace, so it only shows when the state
+      behind it is keyed to the current selection (in flight, failed, and
+      stale-keyed reads all render the bare name instead). */
+  @property({ type: Boolean, attribute: false }) goalsKnown = false;
   @property({ attribute: false }) onRunGoalCommand?: (goal: GoalRecordSummary, command: string) => void | Promise<void>;
   @state() private topDrawerTab: TopDrawerTab | undefined;
   /** Which kinds of activity to list; "all" until the reader narrows it. */
@@ -1237,6 +1242,11 @@ export class ChatView extends LitElement {
       : this.collapsedTopDrawerKeys.has(key) || !topDrawerStartsOpen();
     const toggleLabel = collapsed ? "Show session activity and notifications" : "Hide session activity and notifications";
     const notificationCount = inbox === undefined ? 0 : notificationInboxTotalCount(inbox);
+    // Membership is fixed: the three tabs render for the drawer's whole life,
+    // whether their section is running, empty, or still unknown. A tab that
+    // appears or vanishes with its data reflows the strip under the finger —
+    // the owner's mis-tap on the drained NOTIFICATIONS tab. Honest empties are
+    // rendered by the panels, not by removing the entrance.
     return html`
       <section
         class=${`top-drawer${collapsed ? " collapsed" : ""}`}
@@ -1247,49 +1257,43 @@ export class ChatView extends LitElement {
         <header class="drawer-header" data-notification-focus="header" tabindex="-1">
           <div class=${`drawer-tabs-frame${scrollEdgeClasses(this.drawerTabEdgeTracker.edges)}`}>
           <div class="drawer-tabs" role="tablist" aria-label="Session drawer sections" @scroll=${() => { this.drawerTabEdgeTracker.refresh(); }} @keydown=${(event: KeyboardEvent) => { this.onDrawerTabsKeydown(event); }}>
-            ${activity === undefined ? null : html`
-              <button
-                type="button"
-                role="tab"
-                id="drawer-tab-activity"
-                class=${`drawer-tab drawer-tab-activity${tab === "activity" ? " selected" : ""}`}
-                aria-selected=${String(tab === "activity")}
-                tabindex=${tab === "activity" ? "0" : "-1"}
-                aria-controls="session-activity-list"
-                @click=${() => { this.selectTopDrawerTab("activity", collapsed); }}
-              >
-                ${activity.summary.working ? html`<span class="subagent-dot working" aria-hidden="true"></span>` : null}
-                <span class="drawer-tab-label">${activityTabLabel({ active: activity.activeCount })}</span>
-              </button>
-            `}
-            ${inbox === undefined ? null : html`
-              <button
-                type="button"
-                role="tab"
-                id="drawer-tab-notifications"
-                class=${`drawer-tab drawer-tab-notifications${tab === "notifications" ? " selected" : ""}`}
-                aria-selected=${String(tab === "notifications")}
-                tabindex=${tab === "notifications" ? "0" : "-1"}
-                aria-controls="session-notification-list"
-                @click=${() => { this.selectTopDrawerTab("notifications", collapsed); }}
-              >
-                <span class="drawer-tab-label">${notificationTrayHeading(inbox)}</span>
-              </button>
-            `}
-            ${this.goals.length === 0 && !this.goalsLoading && !this.goalsFailed ? null : html`
-              <button
-                type="button"
-                role="tab"
-                id="drawer-tab-goals"
-                class=${`drawer-tab drawer-tab-goals${tab === "goals" ? " selected" : ""}`}
-                aria-selected=${String(tab === "goals")}
-                tabindex=${tab === "goals" ? "0" : "-1"}
-                aria-controls="session-goal-list"
-                @click=${() => { this.selectTopDrawerTab("goals", collapsed); }}
-              >
-                <span class="drawer-tab-label">Goals ${this.goals.length}</span>
-              </button>
-            `}
+            <button
+              type="button"
+              role="tab"
+              id="drawer-tab-activity"
+              class=${`drawer-tab drawer-tab-activity${tab === "activity" ? " selected" : ""}`}
+              aria-selected=${String(tab === "activity")}
+              tabindex=${tab === "activity" ? "0" : "-1"}
+              aria-controls="session-activity-list"
+              @click=${() => { this.selectTopDrawerTab("activity", collapsed); }}
+            >
+              ${activity?.summary.working === true ? html`<span class="subagent-dot working" aria-hidden="true"></span>` : null}
+              <span class="drawer-tab-label">${activityTabLabel({ active: activity?.activeCount ?? 0 })}</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="drawer-tab-notifications"
+              class=${`drawer-tab drawer-tab-notifications${tab === "notifications" ? " selected" : ""}`}
+              aria-selected=${String(tab === "notifications")}
+              tabindex=${tab === "notifications" ? "0" : "-1"}
+              aria-controls="session-notification-list"
+              @click=${() => { this.selectTopDrawerTab("notifications", collapsed); }}
+            >
+              <span class="drawer-tab-label">${notificationDrawerTabLabel(inbox, this.notificationInbox?.sessionId === this.sessionId)}</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="drawer-tab-goals"
+              class=${`drawer-tab drawer-tab-goals${tab === "goals" ? " selected" : ""}`}
+              aria-selected=${String(tab === "goals")}
+              tabindex=${tab === "goals" ? "0" : "-1"}
+              aria-controls="session-goal-list"
+              @click=${() => { this.selectTopDrawerTab("goals", collapsed); }}
+            >
+              <span class="drawer-tab-label">${goalsDrawerTabLabel(this.goals, this.goalsKnown)}</span>
+            </button>
           </div>
           </div>
           <div class="drawer-header-actions">
@@ -1309,18 +1313,20 @@ export class ChatView extends LitElement {
               aria-label=${toggleLabel}
               title=${toggleLabel}
               aria-expanded=${String(!collapsed)}
-              aria-controls=${tab === "activity" ? "session-activity-list" : "session-notification-list"}
+              aria-controls=${tab === "activity" ? "session-activity-list" : tab === "goals" ? "session-goal-list" : "session-notification-list"}
               @click=${() => { this.toggleTopDrawer(collapsed); }}
             >${renderNotificationDisclosureIcon(collapsed)}</button>
           </div>
         </header>
         <div class="drawer-body" ?hidden=${collapsed}>
-          ${tab === "activity" && activity !== undefined ? this.renderActivityPanel(activity) : null}
-          ${tab === "notifications" && inbox !== undefined ? this.renderNotificationPanel(inbox) : null}
-          ${tab === "goals" && this.goals.length > 0 ? html`
+          ${tab === "activity" ? this.renderActivityPanel(activity) : null}
+          ${tab === "notifications" ? this.renderNotificationPanel(inbox, this.notificationInbox?.sessionId === this.sessionId) : null}
+          ${tab === "goals" ? html`
             <div class="goal-drawer-panel" id="session-goal-list" role="tabpanel" aria-labelledby="drawer-tab-goals">
               <goal-panel
                 .goals=${this.goals}
+                .loading=${this.goalsLoading}
+                .loadFailed=${this.goalsFailed}
                 ?canRunCommands=${true}
                 .onRunCommand=${(goal: GoalRecordSummary, command: string) => this.onRunGoalCommand?.(goal, command)}
               ></goal-panel>
@@ -1473,7 +1479,16 @@ export class ChatView extends LitElement {
     return { rows, runRows, taskRows, summary, total: rows.length + runRows.length + taskRows.length, activeCount };
   }
 
-  private renderActivityPanel(activity: ActivityPanelState): TemplateResult {
+  private renderActivityPanel(activity: ActivityPanelState | undefined): TemplateResult {
+    // The tab is always present, so its panel answers even when this chat has
+    // never started anything: an empty section reads as empty, never vanishes.
+    if (activity === undefined) {
+      return html`
+        <div class="subagents-list" id="session-activity-list" role="tabpanel" aria-labelledby="drawer-tab-activity">
+          <p class="activity-empty">No subagent or background activity from this chat yet.</p>
+        </div>
+      `;
+    }
     const filter = activityFilterInEffect(this.activityFilter, activity);
     const scope = activity.activeCount === 0 && this.activityScope === "active" ? "empty-active" : this.activityScope;
     const inFilter = orderActivityEntries([
@@ -1569,13 +1584,16 @@ export class ChatView extends LitElement {
     `;
   }
 
-  private renderNotificationPanel(inbox: SelectedSessionNotificationView): TemplateResult {
+  private renderNotificationPanel(inbox: SelectedSessionNotificationView | undefined, loaded: boolean): TemplateResult {
     return html`
         <div class="notification-list" id="session-notification-list" role="tabpanel" aria-labelledby="drawer-tab-notifications" @pointerdown=${() => { this.drawerGate.notePointerDown(Date.now()); }} @pointerup=${() => { this.releaseDrawerPointer(); }} @pointercancel=${() => { this.releaseDrawerPointer(); }} @touchstart=${() => { this.drawerGate.notePointerDown(Date.now()); }} @touchend=${() => { this.releaseDrawerPointer(); }} @touchcancel=${() => { this.releaseDrawerPointer(); }}>
-          ${inbox.discardedCount === 0 ? null : html`
+          ${inbox === undefined
+            ? html`<p class="notification-empty">${loaded ? "No notifications for this chat." : "No notifications yet."}</p>`
+            : null}
+          ${inbox !== undefined && inbox.discardedCount !== 0 ? html`
             <p class="notification-overflow">${notificationInboxOverflowLabel(inbox.discardedCount)}</p>
-          `}
-          ${repeat(inbox.notifications, (notification) => notification.id, (notification) => {
+          ` : null}
+          ${inbox === undefined ? null : repeat(inbox.notifications, (notification) => notification.id, (notification) => {
             const label = notificationSeverityLabel(notification.severity);
             const truncationLabel = notificationMessageTruncationLabel(notification);
             return html`
@@ -1607,7 +1625,7 @@ export class ChatView extends LitElement {
               </article>
             `;
           })}
-        </div>
+          ${inbox?.notifications.length === 0 ? html`<p class="notification-empty">No notifications for this chat.</p>` : null}        </div>
     `;
   }
 
@@ -3231,19 +3249,41 @@ export interface ActivityPanelState {
 }
 
 /**
- * Which drawer section to show. The reader's last choice wins while it still
- * has something in it; otherwise the drawer falls back to whichever section
- * exists, so a section that empties out cannot leave a blank drawer behind.
+ * Which drawer section to show. The reader's last choice always wins: every
+ * section now renders an honest empty state, so an emptied section is still
+ * content, not a blank drawer — and the strip must not reflow to follow the
+ * data, because a strip that changes shape under a reading finger is how taps
+ * land on the wrong tab. Availability only decides the tab shown before the
+ * reader has chosen one.
  */
 export function selectedTopDrawerTab(available: { activity: boolean; notifications: boolean; goals?: boolean }, preferred: TopDrawerTab | undefined): TopDrawerTab {
-  if (preferred === "activity" && available.activity) return "activity";
-  if (preferred === "notifications" && available.notifications) return "notifications";
-  if (preferred === "goals" && available.goals === true) return "goals";
+  if (preferred === "activity") return "activity";
+  if (preferred === "notifications") return "notifications";
+  if (preferred === "goals") return "goals";
   if (available.notifications) return "notifications";
   if (available.activity) return "activity";
   // Goals change slowly, so they never take the drawer from work in flight -
   // but they are better than handing back a tab that has nothing behind it.
   return available.goals === true ? "goals" : "activity";
+}
+
+/**
+ * The notifications tab's label. The count is part of the claim, so it is only
+ * shown when the store has actually reported: a tab that reads "(0)" before
+ * the inbox has loaded would state a finished empty over an unknown.
+ */
+export function notificationDrawerTabLabel(inbox: SelectedSessionNotificationView | undefined, loaded: boolean): string {
+  if (inbox !== undefined) return notificationTrayHeading(inbox);
+  return loaded ? "Notifications (0)" : "Notifications";
+}
+
+/**
+ * The goals tab's label. The count is a claim about the workspace, so it only
+ * appears when the goals state answers for the current selection; a read that
+ * is in flight, failed, or keyed to another workspace shows the bare name.
+ */
+export function goalsDrawerTabLabel(goals: readonly unknown[], known: boolean): string {
+  return known ? `Goals ${String(goals.length)}` : "Goals";
 }
 
 /**

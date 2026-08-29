@@ -112,17 +112,22 @@ describe("topDrawerStartsOpen", () => {
 });
 
 describe("selectedTopDrawerTab", () => {
-  // The drawer must never show an empty section: a section can empty out while
-  // the reader is looking at it (the last notification is dismissed, the last
-  // subagent finishes and is cleared).
+  // The reader's last choice wins; an emptied section renders its honest empty
+  // state instead of being abandoned for a section that still has content.
   it("keeps the reader's section while it has content", () => {
     expect(selectedTopDrawerTab({ activity: true, notifications: true }, "activity")).toBe("activity");
     expect(selectedTopDrawerTab({ activity: true, notifications: true }, "notifications")).toBe("notifications");
   });
 
-  it("falls back to the section that exists", () => {
-    expect(selectedTopDrawerTab({ activity: true, notifications: false }, "notifications")).toBe("activity");
-    expect(selectedTopDrawerTab({ activity: false, notifications: true }, "activity")).toBe("notifications");
+  // The reader's last choice always wins: every section renders an honest empty
+  // state now, so an emptied section is content, not a blank drawer — and a
+  // strip that reflows to follow the data is how taps land on the wrong tab.
+  it("keeps the reader's section even after it empties out", () => {
+    expect(selectedTopDrawerTab({ activity: true, notifications: false }, "notifications")).toBe("notifications");
+    expect(selectedTopDrawerTab({ activity: false, notifications: true }, "activity")).toBe("activity");
+  });
+
+  it("falls back to the section that exists only before the reader has chosen", () => {
     expect(selectedTopDrawerTab({ activity: true, notifications: false }, undefined)).toBe("activity");
     expect(selectedTopDrawerTab({ activity: true, notifications: true }, undefined)).toBe("notifications");
   });
@@ -487,8 +492,8 @@ describe("the goals tab", () => {
     expect(selectedTopDrawerTab({ activity: false, notifications: true, goals: true }, undefined)).toBe("notifications");
   });
 
-  it("falls back off a goals tab that has emptied out", () => {
-    expect(selectedTopDrawerTab({ activity: true, notifications: false, goals: false }, "goals")).toBe("activity");
+  it("keeps a goals tab the reader chose even after it empties out", () => {
+    expect(selectedTopDrawerTab({ activity: true, notifications: false, goals: false }, "goals")).toBe("goals");
   });
 });
 

@@ -154,4 +154,70 @@ describe("the goals entrance while its list is in flight", () => {
 
     expect(view.shadowRoot?.querySelector("#drawer-tab-goals")).not.toBeNull();
   });
+
+  /**
+   * Membership is fixed for the drawer's whole life: a strip whose tabs appear
+   * and vanish with their data reflows under the reading finger, and the tap
+   * meant for one tab lands on whatever took its place (the owner tapped a
+   * dialog option and hit the tab that had slid beneath it). The strip must
+   * name the same three sections when nothing is happening as when everything
+   * is.
+   */
+  it("keeps the same three tabs across empty, populated, and emptied again", async () => {
+    const view = new ChatView();
+    view.sessionId = "s";
+    view.status = status();
+    // A working subagent is what justifies the drawer before anything else
+    // has arrived; activity, notifications and goals all start empty.
+    view.subagents = [{ sessionId: "01a0child-0001-0000-000000000001", cwd: "/repo/.pi/sub", status: "working" }];
+    view.goals = [];
+    view.goalsKnown = true;
+    document.body.append(view);
+    await view.updateComplete;
+
+    const tabIds = (): string[] => [...view.renderRoot.querySelectorAll("[role='tab']")].map((tab) => tab.id);
+    expect(tabIds()).toEqual(["drawer-tab-activity", "drawer-tab-notifications", "drawer-tab-goals"]);
+
+    const inbox: SelectedSessionNotificationView = {
+      machineId: "local",
+      sessionId: "s",
+      cwd: "/repo",
+      daemonInstanceId: "daemon-a",
+      notifications: [{ id: "daemon-a:1", message: "hello", truncated: false, severity: "info", receivedAt: "2026-08-18T11:20:00.000Z", order: 1 }],
+      retainedCount: 1,
+      discardedCount: 0,
+      dismissThrough: { order: 1, overflowWatermark: 0 },
+      pendingDismissedIds: new Set(),
+      dismissAllPending: false,
+      announcements: [],
+    };
+    view.notificationInbox = inbox;
+    await view.updateComplete;
+    expect(tabIds()).toEqual(["drawer-tab-activity", "drawer-tab-notifications", "drawer-tab-goals"]);
+
+    // Drained: the count may fall to zero, the tab may not leave.
+    view.notificationInbox = { ...inbox, notifications: [], retainedCount: 0 };
+    await view.updateComplete;
+    expect(tabIds()).toEqual(["drawer-tab-activity", "drawer-tab-notifications", "drawer-tab-goals"]);
+  });
+
+  /**
+   * An emptied notifications panel has to say so: an empty tab that renders
+   * blank reads as broken, not as empty.
+   */
+  it("reads an emptied notifications tab as empty, in words", async () => {
+    const view = new ChatView();
+    view.sessionId = "s";
+    view.status = status();
+    view.subagents = [{ sessionId: "01a0child-0001-0000-000000000001", cwd: "/repo/.pi/sub", status: "working" }];
+    view.goals = [];
+    view.goalsKnown = true;
+    document.body.append(view);
+    await view.updateComplete;
+
+    view.renderRoot.querySelector<HTMLButtonElement>("#drawer-tab-notifications")?.click();
+    await view.updateComplete;
+
+    expect(view.renderRoot.querySelector("#session-notification-list")?.textContent).toContain("No notifications");
+  });
 });

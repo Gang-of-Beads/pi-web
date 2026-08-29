@@ -1940,6 +1940,7 @@ export class PiWebApp extends LitElement {
           return this.sessions.renameSession(session, name);
         }}
         .goals=${goalsForSelectedWorkspace(this.state)}
+        .goalsKnown=${canActOnWorkspaceGoals(this.state)}
         ?goalsLoading=${this.state.workspaceGoalsLoading}
         ?goalsFailed=${this.state.workspaceGoalsFailed}
         .canRunGoalCommands=${canActOnWorkspaceGoals(this.state)}
