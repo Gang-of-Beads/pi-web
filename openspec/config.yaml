@@ -1,0 +1,55 @@
+schema: spec-driven
+
+context: |
+  PI WEB is a browser front end for the Pi coding agent. TypeScript everywhere:
+  Lit web components with shadow DOM in src/client, an HTTP/WebSocket API in
+  src/server, and a long-lived session daemon (src/server/sessiond.ts) that owns
+  the agent runtime. Vitest for tests. Detailed conventions live in AGENTS.md and
+  .agents/skills/*; read them before proposing.
+
+  The owner reviews designs on paper before code exists. A proposal that names a
+  symptom and patches the spot where it showed will be rejected: name the surface,
+  the scope it acts on, and every producer of the behaviour.
+
+  Invariants this project has paid for, in blood, and which every proposal must
+  respect or explicitly argue against:
+
+  - Nothing moves under the user. A card awaiting an answer, and the region below
+    the transcript, keep their position no matter what arrives.
+  - Every action acknowledges itself immediately: received, queued, running,
+    succeeded, or failed. A silent action is indistinguishable from a broken one.
+  - Every state has an exit. Do not remove an affordance without giving the thing
+    it dismissed somewhere to go.
+  - Absence is not negation. Empty means "unloaded or empty"; a refusal must say
+    it refused; anything unknown renders as unknown.
+  - Retained data carries the key it was fetched for (machine + project +
+    workspace + session) and must not render, or be actionable, under any other.
+  - Hover is a device capability, not a state: :hover only inside
+    @media (hover: hover), :active for touch, :focus-visible for keyboard.
+  - Geometry is designed once: shared tile heights, fixed title clamps, a single
+    coarse-pointer touch floor, tab strips whose membership does not change with
+    data.
+  - Product semantics belong to the owner. Present options and their costs;
+    do not decide user-visible behaviour alone.
+
+rules:
+  proposal:
+    - State the invariant being violated, not just the symptom.
+    - Enumerate every producer of the behaviour before proposing a fix; if only
+      one is named, say why the others cannot exist.
+    - Include a Non-goals section.
+  tasks:
+    - Each task must be independently committable and green on its own.
+    - Name the evidence that will prove the task done, including the device
+      conditions (the owner reads this app on a 393x850 coarse-pointer screen).
+
+operations:
+  apply:
+    guidance:
+      - Commit each task the moment it is green; never batch.
+      - Verification runs in the owner's conditions, not only in unit tests:
+        drive the real UI at 393x850 and record the numbers.
+      - Never report a check that did not run, or was skipped, as passing.
+  archive:
+    guidance:
+      - Archive only after the behaviour was observed working in a real browser.
