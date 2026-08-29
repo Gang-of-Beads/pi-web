@@ -188,22 +188,18 @@ describe("extension-dialog-card countdown", () => {
 });
 
 describe("extension-dialog-card closed outcome", () => {
-  it("shows the given answer and dismisses through the dismiss control", async () => {
-    const onDismiss = vi.fn<ExtensionDialogDismissCallback>();
+  it("keeps the answer readable without charging a second tap to put it away", async () => {
     const card = new ExtensionDialogCard();
     card.outcome = closedDialog("answered", true);
-    card.onDismiss = onDismiss;
     document.body.append(card);
     await card.updateComplete;
     const root = renderRoot(card);
 
     expect(root.querySelector(".header-status")?.textContent).toBe("Answered");
-    expect(root.querySelector(".closed-summary")?.textContent).toBe("Answered: Yes");
+    expect(root.querySelector(".answered-answer")?.textContent).toBe("Answered: Yes");
     expect(root.querySelector("input, select, textarea")).toBeNull();
     expect(buttonsWithText(root, "Yes")).toHaveLength(0);
-
-    buttonWithText(root, "Dismiss").click();
-    expect(onDismiss).toHaveBeenCalledWith("dlg-1");
+    expect(buttonsWithText(root, "Dismiss")).toHaveLength(0);
   });
 
   it("shows the timeout outcome without an answer", async () => {
