@@ -6,6 +6,7 @@ import { refreshMayReplaceSelection } from "./sessionRefreshScope";
 import { activityOutputView, subagentRunConversationView, type AppState, type ClosedExtensionDialog } from "../appState";
 import { forgetCachedNewSession, isCachedNewSessionInfo, markCachedNewSessionInfo, mergeCachedNewSessions, rememberCachedNewSession, stripCachedNewSessionMarker } from "../cachedNewSessions";
 import { textMessage } from "../chatMessages";
+import { carryUnsettledForward } from "../transcriptReconcile";
 import { machineSessionKey } from "../machineKeys";
 import { rememberWorkspaceSessions } from "../workspaceSessionsCache";
 import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
@@ -1358,7 +1359,10 @@ export class SessionController {
       // partial is seeded into the in-memory transcript only, never the raw
       // history cache, so it never persists.
       const history = this.transcripts.mergeHistory(key, page);
-      const messages = this.transcripts.seedStreamingPartial(history.messages, streamSnapshot.partial);
+      // A send still waiting for confirmation is not on disk yet; rebuilding
+      // from the page alone made it vanish with no failure anywhere.
+      const carried = carryUnsettledForward(this.getState().messages, history.messages);
+      const messages = this.transcripts.seedStreamingPartial(carried, streamSnapshot.partial);
       this.streamWatermark = { sessionId: target.session.id, seq: streamSnapshot.seq };
       this.setState({
         ...history,

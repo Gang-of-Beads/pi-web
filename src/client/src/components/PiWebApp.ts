@@ -35,6 +35,7 @@ import { keyboardInset } from "../appShell/keyboardInset";
 import { machineSessionKey } from "../machineKeys";
 import { composedPathOf, composerCollapsedForFocus } from "../composerCollapse";
 import { oneReadAtATime, shouldPollSessionActivity } from "../sessionActivityPolling";
+import { hasWaitingDelivery } from "../transcriptReconcile";
 import { isWaitingForUser } from "../sessionWaiting";
 import { sessionCleanupRequestKey } from "../sessionCleanupUi";
 import { selectedNotificationView } from "../sessionNotifications";
@@ -212,6 +213,8 @@ const PI_WEB_STATUS_REFRESH_MS = 15 * 60 * 1000;
  * for as long as the tab is in front.
  */
 const SUBAGENT_REFRESH_MS = 4000;
+/** Slow cadence for re-reading the disk while a send still waits. */
+const DELIVERY_RECONCILE_MS = 10_000;
 /**
  * How often an open tab checks that its sockets are still alive.
  *
@@ -365,6 +368,7 @@ export class PiWebApp extends LitElement {
   private piWebStatusDeferredTimer: number | undefined;
   private workspaceDeletionPollTimer: number | undefined;
   private subagentPollTimer: number | undefined;
+  private deliveryReconcileArmedAt = 0;
   private livenessTimer: number | undefined;
   private refreshingWorkspaceDeletionRuns = false;
   private readonly handledWorkspaceDeletionRunIds = new Set<string>();
@@ -653,13 +657,37 @@ export class PiWebApp extends LitElement {
    * switch sessions and come back. Polling stops when the document is hidden
    * and when no session is selected, so a backgrounded tab costs nothing.
    */
+  /**
+   * A dropped push frame leaves a card waiting for a confirmation that already
+   * happened, with a healthy socket and a visible page - so nothing else ever
+   * re-reads. While a card waits, the disk is re-read on a slow cadence; the
+   * first tick only arms the clock so an ordinary push gets its window.
+   */
+  private reconcileWaitingDelivery(): void {
+    if (!hasWaitingDelivery(this.state.messages)) {
+      this.deliveryReconcileArmedAt = 0;
+      return;
+    }
+    const now = Date.now();
+    if (this.deliveryReconcileArmedAt === 0) {
+      this.deliveryReconcileArmedAt = now;
+      return;
+    }
+    if (now - this.deliveryReconcileArmedAt < DELIVERY_RECONCILE_MS) return;
+    this.deliveryReconcileArmedAt = now;
+    void this.sessions.refreshSelectedSession();
+  }
+
   private updateSubagentPolling(): void {
     const shouldPoll = shouldPollSessionActivity({
       hasSelectedSession: this.state.selectedSession !== undefined,
       documentVisible: document.visibilityState === "visible",
     });
     if (shouldPoll && this.subagentPollTimer === undefined) {
-      this.subagentPollTimer = window.setInterval(() => { void this.refreshSubagents(); }, SUBAGENT_REFRESH_MS);
+      this.subagentPollTimer = window.setInterval(() => {
+        void this.refreshSubagents();
+        this.reconcileWaitingDelivery();
+      }, SUBAGENT_REFRESH_MS);
       return;
     }
     if (!shouldPoll && this.subagentPollTimer !== undefined) {
