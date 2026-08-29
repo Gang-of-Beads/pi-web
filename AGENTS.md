@@ -47,3 +47,46 @@ Never report failed, incomplete, or skipped verification as passing. Identify an
 - Project-local PI WEB core config should use one commit-able file: `<project>/.pi-web/config.json`.
 - Core features should add keys to these config files, not create one project file per feature.
 - Plugins may own separate project config files, such as `.pi-web/tasks.json`.
+
+## How we work
+
+These are the owner's standing rules. They exist because breaking each one cost real damage on this project, and the cost is recorded so nobody has to relearn it.
+
+### Design the whole before patching the part
+
+A reported symptom is a request to understand the system, not permission to patch the spot where it showed. Before code: name the surface, the scope it acts on, and how it relates to the currently open session. Ship a design the owner can correct on paper; a page he has to use before discovering it is wrong is the expensive way to find out.
+
+### Product semantics belong to the owner
+
+Do not decide user-visible behavior alone. Present the options and their costs and let the owner choose. Two unilateral decisions did real harm here: a read-only modal was built where a navigable page was asked for, and "keep the previous list while loading or on error" was invented to stop a panel from disappearing - it then rendered another project's goal, with a live Abandon button on it. Trading "empty" for "wrong" is worse than the bug being fixed.
+
+### Verify your own work before it reaches the owner
+
+A green unit suite is not evidence that a person can use the feature. Before committing UI-affecting work, exercise it the way a user does - the 8505 stack, a real browser, a coarse pointer at 393x850 - and record the numbers. Read the daemon logs for daemon-side claims. If a probe cannot reproduce the defect, say "not reproduced"; never present an unverified leg as verified, and never let a server that died mid-test read as "the bug is gone".
+
+### Data must carry the scope it belongs to
+
+Any cached or retained value must travel with the key it was fetched for (machine + project + workspace + session, as applicable) and must not render, and must not be actionable, when that key does not match the current selection. Retention across loading or failure is legitimate only for the same key.
+
+### Absence is not negation
+
+An empty list means "unloaded or empty", not "empty". A missing transcript means "not written yet or gone", not "gone". A refused request that answers with a snapshot must still say it refused. Every state that can be unknown needs an explicit unknown, rendered honestly.
+
+### Consistency is designed, not corrected
+
+Grid tiles share a height; titles clamp to a fixed line count; every interactive target meets the coarse-pointer floor. Decide these when the surface is built. "The boxes are different sizes" should never be something the owner has to report.
+
+### The same symptom reported twice stops the patching
+
+Enumerate every producer, write down the invariant being violated, then change code. Fixing one producer and leaving its siblings is how this project produced the same complaint five times.
+
+### The goal plugin's design (owner's definition)
+
+A goal belongs to a project. One session focuses it at a time; focusing elsewhere releases it. Focus, pause and resume are available to the user and to the agent itself. While a subagent run or a background task is active, the continuation is not injected - it waits for quiescence, with a bounded fallback so lost work cannot stall a goal forever.
+
+### Operational rules that cost us time
+
+- Never use heredocs or `cat >` in agent shell commands; four runs hung on an unterminated heredoc. Use file-writing tools.
+- Commit each coherent piece the moment it is green. Two runs were killed by a 30-minute wall with uncommitted work.
+- Push extension/fork work immediately. The package updater hard-resets those repos to upstream; unpushed commits were destroyed twice.
+- Capture exit codes explicitly. A trailing `echo EXIT=$?` masked a killed release chain, and piping a verify into `tail` masked a failure.
