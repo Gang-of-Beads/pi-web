@@ -314,3 +314,18 @@ describe("the step footer", () => {
     expect(primary).not.toMatch(/flex:\s*1 1 auto/u);
   });
 });
+
+describe("where the step buttons sit", () => {
+  /**
+   * On the first question there is no Back, and the row packs from the left,
+   * so Next sat alone at the left edge - in the spot Back occupies on every
+   * later question. The advancing action keeps to the right; the left is
+   * Back's whether Back is there or not.
+   */
+  it("pins the advancing button to the right even when Back is absent", () => {
+    const sheet = String(AskUserCard.styles);
+    const rule = /\.step-actions \.primary-action\s*\{([^}]*)\}/u.exec(sheet)?.[1] ?? "";
+
+    expect(rule).toMatch(/margin-left:\s*auto/u);
+  });
+});

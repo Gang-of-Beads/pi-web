@@ -564,7 +564,7 @@ export class AskUserCard extends LitElement {
     /* Back sits beside the forward action rather than under it: the pair is
        one decision, and a phone keyboard leaves little height to spend. */
     .step-actions { display: flex; gap: var(--pi-space-4); width: 100%; }
-    .step-actions .primary-action { flex: 0 1 auto; min-width: 140px; }
+    .step-actions .primary-action { flex: 0 1 auto; min-width: 140px; margin-left: auto; }
     .step-actions .secondary-action { flex: 0 1 auto; min-width: 96px; }
     .form-footer {
       /* The card lives inside the transcript, which is already the scroller, so
