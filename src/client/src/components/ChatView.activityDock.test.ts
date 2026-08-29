@@ -39,6 +39,30 @@ async function dockWith(status: SessionStatus | undefined, activity: SessionActi
 }
 
 
+/**
+ * The 64px bottom padding was the floating activity dock's reservation: both
+ * arrived in the commit that added the dock, when it was absolutely positioned
+ * over the scroller's bottom edge. The dock is an in-flow row below the
+ * scroller now, with its own margin, so the reservation was dead weight:
+ * measured at 393x850 against the built bundle
+ * (scripts/probe-chatview-press-geometry.mjs) the last message sat 80px above
+ * the dock - the message rhythm's own 16px margin plus 64px of reserved
+ * nothing. The transcript ends with the room it had before the dock existed:
+ * one --pi-space-7 of padding on top of the message margin, i.e. 32px from the
+ * last message to the dock. happy-dom has no layout, so this pins the
+ * declaration; the probe measures the geometry.
+ */
+describe("the room the transcript keeps below its last message", () => {
+  it("ends with the pre-dock edge, not the floating dock's reservation", () => {
+    const sheet = String(ChatView.styles);
+    const chat = /\.chat\s*\{[^}]*\}/u.exec(sheet)?.[0] ?? "";
+
+    expect(chat).not.toBe("");
+    expect(chat).toMatch(/padding:\s*26px var\(--pi-chat-gutter\) var\(--pi-space-7\)/u);
+    expect(chat).not.toMatch(/64px/u);
+  });
+});
+
 describe("ChatView activity dock states", () => {
   it("shows three bouncing dots while streaming", async () => {
     const dock = await dockWith(status({ isStreaming: true }), activity("active"));

@@ -319,7 +319,15 @@ export const chatStyles = css`
     .notification-list { max-height: 30vh; min-height: 96px; }
     .activity-filters { position: static; }
   }
-  .chat { flex: 1 1 auto; --pi-chat-sticky-top: -26px; height: 100%; min-height: 0; overflow: auto; overflow-anchor: none; padding: 26px var(--pi-chat-gutter) 64px; box-sizing: border-box; }
+  /* The 64px bottom padding was the reservation for the activity dock back when
+     it floated over the scroller's bottom edge (both arrived in the commit that
+     added the dock); measured at 393x850 the last message sat 80px above the
+     dock - its own 16px message-gap margin plus 64px of dead reservation on top
+     of an in-flow dock that already carries its own margin. The dock is a row
+     below the scroller now, so the transcript ends with the room it had before
+     the dock existed: one space-7 of padding on top of the message rhythm's own
+     16px margin, i.e. 32px from the last message to the dock. */
+  .chat { flex: 1 1 auto; --pi-chat-sticky-top: -26px; height: 100%; min-height: 0; overflow: auto; overflow-anchor: none; padding: 26px var(--pi-chat-gutter) var(--pi-space-7); box-sizing: border-box; }
   .scroll-marker { display: block; height: 0; overflow: hidden; pointer-events: none; }
   .activity-dock { flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) 10px; z-index: var(--pi-layer-sticky); display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: 0 8px 28px var(--pi-shadow); backdrop-filter: blur(6px); }
   /* Idle is the state nobody needs a full-width banner for: keep the signal,
