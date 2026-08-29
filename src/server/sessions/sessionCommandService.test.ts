@@ -484,3 +484,56 @@ function deferred<T>() {
   });
   return { promise, resolve };
 }
+
+/**
+ * A runtime command is forwarded to the agent and the daemon answers "done"
+ * with no message, trusting the agent to stream the real feedback. When the
+ * turn then produces nothing a reader can see - measured live: /goal-resume
+ * with no goal appended only empty assistant messages - the command has
+ * simply vanished.
+ */
+describe("a forwarded command whose turn produced nothing visible", () => {
+  it("says so in the transcript and hands the record to the persistence hook", async () => {
+    const active = activeSession();
+    const events = eventPublisher();
+    const onSilentCommand = vi.fn<(sessionId: string, command: string) => void>();
+    const service = new SessionCommandService(() => getActive(active), vi.fn(promptAccepted), events, { onSilentCommand });
+
+    await service.run("s1", "/ext");
+    service.observeSessionEvent("s1", { type: "message_end", message: { role: "user", content: "/ext" } });
+    service.observeSessionEvent("s1", { type: "message_end", message: { role: "assistant", content: [] } });
+    service.observeSessionEvent("s1", { type: "agent_end" });
+
+    const silence = events.publish.mock.calls.find(([, event]) => event.type === "command.output")?.[1];
+    expect(silence?.type === "command.output" ? silence.message : "").toContain("/ext");
+    expect(onSilentCommand).toHaveBeenCalledWith("s1", "/ext");
+  });
+
+  it("stays quiet when the agent actually replied", async () => {
+    const active = activeSession();
+    const events = eventPublisher();
+    const onSilentCommand = vi.fn<(sessionId: string, command: string) => void>();
+    const service = new SessionCommandService(() => getActive(active), vi.fn(promptAccepted), events, { onSilentCommand });
+
+    await service.run("s1", "/ext");
+    service.observeSessionEvent("s1", { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "resumed" }] } });
+    service.observeSessionEvent("s1", { type: "agent_end" });
+
+    expect(onSilentCommand).not.toHaveBeenCalled();
+    const silence = events.publish.mock.calls.find(([, event]) => event.type === "command.output");
+    expect(silence).toBeUndefined();
+  });
+
+  it("counts an error reply as visible, because the transcript renders it", async () => {
+    const active = activeSession();
+    const events = eventPublisher();
+    const onSilentCommand = vi.fn<(sessionId: string, command: string) => void>();
+    const service = new SessionCommandService(() => getActive(active), vi.fn(promptAccepted), events, { onSilentCommand });
+
+    await service.run("s1", "/ext");
+    service.observeSessionEvent("s1", { type: "message_end", message: { role: "assistant", content: [], stopReason: "error" } });
+    service.observeSessionEvent("s1", { type: "agent_end" });
+
+    expect(onSilentCommand).not.toHaveBeenCalled();
+  });
+});

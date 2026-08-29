@@ -1264,6 +1264,16 @@ export class PiSessionService implements SessionRouteService {
           "Stop current session activity before replacing the session",
           operation,
         ),
+        // The transcript line a silent command gets is transient; this record
+        // survives a reload in the notification drawer.
+        onSilentCommand: (sessionId, command) => {
+          const session = this.active.get(sessionId)?.runtime.session;
+          if (session === undefined) return;
+          const generation = this.notificationGenerationBySession.get(session);
+          if (generation === undefined) return;
+          const added = this.notificationStore.addNotification(generation, `${command} finished without any output.`, "warning");
+          this.publishNotificationMutations(added.mutations);
+        },
       },
       { listSessionNames: (cwd) => this.listSessionNames(cwd) },
     );
@@ -3919,6 +3929,7 @@ export class PiSessionService implements SessionRouteService {
       // simply returns if it is early; the heartbeat below is what makes sure a
       // session that goes quiet without another event still gets its reload.
       if (eventType === "agent_end" || eventType === "turn_end") this.commandService.runQueuedReload(session);
+      this.commandService.observeSessionEvent(session.sessionId, event);
       // Delta-only events (streaming text/thinking) carry no status change:
       // publishing the full status for every token would synchronously
       // re-serialize and broadcast the session state on the agent's own event

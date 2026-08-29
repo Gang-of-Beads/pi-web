@@ -58,6 +58,8 @@ export interface SessionCommandLifecycle<TSession extends CommandSession = Comma
   hasActiveWork?: (session: TSession) => boolean;
   isTreeNavigationActive?: (session: TSession) => boolean;
   runSessionReplacement?: <T>(session: TSession, operation: () => Promise<T>) => Promise<T>;
+  /** A forwarded command's turn ended with nothing a reader could see. */
+  onSilentCommand?: (sessionId: string, command: string) => void;
 }
 
 export interface SessionCommandNaming {
@@ -87,6 +89,8 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
    * intent is the same answer the queue gives a message sent while busy.
    */
   private readonly pendingReloads = new Set<string>();
+  /** Forwarded commands whose turns have shown the reader nothing yet. */
+  private readonly silentCommandWatches = new Map<string, string>();
 
   constructor(
     private readonly getActive: GetCommandActiveSession<TSession>,
@@ -109,7 +113,10 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
         // The command is forwarded to the agent, which expands it (e.g. /skill:*
         // into a skill block) and streams the canonical message back. That is the
         // authoritative feedback, so we don't synthesize an extra "Accepted" line
-        // that would only vanish on reload.
+        // that would only vanish on reload. What we do watch for is the turn
+        // ending without anything visible at all - a command that silently
+        // vanished reads as a command that never ran.
+        this.silentCommandWatches.set(session.sessionId, `/${name}`);
         await this.prompt(sessionId, text);
         return { type: "done" };
       }
@@ -342,11 +349,63 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
     this.events.publishGlobal?.(event);
   }
 
+  /**
+   * Fed from the session's event stream. A watched command is cleared by the
+   * first thing a reader could see; a turn that ends still-watched gets said
+   * out loud, in the transcript and through the persistence hook.
+   */
+  observeSessionEvent(sessionId: string, event: unknown): void {
+    const command = this.silentCommandWatches.get(sessionId);
+    if (command === undefined) return;
+    if (rendersInTranscript(event)) {
+      this.silentCommandWatches.delete(sessionId);
+      return;
+    }
+    if (eventField(event, "type") !== "agent_end") return;
+    this.silentCommandWatches.delete(sessionId);
+    this.events.publish(sessionId, {
+      type: "command.output",
+      level: "info",
+      message: `${command} finished without any output.`,
+    });
+    this.lifecycle.onSilentCommand?.(sessionId, command);
+  }
+
   private isRuntimeCommand(session: TSession, name: string): boolean {
     return session.extensionRunner.getRegisteredCommands().some((command) => command.invocationName === name)
       || session.promptTemplates.some((template) => template.name === name)
       || session.resourceLoader.getSkills().skills.some((skill) => `skill:${skill.name}` === name);
   }
+}
+
+/** Read one string field from an unknown event without asserting its shape. */
+function eventField(value: unknown, key: string): string | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const record: Record<string, unknown> = { ...value };
+  const field = record[key];
+  return typeof field === "string" ? field : undefined;
+}
+
+/**
+ * Whether this event puts something on the reader's screen. A user message is
+ * the command's own echo; an assistant message counts only when it carries
+ * text or an error, because the transcript renders an error line and renders
+ * empty content as nothing at all.
+ */
+function rendersInTranscript(event: unknown): boolean {
+  const type = eventField(event, "type");
+  if (type === "tool_execution_start") return true;
+  if (type !== "message_end") return false;
+  if (typeof event !== "object" || event === null) return false;
+  const record: Record<string, unknown> = { ...event };
+  const message = record["message"];
+  if (eventField(message, "role") !== "assistant") return false;
+  if (eventField(message, "stopReason") === "error") return true;
+  if (typeof message !== "object" || message === null) return false;
+  const messageRecord: Record<string, unknown> = { ...message };
+  const content = messageRecord["content"];
+  if (typeof content === "string") return content.trim() !== "";
+  return Array.isArray(content) && content.length > 0;
 }
 
 function clientSessionFromRuntime(runtime: CommandRuntime): ClientSession {
