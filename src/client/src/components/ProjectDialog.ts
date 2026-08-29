@@ -316,7 +316,8 @@ export class ProjectDialog extends LitElement {
     .check { display: flex; grid-template-columns: auto 1fr; align-items: center; color: var(--pi-text); }
     .suggestions { min-height: 90px; max-height: 320px; overflow: auto; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); }
     .suggestions button { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 0; border-bottom: 1px solid var(--pi-border); border-radius: 0; background: transparent; color: var(--pi-text); padding: 8px 10px; text-align: left; font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    .suggestions button.selected, .suggestions button:hover { background: var(--pi-selection-bg); }
+    .suggestions button.selected { background: var(--pi-selection-bg); }
+    @media (hover: hover) { .suggestions button:hover { background: var(--pi-selection-bg); } }
     .hint { padding: 12px; color: var(--pi-muted); }
     small.hint { padding: 0; line-height: 1.4; }
     .trust-error { color: var(--pi-danger, #c0392b); }

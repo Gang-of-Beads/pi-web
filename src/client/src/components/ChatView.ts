@@ -72,7 +72,8 @@ export const chatStyles = css`
   dialog.attachment-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
   .attachment-zoom-full { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: var(--pi-radius-md); object-fit: contain; }
   .attachment-zoom-close { position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: 44px; height: 44px; padding: 0; font: 16px/1 system-ui, sans-serif; color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
-  .attachment-zoom-close:hover, .attachment-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
+  .attachment-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
+  @media (hover: hover) { .attachment-zoom-close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
   /* Tap targets should not wait for a double-tap-zoom gesture to be ruled out.
      Scoped to controls, so scrollable and pannable surfaces keep the gestures
      they set for themselves; and it lives here rather than on the app shell
@@ -116,7 +117,8 @@ export const chatStyles = css`
     font-size: 18px; line-height: 1; cursor: pointer;
     box-shadow: 0 2px 8px rgb(0 0 0 / 25%);
   }
-  .jump-to-bottom:hover, .jump-to-bottom:focus-visible { border-color: var(--pi-accent); }
+  .jump-to-bottom:focus-visible { border-color: var(--pi-accent); }
+  @media (hover: hover) { .jump-to-bottom:hover { border-color: var(--pi-accent); } }
   .top-notices { box-sizing: border-box; flex: 0 0 auto; max-height: 40%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border-bottom: 1px solid var(--pi-border); background: var(--pi-bg-overlay); }
   /* Subagents strip: child sessions spawned by the parent conversation. The
      strip must read at one glance -- who is still working, who finished --
@@ -163,7 +165,7 @@ export const chatStyles = css`
      loses the number, which is the part worth reading. The names keep their
      width and the running summary beside them gives way instead. */
   .drawer-tab { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: 22px; padding: var(--pi-space-1) var(--pi-space-4); border: 1px solid transparent; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-2xs); font-weight: 600; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-  .drawer-tab:hover { color: var(--pi-text-bright); }
+  @media (hover: hover) { .drawer-tab:hover { color: var(--pi-text-bright); } }
   .drawer-tab:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
   .drawer-tab, .activity-filter, .activity-history-toggle { transition: background-color var(--pi-motion-fast) var(--pi-ease), border-color var(--pi-motion-fast) var(--pi-ease), color var(--pi-motion-fast) var(--pi-ease); }
   .drawer-tab.selected { border-color: var(--pi-border); background: var(--pi-surface); color: var(--pi-text-bright); }
@@ -172,7 +174,7 @@ export const chatStyles = css`
   .drawer-body[hidden] { display: none; }
   .activity-filters { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; gap: var(--pi-space-2); margin-bottom: var(--pi-space-2); padding-bottom: var(--pi-space-2); background: color-mix(in srgb, var(--pi-purple) 7%, var(--pi-bg)); }
   .activity-filter { display: inline-flex; align-items: center; gap: var(--pi-space-2); min-height: 26px; padding: var(--pi-space-1) var(--pi-space-4); border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-2xs); cursor: pointer; -webkit-tap-highlight-color: transparent; }
-  .activity-filter:hover { color: var(--pi-text-bright); }
+  @media (hover: hover) { .activity-filter:hover { color: var(--pi-text-bright); } }
   .activity-filter:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
   .activity-filter.selected { border-color: var(--pi-purple-border); background: var(--pi-purple-surface); color: var(--pi-purple); }
   .activity-filter-count { color: var(--pi-muted); font-variant-numeric: tabular-nums; }
@@ -186,12 +188,13 @@ export const chatStyles = css`
      line is one clipped line, because a subagent's task text is a paragraph
      and a strip that grows with it is the bug this replaced. */
   .subagent-row { box-sizing: border-box; min-width: 0; display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto auto auto; align-items: center; gap: var(--pi-space-2) var(--pi-space-4); min-height: 38px; padding: var(--pi-space-4) var(--pi-space-5); border: 1px solid var(--pi-border-muted); border-inline-start: 4px solid var(--pi-dim); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; text-align: start; transition: background var(--pi-motion-fast) var(--pi-ease), border-color var(--pi-motion-fast) var(--pi-ease); }
-  .subagent-row:hover, .subagent-row:focus-visible { background: var(--pi-surface-hover); }
+  .subagent-row:focus-visible { background: var(--pi-surface-hover); }
+  @media (hover: hover) { .subagent-row:hover { background: var(--pi-surface-hover); } }
   .subagent-row:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
   /* A row with no output to open is not a button in any useful sense; say so
      instead of letting a thumb bounce off it. */
   .subagent-row:disabled { cursor: default; opacity: .72; }
-  .subagent-row:disabled:hover { background: var(--pi-surface); }
+  @media (hover: hover) { .subagent-row:disabled:hover { background: var(--pi-surface); } }
   /* Status changes under the reader's eyes - a row goes running to done while
      the drawer is open - so the colours that carry that meaning move rather
      than jump. Paint only: animating the row's size would shift every row
@@ -229,7 +232,8 @@ export const chatStyles = css`
   /* Quiet, full-width and last: the history is available without competing
      with the work that is actually running. */
   .activity-history-toggle { justify-self: stretch; min-height: 30px; margin-top: var(--pi-space-1); border: 1px dashed var(--pi-border); border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-2xs); cursor: pointer; -webkit-tap-highlight-color: transparent; }
-  .activity-history-toggle:hover, .activity-history-toggle:focus-visible { border-color: var(--pi-purple-border); color: var(--pi-purple); }
+  .activity-history-toggle:focus-visible { border-color: var(--pi-purple-border); color: var(--pi-purple); }
+  @media (hover: hover) { .activity-history-toggle:hover { border-color: var(--pi-purple-border); color: var(--pi-purple); } }
   .activity-history-toggle:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
   .subagent-chevron { flex: 0 0 auto; color: var(--pi-muted); font-size: var(--pi-text-xs); }
   /* One rule for the whole drawer: the project sets 44px as its touch height
@@ -245,7 +249,8 @@ export const chatStyles = css`
   .session-warnings:only-child { flex: 1 1 auto; max-height: 100%; border-bottom: 0; }
   .session-warnings-controls { display: flex; justify-content: flex-end; }
   .session-warnings-collapse { display: inline-flex; align-items: center; gap: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); padding: var(--pi-space-2) var(--pi-space-4); font: var(--pi-text-xs) var(--pi-font-ui); cursor: pointer; }
-  .session-warnings-collapse:hover, .session-warnings-collapse:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); background: var(--pi-bg-overlay); }
+  .session-warnings-collapse:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); background: var(--pi-bg-overlay); }
+  @media (hover: hover) { .session-warnings-collapse:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); background: var(--pi-bg-overlay); } }
   .session-warnings-collapse:focus-visible { outline: 1px solid var(--pi-border); outline-offset: 2px; }
   .session-warnings-collapse-icon { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
   .session-warning { position: relative; display: grid; gap: var(--pi-space-2); box-sizing: border-box; padding: var(--pi-space-5) 34px var(--pi-space-5) var(--pi-space-6); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-lg); background: var(--pi-warning-surface); color: var(--pi-text); }
@@ -258,12 +263,14 @@ export const chatStyles = css`
   .session-warning-path { margin: 0; color: var(--pi-muted); font-size: var(--pi-text-xs); font-family: var(--pi-mono, ui-monospace, monospace); overflow-wrap: anywhere; }
   .session-warning-source { color: var(--pi-muted); font-size: var(--pi-text-2xs); text-transform: uppercase; letter-spacing: .04em; }
   .session-warning-dismiss { position: absolute; top: 6px; right: 6px; display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); font: 15px/1 system-ui, sans-serif; cursor: pointer; }
-  .session-warning-dismiss:hover, .session-warning-dismiss:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); background: var(--pi-bg-overlay); }
+  .session-warning-dismiss:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); background: var(--pi-bg-overlay); }
+  @media (hover: hover) { .session-warning-dismiss:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); background: var(--pi-bg-overlay); } }
   .session-warning-dismiss:focus-visible { outline: 1px solid var(--pi-border); outline-offset: 2px; }
   .notification-control, .notification-row-dismiss { box-sizing: border-box; min-height: 32px; border: 0; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); cursor: pointer; }
   .notification-control { padding: 0 var(--pi-space-4); font: var(--pi-text-xs) var(--pi-font-ui); white-space: nowrap; }
   .notification-toggle { display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; }
-  .notification-control:hover, .notification-control:focus-visible, .notification-row-dismiss:hover, .notification-row-dismiss:focus-visible { background: var(--pi-selection-bg); color: var(--pi-text-bright); }
+  .notification-control:focus-visible, .notification-row-dismiss:focus-visible { background: var(--pi-selection-bg); color: var(--pi-text-bright); }
+  @media (hover: hover) { .notification-control:hover, .notification-row-dismiss:hover { background: var(--pi-selection-bg); color: var(--pi-text-bright); } }
   .notification-control:focus-visible, .notification-row-dismiss:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
   .notification-control:disabled, .notification-row-dismiss:disabled { opacity: .5; background: transparent; cursor: default; }
   .notification-icon { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
@@ -295,7 +302,8 @@ export const chatStyles = css`
   .notification-row-actions { position: absolute; top: 4px; right: 4px; display: flex; gap: var(--pi-space-1); }
   .notification-row-dismiss, .notification-row-copy { display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; }
   .notification-row-copy { min-height: 32px; border: 0; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); font-size: var(--pi-text-base); cursor: pointer; }
-  .notification-row-copy:hover, .notification-row-copy:focus-visible { background: var(--pi-selection-bg); color: var(--pi-text-bright); }
+  .notification-row-copy:focus-visible { background: var(--pi-selection-bg); color: var(--pi-text-bright); }
+  @media (hover: hover) { .notification-row-copy:hover { background: var(--pi-selection-bg); color: var(--pi-text-bright); } }
   .notification-row-copy:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
   .visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0 0 0 0) !important; clip-path: inset(50%) !important; white-space: nowrap !important; border: 0 !important; }
   .notification-live span { display: block; }
@@ -351,7 +359,8 @@ export const chatStyles = css`
      and carries an affordance. */
   .activity-dock.background { width: fit-content; max-width: min(70%, 300px); border-color: var(--pi-purple-border); color: var(--pi-purple); padding: var(--pi-space-2) var(--pi-space-5); font: inherit; font-size: var(--pi-text-xs); pointer-events: auto; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .activity-dock { transition: color var(--pi-motion-base) var(--pi-ease), background-color var(--pi-motion-base) var(--pi-ease), border-color var(--pi-motion-base) var(--pi-ease); }
-  .activity-dock.background:hover, .activity-dock.background:focus-visible { border-color: var(--pi-purple); background: var(--pi-purple-surface); }
+  .activity-dock.background:focus-visible { border-color: var(--pi-purple); background: var(--pi-purple-surface); }
+  @media (hover: hover) { .activity-dock.background:hover { border-color: var(--pi-purple); background: var(--pi-purple-surface); } }
   @media (pointer: coarse) { .activity-dock.background { min-height: 44px; padding-block: var(--pi-space-4); } }
   .activity-dock.background:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 2px; }
   .activity-dock.background .subagent-chevron { color: inherit; }
@@ -408,7 +417,8 @@ export const chatStyles = css`
   dialog.image-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
   .image-zoom-full { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: var(--pi-radius-md); object-fit: contain; cursor: zoom-out; }
   .image-zoom-close { position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; font: 16px/1 system-ui, sans-serif; color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
-  .image-zoom-close:hover, .image-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
+  .image-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
+  @media (hover: hover) { .image-zoom-close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
   .image-zoom-close:focus-visible { outline: 1px solid var(--pi-border); outline-offset: 2px; }
   dialog.activity-output { position: fixed; inset: 0; margin: auto; box-sizing: border-box; width: min(92vw, 900px); max-height: calc(88vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); padding: 0; color: var(--pi-text); background: var(--pi-surface); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); overflow: hidden; }
   dialog.activity-output[open] { display: flex; flex-direction: column; }
@@ -416,7 +426,8 @@ export const chatStyles = css`
   .activity-output-head { display: flex; align-items: center; gap: var(--pi-space-3); padding: var(--pi-space-4) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); }
   .activity-output-title { flex: 1; min-width: 0; margin: 0; font-size: var(--pi-font-size-sm, 13px); font-weight: 600; color: var(--pi-text-bright); overflow-wrap: anywhere; }
   .activity-output-close { display: inline-grid; place-items: center; flex: none; width: 44px; height: 44px; margin: calc(-1 * var(--pi-space-2)) calc(-1 * var(--pi-space-2)) calc(-1 * var(--pi-space-2)) 0; padding: 0; font: 18px/1 system-ui, sans-serif; color: var(--pi-muted); background: transparent; border: none; border-radius: var(--pi-radius-sm); cursor: pointer; }
-  .activity-output-close:hover, .activity-output-close:focus-visible { color: var(--pi-text-bright); }
+  .activity-output-close:focus-visible { color: var(--pi-text-bright); }
+  @media (hover: hover) { .activity-output-close:hover { color: var(--pi-text-bright); } }
   .activity-output-close:focus-visible { outline: 1px solid var(--pi-border); outline-offset: -2px; }
   .activity-output-body { flex: 1; min-height: 0; margin: 0; padding: var(--pi-space-4) var(--pi-space-5); font: var(--pi-code-font-size, 12px)/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; overscroll-behavior: contain; }
   .activity-output-empty { margin: 0; padding: var(--pi-space-6) var(--pi-space-5); color: var(--pi-muted); text-align: center; }
@@ -431,7 +442,8 @@ export const chatStyles = css`
   .activity-conversation-title { margin: 0; font-size: var(--pi-font-size-sm, 13px); font-weight: 600; color: var(--pi-text-bright); overflow-wrap: anywhere; }
   .activity-conversation-subtitle { margin: var(--pi-space-1) 0 0; font-size: var(--pi-text-xs); color: var(--pi-muted); overflow-wrap: anywhere; }
   .activity-conversation-close { display: inline-grid; place-items: center; flex: none; width: 44px; height: 44px; margin: calc(-1 * var(--pi-space-2)) calc(-1 * var(--pi-space-2)) calc(-1 * var(--pi-space-2)) 0; padding: 0; font: 18px/1 system-ui, sans-serif; color: var(--pi-muted); background: transparent; border: none; border-radius: var(--pi-radius-sm); cursor: pointer; }
-  .activity-conversation-close:hover, .activity-conversation-close:focus-visible { color: var(--pi-text-bright); }
+  .activity-conversation-close:focus-visible { color: var(--pi-text-bright); }
+  @media (hover: hover) { .activity-conversation-close:hover { color: var(--pi-text-bright); } }
   .activity-conversation-close:focus-visible { outline: 1px solid var(--pi-border); outline-offset: -2px; }
   .activity-conversation-boundary { flex: none; margin: 0; padding: var(--pi-space-3) var(--pi-space-5); font-size: var(--pi-text-xs); color: var(--pi-muted); background: var(--pi-bg-overlay); border-bottom: 1px solid var(--pi-border-muted); }
   .activity-conversation-body { flex: 1; min-height: 0; padding: var(--pi-space-5) var(--pi-chat-gutter); overflow: auto; overscroll-behavior: contain; }
@@ -443,14 +455,16 @@ export const chatStyles = css`
   .group-msg.bash { color: var(--pi-success); }
   .history-boundary { position: relative; z-index: 5; display: grid; gap: 3px; justify-items: center; margin: 0 auto var(--pi-space-7); color: var(--pi-muted); font-size: var(--pi-text-xs); text-align: center; }
   .history-load-button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text-secondary); padding: var(--pi-space-3) var(--pi-space-6); font: var(--pi-text-xs) var(--pi-font-ui); cursor: pointer; }
-  .history-load-button:hover, .history-load-button:focus { border-color: var(--pi-accent); color: var(--pi-text-bright); }
+  .history-load-button:focus { border-color: var(--pi-accent); color: var(--pi-text-bright); }
+  @media (hover: hover) { .history-load-button:hover { border-color: var(--pi-accent); color: var(--pi-text-bright); } }
   .history-load-button:disabled { cursor: default; opacity: .55; }
   /* Queued messages are drawn in the transcript, gold; this slim strip carries
      only the count and the clear action the queue as a whole needs. */
   .queued-strip { display: flex; align-items: center; gap: var(--pi-space-3); margin: 0 0 var(--pi-space-4); padding: var(--pi-space-2) var(--pi-space-3); color: var(--pi-warning); font-size: var(--pi-text-xs); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); background: var(--pi-warning-surface); }
   .queued-strip-count { flex: 1 1 auto; min-width: 0; }
   .queued-clear-button { flex: 0 0 auto; border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-warning); padding: var(--pi-space-1) var(--pi-space-3); font: inherit; cursor: pointer; }
-  .queued-clear-button:hover, .queued-clear-button:focus { border-color: var(--pi-warning); color: var(--pi-text-bright); }
+  .queued-clear-button:focus { border-color: var(--pi-warning); color: var(--pi-text-bright); }
+  @media (hover: hover) { .queued-clear-button:hover { border-color: var(--pi-warning); color: var(--pi-text-bright); } }
   .queued-dialogs { margin: -8px 0 var(--pi-space-7); padding: 0 var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-xs); text-align: center; }
   /* Delivery mark: bottom-right of the sender's own bubble, quiet enough to
      ignore while reading and specific enough to answer "did that send?". */
@@ -471,7 +485,8 @@ export const chatStyles = css`
   .empty-session { display: grid; justify-items: center; gap: var(--pi-space-5); margin: var(--pi-space-9) auto; max-width: var(--pi-chat-measure); padding: var(--pi-space-7); color: var(--pi-muted); text-align: center; }
   .empty-session p { margin: 0; }
   .empty-session button { min-height: var(--pi-control-height); padding: var(--pi-space-3) var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
-  .empty-session button:hover, .empty-session button:focus-visible { border-color: var(--pi-accent); }
+  .empty-session button:focus-visible { border-color: var(--pi-accent); }
+  @media (hover: hover) { .empty-session button:hover { border-color: var(--pi-accent); } }
   @media (pointer: coarse) { .empty-session button { min-height: var(--pi-control-height-touch); } }
   .msg-header { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-5); min-height: 18px; margin-bottom: var(--pi-space-3); }
   .msg > .msg-header { position: sticky; top: -16px; z-index: 4; margin: -12px -12px var(--pi-space-3); padding: var(--pi-space-1) var(--pi-space-5); border-radius: var(--pi-radius-md) var(--pi-radius-md) 0 0; border-bottom: 1px solid color-mix(in srgb, var(--pi-border-muted) 35%, transparent); background: var(--pi-surface); box-shadow: 0 8px 18px var(--pi-shadow-soft); }
@@ -487,12 +502,15 @@ export const chatStyles = css`
   .msg-action { position: relative; display: inline-grid; place-items: center; width: 24px; height: 24px; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); padding: 0; font: var(--pi-text-base) var(--pi-font-ui); line-height: 1; cursor: pointer; }
   /* A fingertip is wider than the drawn button, so the reach grows, not the icon. */
   .msg-action::after { content: ""; position: absolute; inset: -10px; }
-  .msg-action:hover, .msg-action:focus { color: var(--pi-text); border-color: var(--pi-accent); }
-  .msg:hover > .msg-header .msg-actions, .msg:focus-within > .msg-header .msg-actions, .group-msg:hover > .msg-header .msg-actions, .group-msg:focus-within > .msg-header .msg-actions { opacity: 1; }
+  .msg-action:focus { color: var(--pi-text); border-color: var(--pi-accent); }
+  @media (hover: hover) { .msg-action:hover { color: var(--pi-text); border-color: var(--pi-accent); } }
+  .msg:focus-within > .msg-header .msg-actions, .group-msg:focus-within > .msg-header .msg-actions { opacity: 1; }
+  @media (hover: hover) { .msg:hover > .msg-header .msg-actions, .group-msg:hover > .msg-header .msg-actions { opacity: 1; } }
   .label { display: block; color: var(--pi-muted); font-size: var(--pi-text-xs); text-transform: uppercase; }
   .msg-header .label { margin: 0; }
   .msg-meta { min-width: 0; opacity: .28; border: 0; background: transparent; color: var(--pi-dim); padding: 0; font: var(--pi-text-2xs) var(--pi-font-ui); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity var(--pi-motion-fast) var(--pi-ease); cursor: pointer; user-select: text; -webkit-user-select: text; }
-  .msg:hover > .msg-header .msg-meta, .msg:focus-within > .msg-header .msg-meta, .group-msg:hover > .msg-header .msg-meta, .group-msg:focus-within > .msg-header .msg-meta, .msg-meta:focus, .msg-meta.expanded { opacity: 1; }
+  .msg:focus-within > .msg-header .msg-meta, .group-msg:focus-within > .msg-header .msg-meta, .msg-meta:focus, .msg-meta.expanded { opacity: 1; }
+  @media (hover: hover) { .msg:hover > .msg-header .msg-meta, .group-msg:hover > .msg-header .msg-meta { opacity: 1; } }
   .msg-meta.expanded { flex: 1 1 auto; max-width: 100%; white-space: normal; overflow: visible; overflow-wrap: anywhere; text-overflow: clip; }
   .msg-meta:focus { outline: 1px solid var(--pi-border); outline-offset: 3px; border-radius: var(--pi-radius-xs); }
   @media (hover: none) {

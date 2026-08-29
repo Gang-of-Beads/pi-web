@@ -153,11 +153,11 @@ export class SettingsAppearancePanel extends LitElement {
     .scale input { width: 100%; margin: 0; accent-color: var(--pi-accent); }
     .scale input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
     .scale-reset { justify-self: start; min-height: var(--pi-control-height); padding: var(--pi-space-2) var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-bg); color: var(--pi-text); font: inherit; font-size: var(--pi-text-xs); cursor: pointer; }
-    .scale-reset:hover { border-color: var(--pi-accent); }
+    @media (hover: hover) { .scale-reset:hover { border-color: var(--pi-accent); } }
     .scale-reset:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
     .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--pi-space-5); }
     .theme { display: grid; gap: var(--pi-space-2); padding: var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); font: inherit; text-align: left; cursor: pointer; }
-    .theme:hover { border-color: var(--pi-accent); }
+    @media (hover: hover) { .theme:hover { border-color: var(--pi-accent); } }
     .theme:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
     .theme.selected { border-color: var(--pi-accent); box-shadow: 0 0 0 1px var(--pi-accent) inset; }
     .theme-name { font-weight: 600; }

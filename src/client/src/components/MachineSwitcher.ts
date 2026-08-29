@@ -285,7 +285,8 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     :host([hidden]) { display: none; }
     .machine-switcher { min-width: 0; }
     .machine-switcher-button { box-sizing: border-box; width: 100%; min-width: 0; display: flex; align-items: center; gap: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-2) var(--pi-space-4); cursor: pointer; text-align: left; }
-    .machine-switcher-button:hover, .machine-switcher-button:focus-visible { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
+    .machine-switcher-button:focus-visible { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
+    @media (hover: hover) { .machine-switcher-button:hover { border-color: var(--pi-accent); background: var(--pi-selection-bg); } }
     .machine-switcher-text { flex: 1 1 auto; min-width: 0; display: grid; gap: 1px; }
     .machine-switcher-kicker { color: var(--pi-muted); font-size: 10px; line-height: 1; text-transform: uppercase; letter-spacing: .02em; }
     .machine-switcher-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; line-height: 1.2; }
@@ -302,7 +303,7 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     .unread-ring .activity-indicator { width: 5px; height: 5px; }
     .machine-switcher-menu { position: fixed; z-index: var(--pi-layer-overlay); box-sizing: border-box; width: min(420px, calc(100vw - 16px)); overflow: auto; padding: 8px; border: 1px solid var(--pi-border-muted); border-radius: 14px; background: var(--pi-surface); box-shadow: 0 12px 40px var(--pi-shadow-strong, var(--pi-shadow)); display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 6px; }
     .machine-option { position: relative; display: grid; gap: 4px; box-sizing: border-box; border: 1px solid var(--pi-border-muted); border-radius: 10px; background: var(--pi-surface); }
-    .machine-option:hover { background: var(--pi-surface-hover); }
+    @media (hover: hover) { .machine-option:hover { background: var(--pi-surface-hover); } }
     .machine-option.selected { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
     .machine-option.selected::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--pi-accent); }
     .machine-option-main, .machine-option-actions-toggle, .machine-option-actions-panel button { border: 0; border-radius: 7px; background: transparent; color: var(--pi-text); cursor: pointer; }
@@ -323,9 +324,12 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     .machine-option-actions-panel { position: fixed; z-index: var(--pi-layer-popover); box-sizing: border-box; min-width: min(120px, calc(100vw - 16px)); overflow: auto; padding: 4px; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); box-shadow: 0 8px 24px var(--pi-shadow); }
     .machine-option-actions-panel button { display: block; width: 100%; padding: 7px 9px; text-align: left; white-space: nowrap; }
     .machine-option-actions-panel button.danger { color: var(--pi-danger); }
-    .machine-option-main:hover, .machine-option-main:focus-visible, .machine-option-actions-toggle:hover, .machine-option-actions-toggle:focus-visible, .machine-option.selected .machine-option-main { background: var(--pi-selection-bg); }
-    .machine-option-actions-panel button:hover, .machine-option-actions-panel button:focus-visible { background: var(--pi-selection-bg); }
-    .machine-option-actions-panel button.danger:hover, .machine-option-actions-panel button.danger:focus-visible { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); }
+    .machine-option-main:focus-visible, .machine-option-actions-toggle:focus-visible, .machine-option.selected .machine-option-main { background: var(--pi-selection-bg); }
+    @media (hover: hover) { .machine-option-main:hover, .machine-option-actions-toggle:hover { background: var(--pi-selection-bg); } }
+    .machine-option-actions-panel button:focus-visible { background: var(--pi-selection-bg); }
+    @media (hover: hover) { .machine-option-actions-panel button:hover { background: var(--pi-selection-bg); } }
+    .machine-option-actions-panel button.danger:focus-visible { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); }
+    @media (hover: hover) { .machine-option-actions-panel button.danger:hover { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); } }
     @keyframes pulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
   `;
 }

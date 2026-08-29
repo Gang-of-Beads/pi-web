@@ -230,9 +230,9 @@ export class GoalPanel extends LitElement {
 
     .goal-commands { display: flex; gap: var(--pi-space-2); padding: var(--pi-space-3) var(--pi-space-4) 0; }
     .goal-command { flex: 0 0 auto; padding: var(--pi-space-2) var(--pi-space-4); border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-text-secondary); font-size: var(--pi-text-2xs); cursor: pointer; }
-    .goal-command:hover:not(:disabled) { border-color: var(--pi-border-strong, var(--pi-accent)); color: var(--pi-text); }
+    @media (hover: hover) { .goal-command:hover:not(:disabled) { border-color: var(--pi-border-strong, var(--pi-accent)); color: var(--pi-text); } }
     .goal-command:disabled { opacity: .45; cursor: default; }
-    .goal-command.destructive:hover:not(:disabled) { border-color: var(--pi-danger-border, var(--pi-warning)); color: var(--pi-danger, var(--pi-warning)); }
+    @media (hover: hover) { .goal-command.destructive:hover:not(:disabled) { border-color: var(--pi-danger-border, var(--pi-warning)); color: var(--pi-danger, var(--pi-warning)); } }
     .goal-list { display: grid; gap: var(--pi-space-4); }
     .goal { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-md); background: var(--pi-surface); overflow: hidden; }
     .goal.blocked { border-color: color-mix(in srgb, var(--pi-warning) 45%, var(--pi-border-muted)); }
@@ -254,7 +254,7 @@ export class GoalPanel extends LitElement {
       text-align: start;
       cursor: pointer;
     }
-    .goal-header:hover { background: var(--pi-surface-hover); }
+    @media (hover: hover) { .goal-header:hover { background: var(--pi-surface-hover); } }
     .goal-header:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: -2px; }
     .goal-caret { color: var(--pi-muted); font-size: var(--pi-text-2xs); }
     .goal-objective { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
@@ -271,7 +271,8 @@ export class GoalPanel extends LitElement {
     .goal.blocked .goal-bar-fill { background: var(--pi-warning); }
     .goal-meta, .goal-footer { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pi-space-4); margin: 0; padding: var(--pi-space-3) var(--pi-space-5) var(--pi-space-4); color: var(--pi-muted); font-size: var(--pi-text-2xs); }
     .goal-archive { margin-left: auto; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-muted); padding: 3px var(--pi-space-5); font: inherit; font-size: var(--pi-text-2xs); cursor: pointer; }
-    .goal-archive:hover, .goal-archive:focus-visible { color: var(--pi-danger); border-color: var(--pi-danger); }
+    .goal-archive:focus-visible { color: var(--pi-danger); border-color: var(--pi-danger); }
+    @media (hover: hover) { .goal-archive:hover { color: var(--pi-danger); border-color: var(--pi-danger); } }
     .goal-archive-warning { margin: 0; padding: 0 var(--pi-space-5) var(--pi-space-5); color: var(--pi-warning); font-size: var(--pi-text-2xs); line-height: 1.45; }
     .goal-archive-warning code { font-family: var(--pi-control-monospace-font-family, ui-monospace, monospace); }
     .goal-current { color: var(--pi-text); }

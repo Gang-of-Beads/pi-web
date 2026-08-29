@@ -393,7 +393,11 @@ export class ExtensionDialogCard extends LitElement {
       line-height: 1.35;
       overflow-wrap: anywhere;
     }
-    .option-button:hover:not(:disabled) { border-color: var(--pi-accent); background: var(--pi-surface-hover); }
+    @media (hover: hover) { .option-button:hover:not(:disabled) { border-color: var(--pi-accent); background: var(--pi-surface-hover); } }
+    /* Pressed feedback lives on the active state, not on hover: on a coarse
+       pointer the hover state is what made the browser withhold the first
+       click. */
+    .option-button:active:not(:disabled) { border-color: var(--pi-accent); background: var(--pi-surface-hover); }
     .dialog-input-form { display: grid; }
     .dialog-input {
       box-sizing: border-box;
@@ -443,11 +447,13 @@ export class ExtensionDialogCard extends LitElement {
       font: inherit;
       cursor: pointer;
     }
-    button:hover:not(:disabled) { background: var(--pi-surface-hover); }
+    @media (hover: hover) { button:hover:not(:disabled) { background: var(--pi-surface-hover); } }
+    button:active:not(:disabled) { background: var(--pi-surface-hover); }
     button:disabled { cursor: wait; opacity: .65; }
     button:focus-visible, .dialog-input:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 2px; }
     .primary-action { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-accent-contrast, white); font-weight: 650; }
-    .primary-action:hover:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 86%, white); }
+    @media (hover: hover) { .primary-action:hover:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 86%, white); } }
+    .primary-action:active:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 86%, white); }
     .closed-summary {
       margin: 0;
       padding: 12px 16px;

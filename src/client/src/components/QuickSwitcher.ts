@@ -372,7 +372,7 @@ export class QuickSwitcher extends LitElement {
        a single column when there is only room for one. */
     .rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--pi-space-3); align-content: start; }
     .row { position: relative; display: grid; gap: var(--pi-space-1); width: 100%; min-height: 52px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-5) 34px var(--pi-space-5) var(--pi-space-6); text-align: left; cursor: pointer; }
-    .row:hover:not(:disabled) { background: var(--pi-surface-hover); }
+    @media (hover: hover) { .row:hover:not(:disabled) { background: var(--pi-surface-hover); } }
     .row:disabled { opacity: .55; cursor: not-allowed; }
     .row-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--pi-text-md); }
     .row-subtitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-xs); }
@@ -403,7 +403,8 @@ export class QuickSwitcher extends LitElement {
     /* A long press must not race the platform's own text callout. */
     .row-wrap .session-row { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
     .row-menu-toggle { flex: 0 0 auto; width: 40px; min-height: 52px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-muted); font-size: var(--pi-text-lg); line-height: 1; cursor: pointer; }
-    .row-menu-toggle:hover, .row-menu-toggle:focus-visible { color: var(--pi-text); border-color: var(--pi-accent); }
+    .row-menu-toggle:focus-visible { color: var(--pi-text); border-color: var(--pi-accent); }
+    @media (hover: hover) { .row-menu-toggle:hover { color: var(--pi-text); border-color: var(--pi-accent); } }
     /* On a narrow phone the menu button's own column left the name about a
        hundred pixels, so two tiles read worse than one. The button moves into
        the tile's corner instead: it is used occasionally, the name is read
@@ -419,7 +420,8 @@ export class QuickSwitcher extends LitElement {
     }
     .row-menu { position: absolute; top: calc(100% - 4px); right: 0; z-index: 3; display: grid; gap: var(--pi-space-1); min-width: 160px; padding: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); box-shadow: 0 10px 26px var(--pi-shadow); }
     .row-menu button { min-height: 40px; border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-text); padding: 0 var(--pi-space-5); font: inherit; text-align: left; cursor: pointer; }
-    .row-menu button:hover:not(:disabled), .row-menu button:focus-visible:not(:disabled) { background: var(--pi-selection-bg); }
+    .row-menu button:focus-visible:not(:disabled) { background: var(--pi-selection-bg); }
+    @media (hover: hover) { .row-menu button:hover:not(:disabled) { background: var(--pi-selection-bg); } }
     .row-menu button:disabled { opacity: .5; cursor: not-allowed; }
     .pin-mark { color: var(--pi-accent); }
     .rename-row { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-space-5); }

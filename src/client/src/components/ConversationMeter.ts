@@ -31,7 +31,8 @@ export class ConversationMeter extends LitElement {
 
   static override styles = css`
     :host { position: absolute; top: -4px; left: 16px; right: 16px; z-index: 6; display: block; height: 12px; opacity: .58; transition: opacity .15s ease; }
-    :host(:hover), :host(:focus-within) { opacity: .92; }
+    :host(:focus-within) { opacity: .92; }
+    @media (hover: hover) { :host(:hover) { opacity: .92; } }
     .meter { height: 100%; }
     .track { position: relative; height: 4px; margin-top: 4px; border-radius: 999px; background: color-mix(in srgb, var(--pi-border-muted) 34%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--pi-bg) 55%, transparent); }
     .progress { position: absolute; left: 0; width: var(--position); top: 0; bottom: 0; border-radius: 999px; background: color-mix(in srgb, var(--pi-accent) 42%, var(--pi-border-muted)); }

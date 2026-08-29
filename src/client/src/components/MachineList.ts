@@ -244,7 +244,8 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
       .machine-primary { display: flex; align-items: baseline; gap: var(--pi-space-3); }
       .machine-primary-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
       .machine-menu-panel button.danger { color: var(--pi-danger); }
-      .machine-menu-panel button.danger:hover, .machine-menu-panel button.danger:focus { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); }
+      .machine-menu-panel button.danger:focus { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); }
+      @media (hover: hover) { .machine-menu-panel button.danger:hover { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); } }
     `,
   ];
 }

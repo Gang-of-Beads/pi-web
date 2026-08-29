@@ -279,9 +279,11 @@ export class ModelPicker extends LitElement {
     input.search { margin: 10px 12px; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); padding: 8px 10px; outline: none; }
     input.search:focus { border-color: var(--pi-accent); }
     .options > button { display: block; width: 100%; padding: 10px 12px; border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
-    .options > button.selected, .options > button:hover { background: var(--pi-selection-bg); }
+    .options > button.selected { background: var(--pi-selection-bg); }
+    @media (hover: hover) { .options > button:hover { background: var(--pi-selection-bg); } }
     .catalog-row { display: flex; align-items: center; border-bottom: 1px solid var(--pi-border-muted); }
-    .catalog-row.selected, .catalog-row:hover { background: var(--pi-selection-bg); }
+    .catalog-row.selected { background: var(--pi-selection-bg); }
+    @media (hover: hover) { .catalog-row:hover { background: var(--pi-selection-bg); } }
     .catalog-row input[type="checkbox"] { margin: 0 0 0 12px; accent-color: var(--pi-accent); }
     .catalog-row .pick { flex: 1; min-width: 0; display: block; padding: 10px 12px; text-align: left; }
     .group-header { padding: 8px 12px 4px; color: var(--pi-muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }

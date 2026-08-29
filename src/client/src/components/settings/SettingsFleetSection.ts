@@ -110,7 +110,8 @@ export class SettingsFleetSection extends LitElement {
     .error { margin: 0; color: var(--pi-danger); font-size: var(--pi-text-xs); }
     button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-3) var(--pi-space-5); font: inherit; font-size: var(--pi-text-xs); cursor: pointer; }
     button:disabled { opacity: .5; cursor: not-allowed; }
-    button:hover:not(:disabled), button:focus-visible:not(:disabled) { border-color: var(--pi-accent); }
+    button:focus-visible:not(:disabled) { border-color: var(--pi-accent); }
+    @media (hover: hover) { button:hover:not(:disabled) { border-color: var(--pi-accent); } }
     .ghost { flex: 0 0 auto; }
     .machines { display: grid; gap: var(--pi-space-3); margin: 0; padding: 0; list-style: none; }
     .machine { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); }

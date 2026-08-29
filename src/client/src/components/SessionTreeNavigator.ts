@@ -534,7 +534,8 @@ export class SessionTreeNavigator extends LitElement {
     h2 { margin-top: 2px; font-size: 18px; }
     .eyebrow { display: block; color: var(--pi-muted); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
     .close-button { width: 36px; height: 36px; margin-inline-start: auto; display: grid; place-items: center; border: 0; background: transparent; color: var(--pi-muted); padding: 0; font-size: 25px; }
-    .close-button:not(:disabled):hover, .close-button:not(:disabled):focus-visible { color: var(--pi-text); background: var(--pi-surface-hover); }
+    .close-button:not(:disabled):focus-visible { color: var(--pi-text); background: var(--pi-surface-hover); }
+    @media (hover: hover) { .close-button:not(:disabled):hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
     .body { flex: 1 1 auto; min-height: 0; overflow: auto; }
     .tree-step { display: flex; flex-direction: column; gap: 10px; padding: 14px max(18px, env(safe-area-inset-right)) 16px max(18px, env(safe-area-inset-left)); }
     .tree-intro { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; color: var(--pi-muted); }
@@ -546,14 +547,14 @@ export class SessionTreeNavigator extends LitElement {
     .tree { min-height: 0; overflow: auto; border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-surface); overscroll-behavior: contain; }
     .tree-row { min-height: 48px; display: grid; grid-template-columns: 20px minmax(82px, auto) minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 7px 10px 7px calc(10px + var(--tree-indent)); border-bottom: 1px solid var(--pi-border-muted); cursor: pointer; outline: none; content-visibility: auto; contain-intrinsic-block-size: 48px; }
     .tree-row:last-child { border-bottom: 0; }
-    .tree-row:hover { background: var(--pi-surface-hover); }
+    @media (hover: hover) { .tree-row:hover { background: var(--pi-surface-hover); } }
     .tree-row.selected { background: var(--pi-selection-bg); box-shadow: inset 3px 0 var(--pi-accent); }
     .tree-row:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: -2px; }
     .tree-row.active-path:not(.selected) { background: color-mix(in srgb, var(--pi-accent) 7%, var(--pi-surface)); }
     .tree-row.active-leaf { box-shadow: inset 3px 0 var(--pi-accent); }
     .tree-row.bookkeeping { color: var(--pi-muted); }
     .disclosure { width: 20px; height: 28px; display: grid; place-items: center; border-radius: 5px; color: var(--pi-muted); font-size: 15px; user-select: none; }
-    .disclosure:not(.leaf):hover { color: var(--pi-text); background: var(--pi-surface-hover); }
+    @media (hover: hover) { .disclosure:not(.leaf):hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
     .disclosure.leaf { opacity: .5; }
     .metadata { display: contents; }
     .tree-row > .disclosure { grid-column: 1; grid-row: 1; }
@@ -598,11 +599,11 @@ export class SessionTreeNavigator extends LitElement {
     .dialog-status { border-color: var(--pi-success-border); background: var(--pi-success-bg); }
     .empty { color: var(--pi-muted); background: var(--pi-surface); }
     button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 8px 11px; font: inherit; cursor: pointer; }
-    button:not(:disabled):hover { background: var(--pi-surface-hover); }
+    @media (hover: hover) { button:not(:disabled):hover { background: var(--pi-surface-hover); } }
     button:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }
     button:disabled { opacity: .52; cursor: not-allowed; }
     button.primary { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-bg); font-weight: 700; }
-    button.primary:not(:disabled):hover { filter: brightness(1.08); }
+    @media (hover: hover) { button.primary:not(:disabled):hover { filter: brightness(1.08); } }
     button.danger { color: var(--pi-danger); }
     .footer-spacer { flex: 1; }
 

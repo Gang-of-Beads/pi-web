@@ -677,12 +677,15 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
        about which one starts work and which one deletes it; a secondary action
        states itself with text and earns its outline on hover. */
     .cleanup-entry { flex: 0 0 auto; padding: var(--pi-space-3) var(--pi-space-4); font-size: var(--pi-text-xs); text-transform: none; border: 0; background: transparent; color: var(--pi-muted); }
-    .cleanup-entry:hover:not(:disabled), .cleanup-entry:focus-visible { color: var(--pi-danger, var(--pi-text)); background: var(--pi-surface-hover); }
+    .cleanup-entry:focus-visible { color: var(--pi-danger, var(--pi-text)); background: var(--pi-surface-hover); }
+    @media (hover: hover) { .cleanup-entry:hover:not(:disabled) { color: var(--pi-danger, var(--pi-text)); background: var(--pi-surface-hover); } }
     .bulk-select-entry { border: 0; background: transparent; color: var(--pi-muted); }
-    .bulk-select-entry:hover:not(:disabled), .bulk-select-entry:focus-visible { color: var(--pi-text); background: var(--pi-surface-hover); }
+    .bulk-select-entry:focus-visible { color: var(--pi-text); background: var(--pi-surface-hover); }
+    @media (hover: hover) { .bulk-select-entry:hover:not(:disabled) { color: var(--pi-text); background: var(--pi-surface-hover); } }
     /* The one action this panel exists for. */
     .start-session-button { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-accent-contrast, #fff); font-weight: 600; }
-    .start-session-button:hover:not(:disabled), .start-session-button:focus-visible { background: color-mix(in srgb, var(--pi-accent) 88%, black); }
+    .start-session-button:focus-visible { background: color-mix(in srgb, var(--pi-accent) 88%, black); }
+    @media (hover: hover) { .start-session-button:hover:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 88%, black); } }
     .start-session-button:disabled { border-color: var(--pi-border); background: var(--pi-surface); color: var(--pi-muted); font-weight: 400; }
     .bulk-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pi-space-3); margin: 0 0 var(--pi-space-3); }
     .bulk-row button { padding: var(--pi-space-3) var(--pi-space-4); font-size: var(--pi-text-xs); white-space: nowrap; }
@@ -699,7 +702,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .orphan-marker { color: var(--pi-dim); opacity: .65; }
     .bulk-row.selecting { padding: var(--pi-space-3); border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-md); background: color-mix(in srgb, var(--pi-surface) 65%, transparent); }
     button.danger, .action-menu-panel button.danger { color: var(--pi-danger); }
-    button.danger:hover, .action-menu-panel button.danger:hover { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); }
+    @media (hover: hover) { button.danger:hover, .action-menu-panel button.danger:hover { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); } }
     .action-row.bulk-selected .action-main { border-color: var(--pi-accent); box-shadow: inset 3px 0 0 var(--pi-accent); }
     .pending-session-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); margin: var(--pi-space-3) 0; cursor: default; }
     .pending-session-row.starting-session .action-main { border-radius: var(--pi-radius-md); border-style: dashed; color: var(--pi-muted); }
@@ -721,7 +724,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .action-row.is-child .action-main { background: transparent; border-color: var(--pi-border-muted); }
     .action-row.is-child .action-main { padding-left: calc(38px + var(--depth, 0) * 16px); }
     .subtree-toggle { cursor: pointer; }
-    .subtree-toggle:hover { border-color: var(--pi-border-strong, var(--pi-accent)); color: var(--pi-text); }
+    @media (hover: hover) { .subtree-toggle:hover { border-color: var(--pi-border-strong, var(--pi-accent)); color: var(--pi-text); } }
     .subtree-toggle.inert { visibility: hidden; }
     .subtree-chevron { display: inline-block; transition: transform 120ms ease; }
     .subtree-chevron.collapsed { transform: rotate(-90deg); }

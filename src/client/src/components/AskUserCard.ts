@@ -538,7 +538,7 @@ export class AskUserCard extends LitElement {
       padding: 7px 8px;
       cursor: pointer;
     }
-    .option:hover { border-color: var(--pi-border-muted); background: var(--pi-surface-hover); }
+    @media (hover: hover) { .option:hover { border-color: var(--pi-border-muted); background: var(--pi-surface-hover); } }
     .option:has(input:checked) { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     input { margin: 2px 0 0; accent-color: var(--pi-accent); }
     input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 2px; }
@@ -596,10 +596,12 @@ export class AskUserCard extends LitElement {
       font: inherit;
       cursor: pointer;
     }
-    button:hover:not(:disabled) { background: var(--pi-surface-hover); }
+    @media (hover: hover) { button:hover:not(:disabled) { background: var(--pi-surface-hover); } }
+    button:active:not(:disabled) { background: var(--pi-surface-hover); }
     button:disabled { cursor: wait; opacity: .65; }
     .primary-action { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-accent-contrast, white); font-weight: 650; }
-    .primary-action:hover:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 86%, white); }
+    @media (hover: hover) { .primary-action:hover:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 86%, white); } }
+    .primary-action:active:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 86%, white); }
     .partial-confirmation { min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
     .partial-confirmation p { min-width: 0; margin: 0; color: var(--pi-warning); font-size: 12px; line-height: 1.4; }
     .question-jump {

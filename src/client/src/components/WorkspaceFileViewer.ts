@@ -311,7 +311,7 @@ export class WorkspaceFileViewer extends LitElement {
       small { color: var(--pi-muted); }
       .viewer-action, .download-link { flex: 0 0 auto; border: 1px solid var(--pi-border-muted); border-radius: 6px; background: var(--pi-surface); color: var(--pi-text); text-decoration: none; white-space: nowrap; }
       .viewer-action { padding: 3px 8px; font-size: 12px; }
-      .viewer-action:hover, .download-link:hover { border-color: var(--pi-border); background: var(--pi-bg); }
+      @media (hover: hover) { .viewer-action:hover, .download-link:hover { border-color: var(--pi-border); background: var(--pi-bg); } }
       .viewer-mode { flex: 0 0 auto; display: flex; justify-content: flex-end; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); }
       .viewer-mode button, .preview-state button { border: 1px solid var(--pi-border); border-radius: 6px; background: var(--pi-surface); color: var(--pi-text); padding: 4px 9px; cursor: pointer; font: inherit; }
       .viewer-mode button { font-size: 12px; }

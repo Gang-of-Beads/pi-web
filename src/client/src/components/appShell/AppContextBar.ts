@@ -366,7 +366,8 @@ export class AppContextBar extends LitElement {
     .context-session-input:focus { outline: none; border-color: var(--pi-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--pi-accent) 26%, transparent); }
     .context-session-edit-button { flex: 0 0 auto; display: grid; place-items: center; box-sizing: border-box; width: 38px; min-height: 40px; padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-muted); font-size: var(--pi-text-base); line-height: 1; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
     .context-session-edit-button.confirm { border-color: var(--pi-success-border); color: var(--pi-success); }
-    .context-session-edit-button:hover, .context-session-edit-button:focus-visible { background: var(--pi-surface-hover); color: var(--pi-text-bright); }
+    .context-session-edit-button:focus-visible { background: var(--pi-surface-hover); color: var(--pi-text-bright); }
+    @media (hover: hover) { .context-session-edit-button:hover { background: var(--pi-surface-hover); color: var(--pi-text-bright); } }
     .context-session-edit-button:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
     @media (prefers-reduced-motion: no-preference) {
       .context-session-edit-button.confirm:active { transform: scale(.94); }
@@ -382,7 +383,8 @@ export class AppContextBar extends LitElement {
       .context-working-dot { animation: none; opacity: .8; }
     }
     .context-session-rename { flex: 0 0 auto; display: inline-grid; place-items: center; width: 32px; min-height: 32px; padding: 0; border: 0; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); font-size: var(--pi-text-base); cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
-    .context-session-rename:hover, .context-session-rename:focus-visible { background: var(--pi-selection-bg); color: var(--pi-text-bright); }
+    .context-session-rename:focus-visible { background: var(--pi-selection-bg); color: var(--pi-text-bright); }
+    @media (hover: hover) { .context-session-rename:hover { background: var(--pi-selection-bg); color: var(--pi-text-bright); } }
     .context-session-rename:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
     @media (pointer: coarse) { .context-session-rename { width: 34px; min-height: 34px; } }
 
@@ -412,12 +414,13 @@ export class AppContextBar extends LitElement {
     .context-actions::before { content: ""; position: absolute; top: 0; bottom: 0; left: -24px; z-index: 0; width: 24px; background: linear-gradient(90deg, transparent, var(--pi-bg)); pointer-events: none; }
     app-refresh-control, .context-action-button { position: relative; z-index: 1; pointer-events: auto; }
     .context-action-button { box-sizing: border-box; width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text); padding: 0; line-height: 1; }
-    .context-action-button:hover, .context-action-button:focus-visible { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
+    .context-action-button:focus-visible { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
+    @media (hover: hover) { .context-action-button:hover { border-color: var(--pi-accent); background: var(--pi-selection-bg); } }
     .context-action-icon { width: 18px; height: 18px; fill: currentColor; pointer-events: none; }
     /* The chips are the only way back to a list on a phone, so they get the
      comfortable tap height even though their text is one line. */
   .context-chip { flex: 0 0 auto; min-width: 0; min-height: 40px; display: inline-flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-2) var(--pi-space-5); font: inherit; text-align: left; }
-    .context-chip:hover { background: var(--pi-surface-hover); }
+    @media (hover: hover) { .context-chip:hover { background: var(--pi-surface-hover); } }
     .context-chip:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
     .context-chip.empty { border-style: dashed; color: var(--pi-muted); }
     /* The pills scroll on a phone, so width is cheap: a kind label makes each
@@ -444,7 +447,7 @@ export class AppContextBar extends LitElement {
       cursor: pointer;
     }
     .context-breadcrumb::after { content: "›"; padding: 0 var(--pi-space-1) 0 var(--pi-space-2); }
-    .context-breadcrumb:hover { color: var(--pi-text); }
+    @media (hover: hover) { .context-breadcrumb:hover { color: var(--pi-text); } }
     .context-session-title {
       flex: 1 1 auto;
       min-width: 0;
