@@ -266,27 +266,40 @@ describe("background tasks", () => {
 });
 
 describe("activity filters", () => {
-  const activity = { rows: [1], runRows: [1, 2], taskRows: [1, 2, 3] };
+  const running = { status: "running" as const };
+  const done = { status: "done" as const };
+  const activity = { rows: [running], runRows: [running, done], taskRows: [running, done, done] };
 
   // A long chat accumulates dozens of rows of three different kinds; "what are
   // my subagents doing" and "did that build finish" are separate questions.
-  it("offers All plus every kind that has rows, with counts", () => {
+  it("counts what is running, not what has ever run", () => {
     expect(activityFilterOptions(activity)).toEqual([
-      { id: "all", label: "All", count: 6 },
+      { id: "all", label: "All", count: 3 },
       { id: "subagents", label: "Subagents", count: 1 },
-      { id: "runs", label: "Agent runs", count: 2 },
-      { id: "tasks", label: "Tasks", count: 3 },
+      { id: "runs", label: "Agent runs", count: 1 },
+      { id: "tasks", label: "Tasks", count: 1 },
+    ]);
+  });
+
+  // The panel said "Nothing running right now" beside chips reading 109/76/33.
+  // A kind with only history keeps its chip - it is how the reader reaches that
+  // history - but contributes no number to a count about the present.
+  it("keeps the chip and drops the number when a kind has only history", () => {
+    expect(activityFilterOptions({ rows: [done], runRows: [done, done], taskRows: [] })).toEqual([
+      { id: "all", label: "All", count: 0 },
+      { id: "subagents", label: "Subagents", count: 0 },
+      { id: "runs", label: "Agent runs", count: 0 },
     ]);
   });
 
   it("offers no choice when there is only one kind", () => {
-    expect(activityFilterOptions({ rows: [], runRows: [], taskRows: [1] })).toEqual([{ id: "tasks", label: "Tasks", count: 1 }]);
+    expect(activityFilterOptions({ rows: [], runRows: [], taskRows: [running] })).toEqual([{ id: "tasks", label: "Tasks", count: 1 }]);
     expect(activityFilterOptions({ rows: [], runRows: [], taskRows: [] })).toEqual([]);
   });
 
   it("falls back to All when the chosen kind has emptied out", () => {
     expect(activityFilterInEffect("runs", activity)).toBe("runs");
-    expect(activityFilterInEffect("runs", { rows: [1], runRows: [], taskRows: [] })).toBe("all");
+    expect(activityFilterInEffect("runs", { rows: [running], runRows: [], taskRows: [] })).toBe("all");
     expect(activityFilterInEffect("all", activity)).toBe("all");
   });
 });

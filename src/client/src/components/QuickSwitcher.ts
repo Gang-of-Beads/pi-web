@@ -374,7 +374,10 @@ export class QuickSwitcher extends LitElement {
     .row { position: relative; display: grid; gap: var(--pi-space-1); width: 100%; min-height: 52px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-5) 34px var(--pi-space-5) var(--pi-space-6); text-align: left; cursor: pointer; }
     @media (hover: hover) { .row:hover:not(:disabled) { background: var(--pi-surface-hover); } }
     .row:disabled { opacity: .55; cursor: not-allowed; }
-    .row-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--pi-text-md); }
+    /* One clamp at every width: a title that wraps to two lines on a phone and
+       one on a desktop makes the same list two different shapes. Two lines are
+       always reserved, so a short name and a long one occupy the same box. */
+    .row-title { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-height: calc(2 * 1.3em); font-size: var(--pi-text-md); line-height: 1.3; overflow-wrap: anywhere; }
     .row-subtitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-xs); }
     .create-row { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
     .create-row .row-title { font-weight: 650; }
@@ -399,7 +402,11 @@ export class QuickSwitcher extends LitElement {
     /* One box per session. The menu button used to have a column of its own
        beside the tile, so a row of three sessions read as six boxes; it is
        used occasionally, while the name is read every time. */
-    .row-wrap { position: relative; display: block; }
+    /* The grid stretches this wrapper, so the tile inside must fill it or the
+       tiles in one row end up different heights - which is exactly what the
+       owner kept reporting. */
+    .row-wrap { position: relative; display: block; height: 100%; }
+    .row-wrap > .row { height: 100%; }
     /* A long press must not race the platform's own text callout. */
     .row-wrap .session-row { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
     .row-menu-toggle { flex: 0 0 auto; width: 40px; min-height: 52px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-muted); font-size: var(--pi-text-lg); line-height: 1; cursor: pointer; }
@@ -411,12 +418,12 @@ export class QuickSwitcher extends LitElement {
        every time. */
     .row-title { padding-right: 30px; }
     .row-menu-toggle { position: absolute; top: 0; right: 0; width: 32px; min-height: 32px; border-color: transparent; background: transparent; }
-    /* A half-width tile on a small phone shows about nine characters on one
-       line, fewer than the single-column row it replaced. Two lines give the
-       name back that room while still fitting twice as many sessions. */
+    /* A half-width tile on a small phone shows about nine characters per line,
+       fewer than the single-column row it replaced, so phones get narrower
+       columns. The title clamp is not part of this breakpoint: it is the same
+       two lines everywhere. */
     @media (max-width: 420px) {
       .rows { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
-      .row-title { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
     }
     .row-menu { position: absolute; top: calc(100% - 4px); right: 0; z-index: 3; display: grid; gap: var(--pi-space-1); min-width: 160px; padding: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); box-shadow: 0 10px 26px var(--pi-shadow); }
     .row-menu button { min-height: 40px; border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-text); padding: 0 var(--pi-space-5); font: inherit; text-align: left; cursor: pointer; }

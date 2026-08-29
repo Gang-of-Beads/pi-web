@@ -337,6 +337,10 @@ export const chatStyles = css`
      16px margin, i.e. 32px from the last message to the dock. */
   .chat { flex: 1 1 auto; --pi-chat-sticky-top: -26px; height: 100%; min-height: 0; overflow: auto; overflow-anchor: none; padding: 26px var(--pi-chat-gutter) var(--pi-space-7); box-sizing: border-box; }
   .scroll-marker { display: block; height: 0; overflow: hidden; pointer-events: none; }
+  /* Its own row of the column, so the transcript above can grow all it likes
+     without moving a control the reader is aiming at. Tall questions scroll
+     inside the slot rather than pushing the composer off the screen. */
+  .waiting-slot { flex: 0 0 auto; max-height: 45vh; overflow: auto; overscroll-behavior: contain; margin: 0 var(--pi-chat-gutter) var(--pi-space-4); }
   .activity-dock { flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) 10px; z-index: var(--pi-layer-sticky); display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: 0 8px 28px var(--pi-shadow); backdrop-filter: blur(6px); }
   /* Idle is the state nobody needs a full-width banner for: keep the signal,
      drop the bar that looked like an empty card above the composer.
@@ -1178,9 +1182,9 @@ export class ChatView extends LitElement {
           ${this.renderSessionActivity()}
           ${this.renderPendingMessages()}
           ${this.renderQueuedMessages()}
-          ${this.renderOpenAsk()}
-          ${this.renderExtensionDialogs()}
+          ${this.renderClosedDialogs()}
         </div>
+        ${this.renderWaitingForYou()}
         ${this.renderJumpToBottom()}
         ${this.renderActivityDock()}
       </div>
@@ -2090,22 +2094,51 @@ export class ChatView extends LitElement {
     `;
   }
 
-  private renderOpenAsk() {
-    if (this.pendingAsk === undefined) return null;
+  /**
+   * What the session is waiting on the reader for, held outside the transcript.
+   *
+   * A question drawn at the end of the transcript is pushed down by everything
+   * that arrives after it - a streaming reply, tool rows, an injected
+   * continuation, a notification, a queued strip - so on a phone the option the
+   * reader aimed at has moved by the time the tap lands, and the click is
+   * delivered to whatever slid underneath. The owner reported that as "I have
+   * to tap twice" six times before the movement, rather than the tap, was
+   * identified as the cause.
+   *
+   * This is a real row of the layout, not an overlay: the transcript gives up
+   * the height, so nothing is covered and no tap is intercepted.
+   */
+  private renderWaitingForYou() {
+    const dialog = this.pendingDialogs[0];
+    if (this.pendingAsk === undefined && dialog === undefined) return null;
+    const queuedCount = this.pendingDialogs.length - 1;
     return html`
-      <ask-user-card
-        data-scroll-anchor-id=${`ask:${this.pendingAsk.askId}`}
-        .ask=${this.pendingAsk}
-        .draftSessionId=${this.askDraftSessionId}
-        .onSubmit=${this.onSubmitAsk}
-      ></ask-user-card>
+      <div class="waiting-slot" role="region" aria-label="Waiting for your answer">
+        ${this.pendingAsk === undefined ? null : html`
+          <ask-user-card
+            .ask=${this.pendingAsk}
+            .draftSessionId=${this.askDraftSessionId}
+            .onSubmit=${this.onSubmitAsk}
+          ></ask-user-card>
+        `}
+        ${dialog === undefined ? null : html`
+          <extension-dialog-card
+            class="open-dialog-card"
+            .dialog=${dialog}
+            .onAnswer=${this.onAnswerDialog}
+            .onCancel=${this.onCancelDialog}
+          ></extension-dialog-card>
+          ${queuedCount > 0
+            ? html`<p class="queued-dialogs" role="status">${String(queuedCount)} more extension ${queuedCount === 1 ? "dialog" : "dialogs"} queued</p>`
+            : null}
+        `}
+      </div>
     `;
   }
 
-  private renderExtensionDialogs() {
-    const open = this.pendingDialogs[0];
-    if (open === undefined && this.closedDialogs.length === 0) return null;
-    const queuedCount = this.pendingDialogs.length - 1;
+  /** Settled dialogs belong to the story, so they stay where they happened. */
+  private renderClosedDialogs() {
+    if (this.closedDialogs.length === 0) return null;
     return html`
       ${repeat(
         this.closedDialogs,
@@ -2119,18 +2152,6 @@ export class ChatView extends LitElement {
           ></extension-dialog-card>
         `,
       )}
-      ${open === undefined ? null : html`
-        <extension-dialog-card
-          class="open-dialog-card"
-          data-scroll-anchor-id=${`dialog:${open.dialogId}`}
-          .dialog=${open}
-          .onAnswer=${this.onAnswerDialog}
-          .onCancel=${this.onCancelDialog}
-        ></extension-dialog-card>
-        ${queuedCount > 0
-          ? html`<p class="queued-dialogs" role="status">${String(queuedCount)} more extension ${queuedCount === 1 ? "dialog" : "dialogs"} queued</p>`
-          : null}
-      `}
     `;
   }
 
