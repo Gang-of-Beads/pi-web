@@ -27,6 +27,7 @@ import { type CompletionItem} from "./shared";
 import { renderAttachIcon, renderSendIcon, renderQueueIcon, renderSteerIcon, renderStopIcon, renderThinkingGauge } from "./promptEditorIcons";
 import { thinkingGauge, thinkingLevelLabel } from "../../../shared/thinkingLevels";
 import "./AutocompleteMenu";
+import "./PromptHistoryPanel";
 
 export const promptEditorStyles = css`
   /* Mobile browsers paint a rectangular highlight on tap, which looks pasted-on
@@ -249,6 +250,8 @@ export class PromptEditor extends LitElement {
   @state() private currentInputMode: InputMode = { kind: "normal" };
   @state() private completions: CompletionItem[] = [];
   @state() private selectedIndex = 0;
+  /** Whether the prompt-history sheet is open over the transcript. */
+  @state() private historyOpen = false;
   /** Absent means dictation is not offered at all. */
   @property({ attribute: false }) speechToText?: PiWebSpeechToTextConfig;
   /** This session's own user prompts: history that reached the server, so the
@@ -293,6 +296,9 @@ export class PromptEditor extends LitElement {
     this.currentInputMode = inputModeForDraft(this.draft);
     this.completions = [];
     this.selectedIndex = 0;
+    // The sheet lists one session's history; carried across a switch it would
+    // answer for prompts the reader was never looking at.
+    if (sessionChanged || machineChanged) this.historyOpen = false;
   }
 
   protected override shouldUpdate(changed: PropertyValues<this>): boolean {
@@ -379,6 +385,7 @@ export class PromptEditor extends LitElement {
         </div>
       </footer>
       ${this.renderAttachmentZoom()}
+      ${this.renderHistoryPanel()}
     `;
   }
 
@@ -634,7 +641,7 @@ export class PromptEditor extends LitElement {
 
   /**
    * Prompt history answers Ctrl/Cmd+R, which a phone cannot type. The same
-   * picker gets a visible door in the controls row whenever this session has
+   * sheet gets a visible door in the controls row whenever this session has
    * prompts behind it.
    */
   private renderHistoryButton() {
@@ -652,6 +659,30 @@ export class PromptEditor extends LitElement {
         @click=${() => { this.openPromptHistoryPicker(); }}
       >⟲</button>
     `;
+  }
+
+  /** The searchable history sheet, anchored above the composer so it never
+   * covers the editor it fills. */
+  private renderHistoryPanel() {
+    if (!this.historyOpen || this.collapsed) return null;
+    const key = draftStorageKey(this.machineId, this.sessionId);
+    if (key === undefined) return null;
+    return html`
+      <prompt-history-panel
+        .sessionKey=${key}
+        .sessionPrompts=${this.sessionPrompts}
+        .onPick=${(text: string) => { this.restoreHistoryEntry(text); }}
+        .onClose=${() => { this.historyOpen = false; }}
+      ></prompt-history-panel>
+    `;
+  }
+
+  /** Fill the composer from a history pick and get out of the way. */
+  private restoreHistoryEntry(text: string): void {
+    this.historyIndex = undefined;
+    this.historyOpen = false;
+    this.replaceText(text);
+    this.focusInput();
   }
 
   private renderDictateButton() {
@@ -933,12 +964,6 @@ export class PromptEditor extends LitElement {
   private pick(item: CompletionItem) {
     const editor = this.editor;
     if (!editor) return;
-    if (item.kind === "history") {
-      this.historyIndex = undefined;
-      this.replaceText(item.insertText);
-      this.completions = [];
-      return;
-    }
     const suffix = item.kind === "file" && (item.insertText.endsWith("/") || item.cursorOffset !== undefined) ? "" : " ";
     const cursor = item.replaceFrom + (item.cursorOffset ?? item.insertText.length) + suffix.length;
     const replaceTo = item.insertText.endsWith("\"") && this.draft.slice(item.replaceTo).startsWith("\"") ? item.replaceTo + 1 : item.replaceTo;
@@ -950,20 +975,16 @@ export class PromptEditor extends LitElement {
     this.completions = [];
   }
 
+  /**
+   * Open the searchable history sheet. Empty handed is a no-op: the button is
+   * already hidden then, and the shortcut must not open an empty room.
+   */
   private openPromptHistoryPicker(): boolean {
+    if (this.collapsed) return false;
     const key = draftStorageKey(this.machineId, this.sessionId);
     if (key === undefined) return false;
-    const matches = searchPromptHistory(key, this.draft, this.sessionPrompts).slice(0, 12);
-    if (matches.length === 0) return false;
-    this.selectedIndex = 0;
-    this.completions = matches.map((entry) => ({
-      kind: "history",
-      replaceFrom: 0,
-      replaceTo: this.draft.length,
-      insertText: entry,
-      detail: "history",
-      description: entry,
-    }));
+    if (searchPromptHistory(key, "", this.sessionPrompts).length === 0) return false;
+    this.historyOpen = true;
     return true;
   }
 

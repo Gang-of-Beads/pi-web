@@ -101,7 +101,7 @@ export interface ChatLine {
 }
 
 export interface CompletionItem {
-  kind: "command" | "file" | "model" | "history";
+  kind: "command" | "file" | "model";
   replaceFrom: number;
   replaceTo: number;
   insertText: string;

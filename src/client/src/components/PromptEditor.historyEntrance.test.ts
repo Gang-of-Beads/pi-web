@@ -3,7 +3,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { machineSessionKey } from "../machineKeys";
 import { promptHistoryKey } from "../promptHistory";
-import type { AutocompleteMenu } from "./AutocompleteMenu";
 import { PromptEditor } from "./PromptEditor";
 
 afterEach(() => { document.body.replaceChildren(); localStorage.clear(); });
@@ -23,15 +22,16 @@ describe("the composer's history entrance", () => {
     expect(editor.shadowRoot?.querySelector(".actions")?.contains(button)).toBe(true);
   });
 
-  it("opens the same history picker the shortcut opens", async () => {
+  it("opens the searchable history sheet the shortcut opens", async () => {
     seedHistory("typed on the train earlier");
     const editor = await mount();
 
     historyButton(editor)?.click();
     await editor.updateComplete;
 
-    const menu = editor.shadowRoot?.querySelector<AutocompleteMenu>("autocomplete-menu");
-    expect(menu?.items.map((item) => item.kind)).toContain("history");
+    const panel = editor.shadowRoot?.querySelector("prompt-history-panel");
+    expect(panel).not.toBeNull();
+    expect(entryTexts(panel)).toContain("typed on the train earlier");
   });
 
   it("is absent when the session has no history yet", async () => {
@@ -47,6 +47,11 @@ function seedHistory(entry: string): void {
 
 function historyButton(editor: PromptEditor): HTMLButtonElement | null {
   return editor.shadowRoot?.querySelector<HTMLButtonElement>(".editor-history") ?? null;
+}
+
+function entryTexts(panel: Element | null | undefined): string[] {
+  return [...panel?.shadowRoot?.querySelectorAll<HTMLButtonElement>("button.entry") ?? []]
+    .map((entry) => entry.textContent.trim());
 }
 
 async function mount(): Promise<PromptEditor> {
@@ -72,7 +77,7 @@ describe("the entrance on a browser that never typed here", () => {
     expect(historyButton(editor)).not.toBeNull();
   });
 
-  it("lists the session's prompts in the picker", async () => {
+  it("lists the session's prompts in the sheet", async () => {
     const editor = await mount();
     editor.sessionPrompts = ["prompt that reached the server"];
     await editor.updateComplete;
@@ -80,7 +85,8 @@ describe("the entrance on a browser that never typed here", () => {
     historyButton(editor)?.click();
     await editor.updateComplete;
 
-    const menu = editor.shadowRoot?.querySelector<AutocompleteMenu>("autocomplete-menu");
-    expect(menu?.items.map((item) => item.insertText)).toContain("prompt that reached the server");
+    const panel = editor.shadowRoot?.querySelector("prompt-history-panel");
+    expect(panel).not.toBeNull();
+    expect(entryTexts(panel)).toContain("prompt that reached the server");
   });
 });
