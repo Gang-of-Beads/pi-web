@@ -214,6 +214,8 @@ const PI_WEB_STATUS_REFRESH_MS = 15 * 60 * 1000;
  * for as long as the tab is in front.
  */
 const SUBAGENT_REFRESH_MS = 4000;
+/** Reopen within this window serves the list the last open just fetched. */
+const QUICK_SWITCHER_REFRESH_MS = 30_000;
 /** Slow cadence for re-reading the disk while a send still waits. */
 const DELIVERY_RECONCILE_MS = 10_000;
 /** How much of a session's own history to offer the composer's picker. */
@@ -404,6 +406,7 @@ export class PiWebApp extends LitElement {
   @state() private mobileToolSheetOpen = false;
   @state() private quickSwitcherLoading = false;
   @state() private quickSwitcherSessions: readonly SessionInfo[] = [];
+  private quickSwitcherFetchedAt = 0;
   @state() private pinnedSessionIds: ReadonlySet<string> = readPinnedSessionIds();
   @state() private quickSwitcherWorkspaces: readonly Workspace[] = [];
   private quickSwitcherMachineId: string | undefined;
@@ -2080,7 +2083,7 @@ export class PiWebApp extends LitElement {
     // kept for the life of the page, so anything that changed after the first
     // open -- a rename, a new session, one archived on another device -- stayed
     // invisible until a reload.
-    void this.loadQuickSwitcherData(this.quickSwitcherSessions.length > 0);
+    void this.loadQuickSwitcherData();
     // The interrupted record is read-once on the daemon; re-reading it when
     // the switcher opens retracts markers whose runs have since continued.
     const machineId = selectedMachineId(this.state);
@@ -2099,7 +2102,9 @@ export class PiWebApp extends LitElement {
 
   private async loadQuickSwitcherData(force = false): Promise<void> {
     const machineId = selectedMachineId(this.state);
-    if (!force && this.quickSwitcherMachineId === machineId && (this.quickSwitcherSessions.length > 0 || this.quickSwitcherWorkspaces.length > 0 || this.quickSwitcherLoading)) {
+    if (!force && this.quickSwitcherMachineId === machineId
+        && (this.quickSwitcherSessions.length > 0 || this.quickSwitcherWorkspaces.length > 0)
+        && Date.now() - this.quickSwitcherFetchedAt < QUICK_SWITCHER_REFRESH_MS) {
       return;
     }
     this.quickSwitcherLoading = true;
@@ -2121,6 +2126,7 @@ export class PiWebApp extends LitElement {
         }
       }));
       this.quickSwitcherMachineId = machineId;
+      this.quickSwitcherFetchedAt = Date.now();
       this.quickSwitcherWorkspaces = workspaces;
       this.quickSwitcherSessions = dedupeById(sessionLists.flat()).sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified));
     } catch (error) {
