@@ -38,22 +38,31 @@ export async function loadExternalPlugins(manifestUrl = "pi-web-plugins/manifest
 
   const registrations: PiWebPluginRegistration[] = [];
   const failures: ExternalPluginLoadFailure[] = [];
-  for (const entry of manifest.plugins) {
-    if (options.shouldLoadPlugin?.(entry) === false) continue;
+  // Each plugin is a fetch and an evaluation. Awaited one after another they
+  // cost N round trips laid end to end on the boot path; together they cost
+  // the slowest one. The manifest's order is preserved in the results.
+  const settled = await Promise.all(manifest.plugins.map(async (entry) => {
+    if (options.shouldLoadPlugin?.(entry) === false) return undefined;
     try {
       const moduleUrl = resolvePluginModuleUrl(entry.module, resolvedManifestUrl);
       const module = await (options.moduleLoader ?? importPluginModule)(moduleUrl);
       const plugin = parsePluginModule(module, moduleUrl);
-      registrations.push({
+      const registration: PiWebPluginRegistration = {
         id: options.machineId === undefined ? entry.id : machineScopedPluginId(options.machineId, entry.id),
         plugin,
         machineSpecific: entry.machineSpecific,
         ...(entry.backendRevision === undefined ? {} : { backendRevision: entry.backendRevision }),
         ...(options.machineId === undefined ? {} : { machineId: options.machineId, sourcePluginId: entry.id }),
-      });
+      };
+      return { registration };
     } catch (error) {
-      failures.push({ entry, error });
+      return { failure: { entry, error } };
     }
+  }));
+  for (const outcome of settled) {
+    if (outcome === undefined) continue;
+    if ("registration" in outcome) registrations.push(outcome.registration);
+    else failures.push(outcome.failure);
   }
   return { registrations, failures };
 }

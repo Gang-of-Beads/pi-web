@@ -166,3 +166,33 @@ describe("external plugin manifests", () => {
     })).toBe("https://pi.example.test/test/ai/pi-web-plugins/info/pi-web-plugin.js?v=1");
   });
 });
+
+describe("how many round trips a manifest of plugins costs", () => {
+  /**
+   * Each plugin is a network fetch and a module evaluation, and they were
+   * awaited one after another: five plugins cost five round trips laid end to
+   * end on the boot path. Fetching them together costs the slowest one.
+   */
+  it("starts every plugin's fetch before waiting on any of them", async () => {
+    const manifestUrl = "https://pi.example.test/pi-web-plugins/manifest.json";
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(JSON.stringify({
+      plugins: [
+        { id: "first", module: "./first/pi-web-plugin.js" },
+        { id: "second", module: "./second/pi-web-plugin.js" },
+      ],
+    }))));
+    vi.stubGlobal("fetch", fetchMock);
+    const events: string[] = [];
+    const moduleLoader = vi.fn(async (url: string) => {
+      events.push(`start:${url.includes("first") ? "first" : "second"}`);
+      await Promise.resolve();
+      events.push(`end:${url.includes("first") ? "first" : "second"}`);
+      return { default: { apiVersion: 2, name: "X", activate: () => ({ contributions: {} }) } };
+    });
+
+    const result = await loadExternalPlugins(manifestUrl, { moduleLoader });
+
+    expect(result.registrations.map((entry) => entry.id)).toEqual(["first", "second"]);
+    expect(events[1]).toBe("start:second");
+  });
+});
