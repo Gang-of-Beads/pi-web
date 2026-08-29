@@ -17,13 +17,16 @@ export function withMessageMeta(line: ChatLine, rawMessage: unknown): ChatLine {
 }
 
 /** Messages sent while a reply is in flight sit after it without ending it. */
-function unansweredTail(messages: ChatLine[]): number {
+export function unansweredTail(messages: ChatLine[]): number {
   let index = messages.length;
   while (index > 0) {
     const line = messages[index - 1];
-    if (line === undefined) break;
+    if (line?.role !== "user") break;
     const state = line.meta?.delivery?.state;
-    if (line.role !== "user" || state === undefined || deliverySettled(state)) break;
+    const unsettledDelivery = state !== undefined && !deliverySettled(state);
+    // The sender's own echo has no delivery record yet; it is just as
+    // unanswered as a queued send with one.
+    if (line.meta?.echo !== true && !unsettledDelivery) break;
     index -= 1;
   }
   return index;

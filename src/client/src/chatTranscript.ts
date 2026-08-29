@@ -1,4 +1,4 @@
-import { appendText, appendThinking, askUserRecordFromToolDetails, normalizeMessage, normalizeMessages, previewFromDetails, summarizeArgs, textMessage } from "./chatMessages";
+import { appendText, appendThinking, unansweredTail, askUserRecordFromToolDetails, normalizeMessage, normalizeMessages, previewFromDetails, summarizeArgs, textMessage } from "./chatMessages";
 import { resolveArrival } from "./transcriptArrival";
 import { placeByTimestamp } from "./transcriptOrder";
 import type { ChatLine, ToolExecutionPart } from "./components/shared";
@@ -98,9 +98,20 @@ function applyFinalLine(messages: ChatLine[], displayEnded: ChatLine): ChatLine[
       if (previous !== undefined) return [...messages.slice(0, target), carryDeliveryForward(previous, displayEnded), ...messages.slice(target + 1)];
     }
   }
+  // The half-done streaming line lives at the unanswered tail, the same place
+  // appendText grows it - not necessarily at the end, because a message queued
+  // mid-turn lands after it. Finalizing against the end alone left the
+  // half-done line standing and appended a twin behind the queued message.
+  if (displayEnded.role === "assistant") {
+    const at = unansweredTail(messages);
+    const head = messages.slice(0, at);
+    const tail = messages.slice(at);
+    if (head.at(-1)?.role === "assistant") return [...head.slice(0, -1), displayEnded, ...tail];
+    return [...head, displayEnded, ...tail];
+  }
   const last = messages.at(-1);
   if (last?.role !== displayEnded.role) return [...messages, displayEnded];
-  if (displayEnded.role === "assistant" || sameMessageText(last, displayEnded)) return [...messages.slice(0, -1), displayEnded];
+  if (sameMessageText(last, displayEnded)) return [...messages.slice(0, -1), displayEnded];
   return [...messages, displayEnded];
 }
 

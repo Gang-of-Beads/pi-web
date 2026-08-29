@@ -747,3 +747,23 @@ function toolStarted(messages: ChatLine[]): ChatLine[] {
   const event: SessionUiEvent = { type: "tool.start", toolCallId: "t1", toolName: "bash", args: {}, summary: "bash" };
   return applyTranscriptEvent(messages, event) ?? messages;
 }
+
+describe("a reply finalized after something landed behind it", () => {
+  /**
+   * While streaming, the half-done reply is the last line, and the finalizer
+   * only looked at the last line. A message queued mid-turn lands after the
+   * half-done reply, so the finalized copy found a user line at the end,
+   * appended itself, and the same reply stood twice with the queued message
+   * between the halves.
+   */
+  it("replaces the half-done line in place instead of appending a twin", () => {
+    let messages = applyTranscriptEvent([], { type: "assistant.delta", text: "half of the reply" }) ?? [];
+    messages = applyTranscriptEvent(messages, { type: "message.append", message: { role: "user", content: "queued mid-turn" }, echo: true, clientMessageId: "q1" }) ?? messages;
+
+    const final = applyTranscriptEvent(messages, { type: "message.end", message: { role: "assistant", content: "the reply, finished" } }) ?? messages;
+
+    expect(final.filter((line) => line.role === "assistant")).toHaveLength(1);
+    expect(final.map((line) => line.role)).toEqual(["assistant", "user"]);
+    expect(final[0]?.parts.some((part) => part.type === "text" && part.text.includes("finished"))).toBe(true);
+  });
+});
