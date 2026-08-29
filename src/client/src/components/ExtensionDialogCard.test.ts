@@ -427,42 +427,33 @@ describe("a dialog whose text is longer than the room it was given", () => {
  * rows. In a select dialog those rows are the options, and the footer holds
  * Cancel.
  *
- * Measured against the built bundle at 393x850 with a 12-option dialog
- * (scripts/probe-dialog-footer-overlap.mjs): at scrollTop 0, 200 and 320 the
- * footer stayed pinned at y=784 and document hit-testing returned Cancel at the
- * centre of an option row - so a tap aimed at that option would have ANSWERED
- * the dialog with Cancel, not merely missed. The sticky header does the same on
- * the top edge, covering "Skip" once it pinned to y=0.
- *
- * Reaching the wrong answer is worse than reaching nothing, and a finger gets no
- * hover to reveal the overlap first, so both are returned to normal flow where
- * pointers are coarse. happy-dom has no layout, so this pins the rule that the
- * browser measurement showed to be the cause; the probe re-measures the
- * geometry itself.
+ * Measured against the built bundle while the footer was still sticky on fine
+ * pointers (scripts/probe-dialog-flow-hit-testing.mjs): at 393x850 with a
+ * coarse pointer nothing was covered, but at 1440x900 with a fine pointer the
+ * footer stayed pinned at y=845 at scrollTop 0 and hit-testing returned the
+ * footer for the centres of Options 7 and 8, and at deeper scrolls the pinned
+ * header covered Skip and Option 4. The owner's decision is flow everywhere:
+ * "手机和桌面都回文档流，桌面也不悬浮" - phones and desktop both return
+ * to document flow, desktop does not float either. happy-dom has no layout, so
+ * this pins the rule that the browser measurement showed to be the cause; the
+ * probe re-measures the geometry itself.
  */
 describe("answer controls that float over the choices they sit above", () => {
-  it("stops pinning the footer and header over the card's own rows on a coarse pointer", () => {
-    const coarse = coarsePointerRules();
+  it("keeps the footer and header in normal flow at every pointer type", () => {
+    const sheet = String(ExtensionDialogCard.styles);
+    const footer = /\.dialog-footer\s*\{[^}]*\}/u.exec(sheet)?.[0] ?? "";
+    const header = /\.card-header\s*\{[^}]*\}/u.exec(sheet)?.[0] ?? "";
 
-    expect(coarse).not.toBe("");
-    expect(coarse).toMatch(/\.dialog-footer\s*\{[^}]*position:\s*static/u);
-    expect(coarse).toMatch(/\.card-header\s*\{[^}]*position:\s*static/u);
+    expect(footer).not.toBe("");
+    expect(header).not.toBe("");
+    expect(footer).not.toMatch(/position:\s*sticky/u);
+    expect(header).not.toMatch(/position:\s*sticky/u);
   });
 
-  it("keeps the footer sticky by default, where a pointer is precise and hover shows the overlap", () => {
+  it("does not keep the floating footer's up-shadow, which painted over the rows above it", () => {
     const sheet = String(ExtensionDialogCard.styles);
-    const base = /\.dialog-footer\s*\{[^}]*\}/u.exec(sheet)?.[0] ?? "";
+    const footer = /\.dialog-footer\s*\{[^}]*\}/u.exec(sheet)?.[0] ?? "";
 
-    expect(base).toMatch(/position:\s*sticky/u);
+    expect(footer).not.toMatch(/box-shadow/u);
   });
 });
-
-/** The card's own coarse-pointer block, or "" when it has none. */
-function coarsePointerRules(): string {
-  const sheet = String(ExtensionDialogCard.styles);
-  const start = sheet.indexOf("@media (pointer: coarse)");
-  if (start === -1) return "";
-  const open = sheet.indexOf("{", start);
-  const close = sheet.indexOf("\n    }", open);
-  return close === -1 ? "" : sheet.slice(open + 1, close);
-}

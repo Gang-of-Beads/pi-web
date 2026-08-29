@@ -16,7 +16,7 @@ export type ExtensionDialogDismissCallback = (dialogId: string) => void;
 const COUNTDOWN_TICK_MS = 1_000;
 
 /**
- * Longest heading kept in the sticky card header. Beyond this the heading is
+ * Longest heading kept in the card header. Beyond this the heading is
  * elided and the untouched title moves into the scrollable detail body.
  */
 const DIALOG_HEADING_MAX_LENGTH = 120;
@@ -33,7 +33,7 @@ export interface DialogTitleParts {
  * `ctx.ui.select()` and `ctx.ui.input()` offer a single text slot, so an
  * extension that needs to present a structured document (a goal contract, a
  * migration plan) has nowhere to put it but `title`. Rendering that verbatim
- * in the sticky card header buries the viewport on a phone and collapses every
+ * in the card header buries the viewport on a phone and collapses every
  * newline, so only the first line stays in the header while the remainder
  * becomes a scrollable body that preserves its line breaks.
  *
@@ -332,9 +332,6 @@ export class ExtensionDialogCard extends LitElement {
       background: var(--pi-surface);
     }
     .card-header {
-      position: sticky;
-      top: var(--pi-chat-sticky-top, 0px);
-      z-index: 6;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -405,17 +402,22 @@ export class ExtensionDialogCard extends LitElement {
       font: var(--pi-control-font-size, 16px)/1.4 var(--pi-control-font-family, system-ui, sans-serif);
     }
     .dialog-footer {
-      /* The card sits in the transcript, which is already the scroller. Inner
-         scroll windows made the reader cross a scroll boundary mid-plan; the
-         answer controls stay reachable by sticking to the bottom instead.
-
-         A bottom-sticky footer is held at the viewport bottom for as long as the
-         card's end is below the fold, so it necessarily covers the card's own
-         earlier rows - and in a select dialog those rows are the options. See
-         the coarse-pointer rule below for why that is withdrawn on phones. */
-      position: sticky;
-      bottom: 0;
-      z-index: 6;
+      /* The card sits in the transcript, which is already the scroller. The
+         footer and header therefore read from normal document flow, at every
+         pointer type: the owner's decision is "手机和桌面都回文档流，桌面也不悬浮"
+         - phones and desktop both return to document flow, desktop does not
+         float either. A bottom-sticky footer is held at the viewport bottom
+         for as long as the card's end is below the fold, so it necessarily
+         covers the card's own earlier rows - and in a select dialog those rows
+         are the options. Measured at 1440x900 with a 12-option dialog while
+         the footer was still sticky on fine pointers: at scrollTop 0 the
+         footer stayed pinned at y=845 and document hit-testing put Options 7
+         and 8 under it, and at deeper scrolls the pinned header covered Skip
+         and Option 4. Reaching the wrong answer is worse than reaching
+         nothing, and no pointer gets a hover that reliably reveals the
+         overlap first. Nothing is lost by scrolling to the controls: the card
+         has no inner scroller, the transcript is the scroller, which is what
+         the sticky was avoiding in the first place. */
       display: flex;
       flex-wrap: wrap;
       align-items: center;
@@ -424,22 +426,9 @@ export class ExtensionDialogCard extends LitElement {
       border-top: 1px solid var(--pi-border-muted);
       border-radius: 0 0 9px 9px;
       background: var(--pi-surface);
-      box-shadow: 0 -8px 18px var(--pi-shadow-soft);
       padding: 12px 16px;
     }
     .dialog-message + .dialog-footer, .dialog-options + .dialog-footer { border-top: 0; }
-    /* Measured at 393x850 with a 12-option select dialog: while the card's end
-       was below the fold the footer stayed pinned at y=784 and document
-       hit-testing put Cancel on top of an option row, so a tap aimed at that
-       option would have ANSWERED the dialog with Cancel. Reaching the wrong
-       answer is worse than reaching nothing, and a finger has no hover to
-       reveal the overlap first, so the footer returns to normal flow where
-       taps are imprecise. Scrolling to it costs nothing here because the card
-       has no inner scroller of its own - the transcript is the scroller. */
-    @media (pointer: coarse) {
-      .dialog-footer { position: static; box-shadow: none; }
-      .card-header { position: static; }
-    }
     button {
       border: 1px solid var(--pi-border);
       border-radius: 8px;
