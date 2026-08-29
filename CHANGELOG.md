@@ -1,5 +1,14 @@
 # @jmfederico/pi-web
 
+## 1.202608.71
+
+### Patch Changes
+
+- c420449: Dialog cards carry their own tap rules. The transcript sets `touch-action: manipulation` and suppresses the platform's tap highlight for its buttons, but extension-dialog and ask-user option buttons live in their own shadow roots that those rules never reach - so they stayed eligible for the browser's double-tap-zoom click delay and painted the rectangular tap highlight. Both card components now declare the same two properties for their own controls.
+- 430a3cf: The goals panel no longer shows another project's goal. Keeping the previous list across a loading or failed read fixed the vanishing Goals chip, but the retention answered to nothing: after the switcher moved the selection to another project, the panel kept rendering the previous project's goal with live Resume and Abandon buttons, so acting on it would archive another project's goal from the wrong session. The retained list is now keyed to the machine+project+workspace it was fetched for - rendered only while that key matches the selection, with the action controls withheld otherwise - which keeps the chip through loading and failures for the same workspace while making the cross-workspace bleed impossible. A session switch that moves workspaces now also refreshes the goals and re-seeds the session list from the keyed cache instead of carrying the previous workspace's rows.
+- 8cb3a7d: The composer's prompt history became a searchable, closable sheet. It shipped as a bare floating list: no search - and quick search was the original request - no close affordance a thumb could reach, and it covered the composer it fills. The sheet now anchors above the composer instead of over it, filters with the ranking the Ctrl/Cmd+R shortcut always used, fills the composer on tap, and closes by its close button, a backdrop tap, or Escape.
+- fefbecb: A catch-up scroll scheduled by one touch press no longer fires into the next one. The timer could land up to 250ms into a new press, scrolling the transcript between the press and its click, so the tap registered on whatever moved into its place - the "first tap does nothing, second works" pattern on dialog cards. Starting a new press now cancels the previous press's pending catch-up, symmetric with how it already dropped a deferred card alignment.
+
 ## 1.202608.70
 
 ### Patch Changes
