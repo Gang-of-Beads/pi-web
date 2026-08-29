@@ -153,6 +153,37 @@ interface ProjectDialogProps {
   onCancel?: () => void;
 }
 
+/**
+ * Two keystrokes, two listings in flight.
+ */
+describe("folder listing freshness", () => {
+  it("never lets an older listing overwrite the newer query's answer", async () => {
+    const dialog = await mountDialog();
+    let answerOld: ((value: { path: string; kind: "other" }[]) => void) | undefined;
+    vi.mocked(api.projectDirectories)
+      .mockImplementationOnce(() => new Promise((resolve) => { answerOld = resolve; }))
+      .mockResolvedValueOnce([{ path: "/work/newer/", kind: "other" }]);
+    const input = pathInput(dialog);
+
+    input.value = "/work/old";
+    input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+    await vi.waitFor(() => { expect(answerOld).toBeDefined(); });
+
+    input.value = "/work/newer";
+    input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+    await vi.waitFor(() => {
+      expect(dialog.shadowRoot?.querySelector(".suggestions button")?.textContent).toContain("/work/newer/");
+    });
+
+    // The stale answer lands after the newer one is already on screen.
+    answerOld?.([{ path: "/work/old-and-stale/", kind: "other" }]);
+    await settleRenderedDialog(dialog);
+
+    expect(dialog.shadowRoot?.querySelector(".suggestions button")?.textContent).toContain("/work/newer/");
+    expect(dialog.shadowRoot?.textContent).not.toContain("old-and-stale");
+  });
+});
+
 async function mountDialog(props: ProjectDialogProps = {}): Promise<ProjectDialog> {
   vi.spyOn(api, "projectDirectories").mockResolvedValue([]);
   vi.spyOn(trustApi, "projectTrust").mockResolvedValue({ path: "", decision: null, trusted: false });
