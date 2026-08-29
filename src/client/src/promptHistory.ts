@@ -33,11 +33,18 @@ export function rememberPromptHistory(sessionKey: string, prompt: string): strin
   return next;
 }
 
-export function searchPromptHistory(sessionKey: string, query: string): string[] {
-  const history = loadPromptHistory(sessionKey);
+export function searchPromptHistory(sessionKey: string, query: string, sessionPrompts: readonly string[] = []): string[] {
+  const local = loadPromptHistory(sessionKey);
+  // The session's own user messages are the same history arrived by another
+  // door; a fresh browser has an empty local list and still deserves them.
+  const history = [...local, ...sessionPrompts.filter((entry) => !local.includes(entry))];
   const normalized = query.trim().toLowerCase();
   if (normalized === "") return history;
   const tokens = normalized.split(/\s+/u).filter(Boolean);
+  return filterPromptHistory(history, tokens);
+}
+
+function filterPromptHistory(history: readonly string[], tokens: readonly string[]): string[] {
   return history.filter((entry) => {
     const haystack = entry.toLowerCase();
     return tokens.every((token) => haystack.includes(token) || isSubsequence(token, haystack));

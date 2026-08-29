@@ -251,6 +251,9 @@ export class PromptEditor extends LitElement {
   @state() private selectedIndex = 0;
   /** Absent means dictation is not offered at all. */
   @property({ attribute: false }) speechToText?: PiWebSpeechToTextConfig;
+  /** This session's own user prompts: history that reached the server, so the
+   * picker works on a device that never typed here. Most recent first. */
+  @property({ attribute: false }) sessionPrompts: string[] = [];
   @state() private voiceState: VoiceCaptureState = { kind: "idle" };
   @state() private zoomedAttachment?: { src: string; alt: string } | undefined;
   private voice?: VoiceController;
@@ -637,7 +640,8 @@ export class PromptEditor extends LitElement {
   private renderHistoryButton() {
     if (this.disabled) return null;
     const key = draftStorageKey(this.machineId, this.sessionId);
-    if (key === undefined || loadPromptHistory(key).length === 0) return null;
+    const localCount = key === undefined ? 0 : loadPromptHistory(key).length;
+    if (localCount === 0 && this.sessionPrompts.length === 0) return null;
     return html`
       <button
         class="editor-history icon-button"
@@ -949,7 +953,7 @@ export class PromptEditor extends LitElement {
   private openPromptHistoryPicker(): boolean {
     const key = draftStorageKey(this.machineId, this.sessionId);
     if (key === undefined) return false;
-    const matches = searchPromptHistory(key, this.draft).slice(0, 12);
+    const matches = searchPromptHistory(key, this.draft, this.sessionPrompts).slice(0, 12);
     if (matches.length === 0) return false;
     this.selectedIndex = 0;
     this.completions = matches.map((entry) => ({

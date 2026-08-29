@@ -57,3 +57,30 @@ async function mount(): Promise<PromptEditor> {
   await editor.updateComplete;
   return editor;
 }
+
+describe("the entrance on a browser that never typed here", () => {
+  /**
+   * The gate read only this browser's localStorage, so a fresh device showed
+   * no door in front of a session holding fifteen thousand messages. The
+   * session's own user prompts are history too.
+   */
+  it("opens when the session itself carries prompts", async () => {
+    const editor = await mount();
+    editor.sessionPrompts = ["prompt that reached the server"];
+    await editor.updateComplete;
+
+    expect(historyButton(editor)).not.toBeNull();
+  });
+
+  it("lists the session's prompts in the picker", async () => {
+    const editor = await mount();
+    editor.sessionPrompts = ["prompt that reached the server"];
+    await editor.updateComplete;
+
+    historyButton(editor)?.click();
+    await editor.updateComplete;
+
+    const menu = editor.shadowRoot?.querySelector<AutocompleteMenu>("autocomplete-menu");
+    expect(menu?.items.map((item) => item.insertText)).toContain("prompt that reached the server");
+  });
+});

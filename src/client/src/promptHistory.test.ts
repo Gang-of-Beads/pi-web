@@ -124,3 +124,25 @@ describe("history direction", () => {
     expect(historyIndexStep("newer")).toBe(-1);
   });
 });
+
+describe("history beyond one browser", () => {
+  /**
+   * The entrance opened only onto what this browser had typed: on a fresh
+   * device a session with fifteen thousand messages offered nothing. The
+   * session's own user messages are the same history, arrived by another
+   * door.
+   */
+  it("searches session prompts alongside the local ones, without repeating either", () => {
+    localStorage.setItem(promptHistoryKey("k"), JSON.stringify(["typed here earlier"]));
+
+    const found = searchPromptHistory("k", "", ["shipped from the server", "typed here earlier"]);
+
+    expect(found).toEqual(["typed here earlier", "shipped from the server"]);
+  });
+
+  it("filters session prompts by the same token rules", () => {
+    const found = searchPromptHistory("empty", "server shped", ["shipped from the server", "unrelated"]);
+
+    expect(found).toEqual(["shipped from the server"]);
+  });
+});

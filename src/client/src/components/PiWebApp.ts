@@ -215,6 +215,8 @@ const PI_WEB_STATUS_REFRESH_MS = 15 * 60 * 1000;
 const SUBAGENT_REFRESH_MS = 4000;
 /** Slow cadence for re-reading the disk while a send still waits. */
 const DELIVERY_RECONCILE_MS = 10_000;
+/** How much of a session's own history to offer the composer's picker. */
+const PROMPT_HISTORY_PROP_LIMIT = 50;
 /**
  * How often an open tab checks that its sockets are still alive.
  *
@@ -3095,6 +3097,29 @@ export class PiWebApp extends LitElement {
     `;
   }
 
+  /**
+   * The session's own user prompts, most recent first - the history a fresh
+   * browser has none of locally. Memoized on the messages reference because
+   * the transcript changes on every streaming delta.
+   */
+  private sessionPromptsMemo: { source: ChatLine[]; prompts: string[] } | undefined;
+  private sessionPromptsFor(state: AppState): string[] {
+    if (this.sessionPromptsMemo?.source === state.messages) return this.sessionPromptsMemo.prompts;
+    const prompts: string[] = [];
+    const seen = new Set<string>();
+    for (let index = state.messages.length - 1; index >= 0 && prompts.length < PROMPT_HISTORY_PROP_LIMIT; index -= 1) {
+      const line = state.messages[index];
+      if (line?.role !== "user" || line.meta?.echo === true) continue;
+      const text = line.parts.find((part) => part.type === "text")?.text ?? "";
+      const trimmed = text.trim();
+      if (trimmed === "" || seen.has(trimmed)) continue;
+      seen.add(trimmed);
+      prompts.push(trimmed);
+    }
+    this.sessionPromptsMemo = { source: state.messages, prompts };
+    return prompts;
+  }
+
   private renderStatusBar(state: AppState) {
     const warningCount = this.sessionWarningVisibility.warningCount;
     return html`
@@ -3221,7 +3246,7 @@ export class PiWebApp extends LitElement {
           <div class="mobile-navigation-panel">${this.appShell.isMobileNavigationLayout ? this.renderNavigationPanel() : null}</div>
           ${state.selectedSession ? html`
             ${this.renderChatView(state, state.selectedSession)}
-            <prompt-editor .sessionId=${state.selectedSession.id} .cwd=${state.selectedWorkspace?.path} .machineId=${selectedMachineId(state)} .projectId=${state.selectedWorkspace?.projectId} .workspaceId=${state.selectedWorkspace?.id} .disabled=${state.selectedSession.archived === true} .canSteer=${state.status?.isStreaming === true} .isCompacting=${state.status?.isCompacting === true} .canStop=${state.status?.isStreaming === true || state.status?.isBashRunning === true || state.status?.isCompacting === true || (state.status?.pendingMessageCount ?? 0) > 0} .status=${state.status} .availableThinkingLevels=${state.availableThinkingLevels} .sending=${state.sendingPrompts[state.selectedSession.id] === true} ?collapsed=${this.composerCollapsed} .onExpand=${() => { this.composerCollapsed = false; void this.focusPromptEditorSoon(); }} .onSend=${this.handleSendPrompt} .onStop=${this.handleStopActiveWork} .onSelectModel=${this.handleSelectModel} .onSelectThinking=${this.handleSelectThinking} .speechToText=${this.speechToTextConfig}></prompt-editor>
+            <prompt-editor .sessionId=${state.selectedSession.id} .cwd=${state.selectedWorkspace?.path} .sessionPrompts=${this.sessionPromptsFor(state)} .machineId=${selectedMachineId(state)} .projectId=${state.selectedWorkspace?.projectId} .workspaceId=${state.selectedWorkspace?.id} .disabled=${state.selectedSession.archived === true} .canSteer=${state.status?.isStreaming === true} .isCompacting=${state.status?.isCompacting === true} .canStop=${state.status?.isStreaming === true || state.status?.isBashRunning === true || state.status?.isCompacting === true || (state.status?.pendingMessageCount ?? 0) > 0} .status=${state.status} .availableThinkingLevels=${state.availableThinkingLevels} .sending=${state.sendingPrompts[state.selectedSession.id] === true} ?collapsed=${this.composerCollapsed} .onExpand=${() => { this.composerCollapsed = false; void this.focusPromptEditorSoon(); }} .onSend=${this.handleSendPrompt} .onStop=${this.handleStopActiveWork} .onSelectModel=${this.handleSelectModel} .onSelectThinking=${this.handleSelectThinking} .speechToText=${this.speechToTextConfig}></prompt-editor>
             ${this.renderStatusBar(state)}
             ${state.commandDialog !== undefined ? html`<command-picker .title=${state.commandDialog.title} .options=${state.commandDialog.options} .onPick=${(value: string) => this.sessions.respondToCommand(state.commandDialog?.requestId ?? "", value)} .onCancel=${() => { this.sessions.cancelCommand(); }}></command-picker>` : null}
             ${state.modelDialog !== undefined ? html`<model-picker title=${state.modelDialog.title} .options=${state.modelDialog.options} .catalog=${state.modelDialog.catalog} .selectedValue=${state.modelDialog.selectedValue} .onPick=${(value: string) => { void this.pickModel(value); }} .onToggleEnabled=${this.handleToggleModelEnabled} .onCancel=${() => { this.setState({ modelDialog: undefined }); }}></model-picker>` : null}
