@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { oneReadAtATime, shouldPollSessionActivity } from "./sessionActivityPolling";
+import { describe, expect, it, vi } from "vitest";
+import { oneReadAtATime, READ_SETTLE_TIMEOUT_MS, shouldPollSessionActivity } from "./sessionActivityPolling";
 
 /** A read the test finishes by hand, so overlap is arranged rather than raced. */
 function heldRead() {
@@ -104,5 +104,35 @@ describe("oneReadAtATime", () => {
     await expect(refresh()).rejects.toThrow("unreachable");
 
     expect(started).toBe(2);
+  });
+});
+
+describe("a read that never answers", () => {
+  /**
+   * A hung request held the single-read lock forever, so every later tick
+   * found the lock busy and did nothing: the strip and the dock froze until a
+   * manual reload. Measured against a daemon restarting mid-request.
+   */
+  it("releases the lock when a read outlives any honest answer", async () => {
+    vi.useFakeTimers();
+    try {
+      let calls = 0;
+      const polled = oneReadAtATime(() => {
+        calls += 1;
+        // 第一次读永远不回来;之后的读照常应答。
+        return calls === 1 ? new Promise<void>(() => { /* 这一次读被网络吞掉,永不落定 */ }) : Promise.resolve();
+      });
+
+      void polled(); // 挂死的第一次
+      await vi.advanceTimersByTimeAsync(0);
+      void polled(); // 挂死期间到来的 tick,只记账
+      await vi.advanceTimersByTimeAsync(READ_SETTLE_TIMEOUT_MS + 1_000);
+
+      void polled(); // 锁应已放开,这次读要真正执行
+      await vi.advanceTimersByTimeAsync(0);
+      expect(calls).toBeGreaterThan(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

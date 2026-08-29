@@ -28,6 +28,9 @@ export function shouldPollSessionActivity(input: { hasSelectedSession: boolean; 
  * during a read is remembered and runs once the read finishes, and any number
  * of calls in that window collapse into that single re-read.
  */
+/** Past this, a read is presumed dead rather than slow, and the lock opens. */
+export const READ_SETTLE_TIMEOUT_MS = 20_000;
+
 export function oneReadAtATime(read: () => Promise<void>): () => Promise<void> {
   let reading = false;
   let requested = 0;
@@ -37,7 +40,10 @@ export function oneReadAtATime(read: () => Promise<void>): () => Promise<void> {
       let served = -1;
       while (served !== requested) {
         served = requested;
-        await read();
+        await Promise.race([
+          read(),
+          new Promise<void>((settle) => { setTimeout(settle, READ_SETTLE_TIMEOUT_MS); }),
+        ]);
       }
     } finally {
       reading = false;
