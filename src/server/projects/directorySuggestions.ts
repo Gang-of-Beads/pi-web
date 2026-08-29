@@ -164,17 +164,21 @@ async function collectDirectories(parent: string, maxDepth: number, signal?: Abo
 
 /** Directories whose listing already hung once; never re-issued this process. */
 const directoriesWithHungReads = new Set<string>();
+/** One shared in-flight read per path, so concurrent walks do not each pin a thread on the same hanging read. */
+const inFlightReads = new Map<string, Promise<string[]>>();
 
 /**
- * One directory read under the per-read budget. The losing read keeps running
- * in the background (a filesystem read cannot be cancelled); its result is
- * discarded, and `Promise.race`'s handlers keep its eventual rejection from
- * going unhandled.
+ * One directory read under the per-read budget, shared between concurrent
+ * walks of the same tree. The losing read keeps running in the background (a
+ * filesystem read cannot be cancelled); its result is discarded, and
+ * `Promise` handlers keep its eventual rejection from going unhandled.
  */
 function readWithinBudget(directory: string): Promise<string[]> {
   if (directoriesWithHungReads.has(directory)) return Promise.resolve([]);
+  const shared = inFlightReads.get(directory);
+  if (shared !== undefined) return shared;
   let timedOut = false;
-  return new Promise<string[]>((resolve) => {
+  const read = new Promise<string[]>((resolve) => {
     const timer = setTimeout(() => {
       timedOut = true;
       directoriesWithHungReads.add(directory);
@@ -185,6 +189,12 @@ function readWithinBudget(directory: string): Promise<string[]> {
       () => { if (!timedOut) { clearTimeout(timer); resolve([]); } },
     );
   });
+  inFlightReads.set(directory, read);
+  void read.then(
+    () => { if (inFlightReads.get(directory) === read) inFlightReads.delete(directory); },
+    () => { if (inFlightReads.get(directory) === read) inFlightReads.delete(directory); },
+  );
+  return read;
 }
 
 async function readChildDirectories(directory: string): Promise<string[]> {
