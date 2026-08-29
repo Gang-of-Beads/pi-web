@@ -1,0 +1,19 @@
+## 1. Server: deliver warnings into the drawer
+
+- [ ] 1.1 Add optional `warningDismiss?: { id: string }` to `SessionNotification` (shared type, store freeze, API parser pass-through) with a round-trip test proving the field survives `addNotification` → catalog snapshot → client parser, and that its absence changes nothing. Evidence: `npx tsc --noEmit` clean, new parser/store test green.
+- [ ] 1.2 Add `sessionWarningFiler.ts`: pure identity function (`severity|source|path|message`, computed from pre-truncation text) plus a bounded per-session memo, unit-tested for the four behaviours that matter: first sighting files; immediate re-publish does not; clear-then-recurrence files again; unbound generation is skipped **and not memoized**. Evidence: `npx vitest run src/server/sessions/sessionWarningFiler.test.ts` green.
+- [ ] 1.3 Wire the filer into `warningsForSession`'s caller in `piSessionService` (`statusFromSession` path), fanning mutations through `publishNotificationMutations`, memo cleared on session dispose; a warning carrying `dismiss` files its record with `warningDismiss`. Evidence: service-level test publishing status twice with the same fake runtime diagnostic yields exactly one notification; dispose + re-publish files once more; `npm run verify` green.
+
+## 2. Client: the off-switch moves to the record
+
+- [ ] 2.1 For a drawer row carrying `warningDismiss`, the drawer's existing dismissal control additionally calls the existing `warnings/dismiss` endpoint, and a following status publish files nothing (source suppressed); for a row without it, dismissal clears only the record and a recurrence still files. Evidence: controller-level test covering both branches, `npx vitest run src/client/src/controllers` green.
+
+## 3. Client: remove the cards
+
+- [ ] 3.1 Delete `renderWarnings`, the `.session-warnings` styles, `chatSessionWarningRows` + `ChatSessionWarningRow`, the `warningsVisible` / `onToggleWarnings` / `onDismissWarning` props on `chat-view`, PiWebApp's `handleToggleWarnings` / `handleDismissWarning` / `sessionWarningVisibility` state, and `sessionWarningVisibility.ts` with its tests; keep `sessions.dismissWarning` and its route (the drawer's off-switch path uses them). Evidence: `rg "sessionWarningVisibility|chatSessionWarningRows|renderWarnings" src/client/src` returns no production references, `npm run typecheck` and `npm run lint` clean, updated ChatView tests green.
+
+## 4. Verification in the owner's conditions
+
+- [ ] 4.1 Red→green live check on the 8505 stack at 393×850, coarse pointer: seed a session whose runtime carries a diagnostic (e.g. a broken skill); confirm the drawer gains exactly one row with no card above the transcript, the unread indicator lights once, a forced status re-publish adds no second row, and transcript-top geometry (bounding rect of the first visible element) is unchanged across the warning's arrival and clearing - record the measured pixels and a screenshot. Evidence: probe script output with numbers in the task notes; without them the task is not done.
+- [ ] 4.2 Dismiss leg on the same stack: dismiss the record of a warning with an off-switch and confirm the row leaves and never returns on later publishes; then confirm a no-off-switch warning's record leaves while a recurrence re-files. Evidence: same live check, second screenshot + numbers.
+- [ ] 4.3 Write the changeset, run full `npm run verify` and `npx tsc --noEmit`, and confirm zero failures before the change is archived. Evidence: exit codes captured explicitly, not piped away.
