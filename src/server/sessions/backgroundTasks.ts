@@ -1,3 +1,5 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { SessionBackgroundTaskInfo } from "../../shared/apiTypes.js";
@@ -60,16 +62,61 @@ function asNumber(value: unknown): number | undefined {
  * mean the UI shows a spinner for a task that died days ago, so a running
  * record is only believed while its process exists.
  */
-function processAlive(pid: number | undefined): boolean {
-  if (pid === undefined) return false;
+const PID_REUSE_TOLERANCE_MS = 60_000;
+
+const execFileAsync = promisify(execFile);
+
+/** When the process behind `pid` was born, or undefined if there is none. */
+async function processStartMs(pid: number | undefined): Promise<number | undefined> {
+  if (pid === undefined) return undefined;
   try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    // EPERM means the process exists but belongs to someone else, which still
-    // counts as alive; only ESRCH means it is gone.
-    return error instanceof Error && "code" in error && error.code === "EPERM";
+    const { stdout } = await execFileAsync("ps", ["-p", String(pid), "-o", "lstart="]);
+    const born = new Date(stdout.trim()).getTime();
+    return Number.isFinite(born) ? born : undefined;
+  } catch {
+    return undefined;
   }
+}
+
+/**
+ * The status a record deserves. A "running" record whose pid is gone died
+ * without being able to record it; a "running" record whose pid now belongs
+ * to a process born long after the task started met a recycled pid, which is
+ * the same loss wearing a stranger's clothes. Measured live: pid 69946 spent
+ * five days counted as a web server it was no longer anywhere near.
+ */
+async function resolveTaskStatus(
+  rawStatus: string,
+  pid: number | undefined,
+  startedAtMs: number | undefined,
+): Promise<string> {
+  if (rawStatus !== "running") return rawStatus;
+  const born = await processStartMs(pid);
+  if (born === undefined) return "lost";
+  if (startedAtMs !== undefined && born - startedAtMs > PID_REUSE_TOLERANCE_MS) return "lost";
+  return "running";
+}
+
+/**
+ * Whether a pid still belongs to the task's own process.
+ *
+ * Operating systems recycle pids within days: measured live, a web server
+ * task that died on August 24 still reported running on August 29 because pid
+ * 69946 had been handed to /usr/libexec/microstackshot. A process's start
+ * time is its identity: the task's own process started when the task started
+ * (exec does not reset it), so a start time more than a minute later belongs
+ * to whoever inherited the number. No probe result at all means the process
+ * is gone.
+ */
+export function taskProcessIsOriginal(
+  startMs: number | undefined,
+  pid: number | undefined,
+  startedAtMs: number | undefined,
+): boolean {
+  if (pid === undefined) return false;
+  if (startMs === undefined) return false;
+  if (startedAtMs === undefined) return true;
+  return Math.abs(startMs - startedAtMs) <= PID_REUSE_TOLERANCE_MS;
 }
 
 /** Task ids this session started, taken from the output paths in its transcript. */
@@ -137,11 +184,16 @@ export async function readTaskRecords(cwd: string): Promise<Map<string, { task: 
  * to find out which session owns the task, which is the expensive half of
  * {@link listBackgroundTasks} and far too costly to repeat on a timer.
  */
-export async function runningTaskIds(cwd: string): Promise<Set<string>> {
+export async function runningTaskIds(
+  cwd: string,
+  probeProcessStart: (pid: number) => Promise<number | undefined> = processStartMs,
+): Promise<Set<string>> {
   const running = new Set<string>();
   for (const [id, record] of await readTaskRecords(cwd)) {
     if (asString(record.task.status) !== "running") continue;
-    if (!processAlive(asNumber(record.task.pid))) continue;
+    const pid = asNumber(record.task.pid);
+    if (pid === undefined) continue;
+    if (!taskProcessIsOriginal(await probeProcessStart(pid), pid, asNumber(record.task.startTime))) continue;
     running.add(id);
   }
   return running;
@@ -167,6 +219,7 @@ export async function listBackgroundTasks(
   cwd: string,
   transcriptPath: string,
   now = Date.now(),
+  probeProcessStart: (pid: number) => Promise<number | undefined> = processStartMs,
 ): Promise<SessionBackgroundTaskInfo[]> {
   const [ids, records] = await Promise.all([taskIdsForSession(transcriptPath), readTaskRecords(cwd)]);
   const tasks: SessionBackgroundTaskInfo[] = [];
@@ -178,10 +231,13 @@ export async function listBackgroundTasks(
     const pid = asNumber(task.pid);
     const startedAt = asNumber(task.startTime);
     const endedAt = asNumber(task.endTime);
+
     // A "running" record whose process is gone died without being able to
     // record it - a restart, an OOM kill - and is reported as lost rather than
     // spinning forever.
-    const status = rawStatus === "running" && !processAlive(pid) ? "lost" : rawStatus;
+    const alive =
+      pid !== undefined && taskProcessIsOriginal(await probeProcessStart(pid), pid, startedAt);
+    const status = rawStatus === "running" && !alive ? "lost" : rawStatus;
     tasks.push({
       id,
       name: asString(task.name) ?? id,

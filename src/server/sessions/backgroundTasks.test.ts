@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { listBackgroundTasks, readTaskOutput, runningTaskIds, taskIdsForSession } from "./backgroundTasks.js";
+import { taskProcessIsOriginal } from "./backgroundTasks";
 
 /**
  * These fixtures copy a real registry directory rather than the reader's own
@@ -18,6 +19,11 @@ import { listBackgroundTasks, readTaskOutput, runningTaskIds, taskIdsForSession 
 
 const RUNNING_PID = process.pid;
 
+/** The probe a healthy world offers: the runner's pid was born with the seeded start. */
+const fakeProbe = (pid: number): Promise<number | undefined> =>
+  // 健康世界:runner 的 pid 出生时间 ≈ 种子里 5 秒前的 startTime
+  Promise.resolve(pid === RUNNING_PID ? Date.now() - 5_000 : undefined);
+
 async function fixture(): Promise<string> {
   const cwd = await mkdtemp(join(tmpdir(), "bgtasks-"));
   const dir = join(cwd, ".pi", "tasks", "session-494694-494694");
@@ -28,7 +34,9 @@ async function fixture(): Promise<string> {
     command: "bash scripts/deploy.sh",
     status: "running",
     outputPath: ".pi/tasks/session-494694-494694/b96da5ec8.output",
-    startTime: 1_700_000_000_000,
+    // 活任务的开始时间必须是现实的:出生时间核对会把一个声称 2023 年就
+    // 开始、进程却刚出生的记录判成 pid 复用 —— 那正是新规则要抓的情形。
+    startTime: Date.now() - 5_000,
     pid: RUNNING_PID,
     bytesWritten: 0,
   }));
@@ -78,7 +86,7 @@ async function transcript(cwd: string): Promise<string> {
 describe("background tasks", () => {
   it("lists only the tasks this session's transcript claims", async () => {
     const cwd = await fixture();
-    const tasks = await listBackgroundTasks(cwd, await transcript(cwd));
+    const tasks = await listBackgroundTasks(cwd, await transcript(cwd), Date.now(), fakeProbe);
 
     // other999 exists in the same directory and belongs to another session.
     expect(tasks.map((task) => task.id).sort()).toEqual(["b25b68e87", "b96da5ec8", "stale111"]);
@@ -86,7 +94,7 @@ describe("background tasks", () => {
 
   it("reads status, duration and exit code from the record", async () => {
     const cwd = await fixture();
-    const tasks = await listBackgroundTasks(cwd, await transcript(cwd));
+    const tasks = await listBackgroundTasks(cwd, await transcript(cwd), Date.now(), fakeProbe);
     const done = tasks.find((task) => task.id === "b25b68e87");
 
     expect(done).toMatchObject({ name: "verify", status: "completed", exitCode: 0, durationMs: 132_000, bytesWritten: 317 });
@@ -94,7 +102,7 @@ describe("background tasks", () => {
 
   it("keeps a live task running and calls a dead one lost", async () => {
     const cwd = await fixture();
-    const tasks = await listBackgroundTasks(cwd, await transcript(cwd));
+    const tasks = await listBackgroundTasks(cwd, await transcript(cwd), Date.now(), fakeProbe);
 
     expect(tasks.find((task) => task.id === "b96da5ec8")?.status).toBe("running");
     // Nothing rewrites the file when the process dies, so the reader must not
@@ -104,9 +112,9 @@ describe("background tasks", () => {
 
   it("measures a running task's duration against now", async () => {
     const cwd = await fixture();
-    const tasks = await listBackgroundTasks(cwd, await transcript(cwd), 1_700_000_421_000);
+    const tasks = await listBackgroundTasks(cwd, await transcript(cwd), Date.now(), fakeProbe);
 
-    expect(tasks.find((task) => task.id === "b96da5ec8")?.durationMs).toBe(421_000);
+    expect(tasks.find((task) => task.id === "b96da5ec8")?.durationMs).toBeGreaterThan(4_000);
   });
 
   it("names the live tasks in a workspace without reading any transcript", async () => {
@@ -115,7 +123,7 @@ describe("background tasks", () => {
     // stale111 still says "running" on disk and other999/b25b68e87 are done, so
     // only the record whose process really exists may be reported live. This is
     // the cheap probe the per-session count uses before paying for a transcript.
-    expect(await runningTaskIds(cwd)).toEqual(new Set(["b96da5ec8"]));
+    expect(await runningTaskIds(cwd, fakeProbe)).toEqual(new Set(["b96da5ec8"]));
   });
 
   it("finds task ids in the output paths the tool reports", async () => {
@@ -135,5 +143,58 @@ describe("background tasks", () => {
 
     expect(await readTaskOutput(cwd, "b96da5ec8")).toBe("deploying...\n");
     expect(await readTaskOutput(cwd, "no-such-task")).toBeUndefined();
+  });
+});
+
+/**
+ * A pid is a number the operating system hands out again. Measured live: a
+ * web-server task that died on August 24 still reported running on August 29
+ * because its pid had been handed to /usr/libexec/microstackshot. Life of the
+ * number is not life of the task - the start time is the identity.
+ */
+describe("whether a running record's pid is still the task's own process", () => {
+  const START = Date.parse("2026-08-24T10:14:23Z");
+
+  it("keeps running when the pid's start time matches the task's", () => {
+    expect(taskProcessIsOriginal(START + 2_000, 69946, START)).toBe(true);
+  });
+
+  it("calls it lost when the number was handed to a later process", () => {
+    expect(taskProcessIsOriginal(START + 5 * 86_400_000, 69946, START)).toBe(false);
+  });
+
+  it("calls it lost when the process cannot be probed at all", () => {
+    expect(taskProcessIsOriginal(undefined, 69946, START)).toBe(false);
+  });
+
+  it("calls it lost when there is no pid to check", () => {
+    expect(taskProcessIsOriginal(START, undefined, START)).toBe(false);
+  });
+});
+
+describe("a running record whose pid was recycled", () => {
+  /**
+   * The tracker trusts its own lifecycle events, but a kill from outside it -
+   * a restart script, tmux, anything - leaves the record claiming to run. The
+   * pid-liveness check then met a recycled pid: measured live, pid 69946 had
+   * become /usr/libexec/microstackshot, and the card counted 123 hours of a
+   * process that died days before. A process's own birth time is the
+   * identity: the real one starts with the task; a recycled one starts long
+   * after.
+   */
+  it("reports lost when the pid belongs to a process born long after the task", async () => {
+    const cwd = await fixture();
+    const tenDays = 10 * 24 * 60 * 60 * 1000;
+    const recent = Date.now() - 60 * 1000;
+    // 把 running 记录的 startTime 挪到 10 天前;pid 仍是本测试进程(活着,
+    // 但出生时间远晚于任务开始 —— 与实测的复用现场同构)。
+    const file = join(cwd, ".pi", "tasks", "session-494694-494694", "b96da5ec8.json");
+    const record = JSON.parse(await import("node:fs/promises").then((fs) => fs.readFile(file, "utf8")));
+    record.startTime = recent - tenDays;
+    await (await import("node:fs/promises")).writeFile(file, JSON.stringify(record));
+
+    const tasks = await listBackgroundTasks(cwd, await transcript(cwd), Date.now(), fakeProbe);
+
+    expect(tasks.find((task) => task.id === "b96da5ec8")?.status).toBe("lost");
   });
 });
