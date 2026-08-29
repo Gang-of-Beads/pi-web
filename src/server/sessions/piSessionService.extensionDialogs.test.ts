@@ -183,6 +183,51 @@ describe("PiSessionService.answerDialog", () => {
     await service.dispose();
   });
 
+  /**
+   * The answer went to extension code, not to the model, so the transcript
+   * records nothing about what was asked or chosen. The drawer is where this
+   * session's settled facts live, so the answer must be filed there -
+   * otherwise a reader who answered on one device can never see on another
+   * what became of the question.
+   */
+  it("files an answered dialog in the session's notification drawer", async () => {
+    const { service, fake } = dialogService();
+    const ui = await boundUiContext(service, fake);
+    const parked = ui.confirm("Proceed?", "Really?");
+
+    await service.answerDialog(sessionRef(ACTIVE_SESSION_ID), "dialog-1", true);
+
+    await expect(parked).resolves.toBe(true);
+    expect(service.notificationInbox(sessionRef(ACTIVE_SESSION_ID)).notifications).toMatchObject([
+      { message: 'Answered "Proceed?": Yes', severity: "info" },
+    ]);
+    await service.dispose();
+  });
+
+  it("collapses a multiline dialog title in the filed notification", async () => {
+    const { service, fake } = dialogService();
+    const ui = await boundUiContext(service, fake);
+    ui.select("Update 0.84.2 \u2192 0.84.4\nPlan:\n- step one", ["Update now", "Skip"]);
+
+    await service.answerDialog(sessionRef(ACTIVE_SESSION_ID), "dialog-1", "Update now");
+
+    expect(service.notificationInbox(sessionRef(ACTIVE_SESSION_ID)).notifications).toMatchObject([
+      { message: 'Answered "Update 0.84.2 \u2192 0.84.4 Plan: - step one": Update now' },
+    ]);
+    await service.dispose();
+  });
+
+  it("files no notification for an answer the daemon considers stale", async () => {
+    const { service, fake } = dialogService();
+    const ui = await boundUiContext(service, fake);
+    ui.confirm("Proceed?", "Really?");
+
+    await service.answerDialog(sessionRef(ACTIVE_SESSION_ID), "dialog-gone", true);
+
+    expect(service.notificationInbox(sessionRef(ACTIVE_SESSION_ID)).notifications).toEqual([]);
+    await service.dispose();
+  });
+
   it("reports a stale dialog id without settling the parked wait", async () => {
     const { service, store, fake } = dialogService();
     const ui = await boundUiContext(service, fake);

@@ -83,6 +83,7 @@ import type { WorkspaceActivityService } from "../activity/workspaceActivityServ
 import { createAskUserToolDefinition, type AskUserInvocation, type AskUserToolDeps } from "./askUserTool.js";
 import { PendingAskStore, renderAskUserAnswersText, type PendingAskCloseResult, type PendingAskOpenResult } from "./pendingAskStore.js";
 import { PendingExtensionDialogStore, type ExtensionDialogCancelReason } from "./pendingExtensionDialogStore.js";
+import type { PendingExtensionDialog } from "../../shared/apiTypes.js";
 import { ExtensionDialogWaiters, effectiveExtensionDialogTimeoutMs, extensionDialogCancelValue } from "./extensionDialogWaiters.js";
 import { DEFAULT_EXTENSION_DIALOGS_TIMEOUT_MS } from "../../config.js";
 import { createSpawnSessionToolDefinition, type SpawnSessionInvocation, type SpawnSessionResult } from "./spawnSessionTool.js";
@@ -1747,9 +1748,13 @@ export class PiSessionService implements SessionRouteService {
   async answerDialog(ref: PiSessionRef, dialogId: string, value: ExtensionDialogAnswer): Promise<ExtensionDialogCloseResponse> {
     await this.assertWritable(ref);
     const session = await this.sessionForStatusOrDialogClose(ref);
+    // The title must be read before the store closes the dialog: afterwards it
+    // is no longer pending anywhere.
+    const pending = this.pendingExtensionDialogStore.pendingDialogs(session.sessionId).find((dialog) => dialog.dialogId === dialogId);
     const result = this.pendingExtensionDialogStore.answer(session.sessionId, dialogId, value);
     if (result.status === "stale") return { result: "stale", sessionStatus: this.statusFromSession(session) };
     const { outcome } = result;
+    this.recordAnsweredDialogNotification(session, pending, value);
     this.publishDialogClosed(session.sessionId, outcome);
     // `value` is what the store validated and recorded as the outcome's answer.
     this.dialogWaiters.settleWithAnswer(dialogId, value);
@@ -1863,6 +1868,23 @@ export class PiSessionService implements SessionRouteService {
       reason: outcome.reason,
       ...(outcome.answer === undefined ? {} : { answer: outcome.answer }),
     });
+  }
+
+  /**
+   * An answered dialog leaves no transcript: the answer went to extension
+   * code, not to the model, so nothing in the conversation records what was
+   * asked or what was chosen. The notification drawer is where this session's
+   * settled facts live, so the answer is filed there too - through the same
+   * store, dismissal path, and scope binding as every other notification.
+   */
+  private recordAnsweredDialogNotification(session: PiAgentSession, pending: PendingExtensionDialog | undefined, value: ExtensionDialogAnswer): void {
+    if (pending === undefined) return;
+    const generation = this.notificationGenerationBySession.get(session);
+    if (generation === undefined) return;
+    const title = pending.title.replace(/\s+/gu, " ").trim();
+    const answer = typeof value === "boolean" ? (value ? "Yes" : "No") : value;
+    const added = this.notificationStore.addNotification(generation, `Answered "${title}": ${answer}`, "info");
+    this.publishNotificationMutations(added.mutations);
   }
 
   /**
