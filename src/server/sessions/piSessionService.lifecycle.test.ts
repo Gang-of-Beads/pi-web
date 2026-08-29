@@ -1321,6 +1321,27 @@ describe("prompt submission for extension-injected user messages", () => {
       await service.dispose();
     }
   });
+
+  it("stamps the status catalog with the daemon instance the browser reconciles against", async () => {
+    const hub = new CapturingSessionEventHub();
+    const service = new PiSessionService(hub, {
+      agentDir: TEST_AGENT_DIR,
+      modelRuntime: testModelRuntime,
+      sessionManager: sessionGateway([]),
+      heartbeatIntervalMs: 60_000,
+      notificationStore: notificationStore(),
+    });
+
+    try {
+      const catalog = service.sessionStatusCatalog();
+      // The browser retracts status entries a changed instance no longer
+      // stands behind, so the id it reads must be the daemon's own instance
+      // identity - the same one the notifications catalog publishes.
+      expect(catalog.daemonInstanceId).toBe("daemon-lifecycle-test");
+    } finally {
+      await service.dispose();
+    }
+  });
 });
 
 describe("subagent runs are found where the tool writes them", () => {

@@ -3,7 +3,7 @@ import { initialAppState } from "../appState";
 import { loadAskDraft, saveAskDraft } from "../askDrafts";
 import type { AskUserCloseResponse, AskUserQuestion, PendingAskUser } from "../api";
 import { SessionController } from "./sessionController";
-import { defaultApi, EmitSocket, emptyPage, FakeSocket, MemoryStorage, oldSession, sessionKey, status, workspace, type AppState, type SessionStatus } from "./sessionController.testSupport";
+import { defaultApi, deferred, EmitSocket, emptyPage, FakeSocket, MemoryStorage, oldSession, replacementSession, sessionKey, status, workspace, type AppState, type SessionStatus } from "./sessionController.testSupport";
 
 const databaseQuestion: AskUserQuestion = { id: "q1", question: "Which database?", options: [{ value: "pg", label: "Postgres" }] };
 const extrasQuestion: AskUserQuestion = { id: "q2", question: "Which extras?", options: [{ value: "metrics", label: "Metrics" }], multiple: true };
@@ -99,6 +99,19 @@ describe("SessionController open ask state", () => {
     expect(harness.state().pendingAsk).toBeUndefined();
   });
 
+  it("retracts a closed ask from the session's status record, not just the card", async () => {
+    // The card on screen is one reader of an ask's state; the status map is
+    // what the rows, the switcher and a reselection read. Clearing only the
+    // card let the answered question ride the map back on the next selection
+    // and kept the amber "asking" marker on the row.
+    const harness = await liveSession({}, statusWithAsk(oldSession.id, ask("ask-1")));
+    expect(harness.state().sessionStatuses[oldSession.id]?.pendingAsk?.askId).toBe("ask-1");
+
+    harness.socket.emit({ type: "ask.closed", askId: "ask-1", reason: "submitted" });
+
+    expect(harness.state().sessionStatuses[oldSession.id]?.pendingAsk).toBeUndefined();
+  });
+
   it("keeps the newer ask when the supersede close for the old one arrives after it", async () => {
     const harness = await liveSession();
 
@@ -133,6 +146,43 @@ describe("SessionController open ask state", () => {
     harness.controller.deselectSession({ updateUrl: false });
 
     expect(harness.state().pendingAsk).toBeUndefined();
+  });
+
+  it("writes the close's fresh status to the map even when the selection moved while it ran", async () => {
+    // Submitting an answer is a statement about the session it was asked in,
+    // not about wherever the user has navigated to meanwhile. Skipping the
+    // whole status application let the answered question stay open on that
+    // session's row and on the next selection.
+    const gate = deferred<AskUserCloseResponse>();
+    const closedStatus = status(oldSession.id);
+    let state = selectedSessionState({ status: statusWithAsk(oldSession.id, ask("ask-1")), pendingAsk: ask("ask-1") });
+    const api: typeof defaultApi = {
+      ...defaultApi,
+      messages: () => Promise.resolve(emptyPage),
+      status: (session) => Promise.resolve(session.id === oldSession.id ? statusWithAsk(oldSession.id, ask("ask-1")) : status(session.id)),
+      streamSnapshot: () => Promise.resolve({ seq: 0, partial: null }),
+      thinkingLevels: () => Promise.resolve({ levels: [] }),
+      submitAsk: () => gate.promise,
+    };
+    const controller = new SessionController(
+      () => state,
+      (patch) => { state = { ...state, ...patch }; },
+      () => undefined,
+      undefined,
+      { api, socket: new EmitSocket() },
+    );
+
+    const closing = controller.submitAsk("ask-1", { answers: [{ id: "q1", values: ["pg"] }] });
+    await controller.selectSession(replacementSession, { updateUrl: false });
+    gate.resolve(closeResponse(closedStatus));
+    await closing;
+
+    expect(state.sessionStatuses[oldSession.id]?.pendingAsk).toBeUndefined();
+    expect(state.sessionStatuses[oldSession.id]).toEqual(closedStatus);
+    // The card on screen belongs to the session the user moved to; the moved
+    // selection is exactly what must not be rewritten.
+    expect(state.pendingAsk).toBeUndefined();
+    expect(state.status?.sessionId).toBe(replacementSession.id);
   });
 });
 

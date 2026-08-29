@@ -1310,7 +1310,14 @@ export class PiSessionService implements SessionRouteService {
   sessionStatusCatalog(): SessionStatusCatalogSnapshot {
     const statuses = [...new Set(this.active.values())]
       .map((active) => this.statusFromSession(active.runtime.session));
-    return { statuses, generatedAt: new Date(this.now()).toISOString() };
+    return {
+      statuses,
+      generatedAt: new Date(this.now()).toISOString(),
+      // One id per daemon process: the browser reconciles its indicator map
+      // against this catalog, and a different id means the process that
+      // produced the entries it already holds is gone.
+      daemonInstanceId: this.notificationStore.daemonInstanceId,
+    };
   }
 
   async acknowledgeUnread(sessionId: string, request: SessionUnreadAcknowledgeRequest): Promise<SessionUnreadAcknowledgeResponse> {

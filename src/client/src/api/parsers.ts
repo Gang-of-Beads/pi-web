@@ -629,7 +629,15 @@ export function parseSessionStatusCatalogSnapshot(value: unknown): SessionStatus
     if (seen.has(status.sessionId)) throw new Error("Duplicate session status in catalog");
     seen.add(status.sessionId);
   }
-  return { statuses, generatedAt: requireString(record, "generatedAt") };
+  const daemonInstanceId = optionalNonEmptyString(record, "daemonInstanceId");
+  return {
+    statuses,
+    generatedAt: requireString(record, "generatedAt"),
+    // Optional, unlike the notifications catalog's id: a daemon that predates
+    // the field must still serve hydration, which only loses the epoch guard,
+    // not the catalog itself.
+    ...(daemonInstanceId === undefined ? {} : { daemonInstanceId }),
+  };
 }
 
 export function parseSessionUnreadCatalogSnapshot(value: unknown): SessionUnreadCatalogSnapshot {

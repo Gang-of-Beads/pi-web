@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { initialAppState } from "../appState";
 import type { ExtensionDialogCloseResponse, ExtensionDialogKind, PendingExtensionDialog } from "../api";
 import { SessionController } from "./sessionController";
-import { defaultApi, EmitSocket, emptyPage, FakeSocket, oldSession, status, workspace, type AppState, type SessionStatus } from "./sessionController.testSupport";
+import { defaultApi, deferred, EmitSocket, emptyPage, FakeSocket, oldSession, replacementSession, status, workspace, type AppState, type SessionStatus } from "./sessionController.testSupport";
 
 function dialog(dialogId: string, kind: ExtensionDialogKind = "confirm"): PendingExtensionDialog {
   return {
@@ -94,6 +94,55 @@ describe("SessionController extension dialog state", () => {
 
     harness.socket.emit({ type: "dialog.closed", dialogId: "dialog-1", reason: "answered", answer: true });
     expect(harness.state().pendingDialogs.map((pending) => pending.dialogId)).toEqual(["dialog-2"]);
+  });
+
+  it("retracts a closed dialog from the session's status record, not just the card", async () => {
+    // The card on screen is one reader of a dialog's state; the status map is
+    // what the rows, the switcher and a reselection read. Clearing only the
+    // card let the closed dialog ride the map back on the next selection -
+    // the answered question stood open again.
+    const harness = await liveSession({}, statusWithDialogs(oldSession.id, [dialog("dialog-1"), dialog("dialog-2")]));
+    expect(harness.state().sessionStatuses[oldSession.id]?.pendingDialogs).toHaveLength(2);
+
+    harness.socket.emit({ type: "dialog.closed", dialogId: "dialog-1", reason: "answered", answer: true });
+
+    expect(harness.state().sessionStatuses[oldSession.id]?.pendingDialogs?.map((pending) => pending.dialogId)).toEqual(["dialog-2"]);
+  });
+
+  it("writes the close's fresh status to the map even when the selection moved while it ran", async () => {
+    // Answering a dialog is a statement about the session it was asked in,
+    // not about wherever the user has navigated to meanwhile. Skipping the
+    // whole status application let the answered dialog stay open on that
+    // session's row and on the next selection.
+    const gate = deferred<ExtensionDialogCloseResponse>();
+    const freshStatus = status(oldSession.id);
+    let state = selectedState({ status: statusWithDialogs(oldSession.id, [dialog("dialog-1")]), pendingDialogs: [dialog("dialog-1")] });
+    const api: typeof defaultApi = {
+      ...defaultApi,
+      messages: () => Promise.resolve(emptyPage),
+      status: (session) => Promise.resolve(session.id === oldSession.id ? statusWithDialogs(oldSession.id, [dialog("dialog-1")]) : status(session.id)),
+      streamSnapshot: () => Promise.resolve({ seq: 0, partial: null }),
+      thinkingLevels: () => Promise.resolve({ levels: [] }),
+      answerDialog: () => gate.promise,
+    };
+    const controller = new SessionController(
+      () => state,
+      (patch) => { state = { ...state, ...patch }; },
+      () => undefined,
+      undefined,
+      { api, socket: new EmitSocket() },
+    );
+
+    const closing = controller.answerDialog("dialog-1", true);
+    await controller.selectSession(replacementSession, { updateUrl: false });
+    gate.resolve(closeResponse(freshStatus));
+    await closing;
+
+    expect(state.sessionStatuses[oldSession.id]).toEqual(freshStatus);
+    // The card on screen belongs to the session the user moved to; the moved
+    // selection is exactly what must not be rewritten.
+    expect(state.pendingDialogs).toEqual([]);
+    expect(state.status?.sessionId).toBe(replacementSession.id);
   });
 
   it("keeps the closed dialog's outcome so the card can render what happened", async () => {

@@ -2087,7 +2087,14 @@ export class PiWebApp extends LitElement {
     // The interrupted record is read-once on the daemon; re-reading it when
     // the switcher opens retracts markers whose runs have since continued.
     const machineId = selectedMachineId(this.state);
-    if (machineId !== "") this.refreshInterruptedRuns(machineId);
+    if (machineId === "") return;
+    // Opening the switcher is also the one moment the user is about to judge
+    // every row by its indicator, so reconcile the map against the daemon's
+    // catalog now (cheap: a few ms, a few KB): the daemon owns whether a
+    // session is still waiting, and the live events that answer it may have
+    // been dropped while the socket was down.
+    void this.sessions.hydrateSessionStatuses(machineId, { replaceKnown: true });
+    this.refreshInterruptedRuns(machineId);
   }
 
   /**

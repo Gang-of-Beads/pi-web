@@ -162,6 +162,10 @@ export class SessionController {
   private readonly pendingSessionStarts = new Map<string, PendingSessionStart>();
   private readonly suppressedCreatedSessions = new Map<string, SuppressedCreatedSession>();
   private readonly selectedSessionRefreshes = new TrailingRefreshCoordinator<string>();
+  // The daemon instance each machine's last status catalog came from. Session
+  // ids are the daemon's runtime handles, so a changed id means the entries in
+  // `sessionStatuses` were minted by a process that no longer exists.
+  private readonly statusCatalogEpochs = new Map<string, string>();
 
   constructor(
     private readonly getState: GetState,
@@ -859,6 +863,14 @@ export class SessionController {
    * is not stale by a moment but permanently wrong - the session list showed a
    * finished session as still working until the page was reloaded, which is a
    * large part of what "you have to refresh it" meant.
+   *
+   * Replacing also has to be able to RETRACT: the catalog is the daemon's
+   * statement of every session it still holds, so a session it no longer
+   * mentions must lose its indicator, not keep it forever. And a catalog from
+   * a different daemon instance (the id the notifications catalog also
+   * carries) replaces the map wholesale even on a fill-only read: the entries
+   * already held were minted by a process that no longer exists, and its
+   * session ids say nothing about the current one.
    */
   async hydrateSessionStatuses(machineId = selectedMachineId(this.getState()), options?: { replaceKnown?: boolean }): Promise<void> {
     let snapshot;
@@ -870,13 +882,25 @@ export class SessionController {
     if (selectedMachineId(this.getState()) !== machineId) return;
     const state = this.getState();
     const replaceKnown = options?.replaceKnown === true;
-    const hydrated: Record<string, SessionStatus> = {};
-    for (const status of snapshot.statuses) {
-      if (!replaceKnown && state.sessionStatuses[status.sessionId] !== undefined) continue;
-      hydrated[status.sessionId] = status;
+    const previousEpoch = this.statusCatalogEpochs.get(machineId);
+    const daemonReplaced = snapshot.daemonInstanceId !== undefined && previousEpoch !== snapshot.daemonInstanceId;
+    if (snapshot.daemonInstanceId !== undefined) this.statusCatalogEpochs.set(machineId, snapshot.daemonInstanceId);
+    // The status map is machine-scoped in practice (switching machines clears
+    // it, and live events arrive only from the selected machine's sockets), so
+    // a catalog replace cannot drop another machine's entries.
+    const previous = state.sessionStatuses;
+    let next = previous;
+    if (replaceKnown || daemonReplaced) {
+      next = {};
+      for (const status of snapshot.statuses) next[status.sessionId] = status;
+    } else {
+      for (const status of snapshot.statuses) {
+        if (previous[status.sessionId] !== undefined) continue;
+        next = { ...next, [status.sessionId]: status };
+      }
     }
-    if (Object.keys(hydrated).length === 0) return;
-    this.setState({ sessionStatuses: { ...state.sessionStatuses, ...hydrated } });
+    if (next === previous) return;
+    this.setState({ sessionStatuses: next });
   }
 
   async deleteCachedNewSession(session = this.getState().selectedSession) {
@@ -1239,7 +1263,15 @@ export class SessionController {
     const selectionSeq = this.selectionSeq;
     try {
       const response = await close(session, machineId);
-      if (!this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) return;
+      if (!this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) {
+        // The close is a statement about the session it was asked in, not
+        // about wherever the user has navigated to meanwhile: its fresh
+        // status still goes to the map the rows and the next selection read.
+        // The card state on screen belongs to the other session and stays
+        // untouched.
+        this.applyStatusToMap(response.sessionStatus);
+        return;
+      }
       // When this call closed the dialog, its outcome is recorded right away so
       // the card shows what the user gave; the daemon's dialog.closed event
       // then finds the dialog already closed here and stays a no-op.
@@ -1299,11 +1331,21 @@ export class SessionController {
       // now live in the daemon-owned outcome.
       clearAskDraft(machineSessionKey(machineId, session.id), askId);
       // Both outcomes carry the recomputed status, so no follow-up status
-      // request is needed to learn what the session's open ask is now.
+      // request is needed to learn what the session's open ask is now. When
+      // the selection moved while the close ran, the fresh status still goes
+      // to the map - the ask belonged to the session it was asked in - while
+      // the card on screen stays the other session's.
       if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.applyStatus(response.sessionStatus);
+      else this.applyStatusToMap(response.sessionStatus);
     } catch (error) {
       if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.setState(errorNoticePatch(error));
     }
+  }
+
+  /** Write one session's fresh status into the shared map without touching the selected session's card state. */
+  private applyStatusToMap(status: SessionStatus): void {
+    const state = this.getState();
+    this.setState({ sessionStatuses: { ...state.sessionStatuses, [status.sessionId]: status } });
   }
 
   /**
@@ -1737,9 +1779,18 @@ export class SessionController {
   private recordClosedDialog(closed: ClosedExtensionDialog): void {
     const state = this.getState();
     if (state.closedDialogs.some((entry) => entry.dialog.dialogId === closed.dialog.dialogId)) return;
+    const sessionId = state.selectedSession?.id;
     this.setState({
       pendingDialogs: state.pendingDialogs.filter((pending) => pending.dialogId !== closed.dialog.dialogId),
       ...(leavesOutcomeCard(closed) ? { closedDialogs: [...state.closedDialogs, closed] } : {}),
+    });
+    // The card is gone; the status map must stop listing the dialog too, or
+    // the closed question rides the map back on the next selection and the
+    // row keeps its asking marker.
+    this.patchSessionStatus(sessionId, (sessionStatus) => {
+      if (sessionStatus.pendingDialogs === undefined) return sessionStatus;
+      if (!sessionStatus.pendingDialogs.some((pending) => pending.dialogId === closed.dialog.dialogId)) return sessionStatus;
+      return { ...sessionStatus, pendingDialogs: sessionStatus.pendingDialogs.filter((pending) => pending.dialogId !== closed.dialog.dialogId) };
     });
   }
 
@@ -1768,8 +1819,34 @@ export class SessionController {
   private applyClosedAsk(askId: string): void {
     // A close for an ask that is not the one on screen is already reflected here
     // (typically the supersede half of an open), so it must not clear the card.
-    if (this.getState().pendingAsk?.askId !== askId) return;
+    const state = this.getState();
+    if (state.pendingAsk?.askId !== askId) return;
+    const sessionId = state.selectedSession?.id;
     this.setState({ pendingAsk: undefined });
+    // Same for the status map: the rows and the next selection read it, so an
+    // answered ask must be retracted there as well.
+    this.patchSessionStatus(sessionId, (sessionStatus) => {
+      if (sessionStatus.pendingAsk === undefined) return sessionStatus;
+      const next: SessionStatus = { ...sessionStatus };
+      delete next.pendingAsk;
+      return next;
+    });
+  }
+
+  /**
+   * Rewrite one session's entry in the shared status map. The top-level cards
+   * are the selected session's projection; the map is what the rows, the
+   * switcher and a reselection read, so a card-level retraction has to reach
+   * it too or the closed state rides the map back on the next selection.
+   */
+  private patchSessionStatus(sessionId: string | undefined, patch: (status: SessionStatus) => SessionStatus): void {
+    if (sessionId === undefined) return;
+    const state = this.getState();
+    const status = state.sessionStatuses[sessionId];
+    if (status === undefined) return;
+    const next = patch(status);
+    if (next === status) return;
+    this.setState({ sessionStatuses: { ...state.sessionStatuses, [sessionId]: next } });
   }
 
   /**

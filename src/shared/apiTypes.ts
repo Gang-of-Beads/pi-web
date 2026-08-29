@@ -600,6 +600,16 @@ export interface WorkspaceGoalsResponse {
 export interface SessionStatusCatalogSnapshot {
   statuses: SessionStatus[];
   generatedAt: string;
+  /**
+   * Identity of the daemon process that produced this catalog, the same id the
+   * notifications catalog publishes as `daemonInstanceId`: one id per daemon
+   * process, so a changed id means the daemon itself was replaced. Session ids
+   * are that process's runtime handles, so a browser reconciling its status
+   * indicators against the catalog must know which instance is speaking -
+   * entries left behind by an earlier instance describe sessions the current
+   * one may not hold. Absent from a daemon that predates the field.
+   */
+  daemonInstanceId?: string;
 }
 
 export interface SessionUnreadAcknowledgeRequest {
