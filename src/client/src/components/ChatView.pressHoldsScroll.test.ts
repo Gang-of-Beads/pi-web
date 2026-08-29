@@ -74,6 +74,29 @@ describe("ChatView catching up after a press that suppressed following", () => {
 
     expect(chat.scrollTop).toBe(0);
   });
+
+  it("does not fire the previous press's catch-up into the next press", async () => {
+    const view = await mountView();
+    const chat = scroller(view);
+
+    // Press 1 suppresses a follow; its release schedules the bottom catch-up.
+    holdThroughViewportGrowth(view, chat);
+    chat.dispatchEvent(pointerEvent("pointerup"));
+
+    // Press 2 begins before that catch-up fires. The catch-up belongs to
+    // press 1: firing now scrolls the transcript between the new press and
+    // its click, and the click lands on whatever moved into the tap's place.
+    chat.dispatchEvent(pointerEvent("pointerdown"));
+    vi.advanceTimersByTime(TOUCH_SETTLE_MS + 32);
+    await view.updateComplete;
+
+    expect(chat.scrollTop).toBe(0);
+
+    // Press 2 suppressed nothing, so its own release catches up to nothing.
+    chat.dispatchEvent(pointerEvent("pointerup"));
+    await settle();
+    expect(chat.scrollTop).toBe(0);
+  });
 });
 
 /**

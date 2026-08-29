@@ -2528,6 +2528,15 @@ export class ChatView extends LitElement {
    */
   private notePressStart(): void {
     this.deferredOpenAlign = undefined;
+    // A catch-up scheduled by the previous release belongs to that press. Left
+    // running it can fire up to TOUCH_SETTLE_MS into this press, scrolling the
+    // transcript between the new press and its click, so the click lands on
+    // whatever moved into the tap's place. Symmetric with the deferral above;
+    // the new press's own release schedules its own catch-up.
+    if (this.catchUpFollowTimer !== undefined) {
+      clearTimeout(this.catchUpFollowTimer);
+      this.catchUpFollowTimer = undefined;
+    }
     this.followGate.notePointerDown(Date.now());
   }
 
