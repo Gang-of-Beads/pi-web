@@ -448,6 +448,11 @@ export class AskUserCard extends LitElement {
   }
 
   static override styles = css`
+    /* This card is its own shadow root, so the transcript's tap rules do not
+       reach it: without these, the option buttons stay eligible for the
+       browser's double-tap-zoom click delay and paint the platform's rectangular
+       tap highlight. */
+    button, [role="button"], input, select, summary { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
     :host {
       display: block;
       box-sizing: border-box;
