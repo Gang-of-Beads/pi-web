@@ -92,6 +92,40 @@ describe("background tasks", () => {
     expect(tasks.map((task) => task.id).sort()).toEqual(["b25b68e87", "b96da5ec8", "stale111"]);
   });
 
+  it("keeps a task attributed after compaction deletes the transcript lines that proved it", async () => {
+    const cwd = await fixture();
+    const live = await transcript(cwd);
+
+    // While the tool's result line is still in the transcript, ownership is
+    // provable and the task is listed.
+    expect((await listBackgroundTasks(cwd, live, Date.now(), fakeProbe)).map((task) => task.id))
+      .toContain("b96da5ec8");
+
+    // Compaction rewrites the same session file, replacing those lines with a
+    // summary. The record on disk still says running and its process is alive:
+    // the owner photographed this state as "Nothing running right now" above a
+    // task that was mid-deploy.
+    await writeFile(live, JSON.stringify({ role: "system", source: "compaction", content: "Compacted history:\n\nstuff" }));
+
+    const after = await listBackgroundTasks(cwd, live, Date.now(), fakeProbe);
+    expect(after.map((task) => task.id)).toContain("b96da5ec8");
+    expect(after.find((task) => task.id === "b96da5ec8")?.status).toBe("running");
+  });
+
+  it("shows a remembered task to its own session only", async () => {
+    const cwd = await fixture();
+    const mine = await transcript(cwd);
+    await listBackgroundTasks(cwd, mine, Date.now(), fakeProbe);
+
+    // A second session in the same server shares the registry directory and
+    // mentions nothing itself; the remembered ownership must not leak to it.
+    const theirs = join(cwd, "other.jsonl");
+    await writeFile(theirs, JSON.stringify({ role: "tool", content: "quoted: Output: .pi/tasks/session-494694-494694/b96da5ec8.output" }));
+
+    expect((await listBackgroundTasks(cwd, theirs, Date.now(), fakeProbe)).map((task) => task.id))
+      .not.toContain("b96da5ec8");
+  });
+
   it("reads status, duration and exit code from the record", async () => {
     const cwd = await fixture();
     const tasks = await listBackgroundTasks(cwd, await transcript(cwd), Date.now(), fakeProbe);
