@@ -89,7 +89,12 @@ export interface AppState {
   clientQueuedSessionMessages: Record<string, QueuedSessionMessage[]>;
   /** Client-initiated session creation requests waiting for the server. */
   startingSessionCount: number;
-  isLoadingProjects: boolean;
+  /**
+   * Four-state discipline for `projects` (unloaded/loading/loaded/failed).
+   * An empty list is only "no projects" once a listing completed and returned
+   * zero; a failure keeps the previous rows and reports itself on the list.
+   */
+  projectsLoad: ProjectsLoadState;
   isLoadingWorkspaces: boolean;
   selectedProject: Project | undefined;
   selectedWorkspace: Workspace | undefined;
@@ -200,6 +205,13 @@ export type AuthDialogState =
  */
 export type SessionsLoadState = "unloaded" | "loading" | "loaded";
 
+/**
+ * Whether the projects listing has completed, and how it ended. `failed` is
+ * deliberately sticky until a later load succeeds: a silent recovery is how a
+ * missing project list read as "no projects".
+ */
+export type ProjectsLoadState = "unloaded" | "loading" | "loaded" | "failed";
+
 export type WorkspaceScopedStateReset = Pick<AppState,
   | "sessions"
   | "sessionsLoad"
@@ -265,7 +277,7 @@ export function initialAppState(): AppState {
     sendingPrompts: {},
     clientQueuedSessionMessages: {},
     startingSessionCount: 0,
-    isLoadingProjects: false,
+    projectsLoad: "unloaded",
     isLoadingWorkspaces: false,
     selectedProject: undefined,
     selectedWorkspace: undefined,

@@ -175,6 +175,57 @@ describe("ProjectController", () => {
   });
 });
 
+describe("ProjectController.loadProjects", () => {
+  it("keeps the previous projects and records a failure instead of an empty list", async () => {
+    // A failed fetch used to keep `[]` and drop the loading flag, so the list
+    // rendered exactly as if the machine had no projects.
+    const kept = project("kept", "/kept");
+    let state: AppState = { ...initialAppState(), projects: [kept] };
+    const controller = new ProjectController(
+      () => state,
+      (patch) => { state = { ...state, ...patch }; },
+      { selectProject: vi.fn(), forgetProject: vi.fn(), clearSelection: vi.fn() },
+      {
+        api: {
+          projects: vi.fn().mockRejectedValue(new Error("web process down")),
+          addProject: vi.fn(),
+          closeProject: vi.fn(),
+          setWorkspaceTrust: vi.fn(),
+        },
+      },
+    );
+
+    await controller.loadProjects();
+
+    expect(state.projects).toEqual([kept]);
+    expect(state.projectsLoad).toBe("failed");
+    expect(state.error).toContain("web process down");
+  });
+
+  it("marks a completed listing loaded", async () => {
+    const listed = project("listed", "/listed");
+    let state: AppState = { ...initialAppState() };
+    const controller = new ProjectController(
+      () => state,
+      (patch) => { state = { ...state, ...patch }; },
+      { selectProject: vi.fn(), forgetProject: vi.fn(), clearSelection: vi.fn() },
+      {
+        api: {
+          projects: vi.fn().mockResolvedValue([listed]),
+          addProject: vi.fn(),
+          closeProject: vi.fn(),
+          setWorkspaceTrust: vi.fn(),
+        },
+      },
+    );
+
+    await controller.loadProjects();
+
+    expect(state.projects).toEqual([listed]);
+    expect(state.projectsLoad).toBe("loaded");
+  });
+});
+
 describe("addProjectFailureMessage", () => {
   it("names the folder and the checkbox that would create it", () => {
     // The server reports this as "ENOENT ... realpath '/path'", which

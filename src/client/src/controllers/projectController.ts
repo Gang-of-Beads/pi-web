@@ -32,17 +32,19 @@ export class ProjectController {
 
   async loadProjects() {
     const machineId = selectedMachineId(this.getState());
-    this.setState({ error: "", isLoadingProjects: true });
+    this.setState({ error: "", projectsLoad: "loading" });
     try {
       const projects = await this.api.projects(machineId);
       if (selectedMachineId(this.getState()) !== machineId) return undefined;
       const projectIds = new Set(projects.map((project) => project.id));
       const workspacesByProjectId = Object.fromEntries(Object.entries(this.getState().workspacesByProjectId).filter(([projectId]) => projectIds.has(projectId)));
-      this.setState({ projects, workspacesByProjectId });
+      this.setState({ projects, workspacesByProjectId, projectsLoad: "loaded" });
     } catch (error) {
-      if (selectedMachineId(this.getState()) === machineId) this.setState(errorNoticePatch(error));
-    } finally {
-      if (selectedMachineId(this.getState()) === machineId) this.setState({ isLoadingProjects: false });
+      // The previous rows stay on screen — a failed listing is not evidence
+      // that the projects are gone — and `failed` sticks until a load
+      // succeeds, so the list itself keeps saying what happened even after
+      // the banner has been retired by an unrelated success.
+      if (selectedMachineId(this.getState()) === machineId) this.setState({ ...errorNoticePatch(error), projectsLoad: "failed" });
     }
   }
 

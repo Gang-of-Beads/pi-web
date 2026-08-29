@@ -1,5 +1,5 @@
 import { RowMenuGestures } from "./rowMenuGestures";
-import { LitElement, html, type PropertyValues, nothing} from "lit";
+import { LitElement, css, html, type PropertyValues, nothing} from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { filterProjects, shouldShowProjectSearch } from "../projectSearch";
 import type { Project } from "../api";
@@ -13,7 +13,26 @@ import { listStyles } from "./shared";
 @customElement("project-list")
 export class ProjectList extends LitElement implements KeyboardNavigableSection {
   @property({ attribute: false }) projects: Project[] = [];
+  /**
+   * Whether the projects reaching this list have been loaded, and how the
+   * latest load ended. `failed` is sticky: it says the latest refresh did not
+   * complete, and it stays until a successful reload — a failure the banner
+   * has retired must not read as "no projects".
+   */
+  @property({ attribute: false }) projectsLoad: "unloaded" | "loading" | "loaded" | "failed" = "unloaded";
+  /** Ask the host to re-run the projects listing; wired to the Retry control. */
+  @property({ attribute: false }) onRetryLoad?: () => void;
   @state() private searchQuery = "";
+  /**
+   * The panel hides sections with the `hidden` attribute rather than removing
+   * them, so this element — and with it any query left in the search field —
+   * survives a section switch. Watching the property lets the list retire
+   * that query when it is hidden: reopening the section is a new task, and a
+   * leftover filter silently hiding rows from it reads as projects vanishing.
+   */
+  @property({ type: Boolean, reflect: true })
+  override hidden = false;
+
   @property({ attribute: false }) selected?: Project;
   /** Status tree of the machine these projects belong to; absent means no indicators. */
   @property({ attribute: false }) statusSnapshot: MachineStatusSnapshot | undefined;
@@ -50,6 +69,7 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
   protected override updated(changed: PropertyValues<this>): void {
     if (changed.has("projects") && this.openMenuProjectId !== undefined && !this.projects.some((project) => project.id === this.openMenuProjectId)) this.openMenuProjectId = undefined;
     if (changed.has("collapsed") && this.collapsed) this.openMenuProjectId = undefined;
+    if (changed.has("hidden") && this.hidden && this.searchQuery !== "") this.searchQuery = "";
   }
 
   async focusSelectedOrFirst(): Promise<boolean> {
@@ -103,10 +123,46 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
                 </div>
               </div>
             `)}
+            ${this.renderFilterCount(visible.length)}
+            ${this.renderListStatus()}
           </div>
         `}
       </section>
     `;
+  }
+
+  /**
+   * A query that hides rows says so. The leftover query was the one producer
+   * that could hide exactly one project while the others rendered — the list
+   * looked complete and one entry was silently gone.
+   */
+  private renderFilterCount(visibleCount: number) {
+    if (this.searchQuery.trim() === "" || visibleCount >= this.projects.length) return null;
+    return html`<div class="filter-count" role="status">${String(visibleCount)} of ${String(this.projects.length)} projects shown</div>`;
+  }
+
+  /**
+   * What the latest load did, under the rows. Rows are the last known truth
+   * and render regardless; the empty claim may only follow a completed
+   * listing that returned zero, and a failure names itself and offers Retry —
+   * it must not look like an empty machine.
+   */
+  private renderListStatus() {
+    if (this.projectsLoad === "failed") {
+      return html`
+        <div class="load-failed" role="alert">
+          <span>Could not load projects.</span>
+          <button class="load-retry" @click=${() => { this.onRetryLoad?.(); }}>Retry</button>
+        </div>
+      `;
+    }
+    if (this.searchQuery.trim() !== "") return null;
+    if (this.projectsLoad === "loaded") {
+      // A workspace list with no projects rendered nothing at all, reading as
+      // a rendering bug rather than a state.
+      return this.projects.length === 0 ? html`<div class="list-empty" role="status">No projects yet. Add one to start working here.</div>` : null;
+    }
+    return html`<div class="list-loading" role="status">Loading projects…</div>`;
   }
 
   private handleProjectKeydown(event: KeyboardEvent, project: Project): void {
@@ -195,5 +251,10 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
     if (confirm(`Close ${project.name}?\n\nThis only removes it from PI WEB; it will not change the project folder.`)) this.onClose?.(project);
   }
 
-  static override styles = listStyles;
+  static override styles = [listStyles, css`
+    .list-empty, .list-loading { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-sm); }
+    .filter-count { padding: var(--pi-space-3) var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-xs); }
+    .load-failed { display: flex; align-items: center; gap: var(--pi-space-3); padding: var(--pi-space-3) var(--pi-space-2); color: var(--pi-danger); font-size: var(--pi-text-sm); }
+    .load-retry { min-height: 28px; padding: 0 var(--pi-space-4); font-size: var(--pi-text-xs); }
+  `];
 }

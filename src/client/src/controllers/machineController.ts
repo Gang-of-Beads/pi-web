@@ -36,6 +36,7 @@ export class MachineController {
     this.setState({
       selectedMachine: machine,
       projects: [],
+      projectsLoad: "loading",
       workspaces: [],
       isLoadingWorkspaces: false,
       selectedProject: undefined,

@@ -997,6 +997,9 @@ export class PiWebApp extends LitElement {
       this.refreshWorkspaceDeletionRuns(),
       this.refreshCurrentWorkspaceSurface(),
       this.workspaces.refreshSelectedProjectTopology(),
+      // A projects listing that failed while the browser slept recovers here
+      // instead of waiting for a manual reload.
+      this.projects.loadProjects(),
     ]);
   }
 
@@ -1840,6 +1843,8 @@ export class PiWebApp extends LitElement {
         .onRemoveMachine=${(machine: Machine) => { void this.removeMachine(machine); }}
         .onRenameMachine=${(machine: Machine, name: string) => { void this.renameMachine(machine, name); }}
         .projects=${this.state.projects}
+        .projectsLoad=${this.state.projectsLoad}
+        .onRetryProjectsLoad=${() => { void this.projects.loadProjects(); }}
         .selectedProject=${this.state.selectedProject}
         .workspaces=${this.state.workspaces}
         .selectedWorkspace=${this.state.selectedWorkspace}
@@ -2204,7 +2209,9 @@ export class PiWebApp extends LitElement {
 
   private workspacePanelEmptyState(): WorkspacePanelEmptyState {
     const project = this.state.selectedProject;
-    if (this.state.isLoadingProjects) {
+    if (this.state.projectsLoad !== "loaded" && this.state.projectsLoad !== "failed") {
+      // Unloaded or loading: the list does not know yet, so it may not claim
+      // "no projects".
       return {
         title: "Loading projects…",
         body: "Looking for projects you have added to PI WEB.",
@@ -2240,7 +2247,7 @@ export class PiWebApp extends LitElement {
   }
 
   private sessionEmptyMessage(): string {
-    if (this.state.isLoadingProjects) return "Loading projects…";
+    if (this.state.projectsLoad !== "loaded" && this.state.projectsLoad !== "failed") return "Loading projects…";
     if (this.state.selectedWorkspace !== undefined) return "Select or start a session.";
     if (this.state.selectedProject !== undefined) return "Select a workspace to start a session.";
     if (this.state.projects.length === 0) return "Add a project to start a session.";

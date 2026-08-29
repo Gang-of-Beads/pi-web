@@ -25,6 +25,9 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) machineStatuses: Record<string, MachineHealth> = {};
   @property({ attribute: false }) machineStatusSnapshots: Record<string, MachineStatusSnapshot> = {};
   @property({ attribute: false }) projects: Project[] = [];
+  /** Four-state load discipline threaded from app state; see ProjectList. */
+  @property({ attribute: false }) projectsLoad: "unloaded" | "loading" | "loaded" | "failed" = "unloaded";
+  @property({ attribute: false }) onRetryProjectsLoad?: () => void;
   @property({ attribute: false }) selectedProject?: Project;
   @property({ attribute: false }) workspaces: Workspace[] = [];
   @property({ attribute: false }) selectedWorkspace?: Workspace;
@@ -255,6 +258,8 @@ export class AppNavigationPanel extends LitElement {
       <project-list
         ?hidden=${hidden}
         .projects=${this.projects}
+        .projectsLoad=${this.projectsLoad}
+        .onRetryLoad=${() => { this.runMaybeAsync(this.onRetryProjectsLoad); }}
         .selected=${this.selectedProject}
         .statusSnapshot=${this.selectedMachineStatusSnapshot()}
         .collapsible=${collapsible && this.collapsible}
