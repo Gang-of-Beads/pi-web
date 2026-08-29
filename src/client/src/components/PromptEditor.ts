@@ -1,8 +1,7 @@
-import { defaultKeymap, history, historyKeymap, indentWithTab, insertNewlineAndIndent } from "@codemirror/commands";
-import { markdown, deleteMarkupBackward, insertNewlineContinueMarkup } from "@codemirror/lang-markdown";
-import { EditorSelection, EditorState, Compartment } from "@codemirror/state";
-import { drawSelection, EditorView, keymap, placeholder } from "@codemirror/view";
-import { defaultHighlightStyle, indentOnInput, indentUnit, syntaxHighlighting } from "@codemirror/language";
+import type { EditorView } from "@codemirror/view";
+import type { ComposerEditorHandle } from "./composerEditorSetup";
+
+type ComposerEditorModule = typeof import("./composerEditorSetup");
 import { css, LitElement, html, type PropertyValues } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { api, type FileSuggestion, type PromptAttachment, type SessionModel, type SessionStatus, type SlashCommand } from "../api";
@@ -269,8 +268,10 @@ export class PromptEditor extends LitElement {
   private historyIndex: number | undefined;
   private historyDraftBeforeBrowse = "";
   private editor: EditorView | undefined;
-  private readonly editableCompartment = new Compartment();
-  private readonly readOnlyCompartment = new Compartment();
+  private editorControls: ComposerEditorHandle | undefined;
+  private editorLoading = false;
+  /** The lazily-loaded editor module; set exactly when `editor` is set. */
+  private cm: ComposerEditorModule | undefined;
   private readonly mobilePromptEnterMedia = createMobilePromptEnterMedia();
   private explicitShiftKeyActive = false;
 
@@ -326,6 +327,7 @@ export class PromptEditor extends LitElement {
       if (this.collapsed) {
         this.editor?.destroy();
         this.editor = undefined;
+        this.editorControls = undefined;
       } else {
         this.createEditor();
       }
@@ -339,6 +341,7 @@ export class PromptEditor extends LitElement {
     window.removeEventListener("online", this.flushPendingPrompts);
     this.editor?.destroy();
     this.editor = undefined;
+    this.editorControls = undefined;
     super.disconnectedCallback();
   }
 
@@ -438,11 +441,11 @@ export class PromptEditor extends LitElement {
     if (key !== undefined) saveDraft(key, text);
 
     const editor = this.editor;
-    if (editor !== undefined) {
+    if (editor !== undefined && this.cm !== undefined) {
       const current = editor.state.doc.toString();
       editor.dispatch({
         ...(current === text ? {} : { changes: { from: 0, to: current.length, insert: text } }),
-        selection: EditorSelection.cursor(text.length),
+        selection: this.cm.cursorAt(text.length),
       });
     }
 
@@ -708,64 +711,48 @@ export class PromptEditor extends LitElement {
   }
 
   private createEditor() {
-    if (!this.editorHost || this.editor !== undefined) return;
-    this.editor = new EditorView({
-      parent: this.editorHost,
-      state: EditorState.create({
+    if (!this.editorHost || this.editor !== undefined || this.editorLoading) return;
+    this.editorLoading = true;
+    void import("./composerEditorSetup").then((cm) => {
+      this.editorLoading = false;
+      if (!this.editorHost || this.editor !== undefined || !this.isConnected) return;
+      const handle = cm.createComposerEditor({
+        parent: this.editorHost,
         doc: this.draft,
-        extensions: [
-          history(),
-          markdown(),
-          indentOnInput(),
-          indentUnit.of("  "),
-          syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-          EditorView.lineWrapping,
-          drawSelection(),
-          EditorView.contentAttributes.of((view) => inputAssistanceContentAttributes(view.state.sliceDoc(0, view.state.selection.main.head))),
-          EditorView.domEventHandlers({
-            keyup: (event) => this.handleEditorKeyUp(event),
-            blur: () => this.resetEditorModifierState(),
-          }),
-          placeholder(composerPlaceholder()),
-          this.editableCompartment.of(EditorView.editable.of(!this.disabled)),
-          this.readOnlyCompartment.of(EditorState.readOnly.of(this.disabled)),
-          EditorView.updateListener.of((update) => {
-            if (update.docChanged) this.updateDraft(update.state.doc.toString());
-          }),
-          keymap.of([
-            { any: (view, event) => this.handleEditorKeyDown(event, view) },
-            { key: "ArrowDown", run: (view) => this.handleEditorArrow(view, "newer") },
-            { key: "ArrowUp", run: (view) => this.handleEditorArrow(view, "older") },
-            { key: "Escape", run: () => this.closeCompletions() },
-            { key: "Tab", run: (view) => this.handleEditorTab(view) },
-            { key: "Shift-Tab", run: (view) => indentWithTab.shift?.(view) ?? false },
-            { key: "Backspace", run: (view) => deleteMarkupBackward(view) },
-            ...historyKeymap,
-            ...defaultKeymap,
-          ]),
-        ],
-      }),
+        disabled: this.disabled,
+        placeholderText: composerPlaceholder(),
+        contentAttributesFor: (leadingText) => inputAssistanceContentAttributes(leadingText),
+        onDocChanged: (text) => { this.updateDraft(text); },
+        onKeyUp: (event) => this.handleEditorKeyUp(event),
+        onBlur: () => { this.resetEditorModifierState(); },
+        onKeyDown: (event, view) => this.handleEditorKeyDown(event, view),
+        onArrow: (view, direction) => this.handleEditorArrow(view, direction),
+        onEscape: () => this.closeCompletions(),
+        onTab: (view) => this.handleEditorTab(view),
+      });
+      this.cm = cm;
+      this.editorControls = handle;
+      this.editor = handle.view;
+      // The draft may have moved while the editor bytes were on the wire.
+      this.syncEditorDoc();
+      this.updateEditorDisabledState();
     });
   }
 
   private syncEditorDoc() {
     const editor = this.editor;
-    if (!editor) return;
+    const cm = this.cm;
+    if (!editor || cm === undefined) return;
     const current = editor.state.doc.toString();
     if (current === this.draft) return;
     editor.dispatch({
       changes: { from: 0, to: current.length, insert: this.draft },
-      selection: EditorSelection.cursor(this.draft.length),
+      selection: cm.cursorAt(this.draft.length),
     });
   }
 
   private updateEditorDisabledState() {
-    this.editor?.dispatch({
-      effects: [
-        this.editableCompartment.reconfigure(EditorView.editable.of(!this.disabled)),
-        this.readOnlyCompartment.reconfigure(EditorState.readOnly.of(this.disabled)),
-      ],
-    });
+    this.editorControls?.setDisabled(this.disabled);
   }
 
   private updateDraft(value: string) {
@@ -916,7 +903,7 @@ export class PromptEditor extends LitElement {
       return true;
     }
     if (!shouldSendPromptOnEnterShortcut(shiftKey, this.mobilePromptEnterMedia, readPromptEnterPreference())) {
-      return insertNewlineContinueMarkup(view) || insertNewlineAndIndent(view);
+      return this.cm?.composerNewline(view) ?? false;
     }
     // Enter sends as steer while the agent is mid-turn (the pi TUI default):
     // the message interrupts the current work at the next safe point. While
@@ -936,7 +923,7 @@ export class PromptEditor extends LitElement {
       void this.refreshCompletions();
       return true;
     }
-    return indentWithTab.run?.(view) ?? false;
+    return this.cm?.composerIndent(view) ?? false;
   }
 
   private pick(item: CompletionItem) {
@@ -953,7 +940,7 @@ export class PromptEditor extends LitElement {
     const replaceTo = item.insertText.endsWith("\"") && this.draft.slice(item.replaceTo).startsWith("\"") ? item.replaceTo + 1 : item.replaceTo;
     editor.dispatch({
       changes: { from: item.replaceFrom, to: replaceTo, insert: `${item.insertText}${suffix}` },
-      selection: EditorSelection.cursor(cursor),
+      selection: this.cm !== undefined ? this.cm.cursorAt(cursor) : undefined,
       scrollIntoView: true,
     });
     this.completions = [];

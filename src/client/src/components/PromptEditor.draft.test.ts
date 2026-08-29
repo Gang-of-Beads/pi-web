@@ -33,6 +33,7 @@ describe("PromptEditor draft replacement", () => {
     Reflect.set(editor, "completions", [{ kind: "command", insertText: "/tree", replaceFrom: 0, replaceTo: 4 }]);
     Reflect.set(editor, "selectedIndex", 3);
     Reflect.set(editor, "requestVersion", 7);
+    Reflect.set(editor, "cm", { cursorAt: (position: number) => ({ anchor: position, head: position }) });
     Reflect.set(editor, "editor", {
       state: { doc: { toString: () => "/old" } },
       dispatch,
@@ -61,6 +62,7 @@ describe("PromptEditor draft replacement", () => {
     const key = machineSessionKey("local", "session-2");
     const dispatch = vi.fn<(transaction: unknown) => void>();
     Reflect.set(editor, "draft", "stale text");
+    Reflect.set(editor, "cm", { cursorAt: (position: number) => ({ anchor: position, head: position }) });
     Reflect.set(editor, "editor", {
       state: { doc: { toString: () => "stale text" } },
       dispatch,
