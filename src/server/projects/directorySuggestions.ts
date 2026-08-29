@@ -18,10 +18,18 @@ const MAX_SUGGESTIONS = 80;
 const MAX_SCANNED_DIRECTORIES = 4_000;
 /**
  * Wall-clock twin of the count budget: a frontier of few-but-slow directories
- * (cold network mounts, spinning rust) could otherwise hold a request open
- * long past the point where any reader is still waiting.
+ * (cold caches, spotlight reindexing) could otherwise hold a request open long
+ * past the point where any reader is still waiting.
  */
 const MAX_SCAN_MS = 2_000;
+/**
+ * One directory read may not outlive this budget. A read that cannot finish is
+ * treated as empty and its directory is never read again this process: on macOS
+ * a single package directory (a Photos library) or a dead network mount can
+ * leave `opendir` blocked in the kernel forever, and every retry would pin
+ * another threadpool thread until the server's filesystem access wedges.
+ */
+const READ_BUDGET_MS = 1_200;
 const MAX_SEARCH_DEPTH = 3;
 const MAX_MISSING_ANCESTORS = 8;
 
@@ -122,10 +130,7 @@ async function isDirectory(path: string): Promise<boolean> {
 
 /**
  * Breadth-first so shallow directories are always gathered before the scan
- * budget can be exhausted by one deep branch. Both budgets (directories and
- * wall clock) and a client disconnect are checked between frontier levels —
- * the granularity at which the walk can actually stop, since an in-flight
- * readdir cannot be interrupted.
+ * budget can be exhausted by one deep branch.
  */
 async function collectDirectories(parent: string, maxDepth: number, signal?: AbortSignal): Promise<DirectoryCandidate[]> {
   const collected: DirectoryCandidate[] = [];
@@ -134,12 +139,14 @@ async function collectDirectories(parent: string, maxDepth: number, signal?: Abo
   const startedAt = Date.now();
 
   while (frontier.length > 0 && scanned < MAX_SCANNED_DIRECTORIES) {
-    if (signal?.aborted === true || Date.now() - startedAt >= MAX_SCAN_MS) break;
     const next: typeof frontier = [];
     for (const directory of frontier) {
-      if (scanned >= MAX_SCANNED_DIRECTORIES) break;
+      // Both budgets and a client disconnect are checked before every read —
+      // the granularity at which the walk can actually stop, since an
+      // in-flight readdir cannot be interrupted.
+      if (scanned >= MAX_SCANNED_DIRECTORIES || signal?.aborted === true || Date.now() - startedAt >= MAX_SCAN_MS) break;
       scanned += 1;
-      for (const child of await readChildDirectories(directory.path)) {
+      for (const child of await readWithinBudget(directory.path)) {
         const depth = directory.depth + 1;
         const relativePath = directory.relativePath === "" ? child : `${directory.relativePath}/${child}`;
         const candidate: DirectoryCandidate = { path: join(directory.path, child), relativePath, depth };
@@ -153,6 +160,31 @@ async function collectDirectories(parent: string, maxDepth: number, signal?: Abo
   }
 
   return collected;
+}
+
+/** Directories whose listing already hung once; never re-issued this process. */
+const directoriesWithHungReads = new Set<string>();
+
+/**
+ * One directory read under the per-read budget. The losing read keeps running
+ * in the background (a filesystem read cannot be cancelled); its result is
+ * discarded, and `Promise.race`'s handlers keep its eventual rejection from
+ * going unhandled.
+ */
+function readWithinBudget(directory: string): Promise<string[]> {
+  if (directoriesWithHungReads.has(directory)) return Promise.resolve([]);
+  let timedOut = false;
+  return new Promise<string[]>((resolve) => {
+    const timer = setTimeout(() => {
+      timedOut = true;
+      directoriesWithHungReads.add(directory);
+      resolve([]);
+    }, READ_BUDGET_MS);
+    void readChildDirectories(directory).then(
+      (names) => { if (!timedOut) { clearTimeout(timer); resolve(names); } },
+      () => { if (!timedOut) { clearTimeout(timer); resolve([]); } },
+    );
+  });
 }
 
 async function readChildDirectories(directory: string): Promise<string[]> {
