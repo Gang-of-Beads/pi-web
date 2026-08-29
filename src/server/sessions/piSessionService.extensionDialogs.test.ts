@@ -207,7 +207,7 @@ describe("PiSessionService.answerDialog", () => {
   it("collapses a multiline dialog title in the filed notification", async () => {
     const { service, fake } = dialogService();
     const ui = await boundUiContext(service, fake);
-    ui.select("Update 0.84.2 \u2192 0.84.4\nPlan:\n- step one", ["Update now", "Skip"]);
+    void ui.select("Update 0.84.2 \u2192 0.84.4\nPlan:\n- step one", ["Update now", "Skip"]);
 
     await service.answerDialog(sessionRef(ACTIVE_SESSION_ID), "dialog-1", "Update now");
 
@@ -220,7 +220,7 @@ describe("PiSessionService.answerDialog", () => {
   it("files no notification for an answer the daemon considers stale", async () => {
     const { service, fake } = dialogService();
     const ui = await boundUiContext(service, fake);
-    ui.confirm("Proceed?", "Really?");
+    void ui.confirm("Proceed?", "Really?");
 
     await service.answerDialog(sessionRef(ACTIVE_SESSION_ID), "dialog-gone", true);
 
