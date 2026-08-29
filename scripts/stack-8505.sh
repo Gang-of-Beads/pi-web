@@ -63,7 +63,10 @@ is_8505_process() {
 # socket (no TCP), so a port scan alone never sees it; asking lsof who holds
 # each resource needs no environment visibility at all.
 holder_pids() {
-  { lsof -t -- "$SOCKET" 2>/dev/null; lsof -nP -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null; } | sort -u
+  # lsof exits 1 when it matches nothing, which under `set -e` + pipefail killed
+  # this script silently the moment the stack was already down - the failure
+  # looked like "up does nothing". Absence of a holder is an answer, not an error.
+  { lsof -t -- "$SOCKET" 2>/dev/null || true; lsof -nP -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true; } | sort -u
 }
 
 # The daemon hosting the session that runs this script is an ancestor of it.
@@ -84,7 +87,7 @@ marked_pids() {
 }
 
 port_pids() {
-  lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | sort -u
+  { lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null || true; } | sort -u
 }
 
 stack_pids() {
