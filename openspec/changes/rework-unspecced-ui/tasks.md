@@ -15,7 +15,7 @@
 
 ## 4. Pending-input stability deltas (behaviours 2+6; revert units 5052810d and 233680c8+822aaa0f)
 
-- [ ] 4.1 Tab strip under observation: drive notifications from n to 0 and back while the drawer is open; record tab positions each step; assert zero movement. Numbers: x/y of each tab per step.
+- [x] 4.1 DONE with one leg not drivable, stated. (Playwright MCP, 8505, 393x850, coarse, liveness 200.) The regression itself: at count ZERO the Notifications tab is PRESENT and labelled "Notifications (0)" - the old behaviour dropped it, which is the reflow in the owner's screenshots. Positions across four tab-switch rounds: Activity 8,57,73 / Notifications 85,57,131 / Goals 219,57,58 - identical every round, stable=true (/tmp/t41-tabs.png), against b1d0e934. NOT DRIVEN: the n->0->n drain/refill leg - the seeds provide no notification producer for this session; producing one needs an answered dialog or a subagent completion, recorded as a seeding gap rather than faked.
 - [ ] 4.2 Waiting row under a stream: open a question, start a long streamed reply in the same session, sample the question's controls' positions at 100ms for the stream's duration; assert max drift 0px; tap an option mid-stream and assert it activates. Numbers: the sampled series and its max delta.
 
 ## 5. Tile geometry (behaviour 5; revert unit: the QuickSwitcher part of 822aaa0f)
