@@ -472,6 +472,27 @@ describe("dark-launch seq gap counting", () => {
     expect(applied).toHaveLength(3);
   });
 
+  it("reports a gap with the pre-jump watermark before delivering the revealing frame", async () => {
+    const applied: unknown[] = [];
+    const gaps: number[] = [];
+    const session = new SessionSocket();
+    session.connect({ id: "session-1", cwd: "/repo" }, (event) => { applied.push(event); }, undefined, "local", undefined, undefined, (lastSeen) => { gaps.push(lastSeen); });
+    const socket = FakeWebSocket.instances[0];
+    if (socket === undefined) throw new Error("expected a session socket");
+    socket.onopen?.();
+
+    await deliver(socket, { type: "assistant.delta", text: "a", seq: 1 });
+    await deliver(socket, { type: "assistant.delta", text: "c", seq: 3 });
+
+    // The callback fires before the revealing frame is delivered, so the
+    // repair can hold it instead of applying it ahead of the missing ones.
+    expect(gaps).toEqual([1]);
+    expect(applied.map((event) => {
+      const seq: unknown = typeof event === "object" && event !== null ? Reflect.get(event, "seq") : undefined;
+      return seq;
+    })).toEqual([1, 3]);
+  });
+
   it("fails open: unstamped frames apply and are not counted as gaps", async () => {
     const applied: unknown[] = [];
     const session = new SessionSocket();

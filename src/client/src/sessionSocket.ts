@@ -35,7 +35,7 @@ export class SessionSocket {
   private socket: WebSocket | undefined;
   private session: SessionRef | undefined;
   private onEvent: ((event: SessionUiEvent) => void) | undefined;
-  private readonly seqMonitor = new ScopeSeqMonitor("session");
+  private seqMonitor = new ScopeSeqMonitor("session");
   private reconnectTimer?: number;
   private reconnectDelay = 500;
   private shouldReconnect = false;
@@ -74,6 +74,7 @@ export class SessionSocket {
     machineId = "local",
     onInitialOpen?: () => void,
     onMalformed?: (frameType: string) => void,
+    onGap?: (lastSeen: number) => void,
   ): void {
     this.close();
     this.machineId = machineId;
@@ -82,6 +83,7 @@ export class SessionSocket {
     this.onReconnect = onReconnect;
     this.onInitialOpen = onInitialOpen;
     this.onMalformed = onMalformed;
+    this.seqMonitor = new ScopeSeqMonitor("session", onGap);
     this.shouldReconnect = true;
     this.open();
   }
@@ -331,7 +333,7 @@ export class ScopeSeqMonitor {
   private lastSeen: number | undefined;
   private gapEvents = 0;
 
-  constructor(private readonly scope: string) {}
+  constructor(private readonly scope: string, private readonly onGap?: (lastSeen: number) => void) {}
 
   /** Gap events recorded on this scope since the last {@link reset}. */
   get gapCount(): number {
@@ -356,6 +358,9 @@ export class ScopeSeqMonitor {
     this.lastSeen = seq;
     if (last === undefined || seq === last + 1) return;
     this.gapEvents += 1;
+    // Fired before the revealing frame is delivered, so a repair can hold
+    // the live tail instead of applying it ahead of the missing frames.
+    this.onGap?.(last);
     console.warn(`[pi-web] ${this.scope} scope lost frames: expected ${String(last + 1)}, got ${String(seq)} (${String(seq - last - 1)} missing)`);
   }
 }

@@ -2,6 +2,7 @@ import { api as defaultApi, isNotFoundError, type AskUserCloseResponse, type Ask
 import { errorNoticePatch } from "../errorNotice";
 import { expireSettledCommands, issueCommand, settleCommand, SETTLED_ROW_LINGER_MS, type CommandLedgerSource } from "../commandLedger";
 import { RevisionScope } from "../revisionScope";
+import { SessionGapRepair } from "../sessionGapRepair";
 import { describeError } from "../notice";
 import { ancestorsForSession } from "../sessionAncestors";
 import { refreshMayReplaceSelection } from "./sessionRefreshScope";
@@ -19,7 +20,7 @@ import { isNetworkFailure, NetworkSendError } from "../pendingOutbox";
 import type { MessageDeliveryState } from "../components/shared";
 import { isShellInput } from "../inputModes";
 import { fileCompletionInsertText } from "../promptCompletions";
-import { SessionSocket, type GlobalSessionEvent, type SessionUiEvent } from "../sessionSocket";
+import { SessionSocket, parseSessionSocketEvent, type GlobalSessionEvent, type SessionUiEvent } from "../sessionSocket";
 import { isArchivableSessionInfo, isTransientNewSessionInfo } from "../sessionPersistence";
 import { isSessionActive } from "../../../shared/activity";
 import type { PromptAttachmentDelivery, SessionNotificationInboxEvent, SessionStartupProgressEvent } from "../../../shared/apiTypes";
@@ -54,6 +55,8 @@ export interface SessionEventSocket {
     onInitialOpen?: () => void,
     /** A revisioned frame failed validation: a lost transition, needs resync. */
     onMalformed?: (frameType: string) => void,
+    /** The seq monitor saw a jump; `lastSeen` is the watermark before it. */
+    onGap?: (lastSeen: number) => void,
   ): void;
   setHandler(onEvent: (event: SessionUiEvent) => void): void;
   close(): void;
@@ -167,6 +170,8 @@ export class SessionController {
    * it.
    */
   private dialogScope = new RevisionScope({ resync: () => { void this.refreshSelectedSession(); } });
+  /** Holds live frames while a counted gap is replayed; rebuilt per selection. */
+  private gapRepair: SessionGapRepair | undefined;
   private pendingTranscriptEvents: SessionUiEvent[] = [];
   private pendingStatusBySession = new Map<string, SessionStatus>();
   private pendingActivityBySession = new Map<string, SessionActivity>();
@@ -319,6 +324,29 @@ export class SessionController {
       }
       const socketBuffer: SessionUiEvent[] = [];
       buffered = socketBuffer;
+      // Gap repair holds live frames while the daemon's ring replays the
+      // missed range in front of them; a resync verdict or failed request
+      // falls back to the same full refresh a reconnect takes.
+      this.gapRepair = new SessionGapRepair({
+        apply: (event) => { this.applyEvent(event); },
+        request: async (sinceSeq) => {
+          const sync = await this.api.streamSync(session, sinceSeq, machineId);
+          if (sync.kind !== "replay") return { ok: false };
+          const frames: SessionUiEvent[] = [];
+          for (const raw of sync.frames) {
+            let parsedFrame: unknown;
+            try {
+              parsedFrame = JSON.parse(raw);
+            } catch {
+              continue;
+            }
+            const event = parseSessionSocketEvent(parsedFrame);
+            if (event !== undefined) frames.push(event);
+          }
+          return { ok: true, frames };
+        },
+        resync: () => { void this.refreshSelectedSession(session.id); },
+      });
       this.socket.connect(
         session,
         (event) => socketBuffer.push(event),
@@ -333,12 +361,13 @@ export class SessionController {
           if (frameType === "notifications.inbox") void this.notifications?.refreshSelectedSession(session, machineId);
           else this.dialogScope.requestResync();
         },
+        (lastSeen: number) => { void this.gapRepair?.onGap(lastSeen); },
       );
       await this.requestSelectedSessionRefresh({ session, machineId, selectionSeq: seq });
       if (!this.isCurrentRefreshTarget({ session, machineId, selectionSeq: seq })) return;
       void this.refreshAvailableThinkingLevels();
       for (const event of socketBuffer) this.applyEvent(event);
-      this.socket.setHandler((event) => { this.applyEvent(event); });
+      this.socket.setHandler((event) => { this.routeLiveEvent(event); });
       this.onSelectedSessionReady?.({ machineId, session });
       if (options?.updateUrl !== false) this.updateUrl();
     } catch (error) {
@@ -1959,6 +1988,18 @@ export class SessionController {
       sessions: this.getState().sessions.map(rename),
       selectedSession: selectedSession === undefined ? undefined : rename(selectedSession),
     });
+  }
+
+  /**
+   * Live frames flow through the gap repair once the join flush is done: the
+   * machine applies them straight through while idle and holds them while a
+   * replay is in flight. The join flush itself bypasses the machine on
+   * purpose - the snapshot watermark already dedups it, and the monitor's
+   * watermark starts at or above the flushed range.
+   */
+  private routeLiveEvent(event: SessionUiEvent): void {
+    const seq: unknown = Reflect.get(event, "seq");
+    this.gapRepair?.onLiveFrame(event, typeof seq === "number" ? seq : undefined);
   }
 
   private applyEvent(event: SessionUiEvent) {
