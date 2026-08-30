@@ -30,17 +30,19 @@ describe("PiWebApp session unread wiring", () => {
 
     setState(app, { selectedSession: background });
     // Selection alone cannot clear unread before the new transcript is ready
-    // and Lit has committed the corresponding chat.
+    // and Lit has committed the corresponding chat. The strip's refetch (D8's
+    // count signal) may fire here — the acknowledge must not.
     expect([...navigationUnreadSessionIds(app)]).toEqual([background.id]);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls.filter(([url]) => requestUrl(url).includes("unread/acknowledge"))).toHaveLength(0);
     exposeSelectedChat(app);
     await vi.waitFor(() => { expect(navigationUnreadSessionIds(app).size).toBe(0); });
     expect(mobileNavigationTab(app)).not.toHaveProperty("badge");
 
-    expect(fetchMock).toHaveBeenCalledOnce();
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://pi.example.test/api/machines/local/sessions/background/unread/acknowledge");
-    const init = fetchMock.mock.calls[0]?.[1];
-    expect(JSON.parse(typeof init?.body === "string" ? init.body : "{}")).toEqual({
+    const ackCalls = fetchMock.mock.calls.filter(([url]) => requestUrl(url).includes("unread/acknowledge"));
+    expect(ackCalls).toHaveLength(1);
+    expect(ackCalls[0]?.[0]).toBe("https://pi.example.test/api/machines/local/sessions/background/unread/acknowledge");
+    const ackInit = ackCalls[0]?.[1];
+    expect(JSON.parse(typeof ackInit?.body === "string" ? ackInit.body : "{}")).toEqual({
       cwd: "/repo",
       catalogId: "catalog-a",
       throughCompletionOrder: 1,
@@ -435,9 +437,15 @@ function deferred<T>(): { promise: Promise<T>; resolve(value: T): void } {
   };
 }
 
+/** The URL a fetch call targeted, safe for Request or string inputs. */
+function requestUrl(input: unknown): string {
+  if (input instanceof Request) return input.url;
+  if (input instanceof URL) return input.href;
+  return typeof input === "string" ? input : "";
+}
+
 function stubJsonFetch(body: unknown) {
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-    void input;
     void init;
     return Promise.resolve(new Response(JSON.stringify(body), {
       status: 200,

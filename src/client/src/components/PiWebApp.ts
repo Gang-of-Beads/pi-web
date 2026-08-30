@@ -37,7 +37,6 @@ import { machineSessionKey } from "../machineKeys";
 import { commandsForSession } from "../commandLedger";
 import { composedPathOf, composerCollapsedForFocus, shouldReleaseComposerCollapse } from "../composerCollapse";
 import { oneReadAtATime, shouldPollSessionActivity } from "../sessionActivityPolling";
-import { hasWaitingDelivery } from "../transcriptReconcile";
 import { isWaitingForUser } from "../sessionWaiting";
 import { sessionCleanupRequestKey } from "../sessionCleanupUi";
 import { selectedNotificationView } from "../sessionNotifications";
@@ -217,16 +216,8 @@ const PI_WEB_STATUS_REFRESH_MS = 15 * 60 * 1000;
  * for as long as the tab is in front.
  *
  * Surface backed up: the activity dock's subagent run, background task and
- * tool run lists - pending their removal by 4.2 once the run/task lifecycle
- * is revisioned and repaired end to end.
- */
-const SUBAGENT_REFRESH_MS = 4000;
 /** Reopen within this window serves the list the last open just fetched. */
 const QUICK_SWITCHER_REFRESH_MS = 30_000;
-/** Slow cadence for re-reading the disk while a send still waits. */
-const DELIVERY_RECONCILE_MS = 10_000;
-// Surface backed up: prompt delivery status. Removed by 4.1 once delivery
-// rides sequenced frames with repair.
 /** How much of a session's own history to offer the composer's picker. */
 const PROMPT_HISTORY_PROP_LIMIT = 50;
 /**
@@ -389,8 +380,7 @@ export class PiWebApp extends LitElement {
   private piWebStatusTimer: number | undefined;
   private piWebStatusDeferredTimer: number | undefined;
   private workspaceDeletionPollTimer: number | undefined;
-  private subagentPollTimer: number | undefined;
-  private deliveryReconcileArmedAt = 0;
+  private subagentRefreshArmedFor: string | undefined;
   private livenessTimer: number | undefined;
   private refreshingWorkspaceDeletionRuns = false;
   private readonly handledWorkspaceDeletionRunIds = new Set<string>();
@@ -676,48 +666,24 @@ export class PiWebApp extends LitElement {
    * Fetch-on-select was not enough. The usual way to get a subagent is to ask
    * for one in the session you are already reading, and nothing re-read the
    * list afterwards, so the drawer stayed empty until the reader happened to
-   * switch sessions and come back. Polling stops when the document is hidden
-   * and when no session is selected, so a backgrounded tab costs nothing.
+   * switch sessions and come back. The 4s poll that covered this was removed
+   * by D8: the strip refetches on the count-change signal, on selection, and
+   * on visibility recovery.
    */
-  /**
-   * A dropped push frame leaves a card waiting for a confirmation that already
-   * happened, with a healthy socket and a visible page - so nothing else ever
-   * re-reads. While a card waits, the disk is re-read on a slow cadence; the
-   * first tick only arms the clock so an ordinary push gets its window.
-   */
-  private reconcileWaitingDelivery(): void {
-    if (!hasWaitingDelivery(this.state.messages)) {
-      this.deliveryReconcileArmedAt = 0;
-      return;
-    }
-    const now = Date.now();
-    if (this.deliveryReconcileArmedAt === 0) {
-      this.deliveryReconcileArmedAt = now;
-      return;
-    }
-    if (now - this.deliveryReconcileArmedAt < DELIVERY_RECONCILE_MS) return;
-    this.deliveryReconcileArmedAt = now;
-    void this.sessions.refreshSelectedSession();
-  }
-
   private updateSubagentPolling(): void {
     const shouldPoll = shouldPollSessionActivity({
       hasSelectedSession: this.state.selectedSession !== undefined,
       documentVisible: document.visibilityState === "visible",
     });
-    if (shouldPoll && this.subagentPollTimer === undefined) {
-      // Surface backed up: subagent run, background task and tool run lists
-      // (SUBAGENT_REFRESH_MS above; removal pending 4.2).
-      this.subagentPollTimer = window.setInterval(() => {
-        void this.refreshSubagents();
-        this.reconcileWaitingDelivery();
-      }, SUBAGENT_REFRESH_MS);
+    // D8/4.2: the 4s poll is gone. The strip refetches on the count-change
+    // signal (the daemon's status frames carry it), on selection, and on
+    // visibility recovery — no timer backs it up.
+    if (shouldPoll && this.subagentRefreshArmedFor !== this.state.selectedSession?.id) {
+      this.subagentRefreshArmedFor = this.state.selectedSession?.id;
+      void this.refreshSubagents();
       return;
     }
-    if (!shouldPoll && this.subagentPollTimer !== undefined) {
-      window.clearInterval(this.subagentPollTimer);
-      this.subagentPollTimer = undefined;
-    }
+    if (!shouldPoll) this.subagentRefreshArmedFor = undefined;
   }
 
   /** Open a subagent session listed anywhere in the machine. */
@@ -973,8 +939,6 @@ export class PiWebApp extends LitElement {
     this.clearScheduledPiWebStatusRefresh();
     if (this.workspaceDeletionPollTimer !== undefined) window.clearInterval(this.workspaceDeletionPollTimer);
     this.workspaceDeletionPollTimer = undefined;
-    if (this.subagentPollTimer !== undefined) window.clearInterval(this.subagentPollTimer);
-    this.subagentPollTimer = undefined;
     if (this.livenessTimer !== undefined) window.clearInterval(this.livenessTimer);
     this.livenessTimer = undefined;
     window.removeEventListener("online", this.onBrowserOnline);
