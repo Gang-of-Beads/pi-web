@@ -83,14 +83,18 @@ class SettingsAwarePiSessionManagerGateway implements PiSessionManagerGateway {
 
   async list(cwd: string): Promise<PiSessionListEntry[]> {
     const resolution = this.resolver.resolve(cwd);
-    // Lightweight streaming summaries instead of the SDK's full-transcript
-    // listing: same fields, but message bodies are never parsed once the first
-    // user message is found. The cross-project cleanup listing (listAll) keeps
-    // the SDK path.
-    const sessions = (await this.summaryScanner.scanSessionSummariesInDir(resolution.sessionDir)).map((session) => ({
+    // 3.3's ruling (include): the workspace's list covers its directory TREE —
+    // the store-wide scan reaches sessions recorded in subdirectories of the
+    // workspace, which the single-dir scan never saw.
+    const storeRoot = this.resolver.defaultSessionsRoot();
+    const [ownDirSessions, treeSessions] = await Promise.all([
+      this.summaryScanner.scanSessionSummariesInDir(resolution.sessionDir),
+      scanStoreSessionSummaries(storeRoot, readSessionDirNames, async (dir) => this.summaryScanner.scanSessionSummariesInDir(dir)),
+    ]);
+    const sessions = uniqueSessionsByPath([...ownDirSessions, ...treeSessions].map((session) => ({
       ...session,
       cwd: canonicalizeStoredCwd(session.cwd),
-    }));
+    })));
     return filterSessionsForCwd(sessions, cwd);
   }
 
