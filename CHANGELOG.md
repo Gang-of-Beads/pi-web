@@ -1,5 +1,14 @@
 # @jmfederico/pi-web
 
+## 1.202608.73
+
+### Patch Changes
+
+- 15e8fd7: Fixes from the live verification pass: a failing activity read no longer renders as "Nothing running right now." — the panel says the read failed and retries automatically; an unreadable goals directory now fails the goals read (HTTP 400) instead of answering a successful empty list that claimed "No goals recorded" over goals it could not see; the composer no longer stays collapsed after the dialog it stepped aside for is answered and removed (the loan is called back when its host is gone); the zoom-dialog sync survives a null handle before the editor first renders; and a command accepted while a reply streams now says "accepted — waits for the running reply to finish" in the ledger instead of claiming completion.
+- 12e6020: Lost push frames now repair themselves instead of surfacing as stale state. Every session frame is stamped with a monotonic sequence; the daemon keeps a bounded replay ring, and when the browser sees a gap it holds the live tail, replays exactly the missed range in front of it, and only falls back to a full refresh when the ring cannot serve. A frame that fails validation counts as a gap rather than vanishing. Ask and dialog cards carry the surface revision end to end (previously stamped but stripped by the client's own validators, which disarmed the stuck-card repair), a restarted daemon's fresh counters are detected through the instance identity instead of deafening the surface, and the notification count is pinned to the list it counts. Each remaining client timer names the surface it backs up.
+- Sessions recorded in subdirectories of a workspace now appear in that workspace's session list: the list covers the workspace's directory tree, so a session whose working directory sits below the workspace root is visible and selectable where it was previously invisible. The goals panel's source-root qualifier disambiguates when goals come from more than one root. Operators also get a documented restart story: the installation guide now covers the session daemon's startup ownership claim, the safe restart order (web/API first, then the session daemon), and the environment a second instance needs.
+- 156f2a2: Warnings now file in the session's notification drawer instead of stacking as cards above the transcript. Each warning occurrence becomes exactly one drawer record; dismissing the record of a warning with a server-side off-switch (the Anthropic billing notice) also silences the warning itself. The transcript-top cards, their collapse control and the status-bar warning counter are removed, so warnings can no longer fill the screen or move the layout. Slash and goal-panel commands now leave an immediate receipt row in the transcript (queued → running → ok/failed), and goal panel buttons disable the moment one is pressed.
+
 ## 1.202608.72
 
 ### Patch Changes
