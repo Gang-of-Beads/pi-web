@@ -154,9 +154,12 @@ stop_stack() {
 }
 
 start_stack() {
-  mkdir -p "$DATA_DIR"
+  mkdir -p "$DATA_DIR" "$DATA_DIR/logs"
+  # The daemon has died after READY more than once, and its output lived only
+  # in the tmux pane - killed pane, lost cause. Every run appends to a log so a
+  # crash leaves evidence; the pane stays for interactive watching.
   tmux new-session -d -s "$SESSIOND_TMUX" -c "$REPO_ROOT" \
-    "PI_WEB_DATA_DIR=$DATA_DIR PI_WEB_SESSIOND_SOCKET=$SOCKET node dist/server/sessiond.js"
+    "PI_WEB_DATA_DIR=$DATA_DIR PI_WEB_SESSIOND_SOCKET=$SOCKET node dist/server/sessiond.js 2>&1 | tee -a $DATA_DIR/logs/sessiond.log"
   tmux set-option -t "$SESSIOND_TMUX" remain-on-exit on >/dev/null
   local waited=0
   while [ ! -S "$SOCKET" ]; do
@@ -169,7 +172,7 @@ start_stack() {
     waited=$((waited + 1))
   done
   tmux new-session -d -s "$WEB_TMUX" -c "$REPO_ROOT" \
-    "PI_WEB_DATA_DIR=$DATA_DIR PI_WEB_SESSIOND_SOCKET=$SOCKET PI_WEB_PORT=$PORT node dist/server/index.js"
+    "PI_WEB_DATA_DIR=$DATA_DIR PI_WEB_SESSIOND_SOCKET=$SOCKET PI_WEB_PORT=$PORT node dist/server/index.js 2>&1 | tee -a $DATA_DIR/logs/web.log"
   tmux set-option -t "$WEB_TMUX" remain-on-exit on >/dev/null
 }
 

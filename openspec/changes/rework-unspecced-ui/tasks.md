@@ -1,6 +1,6 @@
 ## 1. Make the verification honest before using it
 
-- [ ] 1.1 Fix the stack-8505 READY check so it fails when the session daemon is not actually serving: READY only after a sessions API call answers 200 through the web process AND a daemon socket round-trip succeeds. Verify: kill the daemon, run the check, see FAIL; start it, see READY - both recorded.
+- [x] 1.1 NOT REPRODUCED as stated, and the honest finding recorded instead: with the daemon killed, both `/api/sessiond/health` and the sessions API answer 502 - the READY check is truthful at the moment it runs. What actually happened twice is the daemon DYING after READY, and its output lived only in the tmux pane, so each crash destroyed its own cause. Fixed the evidence gap: both processes now append to $PI_WEB_DATA_DIR/logs/{sessiond,web}.log (verified: logs exist and receive requests after up). The next daemon death will leave a cause of death. Crash root cause itself remains unknown until it recurs - stated, not papered over.
 - [ ] 1.2 Add a liveness preamble to the browser pass (D1): sessions API 200 + one seeded session opens, else the pass aborts as FAIL(precondition). Verify: run with the daemon stopped and see the abort; run with it up and see the pass proceed.
 
 ## 2. Touch interaction (behaviour 1; revert unit e64ae727)
