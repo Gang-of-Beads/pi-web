@@ -562,6 +562,30 @@ describe("session routes", () => {
     }
   });
 
+  it("logs the stack server-side when a command fails, not just the message", async () => {
+    const logLines: string[] = [];
+    const routeApp = Fastify({ logger: { level: "error", stream: { write: (line: string) => { logLines.push(line); } } } });
+    await routeApp.register(fastifyWebsocket);
+    const eventHub = new SessionEventHub();
+    const routeService = new CapturingRouteSessionService();
+    registerSessionRoutes(routeApp, routeService, eventHub);
+
+    try {
+      routeService.runCommand = () => Promise.reject(new Error("Cannot read properties of undefined (reading 'input')"));
+      const response = await routeApp.inject({ method: "POST", url: "/sessions/session-1/commands/run", payload: { cwd: "/repo", text: "/goal-pause" } });
+
+      expect(response.statusCode).toBe(400);
+      // The client gets the message; the daemon's log must carry the stack, or
+      // the next ui-proxy crash costs another mis-attribution.
+      const logged = logLines.join("\n");
+      expect(logged).toContain("reading 'input'");
+      expect(logged).toContain("at ");
+    } finally {
+      await routeService.dispose();
+      await routeApp.close();
+    }
+  });
+
   it("maps session tree fork service errors to status codes", async () => {
     const routeApp = Fastify({ logger: false });
     await routeApp.register(fastifyWebsocket);
@@ -1615,7 +1639,7 @@ class CapturingRouteSessionService implements SessionRouteService {
   }
 
   shell(): never { throw unusedRouteMethod("shell"); }
-  runCommand(): never { throw unusedRouteMethod("runCommand"); }
+  runCommand(): Promise<{ type: "done" }> { throw unusedRouteMethod("runCommand"); }
   respondToCommand(): never { throw unusedRouteMethod("respondToCommand"); }
   navigateTree(lookup: SessionRouteRef, request: SessionTreeNavigateRequest): Promise<SessionTreeNavigateResult> {
     this.navigateTreeCalls.push({ lookup, request });

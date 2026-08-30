@@ -502,6 +502,9 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
       const body = optionalRecord(request.body);
       return await sessions.runCommand(sessionRefFromBody(request.params.sessionId, body), requireString(body, "text"));
     } catch (error) {
+      // The client reads the message; the daemon's log keeps the stack. A
+      // swallowed stack once cost a mis-attribution of a whole crash class.
+      app.log.error({ err: error }, "Command failed");
       return reply.code(mutationErrorStatus(error)).send({ error: errorMessage(error) });
     }
   });
