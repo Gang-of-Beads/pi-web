@@ -122,7 +122,7 @@ export class VoiceController {
   }
 
   private async startLive(config: PiWebSpeechToTextConfig): Promise<void> {
-    const streaming = resolveSpeechStreaming(config.streaming);
+    const streaming = resolveSpeechStreaming(config.streaming, config.language);
     const create = this.deps.createLiveDictation;
     if (streaming.kind !== "socket" || create === undefined) {
       await this.startListening(config);

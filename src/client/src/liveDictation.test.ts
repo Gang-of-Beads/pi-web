@@ -26,13 +26,34 @@ describe("starting a dictation", () => {
     expect(order).toEqual(["token", "socket"]);
   });
 
-  it("carries the token in the url, because a browser cannot set a socket header", async () => {
+  it("carries the token in the url, percent-encoded, because a browser cannot set a socket header", () => {
+    // Azure rejects the handshake with HTTP 400 when the Bearer scheme's space
+    // is encoded as `+` (URLSearchParams' doing): the owner's "The dictation
+    // connection failed." reproduced live on 8505 with exactly that 400. The
+    // space must travel as %20.
     let opened = "";
     const socket = new FakeSocket();
-    await new LiveDictation(deps({ openSocket: (url) => { opened = url; return socket.asWebSocket(); } }))
-      .start("wss://example/stt");
+    return new LiveDictation(deps({ openSocket: (url) => { opened = url; return socket.asWebSocket(); } }))
+      .start("wss://example/stt")
+      .then(() => {
+        expect(opened).toContain("Authorization=Bearer%20token-1");
+        expect(opened).not.toContain("Bearer+");
+      });
+  });
 
-    expect(opened).toContain("Authorization=Bearer+token-1");
+  it("joins the token with & when the base url already carries a query", () => {
+    // The configured language rides along in the base url (Azure's live
+    // endpoint rejects the handshake without it: "Invalid CID or language").
+    // A blind `?Authorization` would make the language value swallow the
+    // auth — the second reproduced 400.
+    let opened = "";
+    const socket = new FakeSocket();
+    return new LiveDictation(deps({ openSocket: (url) => { opened = url; return socket.asWebSocket(); } }))
+      .start("wss://example/stt?language=zh-CN")
+      .then(() => {
+        expect(opened).toContain("?language=zh-CN&Authorization=Bearer%20token-1");
+        expect(opened.match(/\?/g)).toHaveLength(1);
+      });
   });
 
   it("does not open a socket when no token could be had", async () => {

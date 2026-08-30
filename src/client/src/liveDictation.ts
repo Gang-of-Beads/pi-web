@@ -72,13 +72,17 @@ export class LiveDictation {
     }
 
     this.requestId = this.deps.newRequestId();
-    const url = new URL(socketUrl);
     // The token travels in the query string because a browser cannot set
-    // headers on a WebSocket handshake.
-    url.searchParams.set("Authorization", `Bearer ${credential.token}`);
-    url.searchParams.set("X-ConnectionId", this.requestId);
+    // headers on a WebSocket handshake. The Bearer scheme's space MUST be
+    // percent-encoded: URLSearchParams serialises a space as `+`, and Azure
+    // rejects that handshake with HTTP 400 (the reproduced "The dictation
+    // connection failed."). The base url may already carry a query (the
+    // configured language rides along), so join with the right separator.
+    const params = new URLSearchParams({ "X-ConnectionId": this.requestId });
+    const separator = socketUrl.includes("?") ? "&" : "?";
+    const handshakeUrl = `${socketUrl}${separator}Authorization=${encodeURIComponent(`Bearer ${credential.token}`)}&${params.toString()}`;
 
-    const socket = this.deps.openSocket(url.toString());
+    const socket = this.deps.openSocket(handshakeUrl);
     this.socket = socket;
     socket.onmessage = (event: MessageEvent<unknown>) => { this.receive(event.data); };
     socket.onerror = () => { this.deps.onError("The dictation connection failed."); };

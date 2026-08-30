@@ -110,6 +110,7 @@ export type SpeechStreamingPlan =
 
 export function resolveSpeechStreaming(
   config: PiWebSpeechStreamingConfig | undefined,
+  languageHint?: string,
 ): SpeechStreamingPlan {
   if (config === undefined) return { kind: "unavailable", reason: "Live transcription is not configured." };
   if (config.protocol === "browser") return { kind: "browser" };
@@ -124,10 +125,17 @@ export function resolveSpeechStreaming(
       reason: "Streaming transcription needs a token endpoint so the account key stays on the server.",
     };
   }
+  // Azure's live endpoint rejects the handshake with "Invalid CID or
+  // language" (HTTP 400) when the configured language is absent, so it rides
+  // along here — the same value the whole-clip route posts.
+  const language = languageHint?.trim();
+  const handshakeUrl = language === undefined || language === ""
+    ? url
+    : `${url}${url.includes("?") ? "&" : "?"}language=${encodeURIComponent(language)}`;
   return {
     kind: "socket",
     protocol: config.protocol,
-    url,
+    url: handshakeUrl,
     tokenEndpoint,
     deltaMode: SPEECH_DELTA_MODES[config.protocol],
   };
