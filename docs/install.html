@@ -98,6 +98,7 @@
             <a href="#reverse-proxy-prefix">Reverse proxy prefixes</a>
             <a href="#federated-machines">Federated machines</a>
             <a href="#manage-services">Manage services</a>
+            <a href="#session-daemon">Session daemon ownership</a>
             <a href="#configure">Configure</a>
             <a href="#uninstall">Uninstall</a>
           </aside>
@@ -336,6 +337,44 @@ server {
 <span class="comment"># From a checkout, install the split development services:</span>
 <span class="prompt">$</span> pi-web install --dev</code></pre>
               </div>
+            </section>
+
+            <section id="session-daemon">
+              <h2>Session daemon ownership and restarts</h2>
+              <p>
+                The session daemon is the long-lived owner of PI WEB's session runtime: it hosts every Pi session, and
+                everything an agent spawns — bash tools, terminals, subsessions — inherits the daemon's environment. At
+                startup it claims the instance's durable state: the data directory (<code>~/.pi-web</code> by default, or
+                <code>PI_WEB_DATA_DIR</code>) and the socket inside it (<code>~/.pi-web/sessiond.sock</code> by default,
+                or <code>PI_WEB_SESSIOND_SOCKET</code>). A second daemon started against the same data directory finds the
+                live owner and fails at startup with an error naming what it needs. The web/API process of the same
+                instance shares the data directory but never claims it, so the two processes of one instance coexist by
+                design.
+              </p>
+              <p>
+                Restarts are permitted. Restart the web/API process first, then the session daemon: the web/API surface
+                autoreloads, while the daemon owns running sessions and terminals, so restart it only when server-backed
+                changes require it. Service managers and watch-mode restarts briefly overlap the outgoing daemon; the
+                startup ownership claim waits out a short grace window for the previous daemon to release the state, so a
+                normal service restart does not trip the ownership error.
+              </p>
+              <div class="code-card">
+                <div class="copy-row">
+                  <strong>Running a second instance</strong>
+                  <button class="copy-button" data-copy="#second-instance-env">Copy</button>
+                </div>
+                <pre id="second-instance-env"><code><span class="comment"># Every process of the second instance needs a distinct identity:</span>
+<span class="prompt">$</span> PI_WEB_DATA_DIR=~/.pi-web-2 \
+  PI_WEB_SESSIOND_SOCKET=~/.pi-web-2/sessiond.sock \
+  PI_WEB_PORT=8502 \
+  pi-web</code></pre>
+              </div>
+              <p>
+                A second instance started with the first instance's inherited values fails loudly at startup because the
+                live instance owns the state. Agent processes spawned inside PI WEB deliberately inherit the daemon's
+                <code>PI_WEB_*</code> wiring and are marked with <code>PI_WEB_SESSION=1</code>; this is what makes a
+                nested accidental instance fail fast instead of corrupting state.
+              </p>
             </section>
 
             <section id="configure">

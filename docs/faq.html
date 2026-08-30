@@ -104,6 +104,7 @@
             <a href="#plugins">Can I use local plugins?</a>
             <a href="#worktree-list-out-of-date">A worktree I created is missing</a>
             <a href="#sessions-stop">Sessions stop unexpectedly</a>
+            <a href="#sessiond-owned">Session daemon says the state is owned</a>
             <a href="#session-row-marks">What do the marks on session rows mean?</a>
             <a href="#model-response-terminated">Model responses fail with 'terminated'</a>
             <a href="#logs">Where are logs?</a>
@@ -349,6 +350,20 @@
               </div>
             </article>
 
+            <article id="sessiond-owned" class="faq-item">
+              <h2>The session daemon exits at startup saying the state is owned</h2>
+              <p>
+                Another session daemon is already running against the same data directory. PI WEB's session daemon claims
+                the instance's durable state (<code>PI_WEB_DATA_DIR</code>, default <code>~/.pi-web</code>) at startup, and
+                a second daemon resolving the same state fails with an actionable error instead of corrupting it.
+              </p>
+              <p>
+                Stop the other instance, or start this one with a distinct identity: a separate
+                <code>PI_WEB_DATA_DIR</code>, <code>PI_WEB_SESSIOND_SOCKET</code> (or
+                <code>PI_WEB_SESSIOND_PORT</code>/<code>PI_WEB_SESSIOND_HOST</code>), and <code>PI_WEB_PORT</code>. See
+                <a href="install#session-daemon">Session daemon ownership and restarts</a>.
+              </p>
+            </article>
             <article id="session-row-marks" class="faq-item">
               <h2>What do the marks on session rows mean?</h2>
               <p>

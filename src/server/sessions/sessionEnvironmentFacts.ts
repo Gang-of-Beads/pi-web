@@ -11,9 +11,12 @@
  *
  * The block tells the agent the nesting exists and which precautions follow,
  * so it learns the rules before discovering them by breaking its own session:
- * use a distinct data dir, socket, and ports for another instance; never
- * restart the session daemon hosting the session; and restart the web/API
- * process before the session daemon when restarts are needed.
+ * use a distinct data dir, socket, and ports for another instance, and restart
+ * the web/API process before the session daemon when restarts are needed.
+ * Restarts themselves are permitted (the owner's 2.2 ruling removed the old
+ * "never restart" plea; the startup ownership claim enforces single-instance
+ * state instead) — operator semantics are documented in `docs/install.html`
+ * ("Session daemon ownership and restarts"), not duplicated into the prompt.
  */
 
 import { piWebDataDir } from "../../config.js";
