@@ -1302,6 +1302,22 @@ export interface SessionStatus {
    */
   pendingDialogs?: PendingExtensionDialog[];
   /**
+   * Monotonic mutation revision of the dialog surface, incremented on every
+   * dialog open and close. Card frames carry the same counter, so a client
+   * that sees a skipped revision knows a frame was lost and repairs from this
+   * authoritative read instead of keeping a stale card. Absent from a daemon
+   * that predates the field; clients fail open without it.
+   */
+  pendingDialogsRevision?: number;
+  /**
+   * Identity of the daemon process that produced this status, the id the
+   * notifications catalog publishes as `daemonInstanceId`. A dialog revision
+   * only orders frames within one daemon instance, so a client comparing them
+   * must know when the instance - and the revision space - was replaced.
+   * Absent from a daemon that predates the field.
+   */
+  daemonInstanceId?: string;
+  /**
    * Work this session started that outlives its turn: working subsessions,
    * running subagent-tool runs, running background shell tasks. Absent when
    * there is none.
@@ -1512,8 +1528,8 @@ type SessionUiEventBody =
   | { type: "session.error"; message: string }
   | { type: "ask.opened"; ask: PendingAskUser }
   | { type: "ask.closed"; askId: string; reason: AskUserCloseReason }
-  | { type: "dialog.opened"; dialog: PendingExtensionDialog }
-  | { type: "dialog.closed"; dialogId: string; reason: ExtensionDialogCloseReason; answer?: ExtensionDialogAnswer }
+  | { type: "dialog.opened"; dialog: PendingExtensionDialog; revision?: number; daemonInstanceId?: string }
+  | { type: "dialog.closed"; dialogId: string; reason: ExtensionDialogCloseReason; answer?: ExtensionDialogAnswer; revision?: number; daemonInstanceId?: string }
   | { type: "session.name"; sessionId: string; name?: string }
   | { type: "session.created"; session: SessionInfo }
   | { type: "pi.event"; eventType: string };

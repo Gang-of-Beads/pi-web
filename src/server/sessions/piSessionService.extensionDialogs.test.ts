@@ -78,7 +78,9 @@ describe("PiSessionService extension dialog UI context", () => {
       askedAt: "2026-02-01T10:00:00.000Z",
       runScoped: false,
     }]);
-    expect(dialogEvents(events)).toEqual([
+    // Frames carry the surface revision and the daemon instance that stamped
+    // them; the dedicated revision test below asserts those values exactly.
+    expect(dialogEvents(events)).toMatchObject([
       { sessionId: ACTIVE_SESSION_ID, event: { type: "dialog.opened", dialog: openDialog(events) } },
     ]);
     await expect(settledValue(parked)).resolves.toEqual({ settled: false });
@@ -144,6 +146,34 @@ describe("PiSessionService extension dialog UI context", () => {
 });
 
 describe("PiSessionService.answerDialog", () => {
+  it("stamps dialog frames and the status with one monotonic per-surface revision", async () => {
+    // Loss detection needs an order on the dialog surface itself: a client that
+    // saw revision 1 and then revision 3 knows a close was lost and can repair
+    // from the authoritative status instead of keeping a stale card.
+    const { service, events, fake } = dialogService();
+    const ui = await boundUiContext(service, fake);
+    const parked = ui.confirm("Proceed?", "Really?");
+
+    const opened = dialogEvents(events).at(-1);
+    if (opened?.event.type !== "dialog.opened") throw new Error("no dialog.opened event published");
+    expect(opened.event.revision).toBe(1);
+    expect(typeof opened.event.daemonInstanceId).toBe("string");
+
+    const during = await service.status(sessionRef(ACTIVE_SESSION_ID));
+    expect(during.pendingDialogsRevision).toBe(1);
+    expect(during.daemonInstanceId).toBe(opened.event.daemonInstanceId);
+
+    await service.answerDialog(sessionRef(ACTIVE_SESSION_ID), "dialog-1", true);
+    await parked;
+
+    const closed = dialogEvents(events).at(-1);
+    if (closed?.event.type !== "dialog.closed") throw new Error("no dialog.closed event published");
+    expect(closed.event.revision).toBe(2);
+
+    const after = await service.status(sessionRef(ACTIVE_SESSION_ID));
+    expect(after.pendingDialogsRevision).toBe(2);
+  });
+
   it("resolves the extension's parked wait with the user's answer", async () => {
     const { service, store, events, fake } = dialogService();
     const ui = await boundUiContext(service, fake);
@@ -162,7 +192,7 @@ describe("PiSessionService.answerDialog", () => {
     });
     expect(response.sessionStatus.pendingDialogs).toBeUndefined();
     expect(store.pendingDialogs(ACTIVE_SESSION_ID)).toEqual([]);
-    expect(dialogEvents(events).map(({ event }) => event)).toEqual([
+    expect(dialogEvents(events).map(({ event }) => event)).toMatchObject([
       { type: "dialog.opened", dialog: openDialog(events) },
       { type: "dialog.closed", dialogId: "dialog-1", reason: "answered", answer: true },
     ]);
@@ -308,7 +338,7 @@ describe("PiSessionService extension dialog timeout", () => {
 
     await expect(parked).resolves.toBe(false);
     expect(store.pendingDialogs(ACTIVE_SESSION_ID)).toEqual([]);
-    expect(dialogEvents(events).map(({ event }) => event)).toEqual([
+    expect(dialogEvents(events).map(({ event }) => event)).toMatchObject([
       { type: "dialog.opened", dialog: openDialog(events) },
       { type: "dialog.closed", dialogId: "dialog-1", reason: "timeout" },
     ]);
@@ -359,7 +389,7 @@ describe("PiSessionService extension dialog signal", () => {
 
     await expect(parked).resolves.toBeUndefined();
     expect(store.pendingDialogs(ACTIVE_SESSION_ID)).toEqual([]);
-    expect(dialogEvents(events).map(({ event }) => event)).toEqual([
+    expect(dialogEvents(events).map(({ event }) => event)).toMatchObject([
       { type: "dialog.opened", dialog: openDialog(events) },
       { type: "dialog.closed", dialogId: "dialog-1", reason: "cancelled" },
     ]);
@@ -438,7 +468,7 @@ describe("PiSessionService extension dialog run end and teardown", () => {
 
     await expect(parked).resolves.toBe(false);
     expect(store.pendingDialogs(ACTIVE_SESSION_ID)).toEqual([]);
-    expect(dialogEvents(events).map(({ event }) => event)).toEqual([
+    expect(dialogEvents(events).map(({ event }) => event)).toMatchObject([
       { type: "dialog.opened", dialog: openDialog(events) },
       { type: "dialog.closed", dialogId: "dialog-1", reason: "session-ended" },
     ]);
@@ -459,7 +489,7 @@ describe("PiSessionService extension dialog abort request", () => {
 
     await expect(consent).resolves.toBe(false);
     expect(store.pendingDialogs(ACTIVE_SESSION_ID)).toEqual([]);
-    expect(dialogEvents(events).map(({ event }) => event)).toEqual([
+    expect(dialogEvents(events).map(({ event }) => event)).toMatchObject([
       { type: "dialog.opened", dialog: openDialog(events) },
       { type: "dialog.closed", dialogId: "dialog-1", reason: "aborted" },
     ]);
@@ -506,7 +536,7 @@ describe("PiSessionService extension dialog abort request", () => {
 
     await expect(consent).resolves.toBe(false);
     expect(store.pendingDialogs(ACTIVE_SESSION_ID)).toEqual([]);
-    expect(dialogEvents(events).map(({ event }) => event)).toEqual([
+    expect(dialogEvents(events).map(({ event }) => event)).toMatchObject([
       { type: "dialog.opened", dialog: openDialog(events) },
       { type: "dialog.closed", dialogId: "dialog-1", reason: "aborted" },
     ]);
@@ -523,7 +553,7 @@ describe("PiSessionService extension dialog abort request", () => {
 
     await expect(settledValue(idle)).resolves.toEqual({ settled: false });
     expect(store.pendingDialogs(ACTIVE_SESSION_ID)).toEqual([expect.objectContaining({ dialogId: "dialog-1" })]);
-    expect(dialogEvents(events).map(({ event }) => event)).toEqual([
+    expect(dialogEvents(events).map(({ event }) => event)).toMatchObject([
       { type: "dialog.opened", dialog: openDialog(events) },
     ]);
     await service.dispose();
@@ -539,7 +569,7 @@ describe("PiSessionService extension dialog abort request", () => {
     fake.emit({ type: "agent_end" });
 
     await expect(consent).resolves.toBe(false);
-    expect(dialogEvents(events).map(({ event }) => event)).toEqual([
+    expect(dialogEvents(events).map(({ event }) => event)).toMatchObject([
       { type: "dialog.opened", dialog: openDialog(events) },
       { type: "dialog.closed", dialogId: "dialog-1", reason: "aborted" },
     ]);

@@ -1,5 +1,6 @@
 import { api as defaultApi, isNotFoundError, type AskUserCloseResponse, type AskUserSubmission, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingAskUser, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionBackgroundTaskInfo, SessionSubagentRunInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Workspace } from "../api";
 import { errorNoticePatch } from "../errorNotice";
+import { RevisionScope } from "../revisionScope";
 import { describeError } from "../notice";
 import { ancestorsForSession } from "../sessionAncestors";
 import { refreshMayReplaceSelection } from "./sessionRefreshScope";
@@ -152,6 +153,17 @@ export class SessionController {
   // in the committed history + seeded partial and must be dropped, so every event
   // applies exactly once. Reset whenever the selection changes.
   private streamWatermark: { sessionId: string; seq: number } | undefined;
+  /**
+   * Loss detection and repair for the selected session's dialog surface. A
+   * dialog frame carries the surface's monotonic revision; a skipped one means
+   * a frame was lost in transit, and applying the survivors blind is what kept
+   * a stale card beside the replacement until an unrelated refetch - the
+   * owner's stuck-card report. The scope resyncs through the authoritative
+   * status read instead. Recreated per selection: a new session's surface
+   * starts its revision space over, so the old scope's counter must not judge
+   * it.
+   */
+  private dialogScope = new RevisionScope({ resync: () => { void this.refreshSelectedSession(); } });
   private pendingTranscriptEvents: SessionUiEvent[] = [];
   private pendingStatusBySession = new Map<string, SessionStatus>();
   private pendingActivityBySession = new Map<string, SessionActivity>();
@@ -254,6 +266,10 @@ export class SessionController {
     const seq = ++this.selectionSeq;
     this.socket.close();
     this.streamWatermark = undefined;
+    // A new selection is a new dialog surface with its own revision space; the
+    // previous scope's counter must not judge it, and its freshness must not
+    // vouch for it.
+    this.dialogScope = new RevisionScope({ resync: () => { void this.refreshSelectedSession(); } });
     this.clearPendingUpdates();
     const machineId = selectedMachineId(this.getState());
     this.notifications?.prepareSelectedSession(session, machineId);
@@ -1747,6 +1763,11 @@ export class SessionController {
       ...(isSelected ? { pendingDialogs: openDialogsAfterDismissals(status.pendingDialogs, state.dismissedDialogIds) } : {}),
       ...(messages === state.messages ? {} : { messages }),
     });
+    // A status that carries the dialog surface's revision is a full read of
+    // that surface: frames up to it are reflected here, so the gate may trust
+    // its counter again. Statuses without the field say nothing about the
+    // surface and must not touch the gate (older daemon fails open).
+    if (isSelected && status.pendingDialogsRevision !== undefined) this.dialogScope.markFresh(status.pendingDialogsRevision);
     if (becameIdle) this.onSelectedSessionIdle?.();
   }
 
@@ -1950,11 +1971,11 @@ export class SessionController {
       return;
     }
     if (event.type === "dialog.opened") {
-      this.applyOpenedDialog(event.dialog);
+      this.dialogScope.observe(event, () => { this.applyOpenedDialog(event.dialog); });
       return;
     }
     if (event.type === "dialog.closed") {
-      this.applyClosedDialog(event.dialogId, event.reason, event.answer);
+      this.dialogScope.observe(event, () => { this.applyClosedDialog(event.dialogId, event.reason, event.answer); });
       return;
     }
     const transcript = this.transcripts.applyLiveEvent(this.getState().messages, event);

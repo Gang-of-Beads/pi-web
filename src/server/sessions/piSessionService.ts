@@ -1183,6 +1183,13 @@ export class PiSessionService implements SessionRouteService {
   private readonly now: () => Date;
   private readonly notificationStore: SessionNotificationStore;
   private readonly notificationGenerationBySession = new WeakMap<PiAgentSession, SessionNotificationGeneration>();
+  /**
+   * Mutation counter of each session's dialog surface, incremented on every
+   * dialog open and close. Frames carry the value they produced, so a client
+   * that saw revision N and then N+2 knows a frame was lost and repairs from
+   * the authoritative status instead of keeping a stale card.
+   */
+  private readonly dialogRevisionBySession = new Map<string, number>();
   private readonly unreadStore: SessionUnreadStore;
   private readonly pendingAskStore: PendingAskStore;
   private readonly pendingExtensionDialogStore: PendingExtensionDialogStore;
@@ -1804,7 +1811,8 @@ export class PiSessionService implements SessionRouteService {
       ...(timeoutMs === undefined ? {} : { timeoutMs }),
       runScoped: session.isStreaming,
     });
-    this.events.publish(session.sessionId, { type: "dialog.opened", dialog });
+    const revision = this.nextDialogRevision(session.sessionId);
+    this.events.publish(session.sessionId, { type: "dialog.opened", dialog, revision, daemonInstanceId: this.notificationStore.daemonInstanceId });
     this.publishStatus(session);
     return this.dialogWaiters.park(dialog, {
       ...(timeoutMs === undefined ? {} : { timeoutMs }),
@@ -1867,7 +1875,21 @@ export class PiSessionService implements SessionRouteService {
       dialogId: outcome.dialogId,
       reason: outcome.reason,
       ...(outcome.answer === undefined ? {} : { answer: outcome.answer }),
+      revision: this.nextDialogRevision(sessionId),
+      daemonInstanceId: this.notificationStore.daemonInstanceId,
     });
+  }
+
+  /** The surface's next mutation revision; called once per dialog open/close. */
+  private nextDialogRevision(sessionId: string): number {
+    const next = (this.dialogRevisionBySession.get(sessionId) ?? 0) + 1;
+    this.dialogRevisionBySession.set(sessionId, next);
+    return next;
+  }
+
+  /** The surface's current revision without mutating it; a status read is not a mutation. */
+  private currentDialogRevision(sessionId: string): number {
+    return this.dialogRevisionBySession.get(sessionId) ?? 0;
   }
 
   /**
@@ -4474,6 +4496,12 @@ export class PiSessionService implements SessionRouteService {
       ...(warnings.length === 0 ? {} : { warnings }),
       ...(pendingAsk === undefined ? {} : { pendingAsk }),
       ...(pendingDialogs.length === 0 ? {} : { pendingDialogs }),
+      // The dialog surface's revision and the process that stamped it: a client
+      // comparing frame revisions must know when the revision space was
+      // replaced (daemon restart) and must be able to detect a lost frame
+      // against the authoritative open list.
+      pendingDialogsRevision: this.currentDialogRevision(session.sessionId),
+      daemonInstanceId: this.notificationStore.daemonInstanceId,
       ...(backgroundRunCount === 0 ? {} : { backgroundRunCount }),
     };
   }

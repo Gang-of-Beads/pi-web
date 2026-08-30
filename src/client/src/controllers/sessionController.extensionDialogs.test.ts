@@ -85,6 +85,57 @@ describe("SessionController extension dialog state", () => {
     expect(harness.state().closedDialogs).toEqual([]);
   });
 
+  it("repairs a lost dialog close from the authoritative status instead of keeping the stale card", async () => {
+    // The daemon opened A (revision 1), closed it (revision 2, lost in transit),
+    // then opened B (revision 3). Applying frames blind keeps the stale A card
+    // beside B until an unrelated refetch - the owner's stuck-card report. The
+    // revision gate must detect the skipped 2 and resync once.
+    const repaired = { ...status(oldSession.id), pendingDialogs: [dialog("dialog-b")], pendingDialogsRevision: 3 };
+    const statusReads = deferred<SessionStatus>();
+    let statusCalls = 0;
+    const api: typeof defaultApi = {
+      ...selectableApi(status(oldSession.id)),
+      status: () => {
+        statusCalls += 1;
+        // The first read is the selection's own join and must settle, or the
+        // selection await never returns; the repair reads it gates are the ones
+        // this test controls.
+        if (statusCalls === 1) return Promise.resolve(status(oldSession.id));
+        return statusReads.promise;
+      },
+    };
+    const socket = new EmitSocket();
+    let state = selectedState({ selectedSession: undefined });
+    const controller = new SessionController(
+      () => state,
+      (patch) => { state = { ...state, ...patch }; },
+      () => undefined,
+      undefined,
+      { api, socket },
+    );
+    await controller.selectSession(oldSession, { updateUrl: false });
+
+    socket.emit({ type: "dialog.opened", dialog: dialog("dialog-a"), revision: 1 });
+    socket.emit({ type: "dialog.opened", dialog: dialog("dialog-b"), revision: 3 });
+
+    // Repair is deferred on purpose, so that a second gap seen in the same turn
+    // joins the read the first one started instead of adding another. Let the
+    // deferred chain run - scheduling, the resync callback, and the refresh it
+    // starts - before counting.
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
+
+    // Call 1 was the selection's own join; exactly one repair read covers both
+    // the skipped revision and any further gap while it runs.
+    expect(statusCalls).toBe(2);
+    statusReads.resolve(repaired);
+    await statusReads.promise;
+    // The repair reads messages, status and the stream snapshot together; the
+    // status promise settling is not the read finishing.
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
+
+    expect(state.pendingDialogs.map((pending) => pending.dialogId)).toEqual(["dialog-b"]);
+  });
+
   it("opens and closes cards from live dialog events without superseding other dialogs", async () => {
     const harness = await liveSession();
 
