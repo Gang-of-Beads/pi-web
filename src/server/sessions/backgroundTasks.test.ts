@@ -126,6 +126,32 @@ describe("background tasks", () => {
       .not.toContain("b96da5ec8");
   });
 
+  it("renders a record it cannot read as unknown instead of dropping it", async () => {
+    const cwd = await fixture();
+    const dir = join(cwd, ".pi", "tasks", "session-494694-494694");
+    // Two ways a body can be unreadable: truncated mid-write or crashed before
+    // it ever parsed (this file), and valid JSON that is not an object (below).
+    // The filename is the only identity anyone has for either.
+    await writeFile(join(dir, "broken77.json"), "{ \"id\": \"broken77\", \"na");
+    await writeFile(join(dir, "primitive88.json"), "42");
+    const path = join(cwd, "session.jsonl");
+    await writeFile(path, [
+      JSON.stringify({ role: "tool", content: "Output: .pi/tasks/session-494694-494694/broken77.output" }),
+      JSON.stringify({ role: "tool", content: "Output: .pi/tasks/session-494694-494694/primitive88.output" }),
+    ].join("\n"));
+
+    const tasks = await listBackgroundTasks(cwd, path, Date.now(), fakeProbe);
+    const broken = tasks.find((task) => task.id === "broken77");
+    // Absence would read as "this session never started anything"; unknown says
+    // a record exists and this reader cannot tell what it is doing.
+    expect(broken?.status).toBe("unknown");
+    // With no readable name field, the filename-derived id is the honest label.
+    expect(broken?.name).toBe("broken77");
+    expect(tasks.find((task) => task.id === "primitive88")?.status).toBe("unknown");
+    // An unreadable record claims no process: it must not count as running.
+    expect(tasks.find((task) => task.id === "broken77")?.startedAt).toBeUndefined();
+  });
+
   it("reads status, duration and exit code from the record", async () => {
     const cwd = await fixture();
     const tasks = await listBackgroundTasks(cwd, await transcript(cwd), Date.now(), fakeProbe);
