@@ -609,6 +609,7 @@ export function parseGoalRecordSummary(value: unknown): GoalRecordSummary {
     tasks: arrayOf(parseGoalTaskSummary)(record["tasks"]),
     completedTaskCount: requireNumber(record, "completedTaskCount"),
     totalTaskCount: requireNumber(record, "totalTaskCount"),
+    ...optionalField("sourceRoot", optionalString(record, "sourceRoot")),
   };
 }
 

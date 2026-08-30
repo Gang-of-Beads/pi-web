@@ -19,6 +19,9 @@ export interface WorkspaceExplorerRouteOptions {
   config?: Pick<PiWebConfigService, "read">;
 }
 
+/** Matches the convention the session-ref surfaces already apply to client-supplied cwds. */
+const SESSION_CWD_MAX_LENGTH = 32 * 1024;
+
 export function registerWorkspaceExplorerRoutes(app: FastifyInstance, projects: ProjectService, workspaces: WorkspaceCatalog, prefix = "/api", options: WorkspaceExplorerRouteOptions = {}): void {
   registerWorkspaceFileContentParsers(app);
 
@@ -33,11 +36,14 @@ export function registerWorkspaceExplorerRoutes(app: FastifyInstance, projects: 
 
   // Goals are read straight from the workspace's `.pi/goals/` directory rather
   // than through a session: the records outlive any one session, and several
-  // sessions of the same workspace share the directory.
-  app.get<{ Params: { projectId: string; workspaceId: string } }>(`${prefix}/projects/:projectId/workspaces/:workspaceId/goals`, async (request, reply) => {
+  // sessions of the same workspace share the directory. The focused session's
+  // cwd rides along because the extension records beside it, and that cwd can
+  // diverge from the workspace root - a divergent read covers both.
+  app.get<{ Params: { projectId: string; workspaceId: string }; Querystring: { sessionCwd?: string } }>(`${prefix}/projects/:projectId/workspaces/:workspaceId/goals`, async (request, reply) => {
     try {
       const context = await resolveWorkspaceContext(projects, workspaces, request.params.projectId, request.params.workspaceId);
-      return await readWorkspaceGoals(context.root);
+      const rawSessionCwd = request.query.sessionCwd?.slice(0, SESSION_CWD_MAX_LENGTH);
+      return await readWorkspaceGoals(context.root, rawSessionCwd === undefined ? {} : { sessionCwd: rawSessionCwd });
     } catch (error) {
       return sendWorkspaceRequestError(reply, error, 400);
     }

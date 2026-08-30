@@ -568,6 +568,12 @@ export interface GoalRecordSummary {
   /** Counts include nested subtasks, so a tree renders one honest ratio. */
   completedTaskCount: number;
   totalTaskCount: number;
+  /**
+   * Root this record was read from, set only when a read covered more than one
+   * root (the workspace root plus a focused session's divergent cwd). Absent in
+   * the single-root case so the common payload is unchanged.
+   */
+  sourceRoot?: string;
 }
 
 /** Outcome of archiving a goal from the browser; see docs/pi-goal-integration.md. */

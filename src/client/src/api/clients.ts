@@ -228,7 +228,14 @@ export const workspacesApi = {
     parseGoalArchiveResponse,
     { method: "POST", body: JSON.stringify({}) },
   ),
-  workspaceGoals: (projectId: string, workspaceId: string, machineId = "local") => request(`${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/goals`, parseWorkspaceGoalsResponse, { cache: "no-store" }),
+  workspaceGoals: (projectId: string, workspaceId: string, machineId = "local", sessionCwd?: string) => {
+    // The focused session's cwd rides along so the daemon can also read the
+    // root the goal extension records beside when it diverges from the
+    // workspace. Encoded as a query value; the daemon compares it to the
+    // workspace root and unions only when they differ.
+    const sessionQuery = sessionCwd === undefined || sessionCwd === "" ? "" : `?sessionCwd=${encodeURIComponent(sessionCwd)}`;
+    return request(`${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/goals${sessionQuery}`, parseWorkspaceGoalsResponse, { cache: "no-store" });
+  },
   workspaceTree: (projectId: string, workspaceId: string, path = "", machineId = "local") => request(`${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/tree?path=${encodeURIComponent(path)}`, parseFileTreeResponse),
   workspaceFile: (projectId: string, workspaceId: string, path: string, machineId = "local") => request(`${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/file?path=${encodeURIComponent(path)}`, parseFileContentResponse),
   writeWorkspaceFile: (projectId: string, workspaceId: string, path: string, content: string | Uint8Array, options?: WriteWorkspaceFileOptions, machineId = "local") => {

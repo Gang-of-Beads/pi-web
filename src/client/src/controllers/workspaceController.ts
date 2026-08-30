@@ -119,7 +119,11 @@ export class WorkspaceController {
     this.setState({ workspaceGoalsLoad: { state: "loading", key, data: retained } });
     let load: PanelLoad<GoalRecordSummary[]>;
     try {
-      load = { state: "loaded", key, data: (await this.api.workspaceGoals(workspace.projectId, workspace.id, machineId)).goals };
+      // The focused session's cwd is the root the goal extension records
+      // beside; when it diverges from the workspace root, only a read that
+      // covers both can see what the extension actually wrote.
+      const sessionCwd = this.getState().selectedSession?.cwd;
+      load = { state: "loaded", key, data: (await this.api.workspaceGoals(workspace.projectId, workspace.id, machineId, sessionCwd)).goals };
     } catch {
       // A failed read is not evidence that the goals are gone; blanking the
       // panel made "offline" and "no goals" look identical and dropped the

@@ -24,8 +24,16 @@ const MAX_GOAL_FILES = 200;
  * or half-written file as absent rather than as an error: a transient parse
  * failure must not blank the panel for every other goal. A missing directory
  * is simply "no goals", which is the common case.
+ *
+ * The extension records under the focused session's cwd, which can differ from
+ * the workspace root - a session started in a sibling checkout writes beside
+ * itself, and a read of the workspace alone reports no goals while one sits on
+ * disk. When the caller supplies a divergent session cwd, both roots are read
+ * and unioned: every record then carries its `sourceRoot`, and a goal present
+ * in both is listed once with the workspace copy, which is the root this
+ * response primarily answers for.
  */
-export async function readWorkspaceGoals(workspacePath: string, now = () => new Date()): Promise<WorkspaceGoalsResponse> {
+export async function readWorkspaceGoals(workspacePath: string, options: { sessionCwd?: string } = {}, now = () => new Date()): Promise<WorkspaceGoalsResponse> {
   const directory = join(workspacePath, GOALS_DIRECTORY);
   const response = (goals: GoalRecordSummary[]): WorkspaceGoalsResponse => ({
     goals,
@@ -33,11 +41,27 @@ export async function readWorkspaceGoals(workspacePath: string, now = () => new 
     generatedAt: now().toISOString(),
   });
 
+  const sessionCwd = options.sessionCwd;
+  const sessionRoot = sessionCwd !== undefined && sessionCwd !== "" && sessionCwd !== workspacePath ? sessionCwd : undefined;
+  const workspaceGoals = await readGoalsFromRoot(workspacePath);
+  if (sessionRoot === undefined) return response(workspaceGoals);
+
+  const sessionGoals = await readGoalsFromRoot(sessionRoot);
+  const byId = new Map<string, GoalRecordSummary>();
+  // The workspace copy wins an overlap: this response answers for the workspace
+  // first, and the session root is the guest here.
+  for (const goal of sessionGoals) byId.set(goal.id, { ...goal, sourceRoot: sessionRoot });
+  for (const goal of workspaceGoals) byId.set(goal.id, { ...goal, sourceRoot: workspacePath });
+  return response(sortGoalSummaries([...byId.values()]));
+}
+
+async function readGoalsFromRoot(root: string): Promise<GoalRecordSummary[]> {
+  const directory = join(root, GOALS_DIRECTORY);
   let entries;
   try {
     entries = await readdir(directory, { withFileTypes: true });
   } catch {
-    return response([]);
+    return [];
   }
 
   const files = entries
@@ -64,6 +88,5 @@ export async function readWorkspaceGoals(workspacePath: string, now = () => new 
     const existing = byId.get(goal.id);
     if (existing === undefined || (goal.updatedAt ?? "") > (existing.updatedAt ?? "")) byId.set(goal.id, goal);
   }
-
-  return response(sortGoalSummaries([...byId.values()]));
+  return [...byId.values()];
 }
