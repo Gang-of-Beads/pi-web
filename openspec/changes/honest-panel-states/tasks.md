@@ -12,8 +12,8 @@
 
 ## 3. Goal reads cover every root a goal may live in
 
-- [ ] 3.1 Server: when the focused session's cwd differs from `workspace.path`, read `.pi/goals/` under both; each record carries `sourceRoot` (additive field in `shared/apiTypes.ts`); a goal present in both roots is listed once with the workspace root as source. Verify: unit test in `goalStore`/route handler covering divergent roots, both-root overlap, and the single-root cases; `npm run typecheck` clean.
-- [ ] 3.2 Client: the goals panel appends the source root as a quiet qualifier only when more than one root contributed. Verify: GoalPanel unit test with a single-root response (no qualifier rendered) and a two-root response (qualifier rendered, goal still actionable only per existing key rules).
+- [x] 3.1 Server: when the focused session's cwd differs from `workspace.path`, read `.pi/goals/` under both; each record carries `sourceRoot` (additive field in `shared/apiTypes.ts`); a goal present in both roots is listed once with the workspace root as source. Done in 573956bb (finished a run that died mid-task, diff was coherent): `src/server/goals/goalStore.test.ts` covers session-only root, both-root overlap (workspace copy wins), and single-root unchanged; `npx vitest run src/server/goals/goalStore.test.ts` 3 passed, typecheck 0 errors, lint clean.
+- [x] 3.2 Client: the goals panel appends the source root as a quiet qualifier only when more than one root contributed. Done in this commit: red test first (`quietly names the source root only when two roots contributed rows` failed before, 20 passed after, in `GoalPanel.test.ts`); the qualifier renders only when ≥2 distinct sourceRoot values are loaded, so a single-root panel renders exactly as before.
 - [ ] 3.3 Live evidence on 8505 at 393×850: seed a goal beside a session whose cwd is not the workspace root, open the goals panel, and screenshot the goal listed with its source qualifier - the owner's original screenshot scenario must now show the active goal, not "No goals recorded for this workspace."
 
 ## 4. Activity and notifications: unknown and failed are not empty

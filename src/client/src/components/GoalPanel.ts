@@ -87,6 +87,18 @@ export class GoalPanel extends LitElement {
     return this.goalsLoad.state === "loaded" ? this.goalsLoad.data : [];
   }
 
+  /**
+   * The root a goal was read from, shown only when two roots contributed.
+   * A union read labels every record, but with one distinct root the label
+   * says nothing the panel did not already answer for, and the everyday
+   * single-root shape must render exactly as before.
+   */
+  private sourceRootLabel(goal: GoalRecordSummary): string | undefined {
+    const roots = new Set(this.rows.map((row) => row.sourceRoot).filter((root) => root !== undefined));
+    if (roots.size < 2) return undefined;
+    return goal.sourceRoot;
+  }
+
   private get isReading(): boolean {
     return this.goalsLoad.state === "loading" || this.goalsLoad.state === "unloaded";
   }
@@ -131,6 +143,7 @@ export class GoalPanel extends LitElement {
     const tokens = formatGoalTokens(goal.tokensUsed);
     const current = findCurrentTask(goal);
     const statusClass = isGoalFinished(goal) ? "done" : isGoalBlocked(goal) ? "blocked" : "active";
+    const sourceRoot = this.sourceRootLabel(goal);
     return html`
       <article class=${`goal ${statusClass}`}>
         <button
@@ -144,6 +157,7 @@ export class GoalPanel extends LitElement {
           <span class="goal-objective">${goal.objective}</span>
           <span class=${`goal-status ${statusClass}`}>${goalStatusLabel(goal.status)}</span>
           <span class="goal-ratio">${goalProgressLabel(goal)}</span>
+          ${sourceRoot === undefined ? nothing : html`<span class="goal-root" title=${sourceRoot}>${sourceRoot}</span>`}
         </button>
         <div
           class="goal-bar"
@@ -284,6 +298,8 @@ export class GoalPanel extends LitElement {
     .goal-status.blocked { color: var(--pi-warning); }
     .goal-status.done { color: var(--pi-success); }
     .goal-ratio { flex: 0 0 auto; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-variant-numeric: tabular-nums; }
+    /* A quiet qualifier, not a badge: it only appears when two roots contributed, and says where this row came from. */
+    .goal-root { flex: 0 0 auto; max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-family: var(--pi-font-mono, monospace); }
     .goal-bar { height: 3px; background: var(--pi-border-muted); }
     /* Scaled rather than resized: width animation runs on the layout thread,
        transform runs on the compositor. Origin pinned left so the bar grows

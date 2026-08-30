@@ -207,6 +207,19 @@ describe("goal lifecycle controls", () => {
     expect(resume.disabled).toBe(true);
     expect(resume.title).toMatch(/session/iu);
   });
+
+  it("quietly names the source root only when two roots contributed rows", async () => {
+    const workspaceCopy = goal({ id: "g1", sourceRoot: "/repo" });
+    const sessionCopy = goal({ id: "g2", objective: "Written beside a sibling checkout", sourceRoot: "/repo.checkout" });
+    const multiRoot = await mount([workspaceCopy, sessionCopy]);
+    const roots = [...multiRoot.querySelectorAll(".goal-root")].map((el) => el.textContent.trim());
+    expect(roots).toEqual(["/repo", "/repo.checkout"]);
+
+    // One root is the everyday shape: no qualifier at all, so the panel looks
+    // exactly as it did before the union read existed.
+    const singleRoot = await mount([goal({ id: "g1" })]);
+    expect(singleRoot.querySelectorAll(".goal-root")).toHaveLength(0);
+  });
 });
 
 function commandLabels(root: ShadowRoot): string[] {
