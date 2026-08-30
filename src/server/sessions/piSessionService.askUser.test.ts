@@ -353,4 +353,20 @@ describe("PiSessionService.cancelAsk", () => {
     expect(fake.calls.sendCustomMessage).toEqual([]);
     await service.dispose();
   });
+
+  /**
+   * D7: acceptance is a sequenced fact. The frame tells the client the daemon
+   * owns this prompt (sending → queued-server) and rides the per-session ring,
+   * so a lost HTTP response or a lost frame is repaired by replay.
+   */
+  it("publishes prompt.accepted with the sender's clientMessageId", async () => {
+    const { service, events } = askService({ withActiveSession: true });
+
+    await service.prompt(sessionRef(ACTIVE_SESSION_ID), "hello", undefined, undefined, { clientMessageId: "cmid-d7" });
+
+    const accepted = events.sessionEvents.filter(({ event }) => event.type === "prompt.accepted");
+    expect(accepted).toHaveLength(1);
+    expect(accepted[0]?.event).toMatchObject({ type: "prompt.accepted", clientMessageId: "cmid-d7" });
+    await service.dispose();
+  });
 });
