@@ -1,12 +1,19 @@
 import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
-import { SessionEventHub, type RealtimeSocket } from "./sessionEventHub.js";
+import { SessionEventHub, replayDecision, type RealtimeSocket } from "./sessionEventHub.js";
 
 class FakeSocket extends EventEmitter implements RealtimeSocket {
   readonly OPEN = 1;
   readyState = this.OPEN;
   send = vi.fn();
   terminate = vi.fn();
+}
+
+/** One field off a serialized frame, typed so eslint's any rules stay quiet. */
+function frameField(frame: string, key: string): unknown {
+  const parsed: unknown = JSON.parse(frame);
+  if (typeof parsed !== "object" || parsed === null) return undefined;
+  return Reflect.get(parsed, key);
 }
 
 describe("SessionEventHub keepalive", () => {
@@ -52,6 +59,66 @@ describe("SessionEventHub keepalive", () => {
     hub.stopKeepalive();
 
     expect(socket.send).not.toHaveBeenCalled();
+  });
+});
+
+describe("replayDecision", () => {
+  // The states a replay request can be in, enumerated: each gets one pin, so
+  // adding a state without an answer fails here instead of in production.
+  it("classifies every request state", () => {
+    expect(replayDecision(undefined, 0)).toBe("caught-up");
+    expect(replayDecision(undefined, 4)).toBe("unknown-session");
+    expect(replayDecision([1, 2, 3], 5)).toBe("unknown-session");
+    expect(replayDecision([1, 2, 3], 3)).toBe("caught-up");
+    expect(replayDecision([3, 4, 5], 1)).toBe("out-of-reach");
+    expect(replayDecision([2, 3, 4], 1)).toBe("replayable");
+  });
+});
+
+describe("SessionEventHub replay", () => {
+  /**
+   * The client counts gaps against the seq stamp; section 3 turns a counted
+   * gap into a repair. The hub keeps a bounded ring of recent per-session
+   * frames so the daemon can hand back exactly what was missed instead of
+   * making the browser resync the whole transcript for one dropped frame.
+   */
+  it("replays exactly the missed range with their stamps", () => {
+    const hub = new SessionEventHub();
+    hub.publish("s1", { type: "assistant.delta", text: "a" });
+    hub.publish("s1", { type: "assistant.delta", text: "b" });
+    hub.publish("s1", { type: "assistant.delta", text: "c" });
+
+    const missed = hub.replaySince("s1", 1);
+
+    expect(missed.verdict).toBe("replay");
+    expect(missed.frames.map((frame) => frameField(frame, "text"))).toEqual(["b", "c"]);
+    expect(missed.frames.map((frame) => frameField(frame, "seq"))).toEqual([2, 3]);
+  });
+
+  it("keeps frames published while nobody listened replayable", () => {
+    const hub = new SessionEventHub();
+    hub.publish("s1", { type: "assistant.delta", text: "unobserved" });
+    hub.publish("s1", { type: "assistant.delta", text: "seen" });
+
+    const missed = hub.replaySince("s1", 0);
+
+    expect(missed.verdict).toBe("replay");
+    expect(missed.frames.map((frame) => frameField(frame, "text"))).toEqual(["unobserved", "seen"]);
+  });
+
+  it("falls back to resync when the ring no longer reaches the requested seq", () => {
+    const hub = new SessionEventHub({ replayBufferLimit: 3 });
+    for (const text of ["1", "2", "3", "4", "5"]) hub.publish("s1", { type: "assistant.delta", text });
+
+    expect(hub.replaySince("s1", 1).verdict).toBe("resync");
+    // The buffer still reaches a recent seq.
+    expect(hub.replaySince("s1", 3).verdict).toBe("replay");
+  });
+
+  it("answers an unknown session or a fresh client with an empty replay", () => {
+    const hub = new SessionEventHub();
+    expect(hub.replaySince("ghost", 0)).toEqual({ verdict: "replay", frames: [] });
+    expect(hub.replaySince("ghost", 4).verdict).toBe("resync");
   });
 });
 

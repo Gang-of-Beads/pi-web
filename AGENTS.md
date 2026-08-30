@@ -87,6 +87,7 @@ A goal belongs to a project. One session focuses it at a time; focusing elsewher
 ### Operational rules that cost us time
 
 - Never use heredocs or `cat >` in agent shell commands; four runs hung on an unterminated heredoc. Use file-writing tools.
+- Prefer explicit state machines over if/else ladders. When a branchy decision appears twice or carries product meaning, name its states and transitions in one pure classifier (see `revisionVerdict`, `replayDecision`) and keep the callers as dumb executors; enumerate every state in tests so an unanswered state fails there instead of in production.
 - Commit each coherent piece the moment it is green. Two runs were killed by a 30-minute wall with uncommitted work.
 - Push extension/fork work immediately. The package updater hard-resets those repos to upstream; unpushed commits were destroyed twice.
 - Capture exit codes explicitly. A trailing `echo EXIT=$?` masked a killed release chain, and piping a verify into `tail` masked a failure.
