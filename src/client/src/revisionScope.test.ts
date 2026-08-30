@@ -55,6 +55,40 @@ describe("RevisionScope", () => {
     expect(scope.revision).toBe(5);
   });
 
+  /**
+   * A revision only orders frames within one daemon instance. A restarted
+   * daemon counts from 1 again; without noticing the identity change, the
+   * scope's high-water mark from the old instance silently ignores every new
+   * frame until the session is reselected - the surface looks alive and is
+   * deaf. An instance change resets the space and repairs once.
+   */
+  it("resets the revision space when the daemon instance changes", async () => {
+    const resync = vi.fn((): Promise<void> => Promise.resolve());
+    const scope = new RevisionScope({ resync });
+    scope.markFresh(5, "daemon-a");
+    expect(scope.observe({ revision: 6, daemonInstanceId: "daemon-a" }, () => "applied")).toBe("applied");
+
+    // Restarted daemon: counter starts over. The frame must not be ignored.
+    expect(scope.observe({ revision: 1, daemonInstanceId: "daemon-b" }, () => "applied")).toBeUndefined();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(resync).toHaveBeenCalledTimes(1);
+
+    // The repair read reports the new instance; its frames then flow strictly.
+    scope.markFresh(1, "daemon-b");
+    expect(scope.observe({ revision: 2, daemonInstanceId: "daemon-b" }, () => "applied")).toBe("applied");
+    // And the old instance's stragglers no longer order against the new space.
+    expect(scope.observe({ revision: 7, daemonInstanceId: "daemon-a" }, () => "applied")).toBeUndefined();
+  });
+
+  it("keeps ordering within one instance when frames carry no identity", () => {
+    const scope = new RevisionScope({ resync: () => undefined });
+    scope.markFresh(5, "daemon-a");
+    // Unstamped identity keeps the current space - old daemons and stream
+    // vocabulary continue exactly as before.
+    expect(scope.observe({ revision: 6 }, () => "applied")).toBe("applied");
+  });
+
   it("fires the resync callback exactly once for a skipped revision", async () => {
     const resync = vi.fn((): Promise<void> => Promise.resolve());
     const scope = new RevisionScope({ resync });

@@ -49,6 +49,8 @@ export interface RevisionScopeOptions {
 export class RevisionScope {
   private appliedRevision = 0;
   private fresh = false;
+  /** The daemon instance whose revision space this scope currently orders. */
+  private daemonId: string | undefined;
   private resyncScheduled = false;
   private resyncRunning = false;
 
@@ -63,7 +65,18 @@ export class RevisionScope {
   }
 
   /** A full read completed; the surface is current as of `revision`. */
-  markFresh(revision: number): void {
+  markFresh(revision: number, daemonInstanceId?: string): void {
+    // A revision only orders frames within one daemon instance. A full read
+    // reporting a new instance replaces the revision space outright - the old
+    // high-water mark would silently deafen the surface to the restarted
+    // daemon's low stamps until reselection.
+    if (daemonInstanceId !== undefined && this.daemonId !== undefined && daemonInstanceId !== this.daemonId) {
+      this.daemonId = daemonInstanceId;
+      this.appliedRevision = revision;
+      this.fresh = true;
+      return;
+    }
+    if (daemonInstanceId !== undefined) this.daemonId = daemonInstanceId;
     this.appliedRevision = Math.max(this.appliedRevision, revision);
     this.fresh = true;
   }
@@ -82,7 +95,17 @@ export class RevisionScope {
    * and its return value is passed through, so callers keep their own ordering
    * and state handling; `ignore` and `resync` leave the surface untouched.
    */
-  observe<T>(incoming: { revision?: number; resync?: boolean }, applyFrame: () => T): T | undefined {
+  observe<T>(incoming: { revision?: number; resync?: boolean; daemonInstanceId?: string }, applyFrame: () => T): T | undefined {
+    if (incoming.daemonInstanceId !== undefined) {
+      // First identity sighting adopts the space; a different identity means
+      // the daemon restarted and this scope's ordering is void - repair from
+      // the authoritative read, which reports the new instance to markFresh.
+      if (this.daemonId === undefined) this.daemonId = incoming.daemonInstanceId;
+      else if (incoming.daemonInstanceId !== this.daemonId) {
+        this.scheduleResync();
+        return undefined;
+      }
+    }
     const verdict = revisionVerdict({ revision: this.appliedRevision, fresh: this.fresh }, incoming);
     if (verdict === "apply") {
       if (incoming.revision !== undefined) this.appliedRevision = Math.max(this.appliedRevision, incoming.revision);

@@ -228,7 +228,7 @@ describe("notification socket guards", () => {
       runScoped: true,
     };
 
-    expect(parseSessionSocketEvent({ type: "ask.opened", ask, revision: 4 })).toMatchObject({ revision: 4 });
+    expect(parseSessionSocketEvent({ type: "ask.opened", ask, revision: 4, daemonInstanceId: "daemon-a" })).toMatchObject({ revision: 4, daemonInstanceId: "daemon-a" });
     expect(parseSessionSocketEvent({ type: "ask.closed", askId: "ask-1", reason: "superseded", revision: 5 })).toMatchObject({ revision: 5 });
     expect(parseSessionSocketEvent({ type: "dialog.opened", dialog, revision: 6 })).toMatchObject({ revision: 6 });
     expect(parseSessionSocketEvent({ type: "dialog.closed", dialogId: "dialog-1", reason: "timeout", revision: 7 })).toMatchObject({ revision: 7 });

@@ -1801,7 +1801,7 @@ export class SessionController {
     // that surface: frames up to it are reflected here, so the gate may trust
     // its counter again. Statuses without the field say nothing about the
     // surface and must not touch the gate (older daemon fails open).
-    if (isSelected && status.pendingDialogsRevision !== undefined) this.dialogScope.markFresh(status.pendingDialogsRevision);
+    if (isSelected && status.pendingDialogsRevision !== undefined) this.dialogScope.markFresh(status.pendingDialogsRevision, status.daemonInstanceId);
     if (becameIdle) this.onSelectedSessionIdle?.();
   }
 
