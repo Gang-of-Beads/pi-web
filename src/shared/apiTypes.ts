@@ -950,9 +950,19 @@ export interface AskUserQuestionRecord {
  * model-facing follow-up message and the browser's read-only record, so both
  * report the same answered and unanswered questions.
  */
+/**
+ * Who closed an unanswered ask, when it was not the reader answering it. A
+ * bare "cancelled" is indistinguishable from a bug - the owner watched his
+ * open form close itself and asked what broke; nothing had, his own message
+ * had voided it by design, and the card never said so.
+ */
+export type AskUserCloseCause = "user-message";
+
 export interface AskUserOutcome {
   askId: string;
   reason: AskUserCloseReason;
+  /** Present only on closes the reader did not perform through the card. */
+  cause?: AskUserCloseCause;
   askedAt: string;
   closedAt: string;
   questions: AskUserQuestionRecord[];

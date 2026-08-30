@@ -395,9 +395,13 @@ export function parseAskUserOutcome(value: unknown): AskUserOutcome {
   if (unansweredIds.length !== unanswered.length || unansweredIds.some((id, index) => id !== unanswered[index])) {
     throw new Error("Ask outcome unanswered ids mismatch");
   }
+  // An unknown cause parses as absent rather than failing the whole outcome:
+  // the label degrades to the bare "Cancelled", which is the pre-cause truth.
+  const cause = record["cause"] === "user-message" ? "user-message" as const : undefined;
   return {
     askId: requireBoundedNonEmptyString(record, "askId", ASK_USER_ID_MAX_LENGTH),
     reason: parseAskUserCloseReason(record["reason"]),
+    ...(cause === undefined ? {} : { cause }),
     askedAt: requireNonEmptyString(record, "askedAt"),
     closedAt: requireNonEmptyString(record, "closedAt"),
     questions,

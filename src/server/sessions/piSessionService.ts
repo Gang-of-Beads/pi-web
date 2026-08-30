@@ -1720,7 +1720,7 @@ export class PiSessionService implements SessionRouteService {
    * itself triggers rather than becoming a turn of its own.
    */
   private async voidOpenAskForUserMessage(session: PiAgentSession): Promise<void> {
-    const outcome = this.pendingAskStore.cancelOpen(session.sessionId);
+    const outcome = this.pendingAskStore.cancelOpen(session.sessionId, "user-message");
     if (outcome === undefined) return;
     this.publishAskClosed(session.sessionId, outcome);
     await this.runSessionEntryMutation(session, "void the open questions", () => session.sendCustomMessage(

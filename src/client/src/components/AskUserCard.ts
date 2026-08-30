@@ -235,11 +235,16 @@ export class AskUserCard extends LitElement {
   }
 
   private renderRecord(outcome: AskUserOutcome): TemplateResult {
+    // A close the reader did not perform must say who performed it: a bare
+    // "Cancelled" on a form the reader never touched reads as a bug, and the
+    // owner reported it as one.
     const recordLabel = outcome.reason === "submitted"
       ? "Answers sent"
       : outcome.reason === "superseded"
         ? "Superseded"
-        : "Cancelled";
+        : outcome.cause === "user-message"
+          ? "Replaced by your message"
+          : "Cancelled";
     return html`
       <article class="card record-card" aria-labelledby="ask-user-record-heading">
         <header class="card-header">
@@ -249,7 +254,9 @@ export class AskUserCard extends LitElement {
         <p class="record-summary">
           ${outcome.reason === "superseded"
             ? "A newer question set replaced this one. Draft answers shown below were not sent to the model."
-            : outcome.summary}
+            : outcome.cause === "user-message"
+              ? `You sent a chat message instead of answering, so the form closed. ${outcome.summary}`
+              : outcome.summary}
         </p>
         <div class="record-questions">
           ${outcome.questions.map((record, index) => this.renderQuestionRecord(outcome, record, index))}

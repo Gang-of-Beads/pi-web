@@ -6,6 +6,7 @@ import {
   ASK_USER_QUESTION_LIMIT,
   ASK_USER_TEXT_MAX_LENGTH,
   type AskUserAnswer,
+  type AskUserCloseCause,
   type AskUserCloseReason,
   type AskUserOutcome,
   type AskUserQuestion,
@@ -132,8 +133,10 @@ export class PendingAskStore {
    * an ordinary chat message instead of answering the form. Returns the outcome,
    * or `undefined` when the session has no open ask.
    */
-  cancelOpen(sessionId: string): AskUserOutcome | undefined {
-    return this.close(requireSessionId(sessionId), "cancelled", this.timestamp(), new Map());
+  cancelOpen(sessionId: string, cause?: AskUserCloseCause): AskUserOutcome | undefined {
+    const outcome = this.close(requireSessionId(sessionId), "cancelled", this.timestamp(), new Map());
+    if (outcome === undefined || cause === undefined) return outcome;
+    return { ...outcome, cause };
   }
 
   /** Drop the open ask of a session that is going away, without reporting an outcome. */

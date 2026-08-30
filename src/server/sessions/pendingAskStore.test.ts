@@ -273,11 +273,26 @@ describe("PendingAskStore close transitions", () => {
     const store = testStore();
     openTwoQuestions(store);
 
-    const outcome = store.cancelOpen(sessionId);
+    const outcome = store.cancelOpen(sessionId, "user-message");
 
     expect(outcome).toMatchObject({ askId: "ask-1", reason: "cancelled", answeredCount: 0, unansweredIds: ["q1", "q2"] });
     expect(store.pendingAsk(sessionId)).toBeUndefined();
-    expect(store.cancelOpen(sessionId)).toBeUndefined();
+    expect(store.cancelOpen(sessionId, "user-message")).toBeUndefined();
+  });
+
+  /**
+   * "Cancelled" with no cause is indistinguishable from a bug: the owner
+   * watched his unanswered form close itself and asked what broke. Nothing
+   * had - his own message voided it, by design - but the card never said so.
+   * The outcome carries who closed it, so the card can.
+   */
+  it("records that the user's own message closed the form, not an unexplained cancel", () => {
+    const store = testStore();
+    openTwoQuestions(store);
+
+    const voided = store.cancelOpen(sessionId, "user-message");
+
+    expect(voided?.cause).toBe("user-message");
   });
 
   it("forgets the open ask of a session that goes away without reporting an outcome", () => {
