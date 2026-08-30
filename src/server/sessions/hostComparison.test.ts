@@ -147,6 +147,10 @@ describe("host-vs-native comparison (recording mode)", () => {
     expect(recovered, "the prompt delta must be exactly the seam's sections — the seam explains 100% of the difference").toBe(nativePrompt);
 
     // --- Tool diff ---------------------------------------------------------
+    // 3.2: the comparison is no longer purely a recording — the construction
+    // tool surface is now ASSERTED identical (0 added / 0 removed / 0
+    // rewritten), so a host tool change fails the suite and names the
+    // differing tool.
     const nativeTools = recordTools(native);
     const seamTools = recordTools(seamOnly);
     const webTools = recordTools(web);
@@ -166,6 +170,17 @@ describe("host-vs-native comparison (recording mode)", () => {
         return s !== undefined && (s.description !== tool.description || s.promptGuidelines !== tool.promptGuidelines);
       }),
     };
+    const describeToolDelta = (delta: { added: ToolRecording[]; removed: ToolRecording[]; rewritten: ToolRecording[] }): string => {
+      const named: string[] = [];
+      for (const tool of delta.added) named.push(`added ${tool.name}`);
+      for (const tool of delta.removed) named.push(`removed ${tool.name}`);
+      for (const tool of delta.rewritten) named.push(`rewritten ${tool.name}`);
+      return named.join(", ") || "none";
+    };
+    expect(
+      `${describeToolDelta(seamToolDelta)} | ${describeToolDelta(webToolDelta)}`,
+      "the construction tool surface must stay identical under every host construction — any deviation names itself here",
+    ).toBe("none | none");
 
     // --- Message sequence at construction ----------------------------------
     const nativeMessages = JSON.stringify(native.messages);
