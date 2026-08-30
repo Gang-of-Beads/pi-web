@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterAll, describe, expect, it } from "vitest";
@@ -33,6 +33,31 @@ async function writeGoal(root: string, id: string, overrides: Partial<GoalRecord
 }
 
 describe("readWorkspaceGoals across roots", () => {
+  /**
+   * Caught live: with the goals directory chmod 000, the read returned a
+   * SUCCESSFUL empty list and the browser rendered "No goals recorded" over a
+   * workspace that had a Blocked goal on disk. A directory that exists but
+   * cannot be read is a failed read - only a MISSING directory is legitimately
+   * empty.
+   */
+  it("treats an unreadable goals directory as a failed read, not an empty one", async () => {
+    const root = await scratch();
+    await writeGoal(root, "g1");
+    const goalsDir = join(root, ".pi", "goals");
+    await chmod(goalsDir, 0o000);
+    try {
+      await expect(readWorkspaceGoals(root)).rejects.toThrow();
+    } finally {
+      await chmod(goalsDir, 0o755);
+    }
+  });
+
+  it("keeps a missing directory legitimately empty", async () => {
+    const root = await scratch();
+    const response = await readWorkspaceGoals(root);
+    expect(response.goals).toEqual([]);
+  });
+
   // The extension records under the focused session's cwd; this reader used to
   // cover only the workspace root, so a goal written beside a session whose cwd
   // diverged was invisible and the panel claimed none existed.

@@ -60,8 +60,14 @@ async function readGoalsFromRoot(root: string): Promise<GoalRecordSummary[]> {
   let entries;
   try {
     entries = await readdir(directory, { withFileTypes: true });
-  } catch {
-    return [];
+  } catch (error) {
+    // A missing directory is legitimately empty (no goals recorded yet). Any
+    // other failure - unreadable permissions, an I/O error - is a FAILED read:
+    // swallowing it here would surface a successful empty list, and the
+    // browser would claim "No goals recorded" over goals it cannot see.
+    const code: unknown = typeof error === "object" && error !== null ? Reflect.get(error, "code") : undefined;
+    if (code === "ENOENT") return [];
+    throw error;
   }
 
   const files = entries
