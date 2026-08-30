@@ -610,3 +610,52 @@ describe("rows that move when the list re-sorts", () => {
     expect(activityEntryKey({ kind: "runs", index: 0, status: "done", row: runRow })).toBe("runs:run-1");
   });
 });
+
+describe("the activity panel's empty claims", () => {
+  /** An inbox so the drawer exists: the claim prints beside notifications, which
+   * is exactly where the owner photographed it - "No subagent or background
+   * activity from this chat yet" over a chat whose activity was never read. */
+  async function mountWithoutActivityData(): Promise<ChatView> {
+    const view = new ChatView();
+    view.sessionId = "parent-1";
+    view.notificationInbox = {
+      machineId: "local", sessionId: "parent-1", cwd: "/repo", daemonInstanceId: "daemon-a",
+      notifications: [{ id: "daemon-a:1", message: "hello", truncated: false, severity: "info", receivedAt: "2026-08-29T10:00:00.000Z", order: 1 }],
+      retainedCount: 1, discardedCount: 0,
+      dismissThrough: { order: 0, overflowWatermark: 0 }, pendingDismissedIds: new Set(), dismissAllPending: false, announcements: [],
+    };
+    document.body.append(view);
+    await view.updateComplete;
+    return view;
+  }
+
+  it("does not claim absence for a chat whose activity was never read", async () => {
+    const view = await mountWithoutActivityData();
+    view.renderRoot.querySelector<HTMLButtonElement>("#drawer-tab-activity")?.click();
+    await view.updateComplete;
+    expect(view.renderRoot.textContent).not.toContain("No subagent or background activity from this chat yet");
+  });
+
+  it("does not call a running row 'nothing running' just because it cannot be interpreted", async () => {
+    // The owner's photograph: two live rows with Unknown chips under a sentence
+    // claiming nothing was running. The sentence describes the filtered list;
+    // rows the reader can see contradict it.
+    const view = new ChatView();
+    view.sessionId = "parent-1";
+    view.subagents = [{ sessionId: "child-x", cwd: "/repo", status: "unknown" }];
+    document.body.append(view);
+    await view.updateComplete;
+    expect(view.renderRoot.textContent).not.toContain("Nothing running right now");
+  });
+
+  it("does not render one session's rows under another session", async () => {
+    const view = new ChatView();
+    view.sessionId = "parent-1";
+    view.backgroundTasks = [{ id: "task-a", name: "A's task", command: "x", status: "running", startedAt: "2026-08-29T10:00:00.000Z", bytesWritten: 0, hasOutput: false }];
+    document.body.append(view);
+    await view.updateComplete;
+    view.sessionId = "parent-2";
+    await view.updateComplete;
+    expect(view.renderRoot.textContent).not.toContain("A's task");
+  });
+});
