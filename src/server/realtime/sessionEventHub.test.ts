@@ -115,6 +115,23 @@ describe("SessionEventHub replay", () => {
     expect(hub.replaySince("s1", 3).verdict).toBe("replay");
   });
 
+  it("drops delivery when armed but keeps the frame replayable", () => {
+    const hub = new SessionEventHub();
+    const sessionSocket = new FakeSocket();
+    hub.add("s1", sessionSocket);
+
+    hub.publish("s1", { type: "assistant.delta", text: "arrives" });
+    hub.debugDropNext("s1", 1);
+    hub.publish("s1", { type: "assistant.delta", text: "dropped" });
+    hub.publish("s1", { type: "assistant.delta", text: "arrives-too" });
+
+    const sent = sessionSocket.send.mock.calls.map((call) => frameField(String(call[0]), "text"));
+    expect(sent).toEqual(["arrives", "arrives-too"]);
+    const missed = hub.replaySince("s1", 1);
+    expect(missed.verdict).toBe("replay");
+    expect(missed.frames.map((frame) => frameField(frame, "text"))).toEqual(["dropped", "arrives-too"]);
+  });
+
   it("answers an unknown session or a fresh client with an empty replay", () => {
     const hub = new SessionEventHub();
     expect(hub.replaySince("ghost", 0)).toEqual({ verdict: "replay", frames: [] });

@@ -351,6 +351,21 @@ function registerSessionDaemonRoutes({ eventHub, machineStatus, statusAttributio
   registerMachineStatusRoutes(app, machineStatus);
   registerAuthRoutes(app, auth);
   registerSessionRoutes(app, sessions, eventHub);
+  // Debug-only frame-drop arming for the e2e legs that need REAL loss. The
+  // route exists only when the operator launched the daemon with
+  // PI_WEB_DEBUG_FRAME_DROP=1; production daemons have no such endpoint.
+  if (daemonEnvironment["PI_WEB_DEBUG_FRAME_DROP"] === "1") {
+    app.post("/debug/frame-drop", async (request, reply) => {
+      const body: unknown = request.body;
+      const sessionId: unknown = typeof body === "object" && body !== null ? Reflect.get(body, "sessionId") : undefined;
+      const count: unknown = typeof body === "object" && body !== null ? Reflect.get(body, "count") : undefined;
+      if (typeof sessionId !== "string" || sessionId === "" || typeof count !== "number" || !Number.isSafeInteger(count) || count < 1) {
+        return reply.code(400).send({ error: "sessionId and integer count are required" });
+      }
+      eventHub.debugDropNext(sessionId, count);
+      return { armed: count };
+    });
+  }
   registerTerminalRoutes(app, terminals);
   registerWorkspaceCatalogRoutes(app, {
     projects,

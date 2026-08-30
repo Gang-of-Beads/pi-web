@@ -29,6 +29,14 @@ export class SessionEventHub {
   /** Recent per-session frames, oldest first, for replaying a counted gap. */
   private readonly replayBySession = new Map<string, { seq: number; event: SessionUiEvent }[]>();
   private readonly replayBufferLimit: number;
+  /**
+   * Debug-only frame-drop arm, for the e2e legs that need REAL loss. Gated
+   * behind an explicit arming call that only the debug route makes (itself
+   * gated by a daemon env flag); production runs with no armer at all. A
+   * dropped frame is dropped from DELIVERY only - the ring keeps it, which is
+   * exactly the repair path under test.
+   */
+  private dropNextPerSession = new Map<string, number>();
   private globalSeq = 0;
   private globalJoinFrame: (() => RealtimeEvent) | undefined;
   private keepaliveTimer: ReturnType<typeof setInterval> | undefined;
@@ -104,14 +112,28 @@ export class SessionEventHub {
     }
     ring.push({ seq, event });
     while (ring.length > this.replayBufferLimit) ring.shift();
-    // Keep seq monotonic (join-time watermark) but skip serialization when no
-    // browser is subscribed: stringifying every delta/tool event on the
-    // agent's event loop with zero listeners was measurable overhead. The ring
-    // holds the raw event; replay stringifies only what a client asks for.
     const sockets = this.socketsBySession.get(sessionId);
     if (sockets === undefined || sockets.size === 0) return;
+    const dropCount = this.dropNextPerSession.get(sessionId) ?? 0;
+    if (dropCount > 0) {
+      // Debug drop: delivery is skipped, the ring keeps the frame, and the
+      // client's seq monitor sees the jump - the loss the repair exists for.
+      const remaining = dropCount - 1;
+      if (remaining === 0) this.dropNextPerSession.delete(sessionId);
+      else this.dropNextPerSession.set(sessionId, remaining);
+      return;
+    }
     const payload = JSON.stringify({ ...projectBrowserSessionEvent(event), seq });
     this.sendToSockets(sockets, payload);
+  }
+
+  /**
+   * Arm a debug drop of the next `count` per-session frames. Only callers the
+   * daemon gates behind a debug flag may reach this; production code never
+   * arms it.
+   */
+  debugDropNext(sessionId: string, count: number): void {
+    this.dropNextPerSession.set(sessionId, Math.max(0, Math.floor(count)));
   }
 
   /**
