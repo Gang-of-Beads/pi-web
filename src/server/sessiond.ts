@@ -360,8 +360,8 @@ function registerSessionDaemonRoutes({ eventHub, machineStatus, statusAttributio
       const body: unknown = request.body;
       const sessionId: unknown = typeof body === "object" && body !== null ? Reflect.get(body, "sessionId") : undefined;
       const count: unknown = typeof body === "object" && body !== null ? Reflect.get(body, "count") : undefined;
-      if (typeof sessionId !== "string" || sessionId === "" || typeof count !== "number" || !Number.isSafeInteger(count) || count < 1) {
-        return reply.code(400).send({ error: "sessionId and integer count are required" });
+      if (typeof sessionId !== "string" || sessionId === "" || typeof count !== "number" || !Number.isSafeInteger(count) || count < 0) {
+        return reply.code(400).send({ error: "sessionId and a non-negative integer count are required" });
       }
       eventHub.debugDropNext(sessionId, count);
       return { armed: count };

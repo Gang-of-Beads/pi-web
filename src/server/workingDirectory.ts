@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { isAbsolute, resolve } from "node:path";
+import { isAbsolute, resolve, sep } from "node:path";
 
 /**
  * Working-directory normalization boundaries.
@@ -61,4 +61,12 @@ export function canonicalizeStoredCwd(cwd: string): string {
 /** Compare two working-directory paths, tolerating separator, "~" and normalization differences (e.g. Windows backslash vs forward slash, a leading home shorthand, or trailing slashes). */
 export function cwdPathsEqual(a: string, b: string): boolean {
   return resolve(expandHomePath(a)) === resolve(expandHomePath(b));
+}
+
+/** Whether `candidate` is `dir` itself or a descendant of it (directory-tree containment, separator-safe). */
+export function cwdInsideDirectory(candidate: string, dir: string): boolean {
+  const c = resolve(expandHomePath(candidate));
+  const d = resolve(expandHomePath(dir));
+  if (c === d) return true;
+  return c.startsWith(d.endsWith(sep) ? d : d + sep);
 }

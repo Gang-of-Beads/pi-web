@@ -133,7 +133,13 @@ export class SessionEventHub {
    * arms it.
    */
   debugDropNext(sessionId: string, count: number): void {
-    this.dropNextPerSession.set(sessionId, Math.max(0, Math.floor(count)));
+    // count 0 disarms: the drop map entry is removed, not zeroed, so the
+    // publish path's per-session lookup misses cleanly.
+    if (Math.floor(count) <= 0) {
+      this.dropNextPerSession.delete(sessionId);
+      return;
+    }
+    this.dropNextPerSession.set(sessionId, Math.floor(count));
   }
 
   /**

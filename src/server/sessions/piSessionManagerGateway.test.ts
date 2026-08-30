@@ -1,7 +1,7 @@
 import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { scanStoreSessionSummaries } from "./piSessionManagerGateway";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPiSessionManagerGateway, defaultPiSessionDir, defaultPiSessionsRoot, filterSessionsForCwd, resolveSessionFileInDir, SessionDirResolver } from "./piSessionManagerGateway.js";
 import type { PiSessionListEntry } from "./piSessionService.js";
@@ -389,6 +389,22 @@ describe("filterSessionsForCwd", () => {
 
   it("excludes sessions from other cwds", () => {
     expect(filterSessionsForCwd([sessionEntry("a", join(tempDir, "other"))], cwd)).toHaveLength(0);
+  });
+
+  /**
+   * The owner's 3.3 ruling (include): the workspace's list covers its
+   * directory tree — a session recorded in a subdirectory of the workspace
+   * belongs to it, which is how the goals qualifier's divergent-cwd scenario
+   * becomes visible. A session in the PARENT of the workspace is outside the
+   * tree and stays excluded.
+   */
+  it("includes sessions recorded in subdirectories of the workspace", () => {
+    const subdirSession = sessionEntry("sub", join(cwd, "sub", "deeper"));
+    const parentSession = sessionEntry("parent", dirname(cwd));
+
+    const filtered = filterSessionsForCwd([subdirSession, parentSession], cwd);
+
+    expect(filtered.map((session) => session.id)).toEqual(["sub"]);
   });
 });
 

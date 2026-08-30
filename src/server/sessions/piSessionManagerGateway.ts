@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { AGENT_SESSION_DIR_ENV_KEYS } from "../../config.js";
-import { canonicalizeStoredCwd, cwdPathsEqual } from "../workingDirectory.js";
+import { canonicalizeStoredCwd, cwdInsideDirectory, cwdPathsEqual } from "../workingDirectory.js";
 import { readSessionHeaderSummary, type SessionHeaderReader } from "./sessionFileHeader.js";
 import { SessionSummaryScanner } from "./sessionSummaryScanner.js";
 import type { PiSessionListEntry, PiSessionManager, PiSessionManagerGateway, ResolvedSessionFile } from "./piSessionService.js";
@@ -197,7 +197,10 @@ export async function listSessionsInDefaultPiStore(storeRoot: string): Promise<P
 export function filterSessionsForCwd(sessions: readonly PiSessionListEntry[], cwd: string): PiSessionListEntry[] {
   // Sessions with an empty cwd (old session files) are excluded: resolve("") would
   // resolve to this process's cwd and produce false matches.
-  return sessions.filter((session) => session.cwd !== "" && cwdPathsEqual(session.cwd, cwd));
+  // The owner's 3.3 ruling (include): the workspace's list covers its directory
+  // TREE — sessions recorded in subdirectories of the workspace belong to it,
+  // which is how the goals qualifier's divergent-cwd scenario becomes visible.
+  return sessions.filter((session) => session.cwd !== "" && (cwdPathsEqual(session.cwd, cwd) || cwdInsideDirectory(session.cwd, cwd)));
 }
 
 /**

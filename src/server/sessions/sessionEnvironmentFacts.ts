@@ -32,7 +32,6 @@ export function sessionEnvironmentFacts({ env }: SessionEnvironmentFactsInput): 
     `This session runs inside a PI WEB session daemon. Every process spawned from it — the bash tool, terminals, subsessions — inherits \`${PI_WEB_SESSION_ENV}=1\`, marking it as nested inside this PI WEB instance.`,
     `The hosting instance owns the data directory \`${piWebDataDir(env)}\` and its session daemon listens on \`${sessiondEndpointDescription(env)}\`. Spawned processes inherit the daemon's \`PI_WEB_*\` environment, which points at that same live instance.`,
     "Starting another PI WEB instance with those inherited values fails loudly at startup because the live instance owns the state. To run a second instance, give it a distinct `PI_WEB_DATA_DIR`, `PI_WEB_SESSIOND_SOCKET` (or `PI_WEB_SESSIOND_PORT` / `PI_WEB_SESSIOND_HOST`), and `PI_WEB_PORT`.",
-    "Never restart or stop the session daemon hosting this session: it owns the terminals and the session runtime, so restarting it kills this session's own work. When PI WEB services must be restarted, restart the web/API process before the session daemon.",
   ];
   return [
     "<pi_web_session_environment>",

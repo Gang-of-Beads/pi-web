@@ -45,8 +45,10 @@ describe("sessionEnvironmentFacts", () => {
 
     expect(facts).toContain("a distinct `PI_WEB_DATA_DIR`, `PI_WEB_SESSIOND_SOCKET` (or `PI_WEB_SESSIOND_PORT` / `PI_WEB_SESSIOND_HOST`), and `PI_WEB_PORT`");
     expect(facts).toContain("fails loudly at startup because the live instance owns the state");
-    expect(facts).toContain("Never restart or stop the session daemon hosting this session");
-    expect(facts).toContain("restart the web/API process before the session daemon");
+    // The restart-prose sentence was withdrawn by the owner's 2.2 ruling (A):
+    // restarts are handled by the service manager and the state-ownership
+    // grace window, not by prose in the prompt.
+    expect(facts).not.toContain("Never restart");
   });
 
   it("wraps the facts in one tagged block of plain statements", () => {
