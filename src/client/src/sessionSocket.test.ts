@@ -206,6 +206,36 @@ describe("notification socket guards", () => {
     expect(parseSessionSocketEvent({ type: "session.startup", activity })).toBeUndefined();
   });
 
+  /**
+   * The server stamps every interactive-surface frame with the surface's
+   * monotonic revision; the lost-frame repair compares those stamps. A parser
+   * that rebuilds the event and drops the stamp silently disarms the whole
+   * repair - which is exactly what shipped: the repair's tests fed the scope
+   * hand-built events, while production frames arrived stripped.
+   */
+  it("carries the surface revision through ask and dialog validation", () => {
+    const ask = {
+      askId: "ask-1",
+      askedAt: "2026-07-20T00:00:00.000Z",
+      questions: [{ id: "q1", question: "Which database?", options: [{ value: "pg", label: "Postgres" }] }],
+    };
+    const dialog = {
+      dialogId: "dialog-1",
+      kind: "select",
+      title: "Pick a database",
+      options: ["Postgres", "SQLite"],
+      askedAt: "2026-07-20T00:00:00.000Z",
+      runScoped: true,
+    };
+
+    expect(parseSessionSocketEvent({ type: "ask.opened", ask, revision: 4 })).toMatchObject({ revision: 4 });
+    expect(parseSessionSocketEvent({ type: "ask.closed", askId: "ask-1", reason: "superseded", revision: 5 })).toMatchObject({ revision: 5 });
+    expect(parseSessionSocketEvent({ type: "dialog.opened", dialog, revision: 6 })).toMatchObject({ revision: 6 });
+    expect(parseSessionSocketEvent({ type: "dialog.closed", dialogId: "dialog-1", reason: "timeout", revision: 7 })).toMatchObject({ revision: 7 });
+    // A malformed stamp parses as absent - the frame still applies, fail-open.
+    expect(parseSessionSocketEvent({ type: "ask.opened", ask, revision: "x" })).not.toHaveProperty("revision");
+  });
+
   it("accepts validated ask frames and drops malformed ones", () => {
     const ask = {
       askId: "ask-1",

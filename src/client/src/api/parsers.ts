@@ -350,20 +350,32 @@ function optionalPendingAsk(value: unknown): Pick<SessionStatus, "pendingAsk"> |
   return { pendingAsk: parsePendingAskUser(value) };
 }
 
-export function parseSessionAskOpenedEvent(value: unknown): { type: "ask.opened"; ask: PendingAskUser } {
+export function parseSessionAskOpenedEvent(value: unknown): { type: "ask.opened"; ask: PendingAskUser; revision?: number } {
   const record = requireRecord(value);
   if (record["type"] !== "ask.opened") throw new Error("Invalid ask opened event type");
-  return { type: "ask.opened", ask: parsePendingAskUser(record["ask"]) };
+  return { type: "ask.opened", ask: parsePendingAskUser(record["ask"]), ...surfaceRevision(record) };
 }
 
-export function parseSessionAskClosedEvent(value: unknown): { type: "ask.closed"; askId: string; reason: AskUserCloseReason } {
+export function parseSessionAskClosedEvent(value: unknown): { type: "ask.closed"; askId: string; reason: AskUserCloseReason; revision?: number } {
   const record = requireRecord(value);
   if (record["type"] !== "ask.closed") throw new Error("Invalid ask closed event type");
   return {
     type: "ask.closed",
     askId: requireBoundedNonEmptyString(record, "askId", ASK_USER_ID_MAX_LENGTH),
     reason: parseAskUserCloseReason(record["reason"]),
+    ...surfaceRevision(record),
   };
+}
+
+/**
+ * The interactive-surface revision stamped on ask and dialog frames. The
+ * lost-frame repair compares these stamps, so a validator that rebuilds the
+ * event must carry the stamp over - dropping it silently disarms the repair.
+ * A malformed stamp parses as absent: the frame still applies, fail-open.
+ */
+function surfaceRevision(record: Record<string, unknown>): { revision?: number } {
+  const revision = record["revision"];
+  return typeof revision === "number" && Number.isFinite(revision) ? { revision } : {};
 }
 
 function parseAskUserCloseReason(value: unknown): AskUserCloseReason {
@@ -503,13 +515,13 @@ function optionalPendingDialogs(value: unknown): Pick<SessionStatus, "pendingDia
   return { pendingDialogs: dialogs };
 }
 
-export function parseSessionDialogOpenedEvent(value: unknown): { type: "dialog.opened"; dialog: PendingExtensionDialog } {
+export function parseSessionDialogOpenedEvent(value: unknown): { type: "dialog.opened"; dialog: PendingExtensionDialog; revision?: number } {
   const record = requireRecord(value);
   if (record["type"] !== "dialog.opened") throw new Error("Invalid dialog opened event type");
-  return { type: "dialog.opened", dialog: parsePendingExtensionDialog(record["dialog"]) };
+  return { type: "dialog.opened", dialog: parsePendingExtensionDialog(record["dialog"]), ...surfaceRevision(record) };
 }
 
-export function parseSessionDialogClosedEvent(value: unknown): { type: "dialog.closed"; dialogId: string; reason: ExtensionDialogCloseReason; answer?: ExtensionDialogAnswer } {
+export function parseSessionDialogClosedEvent(value: unknown): { type: "dialog.closed"; dialogId: string; reason: ExtensionDialogCloseReason; answer?: ExtensionDialogAnswer; revision?: number } {
   const record = requireRecord(value);
   if (record["type"] !== "dialog.closed") throw new Error("Invalid dialog closed event type");
   const reason = parseExtensionDialogCloseReason(record["reason"]);
@@ -522,6 +534,7 @@ export function parseSessionDialogClosedEvent(value: unknown): { type: "dialog.c
     dialogId: requireBoundedNonEmptyString(record, "dialogId", EXTENSION_DIALOG_ID_MAX_LENGTH),
     reason,
     ...(answer === undefined ? {} : { answer }),
+    ...surfaceRevision(record),
   };
 }
 

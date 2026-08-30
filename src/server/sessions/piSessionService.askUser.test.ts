@@ -43,6 +43,23 @@ function askEvents(events: CapturingSessionEventHub) {
     .map(({ sessionId, event }) => ({ sessionId, event }));
 }
 
+/**
+ * The ask frame minus its interactive-surface stamps. Shape assertions read
+ * better without the stamps, whose sequence is asserted separately - both
+ * halves together pin the full wire contract.
+ */
+function withoutStamps(event: object): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(event).filter(([key]) => key !== "revision" && key !== "daemonInstanceId"));
+}
+
+/** The surface-revision sequence the captured ask frames carry, in order. */
+function askRevisions(events: CapturingSessionEventHub): unknown[] {
+  return askEvents(events).map(({ event }) => {
+    const revision: unknown = Reflect.get(event, "revision");
+    return revision;
+  });
+}
+
 
 describe("ask_user registration", () => {
   it("offers ask_user whenever the capability is configured, including to restricted tracked children", () => {
@@ -114,9 +131,13 @@ describe("PiSessionService.openAsk", () => {
 
     await service.openAsk({ sessionId: ACTIVE_SESSION_ID, questions });
 
-    expect(askEvents(events)).toEqual([
+    // Ask frames carry the interactive-surface revision (shared with dialogs)
+    // so the lost-frame repair can compare stamps; the daemon identity rides
+    // along for restart detection.
+    expect(askEvents(events).map(({ sessionId, event }) => ({ sessionId, event: withoutStamps(event) }))).toEqual([
       { sessionId: ACTIVE_SESSION_ID, event: { type: "ask.opened", ask: { askId: "ask-1", askedAt: "2026-02-01T10:00:00.000Z", questions } } },
     ]);
+    expect(askRevisions(events)).toEqual([1]);
     await service.dispose();
   });
 
@@ -126,11 +147,12 @@ describe("PiSessionService.openAsk", () => {
 
     await service.openAsk({ sessionId: ACTIVE_SESSION_ID, questions: [{ id: "again", question: "Still?", options: [] }] });
 
-    expect(askEvents(events).map(({ event }) => event)).toEqual([
+    expect(askEvents(events).map(({ event }) => withoutStamps(event))).toEqual([
       { type: "ask.opened", ask: { askId: "ask-1", askedAt: "2026-02-01T10:00:00.000Z", questions } },
       { type: "ask.closed", askId: "ask-1", reason: "superseded" },
       { type: "ask.opened", ask: { askId: "ask-2", askedAt: "2026-02-01T10:00:00.000Z", questions: [{ id: "again", question: "Still?", options: [] }] } },
     ]);
+    expect(askRevisions(events)).toEqual([1, 2, 3]);
     await service.dispose();
   });
 });
@@ -241,10 +263,11 @@ describe("PiSessionService.prompt with an open ask", () => {
     await service.prompt(sessionRef(ACTIVE_SESSION_ID), "Use DuckDB");
 
     expect(store.pendingAsk(ACTIVE_SESSION_ID)).toBeUndefined();
-    expect(askEvents(events).map(({ event }) => event)).toEqual([
+    expect(askEvents(events).map(({ event }) => withoutStamps(event))).toEqual([
       { type: "ask.opened", ask: { askId: "ask-1", askedAt: "2026-02-01T10:00:00.000Z", questions } },
       { type: "ask.closed", askId: "ask-1", reason: "cancelled" },
     ]);
+    expect(askRevisions(events)).toEqual([1, 2]);
     const [delivered] = fake.calls.sendCustomMessage;
     expect(delivered?.message.customType).toBe(ASK_USER_ANSWERS_CUSTOM_TYPE);
     expect(delivered?.message.content).toContain("closed (cancelled) before it was fully answered");
@@ -269,10 +292,11 @@ describe("PiSessionService.prompt with an open ask", () => {
     fake.emit({ type: "message_start", message: { role: "user", content: "queued before the questions" } });
     await vi.waitFor(() => { expect(store.pendingAsk(ACTIVE_SESSION_ID)).toBeUndefined(); });
 
-    expect(askEvents(events).map(({ event }) => event)).toEqual([
+    expect(askEvents(events).map(({ event }) => withoutStamps(event))).toEqual([
       { type: "ask.opened", ask: { askId: "ask-1", askedAt: "2026-02-01T10:00:00.000Z", questions } },
       { type: "ask.closed", askId: "ask-1", reason: "cancelled" },
     ]);
+    expect(askRevisions(events)).toEqual([1, 2]);
     const [delivered] = fake.calls.sendCustomMessage;
     expect(delivered?.message.content).toContain("unanswered: db");
     expect(delivered?.options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
@@ -314,7 +338,8 @@ describe("PiSessionService.cancelAsk", () => {
     expect(response).toMatchObject({ result: "closed", outcome: { reason: "cancelled", answeredCount: 0, unansweredIds: ["db"] } });
     expect(fake.calls.sendCustomMessage[0]?.message.content).toContain("closed (cancelled) before it was fully answered");
     expect(fake.calls.sendCustomMessage[0]?.options).toEqual({ triggerTurn: true, deliverAs: "followUp" });
-    expect(askEvents(events).at(-1)?.event).toEqual({ type: "ask.closed", askId: "ask-1", reason: "cancelled" });
+    const lastAsk = askEvents(events).at(-1)?.event;
+    expect(lastAsk === undefined ? undefined : withoutStamps(lastAsk)).toEqual({ type: "ask.closed", askId: "ask-1", reason: "cancelled" });
     expect(store.pendingAsk(ACTIVE_SESSION_ID)).toBeUndefined();
     await service.dispose();
   });

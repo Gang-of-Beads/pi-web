@@ -1660,7 +1660,7 @@ export class PiSessionService implements SessionRouteService {
     // A supersede closes the earlier ask, so the browsers watching it must hear
     // that before they hear about its replacement.
     if (result.superseded !== undefined) this.publishAskClosed(input.sessionId, result.superseded);
-    this.events.publish(input.sessionId, { type: "ask.opened", ask: result.ask });
+    this.events.publish(input.sessionId, { type: "ask.opened", ask: result.ask, revision: this.nextDialogRevision(input.sessionId), daemonInstanceId: this.notificationStore.daemonInstanceId });
     this.publishStatusForSessionId(input.sessionId);
     return result;
   }
@@ -1713,7 +1713,7 @@ export class PiSessionService implements SessionRouteService {
   }
 
   private publishAskClosed(sessionId: string, outcome: AskUserOutcome): void {
-    this.events.publish(sessionId, { type: "ask.closed", askId: outcome.askId, reason: outcome.reason });
+    this.events.publish(sessionId, { type: "ask.closed", askId: outcome.askId, reason: outcome.reason, revision: this.nextDialogRevision(sessionId), daemonInstanceId: this.notificationStore.daemonInstanceId });
   }
 
   /**
@@ -1883,7 +1883,12 @@ export class PiSessionService implements SessionRouteService {
     });
   }
 
-  /** The surface's next mutation revision; called once per dialog open/close. */
+  /**
+   * The interactive surface's next mutation revision - asks and dialogs share
+   * one counter and one repair path on purpose: both are cards the same
+   * status resync recovers, and a shared strict-+1 stream means a lost frame
+   * of either kind is caught by whichever frame arrives next.
+   */
   private nextDialogRevision(sessionId: string): number {
     const next = (this.dialogRevisionBySession.get(sessionId) ?? 0) + 1;
     this.dialogRevisionBySession.set(sessionId, next);

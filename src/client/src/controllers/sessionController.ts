@@ -1997,11 +1997,11 @@ export class SessionController {
     // Ask frames are applied after the buffered status they were published with,
     // so the card follows the daemon's own open/close order.
     if (event.type === "ask.opened") {
-      this.applyOpenedAsk(event.ask);
+      this.dialogScope.observe(event, () => { this.applyOpenedAsk(event.ask); });
       return;
     }
     if (event.type === "ask.closed") {
-      this.applyClosedAsk(event.askId);
+      this.dialogScope.observe(event, () => { this.applyClosedAsk(event.askId); });
       return;
     }
     if (event.type === "dialog.opened") {
