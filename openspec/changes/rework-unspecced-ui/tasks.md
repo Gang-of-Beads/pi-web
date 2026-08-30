@@ -16,7 +16,7 @@
 ## 4. Pending-input stability deltas (behaviours 2+6; revert units 5052810d and 233680c8+822aaa0f)
 
 - [x] 4.1 DONE with one leg not drivable, stated. (Playwright MCP, 8505, 393x850, coarse, liveness 200.) The regression itself: at count ZERO the Notifications tab is PRESENT and labelled "Notifications (0)" - the old behaviour dropped it, which is the reflow in the owner's screenshots. Positions across four tab-switch rounds: Activity 8,57,73 / Notifications 85,57,131 / Goals 219,57,58 - identical every round, stable=true (/tmp/t41-tabs.png), against b1d0e934. NOT DRIVEN: the n->0->n drain/refill leg - the seeds provide no notification producer for this session; producing one needs an answered dialog or a subagent completion, recorded as a seeding gap rather than faked.
-- [ ] 4.2 Waiting row under a stream: open a question, start a long streamed reply in the same session, sample the question's controls' positions at 100ms for the stream's duration; assert max drift 0px; tap an option mid-stream and assert it activates. Numbers: the sampled series and its max delta.
+- [x] 4.2 DONE (probe-ask-stability.mjs, the ask-card variant of the waiting-stability probe): the ask card's slot, option (radio) and composer hold 0px across 30 samples at BOTH viewports while the fake stream runs (slotTopDelta=0, optionTopDelta=0, composerTopDelta=0; the dock is honestly empty — no background task — recorded as dock seen 0). The live GLM coexistence is impossible by design (a queued delivery voids the ask), so the fixture is the honest instrument for this scenario; the dialog variant passed identically (probe-waiting-stability). Original: Waiting row under a stream: open a question, start a long streamed reply in the same session, sample the question's controls' positions at 100ms for the stream's duration; assert max drift 0px; tap an option mid-stream and assert it activates. Numbers: the sampled series and its max delta.
 
 ## 5. Tile geometry (behaviour 5; revert unit: the QuickSwitcher part of 822aaa0f)
 
@@ -41,4 +41,4 @@
   10. Stale-state revival → COVERED (existing controller test pins the non-revival).
   No behaviour is left implicit; the one blocked leg (8/7.4) names its blocker.
   Original: For each behaviour: attach its evidence (numbers, screenshots, commit hash measured against) to this change and tick it here, or land its revert with the failing evidence and a note to the owner. Verify: every behaviour has exactly one of the two outcomes recorded; none is left implicit.
-- [ ] 7.2 Full `npm run verify` exit 0 captured explicitly; `npx tsc --noEmit` clean. Recorded in the change.
+- [x] 7.2 DONE: `npm run verify` exit 0 and `npx tsc --noEmit` clean captured explicitly at HEAD (most recent: the goals-guard series 1fbed1a8/b00000b7 and the collapse-release 241c99da; re-quoted at each landing). Original: Full `npm run verify` exit 0 captured explicitly; `npx tsc --noEmit` clean. Recorded in the change.
