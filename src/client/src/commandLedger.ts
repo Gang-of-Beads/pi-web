@@ -80,3 +80,14 @@ export function expireSettledCommands(entries: readonly CommandLedgerEntry[], no
 export function commandsForSession(entries: readonly CommandLedgerEntry[], sessionKey: string): CommandLedgerEntry[] {
   return entries.filter((row) => row.sessionKey === sessionKey);
 }
+
+/**
+ * What a ledger row says about its command. A pending row waits while the
+ * session is streaming - the command proceeds when the reply finishes - and
+ * runs immediately otherwise; a settled row tells the outcome.
+ */
+export function commandStateLabel(entry: Pick<CommandLedgerEntry, "state" | "resultText">, streaming: boolean): string {
+  if (entry.state === "pending") return streaming ? "waiting for the current reply to finish" : "running…";
+  if (entry.state === "ok") return entry.resultText ?? "done";
+  return `failed — ${entry.resultText ?? "see the error above"}`;
+}

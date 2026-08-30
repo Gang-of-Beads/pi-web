@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { commandsForSession, expireSettledCommands, issueCommand, SETTLED_ROW_LINGER_MS, settleCommand } from "./commandLedger";
+import { commandStateLabel, commandsForSession, expireSettledCommands, issueCommand, SETTLED_ROW_LINGER_MS, settleCommand } from "./commandLedger";
 
 const KEY = "local:session-1";
 
@@ -53,5 +53,20 @@ describe("the browser's record of an issued command", () => {
     }
     expect(entries.length).toBeLessThanOrEqual(20);
     expect(entries.some((row) => row.text === "/pending-forever")).toBe(true);
+  });
+
+  /**
+   * Task 4.2's unit half: while the session streams, a pending row waits
+   * ("waiting for the current reply to finish") and runs otherwise; settled
+   * rows tell the outcome. The wording is part of the contract - the reader
+   * must know the command proceeds when the reply finishes.
+   */
+  it("labels a pending row as waiting during a stream and running otherwise", () => {
+    expect(commandStateLabel({ state: "pending" }, true)).toBe("waiting for the current reply to finish");
+    expect(commandStateLabel({ state: "pending" }, false)).toBe("running…");
+    expect(commandStateLabel({ state: "ok", resultText: "/goal-resume done" }, false)).toBe("/goal-resume done");
+    expect(commandStateLabel({ state: "ok" }, false)).toBe("done");
+    expect(commandStateLabel({ state: "failed", resultText: "boom" }, false)).toBe("failed — boom");
+    expect(commandStateLabel({ state: "failed" }, false)).toBe("failed — see the error above");
   });
 });

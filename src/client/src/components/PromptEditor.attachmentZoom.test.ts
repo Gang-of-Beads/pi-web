@@ -47,7 +47,9 @@ describe("attachment thumbnail zoom", () => {
   it("survives a sync before the zoom dialog has ever rendered", () => {
     const editor = new PromptEditor();
     // Never rendered: the @query handle is genuinely null here, not undefined.
-    expect(() => Reflect.apply(Reflect.get(editor, "syncAttachmentZoomDialog"), editor, [])).not.toThrow();
+    const sync: unknown = Reflect.get(editor, "syncAttachmentZoomDialog");
+    if (typeof sync !== "function") throw new Error("syncAttachmentZoomDialog is not callable");
+    expect(() => { sync.call(editor); }).not.toThrow();
   });
 
   // The composer's image thumbnails used to be inert <img> elements: no role,

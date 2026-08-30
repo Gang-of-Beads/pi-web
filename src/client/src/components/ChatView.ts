@@ -13,7 +13,7 @@ import { shouldRequestEarlierMessages } from "../chatHistoryLoading";
 import { ChatScrollController, distanceFromScrollBottom, findFirstVisibleArticle, isNearScrollBottom, type ChatAnchorScrollPosition, type ChatScrollRestoreResult } from "../chatScrollPosition";
 import { scrollEdgeClasses, ScrollEdgeTracker } from "../scrollEdges";
 import type { AskUserSubmission, PendingAskUser, PendingExtensionDialog, QueuedSessionMessage, SessionActivity, SessionStatus } from "../api";
-import type { CommandLedgerEntry } from "../commandLedger";
+import { commandStateLabel, type CommandLedgerEntry } from "../commandLedger";
 import type { ActivityConversationView, ActivityOutputView, ClosedExtensionDialog, PanelLoad } from "../appState";
 import {
   notificationAnnouncementLabel,
@@ -2141,11 +2141,7 @@ export class ChatView extends LitElement {
       ${this.commandLedger.map((entry) => html`
         <div class=${`command-row ${entry.state}`} role="status">
           <span class="command-text">${entry.text}</span>
-          <span class="command-state">${entry.state === "pending"
-            ? streaming ? "waiting for the current reply to finish" : "running…"
-            : entry.state === "ok"
-              ? entry.resultText ?? "done"
-              : `failed — ${entry.resultText ?? "see the error above"}`}</span>
+          <span class="command-state">${commandStateLabel(entry, streaming)}</span>
         </div>
       `)}
     `;
