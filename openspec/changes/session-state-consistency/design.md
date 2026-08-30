@@ -138,7 +138,7 @@ mode becomes "reconnect", not "stale forever".
 2. Turn gap detection into repair for the small surfaces (status, activity,
    dialogs, inbox summary) via resync; unify the notification count and drawer
    onto the sequenced summary.
-3. Add transcript cursor replay; wire gap repair for the transcript.
+TRANSCRIPT-DIFF INSTRUMENT-BLOCKED (2026-08-30 evening): the DOM-scroll diff pass is unreliable — the transcript renders a ~16k virtualized window; nested scrollers make scroll-accumulation miss rows, and the story/user-message markers were absent from every window snapshot taken at the bottom. The loss itself was detected on the wire (expected 982, got 985) and the repair ran. The equality assertion needs a client-side instrument: either a debug export of the in-memory messages (bounded, gated) or the daemon exposing a transcript hash the client can compare. Not a mechanics question — an instrumentation gap. Original: e2e on 8505 at each landing
 4. Remove the delivery reconcile and the subagent poll; name any survivor.
 5. e2e on 8505 at each landing (tasks below), not only at the end.
 
