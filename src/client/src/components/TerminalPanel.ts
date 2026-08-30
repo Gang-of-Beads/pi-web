@@ -22,6 +22,9 @@ const TERMINAL_OPTIONS_BASE: ITerminalOptions = {
 
 const DEFAULT_TERMINAL_SIZE: TerminalSize = { cols: 100, rows: 30 };
 const COMMAND_RUN_POLL_INTERVAL_MS = 1000;
+// Surface backed up: the terminal command-run list. The lifecycle events are
+// revisioned, but the panel predates that and still refreshes on this timer
+// while a command run is active.
 
 @customElement("terminal-panel")
 export class TerminalPanel extends LitElement {
@@ -262,6 +265,7 @@ export class TerminalPanel extends LitElement {
 
   private updateCommandRunPolling(shouldPoll: boolean): void {
     if (shouldPoll && this.commandRunPollTimer === undefined) {
+      // Surface backed up: the terminal command-run list (COMMAND_RUN_POLL_INTERVAL_MS).
       this.commandRunPollTimer = window.setInterval(() => { void this.loadCommandRuns(); }, COMMAND_RUN_POLL_INTERVAL_MS);
       return;
     }

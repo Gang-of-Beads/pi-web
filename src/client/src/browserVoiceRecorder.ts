@@ -54,6 +54,8 @@ export function createBrowserVoiceRecorder(): VoiceRecorder {
       source.connect(analyser);
       const samples = new Uint8Array(analyser.fftSize);
 
+      // Surface backed up: the dictation level meter. A media-capture tick
+      // over the local analyser node - no server surface involved.
       frameTimer = window.setInterval(() => {
         analyser.getByteTimeDomainData(samples);
         onFrame(peakLevel(samples), FRAME_INTERVAL_MS);

@@ -320,6 +320,8 @@ export class ExtensionDialogCard extends LitElement {
     const needsTick = this.isConnected && this.outcome === undefined && this.dialog?.timeoutAt !== undefined;
     if (needsTick && this.countdownTimer === undefined) {
       this.countdownNow = Date.now();
+      // Surface backed up: the dialog's countdown readout. A display tick over
+      // the timeout the server already enforces.
       this.countdownTimer = window.setInterval(() => { this.countdownNow = Date.now(); }, COUNTDOWN_TICK_MS);
       return;
     }

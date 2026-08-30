@@ -252,6 +252,8 @@ export class AuthController {
     this.stopPolling();
     const operationGeneration = this.authOperationGeneration;
     const pollGeneration = this.pollGeneration;
+    // Surface backed up: the interactive auth flow (device-code/OAuth state
+    // transitions). The flow endpoint is pull-only; nothing events completion.
     this.pollTimer = window.setInterval(() => { void this.poll(flowId, machineId, operationGeneration, pollGeneration); }, this.pollIntervalMs);
   }
 

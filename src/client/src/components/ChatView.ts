@@ -1896,6 +1896,8 @@ export class ChatView extends LitElement {
     this.turnStartedAtMs ??= Date.now();
     this.turnNowMs = Date.now();
     if (this.turnClockTimer !== undefined) return;
+    // Surface backed up: the turn-elapsed readout. A 1s display tick, not a
+    // server poll - it only re-renders the clock already in the DOM.
     this.turnClockTimer = window.setInterval(() => { this.turnNowMs = Date.now(); }, 1000);
   }
 

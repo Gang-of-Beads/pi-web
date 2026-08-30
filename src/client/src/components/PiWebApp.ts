@@ -208,17 +208,25 @@ export const appStyles = css`
 
 
 const PI_WEB_STATUS_REFRESH_MS = 15 * 60 * 1000;
+// Surface backed up: the pi-web runtime status readout (header health, self-
+// update banner). Nothing events it; the tab re-reads on this slow cadence.
 /**
  * How often the open session re-reads its subagents, tool runs and background
  * tasks. Fast enough that a child spawned mid-conversation shows up while the
  * reader is still looking at the answer that announced it, cheap enough to run
  * for as long as the tab is in front.
+ *
+ * Surface backed up: the activity dock's subagent run, background task and
+ * tool run lists - pending their removal by 4.2 once the run/task lifecycle
+ * is revisioned and repaired end to end.
  */
 const SUBAGENT_REFRESH_MS = 4000;
 /** Reopen within this window serves the list the last open just fetched. */
 const QUICK_SWITCHER_REFRESH_MS = 30_000;
 /** Slow cadence for re-reading the disk while a send still waits. */
 const DELIVERY_RECONCILE_MS = 10_000;
+// Surface backed up: prompt delivery status. Removed by 4.1 once delivery
+// rides sequenced frames with repair.
 /** How much of a session's own history to offer the composer's picker. */
 const PROMPT_HISTORY_PROP_LIMIT = 50;
 /**
@@ -230,6 +238,9 @@ const PROMPT_HISTORY_PROP_LIMIT = 50;
  * tab already triggers this check, which left the case nobody thought about -
  * the tab that never went away. The check itself is a comparison against the
  * last frame's timestamp; the socket's own 50s staleness window decides.
+ *
+ * Surface backed up: every socket's liveness - the check that turns a dead
+ * but OPEN connection into the reconnect that refetches state.
  */
 const SOCKET_LIVENESS_CHECK_MS = 15_000;
 
@@ -685,6 +696,8 @@ export class PiWebApp extends LitElement {
       documentVisible: document.visibilityState === "visible",
     });
     if (shouldPoll && this.subagentPollTimer === undefined) {
+      // Surface backed up: subagent run, background task and tool run lists
+      // (SUBAGENT_REFRESH_MS above; removal pending 4.2).
       this.subagentPollTimer = window.setInterval(() => {
         void this.refreshSubagents();
         this.reconcileWaitingDelivery();
@@ -879,9 +892,11 @@ export class PiWebApp extends LitElement {
     applyUiScale(this.uiScale);
     this.connectRealtime();
     this.syncSessionUnreadMachines();
+    // Surface backed up: the pi-web runtime status readout (PI_WEB_STATUS_REFRESH_MS).
     this.piWebStatusTimer = window.setInterval(() => { this.schedulePiWebStatusRefresh(); }, PI_WEB_STATUS_REFRESH_MS);
     document.addEventListener("visibilitychange", this.onDocumentVisibilityChange);
     this.listenForFormFocus("add");
+    // Surface backed up: every socket's liveness (SOCKET_LIVENESS_CHECK_MS).
     this.livenessTimer = window.setInterval(() => { this.checkSocketLiveness(); }, SOCKET_LIVENESS_CHECK_MS);
     window.addEventListener("online", this.onBrowserOnline);
     this.updateSubagentPolling();
@@ -2706,6 +2721,8 @@ export class PiWebApp extends LitElement {
   private updateWorkspaceDeletionPolling(): void {
     const hasPendingDeletion = Object.values(this.state.workspaceDeletionRuns).some(isWorkspaceDeletionRunPending);
     if (hasPendingDeletion && this.workspaceDeletionPollTimer === undefined) {
+      // Surface backed up: the workspace deletion progress list. The runs
+      // endpoint is request-scoped; nothing events a run's completion.
       this.workspaceDeletionPollTimer = window.setInterval(() => { void this.refreshWorkspaceDeletionRuns(); }, 1000);
       return;
     }
