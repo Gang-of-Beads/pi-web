@@ -1,0 +1,6 @@
+captured prompt: 38328 chars; native prompt: 37145 chars; prefix-shared=false
+declared seam sections: 1; prompt delta fully explained by the seam: false
+tools: captured 50, native 43
+tool ADD (captured only): subagent_supervisor, spawn_session, spawn_subsession, list_subsessions, check_subsession, read_subsession, yield_to_subsessions
+tool REMOVE (native only): (none)
+tool REWRITE (description differs): ask_user

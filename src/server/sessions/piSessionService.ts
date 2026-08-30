@@ -476,6 +476,14 @@ export interface PiAgentSession {
    * leaking the full `Agent`/`AgentSession` surface.
    */
   agent: { streamFunction: StreamFn };
+  /**
+   * Debug-only capture of the exact model surface this session was constructed
+   * with — the system prompt and the configured tools (name + description).
+   * Backs the match-tui-prompt 4.1 capture leg behind an env-gated debug
+   * route; present only on SDK-backed sessions, absent on lightweight test
+   * fakes, so callers must treat missing capture as "unavailable", not empty.
+   */
+  captureModelSurface?(): { systemPrompt: string; tools: readonly { name: string; description: string }[] };
 }
 
 export interface PiSessionRuntime {
@@ -1013,7 +1021,17 @@ function createDefaultRuntimeFactory(
       ...(modelOptions.thinkingLevel === undefined ? {} : { thinkingLevel: modelOptions.thinkingLevel }),
       ...(modelOptions.scopedModels.length === 0 ? {} : { scopedModels: modelOptions.scopedModels }),
     });
-    return { ...result, services, diagnostics: [...projectTrustDiagnostics, ...services.diagnostics] };
+    // Attach the debug-only model-surface capture to the SDK session itself:
+    // the narrow PiAgentSession interface declares it optional, real sessions
+    // carry it, test fakes legitimately do not.
+    const sdkSession = result.session;
+    const sessionWithCapture: typeof sdkSession & Pick<PiAgentSession, "captureModelSurface"> = Object.assign(sdkSession, {
+      captureModelSurface: (): { systemPrompt: string; tools: readonly { name: string; description: string }[] } => ({
+        systemPrompt: sdkSession.systemPrompt,
+        tools: sdkSession.getAllTools().map((tool) => ({ name: tool.name, description: tool.description })),
+      }),
+    });
+    return { ...result, session: sessionWithCapture, services, diagnostics: [...projectTrustDiagnostics, ...services.diagnostics] };
   };
 }
 
@@ -3598,6 +3616,20 @@ export class PiSessionService implements SessionRouteService {
     const active = this.active.get(sessionId);
     if (active === undefined) throw new Error("Session not found");
     return { id: sessionId, cwd: active.runtime.cwd };
+  }
+
+  /**
+   * Debug-only capture of the exact model surface an active session was
+   * constructed with (match-tui-prompt 4.1). Returns undefined when the
+   * session is not active or its runtime does not carry the capture (light
+   * test runtimes) — absence is "unavailable", never an empty claim.
+   */
+  captureModelSurface(sessionId: string): { systemPrompt: string; tools: readonly { name: string; description: string }[] } | undefined {
+    const active = this.active.get(sessionId);
+    if (active === undefined) return undefined;
+    const session = active.runtime.session;
+    if (session.captureModelSurface === undefined) return undefined;
+    return session.captureModelSurface();
   }
 
   private activeForRef(ref: PiSessionRef): ActiveSession<PiSessionRuntime> | undefined {

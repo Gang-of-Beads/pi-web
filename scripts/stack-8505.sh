@@ -159,7 +159,7 @@ start_stack() {
   # in the tmux pane - killed pane, lost cause. Every run appends to a log so a
   # crash leaves evidence; the pane stays for interactive watching.
   tmux new-session -d -s "$SESSIOND_TMUX" -c "$REPO_ROOT" \
-    "PI_WEB_DATA_DIR=$DATA_DIR PI_WEB_SESSIOND_SOCKET=$SOCKET PI_WEB_DEBUG_FRAME_DROP=${PI_WEB_DEBUG_FRAME_DROP:-0} node dist/server/sessiond.js 2>&1 | tee -a $DATA_DIR/logs/sessiond.log"
+    "PI_WEB_DATA_DIR=$DATA_DIR PI_WEB_SESSIOND_SOCKET=$SOCKET PI_WEB_DEBUG_FRAME_DROP=${PI_WEB_DEBUG_FRAME_DROP:-0} PI_WEB_DEBUG_PROMPT_CAPTURE=${PI_WEB_DEBUG_PROMPT_CAPTURE:-0} node dist/server/sessiond.js 2>&1 | tee -a $DATA_DIR/logs/sessiond.log"
   tmux set-option -t "$SESSIOND_TMUX" remain-on-exit on >/dev/null
   local waited=0
   while [ ! -S "$SOCKET" ]; do

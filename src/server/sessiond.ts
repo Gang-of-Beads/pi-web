@@ -367,6 +367,23 @@ function registerSessionDaemonRoutes({ eventHub, machineStatus, statusAttributio
       return { armed: count };
     });
   }
+  // Debug-only model-surface capture for the host-vs-native e2e leg
+  // (match-tui-prompt 4.1). Exists only under PI_WEB_DEBUG_PROMPT_CAPTURE=1;
+  // production daemons have no such endpoint. Absence answers
+  // { available: false } — unavailable is never an empty claim.
+  if (daemonEnvironment["PI_WEB_DEBUG_PROMPT_CAPTURE"] === "1") {
+    app.get<{ Querystring: { sessionId?: string } }>("/api/debug/model-surface", async (request, reply) => {
+      const sessionId: unknown = request.query.sessionId;
+      if (typeof sessionId !== "string" || sessionId === "") {
+        return reply.code(400).send({ error: "sessionId is required" });
+      }
+      const capture = sessions.captureModelSurface(sessionId);
+      if (capture === undefined) {
+        return reply.code(404).send({ available: false, error: "session not active or its runtime carries no capture" });
+      }
+      return { available: true, ...capture };
+    });
+  }
   registerTerminalRoutes(app, terminals);
   registerWorkspaceCatalogRoutes(app, {
     projects,
