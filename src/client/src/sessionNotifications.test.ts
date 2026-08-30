@@ -111,6 +111,33 @@ describe("selected notification projection", () => {
     expect(restarted.value).not.toHaveProperty("daemonInstanceId");
   });
 
+  /**
+   * The tab's number and the drawer's rows must never disagree: the count is
+   * derived from the same revision-checked list the rows render from, and a
+   * frame whose summary contradicts the applied list takes the whole inbox
+   * stale - count and list resync together, never one without the other.
+   */
+  it("refuses to apply a frame whose summary disagrees with the list it produces", () => {
+    const current = installSelectedNotificationSnapshot(undefined, target, snapshot());
+    const lying = addedEvent(notification(2), 2);
+    const disagreeing = { ...lying, summary: { ...lying.summary, retainedCount: 7 } };
+
+    const result = applySelectedNotificationEvent(current, target, disagreeing);
+
+    expect(result.value.status).toBe("stale");
+    expect(result.needsRefresh).toBe(true);
+    // A stale inbox renders no view at all: the tab shows no number rather
+    // than a wrong one - absence over invention.
+    expect(selectedNotificationView(result.value)).toBeUndefined();
+  });
+
+  it("derives the visible count from the rendered list itself", () => {
+    const inbox = installSelectedNotificationSnapshot(undefined, target, snapshot());
+    const view = selectedNotificationView(inbox);
+    if (view === undefined) throw new Error("expected a fresh view");
+    expect(view.retainedCount).toBe(view.notifications.length);
+  });
+
   it("drops old-daemon optimistic cutoffs and announcements when a restart snapshot arrives", () => {
     const current = {
       ...installSelectedNotificationSnapshot(undefined, target, snapshot()),
