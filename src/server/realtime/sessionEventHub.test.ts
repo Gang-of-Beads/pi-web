@@ -175,7 +175,7 @@ describe("SessionEventHub", () => {
 
     hub.publishGlobal({ type: "status.update", status });
 
-    expect(globalSocket.send).toHaveBeenCalledWith(JSON.stringify({ type: "status.update", status }));
+    expect(globalSocket.send).toHaveBeenCalledWith(JSON.stringify({ type: "status.update", status, seq: 1 }));
     expect(sessionSocket.send).not.toHaveBeenCalled();
   });
 
@@ -196,7 +196,7 @@ describe("SessionEventHub", () => {
 
     hub.publishGlobal(event);
 
-    expect(globalSocket.send).toHaveBeenCalledWith(JSON.stringify(event));
+    expect(globalSocket.send).toHaveBeenCalledWith(JSON.stringify({ ...event, seq: 1 }));
     expect(sessionSocket.send).not.toHaveBeenCalled();
   });
 
@@ -220,11 +220,12 @@ describe("SessionEventHub", () => {
       daemonInstanceId: "daemon-test",
       catalogRevision: 1,
       summary,
+      seq: 1,
     }));
     expect(sessionSocket.send).not.toHaveBeenCalled();
   });
 
-  it("contains termination failures while publishing unstamped global events", () => {
+  it("contains termination failures while publishing stamped global events", () => {
     const hub = new SessionEventHub();
     const failed = new FakeSocket();
     const healthy = new FakeSocket();
@@ -237,14 +238,14 @@ describe("SessionEventHub", () => {
 
     expect(failed.send).toHaveBeenCalledOnce();
     expect(failed.terminate).toHaveBeenCalledOnce();
-    expect(healthy.send).toHaveBeenCalledWith(JSON.stringify({ type: "session.name", sessionId: "s1", name: "Renamed" }));
+    expect(healthy.send).toHaveBeenCalledWith(JSON.stringify({ type: "session.name", sessionId: "s1", name: "Renamed", seq: 1 }));
 
     failed.send.mockClear();
     hub.publishGlobal({ type: "session.name", sessionId: "s1", name: "Renamed again" });
 
     expect(failed.send).not.toHaveBeenCalled();
     expect(failed.terminate).toHaveBeenCalledOnce();
-    expect(healthy.send).toHaveBeenLastCalledWith(JSON.stringify({ type: "session.name", sessionId: "s1", name: "Renamed again" }));
+    expect(healthy.send).toHaveBeenLastCalledWith(JSON.stringify({ type: "session.name", sessionId: "s1", name: "Renamed again", seq: 2 }));
   });
 
   it("stamps a monotonically increasing per-session seq on published events", () => {
@@ -330,13 +331,36 @@ describe("SessionEventHub", () => {
     expect(hub.currentSeq("never")).toBe(0);
   });
 
-  it("does not stamp seq on global events", () => {
+  it("stamps realtime and notification-summary frames with one shared global seq", () => {
     const hub = new SessionEventHub();
     const globalSocket = new FakeSocket();
     hub.addGlobal(globalSocket);
+    const summary = { sessionId: "s1", cwd: "/workspace", inboxRevision: 1, retainedCount: 1, discardedCount: 0, highestSeverity: "warning" as const };
 
     hub.publishGlobal({ type: "session.name", sessionId: "s1", name: "Renamed" });
+    hub.publishNotificationSummary({ type: "notifications.summary", daemonInstanceId: "daemon-test", catalogRevision: 1, summary });
+    hub.publishGlobal({ type: "session.name", sessionId: "s1", name: "Renamed again" });
 
-    expect(globalSocket.send).toHaveBeenCalledWith(JSON.stringify({ type: "session.name", sessionId: "s1", name: "Renamed" }));
+    // One counter for the one global scope: the summary is not a second
+    // sequence, or a gap in one surface would say nothing about the other.
+    expect(globalSocket.send).toHaveBeenNthCalledWith(1, JSON.stringify({ type: "session.name", sessionId: "s1", name: "Renamed", seq: 1 }));
+    expect(globalSocket.send).toHaveBeenNthCalledWith(2, JSON.stringify({ type: "notifications.summary", daemonInstanceId: "daemon-test", catalogRevision: 1, summary, seq: 2 }));
+    expect(globalSocket.send).toHaveBeenNthCalledWith(3, JSON.stringify({ type: "session.name", sessionId: "s1", name: "Renamed again", seq: 3 }));
+  });
+
+  it("advances the global seq even with no subscriber, so a late joiner sees consecutive numbers", () => {
+    const hub = new SessionEventHub();
+    const summary = { sessionId: "s1", cwd: "/workspace", inboxRevision: 1, retainedCount: 0, discardedCount: 0, highestSeverity: "info" as const };
+
+    hub.publishGlobal({ type: "session.name", sessionId: "s1", name: "Renamed" });
+    hub.publishNotificationSummary({ type: "notifications.summary", daemonInstanceId: "daemon-test", catalogRevision: 1, summary });
+
+    expect(hub.currentGlobalSeq()).toBe(2);
+
+    const socket = new FakeSocket();
+    hub.addGlobal(socket);
+    hub.publishGlobal({ type: "session.name", sessionId: "s1", name: "Third" });
+
+    expect(socket.send).toHaveBeenCalledWith(JSON.stringify({ type: "session.name", sessionId: "s1", name: "Third", seq: 3 }));
   });
 });

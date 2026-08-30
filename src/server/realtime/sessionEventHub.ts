@@ -26,6 +26,7 @@ export class SessionEventHub {
   private readonly socketsBySession = new Map<string, Set<RealtimeSocket>>();
   private readonly globalSockets = new Set<RealtimeSocket>();
   private readonly seqBySession = new Map<string, number>();
+  private globalSeq = 0;
   private globalJoinFrame: (() => RealtimeEvent) | undefined;
   private keepaliveTimer: ReturnType<typeof setInterval> | undefined;
 
@@ -106,19 +107,44 @@ export class SessionEventHub {
     return this.seqBySession.get(sessionId) ?? 0;
   }
 
+  /**
+   * Last global-scope sequence number stamped by {@link publishRealtime} and
+   * {@link publishNotificationSummary} (0 before any event). One counter for
+   * the one global scope: notification summaries and realtime events share it,
+   * so a gap in one surface is a gap in the stream the client can count.
+   */
+  currentGlobalSeq(): number {
+    return this.globalSeq;
+  }
+
   publishGlobal(event: GlobalSessionEvent): void {
     this.publishRealtime(event);
   }
 
   publishNotificationSummary(event: SessionNotificationSummaryEvent): void {
-    const payload = JSON.stringify(event);
+    const seq = this.nextGlobalSeq();
+    const payload = JSON.stringify({ ...event, seq });
     this.sendToSockets(this.globalSockets, payload);
   }
 
   publishRealtime(event: RealtimeEvent): void {
+    const seq = this.nextGlobalSeq();
+    // Keep seq monotonic (dark-launch gap counting) but skip serialization when
+    // no browser is subscribed: same zero-listener discipline as publish.
     if (this.globalSockets.size === 0) return;
-    const payload = JSON.stringify(event);
+    const payload = JSON.stringify({ ...event, seq });
     this.sendToSockets(this.globalSockets, payload);
+  }
+
+  /**
+   * Advance and return the global-scope sequence. Advanced on every publish
+   * regardless of subscribers: a frame published while nobody listened must
+   * still cost a number, or the next delivered frame would look consecutive to
+   * a client that missed nothing when in fact a frame died unobserved.
+   */
+  private nextGlobalSeq(): number {
+    this.globalSeq += 1;
+    return this.globalSeq;
   }
 
   private sendToSockets(sockets: Set<RealtimeSocket> | undefined, payload: string): void {
