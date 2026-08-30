@@ -607,7 +607,14 @@ export class SessionController {
       if (options.applyResult && this.isSelectedSessionIdentity(session.id, machineId)) this.applyCommandResult(result);
       else if (result.type === "select" || result.type === "tree") this.setState({ error: `Queued command “${text}” needs input; open the session and run it again.` });
       this.markCachedNewSessionPersisted(session);
-      if (options.ledgerId !== undefined) this.settleLedgerRow(options.ledgerId, { state: "ok" });
+      if (options.ledgerId !== undefined) {
+        // A runtime command accepted while a reply streams is FORWARDED as a
+        // prompt and queued behind it: the {type:"done"} with no message means
+        // accepted, not executed. The row must say so — the archived
+        // action-acknowledgment spec forbids dressing acceptance as completion.
+        const deferred = result.type === "done" && result.message === undefined && this.getState().status?.isStreaming === true;
+        this.settleLedgerRow(options.ledgerId, { state: "ok", ...(deferred ? { resultText: "accepted — waits for the running reply to finish" } : {}) });
+      }
       return true;
     } catch (error) {
       if (this.getState().selectedSession?.id === session.id) this.setState({ messages: [...this.getState().messages, textMessage("system", describeError(error))] });
