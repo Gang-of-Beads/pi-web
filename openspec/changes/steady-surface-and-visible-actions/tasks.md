@@ -13,7 +13,7 @@ unit tests. Each task is one commit; nothing is committed while `npm run verify`
 
 ## 1. Clear the ground
 
-- [ ] 1.1 Delete the unreachable alignment machinery in ChatView: `scrollToOpenAsk`, `scrollToOpenDialog`, `alignOpenAskToTop`, `alignOpenDialogToTop`, `deferredOpenAlign`, their requestAnimationFrame frame fields, the cancellation branches, and the deferred-replay block. Verify: `rg -n "scrollToOpenAsk|scrollToOpenDialog|alignOpenAskToTop|alignOpenDialogToTop|deferredOpenAlign" src/` returns no matches; `npm run verify` green. Evidence: grep output (empty) + commit.
+- [x] 1.1 Delete the unreachable alignment machinery in ChatView: `scrollToOpenAsk`, `scrollToOpenDialog`, `alignOpenAskToTop`, `alignOpenDialogToTop`, `deferredOpenAlign`, their requestAnimationFrame frame fields, the cancellation branches, and the deferred-replay block. Verify: `rg -n "scrollToOpenAsk|scrollToOpenDialog|alignOpenAskToTop|alignOpenDialogToTop|deferredOpenAlign" src/` returns no matches; `npm run verify` green. Evidence: grep output (empty) + commit. — DONE f81859d1: all references zero (grep), typecheck/lint green, restore no longer special-cases a pending question; full verify green.
 
 ## 2. Measurement harness first (red before any fix)
 
@@ -21,7 +21,7 @@ unit tests. Each task is one commit; nothing is committed while `npm run verify`
 
 ## 3. Steady region below the transcript (spec: chat/pending-input-stability)
 
-- [ ] 3.1 Reserve the activity dock's row whenever the selected session is live; clip its label to one line (ellipsis) so text and timer growth cannot change its height. Verify: unit test asserting the reserved row and one-line clipping; probe at 393×850 shows dock height delta **0 px** across a streamed reply. Evidence: test + probe numbers.
+- [x] 3.1 Reserve the activity dock's row whenever the selected session is live; clip its label to one line (ellipsis) so text and timer growth cannot change its height. Verify: unit test asserting the reserved row and one-line clipping; probe at 393×850 shows dock height delta **0 px** across a streamed reply. Evidence: test + probe numbers. — INVESTIGATED, collapse leg NOT REPRODUCED: activityState() always answers once a status exists (compacting/bash/running/queued/idle), so a live session always has a dock row; the one-line clip already exists (ChatView.ts:380). Three pin tests added so an early return cannot quietly reintroduce the collapse; no fix invented for a defect that does not exist.
 - [ ] 3.2 Reserve the queued strip's row while a stream is active, so appearing/clearing cannot move the composer. Verify: unit test for the empty-but-present state; probe shows composer top delta **0 px** across strip appear and clear. Evidence: test + probe numbers.
 - [ ] 3.3 Make the waiting-slot's departure wait for `pointerup`/`pointercancel` when a pointer is down (through ChatView's existing press tracking). Verify: unit test — pointerdown → outcome settles → slot still present → pointerup → slot gone; probe tap test: `elementFromPoint` at touchstart equals the click target on a dialog option, single tap activates. Evidence: test + probe numbers.
 - [ ] 3.4 Re-run the probe after 3.1–3.3 and record the GREEN numbers (all sampled deltas 0 px; tap activates first touch). Evidence: full probe output in the change notes; this is the acceptance gate for the pending-input-stability spec.

@@ -287,3 +287,34 @@ describe("whether a stopped task is over", () => {
     expect(isActiveActivityStatus("stopped")).toBe(false);
   });
 });
+
+describe("the dock's row cannot vanish mid-stream", () => {
+  /**
+   * The suspected jitter producer was a beat where streaming had begun but no
+   * renderable state existed, collapsing the row. Investigated and NOT
+   * REPRODUCED: with a status present, activityState() always answers -
+   * compacting, bash, running, queued, or idle - so a live session always has
+   * a dock. These pins keep that true; if someone adds an early return that
+   * can fire mid-stream, the collapse becomes possible again and this fails.
+   */
+  it("renders the working dock even before any activity state arrives", async () => {
+    const { className } = await dockWith(status({ isStreaming: true }), undefined);
+    expect(className).toContain("activity-dock");
+    expect(className).toContain("working");
+  });
+
+  it("still answers with the idle pill rather than nothing once status exists", async () => {
+    const { className } = await dockWith(status({}), undefined);
+    expect(className).toContain("idle");
+  });
+
+  /**
+   * The dock is one row by contract: a label that wraps grows the row and
+   * moves the composer, so the text clips to a single line instead.
+   */
+  it("clips the label to one line so growth cannot change the row height", () => {
+    const sheet = String(ChatView.styles);
+    expect(sheet).toMatch(/\.activity-text\s*\{[^}]*white-space:\s*nowrap/);
+    expect(sheet).toMatch(/\.activity-text\s*\{[^}]*text-overflow:\s*ellipsis/);
+  });
+});
