@@ -29,6 +29,11 @@ const PAGE = (entry) => `<!doctype html>
     const view = document.getElementById("view");
     view.sessionId = "chips-probe";
     view.messages = [{ role: "user", parts: [{ type: "text", text: "Start" }] }];
+    // Two kinds must have rows for the filter row to render at all (a single
+    // kind offers no chips by design); the runs kind carries ONLY a finished
+    // row, so its chip must exist without a count.
+    view.subagents = [{ sessionId: "sub-1", cwd: "/repo", status: "working" }];
+    view.subagentRuns = [{ runId: "run-1", agent: "reviewer", status: "done", elapsedMs: 5_000, startedAt: "2026-08-30T09:00:00.000Z" }];
     view.backgroundTasks = [
       { id: "t-run", name: "watcher", command: "npm run watch", status: "running", durationMs: 42_000 },
       { id: "t-1", name: "build", command: "npm run build", status: "completed", durationMs: 12_000 },
@@ -46,8 +51,10 @@ try {
   const entry = entryMatch[1];
   const CLIENT_ENTRY_URL = entry.startsWith("http") ? entry : `http://127.0.0.1:8505/${entry.replace(/^\.?\//u, "")}`;
   const page = await browser.newPage({ viewport: { width: 393, height: 850 }, hasTouch: true, isMobile: true });
+  // Same-origin fixture: the client entry is a cross-origin module otherwise,
+  // and CORS would silently mount nothing - which read as "tab not found".
   await page.route("**/chips-probe", (route) => route.fulfill({ contentType: "text/html", body: PAGE(CLIENT_ENTRY_URL) }));
-  await page.goto("http://fixture.local/chips-probe", { waitUntil: "domcontentloaded" });
+  await page.goto(`${BASE}/chips-probe`, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(600);
 
   const opened = await page.evaluate(() => {
@@ -73,8 +80,13 @@ try {
   const failures = [];
   const tasks = readout.chips.find((chip) => /Tasks/.test(chip));
   if (!/Tasks\s*1$/.test(tasks ?? "")) failures.push(`Tasks chip must show exactly the running count 1, got "${tasks ?? "none"}"`);
+  const subagents = readout.chips.find((chip) => /Subagents/.test(chip));
+  if (!/Subagents\s*1$/.test(subagents ?? "")) failures.push(`Subagents chip must show its running count 1, got "${subagents ?? "none"}"`);
+  const runs = readout.chips.find((chip) => /Agent runs/.test(chip));
+  if (runs === undefined) failures.push("a kind with only finished rows must keep its chip");
+  else if (/\d/.test(runs)) failures.push(`a history-only kind's chip must carry no number, got "${runs}"`);
   const all = readout.chips.find((chip) => /^All/.test(chip));
-  if (!/^All\s*1$/.test(all ?? "")) failures.push(`All chip must sum running counts to 1, got "${all ?? "none"}"`);
+  if (!/^All\s*2$/.test(all ?? "")) failures.push(`All chip must sum running counts to 2, got "${all ?? "none"}"`);
   for (const toggle of readout.historyToggle) {
     if (/\d/.test(toggle)) failures.push(`"Show finished" must carry no number, got "${toggle}"`);
   }
