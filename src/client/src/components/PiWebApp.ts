@@ -35,7 +35,7 @@ import type { RecoveredPrompt } from "../resendMessage";
 import { keyboardInset } from "../appShell/keyboardInset";
 import { machineSessionKey } from "../machineKeys";
 import { commandsForSession } from "../commandLedger";
-import { composedPathOf, composerCollapsedForFocus, shouldReleaseComposerCollapse } from "../composerCollapse";
+import { composedPathOf, composerCollapsedForFocus, composerCollapseTransition, shouldReleaseComposerCollapse } from "../composerCollapse";
 import { oneReadAtATime, shouldPollSessionActivity } from "../sessionActivityPolling";
 import { isWaitingForUser } from "../sessionWaiting";
 import { sessionCleanupRequestKey } from "../sessionCleanupUi";
@@ -523,7 +523,32 @@ export class PiWebApp extends LitElement {
    * belongs on the shadow root, where the retargeted event actually travels.
    */
   private readonly onFocusIn = (event: FocusEvent) => {
-    this.composerCollapsed = composerCollapsedForFocus(event.composedPath());
+    const next = composerCollapseTransition({
+      pointerInFlight: this.pointerPressInFlight,
+      collapsed: this.composerCollapsed,
+      held: this.deferredCollapse,
+      next: composerCollapsedForFocus(event.composedPath()),
+    });
+    this.composerCollapsed = next.collapsed;
+    this.deferredCollapse = next.held;
+  };
+
+  private pointerPressInFlight = false;
+  private deferredCollapse: boolean | undefined = undefined;
+
+  private readonly onPointerPressStart = () => {
+    this.pointerPressInFlight = true;
+  };
+
+  private readonly onPointerPressEnd = () => {
+    const next = composerCollapseTransition({
+      pointerInFlight: false,
+      collapsed: this.composerCollapsed,
+      held: this.deferredCollapse,
+      next: this.deferredCollapse ?? this.composerCollapsed,
+    });
+    this.composerCollapsed = next.collapsed;
+    this.deferredCollapse = next.held;
   };
 
   /**
@@ -542,16 +567,29 @@ export class PiWebApp extends LitElement {
     if (action === "add") {
       root.addEventListener("focusin", this.onFocusIn);
       root.addEventListener("focusout", this.onFocusOut);
+      root.addEventListener("pointerdown", this.onPointerPressStart);
+      root.addEventListener("pointerup", this.onPointerPressEnd);
+      root.addEventListener("pointercancel", this.onPointerPressEnd);
       return;
     }
     root.removeEventListener("focusin", this.onFocusIn);
     root.removeEventListener("focusout", this.onFocusOut);
+    root.removeEventListener("pointerdown", this.onPointerPressStart);
+    root.removeEventListener("pointerup", this.onPointerPressEnd);
+    root.removeEventListener("pointercancel", this.onPointerPressEnd);
   }
 
   private readonly onFocusOut = (event: FocusEvent) => {
     const next = event.relatedTarget;
     if (next === null) return;
-    this.composerCollapsed = composerCollapsedForFocus(composedPathOf(next));
+    const transition = composerCollapseTransition({
+      pointerInFlight: this.pointerPressInFlight,
+      collapsed: this.composerCollapsed,
+      held: this.deferredCollapse,
+      next: composerCollapsedForFocus(composedPathOf(next)),
+    });
+    this.composerCollapsed = transition.collapsed;
+    this.deferredCollapse = transition.held;
   };
 
   private readonly onDocumentVisibilityChange = () => {

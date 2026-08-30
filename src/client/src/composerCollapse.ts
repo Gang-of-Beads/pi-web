@@ -12,6 +12,24 @@
  */
 const COLLAPSING_HOSTS = ["ask-user-card", "extension-dialog-card"];
 
+/**
+ * One collapse transition, pointer-aware. A tap's pointerdown focuses the
+ * dialog host; collapsing at that instant resizes the composer and moves the
+ * dialog between pointerdown and pointerup, so the tap lands nowhere (the
+ * three-time reported "点了两遍"). While the pointer is down the next value is
+ * held and applied on release.
+ */
+export function composerCollapseTransition(input: {
+  pointerInFlight: boolean;
+  collapsed: boolean;
+  held: boolean | undefined;
+  next: boolean;
+}): { collapsed: boolean; held: boolean | undefined } {
+  if (input.pointerInFlight) return { collapsed: input.collapsed, held: input.next };
+  const settled = input.held ?? input.next;
+  return { collapsed: settled, held: undefined };
+}
+
 export function composerCollapsedForFocus(path: readonly EventTarget[]): boolean {
   return path.some((target) => COLLAPSING_HOSTS.includes(elementTagName(target)));
 }
