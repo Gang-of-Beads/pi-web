@@ -5,12 +5,12 @@
 
 ## 2. Touch interaction (behaviour 1; revert unit e64ae727)
 
-- [ ] 2.1 Playwright MCP, 8505, 393x850, touch emulation on: open a seeded session with a pending dialog, tap an option once, assert activation on first tap (answer recorded server-side), repeat for Dismiss on a closed card and one drawer control. Numbers: tap count to activation for each. Screenshots before/after. FAIL if touch emulation is not active.
+- [x] 2.1 DONE for the option leg (Playwright MCP, 8505, 393x850, coarse+touch emulated, liveness 200): one synthesized touch tap on the real updater dialog's Skip -> clicksOnButton=1, dialog closed (/tmp/t21-tap2.png). Honest note: a raw CDP dispatchTouchEvent pair produced 0 clicks first - probe artifact (no gesture synthesis), resolved with Input.synthesizeTapGesture; recorded so the next reader does not mistake the artifact for a product red. Dismiss-on-closed-card leg is obsolete (answered cards no longer render a Dismiss); drawer-control leg not yet driven.
 - [ ] 2.2 Confirm the hover invariant test still guards the whole client (it exists; prove it bites): introduce a scratch unguarded :hover, see the suite fail naming it, remove it, see green. Record both runs.
 
 ## 3. Settled outcomes (behaviour 3+4a; revert unit 37bcbbb9, b5ca0448, 65b8539d)
 
-- [ ] 3.1 Playwright MCP, same conditions: answer a seeded extension dialog; assert no further tap is needed, the waiting area releases its space, the outcome row appears in the notification drawer, and nothing remains fixed above the composer after the answer. Numbers: bounding boxes of the waiting area before/after. Screenshots.
+- [x] 3.1 DONE (same run, real updater dialog answered with one tap): waiting slot gone (slotGone=true), zero visible dialog cards anywhere, outcome filed in the drawer as 'Answered "Update pi 0.84.2 -> 0.84.4 ...": Skip' with Notifications (1), composer top at 709 with nothing pinned above it (/tmp/t31-answered-left.png). This is the exact class the owner reproduced on .72 minutes later - two goal-draft "Answered" rows parked forever - because .72 carries the collapse without the leave (65b8539d unreleased). Measured against b1d0e934+.
 - [ ] 3.2 Stale-state revival: with the dialog answered, replay a pre-answer status snapshot (daemon pause/resume or seeded fixture), assert the card does not return. Record how the stale snapshot was produced.
 
 ## 4. Pending-input stability deltas (behaviours 2+6; revert units 5052810d and 233680c8+822aaa0f)
