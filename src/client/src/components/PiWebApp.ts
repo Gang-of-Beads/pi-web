@@ -42,7 +42,6 @@ import { isWaitingForUser } from "../sessionWaiting";
 import { sessionCleanupRequestKey } from "../sessionCleanupUi";
 import { selectedNotificationView } from "../sessionNotifications";
 import { SessionUnreadController } from "../sessionUnread";
-import { initialSessionWarningVisibilityState, reconcileSessionWarningVisibility, toggleSessionWarnings } from "../sessionWarningVisibility";
 import { RealtimeSocket, type BrowserRealtimeEvent } from "../sessionSocket";
 import type { PluginMachine, PluginPromptEditor, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding } from "../plugins/types";
 import { CLASSIC_THEME_ID, DEFAULT_THEME_PREFERENCE, applyPiWebTheme, findThemePairForTheme, readStoredThemePreference, resolveThemePreference, writeStoredThemePreference, type ThemePreference, type ThemePreferenceResolution } from "../theme";
@@ -426,7 +425,6 @@ export class PiWebApp extends LitElement {
   @state() private shortcutConfig: PiWebShortcutConfig = {};
   @state() private workspaceUploadDefaultFolder = effectiveWorkspaceUploadFolder(undefined);
   @state() private speechToTextConfig: PiWebConfigValues["speechToText"];
-  private sessionWarningVisibility = initialSessionWarningVisibilityState();
   private readonly onPopState = () => {
     if (this.modalLayerOpen()) {
       // The back gesture pops the placeholder frame we pushed when the layer
@@ -576,7 +574,6 @@ export class PiWebApp extends LitElement {
 
   protected override willUpdate(): void {
     this.toggleAttribute("pwa-display-mode", this.appShell.isPwaDisplayMode);
-    this.syncSessionWarningVisibility();
   }
 
   protected override updated(): void {
@@ -614,15 +611,6 @@ export class PiWebApp extends LitElement {
     const showing = this.settingsSection === "machines";
     if (showing && !this.fleetSectionShown) void this.refreshFleet();
     this.fleetSectionShown = showing;
-  }
-
-  private syncSessionWarningVisibility(): void {
-    const session = this.state.selectedSession;
-    this.sessionWarningVisibility = reconcileSessionWarningVisibility(
-      this.sessionWarningVisibility,
-      session === undefined ? undefined : machineSessionKey(selectedMachineId(this.state), session.id),
-      this.state.status === undefined ? undefined : this.state.status.warnings ?? [],
-    );
   }
 
   private syncSelectedSessionReadState(): void {
@@ -3086,10 +3074,6 @@ export class PiWebApp extends LitElement {
     });
   };
 
-  private readonly handleDismissWarning = (dismissId: string): void => {
-    void this.sessions.dismissWarning(dismissId);
-  };
-
   private readonly handleSubmitAsk = (askId: string, submission: AskUserSubmission): Promise<void> => this.sessions.submitAsk(askId, submission);
 
   private readonly handleAnswerDialog = (dialogId: string, value: ExtensionDialogAnswer): Promise<void> => this.sessions.answerDialog(dialogId, value);
@@ -3106,13 +3090,6 @@ export class PiWebApp extends LitElement {
 
   private readonly handleDismissAllNotifications = (): void => {
     void this.notifications.dismissAll();
-  };
-
-  private readonly handleToggleWarnings = (): void => {
-    const next = toggleSessionWarnings(this.sessionWarningVisibility);
-    if (next === this.sessionWarningVisibility) return;
-    this.sessionWarningVisibility = next;
-    this.requestUpdate();
   };
 
   /**
@@ -3143,7 +3120,7 @@ export class PiWebApp extends LitElement {
 
   private renderChatView(state: AppState, session: SessionInfo) {
     return html`
-      <chat-view .goalsLoad=${goalsForSelectedWorkspace(state)} .onRunGoalCommand=${(_goal: GoalRecordSummary, command: string) => this.runGoalCommand(command)} .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .loadingMore=${state.isLoadingEarlierMessages} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk} .pendingDialogs=${state.pendingDialogs} .commandLedger=${commandsForSession(state.commandLedger, machineSessionKey(selectedMachineId(state), session.id))} .goalCommandInFlight=${this.goalCommandInFlight} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onDismissClosedDialog=${this.handleDismissClosedDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .notificationInbox=${selectedNotificationView(state.selectedNotificationInbox)} .notificationsFailed=${state.selectedNotificationInbox?.status === "stale" && state.selectedNotificationInbox.sessionId === session.id && state.selectedNotificationInbox.cwd === session.cwd} .subagents=${state.subagents} .subagentRuns=${state.subagentRuns} .backgroundTasks=${state.backgroundTasks} .activityFailed=${state.activityFailed} .activityOutput=${state.activityOutput} .onCloseActivityOutput=${this.handleCloseActivityOutput} .activityConversation=${state.activityConversation} .onCloseActivityConversation=${this.handleCloseActivityConversation} .onOpenSubagent=${this.handleOpenSubagentSession} .onOpenSubagentRun=${this.handleOpenSubagentRun} .onOpenBackgroundTask=${this.handleOpenBackgroundTask} .onClearServerQueue=${this.handleClearServerQueue} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onDismissWarning=${this.handleDismissWarning} .onDismissNotification=${this.handleDismissNotification} .onDismissAllNotifications=${this.handleDismissAllNotifications} .warningsVisible=${!this.sessionWarningVisibility.collapsed} .onToggleWarnings=${this.handleToggleWarnings} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }}></chat-view>
+      <chat-view .goalsLoad=${goalsForSelectedWorkspace(state)} .onRunGoalCommand=${(_goal: GoalRecordSummary, command: string) => this.runGoalCommand(command)} .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .loadingMore=${state.isLoadingEarlierMessages} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk} .pendingDialogs=${state.pendingDialogs} .commandLedger=${commandsForSession(state.commandLedger, machineSessionKey(selectedMachineId(state), session.id))} .goalCommandInFlight=${this.goalCommandInFlight} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onDismissClosedDialog=${this.handleDismissClosedDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .notificationInbox=${selectedNotificationView(state.selectedNotificationInbox)} .notificationsFailed=${state.selectedNotificationInbox?.status === "stale" && state.selectedNotificationInbox.sessionId === session.id && state.selectedNotificationInbox.cwd === session.cwd} .subagents=${state.subagents} .subagentRuns=${state.subagentRuns} .backgroundTasks=${state.backgroundTasks} .activityFailed=${state.activityFailed} .activityOutput=${state.activityOutput} .onCloseActivityOutput=${this.handleCloseActivityOutput} .activityConversation=${state.activityConversation} .onCloseActivityConversation=${this.handleCloseActivityConversation} .onOpenSubagent=${this.handleOpenSubagentSession} .onOpenSubagentRun=${this.handleOpenSubagentRun} .onOpenBackgroundTask=${this.handleOpenBackgroundTask} .onClearServerQueue=${this.handleClearServerQueue} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onDismissNotification=${this.handleDismissNotification} .onDismissAllNotifications=${this.handleDismissAllNotifications} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }}></chat-view>
     `;
   }
 
@@ -3171,9 +3148,8 @@ export class PiWebApp extends LitElement {
   }
 
   private renderStatusBar(state: AppState) {
-    const warningCount = this.sessionWarningVisibility.warningCount;
     return html`
-      <status-bar .status=${state.status} .warningCount=${warningCount} .warningsExpanded=${warningCount > 0 && !this.sessionWarningVisibility.collapsed} .onToggleWarnings=${this.handleToggleWarnings}></status-bar>
+      <status-bar .status=${state.status}></status-bar>
     `;
   }
 

@@ -12,7 +12,7 @@ import { capturePrependScrollAnchor, PREPEND_RESTORE_SETTLE_FRAMES, restorePrepe
 import { shouldRequestEarlierMessages } from "../chatHistoryLoading";
 import { ChatScrollController, distanceFromScrollBottom, findFirstVisibleArticle, isNearScrollBottom, type ChatAnchorScrollPosition, type ChatScrollRestoreResult } from "../chatScrollPosition";
 import { scrollEdgeClasses, ScrollEdgeTracker } from "../scrollEdges";
-import type { AskUserSubmission, PendingAskUser, PendingExtensionDialog, QueuedSessionMessage, SessionActivity, SessionStatus, SessionWarningSeverity } from "../api";
+import type { AskUserSubmission, PendingAskUser, PendingExtensionDialog, QueuedSessionMessage, SessionActivity, SessionStatus } from "../api";
 import type { CommandLedgerEntry } from "../commandLedger";
 import type { ActivityConversationView, ActivityOutputView, ClosedExtensionDialog, PanelLoad } from "../appState";
 import {
@@ -36,7 +36,6 @@ import { describeRunModel } from "../modelIdentity";
 import { isWaitingForUser } from "../sessionWaiting";
 import type { SessionBackgroundTaskInfo, SessionNotification, SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
 import type { ChatLine, ChatPart, MessageDelivery } from "./shared";
-import { renderSessionWarningIcon} from "./shared";
 import type { SessionStateBadgeKind } from "./activityBadge";
 import "./AskUserCard";
 import "./ExtensionDialogCard";
@@ -246,27 +245,6 @@ export const chatStyles = css`
     .drawer-tab, .subagent-row, .activity-history-toggle { min-height: 44px; }
     .drawer-header { min-height: 44px; }
   }
-  .session-warnings { flex: 0 1 auto; display: grid; gap: var(--pi-space-4); max-height: 50%; min-height: 0; overflow-y: auto; box-sizing: border-box; padding: var(--pi-space-5) var(--pi-space-7); border-bottom: 1px solid var(--pi-border-muted); }
-  .session-warnings:only-child { flex: 1 1 auto; max-height: 100%; border-bottom: 0; }
-  .session-warnings-controls { display: flex; justify-content: flex-end; }
-  .session-warnings-collapse { display: inline-flex; align-items: center; gap: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); padding: var(--pi-space-2) var(--pi-space-4); font: var(--pi-text-xs) var(--pi-font-ui); cursor: pointer; }
-  .session-warnings-collapse:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); background: var(--pi-bg-overlay); }
-  @media (hover: hover) { .session-warnings-collapse:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); background: var(--pi-bg-overlay); } }
-  .session-warnings-collapse:focus-visible { outline: 1px solid var(--pi-border); outline-offset: 2px; }
-  .session-warnings-collapse-icon { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
-  .session-warning { position: relative; display: grid; gap: var(--pi-space-2); box-sizing: border-box; padding: var(--pi-space-5) 34px var(--pi-space-5) var(--pi-space-6); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-lg); background: var(--pi-warning-surface); color: var(--pi-text); }
-  .session-warning.error { border-color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 12%, var(--pi-surface)); }
-  .session-warning.info { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
-  .session-warning-head { display: flex; align-items: center; gap: var(--pi-space-4); min-height: 16px; }
-  .session-warning-icon { flex: 0 0 auto; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-  .session-warning-body { min-width: 0; display: grid; gap: 3px; }
-  .session-warning-message { margin: 0; overflow-wrap: anywhere; }
-  .session-warning-path { margin: 0; color: var(--pi-muted); font-size: var(--pi-text-xs); font-family: var(--pi-mono, ui-monospace, monospace); overflow-wrap: anywhere; }
-  .session-warning-source { color: var(--pi-muted); font-size: var(--pi-text-2xs); text-transform: uppercase; letter-spacing: .04em; }
-  .session-warning-dismiss { position: absolute; top: 6px; right: 6px; display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); font: 15px/1 system-ui, sans-serif; cursor: pointer; }
-  .session-warning-dismiss:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); background: var(--pi-bg-overlay); }
-  @media (hover: hover) { .session-warning-dismiss:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); background: var(--pi-bg-overlay); } }
-  .session-warning-dismiss:focus-visible { outline: 1px solid var(--pi-border); outline-offset: 2px; }
   .notification-control, .notification-row-dismiss { box-sizing: border-box; min-height: 32px; border: 0; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); cursor: pointer; }
   .notification-control { padding: 0 var(--pi-space-4); font: var(--pi-text-xs) var(--pi-font-ui); white-space: nowrap; }
   .notification-toggle { display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; }
@@ -678,28 +656,6 @@ export function chatMessageGroupLabel(defaultOpen: boolean): string {
   return defaultOpen ? "live events" : "events";
 }
 
-/** A rendered session-warning row derived from live status warnings. */
-export interface ChatSessionWarningRow {
-  severity: SessionWarningSeverity;
-  severityClass: string;
-  message: string;
-  source?: string;
-  path?: string;
-  dismissId?: string;
-}
-
-/** Derive one severity-tagged warning row per live status warning, in order. */
-export function chatSessionWarningRows(status: SessionStatus | undefined): ChatSessionWarningRow[] {
-  return (status?.warnings ?? []).map((warning) => ({
-    severity: warning.severity,
-    severityClass: `session-warning ${warning.severity}`,
-    message: warning.message,
-    ...(warning.source === undefined ? {} : { source: warning.source }),
-    ...(warning.path === undefined ? {} : { path: warning.path }),
-    ...(warning.dismiss === undefined ? {} : { dismissId: warning.dismiss.id }),
-  }));
-}
-
 export function chatMessageMetadataLabel(message: ChatLine): string {
   const timestamp = message.meta?.timestamp;
   const time = timestamp === undefined ? undefined : formatMessageTimestamp(timestamp);
@@ -777,11 +733,8 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) onClearServerQueue?: (queued: QueuedSessionMessage[]) => void;
   /** Take one queued message back into the composer, leaving the rest queued. */
   @property({ attribute: false }) onRecallQueuedMessage?: (message: QueuedSessionMessage) => void;
-  @property({ attribute: false }) onDismissWarning?: (dismissId: string) => void;
   @property({ attribute: false }) onDismissNotification?: (notificationId: string) => void;
   @property({ attribute: false }) onDismissAllNotifications?: () => void;
-  @property({ type: Boolean }) warningsVisible = true;
-  @property({ attribute: false }) onToggleWarnings?: () => void;
   @property({ attribute: false }) onLoadMore?: () => void;
   /** Puts the cursor in the composer, for the empty session's way forward. */
   @property({ attribute: false }) onFocusComposer?: () => void;
@@ -912,10 +865,6 @@ export class ChatView extends LitElement {
   private readonly handleClearServerQueue = (): void => {
     this.onClearServerQueue?.(this.status?.queuedMessages ?? []);
   };
-  private readonly handleToggleWarnings = (): void => {
-    this.onToggleWarnings?.();
-  };
-
   override connectedCallback(): void {
     super.connectedCallback();
     window.addEventListener("resize", this.onViewportResize);
@@ -1241,10 +1190,9 @@ export class ChatView extends LitElement {
   }
 
   private renderTopNotices() {
-    const warnings = this.renderWarnings();
     const drawer = this.renderTopDrawer();
-    if (warnings === null && drawer === null) return null;
-    return html`<div class="top-notices">${warnings}${drawer}</div>`;
+    if (drawer === null) return null;
+    return html`<div class="top-notices">${drawer}</div>`;
   }
 
   /**
@@ -1764,55 +1712,6 @@ export class ChatView extends LitElement {
     }
     if (notificationInboxTotalCount(inbox) === 0) this.retainedEmptyNotificationTrayTargetKey = pending.chatKey;
     this.renderRoot.querySelector<HTMLElement>("[data-notification-focus='header']")?.focus();
-  }
-
-  private renderWarnings() {
-    const rows = chatSessionWarningRows(this.status);
-    if (!this.warningsVisible || rows.length === 0) return null;
-    return html`
-      <aside class="session-warnings" role="alert" aria-live="polite">
-        ${this.onToggleWarnings === undefined ? null : html`
-          <div class="session-warnings-controls">
-            <button
-              type="button"
-              class="session-warnings-collapse"
-              title="Minimise warnings"
-              aria-label="Minimise warnings"
-              @click=${this.handleToggleWarnings}
-            >
-              <svg class="session-warnings-collapse-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <path d="m18 15-6-6-6 6"></path>
-              </svg>
-              <span>Minimise</span>
-            </button>
-          </div>
-        `}
-        ${rows.map((row) => {
-          const dismissId = row.dismissId;
-          return html`
-          <div class=${row.severityClass}>
-            <div class="session-warning-head">
-              ${renderSessionWarningIcon(row.severity, "session-warning-icon")}
-              ${row.source === undefined ? null : html`<span class="session-warning-source">${row.source}</span>`}
-            </div>
-            <div class="session-warning-body">
-              <p class="session-warning-message">${row.message}</p>
-              ${row.path === undefined ? null : html`<p class="session-warning-path">${row.path}</p>`}
-            </div>
-            ${dismissId === undefined ? null : html`
-              <button
-                type="button"
-                class="session-warning-dismiss"
-                title="Don't show this warning again"
-                aria-label="Dismiss warning"
-                @click=${() => { this.onDismissWarning?.(dismissId); }}
-              >×</button>
-            `}
-          </div>
-        `;
-        })}
-      </aside>
-    `;
   }
 
   private readonly closeActivityOutput = (): void => {

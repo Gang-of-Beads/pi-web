@@ -1,6 +1,6 @@
 import type { TemplateResult } from "lit";
 import { describe, expect, it, vi } from "vitest";
-import type { QueuedSessionMessage, SessionStatus, SessionWarning } from "../api";
+import type { QueuedSessionMessage, SessionStatus } from "../api";
 import { splitTranscriptAndPending } from "../messageDelivery";
 import {
   notificationTargetKey,
@@ -17,7 +17,6 @@ import {
   chatMessageGroupLabel,
   chatMessageMetadataLabel,
   chatDeliveryPresentation,
-  chatSessionWarningRows,
 } from "./ChatView";
 import { templateEventHandlerAfterMarker, templateEventHandlerNearMarker, templateText } from "../templateInspection.testSupport";
 
@@ -161,86 +160,12 @@ describe("ChatView queued messages stay in place", () => {
   });
 });
 
-describe("chatSessionWarningRows", () => {
-  // Warning-row content (severity class, message, path, source, dismiss
-  // capability, ordering) is derived by a pure exported seam rather than scraped
-  // from rendered `TemplateResult` markup, per the testing-guide rule that
-  // TemplateResult inspection is not for general content assertions.
-  it("derives one severity-tagged row per warning with optional path and source", () => {
-    const rows = chatSessionWarningRows(warningStatus([
-      { severity: "error", message: "skill failed to load", source: "skill", path: "/skills/a.md" },
-      { severity: "warning", message: "subscription auth is active" },
-      { severity: "info", message: "heads up", source: "runtime" },
-    ]));
-
-    expect(rows).toEqual([
-      { severity: "error", severityClass: "session-warning error", message: "skill failed to load", source: "skill", path: "/skills/a.md", dismissId: undefined },
-      { severity: "warning", severityClass: "session-warning warning", message: "subscription auth is active", source: undefined, path: undefined, dismissId: undefined },
-      { severity: "info", severityClass: "session-warning info", message: "heads up", source: "runtime", path: undefined, dismissId: undefined },
-    ]);
-  });
-
-  it("exposes a dismiss id only for warnings carrying a dismiss capability", () => {
-    const rows = chatSessionWarningRows(warningStatus([
-      { severity: "error", message: "skill failed to load", source: "skill" },
-      { severity: "warning", message: "subscription auth is active", source: "anthropic", dismiss: { id: "anthropicExtraUsage" } },
-    ]));
-
-    expect(rows.map((row) => row.dismissId)).toEqual([undefined, "anthropicExtraUsage"]);
-  });
-
-  it("derives no rows when there are no warnings or status is unset", () => {
-    expect(chatSessionWarningRows(warningStatus([]))).toEqual([]);
-    expect(chatSessionWarningRows(undefined)).toEqual([]);
-  });
-});
-
-describe("ChatView session-warning dismiss wiring", () => {
-  // Escape hatch: this case verifies the dismiss button's Lit event wiring,
-  // whose observable effect is invoking onDismissWarning with the warning's
-  // dismiss id. No DOM environment is available, so handler extraction anchored
-  // to the stable `session-warning-dismiss` class marker is proportionate.
-  it("invokes onDismissWarning with the warning's dismiss id", () => {
-    const view = new ChatView();
-    const onDismissWarning = vi.fn();
-    view.onDismissWarning = onDismissWarning;
-    view.status = warningStatus([
-      { severity: "warning", message: "subscription auth is active", source: "anthropic", dismiss: { id: "anthropicExtraUsage" } },
-    ]);
-
-    const rendered = renderWarnings(view);
-    if (rendered === null) throw new Error("expected a warnings banner");
-    templateEventHandlerAfterMarker(rendered, "session-warning-dismiss")(new Event("click"));
-
-    expect(onDismissWarning).toHaveBeenCalledExactlyOnceWith("anthropicExtraUsage");
-  });
-
-  // Escape hatch: this verifies the minimise chevron's Lit callback wiring in
-  // the node test environment, anchored to its stable semantic class marker.
-  // The chevron is wired to the unified onToggleWarnings (toggle ≡ collapse in
-  // the expanded state), so this also proves the single visibility mutation.
-  it("invokes onToggleWarnings from the visible warning area", () => {
-    const view = withStatus(new ChatView(), warningStatus([
-      { severity: "warning", message: "subscription auth is active" },
-    ]));
-    const onToggleWarnings = vi.fn();
-    view.onToggleWarnings = onToggleWarnings;
-
-    const rendered = renderWarnings(view);
-    if (rendered === null) throw new Error("expected a warnings banner");
-    templateEventHandlerAfterMarker(rendered, "session-warnings-collapse")(new Event("click"));
-
-    expect(onToggleWarnings).toHaveBeenCalledOnce();
-  });
-
-  it("removes the warning area while presentation is collapsed or there are no warnings", () => {
-    const view = withStatus(new ChatView(), warningStatus([
-      { severity: "warning", message: "subscription auth is active" },
-    ]));
-    view.warningsVisible = false;
-
-    expect(renderWarnings(view)).toBeNull();
-    expect(renderWarnings(withStatus(new ChatView(), warningStatus([])))).toBeNull();
+describe("deleted warning cards stay deleted", () => {
+  // Warnings file in the notification drawer now; the transcript-top cards,
+  // their collapse chevron and their status-bar counter are gone. The render
+  // seam assertion pins the deletion so a revival cannot land silently.
+  it("no longer exposes a warning-card render seam", () => {
+    expect(Reflect.get(new ChatView(), "renderWarnings")).toBeUndefined();
   });
 });
 
@@ -418,7 +343,6 @@ interface GroupBodyRenderCall {
 type RenderQueuedMessages = (this: ChatView) => TemplateResult;
 type RenderMessageGroup = (this: ChatView, messages: ChatLine[], startIndex: number, endIndex: number, defaultOpen: boolean) => TemplateResult;
 type RenderMessageGroupBody = (this: ChatView, messages: ChatLine[], startIndex: number) => TemplateResult;
-type RenderWarnings = (this: ChatView) => TemplateResult | null;
 type RenderTopDrawer = (this: ChatView) => TemplateResult | null;
 type FocusPendingNotificationTarget = (this: ChatView) => void;
 type TemplateEventHandler = (event: Event) => void;
@@ -460,12 +384,6 @@ function renderMessageGroup(view: ChatView, messages: ChatLine[], startIndex: nu
   return method.call(view, messages, startIndex, endIndex, defaultOpen);
 }
 
-function renderWarnings(view: ChatView): TemplateResult | null {
-  const method: unknown = Reflect.get(view, "renderWarnings");
-  if (!isRenderWarnings(method)) throw new Error("ChatView.renderWarnings is not callable");
-  return method.call(view);
-}
-
 function renderTopDrawer(view: ChatView): TemplateResult | null {
   const method: unknown = Reflect.get(view, "renderTopDrawer");
   if (!isRenderTopDrawer(method)) throw new Error("ChatView.renderTopDrawer is not callable");
@@ -502,10 +420,6 @@ function isRenderMessageGroupBody(value: unknown): value is RenderMessageGroupBo
   return typeof value === "function";
 }
 
-function isRenderWarnings(value: unknown): value is RenderWarnings {
-  return typeof value === "function";
-}
-
 function isRenderTopDrawer(value: unknown): value is RenderTopDrawer {
   return typeof value === "function";
 }
@@ -533,11 +447,6 @@ function dispatchDetailsToggle(handler: TemplateEventHandler, open: boolean): vo
   }
 }
 
-
-function withStatus(view: ChatView, status: SessionStatus): ChatView {
-  view.status = status;
-  return view;
-}
 
 function withNotificationInbox(view: ChatView): ChatView {
   const notificationInbox: SelectedSessionNotificationView = {
@@ -592,13 +501,6 @@ function installNotificationFocusRoot(view: ChatView): ReturnType<typeof vi.fn> 
   };
   if (!Reflect.set(view, "renderRoot", renderRoot)) throw new Error("Could not install notification focus root");
   return headerFocus;
-}
-
-function warningStatus(warnings: SessionWarning[]): SessionStatus {
-  return {
-    ...queuedStatus([]),
-    ...(warnings.length === 0 ? {} : { warnings }),
-  };
 }
 
 function queuedStatus(queuedMessages: QueuedSessionMessage[]): SessionStatus {
