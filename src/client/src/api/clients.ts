@@ -54,6 +54,7 @@ import {
   parseSessionUnreadAcknowledgeResponse,
   parseSessionUnreadCatalogSnapshot,
   parseSessionStreamSnapshot,
+  parseSessionStreamSync,
   parseSessionTreeForkResult,
   parseSessionTreeNavigateResult,
   parseSlashCommand,
@@ -292,6 +293,9 @@ export const sessionsApi = {
   messages: (session: SessionRef, options?: { limit?: number; before?: number }, machineId = "local") => request(messagePath(session, options, machineId), parseMessagePage),
   status: (session: SessionRef, machineId = "local") => request(sessionQueryPath(session, "status", machineId), parseSessionStatus),
   streamSnapshot: (session: SessionRef, machineId = "local") => request(sessionQueryPath(session, "stream-snapshot", machineId), parseSessionStreamSnapshot),
+  /** Gap repair: replay frames after the client's last seen seq, or resync. */
+  streamSync: (session: SessionRef, sinceSeq: number, machineId = "local") =>
+    request(`${sessionPath(session, "stream-snapshot", machineId)}${sessionQuery(session)}&sinceSeq=${String(sinceSeq)}`, parseSessionStreamSync),
   backgroundTasks: (session: SessionRef, machineId = "local") =>
     request(`${sessionPath(session, "background-tasks", machineId)}?cwd=${encodeURIComponent(session.cwd)}`, parseBackgroundTasks, { cache: "no-store" }),
   backgroundTaskOutput: (session: SessionRef, taskId: string, machineId = "local") =>
