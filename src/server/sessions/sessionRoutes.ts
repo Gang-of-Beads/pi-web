@@ -11,6 +11,11 @@ interface SessionQuery {
   cwd?: string;
 }
 
+interface StreamSnapshotQuery extends SessionQuery {
+  /** Present: the client wants gap repair from this seq, not a seed. */
+  sinceSeq?: string;
+}
+
 interface MessageQuery extends SessionQuery {
   before?: string;
   limit?: string;
@@ -207,11 +212,20 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
     }
   });
 
-  app.get<{ Params: { sessionId: string }; Querystring: SessionQuery }>(`${prefix}/sessions/:sessionId/stream-snapshot`, async (request, reply) => {
+  app.get<{ Params: { sessionId: string }; Querystring: StreamSnapshotQuery }>(`${prefix}/sessions/:sessionId/stream-snapshot`, async (request, reply) => {
     const ref = sessionRefFromQueryOr400(request.params.sessionId, request.query, reply);
     if (ref === undefined) return reply;
+    // A client that cites its last seen seq wants gap repair, not a seed:
+    // the reply is the replay-or-resync verdict, not a snapshot. A malformed
+    // citation is a 400, not a silent downgrade to a snapshot.
+    const sinceSeqRaw = request.query.sinceSeq;
+    let sinceSeq: number | undefined;
+    if (sinceSeqRaw !== undefined) {
+      sinceSeq = /^\d+$/.test(sinceSeqRaw) ? Number(sinceSeqRaw) : Number.NaN;
+      if (!Number.isSafeInteger(sinceSeq)) return reply.code(400).send({ error: "Invalid sinceSeq" });
+    }
     try {
-      return await sessions.streamSnapshot(ref);
+      return sinceSeq === undefined ? await sessions.streamSnapshot(ref) : await sessions.streamSync(ref, sinceSeq);
     } catch (error) {
       return reply.code(404).send({ error: errorMessage(error) });
     }

@@ -23,6 +23,7 @@ import type {
   SessionRef,
   SessionStatus,
   SessionStreamSnapshot,
+  SessionStreamSync,
   SessionTreeForkRequest,
   SessionTreeForkResult,
   SessionTreeNavigateRequest,
@@ -1070,6 +1071,44 @@ describe("session routes", () => {
     }
   });
 
+  it("returns the replay a counted gap asks for when sinceSeq is present", async () => {
+    const routeApp = Fastify({ logger: false });
+    await routeApp.register(fastifyWebsocket);
+    const eventHub = new SessionEventHub();
+    const routeService = new CapturingRouteSessionService();
+    routeService.streamSyncResponse = { kind: "replay", sinceSeq: 3, frames: ["{}"] };
+    registerSessionRoutes(routeApp, routeService, eventHub);
+
+    try {
+      const response = await routeApp.inject({ method: "GET", url: `/sessions/session-1/stream-snapshot?cwd=${encodeURIComponent("/repo")}&sinceSeq=3` });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ kind: "replay", sinceSeq: 3, frames: ["{}"] });
+      expect(routeService.streamSyncCalls).toEqual([{ ref: { id: "session-1", cwd: "/repo" }, sinceSeq: 3 }]);
+    } finally {
+      await routeService.dispose();
+      await routeApp.close();
+    }
+  });
+
+  it("rejects a malformed sinceSeq with 400, not a silent snapshot", async () => {
+    const routeApp = Fastify({ logger: false });
+    await routeApp.register(fastifyWebsocket);
+    const eventHub = new SessionEventHub();
+    const routeService = new CapturingRouteSessionService();
+    registerSessionRoutes(routeApp, routeService, eventHub);
+
+    try {
+      const response = await routeApp.inject({ method: "GET", url: `/sessions/session-1/stream-snapshot?cwd=${encodeURIComponent("/repo")}&sinceSeq=yesterday` });
+
+      expect(response.statusCode).toBe(400);
+      expect(routeService.streamSyncCalls).toEqual([]);
+    } finally {
+      await routeService.dispose();
+      await routeApp.close();
+    }
+  });
+
   it("maps stream-snapshot lookup failures to 404", async () => {
     const routeApp = Fastify({ logger: false });
     await routeApp.register(fastifyWebsocket);
@@ -1307,6 +1346,8 @@ class CapturingRouteSessionService implements SessionRouteService {
   messagesResponse: MessagePage = { messages: [], start: 0, total: 0 };
   streamSnapshotResponse: SessionStreamSnapshot = { seq: 0, partial: null };
   readonly streamSnapshotCalls: SessionRouteRef[] = [];
+  streamSyncResponse: SessionStreamSync = { kind: "resync", sinceSeq: 0 };
+  readonly streamSyncCalls: { ref: SessionRouteRef; sinceSeq: number }[] = [];
   readonly cleanupPreviewCalls: NormalizedSessionCleanupRequest[] = [];
   readonly cleanupCalls: NormalizedSessionCleanupRequest[] = [];
   readonly bulkArchiveCalls: SessionBulkMutationRef[][] = [];
@@ -1521,6 +1562,11 @@ class CapturingRouteSessionService implements SessionRouteService {
   streamSnapshot(lookup: SessionRouteRef): Promise<SessionStreamSnapshot> {
     this.streamSnapshotCalls.push(lookup);
     return Promise.resolve(this.streamSnapshotResponse);
+  }
+
+  streamSync(lookup: SessionRouteRef, sinceSeq: number): Promise<SessionStreamSync> {
+    this.streamSyncCalls.push({ ref: lookup, sinceSeq });
+    return Promise.resolve(this.streamSyncResponse);
   }
 
   availableModels(): Promise<[]> { return Promise.resolve([]); }

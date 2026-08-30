@@ -30,7 +30,7 @@ import {
   type ResourceDiagnostic,
 } from "@earendil-works/pi-coding-agent";
 import type { SessionBackgroundTaskInfo, SessionSubagentRunInfo } from "../../shared/apiTypes.js";
-import type { ClientArchiveSessionsResponse, ClientCommand, ClientCommandResult, ClientMessagePage, ClientSession, ClientSessionCleanupExecuteResponse, ClientSessionCleanupPreviewResponse, ClientSessionModel, ClientSessionModelCatalogEntry, ClientSessionStatus, ClientSessionTreeForkRequest, ClientSessionTreeForkResult, ClientSessionTreeNavigateRequest, ClientSessionTreeNavigateResult, ClientThinkingLevel, SessionStreamSnapshot, SessionUiEvent } from "../types.js";
+import type { ClientArchiveSessionsResponse, ClientCommand, ClientCommandResult, ClientMessagePage, ClientSession, ClientSessionCleanupExecuteResponse, ClientSessionCleanupPreviewResponse, ClientSessionModel, ClientSessionModelCatalogEntry, ClientSessionStatus, ClientSessionTreeForkRequest, ClientSessionTreeForkResult, ClientSessionTreeNavigateRequest, ClientSessionTreeNavigateResult, ClientThinkingLevel, SessionStreamSnapshot, SessionStreamSync, SessionUiEvent } from "../types.js";
 import { projectBrowserMessage } from "../browserMessageProjection.js";
 import { pageMessagesAtSafeBoundary } from "./messagePaging.js";
 import { annotateAssistantThinkingLevel, branchMessages } from "./branchMessages.js";
@@ -2300,6 +2300,20 @@ export class PiSessionService implements SessionRouteService {
       ? null
       : annotateAssistantThinkingLevel(projectBrowserMessage(streamingMessage), session.thinkingLevel);
     return { seq, partial };
+  }
+
+  /**
+   * Gap repair for a client that last saw `sinceSeq`. The hub's replay state
+   * decides: frames it still holds come back exactly as live; anything else
+   * answers resync and the client falls back to the full snapshot read.
+   * `getOrOpen` precedes the ring read, so the verdict can never describe a
+   * session other than the one the ref named.
+   */
+  async streamSync(ref: PiSessionRef, sinceSeq: number): Promise<SessionStreamSync> {
+    const session = await this.getOrOpen(ref);
+    const missed = this.events.replaySince(session.sessionId, sinceSeq);
+    if (missed.verdict === "resync") return { kind: "resync", sinceSeq };
+    return { kind: "replay", sinceSeq, frames: missed.frames };
   }
 
   async availableModels(ref: PiSessionRef): Promise<ClientSessionModel[]> {

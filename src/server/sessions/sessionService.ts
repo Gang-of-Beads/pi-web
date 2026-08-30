@@ -35,6 +35,7 @@ import type {
   ClientSessionTreeNavigateResult,
   ClientThinkingLevel,
   SessionStreamSnapshot,
+  SessionStreamSync,
 } from "../types.js";
 import type { QueuedSessionMessage, SessionBackgroundTaskInfo, SessionSubagentRunInfo } from "../../shared/apiTypes.js";
 import type { NormalizedSessionCleanupRequest } from "./sessionCleanup.js";
@@ -60,6 +61,8 @@ export interface SessionRouteService {
   messages(ref: SessionRouteRef, page?: { before?: number; limit?: number }): Promise<ClientMessagePage>;
   status(ref: SessionRouteRef): Promise<ClientSessionStatus>;
   streamSnapshot(ref: SessionRouteRef): Promise<SessionStreamSnapshot>;
+  /** Gap repair: replay the frames after the client's last seen seq, or resync. */
+  streamSync(ref: SessionRouteRef, sinceSeq: number): Promise<SessionStreamSync>;
   notificationCatalog(): SessionNotificationCatalogSnapshot | Promise<SessionNotificationCatalogSnapshot>;
   unreadCatalog(): Promise<SessionUnreadCatalogSnapshot>;
   /** Status of every currently loaded session, for browser hydration. */

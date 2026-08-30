@@ -1504,6 +1504,18 @@ export interface SessionStreamSnapshot {
   partial: unknown;
 }
 
+/**
+ * What a client citing `sinceSeq` gets from the sync route: the frames it
+ * missed, replayed oldest-first exactly as live; or a resync verdict when the
+ * server's ring cannot serve the request and the client must fall back to a
+ * full read. The three kinds are the whole contract - a client that meets an
+ * unknown kind ignores it and resyncs.
+ */
+export type SessionStreamSync =
+  | { kind: "snapshot"; seq: number; partial: unknown }
+  | { kind: "replay"; sinceSeq: number; frames: string[] }
+  | { kind: "resync"; sinceSeq: number };
+
 export type CommandResult =
   | { type: "done"; message?: string; session?: SessionInfo; promptDraft?: string }
   | { type: "select"; requestId: string; title: string; options: CommandOption[] }
