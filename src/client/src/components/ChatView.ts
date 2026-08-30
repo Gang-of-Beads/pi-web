@@ -1467,6 +1467,13 @@ export class ChatView extends LitElement {
   }
 
   private renderActivityPanel(activity: ActivityPanelState | undefined): TemplateResult {
+    // A failed read says so in every state: with nothing retained (the panel
+    // was never read) and with retained rows alike. Retention keeps the older
+    // rows visible below the line - a running task must not vanish because a
+    // read failed - but the failure is never dressed as a completed empty.
+    const failedLine = this.activityFailed
+      ? html`<p class="activity-empty activity-failed">Activity could not be loaded. It will retry automatically.</p>`
+      : null;
     // The tab is always present, so its panel answers even when this chat has
     // never started anything: an empty section reads as empty, never vanishes.
     if (activity === undefined) {
@@ -1475,10 +1482,10 @@ export class ChatView extends LitElement {
       // whose activity was never read; a definitive "none" may only be spoken
       // by a read that completed and found nothing. A read that failed is a
       // third state: it says so instead of borrowing either sentence.
-      if (this.activityFailed) {
+      if (failedLine !== null) {
         return html`
           <div class="subagents-list" id="session-activity-list" role="tabpanel" aria-labelledby="drawer-tab-activity">
-            <p class="activity-empty activity-failed">Activity could not be loaded. It will retry automatically.</p>
+            ${failedLine}
           </div>
         `;
       }
@@ -1496,12 +1503,22 @@ export class ChatView extends LitElement {
       `;
     }
     const filter = activityFilterInEffect(this.activityFilter, activity);
-    const scope = activity.activeCount === 0 && this.activityScope === "active" ? "empty-active" : this.activityScope;
     const inFilter = orderActivityEntries([
       ...activity.rows.map((row, index): ActivityListEntry => ({ kind: "subagents", index, status: row.status, row })),
       ...activity.runRows.map((row, index): ActivityListEntry => ({ kind: "runs", index, status: row.status, startedAt: row.run.startedAt, row })),
       ...activity.taskRows.map((row, index): ActivityListEntry => ({ kind: "tasks", index, status: row.status, startedAt: row.task.startedAt, row })),
     ]).filter((entry) => filter === "all" || filter === entry.kind);
+    if (failedLine !== null) {
+      // Retained rows stay visible under the failed line: the failure does not
+      // erase what the last good read saw.
+      return html`
+        <div class="subagents-list" id="session-activity-list" role="tabpanel" aria-labelledby="drawer-tab-activity">
+          ${failedLine}
+          ${repeat(inFilter, activityEntryKey, (entry) => this.renderActivityEntry(entry))}
+        </div>
+      `;
+    }
+    const scope = activity.activeCount === 0 && this.activityScope === "active" ? "empty-active" : this.activityScope;
     const entries = inFilter.filter((entry) => scope === "all" || !isFinishedActivityStatus(entry.status));
     // The sentence describes what the reader is looking at. Rows whose status
     // cannot be interpreted are neither active nor finished, so they survive

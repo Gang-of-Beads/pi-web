@@ -20,6 +20,12 @@ import {
 } from "./ChatView";
 import { templateEventHandlerAfterMarker, templateEventHandlerNearMarker, templateText } from "../templateInspection.testSupport";
 
+type RenderActivityPanel = (this: ChatView, activity: unknown) => TemplateResult;
+
+function isRenderActivityPanel(value: unknown): value is RenderActivityPanel {
+  return typeof value === "function";
+}
+
 describe("chatDeliveryPresentation", () => {
   it("reads as one mark for received and two for taken into the turn", () => {
     expect(chatDeliveryPresentation({ clientMessageId: "cm-1", state: "received" })).toMatchObject({ glyph: "✓", text: "Sent", tone: "received" });
@@ -515,6 +521,52 @@ function queuedStatus(queuedMessages: QueuedSessionMessage[]): SessionStatus {
     cost: 0,
   };
 }
+
+describe("the activity panel under a failed read", () => {
+  // Caught live: with the daemon down (99 failed fetches), the panel kept
+  // rendering the present-tense "Nothing running right now." - a failing read
+  // was wearing a completed read's sentence. The panel state was retained
+  // (empty arrays from the last good read), so the failed branch - which only
+  // guarded the never-read case - was unreachable. A failed read says so
+  // whether or not older rows are retained.
+  it("says the read failed instead of claiming present emptiness over retained rows", () => {
+    const view = new ChatView();
+    view.sessionId = "session-1";
+    Reflect.set(view, "activityRowsSessionId", "session-1");
+    view.activityFailed = true;
+    const render: unknown = Reflect.get(view, "renderActivityPanel");
+    if (!isRenderActivityPanel(render)) throw new Error("renderActivityPanel is not callable");
+    const template = render.call(view, {
+      rows: [],
+      runRows: [],
+      taskRows: [],
+      summary: { working: false },
+      total: 0,
+      activeCount: 0,
+    });
+    const text = templateText(template);
+    expect(text).toContain("Activity could not be loaded");
+    expect(text).not.toContain("Nothing running right now");
+  });
+
+  it("keeps the present-tense empty only when the read succeeded and found nothing", () => {
+    const view = new ChatView();
+    view.sessionId = "session-1";
+    Reflect.set(view, "activityRowsSessionId", "session-1");
+    view.activityFailed = false;
+    const render: unknown = Reflect.get(view, "renderActivityPanel");
+    if (!isRenderActivityPanel(render)) throw new Error("renderActivityPanel is not callable");
+    const template = render.call(view, {
+      rows: [],
+      runRows: [],
+      taskRows: [],
+      summary: { working: false },
+      total: 0,
+      activeCount: 0,
+    });
+    expect(templateText(template)).toContain("Nothing running right now");
+  });
+});
 
 describe("ChatView queue-follow scroll (queueGrew)", () => {
   // A message queued from elsewhere arrives via status.queuedMessages, not via
