@@ -187,19 +187,32 @@ export async function readTaskRecords(cwd: string): Promise<Map<string, { task: 
     }
     for (const file of files) {
       const full = join(root, dir, file);
+      // Every consumer reads fields through asString/asNumber, so an unreadable
+      // body is safe to hold as an empty record: runningTaskIds skips anything
+      // without status "running" (an unreadable record claims no process), and
+      // listBackgroundTasks renders it as status "unknown" under the identity
+      // anyone can actually prove - the filename. Dropping it instead answered
+      // "this session never started anything" for a task the reader had
+      // started, which is how a running task vanished from the panel.
+      const unreadable: StoredTask = {};
+      let parsed: unknown;
       try {
-        const parsed: unknown = JSON.parse(await readFile(full, "utf8"));
-        if (typeof parsed !== "object" || parsed === null) continue;
-        // Every field is read through asString/asNumber below, so an unknown
-        // record is safe to hold as one: nothing here trusts its shape.
-        const task: StoredTask = parsed;
-        const id = asString(task.id) ?? basename(file, ".json");
-        records.set(id, { task, file: full });
+        parsed = JSON.parse(await readFile(full, "utf8"));
       } catch {
-        // A record being written right now is skipped, not fatal: the next
-        // poll picks it up.
+        // Torn mid-write or crashed before parsing: reported as unknown, and
+        // the next poll re-reads it once the writer finishes.
+        const id = basename(file, ".json");
+        records.set(id, { task: unreadable, file: full });
         continue;
       }
+      if (typeof parsed !== "object" || parsed === null) {
+        const id = basename(file, ".json");
+        records.set(id, { task: unreadable, file: full });
+        continue;
+      }
+      const task: StoredTask = parsed;
+      const id = asString(task.id) ?? basename(file, ".json");
+      records.set(id, { task, file: full });
     }
   }
   return records;
