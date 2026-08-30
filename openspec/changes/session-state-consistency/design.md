@@ -141,3 +141,10 @@ mode becomes "reconnect", not "stale forever".
 3. Add transcript cursor replay; wire gap repair for the transcript.
 4. Remove the delivery reconcile and the subagent poll; name any survivor.
 5. e2e on 8505 at each landing (tasks below), not only at the end.
+
+## Measured results so far (5.2, updated as legs complete)
+
+- Stuck-card resolution: the owner's original report was a card stuck forever. With the repair live and a REAL dropped dialog.closed (debug drop arm, be788d89), the card resolved without reload, bounded above by ~4s from the repair trigger. The pre-repair stuck state is not reproducible on the current build; the red baseline is the original report plus the unit pins.
+- Transcript convergence diff: not yet measured - needs a streamed reply (model legs blocked on the Anthropic re-login). The loss-gap-hold-replay-apply loop is proven on the notification and dialog surfaces (84d1bff6, be788d89).
+- Poll timers in the bundle: unchanged by design so far - the delivery reconcile (10s) and the subagent/activity poll (4s) remain, each named at its constant per 4.3, because their removal is gated on the delivery-receipt and run-lifecycle surfaces (4.1/4.2 recorded as precondition-blocked). The gap repair makes their loss-coverage redundant but not their stall-coverage.
+- Gap counter: 0 under healthy running (counter-armed streamed turn + live notification, e871a617); under injected loss, exactly the armed drops were caught and repaired (84d1bff6, be788d89, 1023c1c7).
