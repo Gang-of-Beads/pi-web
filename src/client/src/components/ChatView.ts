@@ -881,6 +881,9 @@ export class ChatView extends LitElement {
     this.saveScrollPosition();
     this.scrollController.dispose();
     this.drawerTabEdgeTracker.dispose();
+    this.dockResizeObserver?.disconnect();
+    this.dockResizeObserver = undefined;
+    this.observedDock = undefined;
     this.releaseImageZoomModal();
     this.releaseActivityOutputModal();
     this.prependRestoreToken += 1;
@@ -986,7 +989,7 @@ export class ChatView extends LitElement {
     if (changed.has("activityConversation")) this.syncActivityConversationDialog();
     this.drawerTabEdgeTracker.observe(this.drawerTabs ?? undefined);
     this.publishScrollbarWidth();
-    this.publishDockRoom();
+    this.observeDock();
     // A reply that grows the transcript fires no scroll event, so deciding this
     // only while scrolling left a reader who stopped following four screens
     // from the newest message with no way back.
@@ -1003,6 +1006,26 @@ export class ChatView extends LitElement {
   private publishScrollbarWidth(): void {
     const width = scrollbarWidthOf(this.chat);
     this.style.setProperty("--pi-chat-scrollbar", `${String(width)}px`);
+  }
+
+  private observedDock: HTMLElement | undefined;
+  private dockResizeObserver: ResizeObserver | undefined;
+
+  private observeDock(): void {
+    // A4: the dock room used to be measured on every render, forcing a
+    // synchronous layout per update. The observer publishes when the dock
+    // actually resizes (pill ↔ row ↔ touch height).
+    const dock = this.renderRoot.querySelector(".activity-dock");
+    const dockEl = dock instanceof HTMLElement ? dock : undefined;
+    if (this.observedDock === dockEl) return;
+    this.dockResizeObserver?.disconnect();
+    this.observedDock = dockEl;
+    this.dockResizeObserver = undefined;
+    if (dockEl === undefined || typeof ResizeObserver === "undefined") return;
+    this.dockResizeObserver = new ResizeObserver(() => {
+      this.publishDockRoom();
+    });
+    this.dockResizeObserver.observe(dockEl);
   }
 
   /**

@@ -53,24 +53,29 @@ export class AppContextBar extends LitElement {
   @state() private canScrollRight = false;
   private observedContextItems: HTMLElement | undefined;
   private contextItemsResizeObserver: ResizeObserver | undefined;
+  private observedActions: HTMLElement | undefined;
+  private actionsResizeObserver: ResizeObserver | undefined;
 
   override disconnectedCallback(): void {
     this.contextItemsResizeObserver?.disconnect();
     this.contextItemsResizeObserver = undefined;
     this.observedContextItems = undefined;
+    this.actionsResizeObserver?.disconnect();
+    this.actionsResizeObserver = undefined;
+    this.observedActions = undefined;
     super.disconnectedCallback();
   }
 
   override firstUpdated(): void {
     this.observeContextItems();
     this.updateScrollState();
-    this.publishActionsRoom();
+    this.observeActions();
   }
 
   override updated(): void {
     this.observeContextItems();
     this.updateScrollState();
-    this.publishActionsRoom();
+    this.observeActions();
     // Select the text exactly once, when the input first appears, so the tap
     // that starts the edit also opens the keyboard and a correction can be
     // typed straight away. Every later render -- a fresh token streaming in,
@@ -325,6 +330,23 @@ export class AppContextBar extends LitElement {
       this.updateScrollState();
     });
     this.contextItemsResizeObserver.observe(contextItems);
+  }
+
+  private observeActions(): void {
+    // A4: the room used to be measured on every render, forcing a synchronous
+    // layout per update — dozens during boot and one per streamed token. The
+    // observer publishes when the actions actually resize.
+    const actions = this.renderRoot.querySelector(".context-actions");
+    const actionsEl = actions instanceof HTMLElement ? actions : undefined;
+    if (this.observedActions === actionsEl) return;
+    this.actionsResizeObserver?.disconnect();
+    this.observedActions = actionsEl;
+    this.actionsResizeObserver = undefined;
+    if (actionsEl === undefined || typeof ResizeObserver === "undefined") return;
+    this.actionsResizeObserver = new ResizeObserver(() => {
+      this.publishActionsRoom();
+    });
+    this.actionsResizeObserver.observe(actionsEl);
   }
 
   /**
