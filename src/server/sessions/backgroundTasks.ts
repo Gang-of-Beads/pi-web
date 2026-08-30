@@ -258,6 +258,27 @@ export async function readTaskOutput(cwd: string, taskId: string, maxBytes = TAI
   }
 }
 
+/**
+ * The transitions between the last seen task states and a fresh registry read:
+ * added or changed tasks carry their current status; tasks that vanished from
+ * the registry are reported as removed so the client can drop its row.
+ */
+export function diffTaskStates(
+  previous: ReadonlyMap<string, string>,
+  current: readonly { id: string; status: string }[],
+): { id: string; status: string }[] {
+  const transitions: { id: string; status: string }[] = [];
+  for (const task of current) {
+    if (previous.get(task.id) === task.status) continue;
+    transitions.push({ id: task.id, status: task.status });
+  }
+  for (const id of previous.keys()) {
+    if (current.some((task) => task.id === id)) continue;
+    transitions.push({ id, status: "removed" });
+  }
+  return transitions;
+}
+
 export async function listBackgroundTasks(
   cwd: string,
   transcriptPath: string,
