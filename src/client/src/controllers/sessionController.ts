@@ -1,6 +1,6 @@
 import { api as defaultApi, isNotFoundError, type AskUserCloseResponse, type AskUserSubmission, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingAskUser, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionBackgroundTaskInfo, SessionSubagentRunInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Workspace } from "../api";
 import { errorNoticePatch } from "../errorNotice";
-import { expireSettledCommands, issueCommand, settleCommand, SETTLED_ROW_LINGER_MS, type CommandLedgerSource } from "../commandLedger";
+import { issueCommand, settleCommand, type CommandLedgerSource } from "../commandLedger";
 import { RevisionScope } from "../revisionScope";
 import { SessionGapRepair } from "../sessionGapRepair";
 import { describeError } from "../notice";
@@ -493,11 +493,9 @@ export class SessionController {
   private settleLedgerRow(id: string, outcome: { state: "ok" | "failed"; resultText?: string }): void {
     const now = Date.now();
     this.setState({ commandLedger: settleCommand(this.getState().commandLedger, id, { ...outcome, now }) });
-    // The settled row is an acknowledgment, not an archive; it leaves on its
-    // own once the linger passes, without waiting for another state change.
-    setTimeout(() => {
-      this.setState({ commandLedger: expireSettledCommands(this.getState().commandLedger, Date.now()) });
-    }, SETTLED_ROW_LINGER_MS + 50);
+    // The settled row is the user's receipt of what they sent and what ran
+    // (the owner's no-auto-leave ruling): it stays in the session's record.
+    // Only the ledger's capacity cap evicts, settled rows first.
   }
 
   private enqueuePendingSessionSend(session: ClientPendingStartSessionInfo, input: QueuedPendingSessionSendInput): void {

@@ -33,9 +33,6 @@ export interface CommandLedgerEntry {
 /** Most rows one session keeps; older settled rows drop first. */
 const LEDGER_CAP = 20;
 
-/** How long a settled row stays visible as the press's acknowledgment. */
-export const SETTLED_ROW_LINGER_MS = 8_000;
-
 let nextLedgerId = 0;
 
 export function issueCommand(
@@ -70,13 +67,11 @@ export function settleCommand(
     : row);
 }
 
-/** Settled rows leave after their linger; pending rows never expire here. */
-export function expireSettledCommands(entries: readonly CommandLedgerEntry[], now: number): CommandLedgerEntry[] {
-  const kept = entries.filter((row) => row.state === "pending" || row.settledAt === undefined || now - row.settledAt < SETTLED_ROW_LINGER_MS);
-  return kept.length === entries.length ? [...entries] : kept;
-}
-
-/** The rows this session may render; a key mismatch renders nothing of them. */
+/**
+ * The rows this session may render; a key mismatch renders nothing of them.
+ * Settled rows persist for the session's record (the owner's no-auto-leave
+ * ruling): the only eviction is the capacity cap above.
+ */
 export function commandsForSession(entries: readonly CommandLedgerEntry[], sessionKey: string): CommandLedgerEntry[] {
   return entries.filter((row) => row.sessionKey === sessionKey);
 }

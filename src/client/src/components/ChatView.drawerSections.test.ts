@@ -62,6 +62,32 @@ function sectionNames(view: ChatView): string[] {
 
 afterEach(() => { document.body.replaceChildren(); });
 
+describe("the goals tab count", () => {
+  /**
+   * The owner reported the GOALS tab bare while every sibling tab carries its
+   * count ("ACTIVITY · 1 RUNNING", "NOTIFICATIONS (2)"). Root cause: the
+   * count's `known` flag was a property only tests ever set — production never
+   * wired it, so the tab label read "Goals" forever. The count must derive
+   * from the goals slot's own load state.
+   */
+  it("carries the goal count once the goals slot has loaded", async () => {
+    const view = await drawerWithEverything();
+    expect(sectionNames(view).find((name) => name.startsWith("Goals"))).toBe("Goals 1");
+  });
+
+  it("stays bare while the goals slot is unloaded — absence is not negation", async () => {
+    const view = new ChatView();
+    view.sessionId = "s";
+    view.status = status();
+    view.activity = activity();
+    view.subagents = [{ sessionId: "01a0child-0001-0000-000000000001", cwd: "/repo/.pi/sub", status: "working" }];
+    view.goalsLoad = { state: "unloaded", key: "test-key", data: [] };
+    document.body.append(view);
+    await view.updateComplete;
+    expect(sectionNames(view).find((name) => name.startsWith("Goals"))).toBe("Goals");
+  });
+});
+
 describe("the sections of an expanded drawer", () => {
   /**
    * The drawer opened on whichever section you pressed and the reader could
@@ -168,7 +194,6 @@ describe("the goals entrance while its list is in flight", () => {
     // has arrived; activity, notifications and goals all start empty.
     view.subagents = [{ sessionId: "01a0child-0001-0000-000000000001", cwd: "/repo/.pi/sub", status: "working" }];
     view.goalsLoad = { state: "loaded", key: "test-key", data: [] };
-    view.goalsKnown = true;
     document.body.append(view);
     await view.updateComplete;
 
@@ -208,7 +233,6 @@ describe("the goals entrance while its list is in flight", () => {
     view.status = status();
     view.subagents = [{ sessionId: "01a0child-0001-0000-000000000001", cwd: "/repo/.pi/sub", status: "working" }];
     view.goalsLoad = { state: "loaded", key: "test-key", data: [] };
-    view.goalsKnown = true;
     document.body.append(view);
     await view.updateComplete;
 
@@ -230,7 +254,6 @@ describe("the goals entrance while its list is in flight", () => {
     view.status = status();
     view.subagents = [{ sessionId: "01a0child-0001-0000-000000000001", cwd: "/repo/.pi/sub", status: "working" }];
     view.goalsLoad = { state: "loaded", key: "test-key", data: [] };
-    view.goalsKnown = true;
     view.notificationsFailed = true;
     document.body.append(view);
     await view.updateComplete;
@@ -250,7 +273,6 @@ describe("the goals entrance while its list is in flight", () => {
     view.sessionId = "s";
     view.status = status();
     view.goalsLoad = { state: "loaded", key: "test-key", data: [] };
-    view.goalsKnown = true;
     view.notificationsFailed = true;
     document.body.append(view);
     await view.updateComplete;

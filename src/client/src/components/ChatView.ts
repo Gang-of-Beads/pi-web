@@ -791,7 +791,6 @@ export class ChatView extends LitElement {
       count is a claim about this workspace, so it only shows when the state
       behind it is keyed to the current selection (in flight, failed, and
       stale-keyed reads all render the bare name instead). */
-  @property({ type: Boolean, attribute: false }) goalsKnown = false;
   @property({ attribute: false }) onRunGoalCommand?: (goal: GoalRecordSummary, command: string) => void | Promise<void>;
   @state() private topDrawerTab: TopDrawerTab | undefined;
   /** Which kinds of activity to list; "all" until the reader narrows it. */
@@ -1295,7 +1294,7 @@ export class ChatView extends LitElement {
               aria-controls="session-goal-list"
               @click=${() => { this.selectTopDrawerTab("goals", collapsed); }}
             >
-              <span class="drawer-tab-label">${goalsDrawerTabLabel(this.goalsLoad.data, this.goalsKnown)}</span>
+              <span class="drawer-tab-label">${goalsDrawerTabLabel(this.goalsLoad.data, this.goalsLoad.state === "loaded")}</span>
             </button>
           </div>
           </div>

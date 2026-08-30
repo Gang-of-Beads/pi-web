@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { commandStateLabel, commandsForSession, expireSettledCommands, issueCommand, SETTLED_ROW_LINGER_MS, settleCommand } from "./commandLedger";
+import { commandStateLabel, commandsForSession, issueCommand, settleCommand } from "./commandLedger";
 
 const KEY = "local:session-1";
 
@@ -25,16 +25,16 @@ describe("the browser's record of an issued command", () => {
   });
 
   /**
-   * A settled row is an acknowledgment, not an archive: the transcript's own
-   * record is canonical once the daemon echoes the command's effect, so the
-   * browser's copy leaves after its linger instead of accumulating.
+   * The owner's ruling (2026-08-31, "不要自动离场"): a settled row is the
+   * user's receipt of what THEY sent and what ran — it does not leave on a
+   * timer. The only eviction is the capacity cap, which drops settled rows
+   * first and never a pending one.
    */
-  it("lets a settled row go after its linger and never expires a pending one", () => {
-    const issued = issueCommand([], { sessionKey: KEY, text: "/x", source: "typed", now: 0 });
+  it("keeps a settled row for the session's record instead of expiring it", () => {
+    const issued = issueCommand([], { sessionKey: KEY, text: "/goal-resume", source: "typed", now: 0 });
     const settled = settleCommand(issued.entries, issued.id, { state: "ok", now: 100 });
-    expect(expireSettledCommands(settled, 100 + SETTLED_ROW_LINGER_MS - 1)).toHaveLength(1);
-    expect(expireSettledCommands(settled, 100 + SETTLED_ROW_LINGER_MS)).toHaveLength(0);
-    expect(expireSettledCommands(issued.entries, 1_000_000)).toHaveLength(1);
+    // No linger expiry: the receipt stays readable long after the command ran.
+    expect(settled.some((row) => row.text === "/goal-resume" && row.state === "ok")).toBe(true);
   });
 
   /** Retained data renders only under the key it was fetched for. */
