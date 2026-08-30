@@ -35,6 +35,7 @@ export class SessionSocket {
   private socket: WebSocket | undefined;
   private session: SessionRef | undefined;
   private onEvent: ((event: SessionUiEvent) => void) | undefined;
+  private readonly seqMonitor = new ScopeSeqMonitor("session");
   private reconnectTimer?: number;
   private reconnectDelay = 500;
   private shouldReconnect = false;
@@ -58,6 +59,11 @@ export class SessionSocket {
     // close() fires onclose, which schedules the reconnect; the reconnect
     // callback is what refetches everything missed while it was dead.
     closeSocketQuietly(socket);
+  }
+
+  /** Gap events counted on this socket's per-session scope since connect(). */
+  get gapCount(): number {
+    return this.seqMonitor.gapCount;
   }
 
   connect(
@@ -103,6 +109,9 @@ export class SessionSocket {
       if (this.socket !== socket) return;
       this.reconnectDelay = 500;
       this.lastFrameAt = Date.now();
+      // Reconnect refetches everything, and a daemon restart resets the hub's
+      // counter, so the first frame after an open says nothing about loss.
+      this.seqMonitor.reset();
       const isReconnect = this.hasOpened;
       this.hasOpened = true;
       if (isReconnect) this.onReconnect?.();
@@ -140,7 +149,12 @@ export class SessionSocket {
     // Any frame is proof of life, including the keepalive, which parses to
     // nothing and is dropped below.
     if (this.socket === socket) this.lastFrameAt = Date.now();
-    const event = parseSessionSocketEvent(await parseSocketEvent(data));
+    const raw = await parseSocketEvent(data);
+    // Gap accounting reads the wire stamp, not the parsed event: the dedicated
+    // validators (inbox, ask, dialog) rebuild the event and drop the seq, but a
+    // frame lost there is lost all the same.
+    this.seqMonitor.observe(raw);
+    const event = parseSessionSocketEvent(raw);
     if (this.socket !== socket || event === undefined) return;
     if (event.type === "notifications.inbox" && (session.id !== event.summary.sessionId || session.cwd !== event.summary.cwd)) return;
     this.onEvent?.(event);
@@ -150,6 +164,7 @@ export class SessionSocket {
 export class RealtimeSocket {
   private socket: WebSocket | undefined;
   private onEvent: ((event: BrowserRealtimeEvent) => void) | undefined;
+  private readonly seqMonitor = new ScopeSeqMonitor("global");
   private onOpen: (() => void) | undefined;
   private reconnectTimer?: number;
   private reconnectDelay = 500;
@@ -164,6 +179,11 @@ export class RealtimeSocket {
     if (socket.readyState !== WebSocket.OPEN) return;
     if (this.lastFrameAt === 0 || now - this.lastFrameAt < LIVENESS_TIMEOUT_MS) return;
     closeSocketQuietly(socket);
+  }
+
+  /** Gap events counted on the global scope since this socket last opened. */
+  get gapCount(): number {
+    return this.seqMonitor.gapCount;
   }
 
   connect(onEvent: (event: BrowserRealtimeEvent) => void, onOpen?: () => void, machineId = "local"): void {
@@ -193,6 +213,7 @@ export class RealtimeSocket {
       if (this.socket !== socket) return;
       this.reconnectDelay = 500;
       this.lastFrameAt = Date.now();
+      this.seqMonitor.reset();
       this.onOpen?.();
     };
     socket.onmessage = (message) => void this.handleMessage(message.data, socket);
@@ -225,7 +246,12 @@ export class RealtimeSocket {
 
   private async handleMessage(data: MessageEvent["data"], socket: WebSocket): Promise<void> {
     if (this.socket === socket) this.lastFrameAt = Date.now();
-    const event = parseRealtimeSocketEvent(await parseSocketEvent(data));
+    const raw = await parseSocketEvent(data);
+    // Observed on the raw frame, before validation: a notifications.summary is
+    // dropped from the typed event stream, but its stamp still costs a number
+    // in the global sequence and must advance the client's last-seen with it.
+    this.seqMonitor.observe(raw);
+    const event = parseRealtimeSocketEvent(raw);
     if (this.socket === socket && event !== undefined) this.onEvent?.(event);
   }
 }
@@ -261,6 +287,51 @@ function withTransportSeq(event: SessionUiEvent, raw: unknown): SessionUiEvent {
   if (typeof raw !== "object" || raw === null || !("seq" in raw)) return event;
   const seq = raw.seq;
   return typeof seq === "number" ? { ...event, seq } : event;
+}
+
+/**
+ * Dark-launch loss accounting for one sequenced scope: the transcript scope of
+ * one session, or the one global scope. The hub stamps every frame with a
+ * monotonic seq and nothing compared it after join, so a frame lost to a
+ * dead-but-OPEN socket or to a validation throw silently left the surface it
+ * carried stale - stuck cards, a count disagreeing with its drawer.
+ *
+ * Gaps are counted and logged, nothing more: acting on them is the next
+ * change. A frame without a numeric stamp fails open exactly as
+ * {@link withTransportSeq} does - an unupgraded peer degrades to today's
+ * behaviour instead of counting phantom gaps.
+ */
+export class ScopeSeqMonitor {
+  private lastSeen: number | undefined;
+  private gapEvents = 0;
+
+  constructor(private readonly scope: string) {}
+
+  /** Gap events recorded on this scope since the last {@link reset}. */
+  get gapCount(): number {
+    return this.gapEvents;
+  }
+
+  /** Forget the baseline: called on every (re)open, since a reconnect
+   *  refetches the surface and a daemon restart restarts the counter. */
+  reset(): void {
+    this.lastSeen = undefined;
+  }
+
+  observe(raw: unknown): void {
+    if (typeof raw !== "object" || raw === null || !("seq" in raw)) return;
+    const seq = raw.seq;
+    if (typeof seq !== "number" || !Number.isFinite(seq)) return;
+    const last = this.lastSeen;
+    // A duplicate or late frame is evidence that nothing was lost - the
+    // watermark filter drops it downstream. It must not count as loss, and it
+    // must not rewind the baseline or the next frame would look like a gap.
+    if (last !== undefined && seq <= last) return;
+    this.lastSeen = seq;
+    if (last === undefined || seq === last + 1) return;
+    this.gapEvents += 1;
+    console.warn(`[pi-web] ${this.scope} scope lost frames: expected ${String(last + 1)}, got ${String(seq)} (${String(seq - last - 1)} missing)`);
+  }
 }
 
 function safelyParseValidatedEvent<T>(parse: () => T): T | undefined {

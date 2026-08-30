@@ -380,6 +380,115 @@ describe("socket stream validation", () => {
   });
 });
 
+describe("dark-launch seq gap counting", () => {
+  // The hub stamps every frame with a monotonic seq, and until this change the
+  // client compared it exactly once, at join. A frame lost to a dead-but-OPEN
+  // socket or to a validation throw was invisible: the surfaces it carried kept
+  // their stale values, which is the shape behind stuck cards and a count that
+  // disagrees with its drawer. This counter makes loss visible before any
+  // behaviour changes: gaps are counted and logged, nothing else.
+  beforeEach(() => {
+    FakeWebSocket.instances.length = 0;
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("document", { baseURI: "https://pi.example.test/" });
+    vi.stubGlobal("window", { clearTimeout: vi.fn(), setTimeout: vi.fn(() => 1) });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  async function deliver(socket: FakeWebSocket, frame: unknown): Promise<void> {
+    socket.onmessage?.({ data: JSON.stringify(frame) });
+    // handleMessage is async: let the parse microtasks settle before asserting.
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
+  }
+
+  it("counts one gap when the session stream skips a frame, and applies every frame", async () => {
+    const applied: unknown[] = [];
+    const session = new SessionSocket();
+    session.connect({ id: "session-1", cwd: "/repo" }, (event) => { applied.push(event); });
+    const socket = FakeWebSocket.instances[0];
+    if (socket === undefined) throw new Error("expected a session socket");
+    socket.onopen?.();
+
+    await deliver(socket, { type: "assistant.delta", text: "a", seq: 1 });
+    await deliver(socket, { type: "assistant.delta", text: "b", seq: 2 });
+    await deliver(socket, { type: "assistant.delta", text: "c", seq: 4 });
+
+    expect(session.gapCount).toBe(1);
+    expect(applied).toHaveLength(3);
+  });
+
+  it("fails open: unstamped frames apply and are not counted as gaps", async () => {
+    const applied: unknown[] = [];
+    const session = new SessionSocket();
+    session.connect({ id: "session-1", cwd: "/repo" }, (event) => { applied.push(event); });
+    const socket = FakeWebSocket.instances[0];
+    if (socket === undefined) throw new Error("expected a session socket");
+    socket.onopen?.();
+
+    await deliver(socket, { type: "assistant.delta", text: "a", seq: 7 });
+    // An unupgraded federation peer sends frames without a stamp; they must
+    // flow exactly as they did before the counter existed.
+    await deliver(socket, { type: "assistant.delta", text: "b" });
+    await deliver(socket, { type: "assistant.delta", text: "c", seq: "9" });
+
+    expect(session.gapCount).toBe(0);
+    expect(applied).toHaveLength(3);
+  });
+
+  it("does not count a duplicate or late frame as a gap, nor rewind to it", async () => {
+    const session = new SessionSocket();
+    session.connect({ id: "session-1", cwd: "/repo" }, () => undefined);
+    const socket = FakeWebSocket.instances[0];
+    if (socket === undefined) throw new Error("expected a session socket");
+    socket.onopen?.();
+
+    await deliver(socket, { type: "assistant.delta", text: "a", seq: 3 });
+    // The watermark filter drops these at the controller; here they are only
+    // evidence that nothing was lost, so they must not count as loss.
+    await deliver(socket, { type: "assistant.delta", text: "a-again", seq: 3 });
+    await deliver(socket, { type: "assistant.delta", text: "late", seq: 2 });
+    await deliver(socket, { type: "assistant.delta", text: "b", seq: 4 });
+
+    expect(session.gapCount).toBe(0);
+  });
+
+  it("baselines on the first stamped frame after an open, so a reconnect is not a gap", async () => {
+    const session = new SessionSocket();
+    session.connect({ id: "session-1", cwd: "/repo" }, () => undefined);
+    const socket = FakeWebSocket.instances[0];
+    if (socket === undefined) throw new Error("expected a session socket");
+    socket.onopen?.();
+    await deliver(socket, { type: "assistant.delta", text: "a", seq: 40 });
+
+    // A daemon restart resets the hub's counter to 1 and a reconnect refetches
+    // everything; either way the first frame after an open says nothing about
+    // loss, so counting across that boundary would log false gaps forever.
+    socket.onopen?.();
+    await deliver(socket, { type: "assistant.delta", text: "b", seq: 1 });
+    await deliver(socket, { type: "assistant.delta", text: "c", seq: 3 });
+
+    expect(session.gapCount).toBe(1);
+  });
+
+  it("counts gaps on the global scope from the same wire stamps", async () => {
+    const applied: unknown[] = [];
+    const realtime = new RealtimeSocket();
+    realtime.connect((event) => { applied.push(event); });
+    const socket = FakeWebSocket.instances[0];
+    if (socket === undefined) throw new Error("expected a realtime socket");
+    socket.onopen?.();
+
+    await deliver(socket, { type: "session.name", sessionId: "s1", name: "a", seq: 1 });
+    await deliver(socket, { type: "session.name", sessionId: "s1", name: "b", seq: 3 });
+
+    expect(realtime.gapCount).toBe(1);
+    expect(applied).toHaveLength(2);
+  });
+});
+
 class FakeWebSocket {
   static readonly CONNECTING = 0;
   // The real constructor carries these, and liveness checks read WebSocket.OPEN
