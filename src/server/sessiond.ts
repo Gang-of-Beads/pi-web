@@ -238,22 +238,28 @@ async function createSessionDaemonRuntime() {
       ...(spawnTargets === undefined ? {} : { spawnTargets }),
       subsessionsEnabled: config.subsessions,
       askUserEnabled: config.askUser,
-      appendSystemPromptSections: [
+      hostContributions: {
         // Sessions always run nested in this daemon, so they always get the
         // session environment facts; Docker deployments add their container
         // facts on top. Resolved once here, from the captured daemon
         // environment, because the deployment cannot change while the daemon
         // runs.
-        ...sessionEnvironmentPromptSections({
-          env: daemonEnvironment,
-          enabled: config.environmentFacts,
-        }),
-        ...dockerEnvironmentPromptSections({
-          env: daemonEnvironment,
-          enabled: config.environmentFacts,
-          logger: app.log,
-        }),
-      ],
+        systemPromptSections: [
+          ...sessionEnvironmentPromptSections({
+            env: daemonEnvironment,
+            enabled: config.environmentFacts,
+          }),
+          ...dockerEnvironmentPromptSections({
+            env: daemonEnvironment,
+            enabled: config.environmentFacts,
+            logger: app.log,
+          }),
+        ],
+        // The one surface the browser cannot draw today: an extension's free
+        // form. Requests are answered for the human in the browser; the call
+        // resolves to a cancellation, announced, never silent.
+        unsupportedSurfaces: ["custom"],
+      },
       extensionDialogsTimeoutMs: config.extensionDialogsTimeoutMs,
       notificationStore,
       unreadStore,

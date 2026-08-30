@@ -1,4 +1,5 @@
 import type { PiSessionServiceDependencies } from "../sessions/piSessionService.js";
+import type { HostContributions } from "../sessions/hostContributions.js";
 
 /**
  * The collaborators sessiond constructs, in the shape the assembly needs them.
@@ -27,8 +28,8 @@ export interface SessionServiceDependencyInput {
   subsessionsEnabled: boolean;
   /** Whether agents may post structured question sets to the browser. */
   askUserEnabled: boolean;
-  /** Deployment facts appended to session system prompts; empty when there are none. */
-  appendSystemPromptSections: readonly string[];
+  /** Everything the host adds to what sessions receive; THE seam, as data. */
+  hostContributions: HostContributions;
   /** Auto-cancel delay for extension dialogs whose extension set no timeout; `0` waits forever. */
   extensionDialogsTimeoutMs: number;
 }
@@ -55,7 +56,7 @@ export function sessionServiceDependencies(input: SessionServiceDependencyInput)
     // so they stay off unless spawning is configured too.
     subsessionsEnabled: input.spawnTargets !== undefined && input.subsessionsEnabled,
     askUserEnabled: input.askUserEnabled,
-    appendSystemPromptSections: input.appendSystemPromptSections,
+    hostContributions: input.hostContributions,
     extensionDialogsTimeoutMs: input.extensionDialogsTimeoutMs,
     notificationStore: input.notificationStore,
     unreadStore: input.unreadStore,

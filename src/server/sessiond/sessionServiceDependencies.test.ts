@@ -27,7 +27,7 @@ function daemonCollaborators(patch: Partial<SessionServiceDependencyInput> = {})
     catalogRefreshStatus: { isRefreshInFlight: () => false },
     subsessionsEnabled: false,
     askUserEnabled: true,
-    appendSystemPromptSections: [],
+    hostContributions: { systemPromptSections: [], unsupportedSurfaces: [] },
     extensionDialogsTimeoutMs: 300_000,
     ...patch,
   };
@@ -101,9 +101,10 @@ describe("sessiond session service dependency assembly", () => {
     expect(sessionServiceDependencies(daemonCollaborators({ extensionDialogsTimeoutMs: 60_000 })).extensionDialogsTimeoutMs).toBe(60_000);
   });
 
-  it("passes deployment system-prompt sections through to the session service", () => {
+  it("passes the host's contributions through to the session service", () => {
     const sections = ["<pi_web_docker_environment>\n- fact\n</pi_web_docker_environment>"];
+    const contributions = { systemPromptSections: sections, unsupportedSurfaces: ["custom"] };
 
-    expect(sessionServiceDependencies(daemonCollaborators({ appendSystemPromptSections: sections })).appendSystemPromptSections).toEqual(sections);
+    expect(sessionServiceDependencies(daemonCollaborators({ hostContributions: contributions })).hostContributions).toEqual(contributions);
   });
 });

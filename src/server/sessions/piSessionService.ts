@@ -1,5 +1,6 @@
 import { statSync } from "node:fs";
 import { announceUnsupportedSurface, withUnsupportedSurfaceAnnouncement } from "./unsupportedSurface.js";
+import { EMPTY_HOST_CONTRIBUTIONS, type HostContributions } from "./hostContributions.js";
 import { takeUnfiledWarnings } from "./warningFiling.js";
 import { basename, dirname, join } from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
@@ -1068,11 +1069,12 @@ export interface PiSessionServiceDependencies {
    */
   askUserEnabled?: boolean;
   /**
-   * Deployment facts appended to every session's system prompt, after the
-   * operator's own pi prompt files. Empty in ordinary installs; sessiond fills
-   * it with container environment facts in Docker deployments.
+   * Everything the host adds to what sessions receive - prompt sections and
+   * unsupported-surface handling - as data. THE seam: a contribution added
+   * anywhere else cannot reach the model, and the deviation list is derived
+   * from this. Empty in ordinary installs.
    */
-  appendSystemPromptSections?: readonly string[];
+  hostContributions?: HostContributions;
   /** Daemon-lifetime open-ask state; defaults to an in-memory store in tests. */
   pendingAskStore?: PendingAskStore;
   /** Daemon-lifetime open-dialog state; defaults to an in-memory store in tests. */
@@ -1194,6 +1196,7 @@ export class PiSessionService implements SessionRouteService {
    */
   private readonly dialogRevisionBySession = new Map<string, number>();
   private readonly unreadStore: SessionUnreadStore;
+  private readonly hostContributions: HostContributions;
   private readonly pendingAskStore: PendingAskStore;
   private readonly pendingExtensionDialogStore: PendingExtensionDialogStore;
   private readonly extensionDialogsTimeoutMs: number;
@@ -1211,6 +1214,7 @@ export class PiSessionService implements SessionRouteService {
   private unreadPublicationStopped = false;
 
   constructor(private readonly events: SessionEventHub, deps: PiSessionServiceDependencies) {
+    this.hostContributions = deps.hostContributions ?? EMPTY_HOST_CONTRIBUTIONS;
     this.archiveStore = deps.archiveStore ?? new SessionArchiveStore();
     this.agentDir = deps.agentDir;
     this.sessionManager = deps.sessionManager;
@@ -1244,7 +1248,7 @@ export class PiSessionService implements SessionRouteService {
         read: (parentSessionId, sessionId, query, parentSessionFile) => this.readSubsession(parentSessionId, sessionId, query, parentSessionFile),
       },
       deps.askUserEnabled === true ? { open: (input) => this.openAsk(input) } : undefined,
-      deps.appendSystemPromptSections ?? [],
+      deps.hostContributions?.systemPromptSections ?? [],
     );
     this.createAgentRuntime = deps.createAgentRuntime ?? defaultCreateAgentRuntime;
     this.workspaceActivity = deps.workspaceActivity;
@@ -3834,9 +3838,12 @@ export class PiSessionService implements SessionRouteService {
         if (property === "custom") {
           const base: unknown = Reflect.get(target, property, receiver);
           if (typeof base !== "function") return base;
-          // The silent form of this cancel made the updater's prompt return
-          // every session with nothing anywhere saying why. Announced once per
-          // session, so a chatty extension cannot flood the drawer.
+          // The interception is seam data: only a surface the host declared
+          // unsupported is answered here, so withdrawing it from the
+          // contributions withdraws it from the model's path. The silent form
+          // of this cancel made the updater's prompt return every session
+          // with nothing anywhere saying why.
+          if (!this.hostContributions.unsupportedSurfaces.includes("custom")) return base;
           return withUnsupportedSurfaceAnnouncement(
             (...args: unknown[]): unknown => Reflect.apply(base, target, args),
             () => {
