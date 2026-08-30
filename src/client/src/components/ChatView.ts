@@ -852,6 +852,13 @@ export class ChatView extends LitElement {
   private loadMoreCheckFrame: number | undefined;
   private scrollToBottomFrame: number | undefined;
   private catchUpFollowTimer: ReturnType<typeof setTimeout> | undefined;
+  /**
+   * The waiting row's last content, kept so an outcome that settles under a
+   * standing finger does not remove the ground being pressed. Cleared when the
+   * press settles or the session changes: it belongs to this session only.
+   */
+  private heldWaiting: { ask: PendingAskUser | undefined; dialog: PendingExtensionDialog | undefined; queuedCount: number } | undefined;
+  private heldWaitingClearTimer: ReturnType<typeof setTimeout> | undefined;
   /** Which open card's alignment a press deferred, so the release can replay it. */
   private conversationRailFrame: number | undefined;
   private groupedMessagesInput?: ChatLine[];
@@ -954,6 +961,11 @@ export class ChatView extends LitElement {
     this.suppressLoadMoreRequests = false;
     this.pendingScrollRestoreSessionId = undefined;
     this.pendingScrollRestorePosition = undefined;
+    this.heldWaiting = undefined;
+    if (this.heldWaitingClearTimer !== undefined) {
+      clearTimeout(this.heldWaitingClearTimer);
+      this.heldWaitingClearTimer = undefined;
+    }
     this.prependRestoreToken += 1;
     if (this.restoreScrollFrame !== undefined) {
       cancelAnimationFrame(this.restoreScrollFrame);
@@ -2157,13 +2169,30 @@ export class ChatView extends LitElement {
    */
   private renderWaitingForYou() {
     const dialog = this.pendingDialogs[0];
-    if (this.pendingAsk === undefined && dialog === undefined) return null;
-    const queuedCount = this.pendingDialogs.length - 1;
+    if (this.pendingAsk !== undefined || dialog !== undefined) {
+      this.heldWaiting = { ask: this.pendingAsk, dialog, queuedCount: this.pendingDialogs.length - 1 };
+      return this.renderWaitingSlot(this.pendingAsk, dialog, this.pendingDialogs.length - 1);
+    }
+    // The outcome settled, but a finger may be standing on the row: removing it
+    // at that instant retargets the imminent click to whatever slides
+    // underneath - the theft this row exists to end, reintroduced at its exit.
+    // The last content is held through the press and the release grace; a tap
+    // on a settled dialog is answered as stale by the daemon, which is honest
+    // and harmless where a retargeted tap is neither.
+    const held = this.heldWaiting;
+    if (held !== undefined && this.followGate.holdsOrSettling(Date.now())) {
+      return this.renderWaitingSlot(held.ask, held.dialog, held.queuedCount);
+    }
+    this.heldWaiting = undefined;
+    return null;
+  }
+
+  private renderWaitingSlot(ask: PendingAskUser | undefined, dialog: PendingExtensionDialog | undefined, queuedCount: number) {
     return html`
       <div class="waiting-slot" role="region" aria-label="Waiting for your answer">
-        ${this.pendingAsk === undefined ? null : html`
+        ${ask === undefined ? null : html`
           <ask-user-card
-            .ask=${this.pendingAsk}
+            .ask=${ask}
             .draftSessionId=${this.askDraftSessionId}
             .onSubmit=${this.onSubmitAsk}
           ></ask-user-card>
@@ -2607,6 +2636,15 @@ export class ChatView extends LitElement {
    */
   private releasePointer(): void {
     this.followGate.notePointerUp(Date.now());
+    // A ghost row held for this press has no data change left to re-render it
+    // away; nudge an update once the release grace expires.
+    if (this.heldWaiting !== undefined) {
+      if (this.heldWaitingClearTimer !== undefined) clearTimeout(this.heldWaitingClearTimer);
+      this.heldWaitingClearTimer = setTimeout(() => {
+        this.heldWaitingClearTimer = undefined;
+        this.requestUpdate();
+      }, TOUCH_SETTLE_MS + 1);
+    }
     // A reader who scrolled away during the press is no longer pinned, so the
     // suppressed follow is dropped rather than dragging them back down.
     if (!this.followGate.takeSuppressedFollow() || !this.pinnedToBottom) return;

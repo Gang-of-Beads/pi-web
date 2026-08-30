@@ -237,6 +237,47 @@ async function settleCatchUp(view: ChatView): Promise<void> {
   await Promise.resolve();
 }
 
+/**
+ * A settled outcome may not change the ground under a standing finger. The
+ * dialog the finger is over may settle server-side mid-press; removing its row
+ * at that instant retargets the imminent click to whatever slides underneath -
+ * the same theft the waiting row was built to end, reintroduced at its exit.
+ * The row leaves after the release settles, on the same grace the transcript's
+ * own catch-up uses.
+ */
+describe("ChatView holding the waiting row for a press", () => {
+  const dialog = { dialogId: "dlg-held", kind: "select" as const, title: "Pick", message: "", options: ["A", "B"], askedAt: "2026-08-30T00:00:00.000Z", runScoped: false };
+
+  it("keeps the row while the finger is down and lets it go after the settle", async () => {
+    const view = await mountView();
+    view.pendingDialogs = [dialog];
+    await view.updateComplete;
+    expect(view.renderRoot.querySelector(".waiting-slot")).not.toBeNull();
+
+    scroller(view).dispatchEvent(pointerEvent("pointerdown"));
+    view.pendingDialogs = [];
+    await view.updateComplete;
+    expect(view.renderRoot.querySelector(".waiting-slot"), "settling mid-press must not remove the row").not.toBeNull();
+
+    scroller(view).dispatchEvent(pointerEvent("pointerup"));
+    await view.updateComplete;
+    expect(view.renderRoot.querySelector(".waiting-slot"), "the click's grace still owns the release instant").not.toBeNull();
+
+    vi.advanceTimersByTime(TOUCH_SETTLE_MS + 1);
+    await view.updateComplete;
+    expect(view.renderRoot.querySelector(".waiting-slot")).toBeNull();
+  });
+
+  it("lets a settled row go at once when no finger is down", async () => {
+    const view = await mountView();
+    view.pendingDialogs = [dialog];
+    await view.updateComplete;
+    view.pendingDialogs = [];
+    await view.updateComplete;
+    expect(view.renderRoot.querySelector(".waiting-slot")).toBeNull();
+  });
+});
+
 function pointerEvent(type: string): Event {
   return new Event(type, { bubbles: true, composed: true });
 }

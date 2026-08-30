@@ -25,6 +25,19 @@ export class ScrollFollowGate {
     this.releasedAt = now;
   }
 
+  /**
+   * Whether the reader is mid-press or inside the release grace - the span
+   * during which the ground under the finger must not change. Pure: render
+   * paths ask this every frame, and a probe that recorded a suppressed follow
+   * as a side effect would turn asking into acting.
+   */
+  holdsOrSettling(now: number): boolean {
+    const heldSince = this.pointerDownAt;
+    if (heldSince !== undefined) return now - heldSince <= LONGEST_REAL_TOUCH_MS;
+    const released = this.releasedAt;
+    return released !== undefined && now - released < TOUCH_SETTLE_MS;
+  }
+
   followsNewest(now: number): boolean {
     const heldSince = this.pointerDownAt;
     if (heldSince !== undefined) {
