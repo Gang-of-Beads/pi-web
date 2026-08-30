@@ -130,3 +130,13 @@ None that change the specs or the breakdown. The owner may veto D4's union
 (and prefer a divergence notice instead) without affecting the other tasks; if
 so, task 4.1 narrows and the spec scenario "A goal lives beside the session"
 is amended before apply.
+
+## Measured results (5.2, live legs completed)
+
+- **Activity strip**: a real background task ("Sleep Timer", GLM-started) showed as "Task ... Running 1m 48s" with "Activity · 1 running" and running-only chips; "Nothing running right now." correctly absent (/tmp/n2-22-running.png).
+- **Failed activity read**: with the daemon stack down, the panel rendered "Activity could not be loaded. It will retry automatically." — the failure this change exists for, caught live rendering the present-tense empty before the fix (/tmp/n2-44a-real-failure.png vs /tmp/n2-44a-fixed.png), recovered automatically (/tmp/n2-44a-recovered.png).
+- **Cross-session**: switching the two seeded sessions showed each panel's own honest state, zero foreign rows (/tmp/n2-44b-switch.png; both empty at the time — the keyed-retention fix stands, a rows-present run would strengthen).
+- **Goals read failure**: chmod 000 on the goals directory now yields a failed read (HTTP 400 after 1fbed1a8) and the client's "Couldn't read goals" state — before the fix the server swallowed the EACCES into a successful empty and the panel claimed "No goals recorded" (/tmp/n2-53c-chmod000.png is the before).
+- **Goals switch**: two workspace switches sampled at 100ms — zero false "No goals recorded" claims during flight (/tmp/n2-53a-switch.png).
+- **Registry attribution**: /compact ran with a task running — the panel still listed "Task Sleep Timer 2 Running 2m 8s" with the elapsed timer live (/tmp/n2-53b-compact.png).
+- **Open item**: the divergent-cwd source-qualifier scenario is design-blocked (divergent sessions are UI-unreachable; recorded in task 3.3).
