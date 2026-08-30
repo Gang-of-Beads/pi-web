@@ -1,5 +1,6 @@
 import { statSync } from "node:fs";
 import { announceUnsupportedSurface, withUnsupportedSurfaceAnnouncement } from "./unsupportedSurface.js";
+import { takeUnfiledWarnings } from "./warningFiling.js";
 import { basename, dirname, join } from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
 import type { ImageContent } from "@earendil-works/pi-ai";
@@ -1183,6 +1184,8 @@ export class PiSessionService implements SessionRouteService {
   private readonly now: () => Date;
   private readonly notificationStore: SessionNotificationStore;
   private readonly notificationGenerationBySession = new WeakMap<PiAgentSession, SessionNotificationGeneration>();
+  /** Warning identities already filed in the drawer, per live session. */
+  private readonly filedWarningsBySession = new WeakMap<PiAgentSession, Set<string>>();
   /**
    * Mutation counter of each session's dialog surface, incremented on every
    * dialog open and close. Frames carry the value they produced, so a client
@@ -4466,6 +4469,7 @@ export class PiSessionService implements SessionRouteService {
     const model = session.model === undefined ? undefined : modelToClientModel(session.model);
     const contextUsage = session.getContextUsage();
     const warnings = this.warningsForSession(session);
+    this.fileWarningNotifications(session, warnings);
     const pendingAsk = this.pendingAskStore.pendingAsk(session.sessionId);
     const pendingDialogs = this.pendingExtensionDialogStore.pendingDialogs(session.sessionId);
     // One transcript pass feeds both the count and the visible queue list:
@@ -4548,6 +4552,28 @@ export class PiSessionService implements SessionRouteService {
    * fresh on each status publish so a rebuilt runtime or an auth/model change is
    * reflected without caching a stale snapshot.
    */
+  /**
+   * File each warning occurrence in the session's drawer, once. Warnings used
+   * to be cards over the transcript - five of them filled the owner's phone
+   * and moved the layout as they came and went; the drawer already owns
+   * information that arrives on its own. Skipping (no generation bound yet)
+   * must not memoize: the next bound publish files what this pass could not.
+   */
+  private fileWarningNotifications(session: PiAgentSession, warnings: readonly SessionWarning[]): void {
+    if (warnings.length === 0) return;
+    const generation = this.notificationGenerationBySession.get(session);
+    if (generation === undefined) return;
+    let memo = this.filedWarningsBySession.get(session);
+    if (memo === undefined) {
+      memo = new Set<string>();
+      this.filedWarningsBySession.set(session, memo);
+    }
+    for (const warning of takeUnfiledWarnings(memo, warnings)) {
+      const added = this.notificationStore.addNotification(generation, warning.message, warning.severity);
+      this.publishNotificationMutations(added.mutations);
+    }
+  }
+
   private warningsForSession(session: PiAgentSession): SessionWarning[] {
     const runtime = this.active.get(session.sessionId)?.runtime;
     const warnings = runtime === undefined ? [] : collectRuntimeWarnings(runtime);
