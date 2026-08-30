@@ -853,9 +853,6 @@ export class ChatView extends LitElement {
   private scrollToBottomFrame: number | undefined;
   private catchUpFollowTimer: ReturnType<typeof setTimeout> | undefined;
   /** Which open card's alignment a press deferred, so the release can replay it. */
-  private deferredOpenAlign: "ask" | "dialog" | undefined;
-  private scrollToOpenAskFrame: number | undefined;
-  private scrollToOpenDialogFrame: number | undefined;
   private conversationRailFrame: number | undefined;
   private groupedMessagesInput?: ChatLine[];
   /** The session the retained subagent/run/task rows were delivered for. The
@@ -924,14 +921,6 @@ export class ChatView extends LitElement {
     if (this.restoreScrollFrame !== undefined) cancelAnimationFrame(this.restoreScrollFrame);
     if (this.loadMoreCheckFrame !== undefined) cancelAnimationFrame(this.loadMoreCheckFrame);
     if (this.scrollToBottomFrame !== undefined) cancelAnimationFrame(this.scrollToBottomFrame);
-    if (this.scrollToOpenAskFrame !== undefined) {
-      cancelAnimationFrame(this.scrollToOpenAskFrame);
-      this.scrollToOpenAskFrame = undefined;
-    }
-    if (this.scrollToOpenDialogFrame !== undefined) {
-      cancelAnimationFrame(this.scrollToOpenDialogFrame);
-      this.scrollToOpenDialogFrame = undefined;
-    }
     if (this.conversationRailFrame !== undefined) cancelAnimationFrame(this.conversationRailFrame);
     if (this.catchUpFollowTimer !== undefined) {
       clearTimeout(this.catchUpFollowTimer);
@@ -969,14 +958,6 @@ export class ChatView extends LitElement {
     if (this.restoreScrollFrame !== undefined) {
       cancelAnimationFrame(this.restoreScrollFrame);
       this.restoreScrollFrame = undefined;
-    }
-    if (this.scrollToOpenAskFrame !== undefined) {
-      cancelAnimationFrame(this.scrollToOpenAskFrame);
-      this.scrollToOpenAskFrame = undefined;
-    }
-    if (this.scrollToOpenDialogFrame !== undefined) {
-      cancelAnimationFrame(this.scrollToOpenDialogFrame);
-      this.scrollToOpenDialogFrame = undefined;
     }
   }
 
@@ -2631,29 +2612,15 @@ export class ChatView extends LitElement {
     if (!this.followGate.takeSuppressedFollow() || !this.pinnedToBottom) return;
     // The settle grace still refuses following, which is what lets the tap land;
     // the catch-up therefore waits for it to expire instead of being dropped.
-    const replay = this.deferredOpenAlign;
     if (this.catchUpFollowTimer !== undefined) clearTimeout(this.catchUpFollowTimer);
     this.catchUpFollowTimer = setTimeout(() => {
       this.catchUpFollowTimer = undefined;
       if (!this.pinnedToBottom) return;
-      if (replay !== undefined && this.replayDeferredAlignment(replay)) return;
       this.scrollToBottom();
     }, TOUCH_SETTLE_MS);
   }
 
-  /** Apply the alignment a press deferred; false when the card is no longer open. */
-  private replayDeferredAlignment(replay: "ask" | "dialog"): boolean {
-    let aligned = false;
-    this.withSuppressedScrollSave(() => { aligned = replay === "ask" ? this.alignOpenAskToTop() : this.alignOpenDialogToTop(); });
-    return aligned;
-  }
-
-  /**
-   * A press begins a new hold account: an alignment an earlier press deferred
-   * is history, so it cannot hijack a later press's bottom catch-up.
-   */
   private notePressStart(): void {
-    this.deferredOpenAlign = undefined;
     // A catch-up scheduled by the previous release belongs to that press. Left
     // running it can fire up to TOUCH_SETTLE_MS into this press, scrolling the
     // transcript between the new press and its click, so the click lands on
@@ -2757,71 +2724,6 @@ export class ChatView extends LitElement {
     });
   }
 
-  private isNewPendingAsk(previous: unknown): boolean {
-    return this.pendingAsk !== undefined
-      && (typeof previous !== "object" || previous === null || Reflect.get(previous, "askId") !== this.pendingAsk.askId);
-  }
-
-  private isNewOpenDialog(previous: unknown): boolean {
-    const oldest = this.pendingDialogs[0];
-    if (oldest === undefined) return false;
-    if (!Array.isArray(previous)) return true;
-    const previousOldest: unknown = previous[0];
-    return typeof previousOldest !== "object" || previousOldest === null || Reflect.get(previousOldest, "dialogId") !== oldest.dialogId;
-  }
-
-  private scrollToOpenAsk(): void {
-    if (this.scrollToOpenAskFrame !== undefined) return;
-    if (this.scrollToBottomFrame !== undefined) {
-      cancelAnimationFrame(this.scrollToBottomFrame);
-      this.scrollToBottomFrame = undefined;
-    }
-    this.scrollToOpenAskFrame = requestAnimationFrame(() => {
-      this.scrollToOpenAskFrame = undefined;
-      this.withSuppressedScrollSave(() => { this.alignOpenAskToTop(); });
-    });
-  }
-
-  private alignOpenAskToTop(): boolean {
-    const chat = this.chat;
-    const card = this.renderRoot.querySelector<HTMLElement>(".chat > ask-user-card");
-    if (chat === undefined || card === null) return false;
-    if (!this.followGate.followsNewest(Date.now())) {
-      this.deferredOpenAlign = "ask";
-      return false;
-    }
-    chat.scrollTop += card.getBoundingClientRect().top - chat.getBoundingClientRect().top;
-    this.syncScrollMetrics();
-    this.pinnedToBottom = this.isNearBottom();
-    return true;
-  }
-
-  private scrollToOpenDialog(): void {
-    if (this.scrollToOpenDialogFrame !== undefined) return;
-    if (this.scrollToBottomFrame !== undefined) {
-      cancelAnimationFrame(this.scrollToBottomFrame);
-      this.scrollToBottomFrame = undefined;
-    }
-    this.scrollToOpenDialogFrame = requestAnimationFrame(() => {
-      this.scrollToOpenDialogFrame = undefined;
-      this.withSuppressedScrollSave(() => { this.alignOpenDialogToTop(); });
-    });
-  }
-
-  private alignOpenDialogToTop(): boolean {
-    const chat = this.chat;
-    const card = this.renderRoot.querySelector<HTMLElement>(".chat > extension-dialog-card.open-dialog-card");
-    if (chat === undefined || card === null) return false;
-    if (!this.followGate.followsNewest(Date.now())) {
-      this.deferredOpenAlign = "dialog";
-      return false;
-    }
-    chat.scrollTop += card.getBoundingClientRect().top - chat.getBoundingClientRect().top;
-    this.syncScrollMetrics();
-    this.pinnedToBottom = this.isNearBottom();
-    return true;
-  }
-
   restoreScrollPosition() {
     const sessionId = this.sessionId;
     if (this.restoreScrollFrame !== undefined) cancelAnimationFrame(this.restoreScrollFrame);
@@ -2829,8 +2731,9 @@ export class ChatView extends LitElement {
       this.restoreScrollFrame = undefined;
       if (this.sessionId !== sessionId) return;
       this.withSuppressedScrollSave(() => {
-        if (this.pendingAsk !== undefined && this.scrollController.readPosition(sessionId) === undefined && this.alignOpenAskToTop()) return;
-        if (this.pendingDialogs.length > 0 && this.scrollController.readPosition(sessionId) === undefined && this.alignOpenDialogToTop()) return;
+        // A pending question no longer lives in the scroller, so a session with
+        // one restores like any other: the question is already in view in its
+        // own row, whatever the transcript position.
         const result = this.scrollController.restorePosition(sessionId, this.chat, this.scrollAnchorElements(), { fallbackToBottom: this.shouldFallbackToBottomForMissingAnchor() });
         this.handleScrollRestoreResult(sessionId, result);
       });
