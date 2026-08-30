@@ -1,5 +1,6 @@
 import { api as defaultApi, isNotFoundError, type AskUserCloseResponse, type AskUserSubmission, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingAskUser, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionBackgroundTaskInfo, SessionSubagentRunInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Workspace } from "../api";
 import { errorNoticePatch } from "../errorNotice";
+import { expireSettledCommands, issueCommand, settleCommand, SETTLED_ROW_LINGER_MS, type CommandLedgerSource } from "../commandLedger";
 import { RevisionScope } from "../revisionScope";
 import { describeError } from "../notice";
 import { ancestorsForSession } from "../sessionAncestors";
@@ -420,14 +421,35 @@ export class SessionController {
     await this.deliverShellToSession(session, text, selectedMachineId(this.getState()), { optimisticLine: true });
   }
 
-  async runCommand(text: string) {
+  async runCommand(text: string, source: CommandLedgerSource = "typed") {
     const session = this.getState().selectedSession;
     if (!session || session.archived === true) return;
+    const machineId = selectedMachineId(this.getState());
+    // The command's invisible route is what made pressed buttons read as dead:
+    // the ledger row is the receipt, created before the daemon is even asked.
+    const issued = issueCommand(this.getState().commandLedger, {
+      sessionKey: machineSessionKey(machineId, session.id),
+      text,
+      source,
+      now: Date.now(),
+    });
+    this.setState({ commandLedger: issued.entries });
     if (isClientPendingStartSessionInfo(session)) {
       this.enqueuePendingSessionSend(session, { type: "command", text });
+      this.settleLedgerRow(issued.id, { state: "ok", resultText: "Queued until the session starts." });
       return;
     }
-    await this.deliverCommandToSession(session, text, selectedMachineId(this.getState()), { applyResult: true });
+    await this.deliverCommandToSession(session, text, machineId, { applyResult: true, ledgerId: issued.id });
+  }
+
+  private settleLedgerRow(id: string, outcome: { state: "ok" | "failed"; resultText?: string }): void {
+    const now = Date.now();
+    this.setState({ commandLedger: settleCommand(this.getState().commandLedger, id, { ...outcome, now }) });
+    // The settled row is an acknowledgment, not an archive; it leaves on its
+    // own once the linger passes, without waiting for another state change.
+    setTimeout(() => {
+      this.setState({ commandLedger: expireSettledCommands(this.getState().commandLedger, Date.now()) });
+    }, SETTLED_ROW_LINGER_MS + 50);
   }
 
   private enqueuePendingSessionSend(session: ClientPendingStartSessionInfo, input: QueuedPendingSessionSendInput): void {
@@ -533,7 +555,7 @@ export class SessionController {
     }
   }
 
-  private async deliverCommandToSession(session: SessionInfo, text: string, machineId: string, options: { applyResult: boolean }): Promise<boolean> {
+  private async deliverCommandToSession(session: SessionInfo, text: string, machineId: string, options: { applyResult: boolean; ledgerId?: string }): Promise<boolean> {
     // Commands are not inserted into the transcript optimistically: a builtin
     // command produces its own result line, and a runtime/skill command is
     // forwarded to the agent, which streams back the canonical (expanded)
@@ -546,10 +568,12 @@ export class SessionController {
       if (options.applyResult && this.isSelectedSessionIdentity(session.id, machineId)) this.applyCommandResult(result);
       else if (result.type === "select" || result.type === "tree") this.setState({ error: `Queued command “${text}” needs input; open the session and run it again.` });
       this.markCachedNewSessionPersisted(session);
+      if (options.ledgerId !== undefined) this.settleLedgerRow(options.ledgerId, { state: "ok" });
       return true;
     } catch (error) {
       if (this.getState().selectedSession?.id === session.id) this.setState({ messages: [...this.getState().messages, textMessage("system", describeError(error))] });
       this.setState(errorNoticePatch(error));
+      if (options.ledgerId !== undefined) this.settleLedgerRow(options.ledgerId, { state: "failed", resultText: describeError(error) });
       return false;
     } finally {
       this.markSendingPrompt(session.id, false);

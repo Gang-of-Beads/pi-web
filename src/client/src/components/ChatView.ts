@@ -13,6 +13,7 @@ import { shouldRequestEarlierMessages } from "../chatHistoryLoading";
 import { ChatScrollController, distanceFromScrollBottom, findFirstVisibleArticle, isNearScrollBottom, type ChatAnchorScrollPosition, type ChatScrollRestoreResult } from "../chatScrollPosition";
 import { scrollEdgeClasses, ScrollEdgeTracker } from "../scrollEdges";
 import type { AskUserSubmission, PendingAskUser, PendingExtensionDialog, QueuedSessionMessage, SessionActivity, SessionStatus, SessionWarningSeverity } from "../api";
+import type { CommandLedgerEntry } from "../commandLedger";
 import type { ActivityConversationView, ActivityOutputView, ClosedExtensionDialog, PanelLoad } from "../appState";
 import {
   notificationAnnouncementLabel,
@@ -465,6 +466,12 @@ export const chatStyles = css`
   /* Queued messages are drawn in the transcript, gold; this slim strip carries
      only the count and the clear action the queue as a whole needs. */
   .queued-strip { display: flex; align-items: center; gap: var(--pi-space-3); margin: 0 0 var(--pi-space-4); padding: var(--pi-space-2) var(--pi-space-3); color: var(--pi-warning); font-size: var(--pi-text-xs); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); background: var(--pi-warning-surface); }
+  /* The command receipts wear the queued-message gold: provisional, the
+     browser's own record, not server history. */
+  .command-row { display: flex; align-items: baseline; gap: var(--pi-space-3); min-width: 0; margin: 0 0 var(--pi-space-3); padding: var(--pi-space-2) var(--pi-space-3); font-size: var(--pi-text-xs); color: var(--pi-warning); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-md); background: var(--pi-warning-surface); }
+  .command-row.failed { color: var(--pi-error); border-color: var(--pi-error-border); background: var(--pi-error-surface); }
+  .command-row .command-text { font-family: var(--pi-font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .command-row .command-state { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .85; }
   .queued-strip-count { flex: 1 1 auto; min-width: 0; }
   .queued-clear-button { flex: 0 0 auto; border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-warning); padding: var(--pi-space-1) var(--pi-space-3); font: inherit; cursor: pointer; }
   .queued-clear-button:focus { border-color: var(--pi-warning); color: var(--pi-text-bright); }
@@ -734,6 +741,8 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) askDraftSessionId = "";
   @property({ attribute: false }) onSubmitAsk?: (askId: string, submission: AskUserSubmission) => void | Promise<void>;
   @property({ attribute: false }) pendingDialogs: PendingExtensionDialog[] = [];
+  /** The browser's own receipts for commands it issued in this session. */
+  @property({ attribute: false }) commandLedger: CommandLedgerEntry[] = [];
   @property({ attribute: false }) closedDialogs: ClosedExtensionDialog[] = [];
   @property({ attribute: false }) onAnswerDialog?: ExtensionDialogAnswerCallback;
   @property({ attribute: false }) onCancelDialog?: ExtensionDialogCancelCallback;
@@ -1196,6 +1205,7 @@ export class ChatView extends LitElement {
           ${this.renderSessionActivity()}
           ${this.renderPendingMessages()}
           ${this.renderQueuedMessages()}
+          ${this.renderCommandLedger()}
           ${this.renderClosedDialogs()}
         </div>
         ${this.renderWaitingForYou()}
@@ -2209,6 +2219,32 @@ export class ChatView extends LitElement {
             : null}
         `}
       </div>
+    `;
+  }
+
+  /**
+   * The receipts for commands this browser issued. A slash command's route
+   * produces no message and no pending row; until these rows existed, a
+   * pressed goal button held no evidence anywhere that the press happened,
+   * and the owner pressed Resume four times against a command that had been
+   * accepted every time. Queued-versus-running is derived from the live
+   * status: the daemon runs a command after the current reply, and the row
+   * says which side of that wait it is on.
+   */
+  private renderCommandLedger() {
+    if (this.commandLedger.length === 0) return null;
+    const streaming = this.status?.isStreaming === true;
+    return html`
+      ${this.commandLedger.map((entry) => html`
+        <div class=${`command-row ${entry.state}`} role="status">
+          <span class="command-text">${entry.text}</span>
+          <span class="command-state">${entry.state === "pending"
+            ? streaming ? "waiting for the current reply to finish" : "running…"
+            : entry.state === "ok"
+              ? entry.resultText ?? "done"
+              : `failed — ${entry.resultText ?? "see the error above"}`}</span>
+        </div>
+      `)}
     `;
   }
 

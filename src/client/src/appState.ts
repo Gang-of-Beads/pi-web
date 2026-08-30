@@ -1,5 +1,6 @@
 import type { AuthProviderOption, CommandOption, CommandResult, ExtensionDialogAnswer, ExtensionDialogCloseReason, FileContentResponse, FileTreeEntry, GoalRecordSummary, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingAskUser, PendingExtensionDialog, PiWebSelfUpdateStatus, PiWebStatusResponse, Project, QueuedSessionMessage, SessionActivity, SessionInfo, SessionModelCatalogEntry, SessionStatus, SessionBackgroundTaskInfo, SessionSubagentInfo, SessionSubagentRunInfo, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";import type { ChatLine } from "./components/shared";
 import { normalizeMessages } from "./chatMessages";
+import type { CommandLedgerEntry } from "./commandLedger";
 import { RetiredBy } from "./notice";
 import { machineWorkspaceKey } from "./machineKeys";
 import { selectedMachineId } from "./controllers/types";
@@ -89,6 +90,12 @@ export interface AppState {
   sendingPrompts: Record<string, true>;
   /** Client-side queued sends waiting for a just-created backend session, keyed by sessionId. */
   clientQueuedSessionMessages: Record<string, QueuedSessionMessage[]>;
+  /**
+   * The browser's record of every command it issued: the receipt a slash
+   * command's invisible route never produced. Rows carry the session key they
+   * were issued under and render only beneath it.
+   */
+  commandLedger: CommandLedgerEntry[];
   /** Client-initiated session creation requests waiting for the server. */
   startingSessionCount: number;
   /**
@@ -241,6 +248,7 @@ export type WorkspaceScopedStateReset = Pick<AppState,
   | "sessionsLoad"
   | "workspaceGoalsLoad"
   | "clientQueuedSessionMessages"
+  | "commandLedger"
   | "startingSessionCount"
   | "selectedNotificationInbox"
   | "treeDialog"
@@ -300,6 +308,7 @@ export function resetWorkspaceScopedState(): WorkspaceScopedStateReset {
     // unkeyed list would be retained by nothing and owned by no one.
     workspaceGoalsLoad: { state: "unloaded", key: undefined, data: [] },
     clientQueuedSessionMessages: {},
+    commandLedger: [],
     startingSessionCount: 0,
     selectedNotificationInbox: undefined,
     treeDialog: undefined,
@@ -335,6 +344,7 @@ export function initialAppState(): AppState {
     isLoadingEarlierMessages: false,
     sendingPrompts: {},
     clientQueuedSessionMessages: {},
+    commandLedger: [],
     startingSessionCount: 0,
     projectsLoad: "unloaded",
     isLoadingWorkspaces: false,
