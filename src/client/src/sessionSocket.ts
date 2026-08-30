@@ -42,6 +42,7 @@ export class SessionSocket {
   private hasOpened = false;
   private onReconnect: (() => void) | undefined;
   private onInitialOpen: (() => void) | undefined;
+  private onMalformed: ((frameType: string) => void) | undefined;
   private machineId = "local";
   private lastFrameAt = 0;
 
@@ -72,6 +73,7 @@ export class SessionSocket {
     onReconnect?: () => void,
     machineId = "local",
     onInitialOpen?: () => void,
+    onMalformed?: (frameType: string) => void,
   ): void {
     this.close();
     this.machineId = machineId;
@@ -79,6 +81,7 @@ export class SessionSocket {
     this.onEvent = onEvent;
     this.onReconnect = onReconnect;
     this.onInitialOpen = onInitialOpen;
+    this.onMalformed = onMalformed;
     this.shouldReconnect = true;
     this.open();
   }
@@ -96,6 +99,7 @@ export class SessionSocket {
     this.onEvent = undefined;
     this.onReconnect = undefined;
     this.onInitialOpen = undefined;
+    this.onMalformed = undefined;
     this.hasOpened = false;
     this.machineId = "local";
   }
@@ -155,7 +159,14 @@ export class SessionSocket {
     // frame lost there is lost all the same.
     this.seqMonitor.observe(raw);
     const event = parseSessionSocketEvent(raw);
-    if (this.socket !== socket || event === undefined) return;
+    if (this.socket !== socket) return;
+    if (event === undefined) {
+      // Validation failure on a revisioned surface is a gap: report it so the
+      // surface resyncs instead of silently missing one transition.
+      const malformedType = revisionedFrameType(raw);
+      if (malformedType !== undefined) this.onMalformed?.(malformedType);
+      return;
+    }
     if (event.type === "notifications.inbox" && (session.id !== event.summary.sessionId || session.cwd !== event.summary.cwd)) return;
     this.onEvent?.(event);
   }
@@ -254,6 +265,21 @@ export class RealtimeSocket {
     const event = parseRealtimeSocketEvent(raw);
     if (this.socket === socket && event !== undefined) this.onEvent?.(event);
   }
+}
+
+/**
+ * The surfaces whose frames carry a monotonic revision. A frame of one of
+ * these types that fails validation is a lost transition, not noise: the
+ * surface's revision never advances, so the next valid frame applies on top
+ * of a state missing one step - the stuck-card failure through another door.
+ * The caller treats it as a gap and requests the surface's resync.
+ */
+const REVISIONED_FRAME_TYPES = new Set(["notifications.inbox", "ask.opened", "ask.closed", "dialog.opened", "dialog.closed"]);
+
+/** The revisioned surface behind a raw frame, or undefined for everything else. */
+export function revisionedFrameType(event: unknown): string | undefined {
+  const type = eventType(event);
+  return REVISIONED_FRAME_TYPES.has(type) ? type : undefined;
 }
 
 export function parseSessionSocketEvent(event: unknown): SessionUiEvent | undefined {

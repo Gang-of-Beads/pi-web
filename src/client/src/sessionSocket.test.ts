@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { RealtimeSocket, SessionSocket, parseRealtimeSocketEvent, parseSessionSocketEvent, jitteredReconnectDelay } from "./sessionSocket";
+import { RealtimeSocket, SessionSocket, parseRealtimeSocketEvent, parseSessionSocketEvent, jitteredReconnectDelay, revisionedFrameType } from "./sessionSocket";
 
 function notification(order = 1) {
   return {
@@ -33,6 +33,28 @@ function inboxEvent() {
     delta: { kind: "added", notification: notification() },
   };
 }
+
+describe("a malformed frame on a revisioned surface is a gap, not a silent drop", () => {
+  // A dialog/ask/inbox frame that fails validation used to vanish without a
+  // trace: the surface's revision never advanced, so the next valid frame
+  // applied cleanly on top of a state missing one transition - the same stale
+  // card the lost-frame repair exists for, reached through a different door.
+  // The socket now names the surface so the owner can request its resync.
+  it("names the revisioned surface behind a frame", () => {
+    expect(revisionedFrameType({ type: "dialog.opened", dialog: { bogus: true } })).toBe("dialog.opened");
+    expect(revisionedFrameType({ type: "dialog.closed" })).toBe("dialog.closed");
+    expect(revisionedFrameType({ type: "ask.opened" })).toBe("ask.opened");
+    expect(revisionedFrameType({ type: "ask.closed" })).toBe("ask.closed");
+    expect(revisionedFrameType({ type: "notifications.inbox" })).toBe("notifications.inbox");
+  });
+
+  it("does not treat stream vocabulary or keepalives as revisioned surfaces", () => {
+    expect(revisionedFrameType({ type: "keepalive" })).toBeUndefined();
+    expect(revisionedFrameType({ type: "message" })).toBeUndefined();
+    expect(revisionedFrameType({})).toBeUndefined();
+    expect(revisionedFrameType(undefined)).toBeUndefined();
+  });
+});
 
 describe("connection liveness", () => {
   // A proxy or NAT that drops a silent connection without a FIN leaves the

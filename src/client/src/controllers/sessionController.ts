@@ -52,6 +52,8 @@ export interface SessionEventSocket {
     onReconnect?: () => void,
     machineId?: string,
     onInitialOpen?: () => void,
+    /** A revisioned frame failed validation: a lost transition, needs resync. */
+    onMalformed?: (frameType: string) => void,
   ): void;
   setHandler(onEvent: (event: SessionUiEvent) => void): void;
   close(): void;
@@ -323,6 +325,14 @@ export class SessionController {
         () => { void this.refreshSelectedSession(session.id); },
         machineId,
         () => { void this.notifications?.refreshSelectedSession(session, machineId); },
+        // A frame that failed validation on a revisioned surface is a lost
+        // transition. The ask and dialog surfaces repair through the same
+        // coalesced status resync as a skipped revision; the inbox repairs
+        // through its own snapshot read.
+        (frameType: string) => {
+          if (frameType === "notifications.inbox") void this.notifications?.refreshSelectedSession(session, machineId);
+          else this.dialogScope.requestResync();
+        },
       );
       await this.requestSelectedSessionRefresh({ session, machineId, selectionSeq: seq });
       if (!this.isCurrentRefreshTarget({ session, machineId, selectionSeq: seq })) return;
