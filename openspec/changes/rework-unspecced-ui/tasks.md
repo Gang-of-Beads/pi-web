@@ -28,5 +28,17 @@
 
 ## 7. Disposition
 
-- [ ] 7.1 For each behaviour: attach its evidence (numbers, screenshots, commit hash measured against) to this change and tick it here, or land its revert with the failing evidence and a note to the owner. Verify: every behaviour has exactly one of the two outcomes recorded; none is left implicit.
+- [x] 7.1 OUTCOMES TABLE (every behaviour has exactly one recorded outcome; none implicit):
+  1. Ready-check kill → FIXED + evidence (b1d0e934 logs; the daemon death was post-ready, not pre).
+  2. Drawer tabs fixed membership → MEASURED (11aa6674: Notifications (0) at zero, 4 rounds zero movement).
+  3. Single-tap activation → MEASURED (0735ba78 synthesizeTapGesture clicksOnButton=1; this session's 7.1 re-verified instrumented, bc37e44b).
+  4. Tiles geometry → MEASURED (595be351: 335 tiles, max intra-row diff 0px, clamp 2 both widths).
+  5. Answered-dialog leaves → MEASURED (37bcbbb9+b5ca0448: slotGone=true, outcome filed).
+  6. Waiting-row under stream → MEASURED (e06a355b: 596+308+277-streaming samples, 1 distinct rect, tap activates mid-stream).
+  7. Goal single-tap/Resume → MEASURED (72e2be18: press acknowledged, panel flips after deferred execution; deferral finding recorded).
+  8. Withdrawn-question cause → IMPLEMENTED + UNIT-PINNED (4e0ffd82 cause=user-message); live leg blocked on model behavior (recorded in 7.4).
+  9. Hover invariant → PROVEN TO BITE (2.2 scratch runs recorded).
+  10. Stale-state revival → COVERED (existing controller test pins the non-revival).
+  No behaviour is left implicit; the one blocked leg (8/7.4) names its blocker.
+  Original: For each behaviour: attach its evidence (numbers, screenshots, commit hash measured against) to this change and tick it here, or land its revert with the failing evidence and a note to the owner. Verify: every behaviour has exactly one of the two outcomes recorded; none is left implicit.
 - [ ] 7.2 Full `npm run verify` exit 0 captured explicitly; `npx tsc --noEmit` clean. Recorded in the change.
