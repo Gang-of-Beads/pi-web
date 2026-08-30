@@ -217,4 +217,44 @@ describe("the goals entrance while its list is in flight", () => {
 
     expect(view.renderRoot.querySelector("#session-notification-list")?.textContent).toContain("No notifications");
   });
+
+  /**
+   * A failed read is a third state. The projection collapses loading, stale and
+   * never-loaded into one undefined, so without a carried flag the panel's only
+   * words for a dead read were the two absence sentences - the owner's panels
+   * have photographed that substitution three times.
+   */
+  it("says a failed notifications read failed instead of claiming absence", async () => {
+    const view = new ChatView();
+    view.sessionId = "s";
+    view.status = status();
+    view.subagents = [{ sessionId: "01a0child-0001-0000-000000000001", cwd: "/repo/.pi/sub", status: "working" }];
+    view.goalsLoad = { state: "loaded", key: "test-key", data: [] };
+    view.goalsKnown = true;
+    view.notificationsFailed = true;
+    document.body.append(view);
+    await view.updateComplete;
+
+    view.renderRoot.querySelector<HTMLButtonElement>("#drawer-tab-notifications")?.click();
+    await view.updateComplete;
+
+    const text = view.renderRoot.querySelector("#session-notification-list")?.textContent ?? "";
+    expect(text).toContain("could not be loaded");
+    expect(text).not.toContain("No notifications");
+  });
+
+  /** The drawer's gate counts sections with something to say; a failed read is
+   * one, or the failure line would be drawn inside a drawer that never opens. */
+  it("keeps the drawer up when the only thing it can say is that notifications failed", async () => {
+    const view = new ChatView();
+    view.sessionId = "s";
+    view.status = status();
+    view.goalsLoad = { state: "loaded", key: "test-key", data: [] };
+    view.goalsKnown = true;
+    view.notificationsFailed = true;
+    document.body.append(view);
+    await view.updateComplete;
+
+    expect(view.renderRoot.querySelector("#drawer-tab-notifications")).not.toBeNull();
+  });
 });

@@ -147,6 +147,19 @@ describe("SessionNotificationController selected inbox ownership", () => {
     expect(harness.state.selectedNotificationInbox).toBe(selectedBefore);
   });
 
+  /** The drawer's failure line keys off this status: a failed read must be
+   * recorded as stale so the UI can tell it from a load still in flight. The
+   * projection-to-view step drops everything non-fresh, so this status is the
+   * only record that the failure happened. */
+  it("records a failed selected read as stale, the signal the failure line keys off", async () => {
+    const harness = createHarness(baseState(), { notificationInbox: vi.fn(() => Promise.reject(new Error("daemon down"))) });
+
+    harness.controller.prepareSelectedSession(session, "local");
+    await harness.controller.refreshSelectedSession(session, "local");
+
+    expect(harness.state.selectedNotificationInbox?.status).toBe("stale");
+  });
+
   it("recovers a selected inbox revision gap from its bounded snapshot", async () => {
     const first = inboxSnapshot([entry(1)], { inboxRevision: 1, catalogRevision: 1 });
     const recovered = inboxSnapshot([entry(3), entry(1)], { inboxRevision: 3, catalogRevision: 3 });

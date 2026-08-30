@@ -755,6 +755,11 @@ export class ChatView extends LitElement {
    * claims of absence, and a chat whose first poll never succeeded read as one
    * that had simply never started anything. */
   @property({ type: Boolean }) activityFailed = false;
+  /** The latest notifications read for this chat failed. The projection keeps
+   * that fact in its status and then drops every non-fresh projection on the
+   * way to the view, so the panel receives a bare undefined and its only words
+   * for a dead read were the two absence sentences. */
+  @property({ type: Boolean }) notificationsFailed = false;
   @property({ attribute: false }) onOpenBackgroundTask?: (task: SessionBackgroundTaskInfo) => void;
   @property({ attribute: false }) onOpenSubagentRun?: (run: SessionSubagentRunInfo) => void;
   /** Open a listed subagent in the navigation. */
@@ -1257,8 +1262,8 @@ export class ChatView extends LitElement {
     // that failed, is also a reason: hiding the drawer during flight is how
     // the loading state went unseen for its whole life.
     const goalsWorthShowing = this.goalsLoad.data.length > 0 || this.goalsLoad.state === "loading" || this.goalsLoad.state === "failed";
-    if (activity === undefined && inbox === undefined && !goalsWorthShowing) return null;
-    const tab = selectedTopDrawerTab({ activity: activity !== undefined, notifications: inbox !== undefined, goals: this.goalsLoad.data.length > 0 }, this.topDrawerTab);
+    if (activity === undefined && inbox === undefined && !goalsWorthShowing && !this.notificationsFailed) return null;
+    const tab = selectedTopDrawerTab({ activity: activity !== undefined, notifications: inbox !== undefined || this.notificationsFailed, goals: this.goalsLoad.data.length > 0 }, this.topDrawerTab);
     const key = this.topDrawerKey();
     const collapsed = this.expandedTopDrawerKeys.has(key)
       ? false
@@ -1638,11 +1643,22 @@ export class ChatView extends LitElement {
     `;
   }
 
+  /**
+   * Three states, three sentences. `loaded` is true only when a view exists for
+   * this session, and a view exists only for a fresh, completed read - so "No
+   * notifications for this chat." is reachable only through a read that
+   * succeeded and found nothing. "No notifications yet." covers the read still
+   * in flight or not started. A failed read says it failed and names its
+   * retry: event-driven (socket recovery, next refresh), not on a clock, so
+   * the line does not promise a timer it does not have.
+   */
   private renderNotificationPanel(inbox: SelectedSessionNotificationView | undefined, loaded: boolean): TemplateResult {
     return html`
         <div class="notification-list" id="session-notification-list" role="tabpanel" aria-labelledby="drawer-tab-notifications" @pointerdown=${() => { this.drawerGate.notePointerDown(Date.now()); }} @pointerup=${() => { this.releaseDrawerPointer(); }} @pointercancel=${() => { this.releaseDrawerPointer(); }} @touchstart=${() => { this.drawerGate.notePointerDown(Date.now()); }} @touchend=${() => { this.releaseDrawerPointer(); }} @touchcancel=${() => { this.releaseDrawerPointer(); }}>
           ${inbox === undefined
-            ? html`<p class="notification-empty">${loaded ? "No notifications for this chat." : "No notifications yet."}</p>`
+            ? this.notificationsFailed
+              ? html`<p class="notification-empty notification-failed" role="status">Notifications could not be loaded. They retry when the connection recovers.</p>`
+              : html`<p class="notification-empty">${loaded ? "No notifications for this chat." : "No notifications yet."}</p>`
             : null}
           ${inbox !== undefined && inbox.discardedCount !== 0 ? html`
             <p class="notification-overflow">${notificationInboxOverflowLabel(inbox.discardedCount)}</p>
@@ -1679,7 +1695,8 @@ export class ChatView extends LitElement {
               </article>
             `;
           })}
-          ${inbox?.notifications.length === 0 ? html`<p class="notification-empty">No notifications for this chat.</p>` : null}        </div>
+          ${inbox?.notifications.length === 0 ? html`<p class="notification-empty">No notifications for this chat.</p>` : null}
+        </div>
     `;
   }
 
