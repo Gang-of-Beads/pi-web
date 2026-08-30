@@ -1948,6 +1948,7 @@ export class PiWebApp extends LitElement {
         }}
         .goalsLoad=${goalsForSelectedWorkspace(this.state)}
         .canRunGoalCommands=${canActOnWorkspaceGoals(this.state)}
+        .goalCommandInFlight=${this.goalCommandInFlight}
         .onRefreshGoals=${() => this.workspaces.refreshWorkspaceGoals()}
         .onArchiveGoal=${(goal: GoalRecordSummary) => this.workspaces.archiveWorkspaceGoal(goal.id)}
         .onRunGoalCommand=${(_goal: GoalRecordSummary, command: string) => this.runGoalCommand(command)}
@@ -2980,7 +2981,11 @@ export class PiWebApp extends LitElement {
    * rules apply, including the picker the extension raises when a session has
    * no focused goal and the workspace has more than one open.
    */
+  /** True while a goal-panel command is in flight; both panels disable on it. */
+  private goalCommandInFlight = false;
+
   private async runGoalCommand(command: string): Promise<void> {
+    if (this.goalCommandInFlight) return;
     if (this.state.selectedSession === undefined) {
       // A goal belongs to the workspace, but a goal command needs a session to
       // run in. The silent form of this guard was the dead button: clicking
@@ -2988,9 +2993,16 @@ export class PiWebApp extends LitElement {
       this.setState({ error: "Open a session in this workspace to run goal commands." });
       return;
     }
-    // Straight to the command route with the goal-panel source, so the ledger
-    // row says where the press came from; sendPrompt would launder it as typed.
-    await this.sessions.runCommand(command, "goal-panel");
+    this.goalCommandInFlight = true;
+    this.requestUpdate();
+    try {
+      // Straight to the command route with the goal-panel source, so the ledger
+      // row says where the press came from; sendPrompt would launder it as typed.
+      await this.sessions.runCommand(command, "goal-panel");
+    } finally {
+      this.goalCommandInFlight = false;
+      this.requestUpdate();
+    }
     // The command may have moved the goal (resume, pause); the panel should
     // show the goal as it now is, not as the last fetch left it.
     void this.workspaces.refreshWorkspaceGoals();
@@ -3131,7 +3143,7 @@ export class PiWebApp extends LitElement {
 
   private renderChatView(state: AppState, session: SessionInfo) {
     return html`
-      <chat-view .goalsLoad=${goalsForSelectedWorkspace(state)} .onRunGoalCommand=${(_goal: GoalRecordSummary, command: string) => this.runGoalCommand(command)} .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .loadingMore=${state.isLoadingEarlierMessages} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk} .pendingDialogs=${state.pendingDialogs} .commandLedger=${commandsForSession(state.commandLedger, machineSessionKey(selectedMachineId(state), session.id))} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onDismissClosedDialog=${this.handleDismissClosedDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .notificationInbox=${selectedNotificationView(state.selectedNotificationInbox)} .notificationsFailed=${state.selectedNotificationInbox?.status === "stale" && state.selectedNotificationInbox.sessionId === session.id && state.selectedNotificationInbox.cwd === session.cwd} .subagents=${state.subagents} .subagentRuns=${state.subagentRuns} .backgroundTasks=${state.backgroundTasks} .activityFailed=${state.activityFailed} .activityOutput=${state.activityOutput} .onCloseActivityOutput=${this.handleCloseActivityOutput} .activityConversation=${state.activityConversation} .onCloseActivityConversation=${this.handleCloseActivityConversation} .onOpenSubagent=${this.handleOpenSubagentSession} .onOpenSubagentRun=${this.handleOpenSubagentRun} .onOpenBackgroundTask=${this.handleOpenBackgroundTask} .onClearServerQueue=${this.handleClearServerQueue} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onDismissWarning=${this.handleDismissWarning} .onDismissNotification=${this.handleDismissNotification} .onDismissAllNotifications=${this.handleDismissAllNotifications} .warningsVisible=${!this.sessionWarningVisibility.collapsed} .onToggleWarnings=${this.handleToggleWarnings} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }}></chat-view>
+      <chat-view .goalsLoad=${goalsForSelectedWorkspace(state)} .onRunGoalCommand=${(_goal: GoalRecordSummary, command: string) => this.runGoalCommand(command)} .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .loadingMore=${state.isLoadingEarlierMessages} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk} .pendingDialogs=${state.pendingDialogs} .commandLedger=${commandsForSession(state.commandLedger, machineSessionKey(selectedMachineId(state), session.id))} .goalCommandInFlight=${this.goalCommandInFlight} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onDismissClosedDialog=${this.handleDismissClosedDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .notificationInbox=${selectedNotificationView(state.selectedNotificationInbox)} .notificationsFailed=${state.selectedNotificationInbox?.status === "stale" && state.selectedNotificationInbox.sessionId === session.id && state.selectedNotificationInbox.cwd === session.cwd} .subagents=${state.subagents} .subagentRuns=${state.subagentRuns} .backgroundTasks=${state.backgroundTasks} .activityFailed=${state.activityFailed} .activityOutput=${state.activityOutput} .onCloseActivityOutput=${this.handleCloseActivityOutput} .activityConversation=${state.activityConversation} .onCloseActivityConversation=${this.handleCloseActivityConversation} .onOpenSubagent=${this.handleOpenSubagentSession} .onOpenSubagentRun=${this.handleOpenSubagentRun} .onOpenBackgroundTask=${this.handleOpenBackgroundTask} .onClearServerQueue=${this.handleClearServerQueue} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onDismissWarning=${this.handleDismissWarning} .onDismissNotification=${this.handleDismissNotification} .onDismissAllNotifications=${this.handleDismissAllNotifications} .warningsVisible=${!this.sessionWarningVisibility.collapsed} .onToggleWarnings=${this.handleToggleWarnings} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }}></chat-view>
     `;
   }
 

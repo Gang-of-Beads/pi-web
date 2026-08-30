@@ -90,6 +90,7 @@ export class AppNavigationPanel extends LitElement {
    * state answers for a different workspace than the one selected: a stale
    * render must be inert, not merely unlikely. */
   @property({ type: Boolean }) canRunGoalCommands = true;
+  @property({ type: Boolean }) goalCommandInFlight = false;
   @property({ attribute: false }) onRefreshGoals?: () => void | Promise<void>;
   @property({ attribute: false }) onArchiveGoal?: (goal: GoalRecordSummary) => void | Promise<void>;
   @property({ attribute: false }) onRunGoalCommand?: (goal: GoalRecordSummary, command: string) => void | Promise<void>;
@@ -327,6 +328,7 @@ export class AppNavigationPanel extends LitElement {
       <goal-panel
         .goalsLoad=${this.goalsLoad}
         .canRunCommands=${this.selectedSession !== undefined && this.canRunGoalCommands}
+        .commandInFlight=${this.goalCommandInFlight}
         .onRunCommand=${(goal: GoalRecordSummary, command: string) => this.onRunGoalCommand?.(goal, command)}
         .onRefresh=${() => this.onRefreshGoals?.()}
         .onArchive=${(goal: GoalRecordSummary) => this.onArchiveGoal?.(goal)}

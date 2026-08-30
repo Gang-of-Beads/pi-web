@@ -743,6 +743,7 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) pendingDialogs: PendingExtensionDialog[] = [];
   /** The browser's own receipts for commands it issued in this session. */
   @property({ attribute: false }) commandLedger: CommandLedgerEntry[] = [];
+  @property({ type: Boolean }) goalCommandInFlight = false;
   @property({ attribute: false }) closedDialogs: ClosedExtensionDialog[] = [];
   @property({ attribute: false }) onAnswerDialog?: ExtensionDialogAnswerCallback;
   @property({ attribute: false }) onCancelDialog?: ExtensionDialogCancelCallback;
@@ -1357,6 +1358,7 @@ export class ChatView extends LitElement {
               <goal-panel
                 .goalsLoad=${this.goalsLoad}
                 ?canRunCommands=${true}
+                .commandInFlight=${this.goalCommandInFlight}
                 .onRunCommand=${(goal: GoalRecordSummary, command: string) => this.onRunGoalCommand?.(goal, command)}
               ></goal-panel>
             </div>

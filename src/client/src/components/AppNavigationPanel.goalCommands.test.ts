@@ -45,6 +45,25 @@ const goal: GoalRecordSummary = {
  * and the panel renders the controls disabled with a reason.
  */
 describe("the goals panel's action permission", () => {
+  /**
+   * The press itself must be heard: while one goal command is in flight,
+   * every command button disables at once, so the owner is not left pressing
+   * a silent Resume four times and so a double press cannot start a second
+   * copy of the same command.
+   */
+  it("disables the commands while one is already in flight", async () => {
+    const panel = await mount({ goalsLoad: loadedSlot([goal]), selectedSession: session, canRunGoalCommands: true });
+    panel.goalCommandInFlight = true;
+    await panel.updateComplete;
+
+    const inner = goalPanel(panel);
+    await inner?.updateComplete;
+    const buttons = [...inner?.shadowRoot?.querySelectorAll<HTMLButtonElement>(".goal-command") ?? []];
+    expect(buttons.length).toBeGreaterThan(0);
+    expect(buttons.every((button) => button.disabled)).toBe(true);
+    expect(buttons[0]?.title).toBe("A goal command is already running");
+  });
+
   it("disables the commands when the host withholds them", async () => {
     const panel = await mount({ goalsLoad: loadedSlot([goal]), selectedSession: session, canRunGoalCommands: false });
 

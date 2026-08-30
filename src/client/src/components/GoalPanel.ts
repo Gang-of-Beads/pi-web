@@ -50,6 +50,13 @@ export class GoalPanel extends LitElement {
    */
   @property({ attribute: false }) onRunCommand?: (goal: GoalRecordSummary, command: string) => void | Promise<void>;
   @property({ type: Boolean }) canRunCommands = true;
+  /**
+   * A command from this panel is in flight. Every command button disables at
+   * the press itself - not at the next poll - so the press is heard at once
+   * and a double press cannot start a second copy. The transcript's ledger
+   * row carries the waiting/running/result story; this carries "heard you".
+   */
+  @property({ type: Boolean }) commandInFlight = false;
 
   /** Expanded goal ids. Collapsed by default so many goals stay scannable. */
   @state() private expanded = new Set<string>();
@@ -117,8 +124,8 @@ export class GoalPanel extends LitElement {
           <button
             class=${`goal-command ${entry.destructive ? "destructive" : ""}`}
             type="button"
-            ?disabled=${!this.canRunCommands}
-            title=${this.canRunCommands ? entry.description : "Open a session in this workspace to run goal commands"}
+            ?disabled=${!this.canRunCommands || this.commandInFlight}
+            title=${!this.canRunCommands ? "Open a session in this workspace to run goal commands" : this.commandInFlight ? "A goal command is already running" : entry.description}
             @click=${() => { void this.onRunCommand?.(goal, entry.command); }}
           >${entry.label}</button>
         `)}
