@@ -151,6 +151,7 @@ The reconcile covers two cases; the gap repair made one redundant. The other —
 - A turn that never starts (runtime dead, delivery failed) is a server failure the daemon KNOWS about: it publishes `prompt.failed { clientMessageId, reason }` (also sequenced) instead of leaving the card waiting.
 - The reconcile timer then has nothing to back up: acceptance and failure are both sequenced facts with repair. The one residual case — the daemon dying before publishing anything — is a dead socket, which the liveness check already turns into a full refresh.
 - Failure direction: a duplicated accepted frame is idempotent (same clientMessageId clears the same card); a lost one is repaired by replay. The reconcile is deleted in the same landing as the frame, not before.
+- Six-state mapping (sharpened): the accepted frame moves the bubble sending → queued-server (the daemon now owns it); the echo moves queued-server → committed (the transcript entry). A lost accepted frame is replayed; a lost echo is replayed; acceptance proves the handoff so the reconcile's stuck-sending case cannot occur while the socket lives. The reconcile timer's removal lands with the frame; its echo-loss backup role is already covered by the gap repair.
 
 ## D8 - Run/task lifecycle frames (4.2's precondition, draft for owner review)
 
