@@ -98,6 +98,13 @@ export interface SessionControllerDependencies {
    * than on a timer.
    */
   onSelectedSessionIdle?: () => void;
+  /**
+   * D8: the daemon's status frame carries the background run count. A change
+   * is the one moment the activity lists can have changed — the callback fires
+   * once per count change so the strip can refetch on demand instead of on a
+   * timer.
+   */
+  onBackgroundRunCountChanged?: (sessionId: string) => void;
 }
 
 interface BulkSessionMutationResult {
@@ -151,6 +158,7 @@ export class SessionController {
   private readonly replacePromptEditorText: SessionControllerDependencies["replacePromptEditorText"];
   private readonly onSelectedSessionReady: SessionControllerDependencies["onSelectedSessionReady"];
   private readonly onSelectedSessionIdle: SessionControllerDependencies["onSelectedSessionIdle"];
+  private readonly onBackgroundRunCountChanged: SessionControllerDependencies["onBackgroundRunCountChanged"];
   private selectionSeq = 0;
   private disposed = false;
   // Join-time stream watermark for the selected session. `seq` is the
@@ -201,6 +209,7 @@ export class SessionController {
     this.replacePromptEditorText = deps.replacePromptEditorText;
     this.onSelectedSessionReady = deps.onSelectedSessionReady;
     this.onSelectedSessionIdle = deps.onSelectedSessionIdle;
+    this.onBackgroundRunCountChanged = deps.onBackgroundRunCountChanged;
   }
 
   applyGlobalEvent(event: GlobalSessionEvent): void {
@@ -1813,6 +1822,14 @@ export class SessionController {
     // re-reading the goal directory for, and every other status update would
     // make it a poll.
     const becameIdle = isSelected && isSessionActive(state.status ?? status) && !isSessionActive(status);
+    // D8: the run count in the status frame is the signal that the background
+    // task list can have changed — the strip refetches on demand instead of on
+    // a timer. The count is per session; a change for any open session fires
+    // once, and the same count again fires nothing.
+    const previousCount = state.sessionStatuses[status.sessionId]?.backgroundRunCount;
+    if (status.backgroundRunCount !== undefined && status.backgroundRunCount !== previousCount) {
+      this.onBackgroundRunCountChanged?.(status.sessionId);
+    }
     this.setState({
       sessionStatuses: { ...state.sessionStatuses, [status.sessionId]: status },
       ...sessionMessageCountPatch(state, status.sessionId, status.messageCount),

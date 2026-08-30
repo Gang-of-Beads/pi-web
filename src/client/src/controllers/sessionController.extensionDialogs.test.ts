@@ -77,6 +77,55 @@ async function liveSession(patch: Partial<AppState> = {}, sessionStatus = status
 
 describe("SessionController prompt.accepted delivery transition", () => {
   /**
+   * D8's client half: the status frame's background run count is the signal
+   * that the task list can have changed. The count change fires the callback
+   * once per change; the same count again fires nothing — the strip refetches
+   * on demand instead of on a 4s timer.
+   */
+  it("fires the count-changed callback when the run count appears or changes", async () => {
+    const seen: string[] = [];
+    const sessionId = oldSession.id;
+    let state: AppState = { ...initialAppState(), selectedSession: oldSession, sessions: [oldSession] };
+    const controller = new SessionController(
+      () => state,
+      (patch) => { state = { ...state, ...patch }; },
+      () => undefined,
+      undefined,
+      { socket: new FakeSocket(), api: selectableApi(status(sessionId)), onBackgroundRunCountChanged: (id) => seen.push(id) },
+    );
+    await controller.selectSession(oldSession, { updateUrl: false });
+
+    controller.applyGlobalEvent({ type: "status.update", status: { ...status(sessionId), backgroundRunCount: 2 } });
+    controller.flushPendingUpdates();
+    controller.applyGlobalEvent({ type: "status.update", status: { ...status(sessionId), backgroundRunCount: 2 } });
+    controller.flushPendingUpdates();
+    controller.applyGlobalEvent({ type: "status.update", status: { ...status(sessionId), backgroundRunCount: 3 } });
+    controller.flushPendingUpdates();
+
+    expect(seen).toEqual([sessionId, sessionId]);
+  });
+
+  it("stays silent while the count is absent", async () => {
+    const seen: string[] = [];
+    let state: AppState = { ...initialAppState(), selectedSession: oldSession, sessions: [oldSession] };
+    const controller = new SessionController(
+      () => state,
+      (patch) => { state = { ...state, ...patch }; },
+      () => undefined,
+      undefined,
+      { socket: new FakeSocket(), api: selectableApi(status(oldSession.id)), onBackgroundRunCountChanged: (id) => seen.push(id) },
+    );
+    await controller.selectSession(oldSession, { updateUrl: false });
+
+    controller.applyGlobalEvent({ type: "status.update", status: status(oldSession.id) });
+    controller.flushPendingUpdates();
+
+    expect(seen).toEqual([]);
+  });
+});
+
+describe("SessionController prompt.accepted delivery transition", () => {
+  /**
    * D7: the daemon's acceptance frame moves the optimistic bubble from
    * sending to queued-server — the proof that the handoff happened, delivered
    * as a sequenced frame the gap replay can recover.
