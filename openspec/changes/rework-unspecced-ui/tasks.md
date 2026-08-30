@@ -20,7 +20,7 @@
 
 ## 5. Tile geometry (behaviour 5; revert unit: the QuickSwitcher part of 822aaa0f)
 
-- [ ] 5.1 QuickSwitcher at 393x850 with seeded sessions of short and long names: measure every tile's height per row, assert intra-row equality; then at desktop width assert the title clamp is unchanged (line count identical). Numbers: heights and computed line counts at both widths.
+- [x] 5.1 DONE (Playwright MCP, 8505, liveness 200, pointer:coarse emulated at 393x850). Phone: 335 tiles, 166 rows with siblings, max intra-row height difference 0px, computed -webkit-line-clamp 2 (/tmp/t51-phone.png). Desktop 1280x800: same 335 tiles, 166 sibling rows, max diff 0px, clamp 2 - identical at both widths (/tmp/t51-desktop.png). Measured against b1d0e934. The behaviour the owner photographed (unequal tiles) does not reproduce on this build; the fix holds under measurement, not just under its unit test.
 
 ## 6. Chip-count evidence owed to honest-panel-states
 
