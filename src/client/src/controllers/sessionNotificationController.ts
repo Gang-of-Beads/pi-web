@@ -21,6 +21,7 @@ export interface SessionNotificationApi {
   notificationInbox: typeof defaultApi.notificationInbox;
   dismissNotification: typeof defaultApi.dismissNotification;
   dismissAllNotifications: typeof defaultApi.dismissAllNotifications;
+  dismissWarning: typeof defaultApi.dismissWarning;
 }
 
 export interface SessionNotificationControllerDependencies {
@@ -153,8 +154,17 @@ export class SessionNotificationController {
     const inbox = this.getState().selectedNotificationInbox;
     const view = selectedNotificationView(inbox);
     if (inbox === undefined || view === undefined || this.dismissAllPending || this.dismissingNotificationIds.has(notificationId)) return;
-    if (!view.notifications.some((notification) => notification.id === notificationId)) return;
+    const dismissed = view.notifications.find((notification) => notification.id === notificationId);
+    if (dismissed === undefined) return;
     const target = targetFromInbox(inbox);
+    // A record filed from a warning with a server-side off-switch carries the
+    // switch: dismissing the record also silences the warning, or it would
+    // re-file on the next daemon restart with no way to stop it. Fire-and-
+    // forget on purpose - the record dismissal must not fail because the
+    // warning's endpoint did.
+    if (dismissed.warningDismiss !== undefined) {
+      void this.api.dismissWarning({ id: target.sessionId, cwd: target.cwd }, dismissed.warningDismiss.id, target.machineId).catch(() => undefined);
+    }
     const generation = this.selectedGeneration;
     this.dismissingNotificationIds.add(notificationId);
     this.patchSelectedOverlay(target, (current) => ({

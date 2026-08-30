@@ -1044,6 +1044,11 @@ function parseSessionNotification(value: unknown): SessionNotification {
   if (!Number.isFinite(Date.parse(receivedAt))) throw new Error("Invalid notification receive time");
   const order = requireNonNegativeSafeInteger(record, "order");
   if (order === 0) throw new Error("Invalid notification order");
+  // Opaque passthrough: the browser never interprets the dismiss id, it only
+  // hands it back through warnings/dismiss. Malformed shapes parse as absent -
+  // the record survives, it just loses its off-switch.
+  const dismissRaw = record["warningDismiss"];
+  const dismissId = isRecord(dismissRaw) ? dismissRaw["id"] : undefined;
   return {
     id: requireNonEmptyString(record, "id"),
     message,
@@ -1051,6 +1056,7 @@ function parseSessionNotification(value: unknown): SessionNotification {
     severity: parseSessionNotificationSeverity(record["severity"]),
     receivedAt,
     order,
+    ...(typeof dismissId === "string" && dismissId !== "" ? { warningDismiss: { id: dismissId } } : {}),
   };
 }
 

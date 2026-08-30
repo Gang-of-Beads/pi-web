@@ -96,6 +96,7 @@ function createHarness(initialState = baseState(), overrides: Partial<SessionNot
     notificationInbox: vi.fn(() => Promise.resolve(inboxSnapshot())),
     dismissNotification: vi.fn(() => Promise.resolve(inboxSnapshot([], { inboxRevision: 2, catalogRevision: 2 }))),
     dismissAllNotifications: vi.fn(() => Promise.resolve(inboxSnapshot([], { inboxRevision: 2, catalogRevision: 2 }))),
+    dismissWarning: vi.fn(() => Promise.reject(new Error("warning dismiss not stubbed for this test"))),
     ...overrides,
   };
   const controller = new SessionNotificationController(

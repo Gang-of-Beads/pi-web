@@ -4569,7 +4569,7 @@ export class PiSessionService implements SessionRouteService {
       this.filedWarningsBySession.set(session, memo);
     }
     for (const warning of takeUnfiledWarnings(memo, warnings)) {
-      const added = this.notificationStore.addNotification(generation, warning.message, warning.severity);
+      const added = this.notificationStore.addNotification(generation, warning.message, warning.severity, warning.dismiss === undefined ? undefined : { warningDismiss: warning.dismiss });
       this.publishNotificationMutations(added.mutations);
     }
   }

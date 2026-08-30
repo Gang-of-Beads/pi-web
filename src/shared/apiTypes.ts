@@ -648,6 +648,13 @@ export interface SessionNotification {
   severity: SessionNotificationSeverity;
   receivedAt: string;
   order: number;
+  /**
+   * Present on a notification filed from a warning that has a server-side
+   * off-switch (today: the Anthropic billing notice). Opaque passthrough: the
+   * browser hands it back through warnings/dismiss so dismissing the record
+   * also silences the warning, instead of it re-filing on the next restart.
+   */
+  warningDismiss?: { id: string };
 }
 
 export interface SessionNotificationSummary {

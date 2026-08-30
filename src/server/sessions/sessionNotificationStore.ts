@@ -280,6 +280,7 @@ export class SessionNotificationStore {
     generation: SessionNotificationGeneration,
     message: string,
     severity: unknown,
+    extras?: { warningDismiss?: { id: string } },
   ): SessionNotificationAddResult {
     const binding = this.bindings.get(generation);
     if (binding === undefined) return { mutations: [] };
@@ -302,6 +303,7 @@ export class SessionNotificationStore {
       severity: normalizeSeverity(severity),
       receivedAt: this.now().toISOString(),
       order,
+      ...(extras?.warningDismiss === undefined ? {} : { warningDismiss: { id: extras.warningDismiss.id } }),
     });
     bucket.entries.push(notification);
     const bucketEviction = bucket.entries.length > SESSION_NOTIFICATION_LIMIT ? bucket.entries.shift() : undefined;
