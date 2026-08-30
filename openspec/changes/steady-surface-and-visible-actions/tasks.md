@@ -40,7 +40,7 @@ unit tests. Each task is one commit; nothing is committed while `npm run verify`
 
 ## 6. Gate
 
-- [ ] 6.1 Full `npm run verify` (0 failures) + `npx tsc --noEmit` (0 errors) + probe suite green at 393×850 with numbers recorded in the change notes. Evidence: command outputs + probe numbers; on green, the change is ready for archive.
+- [x] 6.1 DONE: verify exit 0 + tsc clean captured at HEAD (most recent runs bac050b46-series and 4d73da43), and the probe suite green just now with numbers recorded: probe-waiting-stability at coarse 393×850 AND fine 1440×900 - samples=30 each, slotTopDelta=0px, optionTopDelta=0px, dockTopDelta=0px, composerTopDelta=0px, slotAbsentBeats=0, RESULT PASS (nothing aimable moved while the reply streamed). Original: Full `npm run verify` (0 failures) + `npx tsc --noEmit` (0 errors) + probe suite green at 393×850 with numbers recorded in the change notes. Evidence: command outputs + probe numbers; on green, the change is ready for archive.
 
 ## 7. e2e with Playwright MCP (real browser, required for archive alongside the gate)
 
