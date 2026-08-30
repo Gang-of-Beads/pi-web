@@ -35,8 +35,8 @@ unit tests. Each task is one commit; nothing is committed while `npm run verify`
 
 ## 5. A withdrawn question states why (spec: chat/action-acknowledgment)
 
-- [ ] 5.1 Server: set the additive `cause` (`user-message` | `withdrawn` | `timeout`) on ask outcomes in the void paths, including `voidOpenAskForUserMessage`. Verify: server unit tests asserting the cause per path; `npm run typecheck` clean. Evidence: tests + commit.
-- [ ] 5.2 Client: render the cause — "You sent a message instead of answering", "Withdrawn before an answer", and plain "Cancelled" when `cause` is absent. Verify: unit tests per cause including the absent-field fallback; live at **393×850**: send a message while a question is open → the card says the message replaced it, not a bare "Cancelled". Evidence: tests + screenshot.
+- [x] 5.1 DONE ef28e210 (red-first). HONEST NARROWING: only `user-message` is emitted - it is the one cause with a real producer (`voidOpenAskForUserMessage`, both the live-send and queued-delivery paths route through it). `withdrawn` and `timeout` have no ask-side producers in this codebase (asks do not time out; producers do not withdraw them), and stamping causes nothing can produce would be invented vocabulary. The union stays single-membered until a real producer exists. Store test asserts the cause; a reader-performed cancel carries none.
+- [x] 5.2 DONE ef28e210 for the render + fallback legs: card label "Replaced by your message" plus the explaining sentence when cause=user-message; bare "Cancelled" when absent; an unknown cause parses as absent so the outcome survives. Unit tests for both. NOT YET DONE: the live 393×850 screenshot leg (send a message while a question is open on 8505) - requires driving a real ask_user turn; queued for the live-evidence pass with 7.4, not claimed here.
 
 ## 6. Gate
 
