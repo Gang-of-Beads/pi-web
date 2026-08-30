@@ -142,6 +142,27 @@ TRANSCRIPT-DIFF INSTRUMENT-BLOCKED (2026-08-30 evening): the DOM-scroll diff pas
 4. Remove the delivery reconcile and the subagent poll; name any survivor.
 5. e2e on 8505 at each landing (tasks below), not only at the end.
 
+## D7 - Delivery receipt surface (4.1's precondition, draft for owner review)
+
+The reconcile covers two cases; the gap repair made one redundant. The other — an echo that never arrives while the socket is healthy — needs the server to acknowledge prompt delivery as its own sequenced, repairable fact. Draft:
+
+- When the daemon accepts a prompt (POST prompt, clientMessageId minted by the client), it stamps a per-session `delivery` revision and publishes `prompt.accepted { clientMessageId, seq, revision }` BEFORE attempting delivery to the runtime; the transcript entry the client already holds carries the same clientMessageId.
+- The client's waiting card clears on the accepted frame (matched by clientMessageId) — not on the echo. A lost accepted frame is repaired by the SAME gap machinery (it rides the per-session seq; the ring keeps it; the replay returns it).
+- A turn that never starts (runtime dead, delivery failed) is a server failure the daemon KNOWS about: it publishes `prompt.failed { clientMessageId, reason }` (also sequenced) instead of leaving the card waiting.
+- The reconcile timer then has nothing to back up: acceptance and failure are both sequenced facts with repair. The one residual case — the daemon dying before publishing anything — is a dead socket, which the liveness check already turns into a full refresh.
+- Failure direction: a duplicated accepted frame is idempotent (same clientMessageId clears the same card); a lost one is repaired by replay. The reconcile is deleted in the same landing as the frame, not before.
+
+## D8 - Run/task lifecycle frames (4.2's precondition, draft for owner review)
+
+The 4s poll re-reads subsessions, tool runs and background tasks because nothing pushes their transitions. Draft:
+
+- The daemon already holds the registry (honest-panel-states 2.1's attribution). Each lifecycle transition (run started/ended, task started/completed/failed/stopped) publishes a per-session sequenced frame `activity.changed { kind, id, status }`.
+- The client applies the frame to the strip directly; the poll is removed in the same landing. A lost frame is caught by the seq gap and replayed (the ring keeps lifecycle frames like any other).
+- The status catalog (the daemon's own projection) remains the authoritative read for the join-time snapshot; the frames only carry deltas.
+- Failure direction: a lost frame triggers replay; a replay that cannot serve falls back to the full read. The strip never shows a present-tense state that a frame did not confirm.
+
+Both drafts share the property that makes them safe: the server already stamps and rings every frame; these only add NEW frames to an existing sequenced, repairable channel. They wait for the owner's go before any code.
+
 ## Measured results so far (5.2, updated as legs complete)
 
 - Stuck-card resolution: the owner's original report was a card stuck forever. With the repair live and a REAL dropped dialog.closed (debug drop arm, be788d89), the card resolved without reload, bounded above by ~4s from the repair trigger. The pre-repair stuck state is not reproducible on the current build; the red baseline is the original report plus the unit pins.
