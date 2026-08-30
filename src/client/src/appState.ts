@@ -104,6 +104,10 @@ export interface AppState {
   /** Subagents (child sessions) of the selected session, most urgent first. */
   subagents: readonly SessionSubagentInfo[];
   backgroundTasks: readonly SessionBackgroundTaskInfo[];
+  /** The latest activity read for the selected session failed. Empty arrays
+   * cannot distinguish a failed read from a completed one that found nothing,
+   * and the panel must not answer a failure with a claim of absence. */
+  activityFailed: boolean;
   /** Subagent-tool runs for the selected session; see server/sessions/subagentRuns.ts. */
   subagentRuns: readonly SessionSubagentRunInfo[];
   /** Kept out of `messages`: a log is a file, not something the agent said. */
@@ -339,6 +343,7 @@ export function initialAppState(): AppState {
     selectedSession: undefined,
     subagents: [],
     backgroundTasks: [],
+    activityFailed: false,
     subagentRuns: [],
     activityOutput: undefined,
     activityConversation: undefined,

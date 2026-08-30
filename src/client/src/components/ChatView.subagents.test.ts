@@ -629,6 +629,21 @@ describe("the activity panel's empty claims", () => {
     return view;
   }
 
+  it("renders a failure for a chat whose first activity read failed, never an empty claim", async () => {
+    // A failed first poll leaves the arrays empty, which is indistinguishable
+    // from a completed read that found nothing unless the failure is carried
+    // here. The owner read "No subagent or background activity" over a chat
+    // whose read had never succeeded.
+    const view = await mountWithoutActivityData();
+    view.activityFailed = true;
+    await view.updateComplete;
+    view.renderRoot.querySelector<HTMLButtonElement>("#drawer-tab-activity")?.click();
+    await view.updateComplete;
+    expect(view.renderRoot.textContent).toContain("Activity could not be loaded");
+    expect(view.renderRoot.textContent).not.toContain("No subagent or background activity from this chat yet");
+    expect(view.renderRoot.textContent).not.toContain("Activity has not been read for this chat yet");
+  });
+
   it("does not claim absence for a chat whose activity was never read", async () => {
     const view = await mountWithoutActivityData();
     view.renderRoot.querySelector<HTMLButtonElement>("#drawer-tab-activity")?.click();

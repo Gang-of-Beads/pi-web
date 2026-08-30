@@ -750,6 +750,11 @@ export class ChatView extends LitElement {
   /** Subagent-tool runs for this session, newest first, live ones first of all. */
   @property({ attribute: false }) subagentRuns?: readonly SessionSubagentRunInfo[];
   @property({ attribute: false }) backgroundTasks?: readonly SessionBackgroundTaskInfo[];
+  /** The latest activity read for this chat failed. A failed read is not an
+   * empty one: without this flag the panel's only words for empty arrays were
+   * claims of absence, and a chat whose first poll never succeeded read as one
+   * that had simply never started anything. */
+  @property({ type: Boolean }) activityFailed = false;
   @property({ attribute: false }) onOpenBackgroundTask?: (task: SessionBackgroundTaskInfo) => void;
   @property({ attribute: false }) onOpenSubagentRun?: (run: SessionSubagentRunInfo) => void;
   /** Open a listed subagent in the navigation. */
@@ -1510,7 +1515,15 @@ export class ChatView extends LitElement {
       // Not loaded and loaded-empty are different states wearing the same
       // undefined. The owner photographed the absence claim printed over a chat
       // whose activity was never read; a definitive "none" may only be spoken
-      // by a read that completed and found nothing.
+      // by a read that completed and found nothing. A read that failed is a
+      // third state: it says so instead of borrowing either sentence.
+      if (this.activityFailed) {
+        return html`
+          <div class="subagents-list" id="session-activity-list" role="tabpanel" aria-labelledby="drawer-tab-activity">
+            <p class="activity-empty activity-failed">Activity could not be loaded. It will retry automatically.</p>
+          </div>
+        `;
+      }
       if (!this.activityRowsDeliveredForSelectedSession()) {
         return html`
           <div class="subagents-list" id="session-activity-list" role="tabpanel" aria-labelledby="drawer-tab-activity">
