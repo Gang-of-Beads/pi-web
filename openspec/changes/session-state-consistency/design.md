@@ -158,6 +158,7 @@ The reconcile covers two cases; the gap repair made one redundant. The other —
 The 4s poll re-reads subsessions, tool runs and background tasks because nothing pushes their transitions. Draft:
 
 - The daemon already holds the registry (honest-panel-states 2.1's attribution). Each lifecycle transition (run started/ended, task started/completed/failed/stopped) publishes a per-session sequenced frame `activity.changed { kind, id, status }`.
+- MECHANISM RESOLVED (2026-08-30): the task registry is FILE-BASED — the extension writes .json records, the daemon reads on demand; there are no in-daemon transition events to hook. The frames therefore come from a daemon-side watcher: fs.watch on the tasks registry directory, on change re-read via listBackgroundTasks, diff against the last seen set, publish activity.changed per transition. Watcher lifetime: per open session with that cwd, released on session close. The first slice is additive (the poll stays until the client consumes the frames).
 - The client applies the frame to the strip directly; the poll is removed in the same landing. A lost frame is caught by the seq gap and replayed (the ring keeps lifecycle frames like any other).
 - The status catalog (the daemon's own projection) remains the authoritative read for the join-time snapshot; the frames only carry deltas.
 - Failure direction: a lost frame triggers replay; a replay that cannot serve falls back to the full read. The strip never shows a present-tense state that a frame did not confirm.
