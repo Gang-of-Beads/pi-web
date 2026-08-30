@@ -2041,6 +2041,16 @@ export class SessionController {
       this.dialogScope.observe(event, () => { this.applyOpenedAsk(event.ask); });
       return;
     }
+    if (event.type === "prompt.accepted") {
+      // D7: the daemon owns this prompt now — the bubble moves sending →
+      // queued-server (the wrapper is a no-op for later states). A lost frame
+      // is repaired by the gap replay like any other session frame. Session
+      // frames apply to the selected session; the wrapper's own guard keeps a
+      // stale frame from touching another chat.
+      const selected = this.getState().selectedSession;
+      if (selected !== undefined) this.markDelivery(selected.id, event.clientMessageId, "queued");
+      return;
+    }
     if (event.type === "ask.closed") {
       this.dialogScope.observe(event, () => { this.applyClosedAsk(event.askId); });
       return;

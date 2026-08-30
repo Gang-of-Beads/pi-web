@@ -75,6 +75,34 @@ async function liveSession(patch: Partial<AppState> = {}, sessionStatus = status
   return { controller, socket, state: () => state };
 }
 
+describe("SessionController prompt.accepted delivery transition", () => {
+  /**
+   * D7: the daemon's acceptance frame moves the optimistic bubble from
+   * sending to queued-server — the proof that the handoff happened, delivered
+   * as a sequenced frame the gap replay can recover.
+   */
+  it("flips a sending bubble to queued-server on prompt.accepted", async () => {
+    const harness = await liveSession();
+    const line = { role: "user" as const, parts: [{ type: "text" as const, text: "hello" }], meta: { delivery: { clientMessageId: "cmid-9", state: "sending" as const } } };
+    harness.state().messages = [line];
+
+    harness.socket.emit({ type: "prompt.accepted", clientMessageId: "cmid-9" });
+
+    const delivery = harness.state().messages[0]?.meta?.delivery;
+    expect(delivery?.state).toBe("queued");
+  });
+
+  it("leaves other chats' bubbles alone", async () => {
+    const harness = await liveSession();
+    const line = { role: "user" as const, parts: [{ type: "text" as const, text: "hello" }], meta: { delivery: { clientMessageId: "cmid-other", state: "sending" as const } } };
+    harness.state().messages = [line];
+
+    harness.socket.emit({ type: "prompt.accepted", clientMessageId: "cmid-9" });
+
+    expect(harness.state().messages[0]?.meta?.delivery?.state).toBe("sending");
+  });
+});
+
 describe("SessionController extension dialog state", () => {
   it("rehydrates open dialogs from the daemon-owned status on selection", async () => {
     const pending = [dialog("dialog-1"), dialog("dialog-2", "select")];

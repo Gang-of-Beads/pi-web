@@ -2580,6 +2580,13 @@ export class PiSessionService implements SessionRouteService {
     // conversation has already moved past. Ignored duplicates skip this on
     // purpose: they must not void an ask posted after the queued original.
     await this.voidOpenAskForUserMessage(session);
+    // D7: acceptance is a sequenced fact. The frame tells the client the
+    // daemon owns this prompt now (sending → queued-server) and — because it
+    // rides the per-session ring — a lost HTTP response or a lost frame is
+    // repaired by replay instead of stranding the sender's bubble.
+    if (clientMessageId !== undefined) {
+      this.events.publish(session.sessionId, { type: "prompt.accepted", clientMessageId });
+    }
     if (session.isCompacting) {
       this.enqueuePromptDuringCompaction(session, promptText, behavior ?? "followUp", images, echoUserMessage, clientMessageId);
       return;

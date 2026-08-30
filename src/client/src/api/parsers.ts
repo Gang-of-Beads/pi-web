@@ -875,6 +875,8 @@ export function parseSessionStreamEvent(value: unknown): SessionUiEvent {
       return { type: "session.created", session: parseSessionInfo(record["session"]) };
     case "pi.event":
       return { type: "pi.event", eventType: requireString(record, "eventType") };
+    case "prompt.accepted":
+      return { type: "prompt.accepted", clientMessageId: requireString(record, "clientMessageId") };
     default:
       throw new Error("Unsupported session stream event type");
   }

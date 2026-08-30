@@ -236,6 +236,12 @@ describe("notification socket guards", () => {
     expect(parseSessionSocketEvent({ type: "ask.opened", ask, revision: "x" })).not.toHaveProperty("revision");
   });
 
+  it("carries the acceptance stamp: prompt.accepted frames parse with their clientMessageId", () => {
+    expect(parseSessionSocketEvent({ type: "prompt.accepted", clientMessageId: "cmid-1" })).toEqual({ type: "prompt.accepted", clientMessageId: "cmid-1" });
+    expect(parseSessionSocketEvent({ type: "prompt.accepted" })).toBeUndefined();
+    expect(parseSessionSocketEvent({ type: "prompt.accepted", clientMessageId: 42 })).toBeUndefined();
+  });
+
   it("accepts validated ask frames and drops malformed ones", () => {
     const ask = {
       askId: "ask-1",
