@@ -107,3 +107,26 @@ its content lives in guards or documentation.
 None. The one decision that is the owner's - whether a host-added tool may
 survive because the browser needs it - is resolved in the specs as no: the
 browser serves its own needs, and the model gets the native tool set.
+
+## Disposition draft for the recorded deviation rows (2.1, owner to review)
+
+Derived from the seam (`describeHostContributions`) after 8bbdaadf:
+
+1. **prompt-addition: session environment block** (session facts; Docker adds
+   container facts). Proposal: **enforce-in-code what it asks, then delete**.
+   The second-instance refusal is already code (state ownership); the
+   restart-refusal is the owner's open (a)/(b) ruling in task 2.2. The
+   nesting fact itself (`PI_WEB_SESSION=1` inheritance) is environmental
+   reality the TUI does not have - if any residue survives the refusals, it
+   moves to docs/ (2.3), not the prompt.
+2. **surface-interception: `custom`** (free-form ui surface the browser
+   cannot draw). Proposal: **enforce-in-code, browser-side**. The
+   interception already answers for the human in the browser (announced
+   cancellation); what 2.4 withdraws is any silent insertion into the model's
+   path. The seam makes withdrawal a data edit. The updater's version prompt
+   - the concrete victim - should be served by a real browser dialog or
+   notification instead (task follow-up on the pi-updater fork).
+
+No tool additions, removals or rewrites are registered in the seam today;
+when 1.3's recording-mode comparison surfaces any, they enter this table
+before anything is deleted.
