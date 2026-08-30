@@ -539,7 +539,9 @@ export class PromptEditor extends LitElement {
 
   private syncAttachmentZoomDialog(): void {
     const dialog = this.attachmentZoomDialog;
-    if (dialog === undefined) return;
+    // @query is null until the element first renders - the undefined check
+    // alone let a null through and the tap crashed the update cycle.
+    if (dialog === undefined || dialog === null) return;
     if (this.zoomedAttachment !== undefined) {
       // A pending attachment lives only in the composer, so there is exactly
       // one modal to keep in step: showModal for the native top layer (Esc and

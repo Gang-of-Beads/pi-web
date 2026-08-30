@@ -355,7 +355,8 @@ function registerSessionDaemonRoutes({ eventHub, machineStatus, statusAttributio
   // route exists only when the operator launched the daemon with
   // PI_WEB_DEBUG_FRAME_DROP=1; production daemons have no such endpoint.
   if (daemonEnvironment["PI_WEB_DEBUG_FRAME_DROP"] === "1") {
-    app.post("/debug/frame-drop", async (request, reply) => {
+    // Under /api/ so the web/API process's proxy forwards it to this daemon.
+    app.post("/api/debug/frame-drop", async (request, reply) => {
       const body: unknown = request.body;
       const sessionId: unknown = typeof body === "object" && body !== null ? Reflect.get(body, "sessionId") : undefined;
       const count: unknown = typeof body === "object" && body !== null ? Reflect.get(body, "count") : undefined;

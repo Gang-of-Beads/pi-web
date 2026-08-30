@@ -38,6 +38,18 @@ afterEach(() => {
 });
 
 describe("attachment thumbnail zoom", () => {
+  /**
+   * The @query dialog handle is null until the element first renders. The
+   * sync guard used to check only undefined, so a null handle crashed the
+   * update cycle - caught live when a tap on the coarse pointer hit the
+   * composer during a pending dialog. The null case is pinned here.
+   */
+  it("survives a sync before the zoom dialog has ever rendered", () => {
+    const editor = new PromptEditor();
+    // Never rendered: the @query handle is genuinely null here, not undefined.
+    expect(() => Reflect.apply(Reflect.get(editor, "syncAttachmentZoomDialog"), editor, [])).not.toThrow();
+  });
+
   // The composer's image thumbnails used to be inert <img> elements: no role,
   // no keyboard affordance, no way to see the picture the way a message image
   // can be enlarged. The failure was invisible to a mouse user who never
