@@ -139,7 +139,7 @@ mode becomes "reconnect", not "stale forever".
    dialogs, inbox summary) via resync; unify the notification count and drawer
    onto the sequenced summary.
 TRANSCRIPT-DIFF INSTRUMENT-BLOCKED (2026-08-30 evening): the DOM-scroll diff pass is unreliable — the transcript renders a ~16k virtualized window; nested scrollers make scroll-accumulation miss rows, and the story/user-message markers were absent from every window snapshot taken at the bottom. The loss itself was detected on the wire (expected 982, got 985) and the repair ran. The equality assertion needs a client-side instrument: either a debug export of the in-memory messages (bounded, gated) or the daemon exposing a transcript hash the client can compare. Not a mechanics question — an instrumentation gap. Original: e2e on 8505 at each landing
-4. Remove the delivery reconcile and the subagent poll; name any survivor.
+VISUAL LEG NOTE (2026-08-30 evening): the D7 marker transition (◌ Sending → ✓ Queued) needs a COMPOSER send — the optimistic bubble only exists for page-originated sends. The probe's synthetic Enter does not drive the CodeMirror keymap reliably (probe fidelity: real trusted events work; the server frame publishes at acceptance and the client handler is unit-pinned). The visual end-to-end needs either a real user send or a probe that drives the CM view API directly. Original: e2e on 8505 at each landing
 5. e2e on 8505 at each landing (tasks below), not only at the end.
 
 ## D7 - Delivery receipt surface (4.1's precondition, draft for owner review)
