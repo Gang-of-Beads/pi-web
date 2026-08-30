@@ -8,6 +8,7 @@ import {
   type SessionNotificationSeverity,
   type SessionNotificationSummary,
 } from "../../shared/apiTypes";
+import { revisionVerdict } from "./revisionScope";
 
 export type SessionNotificationProjectionStatus = "loading" | "fresh" | "stale";
 
@@ -108,9 +109,19 @@ export function applySelectedNotificationEvent(
       changed: current.status !== "stale" || current.daemonInstanceId !== undefined || current.notifications.length > 0,
     };
   }
-  const currentRevision = current.summary?.inboxRevision ?? 0;
-  if (event.summary.inboxRevision <= currentRevision) return { value: current, needsRefresh: false, changed: false };
-  if (current.status !== "fresh" || event.summary.inboxRevision !== currentRevision + 1 || event.delta.kind === "resync") {
+  // The inbox is the origin of this contract; the shared verdict now owns it.
+  // The server-declared resync is handled here first so the delta switch below
+  // stays exhaustive to the compiler.
+  if (event.delta.kind === "resync") {
+    const stale = { ...current, status: "stale" as const };
+    return { value: stale, needsRefresh: true, changed: current.status !== "stale" };
+  }
+  const verdict = revisionVerdict(
+    { revision: current.summary?.inboxRevision ?? 0, fresh: current.status === "fresh" },
+    { revision: event.summary.inboxRevision },
+  );
+  if (verdict === "ignore") return { value: current, needsRefresh: false, changed: false };
+  if (verdict === "resync") {
     const stale = { ...current, status: "stale" as const };
     return { value: stale, needsRefresh: true, changed: current.status !== "stale" };
   }
