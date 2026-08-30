@@ -6,7 +6,7 @@
 ## 2. Touch interaction (behaviour 1; revert unit e64ae727)
 
 - [x] 2.1 DONE for the option leg (Playwright MCP, 8505, 393x850, coarse+touch emulated, liveness 200): one synthesized touch tap on the real updater dialog's Skip -> clicksOnButton=1, dialog closed (/tmp/t21-tap2.png). Honest note: a raw CDP dispatchTouchEvent pair produced 0 clicks first - probe artifact (no gesture synthesis), resolved with Input.synthesizeTapGesture; recorded so the next reader does not mistake the artifact for a product red. Dismiss-on-closed-card leg is obsolete (answered cards no longer render a Dismiss); drawer-control leg not yet driven.
-- [ ] 2.2 Confirm the hover invariant test still guards the whole client (it exists; prove it bites): introduce a scratch unguarded :hover, see the suite fail naming it, remove it, see green. Record both runs.
+- [x] 2.2 DONE: guard proven to bite. Run 1 (scratch bare `span:hover` added to StatusBar.ts styles): suite FAILS naming exactly "StatusBar.ts:11: span:hover { color: var(--pi-accent); }". Run 2 (scratch removed): suite green (1 passed). Both runs recorded here; no commit carried the scratch. Original: Confirm the hover invariant test still guards the whole client (it exists; prove it bites): introduce a scratch unguarded :hover, see the suite fail naming it, remove it, see green. Record both runs.
 
 ## 3. Settled outcomes (behaviour 3+4a; revert unit 37bcbbb9, b5ca0448, 65b8539d)
 
