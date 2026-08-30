@@ -1,0 +1,32 @@
+## 1. Make the verification honest before using it
+
+- [ ] 1.1 Fix the stack-8505 READY check so it fails when the session daemon is not actually serving: READY only after a sessions API call answers 200 through the web process AND a daemon socket round-trip succeeds. Verify: kill the daemon, run the check, see FAIL; start it, see READY - both recorded.
+- [ ] 1.2 Add a liveness preamble to the browser pass (D1): sessions API 200 + one seeded session opens, else the pass aborts as FAIL(precondition). Verify: run with the daemon stopped and see the abort; run with it up and see the pass proceed.
+
+## 2. Touch interaction (behaviour 1; revert unit e64ae727)
+
+- [ ] 2.1 Playwright MCP, 8505, 393x850, touch emulation on: open a seeded session with a pending dialog, tap an option once, assert activation on first tap (answer recorded server-side), repeat for Dismiss on a closed card and one drawer control. Numbers: tap count to activation for each. Screenshots before/after. FAIL if touch emulation is not active.
+- [ ] 2.2 Confirm the hover invariant test still guards the whole client (it exists; prove it bites): introduce a scratch unguarded :hover, see the suite fail naming it, remove it, see green. Record both runs.
+
+## 3. Settled outcomes (behaviour 3+4a; revert unit 37bcbbb9, b5ca0448, 65b8539d)
+
+- [ ] 3.1 Playwright MCP, same conditions: answer a seeded extension dialog; assert no further tap is needed, the waiting area releases its space, the outcome row appears in the notification drawer, and nothing remains fixed above the composer after the answer. Numbers: bounding boxes of the waiting area before/after. Screenshots.
+- [ ] 3.2 Stale-state revival: with the dialog answered, replay a pre-answer status snapshot (daemon pause/resume or seeded fixture), assert the card does not return. Record how the stale snapshot was produced.
+
+## 4. Pending-input stability deltas (behaviours 2+6; revert units 5052810d and 233680c8+822aaa0f)
+
+- [ ] 4.1 Tab strip under observation: drive notifications from n to 0 and back while the drawer is open; record tab positions each step; assert zero movement. Numbers: x/y of each tab per step.
+- [ ] 4.2 Waiting row under a stream: open a question, start a long streamed reply in the same session, sample the question's controls' positions at 100ms for the stream's duration; assert max drift 0px; tap an option mid-stream and assert it activates. Numbers: the sampled series and its max delta.
+
+## 5. Tile geometry (behaviour 5; revert unit: the QuickSwitcher part of 822aaa0f)
+
+- [ ] 5.1 QuickSwitcher at 393x850 with seeded sessions of short and long names: measure every tile's height per row, assert intra-row equality; then at desktop width assert the title clamp is unchanged (line count identical). Numbers: heights and computed line counts at both widths.
+
+## 6. Chip-count evidence owed to honest-panel-states
+
+- [ ] 6.1 With one running background task and many finished rows seeded: assert chips show the running count only, "Show finished" carries no number, and a kind with only history keeps its chip without a number. Screenshot plus the counts read from the DOM.
+
+## 7. Disposition
+
+- [ ] 7.1 For each behaviour: attach its evidence (numbers, screenshots, commit hash measured against) to this change and tick it here, or land its revert with the failing evidence and a note to the owner. Verify: every behaviour has exactly one of the two outcomes recorded; none is left implicit.
+- [ ] 7.2 Full `npm run verify` exit 0 captured explicitly; `npx tsc --noEmit` clean. Recorded in the change.
