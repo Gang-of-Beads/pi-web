@@ -848,6 +848,12 @@ export class ChatView extends LitElement {
   private scrollToOpenDialogFrame: number | undefined;
   private conversationRailFrame: number | undefined;
   private groupedMessagesInput?: ChatLine[];
+  /** The session the retained subagent/run/task rows were delivered for. The
+   * controller keeps one un-keyed list in state and clears it only on a machine
+   * or workspace switch, so after a session switch the rows still here belong
+   * to the previous selection; rendering them under the new one is how one
+   * chat's tasks appeared beneath another chat's name. */
+  private activityRowsSessionId: string | undefined;
   private groupedMessagesStart = 0;
   private groupedMessagesCache: ChatGroup[] = [];
   private readonly messageMetaCache = new WeakMap<ChatLine, string>();
@@ -966,6 +972,12 @@ export class ChatView extends LitElement {
 
   protected override willUpdate(changed: Map<string, unknown>): void {
     this.foldDrawerAsWorkFinishes();
+    if (changed.has("subagents") || changed.has("subagentRuns") || changed.has("backgroundTasks")) {
+      // Lit applies every property before willUpdate, so a delivery that rides
+      // in the same update as a session switch is stamped with the new session -
+      // which is the session those rows were fetched for.
+      this.activityRowsSessionId = this.sessionId;
+    }
     if (changed.has("sessionId")) {
       this.savePreviousSessionScrollPosition(changed.get("sessionId"));
       this.prepareSessionUiState();
@@ -1466,7 +1478,15 @@ export class ChatView extends LitElement {
     `;
   }
 
+  /** Whether the retained activity rows were delivered for the session now on
+   * screen. Rows that outlive their session read here as not delivered, so the
+   * panel below renders an honest not-loaded instead of another chat's work. */
+  private activityRowsDeliveredForSelectedSession(): boolean {
+    return this.activityRowsSessionId !== undefined && this.activityRowsSessionId === this.sessionId;
+  }
+
   private activityPanelState(): ActivityPanelState | undefined {
+    if (!this.activityRowsDeliveredForSelectedSession()) return undefined;
     const subagents = this.subagents ?? [];
     const runs = this.subagentRuns ?? [];
     const tasks = this.backgroundTasks ?? [];
@@ -1487,6 +1507,17 @@ export class ChatView extends LitElement {
     // The tab is always present, so its panel answers even when this chat has
     // never started anything: an empty section reads as empty, never vanishes.
     if (activity === undefined) {
+      // Not loaded and loaded-empty are different states wearing the same
+      // undefined. The owner photographed the absence claim printed over a chat
+      // whose activity was never read; a definitive "none" may only be spoken
+      // by a read that completed and found nothing.
+      if (!this.activityRowsDeliveredForSelectedSession()) {
+        return html`
+          <div class="subagents-list" id="session-activity-list" role="tabpanel" aria-labelledby="drawer-tab-activity">
+            <p class="activity-empty">Activity has not been read for this chat yet.</p>
+          </div>
+        `;
+      }
       return html`
         <div class="subagents-list" id="session-activity-list" role="tabpanel" aria-labelledby="drawer-tab-activity">
           <p class="activity-empty">No subagent or background activity from this chat yet.</p>
@@ -1501,6 +1532,11 @@ export class ChatView extends LitElement {
       ...activity.taskRows.map((row, index): ActivityListEntry => ({ kind: "tasks", index, status: row.status, startedAt: row.task.startedAt, row })),
     ]).filter((entry) => filter === "all" || filter === entry.kind);
     const entries = inFilter.filter((entry) => scope === "all" || !isFinishedActivityStatus(entry.status));
+    // The sentence describes what the reader is looking at. Rows whose status
+    // cannot be interpreted are neither active nor finished, so they survive
+    // the active scope's filter - and the owner photographed "Nothing running
+    // right now" printed directly above two such rows. Only a list that is
+    // actually empty may claim emptiness.
     // Only whether history exists, not how much: the number belongs to what is
     // happening now, and a total that counts hundreds of settled rows drowns
     // the one that is running.
@@ -1508,7 +1544,7 @@ export class ChatView extends LitElement {
     return html`
       <div class="subagents-list" id="session-activity-list" role="tabpanel" aria-labelledby="drawer-tab-activity">
           ${this.renderActivityFilters(activity, filter)}
-          ${scope === "empty-active"
+          ${(scope === "empty-active" && entries.length === 0)
             ? html`<p class="activity-empty">Nothing running right now.</p>`
             : null}
           ${repeat(entries, activityEntryKey, (entry) => this.renderActivityEntry(entry))}
