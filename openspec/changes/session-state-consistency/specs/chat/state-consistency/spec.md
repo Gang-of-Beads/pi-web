@@ -92,3 +92,48 @@ its own code, the surface it backs up and the event that replaces it.
 - **WHEN** a periodic poll remains in the code
 - **THEN** its constant or its setup SHALL state which surface it backs up, so
   the next reader can tell compensation from design
+
+### Requirement: A message renders in final order only at a confirmed position
+
+Every entry a user sends SHALL be in exactly one of these states, and the state
+SHALL determine where it may render. The owner has observed a popped queue
+message appear above the previous reply and then reorder itself; his ruling is
+the rule: **the settled transcript does not change order after the fact - an
+entry joins it only once its position is confirmed by the server.**
+
+The states, exhaustively:
+
+1. **composed** - text in the composer. Renders only in the composer.
+2. **sending** - the send request is in flight, unacknowledged. Renders as the
+   composer's sending indicator, not in the transcript.
+3. **queued-client** - accepted by this browser while the session was busy,
+   not yet acknowledged by the daemon. Renders only in the marked queued area
+   below the settled transcript, visibly provisional (the gold treatment).
+4. **queued-server** - the daemon acknowledges holding it. Still renders in
+   the queued area; a queue position is not a transcript position.
+5. **committed** - the daemon has taken it into a turn and assigned its place
+   in the transcript. Only now may it join the settled transcript, at exactly
+   that place, where it SHALL then remain.
+6. **failed** - the send or delivery failed. Renders as a failure with the
+   text recoverable; it SHALL NOT silently disappear from the queued area.
+
+#### Scenario: A queue pop does not straddle the reply
+
+- **WHEN** a queued message is delivered while a reply is streaming or just
+  settled
+- **THEN** the message SHALL NOT appear above that reply and later move; it
+  SHALL stay in the queued area until its committed position is known and then
+  appear there once, in final order
+
+#### Scenario: Settled content never reorders
+
+- **WHEN** any entry has rendered in the settled transcript
+- **THEN** no later frame, reconnect, or repair SHALL change its position
+  relative to other settled entries; a repair that disagrees SHALL be treated
+  as a gap and resolved before rendering, not after
+
+#### Scenario: Uncertainty is visible, not guessed
+
+- **WHEN** the client does not yet know an entry's final position
+- **THEN** the entry SHALL render in the visibly provisional area rather than
+  being placed into the settled transcript at a guessed position
