@@ -1,5 +1,11 @@
 # @jmfederico/pi-web
 
+## 1.202608.75
+
+### Patch Changes
+
+- Fixed the two-tap dialog bug at its measured root: a tap's pointerdown focused the dialog host, the composer collapsed mid-tap, and the dialog moved ~90px before the pointer came up, so the tap landed nowhere. The composer collapse now waits for the pointer to come up. Command receipts also persist in the transcript instead of disappearing after 8 seconds, the GOALS drawer tab shows its goal count like the other tabs, and receipt rows are colored by state (gold while waiting, green when done, red on failure).
+
 ## 1.202608.74
 
 ### Patch Changes
