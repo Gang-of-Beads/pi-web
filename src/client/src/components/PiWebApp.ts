@@ -35,7 +35,7 @@ import type { RecoveredPrompt } from "../resendMessage";
 import { keyboardInset } from "../appShell/keyboardInset";
 import { machineSessionKey } from "../machineKeys";
 import { commandsForSession } from "../commandLedger";
-import { composedPathOf, composerCollapsedForFocus } from "../composerCollapse";
+import { composedPathOf, composerCollapsedForFocus, shouldReleaseComposerCollapse } from "../composerCollapse";
 import { oneReadAtATime, shouldPollSessionActivity } from "../sessionActivityPolling";
 import { hasWaitingDelivery } from "../transcriptReconcile";
 import { isWaitingForUser } from "../sessionWaiting";
@@ -630,6 +630,16 @@ export class PiWebApp extends LitElement {
     const machineId = selectedMachineId(this.state);
     if (!this.isSessionSeen(machineId, session)) return;
     void this.sessionUnread.acknowledge(machineId, session);
+    // The collapse is a loan: when the surfaces it stepped aside for are gone
+    // (a dialog answered and removed while its field held focus fires no
+    // focusout), the loan ends unless focus sits in another form. The state's
+    // empty dialog/ask lists mean the hosts are gone from the DOM.
+    if (this.composerCollapsed && this.state.pendingDialogs.length === 0 && this.state.pendingAsk === undefined) {
+      if (shouldReleaseComposerCollapse({ collapsed: true, collapsingHostStillPresent: false, activeElementPath: composedPathOf(document.activeElement) })) {
+        this.composerCollapsed = false;
+        this.requestUpdate();
+      }
+    }
   }
 
   private markSessionsRead(sessions: readonly SessionInfo[]): void {

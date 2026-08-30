@@ -34,3 +34,22 @@ export function composedPathOf(target: EventTarget | null): EventTarget[] {
 function elementTagName(target: EventTarget): string {
   return target instanceof Element ? target.tagName.toLowerCase() : "";
 }
+
+/**
+ * The collapse is a loan called back when the form it stepped aside for goes
+ * away. Focus alone cannot always make that call: a dialog answered and
+ * REMOVED while its field held focus fires no focusout (the focus silently
+ * reverts), and the composer stayed a one-line loan forever - the reader's
+ * next tap fired the focusin that expanded it, which read as "my first tap
+ * did nothing". When the surfaces that cause collapsing are gone and focus
+ * is not inside another one, the loan ends.
+ */
+export function shouldReleaseComposerCollapse(input: {
+  collapsed: boolean;
+  collapsingHostStillPresent: boolean;
+  activeElementPath: readonly EventTarget[];
+}): boolean {
+  if (!input.collapsed) return false;
+  if (input.collapsingHostStillPresent) return false;
+  return !composerCollapsedForFocus(input.activeElementPath);
+}
