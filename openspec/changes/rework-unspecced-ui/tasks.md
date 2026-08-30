@@ -24,7 +24,7 @@
 
 ## 6. Chip-count evidence owed to honest-panel-states
 
-- [ ] 6.1 With one running background task and many finished rows seeded: assert chips show the running count only, "Show finished" carries no number, and a kind with only history keeps its chip without a number. Screenshot plus the counts read from the DOM.
+- [~] 6.1 PROBE WRITTEN, precondition gap named honestly: scripts/probe-activity-chips.mjs mounts the real chat-view with 1 running + 3 finished background tasks and reads the chips from the DOM; first run FAILS(precondition) "Activity tab not found" - the bare fixture does not render drawer tabs (the full app's selection装配 provides state the fixture lacks; likely notificationInbox/status props). Next: feed the fixture the props the app passes and re-run; assertions already written (Tasks chip = running 1, All = 1, history toggle carries no digit; /tmp/n7-chips.png). The pure seam activityFilterOptions is already unit-covered; this leg adds the screen. Original: With one running background task and many finished rows seeded: assert chips show the running count only, "Show finished" carries no number, and a kind with only history keeps its chip without a number. Screenshot plus the counts read from the DOM.
 
 ## 7. Disposition
 
