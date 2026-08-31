@@ -59,6 +59,27 @@ describe("SessionController.hydrateSessionStatuses", () => {
     expect(setState).toHaveLength(0);
   });
 
+  it("keeps the status of a session the snapshot does not mention", async () => {
+    // A reconnect asks the catalog for the truth, but the catalog can be
+    // transiently narrower than reality (a session mid-mutation, a listing
+    // race). Its silence about a session is not evidence the session died:
+    // erasing the known status killed the selected session's whole indicator
+    // row (streaming dot, token stats) while the queue area kept its last
+    // known shape. Absence is not negation; only the snapshot-covered ids
+    // are replaced.
+    const { controller, state } = harness({
+      statuses: [{ ...status("other-session"), isStreaming: true }],
+    });
+    const live = { ...status(oldSession.id), isStreaming: true, queuedMessages: [{ kind: "steer" as const, text: "held" }] };
+    controller.applyGlobalEvent({ type: "status.update", status: live });
+    runPendingAnimationFrames();
+
+    await controller.hydrateSessionStatuses("local", { replaceKnown: true });
+
+    expect(state().sessionStatuses[oldSession.id]).toMatchObject({ isStreaming: true });
+    expect(state().sessionStatuses["other-session"]).toMatchObject({ isStreaming: true });
+  });
+
   it("stays silent when the snapshot request fails", async () => {
     const { controller, state, setState } = harness({ error: new Error("offline") });
 

@@ -994,8 +994,17 @@ export class SessionController {
     const previous = state.sessionStatuses;
     let next = previous;
     if (replaceKnown || daemonReplaced) {
+      // The snapshot wins for the ids it covers. Uncovered sessions retract —
+      // that is what retired a stuck amber circle — except the session on
+      // screen: its truth comes from live frames and the direct status
+      // endpoint, so a catalog that is transiently narrower than reality must
+      // not blank the indicator row the user is looking at.
       next = {};
       for (const status of snapshot.statuses) next[status.sessionId] = status;
+      const selectedId = state.selectedSession?.id;
+      if (selectedId !== undefined && next[selectedId] === undefined && previous[selectedId] !== undefined) {
+        next[selectedId] = previous[selectedId];
+      }
     } else {
       for (const status of snapshot.statuses) {
         if (previous[status.sessionId] !== undefined) continue;
