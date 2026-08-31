@@ -5,6 +5,14 @@ dist/
 *.log
 .playwright-cli/
 
+# Keep one-off screenshots and other raster captures out of the repository root.
+# Curated documentation images belong under docs/assets/ instead.
+/*.png
+/*.jpg
+/*.jpeg
+/*.gif
+/*.webp
+
 # Local plugin development sandboxes. Symlink these into ~/.pi-web/plugins/<plugin-id>.
 /dev-plugins/
 
