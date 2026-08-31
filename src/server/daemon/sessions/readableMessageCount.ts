@@ -19,7 +19,7 @@
  * cannot drift apart again.
  */
 
-import { isReadableBranchEntry } from "./branchMessages.js";
+import { isReadableBranchEntry } from "../../../shared/branchMessages.js";
 
 export { isReadableBranchEntry as isReadableMessageEntry };
 

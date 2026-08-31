@@ -13,7 +13,7 @@ import { isSubagentEventLog, runTranscriptMessages, subagentEventLogMessages } f
  * was never exercised, so the fixture agreed with the assumption instead of
  * with the disk. Home paths are replaced; nothing else is altered.
  */
-const FIXTURE = join(__dirname, "../../../../test-fixtures/subagent-run-transcript/fork-context.jsonl");
+const FIXTURE = join(__dirname, "../../test-fixtures/subagent-run-transcript/fork-context.jsonl");
 
 async function forkTranscriptEntries(): Promise<unknown[]> {
   const text = await readFile(FIXTURE, "utf8");

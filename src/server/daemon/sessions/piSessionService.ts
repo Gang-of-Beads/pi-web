@@ -35,8 +35,8 @@ import type { SessionBackgroundTaskInfo, SessionSubagentRunInfo } from "../../..
 import type { ClientArchiveSessionsResponse, ClientCommand, ClientCommandResult, ClientMessagePage, ClientSession, ClientSessionCleanupExecuteResponse, ClientSessionCleanupPreviewResponse, ClientSessionModel, ClientSessionModelCatalogEntry, ClientSessionStatus, ClientSessionTreeForkRequest, ClientSessionTreeForkResult, ClientSessionTreeNavigateRequest, ClientSessionTreeNavigateResult, ClientThinkingLevel, SessionStreamSnapshot, SessionStreamSync, SessionUiEvent } from "../../shared/types.js";
 import { projectBrowserMessage } from "../browserMessageProjection.js";
 import { pageMessagesAtSafeBoundary } from "./messagePaging.js";
-import { annotateAssistantThinkingLevel, branchMessages } from "./branchMessages.js";
-import { runTranscriptMessages } from "./subagentRunTranscript.js";
+import { annotateAssistantThinkingLevel, branchMessages } from "../../../shared/branchMessages.js";
+import { runTranscriptMessages } from "../../../shared/subagentRunTranscript.js";
 import { readableMessageCount } from "./readableMessageCount.js";
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
 import { BUILTIN_COMMANDS } from "./builtinCommands.js";

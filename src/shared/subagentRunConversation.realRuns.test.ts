@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { subagentRunConversationView } from "../appState";
-import { branchMessages } from "../../../server/daemon/sessions/branchMessages";
-import { runTranscriptMessages } from "../../../server/daemon/sessions/subagentRunTranscript";
+import { subagentRunConversationView } from "../client/src/appState";
+import { branchMessages } from "./branchMessages";
+import { runTranscriptMessages } from "./subagentRunTranscript";
 
 /**
  * The reading path end to end, over transcripts copied from real runs.
@@ -14,7 +14,7 @@ import { runTranscriptMessages } from "../../../server/daemon/sessions/subagentR
  * fixtures are real files, and the assertions are about what a reader ends up
  * seeing rather than about the shape of an intermediate.
  */
-const FIXTURES = join(__dirname, "../../../../test-fixtures/subagent-run-transcript");
+const FIXTURES = join(__dirname, "../../test-fixtures/subagent-run-transcript");
 
 function entriesOf(name: string): unknown[] {
   return readFileSync(join(FIXTURES, name), "utf8")
