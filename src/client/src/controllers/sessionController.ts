@@ -1,6 +1,6 @@
 import { api as defaultApi, isNotFoundError, type AskUserCloseResponse, type AskUserSubmission, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingAskUser, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionBackgroundTaskInfo, SessionSubagentRunInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Workspace } from "../api";
 import { errorNoticePatch } from "../errorNotice";
-import { issueCommand, settleCommand, type CommandLedgerSource } from "../commandLedger";
+import { dismissCommand, issueCommand, settleCommand, type CommandLedgerSource } from "../commandLedger";
 import { RevisionScope } from "../revisionScope";
 import { SessionGapRepair } from "../sessionGapRepair";
 import { describeError } from "../notice";
@@ -496,6 +496,11 @@ export class SessionController {
     // The settled row is the user's receipt of what they sent and what ran
     // (the owner's no-auto-leave ruling): it stays in the session's record.
     // Only the ledger's capacity cap evicts, settled rows first.
+  }
+
+  /** The reader closed a settled receipt; pending rows are live work and stay. */
+  dismissLedgerRow(id: string): void {
+    this.setState({ commandLedger: dismissCommand(this.getState().commandLedger, id) });
   }
 
   private enqueuePendingSessionSend(session: ClientPendingStartSessionInfo, input: QueuedPendingSessionSendInput): void {

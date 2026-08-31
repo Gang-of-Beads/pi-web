@@ -451,6 +451,9 @@ export const chatStyles = css`
   .command-row.ok { color: var(--pi-success); border-color: var(--pi-success-border); background: var(--pi-success-surface); }
   .command-row .command-text { font-family: var(--pi-font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .command-row .command-state { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .85; }
+  .command-dismiss { flex: 0 0 auto; align-self: center; width: 24px; height: 24px; display: grid; place-items: center; padding: 0; border: 1px solid transparent; border-radius: var(--pi-radius-sm); background: transparent; color: inherit; font: inherit; font-size: var(--pi-text-sm); line-height: 1; cursor: pointer; }
+  .command-dismiss:focus-visible { outline: var(--pi-focus-ring-width) solid currentColor; outline-offset: var(--pi-focus-ring-offset); }
+  @media (hover: hover) { .command-dismiss:hover { border-color: currentColor; } }
   .queued-strip-count { flex: 1 1 auto; min-width: 0; }
   .queued-clear-button { flex: 0 0 auto; border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-warning); padding: var(--pi-space-1) var(--pi-space-3); font: inherit; cursor: pointer; }
   .queued-clear-button:focus { border-color: var(--pi-warning); color: var(--pi-text-bright); }
@@ -732,6 +735,8 @@ export class ChatView extends LitElement {
   /** Open a listed subagent in the navigation. */
   @property({ attribute: false }) onOpenSubagent?: (subagent: SessionSubagentInfo) => void;
   @property({ attribute: false }) onClearServerQueue?: (queued: QueuedSessionMessage[]) => void;
+  /** Close one settled receipt; a pending row is live work and refuses. */
+  @property({ attribute: false }) onDismissLedgerRow?: (id: string) => void;
   /** Take one queued message back into the composer, leaving the rest queued. */
   @property({ attribute: false }) onRecallQueuedMessage?: (message: QueuedSessionMessage) => void;
   @property({ attribute: false }) onDismissNotification?: (notificationId: string) => void;
@@ -2182,6 +2187,9 @@ export class ChatView extends LitElement {
         <div class=${`command-row ${entry.state}`} role="status">
           <span class="command-text">${entry.text}</span>
           <span class="command-state">${commandStateLabel(entry, streaming)}</span>
+          ${entry.state === "pending" || this.onDismissLedgerRow === undefined ? null : html`
+            <button type="button" class="command-dismiss" title="Dismiss this receipt" aria-label="Dismiss receipt for ${entry.text}" @click=${() => { this.onDismissLedgerRow?.(entry.id); }}>×</button>
+          `}
         </div>
       `)}
     `;

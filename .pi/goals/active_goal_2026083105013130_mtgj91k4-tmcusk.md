@@ -5,14 +5,14 @@
   "status": "active",
   "autoContinue": true,
   "usage": {
-    "tokensUsed": 791769,
-    "activeSeconds": 4897
+    "tokensUsed": 800918,
+    "activeSeconds": 5595
   },
   "sisyphus": false,
   "createdAt": "2026-08-31T01:01:31.300Z",
-  "updatedAt": "2026-08-31T02:42:09.576Z",
+  "updatedAt": "2026-08-31T02:54:01.725Z",
   "activePath": ".pi/goals/active_goal_2026083105013130_mtgj91k4-tmcusk.md",
-  "revision": 183,
+  "revision": 208,
   "taskList": {
     "tasks": [
       {
@@ -75,7 +75,9 @@
         "id": "b9-remove-scale",
         "title": "删除 Appearance 里的 scale 设置（不生效且误导，owner 裁决）",
         "verificationContract": "红先（断言 scale 控件存在的测试翻转为不存在）→ 删控件 + 死代码路径 → 绿 + 设置页截图确认无 scale 项",
-        "status": "pending"
+        "status": "complete",
+        "completedAt": "2026-08-31T02:43:19.825Z",
+        "evidence": "Owner 裁决执行：Appearance 面板 scale 块全删（控件+样式+props+PiWebApp 接线+uiScale.ts 机制+旧测试），红守卫测试断言控件不存在；settings 18 文件 78/78 绿；tsc 0；lint 0；changeset 已备；已提交。"
       },
       {
         "id": "b5-release",
@@ -98,8 +100,8 @@
 - Status: running
 - Auto-continue: on
 - Sisyphus mode: no
-- Time spent: 1h21m37s
-- Tokens used: 792K (791,769) tokens
+- Time spent: 1h33m15s
+- Tokens used: 801K (800,918) tokens
 ## Tasks
 
 <!-- blockCompletion: true -->
@@ -111,6 +113,6 @@
 - [ ] b6-unknown-status: agent runs Unknown 状态：重启后陈旧 run 应分类而非 Unknown（红先） — contract: 8505 红复现（陈旧 run 显示 Unknown）→ 按归属语义修复（stale=lost）→ 同探针绿 + 截图
 - [ ] b7-compaction: /compact 假 done + compacting 指示消失 + 顺序可疑（红先） — contract: 8505 红复现 → 诊断执行链与发布链 → 修复 → 同探针绿
 - [ ] b8-receipt-dismiss: 回执常驻但可手动关（× 按钮） — contract: 红先（回执无关闭钮）→ 加 × 关闭 → 绿 + 截图
-- [ ] b9-remove-scale: 删除 Appearance 里的 scale 设置（不生效且误导，owner 裁决） — contract: 红先（断言 scale 控件存在的测试翻转为不存在）→ 删控件 + 死代码路径 → 绿 + 设置页截图确认无 scale 项
+- [x] b9-remove-scale: 删除 Appearance 里的 scale 设置（不生效且误导，owner 裁决） — evidence: Owner 裁决执行：Appearance 面板 scale 块全删（控件+样式+props+PiWebApp 接线+uiScale.ts 机制+旧测试），红守卫测试断言控件不存在；settings 18 文件 78/78 绿；tsc 0；lint 0；changeset 已备；已提交。
 - [ ] b5-release: 发布：changeset + GitHub Release → Actions → npm → nix 装机 — contract: 门禁（verify+tsc 0 错）先行；发布链全绿；npm registry 确认；8504 重启后活体验证全部修复
 

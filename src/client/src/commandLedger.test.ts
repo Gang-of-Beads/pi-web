@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { commandStateLabel, commandsForSession, issueCommand, settleCommand } from "./commandLedger";
+import { commandStateLabel, commandsForSession, dismissCommand, issueCommand, settleCommand } from "./commandLedger";
 
 const KEY = "local:session-1";
 
@@ -68,5 +68,37 @@ describe("the browser's record of an issued command", () => {
     expect(commandStateLabel({ state: "ok" }, false)).toBe("done");
     expect(commandStateLabel({ state: "failed", resultText: "boom" }, false)).toBe("failed — boom");
     expect(commandStateLabel({ state: "failed" }, false)).toBe("failed — see the error above");
+  });
+});
+
+describe("dismissCommand", () => {
+  // The owner's refinement of the no-auto-leave ruling: a settled receipt
+  // stays until read, then the reader can close it — but it must not vanish
+  // on its own, and live work (pending rows) is not dismissible.
+  it("removes a settled row when dismissed", () => {
+    const issued = issueCommand([], { sessionKey: KEY, text: "/compact", source: "typed", now: 1000 });
+    const settled = settleCommand(issued.entries, issued.id, { state: "ok", now: 2000 });
+
+    const dismissed = dismissCommand(settled, issued.id);
+
+    expect(dismissed.map((row) => row.id)).toEqual([]);
+  });
+
+  it("refuses to dismiss a pending row — that is live work", () => {
+    const issued = issueCommand([], { sessionKey: KEY, text: "/compact", source: "typed", now: 1000 });
+
+    const dismissed = dismissCommand(issued.entries, issued.id);
+
+    expect(dismissed.map((row) => row.id)).toEqual([issued.id]);
+  });
+
+  it("leaves other rows untouched", () => {
+    const first = issueCommand([], { sessionKey: KEY, text: "/a", source: "typed", now: 1000 });
+    const second = issueCommand(first.entries, { sessionKey: KEY, text: "/b", source: "typed", now: 1100 });
+    const settled = settleCommand(second.entries, first.id, { state: "ok", now: 2000 });
+
+    const dismissed = dismissCommand(settled, first.id);
+
+    expect(dismissed.map((row) => row.id)).toEqual([second.id]);
   });
 });

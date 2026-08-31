@@ -68,6 +68,17 @@ export function settleCommand(
 }
 
 /**
+ * Close one settled receipt. The reader decided they have seen it; only the
+ * capacity cap evicts besides this. A pending row is live work, not a
+ * receipt, and refusing to dismiss it keeps the run's record honest.
+ */
+export function dismissCommand(entries: readonly CommandLedgerEntry[], id: string): CommandLedgerEntry[] {
+  const row = entries.find((candidate) => candidate.id === id);
+  if (row === undefined || row.state === "pending") return [...entries];
+  return entries.filter((candidate) => candidate.id !== id);
+}
+
+/**
  * The rows this session may render; a key mismatch renders nothing of them.
  * Settled rows persist for the session's record (the owner's no-auto-leave
  * ruling): the only eviction is the capacity cap above.
