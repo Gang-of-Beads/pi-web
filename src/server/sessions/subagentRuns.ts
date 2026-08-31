@@ -426,7 +426,11 @@ function runStatus(artifact: RunArtifact | undefined, lastWriteMs: number | unde
   // Past the grace period the silence is the answer: it died before writing,
   // which is what `lost` already means everywhere else in this module.
   if (lastWriteMs === undefined) {
-    if (!parentActive) return "unknown";
+    // Nobody is streaming to vouch for the child. While a launch could still
+    // explain the silence the honest answer is nobody knows; past the grace
+    // the silence is the answer, the same as an active parent's branch — a
+    // run that wrote nothing and is too old for a launch died before writing.
+    if (!parentActive) return silentSinceLaunch(startedAtMs, now) ? "lost" : "unknown";
     return silentSinceLaunch(startedAtMs, now) ? "lost" : "running";
   }
   const quietMs = now - lastWriteMs;

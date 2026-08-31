@@ -348,6 +348,24 @@ describe("runs whose directory and artifacts use different ids", () => {
     expect(run).toMatchObject({ runId: "5d2ddee7-ad67-46e5-82a6-5a89b7e796cb", status: "unknown" });
   });
 
+  // Caught live: hours-old runs with no artifact and no transcript writes sat
+  // in the drawer as "Unknown" forever, because the inactive-parent branch
+  // returned unknown regardless of age while the active-parent branch honored
+  // the launch grace. The silence rule is the same in both: a run that never
+  // wrote anything and is too old for a launch to explain died before writing
+  // — lost, whoever the parent is. Unknown stays for the young window, where
+  // nobody genuinely knows yet.
+  it("calls an old never-writing run lost even when the parent is not streaming", async () => {
+    const dir = await sessionDir();
+    const runDir = join(dir, PARENT, "5d2ddee7-ad67-46e5-82a6-5a89b7e796cb");
+    await mkdir(runDir, { recursive: true });
+    const silentFor = 18 * 60 * 60 * 1000;
+
+    const [run] = await listSubagentRuns(dir, PARENT, Date.now() + silentFor, { parentActive: false });
+
+    expect(run).toMatchObject({ runId: "5d2ddee7-ad67-46e5-82a6-5a89b7e796cb", status: "lost" });
+  });
+
   // The parent streaming is a fact about the parent. Letting it vouch for a
   // child of any age turned six directories abandoned by children that died
   // before writing - empty for 158 to 274 minutes - into rows that claimed to
