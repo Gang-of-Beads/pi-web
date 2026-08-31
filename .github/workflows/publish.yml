@@ -63,12 +63,14 @@ jobs:
           # dist keeps the artefact identical in shape to the published package.
           #
           # The filename comes from the pack directory, not from stdout.
-          # --silent suppresses npm's own output but not the lifecycle script's,
-          # so a build log on stdout would land in GITHUB_OUTPUT and fail the
-          # step with "Invalid format". Globbing a directory that holds exactly
-          # one tarball cannot be polluted by anything a build decides to print.
+          # --silent suppresses npm's own output but not the lifecycle script's.
+          # Take the filename from the directory after packing so a build log
+          # never reaches GITHUB_OUTPUT and invalidates its command format.
           rm -rf pack-out && mkdir pack-out
-          echo "tarball=$(npm pack --silent --pack-destination pack-out)" >> "$GITHUB_OUTPUT"
+          npm pack --silent --pack-destination pack-out >/dev/null
+          tarball="$(find pack-out -maxdepth 1 -type f -name '*.tgz' -printf '%f\n')"
+          test "$(printf '%s\n' "$tarball" | wc -l)" -eq 1
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
 
       - name: Attach tarball to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
