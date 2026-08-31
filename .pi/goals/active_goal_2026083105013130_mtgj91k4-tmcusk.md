@@ -5,14 +5,14 @@
   "status": "active",
   "autoContinue": true,
   "usage": {
-    "tokensUsed": 828089,
-    "activeSeconds": 6537
+    "tokensUsed": 1955028,
+    "activeSeconds": 9071
   },
   "sisyphus": false,
   "createdAt": "2026-08-31T01:01:31.300Z",
-  "updatedAt": "2026-08-31T03:10:01.413Z",
+  "updatedAt": "2026-08-31T06:30:06.127Z",
   "activePath": ".pi/goals/active_goal_2026083105013130_mtgj91k4-tmcusk.md",
-  "revision": 242,
+  "revision": 319,
   "taskList": {
     "tasks": [
       {
@@ -65,7 +65,9 @@
         "id": "b7-compaction",
         "title": "/compact 假 done + compacting 指示消失 + 顺序可疑（红先）",
         "verificationContract": "8505 红复现 → 诊断执行链与发布链 → 修复 → 同探针绿",
-        "status": "pending"
+        "status": "complete",
+        "completedAt": "2026-08-31T03:11:06.132Z",
+        "evidence": "两项不成立并更正：compaction 实证已落转录（条目级 type:compaction，01:10:11，早前探针形状错误）；顺序正确（compaction 先于消息提交）。真缺陷=mutation 标签遮蔽 compacting：纯分类器 sessionActivityLabel 红先绿后 4/4，piSessionService 接线，48/48 邻域绿，lint 0，changeset"
       },
       {
         "id": "b8-receipt-dismiss",
@@ -104,8 +106,8 @@
 - Status: running
 - Auto-continue: on
 - Sisyphus mode: no
-- Time spent: 1h48m57s
-- Tokens used: 828K (828,089) tokens
+- Time spent: 2h31m11s
+- Tokens used: 2M (1,955,028) tokens
 ## Tasks
 
 <!-- blockCompletion: true -->
@@ -115,7 +117,7 @@
 - [x] b3-refresh-session-loss: ↻ 刷新丢会话 + PWA 缓存旧 bundle 诊断（红先） — evidence: 红先：bootRestore 新测试（projects 拉取失败→静默放弃+URL 抹除）先红后绿；组件套件 124 文件 971/971 全绿；lint 0；commit 已提交。重试复用既有 defer 回路（re-list→re-restore→URL 恢复）。
 - [ ] b4-draft-unreachable: 队列有内容时 Confirm Goal Draft 不可达（红先） — contract: 8505 红复现（确认按钮滚不上屏）→ 修复 → 同探针绿
 - [x] b6-unknown-status: agent runs Unknown 状态：重启后陈旧 run 应分类而非 Unknown（红先） — evidence: 红先：老 run 无写入+父不活跃 → lost 测试先红后绿；subagentRuns 55/55；既有 young+inactive=unknown 契约保留；tsc 0；changeset 已备；已提交。
-- [ ] b7-compaction: /compact 假 done + compacting 指示消失 + 顺序可疑（红先） — contract: 8505 红复现 → 诊断执行链与发布链 → 修复 → 同探针绿
+- [x] b7-compaction: /compact 假 done + compacting 指示消失 + 顺序可疑（红先） — evidence: 两项不成立并更正：compaction 实证已落转录（条目级 type:compaction，01:10:11，早前探针形状错误）；顺序正确（compaction 先于消息提交）。真缺陷=mutation 标签遮蔽 compacting：纯分类器 sessionActivityLabel 红先绿后 4/4，piSessionService 接线，48/48 邻域绿，lint 0，changeset
 - [x] b8-receipt-dismiss: 回执常驻但可手动关（× 按钮） — evidence: 红先：dismissCommand 3 测试（settled 可删/pending 拒绝/他行不动）先红后绿 9/9；ChatView × 按钮仅 settled 行；controller+PiWebApp 接线；ChatView 套件 40/40；tsc 0；lint 0；changeset 已备；已提交。
 - [x] b9-remove-scale: 删除 Appearance 里的 scale 设置（不生效且误导，owner 裁决） — evidence: Owner 裁决执行：Appearance 面板 scale 块全删（控件+样式+props+PiWebApp 接线+uiScale.ts 机制+旧测试），红守卫测试断言控件不存在；settings 18 文件 78/78 绿；tsc 0；lint 0；changeset 已备；已提交。
 - [ ] b5-release: 发布：changeset + GitHub Release → Actions → npm → nix 装机 — contract: 门禁（verify+tsc 0 错）先行；发布链全绿；npm registry 确认；8504 重启后活体验证全部修复

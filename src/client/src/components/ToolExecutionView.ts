@@ -1,6 +1,7 @@
 import { LitElement, css, html } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { writeClipboardText } from "../clipboard";
+import { toolExecutionDisplayStatus, type ToolExecutionDisplayStatus } from "./shared";
 import type { ToolExecutionPart } from "./shared";
 
 const MAX_COLLAPSED_DIFF_LINES = 180;
@@ -13,6 +14,9 @@ interface ToolTarget {
 @customElement("tool-execution-view")
 export class ToolExecutionView extends LitElement {
   @property({ attribute: false }) execution: ToolExecutionPart | undefined;
+  /** Whether the turn is streaming right now. A pending execution with no
+   * live turn is an interrupted one — the result is never coming. */
+  @property({ type: Boolean }) streaming = false;
   @state() private showFullDiff = false;
   @state() private copied = false;
   @state() private diffOpen = true;
@@ -20,6 +24,8 @@ export class ToolExecutionView extends LitElement {
   override render() {
     const execution = this.execution;
     if (execution === undefined) return null;
+
+    const displayedStatus = toolExecutionDisplayStatus(execution.status, this.streaming);
 
     const path = pathFromArgs(execution.args);
     const actualDiff = diffFromDetails(execution.details);
@@ -32,17 +38,17 @@ export class ToolExecutionView extends LitElement {
     const target = toolTarget(execution, path);
 
     return html`
-      <section class=${`tool-card ${execution.status}`}>
+      <section class=${`tool-card ${displayedStatus}`}>
         <div class="tool-header">
           <div class="tool-title">
-            <span class="status-icon" aria-hidden="true">${statusIcon(execution.status)}</span>
+            <span class="status-icon" aria-hidden="true">${STATUS_ICON[displayedStatus]}</span>
             <strong>${execution.toolName}</strong>
             ${this.renderHeaderTarget(target)}
           </div>
           <div class="tool-meta">
             ${editCountLabel(execution) === undefined ? null : html`<span>${editCountLabel(execution)}</span>`}
             ${diffStats === undefined ? null : html`<span class="diff-stats"><b class="added">+${diffStats.added}</b><span>/</span><b class="removed">-${diffStats.removed}</b></span>`}
-            <span class="status-label">${statusLabel(execution.status)}</span>
+            <span class="status-label">${STATUS_LABEL[displayedStatus]}</span>
           </div>
         </div>
 
@@ -129,6 +135,7 @@ export class ToolExecutionView extends LitElement {
     :host { display: block; width: 100%; max-width: 100%; min-width: 0; color: var(--pi-text); }
     .tool-card { display: grid; gap: 8px; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; overflow: hidden; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-bg); padding: 9px; color: var(--pi-text); }
     .tool-card.running, .tool-card.pending { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); }
+    .tool-card.interrupted { border-color: var(--pi-border); background: var(--pi-surface); }
     .tool-card.success { border-color: var(--pi-success-border); background: var(--pi-success-bg); }
     .tool-card.error { border-color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 10%, var(--pi-bg)); }
     .tool-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-width: 0; }
@@ -224,19 +231,21 @@ function isRemovedDiffLine(line: string): boolean {
   return line.startsWith("-") && !line.startsWith("---");
 }
 
-function statusIcon(status: ToolExecutionPart["status"]): string {
-  if (status === "success") return "✓";
-  if (status === "error") return "✖";
-  if (status === "running") return "●";
-  return "○";
-}
+const STATUS_ICON: Record<ToolExecutionDisplayStatus, string> = {
+  pending: "○",
+  running: "●",
+  success: "✓",
+  error: "✖",
+  interrupted: "○",
+};
 
-function statusLabel(status: ToolExecutionPart["status"]): string {
-  if (status === "success") return "done";
-  if (status === "error") return "failed";
-  if (status === "running") return "running";
-  return "pending";
-}
+const STATUS_LABEL: Record<ToolExecutionDisplayStatus, string> = {
+  pending: "pending",
+  running: "running",
+  success: "done",
+  error: "failed",
+  interrupted: "interrupted",
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;

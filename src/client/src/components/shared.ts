@@ -8,13 +8,34 @@ export interface ToolPreview {
   error?: string;
 }
 
+/** The execution status the data carries: what actually happened to the call. */
+export const ToolExecutionStatus = {
+  Pending: "pending",
+  Running: "running",
+  Success: "success",
+  Error: "error",
+} as const;
+export type ToolExecutionStatus = (typeof ToolExecutionStatus)[keyof typeof ToolExecutionStatus];
+
+/** What the card displays: the data status plus the derived interrupted state. */
+export type ToolExecutionDisplayStatus = ToolExecutionStatus | "interrupted";
+
+/**
+ * A pending call is work in flight only while the turn is actually streaming.
+ * A daemon restart can cut a turn mid-tool; the orphaned call then displays as
+ * interrupted instead of pending, and the status chip honestly says idle.
+ */
+export function toolExecutionDisplayStatus(status: ToolExecutionStatus, streaming: boolean): ToolExecutionDisplayStatus {
+  return status === ToolExecutionStatus.Pending && !streaming ? "interrupted" : status;
+}
+
 export interface ToolExecutionPart {
   type: "toolExecution";
   toolCallId?: string;
   toolName: string;
   summary: string;
   args?: unknown;
-  status: "pending" | "running" | "success" | "error";
+  status: ToolExecutionStatus;
   resultText?: string;
   content?: unknown;
   details?: unknown;
