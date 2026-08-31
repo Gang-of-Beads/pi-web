@@ -1,4 +1,16 @@
-# @jmfederico/pi-web
+# @vincenthanxiaodu/pi-web
+
+## 1.202608.76
+
+### Patch Changes
+
+- de0486d: A reload whose projects listing fails now retries the restore instead of landing on "Select or start a session." — the route survives and re-restores once the listing recovers.
+- 2f6ea60: The activity chip says "compacting" during /compact instead of the generic "updating session": the entry mutation the compaction runs inside no longer masks the specific state.
+- 20b2aa4: Command receipts stay until read (no-auto-leave) but can now be closed by hand: settled rows get a dismiss button. Pending rows are live work and refuse dismissal.
+- de0486d: Goals from another project no longer appear in the goals panel: the goals read only unions a session directory that lives inside the selected workspace.
+- de0486d: A reconnect no longer erases the selected session's status when the status catalog transiently omits it — the indicator row (streaming dot, token stats) stays until a live frame corrects it. The queued-message area also reconciles against the daemon's queue state.
+- 5ecd5ae: Remove the interface size setting from Appearance. It did not apply on real devices, and a control that does nothing is a lie; the panel keeps themes and the system switch.
+- f9ca15e: Hours-old subagent runs that never wrote anything now report as Lost instead of Unknown when the parent is not streaming: the launch-grace silence rule applies to both branches. Unknown stays for the young window where nobody genuinely knows yet.
 
 ## 1.202608.75
 
