@@ -13,9 +13,9 @@
 
 ## 3. Documentation and release integration
 
-- [ ] 3.1 Document flake package installation, `nix develop`, Home Manager NixOS setup, and Home Manager nix-darwin setup in the canonical installation documentation; verify each documented command and module path matches the built flake outputs and the README remains a concise discovery surface.
-- [ ] 3.2 Document the separate service lifecycle, persistent-state location, configuration ownership trade-off, and daemon-only restart requirement; verify the examples distinguish web-only from session-daemon restarts. No UI behavior changes, so 393x850 coarse-pointer browser verification is not applicable.
-- [ ] 3.3 Add a patch Changeset for supported Nix installation/configuration; verify `npm run changelog:status` recognizes the release note.
+- [x] 3.1 Document flake package installation, `nix develop`, Home Manager NixOS setup, and Home Manager nix-darwin setup in the canonical installation documentation; verified module/output names against `flake.nix` and retained the README's concise installation-guide link.
+- [x] 3.2 Document the separate service lifecycle, persistent-state location, configuration ownership trade-off, and daemon-only restart requirement; examples distinguish web-only from session-daemon restarts. No UI behavior changes, so 393x850 coarse-pointer browser verification is not applicable.
+- [x] 3.3 Add a patch Changeset for supported Nix installation/configuration; verified `npm run changelog:status` recognizes the patch release note.
 
 ## 4. End-to-end verification
 
