@@ -92,6 +92,7 @@
             <a href="#requirements">Requirements</a>
             <a href="#user-services">User service install</a>
             <a href="#one-line">One-line install</a>
+            <a href="#nix">NixOS and nix-darwin</a>
             <a href="#pi-package">Install through Pi</a>
             <a href="#manual-run">WSL / manual run</a>
             <a href="#remote-access">Remote access</a>
@@ -159,7 +160,25 @@
               </div>
             </section>
 
-            <section id="pi-package">
+            <section id="nix">
+        <h2>NixOS and nix-darwin</h2>
+        <p>PI WEB's flake supports <code>x86_64-linux</code>, <code>aarch64-linux</code>, and Apple Silicon <code>aarch64-darwin</code>. Install the package directly with <code>nix profile install github:Gang-of-Beads/pi-web</code>, or import its Home Manager module for declarative user services.</p>
+        <p>The Home Manager module works from either a NixOS or nix-darwin configuration. It manages separate <code>pi-web-sessiond</code> and <code>pi-web</code> services, so restarting the web service does not stop active sessions owned by the daemon.</p>
+        <pre><code>inputs.pi-web.url = "github:Gang-of-Beads/pi-web";
+
+# In your Home Manager modules:
+inputs.pi-web.homeManagerModules.default
+
+programs.pi-web = {
+  enable = true;
+  # settings = { host = "127.0.0.1"; port = 8504; };
+};</code></pre>
+        <p>State defaults to <code>~/.pi-web</code>; configuration defaults to <code>~/.config/pi-web/config.json</code>. Set <code>dataDir</code>, <code>configPath</code>, or <code>environment</code> in <code>programs.pi-web</code> to override them. If <code>settings</code> is set, Home Manager owns the JSON file and Settings UI/API edits are replaced on activation; leave it unset for a writable user-managed configuration file.</p>
+        <p>On NixOS, operate the user units with <code>systemctl --user restart pi-web</code> or <code>systemctl --user restart pi-web-sessiond</code>. On nix-darwin, Home Manager creates the corresponding <code>com.pi-web.web</code> and <code>com.pi-web.sessiond</code> launch agents. Restart the daemon after daemon-only upgrades; a web-only restart deliberately leaves it running.</p>
+        <p>For a reproducible contributor toolchain, run <code>nix develop</code>, then use the usual <code>npm run verify</code> and <code>npm run build</code> commands.</p>
+      </section>
+
+      <section id="pi-package">
               <h2>Install through Pi</h2>
               <p>PI WEB is also published as a Pi package. This exposes a <code>/pi-web</code> command inside Pi.</p>
               <p>When installed this way, <code>/pi-web install</code> can use PI WEB's package-local service entrypoints, so <code>pi-web-server</code> and <code>pi-web-sessiond</code> do not need to be on your shell <code>PATH</code>.</p>
