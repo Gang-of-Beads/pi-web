@@ -1,4 +1,5 @@
 import { statSync } from "node:fs";
+import { sessionActivityLabel } from "./sessionActivityLabel.js";
 import { announceUnsupportedSurface, withUnsupportedSurfaceAnnouncement } from "./unsupportedSurface.js";
 import { EMPTY_HOST_CONTRIBUTIONS, type HostContributions } from "./hostContributions.js";
 import { takeUnfiledWarnings } from "./warningFiling.js";
@@ -4260,13 +4261,14 @@ export class PiSessionService implements SessionRouteService {
   }
 
   private activityLabelFromStatus(session: PiAgentSession): string {
-    if (this.treeNavigations.has(session)) return "navigating session tree";
-    if (this.isSessionEntryMutationActive(session)) return "updating session";
-    if (session.isCompacting) return "compacting";
-    if (session.isBashRunning) return "running bash";
-    if (session.isStreaming) return "agent running";
-    if (this.pendingMessageCount(session) > 0) return "queued";
-    return "active";
+    return sessionActivityLabel({
+      treeNavigationActive: this.treeNavigations.has(session),
+      entryMutationActive: this.isSessionEntryMutationActive(session),
+      isCompacting: session.isCompacting,
+      isBashRunning: session.isBashRunning,
+      isStreaming: session.isStreaming,
+      pendingMessageCount: this.pendingMessageCount(session),
+    });
   }
 
   private hasActiveWork(session: PiAgentSession): boolean {

@@ -5,14 +5,14 @@
   "status": "active",
   "autoContinue": true,
   "usage": {
-    "tokensUsed": 807758,
-    "activeSeconds": 5971
+    "tokensUsed": 828089,
+    "activeSeconds": 6537
   },
   "sisyphus": false,
   "createdAt": "2026-08-31T01:01:31.300Z",
-  "updatedAt": "2026-08-31T03:00:25.577Z",
+  "updatedAt": "2026-08-31T03:10:01.413Z",
   "activePath": ".pi/goals/active_goal_2026083105013130_mtgj91k4-tmcusk.md",
-  "revision": 222,
+  "revision": 242,
   "taskList": {
     "tasks": [
       {
@@ -57,7 +57,9 @@
         "id": "b6-unknown-status",
         "title": "agent runs Unknown 状态：重启后陈旧 run 应分类而非 Unknown（红先）",
         "verificationContract": "8505 红复现（陈旧 run 显示 Unknown）→ 按归属语义修复（stale=lost）→ 同探针绿 + 截图",
-        "status": "pending"
+        "status": "complete",
+        "completedAt": "2026-08-31T03:01:34.918Z",
+        "evidence": "红先：老 run 无写入+父不活跃 → lost 测试先红后绿；subagentRuns 55/55；既有 young+inactive=unknown 契约保留；tsc 0；changeset 已备；已提交。"
       },
       {
         "id": "b7-compaction",
@@ -102,8 +104,8 @@
 - Status: running
 - Auto-continue: on
 - Sisyphus mode: no
-- Time spent: 1h39m31s
-- Tokens used: 808K (807,758) tokens
+- Time spent: 1h48m57s
+- Tokens used: 828K (828,089) tokens
 ## Tasks
 
 <!-- blockCompletion: true -->
@@ -112,7 +114,7 @@
 - [x] b2-resume-drive: resume 驱动恢复：清尾部 checkpoint 残骸（红先） — evidence: 红先：resumeRevision 单测（缺失导出）+ runtime 契约（bump 后 breaker 从零计数）红→绿；fork 全套 938/938；tsc 仅已知 2 baseline；commit e1fce0a 已推送。resume 现在挣新 revision，残骸留 branch 作历史。
 - [x] b3-refresh-session-loss: ↻ 刷新丢会话 + PWA 缓存旧 bundle 诊断（红先） — evidence: 红先：bootRestore 新测试（projects 拉取失败→静默放弃+URL 抹除）先红后绿；组件套件 124 文件 971/971 全绿；lint 0；commit 已提交。重试复用既有 defer 回路（re-list→re-restore→URL 恢复）。
 - [ ] b4-draft-unreachable: 队列有内容时 Confirm Goal Draft 不可达（红先） — contract: 8505 红复现（确认按钮滚不上屏）→ 修复 → 同探针绿
-- [ ] b6-unknown-status: agent runs Unknown 状态：重启后陈旧 run 应分类而非 Unknown（红先） — contract: 8505 红复现（陈旧 run 显示 Unknown）→ 按归属语义修复（stale=lost）→ 同探针绿 + 截图
+- [x] b6-unknown-status: agent runs Unknown 状态：重启后陈旧 run 应分类而非 Unknown（红先） — evidence: 红先：老 run 无写入+父不活跃 → lost 测试先红后绿；subagentRuns 55/55；既有 young+inactive=unknown 契约保留；tsc 0；changeset 已备；已提交。
 - [ ] b7-compaction: /compact 假 done + compacting 指示消失 + 顺序可疑（红先） — contract: 8505 红复现 → 诊断执行链与发布链 → 修复 → 同探针绿
 - [x] b8-receipt-dismiss: 回执常驻但可手动关（× 按钮） — evidence: 红先：dismissCommand 3 测试（settled 可删/pending 拒绝/他行不动）先红后绿 9/9；ChatView × 按钮仅 settled 行；controller+PiWebApp 接线；ChatView 套件 40/40；tsc 0；lint 0；changeset 已备；已提交。
 - [x] b9-remove-scale: 删除 Appearance 里的 scale 设置（不生效且误导，owner 裁决） — evidence: Owner 裁决执行：Appearance 面板 scale 块全删（控件+样式+props+PiWebApp 接线+uiScale.ts 机制+旧测试），红守卫测试断言控件不存在；settings 18 文件 78/78 绿；tsc 0；lint 0；changeset 已备；已提交。
