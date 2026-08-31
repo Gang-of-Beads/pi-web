@@ -1018,6 +1018,17 @@ export class PiWebApp extends LitElement {
     const initialRouteMachineHealth = this.state.machineStatuses[effectiveRoute.machineId ?? "local"];
     if (effectiveRoute !== route) this.replaceRouteAndClearWorkspaceQuery(effectiveRoute);
     await this.projects.loadProjects();
+    // A failed listing cannot resolve the route's project id: restoring now
+    // gives up silently and rewrites the URL without the project, which is
+    // how a reload on a flaky connection landed on "Select or start a
+    // session." with no way back. Defer to the retry loop instead — it
+    // re-lists the projects and re-restores the same route once the listing
+    // recovers.
+    if (effectiveRoute.projectId !== undefined && this.state.projectsLoad === "failed") {
+      this.deferRemoteRouteRestore(effectiveRoute);
+      await this.refreshWorkspaceDeletionRuns();
+      return;
+    }
     await this.withChatScrollTransition(() => this.restoreRouteFor(effectiveRoute, false));
     if (this.shouldDeferRemoteRouteRestore(effectiveRoute, initialRouteMachineHealth)) this.deferRemoteRouteRestore(effectiveRoute);
     else {
