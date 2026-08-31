@@ -22,6 +22,12 @@ describe("production client build contents", () => {
       expect(references).toContain("./favicon.svg");
       expect(references).toContain("./apple-touch-icon.png");
       expect(references).toContain("./manifest.webmanifest");
+      expect(appleStandaloneMetadata(html)).toEqual({
+        "apple-mobile-web-app-capable": "yes",
+        "apple-mobile-web-app-status-bar-style": "black-translucent",
+        "apple-mobile-web-app-title": "PI WEB",
+      });
+      expect(html).toContain('<link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />');
       expect(references).toContainEqual(expect.stringMatching(/^\.\/assets\/index-[^/]+\.js$/));
       expect(references.filter((reference) => reference.startsWith("/"))).toEqual([]);
 
@@ -42,4 +48,13 @@ describe("production client build contents", () => {
 
 function htmlAssetReferences(html: string): string[] {
   return Array.from(html.matchAll(/\b(?:href|src)="([^"]+)"/g), (match) => match[1] ?? "");
+}
+
+function appleStandaloneMetadata(html: string): Record<string, string> {
+  return Object.fromEntries(
+    Array.from(html.matchAll(/<meta name="(apple-mobile-web-app-[^"]+)" content="([^"]+)" \/>/g), (match) => [
+      match[1] ?? "",
+      match[2] ?? "",
+    ]),
+  );
 }
