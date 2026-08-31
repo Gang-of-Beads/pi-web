@@ -98,7 +98,10 @@ async function smokeInstalledTerminalService(packageRoot) {
     throw new Error(`Installed package resolved a non-stable node-pty version: ${String(nodePtyPackage.version)}`);
   }
 
-  const terminalModuleUrl = pathToFileURL(join(packageRoot, "dist", "server", "terminals", "terminalService.js")).href;
+  // TerminalService belongs to the session daemon's private module tree. Import
+  // the packaged path rather than the old pre-daemon-split location so this
+  // smoke test exercises the artifact that sessiond actually loads.
+  const terminalModuleUrl = pathToFileURL(join(packageRoot, "dist", "server", "daemon", "terminals", "terminalService.js")).href;
   const { TerminalService } = await import(terminalModuleUrl);
   const previousShell = process.env["SHELL"];
   process.env["SHELL"] = "/bin/sh";
