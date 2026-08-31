@@ -1,5 +1,12 @@
 # @vincenthanxiaodu/pi-web
 
+## 1.202608.77
+
+### Patch Changes
+
+- dcb48a2: The waiting dialog's action row stays on screen: long details (task lists, contracts) cap and scroll inside the dialog card, and the waiting slot no longer scrolls the whole card — the confirm buttons no longer land below the fold of an inner scroller when a queue strip shares the screen.
+- d30de52: A tool call whose turn died (e.g. a daemon restart mid-tool) now displays as "interrupted" instead of "pending" forever: pending means work in flight, and with no live turn the result is never coming.
+
 ## 1.202608.76
 
 ### Patch Changes
