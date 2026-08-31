@@ -112,40 +112,13 @@ describe("settings-appearance-panel", () => {
     const panel = await mount((element) => { element.themes = []; });
     expect(panel.shadowRoot?.textContent).toContain("No themes are installed");
   });
-});
 
-describe("interface size", () => {
-  it("offers the size as a slider that reports what it is set to", async () => {
-    const panel = await mount((element) => { element.uiScale = 1.25; });
-    const slider = panel.shadowRoot?.querySelector<HTMLInputElement>("input[type=range]");
-
-    expect(slider?.value).toBe("1.25");
-    expect(panel.shadowRoot?.querySelector(".scale-value")?.textContent).toBe("125%");
-  });
-
-  it("reports every drag, so the size can be seen while it is chosen", async () => {
-    const onChangeUiScale = vi.fn<(scale: number) => void>();
-    const panel = await mount((element) => { element.onChangeUiScale = onChangeUiScale; });
-    const slider = panel.shadowRoot?.querySelector<HTMLInputElement>("input[type=range]");
-    if (slider === null || slider === undefined) throw new Error("Expected an interface size slider");
-
-    slider.value = "1.3";
-    slider.dispatchEvent(new Event("input"));
-
-    expect(onChangeUiScale).toHaveBeenCalledWith(1.3);
-  });
-
-  it("offers a way back to 100% only once the size has moved", async () => {
-    const onChangeUiScale = vi.fn<(scale: number) => void>();
-    const panel = await mount((element) => { element.uiScale = 1; element.onChangeUiScale = onChangeUiScale; });
-    // Dragging a slider back onto an exact 100% is fiddly, and at 100% there
-    // is nothing to undo, so the control appears only when it has a job.
+  it("keeps the removed interface-size control out of the panel", async () => {
+    // The owner's ruling: the size slider did not apply on real devices, and
+    // a control that does nothing is a lie. The panel keeps themes and the
+    // system switch only.
+    const panel = await mount();
+    expect(panel.shadowRoot?.querySelector("input[type=range]")).toBeNull();
     expect(panel.shadowRoot?.querySelector(".scale-reset")).toBeNull();
-
-    panel.uiScale = 1.4;
-    await panel.updateComplete;
-    panel.shadowRoot?.querySelector<HTMLButtonElement>(".scale-reset")?.click();
-
-    expect(onChangeUiScale).toHaveBeenCalledWith(1);
   });
 });

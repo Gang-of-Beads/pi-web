@@ -5,7 +5,6 @@ import { configApi, piPackagesApi, pluginsApi, type Machine, type MachineHealth,
 import type { PiWebFleetReport, PiWebFleetRunResponse } from "../../../shared/apiTypes";
 import type { QualifiedContributionId, QualifiedThemeContribution } from "../plugins/types";
 import type { SettingsSection } from "../settingsRoute";
-import { DEFAULT_UI_SCALE } from "../uiScale";
 import "./ModalSurface";
 import "./settings/SettingsAppearancePanel";
 import "./settings/SettingsGeneralPanel";
@@ -39,8 +38,6 @@ export class SettingsDialog extends LitElement {
   @property({ type: Boolean }) followSystemTheme = false;
   @property({ attribute: false }) onSelectTheme?: (themeId: QualifiedContributionId) => void;
   @property({ attribute: false }) onToggleFollowSystem?: (follow: boolean) => void;
-  @property({ type: Number }) uiScale = DEFAULT_UI_SCALE;
-  @property({ attribute: false }) onChangeUiScale?: (scale: number) => void;
   @property({ attribute: false }) fleetReport?: PiWebFleetReport;
   @property({ type: Boolean }) fleetLoading = false;
   @property({ attribute: false }) fleetError?: string;
@@ -172,10 +169,8 @@ export class SettingsDialog extends LitElement {
           .selectedThemeId=${this.selectedThemeId}
           .activeThemeId=${this.activeThemeId}
           ?followSystem=${this.followSystemTheme}
-          .uiScale=${this.uiScale}
           .onSelectTheme=${(themeId: QualifiedContributionId) => this.onSelectTheme?.(themeId)}
           .onToggleFollowSystem=${(follow: boolean) => this.onToggleFollowSystem?.(follow)}
-          .onChangeUiScale=${(scale: number) => this.onChangeUiScale?.(scale)}
         ></settings-appearance-panel>
       `;
     }

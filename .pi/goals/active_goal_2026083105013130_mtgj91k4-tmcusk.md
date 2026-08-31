@@ -1,0 +1,116 @@
+{
+  "version": 3,
+  "id": "mtgj91k4-tmcusk",
+  "objective": "修复本轮 report 的五个未闭环 bug：(1) goal 串项目——resume/focus 后其他项目的 goal 泄漏进当前项目面板（focus 注入路径绕过工作区键控）；(2) /goal-resume 后驱动不恢复——resume 路径必须清除尾部 checkpoint 残骸（pause/resume 循环实测无效）；(3) 顶部 ↻ 刷新丢失会话——落在 \"Select or start a session.\" 且回不到之前的页面；(4) 队列有内容时 Confirm Goal Draft 对话框被挤到屏幕外且无法滚动到确认按钮——任务确认不可达；(5) 以上全部随下一个版本发布。每个都按红→绿实测闭环。",
+  "status": "active",
+  "autoContinue": true,
+  "usage": {
+    "tokensUsed": 791769,
+    "activeSeconds": 4897
+  },
+  "sisyphus": false,
+  "createdAt": "2026-08-31T01:01:31.300Z",
+  "updatedAt": "2026-08-31T02:42:09.576Z",
+  "activePath": ".pi/goals/active_goal_2026083105013130_mtgj91k4-tmcusk.md",
+  "revision": 183,
+  "taskList": {
+    "tasks": [
+      {
+        "id": "b0-queue-drain",
+        "title": "队列排空对账：已提交消息仍留队列条（红先，最高优先）",
+        "verificationContract": "8505 红复现（提交后队列条不消失）→ 真相源改为 daemon steer 队列 + 提交事件对账 → 同探针绿",
+        "status": "complete",
+        "completedAt": "2026-08-31T01:42:52.227Z",
+        "evidence": "红先：statusHydration 新测试（快照缺席抹掉选中会话状态）先红后绿；11/11 + 邻域 398/398 全绿；commit 2bf42115。队列滞留与统计条消失归因于此 + 旧 bundle 缺 heal 链；live 实证 daemon 侧 queuedMessages 已 [] 对账正确。"
+      },
+      {
+        "id": "b1-focus-leak",
+        "title": "goal 串项目：focus 注入按键控（红先）",
+        "verificationContract": "8505 红复现（resume 后跨项目面板泄漏）→ 修复 → 同探针绿 + 截图；fork 测试全绿并推送",
+        "status": "complete",
+        "completedAt": "2026-08-31T01:52:54.955Z",
+        "evidence": "红先：goalStore 新测试（外部 cwd 不 union）先红后绿；既有两测试钉错契约（任意根 union）重写为根内子目录；6/6 + 邻域 33/33；tsc 0；commit 7573ccc3。"
+      },
+      {
+        "id": "b2-resume-drive",
+        "title": "resume 驱动恢复：清尾部 checkpoint 残骸（红先）",
+        "verificationContract": "先读 org_hub 会话通知抽屉的 guard-stop 实锤；红测试（resume 后驱动恢复）→ 修复 → 绿；npm test 全绿并推送 fork",
+        "status": "complete",
+        "completedAt": "2026-08-31T02:03:44.071Z",
+        "evidence": "红先：resumeRevision 单测（缺失导出）+ runtime 契约（bump 后 breaker 从零计数）红→绿；fork 全套 938/938；tsc 仅已知 2 baseline；commit e1fce0a 已推送。resume 现在挣新 revision，残骸留 branch 作历史。"
+      },
+      {
+        "id": "b3-refresh-session-loss",
+        "title": "↻ 刷新丢会话 + PWA 缓存旧 bundle 诊断（红先）",
+        "verificationContract": "健康 daemon 复现（刷新丢会话）→ 修复；诊断 SW 更新流 → 修复或给出硬刷新指引",
+        "status": "complete",
+        "completedAt": "2026-08-31T02:27:04.912Z",
+        "evidence": "红先：bootRestore 新测试（projects 拉取失败→静默放弃+URL 抹除）先红后绿；组件套件 124 文件 971/971 全绿；lint 0；commit 已提交。重试复用既有 defer 回路（re-list→re-restore→URL 恢复）。"
+      },
+      {
+        "id": "b4-draft-unreachable",
+        "title": "队列有内容时 Confirm Goal Draft 不可达（红先）",
+        "verificationContract": "8505 红复现（确认按钮滚不上屏）→ 修复 → 同探针绿",
+        "status": "pending"
+      },
+      {
+        "id": "b6-unknown-status",
+        "title": "agent runs Unknown 状态：重启后陈旧 run 应分类而非 Unknown（红先）",
+        "verificationContract": "8505 红复现（陈旧 run 显示 Unknown）→ 按归属语义修复（stale=lost）→ 同探针绿 + 截图",
+        "status": "pending"
+      },
+      {
+        "id": "b7-compaction",
+        "title": "/compact 假 done + compacting 指示消失 + 顺序可疑（红先）",
+        "verificationContract": "8505 红复现 → 诊断执行链与发布链 → 修复 → 同探针绿",
+        "status": "pending"
+      },
+      {
+        "id": "b8-receipt-dismiss",
+        "title": "回执常驻但可手动关（× 按钮）",
+        "verificationContract": "红先（回执无关闭钮）→ 加 × 关闭 → 绿 + 截图",
+        "status": "pending"
+      },
+      {
+        "id": "b9-remove-scale",
+        "title": "删除 Appearance 里的 scale 设置（不生效且误导，owner 裁决）",
+        "verificationContract": "红先（断言 scale 控件存在的测试翻转为不存在）→ 删控件 + 死代码路径 → 绿 + 设置页截图确认无 scale 项",
+        "status": "pending"
+      },
+      {
+        "id": "b5-release",
+        "title": "发布：changeset + GitHub Release → Actions → npm → nix 装机",
+        "verificationContract": "门禁（verify+tsc 0 错）先行；发布链全绿；npm registry 确认；8504 重启后活体验证全部修复",
+        "status": "pending"
+      }
+    ],
+    "blockCompletion": true,
+    "proposedAt": "2026-08-31T01:20:21.534Z"
+  }
+}
+
+# Goal Prompt
+
+修复本轮 report 的五个未闭环 bug：(1) goal 串项目——resume/focus 后其他项目的 goal 泄漏进当前项目面板（focus 注入路径绕过工作区键控）；(2) /goal-resume 后驱动不恢复——resume 路径必须清除尾部 checkpoint 残骸（pause/resume 循环实测无效）；(3) 顶部 ↻ 刷新丢失会话——落在 "Select or start a session." 且回不到之前的页面；(4) 队列有内容时 Confirm Goal Draft 对话框被挤到屏幕外且无法滚动到确认按钮——任务确认不可达；(5) 以上全部随下一个版本发布。每个都按红→绿实测闭环。
+
+## Progress
+
+- Status: running
+- Auto-continue: on
+- Sisyphus mode: no
+- Time spent: 1h21m37s
+- Tokens used: 792K (791,769) tokens
+## Tasks
+
+<!-- blockCompletion: true -->
+- [x] b0-queue-drain: 队列排空对账：已提交消息仍留队列条（红先，最高优先） — evidence: 红先：statusHydration 新测试（快照缺席抹掉选中会话状态）先红后绿；11/11 + 邻域 398/398 全绿；commit 2bf42115。队列滞留与统计条消失归因于此 + 旧 bundle 缺 heal 链；live 实证 daemon 侧 queuedMessages 已 [] 对账正确。
+- [x] b1-focus-leak: goal 串项目：focus 注入按键控（红先） — evidence: 红先：goalStore 新测试（外部 cwd 不 union）先红后绿；既有两测试钉错契约（任意根 union）重写为根内子目录；6/6 + 邻域 33/33；tsc 0；commit 7573ccc3。
+- [x] b2-resume-drive: resume 驱动恢复：清尾部 checkpoint 残骸（红先） — evidence: 红先：resumeRevision 单测（缺失导出）+ runtime 契约（bump 后 breaker 从零计数）红→绿；fork 全套 938/938；tsc 仅已知 2 baseline；commit e1fce0a 已推送。resume 现在挣新 revision，残骸留 branch 作历史。
+- [x] b3-refresh-session-loss: ↻ 刷新丢会话 + PWA 缓存旧 bundle 诊断（红先） — evidence: 红先：bootRestore 新测试（projects 拉取失败→静默放弃+URL 抹除）先红后绿；组件套件 124 文件 971/971 全绿；lint 0；commit 已提交。重试复用既有 defer 回路（re-list→re-restore→URL 恢复）。
+- [ ] b4-draft-unreachable: 队列有内容时 Confirm Goal Draft 不可达（红先） — contract: 8505 红复现（确认按钮滚不上屏）→ 修复 → 同探针绿
+- [ ] b6-unknown-status: agent runs Unknown 状态：重启后陈旧 run 应分类而非 Unknown（红先） — contract: 8505 红复现（陈旧 run 显示 Unknown）→ 按归属语义修复（stale=lost）→ 同探针绿 + 截图
+- [ ] b7-compaction: /compact 假 done + compacting 指示消失 + 顺序可疑（红先） — contract: 8505 红复现 → 诊断执行链与发布链 → 修复 → 同探针绿
+- [ ] b8-receipt-dismiss: 回执常驻但可手动关（× 按钮） — contract: 红先（回执无关闭钮）→ 加 × 关闭 → 绿 + 截图
+- [ ] b9-remove-scale: 删除 Appearance 里的 scale 设置（不生效且误导，owner 裁决） — contract: 红先（断言 scale 控件存在的测试翻转为不存在）→ 删控件 + 死代码路径 → 绿 + 设置页截图确认无 scale 项
+- [ ] b5-release: 发布：changeset + GitHub Release → Actions → npm → nix 装机 — contract: 门禁（verify+tsc 0 错）先行；发布链全绿；npm registry 确认；8504 重启后活体验证全部修复
+
