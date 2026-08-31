@@ -111,8 +111,8 @@
   "devDependencies": {
     "@changesets/cli": "^2.31.0",
     "@earendil-works/pi-agent-core": "^0.84.2",
-    "@earendil-works/pi-ai": "^0.84.2",
-    "@earendil-works/pi-coding-agent": "^0.84.2",
+    "@earendil-works/pi-ai": "^0.84.4",
+    "@earendil-works/pi-coding-agent": "^0.84.4",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.62.1",
     "@types/node": "^24.13.3",
