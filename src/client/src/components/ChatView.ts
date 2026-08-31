@@ -319,11 +319,16 @@ export const chatStyles = css`
   /* Its own row of the column, so the transcript above can grow all it likes
      without moving a control the reader is aiming at. Tall questions scroll
      inside the slot rather than pushing the composer off the screen. */
-  /* No scroll of its own: the card's detail caps and scrolls internally, so
-     the action row is always on screen. The slot used to scroll the whole
-     card inside 45vh and the confirm buttons landed below the fold of an
-     inner scroller a thumb could not drive. */
-  .waiting-slot { flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) var(--pi-space-4); }
+  /* The geometry contract lives HERE, once. The slot owns the height budget
+     (60vh, with a hard pixel ceiling for very tall displays where 60vh alone
+     would grow a question past one glance); every waiting card fills it as a
+     flex column whose body is the
+     one scroller and whose action row never scrolls away. Cards opt in by
+     stretching to the slot — a new waiting card needs no cap of its own.
+     The flat version capped each card separately and missed one: the tall
+     ask-user card pushed its submit below the fold. */
+  .waiting-slot { flex: 0 0 auto; display: flex; flex-direction: column; max-height: min(60vh, 760px); margin: 0 var(--pi-chat-gutter) var(--pi-space-4); }
+  .waiting-slot > * { flex: 0 1 auto; min-height: 0; max-height: 100%; }
   .activity-dock { flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) 10px; z-index: var(--pi-layer-sticky); display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: 0 8px 28px var(--pi-shadow); backdrop-filter: blur(6px); }
   /* Idle is the state nobody needs a full-width banner for: keep the signal,
      drop the bar that looked like an empty card above the composer.

@@ -353,6 +353,12 @@ export class ExtensionDialogCard extends LitElement {
       border: 1px solid var(--pi-border);
       border-radius: 10px;
       background: var(--pi-surface);
+      /* The waiting-slot contract: fill the slot's height budget as a column
+         whose detail is the one scroller and whose actions never scroll
+         away. */
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
     }
     .card-header {
       display: flex;
@@ -396,11 +402,11 @@ export class ExtensionDialogCard extends LitElement {
       line-height: 1.45;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
-      /* The one inner scroller of the card: long details (task lists, contracts)
-         cap here so the action row below stays on screen without scrolling the
-         whole card — nested scrollers in a 45vh slot put the confirm buttons
-         out of a thumb's reach. */
-      max-height: 40vh;
+      /* The one scroller of the card: the slot's height budget lands here,
+         so long details scroll internally and the action row stays on
+         screen. */
+      flex: 1 1 auto;
+      min-height: 0;
       overflow-y: auto;
       overscroll-behavior-y: contain;
     }

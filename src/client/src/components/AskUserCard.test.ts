@@ -307,8 +307,8 @@ function question(
   };
 }
 
-function option(value: string, label: string): AskUserQuestion["options"][number] {
-  return { value, label };
+function option(value: string, label: string, extra: Partial<AskUserQuestion["options"][number]> = {}): AskUserQuestion["options"][number] {
+  return { value, label, ...extra };
 }
 
 function unansweredRecord(questionValue: AskUserQuestion): AskUserOutcome["questions"][number] {
@@ -356,5 +356,28 @@ describe("where the step buttons sit", () => {
     const rule = /\.step-actions \.primary-action\s*\{([^}]*)\}/u.exec(sheet)?.[1] ?? "";
 
     expect(rule).toMatch(/margin-left:\s*auto/u);
+  });
+});
+
+describe("ask-user-card geometry", () => {
+  // Caught live: the question card renders in the waiting slot, a real layout
+  // row — and a tall question (long detail, several options) grew the card
+  // past the viewport, pushing the submit below the fold where a thumb could
+  // not reach it. The questions area is the one inner scroller; the footer
+  // with the submit stays on screen.
+  it("caps the questions area so the submit footer stays reachable", async () => {
+    const card = await mountOpenAsk(openAsk([
+      question("geom", "Pick one", [option("a", "A", { detail: "long".repeat(60) }), option("b", "B", { detail: "long".repeat(60) }), option("c", "C", { detail: "long".repeat(60) })], { detail: "Long detail text".repeat(40) }),
+    ]));
+
+    const questions = card.shadowRoot?.querySelector<HTMLElement>(".questions");
+    if (questions === null || questions === undefined) throw new Error("Expected the questions area");
+    const style = getComputedStyle(questions);
+    expect(style.overflowY).toBe("auto");
+    expect(style.maxHeight).not.toBe("none");
+    // The footer follows the capped questions and holds the submit control.
+    const footer = card.shadowRoot?.querySelector<HTMLElement>(".form-footer");
+    expect(footer).toBeDefined();
+    expect(footer?.querySelector("button") ?? null).not.toBeNull();
   });
 });
