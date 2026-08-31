@@ -15,8 +15,8 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { createAgentSessionFromServices, createAgentSessionServices, SessionManager } from "@earendil-works/pi-coding-agent";
-import { createModelRuntimeForAgentDir } from "../src/server/sessions/authService.js";
-import { defaultPiSessionDir } from "../src/server/sessions/piSessionManagerGateway.js";
+import { createModelRuntimeForAgentDir } from "../src/server/daemon/sessions/authService.js";
+import { defaultPiSessionDir } from "../src/server/daemon/sessions/piSessionManagerGateway.js";
 
 const MARKER = "STANDING-442";
 const agentDir = join(homedir(), ".pi", "agent");

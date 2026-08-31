@@ -17,9 +17,9 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { writeFile } from "node:fs/promises";
 import { createAgentSessionFromServices, createAgentSessionServices, SessionManager } from "@earendil-works/pi-coding-agent";
-import { defaultPiSessionDir } from "../src/server/sessions/piSessionManagerGateway.js";
-import { createTestModelRuntime } from "../src/server/sessions/piSessionService.testSupport.js";
-import { sessionEnvironmentPromptSections } from "../src/server/sessions/sessionEnvironmentFacts.js";
+import { defaultPiSessionDir } from "../src/server/daemon/sessions/piSessionManagerGateway.js";
+import { createTestModelRuntime } from "../src/server/daemon/sessions/piSessionService.testSupport.js";
+import { sessionEnvironmentPromptSections } from "../src/server/daemon/sessions/sessionEnvironmentFacts.js";
 
 const cwd = process.argv[2] ?? "/private/tmp/test";
 const agentDir = process.argv[3] ?? join(homedir(), ".pi", "agent");

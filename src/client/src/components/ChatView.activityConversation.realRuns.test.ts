@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { subagentRunConversationView } from "../appState";
-import { branchMessages } from "../../../server/sessions/branchMessages";
-import { runTranscriptMessages } from "../../../server/sessions/subagentRunTranscript";
+import { branchMessages } from "../../../server/daemon/sessions/branchMessages";
+import { runTranscriptMessages } from "../../../server/daemon/sessions/subagentRunTranscript";
 
 /**
  * The reading path end to end, over transcripts copied from real runs.

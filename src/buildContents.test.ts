@@ -36,7 +36,7 @@ describe("production build contents", () => {
       .map((sourceFile) => normalizePath(relative(repoRoot, sourceFile.fileName)))
       .filter((path) => path.startsWith("src/"));
 
-    expect(projectSources).toContain("src/server/app.ts");
+    expect(projectSources).toContain("src/server/web/app.ts");
     expect(projectSources.filter(isTestSupportPath)).toEqual([]);
   });
 
