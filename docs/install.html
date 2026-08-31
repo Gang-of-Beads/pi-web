@@ -247,6 +247,18 @@ programs.pi-web = {
                 NetBird/Tailscale/WireGuard/LAN address, and make sure that network policy limits access. Avoid
                 <code>0.0.0.0</code> unless a firewall, VPN, or authenticated reverse proxy strictly controls the port.
               </div>
+              <h3>Install on iPhone or iPad</h3>
+              <p>
+                Open PI WEB in Safari, use <strong>Share → Add to Home Screen</strong>, then confirm <strong>Add</strong>.
+                The installed app opens in standalone mode with the PI WEB name, icon, dark status bar, and safe-area
+                layout. For remote access, use an HTTPS reverse proxy on a trusted VPN or private network; do not expose
+                PI WEB directly to the public internet just to install it.
+              </p>
+              <p>
+                The installed app remains a control surface for the server-hosted session runtime, so it requires a live
+                connection to that server. It deliberately does not cache the application for offline use, avoiding a
+                stale control surface that could imply an unavailable session is actionable.
+              </p>
             </section>
 
             <section id="reverse-proxy-prefix">
