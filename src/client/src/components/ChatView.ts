@@ -319,7 +319,11 @@ export const chatStyles = css`
   /* Its own row of the column, so the transcript above can grow all it likes
      without moving a control the reader is aiming at. Tall questions scroll
      inside the slot rather than pushing the composer off the screen. */
-  .waiting-slot { flex: 0 0 auto; max-height: 45vh; overflow: auto; overscroll-behavior: contain; margin: 0 var(--pi-chat-gutter) var(--pi-space-4); }
+  /* No scroll of its own: the card's detail caps and scrolls internally, so
+     the action row is always on screen. The slot used to scroll the whole
+     card inside 45vh and the confirm buttons landed below the fold of an
+     inner scroller a thumb could not drive. */
+  .waiting-slot { flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) var(--pi-space-4); }
   .activity-dock { flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) 10px; z-index: var(--pi-layer-sticky); display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: 0 8px 28px var(--pi-shadow); backdrop-filter: blur(6px); }
   /* Idle is the state nobody needs a full-width banner for: keep the signal,
      drop the bar that looked like an empty card above the composer.

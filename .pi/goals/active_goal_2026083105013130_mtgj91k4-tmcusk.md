@@ -5,95 +5,101 @@
   "status": "active",
   "autoContinue": true,
   "usage": {
-    "tokensUsed": 1955028,
-    "activeSeconds": 9071
+    "tokensUsed": 3042648,
+    "activeSeconds": 11305
   },
   "sisyphus": false,
   "createdAt": "2026-08-31T01:01:31.300Z",
-  "updatedAt": "2026-08-31T06:30:06.127Z",
+  "updatedAt": "2026-08-31T07:17:13.501Z",
   "activePath": ".pi/goals/active_goal_2026083105013130_mtgj91k4-tmcusk.md",
-  "revision": 319,
+  "revision": 369,
   "taskList": {
     "tasks": [
       {
         "id": "b0-queue-drain",
-        "title": "队列排空对账：已提交消息仍留队列条（红先，最高优先）",
-        "verificationContract": "8505 红复现（提交后队列条不消失）→ 真相源改为 daemon steer 队列 + 提交事件对账 → 同探针绿",
+        "title": "队列排空对账：已提交消息仍留队列条",
+        "verificationContract": "已完成：红→绿 11/11，commit 2bf42115",
         "status": "complete",
-        "completedAt": "2026-08-31T01:42:52.227Z",
-        "evidence": "红先：statusHydration 新测试（快照缺席抹掉选中会话状态）先红后绿；11/11 + 邻域 398/398 全绿；commit 2bf42115。队列滞留与统计条消失归因于此 + 旧 bundle 缺 heal 链；live 实证 daemon 侧 queuedMessages 已 [] 对账正确。"
+        "evidence": "红先：statusHydration 新测试（快照缺席抹掉选中会话状态）先红后绿；11/11 + 邻域 398/398 全绿；commit 2bf42115。队列滞留与统计条消失归因于此 + 旧 bundle 缺 heal 链；live 实证 daemon 侧 queuedMessages 已 [] 对账正确。",
+        "completedAt": "2026-08-31T01:42:52.227Z"
       },
       {
         "id": "b1-focus-leak",
-        "title": "goal 串项目：focus 注入按键控（红先）",
-        "verificationContract": "8505 红复现（resume 后跨项目面板泄漏）→ 修复 → 同探针绿 + 截图；fork 测试全绿并推送",
+        "title": "goal 串项目：union 收敛工作区根内",
+        "verificationContract": "已完成：红→绿 6/6，commit 7573ccc3",
         "status": "complete",
-        "completedAt": "2026-08-31T01:52:54.955Z",
-        "evidence": "红先：goalStore 新测试（外部 cwd 不 union）先红后绿；既有两测试钉错契约（任意根 union）重写为根内子目录；6/6 + 邻域 33/33；tsc 0；commit 7573ccc3。"
+        "evidence": "红先：goalStore 新测试（外部 cwd 不 union）先红后绿；既有两测试钉错契约（任意根 union）重写为根内子目录；6/6 + 邻域 33/33；tsc 0；commit 7573ccc3。",
+        "completedAt": "2026-08-31T01:52:54.955Z"
       },
       {
         "id": "b2-resume-drive",
-        "title": "resume 驱动恢复：清尾部 checkpoint 残骸（红先）",
-        "verificationContract": "先读 org_hub 会话通知抽屉的 guard-stop 实锤；红测试（resume 后驱动恢复）→ 修复 → 绿；npm test 全绿并推送 fork",
+        "title": "resume 驱动恢复：bump revision",
+        "verificationContract": "已完成：fork 938/938，e1fce0a 已推送",
         "status": "complete",
-        "completedAt": "2026-08-31T02:03:44.071Z",
-        "evidence": "红先：resumeRevision 单测（缺失导出）+ runtime 契约（bump 后 breaker 从零计数）红→绿；fork 全套 938/938；tsc 仅已知 2 baseline；commit e1fce0a 已推送。resume 现在挣新 revision，残骸留 branch 作历史。"
+        "evidence": "红先：resumeRevision 单测（缺失导出）+ runtime 契约（bump 后 breaker 从零计数）红→绿；fork 全套 938/938；tsc 仅已知 2 baseline；commit e1fce0a 已推送。resume 现在挣新 revision，残骸留 branch 作历史。",
+        "completedAt": "2026-08-31T02:03:44.071Z"
       },
       {
         "id": "b3-refresh-session-loss",
-        "title": "↻ 刷新丢会话 + PWA 缓存旧 bundle 诊断（红先）",
-        "verificationContract": "健康 daemon 复现（刷新丢会话）→ 修复；诊断 SW 更新流 → 修复或给出硬刷新指引",
+        "title": "↻ 刷新丢会话：boot restore 重试",
+        "verificationContract": "已完成：红→绿，组件套件 971/971",
         "status": "complete",
-        "completedAt": "2026-08-31T02:27:04.912Z",
-        "evidence": "红先：bootRestore 新测试（projects 拉取失败→静默放弃+URL 抹除）先红后绿；组件套件 124 文件 971/971 全绿；lint 0；commit 已提交。重试复用既有 defer 回路（re-list→re-restore→URL 恢复）。"
-      },
-      {
-        "id": "b4-draft-unreachable",
-        "title": "队列有内容时 Confirm Goal Draft 不可达（红先）",
-        "verificationContract": "8505 红复现（确认按钮滚不上屏）→ 修复 → 同探针绿",
-        "status": "pending"
+        "evidence": "红先：bootRestore 新测试（projects 拉取失败→静默放弃+URL 抹除）先红后绿；组件套件 124 文件 971/971 全绿；lint 0；commit 已提交。重试复用既有 defer 回路（re-list→re-restore→URL 恢复）。",
+        "completedAt": "2026-08-31T02:27:04.912Z"
       },
       {
         "id": "b6-unknown-status",
-        "title": "agent runs Unknown 状态：重启后陈旧 run 应分类而非 Unknown（红先）",
-        "verificationContract": "8505 红复现（陈旧 run 显示 Unknown）→ 按归属语义修复（stale=lost）→ 同探针绿 + 截图",
+        "title": "agent runs Unknown 状态分类",
+        "verificationContract": "已完成：红→绿 55/55",
         "status": "complete",
-        "completedAt": "2026-08-31T03:01:34.918Z",
-        "evidence": "红先：老 run 无写入+父不活跃 → lost 测试先红后绿；subagentRuns 55/55；既有 young+inactive=unknown 契约保留；tsc 0；changeset 已备；已提交。"
+        "evidence": "红先：老 run 无写入+父不活跃 → lost 测试先红后绿；subagentRuns 55/55；既有 young+inactive=unknown 契约保留；tsc 0；changeset 已备；已提交。",
+        "completedAt": "2026-08-31T03:01:34.918Z"
       },
       {
         "id": "b7-compaction",
-        "title": "/compact 假 done + compacting 指示消失 + 顺序可疑（红先）",
-        "verificationContract": "8505 红复现 → 诊断执行链与发布链 → 修复 → 同探针绿",
+        "title": "compacting 标签遮蔽（假 done/顺序不成立）",
+        "verificationContract": "已完成：纯分类器 4/4，48/48 邻域",
         "status": "complete",
-        "completedAt": "2026-08-31T03:11:06.132Z",
-        "evidence": "两项不成立并更正：compaction 实证已落转录（条目级 type:compaction，01:10:11，早前探针形状错误）；顺序正确（compaction 先于消息提交）。真缺陷=mutation 标签遮蔽 compacting：纯分类器 sessionActivityLabel 红先绿后 4/4，piSessionService 接线，48/48 邻域绿，lint 0，changeset"
+        "evidence": "两项不成立并更正：compaction 实证已落转录（条目级 type:compaction，01:10:11，早前探针形状错误）；顺序正确（compaction 先于消息提交）。真缺陷=mutation 标签遮蔽 compacting：纯分类器 sessionActivityLabel 红先绿后 4/4，piSessionService 接线，48/48 邻域绿，lint 0，changeset",
+        "completedAt": "2026-08-31T03:11:06.132Z"
       },
       {
         "id": "b8-receipt-dismiss",
-        "title": "回执常驻但可手动关（× 按钮）",
-        "verificationContract": "红先（回执无关闭钮）→ 加 × 关闭 → 绿 + 截图",
+        "title": "回执可手动关",
+        "verificationContract": "已完成：红→绿 9/9 + 40/40",
         "status": "complete",
-        "completedAt": "2026-08-31T02:55:06.811Z",
-        "evidence": "红先：dismissCommand 3 测试（settled 可删/pending 拒绝/他行不动）先红后绿 9/9；ChatView × 按钮仅 settled 行；controller+PiWebApp 接线；ChatView 套件 40/40；tsc 0；lint 0；changeset 已备；已提交。"
+        "evidence": "红先：dismissCommand 3 测试（settled 可删/pending 拒绝/他行不动）先红后绿 9/9；ChatView × 按钮仅 settled 行；controller+PiWebApp 接线；ChatView 套件 40/40；tsc 0；lint 0；changeset 已备；已提交。",
+        "completedAt": "2026-08-31T02:55:06.811Z"
       },
       {
         "id": "b9-remove-scale",
-        "title": "删除 Appearance 里的 scale 设置（不生效且误导，owner 裁决）",
-        "verificationContract": "红先（断言 scale 控件存在的测试翻转为不存在）→ 删控件 + 死代码路径 → 绿 + 设置页截图确认无 scale 项",
+        "title": "删 Appearance scale 设置",
+        "verificationContract": "已完成：守卫测试，78/78",
         "status": "complete",
-        "completedAt": "2026-08-31T02:43:19.825Z",
-        "evidence": "Owner 裁决执行：Appearance 面板 scale 块全删（控件+样式+props+PiWebApp 接线+uiScale.ts 机制+旧测试），红守卫测试断言控件不存在；settings 18 文件 78/78 绿；tsc 0；lint 0；changeset 已备；已提交。"
+        "evidence": "Owner 裁决执行：Appearance 面板 scale 块全删（控件+样式+props+PiWebApp 接线+uiScale.ts 机制+旧测试），红守卫测试断言控件不存在；settings 18 文件 78/78 绿；tsc 0；lint 0；changeset 已备；已提交。",
+        "completedAt": "2026-08-31T02:43:19.825Z"
+      },
+      {
+        "id": "b10-orphaned-tool-call",
+        "title": "孤儿 toolCall 渲染 interrupted 而非 PENDING",
+        "verificationContract": "已完成：视图层分类，969/969，tsc 0，lint 0，changeset 已备，已提交",
+        "status": "pending"
       },
       {
         "id": "b5-release",
-        "title": "发布：changeset + GitHub Release → Actions → npm → nix 装机",
-        "verificationContract": "门禁（verify+tsc 0 错）先行；发布链全绿；npm registry 确认；8504 重启后活体验证全部修复",
+        "title": "发布 .76（已发）+ b10 随 .77",
+        "verificationContract": ".76：npm 确认+Actions 绿+nix 装机+bundle 哈希匹配+daemon 已重启；剩余：b4 修复随 .77 发布",
+        "status": "pending"
+      },
+      {
+        "id": "b4-draft-unreachable",
+        "title": "队列有内容时 Confirm Goal Draft 不可达（最后一个未修）",
+        "verificationContract": "8505 活体几何复现（确认按钮滚不上屏）→ 修复 → 同探针绿 → 随 .77 发布",
         "status": "pending"
       }
     ],
     "blockCompletion": true,
-    "proposedAt": "2026-08-31T01:20:21.534Z"
+    "proposedAt": "2026-08-31T06:31:55.734Z"
   }
 }
 
@@ -106,19 +112,20 @@
 - Status: running
 - Auto-continue: on
 - Sisyphus mode: no
-- Time spent: 2h31m11s
-- Tokens used: 2M (1,955,028) tokens
+- Time spent: 3h08m25s
+- Tokens used: 3M (3,042,648) tokens
 ## Tasks
 
 <!-- blockCompletion: true -->
-- [x] b0-queue-drain: 队列排空对账：已提交消息仍留队列条（红先，最高优先） — evidence: 红先：statusHydration 新测试（快照缺席抹掉选中会话状态）先红后绿；11/11 + 邻域 398/398 全绿；commit 2bf42115。队列滞留与统计条消失归因于此 + 旧 bundle 缺 heal 链；live 实证 daemon 侧 queuedMessages 已 [] 对账正确。
-- [x] b1-focus-leak: goal 串项目：focus 注入按键控（红先） — evidence: 红先：goalStore 新测试（外部 cwd 不 union）先红后绿；既有两测试钉错契约（任意根 union）重写为根内子目录；6/6 + 邻域 33/33；tsc 0；commit 7573ccc3。
-- [x] b2-resume-drive: resume 驱动恢复：清尾部 checkpoint 残骸（红先） — evidence: 红先：resumeRevision 单测（缺失导出）+ runtime 契约（bump 后 breaker 从零计数）红→绿；fork 全套 938/938；tsc 仅已知 2 baseline；commit e1fce0a 已推送。resume 现在挣新 revision，残骸留 branch 作历史。
-- [x] b3-refresh-session-loss: ↻ 刷新丢会话 + PWA 缓存旧 bundle 诊断（红先） — evidence: 红先：bootRestore 新测试（projects 拉取失败→静默放弃+URL 抹除）先红后绿；组件套件 124 文件 971/971 全绿；lint 0；commit 已提交。重试复用既有 defer 回路（re-list→re-restore→URL 恢复）。
-- [ ] b4-draft-unreachable: 队列有内容时 Confirm Goal Draft 不可达（红先） — contract: 8505 红复现（确认按钮滚不上屏）→ 修复 → 同探针绿
-- [x] b6-unknown-status: agent runs Unknown 状态：重启后陈旧 run 应分类而非 Unknown（红先） — evidence: 红先：老 run 无写入+父不活跃 → lost 测试先红后绿；subagentRuns 55/55；既有 young+inactive=unknown 契约保留；tsc 0；changeset 已备；已提交。
-- [x] b7-compaction: /compact 假 done + compacting 指示消失 + 顺序可疑（红先） — evidence: 两项不成立并更正：compaction 实证已落转录（条目级 type:compaction，01:10:11，早前探针形状错误）；顺序正确（compaction 先于消息提交）。真缺陷=mutation 标签遮蔽 compacting：纯分类器 sessionActivityLabel 红先绿后 4/4，piSessionService 接线，48/48 邻域绿，lint 0，changeset
-- [x] b8-receipt-dismiss: 回执常驻但可手动关（× 按钮） — evidence: 红先：dismissCommand 3 测试（settled 可删/pending 拒绝/他行不动）先红后绿 9/9；ChatView × 按钮仅 settled 行；controller+PiWebApp 接线；ChatView 套件 40/40；tsc 0；lint 0；changeset 已备；已提交。
-- [x] b9-remove-scale: 删除 Appearance 里的 scale 设置（不生效且误导，owner 裁决） — evidence: Owner 裁决执行：Appearance 面板 scale 块全删（控件+样式+props+PiWebApp 接线+uiScale.ts 机制+旧测试），红守卫测试断言控件不存在；settings 18 文件 78/78 绿；tsc 0；lint 0；changeset 已备；已提交。
-- [ ] b5-release: 发布：changeset + GitHub Release → Actions → npm → nix 装机 — contract: 门禁（verify+tsc 0 错）先行；发布链全绿；npm registry 确认；8504 重启后活体验证全部修复
+- [x] b0-queue-drain: 队列排空对账：已提交消息仍留队列条 — evidence: 红先：statusHydration 新测试（快照缺席抹掉选中会话状态）先红后绿；11/11 + 邻域 398/398 全绿；commit 2bf42115。队列滞留与统计条消失归因于此 + 旧 bundle 缺 heal 链；live 实证 daemon 侧 queuedMessages 已 [] 对账正确。
+- [x] b1-focus-leak: goal 串项目：union 收敛工作区根内 — evidence: 红先：goalStore 新测试（外部 cwd 不 union）先红后绿；既有两测试钉错契约（任意根 union）重写为根内子目录；6/6 + 邻域 33/33；tsc 0；commit 7573ccc3。
+- [x] b2-resume-drive: resume 驱动恢复：bump revision — evidence: 红先：resumeRevision 单测（缺失导出）+ runtime 契约（bump 后 breaker 从零计数）红→绿；fork 全套 938/938；tsc 仅已知 2 baseline；commit e1fce0a 已推送。resume 现在挣新 revision，残骸留 branch 作历史。
+- [x] b3-refresh-session-loss: ↻ 刷新丢会话：boot restore 重试 — evidence: 红先：bootRestore 新测试（projects 拉取失败→静默放弃+URL 抹除）先红后绿；组件套件 124 文件 971/971 全绿；lint 0；commit 已提交。重试复用既有 defer 回路（re-list→re-restore→URL 恢复）。
+- [x] b6-unknown-status: agent runs Unknown 状态分类 — evidence: 红先：老 run 无写入+父不活跃 → lost 测试先红后绿；subagentRuns 55/55；既有 young+inactive=unknown 契约保留；tsc 0；changeset 已备；已提交。
+- [x] b7-compaction: compacting 标签遮蔽（假 done/顺序不成立） — evidence: 两项不成立并更正：compaction 实证已落转录（条目级 type:compaction，01:10:11，早前探针形状错误）；顺序正确（compaction 先于消息提交）。真缺陷=mutation 标签遮蔽 compacting：纯分类器 sessionActivityLabel 红先绿后 4/4，piSessionService 接线，48/48 邻域绿，lint 0，changeset
+- [x] b8-receipt-dismiss: 回执可手动关 — evidence: 红先：dismissCommand 3 测试（settled 可删/pending 拒绝/他行不动）先红后绿 9/9；ChatView × 按钮仅 settled 行；controller+PiWebApp 接线；ChatView 套件 40/40；tsc 0；lint 0；changeset 已备；已提交。
+- [x] b9-remove-scale: 删 Appearance scale 设置 — evidence: Owner 裁决执行：Appearance 面板 scale 块全删（控件+样式+props+PiWebApp 接线+uiScale.ts 机制+旧测试），红守卫测试断言控件不存在；settings 18 文件 78/78 绿；tsc 0；lint 0；changeset 已备；已提交。
+- [ ] b10-orphaned-tool-call: 孤儿 toolCall 渲染 interrupted 而非 PENDING — contract: 已完成：视图层分类，969/969，tsc 0，lint 0，changeset 已备，已提交
+- [ ] b5-release: 发布 .76（已发）+ b10 随 .77 — contract: .76：npm 确认+Actions 绿+nix 装机+bundle 哈希匹配+daemon 已重启；剩余：b4 修复随 .77 发布
+- [ ] b4-draft-unreachable: 队列有内容时 Confirm Goal Draft 不可达（最后一个未修） — contract: 8505 活体几何复现（确认按钮滚不上屏）→ 修复 → 同探针绿 → 随 .77 发布
 

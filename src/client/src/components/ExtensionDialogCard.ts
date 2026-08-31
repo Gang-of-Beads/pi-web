@@ -396,6 +396,13 @@ export class ExtensionDialogCard extends LitElement {
       line-height: 1.45;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
+      /* The one inner scroller of the card: long details (task lists, contracts)
+         cap here so the action row below stays on screen without scrolling the
+         whole card — nested scrollers in a 45vh slot put the confirm buttons
+         out of a thumb's reach. */
+      max-height: 40vh;
+      overflow-y: auto;
+      overscroll-behavior-y: contain;
     }
     .dialog-detail:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: -2px; }
     .dialog-options {
