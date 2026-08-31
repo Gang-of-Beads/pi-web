@@ -767,3 +767,29 @@ describe("a reply finalized after something landed behind it", () => {
     expect(final[0]?.parts.some((part) => part.type === "text" && part.text.includes("finished"))).toBe(true);
   });
 });
+
+describe("a reply finalized after its own tool runs", () => {
+  /**
+   * Caught live: the model streams its text, calls tools (the tool rows land
+   * behind the half-done text line), and the final message.end arrives after
+   * the tool rows. The finalizer's walk back to the half-done line only
+   * stepped over queued user messages, so the tool rows stopped it — the
+   * finalized copy appended behind the tools and the same text stood twice,
+   * separated by the tool rows. The tool rows belong to the same turn as the
+   * half-done line; the walk steps over them too.
+   */
+  it("replaces the half-done line across its own tool rows", () => {
+    let messages = applyTranscriptEvent([], { type: "assistant.delta", text: "这次失败比之前清楚了" }) ?? [];
+    messages = toolStarted(messages);
+    messages = applyTranscriptEvent(messages, { type: "tool.end", toolCallId: "t1", toolName: "bash", text: "ok", isError: false }) ?? messages;
+
+    const final = applyTranscriptEvent(messages, {
+      type: "message.end",
+      message: { role: "assistant", content: [{ type: "text", text: "这次失败比之前清楚了：483 个文件里 474 个通过" }] },
+    }) ?? messages;
+
+    expect(final.filter((line) => line.role === "assistant")).toHaveLength(1);
+    expect(final.filter((line) => line.role === "tool")).toHaveLength(1);
+    expect(final[0]?.parts.some((part) => part.type === "text" && part.text.includes("483"))).toBe(true);
+  });
+});
