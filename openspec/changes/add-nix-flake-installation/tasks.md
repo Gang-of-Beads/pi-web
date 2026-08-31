@@ -2,7 +2,7 @@
 
 - [x] 1.1 Add pinned flake inputs and system outputs for the declared Linux and Darwin architectures; verified `nix flake check --no-build` evaluates the local Darwin outputs and `nix flake show --all-systems` evaluates every declared output.
 - [x] 1.2 Package the existing PI WEB build with the committed npm lockfile and explicit native build prerequisites; verified `nix build .#pi-web --out-link result` and the three CLI wrappers plus built client/plugin artifacts. Added missing integrity metadata for six lockfile entries, required by Nix's npm fetcher.
-- [ ] 1.3 Add `nix develop` with the declared Node/npm and native build toolchain; verify a clean checkout can run the existing typecheck and production build from the shell.
+- [x] 1.3 Add `nix develop` with the declared Node/npm and native build toolchain; verified `nix develop -c sh -c 'node --version && npm --version && npm run typecheck && npm run build'` on Apple Silicon Darwin.
 
 ## 2. Declarative user-service integration
 
