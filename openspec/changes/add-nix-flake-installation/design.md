@@ -23,7 +23,7 @@ Nix's package output is immutable, while PI WEB's data directory, credentials, p
 
 ### 1. Provide a flake package, development shell, and Home Manager module
 
-The flake will export `packages.<system>.pi-web` (and `default`), `devShells.<system>.default`, and `homeManagerModules.default`. The system matrix is `x86_64-linux`, `aarch64-linux`, `x86_64-darwin`, and `aarch64-darwin`.
+The flake will export `packages.<system>.pi-web` (and `default`), `devShells.<system>.default`, and `homeManagerModules.default`. The system matrix is `x86_64-linux`, `aarch64-linux`, and `aarch64-darwin`; Intel macOS is deliberately unsupported because the current Nixpkgs baseline no longer evaluates it.
 
 A Home Manager module is the primary configuration surface because PI WEB has per-user agent credentials, config, plugin locations, state, and user services. Home Manager is usable from both NixOS and nix-darwin, avoiding two independently designed option schemas. A future NixOS module can wrap or compose this user-level module once there is a defined multi-user/server ownership model.
 

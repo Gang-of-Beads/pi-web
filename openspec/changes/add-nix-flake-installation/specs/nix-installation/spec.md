@@ -5,7 +5,7 @@ Provide reproducible PI WEB installation and per-user service configuration thro
 ## ADDED Requirements
 
 ### Requirement: The flake exposes a reproducible PI WEB package
-The project SHALL expose a PI WEB package from its flake for `x86_64-linux`, `aarch64-linux`, `x86_64-darwin`, and `aarch64-darwin`. The package SHALL provide the existing PI WEB command-line entry points and SHALL build the web client, server entry points, bundled plugins, and required native Node dependencies without relying on a pre-existing global npm installation or mutable `node_modules` directory.
+The project SHALL expose a PI WEB package from its flake for `x86_64-linux`, `aarch64-linux`, and `aarch64-darwin`. The package SHALL provide the existing PI WEB command-line entry points and SHALL build the web client, server entry points, bundled plugins, and required native Node dependencies without relying on a pre-existing global npm installation or mutable `node_modules` directory.
 
 #### Scenario: Install the package on a supported system
 - **WHEN** a user evaluates the flake package for one of the supported systems

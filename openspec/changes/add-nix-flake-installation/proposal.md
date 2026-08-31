@@ -6,7 +6,7 @@ The installation invariant is that packaging must not collapse the two runtime o
 
 ## What Changes
 
-- Add a top-level Nix flake that builds PI WEB as a reproducible package and provides a development shell on supported Linux and Darwin systems.
+- Add a top-level Nix flake that builds PI WEB as a reproducible package and provides a development shell on supported Linux systems and Apple Silicon Darwin.
 - Add a Home Manager module usable from both NixOS and nix-darwin that declares PI WEB's two independently managed user services.
 - Expose declarative options for package selection, enablement, state directory, configuration-file location, HTTP listen settings/environment, and optional declaratively managed JSON settings.
 - Document NixOS and nix-darwin flake inputs, package installation, Home Manager integration, service lifecycle, state ownership, and the distinction between declarative configuration and the writable web configuration API.
