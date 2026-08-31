@@ -1,5 +1,14 @@
 # @vincenthanxiaodu/pi-web
 
+## 1.202608.78
+
+### Patch Changes
+
+- 0e1f150: Improve iPhone and iPad Safari home-screen installation with standalone app metadata, icon sizing, and installation guidance.
+- f05f006: Add reproducible Nix flake packages and Home Manager service configuration for NixOS and Apple Silicon nix-darwin.
+- f816309: Update the pi SDK to 0.84.4 (both packages together, which is what makes the earlier attempt's type conflicts disappear).
+- 92cb024: Reorganize `src/server` by process ownership: modules loaded only by the web/API process now live under `src/server/web/`, session-daemon-only modules under `src/server/daemon/`, and modules shared by both processes under `src/server/shared/`. The former `src/sessiond/` daemon client moved to `src/server/shared/sessiondClient/`, and the mixed `src/server/sessiond/` directory was dissolved into its web and daemon sides. Entry points (`src/server/index.ts`, `src/server/sessiond.ts`) and published bin paths are unchanged; no runtime behavior changes.
+
 ## 1.202608.77
 
 ### Patch Changes
