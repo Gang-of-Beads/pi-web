@@ -1,12 +1,20 @@
-name: Publish npm package
+# Tag-driven release: pushing a v* tag is the whole ritual. One workflow does
+# all of it on purpose, in order: verify, build, smoke-test, attach an
+# installable tarball to a GitHub Release, publish the SAME tarball to npm,
+# and deploy stable docs when this repository owns the credentials.
+#
+# Merging to main never releases anything; ci.yml gates every branch instead.
+# The npm trusted-publisher relationship is bound to this workflow's path
+# (.github/workflows/publish.yml), so keep the filename stable across edits.
+name: Release (tag push)
 
 on:
-  release:
-    types: [published]
+  push:
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 # Trusted publishing (OIDC): npm accepts publishes from this workflow via the
@@ -15,8 +23,8 @@ permissions:
 # for a short-lived publish credential and provenance is attached automatically.
 
 jobs:
-  publish:
-    name: Publish to npm
+  release:
+    name: GitHub Release + npm publish
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -32,6 +40,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The gates that decide whether this build is fit to hand to anyone. A
+      # release that fails them is worse than no release, because it looks
+      # official.
       - name: Verify
         run: npm run verify
 
@@ -41,25 +52,65 @@ jobs:
       - name: Smoke test npm 12 global package install
         run: npm run smoke:package-install
 
-      # With trusted publishing the OIDC token is detected automatically;
-      # provenance is generated automatically for public repos/packages.
-      - name: Publish
-        run: npm publish --access public --provenance
+      # Release steps only make sense on a tag ref. workflow_dispatch exists to
+      # re-run a botched tag release; dispatching on a branch still runs the
+      # checks above and stops here.
+      - name: Pack
+        id: pack
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          # `npm pack` runs prepack, which builds; packing rather than zipping
+          # dist keeps the artefact identical in shape to the published package.
+          #
+          # The filename comes from the pack directory, not from stdout.
+          # --silent suppresses npm's own output but not the lifecycle script's,
+          # so a build log on stdout would land in GITHUB_OUTPUT and fail the
+          # step with "Invalid format". Globbing a directory that holds exactly
+          # one tarball cannot be polluted by anything a build decides to print.
+          rm -rf pack-out && mkdir pack-out
+          echo "tarball=$(npm pack --silent --pack-destination pack-out)" >> "$GITHUB_OUTPUT"
+
+      - name: Attach tarball to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: pack-out/*.tgz
+          generate_release_notes: true
+          body: |
+            Install this build without cloning or building:
+
+            ```
+            npm i -g https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${{ steps.pack.outputs.tarball }}
+            ```
+
+            Then run `pi-web` as usual. The tarball is the exact artefact published to npm for this tag, `dist` included.
+
+      # Publish the exact tarball attached to the GitHub Release, so the
+      # registry artifact and the release artifact cannot drift. Skipped when
+      # the version is already on npm, which makes reruns of a partially
+      # released tag idempotent instead of a guaranteed red step.
+      - name: Publish to npm
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          pkg="$(node -p "require('./package.json').name")"
+          ver="$(node -p "require('./package.json').version")"
+          if npm view "$pkg@$ver" version >/dev/null 2>&1; then
+            echo "$pkg@$ver is already on npm; skipping publish (rerun of a released tag)"
+          else
+            npm publish "pack-out/${{ steps.pack.outputs.tarball }}" --access public --provenance
+          fi
 
   deploy-docs:
     name: Deploy stable docs to pi-web.dev
-    # Stable docs only move on GitHub Releases; the dev variant at pi-web.dev/dev/
-    # deploys from main via docs-dev.yml. Skipped on manual workflow_dispatch runs.
-    # The fork does not own pi-web.dev credentials, so this job is skipped here
-    # rather than left to fail: every release since 1.202608.4 reported a red
-    # workflow whose only failure was a docs site this repository does not
-    # publish, which trains everyone to ignore release failures. Upstream keeps
-    # the job because upstream has the token.
-    if: github.event_name == 'release' && vars.CLOUDFLARE_ACCOUNT_ID != ''
-    needs: publish
+    # Stable docs only move on real tag releases; skipped on manual
+    # workflow_dispatch runs and in repositories without the credentials. A red
+    # docs job whose only failure is a site this repository does not publish
+    # trains everyone to ignore release failures.
+    if: github.event_name == 'push' && vars.CLOUDFLARE_ACCOUNT_ID != ''
+    needs: release
     runs-on: ubuntu-latest
     steps:
-      # Release events check out the published tag, so docs match the npm release.
+      # Tag push events check out the published tag, so docs match the npm release.
       - name: Checkout
         uses: actions/checkout@v5
 

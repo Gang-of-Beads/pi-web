@@ -5,7 +5,7 @@ description: Use this skill whenever the user asks for a new npm version, npm re
 
 # Publish npm packages via GitHub Actions
 
-The user explicitly does **not** want local npm publishing. For release requests, route publishing through the repository's GitHub Actions workflow, usually triggered by a published GitHub Release.
+The user explicitly does **not** want local npm publishing. For release requests, route publishing through the repository's GitHub Actions workflow, triggered by pushing a `v*` git tag. Pushing the tag builds, creates the GitHub Release, publishes to npm, and deploys stable docs in one workflow.
 
 This project also uses Changesets for changelog generation. Release prep should consume `.changeset/*.md` fragments into `CHANGELOG.md` before the GitHub Release is created.
 
@@ -38,12 +38,12 @@ Before acting, read:
 3. `.changeset/config.json` and pending `.changeset/*.md` files, if present.
 4. `.github/workflows/publish.yml` or similarly named release workflow.
 
-Confirm the workflow publishes on GitHub, preferably from one of these triggers:
+Confirm the workflow publishes on GitHub, preferably from this trigger:
 
 ```yaml
 on:
-  release:
-    types: [published]
+  push:
+    tags: ["v*"]
   workflow_dispatch:
 ```
 
@@ -131,19 +131,17 @@ If there is no GitHub Actions publish workflow, stop and explain that one must b
      ```
    - If there are other intentional changes required for the release, include them deliberately and mention them.
 
-7. **Create a GitHub Release to trigger publishing**
-   - Prefer release notes from the generated changelog instead of generic generated notes.
-   - Extract the new version's section from `CHANGELOG.md` into a temporary notes file if useful.
-   - Use the pushed commit on `main` as the target:
+7. **Tag the release commit to trigger publishing**
+   - Push the release commit to `main` first (step 6), then tag it:
+
      ```bash
-     gh release create v<new-version> \
-       --target main \
-       --title "v<new-version>" \
-       --notes-file /tmp/pi-web-release-notes-v<new-version>.md
+     git tag v<new-version>
+     git push origin v<new-version>
      ```
-   - If a clean notes file is not practical, `--generate-notes` is acceptable, but prefer the Changesets-generated text because it is curated.
-   - Creating a non-draft published release triggers `on: release: types: [published]`.
-   - If the user specifically wants to review notes first, create a draft release, then publish it through GitHub when approved. Remember: draft creation will not trigger publishing until it is published.
+
+   - The tag push triggers `.github/workflows/publish.yml`, which verifies, builds, smoke-tests, creates the GitHub Release on that tag with an installable tarball attached, and publishes the same tarball to npm.
+   - The curated release notes live in the `CHANGELOG.md` section committed in step 6; the GitHub Release itself uses generated notes. If the user wants curated GitHub Release notes, edit the release afterwards with `gh release edit v<new-version> --notes-file <file>`; editing notes never re-triggers publishing.
+   - Do not create the GitHub Release by hand with `gh release create`: it also creates the tag and triggers the same workflow, but the tag-first ritual keeps tagging an explicit, reviewable step.
 
 8. **Monitor GitHub Actions**
    - Find the publish run:
@@ -171,11 +169,7 @@ If there is no GitHub Actions publish workflow, stop and explain that one must b
 ## Reruns and special cases
 
 - If a GitHub Actions publish run failed due to a transient infrastructure issue, prefer `gh run rerun <run-id> --failed` or rerun the workflow in GitHub.
-- If using `workflow_dispatch`, pass the intended ref/tag explicitly where possible:
-  ```bash
-  gh workflow run publish.yml --ref v<version>
-  ```
-  Use this mainly for reruns or repositories designed around manual dispatch. For normal releases, prefer a published GitHub Release.
+- If using `workflow_dispatch`, pass the intended tag explicitly: `gh workflow run publish.yml --ref v<version>`. Dispatch reruns are idempotent: the npm publish step skips versions already on npm, and the release step updates the existing release. This is the recovery path for a tag that released partially (GitHub Release created but npm publish failed, or the reverse). For normal releases, prefer pushing the tag.
 - If the npm version already exists, npm will reject publishing. Bump to a new version and create a new release; do not try to overwrite an existing npm version.
 - If a GitHub Release/tag was created incorrectly, fix it on GitHub with care and tell the user exactly what changed.
 - Never use local `npm publish` as a workaround for a GitHub Actions or npm provenance issue.

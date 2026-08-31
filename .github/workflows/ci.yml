@@ -1,8 +1,11 @@
 name: CI
 
+# Every branch push is gated, not just main: a merge should never be the
+# first place a red verify surfaces. Branches filter excludes tags, so tag
+# pushes are covered solely by the release workflow (publish.yml).
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
   workflow_dispatch:
 
