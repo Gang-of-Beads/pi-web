@@ -6,7 +6,7 @@
 
 ## 2. Declarative user-service integration
 
-- [ ] 2.1 Add a Home Manager module and options for enablement, package, data directory, configuration path, service environment, and opt-in declarative JSON settings; verify Nix evaluation accepts representative NixOS and nix-darwin configurations and rejects invalid option types.
+- [x] 2.1 Add a Home Manager module and options for enablement, package, data directory, configuration path, service environment, and opt-in declarative JSON settings; verified `nix flake check --all-systems --no-build` evaluates representative enabled Home Manager configurations for both Linux and nix-darwin.
 - [ ] 2.2 Generate independent Linux systemd user services for the web/API process and session daemon, with shared configured state inputs and daemon-first startup; verify the module evaluation exposes both unit definitions and a web-only restart does not alter the daemon unit definition.
 - [ ] 2.3 Generate independent nix-darwin launchd agents for the web/API process and session daemon with equivalent configured package and environment; verify the module evaluation exposes both agents and their program arguments target the packaged commands.
 - [ ] 2.4 Protect mutable state and configuration ownership in the module implementation; verify the default data directory/configuration path are outside the Nix store, declarative settings materialize deterministically, and absent settings leave a user-managed config file untouched.

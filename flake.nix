@@ -26,9 +26,26 @@
         };
       });
 
-      checks = forAllSystems (pkgs: {
-        pi-web = self.packages.${pkgs.stdenv.hostPlatform.system}.pi-web;
-      });
+      checks = forAllSystems (pkgs:
+        let
+          home = home-manager.lib.homeManagerConfiguration {
+            inherit pkgs;
+            modules = [
+              self.homeManagerModules.default
+              {
+                home = {
+                  username = "pi-web-test";
+                  homeDirectory = "/tmp/pi-web-test";
+                  stateVersion = "25.05";
+                };
+                programs.pi-web.enable = true;
+              }
+            ];
+          };
+        in {
+          pi-web = self.packages.${pkgs.stdenv.hostPlatform.system}.pi-web;
+          home-manager-module = home.activationPackage;
+        });
 
       homeManagerModules.default = import ./nix/home-manager.nix;
     };
