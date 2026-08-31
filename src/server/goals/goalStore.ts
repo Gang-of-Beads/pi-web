@@ -1,5 +1,5 @@
 import { readFile, readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 import type { GoalRecordSummary, WorkspaceGoalsResponse } from "../../shared/apiTypes.js";
 import { parseGoalFile, sortGoalSummaries } from "./goalFile.js";
 
@@ -42,7 +42,15 @@ export async function readWorkspaceGoals(workspacePath: string, options: { sessi
   });
 
   const sessionCwd = options.sessionCwd;
-  const sessionRoot = sessionCwd !== undefined && sessionCwd !== "" && sessionCwd !== workspacePath ? sessionCwd : undefined;
+  const candidate = sessionCwd !== undefined && sessionCwd !== "" && sessionCwd !== workspacePath ? sessionCwd : undefined;
+  // A session cwd contributes goals only when it answers for this workspace:
+  // a cwd inside the root (a session working in a subdirectory). The selected
+  // session is global state that can lag the workspace selection, so an
+  // outside cwd here means another project's session — unioning its goal
+  // directory presented another project's goal on this panel with live
+  // controls.
+  const contained = candidate !== undefined && isInsideRoot(workspacePath, candidate);
+  const sessionRoot = contained ? candidate : undefined;
   const workspaceGoals = await readGoalsFromRoot(workspacePath);
   if (sessionRoot === undefined) return response(workspaceGoals);
 
@@ -95,4 +103,10 @@ async function readGoalsFromRoot(root: string): Promise<GoalRecordSummary[]> {
     if (existing === undefined || (goal.updatedAt ?? "") > (existing.updatedAt ?? "")) byId.set(goal.id, goal);
   }
   return [...byId.values()];
+}
+
+/** True when candidate is workspacePath itself or a path beneath it. */
+function isInsideRoot(workspacePath: string, candidate: string): boolean {
+  const rel = relative(workspacePath, candidate);
+  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
 }

@@ -61,9 +61,28 @@ describe("readWorkspaceGoals across roots", () => {
   // The extension records under the focused session's cwd; this reader used to
   // cover only the workspace root, so a goal written beside a session whose cwd
   // diverged was invisible and the panel claimed none existed.
+  // Caught live: the selected session is global state that can lag the
+  // workspace selection, so a goals read for the pi-web workspace went out
+  // carrying the org-hub session's cwd — and the union presented another
+  // project's goal on this panel with live Pause/Abandon controls. A cwd
+  // outside the workspace root does not answer for this workspace and must
+  // not contribute goals; divergence that matters is a cwd INSIDE the root
+  // (a session working in a subdirectory).
+  it("ignores a session cwd outside the workspace root", async () => {
+    const workspace = await scratch();
+    const outside = await scratch();
+    await writeGoal(outside, "foreign-goal");
+
+    const response = await readWorkspaceGoals(workspace, { sessionCwd: outside });
+
+    expect(response.goals).toEqual([]);
+    expect(response.directory).toBe(join(workspace, ".pi", "goals"));
+  });
+
   it("reads a goal that lives only under the focused session's cwd", async () => {
     const workspace = await scratch();
-    const sessionCwd = await scratch();
+    const sessionCwd = join(workspace, "sub", "deep");
+    await mkdir(sessionCwd, { recursive: true });
     await writeGoal(sessionCwd, "session-goal");
 
     const response = await readWorkspaceGoals(workspace, { sessionCwd });
@@ -77,7 +96,8 @@ describe("readWorkspaceGoals across roots", () => {
 
   it("lists a goal present in both roots once, from the workspace root", async () => {
     const workspace = await scratch();
-    const sessionCwd = await scratch();
+    const sessionCwd = join(workspace, "sub");
+    await mkdir(sessionCwd, { recursive: true });
     await writeGoal(workspace, "shared", { objective: "the workspace copy" });
     await writeGoal(sessionCwd, "shared", { objective: "the session copy" });
 
