@@ -18,8 +18,8 @@ import {
   type PiWebVersionReportOptions,
   type RunningComponentId,
 } from "./piWebVersionReport.js";
-import { checkNodePtyDarwinSpawnHelper, formatNodePtyDarwinSpawnHelperCheck } from "./server/diagnostics/nodePtySpawnHelper.js";
-import { checkNodePtyNativeModule, formatNodePtyNativeModuleCheck } from "./server/diagnostics/nodePtyNativeModule.js";
+import { checkNodePtyDarwinSpawnHelper, formatNodePtyDarwinSpawnHelperCheck } from "./server/shared/diagnostics/nodePtySpawnHelper.js";
+import { checkNodePtyNativeModule, formatNodePtyNativeModuleCheck } from "./server/shared/diagnostics/nodePtyNativeModule.js";
 import { deploymentServiceEnvironment } from "./nativeServices/serviceEnvironment.js";
 import {
   installNativeServiceCandidate,

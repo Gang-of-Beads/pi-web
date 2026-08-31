@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { effectivePiWebConfig } from "./config.js";
-import { SessionDaemonClient } from "./sessiond/sessionDaemonClient.js";
+import { SessionDaemonClient } from "./server/shared/sessiondClient/sessionDaemonClient.js";
 import type { PiWebComponentStatus, PiWebInstallationInfo, PiWebVersionResponse } from "./shared/apiTypes.js";
 import { parsePiWebComponentStatus, parsePiWebVersionResponse } from "./shared/piWebStatusParsing.js";
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { effectivePiWebConfig, maxUploadBytes } from "../config.js";
-import { buildApp } from "./app.js";
+import { buildApp } from "./web/app.js";
 
 const { config } = effectivePiWebConfig();
 const app = await buildApp({ bodyLimit: maxUploadBytes(process.env, config) });

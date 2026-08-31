@@ -41,7 +41,7 @@ const RELATED_SOURCE_DIRECTORIES = [
 const DOCKER_TESTS = [
   "src/docker/piWebDockerDocs.test.ts",
   "src/docker/piWebDockerEntrypoint.test.ts",
-  "src/server/dockerControlAssets.test.ts",
+  "src/docker/dockerControlAssets.test.ts",
 ];
 
 const DOCKER_DOCS_TEST = "src/docker/piWebDockerDocs.test.ts";

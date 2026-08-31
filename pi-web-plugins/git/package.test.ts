@@ -2,9 +2,9 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PiWebPluginCatalog } from "../../src/server/piWebPluginCatalog.js";
-import { createServerPluginRuntime } from "../../src/server/plugins/serverPluginRuntime.js";
-import { WorkspaceProviderRegistry } from "../../src/server/workspaces/workspaceProviderRegistry.js";
+import { PiWebPluginCatalog } from "../../src/server/shared/piWebPluginCatalog.js";
+import { createServerPluginRuntime } from "../../src/server/shared/plugins/serverPluginRuntime.js";
+import { WorkspaceProviderRegistry } from "../../src/server/daemon/workspaces/workspaceProviderRegistry.js";
 
 const tempRoots: string[] = [];
 

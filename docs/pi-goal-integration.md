@@ -50,7 +50,7 @@ pi-web therefore reads files, and asks the agent to make changes.
 
 | Action | Mechanism | Notes |
 |---|---|---|
-| List and show goals | Read `<workspace>/.pi/goals/active_goal_*.md` | Already implemented in `src/server/goals/`. Never read the pool snapshot. |
+| List and show goals | Read `<workspace>/.pi/goals/active_goal_*.md` | Already implemented in `src/server/web/goals/`. Never read the pool snapshot. |
 | Show recently archived | Read `<workspace>/.pi/goals/archived/*.md` | Optional; keeps a cleared goal recoverable in the UI. |
 | Live updates | Poll the goals directory mtime | Every turn boundary rewrites the focused record, so expect churn. |
 | Pause / resume | Send `/goal-pause` / `/goal-resume` into a session for that workspace | Headless-safe when a goal is focused; keeps ledger and accounting correct. |
@@ -63,7 +63,7 @@ pi-web therefore reads files, and asks the agent to make changes.
 
 The container has no `pi-goal-x` installed, so `/goal-clear` cannot be driven
 there at all, and a web session has no confirmable UI even where it is. pi-web
-therefore implements the fallback protocol in `src/server/goals/goalArchive.ts`,
+therefore implements the fallback protocol in `src/server/web/goals/goalArchive.ts`,
 exposed as `POST .../workspaces/:workspaceId/goals/:goalId/archive`, and the
 panel offers it behind a two-press confirm. The response carries
 `agentMayRecreate`, and the UI repeats it: a session already working the goal
@@ -72,7 +72,7 @@ keeps its own copy until it reloads.
 ### Empirical check before implementing archive
 
 pi-web's own project-trust context sets `hasUI: false`
-(`src/server/sessions/piSessionService.ts:840-850`), but the *command* context a
+(`src/server/daemon/sessions/piSessionService.ts:840-850`), but the *command* context a
 session hands to an extension is built by the pi agent, not by pi-web. Run
 `/goal-clear` in a pi-web session against a workspace that has an open goal:
 

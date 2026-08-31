@@ -2,7 +2,7 @@
 /**
  * Seed the 8505 test stack with subagent-run attribution fixtures.
  *
- * Recorded-fact attribution (src/server/sessions/subagentRuns.ts) says a run
+ * Recorded-fact attribution (src/server/daemon/sessions/subagentRuns.ts) says a run
  * belongs to a session only when one of two records says so: a run directory
  * under <sessionDir>/<parentSessionFile>/, or a `subagent` tool record in the
  * parent's own transcript. The shared `subagent-artifacts` directory records no

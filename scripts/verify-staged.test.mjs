@@ -62,9 +62,9 @@ describe("staged validation planning", () => {
       files: [
         "pi-web-plugins/pluginPublicApi.test.ts",
         "pi-web-plugins/updates/updatesLogic.ts",
+        "src/docker/dockerControlAssets.test.ts",
         "src/docker/piWebDockerDocs.test.ts",
         "src/docker/piWebDockerEntrypoint.test.ts",
-        "src/server/dockerControlAssets.test.ts",
       ],
     });
   });

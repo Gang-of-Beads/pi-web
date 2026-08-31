@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import type { ServerPluginActivationContext, ServerPluginExecFileResult } from "@vincenthanxiaodu/pi-web/server-plugin-api";
-import { createServerPluginExecFile } from "../../src/server/plugins/serverPluginExec.js";
+import { createServerPluginExecFile } from "../../src/server/shared/plugins/serverPluginExec.js";
 import { gitDiff as requestGitDiff, gitStatus as requestGitStatus } from "./git-backend.js";
 
 // Isolate from any global/system git config and force a deterministic identity;

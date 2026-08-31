@@ -11,6 +11,16 @@ If you make changes that affect `src/server/sessiond.ts`, session runtime owners
 
 Changes to the web/API/UI side generally only require the `pi-web-ui-dev.service` autoreload/restart path.
 
+## Server layout: process ownership
+
+`src/server/` is organized by which process loads a module. `src/server/index.ts` and `src/server/sessiond.ts` are the two entry points and stay at the root; everything else lives under exactly one of:
+
+- `src/server/web/` — loaded only by the web/API process (routes, proxies, machines/fleet, static serving).
+- `src/server/daemon/` — loaded only by the session daemon (sessions, terminals, realtime hub, status, workspace providers).
+- `src/server/shared/` — loaded by both processes (project store, plugin catalog/runtime, the sessiond client under `shared/sessiondClient/`).
+
+Keep new modules in the directory matching the process that imports them. A `web/` module must never import from `daemon/` (or vice versa) — if both sides need it, it belongs in `shared/`. This is what makes the two-process split legible from the tree; don't reintroduce process-ambiguous modules at the root.
+
 ## Documentation boundaries
 
 `README.md` is a concise landing page and quick start. Keep it focused on what PI WEB is, basic requirements, the shortest supported install path, essential commands, the core model, and links to detailed documentation.

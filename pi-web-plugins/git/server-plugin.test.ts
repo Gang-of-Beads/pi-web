@@ -10,9 +10,9 @@ import type {
   WorkspaceProvider,
 } from "@vincenthanxiaodu/pi-web/server-plugin-api";
 import type { Project } from "../../src/shared/apiTypes.js";
-import { createServerPluginExecFile } from "../../src/server/plugins/serverPluginExec.js";
-import type { ServerPluginProviderContribution } from "../../src/server/plugins/serverPluginRuntime.js";
-import { WorkspaceProviderRegistry } from "../../src/server/workspaces/workspaceProviderRegistry.js";
+import { createServerPluginExecFile } from "../../src/server/shared/plugins/serverPluginExec.js";
+import type { ServerPluginProviderContribution } from "../../src/server/shared/plugins/serverPluginRuntime.js";
+import { WorkspaceProviderRegistry } from "../../src/server/daemon/workspaces/workspaceProviderRegistry.js";
 import {
   GIT_DIFF_OPERATION,
   GIT_STATUS_OPERATION,
