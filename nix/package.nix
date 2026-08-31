@@ -2,11 +2,11 @@
 
 buildNpmPackage rec {
   pname = "pi-web";
-  version = "1.202608.77";
+  version = "1.202608.78";
   src = lib.cleanSource ../.;
 
   npmDepsFetcherVersion = 2;
-  npmDepsHash = "sha256-MCvsqPOjj/vIm4YPdBBchp5fVYb19Y4Tc+K72yQQdoA=";
+  npmDepsHash = "sha256-/3/x2Bh6E26zpPBQNG5h3U4GyVBXIeiRivmqXwwYlM0=";
 
   nativeBuildInputs = [ makeWrapper python3 pkg-config ]
     ++ lib.optionals stdenv.isLinux [ stdenv.cc ];
