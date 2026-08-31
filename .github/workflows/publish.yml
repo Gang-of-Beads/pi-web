@@ -99,7 +99,7 @@ jobs:
           if npm view "$pkg@$ver" version >/dev/null 2>&1; then
             echo "$pkg@$ver is already on npm; skipping publish (rerun of a released tag)"
           else
-            npm publish "pack-out/${{ steps.pack.outputs.tarball }}" --access public --provenance
+            npm publish "./pack-out/${{ steps.pack.outputs.tarball }}" --access public --provenance
           fi
 
   deploy-docs:
