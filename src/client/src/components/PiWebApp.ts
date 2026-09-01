@@ -32,7 +32,7 @@ import { SessionStorageWorkspaceSelectionMemory } from "../controllers/workspace
 import { KeyboardShortcutDispatcher } from "../keyboardShortcuts";
 import { selectedMachineId } from "../controllers/types";
 import type { RecoveredPrompt } from "../resendMessage";
-import { keyboardInset } from "../appShell/keyboardInset";
+import { keyboardInset, visualViewportOffsetTop } from "../appShell/keyboardInset";
 import { machineSessionKey } from "../machineKeys";
 import { commandsForSession } from "../commandLedger";
 import { composedPathOf, composerCollapsedForFocus, composerCollapseTransition, shouldReleaseComposerCollapse } from "../composerCollapse";
@@ -118,7 +118,7 @@ export const appStyles = css`
   .attachment-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
   @media (hover: hover) { .attachment-zoom-close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
   /* 100dvh is an assumption about what the browser subtracts; --pi-app-visible-height is a measurement. */
-  :host { --pi-app-safe-area-bottom: 0px; --pi-app-keyboard-inset: 0px; position: fixed; top: 0; right: 0; left: 0; display: block; height: var(--pi-app-visible-height, calc(100dvh - var(--pi-app-keyboard-inset))); box-sizing: border-box; overflow: hidden; padding: env(safe-area-inset-top) env(safe-area-inset-right) var(--pi-app-safe-area-bottom) env(safe-area-inset-left); color: var(--pi-text); background: var(--pi-bg); font: var(--pi-text-base) var(--pi-font-ui); }
+  :host { --pi-app-safe-area-bottom: 0px; --pi-app-keyboard-inset: 0px; --pi-app-viewport-offset-top: 0px; position: fixed; top: var(--pi-app-viewport-offset-top); right: 0; left: 0; display: block; height: var(--pi-app-visible-height, calc(100dvh - var(--pi-app-keyboard-inset))); box-sizing: border-box; overflow: hidden; padding: env(safe-area-inset-top) env(safe-area-inset-right) var(--pi-app-safe-area-bottom) env(safe-area-inset-left); color: var(--pi-text); background: var(--pi-bg); font: var(--pi-text-base) var(--pi-font-ui); }
   :host([pwa-display-mode]) { --pi-app-safe-area-bottom: env(safe-area-inset-bottom); }
   @media (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
     :host { --pi-app-safe-area-bottom: env(safe-area-inset-bottom); }
@@ -868,9 +868,11 @@ export class PiWebApp extends LitElement {
    * included, sits underneath it.
    */
   private readonly onVisualViewportChange = (): void => {
-    const inset = keyboardInset(window.innerHeight, window.visualViewport ?? undefined);
+    const viewport = window.visualViewport ?? undefined;
+    const inset = keyboardInset(window.innerHeight, viewport);
     this.style.setProperty("--pi-app-keyboard-inset", `${String(Math.round(inset))}px`);
-    const visible = window.visualViewport?.height;
+    this.style.setProperty("--pi-app-viewport-offset-top", `${String(Math.round(visualViewportOffsetTop(viewport)))}px`);
+    const visible = viewport?.height;
     if (visible === undefined || !Number.isFinite(visible) || visible <= 0) this.style.removeProperty("--pi-app-visible-height");
     else this.style.setProperty("--pi-app-visible-height", `${String(Math.round(visible))}px`);
   };

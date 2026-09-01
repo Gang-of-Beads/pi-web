@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { keyboardInset } from "./keyboardInset";
+import { keyboardInset, visualViewportOffsetTop } from "./keyboardInset";
 
 /**
  * The composer sits at the bottom of a fixed, 100dvh shell. A soft keyboard
@@ -47,6 +47,18 @@ describe("keyboardInset", () => {
 
   it("never shortens the shell past its own height", () => {
     expect(keyboardInset(839, { height: 10, offsetTop: -5000 })).toBeLessThanOrEqual(839);
+  });
+});
+
+describe("visual viewport offset", () => {
+  it("keeps a fixed shell aligned with Safari's scrolled visual viewport", () => {
+    expect(visualViewportOffsetTop({ height: 500, offsetTop: 180 })).toBe(180);
+  });
+
+  it("does not move the shell for absent, negative, or invalid measurements", () => {
+    expect(visualViewportOffsetTop(undefined)).toBe(0);
+    expect(visualViewportOffsetTop({ height: 500, offsetTop: -1 })).toBe(0);
+    expect(visualViewportOffsetTop({ height: 500, offsetTop: Number.NaN })).toBe(0);
   });
 });
 
@@ -100,6 +112,7 @@ describe("the height the shell is given", () => {
     const sheet = readFileSync(join(process.cwd(), "src/client/src/components/PiWebApp.ts"), "utf8");
     const host = /:host \{ --pi-app-safe-area-bottom[^}]*\}/u.exec(sheet)?.[0] ?? "";
 
+    expect(host).toMatch(/top:\s*var\(--pi-app-viewport-offset-top\)/u);
     expect(host).toMatch(/height:\s*var\(--pi-app-visible-height,/u);
     expect(host).toMatch(/100dvh/u);
   });
@@ -109,6 +122,7 @@ describe("the height the shell is given", () => {
     const handler = /onVisualViewportChange = \(\): void => \{[\s\S]*?\n {2}\};/u.exec(source)?.[0] ?? "";
 
     expect(handler).toMatch(/--pi-app-visible-height/u);
+    expect(handler).toMatch(/--pi-app-viewport-offset-top/u);
   });
 });
 
