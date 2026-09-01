@@ -360,24 +360,48 @@ describe("where the step buttons sit", () => {
 });
 
 describe("ask-user-card geometry", () => {
-  // Caught live: the question card renders in the waiting slot, a real layout
-  // row — and a tall question (long detail, several options) grew the card
-  // past the viewport, pushing the submit below the fold where a thumb could
-  // not reach it. The questions area is the one inner scroller; the footer
-  // with the submit stays on screen.
-  it("caps the questions area so the submit footer stays reachable", async () => {
+  // The concern this replaces is real and unchanged: a tall question must not
+  // put the submit control out of a thumb's reach. It was answered by capping
+  // the questions and scrolling them inside the card, which moved the problem
+  // rather than solving it - when the cap was smaller than the card wanted,
+  // the footer went off screen and the page would not scroll to it either,
+  // because the scrolling was internal. The card is a transcript row now: the
+  // transcript is the scroller, the card may be any height, and scrolling down
+  // reaches the footer. Nothing inside the card floats, so nothing covers the
+  // options.
+  it("does not trap the questions in a scroller of their own", async () => {
     const card = await mountOpenAsk(openAsk([
       question("geom", "Pick one", [option("a", "A", { detail: "long".repeat(60) }), option("b", "B", { detail: "long".repeat(60) }), option("c", "C", { detail: "long".repeat(60) })], { detail: "Long detail text".repeat(40) }),
     ]));
 
     const questions = card.shadowRoot?.querySelector<HTMLElement>(".questions");
     if (questions === null || questions === undefined) throw new Error("Expected the questions area");
+    // happy-dom returns "" for a property no rule sets, so both the unset and
+    // the explicit "none" spellings mean the same thing here: no cap.
     const style = getComputedStyle(questions);
-    expect(style.overflowY).toBe("auto");
-    expect(style.maxHeight).not.toBe("none");
-    // The footer follows the capped questions and holds the submit control.
+    expect(style.overflowY).not.toBe("auto");
+    expect(["", "none"]).toContain(style.maxHeight);
+  });
+
+  it("keeps the submit control in the card, reachable by scrolling the transcript", async () => {
+    const card = await mountOpenAsk(openAsk([
+      question("geom", "Pick one", [option("a", "A"), option("b", "B")]),
+    ]));
+
     const footer = card.shadowRoot?.querySelector<HTMLElement>(".form-footer");
     expect(footer).toBeDefined();
     expect(footer?.querySelector("button") ?? null).not.toBeNull();
+  });
+
+  it("does not float the footer over the card's own options", async () => {
+    const card = await mountOpenAsk(openAsk([
+      question("geom", "Pick one", [option("a", "A"), option("b", "B")]),
+    ]));
+
+    const footer = card.shadowRoot?.querySelector<HTMLElement>(".form-footer");
+    if (footer === null || footer === undefined) throw new Error("Expected the footer");
+    const position = getComputedStyle(footer).position;
+    expect(position).not.toBe("sticky");
+    expect(position).not.toBe("fixed");
   });
 });

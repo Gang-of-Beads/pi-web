@@ -11,16 +11,19 @@ afterEach(() => {
 });
 
 describe("ChatView open extension dialogs", () => {
-  it("holds the oldest pending dialog outside the transcript so nothing can push it", async () => {
+  it("draws the oldest pending dialog last in the transcript, with nothing after it to push it", async () => {
     const view = await mountView();
     const oldest = openDialog("dlg-1", "Allow file writes?");
     view.pendingDialogs = [oldest, openDialog("dlg-2", "Pick a region", { kind: "select", options: ["eu", "us"] })];
     await view.updateComplete;
 
-    // Outside the scrolling transcript: a card drawn at the transcript foot is
-    // moved by every reply, tool row and notification that arrives after it.
-    expect(view.shadowRoot?.querySelector(".chat extension-dialog-card.open-dialog-card")).toBeNull();
-    const card = requiredElement(view.shadowRoot?.querySelector<ExtensionDialogCard>(".waiting-slot > extension-dialog-card.open-dialog-card"), "open dialog card");
+    // In the transcript, and last: nothing is appended after a card that is
+    // still waiting, so scrolling to the bottom always reaches it, and once it
+    // is answered the replies that follow push it up on their own.
+    const chat = view.shadowRoot?.querySelector(".chat");
+    const rows = [...(chat?.children ?? [])];
+    expect(rows.findIndex((row) => row.classList.contains("waiting-slot"))).toBe(rows.length - 1);
+    const card = requiredElement(view.shadowRoot?.querySelector<ExtensionDialogCard>(".chat .waiting-slot > extension-dialog-card.open-dialog-card"), "open dialog card");
     expect(card).toBeInstanceOf(ExtensionDialogCard);
     expect(card.dialog).toBe(oldest);
     expect(view.shadowRoot?.querySelector(".queued-dialogs")?.textContent).toContain("1 more extension dialog queued");

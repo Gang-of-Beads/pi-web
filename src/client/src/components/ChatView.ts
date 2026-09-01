@@ -46,6 +46,7 @@ import "./ConversationMeter";
 import "./FormattedText";
 import "./ToolExecutionView";
 import { sessionStateBadgeStyles as SessionStateBadgeStyles } from "./sessionStateBadgeStyles";
+import { readingAnchorDecision, readingScrollCorrection } from "../readingAnchor";
 
 export const chatStyles = css`
   ${SessionStateBadgeStyles}
@@ -327,8 +328,12 @@ export const chatStyles = css`
      stretching to the slot — a new waiting card needs no cap of its own.
      The flat version capped each card separately and missed one: the tall
      ask-user card pushed its submit below the fold. */
-  .waiting-slot { flex: 0 0 auto; display: flex; flex-direction: column; max-height: min(60vh, 760px); margin: 0 var(--pi-chat-gutter) var(--pi-space-4); }
-  .waiting-slot > * { flex: 0 1 auto; min-height: 0; max-height: 100%; }
+  /* Last in the transcript, in normal flow, the way a queued message is: with
+     nothing appended after it while it waits, it is what scrolling to the
+     bottom reaches, and once answered the replies that follow push it up on
+     their own. Nothing is pinned, so the transcript scrolls at any card
+     height and the card covers none of its own rows. */
+  .waiting-slot { display: flex; flex-direction: column; gap: var(--pi-space-4); margin: 0 0 var(--pi-space-4); }
   .activity-dock { flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) 10px; z-index: var(--pi-layer-sticky); display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: 0 8px 28px var(--pi-shadow); backdrop-filter: blur(6px); }
   /* Idle is the state nobody needs a full-width banner for: keep the signal,
      drop the bar that looked like an empty card above the composer.
@@ -896,6 +901,7 @@ export class ChatView extends LitElement {
     this.lastClientHeight = this.chat?.clientHeight ?? 0;
   }
 
+
   override disconnectedCallback(): void {
     this.stopTurnClock();
     this.saveScrollPosition();
@@ -981,9 +987,38 @@ export class ChatView extends LitElement {
   }
 
   protected override update(changed: Map<string, unknown>): void {
-    const prependAnchor = this.isPrependingMessages(changed) ? this.capturePrependScrollAnchor() : undefined;
+    const decision = readingAnchorDecision({
+      prepending: this.isPrependingMessages(changed),
+      pinnedToBottom: this.pinnedToBottom,
+    });
+    const prependAnchor = decision === "prepend" ? this.capturePrependScrollAnchor() : undefined;
+    // A reader who has scrolled up is reading something. Whatever grows above
+    // them - a streaming reply, an activity row, a queued message - would slide
+    // it out from under their eyes, because this scroller turns the browser's
+    // own anchoring off so the prepend anchor can own the scroll position.
+    // This is the same measure-and-restore, without the prepend's multi-frame
+    // settle: an append shifts by a line, not by a page, and the settle also
+    // suppresses load-more, which must keep working while reading.
+    const readingAnchor = decision === "hold-reading-position" ? this.captureReadingAnchor() : undefined;
     super.update(changed);
     if (prependAnchor !== undefined) this.restorePrependScrollAnchor(prependAnchor);
+    if (readingAnchor !== undefined) this.restoreReadingAnchor(readingAnchor);
+  }
+
+  /** Where the topmost readable row sits, so an update can put it back. */
+  private captureReadingAnchor(): { element: Element; offset: number } | undefined {
+    const chat = this.chat;
+    if (!chat) return undefined;
+    const element = this.firstVisibleArticle();
+    if (element === undefined) return undefined;
+    return { element, offset: element.getBoundingClientRect().top - chat.getBoundingClientRect().top };
+  }
+
+  private restoreReadingAnchor(anchor: { element: Element; offset: number }): void {
+    const chat = this.chat;
+    if (!chat || !anchor.element.isConnected) return;
+    const offset = anchor.element.getBoundingClientRect().top - chat.getBoundingClientRect().top;
+    chat.scrollTop += readingScrollCorrection(anchor.offset, offset);
   }
 
   protected override updated(changed: Map<string, unknown>): void {
@@ -1200,8 +1235,8 @@ export class ChatView extends LitElement {
           ${this.renderQueuedMessages()}
           ${this.renderCommandLedger()}
           ${this.renderClosedDialogs()}
+          ${this.renderWaitingForYou()}
         </div>
-        ${this.renderWaitingForYou()}
         ${this.renderJumpToBottom()}
         ${this.renderActivityDock()}
       </div>
