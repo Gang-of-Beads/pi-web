@@ -1,4 +1,4 @@
-import { watch, type FSWatcher } from "node:fs";
+import { watch } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
 export interface BackgroundWorkWatchTarget {
@@ -7,8 +7,13 @@ export interface BackgroundWorkWatchTarget {
   sessionFile: string | undefined;
 }
 
+export interface BackgroundWorkWatchHandle {
+  close(): void;
+  on(event: "error", listener: () => void): unknown;
+}
+
 export interface BackgroundWorkWatcherDependencies {
-  watchDirectory(path: string, onChange: () => void): FSWatcher;
+  watchDirectory(path: string, onChange: () => void): BackgroundWorkWatchHandle;
   setTimer(callback: () => void, delayMs: number): ReturnType<typeof setTimeout>;
   clearTimer(timer: ReturnType<typeof setTimeout>): void;
 }
@@ -26,7 +31,7 @@ const defaultDependencies: BackgroundWorkWatcherDependencies = {
  * can lose events on some filesystems.
  */
 export class BackgroundWorkWatcher {
-  private readonly watchersByPath = new Map<string, FSWatcher>();
+  private readonly watchersByPath = new Map<string, BackgroundWorkWatchHandle>();
   private readonly pathsBySession = new Map<string, Set<string>>();
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -74,11 +79,18 @@ export class BackgroundWorkWatcher {
     if (this.watchersByPath.has(path)) return;
     try {
       const watcher = this.dependencies.watchDirectory(path, () => { this.markDirty(); });
-      watcher.on("error", () => { this.release(path); });
+      watcher.on("error", () => { this.invalidate(path); });
       this.watchersByPath.set(path, watcher);
     } catch {
       // Missing/unsupported paths are recovered by the periodic reconciliation.
     }
+  }
+
+  /** An errored watcher no longer represents a healthy observation, even while sessions still need it. */
+  private invalidate(path: string): void {
+    const watcher = this.watchersByPath.get(path);
+    this.watchersByPath.delete(path);
+    watcher?.close();
   }
 
   private release(path: string): void {
