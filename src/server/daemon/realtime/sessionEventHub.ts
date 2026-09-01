@@ -4,6 +4,7 @@ import { projectBrowserSessionEvent } from "../browserMessageProjection.js";
 export interface RealtimeSocket {
   readonly OPEN: number;
   readyState: number;
+  readonly bufferedAmount: number;
   send(payload: string): void;
   terminate(): void;
   on(event: "close", listener: () => void): unknown;
@@ -21,6 +22,10 @@ export interface RealtimeSocket {
  * importantly, gives the client something to miss.
  */
 export const KEEPALIVE_INTERVAL_MS = 20_000;
+/** A slower browser reconnects and repairs rather than buffering without bound. */
+export const MAX_SOCKET_BUFFERED_BYTES = 1024 * 1024;
+/** Inactive sessions beyond this LRU bound fall back to an authoritative resync. */
+export const MAX_REPLAY_SESSIONS = 256;
 
 export class SessionEventHub {
   private readonly socketsBySession = new Map<string, Set<RealtimeSocket>>();
@@ -29,6 +34,8 @@ export class SessionEventHub {
   /** Recent per-session frames, oldest first, for replaying a counted gap. */
   private readonly replayBySession = new Map<string, { seq: number; event: SessionUiEvent }[]>();
   private readonly replayBufferLimit: number;
+  private readonly replaySessionLimit: number;
+  private readonly maxSocketBufferedBytes: number;
   /**
    * Debug-only frame-drop arm, for the e2e legs that need REAL loss. Gated
    * behind an explicit arming call that only the debug route makes (itself
@@ -41,8 +48,10 @@ export class SessionEventHub {
   private globalJoinFrame: (() => RealtimeEvent) | undefined;
   private keepaliveTimer: ReturnType<typeof setInterval> | undefined;
 
-  constructor(options?: { replayBufferLimit?: number }) {
+  constructor(options?: { replayBufferLimit?: number; replaySessionLimit?: number; maxSocketBufferedBytes?: number }) {
     this.replayBufferLimit = options?.replayBufferLimit ?? 256;
+    this.replaySessionLimit = Math.max(1, options?.replaySessionLimit ?? MAX_REPLAY_SESSIONS);
+    this.maxSocketBufferedBytes = Math.max(0, options?.maxSocketBufferedBytes ?? MAX_SOCKET_BUFFERED_BYTES);
   }
 
   /**
@@ -79,6 +88,7 @@ export class SessionEventHub {
     sockets.add(socket);
     socket.on("close", () => {
       sockets.delete(socket);
+      if (sockets.size === 0 && this.socketsBySession.get(sessionId) === sockets) this.socketsBySession.delete(sessionId);
     });
   }
 
@@ -112,6 +122,8 @@ export class SessionEventHub {
     }
     ring.push({ seq, event });
     while (ring.length > this.replayBufferLimit) ring.shift();
+    this.touchReplaySession(sessionId, ring);
+    this.evictInactiveReplaySessions(sessionId);
     const sockets = this.socketsBySession.get(sessionId);
     if (sockets === undefined || sockets.size === 0) return;
     const dropCount = this.dropNextPerSession.get(sessionId) ?? 0;
@@ -221,15 +233,51 @@ export class SessionEventHub {
 
   private sendToSocket(sockets: Set<RealtimeSocket>, socket: RealtimeSocket, payload: string): void {
     if (socket.readyState !== socket.OPEN) return;
+    if (socket.bufferedAmount > this.maxSocketBufferedBytes) {
+      this.removeAndTerminate(sockets, socket);
+      return;
+    }
     try {
       socket.send(payload);
     } catch {
-      sockets.delete(socket);
-      try {
-        socket.terminate();
-      } catch {
-        // Removal is authoritative; cleanup failure must not block healthy sockets.
+      this.removeAndTerminate(sockets, socket);
+    }
+  }
+
+  private removeAndTerminate(sockets: Set<RealtimeSocket>, socket: RealtimeSocket): void {
+    sockets.delete(socket);
+    try {
+      socket.terminate();
+    } catch {
+      // Removal is authoritative; cleanup failure must not block healthy sockets.
+    }
+  }
+
+  /** Move a used ring to the end of the Map, which is its LRU order. */
+  private touchReplaySession(sessionId: string, ring: { seq: number; event: SessionUiEvent }[]): void {
+    this.replayBySession.delete(sessionId);
+    this.replayBySession.set(sessionId, ring);
+  }
+
+  private evictInactiveReplaySessions(currentSessionId: string): void {
+    while (this.replayBySession.size > this.replaySessionLimit) {
+      let evicted = false;
+      for (const sessionId of this.replayBySession.keys()) {
+        if (sessionId === currentSessionId || (this.socketsBySession.get(sessionId)?.size ?? 0) > 0) continue;
+        this.replayBySession.delete(sessionId);
+        this.seqBySession.delete(sessionId);
+        this.dropNextPerSession.delete(sessionId);
+        evicted = true;
+        break;
       }
+      if (!evicted && (this.socketsBySession.get(currentSessionId)?.size ?? 0) === 0) {
+        this.replayBySession.delete(currentSessionId);
+        this.seqBySession.delete(currentSessionId);
+        this.dropNextPerSession.delete(currentSessionId);
+        evicted = true;
+      }
+      // Every retained ring has a live subscriber; socket count now bounds it.
+      if (!evicted) return;
     }
   }
 }
