@@ -1,4 +1,5 @@
-import { appendText, appendThinking, unansweredTail, askUserRecordFromToolDetails, normalizeMessage, normalizeMessages, previewFromDetails, summarizeArgs, textMessage } from "./chatMessages";
+import { appendText, appendThinking, askUserRecordFromToolDetails, normalizeMessage, normalizeMessages, previewFromDetails, summarizeArgs, textMessage } from "./chatMessages";
+import { deliverySettled } from "./messageDelivery";
 import { resolveArrival } from "./transcriptArrival";
 import { placeByTimestamp } from "./transcriptOrder";
 import type { ChatLine, ToolExecutionPart } from "./components/shared";
@@ -102,8 +103,11 @@ function applyFinalLine(messages: ChatLine[], displayEnded: ChatLine): ChatLine[
   // appendText grows it - not necessarily at the end, because a message queued
   // mid-turn lands after it. Finalizing against the end alone left the
   // half-done line standing and appended a twin behind the queued message.
+  // The reply's own tool rows also land behind the half-done line and belong
+  // to the same turn: the walk steps over them, or the finalized copy appended
+  // behind the tools and the same text stood twice.
   if (displayEnded.role === "assistant") {
-    const at = unansweredTail(messages);
+    const at = turnTail(messages);
     const head = messages.slice(0, at);
     const tail = messages.slice(at);
     if (head.at(-1)?.role === "assistant") return [...head.slice(0, -1), displayEnded, ...tail];
@@ -113,6 +117,30 @@ function applyFinalLine(messages: ChatLine[], displayEnded: ChatLine): ChatLine[
   if (last?.role !== displayEnded.role) return [...messages, displayEnded];
   if (sameMessageText(last, displayEnded)) return [...messages.slice(0, -1), displayEnded];
   return [...messages, displayEnded];
+}
+
+/**
+ * Where a finalized assistant line belongs: past the queued messages and the
+ * reply's own tool rows, both of which land behind the half-done streaming
+ * line without ending the turn that produced them.
+ */
+function turnTail(messages: ChatLine[]): number {
+  let index = messages.length;
+  while (index > 0) {
+    const line = messages[index - 1];
+    if (line?.role === "tool") {
+      index -= 1;
+      continue;
+    }
+    if (line?.role !== "user") break;
+    const state = line.meta?.delivery?.state;
+    const unsettledDelivery = state !== undefined && !deliverySettled(state);
+    // The sender's own echo has no delivery record yet; it is just as
+    // unanswered as a queued send with one.
+    if (line.meta?.echo !== true && !unsettledDelivery) break;
+    index -= 1;
+  }
+  return index;
 }
 
 function reconcileFinalAskUserRecord(
