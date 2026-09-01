@@ -62,10 +62,24 @@ jobs:
             exit 1
           fi
 
+      # Mirrors publish.yml exactly: create the destination first, silence the
+      # build log that prepack writes, and take the filename from the directory
+      # rather than from stdout, which that log would otherwise corrupt.
       - name: Pack
-        run: npm pack --pack-destination ./pack-out
+        id: pack
+        run: |
+          set -euo pipefail
+          rm -rf pack-out && mkdir pack-out
+          npm pack --silent --pack-destination pack-out >/dev/null
+          tarball="$(find pack-out -maxdepth 1 -type f -name '*.tgz' -printf '%f\n')"
+          if [ -z "$tarball" ]; then
+            echo "refusing: npm pack produced no tarball" >&2
+            exit 1
+          fi
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
+          echo "packed $tarball"
 
       - name: Publish to npm
-        run: npm publish "$(ls ./pack-out/*.tgz)" --access public
+        run: npm publish "pack-out/${{ steps.pack.outputs.tarball }}" --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
