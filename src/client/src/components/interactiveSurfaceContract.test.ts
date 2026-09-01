@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -13,7 +14,9 @@ import { describe, expect, it } from "vitest";
  * thumb.
  */
 
-const componentsDir = new URL(".", import.meta.url).pathname;
+// fileURLToPath, not URL.pathname: on Windows the latter yields "/C:/...",
+// which no filesystem call accepts.
+const componentsDir = dirname(fileURLToPath(import.meta.url));
 
 function componentFiles(dir: string): string[] {
   const found: string[] = [];
@@ -57,7 +60,7 @@ describe("the touch contract every component owes", () => {
       const source = readFileSync(file, "utf8");
       if (!stylesInteractiveElements(source)) continue;
       if (satisfiesContract(source)) continue;
-      offenders.push(file.slice(componentsDir.length));
+      offenders.push(file.slice(componentsDir.length + 1));
     }
 
     expect(offenders, `components missing the touch contract:\n${offenders.join("\n")}`).toEqual([]);
