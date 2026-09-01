@@ -13,9 +13,31 @@
  * another session's transcript.
  */
 
+import type { CommandResult } from "../../shared/apiTypes";
+
 export type CommandLedgerSource = "typed" | "goal-panel";
 
 export type CommandLedgerState = "pending" | "ok" | "failed";
+
+/**
+ * What a command's own result means for its receipt.
+ *
+ * The receipt used to be settled by whether the request threw, which is a
+ * statement about the network, not about the command. A refusal travels as a
+ * perfectly successful response, so "/new done" was displayed beside the
+ * server's own "/new is not implemented in the web UI yet" - two receipts for
+ * one action, disagreeing, and a reader believes the green one.
+ *
+ * Undefined means the command has not settled: a select or tree result opens a
+ * dialog and the command is still waiting on the reader.
+ */
+export function commandOutcomeFor(result: CommandResult): { state: "ok" | "failed"; resultText?: string } | undefined {
+  if (result.type === "select" || result.type === "tree") return undefined;
+  if (result.type === "unsupported") return { state: "failed", resultText: result.message };
+  return result.message === undefined || result.message === ""
+    ? { state: "ok" }
+    : { state: "ok", resultText: result.message };
+}
 
 export interface CommandLedgerEntry {
   readonly id: string;
