@@ -3,6 +3,7 @@ import { customElement, property } from "lit/decorators.js";
 import type { AppState } from "../../appState";
 import { renderAppTabIcon, type AppTabBuiltinIcon } from "../tabIcons";
 import "../ModalSurface";
+import { interactiveSurfaceStyles } from "../shared";
 
 export type AppMobileViewIcon = AppTabBuiltinIcon | TemplateResult;
 
@@ -78,7 +79,7 @@ export class AppMobileToolSheet extends LitElement {
     return html`<span class=${`tool-badge ${tab.badgeTone ?? ""}`} aria-label=${tab.badgeLabel ?? text}>${text}</span>`;
   }
 
-  static override styles = css`
+  static override styles = [interactiveSurfaceStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-overlay); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
     modal-surface {
       --modal-surface-place-items: end center;
@@ -98,7 +99,7 @@ export class AppMobileToolSheet extends LitElement {
     .tool-badge { min-width: 20px; border-radius: var(--pi-radius-pill); background: var(--pi-surface-hover); color: var(--pi-text-secondary); padding: 1px var(--pi-space-4); font-size: var(--pi-text-xs); text-align: center; }
     .tool-badge.unread { background: var(--pi-selection-bg); color: var(--pi-accent); }
     .tool-check { color: var(--pi-accent); }
-  `;
+  `];
 }
 
 declare global {

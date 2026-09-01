@@ -1,7 +1,7 @@
 import { LitElement, css, html } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { writeClipboardText } from "../clipboard";
-import { toolExecutionDisplayStatus, type ToolExecutionDisplayStatus } from "./shared";
+import { toolExecutionDisplayStatus, type ToolExecutionDisplayStatus, interactiveSurfaceStyles } from "./shared";
 import type { ToolExecutionPart } from "./shared";
 
 const MAX_COLLAPSED_DIFF_LINES = 180;
@@ -131,7 +131,7 @@ export class ToolExecutionView extends LitElement {
     window.setTimeout(() => { this.copied = false; }, 1200);
   }
 
-  static override styles = css`
+  static override styles = [interactiveSurfaceStyles, css`
     :host { display: block; width: 100%; max-width: 100%; min-width: 0; color: var(--pi-text); }
     .tool-card { display: grid; gap: 8px; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; overflow: hidden; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-bg); padding: 9px; color: var(--pi-text); }
     .tool-card.running, .tool-card.pending { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); }
@@ -177,7 +177,7 @@ export class ToolExecutionView extends LitElement {
     .diff .added { background: color-mix(in srgb, var(--pi-success) 12%, transparent); }
     .diff .removed { background: color-mix(in srgb, var(--pi-danger) 12%, transparent); }
     .show-more { justify-self: start; }
-  `;
+  `];
 }
 
 function toolTarget(execution: ToolExecutionPart, path: string | undefined): ToolTarget | undefined {

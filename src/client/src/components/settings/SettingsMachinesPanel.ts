@@ -3,6 +3,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import type { Machine, MachineHealth } from "../../api";
 import type { PiWebFleetReport, PiWebFleetRunResponse } from "../../../../shared/apiTypes";
 import "./SettingsFleetSection";
+import { interactiveSurfaceStyles } from "../shared";
 
 /**
  * Dedicated machines management panel: every connected machine (including
@@ -99,7 +100,7 @@ export class SettingsMachinesPanel extends LitElement {
     await this.onRename?.(machine, name);
   }
 
-  static override styles = css`
+  static override styles = [interactiveSurfaceStyles, css`
     :host { display: block; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
     .machines-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--pi-space-6); margin-bottom: var(--pi-space-6); }
     h2 { margin: 0 0 var(--pi-space-2); font-family: var(--pi-font-display); font-size: var(--pi-text-lg); font-weight: var(--pi-weight-semibold); letter-spacing: -0.01em; }
@@ -126,7 +127,7 @@ export class SettingsMachinesPanel extends LitElement {
       .machine-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--pi-space-3); }
       .machine-card { min-height: 88px; padding: var(--pi-space-4); }
     }
-  `;
+  `];
 }
 
 declare global {

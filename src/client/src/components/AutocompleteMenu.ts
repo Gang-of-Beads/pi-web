@@ -1,7 +1,7 @@
 import { css, LitElement, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { scrollWhenSelected } from "./scrollWhenSelected";
-import { type CompletionItem } from "./shared";
+import { type CompletionItem, interactiveSurfaceStyles } from "./shared";
 
 const autocompleteStyles = css`
   :host { display: block; }
@@ -35,5 +35,5 @@ export class AutocompleteMenu extends LitElement {
     `;
   }
 
-  static override styles = autocompleteStyles;
+  static override styles = [interactiveSurfaceStyles, autocompleteStyles];
 }

@@ -4,6 +4,7 @@ import type { PiPackageInfo, PiPackageScope, PiPackagesResponse } from "../../ap
 import "./SettingsPanelFrame";
 import type { SettingsNotice } from "./SettingsPanelFrame";
 import { isPiPackageOperationPending, normalizePiPackageSource, piPackageFilteredLabel, piPackageInstalledPathLabel, piPackageScopeLabel, piPackageSourceValidationMessage, piPackageTargetContext, piPackageTargetLabel, piPackageUpdateDisabledReason, updateAllPiPackagesDisabledReason, type PiPackageOperationState, type PiPackageTargetContext } from "./piPackageSettings";
+import { interactiveSurfaceStyles } from "../shared";
 
 @customElement("settings-packages-panel")
 export class SettingsPackagesPanel extends LitElement {
@@ -179,7 +180,7 @@ export class SettingsPackagesPanel extends LitElement {
     return this.operation !== undefined;
   }
 
-  static override styles = css`
+  static override styles = [interactiveSurfaceStyles, css`
     :host { display: block; }
     .package-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
     .package-toolbar > div, .package-main { display: grid; gap: 6px; min-width: 0; }
@@ -214,7 +215,7 @@ export class SettingsPackagesPanel extends LitElement {
       .package-actions { justify-self: start; flex-wrap: wrap; }
       .package-main strong, .package-main small { white-space: normal; }
     }
-  `;
+  `];
 }
 
 function packagesDescription(targetLabel: string): TemplateResult {

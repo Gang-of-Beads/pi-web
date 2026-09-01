@@ -1,6 +1,7 @@
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { clampPanelWidth, panelResizeConstraints, panelWidthFromDrag, panelWidthFromKeyboard, type PanelResizeConstraints, type ResizablePanelSide } from "../../appShell/panelResizeController";
+import { interactiveSurfaceStyles } from "../shared";
 
 export type PanelEdgeSide = ResizablePanelSide;
 
@@ -200,7 +201,7 @@ export class AppPanelEdgeControl extends LitElement {
     };
   }
 
-  static override styles = css`
+  static override styles = [interactiveSurfaceStyles, css`
     :host { position: relative; min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: visible; background: var(--pi-border-muted); z-index: 2; }
     :host([side="navigation"]) { grid-column: 2; }
     :host([side="workspace"]) { grid-column: 4; }
@@ -229,5 +230,5 @@ export class AppPanelEdgeControl extends LitElement {
     @media (max-width: 760px) {
       :host([side="navigation"]) { display: none; }
     }
-  `;
+  `];
 }

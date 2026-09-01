@@ -3,6 +3,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import type { SessionCleanupExecuteResponse, SessionCleanupPreviewResponse, SessionCleanupProjectSummary, SessionCleanupRequest } from "../api";
 import { canRunSessionCleanup, confirmSessionCleanup, DEFAULT_SESSION_CLEANUP_DRAFT, selectedSessionCleanupProjectCwds, sessionCleanupPreviewForSelectedProjects, sessionCleanupPreviewHasTargets, sessionCleanupRequestKey, validateSessionCleanupDraft, type SessionCleanupDraft } from "../sessionCleanupUi";
 import "./ModalSurface";
+import { interactiveSurfaceStyles } from "./shared";
 
 @customElement("session-cleanup-dialog")
 export class SessionCleanupDialog extends LitElement {
@@ -204,7 +205,7 @@ export class SessionCleanupDialog extends LitElement {
     void this.onRun?.({ ...validation.request, projectCwds: selectedProjectCwds });
   }
 
-  static override styles = css`
+  static override styles = [interactiveSurfaceStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-dialog); color: var(--pi-text); font: 14px system-ui, sans-serif; }
     modal-surface { --modal-surface-backdrop-padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); --modal-surface-width: min(760px, 100%); --modal-surface-max-height: min(760px, 100%); --modal-surface-radius: 14px; }
     header, footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--pi-border); }
@@ -252,7 +253,7 @@ export class SessionCleanupDialog extends LitElement {
       table { min-width: 560px; }
       thead th:first-child, td.select-cell { width: 58px; }
     }
-  `;
+  `];
 }
 
 function checkedValue(event: Event): boolean {

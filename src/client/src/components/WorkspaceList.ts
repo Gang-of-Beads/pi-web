@@ -11,7 +11,7 @@ import { actionMenuPanelStyle } from "./actionMenu";
 import { hasStatusUnread, renderActionActivityIndicator, statusActivityKind } from "./activityBadge";
 import type { KeyboardNavigableSection } from "./navigationFocus";
 import { focusSelectedOrFirstSelectableRow, handleSelectableRowKeyboard } from "./selectableRow";
-import { listStyles } from "./shared";
+import { listStyles, interactiveSurfaceStyles } from "./shared";
 import { renderWorkspaceLabelInlineItems } from "./workspaceLabel";
 import { describeError } from "../notice";
 
@@ -367,7 +367,7 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
     this.renderRoot.querySelector<HTMLElement>(".action-row.selected")?.scrollIntoView({ block: "nearest" });
   }
 
-  static override styles = [listStyles, css`
+  static override styles = [interactiveSurfaceStyles, listStyles, css`
     .workspace-menu-trust { display: flex; flex-direction: column; gap: 3px; padding: var(--pi-space-2) var(--pi-space-1); }
     .workspace-menu-trust-row { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); }
     .workspace-menu-trust label { display: flex; align-items: center; gap: var(--pi-space-3); cursor: pointer; }

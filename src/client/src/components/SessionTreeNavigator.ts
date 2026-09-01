@@ -7,6 +7,7 @@ import { buildSessionTreeModel, initialSessionTreeSelection, toggleSessionTreeFo
 // by esbuild under vitest because nothing from the module is referenced).
 import "./ModalSurface";
 import { describeError } from "../notice";
+import { interactiveSurfaceStyles } from "./shared";
 
 const EMPTY_TREE: SessionTreeSnapshot = { nodes: [], activeLeafId: null, activePathIds: [] };
 const MAX_SESSION_TREE_VISUAL_DEPTH = 8;
@@ -520,7 +521,7 @@ export class SessionTreeNavigator extends LitElement {
     }
   }
 
-  static override styles = css`
+  static override styles = [interactiveSurfaceStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-popover); color: var(--pi-text); font: 14px system-ui, sans-serif; }
     * { box-sizing: border-box; }
     /* Full-viewport shell: the surface's centered-card defaults are overridden
@@ -621,7 +622,7 @@ export class SessionTreeNavigator extends LitElement {
       .custom-focus, .validation-error { margin-inline-start: 0; }
       footer { flex-wrap: wrap; }
     }
-  `;
+  `];
 }
 
 export function sessionTreeVisualDepth(depth: number): number {

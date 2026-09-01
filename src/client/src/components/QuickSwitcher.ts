@@ -11,6 +11,7 @@ import { sessionLabel } from "../sessionLabels";
 import { keyboardEventOriginatesFromNativeActivationControl } from "./keyboardEventTarget";
 import "./ModalSurface";
 import { scrollWhenSelected } from "./scrollWhenSelected";
+import { interactiveSurfaceStyles } from "./shared";
 
 /**
  * One-surface session switcher for touch layouts.
@@ -351,7 +352,7 @@ export class QuickSwitcher extends LitElement {
     this.onClose?.();
   }
 
-  static override styles = [sessionStateBadgeStyles, css`
+  static override styles = [interactiveSurfaceStyles, sessionStateBadgeStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-overlay); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
     modal-surface {
       --modal-surface-place-items: end center;

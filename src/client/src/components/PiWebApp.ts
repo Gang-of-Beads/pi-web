@@ -97,7 +97,7 @@ import { observeTransportRecovery } from "../api/transportHealth";
 import { dismissKeyboardIfRaised } from "../keyboardDismissal";
 import { errorBanner, isTransientError, TRANSIENT_ERROR_TIMEOUT_MS } from "./errorBanner";
 import { deprecatedAgentInputsBanner, deprecatedAgentInputsWarnings } from "./deprecatedAgentInputsBanner";
-import {} from "./shared";
+import { interactiveSurfaceStyles } from "./shared";
 import { documentTitleFor } from "../contextName";
 
 export const appStyles = css`
@@ -3348,7 +3348,7 @@ export class PiWebApp extends LitElement {
     `;
   }
 
-  static override styles = appStyles;
+  static override styles = [interactiveSurfaceStyles, appStyles];
 }
 
 function createPluginRegistry(): PluginRegistry {

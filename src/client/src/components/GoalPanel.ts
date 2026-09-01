@@ -13,7 +13,7 @@ import {
   isGoalBlocked,
   isGoalFinished,
 } from "../goalProgress";
-import { listStyles } from "./shared";
+import { listStyles, interactiveSurfaceStyles } from "./shared";
 
 /**
  * The goals recorded for the selected workspace, with per-task progress.
@@ -266,7 +266,7 @@ export class GoalPanel extends LitElement {
     this.expanded = next;
   }
 
-  static override styles = [listStyles, css`
+  static override styles = [interactiveSurfaceStyles, listStyles, css`
     h2 { min-height: 30px; }
     h2 > .section-count { flex: 1 1 auto; margin-inline-start: var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: 400; letter-spacing: normal; }
     .refresh-entry { flex: 0 0 auto; display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; font-size: var(--pi-text-sm); }

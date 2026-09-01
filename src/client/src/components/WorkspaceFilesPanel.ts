@@ -7,7 +7,7 @@ import type { WorkspaceUploadBatchState, WorkspaceUploadFileState } from "../wor
 import type { WorkspacePanelContext } from "../plugins/types";
 import { formatFileSize } from "../utils/format";
 import { registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
-import { workspacePanelStyles } from "./shared";
+import { workspacePanelStyles, interactiveSurfaceStyles } from "./shared";
 import "./WorkspaceFileViewer";
 import { describeError } from "../notice";
 
@@ -356,7 +356,7 @@ export class WorkspaceFilesPanel extends LitElement {
     this.dragActive = false;
   }
 
-  static override styles = [
+  static override styles = [interactiveSurfaceStyles, 
     workspacePanelStyles,
     css`
       :host { flex: 1 1 auto; }

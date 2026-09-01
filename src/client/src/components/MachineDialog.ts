@@ -1,6 +1,7 @@
 import { LitElement, css, html } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import "./ModalSurface";
+import { interactiveSurfaceStyles } from "./shared";
 
 export interface MachineDialogSubmit {
   name: string;
@@ -124,7 +125,7 @@ export class MachineDialog extends LitElement {
     `;
   }
 
-  static override styles = css`
+  static override styles = [interactiveSurfaceStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-dialog); color: var(--pi-text); font: 14px system-ui, sans-serif; }
     modal-surface { --modal-surface-place-items: start center; --modal-surface-backdrop-padding: min(12vh, 90px) 0 0; --modal-surface-width: min(560px, calc(100vw - 40px)); --modal-surface-max-height: min(640px, calc(100vh - 40px)); }
     /* The form is the surface's single slotted child: the section's flex column
@@ -145,7 +146,7 @@ export class MachineDialog extends LitElement {
     header button { border: 0; background: transparent; color: var(--pi-muted); font-size: 22px; padding: 0 8px; }
     .primary { border-color: var(--pi-success-border); background: var(--pi-success-border); }
     button:disabled { opacity: .5; cursor: not-allowed; }
-  `;
+  `];
 }
 
 export function suggestedMachineNameFromUrl(value: string): string {

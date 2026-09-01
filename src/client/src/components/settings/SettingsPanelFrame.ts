@@ -1,5 +1,6 @@
 import { css, html, LitElement, nothing, type TemplateResult } from "lit";
 import { customElement, property } from "lit/decorators.js";
+import { interactiveSurfaceStyles } from "../shared";
 
 export const SETTINGS_NOTICE_TONES = ["error", "success", "warning", "info"] as const;
 export type SettingsNoticeTone = (typeof SETTINGS_NOTICE_TONES)[number];
@@ -90,7 +91,7 @@ export class SettingsPanelFrame extends LitElement {
     `;
   }
 
-  static override styles = css`
+  static override styles = [interactiveSurfaceStyles, css`
     :host { display: block; }
     .panel { display: block; }
     .section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
@@ -118,7 +119,7 @@ export class SettingsPanelFrame extends LitElement {
       .section-heading { display: grid; gap: 12px; }
       .heading-actions { justify-self: start; }
     }
-  `;
+  `];
 }
 
 function defaultNoticeRole(tone: SettingsNoticeTone): SettingsNoticeRole {

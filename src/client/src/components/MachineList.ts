@@ -8,7 +8,7 @@ import { actionMenuPanelStyle } from "./actionMenu";
 import { hasStatusUnread, renderActionActivityIndicator, statusActivityKind } from "./activityBadge";
 import type { KeyboardNavigableSection } from "./navigationFocus";
 import { focusSelectedOrFirstSelectableRow, handleSelectableRowKeyboard } from "./selectableRow";
-import { listStyles } from "./shared";
+import { listStyles, interactiveSurfaceStyles } from "./shared";
 
 @customElement("machine-list")
 export class MachineList extends LitElement implements KeyboardNavigableSection {
@@ -235,7 +235,7 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
     });
   }
 
-  static override styles = [
+  static override styles = [interactiveSurfaceStyles, 
     listStyles,
     css`
       .machine-row { border-radius: var(--pi-radius-lg); }
