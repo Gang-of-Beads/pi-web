@@ -20,6 +20,7 @@ import { friendlySelectedMachineSettingsErrorMessage, isSelectedMachineSettingsU
 import { mergeSelectedMachinePluginConfig, pluginEnabledConfigPatch } from "./settings/settingsPluginConfig";
 import { mergeSelectedMachineSessiondConfig } from "./settings/settingsSessiondConfig";
 import { describeError } from "../notice";
+import { interactiveSurfaceStyles } from "./shared";
 
 @customElement("settings-dialog")
 export class SettingsDialog extends LitElement {
@@ -639,7 +640,7 @@ export class SettingsDialog extends LitElement {
     }, 3000);
   }
 
-  static override styles = css`
+  static override styles = [interactiveSurfaceStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-dialog); color: var(--pi-text); font: 14px system-ui, sans-serif; }
     modal-surface { --modal-surface-backdrop-padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); --modal-surface-width: min(980px, 100%); --modal-surface-max-height: min(760px, 100%); --modal-surface-min-height: min(620px, 100%); --modal-surface-radius: 14px; }
     .settings-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--pi-border); }
@@ -666,7 +667,7 @@ export class SettingsDialog extends LitElement {
       .settings-nav button { flex: 0 0 auto; width: auto; min-width: 128px; margin: 0; }
       .settings-content { padding: 14px 12px calc(18px + env(safe-area-inset-bottom)); }
     }
-  `;
+  `];
 }
 
 export type SettingsPanelTag =

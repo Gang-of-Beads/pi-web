@@ -4,6 +4,7 @@ import type { PiWebConfigResponse, PiWebPluginInfo, PiWebPluginsResponse } from 
 import { PI_WEB_PLUGIN_RECOVERY_COMMANDS } from "../../../../shared/pluginRecoveryCommands";
 import "./SettingsPanelFrame";
 import type { SettingsNotice } from "./SettingsPanelFrame";
+import { interactiveSurfaceStyles } from "../shared";
 
 export type SettingsPluginRow = PiWebPluginInfo & { configOnly: boolean; editable: boolean };
 
@@ -193,7 +194,7 @@ export class SettingsPluginsPanel extends LitElement {
     await this.onTogglePlugin?.(plugin.id, enabled);
   }
 
-  static override styles = css`
+  static override styles = [interactiveSurfaceStyles, css`
     :host { display: block; }
     input { font: inherit; }
     input:disabled { opacity: .55; cursor: not-allowed; }
@@ -223,7 +224,7 @@ export class SettingsPluginsPanel extends LitElement {
       .plugin-card { grid-template-columns: minmax(0, 1fr); align-items: start; }
       .toggle { justify-self: start; }
     }
-  `;
+  `];
 }
 
 export function settingsPluginRows(

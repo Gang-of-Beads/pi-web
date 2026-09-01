@@ -6,6 +6,7 @@ import { formatShortcut, isShortcutSequenceStarter, parseShortcutInput, resolveS
 import { readPromptEnterPreference, writePromptEnterPreference, type PromptEnterPreference } from "../../promptEnterBehavior";
 import "./SettingsPanelFrame";
 import type { SettingsNotice } from "./SettingsPanelFrame";
+import { interactiveSurfaceStyles } from "../shared";
 
 const RECORD_SHORTCUT_LISTENER_OPTIONS = { capture: true } as const;
 
@@ -342,7 +343,7 @@ export class SettingsShortcutsPanel extends LitElement {
     this.recordingListenerActive = false;
   }
 
-  static override styles = css`
+  static override styles = [interactiveSurfaceStyles, css`
     :host { display: block; }
     h3, p { margin: 0; }
     h3 { font-size: 13px; line-height: 1.3; }
@@ -398,7 +399,7 @@ export class SettingsShortcutsPanel extends LitElement {
       .shortcut-row { grid-template-columns: minmax(0, 1fr); align-items: start; }
       .shortcut-status, .shortcut-actions { justify-content: flex-start; }
     }
-  `;
+  `];
 }
 
 interface RecordingState {

@@ -1,6 +1,7 @@
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { PiWebFleetReport, PiWebFleetRunResponse } from "../../../../shared/apiTypes";
+import { interactiveSurfaceStyles } from "../shared";
 
 /**
  * The machines this server can act on, and the two actions worth taking on all
@@ -101,7 +102,7 @@ export class SettingsFleetSection extends LitElement {
     }
   }
 
-  static override styles = css`
+  static override styles = [interactiveSurfaceStyles, css`
     :host { display: block; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
     .fleet { display: grid; gap: var(--pi-space-5); }
     header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--pi-space-6); }
@@ -130,7 +131,7 @@ export class SettingsFleetSection extends LitElement {
       .machine { grid-template-columns: auto minmax(0, 1fr); }
       .machine .row-actions { grid-row: auto; grid-column: 1 / -1; }
     }
-  `;
+  `];
 }
 
 declare global {

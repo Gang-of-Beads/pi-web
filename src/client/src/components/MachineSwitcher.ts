@@ -6,6 +6,7 @@ import { actionMenuPanelStyle } from "./actionMenu";
 import { hasStatusUnread, renderActivityIndicator, statusActivityKind } from "./activityBadge";
 import { canRemoveMachine } from "./MachineList";
 import type { KeyboardNavigableSection } from "./navigationFocus";
+import { interactiveSurfaceStyles } from "./shared";
 
 @customElement("machine-switcher")
 export class MachineSwitcher extends LitElement implements KeyboardNavigableSection {
@@ -275,7 +276,7 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     void this.onRemove?.(machine);
   }
 
-  static override styles = css`
+  static override styles = [interactiveSurfaceStyles, css`
     :host { min-width: 0; display: block; }
     /* A display rule on :host outranks the HTML hidden attribute, so an element
        rendered with the hidden attribute stays on screen unless this says so.
@@ -331,7 +332,7 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     .machine-option-actions-panel button.danger:focus-visible { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); }
     @media (hover: hover) { .machine-option-actions-panel button.danger:hover { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); } }
     @keyframes pulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
-  `;
+  `];
 }
 
 function machineStatus(machine: Machine, statuses: Record<string, MachineHealth>): MachineStatus {

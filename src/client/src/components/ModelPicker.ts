@@ -5,6 +5,7 @@ import { keyboardEventOriginatesFromNativeActivationControl } from "./keyboardEv
 import { matchesAllQueryWords, normalizeSearchQuery } from "../searchMatching";
 import "./ModalSurface";
 import { scrollWhenSelected } from "./scrollWhenSelected";
+import { interactiveSurfaceStyles } from "./shared";
 
 /**
  * Scope the model dialog lists: `enabled` is the session's pickable model list
@@ -266,7 +267,7 @@ export class ModelPicker extends LitElement {
     }
   }
 
-  static override styles = css`
+  static override styles = [interactiveSurfaceStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-popover); color: var(--pi-text); font: 14px system-ui, sans-serif; }
     modal-surface { --modal-surface-width: min(720px, calc(100vw - 40px)); --modal-surface-max-height: min(640px, calc(100vh - 40px)); }
     header { display: flex; align-items: center; justify-content: space-between; padding: 12px; border-bottom: 1px solid var(--pi-border); }
@@ -289,5 +290,5 @@ export class ModelPicker extends LitElement {
     .group-header { padding: 8px 12px 4px; color: var(--pi-muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
     small { display: block; margin-top: 4px; color: var(--pi-muted); }
     .empty { padding: 24px; color: var(--pi-muted); text-align: center; }
-  `;
+  `];
 }

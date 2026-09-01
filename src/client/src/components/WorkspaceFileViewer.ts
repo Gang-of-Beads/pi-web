@@ -8,7 +8,7 @@ import { renderWorkspaceMarkdownHtml } from "../formatting/workspaceMarkdown";
 import { MAX_INLINE_PREVIEW_BYTES, MAX_INLINE_PREVIEW_LABEL, workspaceFileName } from "../../../shared/workspaceFiles";
 import { formatFileSize } from "../utils/format";
 import { workspaceFileViewModeStore, type WorkspaceFileViewMode, type WorkspaceFileViewModeStore } from "../workspaceFileViewMode";
-import { formattedTextStyles } from "./shared";
+import { formattedTextStyles, interactiveSurfaceStyles } from "./shared";
 
 export type WorkspaceFilePreviewKind = "image" | "html" | "pdf" | "markdown" | "download" | "code";
 
@@ -301,7 +301,7 @@ export class WorkspaceFileViewer extends LitElement {
     return hasRawAndPreviewModes(file, workspaceFilePreviewKind(file));
   }
 
-  static override styles = [
+  static override styles = [interactiveSurfaceStyles, 
     formattedTextStyles,
     css`
       :host { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: auto; color: var(--pi-text); font: 14px system-ui, sans-serif; }

@@ -12,6 +12,7 @@ import { createTerminalSoftKeysDefaultEnvironmentMedia, hasTerminalSoftKeysPrefe
 import "./TerminalSoftKeys";
 import type { TerminalSoftKeyInputOptions } from "./TerminalSoftKeys";
 import { describeError } from "../notice";
+import { interactiveSurfaceStyles } from "./shared";
 
 const TERMINAL_OPTIONS_BASE: ITerminalOptions = {
   cursorBlink: true,
@@ -682,7 +683,7 @@ export class TerminalPanel extends LitElement {
     `;
   }
 
-  static override styles = css`
+  static override styles = [interactiveSurfaceStyles, css`
     :host { flex: 1 1 auto; min-height: 0; display: flex; }
     .terminal-shell { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--pi-terminal-bg); }
     .terminal-tabs { flex: 0 0 auto; display: flex; gap: 6px; align-items: center; padding: 6px; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); overflow: auto; }
@@ -752,7 +753,7 @@ export class TerminalPanel extends LitElement {
     .error { flex: 0 0 auto; margin: 0; padding: 8px; color: var(--pi-danger); border-bottom: 1px solid var(--pi-border); background: var(--pi-surface); }
     .muted { margin: 10px; color: var(--pi-muted); }
     .xterm { height: 100%; }
-  `;
+  `];
 }
 
 function normalizedScrollOffset(sourceOffset: number, sourceRange: number, targetRange: number): number {

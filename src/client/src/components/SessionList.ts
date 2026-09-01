@@ -15,7 +15,7 @@ import type { SessionStateBadgeKind } from "./activityBadge";
 import { sessionStateBadgeStyles } from "./sessionStateBadgeStyles";
 import type { KeyboardNavigableSection } from "./navigationFocus";
 import { focusSelectedOrFirstSelectableRow, handleSelectableRowKeyboard } from "./selectableRow";
-import { listStyles } from "./shared";
+import { listStyles, interactiveSurfaceStyles } from "./shared";
 
 /**
  * An orphan row is a session whose recorded parent is not in this listing.
@@ -661,7 +661,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     return "";
   }
 
-  static override styles = [listStyles, sessionStateBadgeStyles, css`
+  static override styles = [interactiveSurfaceStyles, listStyles, sessionStateBadgeStyles, css`
     h2 { min-height: 30px; gap: var(--pi-space-2); }
     /* The shared heading spreads its children across the full width, which
        floats the checkbox, the unread count, Clean up and the start button

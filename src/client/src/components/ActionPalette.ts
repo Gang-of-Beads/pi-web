@@ -6,6 +6,7 @@ import { keyboardEventOriginatesFromNativeActivationControl } from "./keyboardEv
 import { matchesAllQueryWords, normalizeSearchQuery } from "../searchMatching";
 import "./ModalSurface";
 import { scrollWhenSelected } from "./scrollWhenSelected";
+import { interactiveSurfaceStyles } from "./shared";
 
 @customElement("action-palette")
 export class ActionPalette extends LitElement {
@@ -96,7 +97,7 @@ export class ActionPalette extends LitElement {
     this.onRun?.(action);
   }
 
-  static override styles = css`
+  static override styles = [interactiveSurfaceStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-overlay); color: var(--pi-text); font: 14px system-ui, sans-serif; }
     modal-surface { --palette-top: min(12dvh, 90px); --palette-bottom: max(20px, env(safe-area-inset-bottom)); --modal-surface-place-items: start center; --modal-surface-backdrop-padding: var(--palette-top) 20px var(--palette-bottom); --modal-surface-max-height: min(640px, calc(100dvh - var(--palette-top) - var(--palette-bottom))); }
     header { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 10px; border-bottom: 1px solid var(--pi-border); }
@@ -126,7 +127,7 @@ export class ActionPalette extends LitElement {
       kbd { display: none; }
       .options button { grid-template-columns: minmax(0, 1fr); }
     }
-  `;
+  `];
 }
 
 /**

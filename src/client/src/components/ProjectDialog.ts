@@ -5,6 +5,7 @@ import type { ProjectTrustChoice } from "../controllers/projectController";
 import { css } from "lit";
 import "./ModalSurface";
 import { describeError } from "../notice";
+import { interactiveSurfaceStyles } from "./shared";
 
 const SUGGESTION_DEBOUNCE_MS = 120;
 
@@ -305,7 +306,7 @@ export class ProjectDialog extends LitElement {
     `;
   }
 
-  static override styles = css`
+  static override styles = [interactiveSurfaceStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-dialog); color: var(--pi-text); font: 14px system-ui, sans-serif; }
     modal-surface { --modal-surface-place-items: start center; --modal-surface-backdrop-padding: min(12vh, 90px) 0 0; --modal-surface-width: min(720px, calc(100vw - 40px)); --modal-surface-max-height: calc(100dvh - min(12vh, 90px) - 20px); --modal-surface-max-height: min(700px, calc(100vh - 40px)); }
     header, footer { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border-bottom: 1px solid var(--pi-border); }
@@ -337,5 +338,5 @@ export class ProjectDialog extends LitElement {
     header button { border: 0; background: transparent; color: var(--pi-muted); font-size: 22px; padding: 0 8px; }
     .primary { border-color: var(--pi-success-border); background: var(--pi-success-border); }
     button:disabled { opacity: .5; cursor: not-allowed; }
-  `;
+  `];
 }

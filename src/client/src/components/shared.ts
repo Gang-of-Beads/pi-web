@@ -2,6 +2,38 @@ import { css } from "lit";
 import type { ChatRole } from "../chatRole";
 import type { AskUserOutcome } from "../../../shared/apiTypes";
 
+/**
+ * What every interactive control in this app owes a touch.
+ *
+ * A shadow root inherits no styles, so each component that draws a button used
+ * to repeat these two declarations - and most of them did not. Forty of the
+ * forty-eight components never set them, which is why tapping a session, a
+ * project, a status chip or a switcher flashed the platform's default blue
+ * block and waited out the double-tap-zoom delay before acting.
+ *
+ * Every component's styles include this, and a test asserts that, so a new
+ * component cannot reintroduce the flash by omission.
+ */
+export const interactiveSurfaceStyles = css`
+  button,
+  a,
+  summary,
+  label,
+  input,
+  select,
+  textarea,
+  [role="button"],
+  [role="option"],
+  [role="tab"],
+  [role="switch"],
+  [role="menuitem"],
+  [role="checkbox"],
+  [role="radio"] {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+`;
+
 export interface ToolPreview {
   diff?: string;
   firstChangedLine?: number;

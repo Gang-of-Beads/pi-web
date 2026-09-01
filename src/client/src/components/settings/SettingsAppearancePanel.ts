@@ -1,6 +1,7 @@
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import type { QualifiedContributionId, QualifiedThemeContribution, ThemeTokens } from "../../plugins/types";
+import { interactiveSurfaceStyles } from "../shared";
 
 /**
  * Choosing how the app looks, where looking for it makes sense.
@@ -107,7 +108,7 @@ export class SettingsAppearancePanel extends LitElement {
     `;
   }
 
-  static override styles = css`
+  static override styles = [interactiveSurfaceStyles, css`
     :host { display: block; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
     .heading { margin-bottom: var(--pi-space-6); }
     h2 { margin: 0 0 var(--pi-space-2); font-family: var(--pi-font-display); font-size: var(--pi-text-lg); font-weight: var(--pi-weight-semibold); letter-spacing: -0.01em; }
@@ -138,7 +139,7 @@ export class SettingsAppearancePanel extends LitElement {
       .theme-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--pi-space-4); }
       .preview { height: 64px; }
     }
-  `;
+  `];
 }
 
 declare global {

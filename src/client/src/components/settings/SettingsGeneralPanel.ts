@@ -14,6 +14,7 @@ import {
   type MachineAccessConfigDraft,
 } from "./settingsConfigDraft";
 import { describeError } from "../../notice";
+import { interactiveSurfaceStyles } from "../shared";
 
 function generalDescription(targetLabel: string): TemplateResult {
   return html`Gateway server fields edit this local gateway. File access and upload defaults edit ${targetLabel}.`;
@@ -249,7 +250,7 @@ export class SettingsGeneralPanel extends LitElement {
     this.machineLocalError = "";
   }
 
-  static override styles = css`
+  static override styles = [interactiveSurfaceStyles, css`
     :host { display: block; }
     .card-heading { display: grid; gap: 6px; min-width: 0; }
     h3, p { margin: 0; }
@@ -288,7 +289,7 @@ export class SettingsGeneralPanel extends LitElement {
     @media (max-width: 760px) {
       .effective-card dl > div { grid-template-columns: minmax(0, 1fr); gap: 3px; }
     }
-  `;
+  `];
 }
 
 function formatAllowedHosts(value: PiWebConfigValues["allowedHosts"]): string | TemplateResult {
