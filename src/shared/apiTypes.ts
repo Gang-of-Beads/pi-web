@@ -1289,6 +1289,13 @@ export interface SessionStatus {
   sessionId: string;
   /** True when the server has verified a backing session file exists; false when known transient. */
   persisted?: boolean;
+  /**
+   * When the working turn began, read off the transcript (its last input
+   * boundary). Present only while the session is working, and only from a
+   * daemon that publishes it; a browser that joins mid-turn anchors its
+   * elapsed readout here instead of clocking from when it first looked.
+   */
+  turnStartedAt?: string;
   model?: SessionModel;
   thinkingLevel?: string;
   isStreaming: boolean;

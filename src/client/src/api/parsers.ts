@@ -570,6 +570,7 @@ export function parseSessionStatus(value: unknown): SessionStatus {
   return {
     sessionId: requireString(record, "sessionId"),
     ...optionalField("persisted", parseOptionalBoolean(record["persisted"], "persisted")),
+    ...optionalField("turnStartedAt", optionalString(record, "turnStartedAt")),
     isStreaming: requireBoolean(record, "isStreaming"),
     isCompacting: requireBoolean(record, "isCompacting"),
     isBashRunning: requireBoolean(record, "isBashRunning"),
