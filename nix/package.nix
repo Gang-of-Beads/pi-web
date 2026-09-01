@@ -2,7 +2,7 @@
 
 buildNpmPackage rec {
   pname = "pi-web";
-  version = "1.202608.78";
+  version = "1.202609.0";
   src = lib.cleanSource ../.;
 
   npmDepsFetcherVersion = 2;

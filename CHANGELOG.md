@@ -1,5 +1,16 @@
 # @vincenthanxiaodu/pi-web
 
+## 1.202609.0
+
+### Patch Changes
+
+- 598e19b: Avoid periodic detached-work scans while filesystem watches are healthy and no background work is running, while preserving immediate watcher refreshes and fallback reconciliation.
+- e142cd6: Bound the browser's in-memory transcript cache to recently used sessions so long-lived tabs release history from older conversations.
+- f85c356: Bound session replay memory and disconnect slow realtime clients so long-running daemons recover through reconnect/resync instead of accumulating buffered data.
+- 7a6fb43: Reduce session daemon heartbeat overhead by sharing background-work scans, suppressing unchanged activity projections, and aggregating workspace activity in one pass.
+- 33e915f: Refresh detached task and subagent status promptly when their runtime files change, while retaining periodic reconciliation when filesystem watching is unavailable.
+- 21d1d24: Apply immutable caching to hashed client assets on Windows hosts as well as POSIX hosts.
+
 ## 1.202608.78
 
 ### Patch Changes
