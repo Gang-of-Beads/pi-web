@@ -471,7 +471,7 @@ describe("listing a whole machine's sessions at once", () => {
       },
     );
 
-    expect(scanned).toEqual(["/store/a-dir", "/store/b-dir"]);
+    expect(scanned).toEqual([join("/store", "a-dir"), join("/store", "b-dir")]);
     expect(entries).toHaveLength(2);
   });
 

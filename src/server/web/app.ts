@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyServerOptions } from "fastify";
 import fastifyCompress from "@fastify/compress";
@@ -283,7 +283,7 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
         // index.html must be re-read every time or an upgrade only reaches
         // people who clear their cache.
         if (filePath.endsWith("index.html")) response.header("cache-control", "no-store");
-        else if (filePath.includes("/assets/")) response.header("cache-control", "public, max-age=31536000, immutable");
+        else if (filePath.includes(`${sep}assets${sep}`)) response.header("cache-control", "public, max-age=31536000, immutable");
       },
     });
     app.setNotFoundHandler((request, reply) => {

@@ -23,7 +23,7 @@ describe("prompt-editor send failure", () => {
     await submit(editor);
 
     expect(onSend).toHaveBeenCalled();
-    expect(draft(editor)).toBe("a long message worth keeping");
+    await vi.waitFor(() => { expect(draft(editor)).toBe("a long message worth keeping"); });
   });
 
   it("restores the attachments too", async () => {
@@ -38,8 +38,10 @@ describe("prompt-editor send failure", () => {
     await submit(editor);
 
     // Re-picking a screenshot from a share sheet is often impossible.
-    expect(shadow(editor).querySelectorAll(".attachment-chip")).toHaveLength(1);
-    expect(draft(editor)).toBe("look at this");
+    await vi.waitFor(() => {
+      expect(shadow(editor).querySelectorAll(".attachment-chip")).toHaveLength(1);
+      expect(draft(editor)).toBe("look at this");
+    });
   });
 
   it("saves a network-dropped send to the outbox instead of restoring the draft", async () => {
@@ -61,7 +63,7 @@ describe("prompt-editor send failure", () => {
 
     await submit(editor);
 
-    expect(draft(editor)).toBe("rejected but not dropped");
+    await vi.waitFor(() => { expect(draft(editor)).toBe("rejected but not dropped"); });
   });
 
   it("keeps the composer clear when the send succeeds", async () => {
@@ -112,7 +114,7 @@ async function mount(onSend: SendHandler): Promise<PromptEditor> {
   editor.onSend = onSend;
   document.body.append(editor);
   await editor.updateComplete;
-  await new Promise((resolve) => setTimeout(resolve, 200));
+  await vi.waitFor(() => { expect(editor.view).toBeDefined(); });
   return editor;
 }
 

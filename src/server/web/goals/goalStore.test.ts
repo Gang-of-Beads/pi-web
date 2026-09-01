@@ -40,7 +40,7 @@ describe("readWorkspaceGoals across roots", () => {
    * cannot be read is a failed read - only a MISSING directory is legitimately
    * empty.
    */
-  it("treats an unreadable goals directory as a failed read, not an empty one", async () => {
+  it.skipIf(process.platform === "win32")("treats an unreadable goals directory as a failed read, not an empty one", async () => {
     const root = await scratch();
     await writeGoal(root, "g1");
     const goalsDir = join(root, ".pi", "goals");
