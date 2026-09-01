@@ -79,7 +79,9 @@ jobs:
           echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
           echo "packed $tarball"
 
+      # The leading "./" is load-bearing: without it npm reads pack-out/x.tgz as
+      # a GitHub shorthand and tries to git-clone it.
       - name: Publish to npm
-        run: npm publish "pack-out/${{ steps.pack.outputs.tarball }}" --access public
+        run: npm publish "./pack-out/${{ steps.pack.outputs.tarball }}" --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
