@@ -2115,7 +2115,12 @@ export class ChatView extends LitElement {
   private renderPendingMessages() {
     const pending = this.transcriptSplit().pending;
     if (pending.length === 0) return null;
-    const base = this.messages.length;
+    // Keys are absolute positions in the conversation, not offsets into the
+    // loaded window: settled rows are keyed messageStart + i, so pending rows
+    // that ignored messageStart collided with history rows as soon as earlier
+    // messages had been loaded, and changed key on the way to settled - which
+    // makes lit replace the element instead of updating it.
+    const base = this.messageStart + this.messages.length;
     return html`${repeat(pending, (line, index) => this.messageAnchorKey(base + index), (line, index) => this.renderMessage(line, base + index))}`;
   }
 

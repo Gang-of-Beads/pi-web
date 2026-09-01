@@ -81,9 +81,22 @@ describe("applyQueueToDelivery", () => {
     expect(next[0]?.meta?.delivery).toEqual({ clientMessageId: ID, state: "queued", kind: "followUp" });
   });
 
-  it("marks a message delivered once it leaves the queue", () => {
+  /**
+   * This file used to assert the opposite one line above the case that
+   * contradicted it: absence settled a `queued` bubble, while absence left a
+   * `sending` one alone. A queue snapshot cannot tell those apart - it simply
+   * does not mention the message - and the agent omits a message from it while
+   * expanding a prompt, and between taking it and writing it to the
+   * transcript. Settling on that produced both reported defects: the bubble
+   * lost its mark, its own queue entry could then no longer claim it, and the
+   * entry was drawn a second time or vanished outright.
+   *
+   * Delivery is proved by the agent's committed copy (carryDeliveryForward),
+   * never by a gap in a snapshot.
+   */
+  it("leaves a queued message queued when a snapshot omits it", () => {
     const next = applyQueueToDelivery([tracked("queued")], []);
-    expect(next[0]?.meta?.delivery?.state).toBe("delivered");
+    expect(next[0]?.meta?.delivery?.state).toBe("queued");
   });
 
   it("leaves an in-flight send alone: absence from the queue proves nothing yet", () => {
@@ -91,9 +104,9 @@ describe("applyQueueToDelivery", () => {
     expect(applyQueueToDelivery(messages, [])).toBe(messages);
   });
 
-  it("ignores queue entries from other clients", () => {
+  it("does not settle a received message because the queue only holds another client's", () => {
     const messages = [tracked("received")];
-    expect(applyQueueToDelivery(messages, [{ kind: "steer", text: "someone else" }])[0]?.meta?.delivery?.state).toBe("delivered");
+    expect(applyQueueToDelivery(messages, [{ kind: "steer", text: "someone else" }])[0]?.meta?.delivery?.state).toBe("received");
   });
 });
 

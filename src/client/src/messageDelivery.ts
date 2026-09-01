@@ -219,9 +219,14 @@ export function applyQueueToDelivery(messages: ChatLine[], queued: readonly Queu
       next = markDelivery(next, delivery.clientMessageId, "queued", kind);
       continue;
     }
-    // Only a message the server confirmed can be reported as delivered by
-    // absence: an in-flight send is simply not in the queue yet.
-    if (delivery.state === "received" || delivery.state === "queued") next = markDelivery(next, delivery.clientMessageId, "delivered");
+    // Absence proves nothing. A queue snapshot omits a message while the agent
+    // is expanding it, between the instant it is taken and the instant it is
+    // written to the transcript, and whenever its id could not be stamped onto
+    // the entry at all. Settling on absence turned a waiting bubble into an
+    // ordinary card, which then could not be claimed by its own queue entry -
+    // so the entry was drawn a second time, or, when it never returned, the row
+    // simply vanished. Delivery has its own evidence: the agent's committed
+    // copy of the message, applied by carryDeliveryForward.
   }
   return next;
 }
