@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { PI_WEB_DOCKER_USER_COMMANDS } from "./piWebDockerCommandPlan.js";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const dockerOneLine = "curl -fsSL https://raw.githubusercontent.com/jmfederico/pi-web/main/docker/install.sh | sh";
+const dockerOneLine = "curl -fsSL https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/docker/install.sh | sh";
 
 describe("pi-web-docker documentation", () => {
   it("documents the Docker one-line install in the Docker guide", async () => {
