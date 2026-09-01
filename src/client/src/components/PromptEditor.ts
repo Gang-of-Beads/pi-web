@@ -28,6 +28,7 @@ import { renderAttachIcon, renderSendIcon, renderQueueIcon, renderSteerIcon, ren
 import { thinkingGauge, thinkingLevelLabel } from "../../../shared/thinkingLevels";
 import "./AutocompleteMenu";
 import "./PromptHistoryPanel";
+import { draftWithDictation } from "../dictationDraft.js";
 
 export const promptEditorStyles = css`
   /* Mobile browsers paint a rectangular highlight on tap, which looks pasted-on
@@ -262,6 +263,8 @@ export class PromptEditor extends LitElement {
   @state() private voiceState: VoiceCaptureState = { kind: "idle" };
   @state() private zoomedAttachment?: { src: string; alt: string } | undefined;
   private voice?: VoiceController;
+  /** The typed text a live dictation started from; cleared when it ends. */
+  private dictationBase: string | undefined;
   @state() private attachments: PendingAttachment[] = [];
   @state() private attachmentError: string | undefined = undefined;
   /**
@@ -723,10 +726,15 @@ export class PromptEditor extends LitElement {
         }),
       },
       {
-        onState: (state) => { this.voiceState = state; },
+        // A dictation that is no longer listening has finished its utterance,
+        // so the next one starts from whatever the draft holds by then.
+        onState: (state) => { this.voiceState = state; if (state.kind !== "listening") this.dictationBase = undefined; },
         // Inserted, never sent: the user reads what was heard before it goes
         // anywhere.
-        onTranscript: (text) => { this.insertDictatedText(text); },
+        onTranscript: (text) => { this.dictationBase = undefined; this.insertDictatedText(text); },
+        // Every live report repeats everything heard so far, so it replaces the
+        // span dictation owns instead of being appended to it.
+        onLiveTranscript: (text) => { this.applyLiveDictation(text); },
       },
     );
     await this.voice.toggle(this.speechToText);
@@ -743,6 +751,18 @@ export class PromptEditor extends LitElement {
     const current = this.editor?.state.doc.toString() ?? this.draft;
     const separator = current === "" || current.endsWith(" ") || current.endsWith("\n") ? "" : " ";
     this.replaceText(`${current}${separator}${text}`);
+  }
+
+  /**
+   * Show what has been heard so far, replacing the previous report.
+   *
+   * The text typed before dictation started is captured once and kept; every
+   * later report is folded onto that same base, so the composer holds one copy
+   * of the utterance rather than one per update.
+   */
+  private applyLiveDictation(text: string): void {
+    this.dictationBase ??= this.editor?.state.doc.toString() ?? this.draft;
+    this.replaceText(draftWithDictation(this.dictationBase, text));
   }
 
   private effectiveAttachmentDelivery(): PromptAttachmentDelivery {

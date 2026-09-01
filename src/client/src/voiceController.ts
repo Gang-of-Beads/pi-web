@@ -56,8 +56,16 @@ export interface VoiceControllerDeps {
 export interface VoiceControllerCallbacks {
   /** Called whenever the state changes, so the UI can re-render. */
   onState: (state: VoiceCaptureState) => void;
-  /** Called with the transcript. The caller inserts it; it is never sent. */
+  /** Called with a finished transcript. The caller inserts it; it is never sent. */
   onTranscript: (text: string) => void;
+  /**
+   * Called with everything heard so far, repeatedly, while dictation runs.
+   *
+   * Each report supersedes the last, so a caller must replace the span it owns
+   * rather than append. Sharing one callback with onTranscript is what made a
+   * cumulative report accumulate on screen.
+   */
+  onLiveTranscript?: (text: string) => void;
 }
 
 export class VoiceController {
@@ -133,7 +141,7 @@ export class VoiceController {
     this.elapsedMs = 0;
     this.setState({ kind: "listening" });
     this.live = create(
-      (text) => { this.callbacks.onTranscript(text); },
+      (text) => { (this.callbacks.onLiveTranscript ?? this.callbacks.onTranscript)(text); },
       (message) => { this.setState({ kind: "error", message }); },
     );
     try {
