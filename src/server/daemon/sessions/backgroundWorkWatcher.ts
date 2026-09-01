@@ -50,6 +50,11 @@ export class BackgroundWorkWatcher {
     }
   }
 
+  /** Whether every durable parent needed to discover new work is watched. */
+  isHealthy(target: BackgroundWorkWatchTarget): boolean {
+    return [...requiredWatchPaths(target)].every((path) => this.watchersByPath.has(path));
+  }
+
   forget(sessionId: string): void {
     const paths = this.pathsBySession.get(sessionId);
     if (paths === undefined) return;
@@ -94,10 +99,17 @@ export class BackgroundWorkWatcher {
 }
 
 function watchedPaths(target: BackgroundWorkWatchTarget): Set<string> {
-  const paths = new Set([join(target.cwd, ".pi", "tasks")]);
+  const paths = requiredWatchPaths(target);
   if (target.sessionFile === undefined) return paths;
   const sessionDir = dirname(target.sessionFile);
   paths.add(join(sessionDir, "subagent-artifacts"));
   paths.add(join(sessionDir, basename(target.sessionFile, ".jsonl")));
+  return paths;
+}
+
+/** Parent directories exist before their optional task/artifact children. */
+function requiredWatchPaths(target: BackgroundWorkWatchTarget): Set<string> {
+  const paths = new Set([join(target.cwd, ".pi")]);
+  if (target.sessionFile !== undefined) paths.add(dirname(target.sessionFile));
   return paths;
 }
