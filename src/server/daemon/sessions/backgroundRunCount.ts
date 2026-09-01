@@ -1,7 +1,7 @@
 import { basename, dirname } from "node:path";
 import type { SessionSubagentRunInfo } from "../../../shared/apiTypes.js";
 import { runningTaskIds, taskIdsForSession } from "./backgroundTasks.js";
-import { listSubagentRuns } from "./subagentRuns.js";
+import { createSubagentRunLister, listSubagentRuns } from "./subagentRuns.js";
 
 /**
  * How much work a session still has in flight after its own turn has ended.
@@ -38,6 +38,36 @@ export interface BackgroundRunCountDeps {
 }
 
 const defaultDeps: BackgroundRunCountDeps = { runningTaskIds, taskIdsForSession, listSubagentRuns };
+
+export interface BackgroundRunCountCycle {
+  count(input: BackgroundRunCountInput): Promise<number>;
+}
+
+/**
+ * Build the counter used by one heartbeat pass.
+ *
+ * Task registries belong to a workspace and subagent artifacts belong to a
+ * session directory, while the answers produced from them belong to individual
+ * sessions. This cycle shares those broad snapshots without retaining them
+ * across heartbeats, so process liveness and newly written artifacts are still
+ * refreshed on the next pass.
+ */
+export function createBackgroundRunCountCycle(deps?: BackgroundRunCountDeps): BackgroundRunCountCycle {
+  const effectiveDeps = deps ?? { ...defaultDeps, listSubagentRuns: createSubagentRunLister() };
+  const runningTasksByCwd = new Map<string, Promise<Set<string>>>();
+  const cycleDeps: BackgroundRunCountDeps = {
+    ...effectiveDeps,
+    runningTaskIds: (cwd) => {
+      let running = runningTasksByCwd.get(cwd);
+      if (running === undefined) {
+        running = effectiveDeps.runningTaskIds(cwd);
+        runningTasksByCwd.set(cwd, running);
+      }
+      return running;
+    },
+  };
+  return { count: (input) => countBackgroundRuns(input, cycleDeps) };
+}
 
 export async function countBackgroundRuns(
   input: BackgroundRunCountInput,
