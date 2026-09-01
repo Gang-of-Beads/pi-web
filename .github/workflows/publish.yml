@@ -52,6 +52,15 @@ jobs:
       - name: Smoke test npm 12 global package install
         run: npm run smoke:package-install
 
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v20
+
+      # `flake check --no-build` only evaluates the derivation. Build the actual
+      # package before attaching a release or publishing it to npm so the Nix
+      # package's fixed-output npmDepsHash is verified at release time.
+      - name: Build Nix package
+        run: nix build .#pi-web --no-link
+
       # Release steps only make sense on a tag ref. workflow_dispatch exists to
       # re-run a botched tag release; dispatching on a branch still runs the
       # checks above and stops here.
