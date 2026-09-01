@@ -5284,7 +5284,31 @@ function buildPromptOptions(behavior: QueuedPromptKind | undefined, images: Imag
  * disagreed for as long as they were written from separate rules.
  */
 function historyMessages(session: PiAgentSession): unknown[] {
-  return branchMessages(session.sessionManager.getBranch());
+  return historyMessagesFromEntries(session.sessionManager.getBranch());
+}
+
+/**
+ * Bound a tool result on its way into a transcript page.
+ *
+ * The live path bounds each event as it is emitted, but a page is assembled
+ * straight from the stored branch, and that is the path that answered a
+ * hundred-message request with 15.6 MB - five results being two thirds of it.
+ * Bounding only the live event left the page exactly as heavy as before.
+ */
+function historyMessagesFromEntries(entries: readonly unknown[]): unknown[] {
+  return branchMessages(entries).map(boundToolResultMessage);
+}
+
+function boundToolResultMessage(message: unknown): unknown {
+  if (!isRecord(message) || message["role"] !== "toolResult") return message;
+  const content = message["content"];
+  if (typeof content === "string") {
+    const limited = boundToolResultText(content);
+    return limited.truncated ? { ...message, content: [{ type: "text", text: limited.text, truncatedBytes: limited.totalBytes }] } : message;
+  }
+  if (!isUnknownArray(content)) return message;
+  const bounded = boundToolResultContent(content);
+  return bounded === content ? message : { ...message, content: bounded };
 }
 
 /** custom entry type used to persist parent -> child subsession links outside LLM context. */
@@ -5350,11 +5374,11 @@ function toClientEvent(event: unknown, thinkingLevel?: string): SessionUiEvent {
   }
   if (eventType === "tool_execution_update") {
     const partialResult = getProperty(event, "partialResult");
-    return { type: "tool.update", toolName: getString(event, "toolName") ?? "", toolCallId: getString(event, "toolCallId") ?? "", text: stringifyToolResult(partialResult), content: toolResultContent(partialResult), details: toolResultDetails(partialResult) };
+    return { type: "tool.update", toolName: getString(event, "toolName") ?? "", toolCallId: getString(event, "toolCallId") ?? "", text: boundToolResultText(stringifyToolResult(partialResult)).text, content: toolResultContent(partialResult), details: toolResultDetails(partialResult) };
   }
   if (eventType === "tool_execution_end") {
     const result = getProperty(event, "result");
-    return { type: "tool.end", toolName: getString(event, "toolName") ?? "", toolCallId: getString(event, "toolCallId") ?? "", text: stringifyToolResult(result), content: toolResultContent(result), details: toolResultDetails(result), isError: getBoolean(event, "isError") === true };
+    return { type: "tool.end", toolName: getString(event, "toolName") ?? "", toolCallId: getString(event, "toolCallId") ?? "", text: boundToolResultText(stringifyToolResult(result)).text, content: toolResultContent(result), details: toolResultDetails(result), isError: getBoolean(event, "isError") === true };
   }
   if (eventType === "agent_start") return { type: "agent.start" };
   if (eventType === "agent_end") return { type: "agent.end" };
@@ -5399,14 +5423,17 @@ function shortToolValue(value: unknown): string {
 function boundToolResultContent(content: unknown): unknown {
   if (!isUnknownArray(content)) return content;
   const bounded: unknown[] = [];
+  let changed = false;
   for (const part of content) {
     if (!isRecord(part) || part["type"] !== "text") { bounded.push(part); continue; }
     const text = part["text"];
     if (typeof text !== "string") { bounded.push(part); continue; }
     const limited = boundToolResultText(text);
-    bounded.push(limited.truncated ? { ...part, text: limited.text, truncatedBytes: limited.totalBytes } : part);
+    if (!limited.truncated) { bounded.push(part); continue; }
+    changed = true;
+    bounded.push({ ...part, text: limited.text, truncatedBytes: limited.totalBytes });
   }
-  return bounded;
+  return changed ? bounded : content;
 }
 
 function isUnknownArray(value: unknown): value is readonly unknown[] {
