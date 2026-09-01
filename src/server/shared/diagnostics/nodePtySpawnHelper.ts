@@ -2,6 +2,9 @@ import { accessSync, constants, existsSync, statSync, type Stats } from "node:fs
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 
+// The report that documents this failure and its fix lives in the project's
+// earlier repository; it is kept as-is because that is where the diagnosis
+// and the user-facing discussion actually are.
 export const PI_WEB_SPAWN_HELPER_ISSUE_URL = "https://github.com/jmfederico/pi-web/issues/4";
 export const NODE_PTY_SPAWN_HELPER_UPSTREAM_ISSUE_URL = "https://github.com/microsoft/node-pty/issues/850";
 

@@ -45,7 +45,7 @@ The Docker bootstrap does not require Node.js or npm on the host. It only needs 
 Install with the bootstrap one-liner:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jmfederico/pi-web/main/docker/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/docker/install.sh | sh
 ```
 
 The one-liner is idempotent. Each run refreshes Docker assets from the requested Git ref, writes host-specific `.env` values, rebuilds the local image from npm with `--pull --no-cache`, and recreates the split services without deleting persistent data. After installation, use the canonical runtime command in the install directory, for example `~/.local/share/pi-web-docker/pi-web-docker update`.
@@ -91,7 +91,7 @@ Do not run `docker compose down -v` unless you intentionally want to remove Comp
 The installer accepts flags and equivalent environment variables:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jmfederico/pi-web/main/docker/install.sh \
+curl -fsSL https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/docker/install.sh \
   | sh -s -- \
       --install-dir ~/.local/share/pi-web-docker \
       --data-dir ~/.local/share/pi-web-docker/data \
@@ -133,7 +133,7 @@ Install extra distro packages without writing a hook by setting a whitespace-del
 
 ```bash
 PI_WEB_EXTRA_ZYPPER_PACKAGES="go rustup kubernetes-client" \
-  curl -fsSL https://raw.githubusercontent.com/jmfederico/pi-web/main/docker/install.sh | sh
+  curl -fsSL https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/docker/install.sh | sh
 ```
 
 You can also pass installer flags such as `--opensuse-image`, `--nodejs-major`, `--nodejs-repo`, and `--extra-zypper-packages`, or edit the generated `.env` and rerun the installer.
@@ -160,7 +160,7 @@ zypper --non-interactive install --no-recommends glab kubernetes-client
 zypper clean --all
 EOF
 chmod +x ~/.local/share/pi-web-docker/custom-image.d/10-extra-tools.sh
-curl -fsSL https://raw.githubusercontent.com/jmfederico/pi-web/main/docker/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/docker/install.sh | sh
 ```
 
 Keep credentials out of these scripts. Authenticate tools after the container starts so secrets live in the persistent `/data` mount, for example through `/data/home` and `/data/config`.
@@ -194,7 +194,7 @@ This switch only has an effect where PI WEB has facts to add, which today means 
 Pi Coding Agent is resolved from PI WEB's npm peer dependency, and Docker links the peer-provided `pi` binary into `PATH`. Pin the PI WEB npm package when you want to stay on a specific PI WEB release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jmfederico/pi-web/main/docker/install.sh \
+curl -fsSL https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/docker/install.sh \
   | sh -s -- --pi-web-version 1.202606.4
 ```
 
@@ -210,7 +210,7 @@ To pin the Docker asset templates themselves, fetch the installer from a specifi
 
 ```bash
 ref=<git-ref>
-curl -fsSL "https://raw.githubusercontent.com/jmfederico/pi-web/$ref/docker/install.sh" \
+curl -fsSL "https://raw.githubusercontent.com/Gang-of-Beads/pi-web/$ref/docker/install.sh" \
   | sh -s -- --asset-ref "$ref"
 ```
 
@@ -259,7 +259,7 @@ ssh -L 8504:127.0.0.1:8504 user@server
 For a trusted VPN/private interface, bind to that private address:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jmfederico/pi-web/main/docker/install.sh \
+curl -fsSL https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/docker/install.sh \
   | sh -s -- --bind-address 100.x.y.z --port 8504
 ```
 

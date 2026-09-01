@@ -11,7 +11,7 @@ const forbiddenPatterns = [
   { pattern: /(?:\.\.\/)+src\//u, message: "imports from PI WEB source internals" },
   { pattern: /from\s+["']fastify["']/u, message: "imports Fastify instead of the server plugin API" },
   { pattern: /from\s+["']node:child_process["']/u, message: "bypasses the bounded server command helper" },
-  { pattern: /@jmfederico\/pi-web\/(?:dist|src)\//u, message: "imports unpublished PI WEB internals" },
+  { pattern: /@vincenthanxiaodu\/pi-web\/(?:dist|src)\//u, message: "imports unpublished PI WEB internals" },
 ];
 
 describe("bundled PI WEB plugins", () => {
