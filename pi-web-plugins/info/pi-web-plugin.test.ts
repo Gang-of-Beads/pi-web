@@ -1,6 +1,6 @@
 import { html, svg } from "lit";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { PluginRuntimeContext } from "@vincenthanxiaodu/pi-web/plugin-api";
+import type { PluginRuntimeContext } from "@gang-of-beads/pi-web/plugin-api";
 import plugin from "./pi-web-plugin.js";
 
 describe("Info plugin copy-diagnostics action", () => {

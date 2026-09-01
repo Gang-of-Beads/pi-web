@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
-import type { FileContentResponse, FileTreeEntry, FileTreeResponse, WorkspaceFiles, WorkspacePanelContext } from "@vincenthanxiaodu/pi-web/plugin-api";
+import type { FileContentResponse, FileTreeEntry, FileTreeResponse, WorkspaceFiles, WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
 import { RELAYS_ROOT, type RelayDiscoveryFiles, type RelayTreeNode } from "./relayDiscovery";
 import {
   collapsedAncestorOfSelectedFile,

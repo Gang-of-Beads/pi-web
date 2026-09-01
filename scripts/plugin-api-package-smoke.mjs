@@ -42,12 +42,12 @@ export async function smokeInstalledPluginApi({ packageRoot, fixtureRoot, repoRo
   await cp(join(repoRoot, "test-fixtures", "plugin-api-consumers"), consumerRoot, { recursive: true });
   await cp(join(packageRoot, "examples", "workspace-provider-plugin"), join(consumerRoot, "dual-entry"), { recursive: true });
   await Promise.all([
-    mkdir(join(consumerRoot, "node_modules", "@vincenthanxiaodu"), { recursive: true }),
+    mkdir(join(consumerRoot, "node_modules", "@gang-of-beads"), { recursive: true }),
     mkdir(join(consumerRoot, "node_modules", "@types"), { recursive: true }),
     writeFile(join(consumerRoot, "package.json"), '{"private":true,"type":"module"}\n', "utf8"),
   ]);
   await Promise.all([
-    symlink(packageRoot, join(consumerRoot, "node_modules", "@vincenthanxiaodu", "pi-web"), "dir"),
+    symlink(packageRoot, join(consumerRoot, "node_modules", "@gang-of-beads", "pi-web"), "dir"),
     symlink(join(repoRoot, "node_modules", "@types", "node"), join(consumerRoot, "node_modules", "@types", "node"), "dir"),
   ]);
 
@@ -98,9 +98,9 @@ async function assertInstalledDeclarationArtifacts(packageRoot) {
 async function assertExampleCompatibilityFloor(packageRoot) {
   const manifestPath = join(packageRoot, "examples", "workspace-provider-plugin", "package.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-  const actualRange = manifest?.devDependencies?.["@vincenthanxiaodu/pi-web"];
+  const actualRange = manifest?.devDependencies?.["@gang-of-beads/pi-web"];
   if (actualRange !== workspaceProviderExamplePiWebRange) {
-    throw new Error(`Installed workspace-provider example must require @vincenthanxiaodu/pi-web ${workspaceProviderExamplePiWebRange}; received ${JSON.stringify(actualRange)}`);
+    throw new Error(`Installed workspace-provider example must require @gang-of-beads/pi-web ${workspaceProviderExamplePiWebRange}; received ${JSON.stringify(actualRange)}`);
   }
 }
 
@@ -129,8 +129,8 @@ function isDeclarationPath(path) {
 
 function assertPluginApiResolution(consumerPath, compilerOptions, packageRoot) {
   const expectedDeclarations = new Map([
-    ["@vincenthanxiaodu/pi-web/plugin-api", join(packageRoot, "dist", "plugin-api.d.ts")],
-    ["@vincenthanxiaodu/pi-web/server-plugin-api", join(packageRoot, "dist", "server-plugin-api.d.ts")],
+    ["@gang-of-beads/pi-web/plugin-api", join(packageRoot, "dist", "plugin-api.d.ts")],
+    ["@gang-of-beads/pi-web/server-plugin-api", join(packageRoot, "dist", "server-plugin-api.d.ts")],
   ]);
   for (const [specifier, expected] of expectedDeclarations) {
     const resolved = ts.resolveModuleName(specifier, consumerPath, compilerOptions, ts.sys).resolvedModule;
@@ -140,10 +140,10 @@ function assertPluginApiResolution(consumerPath, compilerOptions, packageRoot) {
   }
 
   for (const specifier of [
-    "@vincenthanxiaodu/pi-web/plugin-api/unstable",
-    "@vincenthanxiaodu/pi-web/dist/plugin-api",
-    "@vincenthanxiaodu/pi-web/dist/shared/pluginApiTypes",
-    "@vincenthanxiaodu/pi-web/package.json",
+    "@gang-of-beads/pi-web/plugin-api/unstable",
+    "@gang-of-beads/pi-web/dist/plugin-api",
+    "@gang-of-beads/pi-web/dist/shared/pluginApiTypes",
+    "@gang-of-beads/pi-web/package.json",
   ]) {
     if (ts.resolveModuleName(specifier, consumerPath, compilerOptions, ts.sys).resolvedModule !== undefined) {
       throw new Error(`Unsupported package path resolved from the installed package: ${specifier}`);

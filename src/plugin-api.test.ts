@@ -7,7 +7,7 @@ import type {
   WorkspaceProviderCapabilities,
   WorkspaceProviderMetadata,
   WorkspaceRemovalPresentation,
-} from "@vincenthanxiaodu/pi-web/plugin-api";
+} from "@gang-of-beads/pi-web/plugin-api";
 
 type IfEqual<Left, Right, Then, Else = never> =
   (<Value>(value: Value) => Value extends Left ? 1 : 2) extends

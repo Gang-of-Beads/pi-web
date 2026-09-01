@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it } from "vitest";
-import type { WorkspacePanelContext } from "@vincenthanxiaodu/pi-web/plugin-api";
+import type { WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
 import { createGitDiffRoute } from "./browser/gitRoute.js";
 
 afterEach(() => {

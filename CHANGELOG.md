@@ -1,4 +1,10 @@
-# @vincenthanxiaodu/pi-web
+# @gang-of-beads/pi-web
+
+## 1.202609.3
+
+### Patch Changes
+
+- PI WEB is now published as `@gang-of-beads/pi-web`, under the organization that owns the project, instead of a personal scope. Install with `npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty`; plugin authors import `@gang-of-beads/pi-web/plugin-api` and `@gang-of-beads/pi-web/server-plugin-api`. The previous package name is deprecated with a pointer to this one and stops receiving releases, so an existing global install must be reinstalled under the new name rather than updated in place.
 
 ## 1.202609.2
 

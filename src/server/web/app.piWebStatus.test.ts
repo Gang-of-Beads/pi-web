@@ -26,13 +26,13 @@ describe("PI WEB status routes", () => {
 
 function status(generatedAt: string): PiWebStatusResponse {
   return {
-    packageName: "@vincenthanxiaodu/pi-web",
+    packageName: "@gang-of-beads/pi-web",
     generatedAt,
     components: {
       web: { component: "web", label: "Web/UI", stale: false, available: true },
       sessiond: { component: "sessiond", label: "Session daemon", stale: false, available: true },
     },
-    release: { packageName: "@vincenthanxiaodu/pi-web", updateAvailable: false },
+    release: { packageName: "@gang-of-beads/pi-web", updateAvailable: false },
     commands: {},
     messages: [],
   };

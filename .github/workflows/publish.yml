@@ -18,7 +18,7 @@ permissions:
   id-token: write
 
 # Trusted publishing (OIDC): npm accepts publishes from this workflow via the
-# trust relationship configured with `npm trust github` on @vincenthanxiaodu/pi-web.
+# trust relationship configured with `npm trust github` on @gang-of-beads/pi-web.
 # No NPM_TOKEN secret is used; npm CLI exchanges the GitHub Actions OIDC token
 # for a short-lived publish credential and provenance is attached automatically.
 

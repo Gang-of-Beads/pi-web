@@ -58,7 +58,7 @@ try {
     "--no-fund",
   ], root);
 
-  const packageRoot = join(globalPrefix, "lib", "node_modules", "@vincenthanxiaodu", "pi-web");
+  const packageRoot = join(globalPrefix, "lib", "node_modules", "@gang-of-beads", "pi-web");
   await smokeInstalledPluginApi({ packageRoot, fixtureRoot: root, repoRoot });
   await smokeInstalledTerminalService(packageRoot);
   console.log(`Installed-package plugin API and PTY smoke tests passed with npm ${NPM_VERSION}.`);

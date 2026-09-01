@@ -26,7 +26,7 @@ Options:
   --data-dir DIR          Persistent data directory (default: INSTALL_DIR/data)
   --bind-address ADDR     Host bind address (default: 127.0.0.1)
   --port PORT             Host port (default: 8504)
-  --pi-web-version VER    npm @vincenthanxiaodu/pi-web version pin (default: latest)
+  --pi-web-version VER    npm @gang-of-beads/pi-web version pin (default: latest)
   --opensuse-image IMAGE  openSUSE base image (default: opensuse/tumbleweed)
   --nodejs-major MAJOR    Node.js major version package to install (default: 22)
   --nodejs-repo REPO      Node.js zypper repository URL, auto, or disabled

@@ -7,7 +7,7 @@ import type {
   ProviderRequestContext,
   ProviderWorkspace,
   WorkspaceProvider,
-} from "@vincenthanxiaodu/pi-web/server-plugin-api";
+} from "@gang-of-beads/pi-web/server-plugin-api";
 
 const markerPath = ".pi-web/example-workspace-provider";
 

@@ -5,7 +5,7 @@
 // copying this plugin as a starting point, keep this file's shape and swap
 // the internals for your own.
 
-import type { PiWebPlugin } from "@vincenthanxiaodu/pi-web/plugin-api";
+import type { PiWebPlugin } from "@gang-of-beads/pi-web/plugin-api";
 import { copyDiagnostics, renderInfoPanel } from "./infoInternals.js";
 
 const plugin: PiWebPlugin = {

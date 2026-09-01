@@ -1,5 +1,5 @@
 import type { TemplateResult } from "lit";
-import type { HtmlTemplateTag, PiWebComponentStatus, PiWebPlugin, PiWebStatusResponse, PluginRuntimeState, WorkspacePanelTerminal } from "@vincenthanxiaodu/pi-web/plugin-api";
+import type { HtmlTemplateTag, PiWebComponentStatus, PiWebPlugin, PiWebStatusResponse, PluginRuntimeState, WorkspacePanelTerminal } from "@gang-of-beads/pi-web/plugin-api";
 import { additionalCommands, fallbackDockerStatus, formatVersion, installationLabel, messageCount, recommendedCommand, shouldShowUpdatesPanel, statusFor, type UpdatesRuntimeHint } from "./updatesLogic.js";
 
 function runCommandInTerminal(terminal: WorkspacePanelTerminal, label: string, command: string): void {
