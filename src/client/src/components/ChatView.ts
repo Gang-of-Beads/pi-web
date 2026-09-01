@@ -704,6 +704,8 @@ export class ChatView extends LitElement {
   @property({ type: Number }) messageTotal = 0;
   @property({ type: Boolean }) hasMore = false;
   @property({ type: Boolean }) loadingMore = false;
+  /** True while this session's transcript is being read for the first time. */
+  @property({ type: Boolean }) transcriptLoading = false;
   @property({ type: Boolean }) isSendingPrompt = false;
   @property({ type: Boolean }) isCompacting = false;
   @property({ type: Number }) pendingMessageCount = 0;
@@ -2321,9 +2323,22 @@ export class ChatView extends LitElement {
    * and the composer, which reads the same as a session that failed to load.
    * An empty session is a normal state with an obvious next step, so it says
    * which one it is and points at the composer.
+   *
+   * An empty transcript is two different states, and only one of them is this
+   * one: a session still being read looks identical until its history lands.
+   * Claiming emptiness then invited the reader to write the first message and
+   * dropped the history on top of it a moment later, so the loading case says
+   * so and offers nothing.
    */
   private renderEmptySession() {
     if (this.loadingMore) return null;
+    if (this.transcriptLoading) {
+      return html`
+        <div class="empty-session" role="status">
+          <p>Loading this session…</p>
+        </div>
+      `;
+    }
     return html`
       <div class="empty-session" role="status">
         <p>This session is empty. Send a message to start it.</p>

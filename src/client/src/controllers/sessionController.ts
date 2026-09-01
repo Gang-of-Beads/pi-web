@@ -308,6 +308,10 @@ export class SessionController {
         : {}),
       ...cached,
       isLoadingEarlierMessages: false,
+      // Empty is two states. Until the read lands, the transcript is unknown,
+      // not empty, and the view must not invite a first message into a
+      // session that is about to produce its history.
+      isLoadingTranscript: true,
       ...(options?.preserveTreeDialog === true ? {} : { treeDialog: undefined }),
       status: session.archived === true ? undefined : this.getState().sessionStatuses[session.id],
       activity: session.archived === true ? undefined : this.getState().sessionActivities[session.id],
@@ -399,6 +403,10 @@ export class SessionController {
       }
       this.setState(errorNoticePatch(error));
       if (options?.propagateRefreshError === true) throw error;
+    } finally {
+      // Every exit clears it, including the early returns for a superseded
+      // selection: a flag left set renders "loading" forever.
+      if (this.getState().isLoadingTranscript) this.setState({ isLoadingTranscript: false });
     }
   }
 

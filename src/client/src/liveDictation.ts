@@ -1,7 +1,7 @@
-import { decodeAzureFrame, encodeAzureTextFrame } from "./azureSpeechFrames";
+import { decodeAzureFrame, encodeAzureAudioFrame, encodeAzureTextFrame } from "./azureSpeechFrames";
 import { decodeSpeechStreamEvent, type SpeechStreamProtocol } from "./speechStreamProtocols";
 import { SpeechTranscriptBuffer, SPEECH_DELTA_MODES } from "./speechTranscriptBuffer";
-import { downsampleTo, encodePcm16Base64, floatToPcm16 } from "./pcmAudio";
+import { downsampleTo, floatToPcm16, pcm16Bytes } from "./pcmAudio";
 
 /**
  * One live dictation: token, socket, microphone, and the text they produce.
@@ -111,9 +111,7 @@ export class LiveDictation {
       this.stopCapture = await this.deps.captureAudio((samples, sampleRate) => {
         if (socket.readyState !== WebSocket.OPEN) return;
         const resampled = downsampleTo(samples, sampleRate, AZURE_SAMPLE_RATE);
-        socket.send(encodeAzureTextFrame("audio", this.requestId, {
-          audio: encodePcm16Base64(floatToPcm16(resampled)),
-        }));
+        socket.send(encodeAzureAudioFrame(this.requestId, pcm16Bytes(floatToPcm16(resampled))));
       });
     } catch (error) {
       this.deps.onError(`Could not use the microphone: ${messageOf(error)}`);
