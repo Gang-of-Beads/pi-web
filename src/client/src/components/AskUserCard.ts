@@ -473,6 +473,12 @@ export class AskUserCard extends LitElement {
       border: 1px solid var(--pi-border);
       border-radius: 10px;
       background: var(--pi-surface);
+      /* The waiting-slot contract: fill the slot's height budget as a column
+         whose questions are the one scroller and whose footer never scrolls
+         away. */
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
     }
     .card-header {
       position: sticky;
@@ -503,6 +509,14 @@ export class AskUserCard extends LitElement {
     .questions {
       display: grid;
       padding-top: 8px;
+      align-content: start;
+      /* The one scroller of the card: the slot's height budget lands here, so
+         tall questions scroll internally and the submit footer stays on
+         screen. */
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior-y: contain;
     }
     fieldset.question {
       min-width: 0;
@@ -578,12 +592,18 @@ export class AskUserCard extends LitElement {
     .step-actions { display: flex; gap: var(--pi-space-4); width: 100%; }
     .step-actions .primary-action { flex: 0 1 auto; min-width: 140px; margin-left: auto; }
     .step-actions .secondary-action { flex: 0 1 auto; min-width: 96px; }
+    .ask-form {
+      /* The middle of the slot contract: take the remaining height, keep the
+         questions as the one scroller, hold the footer in place. */
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 0;
+    }
     .form-footer {
-      /* The card lives inside the transcript, which is already the scroller, so
-         the footer sits at the end of the card rather than over it. Sticking it
-         to the bottom of the viewport kept the submit control in reach but hid
-         whichever option happened to be behind it, with no scroll position that
-         showed that option whole. */
+      /* The footer never scrolls away: the questions above it are the one
+         scroller of the card, per the waiting-slot contract. */
+      flex: 0 0 auto;
       display: flex;
       align-items: center;
       justify-content: flex-end;
