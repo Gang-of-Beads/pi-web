@@ -1104,11 +1104,12 @@ describe("session routes", () => {
     registerSessionRoutes(routeApp, routeService, eventHub);
 
     try {
-      const response = await routeApp.inject({ method: "GET", url: `/sessions/session-1/stream-snapshot?cwd=${encodeURIComponent("/repo")}&sinceSeq=3` });
+      const requestCwd = resolve("/repo");
+      const response = await routeApp.inject({ method: "GET", url: `/sessions/session-1/stream-snapshot?cwd=${encodeURIComponent(requestCwd)}&sinceSeq=3` });
 
       expect(response.statusCode).toBe(200);
       expect(response.json()).toEqual({ kind: "replay", sinceSeq: 3, frames: ["{}"] });
-      expect(routeService.streamSyncCalls).toEqual([{ ref: { id: "session-1", cwd: "/repo" }, sinceSeq: 3 }]);
+      expect(routeService.streamSyncCalls).toEqual([{ ref: { id: "session-1", cwd: requestCwd }, sinceSeq: 3 }]);
     } finally {
       await routeService.dispose();
       await routeApp.close();

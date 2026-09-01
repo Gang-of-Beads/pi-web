@@ -27,7 +27,9 @@ function isExecutable(path: string): boolean {
   return (statSync(path).mode & 0o111) === 0o111;
 }
 
-describe("ensureSpawnHelperExecutable", () => {
+const describePosix = describe.skipIf(process.platform === "win32");
+
+describePosix("ensureSpawnHelperExecutable", () => {
   // Without this a terminal dies with node-pty's opaque "posix_spawnp failed",
   // and install hooks cannot be relied on: npm 12 does not run a package's own
   // lifecycle scripts unless the installing user allows them.
@@ -55,7 +57,7 @@ describe("ensureSpawnHelperExecutable", () => {
   });
 });
 
-describe("a helper that cannot be repaired", () => {
+describePosix("a helper that cannot be repaired", () => {
   it("remembers why, so a dead terminal can say more than posix_spawnp failed", async () => {
     // The case the earlier version missed. On the deployment that matters -
     // a read-only nix store - chmod fails outright, and the previous guard
