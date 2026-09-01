@@ -1,5 +1,16 @@
 # @vincenthanxiaodu/pi-web
 
+## 1.202609.2
+
+### Patch Changes
+
+- c57f2bb: Typing `/` offers commands again in a session whose workspace has not resolved yet. The composer looked up slash commands against the selected workspace's directory alone, and that lookup is guarded on a non-empty directory — so a session opened before its workspace listing landed (or a route restored session-first) silently offered no completions while the rest of the composer kept working. The composer now falls back to the directory of the session it is composing into.
+- 6c0c91c: An assistant reply no longer renders twice when its own tool runs land between the streamed text and the final message: the finalizer now walks back over the reply's tool rows to replace the half-done line in place.
+- 9417e66: Keep the app shell aligned with iOS Safari's visual viewport when focusing the composer, so the keyboard does not leave the input offscreen.
+- 0638282: Fix Nix package dependency resolution and validate the installable Nix package in CI.
+- cdf1eda: The turn clock counts from the turn's own start rather than from when a tab first looked at it. The session status now carries `turnStartedAt` — the transcript's last input boundary, published while the session is working — and the transcript clocks from it. A tab that joins mid-turn, reloads, or reconnects shows the elapsed time the turn has actually been running instead of restarting the count, which is what made a long turn indistinguishable from a stuck one. A daemon that does not publish the field degrades to the previous first-sighting anchor.
+- 8b27699: A waiting card's actions stay on screen. The question and dialog cards each carried their own height cap, so a tall one — an ask-user question with many options, a task-confirmation dialog above a queue strip — pushed its confirm buttons below the fold of an inner scroller the thumb could not drive. The height budget now lives once in the waiting slot: the slot owns it, every card fills it as a flex column whose body is the single scroller and whose action row never scrolls away, and a new waiting card inherits the contract instead of needing a cap of its own.
+
 ## 1.202609.1
 
 ### Patch Changes
