@@ -5,6 +5,7 @@ import { SessionEventHub, replayDecision, type RealtimeSocket } from "./sessionE
 class FakeSocket extends EventEmitter implements RealtimeSocket {
   readonly OPEN = 1;
   readyState = this.OPEN;
+  bufferedAmount = 0;
   send = vi.fn();
   terminate = vi.fn();
 }
@@ -215,6 +216,21 @@ describe("SessionEventHub", () => {
     expect(removed.send).not.toHaveBeenCalled();
   });
 
+  it("terminates a slow session socket instead of buffering without bound", () => {
+    const hub = new SessionEventHub({ maxSocketBufferedBytes: 10 });
+    const slow = new FakeSocket();
+    const healthy = new FakeSocket();
+    slow.bufferedAmount = 11;
+    hub.add("s1", slow);
+    hub.add("s1", healthy);
+
+    hub.publish("s1", { type: "assistant.delta", text: "hello" });
+
+    expect(slow.send).not.toHaveBeenCalled();
+    expect(slow.terminate).toHaveBeenCalledOnce();
+    expect(healthy.send).toHaveBeenCalledWith(JSON.stringify({ type: "assistant.delta", text: "hello", seq: 1 }));
+  });
+
   it("terminates a failed session socket without disrupting healthy delivery or sequence watermarks", () => {
     const hub = new SessionEventHub();
     const failed = new FakeSocket();
@@ -344,6 +360,30 @@ describe("SessionEventHub", () => {
     expect(socket.send).toHaveBeenNthCalledWith(1, JSON.stringify({ type: "assistant.delta", text: "a", seq: 1 }));
     expect(socket.send).toHaveBeenNthCalledWith(2, JSON.stringify({ type: "assistant.delta", text: "b", seq: 2 }));
     expect(socket.send).toHaveBeenNthCalledWith(3, JSON.stringify({ type: "assistant.delta", text: "c", seq: 3 }));
+  });
+
+  it("bounds inactive replay rings by least-recently-used session", () => {
+    const hub = new SessionEventHub({ replaySessionLimit: 2 });
+    hub.publish("s1", { type: "assistant.delta", text: "one" });
+    hub.publish("s2", { type: "assistant.delta", text: "two" });
+    hub.publish("s1", { type: "assistant.delta", text: "one-again" });
+    hub.publish("s3", { type: "assistant.delta", text: "three" });
+
+    expect(hub.replaySince("s2", 1).verdict).toBe("resync");
+    expect(hub.replaySince("s1", 0).frames.map((frame) => frameField(frame, "text"))).toEqual(["one", "one-again"]);
+    expect(hub.replaySince("s3", 0).frames.map((frame) => frameField(frame, "text"))).toEqual(["three"]);
+  });
+
+  it("keeps a subscribed session replayable while evicting inactive rings", () => {
+    const hub = new SessionEventHub({ replaySessionLimit: 1 });
+    const socket = new FakeSocket();
+    hub.add("s1", socket);
+    hub.publish("s1", { type: "assistant.delta", text: "subscribed" });
+    hub.publish("s2", { type: "assistant.delta", text: "inactive" });
+    hub.publish("s3", { type: "assistant.delta", text: "new" });
+
+    expect(hub.replaySince("s1", 0).frames.map((frame) => frameField(frame, "text"))).toEqual(["subscribed"]);
+    expect(hub.replaySince("s2", 1).verdict).toBe("resync");
   });
 
   it("advances seq even when no sockets are attached so the watermark stays accurate", () => {
