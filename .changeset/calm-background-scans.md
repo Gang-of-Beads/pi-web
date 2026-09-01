@@ -2,4 +2,4 @@
 "@vincenthanxiaodu/pi-web": patch
 ---
 
-Reduce session daemon background-work polling overhead by sharing workspace task probes and subagent artifact scans across open sessions.
+Reduce session daemon heartbeat overhead by sharing background-work scans, suppressing unchanged activity projections, and aggregating workspace activity in one pass.

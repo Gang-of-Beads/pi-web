@@ -23,7 +23,7 @@ function activityRecord() {
 }
 
 describe("WorkspaceActivityService", () => {
-  it("records session activity by cwd and reports every change", () => {
+  it("records session activity by cwd and reports projection changes", () => {
     const { service, onChanged } = activityRecord();
 
     service.applySessionStatus("/repo", status({ isStreaming: true }));
@@ -46,7 +46,36 @@ describe("WorkspaceActivityService", () => {
     service.applySessionActivity("/repo", { sessionId: "s1", phase: "active", label: "Opening session", detail: "Starting the Pi session", at: "now", startup: true });
 
     expect(service.snapshot().workspaces).toEqual([]);
-    expect(onChanged).toHaveBeenCalled();
+    expect(onChanged).not.toHaveBeenCalled();
+  });
+
+  it("does not recompute machine status for unchanged heartbeat contributions", () => {
+    const { service, onChanged } = activityRecord();
+    const active = { sessionId: "s1", phase: "active" as const, label: "running tool", at: "now" };
+    service.applySessionActivity("/repo", active);
+    onChanged.mockClear();
+
+    service.applySessionStatus("/repo", status({ isStreaming: true, cost: 1 }));
+    service.applySessionActivity("/repo", { ...active, at: "later", detail: "still running" });
+    service.applySessionStatus("/repo", status({ isStreaming: true, cost: 2 }));
+
+    expect(service.snapshot().workspaces).toEqual([
+      { cwd: "/repo", hasSessionActivity: true, hasTerminalActivity: false },
+    ]);
+    expect(onChanged).not.toHaveBeenCalled();
+  });
+
+  it("reports one projection change when active work moves to another cwd", () => {
+    const { service, onChanged } = activityRecord();
+    service.applySessionStatus("/repo-a", status({ isStreaming: true }));
+    onChanged.mockClear();
+
+    service.applySessionStatus("/repo-b", status({ isStreaming: true }));
+
+    expect(service.snapshot().workspaces).toEqual([
+      { cwd: "/repo-b", hasSessionActivity: true, hasTerminalActivity: false },
+    ]);
+    expect(onChanged).toHaveBeenCalledTimes(1);
   });
 
   it("clears stale active activity when an idle status arrives", () => {
@@ -100,6 +129,29 @@ describe("WorkspaceActivityService", () => {
 
     expect(service.snapshot().workspaces).toEqual([]);
     expect(onChanged).toHaveBeenCalled();
+  });
+
+  it("does not report repeated terminal snapshots at the same cwd", () => {
+    const { service, onChanged } = activityRecord();
+    service.updateTerminal({ id: "t1", cwd: "/repo", exited: false });
+    onChanged.mockClear();
+
+    service.updateTerminal({ id: "t1", cwd: "/repo", exited: false });
+
+    expect(onChanged).not.toHaveBeenCalled();
+  });
+
+  it("aggregates multiple activity sources into one sorted workspace snapshot", () => {
+    const service = new WorkspaceActivityService();
+    service.applySessionStatus("/z-repo", status({ sessionId: "s1", isStreaming: true }));
+    service.applySessionStatus("/a-repo", status({ sessionId: "s2", isStreaming: true }));
+    service.updateTerminal({ id: "t1", cwd: "/z-repo", exited: false });
+    service.updateTerminal({ id: "t2", cwd: "/a-repo", exited: false });
+
+    expect(service.snapshot().workspaces).toEqual([
+      { cwd: "/a-repo", hasSessionActivity: true, hasTerminalActivity: true },
+      { cwd: "/z-repo", hasSessionActivity: true, hasTerminalActivity: true },
+    ]);
   });
 
   it("records activity without a listener, so a store built for a test still works", () => {
