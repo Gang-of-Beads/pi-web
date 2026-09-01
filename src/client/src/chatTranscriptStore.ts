@@ -13,6 +13,8 @@ export interface ChatTranscriptView {
   messagePageTotal: number;
 }
 
+export const MAX_IN_MEMORY_TRANSCRIPTS = 12;
+
 export interface ChatHistoryCacheAdapter {
   read(sessionId: string): RawMessagePage | undefined;
   write(sessionId: string, page: RawMessagePage): void;
@@ -27,8 +29,14 @@ const browserChatHistoryCache: ChatHistoryCacheAdapter = {
 
 export class ChatTranscriptStore {
   private readonly rawHistoryPages = new Map<string, RawMessagePage>();
+  private readonly maxInMemoryTranscripts: number;
 
-  constructor(private readonly cache: ChatHistoryCacheAdapter = browserChatHistoryCache) {}
+  constructor(
+    private readonly cache: ChatHistoryCacheAdapter = browserChatHistoryCache,
+    options: { maxInMemoryTranscripts?: number } = {},
+  ) {
+    this.maxInMemoryTranscripts = Math.max(1, options.maxInMemoryTranscripts ?? MAX_IN_MEMORY_TRANSCRIPTS);
+  }
 
   cachedView(sessionId: string): ChatTranscriptView {
     return transcriptViewFromHistory(this.rawHistoryPage(sessionId));
@@ -36,7 +44,7 @@ export class ChatTranscriptStore {
 
   mergeHistory(sessionId: string, page: RawMessagePage): ChatTranscriptView {
     const history = mergeChatHistory(this.rawHistoryPage(sessionId), page);
-    this.rawHistoryPages.set(sessionId, history);
+    this.remember(sessionId, history);
     this.cache.write(sessionId, history);
     return transcriptViewFromHistory(history);
   }
@@ -60,9 +68,25 @@ export class ChatTranscriptStore {
   }
 
   rawHistoryPage(sessionId: string): RawMessagePage | undefined {
-    const cached = this.rawHistoryPages.get(sessionId) ?? this.cache.read(sessionId);
-    if (cached !== undefined) this.rawHistoryPages.set(sessionId, cached);
-    return cached;
+    const inMemory = this.rawHistoryPages.get(sessionId);
+    if (inMemory !== undefined) {
+      this.remember(sessionId, inMemory);
+      return inMemory;
+    }
+    const persisted = this.cache.read(sessionId);
+    if (persisted !== undefined) this.remember(sessionId, persisted);
+    return persisted;
+  }
+
+  /** Keep recently selected transcripts hot without retaining every visit forever. */
+  private remember(sessionId: string, page: RawMessagePage): void {
+    this.rawHistoryPages.delete(sessionId);
+    this.rawHistoryPages.set(sessionId, page);
+    while (this.rawHistoryPages.size > this.maxInMemoryTranscripts) {
+      const oldest = this.rawHistoryPages.keys().next().value;
+      if (oldest === undefined) return;
+      this.rawHistoryPages.delete(oldest);
+    }
   }
 }
 

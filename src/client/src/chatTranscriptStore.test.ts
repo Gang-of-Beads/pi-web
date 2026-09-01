@@ -4,8 +4,10 @@ import type { RawMessagePage } from "./chatHistoryCache";
 
 class MemoryChatHistoryCache implements ChatHistoryCacheAdapter {
   readonly pages = new Map<string, RawMessagePage>();
+  readonly reads: string[] = [];
 
   read(sessionId: string): RawMessagePage | undefined {
+    this.reads.push(sessionId);
     return this.pages.get(sessionId);
   }
 
@@ -47,6 +49,33 @@ describe("ChatTranscriptStore", () => {
     expect(view.messagePageStart).toBe(0);
     expect(view.messagePageEnd).toBe(3);
     expect(view.messagePageTotal).toBe(3);
+  });
+
+  it("evicts the least recently used transcript from memory without deleting persistent history", () => {
+    const cache = new MemoryChatHistoryCache();
+    const store = new ChatTranscriptStore(cache, { maxInMemoryTranscripts: 2 });
+    store.mergeHistory("s1", page(0, 1, ["one"]));
+    store.mergeHistory("s2", page(0, 1, ["two"]));
+    // A read makes s1 the recent entry, so s2 is the one the next merge evicts.
+    store.rawHistoryPage("s1");
+    store.mergeHistory("s3", page(0, 1, ["three"]));
+    cache.reads.length = 0;
+
+    expect(store.rawHistoryPage("s1")?.messages).toEqual(["one"]);
+    expect(cache.reads).toEqual([]);
+    expect(store.rawHistoryPage("s2")?.messages).toEqual(["two"]);
+    expect(cache.reads).toEqual(["s2"]);
+    expect(cache.pages.has("s2")).toBe(true);
+  });
+
+  it("never disables the memory cache when configured with a non-positive limit", () => {
+    const cache = new MemoryChatHistoryCache();
+    const store = new ChatTranscriptStore(cache, { maxInMemoryTranscripts: 0 });
+    store.mergeHistory("s1", page(0, 1, ["one"]));
+    cache.reads.length = 0;
+
+    expect(store.rawHistoryPage("s1")?.messages).toEqual(["one"]);
+    expect(cache.reads).toEqual([]);
   });
 
   it("keeps live streamed transcript state out of the raw history cache", () => {
