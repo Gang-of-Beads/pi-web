@@ -404,9 +404,11 @@ export class SessionController {
       this.setState(errorNoticePatch(error));
       if (options?.propagateRefreshError === true) throw error;
     } finally {
-      // Every exit clears it, including the early returns for a superseded
-      // selection: a flag left set renders "loading" forever.
-      if (this.getState().isLoadingTranscript) this.setState({ isLoadingTranscript: false });
+      // Only the selection that set the flag may clear it. A superseded
+      // selection resuming after a newer one started would otherwise clear the
+      // newer one's flag, and the view would call a still-loading session
+      // empty - the very state this flag exists to prevent.
+      if (seq === this.selectionSeq && this.getState().isLoadingTranscript) this.setState({ isLoadingTranscript: false });
     }
   }
 
