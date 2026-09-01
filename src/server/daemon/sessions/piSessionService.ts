@@ -106,6 +106,7 @@ import {
 import { plainTextTheme } from "./plainTextTheme.js";
 import { SessionUnreadStore, type SessionUnreadMutation } from "./sessionUnreadStore.js";
 import { applyEnabledModelToggle, catalogWithEnabledFirst, liveScopedModelIds, modelScopeId, persistedEnabledModelPatterns, resolveEnabledModelIds, resolveSessionModelOptions, type EnabledModelCatalogEntry } from "./sessionModelScope.js";
+import { boundToolResultText } from "./toolResultBounds.js";
 
 /**
  * Minimal structured-logging seam, shaped like Fastify's logger so sessiond can
@@ -5386,14 +5387,40 @@ function shortToolValue(value: unknown): string {
   return "";
 }
 
+/**
+ * A tool result on its way to a browser, bounded.
+ *
+ * The session file keeps every byte; this is the wire. One page of a live
+ * session answered a 100-message request with 15.6 MB because five results
+ * were megabytes each, and a phone spends that on parsing before it can draw
+ * anything. A cut result says how much it had, so its tail reads as missing
+ * rather than as the end of the output.
+ */
+function boundToolResultContent(content: unknown): unknown {
+  if (!isUnknownArray(content)) return content;
+  const bounded: unknown[] = [];
+  for (const part of content) {
+    if (!isRecord(part) || part["type"] !== "text") { bounded.push(part); continue; }
+    const text = part["text"];
+    if (typeof text !== "string") { bounded.push(part); continue; }
+    const limited = boundToolResultText(text);
+    bounded.push(limited.truncated ? { ...part, text: limited.text, truncatedBytes: limited.totalBytes } : part);
+  }
+  return bounded;
+}
+
+function isUnknownArray(value: unknown): value is readonly unknown[] {
+  return Array.isArray(value);
+}
+
 function toolResultContent(result: unknown): unknown {
   if (isRecord(result)) {
     const content = getProperty(result, "content");
-    if (content !== undefined) return content;
+    if (content !== undefined) return boundToolResultContent(content);
     const text = getString(result, "text") ?? getString(result, "output");
-    if (text !== undefined) return [{ type: "text", text }];
+    if (text !== undefined) return boundToolResultContent([{ type: "text", text }]);
   }
-  if (typeof result === "string") return [{ type: "text", text: result }];
+  if (typeof result === "string") return boundToolResultContent([{ type: "text", text: result }]);
   return result;
 }
 
