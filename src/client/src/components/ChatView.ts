@@ -1939,6 +1939,14 @@ export class ChatView extends LitElement {
    * Keep the turn clock in step with the session's own state: it starts when
    * work starts, stops when the session goes quiet, and ticks only while the
    * dock is showing an elapsed time.
+   *
+   * The anchor is the daemon's own turn start (the transcript's last input
+   * boundary) whenever the status carries one, so a tab that joins a working
+   * session mid-turn continues the clock instead of restarting it from the
+   * moment it happened to look - which made a turn that had been running for
+   * minutes read as freshly started, and made "is this stuck?" unanswerable.
+   * A daemon that does not publish the field degrades to the first-sighting
+   * anchor, which is an honest lower bound.
    */
   private syncTurnClock(): void {
     const working = this.isSessionLive();
@@ -1947,7 +1955,9 @@ export class ChatView extends LitElement {
       this.stopTurnClock();
       return;
     }
-    this.turnStartedAtMs ??= Date.now();
+    const daemonAnchor = Date.parse(this.status?.turnStartedAt ?? "");
+    if (Number.isFinite(daemonAnchor)) this.turnStartedAtMs = daemonAnchor;
+    else this.turnStartedAtMs ??= Date.now();
     this.turnNowMs = Date.now();
     if (this.turnClockTimer !== undefined) return;
     // Surface backed up: the turn-elapsed readout. A 1s display tick, not a

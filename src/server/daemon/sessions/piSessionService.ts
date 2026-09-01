@@ -4562,6 +4562,8 @@ export class PiSessionService implements SessionRouteService {
     }
     this.attachQueuedPromptClientIds(session.sessionId, visibleQueued);
     const backgroundRunCount = this.backgroundRunCounts.get(session.sessionId) ?? 0;
+    const working = session.isStreaming || session.isCompacting || session.isBashRunning;
+    const turnStartedAt = working ? turnStartedAtFromBranch(session.sessionManager.getBranch()) : undefined;
     return {
       sessionId: session.sessionId,
       persisted: sessionFileExists(session.sessionFile),
@@ -4570,6 +4572,10 @@ export class PiSessionService implements SessionRouteService {
       isStreaming: session.isStreaming,
       isCompacting: session.isCompacting,
       isBashRunning: session.isBashRunning,
+      // The turn's own start, read off the transcript: a browser that joins a
+      // working session mid-turn anchors its elapsed readout here instead of
+      // re-clocking from the moment it happened to look.
+      ...(turnStartedAt === undefined ? {} : { turnStartedAt }),
       pendingMessageCount: visibleQueued.length,
       queuedMessages: visibleQueued,
       messageCount: readableMessageCount(session.sessionManager.getBranch()),
@@ -5155,6 +5161,35 @@ function clearParentSessionHeader(sessionManager: PiSessionManager): void {
 
 function clearSessionQueue(session: PiAgentSession): void {
   session.clearQueue();
+}
+
+/**
+ * When the working turn began, read from the transcript itself.
+ *
+ * The turn's start is its last input boundary: the newest user message (a
+ * submitted prompt, a steer, an answered question) or the newest custom entry
+ * that triggered a turn. Scanning from the tail skips assistant and tool
+ * entries so mid-turn activity cannot move the anchor; a branch with no input
+ * at all yields undefined, and the client then clocks from when it first saw
+ * the session working, which is at least an honest lower bound.
+ */
+export function turnStartedAtFromBranch(branch: readonly unknown[]): string | undefined {
+  for (let index = branch.length - 1; index >= 0; index -= 1) {
+    const entry = branch[index];
+    if (!isRecord(entry)) continue;
+    if (entry["type"] === "custom_message") {
+      const details = entry["details"];
+      if (isRecord(details) && typeof details["timestamp"] === "number") return new Date(details["timestamp"]).toISOString();
+      continue;
+    }
+    if (entry["type"] !== "message") continue;
+    const message = entry["message"];
+    if (!isRecord(message) || message["role"] !== "user") continue;
+    if (typeof entry["timestamp"] === "string") return entry["timestamp"];
+    if (typeof message["timestamp"] === "string") return message["timestamp"];
+    return undefined;
+  }
+  return undefined;
 }
 
 function queuedMessagesFromSession(session: PiAgentSession, extraQueuedMessages: readonly QueuedPrompt[] = []): QueuedSessionMessage[] {
