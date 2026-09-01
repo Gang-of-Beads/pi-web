@@ -90,7 +90,7 @@ import type { PendingExtensionDialog } from "../../../shared/apiTypes.js";
 import { ExtensionDialogWaiters, effectiveExtensionDialogTimeoutMs, extensionDialogCancelValue } from "./extensionDialogWaiters.js";
 import { DEFAULT_EXTENSION_DIALOGS_TIMEOUT_MS } from "../../../config.js";
 import { createSpawnSessionToolDefinition, type SpawnSessionInvocation, type SpawnSessionResult } from "./spawnSessionTool.js";
-import { countBackgroundRuns } from "./backgroundRunCount.js";
+import { createBackgroundRunCountCycle } from "./backgroundRunCount.js";
 import { listBackgroundTasks, readTaskOutput } from "./backgroundTasks.js";
 import { findSubagentRunTranscript, listSubagentRuns, readSessionEntries, readSubagentRunOutput } from "./subagentRuns.js";
 import { createSubsessionToolDefinitions, type SpawnSubsessionInvocation, type SpawnSubsessionResult, type SubsessionCheckResult, type SubsessionReadQuery, type SubsessionReadResult, type SubsessionStatus, type SubsessionSummary, type SubsessionToolDeps } from "./spawnSubsessionTool.js";
@@ -4596,8 +4596,9 @@ export class PiSessionService implements SessionRouteService {
       for (const sessionId of [...this.backgroundRunCounts.keys()]) {
         if (!openIds.has(sessionId)) this.backgroundRunCounts.delete(sessionId);
       }
+      const counter = createBackgroundRunCountCycle();
       for (const session of open) {
-        const count = await countBackgroundRuns({
+        const count = await counter.count({
           cwd: session.sessionManager.getCwd(),
           sessionFile: session.sessionManager.getSessionFile(),
           parentActive: session.isStreaming,

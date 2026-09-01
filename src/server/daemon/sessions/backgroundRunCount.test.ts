@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SessionSubagentRunInfo } from "../../../shared/apiTypes.js";
-import { countBackgroundRuns, type BackgroundRunCountDeps } from "./backgroundRunCount.js";
+import { countBackgroundRuns, createBackgroundRunCountCycle, type BackgroundRunCountDeps } from "./backgroundRunCount.js";
 
 function run(over: Partial<SessionSubagentRunInfo>): SessionSubagentRunInfo {
   return { runId: "r", agent: "reviewer", status: "running", elapsedMs: 0, startedAt: "", hasOutput: false, ...over };
@@ -47,6 +47,31 @@ describe("counting the work that outlives a turn", () => {
     // common answer is zero and costs one small directory read.
     expect(count).toBe(0);
     expect(taskIdsForSession).not.toHaveBeenCalled();
+  });
+
+  it("shares one workspace task probe across a heartbeat cycle", async () => {
+    const runningTaskIds = vi.fn(() => Promise.resolve(new Set(["t1"])));
+    const taskIdsForSession = vi.fn(() => Promise.resolve(new Set(["t1"])));
+    const cycle = createBackgroundRunCountCycle(deps({ runningTaskIds, taskIdsForSession }));
+
+    await Promise.all([
+      cycle.count({ ...session, sessionFile: "/w/.pi/sessions/a.jsonl" }),
+      cycle.count({ ...session, sessionFile: "/w/.pi/sessions/b.jsonl" }),
+    ]);
+
+    expect(runningTaskIds).toHaveBeenCalledTimes(1);
+    // Ownership remains session-scoped even though the broad workspace probe is shared.
+    expect(taskIdsForSession).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not share task probes across heartbeat cycles", async () => {
+    const runningTaskIds = vi.fn(() => Promise.resolve(new Set<string>()));
+    const dependencies = deps({ runningTaskIds });
+
+    await createBackgroundRunCountCycle(dependencies).count(session);
+    await createBackgroundRunCountCycle(dependencies).count(session);
+
+    expect(runningTaskIds).toHaveBeenCalledTimes(2);
   });
 
   it("counts only subsessions for a session with no transcript yet", async () => {

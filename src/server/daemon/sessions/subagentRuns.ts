@@ -139,24 +139,84 @@ interface RunningArtifact {
   lastWriteMs: number;
 }
 
+interface SubagentArtifactSnapshot {
+  artifacts: Map<string, RunArtifact>;
+  running: Map<string, RunningArtifact>;
+}
+
+export type SubagentRunLister = typeof listSubagentRuns;
+
+/**
+ * One scan-cycle lister that shares the project-wide artifact snapshot between
+ * every open parent session. The artifacts directory has no parent ownership,
+ * so reading it once per parent only repeats the same work.
+ */
+export function createSubagentRunLister(): SubagentRunLister {
+  const snapshots = new Map<string, Promise<SubagentArtifactSnapshot>>();
+  return async (sessionDir, parentSessionId, now, options) => {
+    const candidates = await parentRunCandidates(sessionDir, parentSessionId);
+    if (candidates.directoryRunIds.length === 0 && candidates.named.size === 0) return [];
+    let snapshot = snapshots.get(sessionDir);
+    if (snapshot === undefined) {
+      snapshot = readArtifactSnapshot(join(sessionDir, "subagent-artifacts"));
+      snapshots.set(sessionDir, snapshot);
+    }
+    return describeParentRuns(sessionDir, parentSessionId, now ?? Date.now(), options ?? {}, candidates, await snapshot);
+  };
+}
+
 export async function listSubagentRuns(
   sessionDir: string,
   parentSessionId: string,
   now = Date.now(),
   options: { parentActive?: boolean } = {},
 ): Promise<SessionSubagentRunInfo[]> {
+  const candidates = await parentRunCandidates(sessionDir, parentSessionId);
+  if (candidates.directoryRunIds.length === 0 && candidates.named.size === 0) return [];
+  const snapshot = await readArtifactSnapshot(join(sessionDir, "subagent-artifacts"));
+  return describeParentRuns(sessionDir, parentSessionId, now, options, candidates, snapshot);
+}
+
+interface ParentRunCandidates {
+  directoryRunIds: string[];
+  named: Set<string>;
+}
+
+async function parentRunCandidates(sessionDir: string, parentSessionId: string): Promise<ParentRunCandidates> {
+  const [directoryRunIds, named] = await Promise.all([
+    listDirectories(join(sessionDir, parentSessionId)),
+    runIdsNamedByParent(join(sessionDir, `${parentSessionId}.jsonl`)),
+  ]);
+  return { directoryRunIds, named };
+}
+
+async function readArtifactSnapshot(artifactsDir: string): Promise<SubagentArtifactSnapshot> {
+  const names = await listNames(artifactsDir);
+  const [artifacts, running] = await Promise.all([
+    readArtifacts(artifactsDir, names),
+    readRunningArtifacts(artifactsDir, names),
+  ]);
+  return { artifacts, running };
+}
+
+async function describeParentRuns(
+  sessionDir: string,
+  parentSessionId: string,
+  now: number,
+  options: { parentActive?: boolean },
+  candidates: ParentRunCandidates,
+  snapshot: SubagentArtifactSnapshot,
+): Promise<SessionSubagentRunInfo[]> {
   const runsDir = join(sessionDir, parentSessionId);
   const parentActive = options.parentActive === true;
-  const artifactsDir = join(sessionDir, "subagent-artifacts");
-  const directoryRunIds = await listDirectories(runsDir);
-  const artifacts = await readArtifacts(artifactsDir);
-  const running = await readRunningArtifacts(artifactsDir);
+  const { artifacts, running } = snapshot;
   // Both records of ownership, and nothing else: a directory under this parent,
   // or a spawn this parent wrote into its own transcript.
-  const named = await runIdsNamedByParent(join(sessionDir, `${parentSessionId}.jsonl`));
-  const owned = new Set(directoryRunIds);
-  const runIds = [...directoryRunIds, ...[...named].filter((runId) => !owned.has(runId) && (running.has(runId) || artifacts.has(runId)))];
-  if (runIds.length === 0) return [];
+  const owned = new Set(candidates.directoryRunIds);
+  const runIds = [
+    ...candidates.directoryRunIds,
+    ...[...candidates.named].filter((runId) => !owned.has(runId) && (running.has(runId) || artifacts.has(runId))),
+  ];
   const runs: SessionSubagentRunInfo[] = [];
   for (const runId of runIds) {
     const run = await describeRun(runsDir, runId, artifacts, running.get(runId), now, parentActive);
@@ -202,9 +262,8 @@ async function looksLikeRun(runDir: string, runId: string, artifacts: Map<string
  * The agent name comes from the filename, so a run with no directory of its own
  * can still be named rather than falling back to the generic label.
  */
-async function readRunningArtifacts(artifactsDir: string): Promise<Map<string, RunningArtifact>> {
+async function readRunningArtifacts(artifactsDir: string, names: readonly string[]): Promise<Map<string, RunningArtifact>> {
   const running = new Map<string, RunningArtifact>();
-  const names = await listNames(artifactsDir);
   const reported = new Set(names.filter((name) => name.endsWith("_meta.json")).map((name) => name.slice(0, name.indexOf("_"))));
   for (const name of names) {
     if (!name.endsWith("_transcript.jsonl")) continue;
@@ -551,14 +610,8 @@ function summarize(text: string): string {
   return firstLine.length > 120 ? `${firstLine.slice(0, 119)}…` : firstLine;
 }
 
-async function readArtifacts(artifactsDir: string): Promise<Map<string, RunArtifact>> {
+async function readArtifacts(artifactsDir: string, names: readonly string[]): Promise<Map<string, RunArtifact>> {
   const artifacts = new Map<string, RunArtifact>();
-  let names: string[];
-  try {
-    names = await readdir(artifactsDir);
-  } catch {
-    return artifacts;
-  }
   const outputs = new Set(names.filter((name) => name.endsWith("_output.md")).map((name) => name.slice(0, name.indexOf("_"))));
   for (const name of names) {
     if (!name.endsWith("_meta.json")) continue;
@@ -733,7 +786,7 @@ function clamp(text: string, maxChars: number): string {
 }
 
 /** The first meaningful line of a finished run's result, as its row label. */
-async function firstLineOfOutput(artifactsDir: string, names: string[], runId: string): Promise<string | undefined> {
+async function firstLineOfOutput(artifactsDir: string, names: readonly string[], runId: string): Promise<string | undefined> {
   const name = names.find((entry) => entry.startsWith(`${runId}_`) && entry.endsWith("_output.md"));
   if (name === undefined) return undefined;
   const text = await readWindow(join(artifactsDir, name), OUTPUT_HEAD_BYTES, "head");
