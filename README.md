@@ -1,6 +1,6 @@
 # PI WEB
 
-[![CI](https://github.com/VincentHanxiaoDu/pi-web/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/VincentHanxiaoDu/pi-web/actions/workflows/ci.yml)
+[![CI](https://github.com/Gang-of-Beads/pi-web/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Gang-of-Beads/pi-web/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/@gang-of-beads/pi-web)](https://www.npmjs.com/package/@gang-of-beads/pi-web)
 [![Node.js](https://img.shields.io/node/v/@gang-of-beads/pi-web)](package.json)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -182,4 +182,4 @@ It is not a sandbox, permission system, or multi-tenant platform. Do not expose 
 
 ## License
 
-MIT © 2026 Federico Jaramillo Martinez. See [LICENSE](LICENSE).
+MIT © 2026 Federico Jaramillo Martinez and the Gang of Beads contributors. See [LICENSE](LICENSE).

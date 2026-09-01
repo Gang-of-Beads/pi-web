@@ -309,7 +309,7 @@ install_dir=$(absolute_dir "$install_dir_input") || die "could not create instal
 env_file=$install_dir/.env
 
 asset_ref=$(value_from_env_or_existing_or_default PI_WEB_DOCKER_REF main)
-asset_base=${PI_WEB_DOCKER_ASSET_BASE:-https://raw.githubusercontent.com/jmfederico/pi-web/$asset_ref/docker}
+asset_base=${PI_WEB_DOCKER_ASSET_BASE:-https://raw.githubusercontent.com/Gang-of-Beads/pi-web/$asset_ref/docker}
 use_local_asset_dir=1
 if [ "${PI_WEB_DOCKER_REFRESH_ASSETS:-0}" = 1 ] || [ "${PI_WEB_DOCKER_REF+x}" = x ] || [ "${PI_WEB_DOCKER_ASSET_BASE+x}" = x ]; then
   use_local_asset_dir=0

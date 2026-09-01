@@ -55,7 +55,7 @@
             <a href="faq">FAQ</a>
           </div>
           <div class="nav-actions">
-            <a class="github-link" href="https://github.com/jmfederico/pi-web" aria-label="PI WEB on GitHub">
+            <a class="github-link" href="https://github.com/Gang-of-Beads/pi-web" aria-label="PI WEB on GitHub">
               <svg class="github-icon" viewBox="0 0 16 16" aria-hidden="true">
                 <path
                   fill="currentColor"
@@ -127,7 +127,7 @@
               <div class="callout">
                 The plugin API is intentionally limited and actively developed. Feedback is appreciated: if an extension
                 point is missing, unclear, or awkward, please
-                <a href="https://github.com/jmfederico/pi-web/issues">open a GitHub issue</a>.
+                <a href="https://github.com/Gang-of-Beads/pi-web/issues">open a GitHub issue</a>.
               </div>
             </section>
 
@@ -250,7 +250,7 @@ After editing, check the manifest endpoint and browser-console failure cases.</c
               <h2>Canonical examples</h2>
               <p>
                 The repository and published npm package include a
-                <a href="https://github.com/jmfederico/pi-web/tree/main/examples/workspace-provider-plugin">standalone
+                <a href="https://github.com/Gang-of-Beads/pi-web/tree/main/examples/workspace-provider-plugin">standalone
                 dual-entry workspace-provider example</a>. Copy <code>examples/workspace-provider-plugin/</code> for
                 package metadata, a strict NodeNext TypeScript build, browser/server source, and concise install guidance.
                 It conservatively claims only projects with an opt-in marker, publishes non-secret metadata, and calls
@@ -285,8 +285,8 @@ After editing, check the manifest endpoint and browser-console failure cases.</c
                   <strong>Public TypeScript imports</strong>
                   <button class="copy-button" data-copy="#plugin-public-imports">Copy</button>
                 </div>
-                <pre id="plugin-public-imports"><code>import type { PiWebPlugin } from "@jmfederico/pi-web/plugin-api";
-import type { PiWebServerPlugin, WorkspaceProvider } from "@jmfederico/pi-web/server-plugin-api";</code></pre>
+                <pre id="plugin-public-imports"><code>import type { PiWebPlugin } from "@vincenthanxiaodu/pi-web/plugin-api";
+import type { PiWebServerPlugin, WorkspaceProvider } from "@vincenthanxiaodu/pi-web/server-plugin-api";</code></pre>
               </div>
             </section>
 
@@ -305,8 +305,8 @@ import type { PiWebServerPlugin, WorkspaceProvider } from "@jmfederico/pi-web/se
                 Browser activation <code>pluginId</code> is the stable package/source id on every machine and matches
                 <code>workspace.provider.pluginId</code>. Use the separate host-unique <code>runtimePluginId</code> only
                 for qualified contribution references. The only supported type entrypoints are the type-only exports
-                <code>@jmfederico/pi-web/plugin-api</code> and
-                <code>@jmfederico/pi-web/server-plugin-api</code>. The former
+                <code>@vincenthanxiaodu/pi-web/plugin-api</code> and
+                <code>@vincenthanxiaodu/pi-web/server-plugin-api</code>. The former
                 <code>plugin-api/unstable</code> path and private <code>dist/**</code> deep imports are not contracts.
               </p>
               <p>
@@ -371,7 +371,7 @@ import type { PiWebServerPlugin, WorkspaceProvider } from "@jmfederico/pi-web/se
             <section id="built-in-plugins">
               <h2>Built-in plugins</h2>
               <p>
-                PI WEB ships core, discoverable plugins in the main <code>@jmfederico/pi-web</code> npm package. No
+                PI WEB ships core, discoverable plugins in the main <code>@vincenthanxiaodu/pi-web</code> npm package. No
                 separate <code>pi install</code> step is required. After updating PI WEB, restart sessiond so bundled
                 server entries use the installed revision, then reload the browser. Browser-only bundled entries need
                 only the page reload.
@@ -674,7 +674,7 @@ import type { PiWebServerPlugin, WorkspaceProvider } from "@jmfederico/pi-web/se
           <a href="install">Install</a>
           <a href="config">Config</a>
           <a href="faq">FAQ</a>
-          <a href="https://github.com/jmfederico/pi-web">GitHub</a>
+          <a href="https://github.com/Gang-of-Beads/pi-web">GitHub</a>
           <span class="version-switcher" role="group" aria-label="Documentation version">
             <a class="version-switcher-option" data-version-option="stable" href="https://pi-web.dev/plugins" aria-current="true">Stable</a>
             <a class="version-switcher-option" data-version-option="dev" href="https://pi-web.dev/dev/plugins">Dev</a>

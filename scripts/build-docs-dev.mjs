@@ -52,7 +52,7 @@ function stableUrlFor(htmlFileName) {
 
 function bannerHtml(sha, stableUrl) {
   const source = sha
-    ? `<a href="https://github.com/jmfederico/pi-web/commit/${sha}" style="color:inherit;text-decoration:underline;">main@${sha.slice(0, 7)}</a>`
+    ? `<a href="https://github.com/Gang-of-Beads/pi-web/commit/${sha}" style="color:inherit;text-decoration:underline;">main@${sha.slice(0, 7)}</a>`
     : "the main branch";
   const linkStyle = "color:inherit;text-decoration:underline;font-weight:600;";
   return (
