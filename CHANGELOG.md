@@ -1,5 +1,11 @@
 # @vincenthanxiaodu/pi-web
 
+## 1.202609.1
+
+### Patch Changes
+
+- Correct package repository metadata so npm provenance identifies the active PI WEB source repository.
+
 ## 1.202609.0
 
 ### Patch Changes
