@@ -1,11 +1,12 @@
 name: CI
 
-# Every branch push is gated, not just main: a merge should never be the
-# first place a red verify surfaces. Branches filter excludes tags, so tag
-# pushes are covered solely by the release workflow (publish.yml).
+# Pull requests validate feature branches; main is validated again after every
+# merge. Running both `push` and `pull_request` on feature branches duplicated
+# the Linux/Windows matrix for the exact same commit. Tag pushes are covered by
+# the release workflow (publish.yml).
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
