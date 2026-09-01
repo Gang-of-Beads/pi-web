@@ -285,8 +285,8 @@ After editing, check the manifest endpoint and browser-console failure cases.</c
                   <strong>Public TypeScript imports</strong>
                   <button class="copy-button" data-copy="#plugin-public-imports">Copy</button>
                 </div>
-                <pre id="plugin-public-imports"><code>import type { PiWebPlugin } from "@vincenthanxiaodu/pi-web/plugin-api";
-import type { PiWebServerPlugin, WorkspaceProvider } from "@vincenthanxiaodu/pi-web/server-plugin-api";</code></pre>
+                <pre id="plugin-public-imports"><code>import type { PiWebPlugin } from "@gang-of-beads/pi-web/plugin-api";
+import type { PiWebServerPlugin, WorkspaceProvider } from "@gang-of-beads/pi-web/server-plugin-api";</code></pre>
               </div>
             </section>
 
@@ -305,8 +305,8 @@ import type { PiWebServerPlugin, WorkspaceProvider } from "@vincenthanxiaodu/pi-
                 Browser activation <code>pluginId</code> is the stable package/source id on every machine and matches
                 <code>workspace.provider.pluginId</code>. Use the separate host-unique <code>runtimePluginId</code> only
                 for qualified contribution references. The only supported type entrypoints are the type-only exports
-                <code>@vincenthanxiaodu/pi-web/plugin-api</code> and
-                <code>@vincenthanxiaodu/pi-web/server-plugin-api</code>. The former
+                <code>@gang-of-beads/pi-web/plugin-api</code> and
+                <code>@gang-of-beads/pi-web/server-plugin-api</code>. The former
                 <code>plugin-api/unstable</code> path and private <code>dist/**</code> deep imports are not contracts.
               </p>
               <p>
@@ -371,7 +371,7 @@ import type { PiWebServerPlugin, WorkspaceProvider } from "@vincenthanxiaodu/pi-
             <section id="built-in-plugins">
               <h2>Built-in plugins</h2>
               <p>
-                PI WEB ships core, discoverable plugins in the main <code>@vincenthanxiaodu/pi-web</code> npm package. No
+                PI WEB ships core, discoverable plugins in the main <code>@gang-of-beads/pi-web</code> npm package. No
                 separate <code>pi install</code> step is required. After updating PI WEB, restart sessiond so bundled
                 server entries use the installed revision, then reload the browser. Browser-only bundled entries need
                 only the page reload.

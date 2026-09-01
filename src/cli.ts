@@ -77,7 +77,7 @@ import {
 } from "./nativeServices/serviceProbe.js";
 import { renderLaunchdPlist, renderSystemdUnit } from "./nativeServices/serviceRendering.js";
 
-const PI_WEB_PACKAGE_NAME = "@vincenthanxiaodu/pi-web";
+const PI_WEB_PACKAGE_NAME = "@gang-of-beads/pi-web";
 
 const systemdServiceDir = join(homedir(), ".config", "systemd", "user");
 const launchdServiceDir = join(homedir(), "Library", "LaunchAgents");
@@ -1365,7 +1365,7 @@ Usage:
   pi-web version
 
 Recommended install:
-  npm install -g @vincenthanxiaodu/pi-web --allow-scripts=node-pty
+  npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty
   pi-web install
 
 Development service install from a checkout:

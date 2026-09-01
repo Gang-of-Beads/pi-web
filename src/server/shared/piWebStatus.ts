@@ -14,7 +14,7 @@ import { SessionDaemonClient } from "./sessiondClient/sessionDaemonClient.js";
 import { isHostAbsoluteAgentDir, loadPiWebConfig, PI_CODING_AGENT_DIR_ENV, type LoadedPiWebConfig } from "../../config.js";
 import { createPiWebReleaseLookupCache, type PiWebReleaseLookup } from "./piWebReleaseLookupCache.js";
 
-const PI_WEB_PACKAGE_NAME = "@vincenthanxiaodu/pi-web";
+const PI_WEB_PACKAGE_NAME = "@gang-of-beads/pi-web";
 const PI_WEB_NPM_SOURCE = `npm:${PI_WEB_PACKAGE_NAME}`;
 const DEFAULT_VERSION = "0.0.0-dev";
 const VERSION_CHECK_TIMEOUT_MS = 5000;

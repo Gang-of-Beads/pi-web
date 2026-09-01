@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { PiWebComponentStatus, PiWebReleaseStatus, PiWebStatusResponse, PluginMachine, Workspace } from "@vincenthanxiaodu/pi-web/plugin-api";
+import type { PiWebComponentStatus, PiWebReleaseStatus, PiWebStatusResponse, PluginMachine, Workspace } from "@gang-of-beads/pi-web/plugin-api";
 import { componentDetails, componentHealth, diagnosticsSummary, formatVersion, installationLabel, machineKindLabel, piVersionDriftNote, releaseSummary, workspaceFlags } from "./infoInternals.js";
 
 describe("componentHealth", () => {
@@ -73,7 +73,7 @@ describe("diagnosticsSummary", () => {
 
     expect(summary).toBe([
       "PI WEB diagnostics",
-      "Package: @vincenthanxiaodu/pi-web",
+      "Package: @gang-of-beads/pi-web",
       "Web/UI: running 1.0.0 · installed 1.0.1 · pi 0.84.1 · restart needed · global npm package · /usr/lib/node_modules",
       "Session daemon: running 1.0.0 · installed 1.0.0 · pi 0.84.1 · current · local checkout · /srv/dev/pi-web",
       "Release: Update available: 1.1.0 (checked 2025-01-02T03:04:05Z)",
@@ -148,7 +148,7 @@ function componentStatusWithoutPi(patch: Partial<PiWebComponentStatus> = {}): Pi
 
 function release(patch: Partial<PiWebReleaseStatus> = {}): PiWebReleaseStatus {
   return {
-    packageName: "@vincenthanxiaodu/pi-web",
+    packageName: "@gang-of-beads/pi-web",
     updateAvailable: false,
     checkedAt: "2025-01-02T03:04:05Z",
     ...patch,
@@ -157,7 +157,7 @@ function release(patch: Partial<PiWebReleaseStatus> = {}): PiWebReleaseStatus {
 
 function statusResponse(): PiWebStatusResponse {
   return {
-    packageName: "@vincenthanxiaodu/pi-web",
+    packageName: "@gang-of-beads/pi-web",
     generatedAt: "2025-01-02T03:04:06Z",
     components: {
       web: componentStatus({ installedVersion: "1.0.1", stale: true }),

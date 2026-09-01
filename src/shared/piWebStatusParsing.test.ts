@@ -4,7 +4,7 @@ import { parsePiWebComponentStatus, parsePiWebInstallationInfo, parsePiWebRuntim
 describe("PI WEB status parsing", () => {
   it("drops every advertised capability string while the registry is empty", () => {
     expect(parsePiWebRuntimeResponse({
-      packageName: "@vincenthanxiaodu/pi-web",
+      packageName: "@gang-of-beads/pi-web",
       generatedAt: "now",
       components: {
         web: { component: "web", label: "Web/UI", runtimeVersion: "1.0.0", available: true, capabilities: ["piPackages.manage", "future.capability"] },
@@ -22,7 +22,7 @@ describe("PI WEB status parsing", () => {
 
   it("rejects runtime responses with malformed component capability arrays", () => {
     expect(parsePiWebRuntimeResponse({
-      packageName: "@vincenthanxiaodu/pi-web",
+      packageName: "@gang-of-beads/pi-web",
       generatedAt: "now",
       components: {
         web: { component: "web", label: "Web/UI", available: true, capabilities: ["piPackages.manage", 1] },
@@ -34,7 +34,7 @@ describe("PI WEB status parsing", () => {
 
   it("parses and freezes a session daemon active agent profile", () => {
     const parsed = parsePiWebRuntimeResponse({
-      packageName: "@vincenthanxiaodu/pi-web",
+      packageName: "@gang-of-beads/pi-web",
       generatedAt: "now",
       components: {
         web: { component: "web", label: "Web/UI", available: true, capabilities: [] },
@@ -62,7 +62,7 @@ describe("PI WEB status parsing", () => {
       dir: "/opt/pi/state",
     };
     const responseFor = (webProfile: unknown, sessiondProfile: unknown) => ({
-      packageName: "@vincenthanxiaodu/pi-web",
+      packageName: "@gang-of-beads/pi-web",
       generatedAt: "now",
       components: {
         web: { component: "web", label: "Web/UI", available: true, capabilities: [], ...(webProfile === undefined ? {} : { activeAgentProfile: webProfile }) },
@@ -79,7 +79,7 @@ describe("PI WEB status parsing", () => {
 
   it("carries per-component deprecated agent input reports through runtime responses", () => {
     const parsed = parsePiWebRuntimeResponse({
-      packageName: "@vincenthanxiaodu/pi-web",
+      packageName: "@gang-of-beads/pi-web",
       generatedAt: "now",
       components: {
         web: {
@@ -114,7 +114,7 @@ describe("PI WEB status parsing", () => {
 
   it("drops malformed deprecated-input reports without failing the runtime response", () => {
     const parsed = parsePiWebRuntimeResponse({
-      packageName: "@vincenthanxiaodu/pi-web",
+      packageName: "@gang-of-beads/pi-web",
       generatedAt: "now",
       components: {
         web: {
@@ -159,7 +159,7 @@ describe("PI WEB status parsing", () => {
     })).not.toHaveProperty("piVersion");
 
     const runtime = parsePiWebRuntimeResponse({
-      packageName: "@vincenthanxiaodu/pi-web",
+      packageName: "@gang-of-beads/pi-web",
       generatedAt: "now",
       components: {
         web: { component: "web", label: "Web/UI", runtimeVersion: "1.0.0", piVersion: "0.84.1", available: true, capabilities: [] },
@@ -198,7 +198,7 @@ describe("PI WEB status parsing", () => {
 
   it("parses version responses that include Docker runtime and development components", () => {
     const parsed = parsePiWebVersionResponse({
-      packageName: "@vincenthanxiaodu/pi-web",
+      packageName: "@gang-of-beads/pi-web",
       generatedAt: "now",
       components: {
         web: { component: "web", label: "Web/UI", runtimeVersion: "1.0.0", stale: false, available: true, installation: { kind: "docker", path: "/srv/pi-web-docker", dockerMode: "runtime" } },

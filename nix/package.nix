@@ -19,7 +19,7 @@ buildNpmPackage rec {
   installPhase = ''
     runHook preInstall
 
-    packageRoot=$out/lib/node_modules/@vincenthanxiaodu/pi-web
+    packageRoot=$out/lib/node_modules/@gang-of-beads/pi-web
     mkdir -p "$packageRoot"
     cp -R dist package.json node_modules "$packageRoot/"
 

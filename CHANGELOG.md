@@ -1,4 +1,12 @@
-# @vincenthanxiaodu/pi-web
+# @gang-of-beads/pi-web
+
+## 1.202609.3
+
+### Patch Changes
+
+- Install instructions and asset links point at this project instead of the repository it grew out of. The docs told readers to `npm install -g @jmfederico/pi-web` — a real but separate package last published in August — and the Docker one-line installer fetched its script from that repository, so anyone following the published guide installed something other than what these docs describe. Repository links, raw asset URLs, and package names across the site, the Docker guide, and the skills README now name this repository and the package it actually publishes. The LICENSE keeps its original copyright and adds the project's contributors.
+
+- PI WEB is now published as `@gang-of-beads/pi-web`, under the organization that owns the project, instead of a personal scope. Install with `npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty`; plugin authors import `@gang-of-beads/pi-web/plugin-api` and `@gang-of-beads/pi-web/server-plugin-api`. The previous package name is deprecated with a pointer to this one and stops receiving releases, so an existing global install must be reinstalled under the new name rather than updated in place.
 
 ## 1.202609.2
 

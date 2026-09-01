@@ -6,7 +6,7 @@ import { SessionDaemonClient } from "./server/shared/sessiondClient/sessionDaemo
 import type { PiWebComponentStatus, PiWebInstallationInfo, PiWebVersionResponse } from "./shared/apiTypes.js";
 import { parsePiWebComponentStatus, parsePiWebVersionResponse } from "./shared/piWebStatusParsing.js";
 
-const PI_WEB_PACKAGE_NAME = "@vincenthanxiaodu/pi-web";
+const PI_WEB_PACKAGE_NAME = "@gang-of-beads/pi-web";
 const PI_WEB_VERSION_TIMEOUT_MS = 2000;
 const PI_WEB_VERSION_ENDPOINT_PATH = "/api/pi-web/version";
 const PI_WEB_STATUS_ENDPOINT_PATH = "/api/pi-web/status";

@@ -26,8 +26,8 @@
       "node"
     ],
     "paths": {
-      "@vincenthanxiaodu/pi-web/plugin-api": ["./src/plugin-api.ts"],
-      "@vincenthanxiaodu/pi-web/server-plugin-api": ["./src/server-plugin-api.ts"]
+      "@gang-of-beads/pi-web/plugin-api": ["./src/plugin-api.ts"],
+      "@gang-of-beads/pi-web/server-plugin-api": ["./src/server-plugin-api.ts"]
     }
   },
   "include": [

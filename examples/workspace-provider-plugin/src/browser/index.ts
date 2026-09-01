@@ -1,4 +1,4 @@
-import type { JsonObject, PiWebPlugin, WorkspacePanelContext } from "@vincenthanxiaodu/pi-web/plugin-api";
+import type { JsonObject, PiWebPlugin, WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
 
 const summaries = new Map<string, string>();
 

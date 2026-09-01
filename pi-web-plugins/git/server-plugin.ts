@@ -10,7 +10,7 @@ import type {
   ServerPluginExecFileResult,
   WorkspaceProvider,
   WorkspaceRemovePlan,
-} from "@vincenthanxiaodu/pi-web/server-plugin-api";
+} from "@gang-of-beads/pi-web/server-plugin-api";
 import { requestGitBackend } from "./git-backend.js";
 
 const GIT_LOCAL_ENV_VARS = Object.freeze([

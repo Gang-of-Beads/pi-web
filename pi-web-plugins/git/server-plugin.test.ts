@@ -8,7 +8,7 @@ import type {
   ServerPluginActivationContext,
   ServerPluginExecFileResult,
   WorkspaceProvider,
-} from "@vincenthanxiaodu/pi-web/server-plugin-api";
+} from "@gang-of-beads/pi-web/server-plugin-api";
 import type { Project } from "../../src/shared/apiTypes.js";
 import { createServerPluginExecFile } from "../../src/server/shared/plugins/serverPluginExec.js";
 import type { ServerPluginProviderContribution } from "../../src/server/shared/plugins/serverPluginRuntime.js";

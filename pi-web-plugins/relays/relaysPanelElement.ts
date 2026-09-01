@@ -1,4 +1,4 @@
-import type { WorkspacePanelContext } from "@vincenthanxiaodu/pi-web/plugin-api";
+import type { WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
 import { isMarkdownDocumentPath, renderRelayDocumentHtml } from "./markdownDocument.js";
 import {
   ancestorDirectoryPaths,

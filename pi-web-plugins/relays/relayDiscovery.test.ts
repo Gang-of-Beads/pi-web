@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { FileContentResponse, FileTreeEntry, FileTreeResponse } from "@vincenthanxiaodu/pi-web/plugin-api";
+import type { FileContentResponse, FileTreeEntry, FileTreeResponse } from "@gang-of-beads/pi-web/plugin-api";
 import {
   ancestorDirectoryPaths,
   collectDirectoryPaths,

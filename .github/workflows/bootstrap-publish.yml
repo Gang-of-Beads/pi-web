@@ -1,0 +1,71 @@
+# One-off bootstrap publish for a package name npm has never seen.
+#
+# Trusted publishing can only be configured for a package that already
+# exists, so the very first release of a new name cannot use OIDC. This
+# workflow publishes that first version with a short-lived granular token,
+# and exists only until the trust relationship can be configured.
+#
+# DELETE THIS FILE, and revoke the NPM_TOKEN secret, once
+# https://www.npmjs.com/package/@gang-of-beads/pi-web has a trusted
+# publisher pointing at publish.yml. Ordinary releases must keep going
+# through publish.yml, which uses OIDC and attaches provenance.
+name: Bootstrap publish (one-off)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to publish under the new package name
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    name: Publish the first version of a renamed package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The same gates the real release runs. A bootstrap that skipped them
+      # would put an unverified build under the name every later release
+      # inherits.
+      - name: Verify
+        run: npm run verify
+
+      - name: Build
+        run: npm run build
+
+      - name: Confirm the package name and version are the intended ones
+        run: |
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          echo "package: $name@$version"
+          if [ "$name" != "@gang-of-beads/pi-web" ]; then
+            echo "refusing: this workflow only bootstraps @gang-of-beads/pi-web, got $name" >&2
+            exit 1
+          fi
+          if [ "$version" != "${{ inputs.version }}" ]; then
+            echo "refusing: package.json is $version but the run asked for ${{ inputs.version }}" >&2
+            exit 1
+          fi
+
+      - name: Pack
+        run: npm pack --pack-destination ./pack-out
+
+      - name: Publish to npm
+        run: npm publish "$(ls ./pack-out/*.tgz)" --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
