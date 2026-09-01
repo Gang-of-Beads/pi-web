@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { BackgroundWorkWatcher, type BackgroundWorkWatchHandle, type BackgroundWorkWatcherDependencies } from "./backgroundWorkWatcher.js";
 
@@ -36,7 +37,7 @@ describe("BackgroundWorkWatcher", () => {
     const { watcher, watches } = fixture();
     watcher.update(target("s1"));
     watcher.update(target("s2"));
-    const pi = watches.get("/workspace/.pi");
+    const pi = watches.get(join("/workspace", ".pi"));
     if (pi === undefined) throw new Error("expected workspace watch");
     expect(watches.size).toBe(4);
     watcher.forget("s1");
@@ -50,14 +51,14 @@ describe("BackgroundWorkWatcher", () => {
     const watched = target();
     watcher.update(watched);
     expect(watcher.isHealthy(watched)).toBe(true);
-    watches.get("/workspace/.pi")?.emit("error");
+    watches.get(join("/workspace", ".pi"))?.emit("error");
     expect(watcher.isHealthy(watched)).toBe(false);
   });
 
   it("coalesces filesystem changes into one refresh", () => {
     const { watcher, watches, dirty, flush } = fixture();
     watcher.update(target());
-    watches.get("/workspace/.pi")?.emit("change");
+    watches.get(join("/workspace", ".pi"))?.emit("change");
     watches.get("/sessions")?.emit("change");
     expect(dirty).not.toHaveBeenCalled();
     flush();
