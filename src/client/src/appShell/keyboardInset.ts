@@ -27,6 +27,12 @@ export interface VisualViewportLike {
  * and few-pixel drift during scroll momentum, and reacting to that would make
  * the layout twitch.
  */
+/** Offset of the visible browser viewport inside the layout viewport. */
+export function visualViewportOffsetTop(visualViewport: VisualViewportLike | undefined): number {
+  const offset = visualViewport?.offsetTop;
+  return offset !== undefined && Number.isFinite(offset) && offset > 0 ? offset : 0;
+}
+
 export function keyboardInset(
   layoutViewportHeight: number,
   visualViewport: VisualViewportLike | undefined,
