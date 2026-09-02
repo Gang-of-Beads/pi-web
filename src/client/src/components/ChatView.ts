@@ -47,6 +47,7 @@ import "./FormattedText";
 import "./ToolExecutionView";
 import { sessionStateBadgeStyles as SessionStateBadgeStyles } from "./sessionStateBadgeStyles";
 import { readingAnchorDecision, readingScrollCorrection, shouldHoldReadingPosition } from "../readingAnchor";
+import { imageLoadScrollCorrection } from "../imageLoadScroll";
 
 export const chatStyles = css`
   ${SessionStateBadgeStyles}
@@ -874,9 +875,40 @@ export class ChatView extends LitElement {
     if (this.pinnedToBottom) this.scrollToBottom();
     else this.lastClientHeight = this.chat?.clientHeight ?? 0;
   };
-  private readonly onImageLoad = (): void => {
-    if (this.pinnedToBottom) this.scrollToBottom();
+  /**
+   * A picture that finishes loading takes up room it was not taking before.
+   *
+   * At the bottom that just means following it down. Anywhere else it matters
+   * which side of the reader it landed on: attachments are lazy, so scrolling
+   * back through a session decodes them as they appear, and one completing
+   * above the reader carries what they were reading downwards. The scroller
+   * sets overflow-anchor: none, so the browser will not hold their place, and
+   * the render-time gate never sees this because a load is not a render.
+   *
+   * The correction is the height the document gained, not a re-measurement:
+   * by the time a load is reported the shift has already happened.
+   */
+  private readonly onImageLoad = (event: Event): void => {
+    // Following the bottom needs no measurement, so it must not be reached
+    // through one: an unrendered scroller would otherwise swallow the pin.
+    if (this.pinnedToBottom) { this.scrollToBottom(); return; }
+    const chat = this.chat;
+    const target = event.target;
+    const previousHeight = this.lastScrollHeight;
+    if (chat) this.lastScrollHeight = chat.scrollHeight;
+    if (!chat || !(target instanceof Element)) return;
+    const outcome = imageLoadScrollCorrection({
+      pinnedToBottom: false,
+      userScrolling: this.userScrollInFlight,
+      imageEndsAboveViewport: target.getBoundingClientRect().bottom <= chat.getBoundingClientRect().top,
+      heightGained: previousHeight === undefined ? 0 : chat.scrollHeight - previousHeight,
+    });
+    if (outcome.action === "compensate") chat.scrollTop += outcome.pixels;
   };
+
+  /** The scroller's height as of the last render, so a lazy image can report
+   *  how much it grew the document rather than have it re-measured after. */
+  private lastScrollHeight: number | undefined;
   private readonly openImageZoom = (src: string, alt: string): void => {
     this.zoomedImage = { src, alt };
   };
@@ -1014,6 +1046,7 @@ export class ChatView extends LitElement {
       ? this.captureReadingAnchor()
       : undefined;
     super.update(changed);
+    if (this.chat) this.lastScrollHeight = this.chat.scrollHeight;
     if (prependAnchor !== undefined) this.restorePrependScrollAnchor(prependAnchor);
     if (readingAnchor !== undefined) this.restoreReadingAnchor(readingAnchor);
   }
