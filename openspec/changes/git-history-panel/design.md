@@ -57,6 +57,11 @@ Loading/error state, pagination cursors, and retained response data do not enter
 
 This establishes the plugin route-state pattern for other workspace features. They must use their own namespaced, scope-checked fields rather than adding Git-specific state to the app route.
 
+### 8. Expanded Changes is a viewport-driven multi-file review
+The ordinary narrow panel keeps its single-file viewer. Expanded Changes renders a stable file navigator beside ordered lightweight review sections. Each section owns staged and unstaged diff state and an explicit unrequested/queued/loading/loaded/error lifecycle. An `IntersectionObserver` queues sections within a prefetch margin; navigator selection raises that file to the front and requests a semantic scroll target. The controller caps active files at two, so each may issue its staged and unstaged reads without an unbounded repository-wide fan-out.
+
+Per-file and expand/collapse-all fold state remains scoped to the retained workspace controller and is deliberately absent from the URL. Only the focused file path is shareable: reopening the route reconstructs the default-expanded review, prioritizes that path, and lets viewport loading fill the rest.
+
 ## Risks / Trade-offs
 
 - [Large repositories or expensive history/diff invocation] -> Limit page size, use existing subprocess timeout/output caps, surface truncation/unavailability honestly, and require explicit Load more.

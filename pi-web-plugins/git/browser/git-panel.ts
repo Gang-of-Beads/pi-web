@@ -38,6 +38,8 @@ const GIT_POLL_INTERVAL_MS = 8_000;
 // released as soon as another machine/workspace becomes active.
 const GIT_WORKSPACE_STATE_LIMIT = 8;
 const activityElementTag = "pi-web-git-panel-activity";
+const reviewSectionActivityElementTag = "pi-web-git-review-section-activity";
+const GIT_REVIEW_DIFF_CONCURRENCY = 2;
 
 type GitPanelMode = "changes" | "history";
 
@@ -69,6 +71,10 @@ interface GitWorkspaceUiState {
   commitDiffError: string | undefined;
   commitDiffRequestSequence: number;
   workspacePanelFullscreen: boolean;
+  reviewDiffs: Map<string, GitReviewDiffState>;
+  reviewQueue: GitReviewQueueEntry[];
+  reviewActiveRequests: number;
+  reviewFocusRequest: string | undefined;
 }
 
 interface GitDiffView {
@@ -79,6 +85,22 @@ interface GitDiffView {
 interface GitCommitDiffView {
   readonly response: GitCommitDiffResponse;
   lines: UnifiedDiffLine[] | undefined;
+}
+
+type GitReviewDiffStatus = "unrequested" | "queued" | "loading" | "loaded" | "error";
+
+interface GitReviewDiffState {
+  status: GitReviewDiffStatus;
+  selectedDiff: GitDiffView | undefined;
+  selectedStagedDiff: GitDiffView | undefined;
+  error: string | undefined;
+  collapsed: boolean;
+  requestSequence: number;
+}
+
+interface GitReviewQueueEntry {
+  readonly path: string;
+  readonly priority: number;
 }
 
 interface GitViewState {
@@ -105,6 +127,7 @@ export function createGitBrowserContributions(
   const panelId = `${runtimePluginId}:${GIT_PANEL_LOCAL_ID}`;
   const controller = new GitUiController(sourcePluginId, createGitDiffRoute(panelId));
   defineGitPanelActivityElement();
+  defineGitReviewSectionActivityElement();
   return {
     actions: createGitActions(panelId, controller),
     workspacePanels: [createGitPanel(html, svg, controller)],
@@ -181,12 +204,18 @@ export class GitUiController {
       .then(async (status) => {
         if (!state.retained) return;
         state.status = state.status?.hash === status.hash ? state.status : status;
+        const currentPaths = new Set(status.files.map((file) => file.path));
+        for (const path of state.reviewDiffs.keys()) if (!currentPaths.has(path)) state.reviewDiffs.delete(path);
+        state.reviewQueue = state.reviewQueue.filter((entry) => currentPaths.has(entry.path));
         state.stale = false;
         state.error = undefined;
         const path = state.selectedDiffPath;
         if (path === undefined) return;
         if (!status.files.some((file) => file.path === path)) this.clearSelection(state, true);
-        else if (this.connectedWorkspaceKey === workspaceContextKey(context)) await this.refreshDiff(state, path, context);
+        else if (this.connectedWorkspaceKey === workspaceContextKey(context)) {
+          if (state.workspacePanelFullscreen) this.enqueueReviewDiff(state, context, path, 100);
+          else await this.refreshDiff(state, path, context);
+        }
       })
       .catch((error: unknown) => {
         if (state.retained) state.error = errorMessage(error);
@@ -262,6 +291,13 @@ export class GitUiController {
     const fullscreen = !state.workspacePanelFullscreen;
     state.workspacePanelFullscreen = fullscreen;
     context.host.setWorkspacePanelFullscreen?.(fullscreen);
+    if (fullscreen) {
+      const selectedPath = state.selectedDiffPath;
+      if (selectedPath !== undefined) {
+        state.reviewFocusRequest = selectedPath;
+        this.enqueueReviewDiff(state, context, selectedPath, 100);
+      }
+    }
     this.writeRoute(state);
     this.requestRender(state);
   }
@@ -269,13 +305,59 @@ export class GitUiController {
   selectDiff(context: WorkspacePanelContext, path: string): void {
     const state = this.stateFor(context);
     state.selectedDiffPath = path;
+    state.error = undefined;
+    this.writeRoute(state);
+    if (state.workspacePanelFullscreen) {
+      state.reviewFocusRequest = path;
+      this.enqueueReviewDiff(state, context, path, 100);
+      this.requestRender(state);
+      return;
+    }
     state.selectedDiff = undefined;
     state.selectedStagedDiff = undefined;
     state.diffLoading = true;
-    state.error = undefined;
-    this.writeRoute(state);
     this.requestRender(state);
     void this.refreshDiff(state, path, context);
+  }
+
+  reviewSectionVisible(context: WorkspacePanelContext, path: string): void {
+    const state = this.stateFor(context);
+    if (!state.workspacePanelFullscreen) return;
+    this.enqueueReviewDiff(state, context, path, 10);
+  }
+
+  consumeReviewFocusRequest(context: WorkspacePanelContext, path: string): boolean {
+    const state = this.stateFor(context);
+    if (state.reviewFocusRequest !== path) return false;
+    state.reviewFocusRequest = undefined;
+    return true;
+  }
+
+  toggleReviewDiff(context: WorkspacePanelContext, path: string): void {
+    const state = this.stateFor(context);
+    const review = this.reviewDiffState(state, path);
+    review.collapsed = !review.collapsed;
+    if (!review.collapsed) this.enqueueReviewDiff(state, context, path, 100);
+    this.requestRender(state);
+  }
+
+  toggleAllReviewDiffs(context: WorkspacePanelContext, paths: readonly string[], collapse: boolean): void {
+    const state = this.stateFor(context);
+    for (const path of paths) this.reviewDiffState(state, path).collapsed = collapse;
+    if (!collapse) {
+      const selectedPath = state.selectedDiffPath;
+      if (selectedPath !== undefined) this.enqueueReviewDiff(state, context, selectedPath, 100);
+    }
+    this.requestRender(state);
+  }
+
+  retryReviewDiff(context: WorkspacePanelContext, path: string): void {
+    const state = this.stateFor(context);
+    const review = this.reviewDiffState(state, path);
+    review.status = "unrequested";
+    review.error = undefined;
+    this.enqueueReviewDiff(state, context, path, 100);
+    this.requestRender(state);
   }
 
   setView(context: WorkspacePanelContext, view: GitFileView): void {
@@ -354,6 +436,10 @@ export class GitUiController {
       commitDiffError: undefined,
       commitDiffRequestSequence: 0,
       workspacePanelFullscreen: false,
+      reviewDiffs: new Map(),
+      reviewQueue: [],
+      reviewActiveRequests: 0,
+      reviewFocusRequest: undefined,
     };
     this.states.set(key, created);
     return created;
@@ -367,6 +453,13 @@ export class GitUiController {
     state.selectedStagedDiff = undefined;
     state.diffLoading = false;
     state.diffRequestSequence += 1;
+    state.reviewQueue = [];
+    for (const review of state.reviewDiffs.values()) {
+      review.selectedDiff = undefined;
+      review.selectedStagedDiff = undefined;
+      review.status = "unrequested";
+      review.requestSequence += 1;
+    }
   }
 
   private evictOldestState(): void {
@@ -377,6 +470,8 @@ export class GitUiController {
     if (state !== undefined) {
       state.retained = false;
       state.diffRequestSequence += 1;
+      state.reviewQueue = [];
+      for (const review of state.reviewDiffs.values()) review.requestSequence += 1;
     }
     this.states.delete(key);
   }
@@ -427,6 +522,7 @@ export class GitUiController {
     state.mode = route.mode;
     state.workspacePanelFullscreen = route.expanded;
     state.context.host.setWorkspacePanelFullscreen?.(route.expanded);
+    if (route.expanded && route.diffPath !== undefined) state.reviewFocusRequest = route.diffPath;
     if (route.mode === "changes") {
       this.clearCommitSelection(state);
       this.applyRouteSelection(state, route.diffPath);
@@ -497,6 +593,67 @@ export class GitUiController {
         state.commitDiffLoading = false;
         this.requestRender(state);
       }
+    }
+  }
+
+  private reviewDiffState(state: GitWorkspaceUiState, path: string): GitReviewDiffState {
+    const existing = state.reviewDiffs.get(path);
+    if (existing !== undefined) return existing;
+    const created: GitReviewDiffState = {
+      status: "unrequested",
+      selectedDiff: undefined,
+      selectedStagedDiff: undefined,
+      error: undefined,
+      collapsed: false,
+      requestSequence: 0,
+    };
+    state.reviewDiffs.set(path, created);
+    return created;
+  }
+
+  private enqueueReviewDiff(state: GitWorkspaceUiState, context: WorkspacePanelContext, path: string, priority: number): void {
+    const review = this.reviewDiffState(state, path);
+    if (review.collapsed || review.status === "loading" || review.status === "loaded") return;
+    const queued = state.reviewQueue.find((entry) => entry.path === path);
+    if (queued === undefined) state.reviewQueue.push({ path, priority });
+    else if (priority > queued.priority) {
+      state.reviewQueue = state.reviewQueue.filter((entry) => entry.path !== path);
+      state.reviewQueue.push({ path, priority });
+    }
+    review.status = "queued";
+    state.reviewQueue.sort((left, right) => right.priority - left.priority);
+    this.drainReviewQueue(state, context);
+  }
+
+  private drainReviewQueue(state: GitWorkspaceUiState, context: WorkspacePanelContext): void {
+    while (state.retained && state.reviewActiveRequests < GIT_REVIEW_DIFF_CONCURRENCY) {
+      const entry = state.reviewQueue.shift();
+      if (entry === undefined) return;
+      const review = this.reviewDiffState(state, entry.path);
+      if (review.collapsed || review.status !== "queued") continue;
+      review.status = "loading";
+      review.error = undefined;
+      review.requestSequence += 1;
+      const sequence = review.requestSequence;
+      state.reviewActiveRequests += 1;
+      this.requestRender(state);
+      void Promise.all([
+        requestGitBackend(context, GIT_DIFF_OPERATION, { path: entry.path }).then(parseGitDiffResponse),
+        requestGitBackend(context, GIT_DIFF_OPERATION, { path: entry.path, staged: true }).then(parseGitDiffResponse),
+      ]).then(([selectedDiff, selectedStagedDiff]) => {
+        if (!state.retained || review.requestSequence !== sequence) return;
+        review.selectedDiff = createDiffView(selectedDiff, review.selectedDiff);
+        review.selectedStagedDiff = createDiffView(selectedStagedDiff, review.selectedStagedDiff);
+        review.status = "loaded";
+      }).catch((error: unknown) => {
+        if (!state.retained || review.requestSequence !== sequence) return;
+        review.error = errorMessage(error);
+        review.status = "error";
+      }).finally(() => {
+        state.reviewActiveRequests = Math.max(0, state.reviewActiveRequests - 1);
+        this.requestRender(state);
+        this.drainReviewQueue(state, context);
+      });
     }
   }
 
@@ -599,7 +756,8 @@ function renderGitPanel(html: HtmlTemplateTag, controller: GitUiController, cont
         ${state.mode === "changes" && state.stale ? html`<span class="git-stale">stale</span>` : null}
         ${renderModeToggle(html, controller, context, state.mode)}
         <div class="git-toolbar-actions">
-          ${state.mode !== "changes" || viewState.expandablePaths.length === 0 ? null : renderExpandCollapseAll(html, controller, context, state, viewState.expandablePaths)}
+          ${state.mode === "changes" && state.workspacePanelFullscreen && (state.status?.files.length ?? 0) > 0 ? renderReviewExpandCollapseAll(html, controller, context, state) : null}
+          ${state.mode !== "changes" || state.workspacePanelFullscreen || viewState.expandablePaths.length === 0 ? null : renderExpandCollapseAll(html, controller, context, state, viewState.expandablePaths)}
           ${state.mode === "changes" ? renderViewToggle(html, controller, context) : null}
           ${context.host.setWorkspacePanelFullscreen === undefined ? null : html`<button type="button" class="git-expand-panel" aria-pressed=${String(state.workspacePanelFullscreen)} @click=${() => { controller.toggleWorkspacePanelFullscreen(context); }}>${state.workspacePanelFullscreen ? "Exit expanded view" : "Expand panel"}</button>`}
           <button type="button" ?disabled=${state.mode === "changes" ? state.statusLoading : state.historyLoading} @click=${() => { void (state.mode === "changes" ? controller.refresh(context) : controller.refreshHistory(context)); }}>Refresh</button>
@@ -608,7 +766,7 @@ function renderGitPanel(html: HtmlTemplateTag, controller: GitUiController, cont
       ${state.mode !== "changes" || state.error === undefined ? null : html`<div class="git-error" role="alert">${state.error}</div>`}
       <section class=${gitSplitClass(state.mode === "changes" ? state.selectedDiffPath : state.selectedCommitId, state.workspacePanelFullscreen)}>
         <div class="git-file-list">${state.mode === "changes" ? renderFileList(html, controller, context, state, viewState) : renderHistoryList(html, controller, context, state)}</div>
-        <div class="git-viewer">${state.mode === "changes" ? renderDiffViewer(html, state) : renderCommitDiffViewer(html, controller, context, state)}</div>
+        <div class="git-viewer">${state.mode === "changes" ? (state.workspacePanelFullscreen ? renderReviewDiffViewer(html, controller, context, state) : renderDiffViewer(html, state)) : renderCommitDiffViewer(html, controller, context, state)}</div>
       </section>
     </section>
   `;
@@ -798,6 +956,58 @@ function renderSelectableRow(
   `;
 }
 
+function renderReviewExpandCollapseAll(html: HtmlTemplateTag, controller: GitUiController, context: WorkspacePanelContext, state: GitWorkspaceUiState) {
+  const paths = state.status?.files.map((file) => file.path) ?? [];
+  const allCollapsed = paths.every((path) => state.reviewDiffs.get(path)?.collapsed === true);
+  return html`<button type="button" @click=${() => { controller.toggleAllReviewDiffs(context, paths, !allCollapsed); }}>${allCollapsed ? "Expand all diffs" : "Collapse all diffs"}</button>`;
+}
+
+function renderReviewDiffViewer(html: HtmlTemplateTag, controller: GitUiController, context: WorkspacePanelContext, state: GitWorkspaceUiState) {
+  const files = state.status?.files ?? [];
+  if (files.length === 0) return html`<p class="git-muted">No changed files to review.</p>`;
+  return html`<div class="git-review-diffs">${files.map((file) => renderReviewDiffSection(html, controller, context, state, file))}</div>`;
+}
+
+function renderReviewDiffSection(
+  html: HtmlTemplateTag,
+  controller: GitUiController,
+  context: WorkspacePanelContext,
+  state: GitWorkspaceUiState,
+  file: GitStatusFile,
+) {
+  const review = state.reviewDiffs.get(file.path) ?? {
+    status: "unrequested" as const,
+    selectedDiff: undefined,
+    selectedStagedDiff: undefined,
+    error: undefined,
+    collapsed: false,
+    requestSequence: 0,
+  };
+  const diffs = [review.selectedStagedDiff, review.selectedDiff].filter((diff): diff is GitDiffView => diff !== undefined && diff.response.diff !== "");
+  return html`
+    <pi-web-git-review-section-activity
+      data-path=${file.path}
+      .controller=${controller}
+      .context=${context}
+      .path=${file.path}
+    >
+      <section class=${state.selectedDiffPath === file.path ? "git-review-section is-focused" : "git-review-section"} data-review-path=${file.path}>
+        <div class="git-viewer-header">
+          <button type="button" class="git-review-toggle" aria-expanded=${String(!review.collapsed)} @click=${() => { controller.toggleReviewDiff(context, file.path); }}>${review.collapsed ? "▸" : "▾"} ${file.path}</button>
+          <small>${stateLabel(file.index, file.workingTree)}</small>
+        </div>
+        ${review.collapsed ? null : review.status === "error"
+          ? html`<div class="git-error" role="alert">Diff unavailable: ${review.error}<button type="button" @click=${() => { controller.retryReviewDiff(context, file.path); }}>Retry</button></div>`
+          : review.status !== "loaded"
+            ? html`<div class="git-review-placeholder">${review.status === "loading" ? "Loading diff…" : review.status === "queued" ? "Queued…" : "Diff loads when visible."}</div>`
+            : diffs.length === 0
+              ? html`<p class="git-muted">No staged or unstaged diff.</p>`
+              : html`<div class=${diffs.length === 1 ? "git-diffs is-single" : "git-diffs"}>${diffs.map((diff) => renderDiffSection(html, diff))}</div>`}
+      </section>
+    </pi-web-git-review-section-activity>
+  `;
+}
+
 function renderDiffViewer(html: HtmlTemplateTag, state: GitWorkspaceUiState) {
   if (state.selectedDiffPath === undefined) return html`<p class="git-muted">Select a changed file.</p>`;
   const unstaged = state.selectedDiff;
@@ -939,6 +1149,61 @@ function defineGitPanelActivityElement(): void {
   customElements.define(activityElementTag, GitPanelActivityElement);
 }
 
+function defineGitReviewSectionActivityElement(): void {
+  if (typeof customElements === "undefined" || typeof HTMLElement === "undefined" || customElements.get(reviewSectionActivityElementTag) !== undefined) return;
+  class GitReviewSectionActivityElement extends HTMLElement {
+    private controllerValue: GitUiController | undefined;
+    private contextValue: WorkspacePanelContext | undefined;
+    private pathValue: string | undefined;
+    private observer: IntersectionObserver | undefined;
+
+    set controller(value: GitUiController | undefined) {
+      this.controllerValue = value;
+      this.restart();
+    }
+
+    set context(value: WorkspacePanelContext | undefined) {
+      this.contextValue = value;
+      this.restart();
+    }
+
+    set path(value: string | undefined) {
+      this.pathValue = value;
+      this.restart();
+    }
+
+    connectedCallback(): void {
+      this.restart();
+    }
+
+    disconnectedCallback(): void {
+      this.observer?.disconnect();
+      this.observer = undefined;
+    }
+
+    private restart(): void {
+      this.observer?.disconnect();
+      this.observer = undefined;
+      const controller = this.controllerValue;
+      const context = this.contextValue;
+      const path = this.pathValue;
+      if (!this.isConnected || controller === undefined || context === undefined || path === undefined) return;
+      if (controller.consumeReviewFocusRequest(context, path)) {
+        queueMicrotask(() => { this.scrollIntoView({ block: "start" }); });
+      }
+      if (typeof IntersectionObserver === "undefined") {
+        controller.reviewSectionVisible(context, path);
+        return;
+      }
+      this.observer = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) controller.reviewSectionVisible(context, path);
+      }, { rootMargin: "400px 0px" });
+      this.observer.observe(this);
+    }
+  }
+  customElements.define(reviewSectionActivityElementTag, GitReviewSectionActivityElement);
+}
+
 function submoduleBadge(html: HtmlTemplateTag) {
   return html`<span class="submodule-badge">submodule</span>`;
 }
@@ -986,6 +1251,7 @@ function errorMessage(error: unknown): string {
 const gitPanelStyles = `
   .git-panel { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; color: var(--pi-text); background: var(--pi-bg); font: 13px system-ui, sans-serif; }
   .git-panel ${activityElementTag} { display: none; }
+  .git-panel ${reviewSectionActivityElementTag} { display: block; min-width: 0; }
   .git-panel button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--pi-border); border-radius: 7px; background: var(--pi-surface); color: var(--pi-text); padding: 5px 7px; cursor: pointer; }
   .git-panel button:disabled { cursor: wait; opacity: .65; }
   .git-panel small, .git-panel .git-muted { color: var(--pi-muted); }
@@ -1021,6 +1287,12 @@ const gitPanelStyles = `
   .git-panel .git-summary { margin: 4px 6px 8px; color: var(--pi-muted); }
   .git-panel .submodule-badge { display: inline-block; margin-left: 6px; border: 1px solid var(--pi-border); border-radius: 999px; color: var(--pi-muted); padding: 0 5px; font-size: 11px; font-weight: 400; vertical-align: baseline; }
   .git-panel .git-viewer { min-height: 0; overflow: auto; display: flex; flex-direction: column; }
+  .git-panel .git-review-diffs { min-width: 0; }
+  .git-panel .git-review-section { min-width: 0; min-height: 120px; border-bottom: 1px solid var(--pi-border); scroll-margin-top: 8px; }
+  .git-panel .git-review-section.is-focused { box-shadow: inset 3px 0 0 var(--pi-accent); }
+  .git-panel .git-review-toggle { min-width: 0; overflow: hidden; border: 0; background: transparent; padding: 2px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+  .git-panel .git-review-placeholder { min-height: 96px; display: grid; place-items: center; color: var(--pi-muted); }
+  .git-panel .git-review-section > .git-diffs { min-height: 160px; }
   .git-panel .git-diffs { flex: 1 1 auto; min-height: 0; overflow: auto; display: grid; grid-template-rows: minmax(120px, 1fr) minmax(120px, 1fr); }
   .git-panel .git-diffs.is-single { grid-template-rows: minmax(0, 1fr); }
   .git-panel .git-diff-section { min-height: 0; display: flex; flex-direction: column; border-bottom: 1px solid var(--pi-border); }

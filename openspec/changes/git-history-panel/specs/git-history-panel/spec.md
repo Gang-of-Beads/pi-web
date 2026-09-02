@@ -74,3 +74,18 @@ The Git panel SHALL encode its selected mode, selected Changes diff path or Hist
 #### Scenario: A shared route selects an unavailable commit
 - **WHEN** a shared History URL identifies a commit that cannot be read from the selected worktree
 - **THEN** the panel SHALL show an attributable unavailable-diff state without substituting another commit
+
+### Requirement: Expanded Changes provides a bounded multi-file review surface
+The expanded Changes layout SHALL retain a file navigator beside ordered per-file diff sections. Diff sections SHALL load on demand near the viewport with bounded concurrency, while a file explicitly selected in the navigator SHALL be prioritized, scrolled into view, and represented as the shareable URL anchor.
+
+#### Scenario: Expanded review opens with many changed files
+- **WHEN** the user expands Changes for a workspace with many changed files
+- **THEN** the panel SHALL render lightweight file sections without immediately requesting every diff, and SHALL prioritize sections in or near the viewport
+
+#### Scenario: User selects a file that has not loaded
+- **WHEN** the user selects a file in the navigator
+- **THEN** its section SHALL scroll into view, move ahead of ordinary visible work in the bounded queue, and independently show queued, loading, loaded/empty, or failed/retry state
+
+#### Scenario: User folds review sections
+- **WHEN** the user collapses one or all file diff sections
+- **THEN** their temporary fold state SHALL remain in the current workspace review session but SHALL NOT be added to the shareable URL

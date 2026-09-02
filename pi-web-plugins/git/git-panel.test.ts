@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { JsonValue, WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
-import { GIT_COMMIT_DIFF_OPERATION, GIT_HISTORY_OPERATION } from "./browser/git-contract.js";
+import { GIT_COMMIT_DIFF_OPERATION, GIT_DIFF_OPERATION, GIT_HISTORY_OPERATION } from "./browser/git-contract.js";
 import { GitUiController } from "./browser/git-panel.js";
 import type { GitDiffRoute } from "./browser/gitRoute.js";
 
@@ -65,6 +65,35 @@ describe("Git history panel controller", () => {
     expect(controller.state(second).mode).toBe("changes");
     expect(controller.state(second).history).toBeUndefined();
     expect(requests).toEqual([GIT_HISTORY_OPERATION]);
+  });
+
+  it("limits visible review loading to two files while prioritizing queued work", async () => {
+    const controller = new GitUiController("git", route);
+    const pending: { input: JsonValue; resolve: (value: JsonValue) => void }[] = [];
+    const current = context("first", (operation, input) => {
+      if (operation !== GIT_DIFF_OPERATION) throw new Error(`Unexpected operation: ${operation}`);
+      return new Promise<JsonValue>((resolve) => { pending.push({ input, resolve }); });
+    });
+
+    controller.toggleWorkspacePanelFullscreen(current);
+    controller.reviewSectionVisible(current, "first.ts");
+    controller.reviewSectionVisible(current, "second.ts");
+    controller.reviewSectionVisible(current, "third.ts");
+
+    expect(pending.map(({ input }) => input)).toEqual([
+      { path: "first.ts" }, { path: "first.ts", staged: true },
+      { path: "second.ts" }, { path: "second.ts", staged: true },
+    ]);
+
+    for (const request of pending.slice(0, 2)) {
+      const staged = typeof request.input === "object" && request.input !== null && "staged" in request.input && request.input["staged"] === true;
+      request.resolve({ path: "first.ts", staged, hash: staged ? "s" : "u", diff: "", truncated: false });
+    }
+    await vi.waitFor(() => { expect(pending).toHaveLength(6); });
+
+    expect(pending.slice(4).map(({ input }) => input)).toEqual([
+      { path: "third.ts" }, { path: "third.ts", staged: true },
+    ]);
   });
 
   it("ignores a selected commit diff that resolves after the selection changes", async () => {

@@ -20,6 +20,7 @@ const gitWorkspace: Workspace = {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
   window.localStorage.clear();
   window.history.replaceState({}, "", "/");
   document.body.replaceChildren();
@@ -168,6 +169,33 @@ describe("bundled Git browser plugin", () => {
     expect(button(container, "main.ts")).toBeDefined();
 
     render(null, container);
+  });
+
+  it("renders lazy per-file review sections in the expanded panel", async () => {
+    vi.stubGlobal("IntersectionObserver", undefined);
+    window.history.replaceState({}, "", `/?project=${projectId}&workspace=${workspaceId}`);
+    const backend = backendFixture({ files: [changedFile("first.ts"), changedFile("second.ts"), changedFile("third.ts")] });
+    const panel = requiredPanel(activate("git"));
+    const context = panelContext(backend.request, gitWorkspace, "local", { setWorkspacePanelFullscreen: vi.fn() });
+    const container = document.createElement("div");
+    document.body.append(container);
+
+    render(panel.render(context), container);
+    await settleBackend();
+    render(panel.render(context), container);
+    button(container, "Expand panel").click();
+    render(panel.render(context), container);
+    await settleBackend();
+    await settleBackend();
+    render(panel.render(context), container);
+
+    expect(container.querySelectorAll(".git-review-section")).toHaveLength(3);
+    expect(backend.request).toHaveBeenCalledWith("diff", { path: "first.ts" });
+    expect(backend.request).toHaveBeenCalledWith("diff", { path: "third.ts", staged: true });
+    button(container, "Collapse all diffs").click();
+    render(panel.render(context), container);
+    expect(container.querySelectorAll('.git-review-toggle[aria-expanded="false"]')).toHaveLength(3);
+    expect(button(container, "Expand all diffs")).toBeDefined();
   });
 
   it("toggles the expanded panel layout through the workspace host", async () => {
