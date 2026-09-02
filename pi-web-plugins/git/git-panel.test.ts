@@ -6,7 +6,7 @@ import type { GitDiffRoute } from "./browser/gitRoute.js";
 
 const route: GitDiffRoute = {
   matches: () => false,
-  read: () => undefined,
+  read: () => ({ mode: "changes", diffPath: undefined, commitId: undefined, expanded: false }),
   write: () => { /* no-op */ },
 };
 const commit = {

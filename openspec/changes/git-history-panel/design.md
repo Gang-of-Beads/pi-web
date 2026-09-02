@@ -50,6 +50,13 @@ Each `GitWorkspaceUiState` gets independent history state: initial/page loading,
 
 This is deliberately separate from status state. Sharing a status-derived `stale` or empty sentinel would reintroduce the ambiguity that prompted the feature.
 
+### 7. Persist shareable Git navigation state in its plugin namespace
+The app route already owns machine, project, workspace, tool, and view. The Git plugin adds namespaced URL fields only for stable user-selected state: Changes/History mode, selected Changes path or History commit object identifier, and expanded review layout. Route restoration reads those values before panel requests begin; every panel selection writes the corresponding route. Browser history uses the same restoration path.
+
+Loading/error state, pagination cursors, and retained response data do not enter the URL because they cannot reliably reproduce the reader's surface. A selected commit outside the first page is read by its immutable object ID; the backend remains responsible for reachability validation and reports an unavailable diff rather than silently selecting another commit.
+
+This establishes the plugin route-state pattern for other workspace features. They must use their own namespaced, scope-checked fields rather than adding Git-specific state to the app route.
+
 ## Risks / Trade-offs
 
 - [Large repositories or expensive history/diff invocation] -> Limit page size, use existing subprocess timeout/output caps, surface truncation/unavailability honestly, and require explicit Load more.
@@ -62,5 +69,5 @@ This is deliberately separate from status state. Sharing a status-derived `stale
 ## Migration Plan
 
 1. Ship the browser and server Git plugin updates in the same package revision; the existing backend revision handshake prevents an unmatched browser from calling a stale daemon.
-2. No durable state or data migration is required. Existing Git-panel URLs continue to open Changes; history selection starts without a deep link in the initial release.
+2. No durable state or data migration is required. Existing Git diff deep links continue to open Changes; History routes add mode and commit fields and default safely when those fields are absent.
 3. If a deployment needs rollback, deploy the prior paired package and restart both web/API and session daemon. A browser reload discards ephemeral History state. No repository data has been changed.

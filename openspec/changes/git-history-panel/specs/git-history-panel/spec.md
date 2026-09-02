@@ -59,3 +59,18 @@ Selecting a listed commit SHALL show its commit metadata and diff in the Git vie
 #### Scenario: Selected commit diff cannot be read
 - **WHEN** the selected commit diff request fails
 - **THEN** the panel SHALL retain the selected commit identity, state that its diff is unavailable with the failure reason, and offer retry without claiming an empty diff
+
+### Requirement: Git navigation state is shareable and restored from its scoped URL
+The Git panel SHALL encode its selected mode, selected Changes diff path or History commit identifier, and expanded review layout in its plugin-namespaced URL state. The panel SHALL restore that state on page load, refresh, and browser history navigation only when the URL machine, project, and workspace match the active panel context.
+
+#### Scenario: User shares a selected History commit
+- **WHEN** a user selects a commit in History
+- **THEN** the URL SHALL identify History and the selected complete commit object identifier, and opening that URL for the same worktree SHALL reload History and inspect that commit
+
+#### Scenario: User returns through browser history
+- **WHEN** browser back or forward changes the Git panel URL state for the active workspace
+- **THEN** the panel SHALL restore the encoded mode, selection, and expanded layout without retaining an action from the later route
+
+#### Scenario: A shared route selects an unavailable commit
+- **WHEN** a shared History URL identifies a commit that cannot be read from the selected worktree
+- **THEN** the panel SHALL show an attributable unavailable-diff state without substituting another commit

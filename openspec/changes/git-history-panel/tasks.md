@@ -9,7 +9,8 @@
 - [x] 2.1 Add Changes/History main-mode state scoped to machine/project/workspace while retaining List/Tree only inside Changes; verified with focused Git-panel tests that mode changes preserve Changes layout/status semantics and a clean status still renders `No changes.` only in Changes.
 - [x] 2.2 Add explicit, selection-scoped History loading, loaded, unborn/empty, error/retry, refresh, and load-more states; verified with controller/panel tests that stale completions after a workspace change neither render nor become actionable, and that a frozen snapshot appends without reordering.
 - [x] 2.3 Render commit rows and selected commit metadata/diff in the Git viewer, including a labelled combined merge diff and distinct loading/empty/error states; verified through happy-dom user interactions and unified-diff parser fixtures.
-- [ ] 2.4 Validate the completed Git panel in a real browser at 393x850 with a coarse pointer: record the viewport, mode-control and row target sizes, verify History from a clean checkout, normal and merge diff viewing, Load more, error/retry, and return to Changes; inspect daemon logs to confirm history requests remain read-only and report the observed evidence.
+- [x] 2.4 Persist and restore the Git mode, selected diff or commit, and expanded layout through namespaced, workspace-scoped URL state; verified with focused URL serialization and panel interaction tests.
+- [ ] 2.5 Validate the completed Git panel in a real browser at 393x850 with a coarse pointer: record the viewport, mode-control and row target sizes, verify History from a clean checkout, normal and merge diff viewing, Load more, error/retry, deep-link restoration, and return to Changes; inspect daemon logs to confirm history requests remain read-only and report the observed evidence.
 
 ## 3. Release and integration verification
 

@@ -199,6 +199,7 @@ describe("bundled Git browser plugin", () => {
   });
 
   it("opens read-only current-HEAD history and renders the selected commit's diff", async () => {
+    window.history.replaceState({}, "", `/?project=${projectId}&workspace=${workspaceId}`);
     const historyCommit = {
       id: "a".repeat(40),
       parentIds: ["b".repeat(40)],
@@ -221,18 +222,49 @@ describe("bundled Git browser plugin", () => {
     render(panel.render(context), container);
 
     expect(backend.request).toHaveBeenCalledWith("history", null);
+    expect(new URL(window.location.href).searchParams.get("git.workspace.git--mode")).toBe("history");
     expect(container.textContent).toContain("Add history");
     button(container, "Add history").click();
     await settleBackend();
     render(panel.render(context), container);
 
     expect(backend.request).toHaveBeenCalledWith("commit-diff", { id: historyCommit.id });
+    expect(new URL(window.location.href).searchParams.get("git.workspace.git--commit")).toBe(historyCommit.id);
     expect(container.textContent).toContain("Ada Lovelace <ada@example.test>");
     expect(container.querySelector('[role="table"][aria-label="Commit diff"]')).not.toBeNull();
 
     button(container, "Changes").click();
     render(panel.render(context), container);
+    expect(new URL(window.location.href).searchParams.get("git.workspace.git--mode")).toBeNull();
+    expect(new URL(window.location.href).searchParams.get("git.workspace.git--commit")).toBeNull();
     expect(container.textContent).toContain("src/main.ts");
+    render(null, container);
+  });
+
+  it("restores a shared History commit route after a reload", async () => {
+    const historyCommit = {
+      id: "c".repeat(40),
+      parentIds: ["b".repeat(40)],
+      authorName: "Ada Lovelace",
+      authorEmail: "ada@example.test",
+      authoredAt: "2026-09-02T08:00:00+00:00",
+      subject: "Shared history",
+    };
+    window.history.replaceState({}, "", `/?project=${projectId}&workspace=${workspaceId}&git.workspace.git--mode=history&git.workspace.git--commit=${historyCommit.id}&git.workspace.git--expanded=1`);
+    const backend = backendFixture({ history: { unborn: false, commits: [historyCommit], truncated: false } });
+    const panel = requiredPanel(activate("git"));
+    const container = document.createElement("div");
+    document.body.append(container);
+
+    render(panel.render(panelContext(backend.request)), container);
+    await settleBackend();
+    await settleBackend();
+    render(panel.render(panelContext(backend.request)), container);
+
+    expect(backend.request).toHaveBeenCalledWith("history", null);
+    expect(backend.request).toHaveBeenCalledWith("commit-diff", { id: historyCommit.id });
+    expect(container.querySelector(".git-split.expanded")).not.toBeNull();
+    expect(container.textContent).toContain("Shared history");
     render(null, container);
   });
 

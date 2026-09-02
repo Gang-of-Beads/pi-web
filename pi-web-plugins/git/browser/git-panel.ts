@@ -205,6 +205,9 @@ export class GitUiController {
     const state = this.stateFor(context);
     if (state.mode === mode) return;
     state.mode = mode;
+    if (mode === "changes") this.clearCommitSelection(state);
+    else this.clearSelection(state, false);
+    this.writeRoute(state);
     this.requestRender(state);
     if (mode === "history" && state.history === undefined && state.historyRequest === undefined) void this.refreshHistory(context);
   }
@@ -214,10 +217,10 @@ export class GitUiController {
     state.historyRequestSequence += 1;
     state.history = undefined;
     state.historyError = undefined;
-    state.selectedCommitId = undefined;
     state.selectedCommitDiff = undefined;
     state.commitDiffLoading = false;
     state.commitDiffError = undefined;
+    state.commitDiffRequestSequence += 1;
     return this.loadHistory(state, context, undefined);
   }
 
@@ -239,6 +242,7 @@ export class GitUiController {
     state.selectedCommitDiff = undefined;
     state.commitDiffError = undefined;
     state.commitDiffLoading = true;
+    this.writeRoute(state);
     this.requestRender(state);
     void this.refreshCommitDiff(state, context, commit.id);
   }
@@ -258,6 +262,7 @@ export class GitUiController {
     const fullscreen = !state.workspacePanelFullscreen;
     state.workspacePanelFullscreen = fullscreen;
     context.host.setWorkspacePanelFullscreen?.(fullscreen);
+    this.writeRoute(state);
     this.requestRender(state);
   }
 
@@ -268,7 +273,7 @@ export class GitUiController {
     state.selectedStagedDiff = undefined;
     state.diffLoading = true;
     state.error = undefined;
-    if (this.route.matches(context)) this.route.write(path);
+    this.writeRoute(state);
     this.requestRender(state);
     void this.refreshDiff(state, path, context);
   }
@@ -378,15 +383,15 @@ export class GitUiController {
 
   private synchronizeRoute(state: GitWorkspaceUiState, changedWorkspace: boolean): void {
     if (!this.route.matches(state.context)) return;
-    const routePath = this.route.read();
-    if (this.routeNavigationPending || !state.routeInitialized || (!changedWorkspace && routePath !== state.selectedDiffPath)) {
+    const route = this.route.read();
+    if (this.routeNavigationPending || !state.routeInitialized || (!changedWorkspace && !this.routeMatchesState(route, state))) {
       this.routeNavigationPending = false;
       state.routeInitialized = true;
-      this.applyRouteSelection(state, routePath);
-      this.route.write(routePath, { replace: true });
+      this.applyRouteState(state, route);
+      this.writeRoute(state, true);
       return;
     }
-    if (changedWorkspace) this.route.write(state.selectedDiffPath, { replace: true });
+    if (changedWorkspace) this.writeRoute(state, true);
   }
 
   private applyRouteSelection(state: GitWorkspaceUiState, path: string | undefined): void {
@@ -400,9 +405,48 @@ export class GitUiController {
 
   private clearSelection(state: GitWorkspaceUiState, replaceUrl: boolean): void {
     this.applyRouteSelection(state, undefined);
-    if (replaceUrl && this.connectedWorkspaceKey === workspaceContextKey(state.context) && this.route.matches(state.context)) {
-      this.route.write(undefined, { replace: true });
+    if (replaceUrl) this.writeRoute(state, true);
+  }
+
+  private clearCommitSelection(state: GitWorkspaceUiState): void {
+    state.selectedCommitId = undefined;
+    state.selectedCommitDiff = undefined;
+    state.commitDiffLoading = false;
+    state.commitDiffError = undefined;
+    state.commitDiffRequestSequence += 1;
+  }
+
+  private routeMatchesState(route: ReturnType<GitDiffRoute["read"]>, state: GitWorkspaceUiState): boolean {
+    return route.mode === state.mode
+      && route.diffPath === state.selectedDiffPath
+      && route.commitId === state.selectedCommitId
+      && route.expanded === state.workspacePanelFullscreen;
+  }
+
+  private applyRouteState(state: GitWorkspaceUiState, route: ReturnType<GitDiffRoute["read"]>): void {
+    state.mode = route.mode;
+    state.workspacePanelFullscreen = route.expanded;
+    state.context.host.setWorkspacePanelFullscreen?.(route.expanded);
+    if (route.mode === "changes") {
+      this.clearCommitSelection(state);
+      this.applyRouteSelection(state, route.diffPath);
+    } else {
+      this.applyRouteSelection(state, undefined);
+      if (state.selectedCommitId !== route.commitId) {
+        this.clearCommitSelection(state);
+        state.selectedCommitId = route.commitId;
+      }
     }
+  }
+
+  private writeRoute(state: GitWorkspaceUiState, replace = false): void {
+    if (this.connectedWorkspaceKey !== workspaceContextKey(state.context) || !this.route.matches(state.context)) return;
+    this.route.write({
+      mode: state.mode,
+      diffPath: state.selectedDiffPath,
+      commitId: state.selectedCommitId,
+      expanded: state.workspacePanelFullscreen,
+    }, { replace });
   }
 
   private loadHistory(state: GitWorkspaceUiState, context: WorkspacePanelContext, cursor: string | undefined): Promise<void> {
@@ -418,6 +462,11 @@ export class GitUiController {
         state.history = cursor === undefined
           ? page
           : { ...page, commits: [...(state.history?.commits ?? []), ...page.commits] };
+        const commitId = state.selectedCommitId;
+        if (commitId !== undefined && state.selectedCommitDiff === undefined && !state.commitDiffLoading) {
+          state.commitDiffLoading = true;
+          void this.refreshCommitDiff(state, context, commitId);
+        }
       })
       .catch((error: unknown) => {
         if (state.retained && state.historyRequestSequence === sequence) state.historyError = errorMessage(error);
