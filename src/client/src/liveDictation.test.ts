@@ -167,14 +167,14 @@ describe("a dictation that has been stopped", () => {
 
 class FakeSocket {
   readyState = 0;
-  sent: string[] = [];
+  sent: unknown[] = [];
   onmessage?: (event: { data: unknown }) => void;
   onopen?: () => void;
   onerror?: () => void;
 
   asWebSocket(): WebSocket {
     const readyStateOf = (): number => this.readyState;
-    const record = (payload: string): void => { this.sent.push(payload); };
+    const record = (payload: unknown): void => { this.sent.push(payload); };
     const markClosed = (): void => { this.readyState = 3; };
     const stub = {
       get readyState() { return readyStateOf(); },
@@ -212,3 +212,40 @@ function deps(overrides: Partial<ConstructorParameters<typeof LiveDictation>[0]>
     ...overrides,
   };
 }
+
+/**
+ * Stopping mid-sentence must not drop the last words.
+ *
+ * An empty audio chunk is how the protocol declares the utterance over - the
+ * encoder's docstring says so - and stop closed the socket without sending
+ * one, so the tail survived only if the service's own silence detection had
+ * already fired.
+ */
+describe("declaring the end of an utterance", () => {
+  it("sends the empty chunk before closing", async () => {
+    const socket = new FakeSocket();
+    const live = new LiveDictation(deps({ openSocket: () => socket.asWebSocket() }));
+    await live.start("wss://example/stt");
+    socket.open();
+    await Promise.resolve();
+    socket.sent.length = 0;
+
+    live.stop();
+
+    expect(socket.sent.some((frame) => frame instanceof Uint8Array)).toBe(true);
+  });
+
+  it("says nothing to a socket that is already closed", async () => {
+    const socket = new FakeSocket();
+    const live = new LiveDictation(deps({ openSocket: () => socket.asWebSocket() }));
+    await live.start("wss://example/stt");
+    socket.open();
+    await Promise.resolve();
+    socket.readyState = 3;
+    socket.sent.length = 0;
+
+    live.stop();
+
+    expect(socket.sent).toHaveLength(0);
+  });
+});

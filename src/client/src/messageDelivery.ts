@@ -186,18 +186,11 @@ export function restartDelivery(messages: readonly ChatLine[], clientMessageId: 
 }
 
 /**
- * Fold a status update into the transcript: entries still in the agent's queue
- * are marked queued, and a tracked message that has left the queue has been
- * taken into the turn.
- */
-
-/**
  * Drop the optimistic bubble for a message that was pulled back out of the
  * queue. It has to go rather than change state: the bubble says "the server has
- * this and the agent will take it next", which stopped being true, and
- * applyQueueToDelivery reads absence from the queue as *delivered* - so leaving
- * it would promote a recalled message to "Read". The text lands back in the
- * composer, which is where an unsent message belongs.
+ * this and the agent will take it next", which stopped being true, and a
+ * recalled message has no committed copy to settle against. The text lands back
+ * in the composer, which is where an unsent message belongs.
  */
 export function removeDeliveryLine(messages: readonly ChatLine[], clientMessageId: string): ChatLine[] {
   const index = findDeliveryLineIndex(messages, clientMessageId);
@@ -219,9 +212,14 @@ export function applyQueueToDelivery(messages: ChatLine[], queued: readonly Queu
       next = markDelivery(next, delivery.clientMessageId, "queued", kind);
       continue;
     }
-    // Only a message the server confirmed can be reported as delivered by
-    // absence: an in-flight send is simply not in the queue yet.
-    if (delivery.state === "received" || delivery.state === "queued") next = markDelivery(next, delivery.clientMessageId, "delivered");
+    // Absence proves nothing. A queue snapshot omits a message while the agent
+    // is expanding it, between the instant it is taken and the instant it is
+    // written to the transcript, and whenever its id could not be stamped onto
+    // the entry at all. Settling on absence turned a waiting bubble into an
+    // ordinary card, which then could not be claimed by its own queue entry -
+    // so the entry was drawn a second time, or, when it never returned, the row
+    // simply vanished. Delivery has its own evidence: the agent's committed
+    // copy of the message, applied by carryDeliveryForward.
   }
   return next;
 }

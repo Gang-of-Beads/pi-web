@@ -473,9 +473,6 @@ export class AskUserCard extends LitElement {
       border: 1px solid var(--pi-border);
       border-radius: 10px;
       background: var(--pi-surface);
-      /* The waiting-slot contract: fill the slot's height budget as a column
-         whose questions are the one scroller and whose footer never scrolls
-         away. */
       display: flex;
       flex-direction: column;
       min-height: 0;
@@ -510,13 +507,6 @@ export class AskUserCard extends LitElement {
       display: grid;
       padding-top: 8px;
       align-content: start;
-      /* The one scroller of the card: the slot's height budget lands here, so
-         tall questions scroll internally and the submit footer stays on
-         screen. */
-      flex: 1 1 auto;
-      min-height: 0;
-      overflow-y: auto;
-      overscroll-behavior-y: contain;
     }
     fieldset.question {
       min-width: 0;
@@ -593,17 +583,15 @@ export class AskUserCard extends LitElement {
     .step-actions .primary-action { flex: 0 1 auto; min-width: 140px; margin-left: auto; }
     .step-actions .secondary-action { flex: 0 1 auto; min-width: 96px; }
     .ask-form {
-      /* The middle of the slot contract: take the remaining height, keep the
-         questions as the one scroller, hold the footer in place. */
       display: flex;
       flex-direction: column;
-      flex: 1 1 auto;
-      min-height: 0;
     }
     .form-footer {
-      /* The footer never scrolls away: the questions above it are the one
-         scroller of the card, per the waiting-slot contract. */
-      flex: 0 0 auto;
+      /* Normal flow, like the extension dialog's footer and for the same
+         measured reason: a bottom-sticky footer is held over the card's own
+         earlier rows, and in a question those rows are the options. Reaching
+         the wrong answer is worse than scrolling to the right one. The slot
+         keeps the card within reach; the card covers nothing. */
       display: flex;
       align-items: center;
       justify-content: flex-end;

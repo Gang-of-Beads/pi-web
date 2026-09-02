@@ -225,7 +225,14 @@ function normalizeContent(content: unknown, message: unknown): ChatPart[] {
   return content.flatMap((part): ChatPart[] => {
     const type = getString(part, "type");
     const text = getString(part, "text");
-    if (type === "text") return text !== undefined && text !== "" ? [{ type: "text", text }] : [];
+    if (type === "text") {
+      if (text === undefined || text === "") return [];
+      // The server bounds what a tool result may weigh on the wire. Saying so
+      // is the whole point: a stump the reader mistakes for the end of the
+      // output is worse than a large one they can choose to open.
+      const truncatedBytes = getNumber(part, "truncatedBytes");
+      return [{ type: "text", text: truncatedBytes === undefined ? text : `${text}\n\n[output truncated \u2014 ${formatByteSize(truncatedBytes)} in total]` }];
+    }
     if (type === "thinking") {
       const thinking = getString(part, "thinking") ?? text;
       return thinking !== undefined && thinking !== "" ? [{ type: "thinking", text: thinking }] : [];
@@ -432,4 +439,11 @@ function stringifyPrimitive(value: unknown): string {
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") return String(value);
   return "";
+}
+
+/** Bytes as a person reads them, for a truncation notice. */
+function formatByteSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${String(Math.round(bytes / 1024))} KB`;
+  return `${String(bytes)} bytes`;
 }

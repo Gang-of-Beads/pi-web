@@ -44,6 +44,44 @@ export function encodeAzureTextFrame(path: string, requestId: string, body: unkn
   return `${headers}\r\n\r\n${JSON.stringify(body)}`;
 }
 
+/**
+ * One chunk of microphone audio, in the only shape the service accepts.
+ *
+ * Audio is binary: a big-endian uint16 header length, the ASCII header block,
+ * then the samples themselves. Sending it as a text frame with the samples
+ * base64-encoded in JSON produces a socket that connects, answers `turn.start`
+ * and then stays silent - no recognition, no error, no close. Probed against
+ * the live endpoint with the same token and samples, only the framing differs:
+ *
+ *   text frame:    turn.start
+ *   binary frame:  turn.start, speech.phrase, speech.endDetected, turn.end
+ *
+ * An empty chunk is how the client says the utterance is over.
+ *
+ * The samples are headerless PCM, and `Content-Type:audio/x-wav` names a format
+ * that normally carries a RIFF header. This works because the service falls
+ * back to its default input format - 16 kHz, 16-bit, mono - which is exactly
+ * what the capture path resamples to, and because `speech.config` declares no
+ * format of its own. So the wire format is agreed in two files that do not
+ * reference each other: change AZURE_SAMPLE_RATE or the sample width and this
+ * header stops describing what is being sent.
+ */
+export function encodeAzureAudioFrame(requestId: string, samples: Uint8Array): Uint8Array<ArrayBuffer> {
+  const headers = [
+    "Path:audio",
+    `X-RequestId:${requestId}`,
+    `X-Timestamp:${new Date().toISOString()}`,
+    "Content-Type:audio/x-wav",
+  ].join("\r\n");
+  const headerBytes = new TextEncoder().encode(`${headers}\r\n\r\n`);
+  const frame = new Uint8Array(new ArrayBuffer(2 + headerBytes.length + samples.length));
+  frame[0] = (headerBytes.length >> 8) & 0xff;
+  frame[1] = headerBytes.length & 0xff;
+  frame.set(headerBytes, 2);
+  frame.set(samples, 2 + headerBytes.length);
+  return frame;
+}
+
 function parseBody(body: string): Record<string, unknown> | undefined {
   if (body.trim() === "") return undefined;
   try {

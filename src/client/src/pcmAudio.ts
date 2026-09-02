@@ -44,7 +44,12 @@ export function downsampleTo(samples: Float32Array, fromRate: number, toRate: nu
   return out;
 }
 
-/** Little-endian bytes, base64 encoded, which is what the sockets accept. */
+/** Little-endian bytes, as the audio frame carries them. */
+export function pcm16Bytes(samples: Int16Array): Uint8Array {
+  return new Uint8Array(samples.buffer, samples.byteOffset, samples.byteLength);
+}
+
+/** Little-endian bytes, base64 encoded, for protocols that carry audio in JSON. */
 export function encodePcm16Base64(samples: Int16Array): string {
   if (samples.length === 0) return "";
   const bytes = new Uint8Array(samples.buffer, samples.byteOffset, samples.byteLength);

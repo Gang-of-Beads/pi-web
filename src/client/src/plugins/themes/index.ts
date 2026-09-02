@@ -242,6 +242,94 @@ const paperTokens = {
   "--pi-terminal-selection": "#9ab4d8",
 } satisfies ThemeTokens;
 
+/**
+ * Ink on warm paper, after Anthropic's published brand palette.
+ *
+ * Their four neutrals and three accents are used as given - dark #141413,
+ * light #faf9f5, mid grey #b0aea5, light grey #e8e6dc, and orange #d97757,
+ * blue #6a9bcc, green #788c5d. The rest of the ramp is interpolated from
+ * those, and the few values that had to move did so to clear 4.5:1 against
+ * their own background rather than for taste: the light theme's dimmest text
+ * sat at 3.4:1, and the accents needed darkening on paper to be readable as
+ * text rather than only as fills.
+ */
+const claySoftTokens = {
+  "--pi-bg": "#141413",
+  "--pi-surface": "#1f1e1c",
+  "--pi-surface-hover": "#2a2825",
+  "--pi-terminal-bg": "#0e0e0d",
+  "--pi-terminal-text": "#faf9f5",
+  "--pi-border": "#3a3833",
+  "--pi-border-muted": "#2a2825",
+  "--pi-text": "#faf9f5",
+  "--pi-text-secondary": "#d6d3c9",
+  "--pi-text-bright": "#ffffff",
+  "--pi-muted": "#b0aea5",
+  "--pi-dim": "#8a8880",
+  "--pi-accent": "#d97757",
+  "--pi-accent-border": "#c96442",
+  "--pi-selection-bg": "#3a2a22",
+  "--pi-success": "#8faa6c",
+  "--pi-success-border": "#788c5d",
+  "--pi-success-bg": "#161a12",
+  "--pi-success-surface": "#1e2418",
+  "--pi-success-ring": "#8faa6c55",
+  "--pi-warning": "#d9a441",
+  "--pi-warning-border": "#b8862f",
+  "--pi-warning-surface": "#211c11",
+  "--pi-danger": "#e0706b",
+  "--pi-purple": "#6a9bcc",
+  "--pi-purple-border": "#5081b4",
+  "--pi-purple-surface": "#141d26",
+  "--pi-overlay": "#0a0a09aa",
+  "--pi-shadow-soft": "#00000059",
+  "--pi-shadow": "#00000073",
+  "--pi-shadow-strong": "#000000a6",
+  "--pi-bg-overlay-soft": "#141413dd",
+  "--pi-bg-overlay": "#141413e6",
+  "--pi-success-bg-overlay": "#161a12ee",
+  "--pi-terminal-selection": "#4a4038",
+} satisfies ThemeTokens;
+
+/** The same palette on paper: the canvas Anthropic writes on. */
+const clayPaperTokens = {
+  "--pi-bg": "#faf9f5",
+  "--pi-surface": "#ffffff",
+  "--pi-surface-hover": "#f0eee6",
+  "--pi-terminal-bg": "#141413",
+  "--pi-terminal-text": "#faf9f5",
+  "--pi-border": "#d5d2c6",
+  "--pi-border-muted": "#e8e6dc",
+  "--pi-text": "#141413",
+  "--pi-text-secondary": "#4a4842",
+  "--pi-text-bright": "#000000",
+  "--pi-muted": "#6b6860",
+  "--pi-dim": "#767369",
+  "--pi-accent": "#b4542f",
+  "--pi-accent-border": "#b4542f",
+  "--pi-selection-bg": "#f3e2d9",
+  "--pi-success": "#55702f",
+  "--pi-success-border": "#55702f",
+  "--pi-success-bg": "#eef2e6",
+  "--pi-success-surface": "#e4ebd7",
+  "--pi-success-ring": "#55702f55",
+  "--pi-warning": "#8a6413",
+  "--pi-warning-border": "#8a6413",
+  "--pi-warning-surface": "#f7edd8",
+  "--pi-danger": "#a33a36",
+  "--pi-purple": "#3f6f9f",
+  "--pi-purple-border": "#3f6f9f",
+  "--pi-purple-surface": "#e4edf5",
+  "--pi-overlay": "#14141366",
+  "--pi-shadow-soft": "#1414131a",
+  "--pi-shadow": "#1414132b",
+  "--pi-shadow-strong": "#14141340",
+  "--pi-bg-overlay-soft": "#faf9f5dd",
+  "--pi-bg-overlay": "#faf9f5e6",
+  "--pi-success-bg-overlay": "#eef2e6ee",
+  "--pi-terminal-selection": "#5a4a3e",
+} satisfies ThemeTokens;
+
 export const themePackPlugin: PiWebPlugin = {
   apiVersion: 2,
   name: "PI WEB Themes",
@@ -296,6 +384,22 @@ export const themePackPlugin: PiWebPlugin = {
           colorScheme: "light",
           tokens: paperTokens,
         },
+        {
+          id: "clay-soft",
+          name: "Clay",
+          description: "Warm ink and clay, after Anthropic's published palette.",
+          order: 70,
+          colorScheme: "dark",
+          tokens: claySoftTokens,
+        },
+        {
+          id: "clay-paper",
+          name: "Clay Paper",
+          description: "The same clay palette on its warm paper canvas.",
+          order: 80,
+          colorScheme: "light",
+          tokens: clayPaperTokens,
+        },
       ],
       themePairs: [
         {
@@ -305,6 +409,14 @@ export const themePackPlugin: PiWebPlugin = {
           order: 10,
           light: "pi-web-light",
           dark: "pi-web-dark",
+        },
+        {
+          id: "clay",
+          name: "Clay",
+          description: "Follow the system light/dark preference with the clay palette.",
+          order: 20,
+          light: "clay-paper",
+          dark: "clay-soft",
         },
       ],
     },

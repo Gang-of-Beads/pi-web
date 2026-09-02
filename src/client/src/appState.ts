@@ -86,6 +86,8 @@ export interface AppState {
   messagePageEnd: number;
   messagePageTotal: number;
   isLoadingEarlierMessages: boolean;
+  /** True while the selected session's transcript is being read for the first time. */
+  isLoadingTranscript: boolean;
   /** Sessions with a prompt upload in flight, keyed by sessionId (client-owned). */
   sendingPrompts: Record<string, true>;
   /** Client-side queued sends waiting for a just-created backend session, keyed by sessionId. */
@@ -359,6 +361,7 @@ export function initialAppState(): AppState {
     messagePageEnd: 0,
     messagePageTotal: 0,
     isLoadingEarlierMessages: false,
+    isLoadingTranscript: false,
     sendingPrompts: {},
     clientQueuedSessionMessages: {},
     commandLedger: [],

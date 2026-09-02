@@ -10,7 +10,7 @@ afterEach(() => {
 });
 
 describe("ChatView open ask_user form", () => {
-  it("puts a newly opened form in the waiting row instead of scrolling the transcript to it", async () => {
+  it("puts a newly opened form last in the transcript, where scrolling to the bottom reaches it", async () => {
     const view = new ChatView();
     view.sessionId = "session-1";
     document.body.append(view);
@@ -27,14 +27,15 @@ describe("ChatView open ask_user form", () => {
     };
     await view.updateComplete;
 
-    // The form no longer lives in the scroller, so there is nothing to scroll
-    // to: it holds its own row and stays put while the transcript grows.
+    // The form is a transcript row, drawn after everything settled, so no
+    // special scroll is needed to reveal it: following the tail already does,
+    // and a reader who scrolled up reaches it by scrolling back down.
     expect(askStartScrolls).toBe(0);
-    // The transcript may still follow its newest message; what matters is that
-    // the form is not in the transcript, so that scroll cannot move it.
     expect(bottomScrolls).toBeLessThanOrEqual(1);
-    expect(view.shadowRoot?.querySelector(".chat ask-user-card")).toBeNull();
-    expect(view.shadowRoot?.querySelector(".waiting-slot > ask-user-card")).not.toBeNull();
+    expect(view.shadowRoot?.querySelector(".chat ask-user-card")).not.toBeNull();
+    const chat = view.shadowRoot?.querySelector(".chat");
+    const rows = [...(chat?.children ?? [])];
+    expect(rows.findIndex((row) => row.classList.contains("waiting-slot"))).toBe(rows.length - 1);
   });
 });
 

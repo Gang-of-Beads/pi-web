@@ -1,6 +1,6 @@
 import { api as defaultApi, isNotFoundError, type AskUserCloseResponse, type AskUserSubmission, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingAskUser, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionBackgroundTaskInfo, SessionSubagentRunInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Workspace } from "../api";
 import { errorNoticePatch } from "../errorNotice";
-import { dismissCommand, issueCommand, settleCommand, type CommandLedgerSource } from "../commandLedger";
+import { commandOutcomeFor, dismissCommand, issueCommand, settleCommand, withdrawCommand, type CommandLedgerSource } from "../commandLedger";
 import { RevisionScope } from "../revisionScope";
 import { SessionGapRepair } from "../sessionGapRepair";
 import { describeError } from "../notice";
@@ -308,6 +308,10 @@ export class SessionController {
         : {}),
       ...cached,
       isLoadingEarlierMessages: false,
+      // Empty is two states. Until the read lands, the transcript is unknown,
+      // not empty, and the view must not invite a first message into a
+      // session that is about to produce its history.
+      isLoadingTranscript: true,
       ...(options?.preserveTreeDialog === true ? {} : { treeDialog: undefined }),
       status: session.archived === true ? undefined : this.getState().sessionStatuses[session.id],
       activity: session.archived === true ? undefined : this.getState().sessionActivities[session.id],
@@ -399,6 +403,12 @@ export class SessionController {
       }
       this.setState(errorNoticePatch(error));
       if (options?.propagateRefreshError === true) throw error;
+    } finally {
+      // Only the selection that set the flag may clear it. A superseded
+      // selection resuming after a newer one started would otherwise clear the
+      // newer one's flag, and the view would call a still-loading session
+      // empty - the very state this flag exists to prevent.
+      if (seq === this.selectionSeq && this.getState().isLoadingTranscript) this.setState({ isLoadingTranscript: false });
     }
   }
 
@@ -625,7 +635,19 @@ export class SessionController {
         // accepted, not executed. The row must say so — the archived
         // action-acknowledgment spec forbids dressing acceptance as completion.
         const deferred = result.type === "done" && result.message === undefined && this.getState().status?.isStreaming === true;
-        this.settleLedgerRow(options.ledgerId, { state: "ok", ...(deferred ? { resultText: "accepted — waits for the running reply to finish" } : {}) });
+        // The same rule applies to refusal, which travels as a perfectly
+        // successful response: the row reports what the command did, not
+        // whether the request reached the server.
+        const outcome = commandOutcomeFor(result);
+        if (outcome === undefined) {
+          // select and tree answer with a dialog, which is the acknowledgment.
+          // Left pending the row could never be dismissed nor evicted.
+          this.setState({ commandLedger: withdrawCommand(this.getState().commandLedger, options.ledgerId) });
+        } else {
+          this.settleLedgerRow(options.ledgerId, deferred
+            ? { state: "ok", resultText: "accepted — waits for the running reply to finish" }
+            : outcome);
+        }
       }
       return true;
     } catch (error) {
