@@ -712,6 +712,7 @@ export class TerminalPanel extends LitElement {
     @media (min-width: 1181px) { .fullscreen-toggle { display: inline-flex; margin-left: auto; max-width: none; } }
     .copy-mode-toggle.selected { display: inline-flex; }
     @media (pointer: coarse), (max-width: 760px) {
+      .terminal-tabs > button { height: 44px; }
       .copy-mode-toggle, .soft-keys-toggle { display: inline-flex; }
       terminal-soft-keys { display: block; }
     }

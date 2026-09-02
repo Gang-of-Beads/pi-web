@@ -74,6 +74,7 @@ describe("TerminalPanel expanded view", () => {
   it("limits the expansion control to the desktop media rule", () => {
     const sheet = String(TerminalPanel.styles);
     expect(sheet).toContain(".fullscreen-toggle, terminal-soft-keys { display: none; }");
+    expect(sheet).toMatch(/@media \(pointer: coarse\), \(max-width: 760px\)[\s\S]*?\.terminal-tabs > button \{ height: 44px; \}/u);
     expect(sheet).toMatch(/@media \(min-width: 1181px\)\s*\{\s*\.fullscreen-toggle\s*\{\s*display: inline-flex;/u);
   });
 });
