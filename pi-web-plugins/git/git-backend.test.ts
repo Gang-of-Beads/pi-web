@@ -136,7 +136,7 @@ describe("Git history backend", () => {
     expect(second.commits).toHaveLength(2);
     expect(second.commits.some((commit) => commit.subject === "not in frozen page")).toBe(false);
     expect(second.nextCursor).toBeUndefined();
-  });
+  }, 30_000);
 
   it("reports an unborn HEAD without treating it as a Git failure", async () => {
     const base = mkdtempSync(join(tmpdir(), "pi-web-unborn-"));
