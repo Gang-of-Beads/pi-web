@@ -9,7 +9,7 @@
  *
  * Reports numbers and a screenshot. Asserts nothing.
  */
-import { chromium, devices } from "playwright";
+import { chromium, devices } from "@playwright/test";
 
 const baseUrl = process.argv[2] ?? "http://127.0.0.1:8505";
 const label = process.argv[3] ?? "run";

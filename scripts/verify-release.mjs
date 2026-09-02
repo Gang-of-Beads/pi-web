@@ -7,7 +7,7 @@
  * is reported as "not reached" rather than passing quietly: a check nobody ran
  * must not read as a check that passed.
  */
-import { chromium, devices } from "playwright";
+import { chromium, devices } from "@playwright/test";
 
 const baseUrl = process.argv[2] ?? "http://127.0.0.1:8505";
 const results = [];

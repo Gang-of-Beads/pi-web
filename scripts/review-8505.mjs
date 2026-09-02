@@ -10,7 +10,7 @@
  *
  * Usage: node scripts/review-8505.mjs [baseUrl]
  */
-import { chromium, devices } from "playwright";
+import { chromium, devices } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 
 const baseUrl = process.argv[2] ?? "http://127.0.0.1:8505";

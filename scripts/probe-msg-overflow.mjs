@@ -9,7 +9,7 @@
  * Reasoning about it from the stylesheet was not conclusive, so this measures
  * the rendered result. It reports numbers; it asserts nothing.
  */
-import { chromium, devices } from "playwright";
+import { chromium, devices } from "@playwright/test";
 
 const baseUrl = process.argv[2] ?? "http://127.0.0.1:8505";
 const browser = await chromium.launch();
