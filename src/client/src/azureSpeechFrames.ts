@@ -57,6 +57,14 @@ export function encodeAzureTextFrame(path: string, requestId: string, body: unkn
  *   binary frame:  turn.start, speech.phrase, speech.endDetected, turn.end
  *
  * An empty chunk is how the client says the utterance is over.
+ *
+ * The samples are headerless PCM, and `Content-Type:audio/x-wav` names a format
+ * that normally carries a RIFF header. This works because the service falls
+ * back to its default input format - 16 kHz, 16-bit, mono - which is exactly
+ * what the capture path resamples to, and because `speech.config` declares no
+ * format of its own. So the wire format is agreed in two files that do not
+ * reference each other: change AZURE_SAMPLE_RATE or the sample width and this
+ * header stops describing what is being sent.
  */
 export function encodeAzureAudioFrame(requestId: string, samples: Uint8Array): Uint8Array<ArrayBuffer> {
   const headers = [

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { encodeAzureAudioFrame } from "./azureSpeechFrames";
+import { AZURE_SAMPLE_RATE } from "./liveDictation";
+import { pcm16Bytes } from "./pcmAudio";
 
 /**
  * Azure carries audio in binary frames, not in JSON.
@@ -67,5 +69,25 @@ describe("the audio frame Azure accepts", () => {
     const headers = headerTextOf(encodeAzureAudioFrame(REQUEST_ID, new Uint8Array([7])));
 
     expect(headers.endsWith("\r\n\r\n")).toBe(true);
+  });
+});
+
+/**
+ * The wire format is agreed in two files that do not reference each other.
+ *
+ * The frame header names audio/x-wav while the payload is headerless PCM; that
+ * only works because the service's default input format happens to equal what
+ * the capture path produces. These pin both halves, so changing one without the
+ * other fails here rather than as silence in the composer.
+ */
+describe("the audio format the header implies", () => {
+  it("captures at the rate the service assumes by default", () => {
+    expect(AZURE_SAMPLE_RATE).toBe(16_000);
+  });
+
+  it("sends two bytes per sample, which is what 16-bit mono means", () => {
+    const samples = Int16Array.from([0, 1, -1, 32_767]);
+
+    expect(pcm16Bytes(samples).byteLength).toBe(samples.length * 2);
   });
 });
