@@ -4145,15 +4145,21 @@ export class PiSessionService implements SessionRouteService {
     if (session.isStreaming) {
       const queued = this.takeCompactionPromptQueue(sessionId);
       if (queued.length === 0) return;
+      // Re-register before publishing: taking the queue empties it, and a status
+      // published against an empty queue prunes every correlation record for
+      // this session. Losing the id is losing the sender's claim on its own
+      // bubble, and the browser then draws the message a second time.
+      for (const prompt of queued) if (prompt.clientMessageId !== undefined) this.recordQueuedPromptClientId(sessionId, prompt.clientMessageId, prompt.text);
       this.publishStatus(session);
-      for (const prompt of queued) void this.submitPrompt(session, prompt.text, prompt.kind, prompt.images, prompt.echoUserMessage ?? true);
+      for (const prompt of queued) void this.submitPrompt(session, prompt.text, prompt.kind, prompt.images, prompt.echoUserMessage ?? true, prompt.clientMessageId);
       return;
     }
 
     const prompt = this.shiftCompactionPrompt(sessionId);
     if (prompt === undefined) return;
+    if (prompt.clientMessageId !== undefined) this.recordQueuedPromptClientId(sessionId, prompt.clientMessageId, prompt.text);
     this.publishStatus(session);
-    const submitted = this.submitPrompt(session, prompt.text, undefined, prompt.images, prompt.echoUserMessage ?? true);
+    const submitted = this.submitPrompt(session, prompt.text, undefined, prompt.images, prompt.echoUserMessage ?? true, prompt.clientMessageId);
     void submitted.finally(() => { this.scheduleCompactionQueueDrain(sessionId); });
   }
 
