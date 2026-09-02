@@ -92,6 +92,7 @@ import { shouldShowMachinesSection, type AppNavigationPanel, type NavigationFocu
 import "./appShell/AppPanelEdgeControl";
 import "./appShell/AppRefreshControl";
 import { quickSwitcherSessionStates, renameSessionInList } from "../quickSwitcher";
+import { quickSwitcherScope } from "../quickSwitcherScope";
 import { readPinnedSessionIds, togglePinnedSessionId, writePinnedSessionIds } from "../sessionPins";
 import { observeTransportRecovery } from "../api/transportHealth";
 import { dismissKeyboardIfRaised } from "../keyboardDismissal";
@@ -420,6 +421,12 @@ export class PiWebApp extends LitElement {
   @state() private mobileToolSheetOpen = false;
   @state() private quickSwitcherLoading = false;
   @state() private quickSwitcherSessions: readonly SessionInfo[] = [];
+  /**
+   * The machine whose sessions quick access is showing, which is not always the
+   * machine the app is pointed at: the reader can browse another machine's
+   * sessions before deciding to go there.
+   */
+  @state() private quickSwitcherTabMachineId: string | undefined;
   private quickSwitcherFetchedAt = 0;
   @state() private pinnedSessionIds: ReadonlySet<string> = readPinnedSessionIds();
   @state() private quickSwitcherWorkspaces: readonly Workspace[] = [];
@@ -2151,13 +2158,33 @@ export class PiWebApp extends LitElement {
    * It holds a separate list from the navigation panel, so without this the
    * switcher goes on offering the name the user just renamed away from.
    */
+  /**
+   * Point quick access at another machine.
+   *
+   * The app's own machine does not move: browsing is not going. What is on
+   * screen belongs to the machine it was fetched for, so the previous
+   * machine's sessions are refused until this machine's read lands.
+   */
+  private selectQuickSwitcherMachine(machineId: string): void {
+    if (machineId === (this.quickSwitcherTabMachineId ?? selectedMachineId(this.state))) return;
+    this.quickSwitcherTabMachineId = machineId;
+    void this.loadQuickSwitcherData(true);
+  }
+
+  private quickSwitcherScopeState(): "ready" | "loading" | "other-machine" {
+    return quickSwitcherScope({
+      tabMachineId: this.quickSwitcherTabMachineId ?? selectedMachineId(this.state),
+      cachedMachineId: this.quickSwitcherMachineId,
+      loading: this.quickSwitcherLoading,
+    }).state;
+  }
+
   private applyRenameToQuickSwitcher(sessionId: string, name: string): void {
     this.quickSwitcherSessions = renameSessionInList(this.quickSwitcherSessions, sessionId, name);
   }
 
   private async loadQuickSwitcherData(force = false): Promise<void> {
-    const machineId = selectedMachineId(this.state);
-    if (!force && this.quickSwitcherMachineId === machineId
+    const machineId = this.quickSwitcherTabMachineId ?? selectedMachineId(this.state);    if (!force && this.quickSwitcherMachineId === machineId
         && (this.quickSwitcherSessions.length > 0 || this.quickSwitcherWorkspaces.length > 0)
         && Date.now() - this.quickSwitcherFetchedAt < QUICK_SWITCHER_REFRESH_MS) {
       return;
@@ -2185,9 +2212,12 @@ export class PiWebApp extends LitElement {
       this.quickSwitcherWorkspaces = workspaces;
       this.quickSwitcherSessions = dedupeById(sessionLists.flat()).sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified));
     } catch (error) {
-      if (selectedMachineId(this.state) === machineId) this.setState({ error: `Failed to load sessions: ${describeError(error)}` });
+      // Guarded against the tab, not the app's machine: the reader may be
+      // browsing one machine while pointed at another, and a failure belongs to
+      // the tab that asked for it.
+      if ((this.quickSwitcherTabMachineId ?? selectedMachineId(this.state)) === machineId) this.setState({ error: `Failed to load sessions: ${describeError(error)}` });
     } finally {
-      if (selectedMachineId(this.state) === machineId) this.quickSwitcherLoading = false;
+      if ((this.quickSwitcherTabMachineId ?? selectedMachineId(this.state)) === machineId) this.quickSwitcherLoading = false;
     }
   }
 
@@ -3322,9 +3352,12 @@ export class PiWebApp extends LitElement {
         ${state.authDialog !== undefined ? html`<auth-dialog .state=${state.authDialog} .onChooseMethod=${(authType: "oauth" | "api_key") => { void this.auth.chooseLoginMethod(authType); }} .onSelectProvider=${(providerId: string, authType: "oauth" | "api_key") => { void this.auth.selectLoginProvider(providerId, authType); }} .onLogoutProvider=${(providerId: string) => { void this.auth.logoutProvider(providerId); }} .onOAuthInput=${(value: string) => { this.auth.updateOAuthInput(value); }} .onOAuthRespond=${(value?: string) => { void this.auth.respondOAuth(value); }} .onOAuthCancel=${() => { void this.auth.cancelOAuth(); }} .onCancel=${() => { this.auth.closeDialog(); }}></auth-dialog>` : null}
         ${this.renderMobileToolSheet()}
         ${this.quickSwitcherOpen ? html`<quick-switcher
-          .loading=${this.quickSwitcherLoading}
-          .sessions=${this.quickSwitcherSessions}
-          .workspaces=${this.quickSwitcherWorkspaces}
+          .machines=${this.state.machines}
+          .machineId=${this.quickSwitcherTabMachineId ?? selectedMachineId(this.state)}
+          .onSelectMachine=${(id: string) => { this.selectQuickSwitcherMachine(id); }}
+          .loading=${this.quickSwitcherLoading || this.quickSwitcherScopeState() !== "ready"}
+          .sessions=${this.quickSwitcherScopeState() === "ready" ? this.quickSwitcherSessions : []}
+          .workspaces=${this.quickSwitcherScopeState() === "ready" ? this.quickSwitcherWorkspaces : []}
           .selectedSession=${state.selectedSession}
           .selectedWorkspace=${state.selectedWorkspace}
           .activeSessionIds=${this.activeSessionIds()}
