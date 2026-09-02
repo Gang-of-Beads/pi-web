@@ -3,7 +3,10 @@
   "version": "1.202609.5",
   "description": "Web UI for persistent Pi Coding Agent sessions in real workspaces.",
   "license": "MIT",
-  "author": "Federico Jaramillo Martinez",
+  "author": "Gang of Beads",
+  "contributors": [
+    "Federico Jaramillo Martinez"
+  ],
   "type": "module",
   "exports": {
     "./plugin-api": {

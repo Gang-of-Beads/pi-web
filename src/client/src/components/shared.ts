@@ -278,18 +278,34 @@ export const listStyles = css`
      Rows become compact cards in an auto-fill grid; the row menu moves into
      the card's corner so the two-column row grid can collapse to one. */
   .list-body.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); grid-auto-rows: min-content; gap: var(--pi-space-4); align-content: start; padding: var(--pi-space-2) var(--pi-space-1); }
-  .list-body.tiles .action-row { grid-template-columns: minmax(0, 1fr); margin: 0; align-self: start; }
-  .list-body.tiles .action-main { border-radius: var(--pi-radius-lg); padding: var(--pi-space-5) 30px var(--pi-space-5) var(--pi-space-5); min-height: 56px; align-content: center; }
+  /* Tiles in a row share a height, so the row is a grid of equal boxes rather
+     than a ragged one. A tile that sizes to its own title makes the row's
+     height an accident of which names happen to be long. */
+  .list-body.tiles .action-row { grid-template-columns: minmax(0, 1fr); margin: 0; align-self: stretch; }
+  /* The menu button floats in the corner, so the text must reserve the space it
+     occupies - inset plus size plus a gap. This was a hardcoded 30px while the
+     button measured 32px at a 6px inset, and 36px at 4px on coarse pointers, so
+     a long name ran underneath the button on every phone. Derive it instead. */
+  .list-body.tiles .action-main { border-radius: var(--pi-radius-lg); padding: var(--pi-space-5) calc(var(--pi-tile-menu-inset) + var(--pi-tile-menu-size) + var(--pi-space-2)) var(--pi-space-5) var(--pi-space-5); min-height: 56px; align-content: center; }
   .list-body.tiles .action-menu { position: absolute; top: 6px; right: 6px; align-self: auto; }
   /* One nowrap line cut most tile names to the same prefix; two wrapped lines
      reach the tail that tells worktree-agent-a0… tiles apart. break-all because
      branch names have no spaces to wrap at. */
-  .list-body.tiles .workspace-primary-label { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; word-break: break-all; }
+  /* Two lines are reserved whether or not the name needs both, so a one-line
+     tile stands as tall as a two-line one beside it. */
+  .list-body.tiles .workspace-primary-label { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-height: calc(2 * 1.3em); line-height: 1.3; overflow: hidden; word-break: break-all; }
   /* In a row the toggle drops its left border on purpose: the primary region
      sits against it and draws the divider. A tile floats it in the corner with
      nothing on its left, so the same rule left the button open on one side.
      Give it back a full border and its own radius. */
   .list-body.tiles .action-menu-toggle { height: 32px; min-width: 32px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); }
+  /* Both the menu button's own corner and the activity dot's offset are derived
+     from these, so nothing has to guess the button's width. The defaults are
+     declared before the coarse-pointer override: a media query adds no
+     specificity, so declaring them afterwards pinned the size at 32px on touch
+     screens while the button itself measured 36px, and the dot the derivation
+     exists to keep clear landed back on the button. */
+  .list-body.tiles { --pi-tile-menu-size: 32px; --pi-tile-menu-inset: 6px; }
   /* Touch needs a bigger target than a mouse; 32px is the smallest a finger
      hits reliably next to a tile's own tap area. */
   @media (pointer: coarse) {
@@ -297,10 +313,6 @@ export const listStyles = css`
     .list-body.tiles .action-menu-toggle { height: 36px; min-width: 36px; }
     .list-body.tiles .action-menu { top: 4px; right: 4px; }
   }
-  /* Clear of the actions button rather than a guess at its width: it is 32px
-     wide, 36px on a touch screen, and the dot was pinned at 32px from the same
-     edge, which put most of it on the button. */
-  .list-body.tiles { --pi-tile-menu-size: 32px; --pi-tile-menu-inset: 6px; }
   .list-body.tiles .action-activity { top: 7px; right: calc(var(--pi-tile-menu-inset) + var(--pi-tile-menu-size) + var(--pi-space-3)); }
   button { font: var(--pi-text-xs) var(--pi-font-ui); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
   section > button { display: block; width: 100%; text-align: left; margin: var(--pi-space-3) 0; }

@@ -1285,8 +1285,42 @@ export interface SessionWarning {
   dismiss?: { id: string };
 }
 
+/**
+ * What a plugin-backed surface can honestly say about itself.
+ *
+ * "failed" is kept apart from "absent" on purpose: an extension that threw on
+ * load is not one nobody installed, and calling it absent would hide a broken
+ * install behind a tidy empty panel.
+ */
+export type PluginSurfaceState = "present" | "absent" | "failed";
+
+/**
+ * Presence per surface. An omitted surface is unknown, not absent.
+ *
+ * Only surfaces a panel actually consults appear here: publishing one nothing
+ * reads is a field nobody can be wrong about, which reads as coverage without
+ * being any.
+ */
+export interface PluginSurfacePresence {
+  goals?: PluginSurfaceState;
+}
+
 export interface SessionStatus {
   sessionId: string;
+  /**
+   * Which plugin-backed surfaces have something behind them in this session.
+   *
+   * A panel for an extension nobody installed used to look exactly like an
+   * installed one with nothing in it yet: both empty, neither saying why. The
+   * runtime knows which extensions registered which tools, so the question is
+   * "does anything provide this surface" rather than "is package X installed" -
+   * a fork or a local copy provides it just as well.
+   *
+   * Absent from a daemon that predates the field, and from a runtime that
+   * cannot answer. Absent means unknown, not absent: a surface must not be
+   * hidden on no evidence.
+   */
+  pluginSurfaces?: PluginSurfacePresence;
   /** True when the server has verified a backing session file exists; false when known transient. */
   persisted?: boolean;
   /**

@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { checkNodePtyDarwinSpawnHelper, formatNodePtyDarwinSpawnHelperCheck, PI_WEB_SPAWN_HELPER_ISSUE_URL } from "./nodePtySpawnHelper.js";
+import { checkNodePtyDarwinSpawnHelper, formatNodePtyDarwinSpawnHelperCheck, NODE_PTY_SPAWN_HELPER_UPSTREAM_ISSUE_URL } from "./nodePtySpawnHelper.js";
 
 const allowAccess = (): void => undefined;
 
@@ -40,7 +40,10 @@ describe("node-pty macOS spawn-helper diagnostics", () => {
 
     const formatted = formatNodePtyDarwinSpawnHelperCheck(check);
     expect(formatted.ok).toBe(false);
-    expect(formatted.lines).toContain(`  PI WEB tracking issue: ${PI_WEB_SPAWN_HELPER_ISSUE_URL}`);
+    // The upstream node-pty issue is the diagnosis; a fork's own tracking
+    // issue only sent readers to another project and is no longer printed.
+    expect(formatted.lines).toContain(`  Known upstream node-pty packaging issue: ${NODE_PTY_SPAWN_HELPER_UPSTREAM_ISSUE_URL}`);
+    expect(formatted.lines.join("\n")).not.toContain("jmfederico");
     expect(formatted.lines).toContain(`    chmod +x '${fixture.helperPath}'`);
     expect(formatted.lines).toContain("  Then run `pi-web doctor` again and retry opening a terminal.");
     expect(formatted.lines.join("\n")).not.toContain("restart");

@@ -38,6 +38,7 @@ import { pageMessagesAtSafeBoundary } from "./messagePaging.js";
 import { annotateAssistantThinkingLevel, branchMessages } from "../../../shared/branchMessages.js";
 import { runTranscriptMessages } from "../../../shared/subagentRunTranscript.js";
 import { readableMessageCount } from "./readableMessageCount.js";
+import { pluginSurfacePresence } from "./pluginSurfaces.js";
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
 import { BUILTIN_COMMANDS } from "./builtinCommands.js";
 import { SessionCommandService } from "./sessionCommandService.js";
@@ -106,6 +107,7 @@ import { plainTextTheme } from "./plainTextTheme.js";
 import { SessionUnreadStore, type SessionUnreadMutation } from "./sessionUnreadStore.js";
 import { applyEnabledModelToggle, catalogWithEnabledFirst, liveScopedModelIds, modelScopeId, persistedEnabledModelPatterns, resolveEnabledModelIds, resolveSessionModelOptions, type EnabledModelCatalogEntry } from "./sessionModelScope.js";
 import { boundToolResultText } from "./toolResultBounds.js";
+import { correlateQueuedPromptIds } from "./queuedPromptIdentity.js";
 
 interface ActiveSession<TRuntime> {
   runtime: TRuntime;
@@ -2640,17 +2642,23 @@ export class PiSessionService implements SessionRouteService {
    * order. Records whose text is no longer queued are dropped here: this is the
    * signal the sender uses to move that message from "queued" to "delivered".
    */
+  /**
+   * Give each queued prompt back the id its sender minted.
+   *
+   * This used to pair them by comparing text, which is not identity: the
+   * runtime expands /skill and prompt templates before queueing, and an
+   * attachment-only prompt carries no text to compare. Either way the entry
+   * lost its id, the browser could not claim its own bubble, and a duplicate
+   * row appeared for a message already on screen - reported five times.
+   * Submission order is the correlation the queue does preserve.
+   */
   private attachQueuedPromptClientIds(sessionId: string, queued: QueuedSessionMessage[]): void {
     const records = this.queuedPromptClientIds.get(sessionId);
     if (records === undefined || records.length === 0) return;
-    const remaining = [...records];
-    for (const message of queued) {
-      const index = remaining.findIndex((record) => record.text === message.text);
-      if (index === -1) continue;
-      const record = remaining[index];
-      if (record === undefined) continue;
-      message.clientMessageId = record.clientMessageId;
-      remaining.splice(index, 1);
+    const correlated = correlateQueuedPromptIds(queued, records);
+    for (const [index, entry] of correlated.entries()) {
+      const target = queued[index];
+      if (target !== undefined && entry.clientMessageId !== undefined) target.clientMessageId = entry.clientMessageId;
     }
     const stillQueued = records.filter((record) => queued.some((message) => message.clientMessageId === record.clientMessageId));
     if (stillQueued.length === 0) this.queuedPromptClientIds.delete(sessionId);
@@ -2667,11 +2675,20 @@ export class PiSessionService implements SessionRouteService {
     this.queuedPromptImages.set(sessionId, records);
   }
 
-  /** Take back the images recorded for one queued text, first match wins. */
+  /**
+   * Take back the images recorded for one queued prompt.
+   *
+   * Matching on text is what this file has already been bitten by: the runtime
+   * expands prompts before queueing, so the text a prompt is replayed under is
+   * not always the text it was recorded under, and the images are then dropped
+   * from a message that had them. Position is checked first because a replay
+   * walks the queue in order; the text match remains as a fallback for a queue
+   * this process did not record in order.
+   */
   private takeQueuedPromptImages(sessionId: string, text: string): ImageContent[] {
     const records = this.queuedPromptImages.get(sessionId);
-    if (records === undefined) return [];
-    const index = records.findIndex((record) => record.text === text);
+    if (records === undefined || records.length === 0) return [];
+    const index = records[0]?.text === text ? 0 : records.findIndex((record) => record.text === text);
     if (index === -1) return [];
     const [record] = records.splice(index, 1);
     if (records.length === 0) this.queuedPromptImages.delete(sessionId);
@@ -4129,15 +4146,21 @@ export class PiSessionService implements SessionRouteService {
     if (session.isStreaming) {
       const queued = this.takeCompactionPromptQueue(sessionId);
       if (queued.length === 0) return;
+      // Re-register before publishing: taking the queue empties it, and a status
+      // published against an empty queue prunes every correlation record for
+      // this session. Losing the id is losing the sender's claim on its own
+      // bubble, and the browser then draws the message a second time.
+      for (const prompt of queued) if (prompt.clientMessageId !== undefined) this.recordQueuedPromptClientId(sessionId, prompt.clientMessageId, prompt.text);
       this.publishStatus(session);
-      for (const prompt of queued) void this.submitPrompt(session, prompt.text, prompt.kind, prompt.images, prompt.echoUserMessage ?? true);
+      for (const prompt of queued) void this.submitPrompt(session, prompt.text, prompt.kind, prompt.images, prompt.echoUserMessage ?? true, prompt.clientMessageId);
       return;
     }
 
     const prompt = this.shiftCompactionPrompt(sessionId);
     if (prompt === undefined) return;
+    if (prompt.clientMessageId !== undefined) this.recordQueuedPromptClientId(sessionId, prompt.clientMessageId, prompt.text);
     this.publishStatus(session);
-    const submitted = this.submitPrompt(session, prompt.text, undefined, prompt.images, prompt.echoUserMessage ?? true);
+    const submitted = this.submitPrompt(session, prompt.text, undefined, prompt.images, prompt.echoUserMessage ?? true, prompt.clientMessageId);
     void submitted.finally(() => { this.scheduleCompactionQueueDrain(sessionId); });
   }
 
@@ -4577,9 +4600,13 @@ export class PiSessionService implements SessionRouteService {
     const backgroundRunCount = this.backgroundRunCounts.get(session.sessionId) ?? 0;
     const working = session.isStreaming || session.isCompacting || session.isBashRunning;
     const turnStartedAt = working ? turnStartedAtFromBranch(session.sessionManager.getBranch()) : undefined;
+    const surfaces = pluginSurfacePresence(session.resourceLoader);
     return {
       sessionId: session.sessionId,
       persisted: sessionFileExists(session.sessionFile),
+      // Omitted when the runtime cannot answer, so a browser reads it as
+      // unknown. Hiding a surface on no evidence is the fault this replaces.
+      ...(surfaces === undefined ? {} : { pluginSurfaces: surfaces }),
       ...(model === undefined ? {} : { model }),
       thinkingLevel: session.thinkingLevel,
       isStreaming: session.isStreaming,

@@ -2,10 +2,8 @@ import { accessSync, constants, existsSync, statSync, type Stats } from "node:fs
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 
-// The report that documents this failure and its fix lives in the project's
-// earlier repository; it is kept as-is because that is where the diagnosis
-// and the user-facing discussion actually are.
-export const PI_WEB_SPAWN_HELPER_ISSUE_URL = "https://github.com/jmfederico/pi-web/issues/4";
+// The upstream node-pty issue is the diagnosis worth reading; a second link to
+// a fork's own tracking issue only sent readers to another project.
 export const NODE_PTY_SPAWN_HELPER_UPSTREAM_ISSUE_URL = "https://github.com/microsoft/node-pty/issues/850";
 
 const doctorLabel = "node-pty macOS spawn-helper executable";
@@ -98,7 +96,6 @@ export function formatNodePtyDarwinSpawnHelperCheck(check: NodePtyDarwinSpawnHel
         `✗ ${doctorLabel}`,
         `  ${check.helperPath} exists but is not executable.`,
         `  Known upstream node-pty packaging issue: ${NODE_PTY_SPAWN_HELPER_UPSTREAM_ISSUE_URL}`,
-        `  PI WEB tracking issue: ${PI_WEB_SPAWN_HELPER_ISSUE_URL}`,
         "  Proposed workaround:",
         `    ${check.fixCommand}`,
         "  Then run `pi-web doctor` again and retry opening a terminal.",

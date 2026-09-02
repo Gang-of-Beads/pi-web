@@ -46,7 +46,9 @@ import "./ConversationMeter";
 import "./FormattedText";
 import "./ToolExecutionView";
 import { sessionStateBadgeStyles as SessionStateBadgeStyles } from "./sessionStateBadgeStyles";
-import { readingAnchorDecision, readingScrollCorrection } from "../readingAnchor";
+import { readingAnchorDecision, readingScrollCorrection, shouldHoldReadingPosition } from "../readingAnchor";
+import { imageLoadScrollCorrection } from "../imageLoadScroll";
+import { pluginSurfaceVisibility } from "../pluginSurfaceVisibility";
 
 export const chatStyles = css`
   ${SessionStateBadgeStyles}
@@ -776,6 +778,8 @@ export class ChatView extends LitElement {
   @query("dialog.activity-output") private activityOutputDialog?: HTMLDialogElement;
   @query("dialog.activity-conversation") private activityConversationDialog?: HTMLDialogElement;
   @state() private pinnedToBottom = true;
+  /** True while a touch gesture is moving the scroller; see onTouchStart. */
+  private userScrollInFlight = false;
   private readonly followGate = new ScrollFollowGate();
   /** Same invariant as the transcript's gate, for the notifications drawer's own scroller. */
   private readonly drawerGate = new ScrollFollowGate();
@@ -872,9 +876,40 @@ export class ChatView extends LitElement {
     if (this.pinnedToBottom) this.scrollToBottom();
     else this.lastClientHeight = this.chat?.clientHeight ?? 0;
   };
-  private readonly onImageLoad = (): void => {
-    if (this.pinnedToBottom) this.scrollToBottom();
+  /**
+   * A picture that finishes loading takes up room it was not taking before.
+   *
+   * At the bottom that just means following it down. Anywhere else it matters
+   * which side of the reader it landed on: attachments are lazy, so scrolling
+   * back through a session decodes them as they appear, and one completing
+   * above the reader carries what they were reading downwards. The scroller
+   * sets overflow-anchor: none, so the browser will not hold their place, and
+   * the render-time gate never sees this because a load is not a render.
+   *
+   * The correction is the height the document gained, not a re-measurement:
+   * by the time a load is reported the shift has already happened.
+   */
+  private readonly onImageLoad = (event: Event): void => {
+    // Following the bottom needs no measurement, so it must not be reached
+    // through one: an unrendered scroller would otherwise swallow the pin.
+    if (this.pinnedToBottom) { this.scrollToBottom(); return; }
+    const chat = this.chat;
+    const target = event.target;
+    const previousHeight = this.lastScrollHeight;
+    if (chat) this.lastScrollHeight = chat.scrollHeight;
+    if (!chat || !(target instanceof Element)) return;
+    const outcome = imageLoadScrollCorrection({
+      pinnedToBottom: false,
+      userScrolling: this.userScrollInFlight,
+      imageEndsAboveViewport: target.getBoundingClientRect().bottom <= chat.getBoundingClientRect().top,
+      heightGained: previousHeight === undefined ? 0 : chat.scrollHeight - previousHeight,
+    });
+    if (outcome.action === "compensate") chat.scrollTop += outcome.pixels;
   };
+
+  /** The scroller's height as of the last render, so a lazy image can report
+   *  how much it grew the document rather than have it re-measured after. */
+  private lastScrollHeight: number | undefined;
   private readonly openImageZoom = (src: string, alt: string): void => {
     this.zoomedImage = { src, alt };
   };
@@ -999,8 +1034,20 @@ export class ChatView extends LitElement {
     // This is the same measure-and-restore, without the prepend's multi-frame
     // settle: an append shifts by a line, not by a page, and the settle also
     // suppresses load-more, which must keep working while reading.
-    const readingAnchor = decision === "hold-reading-position" ? this.captureReadingAnchor() : undefined;
+    // Measuring the reader's place costs a walk over every message row and a
+    // forced layout, so it only runs when content above them can have moved.
+    // A reply streaming below the fold moves nothing above; a reader whose
+    // gesture is in flight owns the scroll outright. Doing it on every render
+    // made a long transcript crawl and snapped the view back under the thumb.
+    const readingAnchor = decision === "hold-reading-position" && shouldHoldReadingPosition({
+      pinnedToBottom: this.pinnedToBottom,
+      contentAboveChanged: this.didContentAboveChange(changed),
+      userScrolling: this.userScrollInFlight,
+    })
+      ? this.captureReadingAnchor()
+      : undefined;
     super.update(changed);
+    if (this.chat) this.lastScrollHeight = this.chat.scrollHeight;
     if (prependAnchor !== undefined) this.restorePrependScrollAnchor(prependAnchor);
     if (readingAnchor !== undefined) this.restoreReadingAnchor(readingAnchor);
   }
@@ -1291,7 +1338,16 @@ export class ChatView extends LitElement {
     // them exactly when nothing else was running. A read in flight, or one
     // that failed, is also a reason: hiding the drawer during flight is how
     // the loading state went unseen for its whole life.
-    const goalsWorthShowing = this.goalsLoad.data.length > 0 || this.goalsLoad.state === "loading" || this.goalsLoad.state === "failed";
+    // Content, a read in flight, or a failed read are all reasons to show the
+    // panel. So is a plugin that failed to load, and so is not knowing: only a
+    // runtime that positively reports nothing behind the surface hides it.
+    const goalsVisibility = pluginSurfaceVisibility({
+      presence: this.status?.pluginSurfaces?.goals,
+      hasContent: this.goalsLoad.data.length > 0,
+      loading: this.goalsLoad.state === "loading",
+      loadFailed: this.goalsLoad.state === "failed",
+    });
+    const goalsWorthShowing = goalsVisibility.show;
     if (activity === undefined && inbox === undefined && !goalsWorthShowing && !this.notificationsFailed) return null;
     const tab = selectedTopDrawerTab({ activity: activity !== undefined, notifications: inbox !== undefined || this.notificationsFailed, goals: this.goalsLoad.data.length > 0 }, this.topDrawerTab);
     const key = this.topDrawerKey();
@@ -2682,10 +2738,14 @@ export class ChatView extends LitElement {
 
   private onTouchStart(event: TouchEvent) {
     this.touchStartY = event.touches[0]?.clientY;
+    // The reader owns the scroll while their finger is down; an update that
+    // wrote scrollTop underneath them snapped the view back.
+    this.userScrollInFlight = true;
     this.notePressStart();
   }
 
   private onTouchEnd(): void {
+    this.userScrollInFlight = false;
     this.releasePointer();
   }
 
@@ -2764,6 +2824,18 @@ export class ChatView extends LitElement {
   private isPrependingMessages(changed: Map<string, unknown>): boolean {
     const oldMessageStart = changed.get("messageStart");
     return typeof oldMessageStart === "number" && this.messageStart < oldMessageStart;
+  }
+
+  /**
+   * Whether anything above the reader can have moved.
+   *
+   * Only a change to where the window starts puts rows above them. A reply
+   * streaming into the last row, an activity chip, a queued message - all of
+   * that grows below, and restoring a position against it costs a full row
+   * walk and a forced layout to move the scroller by zero pixels.
+   */
+  private didContentAboveChange(changed: Map<string, unknown>): boolean {
+    return changed.has("messageStart") || changed.has("hasMore") || changed.has("loadingMore");
   }
 
   private requestLoadMoreIfNeeded(): void {

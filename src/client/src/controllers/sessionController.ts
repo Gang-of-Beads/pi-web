@@ -1,10 +1,12 @@
 import { api as defaultApi, isNotFoundError, type AskUserCloseResponse, type AskUserSubmission, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingAskUser, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionBackgroundTaskInfo, SessionSubagentRunInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Workspace } from "../api";
+import { projectsApi, workspacesApi } from "../api";
 import { errorNoticePatch } from "../errorNotice";
 import { commandOutcomeFor, dismissCommand, issueCommand, settleCommand, withdrawCommand, type CommandLedgerSource } from "../commandLedger";
 import { RevisionScope } from "../revisionScope";
 import { SessionGapRepair } from "../sessionGapRepair";
 import { describeError } from "../notice";
 import { ancestorsForSession } from "../sessionAncestors";
+import { locateSessionWorkspace } from "../sessionAncestorLookup";
 import { refreshMayReplaceSelection } from "./sessionRefreshScope";
 import { activityOutputView, subagentRunConversationView, type AppState, type ClosedExtensionDialog } from "../appState";
 import { forgetCachedNewSession, isCachedNewSessionInfo, markCachedNewSessionInfo, mergeCachedNewSessions, rememberCachedNewSession, stripCachedNewSessionMarker } from "../cachedNewSessions";
@@ -22,6 +24,7 @@ import { isShellInput } from "../inputModes";
 import { fileCompletionInsertText } from "../promptCompletions";
 import { SessionSocket, parseSessionSocketEvent, type GlobalSessionEvent, type SessionUiEvent } from "../sessionSocket";
 import { isArchivableSessionInfo, isTransientNewSessionInfo } from "../sessionPersistence";
+import { transcriptLoadingAfter } from "../transcriptLoadingOwnership";
 import { isSessionActive } from "../../../shared/activity";
 import type { PromptAttachmentDelivery, SessionNotificationInboxEvent, SessionStartupProgressEvent } from "../../../shared/apiTypes";
 import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchived, selectPreferredSession, selectionAfterArchivingSession, selectionAfterArchivingSessions, shouldDeselectAfterArchivedCollapse, type SessionSelectionMemory } from "./sessionSelection";
@@ -237,7 +240,7 @@ export class SessionController {
     // session must not cancel the in-flight upload indicator of the session
     // that is still sending; the per-session entry is cleared by send()'s
     // finally block when the request settles.
-    this.setState({ selectedSession: undefined, messages: [], messagePageStart: 0, messagePageEnd: 0, messagePageTotal: 0, isLoadingEarlierMessages: false, status: undefined, activity: undefined, pendingAsk: undefined, pendingDialogs: [], closedDialogs: [], dismissedDialogIds: [], availableThinkingLevels: [], treeDialog: undefined });
+    this.setState({ selectedSession: undefined, messages: [], messagePageStart: 0, messagePageEnd: 0, messagePageTotal: 0, isLoadingEarlierMessages: false, isLoadingTranscript: transcriptLoadingAfter({ event: "selectionAbandoned" }), status: undefined, activity: undefined, pendingAsk: undefined, pendingDialogs: [], closedDialogs: [], dismissedDialogIds: [], availableThinkingLevels: [], treeDialog: undefined });
   }
 
   deselectSession(options?: { forgetRememberedSelection?: boolean | undefined; updateUrl?: boolean | undefined }) {
@@ -298,6 +301,14 @@ export class SessionController {
     const ancestors = ancestorsForSession(session, { workspaces: state.workspaces, projects: state.projects });
     const workspaceMoved = ancestors !== undefined
       && (ancestors.workspace.id !== state.selectedWorkspace?.id || ancestors.workspace.projectId !== state.selectedProject?.id);
+    // A session whose workspace is not in the loaded catalogue belongs to a
+    // project that was never fetched. Leaving the previous selection in place
+    // kept every workspace-scoped panel answering for the project being left,
+    // so the missing one is fetched instead; until it lands the location is
+    // unknown, which is what the panels are told.
+    if (ancestors === undefined && session.cwd !== "") {
+      void this.locateAndApplySessionWorkspace(session, machineId, seq);
+    }
     this.setState({
       selectedSession: session,
       ...(ancestors === undefined ? {} : { selectedWorkspace: ancestors.workspace, selectedProject: ancestors.project }),
@@ -404,11 +415,15 @@ export class SessionController {
       this.setState(errorNoticePatch(error));
       if (options?.propagateRefreshError === true) throw error;
     } finally {
-      // Only the selection that set the flag may clear it. A superseded
+      // Only the selection that set the flag may clear it: a superseded
       // selection resuming after a newer one started would otherwise clear the
       // newer one's flag, and the view would call a still-loading session
-      // empty - the very state this flag exists to prevent.
-      if (seq === this.selectionSeq && this.getState().isLoadingTranscript) this.setState({ isLoadingTranscript: false });
+      // empty. An abandoned selection clears it from clearActiveSession, which
+      // is the successor this branch cannot assume exists.
+      if (this.getState().isLoadingTranscript) {
+        const loading = transcriptLoadingAfter({ event: "readSettled", readSeq: seq, currentSeq: this.selectionSeq });
+        if (!loading) this.setState({ isLoadingTranscript: false });
+      }
     }
   }
 
@@ -1646,6 +1661,10 @@ export class SessionController {
       messagePageEnd: 0,
       messagePageTotal: 0,
       isLoadingEarlierMessages: false,
+      // A session this browser has only just asked for has no history to read,
+      // and this path advances the selection counter, so a read still in flight
+      // will decline to clear the flag it set.
+      isLoadingTranscript: transcriptLoadingAfter({ event: "selectedWithoutRead" }),
       status: undefined,
       activity,
       pendingAsk: undefined,
@@ -1762,6 +1781,29 @@ export class SessionController {
       released.push(suppressed.session);
     }
     return released;
+  }
+
+  /**
+   * Fetch the project that owns a session directory the loaded catalogue could
+   * not place, then adopt it as the selection.
+   *
+   * Guarded on the selection counter and on the session still being selected:
+   * a lookup that lands after the user has moved on must not drag the view back.
+   */
+  private async locateAndApplySessionWorkspace(session: SessionInfo, machineId: string, seq: number): Promise<void> {
+    const cwd = session.cwd;
+    if (cwd === "") return;
+    const found = await locateSessionWorkspace(cwd, {
+      projects: () => projectsApi.projects(machineId),
+      workspaces: (projectId: string) => workspacesApi.workspaces(projectId, machineId),
+    });
+    if (found === undefined || seq !== this.selectionSeq) return;
+    if (this.getState().selectedSession?.id !== session.id) return;
+    const project = this.getState().projects.find((candidate) => candidate.id === found.project.id);
+    this.setState({
+      selectedWorkspace: found.workspace,
+      ...(project === undefined ? {} : { selectedProject: project }),
+    });
   }
 
   private applyReleasedCreatedSessions(sessions: readonly SessionInfo[], machineId: string): void {
