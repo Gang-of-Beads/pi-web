@@ -1,6 +1,6 @@
 ## 1. Route and host state
 
-- [ ] 1.1 Extend the workspace route surface with a scoped `core.workspace.terminal--expanded=1` value and verify read/write, refresh, shared-link, popstate, and non-Terminal route behavior with focused route and PiWebApp tests.
+- [x] 1.1 Extend the workspace route surface with a scoped `core.workspace.terminal--expanded=1` value and verify read/write, refresh, shared-link, popstate, and non-Terminal route behavior with focused route and PiWebApp tests.
 - [ ] 1.2 Expose the current workspace-panel fullscreen presentation through the optional public host contract, update its declaration baseline, and verify legacy plugin contexts remain type-compatible with `npm run typecheck` and the plugin API baseline test.
 
 ## 2. Terminal interaction and geometry
