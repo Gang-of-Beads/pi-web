@@ -171,6 +171,8 @@ export interface WorkspaceBackend {
 
 export interface WorkspaceHost {
   requestRender(): void;
+  /** Move the active workspace panel into or out of the main content area. */
+  setWorkspacePanelFullscreen?(fullscreen: boolean): void;
 }
 
 export type WorkspacePanelHost = WorkspaceHost;

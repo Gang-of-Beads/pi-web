@@ -68,6 +68,7 @@ interface GitWorkspaceUiState {
   commitDiffLoading: boolean;
   commitDiffError: string | undefined;
   commitDiffRequestSequence: number;
+  workspacePanelFullscreen: boolean;
 }
 
 interface GitDiffView {
@@ -252,6 +253,14 @@ export class GitUiController {
     }
   }
 
+  toggleWorkspacePanelFullscreen(context: WorkspacePanelContext): void {
+    const state = this.stateFor(context);
+    const fullscreen = !state.workspacePanelFullscreen;
+    state.workspacePanelFullscreen = fullscreen;
+    context.host.setWorkspacePanelFullscreen?.(fullscreen);
+    this.requestRender(state);
+  }
+
   selectDiff(context: WorkspacePanelContext, path: string): void {
     const state = this.stateFor(context);
     state.selectedDiffPath = path;
@@ -339,6 +348,7 @@ export class GitUiController {
       commitDiffLoading: false,
       commitDiffError: undefined,
       commitDiffRequestSequence: 0,
+      workspacePanelFullscreen: false,
     };
     this.states.set(key, created);
     return created;
@@ -542,6 +552,7 @@ function renderGitPanel(html: HtmlTemplateTag, controller: GitUiController, cont
         <div class="git-toolbar-actions">
           ${state.mode !== "changes" || viewState.expandablePaths.length === 0 ? null : renderExpandCollapseAll(html, controller, context, state, viewState.expandablePaths)}
           ${state.mode === "changes" ? renderViewToggle(html, controller, context) : null}
+          ${context.host.setWorkspacePanelFullscreen === undefined ? null : html`<button type="button" aria-pressed=${String(state.workspacePanelFullscreen)} @click=${() => { controller.toggleWorkspacePanelFullscreen(context); }}>${state.workspacePanelFullscreen ? "Exit expanded view" : "Expand panel"}</button>`}
           <button type="button" ?disabled=${state.mode === "changes" ? state.statusLoading : state.historyLoading} @click=${() => { void (state.mode === "changes" ? controller.refresh(context) : controller.refreshHistory(context)); }}>Refresh</button>
         </div>
       </section>

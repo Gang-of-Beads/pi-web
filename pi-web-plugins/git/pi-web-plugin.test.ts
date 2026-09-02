@@ -2,7 +2,7 @@
 
 import { html, render, svg } from "lit";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { JsonValue, PluginRuntimeContext, Workspace, WorkspaceBackend, WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
+import type { JsonValue, PluginRuntimeContext, Workspace, WorkspaceBackend, WorkspaceHost, WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
 import { GIT_FILE_VIEW_STORAGE_KEY } from "./browser/gitFileViewPreference.js";
 import plugin from "./browser/pi-web-plugin.js";
 
@@ -168,6 +168,32 @@ describe("bundled Git browser plugin", () => {
     expect(button(container, "main.ts")).toBeDefined();
 
     render(null, container);
+  });
+
+  it("toggles the expanded panel layout through the workspace host", async () => {
+    const panel = requiredPanel(activate("git"));
+    const setWorkspacePanelFullscreen = vi.fn<NonNullable<WorkspaceHost["setWorkspacePanelFullscreen"]>>();
+    const context = panelContext(backendFixture().request, gitWorkspace, "local", { setWorkspacePanelFullscreen });
+    const container = document.createElement("div");
+    document.body.append(container);
+
+    render(panel.render(context), container);
+    await settleBackend();
+    render(panel.render(context), container);
+
+    const expand = button(container, "Expand panel");
+    expect(expand.getAttribute("aria-pressed")).toBe("false");
+    expand.click();
+    render(panel.render(context), container);
+
+    expect(setWorkspacePanelFullscreen).toHaveBeenLastCalledWith(true);
+    const exit = button(container, "Exit expanded view");
+    expect(exit.getAttribute("aria-pressed")).toBe("true");
+    exit.click();
+    render(panel.render(context), container);
+
+    expect(setWorkspacePanelFullscreen).toHaveBeenLastCalledWith(false);
+    expect(button(container, "Expand panel").getAttribute("aria-pressed")).toBe("false");
   });
 
   it("opens read-only current-HEAD history and renders the selected commit's diff", async () => {
@@ -360,7 +386,12 @@ function changedFile(path: string, patch: Record<string, JsonValue> = {}) {
   return { path, index: "unmodified", workingTree: "modified", ...patch };
 }
 
-function panelContext(request: WorkspaceBackend["request"] | undefined, workspace = gitWorkspace, machineId = "local"): WorkspacePanelContext {
+function panelContext(
+  request: WorkspaceBackend["request"] | undefined,
+  workspace = gitWorkspace,
+  machineId = "local",
+  host: Partial<WorkspaceHost> = {},
+): WorkspacePanelContext {
   const noop = () => undefined;
   return {
     machine: { id: machineId, name: machineId, kind: machineId === "local" ? "local" : "remote" },
@@ -374,7 +405,7 @@ function panelContext(request: WorkspaceBackend["request"] | undefined, workspac
       moveFile: () => Promise.reject(new Error("not implemented")),
     },
     ...(request === undefined ? {} : { backend: { request } }),
-    host: { requestRender: noop },
+    host: { requestRender: noop, ...host },
     prompt: { insertText: noop, getText: () => "", getSelection: () => null },
     terminal: { open: noop, runCommand: () => Promise.reject(new Error("not implemented")) },
   };
