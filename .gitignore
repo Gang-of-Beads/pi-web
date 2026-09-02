@@ -4,6 +4,7 @@ dist/
 .DS_Store
 *.log
 .playwright-cli/
+.playwright-mcp/
 
 # Keep one-off screenshots and other raster captures out of the repository root.
 # Curated documentation images belong under docs/assets/ instead.
@@ -33,3 +34,5 @@ dist/
 # Local agent runtime artifacts (background task logs, delegate sessions)
 .pi/tasks/
 .pi/delegate/
+# Derived cache the goal extension rebuilds from the goal files themselves.
+.pi/.goals-pool-snapshot.json
