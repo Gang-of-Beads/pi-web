@@ -89,8 +89,13 @@ export function splitTranscriptAndPending(messages: readonly ChatLine[], queued:
   const pending: ChatLine[] = [];
   for (const message of queued) {
     const byId = message.clientMessageId === undefined ? undefined : bubbles.get(message.clientMessageId);
-    // Claimed, not matched: two identical messages stay two.
-    const byWords = byId ?? unclaimed.find((line) => line.meta?.delivery?.kind === message.kind && chatLineText(line) === message.text);
+    // Claimed, not matched: two identical messages stay two. An empty text is
+    // never matched on - a message whose payload is an attachment carries no
+    // words, and one empty string matches every other, which claimed the wrong
+    // bubble and left a duplicate for the right one.
+    const byWords = byId ?? (message.text === ""
+      ? undefined
+      : unclaimed.find((line) => line.meta?.delivery?.kind === message.kind && chatLineText(line) === message.text));
     if (byWords !== undefined) unclaimed.splice(unclaimed.indexOf(byWords), 1);
     pending.push(byWords ?? queuedUserLine(message));
   }

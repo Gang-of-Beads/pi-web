@@ -2674,11 +2674,20 @@ export class PiSessionService implements SessionRouteService {
     this.queuedPromptImages.set(sessionId, records);
   }
 
-  /** Take back the images recorded for one queued text, first match wins. */
+  /**
+   * Take back the images recorded for one queued prompt.
+   *
+   * Matching on text is what this file has already been bitten by: the runtime
+   * expands prompts before queueing, so the text a prompt is replayed under is
+   * not always the text it was recorded under, and the images are then dropped
+   * from a message that had them. Position is checked first because a replay
+   * walks the queue in order; the text match remains as a fallback for a queue
+   * this process did not record in order.
+   */
   private takeQueuedPromptImages(sessionId: string, text: string): ImageContent[] {
     const records = this.queuedPromptImages.get(sessionId);
-    if (records === undefined) return [];
-    const index = records.findIndex((record) => record.text === text);
+    if (records === undefined || records.length === 0) return [];
+    const index = records[0]?.text === text ? 0 : records.findIndex((record) => record.text === text);
     if (index === -1) return [];
     const [record] = records.splice(index, 1);
     if (records.length === 0) this.queuedPromptImages.delete(sessionId);
