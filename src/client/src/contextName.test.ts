@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { documentTitleFor, focusedContextName, PRODUCT_NAME } from "./contextName";
+import { documentTitleFor, focusedContextName, PRODUCT_NAME, TAB_TITLE_PREFIX } from "./contextName";
 import type { SessionInfo } from "./api";
 
 function session(fields: Partial<SessionInfo> = {}): SessionInfo {
@@ -57,10 +57,17 @@ describe("focused context name", () => {
     })).toBe("pi-web");
   });
 
+  it("prefixes every tab title with the Pi mark", () => {
+    expect(documentTitleFor({ mainView: "chat", selectedSession: session({ name: "fix the queue" }) }))
+      .toBe(`${TAB_TITLE_PREFIX}fix the queue`);
+    expect(documentTitleFor({ mainView: "navigation" })).toBe(`${TAB_TITLE_PREFIX}${PRODUCT_NAME}`);
+  });
+
   it("bounds the tab title so one long session cannot fill the tab strip", () => {
     const long = "a".repeat(80);
     const title = documentTitleFor({ mainView: "chat", selectedSession: session({ name: long }) });
     expect(title.length).toBeLessThanOrEqual(40);
+    expect(title.startsWith(TAB_TITLE_PREFIX)).toBe(true);
     expect(title.endsWith("…")).toBe(true);
   });
 });
