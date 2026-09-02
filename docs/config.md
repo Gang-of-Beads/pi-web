@@ -2,7 +2,7 @@
 
 PI WEB configuration covers the machine-local and project-local settings you usually need: the web/API bind address, trusted development-host settings, UI preferences, desired plugin enablement/settings, server-plugin recovery, file-explorer path access, manual upload defaults, upload limits, the Pi agent state directory, and session-daemon tools.
 
-This file is the markdown reference for agents and package consumers. The website page is <https://pi-web.dev/config>.
+This file is the markdown reference for agents and package consumers. The website page is <https://github.com/Gang-of-Beads/pi-web/blob/main/docs/config.md>.
 
 ## Config files
 
@@ -21,7 +21,7 @@ If you installed services with a custom config path, `pi-web start`, `pi-web res
 
 The deployment path is not a PI WEB config-file key or environment setting. The published client is portable: one build works at `/` and at canonical trailing-slash prefixes such as `/ai/` or `/test/ai/`.
 
-For a nested deployment, redirect the slashless prefix to the trailing-slash URL, strip the prefix before forwarding to PI WEB, and proxy authenticated HTTP and WebSocket traffic through the same location. Relative browser and PWA URLs then stay within that prefix. See the [reverse proxy installation guide](https://pi-web.dev/install#reverse-proxy-prefix) for a complete Nginx example.
+For a nested deployment, redirect the slashless prefix to the trailing-slash URL, strip the prefix before forwarding to PI WEB, and proxy authenticated HTTP and WebSocket traffic through the same location. Relative browser and PWA URLs then stay within that prefix. See the [reverse proxy installation guide](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/install.html#reverse-proxy-prefix) for a complete Nginx example.
 
 ## Precedence and reloads
 
@@ -260,7 +260,7 @@ If the session daemon cannot report a valid active directory, profile-dependent 
 
 ### Pi extension provider baseline
 
-This policy applies to **Pi runtime extensions that register model providers**, not PI WEB workspace-provider plugins. Pi extensions can call `pi.registerProvider(...)` and follow Pi's extension API. A PI WEB plugin may have a browser `module` and/or a sessiond `serverModule`, but its server entry follows the separate `@gang-of-beads/pi-web/server-plugin-api` lifecycle and cannot register Pi model providers or arbitrary hooks. See the [PI WEB plugin guide](https://pi-web.dev/plugins).
+This policy applies to **Pi runtime extensions that register model providers**, not PI WEB workspace-provider plugins. Pi extensions can call `pi.registerProvider(...)` and follow Pi's extension API. A PI WEB plugin may have a browser `module` and/or a sessiond `serverModule`, but its server entry follows the separate `@gang-of-beads/pi-web/server-plugin-api` lifecycle and cannot register Pi model providers or arbitrary hooks. See the [PI WEB plugin guide](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/plugins.md).
 
 PI WEB shares one model runtime across all sessions. When the session daemon starts, before any project resources load, it initializes global Pi extensions from the active agent directory, including extensions supplied by globally configured Pi packages. Provider registrations made by synchronous or awaited asynchronous extension factories during this bootstrap join the shared baseline. PI WEB captures both config-form registrations (`pi.registerProvider("id", config)`) and native-provider registrations (`pi.registerProvider(provider)`), alongside Pi built-ins, environment credentials, and providers from the active agent directory's `models.json`.
 
@@ -357,7 +357,7 @@ Restart the session daemon after changing `askUser` or after upgrading PI WEB to
 
 ### Extension dialogs
 
-Pi extensions can ask the user questions from `ctx.ui.confirm()`, `ctx.ui.select()`, and `ctx.ui.input()` — including from `session_start` hooks and in-flight `tool_call` hooks. PI WEB renders these dialogs inline in the session transcript and answers them through a dedicated session-daemon channel, never the prompt queue, so a dialog parked inside a `tool_call` hook cannot deadlock the run. Dialog support is always on; there is no enable flag. See [Pi extension dialogs in PI WEB](https://pi-web.dev/plugins#pi-extension-dialogs) for behavior details and author guidance.
+Pi extensions can ask the user questions from `ctx.ui.confirm()`, `ctx.ui.select()`, and `ctx.ui.input()` — including from `session_start` hooks and in-flight `tool_call` hooks. PI WEB renders these dialogs inline in the session transcript and answers them through a dedicated session-daemon channel, never the prompt queue, so a dialog parked inside a `tool_call` hook cannot deadlock the run. Dialog support is always on; there is no enable flag. See [Pi extension dialogs in PI WEB](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/plugins.md#pi-extension-dialogs) for behavior details and author guidance.
 
 `extensionDialogsTimeoutMs` is the unattended-dialog safety valve: how long the session daemon waits for an answer before settling the dialog with its kind's cancel value (`false` for confirm, `undefined` for select and input). It defaults to `0`, which waits for an answer indefinitely; set a positive number of milliseconds to auto-cancel instead. A dialog that expires is settled with its cancel value, which the extension cannot tell apart from a deliberate dismissal, so a timeout short enough to fire while someone is still reading turns their reading time into a silent answer. An extension's own `timeout` option still applies, and the effective deadline is the sooner of the two.
 

@@ -224,7 +224,7 @@ $PI_WEB_DOCKER_DATA_DIR/container.env
 
 By default that resolves to `$HOME/.local/share/pi-web-docker/data/container.env`. Runtime and development mode read the same file because they [share `/data`](#sharing-runtime-and-development-state). The installer and `pi-web-docker --dev` create it once with a commented template, with owner-only permissions, and never rewrite it, so it is safe to keep long-lived values there. `pi-web-docker doctor` prints the resolved path for the selected mode.
 
-Every `KEY=value` line joins the environment of both PI WEB services, and agent sessions, terminals, and the processes they start inherit it. Use it for proxy settings, provider credentials, and the runtime-only environment variables in the [configuration reference](https://pi-web.dev/config):
+Every `KEY=value` line joins the environment of both PI WEB services, and agent sessions, terminals, and the processes they start inherit it. Use it for proxy settings, provider credentials, and the runtime-only environment variables in the [configuration reference](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/config.md):
 
 ```dotenv
 HTTPS_PROXY=http://proxy.example.internal:3128

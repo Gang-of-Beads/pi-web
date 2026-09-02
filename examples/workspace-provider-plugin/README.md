@@ -49,4 +49,4 @@ Open the opted-in project. The **Example Provider** panel displays the public ma
 
 Only files under `dist/browser/` can be served through this plugin's browser asset route. Source, package metadata, the server module, and dependencies remain outside that route. Keep secrets out of `publicMetadata`: it is visible to every browser script and API consumer.
 
-The server provider intentionally does not advertise workspace removal. See the canonical plugin guide for removal-plan shell and completion semantics, package limits, federation behavior, and the complete API contract: <https://pi-web.dev/plugins>.
+The server provider intentionally does not advertise workspace removal. See the canonical plugin guide for removal-plan shell and completion semantics, package limits, federation behavior, and the complete API contract: <https://github.com/Gang-of-Beads/pi-web/blob/main/docs/plugins.md>.

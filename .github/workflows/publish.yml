@@ -125,7 +125,7 @@ jobs:
           fi
 
   deploy-docs:
-    name: Deploy stable docs to pi-web.dev
+    name: Deploy stable docs
     # Stable docs only move on real tag releases; skipped on manual
     # workflow_dispatch runs and in repositories without the credentials. A red
     # docs job whose only failure is a site this repository does not publish
