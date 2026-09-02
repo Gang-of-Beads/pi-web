@@ -25,10 +25,6 @@ import { interactiveSurfaceStyles } from "./shared";
 @customElement("quick-switcher")
 export class QuickSwitcher extends LitElement {
   @property({ type: Boolean }) loading = false;
-  /** Machines the reader can browse without moving the app to one. */
-  @property({ attribute: false }) machines: readonly { id: string; name: string }[] = [];
-  @property({ attribute: false }) machineId?: string;
-  @property({ attribute: false }) onSelectMachine?: (machineId: string) => void;
   @property({ attribute: false }) sessions: readonly SessionInfo[] = [];
   @property({ attribute: false }) workspaces: readonly Workspace[] = [];
   @property({ attribute: false }) selectedSession?: SessionInfo;
@@ -94,16 +90,6 @@ export class QuickSwitcher extends LitElement {
           >
           <button class="close" title="Close" aria-label="Close" @click=${() => this.onClose?.()}>×</button>
         </header>
-        ${this.machines.length < 2 ? null : html`
-          <nav class="machines" aria-label="Machine">
-            ${this.machines.map((machine) => html`<button
-              class=${machine.id === this.machineId ? "machine selected" : "machine"}
-              aria-pressed=${machine.id === this.machineId ? "true" : "false"}
-              title=${`Show sessions on ${machine.name}`}
-              @click=${() => { this.onSelectMachine?.(machine.id); }}
-            >${machine.name}</button>`)}
-          </nav>
-        `}
         ${this.renderFilters()}
         <div class="body">
           ${this.renderCreateRow()}
@@ -393,12 +379,6 @@ export class QuickSwitcher extends LitElement {
        one on a desktop makes the same list two different shapes. Two lines are
        always reserved, so a short name and a long one occupy the same box. */
     .row-title { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-height: calc(2 * 1.3em); font-size: var(--pi-text-md); line-height: 1.3; overflow-wrap: anywhere; }
-    /* One row of machines, scrolled rather than wrapped: a second line would
-       move the list under it every time the fleet grew. */
-    .machines { display: flex; gap: var(--pi-space-2); overflow-x: auto; padding: 0 var(--pi-space-4) var(--pi-space-3); scrollbar-width: none; }
-    .machines::-webkit-scrollbar { display: none; }
-    .machine { flex: 0 0 auto; min-height: 36px; padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: 999px; background: var(--pi-surface); color: var(--pi-muted); font: var(--pi-text-sm) var(--pi-font-ui); cursor: pointer; }
-    .machine.selected { border-color: var(--pi-accent); background: color-mix(in srgb, var(--pi-accent) 12%, var(--pi-surface)); color: var(--pi-text); }
     .row-subtitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-xs); }
     .create-row { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
     .create-row .row-title { font-weight: 650; }
