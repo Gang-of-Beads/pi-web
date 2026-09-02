@@ -23,7 +23,8 @@ import type { MessageDeliveryState } from "../components/shared";
 import { isShellInput } from "../inputModes";
 import { fileCompletionInsertText } from "../promptCompletions";
 import { SessionSocket, parseSessionSocketEvent, type GlobalSessionEvent, type SessionUiEvent } from "../sessionSocket";
-import { isArchivableSessionInfo, isTransientNewSessionInfo } from "../sessionPersistence";
+import { isArchivableSessionInfo, isTransientNewSessionInfo, sessionPersistenceState } from "../sessionPersistence";
+import { sessionMissingMeaning } from "../sessionMissingMeaning";
 import { transcriptLoadingAfter } from "../transcriptLoadingOwnership";
 import { isSessionActive } from "../../../shared/activity";
 import type { PromptAttachmentDelivery, SessionNotificationInboxEvent, SessionStartupProgressEvent } from "../../../shared/apiTypes";
@@ -403,6 +404,15 @@ export class SessionController {
       }
       if (isCachedNewSessionInfo(session) && isSessionNotFoundError(error)) {
         await this.recreateCachedNewSession(session, options);
+        return;
+      }
+      // "Session not found" is true of the daemon and misleading to the reader:
+      // it describes a deleted session and a session too young to be written in
+      // the same words, so the reader gives up on work that was about to exist.
+      if (isSessionNotFoundError(error)) {
+        const meaning = sessionMissingMeaning(sessionPersistenceState(session, this.getState().sessionStatuses[session.id]));
+        this.setState({ error: meaning.notice });
+        if (options?.propagateRefreshError === true) throw error;
         return;
       }
       // A failed join refresh must not strand the socket on its temporary

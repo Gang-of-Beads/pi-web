@@ -2435,6 +2435,18 @@ export class ChatView extends LitElement {
         </div>
       `;
     }
+    // A session the machine has not written yet is not an empty session. Both
+    // have no messages, and only one of them is finished arriving - inviting a
+    // first message into the other is inviting it into somewhere that does not
+    // exist yet. Unknown is left with the ordinary empty state: the invitation
+    // is the safer reading when nobody has established which this is.
+    if (this.status?.sessionId === this.sessionId && this.status.persisted === false) {
+      return html`
+        <div class="empty-session" role="status">
+          <p>Still syncing this session…</p>
+        </div>
+      `;
+    }
     return html`
       <div class="empty-session" role="status">
         <p>This session is empty. Send a message to start it.</p>
