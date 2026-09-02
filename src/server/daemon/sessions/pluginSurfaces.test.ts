@@ -19,7 +19,7 @@ function loader(extensions: { path: string; tools: string[] }[], errors: { path:
 
 describe("what a plugin-backed surface can say about itself", () => {
   it("reports a surface as present when something registers its tools", () => {
-    expect(pluginSurfacePresence(loader([{ path: "/x/goal.ts", tools: ["create_goal"] }]))).toEqual({ goals: "present", subagents: "absent" });
+    expect(pluginSurfacePresence(loader([{ path: "/x/goal.ts", tools: ["create_goal"] }]))).toEqual({ goals: "present" });
   });
 
   /**
@@ -32,7 +32,7 @@ describe("what a plugin-backed surface can say about itself", () => {
   });
 
   it("reports absent when nothing registers them and nothing failed", () => {
-    expect(pluginSurfacePresence(loader([{ path: "/x/other.ts", tools: ["unrelated"] }]))).toEqual({ goals: "absent", subagents: "absent" });
+    expect(pluginSurfacePresence(loader([{ path: "/x/other.ts", tools: ["unrelated"] }]))).toEqual({ goals: "absent" });
   });
 
   /** A broken install must not hide behind a tidy empty panel. */
@@ -49,7 +49,8 @@ describe("what a plugin-backed surface can say about itself", () => {
     expect(pluginSurfacePresence({})).toBeUndefined();
   });
 
-  it("reports each surface independently", () => {
-    expect(pluginSurfacePresence(loader([{ path: "/x/sub.ts", tools: ["subagent"] }]))).toEqual({ goals: "absent", subagents: "present" });
+  /** A tool that belongs to some other surface does not stand in for this one. */
+  it("only answers for the surface it was asked about", () => {
+    expect(pluginSurfacePresence(loader([{ path: "/x/sub.ts", tools: ["subagent"] }]))).toEqual({ goals: "absent" });
   });
 });

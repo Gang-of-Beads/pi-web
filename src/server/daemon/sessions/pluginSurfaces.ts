@@ -12,9 +12,23 @@ import type { PluginSurfacePresence } from "../../../shared/apiTypes.js";
  * behind the panel, and demanding the full set would hide a working surface
  * because one tool was renamed upstream.
  */
+/**
+ * The tools that make a plugin-backed surface worth showing.
+ *
+ * Named by tool rather than by package because a fork, a rename or a local
+ * checkout provides the surface just as well - this repository runs a fork of
+ * the goal plugin, and a package-name check would call its own goals absent.
+ *
+ * One tool is enough. A plugin that registers a subset still has something
+ * behind the panel, and demanding the full set would hide a working surface
+ * because one tool was renamed upstream.
+ *
+ * Only the surfaces a panel actually consults belong here. A surface published
+ * for a panel that never reads it is a field nobody can be wrong about, which
+ * is worse than absent: it looks like coverage.
+ */
 const SURFACE_TOOLS = {
   goals: ["create_goal", "get_goal", "update_goal", "focus_goal"],
-  subagents: ["subagent"],
 } as const;
 
 /**
@@ -29,8 +43,5 @@ const SURFACE_TOOLS = {
 export function pluginSurfacePresence(source: ExtensionListSource): PluginSurfacePresence | undefined {
   const loaded = loadedExtensionsView(source);
   if (loaded === undefined) return undefined;
-  return {
-    goals: pluginPresence(loaded, SURFACE_TOOLS.goals).state,
-    subagents: pluginPresence(loaded, SURFACE_TOOLS.subagents).state,
-  };
+  return { goals: pluginPresence(loaded, SURFACE_TOOLS.goals).state };
 }

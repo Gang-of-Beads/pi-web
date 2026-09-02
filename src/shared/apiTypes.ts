@@ -1294,10 +1294,15 @@ export interface SessionWarning {
  */
 export type PluginSurfaceState = "present" | "absent" | "failed";
 
-/** Presence per surface. An omitted surface is unknown, not absent. */
+/**
+ * Presence per surface. An omitted surface is unknown, not absent.
+ *
+ * Only surfaces a panel actually consults appear here: publishing one nothing
+ * reads is a field nobody can be wrong about, which reads as coverage without
+ * being any.
+ */
 export interface PluginSurfacePresence {
   goals?: PluginSurfaceState;
-  subagents?: PluginSurfaceState;
 }
 
 export interface SessionStatus {
