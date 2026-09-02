@@ -330,10 +330,18 @@ export class GitUiController {
     void this.refreshDiff(state, path, context);
   }
 
-  reviewSectionVisible(context: WorkspacePanelContext, path: string): void {
+  reviewSectionVisibilityChanged(context: WorkspacePanelContext, path: string, visible: boolean): void {
     const state = this.stateFor(context);
     if (!state.workspacePanelFullscreen) return;
-    this.enqueueReviewDiff(state, context, path, 10);
+    if (visible) {
+      this.enqueueReviewDiff(state, context, path, 10);
+      return;
+    }
+    const review = state.reviewDiffs.get(path);
+    if (review?.status !== "queued" || state.selectedDiffPath === path) return;
+    state.reviewQueue = state.reviewQueue.filter((entry) => entry.path !== path);
+    review.status = "unrequested";
+    this.requestRender(state);
   }
 
   consumeReviewFocusRequest(context: WorkspacePanelContext, path: string): boolean {
@@ -1161,11 +1169,11 @@ function defineGitPanelActivityElement(): void {
 
 function defineGitReviewSectionActivityElement(): void {
   if (typeof customElements === "undefined" || typeof HTMLElement === "undefined" || customElements.get(reviewSectionActivityElementTag) !== undefined) return;
+  let sharedObserver: IntersectionObserver | undefined;
   class GitReviewSectionActivityElement extends HTMLElement {
     private controllerValue: GitUiController | undefined;
     private contextValue: WorkspacePanelContext | undefined;
     private pathValue: string | undefined;
-    private observer: IntersectionObserver | undefined;
 
     set controller(value: GitUiController | undefined) {
       this.controllerValue = value;
@@ -1187,13 +1195,21 @@ function defineGitReviewSectionActivityElement(): void {
     }
 
     disconnectedCallback(): void {
-      this.observer?.disconnect();
-      this.observer = undefined;
+      sharedObserver?.unobserve(this);
+      this.reportVisibility(false);
+    }
+
+    reportVisibility(visible: boolean): void {
+      const controller = this.controllerValue;
+      const context = this.contextValue;
+      const path = this.pathValue;
+      if (controller !== undefined && context !== undefined && path !== undefined) {
+        controller.reviewSectionVisibilityChanged(context, path, visible);
+      }
     }
 
     private restart(): void {
-      this.observer?.disconnect();
-      this.observer = undefined;
+      sharedObserver?.unobserve(this);
       const controller = this.controllerValue;
       const context = this.contextValue;
       const path = this.pathValue;
@@ -1202,13 +1218,15 @@ function defineGitReviewSectionActivityElement(): void {
         queueMicrotask(() => { this.scrollIntoView({ block: "start" }); });
       }
       if (typeof IntersectionObserver === "undefined") {
-        controller.reviewSectionVisible(context, path);
+        this.reportVisibility(true);
         return;
       }
-      this.observer = new IntersectionObserver((entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) controller.reviewSectionVisible(context, path);
+      sharedObserver ??= new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.target instanceof GitReviewSectionActivityElement) entry.target.reportVisibility(entry.isIntersecting);
+        }
       }, { rootMargin: "400px 0px" });
-      this.observer.observe(this);
+      sharedObserver.observe(this);
     }
   }
   customElements.define(reviewSectionActivityElementTag, GitReviewSectionActivityElement);

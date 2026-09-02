@@ -76,9 +76,9 @@ describe("Git history panel controller", () => {
     });
 
     controller.toggleWorkspacePanelFullscreen(current);
-    controller.reviewSectionVisible(current, "first.ts");
-    controller.reviewSectionVisible(current, "second.ts");
-    controller.reviewSectionVisible(current, "third.ts");
+    controller.reviewSectionVisibilityChanged(current, "first.ts", true);
+    controller.reviewSectionVisibilityChanged(current, "second.ts", true);
+    controller.reviewSectionVisibilityChanged(current, "third.ts", true);
 
     expect(pending.map(({ input }) => input)).toEqual([
       { path: "first.ts" }, { path: "first.ts", staged: true },
@@ -94,6 +94,24 @@ describe("Git history panel controller", () => {
     expect(pending.slice(4).map(({ input }) => input)).toEqual([
       { path: "third.ts" }, { path: "third.ts", staged: true },
     ]);
+  });
+
+  it("removes offscreen queued review work without canceling the selected anchor", () => {
+    const controller = new GitUiController("git", route);
+    const current = context("first", () => new Promise<JsonValue>(() => { /* stays in flight */ }));
+
+    controller.toggleWorkspacePanelFullscreen(current);
+    controller.reviewSectionVisibilityChanged(current, "loading-1.ts", true);
+    controller.reviewSectionVisibilityChanged(current, "loading-2.ts", true);
+    controller.reviewSectionVisibilityChanged(current, "queued.ts", true);
+    controller.reviewSectionVisibilityChanged(current, "queued.ts", false);
+    controller.reviewSectionVisibilityChanged(current, "anchor.ts", true);
+    controller.selectDiff(current, "anchor.ts");
+    controller.reviewSectionVisibilityChanged(current, "anchor.ts", false);
+
+    expect(controller.state(current).reviewQueue.map(({ path }) => path)).toEqual(["anchor.ts"]);
+    expect(controller.state(current).reviewDiffs.get("queued.ts")?.status).toBe("unrequested");
+    expect(controller.state(current).reviewDiffs.get("anchor.ts")?.status).toBe("queued");
   });
 
   it("restores a different commit diff on browser history navigation", async () => {
