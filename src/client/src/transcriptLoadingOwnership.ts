@@ -2,7 +2,8 @@
 export type TranscriptLoadingEvent =
   | { event: "readStarted" }
   | { event: "readSettled"; readSeq: number; currentSeq: number }
-  | { event: "selectionAbandoned" };
+  | { event: "selectionAbandoned" }
+  | { event: "selectedWithoutRead" };
 
 /**
  * Whether a transcript should still read as loading after `event`.
@@ -20,13 +21,18 @@ export type TranscriptLoadingEvent =
  * session..." with nothing loading behind it.
  *
  * So abandonment ends the flag outright: nobody is waiting, so nothing is
- * loading. Only a settled read has to prove it still owns the flag.
+ * loading. Selecting something with no transcript to read - a session this
+ * browser has only just asked for, which cannot have history yet - ends it for
+ * the same reason, and it advances the counter too, so leaving it out stranded
+ * the flag exactly as abandonment did. Only a settled read has to prove it
+ * still owns the flag.
  */
 export function transcriptLoadingAfter(event: TranscriptLoadingEvent): boolean {
   switch (event.event) {
     case "readStarted":
       return true;
     case "selectionAbandoned":
+    case "selectedWithoutRead":
       return false;
     case "readSettled":
       return event.readSeq !== event.currentSeq;

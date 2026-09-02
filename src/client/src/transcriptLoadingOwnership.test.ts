@@ -35,6 +35,16 @@ describe("who may clear the transcript loading flag", () => {
     expect(transcriptLoadingAfter({ event: "selectionAbandoned" })).toBe(false);
   });
 
+  /**
+   * The same stuck state by a second route, which the first fix missed:
+   * starting a session advances the counter without reading anything, so an
+   * in-flight read declines to clear, and a brand-new session has no history
+   * that could arrive to clear it either.
+   */
+  it("ends the flag when the new selection has nothing to read", () => {
+    expect(transcriptLoadingAfter({ event: "selectedWithoutRead" })).toBe(false);
+  });
+
   it("starts the flag when a read begins", () => {
     expect(transcriptLoadingAfter({ event: "readStarted" })).toBe(true);
   });

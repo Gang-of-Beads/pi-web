@@ -1661,6 +1661,10 @@ export class SessionController {
       messagePageEnd: 0,
       messagePageTotal: 0,
       isLoadingEarlierMessages: false,
+      // A session this browser has only just asked for has no history to read,
+      // and this path advances the selection counter, so a read still in flight
+      // will decline to clear the flag it set.
+      isLoadingTranscript: transcriptLoadingAfter({ event: "selectedWithoutRead" }),
       status: undefined,
       activity,
       pendingAsk: undefined,
