@@ -522,9 +522,12 @@ describe("PluginRegistry", () => {
       { id: "themes:high-contrast", colorScheme: "dark" },
       { id: "themes:night", colorScheme: "dark" },
       { id: "themes:paper", colorScheme: "light" },
+      { id: "themes:clay-soft", colorScheme: "dark" },
+      { id: "themes:clay-paper", colorScheme: "light" },
     ]);
     expect(registry.getThemePairs().map((pair) => ({ id: pair.id, light: pair.light, dark: pair.dark }))).toEqual([
       { id: "themes:pi-web", light: "themes:pi-web-light", dark: "themes:pi-web-dark" },
+      { id: "themes:clay", light: "themes:clay-paper", dark: "themes:clay-soft" },
     ]);
   });
 
