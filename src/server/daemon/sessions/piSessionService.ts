@@ -451,7 +451,15 @@ export interface PiAgentSession {
     setUIContext(uiContext?: ExtensionUIContext, mode?: "rpc"): void;
   };
   promptTemplates: readonly { name: string; description?: string }[];
-  resourceLoader: { getSkills(): { skills: readonly { name: string; description?: string }[] } };
+  resourceLoader: {
+    getSkills(): { skills: readonly { name: string; description?: string }[] };
+    /**
+     * The loaded extensions and the ones that failed. This is what lets a
+     * plugin-backed surface tell absent from installed-but-empty instead of
+     * inferring it from whatever data the plugin happens to have written.
+     */
+    getExtensions?(): { extensions: readonly { path: string; tools?: ReadonlyMap<string, unknown> }[]; errors: readonly { path: string; error: string }[] };
+  };
   subscribe(listener: (event: unknown) => void): () => void;
   bindExtensions(bindings: PiExtensionBindings): Promise<void>;
   compact(instructions?: string): Promise<{ summary: string; tokensBefore: number }>;
