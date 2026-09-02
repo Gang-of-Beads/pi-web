@@ -30,7 +30,7 @@ import { buildGitFileList, type GitFileListModel, type GitFileListSubmoduleFile,
 import { buildGitFileTree, collectGitFileTreeDirectoryPaths, type GitFileTreeNode } from "./gitFileTree.js";
 import { readGitFileView, writeGitFileView, type GitFileView } from "./gitFileViewPreference.js";
 import { createGitDiffRoute, type GitDiffRoute } from "./gitRoute.js";
-import { parseUnifiedDiff, type UnifiedDiffLine, type UnifiedDiffTextSpan } from "./unifiedDiff.js";
+import { parseUnifiedDiff, parseUnifiedDiffFiles, type UnifiedDiffFileSection, type UnifiedDiffLine, type UnifiedDiffTextSpan } from "./unifiedDiff.js";
 
 const GIT_PANEL_LOCAL_ID = "workspace.git";
 const GIT_POLL_INTERVAL_MS = 8_000;
@@ -84,7 +84,7 @@ interface GitDiffView {
 
 interface GitCommitDiffView {
   readonly response: GitCommitDiffResponse;
-  lines: UnifiedDiffLine[] | undefined;
+  files: UnifiedDiffFileSection[] | undefined;
 }
 
 type GitReviewDiffStatus = "unrequested" | "queued" | "loading" | "loaded" | "error";
@@ -601,7 +601,7 @@ export class GitUiController {
     try {
       const response = await requestGitBackend(context, GIT_COMMIT_DIFF_OPERATION, { id }).then(parseGitCommitDiffResponse);
       if (!state.retained || state.commitDiffRequestSequence !== sequence || state.selectedCommitId !== id) return;
-      state.selectedCommitDiff = { response, lines: undefined };
+      state.selectedCommitDiff = { response, files: undefined };
       state.commitDiffError = undefined;
     } catch (error) {
       if (!state.retained || state.commitDiffRequestSequence !== sequence || state.selectedCommitId !== id) return;
@@ -1020,7 +1020,7 @@ function renderReviewDiffSection(
             ? html`<div class="git-review-placeholder">${review.status === "loading" ? "Loading diff…" : review.status === "queued" ? "Queued…" : "Diff loads when visible."}</div>`
             : diffs.length === 0
               ? html`<p class="git-muted">No staged or unstaged diff.</p>`
-              : html`<div class=${diffs.length === 1 ? "git-diffs is-single" : "git-diffs"}>${diffs.map((diff) => renderDiffSection(html, diff))}</div>`}
+              : html`<div class=${diffs.length === 1 ? "git-diffs is-single" : "git-diffs"}>${diffs.map((diff) => renderDiffSection(html, diff, "status-only"))}</div>`}
       </section>
     </pi-web-git-review-section-activity>
   `;
@@ -1046,15 +1046,18 @@ function renderCommitDiffViewer(html: HtmlTemplateTag, controller: GitUiControll
   if (state.commitDiffLoading) return html`${metadata}<p class="git-muted">Loading commit diff…</p>`;
   if (state.commitDiffError !== undefined) return html`${metadata}<div class="git-error" role="alert">Commit diff unavailable: ${state.commitDiffError}<button type="button" @click=${() => { controller.retryCommitDiff(context); }}>Retry</button></div>`;
   if (response === undefined || view === undefined) return html`${metadata}<p class="git-muted">Commit diff unavailable.</p>`;
-  const lines = view.lines ??= parseUnifiedDiff(response.diff);
+  const files = view.files ??= parseUnifiedDiffFiles(response.diff);
   return html`
     ${metadata}
     ${response.truncated ? html`<p class="git-muted">Diff truncated.</p>` : null}
-    ${lines.length === 0 ? html`<p class="git-muted">This commit has no patch.</p>` : html`
-      <div class="git-diff-scroller">
-        <div class="git-diff-grid" role="table" aria-label="Commit diff">
-          ${lines.map((line) => renderDiffLine(html, line))}
-        </div>
+    ${files.length === 0 ? html`<p class="git-muted">This commit has no patch.</p>` : html`
+      <div class="git-commit-files">
+        ${files.map((file) => html`
+          <section class="git-commit-file">
+            <div class="git-viewer-header"><strong>${file.path}</strong></div>
+            ${renderDiffGrid(html, file.lines, `Commit diff for ${file.path}`)}
+          </section>
+        `)}
       </div>
     `}
   `;
@@ -1074,20 +1077,25 @@ function renderCommitMetadata(html: HtmlTemplateTag, commit: GitCommitSummary, c
   `;
 }
 
-function renderDiffSection(html: HtmlTemplateTag, view: GitDiffView) {
+function renderDiffSection(html: HtmlTemplateTag, view: GitDiffView, header: "path-and-status" | "status-only" = "path-and-status") {
   const diff = view.response;
   const lines = view.lines ??= parseUnifiedDiff(diff.diff);
+  const status = `${diff.staged ? "Staged" : "Unstaged"} changes${diff.truncated ? " · truncated" : ""}`;
   return html`
     <section class="git-diff-section">
-      <div class="git-viewer-header"><strong>${diff.path ?? "diff"}</strong><small>${diff.staged ? "staged" : "unstaged"}${diff.truncated ? " · truncated" : ""}</small></div>
-      ${lines.length === 0 ? html`<p class="git-muted">No diff.</p>` : html`
-        <div class="git-diff-scroller">
-          <div class="git-diff-grid" role="table" aria-label="Unified diff">
-            ${lines.map((line) => renderDiffLine(html, line))}
-          </div>
-        </div>
-      `}
+      <div class="git-viewer-header">${header === "path-and-status" ? html`<strong>${diff.path ?? "diff"}</strong><small>${status}</small>` : html`<strong>${status}</strong>`}</div>
+      ${lines.length === 0 ? html`<p class="git-muted">No diff.</p>` : renderDiffGrid(html, lines, "Unified diff")}
     </section>
+  `;
+}
+
+function renderDiffGrid(html: HtmlTemplateTag, lines: readonly UnifiedDiffLine[], label: string) {
+  return html`
+    <div class="git-diff-scroller">
+      <div class="git-diff-grid" role="table" aria-label=${label}>
+        ${lines.map((line) => renderDiffLine(html, line))}
+      </div>
+    </div>
   `;
 }
 
@@ -1331,6 +1339,9 @@ const gitPanelStyles = `
   .git-panel .git-commit-metadata dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 3px 8px; margin: 8px; }
   .git-panel .git-commit-metadata dt { color: var(--pi-muted); }
   .git-panel .git-commit-metadata dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+  .git-panel .git-commit-files { min-height: 0; display: flex; flex-direction: column; }
+  .git-panel .git-commit-file { min-width: 0; border-bottom: 1px solid var(--pi-border); }
+  .git-panel .git-commit-file:last-child { border-bottom: 0; }
   .git-panel .git-diff-scroller { flex: 1 1 auto; min-height: 0; overflow: auto; background: var(--pi-bg); }
   .git-panel .git-diff-grid { display: grid; grid-template-columns: max-content max-content 2ch max-content; width: max-content; min-width: 100%; padding: 6px 0; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; line-height: 1.45; }
   .git-panel .git-diff-line { display: contents; }

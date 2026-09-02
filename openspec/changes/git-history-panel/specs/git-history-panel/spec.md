@@ -56,6 +56,10 @@ Selecting a listed commit SHALL show its commit metadata and diff in the Git vie
 - **WHEN** the user selects a merge commit in loaded History
 - **THEN** the viewer SHALL identify it as a merge and show a combined diff against all of its parents
 
+#### Scenario: Selected commit changes multiple files
+- **WHEN** a selected ordinary or merge commit patch contains multiple file boundaries
+- **THEN** the viewer SHALL render a separately headed diff section for each file rather than one undifferentiated patch table
+
 #### Scenario: Selected commit diff cannot be read
 - **WHEN** the selected commit diff request fails
 - **THEN** the panel SHALL retain the selected commit identity, state that its diff is unavailable with the failure reason, and offer retry without claiming an empty diff

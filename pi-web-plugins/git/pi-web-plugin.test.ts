@@ -147,8 +147,8 @@ describe("bundled Git browser plugin", () => {
 
     expect(backend.request).toHaveBeenCalledWith("diff", { path: "src/main.ts" });
     expect(backend.request).toHaveBeenCalledWith("diff", { path: "src/main.ts", staged: true });
-    expect(container.textContent).toContain("staged");
-    expect(container.textContent).toContain("unstaged");
+    expect(container.textContent).toContain("Staged changes");
+    expect(container.textContent).toContain("Unstaged changes");
     expect(container.querySelector(".git-panel")).not.toBeNull();
     expect(container.querySelector(".split")).toBeNull();
     const styleRules = (container.querySelector("style")?.textContent ?? "")
@@ -192,6 +192,9 @@ describe("bundled Git browser plugin", () => {
     expect(container.querySelectorAll(".git-review-section")).toHaveLength(3);
     expect(backend.request).toHaveBeenCalledWith("diff", { path: "first.ts" });
     expect(backend.request).toHaveBeenCalledWith("diff", { path: "third.ts", staged: true });
+    expect([...container.querySelectorAll(".git-review-section > .git-viewer-header .git-review-toggle")].map((element) => element.textContent.trim())).toContain("▾ first.ts");
+    expect([...container.querySelectorAll(".git-review-section .git-diff-section > .git-viewer-header strong")].map((element) => element.textContent)).toContain("Unstaged changes");
+    expect([...container.querySelectorAll(".git-review-section .git-diff-section > .git-viewer-header")].some((element) => element.textContent.includes("first.ts"))).toBe(false);
     button(container, "Collapse all diffs").click();
     render(panel.render(context), container);
     expect(container.querySelectorAll('.git-review-toggle[aria-expanded="false"]')).toHaveLength(3);
@@ -236,7 +239,23 @@ describe("bundled Git browser plugin", () => {
       authoredAt: "2026-09-02T08:00:00+00:00",
       subject: "Add history",
     };
-    const backend = backendFixture({ history: { unborn: false, commits: [historyCommit], truncated: false } });
+    const backend = backendFixture({
+      history: { unborn: false, commits: [historyCommit], truncated: false },
+      commitDiff: [
+        "diff --git a/src/first.ts b/src/first.ts",
+        "--- a/src/first.ts",
+        "+++ b/src/first.ts",
+        "@@ -1 +1 @@",
+        "-old",
+        "+new",
+        "diff --git a/src/second.ts b/src/second.ts",
+        "--- a/src/second.ts",
+        "+++ b/src/second.ts",
+        "@@ -1 +1 @@",
+        "-before",
+        "+after",
+      ].join("\n"),
+    });
     const panel = requiredPanel(activate("git"));
     const context = panelContext(backend.request);
     const container = document.createElement("div");
@@ -259,7 +278,8 @@ describe("bundled Git browser plugin", () => {
     expect(backend.request).toHaveBeenCalledWith("commit-diff", { id: historyCommit.id });
     expect(new URL(window.location.href).searchParams.get("git.workspace.git--commit")).toBe(historyCommit.id);
     expect(container.textContent).toContain("Ada Lovelace <ada@example.test>");
-    expect(container.querySelector('[role="table"][aria-label="Commit diff"]')).not.toBeNull();
+    expect([...container.querySelectorAll(".git-commit-file > .git-viewer-header strong")].map((element) => element.textContent)).toEqual(["src/first.ts", "src/second.ts"]);
+    expect(container.querySelectorAll('[role="table"][aria-label^="Commit diff for "]')).toHaveLength(2);
 
     button(container, "Changes").click();
     render(panel.render(context), container);
@@ -399,6 +419,7 @@ function backendFixture(patch: {
   submodules?: string[];
   branch?: string;
   history?: JsonValue;
+  commitDiff?: string;
 } = {}) {
   const status = {
     isGitRepo: true,
@@ -427,7 +448,7 @@ function backendFixture(patch: {
           subject: "Add history",
         },
         combined: false,
-        diff: "@@ -1 +1 @@\n-old\n+new",
+        diff: patch.commitDiff ?? "@@ -1 +1 @@\n-old\n+new",
         truncated: false,
       });
     }
