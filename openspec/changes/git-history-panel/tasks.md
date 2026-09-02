@@ -13,5 +13,5 @@
 
 ## 3. Release and integration verification
 
-- [ ] 3.1 Add a patch Changeset describing read-only Git commit history and commit-diff inspection; verify the package name and fragment syntax against `package.json` and `npm run changeset:status` (or the repository's current Changeset check).
+- [x] 3.1 Add a patch Changeset describing read-only Git commit history and commit-diff inspection; verified the package name and fragment syntax with `npm run changelog:status`.
 - [ ] 3.2 Run `npm test -- --run` for all affected Git plugin tests, `npm run typecheck`, lint for changed TypeScript files, and `npm run verify`; record exact results, investigate any failure, and commit each independently green task before opening the implementation PR.
