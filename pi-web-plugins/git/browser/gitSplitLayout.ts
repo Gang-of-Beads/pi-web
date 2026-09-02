@@ -6,6 +6,7 @@
  * so that left a short list above a large empty area - two stretches of empty
  * space stacked on top of each other, most visible on a phone.
  */
-export function gitSplitClass(selectedDiffPath: string | undefined): string {
+export function gitSplitClass(selectedDiffPath: string | undefined, expanded: boolean): string {
+  if (expanded) return "git-split expanded";
   return selectedDiffPath === undefined ? "git-split list-only" : "git-split";
 }

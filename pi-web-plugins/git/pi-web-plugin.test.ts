@@ -187,12 +187,14 @@ describe("bundled Git browser plugin", () => {
     render(panel.render(context), container);
 
     expect(setWorkspacePanelFullscreen).toHaveBeenLastCalledWith(true);
+    expect(container.querySelector(".git-split.expanded")).not.toBeNull();
     const exit = button(container, "Exit expanded view");
     expect(exit.getAttribute("aria-pressed")).toBe("true");
     exit.click();
     render(panel.render(context), container);
 
     expect(setWorkspacePanelFullscreen).toHaveBeenLastCalledWith(false);
+    expect(container.querySelector(".git-split.list-only")).not.toBeNull();
     expect(button(container, "Expand panel").getAttribute("aria-pressed")).toBe("false");
   });
 

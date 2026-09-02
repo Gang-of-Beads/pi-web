@@ -552,12 +552,12 @@ function renderGitPanel(html: HtmlTemplateTag, controller: GitUiController, cont
         <div class="git-toolbar-actions">
           ${state.mode !== "changes" || viewState.expandablePaths.length === 0 ? null : renderExpandCollapseAll(html, controller, context, state, viewState.expandablePaths)}
           ${state.mode === "changes" ? renderViewToggle(html, controller, context) : null}
-          ${context.host.setWorkspacePanelFullscreen === undefined ? null : html`<button type="button" aria-pressed=${String(state.workspacePanelFullscreen)} @click=${() => { controller.toggleWorkspacePanelFullscreen(context); }}>${state.workspacePanelFullscreen ? "Exit expanded view" : "Expand panel"}</button>`}
+          ${context.host.setWorkspacePanelFullscreen === undefined ? null : html`<button type="button" class="git-expand-panel" aria-pressed=${String(state.workspacePanelFullscreen)} @click=${() => { controller.toggleWorkspacePanelFullscreen(context); }}>${state.workspacePanelFullscreen ? "Exit expanded view" : "Expand panel"}</button>`}
           <button type="button" ?disabled=${state.mode === "changes" ? state.statusLoading : state.historyLoading} @click=${() => { void (state.mode === "changes" ? controller.refresh(context) : controller.refreshHistory(context)); }}>Refresh</button>
         </div>
       </section>
       ${state.mode !== "changes" || state.error === undefined ? null : html`<div class="git-error" role="alert">${state.error}</div>`}
-      <section class=${gitSplitClass(state.mode === "changes" ? state.selectedDiffPath : state.selectedCommitId)}>
+      <section class=${gitSplitClass(state.mode === "changes" ? state.selectedDiffPath : state.selectedCommitId, state.workspacePanelFullscreen)}>
         <div class="git-file-list">${state.mode === "changes" ? renderFileList(html, controller, context, state, viewState) : renderHistoryList(html, controller, context, state)}</div>
         <div class="git-viewer">${state.mode === "changes" ? renderDiffViewer(html, state) : renderCommitDiffViewer(html, controller, context, state)}</div>
       </section>
@@ -956,6 +956,10 @@ const gitPanelStyles = `
      panel rather than sitting above an empty pane. */
   .git-panel .git-split.list-only { grid-template-rows: minmax(0, 1fr) 0; }
   .git-panel .git-split.list-only .git-viewer { display: none; }
+  /* The expanded desktop panel follows GitHub's review layout: navigate files
+     on the left while keeping the selected diff visible on the right. */
+  .git-panel .git-split.expanded { grid-template-columns: minmax(220px, 28%) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  .git-panel .git-split.expanded .git-file-list { border-right: 1px solid var(--pi-border); border-bottom: 0; }
   .git-panel .git-file-list { min-height: 0; overflow: auto; border-bottom: 1px solid var(--pi-border); padding: 6px; }
   .git-panel .git-row { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 4px; width: 100%; border: 0; border-radius: 5px; background: transparent; text-align: left; padding: 4px 6px 4px calc(6px + var(--depth, 0) * 14px); }
   .git-panel .git-row:hover, .git-panel .git-row.is-selected { background: var(--pi-selection-bg); }
