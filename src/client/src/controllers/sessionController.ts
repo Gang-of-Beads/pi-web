@@ -24,6 +24,7 @@ import { isShellInput } from "../inputModes";
 import { fileCompletionInsertText } from "../promptCompletions";
 import { SessionSocket, parseSessionSocketEvent, type GlobalSessionEvent, type SessionUiEvent } from "../sessionSocket";
 import { isArchivableSessionInfo, isTransientNewSessionInfo } from "../sessionPersistence";
+import { transcriptLoadingAfter } from "../transcriptLoadingOwnership";
 import { isSessionActive } from "../../../shared/activity";
 import type { PromptAttachmentDelivery, SessionNotificationInboxEvent, SessionStartupProgressEvent } from "../../../shared/apiTypes";
 import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchived, selectPreferredSession, selectionAfterArchivingSession, selectionAfterArchivingSessions, shouldDeselectAfterArchivedCollapse, type SessionSelectionMemory } from "./sessionSelection";
@@ -239,7 +240,7 @@ export class SessionController {
     // session must not cancel the in-flight upload indicator of the session
     // that is still sending; the per-session entry is cleared by send()'s
     // finally block when the request settles.
-    this.setState({ selectedSession: undefined, messages: [], messagePageStart: 0, messagePageEnd: 0, messagePageTotal: 0, isLoadingEarlierMessages: false, status: undefined, activity: undefined, pendingAsk: undefined, pendingDialogs: [], closedDialogs: [], dismissedDialogIds: [], availableThinkingLevels: [], treeDialog: undefined });
+    this.setState({ selectedSession: undefined, messages: [], messagePageStart: 0, messagePageEnd: 0, messagePageTotal: 0, isLoadingEarlierMessages: false, isLoadingTranscript: transcriptLoadingAfter({ event: "selectionAbandoned" }), status: undefined, activity: undefined, pendingAsk: undefined, pendingDialogs: [], closedDialogs: [], dismissedDialogIds: [], availableThinkingLevels: [], treeDialog: undefined });
   }
 
   deselectSession(options?: { forgetRememberedSelection?: boolean | undefined; updateUrl?: boolean | undefined }) {
@@ -414,11 +415,15 @@ export class SessionController {
       this.setState(errorNoticePatch(error));
       if (options?.propagateRefreshError === true) throw error;
     } finally {
-      // Only the selection that set the flag may clear it. A superseded
+      // Only the selection that set the flag may clear it: a superseded
       // selection resuming after a newer one started would otherwise clear the
       // newer one's flag, and the view would call a still-loading session
-      // empty - the very state this flag exists to prevent.
-      if (seq === this.selectionSeq && this.getState().isLoadingTranscript) this.setState({ isLoadingTranscript: false });
+      // empty. An abandoned selection clears it from clearActiveSession, which
+      // is the successor this branch cannot assume exists.
+      if (this.getState().isLoadingTranscript) {
+        const loading = transcriptLoadingAfter({ event: "readSettled", readSeq: seq, currentSeq: this.selectionSeq });
+        if (!loading) this.setState({ isLoadingTranscript: false });
+      }
     }
   }
 
