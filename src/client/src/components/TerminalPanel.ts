@@ -108,6 +108,15 @@ export class TerminalPanel extends LitElement {
     void this.updateComplete.then(() => { this.fitAndNotify(); });
   }
 
+  private scheduleFitAfterLayout(): void {
+    void this.updateComplete.then(() => {
+      requestAnimationFrame(() => {
+        this.fitAndNotify();
+        this.terminal?.focus();
+      });
+    });
+  }
+
   override willUpdate(changed: PropertyValues<this>): void {
     const workspaceScope = this.workspace === undefined ? undefined : JSON.stringify([this.machineId, this.workspace.path]);
     if (workspaceScope !== this.observedWorkspaceScope) {
@@ -135,6 +144,7 @@ export class TerminalPanel extends LitElement {
   }
 
   override updated(changed: PropertyValues<this>): void {
+    if (changed.has("expanded")) this.scheduleFitAfterLayout();
     if (!this.visible) this.updateCommandRunPolling(false);
     else if (this.hasPendingCommandRuns()) this.updateCommandRunPolling(true);
     this.loadVisibleWorkspaceTerminals();

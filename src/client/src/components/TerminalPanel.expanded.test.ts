@@ -53,6 +53,24 @@ describe("TerminalPanel expanded view", () => {
     expect(panel.onExpandedChange).toHaveBeenLastCalledWith(false);
   });
 
+  it("refits through the existing resize path after each layout transition", async () => {
+    const panel = new TerminalPanel();
+    const fitAndNotify = vi.fn();
+    if (!Reflect.set(panel, "fitAndNotify", fitAndNotify)) throw new Error("Could not replace terminal fit method");
+    document.body.append(panel);
+    await panel.updateComplete;
+    fitAndNotify.mockClear();
+
+    panel.expanded = true;
+    await panel.updateComplete;
+    expect(fitAndNotify).toHaveBeenCalledTimes(1);
+
+    fitAndNotify.mockClear();
+    panel.expanded = false;
+    await panel.updateComplete;
+    expect(fitAndNotify).toHaveBeenCalledTimes(1);
+  });
+
   it("limits the expansion control to the desktop media rule", () => {
     const sheet = String(TerminalPanel.styles);
     expect(sheet).toContain(".fullscreen-toggle, terminal-soft-keys { display: none; }");
