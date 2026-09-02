@@ -5,14 +5,14 @@ import type { ChatLine } from "./shared";
 import { ChatView } from "./ChatView";
 
 /**
- * A waiting card is a transcript row that sticks.
+ * A waiting card is an ordinary transcript row.
  *
  * Held outside the scroller it could not be pushed away, but it claimed a
  * third of a phone's height and refused to give any of it back, so its own
  * confirm buttons fell past the fold and the page would not scroll. Placed in
- * the transcript it scrolls and can be read in full at any length - and
- * `position: sticky` keeps it against the bottom edge while it is unanswered,
- * so the reply that arrives after it still cannot carry it out of reach.
+ * the transcript it scrolls and can be read in full at any length, and nothing
+ * inside it is pinned: a sticky footer is what put an option under the buttons
+ * that answer it.
  */
 
 function ask(): PendingAskUser {
@@ -86,10 +86,20 @@ describe("an unanswered question is what the bottom of the transcript reaches", 
     expect(slotRule()).not.toContain("position: sticky");
   });
 
-  it("covers nothing, so no option sits under the card's own footer", async () => {
-    const view = await mount({ pendingAsk: ask() });
-    const chat = scroller(view);
+  it("pins nothing inside itself, so no option sits under the card's own footer", async () => {
+    await mount({ pendingAsk: ask() });
 
-    expect(chat?.querySelector(".waiting-slot [style*='position: fixed']")).toBeNull();
+    // Checked against the stylesheet, not the DOM: the component writes no
+    // inline styles, so a [style*=...] query could never have matched and
+    // would have passed whatever the card did.
+    const sheets = Array.isArray(ChatView.styles) ? ChatView.styles : [ChatView.styles];
+    const css = sheets.map((sheet) => String(sheet)).join("\n");
+    const waitingRules = css.match(/\.waiting-slot[^{]*\{[^}]*\}/gu) ?? [];
+
+    expect(waitingRules.length).toBeGreaterThan(0);
+    for (const rule of waitingRules) {
+      expect(rule).not.toContain("position: fixed");
+      expect(rule).not.toContain("position: sticky");
+    }
   });
 });

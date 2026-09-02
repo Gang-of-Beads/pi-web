@@ -186,18 +186,11 @@ export function restartDelivery(messages: readonly ChatLine[], clientMessageId: 
 }
 
 /**
- * Fold a status update into the transcript: entries still in the agent's queue
- * are marked queued, and a tracked message that has left the queue has been
- * taken into the turn.
- */
-
-/**
  * Drop the optimistic bubble for a message that was pulled back out of the
  * queue. It has to go rather than change state: the bubble says "the server has
- * this and the agent will take it next", which stopped being true, and
- * applyQueueToDelivery reads absence from the queue as *delivered* - so leaving
- * it would promote a recalled message to "Read". The text lands back in the
- * composer, which is where an unsent message belongs.
+ * this and the agent will take it next", which stopped being true, and a
+ * recalled message has no committed copy to settle against. The text lands back
+ * in the composer, which is where an unsent message belongs.
  */
 export function removeDeliveryLine(messages: readonly ChatLine[], clientMessageId: string): ChatLine[] {
   const index = findDeliveryLineIndex(messages, clientMessageId);

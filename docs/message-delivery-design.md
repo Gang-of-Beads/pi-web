@@ -49,7 +49,12 @@ acceptable failure is a duplicate for one frame, never an absence.
 Reconciliation points, in order of authority:
 
 1. the transcript page (`GET /messages`) - rebuilt from disk, no client state,
-2. `status.queuedMessages` - the queue as the server sees it right now,
+2. `status.queuedMessages` - the queue as the server sees it right now. It can
+   raise a message to *queued*, never to *delivered*: a snapshot omits a message
+   while the agent is expanding it, between taking it and writing it, and
+   whenever its id could not be stamped onto the entry at all, so absence from
+   it is not evidence of anything. Delivery is proved by the committed copy in
+   the transcript.
 3. the stream snapshot on reconnect, with `seq` as the watermark,
 4. live events, which are deltas and are only trusted between reconciliations.
 
