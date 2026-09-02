@@ -3,12 +3,12 @@ import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { PI_WEB_UPDATE_REPO_ENV } from "../../../shared/selfUpdate.js";
 import { packageVersion } from "../../../piWebVersionReport.js";
 import type { PiWebSelfUpdateStatus } from "../../../shared/apiTypes.js";
 
 const execFileAsync = promisify(execFile);
 const GIT_FETCH_INTERVAL_MS = 60_000;
+const PI_WEB_UPDATE_REPO_ENV = "PI_WEB_UPDATE_REPO";
 
 /**
  * Managed deployments (the nix flake, installer scripts) update through a

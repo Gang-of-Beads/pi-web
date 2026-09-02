@@ -45,7 +45,6 @@ import { projectSessionTree, type ProjectableSessionTreeNode } from "./sessionTr
 import { clearRunInFlight, markRunInFlight } from "./interruptedRunStore.js";
 import { SessionArchiveStore, type ArchivedSessionRecord, type ArchiveSessionInput } from "./sessionArchiveStore.js";
 import { findArchiveCandidateByIdOrPrefix, planSessionArchiveTree, type SessionArchiveTreeCandidate } from "./sessionArchiveTree.js";
-import type { ActiveSession } from "./sessionRuntimeStore.js";
 import { deterministicSessionName, fallbackSessionName, generateShortSessionName } from "./sessionNameGenerator.js";
 import { computeEditPreview, type EditPreviewResult } from "./editPreview.js";
 import { attachmentsToInlineImages, saveAttachmentsToWorkspace } from "./attachmentService.js";
@@ -107,6 +106,11 @@ import { plainTextTheme } from "./plainTextTheme.js";
 import { SessionUnreadStore, type SessionUnreadMutation } from "./sessionUnreadStore.js";
 import { applyEnabledModelToggle, catalogWithEnabledFirst, liveScopedModelIds, modelScopeId, persistedEnabledModelPatterns, resolveEnabledModelIds, resolveSessionModelOptions, type EnabledModelCatalogEntry } from "./sessionModelScope.js";
 import { boundToolResultText } from "./toolResultBounds.js";
+
+interface ActiveSession<TRuntime> {
+  runtime: TRuntime;
+  unsubscribe: () => void;
+}
 
 /**
  * Minimal structured-logging seam, shaped like Fastify's logger so sessiond can
