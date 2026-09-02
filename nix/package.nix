@@ -35,7 +35,7 @@ buildNpmPackage rec {
 
   meta = {
     description = "Web UI for persistent Pi Coding Agent sessions";
-    homepage = "https://pi-web.dev/";
+    homepage = "https://github.com/Gang-of-Beads/pi-web";
     license = lib.licenses.mit;
     platforms = lib.platforms.unix;
     mainProgram = "pi-web";

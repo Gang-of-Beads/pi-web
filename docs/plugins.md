@@ -28,7 +28,7 @@ When machine federation is enabled, **Settings → Pi packages** targets the cur
 
 Use **Settings → PI WEB plugins** to edit the desired enablement of discovered plugins on the selected machine. Browser-only changes apply after a page reload. A server-backed change also requires a session-daemon restart before its paired browser module can load against the new active revision. If an older or unavailable remote PI WEB server does not support the versioned plugin lifecycle, PI WEB reports plugin settings as unsupported or unavailable instead of silently falling back to the gateway.
 
-After installing, removing, or updating a Pi package, type `/reload` in each idle PI WEB session on the target machine to refresh ordinary Pi resources such as extensions, skills, prompt templates, themes, and context/system prompt files. For PI WEB plugins, manually restart the target session daemon when the package has a server entry, then reload the browser page. A provider-registering Pi extension follows a separate daemon-start policy; see [Pi extension provider baseline](https://pi-web.dev/config#pi-extension-provider-baseline).
+After installing, removing, or updating a Pi package, type `/reload` in each idle PI WEB session on the target machine to refresh ordinary Pi resources such as extensions, skills, prompt templates, themes, and context/system prompt files. For PI WEB plugins, manually restart the target session daemon when the package has a server entry, then reload the browser page. A provider-registering Pi extension follows a separate daemon-start policy; see [Pi extension provider baseline](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/config.md#pi-extension-provider-baseline).
 
 ## Pi extension dialogs in PI WEB
 
@@ -38,7 +38,7 @@ Pi extensions running under PI WEB's session daemon can ask the user questions w
 - **`session_start` dialogs are reachable.** A dialog opened from a `session_start` hook is answerable while the session is still starting, both when creating a session and when opening an existing one; startup completes once the dialog settles.
 - **Survives browser reloads; first answer wins.** Reloading the browser re-renders open dialogs from the session status. With several tabs on the same session, the first answer settles the dialog and the other tabs re-render the settled card.
 - **Settled cards stay until dismissed.** An answered or closed dialog leaves its outcome card in the transcript so the user can see what became of it — answers travel to the extension alone, so the card is the only record of the exchange. The card is browser-local: only a browser that saw the dialog open renders it, and switching sessions or reloading drops it.
-- **Timeouts.** The extension's own `timeout` option applies, and the daemon offers an unattended-dialog safety valve, `extensionDialogsTimeoutMs` (default `0`, which waits indefinitely; set a positive number of milliseconds to auto-cancel — see [Extension dialogs](https://pi-web.dev/config#extension-dialogs)). The effective deadline is the sooner of the two. A dialog that closes without an answer resolves with its kind's cancel value: `false` for confirm, `undefined` for select and input.
+- **Timeouts.** The extension's own `timeout` option applies, and the daemon offers an unattended-dialog safety valve, `extensionDialogsTimeoutMs` (default `0`, which waits indefinitely; set a positive number of milliseconds to auto-cancel — see [Extension dialogs](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/config.md#extension-dialogs)). The effective deadline is the sooner of the two. A dialog that closes without an answer resolves with its kind's cancel value: `false` for confirm, `undefined` for select and input.
 - **Abort and runtime replacement.** Aborting the current run settles a dialog opened during that run immediately, at abort-request time, with its cancel value. Replacing the session runtime (`/reload`, session disposal) settles any still-open dialog the same way; hooks on the new runtime open fresh dialogs. The extension's own `AbortSignal` is honored: aborting it dismisses the dialog and resolves with the cancel value.
 - **Other UI surfaces are still no-ops.** `ExtensionUIContext` methods beyond the three dialogs (widgets, status, editor, `custom`) remain unimplemented under PI WEB even though `hasUI` is `true`; do not rely on `hasUI` alone to detect them.
 
@@ -86,9 +86,9 @@ Copy-paste prompt for creating a plugin:
 Build a PI WEB plugin for this project.
 Goal: <describe the UI behavior>.
 Before coding, read the PI WEB plugin docs:
-https://pi-web.dev/plugins
+https://github.com/Gang-of-Beads/pi-web/blob/main/docs/plugins.md
 Full API reference:
-https://pi-web.dev/plugins.md
+https://github.com/Gang-of-Beads/pi-web/blob/main/docs/plugins.md
 Create it as a local plugin under ~/.pi-web/plugins/<plugin-id>.
 Use the appropriate extension points from the docs.
 Validate by checking /pi-web-plugins/manifest.json and explain how to reload/debug it.
@@ -100,9 +100,9 @@ Copy-paste prompt for modifying a plugin:
 ```text
 Improve the PI WEB plugin at <path>.
 Before coding, read the PI WEB plugin docs:
-https://pi-web.dev/plugins
+https://github.com/Gang-of-Beads/pi-web/blob/main/docs/plugins.md
 Full API reference:
-https://pi-web.dev/plugins.md
+https://github.com/Gang-of-Beads/pi-web/blob/main/docs/plugins.md
 Keep the browser entry on API v2 and any server entry on API v1.
 After editing, check the manifest endpoint and browser-console failure cases.
 ```
@@ -209,7 +209,7 @@ For a browser-only package, reload the PI WEB tab after installing or editing it
 
 ## Remote machine plugins
 
-When [machine federation](https://pi-web.dev/machines) is enabled, PI WEB loads the selected remote machine's compatible browser plugins through the gateway and runs its server entries in that remote machine's session daemon. Contributions and helpers are machine-scoped:
+When [machine federation](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/machines.html) is enabled, PI WEB loads the selected remote machine's compatible browser plugins through the gateway and runs its server entries in that remote machine's session daemon. Contributions and helpers are machine-scoped:
 
 - actions, workspace panels, and workspace labels appear only for the applicable selected machine;
 - file and terminal helpers run against that machine;

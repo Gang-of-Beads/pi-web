@@ -9,7 +9,7 @@
 
 Run agents where your code, tools, credentials, and build caches live. Supervise them from any browser.
 
-Website and docs: <https://pi-web.dev/>
+Source and docs: <https://github.com/Gang-of-Beads/pi-web>
 
 ![PI WEB](docs/assets/pi-web-banner.png)
 
@@ -69,7 +69,7 @@ pi-web uninstall
 <!-- Keep README guidance concise. Put install variants, troubleshooting,
 configuration, and operational details in docs/, then link from here. -->
 
-For more install options, including one-line install, Pi package install, WSL/manual usage, and remote access, see the [installation guide](https://pi-web.dev/install).
+For more install options, including one-line install, Pi package install, WSL/manual usage, and remote access, see the [installation guide](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/install.html).
 
 ## Core model
 
@@ -98,7 +98,7 @@ Instead of tying agent work to your laptop session, run PI WEB on a machine that
 
 Use a private network, SSH tunnel, trusted reverse proxy, or federated PI WEB machine setup when accessing it remotely.
 
-Read more: [Remote-first development](https://pi-web.dev/remote-first)
+Read more: [Remote-first development](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/remote-first.html)
 
 ## Machines and fleets
 
@@ -106,15 +106,15 @@ PI WEB can register other PI WEB runtimes as remote machines. One browser-facing
 
 When a remote machine is selected, Settings tabs label their target. Pi packages, PI WEB plugin enablement, session daemon toggles, external file access, and upload defaults target the selected machine. Gateway/server settings such as host, port, allowed hosts, registered machines/tokens, and keyboard shortcuts stay local to the gateway/browser.
 
-Read more: [Fleet and machines guide](https://pi-web.dev/machines)
+Read more: [Fleet and machines guide](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/machines.html)
 
 ## PI WEB plugins
 
 PI WEB supports trusted browser plugins plus optional sessiond-backed workspace providers. Bundled Git uses the same public provider and backend contracts available to installed plugins. Use **Settings → PI WEB plugins** to manage desired state on the selected machine.
 
-Pi packages are a separate Pi package-manager concept. A Pi package may include a PI WEB plugin, but installing a package and enabling it are different operations. Server-backed changes require a session-daemon restart; see the plugin guide for lifecycle and recovery details. The session daemon's ownership, restart order, and second-instance requirements are documented in the [installation guide](https://pi-web.dev/install#session-daemon).
+Pi packages are a separate Pi package-manager concept. A Pi package may include a PI WEB plugin, but installing a package and enabling it are different operations. Server-backed changes require a session-daemon restart; see the plugin guide for lifecycle and recovery details. The session daemon's ownership, restart order, and second-instance requirements are documented in the [installation guide](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/install.html#session-daemon).
 
-Read more: [PI WEB plugin guide and API](https://pi-web.dev/plugins)
+Read more: [PI WEB plugin guide and API](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/plugins.md)
 
 ## Configuration
 
@@ -133,7 +133,7 @@ Project-local PI WEB config lives at:
 
 Common configuration includes host/port, path access, uploads, PI WEB plugin enablement, shortcuts, and session daemon options. In Settings, machine-affecting config targets the selected machine; gateway host/port/allowed-hosts, remote machine registration, tokens, and keyboard shortcuts stay local.
 
-Read more: [Configuration reference](https://pi-web.dev/config)
+Read more: [Configuration reference](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/config.md)
 
 ## Development
 
@@ -172,13 +172,13 @@ It is not a sandbox, permission system, or multi-tenant platform. Do not expose 
 
 ## Documentation
 
-- [Website](https://pi-web.dev/)
-- [Install](https://pi-web.dev/install)
-- [Remote-first development](https://pi-web.dev/remote-first)
-- [Machines / fleet](https://pi-web.dev/machines)
-- [Configuration](https://pi-web.dev/config)
-- [Plugins](https://pi-web.dev/plugins)
-- [FAQ](https://pi-web.dev/faq)
+- [Repository](https://github.com/Gang-of-Beads/pi-web)
+- [Install](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/install.html)
+- [Remote-first development](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/remote-first.html)
+- [Machines / fleet](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/machines.html)
+- [Configuration](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/config.md)
+- [Plugins](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/plugins.md)
+- [FAQ](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/faq.html)
 
 ## License
 
