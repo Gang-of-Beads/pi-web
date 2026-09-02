@@ -48,6 +48,7 @@ import "./ToolExecutionView";
 import { sessionStateBadgeStyles as SessionStateBadgeStyles } from "./sessionStateBadgeStyles";
 import { readingAnchorDecision, readingScrollCorrection, shouldHoldReadingPosition } from "../readingAnchor";
 import { imageLoadScrollCorrection } from "../imageLoadScroll";
+import { pluginSurfaceVisibility } from "../pluginSurfaceVisibility";
 
 export const chatStyles = css`
   ${SessionStateBadgeStyles}
@@ -1337,7 +1338,16 @@ export class ChatView extends LitElement {
     // them exactly when nothing else was running. A read in flight, or one
     // that failed, is also a reason: hiding the drawer during flight is how
     // the loading state went unseen for its whole life.
-    const goalsWorthShowing = this.goalsLoad.data.length > 0 || this.goalsLoad.state === "loading" || this.goalsLoad.state === "failed";
+    // Content, a read in flight, or a failed read are all reasons to show the
+    // panel. So is a plugin that failed to load, and so is not knowing: only a
+    // runtime that positively reports nothing behind the surface hides it.
+    const goalsVisibility = pluginSurfaceVisibility({
+      presence: this.status?.pluginSurfaces?.goals,
+      hasContent: this.goalsLoad.data.length > 0,
+      loading: this.goalsLoad.state === "loading",
+      loadFailed: this.goalsLoad.state === "failed",
+    });
+    const goalsWorthShowing = goalsVisibility.show;
     if (activity === undefined && inbox === undefined && !goalsWorthShowing && !this.notificationsFailed) return null;
     const tab = selectedTopDrawerTab({ activity: activity !== undefined, notifications: inbox !== undefined || this.notificationsFailed, goals: this.goalsLoad.data.length > 0 }, this.topDrawerTab);
     const key = this.topDrawerKey();

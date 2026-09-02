@@ -38,6 +38,7 @@ import { pageMessagesAtSafeBoundary } from "./messagePaging.js";
 import { annotateAssistantThinkingLevel, branchMessages } from "../../../shared/branchMessages.js";
 import { runTranscriptMessages } from "../../../shared/subagentRunTranscript.js";
 import { readableMessageCount } from "./readableMessageCount.js";
+import { pluginSurfacePresence } from "./pluginSurfaces.js";
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
 import { BUILTIN_COMMANDS } from "./builtinCommands.js";
 import { SessionCommandService } from "./sessionCommandService.js";
@@ -4599,9 +4600,13 @@ export class PiSessionService implements SessionRouteService {
     const backgroundRunCount = this.backgroundRunCounts.get(session.sessionId) ?? 0;
     const working = session.isStreaming || session.isCompacting || session.isBashRunning;
     const turnStartedAt = working ? turnStartedAtFromBranch(session.sessionManager.getBranch()) : undefined;
+    const surfaces = pluginSurfacePresence(session.resourceLoader);
     return {
       sessionId: session.sessionId,
       persisted: sessionFileExists(session.sessionFile),
+      // Omitted when the runtime cannot answer, so a browser reads it as
+      // unknown. Hiding a surface on no evidence is the fault this replaces.
+      ...(surfaces === undefined ? {} : { pluginSurfaces: surfaces }),
       ...(model === undefined ? {} : { model }),
       thinkingLevel: session.thinkingLevel,
       isStreaming: session.isStreaming,
