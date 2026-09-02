@@ -153,9 +153,12 @@ export const appStyles = css`
   @media (min-width: 1181px) {
     /* A workspace tool can request the content area without owning or changing
        the surrounding shell. The selected panel keeps its own tabs and state. */
-    .shell.workspace-panel-fullscreen { grid-template-columns: var(--navigation-panel-width) 1px minmax(0, 1fr); }
-    .shell.workspace-panel-fullscreen > main, .shell.workspace-panel-fullscreen > .workspace-panel-edge { display: none; }
-    .shell.workspace-panel-fullscreen > workspace-panel { grid-column: 3; }
+    /* Expanded review tools need the full desktop canvas; their own toolbar
+       provides the exit action, so neither app pane remains actionable here. */
+    .shell.workspace-panel-fullscreen { grid-template-columns: minmax(0, 1fr); }
+    .shell.workspace-panel-fullscreen > aside, .shell.workspace-panel-fullscreen > main,
+    .shell.workspace-panel-fullscreen > app-panel-edge-control { display: none; }
+    .shell.workspace-panel-fullscreen > workspace-panel { grid-column: 1; }
     .shell.navigation-panel-collapsed { --navigation-panel-width: 0px; }
     .shell.navigation-panel-collapsed > aside { display: none; }
     .shell.workspace-panel-collapsed { --workspace-panel-width: 0px; }
