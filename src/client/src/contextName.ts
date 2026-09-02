@@ -19,6 +19,7 @@ export interface ContextNameInput {
 }
 
 export const PRODUCT_NAME = "PI WEB";
+export const TAB_TITLE_PREFIX = "π - ";
 
 /** The trailing part of a path-like workspace label, which is what identifies it. */
 function workspaceName(workspace: Pick<Workspace, "label"> | undefined): string | undefined {
@@ -54,11 +55,11 @@ export function focusedContextName(input: ContextNameInput): string {
 
 /**
  * The document title. A single long session name fills a tab strip, so it is
- * bounded; the product name is dropped once a context exists because the tab
- * favicon and the page already say which app this is.
+ * bounded; every tab starts with the Pi mark for quick recognition.
  */
 export function documentTitleFor(input: ContextNameInput, maxLength = 40): string {
   const name = focusedContextName(input);
-  if (name.length <= maxLength) return name;
-  return `${name.slice(0, maxLength - 1).trimEnd()}…`;
+  const availableNameLength = Math.max(1, maxLength - TAB_TITLE_PREFIX.length);
+  if (name.length <= availableNameLength) return `${TAB_TITLE_PREFIX}${name}`;
+  return `${TAB_TITLE_PREFIX}${name.slice(0, availableNameLength - 1).trimEnd()}…`;
 }
