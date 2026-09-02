@@ -102,7 +102,7 @@ export class LiveDictation {
     // An empty chunk is how the protocol says the utterance is over. Without
     // it the tail of a sentence survives only if the service's own silence
     // detection happened to fire first, so stopping mid-sentence lost words.
-    if (socket !== undefined && socket.readyState === WebSocket.OPEN) {
+    if (socket?.readyState === WebSocket.OPEN) {
       try {
         socket.send(encodeAzureAudioFrame(this.requestId, new Uint8Array(0)));
       } catch {
