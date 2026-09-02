@@ -1,54 +1,51 @@
 ## Context
 
-See proposal.md for motivation and `specs/terminal-expanded-view/spec.md` for the behavior contract. The desktop shell already owns a `workspacePanelFullscreen` layout state and exposes an optional workspace-host setter used by Git. The core Terminal panel is rendered through the same `WorkspacePanelContext`, while its selected terminal is already bidirectionally bound to `core.workspace.terminal--terminal`. Xterm owns a live WebSocket and uses `ResizeObserver`/`FitAddon` to keep PTY dimensions aligned with its container.
+See proposal.md and `specs/workspace-expanded-view/spec.md`. `PiWebApp` owns the only full-canvas shell state and exposes optional host read/write methods. `WorkspacePanel` owns the stable tool-tab header and renders every workspace contribution. Git currently has a duplicate internal control and legacy namespaced route field; Terminal briefly gained another local control while still relying on the same host state.
 
-The only shell-layout producer is `PiWebApp.workspacePanelFullscreen`; Git and the proposed Terminal control are requesters of that one state. The only Terminal surface producer is the core workspace panel contribution. There is no second standalone terminal renderer: runtime actions eventually select this same workspace tool and terminal route.
+The shell has one layout producer (`PiWebApp.workspacePanelFullscreen`) and one shared Workspace Panel renderer. Therefore expansion is a property of that panel, not of whichever child tool happens to request it.
 
 ## Goals / Non-Goals
 
 **Goals:**
-- Give the active desktop Terminal panel a reversible full-canvas presentation without reconnecting its terminal.
-- Make expanded state part of the matching Terminal URL and browser-history contract.
-- Keep shell ownership in the app, terminal UI/fit behavior in `TerminalPanel`, and route serialization in the existing workspace route surface.
-- Refit and report PTY dimensions after either layout transition.
+- Put one truthful, reversible expansion control in a stable shared header for all desktop workspace tools.
+- Use one workspace-scoped route value while preserving older Git links.
+- Keep expansion active during tool switches so the shared header remains the owner and exit path.
+- Preserve tool instances/state and refit Terminal geometry in place.
 
 **Non-Goals:**
-- Move terminal runtime or WebSocket ownership, add browser fullscreen, or create a terminal-specific overlay/portal.
-- Persist expanded state outside navigation state or apply it to non-Terminal tools.
-- Change mobile tool navigation, soft keys, copy mode, or terminal tabs.
+- Tool-specific overlays, browser fullscreen, or custom full-canvas semantics per tool.
+- Changes to Git backend, terminal runtime/WebSocket ownership, or other tool domain behavior.
+- A visible expansion control on mobile, where the shared header is intentionally absent.
 
 ## Decisions
 
-### 1. Reuse the host-owned full-canvas shell instead of adding a terminal overlay
-The Terminal panel will request the existing workspace-panel fullscreen layout through `WorkspaceHost`. The host contract will expose the current presentation state as well as its setter, allowing the terminal control to render the truthful Expand/Exit label and `aria-pressed` state.
+### 1. WorkspacePanel renders the single expansion control
+The shared desktop header renders Expand panel / Exit expanded view using the host read/write contract. All contributions receive the capability automatically; no opt-in flag or duplicated child control exists. The action stays outside the horizontally scrolling tab strip so it remains reachable with many tools.
 
-A dialog, fixed-position terminal, or portal was rejected because moving/recreating xterm risks duplicate WebSockets, lost selection/copy state, focus churn, and competing layout ownership. The existing shell mode already preserves the workspace panel element in place.
+Opt-in was rejected after product review because it recreates inconsistent tool capabilities and requires every plugin to implement the same shell behavior. Tool-local controls were rejected because Git and Terminal had already drifted in label, placement, lifecycle, and route ownership.
 
-### 2. The app owns Terminal expanded route serialization
-The existing workspace route surface will gain a boolean Terminal-expanded field represented as `core.workspace.terminal--expanded=1`. `PiWebApp` will read it during route restoration and apply it only when the resolved tool/view is the core Terminal for the matching machine/project/workspace. Its workspace-host setter will synchronize this field only while Terminal is the active surface; Git continues to own its own plugin-namespaced expanded route.
+### 2. Expansion uses one workspace-scoped route field
+The route surface stores `core.workspace--expanded=1`, scoped by the existing machine/project/workspace/tool route. It is remembered with machine navigation and applied only after the matching workspace tool resolves. Switching tool tabs retains expansion because the owning Workspace Panel remains mounted; leaving workspace-panel views clears it.
 
-Keeping route writes in the app avoids teaching a core component to mutate `window.history` and keeps machine navigation, popstate restoration, and selection scope in one orchestrator. A generic unnamed `expanded=1` key was rejected because it could leak across workspace tools.
+Git's previous `*.git.workspace.git--expanded=1` remains read-compatible. Git stops producing that field; when the legacy route activates the host, the app writes shared state and removes the old field. A separate expanded field per tool was rejected because expansion now belongs to the common panel and would create contradictory values.
 
-### 3. TerminalPanel owns the visible control and transition fit request
-`TerminalPanel` will receive the host presentation state and callback through core panel wiring. Its terminal tab toolbar will show a desktop-only Expand terminal / Exit expanded terminal toggle. After requesting a transition it will schedule a fit after the parent Lit update and animation frame; the existing `ResizeObserver` remains the backstop for subsequent geometry changes.
+### 3. Child tools observe host geometry but do not own shell controls
+Git derives its expanded internal split from the host's current state, preserving its multi-file review layout without an internal button. Terminal receives the same state to schedule `FitAddon` after parent update plus animation frame; its existing ResizeObserver remains the geometry backstop. Other tools simply receive a larger container.
 
-The control is hidden in coarse/narrow mobile layouts where the workspace tool already fills the available content region. The selected terminal and xterm instance remain mounted, so expansion does not become a terminal lifecycle event.
-
-### 4. Disconnect exits presentation but does not manufacture a stale route
-When TerminalPanel disconnects, it requests shell exit. During route restoration, host route synchronization is suppressed until the new route has established its selected surface, preventing an old panel's teardown from rewriting the destination URL. Returning through browser history reapplies the route's Terminal-expanded state.
-
-This preserves the invariant that every expanded state has an exit even when the user leaves via a different workspace tab, machine, project, or browser-history action.
+### 4. Mobile continues using its existing workspace-tool layout
+The Workspace Panel header is already hidden at widths up to 1180px, so no redundant action enters mobile navigation. Real-browser validation found Terminal toolbar targets at 30px; the coarse/narrow rule raises them to the project's 44px touch floor without changing terminal semantics.
 
 ## Risks / Trade-offs
 
-- [Git and Terminal request the same shell state during a panel switch] → Keep one host owner, exit on disconnect, and reapply the resolved active route after restoration; add switch-order regression coverage.
-- [A fit runs before the parent grid settles] → wait for component update plus animation frame and retain the existing container `ResizeObserver` as a second signal.
-- [Fullscreen state leaks to Files or another plugin] → gate restoration and URL writes by the resolved active Terminal tool and clear shell presentation on disconnect/nonmatching routes.
-- [Mobile toolbar becomes crowded] → do not render/show the redundant expansion control in the established mobile/coarse layout.
-- [Public host contract grows] → add only an optional read method alongside the existing optional setter so older browser plugins remain compatible.
+- [A plugin assumes a narrow panel] → expansion changes only its container; validate bundled tools and retain their own responsive CSS/overflow boundaries.
+- [Git legacy route conflicts with shared state] → read legacy only for compatibility, stop writing it, and make the app's shared route authoritative.
+- [Terminal fit runs before the grid settles] → wait for update plus animation frame and retain ResizeObserver.
+- [Many workspace tabs crowd the header] → keep the expansion action fixed outside the independently scrollable tab strip.
+- [Public host contract grows] → retain optional methods so older browser plugins remain compatible.
 
 ## Migration Plan
 
-1. Ship the client-only route, host, and Terminal changes in one package with a patch Changeset.
-2. No daemon restart, terminal process migration, or durable data migration is required.
-3. Rollback restores the previous client; unknown namespaced query fields are already preserved/ignored safely, and a reload returns to the ordinary terminal panel.
+1. Ship shared header, route, Git compatibility, and Terminal fit changes together with a patch Changeset.
+2. No daemon restart or durable data migration is required.
+3. Older Git expanded URLs remain accepted; new links use `core.workspace--expanded=1`.
+4. Rollback ignores the shared unknown query field and returns to ordinary layout on reload.

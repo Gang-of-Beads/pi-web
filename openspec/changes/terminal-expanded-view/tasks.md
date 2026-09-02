@@ -1,16 +1,17 @@
-## 1. Route and host state
+## 1. Shared route and host state
 
-- [x] 1.1 Extend the workspace route surface with a scoped `core.workspace.terminal--expanded=1` value and verify read/write, refresh, shared-link, popstate, and non-Terminal route behavior with focused route and PiWebApp tests.
-- [x] 1.2 Expose the current workspace-panel fullscreen presentation through the optional public host contract, update its declaration baseline, and verify legacy plugin contexts remain type-compatible with `npm run typecheck` and the plugin API baseline test.
+- [x] 1.1 Store expansion as scoped `core.workspace--expanded=1` route state, preserve it across tool switches, restore it on reload/shared links/popstate, and verify non-workspace routes cannot inherit it.
+- [x] 1.2 Expose the current Workspace Panel fullscreen presentation through the optional public host contract, update its declaration baseline, and verify legacy plugin contexts remain type-compatible.
+- [x] 1.3 Retain read compatibility for older Git-namespaced expanded links while stopping new legacy writes; verify focused Git route/controller tests.
 
-## 2. Terminal interaction and geometry
+## 2. Shared interaction and tool geometry
 
-- [x] 2.1 Wire the core Terminal contribution to the host fullscreen state and add a truthful Expand terminal / Exit expanded terminal control that exits on disconnect; verify state, labels, accessibility attributes, terminal identity retention, and tool-switch cleanup with happy-dom component tests.
-- [x] 2.2 Refit xterm after expand and exit transitions through the existing resize path, and verify focused tests observe the fit/resize notification without recreating the terminal or WebSocket.
-- [x] 2.3 Validate desktop behavior in a real browser at a viewport wider than 1180px: record the terminal bounds before/after expansion, confirm the application canvas is occupied, confirm exit/tool switching restores the shell, and inspect that the selected terminal and WebSocket remain stable.
-- [x] 2.4 Validate at 393x850 with a coarse pointer: record that no redundant expand control appears, terminal tabs/soft keys remain reachable, and the existing mobile workspace layout is unchanged.
+- [x] 2.1 Move the truthful Expand panel / Exit expanded view control to the fixed Workspace Panel desktop header for all tools, remove child-tool controls, and verify labels, accessibility state, and tool-switch retention with happy-dom tests.
+- [x] 2.2 Refit xterm after shared expand and exit transitions through the existing resize path, and verify focused tests observe fit/resize without recreating terminal state.
+- [ ] 2.3 Validate multiple bundled tools in a real desktop browser wider than 1180px: record panel bounds, tool switching while expanded, exit restoration, Git internal review layout, and Terminal identity/WebSocket/PTY geometry.
+- [ ] 2.4 Validate at 393x850 with a coarse pointer: record that no redundant expand control appears and existing tool controls remain reachable at the 44px floor.
 
 ## 3. Release and integration verification
 
-- [x] 3.1 Add a patch Changeset describing the full-canvas desktop terminal and verify it with `npm run changelog:status`.
-- [x] 3.2 Run focused Terminal, route, PiWebApp, and plugin API tests, `npm run typecheck`, lint changed TypeScript files, and `npm run verify`; record exact results and investigate every non-zero check before opening the implementation PR.
+- [x] 3.1 Add a patch Changeset describing the shared full-canvas Workspace Panel and verify it with `npm run changelog:status`.
+- [ ] 3.2 Run focused Workspace Panel, Git, Terminal, route, PiWebApp, and public API tests, `npm run typecheck`, lint changed TypeScript files, OpenSpec strict validation, and `npm run verify`; investigate every non-zero check before updating the PR.

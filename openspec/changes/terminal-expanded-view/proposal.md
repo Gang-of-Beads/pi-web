@@ -1,26 +1,27 @@
 ## Why
 
-The terminal workspace panel is constrained to the ordinary right-hand panel on desktop even when the user needs a large terminal canvas. The shell already has one full-canvas producer—the workspace host fullscreen state introduced for Git—but only the Git plugin can request and exit it; the core terminal renderer has no fullscreen control or route state, so terminal users cannot enter the same reversible, shareable surface.
+Desktop workspace tools are constrained to the ordinary right-hand panel even when their content benefits from a large canvas. Git introduced the only full-canvas requester and the Terminal branch added a second tool-local control, but duplicating controls and route ownership per tool makes behavior drift; expansion belongs to the shared Workspace Panel that contains Files, Git, Terminal, Tasks, Relays, and every other workspace tool.
 
 ## What Changes
 
-- Add an explicit **Expand terminal** / **Exit expanded terminal** control to the core terminal panel on desktop.
-- Reuse the workspace host fullscreen boundary so expansion hides the navigation/chat panes and gives the terminal workspace panel the full application canvas without changing terminal runtime ownership.
-- Preserve the selected terminal and expanded terminal state in the existing machine/project/workspace-scoped URL, and restore it on reload, shared-link navigation, and browser back/forward.
-- Exit the shell fullscreen presentation when the terminal panel is no longer active, while retaining only route state that belongs to a matching terminal route.
-- Refit xterm after each layout transition so terminal columns/rows and the daemon-side PTY size match the visible canvas.
+- Add one **Expand panel** / **Exit expanded view** control to the shared Workspace Panel header for every desktop workspace tool.
+- Remove tool-local expansion controls and use the existing host-owned full-canvas shell without changing tool runtime ownership.
+- Preserve expanded Workspace Panel state in one machine/project/workspace-scoped URL value and restore it on reload, shared-link navigation, and browser back/forward.
+- Keep expanded presentation while switching workspace tools; exiting returns the complete ordinary shell.
+- Refit xterm after layout transitions so terminal columns/rows and daemon-side PTY size match the visible canvas.
+- Keep mobile workspace navigation unchanged, where the selected tool already owns the available surface, and retain the 44px coarse-pointer Terminal toolbar floor found during validation.
 
 ### Non-goals
 
-- Browser Fullscreen API, hiding browser chrome, or introducing a second terminal window.
-- Changing terminal creation, persistence, command-run ownership, WebSocket transport, shell processes, copy mode, or soft-key semantics.
-- Adding an expansion control to mobile layouts, where the selected workspace tool already owns the available main surface.
-- Generalizing every workspace tool in this change; the host boundary remains reusable, but this change integrates only the core terminal surface.
+- Browser Fullscreen API, hiding browser chrome, or introducing tool-specific overlays/windows.
+- Changing Terminal processes/WebSockets, Git data operations, Files behavior, or other tool domain state.
+- Persisting expansion outside navigation state.
+- Adding custom expansion layouts inside every tool; each tool receives the same larger Workspace Panel container and may retain its own internal responsive layout.
 
 ## Capabilities
 
 ### New Capabilities
-- `terminal-expanded-view`: Reversible, route-restored full-canvas terminal viewing and xterm resize behavior.
+- `workspace-expanded-view`: Reversible, shareable full-canvas viewing for every desktop Workspace Panel tool, including terminal geometry updates.
 
 ### Modified Capabilities
 
@@ -28,8 +29,8 @@ The terminal workspace panel is constrained to the ordinary right-hand panel on 
 
 ## Impact
 
-- Core terminal panel rendering and tests under `src/client/src/components/TerminalPanel.ts`.
-- Core workspace-panel wiring under `src/client/src/plugins/core/panels.ts`.
-- Application route restoration and workspace host fullscreen ownership in `src/client/src/components/PiWebApp.ts` and route-focused tests.
-- No server/session-daemon protocol, persistent data, dependency, or terminal process lifecycle changes.
-- The feature is user-visible and requires a patch Changeset.
+- Shared Workspace Panel rendering/styles and tests.
+- Application route restoration, machine navigation surface, and workspace host fullscreen contract.
+- Git removes its duplicate expansion control while retaining compatibility with older Git-expanded links.
+- Terminal receives shared expanded state only to refit xterm; no server/session-daemon protocol changes.
+- The user-visible feature requires a patch Changeset.

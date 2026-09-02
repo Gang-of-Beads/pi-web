@@ -176,14 +176,12 @@ describe("bundled Git browser plugin", () => {
     window.history.replaceState({}, "", `/?project=${projectId}&workspace=${workspaceId}`);
     const backend = backendFixture({ files: [changedFile("first.ts"), changedFile("second.ts"), changedFile("third.ts")] });
     const panel = requiredPanel(activate("git"));
-    const context = panelContext(backend.request, gitWorkspace, "local", { setWorkspacePanelFullscreen: vi.fn() });
+    const context = panelContext(backend.request, gitWorkspace, "local", { workspacePanelFullscreen: () => true, setWorkspacePanelFullscreen: vi.fn() });
     const container = document.createElement("div");
     document.body.append(container);
 
     render(panel.render(context), container);
     await settleBackend();
-    render(panel.render(context), container);
-    button(container, "Expand panel").click();
     render(panel.render(context), container);
     await settleBackend();
     await settleBackend();
@@ -199,34 +197,6 @@ describe("bundled Git browser plugin", () => {
     render(panel.render(context), container);
     expect(container.querySelectorAll('.git-review-toggle[aria-expanded="false"]')).toHaveLength(3);
     expect(button(container, "Expand all diffs")).toBeDefined();
-  });
-
-  it("toggles the expanded panel layout through the workspace host", async () => {
-    const panel = requiredPanel(activate("git"));
-    const setWorkspacePanelFullscreen = vi.fn<NonNullable<WorkspaceHost["setWorkspacePanelFullscreen"]>>();
-    const context = panelContext(backendFixture().request, gitWorkspace, "local", { setWorkspacePanelFullscreen });
-    const container = document.createElement("div");
-    document.body.append(container);
-
-    render(panel.render(context), container);
-    await settleBackend();
-    render(panel.render(context), container);
-
-    const expand = button(container, "Expand panel");
-    expect(expand.getAttribute("aria-pressed")).toBe("false");
-    expand.click();
-    render(panel.render(context), container);
-
-    expect(setWorkspacePanelFullscreen).toHaveBeenLastCalledWith(true);
-    expect(container.querySelector(".git-split.expanded")).not.toBeNull();
-    const exit = button(container, "Exit expanded view");
-    expect(exit.getAttribute("aria-pressed")).toBe("true");
-    exit.click();
-    render(panel.render(context), container);
-
-    expect(setWorkspacePanelFullscreen).toHaveBeenLastCalledWith(false);
-    expect(container.querySelector(".git-split.list-only")).not.toBeNull();
-    expect(button(container, "Expand panel").getAttribute("aria-pressed")).toBe("false");
   });
 
   it("opens read-only current-HEAD history and renders the selected commit's diff", async () => {

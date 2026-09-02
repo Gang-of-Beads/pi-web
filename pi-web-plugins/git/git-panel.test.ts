@@ -18,7 +18,7 @@ const commit = {
   subject: "Test commit",
 };
 
-function context(id: string, request: (operation: string, input: JsonValue) => Promise<JsonValue>): WorkspacePanelContext {
+function context(id: string, request: (operation: string, input: JsonValue) => Promise<JsonValue>, fullscreen = false): WorkspacePanelContext {
   return {
     machine: { id: "local", name: "Local", kind: "local" },
     workspace: { id, projectId: "project", path: "/workspace", label: id, isMain: false, provider: { pluginId: "git", capabilities: { request: true, remove: false } } },
@@ -30,7 +30,7 @@ function context(id: string, request: (operation: string, input: JsonValue) => P
       moveFile: () => Promise.reject(new Error("Not used by this test")),
     },
     backend: { request },
-    host: { requestRender() { /* no-op */ } },
+    host: { requestRender() { /* no-op */ }, workspacePanelFullscreen: () => fullscreen },
     prompt: {
       insertText() { /* no-op */ },
       getText: () => "",
@@ -73,9 +73,8 @@ describe("Git history panel controller", () => {
     const current = context("first", (operation, input) => {
       if (operation !== GIT_DIFF_OPERATION) throw new Error(`Unexpected operation: ${operation}`);
       return new Promise<JsonValue>((resolve) => { pending.push({ input, resolve }); });
-    });
-
-    controller.toggleWorkspacePanelFullscreen(current);
+    }, true);
+    controller.state(current);
     controller.reviewSectionVisibilityChanged(current, "first.ts", true);
     controller.reviewSectionVisibilityChanged(current, "second.ts", true);
     controller.reviewSectionVisibilityChanged(current, "third.ts", true);
@@ -98,9 +97,8 @@ describe("Git history panel controller", () => {
 
   it("removes offscreen queued review work without canceling the selected anchor", () => {
     const controller = new GitUiController("git", route);
-    const current = context("first", () => new Promise<JsonValue>(() => { /* stays in flight */ }));
-
-    controller.toggleWorkspacePanelFullscreen(current);
+    const current = context("first", () => new Promise<JsonValue>(() => { /* stays in flight */ }), true);
+    controller.state(current);
     controller.reviewSectionVisibilityChanged(current, "loading-1.ts", true);
     controller.reviewSectionVisibilityChanged(current, "loading-2.ts", true);
     controller.reviewSectionVisibilityChanged(current, "queued.ts", true);
@@ -144,20 +142,6 @@ describe("Git history panel controller", () => {
 
     expect(commitDiffIds).toContain(second.id);
     expect(controller.state(current).selectedCommitId).toBe(second.id);
-  });
-
-  it("exits the shell fullscreen state when the Git panel disconnects", () => {
-    const setWorkspacePanelFullscreen = vi.fn();
-    const current = context("first", () => Promise.reject(new Error("not used")));
-    current.host.setWorkspacePanelFullscreen = setWorkspacePanelFullscreen;
-    const controller = new GitUiController("git", route);
-
-    controller.connect(current);
-    controller.toggleWorkspacePanelFullscreen(current);
-    controller.disconnect(current);
-
-    expect(setWorkspacePanelFullscreen).toHaveBeenLastCalledWith(false);
-    expect(controller.state(current).workspacePanelFullscreen).toBe(true);
   });
 
   it("ignores a selected commit diff that resolves after the selection changes", async () => {

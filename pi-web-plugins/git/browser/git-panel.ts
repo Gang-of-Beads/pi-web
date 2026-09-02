@@ -152,7 +152,13 @@ export class GitUiController {
   }
 
   state(context: WorkspacePanelContext): GitWorkspaceUiState {
-    return this.stateFor(context);
+    const state = this.stateFor(context);
+    const hostFullscreen = context.host.workspacePanelFullscreen?.();
+    if (hostFullscreen !== undefined && hostFullscreen !== state.workspacePanelFullscreen) {
+      state.workspacePanelFullscreen = hostFullscreen;
+      if (hostFullscreen && state.selectedDiffPath !== undefined) state.reviewFocusRequest = state.selectedDiffPath;
+    }
+    return state;
   }
 
   connect(context: WorkspacePanelContext): void {
@@ -180,9 +186,7 @@ export class GitUiController {
   }
 
   disconnect(context: WorkspacePanelContext): void {
-    if (this.connectedWorkspaceKey !== workspaceContextKey(context)) return;
-    this.connectedWorkspaceKey = undefined;
-    context.host.setWorkspacePanelFullscreen?.(false);
+    if (this.connectedWorkspaceKey === workspaceContextKey(context)) this.connectedWorkspaceKey = undefined;
   }
 
   handlePopState(context: WorkspacePanelContext): void {
@@ -311,22 +315,6 @@ export class GitUiController {
       this.requestRender(state);
       void this.refreshCommitDiff(state, context, state.selectedCommitId);
     }
-  }
-
-  toggleWorkspacePanelFullscreen(context: WorkspacePanelContext): void {
-    const state = this.stateFor(context);
-    const fullscreen = !state.workspacePanelFullscreen;
-    state.workspacePanelFullscreen = fullscreen;
-    context.host.setWorkspacePanelFullscreen?.(fullscreen);
-    if (fullscreen) {
-      const selectedPath = state.selectedDiffPath;
-      if (selectedPath !== undefined) {
-        state.reviewFocusRequest = selectedPath;
-        this.enqueueReviewDiff(state, context, selectedPath, 100);
-      }
-    }
-    this.writeRoute(state);
-    this.requestRender(state);
   }
 
   selectDiff(context: WorkspacePanelContext, path: string): void {
@@ -796,7 +784,6 @@ function renderGitPanel(html: HtmlTemplateTag, controller: GitUiController, cont
           ${state.mode === "changes" && state.workspacePanelFullscreen && (state.status?.files.length ?? 0) > 0 ? renderReviewExpandCollapseAll(html, controller, context, state) : null}
           ${state.mode !== "changes" || state.workspacePanelFullscreen || viewState.expandablePaths.length === 0 ? null : renderExpandCollapseAll(html, controller, context, state, viewState.expandablePaths)}
           ${state.mode === "changes" ? renderViewToggle(html, controller, context) : null}
-          ${context.host.setWorkspacePanelFullscreen === undefined ? null : html`<button type="button" class="git-expand-panel" aria-pressed=${String(state.workspacePanelFullscreen)} @click=${() => { controller.toggleWorkspacePanelFullscreen(context); }}>${state.workspacePanelFullscreen ? "Exit expanded view" : "Expand panel"}</button>`}
           <button type="button" ?disabled=${state.mode === "changes" ? state.statusLoading : state.historyLoading} @click=${() => { void (state.mode === "changes" ? controller.refresh(context) : controller.refreshHistory(context)); }}>Refresh</button>
         </div>
       </section>

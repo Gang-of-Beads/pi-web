@@ -22,23 +22,23 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-describe("PiWebApp terminal expanded route", () => {
-  it("reads and writes the namespaced expanded value with the selected terminal", () => {
-    window.history.replaceState({}, "", `/?project=${project.id}&workspace=${workspace.id}&core.workspace.terminal--terminal=terminal-1&core.workspace.terminal--expanded=1`);
+describe("PiWebApp workspace expanded route", () => {
+  it("reads and writes the workspace-scoped expanded value with the selected terminal", () => {
+    window.history.replaceState({}, "", `/?project=${project.id}&workspace=${workspace.id}&core.workspace.terminal--terminal=terminal-1&core.workspace--expanded=1`);
     const app = appAtTerminal();
     const parsed: ParsedAppRoute = { ...terminalRoute };
 
     expect(callAppMethod(app, "readWorkspaceRouteSurface", parsed)).toEqual({
       selectedFilePath: undefined,
       selectedTerminalId: "terminal-1",
-      terminalExpanded: true,
+      workspaceExpanded: true,
     });
 
     Reflect.set(app, "workspacePanelFullscreen", true);
     callAppMethod(app, "syncWorkspaceRouteSurfaceToUrl");
     const params = new URL(window.location.href).searchParams;
     expect(params.get("core.workspace.terminal--terminal")).toBe("terminal-1");
-    expect(params.get("core.workspace.terminal--expanded")).toBe("1");
+    expect(params.get("core.workspace--expanded")).toBe("1");
   });
 
   it("keeps host state and Terminal route state in sync for user actions", () => {
@@ -51,23 +51,32 @@ describe("PiWebApp terminal expanded route", () => {
     host.setWorkspacePanelFullscreen?.(true);
 
     expect(host.workspacePanelFullscreen?.()).toBe(true);
-    expect(new URL(window.location.href).searchParams.get("core.workspace.terminal--expanded")).toBe("1");
+    expect(new URL(window.location.href).searchParams.get("core.workspace--expanded")).toBe("1");
 
     host.setWorkspacePanelFullscreen?.(false);
-    expect(new URL(window.location.href).searchParams.get("core.workspace.terminal--expanded")).toBeNull();
+    expect(new URL(window.location.href).searchParams.get("core.workspace--expanded")).toBeNull();
+
+    host.setWorkspacePanelFullscreen?.(true);
+    callAppMethod(app, "selectMainView", "chat");
+    expect(host.workspacePanelFullscreen?.()).toBe(false);
+    expect(new URL(window.location.href).searchParams.get("core.workspace--expanded")).toBeNull();
   });
 
-  it("restores expansion only for the matching active Terminal workspace route", () => {
+  it("restores expansion only for a matching active workspace-tool route", () => {
     const app = appAtTerminal();
 
-    callAppMethod(app, "restoreTerminalExpandedRoute", terminalRoute, { terminalExpanded: true }, "core:workspace.terminal");
+    callAppMethod(app, "restoreWorkspaceExpandedRoute", terminalRoute, { workspaceExpanded: true }, "core:workspace.terminal");
     expect(Reflect.get(app, "workspacePanelFullscreen")).toBe(true);
 
-    callAppMethod(app, "restoreTerminalExpandedRoute", { ...terminalRoute, workspaceId: "other" }, { terminalExpanded: true }, "core:workspace.terminal");
+    callAppMethod(app, "restoreWorkspaceExpandedRoute", { ...terminalRoute, workspaceId: "other" }, { workspaceExpanded: true }, "core:workspace.terminal");
     expect(Reflect.get(app, "workspacePanelFullscreen")).toBe(false);
 
-    callAppMethod(app, "restoreTerminalExpandedRoute", terminalRoute, { terminalExpanded: true }, "core:workspace.files");
+    callAppMethod(app, "restoreWorkspaceExpandedRoute", terminalRoute, { workspaceExpanded: true }, "core:workspace.files");
     expect(Reflect.get(app, "workspacePanelFullscreen")).toBe(false);
+
+    const filesRoute: AppRoute = { ...terminalRoute, tool: "core:workspace.files", view: "core:workspace.files" };
+    callAppMethod(app, "restoreWorkspaceExpandedRoute", filesRoute, { workspaceExpanded: true }, "core:workspace.files");
+    expect(Reflect.get(app, "workspacePanelFullscreen")).toBe(true);
   });
 });
 

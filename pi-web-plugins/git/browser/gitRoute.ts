@@ -37,7 +37,7 @@ export function createGitDiffRoute(panelContributionId: string): GitDiffRoute {
         mode,
         diffPath: mode === "changes" ? nonEmpty(params.get(key(diffQueryKey))) ?? nonEmpty(params.get(legacyDiffKey)) : undefined,
         commitId: mode === "history" ? commitId : undefined,
-        expanded: params.get(key(expandedQueryKey)) === "1",
+        expanded: params.get(key(expandedQueryKey)) === "1" || params.get("core.workspace--expanded") === "1",
       };
     },
     write: (state, options) => {
@@ -47,7 +47,6 @@ export function createGitDiffRoute(panelContributionId: string): GitDiffRoute {
       if (state.mode === "history") url.searchParams.set(key(modeQueryKey), "history");
       if (state.mode === "changes" && state.diffPath !== undefined && state.diffPath !== "") url.searchParams.set(key(diffQueryKey), state.diffPath);
       if (state.mode === "history" && state.commitId !== undefined && state.commitId !== "") url.searchParams.set(key(commitQueryKey), state.commitId);
-      if (state.expanded) url.searchParams.set(key(expandedQueryKey), "1");
       commitUrl(url, options?.replace === true);
     },
   };

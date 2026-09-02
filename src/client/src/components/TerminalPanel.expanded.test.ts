@@ -19,40 +19,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("TerminalPanel expanded view", () => {
-  it("offers a truthful reversible control without changing terminal selection", async () => {
-    const panel = new TerminalPanel();
-    panel.selectedTerminalId = "terminal-1";
-    panel.onExpandedChange = vi.fn();
-    document.body.append(panel);
-    await panel.updateComplete;
-
-    const expand = terminalButton(panel, "Expand terminal");
-    expect(expand.getAttribute("aria-pressed")).toBe("false");
-    expand.click();
-    expect(panel.onExpandedChange).toHaveBeenCalledWith(true);
-    expect(panel.selectedTerminalId).toBe("terminal-1");
-
-    panel.expanded = true;
-    await panel.updateComplete;
-    const exit = terminalButton(panel, "Exit expanded terminal");
-    expect(exit.getAttribute("aria-pressed")).toBe("true");
-    exit.click();
-    expect(panel.onExpandedChange).toHaveBeenLastCalledWith(false);
-  });
-
-  it("exits the shell presentation when disconnected", async () => {
-    const panel = new TerminalPanel();
-    panel.expanded = true;
-    panel.onExpandedChange = vi.fn();
-    document.body.append(panel);
-    await panel.updateComplete;
-
-    panel.remove();
-
-    expect(panel.onExpandedChange).toHaveBeenLastCalledWith(false);
-  });
-
+describe("TerminalPanel expanded geometry", () => {
   it("refits through the existing resize path after each layout transition", async () => {
     const panel = new TerminalPanel();
     const fitAndNotify = vi.fn();
@@ -73,18 +40,10 @@ describe("TerminalPanel expanded view", () => {
 
   it("limits the expansion control to the desktop media rule", () => {
     const sheet = String(TerminalPanel.styles);
-    expect(sheet).toContain(".fullscreen-toggle, terminal-soft-keys { display: none; }");
+    expect(sheet).toContain(".copy-mode-toggle, .soft-keys-toggle, terminal-soft-keys { display: none; }");
     expect(sheet).toMatch(/@media \(pointer: coarse\), \(max-width: 760px\)[\s\S]*?\.terminal-tabs > button \{ height: 44px; \}/u);
-    expect(sheet).toMatch(/@media \(min-width: 1181px\)\s*\{\s*\.fullscreen-toggle\s*\{\s*display: inline-flex;/u);
   });
 });
-
-function terminalButton(panel: TerminalPanel, label: string): HTMLButtonElement {
-  const button = [...(panel.shadowRoot?.querySelectorAll("button") ?? [])]
-    .find((candidate) => candidate.textContent.trim() === label);
-  if (!(button instanceof HTMLButtonElement)) throw new Error(`Missing terminal button: ${label}`);
-  return button;
-}
 
 function observerStub() {
   return class ObserverStub {

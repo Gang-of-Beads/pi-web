@@ -53,21 +53,24 @@ export class WorkspacePanel extends LitElement {
     return html`
       ${this.hideToolTabs ? null : html`
         <header>
-          <div class=${this.workspaceHeaderFrameClass()}>
-            <div class="workspace-header-strip" @scroll=${this.onWorkspaceHeaderScroll}>
-              <div class="tabs">
-                ${visiblePanels.map((panel) => {
-                  const selected = selectedPanel?.id === panel.id;
-                  const badge = panel.badge?.(context);
-                  const ariaLabel = this.panelTabAriaLabel(panel, badge);
-                  return html`
-                    <button class=${this.panelTabClass(panel, selected)} title=${ariaLabel} aria-label=${ariaLabel} aria-pressed=${String(selected)} @click=${() => { this.onSelectTool(panel.id); }}>
-                      ${this.renderPanelTabContent(panel, badge)}
-                    </button>
-                  `;
-                })}
+          <div class="workspace-header-layout">
+            <div class=${this.workspaceHeaderFrameClass()}>
+              <div class="workspace-header-strip" @scroll=${this.onWorkspaceHeaderScroll}>
+                <div class="tabs">
+                  ${visiblePanels.map((panel) => {
+                    const selected = selectedPanel?.id === panel.id;
+                    const badge = panel.badge?.(context);
+                    const ariaLabel = this.panelTabAriaLabel(panel, badge);
+                    return html`
+                      <button class=${this.panelTabClass(panel, selected)} title=${ariaLabel} aria-label=${ariaLabel} aria-pressed=${String(selected)} @click=${() => { this.onSelectTool(panel.id); }}>
+                        ${this.renderPanelTabContent(panel, badge)}
+                      </button>
+                    `;
+                  })}
+                </div>
               </div>
             </div>
+            ${context.host.setWorkspacePanelFullscreen === undefined ? null : this.renderFullscreenToggle(context)}
           </div>
         </header>
       `}
@@ -79,6 +82,21 @@ export class WorkspacePanel extends LitElement {
           ${selectedPanel.render(context)}
         </div>
       `}
+    `;
+  }
+
+  private renderFullscreenToggle(context: WorkspacePanelContext): TemplateResult {
+    const expanded = context.host.workspacePanelFullscreen?.() === true;
+    const label = expanded ? "Exit expanded view" : "Expand panel";
+    return html`
+      <button
+        type="button"
+        class="workspace-fullscreen-toggle"
+        title=${label}
+        aria-label=${label}
+        aria-pressed=${String(expanded)}
+        @click=${() => { context.host.setWorkspacePanelFullscreen?.(!expanded); }}
+      >${label}</button>
     `;
   }
 

@@ -6,7 +6,7 @@ import { browserSessionStorage, PersistentValueMap, type KeyValueStorage } from 
 export interface WorkspaceRouteSurface {
   selectedFilePath?: string | undefined;
   selectedTerminalId?: string | undefined;
-  terminalExpanded?: boolean | undefined;
+  workspaceExpanded?: boolean | undefined;
 }
 
 export interface MachineNavigationSnapshot {
@@ -125,7 +125,7 @@ function parseWorkspaceRouteSurface(value: unknown): WorkspaceRouteSurface {
   return {
     selectedFilePath: optionalStringField(value, "selectedFilePath"),
     selectedTerminalId: optionalStringField(value, "selectedTerminalId"),
-    terminalExpanded: value["terminalExpanded"] === true,
+    workspaceExpanded: value["workspaceExpanded"] === true,
   };
 }
 
