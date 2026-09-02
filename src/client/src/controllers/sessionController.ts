@@ -1,6 +1,6 @@
 import { api as defaultApi, isNotFoundError, type AskUserCloseResponse, type AskUserSubmission, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingAskUser, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionBackgroundTaskInfo, SessionSubagentRunInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Workspace } from "../api";
 import { errorNoticePatch } from "../errorNotice";
-import { commandOutcomeFor, dismissCommand, issueCommand, settleCommand, type CommandLedgerSource } from "../commandLedger";
+import { commandOutcomeFor, dismissCommand, issueCommand, settleCommand, withdrawCommand, type CommandLedgerSource } from "../commandLedger";
 import { RevisionScope } from "../revisionScope";
 import { SessionGapRepair } from "../sessionGapRepair";
 import { describeError } from "../notice";
@@ -639,7 +639,11 @@ export class SessionController {
         // successful response: the row reports what the command did, not
         // whether the request reached the server.
         const outcome = commandOutcomeFor(result);
-        if (outcome !== undefined) {
+        if (outcome === undefined) {
+          // select and tree answer with a dialog, which is the acknowledgment.
+          // Left pending the row could never be dismissed nor evicted.
+          this.setState({ commandLedger: withdrawCommand(this.getState().commandLedger, options.ledgerId) });
+        } else {
           this.settleLedgerRow(options.ledgerId, deferred
             ? { state: "ok", resultText: "accepted — waits for the running reply to finish" }
             : outcome);

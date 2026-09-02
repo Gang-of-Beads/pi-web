@@ -94,6 +94,18 @@ export function settleCommand(
  * capacity cap evicts besides this. A pending row is live work, not a
  * receipt, and refusing to dismiss it keeps the run's record honest.
  */
+/**
+ * Remove a row whose command answered with a dialog.
+ *
+ * Dismissal deliberately refuses a pending row, so that a receipt still
+ * waiting for its outcome cannot be swept away. A command that opens a dialog
+ * never gets an outcome - the dialog is the acknowledgment - so without this
+ * its row would stay pending forever, undismissable and exempt from the cap.
+ */
+export function withdrawCommand(entries: readonly CommandLedgerEntry[], id: string): CommandLedgerEntry[] {
+  return entries.filter((candidate) => candidate.id !== id);
+}
+
 export function dismissCommand(entries: readonly CommandLedgerEntry[], id: string): CommandLedgerEntry[] {
   const row = entries.find((candidate) => candidate.id === id);
   if (row === undefined || row.state === "pending") return [...entries];
