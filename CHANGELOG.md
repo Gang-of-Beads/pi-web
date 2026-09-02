@@ -1,5 +1,84 @@
 # @gang-of-beads/pi-web
 
+## 1.202609.5
+
+### Patch Changes
+
+- 9ff05b7: Large tool output no longer weighs down a transcript, and stop reaches compaction
+
+  A single transcript page answered a request for a hundred messages with 15.6 MB,
+  five tool results accounting for two thirds of it. Tool output is now bounded on
+  its way to the browser - on the page as well as on live events, and on the field
+  that is actually displayed - cut on whole characters, with the row saying how
+  much the whole output weighed so a stump is not mistaken for the end of it.
+
+  Stopping a session also now ends compaction. The runtime counts itself busy
+  while compaction runs and offers a way to abort it, which was never called, so a
+  session stuck compacting ignored the stop button entirely and new prompts could
+  only queue behind it.
+
+- 9ff05b7: A clay theme pair, in warm ink on paper
+
+  Two new themes drawn from Anthropic's published brand palette: Clay for dark
+  and Clay Paper for light, registered as a pair so the system light/dark
+  preference can switch between them. Their neutrals and accents are the
+  published values; two were darkened to stay readable as text rather than only
+  as fills, and a contrast test now holds both themes to 4.5:1 for body text
+  against the page and against a raised surface.
+
+- 9ff05b7: Dictation writes what you said, once, and hears the end of the sentence
+
+  Microphone audio was sent as a text frame. The speech service carries audio in
+  binary frames and discards anything else without an error, so speaking produced
+  nothing at all: no text, no failure, no clue. Audio now travels in the frame the
+  service reads, which was confirmed against the live endpoint - the same token
+  and the same samples answered only `turn.start` as text and the full
+  recognition sequence as binary.
+
+  That exposed two more faults on the path behind it. Live dictation reports
+  everything it has heard so far on every update, and the composer appended each
+  report to the last, so "hello world" arrived as "hello hello world" and grew
+  with every interim result; a report now replaces the span dictation owns and
+  leaves anything typed by hand alone. And stopping closed the connection without
+  the empty chunk that declares the utterance over, so stopping mid-sentence
+  dropped the final words.
+
+- 9ff05b7: A message is marked delivered on evidence, and a command reports what it did
+
+  A sent message was promoted to delivered whenever the current queue snapshot
+  omitted it. A snapshot omits a message for several ordinary reasons - while the
+  agent expands a prompt, between taking it and writing it, and whenever its id
+  could not be stamped on at all - so one message could appear twice, as two cards
+  in different states, or vanish. Delivery is now proved by the agent's committed
+  copy, and pending rows are keyed so they cannot collide with history and make
+  the transcript jump.
+
+  Command receipts were settled by whether the request threw, so a refusal the
+  server returned successfully still showed a green "done" beside the server's own
+  "not implemented" line. A receipt now reports the outcome, and a command whose
+  answer is a dialog leaves no receipt behind rather than one stuck pending
+  forever.
+
+- 0941a39: Prefix web browser tab titles with the Pi mark for faster recognition.
+- 9ff05b7: A transcript no longer claims to be empty while it is still loading
+
+  "Empty" was standing in for two different states. A session whose history had
+  not arrived yet said "This session is empty" and offered to write the first
+  message, then dropped the history on top of it. Loading and empty are now
+  distinct, and the loading state belongs to the selection that started it, so
+  switching sessions while one is still arriving cannot make the other look empty.
+
+- 9ff05b7: A waiting card can be read to the end, and reading holds its place
+
+  A card asking a question was held outside the transcript with a height budget,
+  so on a phone its own confirm buttons fell past the fold and the page would not
+  scroll to reach them. It is now the last row of the transcript, in normal flow,
+  with nothing pinned inside it, so it can be read at any length.
+
+  Separately, growth above the viewport used to move a reader who had scrolled up,
+  because this scroller turns off the browser's own scroll anchoring. A reader who
+  is not pinned to the bottom now keeps their place while new content arrives.
+
 ## 1.202609.4
 
 ### Patch Changes
