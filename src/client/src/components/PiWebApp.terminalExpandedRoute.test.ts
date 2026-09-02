@@ -2,6 +2,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import { initialAppState } from "../appState";
+import type { WorkspaceHost } from "../plugins/types";
 import type { AppRoute, ParsedAppRoute } from "../route";
 import { PiWebApp } from "./PiWebApp";
 
@@ -40,6 +41,22 @@ describe("PiWebApp terminal expanded route", () => {
     expect(params.get("core.workspace.terminal--expanded")).toBe("1");
   });
 
+  it("keeps host state and Terminal route state in sync for user actions", () => {
+    window.history.replaceState({}, "", `/?project=${project.id}&workspace=${workspace.id}&tool=core%3Aworkspace.terminal&view=core%3Aworkspace.terminal`);
+    const app = appAtTerminal();
+    const host = callAppMethod(app, "createWorkspaceHost");
+    if (!isWorkspaceHost(host)) throw new Error("PiWebApp did not create a workspace host");
+
+    expect(host.workspacePanelFullscreen?.()).toBe(false);
+    host.setWorkspacePanelFullscreen?.(true);
+
+    expect(host.workspacePanelFullscreen?.()).toBe(true);
+    expect(new URL(window.location.href).searchParams.get("core.workspace.terminal--expanded")).toBe("1");
+
+    host.setWorkspacePanelFullscreen?.(false);
+    expect(new URL(window.location.href).searchParams.get("core.workspace.terminal--expanded")).toBeNull();
+  });
+
   it("restores expansion only for the matching active Terminal workspace route", () => {
     const app = appAtTerminal();
 
@@ -67,6 +84,10 @@ function appAtTerminal(): PiWebApp {
     mainView: "core:workspace.terminal",
   });
   return app;
+}
+
+function isWorkspaceHost(value: unknown): value is WorkspaceHost {
+  return typeof value === "object" && value !== null && "requestRender" in value;
 }
 
 function callAppMethod(app: PiWebApp, name: string, ...args: unknown[]): unknown {

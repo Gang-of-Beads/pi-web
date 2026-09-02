@@ -33,6 +33,8 @@ export class TerminalPanel extends LitElement {
   @property() machineId = "local";
   @property({ attribute: false }) selectedTerminalId: string | undefined;
   @property({ type: Boolean }) autoStart = false;
+  @property({ type: Boolean }) expanded = false;
+  @property({ attribute: false }) onExpandedChange: (expanded: boolean) => void = () => undefined;
   @property({ attribute: false }) onSelectTerminal: (terminalId: string | undefined, options?: { replace?: boolean | undefined }) => void = () => undefined;
   @query(".terminal-host") private terminalHost?: HTMLDivElement | null;
   @query(".terminal-copy-content") private terminalCopyContent?: HTMLPreElement | null;
@@ -83,6 +85,7 @@ export class TerminalPanel extends LitElement {
   }
 
   override disconnectedCallback(): void {
+    if (this.expanded) this.onExpandedChange(false);
     this.intersectionObserver?.disconnect();
     this.intersectionObserver = undefined;
     this.themeObserver?.disconnect();
@@ -670,6 +673,12 @@ export class TerminalPanel extends LitElement {
             </button>
           `)}
           <button class="new" ?disabled=${this.workspace === undefined} @click=${() => { void this.startTerminal(); }}>+ Shell</button>
+          <button
+            type="button"
+            class="fullscreen-toggle"
+            aria-pressed=${String(this.expanded)}
+            @click=${() => { this.onExpandedChange(!this.expanded); }}
+          >${this.expanded ? "Exit expanded terminal" : "Expand terminal"}</button>
         </div>
         ${this.error === undefined ? null : html`<p class="error">${this.error}</p>`}
         ${this.renderCommandRunNotice()}
@@ -689,7 +698,8 @@ export class TerminalPanel extends LitElement {
     .terminal-tabs { flex: 0 0 auto; display: flex; gap: 6px; align-items: center; padding: 6px; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); overflow: auto; }
     .terminal-tabs > button { box-sizing: border-box; height: 30px; line-height: 16px; }
     /* Desktop xterm already has mouse selection and hardware keys; keep touch controls to touch/narrow layouts. */
-    .copy-mode-toggle, .soft-keys-toggle, terminal-soft-keys { display: none; }
+    .copy-mode-toggle, .soft-keys-toggle, .fullscreen-toggle, terminal-soft-keys { display: none; }
+    @media (min-width: 1181px) { .fullscreen-toggle { display: inline-flex; margin-left: auto; max-width: none; } }
     .copy-mode-toggle.selected { display: inline-flex; }
     @media (pointer: coarse), (max-width: 760px) {
       .copy-mode-toggle, .soft-keys-toggle { display: inline-flex; }

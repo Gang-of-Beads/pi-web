@@ -30,7 +30,7 @@ function renderFiles(context: WorkspacePanelContext): TemplateResult {
 
 function renderTerminal(context: WorkspacePanelContext): TemplateResult {
   loadTerminalPanel();
-  return html`<terminal-panel .workspace=${context.workspace} .machineId=${context.machine.id} .selectedTerminalId=${context.selectedTerminalId} .autoStart=${context.terminalAutoStart} .onSelectTerminal=${context.onSelectTerminal}></terminal-panel>`;
+  return html`<terminal-panel .workspace=${context.workspace} .machineId=${context.machine.id} .selectedTerminalId=${context.selectedTerminalId} .autoStart=${context.terminalAutoStart} .expanded=${context.host.workspacePanelFullscreen?.() === true} .onExpandedChange=${(expanded: boolean) => { context.host.setWorkspacePanelFullscreen?.(expanded); }} .onSelectTerminal=${context.onSelectTerminal}></terminal-panel>`;
 }
 
 function loadTerminalPanel(): void {

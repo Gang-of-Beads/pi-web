@@ -2404,7 +2404,14 @@ export class PiWebApp extends LitElement {
     return {
       requestRender: () => { this.requestUpdate(); },
       workspacePanelFullscreen: () => this.workspacePanelFullscreen,
-      setWorkspacePanelFullscreen: (fullscreen) => { this.workspacePanelFullscreen = fullscreen; },
+      setWorkspacePanelFullscreen: (fullscreen) => {
+        if (this.workspacePanelFullscreen === fullscreen) return;
+        this.workspacePanelFullscreen = fullscreen;
+        if (this.routeRestoreDepth === 0 && this.state.mainView === "core:workspace.terminal") {
+          setNamespacedQueryKey(TERMINAL_ROUTE_NAMESPACE, "expanded", fullscreen ? "1" : undefined);
+          this.rememberCurrentMachineNavigation();
+        }
+      },
     };
   }
 
