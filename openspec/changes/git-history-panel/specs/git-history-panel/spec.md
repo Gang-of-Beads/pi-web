@@ -58,7 +58,7 @@ Selecting a listed commit SHALL show its commit metadata and diff in the Git vie
 
 #### Scenario: Selected commit changes multiple files
 - **WHEN** a selected ordinary or merge commit patch contains multiple file boundaries
-- **THEN** the viewer SHALL render a separately headed diff section for each file rather than one undifferentiated patch table
+- **THEN** the viewer SHALL render a separately headed, independently collapsible diff section for each file rather than one undifferentiated patch table, and SHALL provide expand-all and collapse-all actions
 
 #### Scenario: Selected commit diff cannot be read
 - **WHEN** the selected commit diff request fails

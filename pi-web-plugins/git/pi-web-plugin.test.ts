@@ -278,7 +278,19 @@ describe("bundled Git browser plugin", () => {
     expect(backend.request).toHaveBeenCalledWith("commit-diff", { id: historyCommit.id });
     expect(new URL(window.location.href).searchParams.get("git.workspace.git--commit")).toBe(historyCommit.id);
     expect(container.textContent).toContain("Ada Lovelace <ada@example.test>");
-    expect([...container.querySelectorAll(".git-commit-file > .git-viewer-header strong")].map((element) => element.textContent)).toEqual(["src/first.ts", "src/second.ts"]);
+    expect([...container.querySelectorAll(".git-commit-file-toggle")].map((element) => element.textContent.trim())).toEqual(["▾ src/first.ts", "▾ src/second.ts"]);
+    expect(container.querySelectorAll('[role="table"][aria-label^="Commit diff for "]')).toHaveLength(2);
+
+    button(container, "▾ src/first.ts").click();
+    render(panel.render(context), container);
+    expect(button(container, "▸ src/first.ts").getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelectorAll('[role="table"][aria-label^="Commit diff for "]')).toHaveLength(1);
+
+    button(container, "Collapse all file diffs").click();
+    render(panel.render(context), container);
+    expect(container.querySelectorAll('.git-commit-file-toggle[aria-expanded="false"]')).toHaveLength(2);
+    button(container, "Expand all file diffs").click();
+    render(panel.render(context), container);
     expect(container.querySelectorAll('[role="table"][aria-label^="Commit diff for "]')).toHaveLength(2);
 
     button(container, "Changes").click();

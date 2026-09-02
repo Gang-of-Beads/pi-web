@@ -70,6 +70,7 @@ interface GitWorkspaceUiState {
   commitDiffLoading: boolean;
   commitDiffError: string | undefined;
   commitDiffRequestSequence: number;
+  collapsedCommitDiffPaths: Set<string>;
   workspacePanelFullscreen: boolean;
   reviewDiffs: Map<string, GitReviewDiffState>;
   reviewQueue: GitReviewQueueEntry[];
@@ -279,11 +280,27 @@ export class GitUiController {
     const state = this.stateFor(context);
     state.selectedCommitId = commit.id;
     state.selectedCommitDiff = undefined;
+    state.collapsedCommitDiffPaths = new Set();
     state.commitDiffError = undefined;
     state.commitDiffLoading = true;
     this.writeRoute(state);
     this.requestRender(state);
     void this.refreshCommitDiff(state, context, commit.id);
+  }
+
+  toggleCommitDiff(context: WorkspacePanelContext, path: string): void {
+    const state = this.stateFor(context);
+    const next = new Set(state.collapsedCommitDiffPaths);
+    if (next.has(path)) next.delete(path);
+    else next.add(path);
+    state.collapsedCommitDiffPaths = next;
+    this.requestRender(state);
+  }
+
+  toggleAllCommitDiffs(context: WorkspacePanelContext, paths: readonly string[], collapse: boolean): void {
+    const state = this.stateFor(context);
+    state.collapsedCommitDiffPaths = collapse ? new Set(paths) : new Set();
+    this.requestRender(state);
   }
 
   retryCommitDiff(context: WorkspacePanelContext): void {
@@ -453,6 +470,7 @@ export class GitUiController {
       commitDiffLoading: false,
       commitDiffError: undefined,
       commitDiffRequestSequence: 0,
+      collapsedCommitDiffPaths: new Set(),
       workspacePanelFullscreen: false,
       reviewDiffs: new Map(),
       reviewQueue: [],
@@ -524,6 +542,7 @@ export class GitUiController {
   private clearCommitSelection(state: GitWorkspaceUiState): void {
     state.selectedCommitId = undefined;
     state.selectedCommitDiff = undefined;
+    state.collapsedCommitDiffPaths = new Set();
     state.commitDiffLoading = false;
     state.commitDiffError = undefined;
     state.commitDiffRequestSequence += 1;
@@ -1050,16 +1069,36 @@ function renderCommitDiffViewer(html: HtmlTemplateTag, controller: GitUiControll
   return html`
     ${metadata}
     ${response.truncated ? html`<p class="git-muted">Diff truncated.</p>` : null}
-    ${files.length === 0 ? html`<p class="git-muted">This commit has no patch.</p>` : html`
-      <div class="git-commit-files">
-        ${files.map((file) => html`
+    ${files.length === 0 ? html`<p class="git-muted">This commit has no patch.</p>` : renderCommitDiffFiles(html, controller, context, state, files)}
+  `;
+}
+
+function renderCommitDiffFiles(
+  html: HtmlTemplateTag,
+  controller: GitUiController,
+  context: WorkspacePanelContext,
+  state: GitWorkspaceUiState,
+  files: readonly UnifiedDiffFileSection[],
+) {
+  const paths = files.map((file) => file.path);
+  const allCollapsed = paths.every((path) => state.collapsedCommitDiffPaths.has(path));
+  return html`
+    <div class="git-commit-files-actions">
+      <button type="button" @click=${() => { controller.toggleAllCommitDiffs(context, paths, !allCollapsed); }}>${allCollapsed ? "Expand all file diffs" : "Collapse all file diffs"}</button>
+    </div>
+    <div class="git-commit-files">
+      ${files.map((file) => {
+        const collapsed = state.collapsedCommitDiffPaths.has(file.path);
+        return html`
           <section class="git-commit-file">
-            <div class="git-viewer-header"><strong>${file.path}</strong></div>
-            ${renderDiffGrid(html, file.lines, `Commit diff for ${file.path}`)}
+            <div class="git-viewer-header">
+              <button type="button" class="git-commit-file-toggle" aria-expanded=${String(!collapsed)} @click=${() => { controller.toggleCommitDiff(context, file.path); }}>${collapsed ? "▸" : "▾"} ${file.path}</button>
+            </div>
+            ${collapsed ? null : renderDiffGrid(html, file.lines, `Commit diff for ${file.path}`)}
           </section>
-        `)}
-      </div>
-    `}
+        `;
+      })}
+    </div>
   `;
 }
 
@@ -1339,8 +1378,10 @@ const gitPanelStyles = `
   .git-panel .git-commit-metadata dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 3px 8px; margin: 8px; }
   .git-panel .git-commit-metadata dt { color: var(--pi-muted); }
   .git-panel .git-commit-metadata dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+  .git-panel .git-commit-files-actions { display: flex; justify-content: flex-end; padding: 8px; border-bottom: 1px solid var(--pi-border-muted); }
   .git-panel .git-commit-files { min-height: 0; display: flex; flex-direction: column; }
   .git-panel .git-commit-file { min-width: 0; border-bottom: 1px solid var(--pi-border); }
+  .git-panel .git-commit-file-toggle { min-width: 0; overflow: hidden; border: 0; background: transparent; padding: 2px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
   .git-panel .git-commit-file:last-child { border-bottom: 0; }
   .git-panel .git-diff-scroller { flex: 1 1 auto; min-height: 0; overflow: auto; background: var(--pi-bg); }
   .git-panel .git-diff-grid { display: grid; grid-template-columns: max-content max-content 2ch max-content; width: max-content; min-width: 100%; padding: 6px 0; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; line-height: 1.45; }
