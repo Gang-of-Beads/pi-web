@@ -46,7 +46,7 @@ import "./ConversationMeter";
 import "./FormattedText";
 import "./ToolExecutionView";
 import { sessionStateBadgeStyles as SessionStateBadgeStyles } from "./sessionStateBadgeStyles";
-import { readingAnchorDecision, readingScrollCorrection } from "../readingAnchor";
+import { readingAnchorDecision, readingScrollCorrection, shouldHoldReadingPosition } from "../readingAnchor";
 
 export const chatStyles = css`
   ${SessionStateBadgeStyles}
@@ -776,6 +776,8 @@ export class ChatView extends LitElement {
   @query("dialog.activity-output") private activityOutputDialog?: HTMLDialogElement;
   @query("dialog.activity-conversation") private activityConversationDialog?: HTMLDialogElement;
   @state() private pinnedToBottom = true;
+  /** True while a touch gesture is moving the scroller; see onTouchStart. */
+  private userScrollInFlight = false;
   private readonly followGate = new ScrollFollowGate();
   /** Same invariant as the transcript's gate, for the notifications drawer's own scroller. */
   private readonly drawerGate = new ScrollFollowGate();
@@ -999,7 +1001,18 @@ export class ChatView extends LitElement {
     // This is the same measure-and-restore, without the prepend's multi-frame
     // settle: an append shifts by a line, not by a page, and the settle also
     // suppresses load-more, which must keep working while reading.
-    const readingAnchor = decision === "hold-reading-position" ? this.captureReadingAnchor() : undefined;
+    // Measuring the reader's place costs a walk over every message row and a
+    // forced layout, so it only runs when content above them can have moved.
+    // A reply streaming below the fold moves nothing above; a reader whose
+    // gesture is in flight owns the scroll outright. Doing it on every render
+    // made a long transcript crawl and snapped the view back under the thumb.
+    const readingAnchor = decision === "hold-reading-position" && shouldHoldReadingPosition({
+      pinnedToBottom: this.pinnedToBottom,
+      contentAboveChanged: this.didContentAboveChange(changed),
+      userScrolling: this.userScrollInFlight,
+    })
+      ? this.captureReadingAnchor()
+      : undefined;
     super.update(changed);
     if (prependAnchor !== undefined) this.restorePrependScrollAnchor(prependAnchor);
     if (readingAnchor !== undefined) this.restoreReadingAnchor(readingAnchor);
@@ -2682,10 +2695,14 @@ export class ChatView extends LitElement {
 
   private onTouchStart(event: TouchEvent) {
     this.touchStartY = event.touches[0]?.clientY;
+    // The reader owns the scroll while their finger is down; an update that
+    // wrote scrollTop underneath them snapped the view back.
+    this.userScrollInFlight = true;
     this.notePressStart();
   }
 
   private onTouchEnd(): void {
+    this.userScrollInFlight = false;
     this.releasePointer();
   }
 
@@ -2764,6 +2781,18 @@ export class ChatView extends LitElement {
   private isPrependingMessages(changed: Map<string, unknown>): boolean {
     const oldMessageStart = changed.get("messageStart");
     return typeof oldMessageStart === "number" && this.messageStart < oldMessageStart;
+  }
+
+  /**
+   * Whether anything above the reader can have moved.
+   *
+   * Only a change to where the window starts puts rows above them. A reply
+   * streaming into the last row, an activity chip, a queued message - all of
+   * that grows below, and restoring a position against it costs a full row
+   * walk and a forced layout to move the scroller by zero pixels.
+   */
+  private didContentAboveChange(changed: Map<string, unknown>): boolean {
+    return changed.has("messageStart") || changed.has("hasMore") || changed.has("loadingMore");
   }
 
   private requestLoadMoreIfNeeded(): void {
