@@ -13,4 +13,4 @@
 ## 3. Release and integration verification
 
 - [x] 3.1 Add a patch Changeset describing the full-canvas desktop terminal and verify it with `npm run changelog:status`.
-- [ ] 3.2 Run focused Terminal, route, PiWebApp, and plugin API tests, `npm run typecheck`, lint changed TypeScript files, and `npm run verify`; record exact results and investigate every non-zero check before opening the implementation PR.
+- [x] 3.2 Run focused Terminal, route, PiWebApp, and plugin API tests, `npm run typecheck`, lint changed TypeScript files, and `npm run verify`; record exact results and investigate every non-zero check before opening the implementation PR.
