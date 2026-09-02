@@ -2403,6 +2403,7 @@ export class PiWebApp extends LitElement {
   private createWorkspaceHost(): WorkspaceHost {
     return {
       requestRender: () => { this.requestUpdate(); },
+      workspacePanelFullscreen: () => this.workspacePanelFullscreen,
       setWorkspacePanelFullscreen: (fullscreen) => { this.workspacePanelFullscreen = fullscreen; },
     };
   }
