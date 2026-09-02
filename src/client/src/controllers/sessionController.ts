@@ -1,10 +1,12 @@
 import { api as defaultApi, isNotFoundError, type AskUserCloseResponse, type AskUserSubmission, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingAskUser, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionBackgroundTaskInfo, SessionSubagentRunInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Workspace } from "../api";
+import { projectsApi, workspacesApi } from "../api";
 import { errorNoticePatch } from "../errorNotice";
 import { commandOutcomeFor, dismissCommand, issueCommand, settleCommand, withdrawCommand, type CommandLedgerSource } from "../commandLedger";
 import { RevisionScope } from "../revisionScope";
 import { SessionGapRepair } from "../sessionGapRepair";
 import { describeError } from "../notice";
 import { ancestorsForSession } from "../sessionAncestors";
+import { locateSessionWorkspace } from "../sessionAncestorLookup";
 import { refreshMayReplaceSelection } from "./sessionRefreshScope";
 import { activityOutputView, subagentRunConversationView, type AppState, type ClosedExtensionDialog } from "../appState";
 import { forgetCachedNewSession, isCachedNewSessionInfo, markCachedNewSessionInfo, mergeCachedNewSessions, rememberCachedNewSession, stripCachedNewSessionMarker } from "../cachedNewSessions";
@@ -298,6 +300,14 @@ export class SessionController {
     const ancestors = ancestorsForSession(session, { workspaces: state.workspaces, projects: state.projects });
     const workspaceMoved = ancestors !== undefined
       && (ancestors.workspace.id !== state.selectedWorkspace?.id || ancestors.workspace.projectId !== state.selectedProject?.id);
+    // A session whose workspace is not in the loaded catalogue belongs to a
+    // project that was never fetched. Leaving the previous selection in place
+    // kept every workspace-scoped panel answering for the project being left,
+    // so the missing one is fetched instead; until it lands the location is
+    // unknown, which is what the panels are told.
+    if (ancestors === undefined && session.cwd !== "") {
+      void this.locateAndApplySessionWorkspace(session, machineId, seq);
+    }
     this.setState({
       selectedSession: session,
       ...(ancestors === undefined ? {} : { selectedWorkspace: ancestors.workspace, selectedProject: ancestors.project }),
@@ -1762,6 +1772,29 @@ export class SessionController {
       released.push(suppressed.session);
     }
     return released;
+  }
+
+  /**
+   * Fetch the project that owns a session directory the loaded catalogue could
+   * not place, then adopt it as the selection.
+   *
+   * Guarded on the selection counter and on the session still being selected:
+   * a lookup that lands after the user has moved on must not drag the view back.
+   */
+  private async locateAndApplySessionWorkspace(session: SessionInfo, machineId: string, seq: number): Promise<void> {
+    const cwd = session.cwd;
+    if (cwd === "") return;
+    const found = await locateSessionWorkspace(cwd, {
+      projects: () => projectsApi.projects(machineId),
+      workspaces: (projectId: string) => workspacesApi.workspaces(projectId, machineId),
+    });
+    if (found === undefined || seq !== this.selectionSeq) return;
+    if (this.getState().selectedSession?.id !== session.id) return;
+    const project = this.getState().projects.find((candidate) => candidate.id === found.project.id);
+    this.setState({
+      selectedWorkspace: found.workspace,
+      ...(project === undefined ? {} : { selectedProject: project }),
+    });
   }
 
   private applyReleasedCreatedSessions(sessions: readonly SessionInfo[], machineId: string): void {

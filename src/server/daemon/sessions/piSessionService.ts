@@ -106,6 +106,7 @@ import { plainTextTheme } from "./plainTextTheme.js";
 import { SessionUnreadStore, type SessionUnreadMutation } from "./sessionUnreadStore.js";
 import { applyEnabledModelToggle, catalogWithEnabledFirst, liveScopedModelIds, modelScopeId, persistedEnabledModelPatterns, resolveEnabledModelIds, resolveSessionModelOptions, type EnabledModelCatalogEntry } from "./sessionModelScope.js";
 import { boundToolResultText } from "./toolResultBounds.js";
+import { correlateQueuedPromptIds } from "./queuedPromptIdentity.js";
 
 interface ActiveSession<TRuntime> {
   runtime: TRuntime;
@@ -2640,17 +2641,23 @@ export class PiSessionService implements SessionRouteService {
    * order. Records whose text is no longer queued are dropped here: this is the
    * signal the sender uses to move that message from "queued" to "delivered".
    */
+  /**
+   * Give each queued prompt back the id its sender minted.
+   *
+   * This used to pair them by comparing text, which is not identity: the
+   * runtime expands /skill and prompt templates before queueing, and an
+   * attachment-only prompt carries no text to compare. Either way the entry
+   * lost its id, the browser could not claim its own bubble, and a duplicate
+   * row appeared for a message already on screen - reported five times.
+   * Submission order is the correlation the queue does preserve.
+   */
   private attachQueuedPromptClientIds(sessionId: string, queued: QueuedSessionMessage[]): void {
     const records = this.queuedPromptClientIds.get(sessionId);
     if (records === undefined || records.length === 0) return;
-    const remaining = [...records];
-    for (const message of queued) {
-      const index = remaining.findIndex((record) => record.text === message.text);
-      if (index === -1) continue;
-      const record = remaining[index];
-      if (record === undefined) continue;
-      message.clientMessageId = record.clientMessageId;
-      remaining.splice(index, 1);
+    const correlated = correlateQueuedPromptIds(queued, records);
+    for (const [index, entry] of correlated.entries()) {
+      const target = queued[index];
+      if (target !== undefined && entry.clientMessageId !== undefined) target.clientMessageId = entry.clientMessageId;
     }
     const stillQueued = records.filter((record) => queued.some((message) => message.clientMessageId === record.clientMessageId));
     if (stillQueued.length === 0) this.queuedPromptClientIds.delete(sessionId);
