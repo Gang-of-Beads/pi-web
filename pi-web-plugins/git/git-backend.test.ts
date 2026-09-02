@@ -2,10 +2,16 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import type { ServerPluginActivationContext, ServerPluginExecFileResult } from "@gang-of-beads/pi-web/server-plugin-api";
 import { createServerPluginExecFile } from "../../src/server/shared/plugins/serverPluginExec.js";
-import { gitDiff as requestGitDiff, gitStatus as requestGitStatus } from "./git-backend.js";
+import {
+  gitCommitDiff as requestGitCommitDiff,
+  gitDiff as requestGitDiff,
+  gitHistory as requestGitHistory,
+  gitStatus as requestGitStatus,
+  parseHistoryLog,
+} from "./git-backend.js";
 
 // Isolate from any global/system git config and force a deterministic identity;
 // `protocol.file.allow` is required for `submodule add` from a local path.
@@ -44,6 +50,14 @@ function gitStatus(cwd: string) {
 
 function gitDiff(cwd: string, options: { path?: string; staged?: boolean }) {
   return requestGitDiff(backendContext, cwd, options, new AbortController().signal);
+}
+
+function gitHistory(cwd: string, cursor?: string) {
+  return requestGitHistory(backendContext, cwd, cursor === undefined ? {} : { cursor }, new AbortController().signal);
+}
+
+function gitCommitDiff(cwd: string, id: string) {
+  return requestGitCommitDiff(backendContext, cwd, { id }, new AbortController().signal);
 }
 
 function git(cwd: string, args: string[]): string {
@@ -96,6 +110,106 @@ function createSpacedPathFixture(): { dir: string } {
   git(sup, ["commit", "-m", "init"]);
   return { dir: sup };
 }
+
+describe("Git history backend", () => {
+  it("pages a frozen current-HEAD timeline with NUL-safe commit fields", async () => {
+    const base = mkdtempSync(join(tmpdir(), "pi-web-history-"));
+    created.push(base);
+    git(base, ["init", "-b", "main"]);
+    for (let index = 0; index < 52; index += 1) {
+      writeFileSync(join(base, "timeline.txt"), `${String(index)}\n`);
+      git(base, ["add", "timeline.txt"]);
+      git(base, ["commit", "-m", `subject ${String(index)} | punctuation`, "-m", "multiline\nbody"]);
+    }
+    const head = git(base, ["rev-parse", "HEAD"]).trim();
+
+    const first = await gitHistory(base);
+    expect(first).toMatchObject({ unborn: false, truncated: false });
+    expect(first.commits).toHaveLength(50);
+    expect(first.commits[0]).toMatchObject({ id: head, subject: "subject 51 | punctuation" });
+    expect(first.nextCursor).toEqual(expect.any(String));
+
+    writeFileSync(join(base, "after-snapshot.txt"), "new\n");
+    git(base, ["add", "after-snapshot.txt"]);
+    git(base, ["commit", "-m", "not in frozen page"]);
+    const second = await gitHistory(base, first.nextCursor);
+    expect(second.commits).toHaveLength(2);
+    expect(second.commits.some((commit) => commit.subject === "not in frozen page")).toBe(false);
+    expect(second.nextCursor).toBeUndefined();
+  });
+
+  it("reports an unborn HEAD without treating it as a Git failure", async () => {
+    const base = mkdtempSync(join(tmpdir(), "pi-web-unborn-"));
+    created.push(base);
+    git(base, ["init", "-b", "main"]);
+
+    await expect(gitHistory(base)).resolves.toEqual({ unborn: true, commits: [], truncated: false });
+  });
+
+  it("retrieves ordinary and combined merge commit diffs only for reachable commits", async () => {
+    const base = mkdtempSync(join(tmpdir(), "pi-web-commit-diff-"));
+    created.push(base);
+    git(base, ["init", "-b", "main"]);
+    writeFileSync(join(base, "shared.txt"), "base\n");
+    git(base, ["add", "shared.txt"]);
+    git(base, ["commit", "-m", "base"]);
+    const baseCommit = git(base, ["rev-parse", "HEAD"]).trim();
+    git(base, ["switch", "-c", "feature"]);
+    writeFileSync(join(base, "feature.txt"), "feature\n");
+    git(base, ["add", "feature.txt"]);
+    git(base, ["commit", "-m", "feature"]);
+    git(base, ["switch", "main"]);
+    writeFileSync(join(base, "main.txt"), "main\n");
+    git(base, ["add", "main.txt"]);
+    git(base, ["commit", "-m", "main"]);
+    git(base, ["merge", "--no-ff", "feature", "-m", "merge feature"]);
+    const merge = git(base, ["rev-parse", "HEAD"]).trim();
+
+    const ordinary = await gitCommitDiff(base, baseCommit);
+    const combined = await gitCommitDiff(base, merge);
+    expect(ordinary.combined).toBe(false);
+    expect(ordinary.commit.parentIds).toHaveLength(0);
+    expect(combined).toMatchObject({ combined: true, commit: { id: merge } });
+    expect(combined.commit.parentIds).toHaveLength(2);
+
+    git(base, ["branch", "orphan", baseCommit]);
+    git(base, ["switch", "orphan"]);
+    writeFileSync(join(base, "orphan.txt"), "orphan\n");
+    git(base, ["add", "orphan.txt"]);
+    git(base, ["commit", "-m", "orphan"]);
+    const orphan = git(base, ["rev-parse", "HEAD"]).trim();
+    git(base, ["switch", "main"]);
+    await expect(gitCommitDiff(base, orphan)).rejects.toThrow("not reachable from the current HEAD");
+    await expect(gitCommitDiff(base, "f".repeat(40))).rejects.toThrow("Not a valid object name");
+    await expect(gitCommitDiff(base, "not-an-object-id")).rejects.toThrow("complete object ID");
+  });
+
+  it("preserves a truncated commit diff while using the combined command for merges", async () => {
+    const id = "a".repeat(40);
+    const rawMetadata = [id, `${"b".repeat(40)} ${"c".repeat(40)}`, "Test", "test@example.test", "2026-09-01T00:00:00+00:00", "merge", ""].join("\0") + "\0";
+    const execFile = vi.fn<ServerPluginActivationContext["execFile"]>((request) => {
+      const args = request.args ?? [];
+      switch (args[0]) {
+        case "cat-file":
+        case "merge-base": return Promise.resolve(commandResult());
+        case "log": return Promise.resolve(commandResult({ stdout: rawMetadata }));
+        case "show": return Promise.resolve(commandResult({ stdout: "diff --cc file\n", stdoutTruncated: true }));
+        case undefined: throw new Error("Unexpected command without arguments");
+        default: throw new Error(`Unexpected command: ${args.join(" ")}`);
+      }
+    });
+    const response = await requestGitCommitDiff({ ...backendContext, execFile }, "/repo", { id }, new AbortController().signal);
+
+    expect(response).toMatchObject({ combined: true, truncated: true, diff: "diff --cc file\n" });
+    expect(execFile.mock.calls[3]?.[0]?.args).toEqual(["show", "--no-ext-diff", "--color=never", "--format=", "--cc", id]);
+  });
+
+  it("rejects malformed NUL-delimited history output", () => {
+    expect(() => parseHistoryLog("a".repeat(40))).toThrow("malformed NUL-delimited history output");
+    expect(() => parseHistoryLog(`${"a".repeat(40)}\0parent-is-not-an-id\0name\0email\0date\0subject\0\0`))
+      .toThrow("malformed NUL-delimited history output");
+  });
+});
 
 describe("Git changes backend", () => {
   it("preserves staged, unstaged, and untracked file behavior", async () => {

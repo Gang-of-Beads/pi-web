@@ -1,8 +1,8 @@
 ## 1. Git history backend contract
 
-- [ ] 1.1 Add Git history and selected-commit-diff operation types, validated browser contracts, and bounded request inputs/responses; verify with focused contract-parser tests and `npm run typecheck`.
-- [ ] 1.2 Implement current-HEAD, 50-entry snapshot-paginated history in the Git backend using strict NUL-delimited parsing, including unborn-HEAD and malformed-output behavior; verify with focused backend fixture tests covering ordinary commits, merge commits, multiline/special-character messages, pagination, and no commits.
-- [ ] 1.3 Implement selected commit metadata and ordinary/combined-merge diff retrieval without mutation, with reachability/input validation and attributable failure behavior; verify with focused backend tests covering normal commits, merge commits, invalid/unreachable IDs, missing objects, and output truncation.
+- [x] 1.1 Add Git history and selected-commit-diff operation types, validated browser contracts, and bounded request inputs/responses; verified with focused contract-parser tests and `npm run typecheck`.
+- [x] 1.2 Implement current-HEAD, 50-entry snapshot-paginated history in the Git backend using strict NUL-delimited parsing, including unborn-HEAD and malformed-output behavior; verified with focused backend fixture tests covering ordinary commits, merge commits, multiline/special-character messages, pagination, and no commits.
+- [x] 1.3 Implement selected commit metadata and ordinary/combined-merge diff retrieval without mutation, with reachability/input validation and attributable failure behavior; verified with focused backend tests covering normal commits, merge commits, invalid/unreachable IDs, missing objects, and output truncation.
 
 ## 2. History panel state and interaction
 

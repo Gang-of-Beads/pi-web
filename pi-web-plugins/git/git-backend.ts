@@ -9,18 +9,44 @@ import type {
   ServerPluginExecFileResult,
 } from "@gang-of-beads/pi-web/server-plugin-api";
 import {
+  GIT_COMMIT_DIFF_OPERATION,
   GIT_DIFF_OPERATION,
+  GIT_HISTORY_OPERATION,
   GIT_STATUS_OPERATION,
+  type GitCommitDiffRequest,
+  type GitCommitDiffResponse,
+  type GitCommitSummary,
   type GitDiffResponse,
+  type GitHistoryRequest,
+  type GitHistoryResponse,
   type GitFileState,
   type GitStatusFile,
   type GitStatusResponse,
 } from "./browser/git-contract.js";
 
-export { GIT_DIFF_OPERATION, GIT_STATUS_OPERATION } from "./browser/git-contract.js";
-export type { GitDiffResponse, GitFileState, GitStatusFile, GitStatusResponse } from "./browser/git-contract.js";
+export {
+  GIT_COMMIT_DIFF_OPERATION,
+  GIT_DIFF_OPERATION,
+  GIT_HISTORY_OPERATION,
+  GIT_STATUS_OPERATION,
+} from "./browser/git-contract.js";
+export type {
+  GitCommitDiffRequest,
+  GitCommitDiffResponse,
+  GitCommitSummary,
+  GitDiffResponse,
+  GitFileState,
+  GitHistoryRequest,
+  GitHistoryResponse,
+  GitStatusFile,
+  GitStatusResponse,
+} from "./browser/git-contract.js";
 
 const GIT_COMMAND_TIMEOUT_MS = 10_000;
+const HISTORY_PAGE_SIZE = 50;
+const MAX_HISTORY_OFFSET = 10_000;
+const COMMIT_OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/iu;
+const HISTORY_LOG_FORMAT = "%H%x00%P%x00%an%x00%ae%x00%aI%x00%s%x00";
 const GIT_LOCAL_ENV_VARS = Object.freeze([
   "GIT_ALTERNATE_OBJECT_DIRECTORIES",
   "GIT_COMMON_DIR",
@@ -58,6 +84,12 @@ export async function requestGitBackend(
   }
   if (request.operation === GIT_DIFF_OPERATION) {
     return diffProviderResponse(await gitDiffWithRunner(runGit, request.workspace.path, parseDiffInput(request.input)));
+  }
+  if (request.operation === GIT_HISTORY_OPERATION) {
+    return historyProviderResponse(await gitHistoryWithRunner(runGit, request.workspace.path, parseHistoryInput(request.input)));
+  }
+  if (request.operation === GIT_COMMIT_DIFF_OPERATION) {
+    return commitDiffProviderResponse(await gitCommitDiffWithRunner(runGit, request.workspace.path, parseCommitDiffInput(request.input)));
   }
   throw new Error(`Unsupported Git workspace backend operation: ${request.operation}`);
 }
@@ -196,6 +228,119 @@ export async function gitDiff(
   signal: AbortSignal,
 ): Promise<GitDiffResponse> {
   return gitDiffWithRunner(createGitRunner(context, signal), cwd, options);
+}
+
+export async function gitHistory(
+  context: ServerPluginActivationContext,
+  cwd: string,
+  options: GitHistoryRequest,
+  signal: AbortSignal,
+): Promise<GitHistoryResponse> {
+  return gitHistoryWithRunner(createGitRunner(context, signal), cwd, options);
+}
+
+async function gitHistoryWithRunner(runGit: RunGit, cwd: string, options: GitHistoryRequest): Promise<GitHistoryResponse> {
+  const snapshot = options.cursor === undefined
+    ? await resolveHistoryHead(runGit, cwd)
+    : decodeHistoryCursor(options.cursor);
+  if (snapshot === undefined) return { unborn: true, commits: [], truncated: false };
+
+  await requireCommitObject(runGit, cwd, snapshot.head, "History snapshot commit is unavailable");
+  const result = await runGit(cwd, [
+    "log", "--no-color", "-z", `--format=${HISTORY_LOG_FORMAT}`,
+    `--max-count=${String(HISTORY_PAGE_SIZE + 1)}`, `--skip=${String(snapshot.offset)}`, snapshot.head,
+  ]);
+  if (result.code !== 0) throw new Error(result.stderr.trim() || "git log failed");
+  if (result.truncated) throw new Error("Git history output exceeded the host output limit");
+  const commits = parseHistoryLog(result.stdout);
+  const hasNextPage = commits.length > HISTORY_PAGE_SIZE;
+  const page = commits.slice(0, HISTORY_PAGE_SIZE);
+  return {
+    unborn: false,
+    commits: page,
+    ...(hasNextPage ? { nextCursor: encodeHistoryCursor({ head: snapshot.head, offset: snapshot.offset + page.length }) } : {}),
+    truncated: false,
+  };
+}
+
+export async function gitCommitDiff(
+  context: ServerPluginActivationContext,
+  cwd: string,
+  input: GitCommitDiffRequest,
+  signal: AbortSignal,
+): Promise<GitCommitDiffResponse> {
+  return gitCommitDiffWithRunner(createGitRunner(context, signal), cwd, input);
+}
+
+async function gitCommitDiffWithRunner(runGit: RunGit, cwd: string, input: GitCommitDiffRequest): Promise<GitCommitDiffResponse> {
+  if (!COMMIT_OBJECT_ID.test(input.id)) throw new Error("Git commit diff input id must be a complete object ID");
+  await requireCommitObject(runGit, cwd, input.id, "Git commit is unavailable");
+  const reachable = await runGit(cwd, ["merge-base", "--is-ancestor", input.id, "HEAD"]);
+  if (reachable.code === 1) throw new Error("Git commit is not reachable from the current HEAD");
+  if (reachable.code !== 0) throw new Error(reachable.stderr.trim() || "Unable to validate Git commit reachability");
+
+  const metadataResult = await runGit(cwd, ["log", "-1", "--no-color", "-z", `--format=${HISTORY_LOG_FORMAT}`, input.id]);
+  if (metadataResult.code !== 0) throw new Error(metadataResult.stderr.trim() || "Unable to read Git commit metadata");
+  if (metadataResult.truncated) throw new Error("Git commit metadata exceeded the host output limit");
+  const [commit] = parseHistoryLog(metadataResult.stdout);
+  if (commit?.id !== input.id) throw new Error("Git returned malformed commit metadata");
+  const combined = commit.parentIds.length > 1;
+  const result = await runGit(cwd, ["show", "--no-ext-diff", "--color=never", "--format=", ...(combined ? ["--cc"] : []), input.id]);
+  if (result.code !== 0) throw new Error(result.stderr.trim() || "git show failed");
+  return { commit, combined, diff: result.stdout, truncated: result.truncated };
+}
+
+async function resolveHistoryHead(runGit: RunGit, cwd: string): Promise<{ head: string; offset: number } | undefined> {
+  const result = await runGit(cwd, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
+  if (result.code === 1) return undefined;
+  if (result.code !== 0) throw new Error(result.stderr.trim() || "Unable to resolve current HEAD");
+  const head = result.stdout.trim();
+  if (!COMMIT_OBJECT_ID.test(head)) throw new Error("Git returned an invalid HEAD commit ID");
+  return { head, offset: 0 };
+}
+
+async function requireCommitObject(runGit: RunGit, cwd: string, id: string, message: string): Promise<void> {
+  const result = await runGit(cwd, ["cat-file", "-e", `${id}^{commit}`]);
+  if (result.code !== 0) throw new Error(result.stderr.trim() || message);
+}
+
+export function parseHistoryLog(raw: string): GitCommitSummary[] {
+  if (raw === "") return [];
+  const fields = raw.split("\0");
+  if (fields.pop() !== "" || fields.length % 7 !== 0) throw new Error("Git returned malformed NUL-delimited history output");
+  const commits: GitCommitSummary[] = [];
+  for (let index = 0; index < fields.length; index += 7) {
+    const [id, parents, authorName, authorEmail, authoredAt, subject, separator] = fields.slice(index, index + 7);
+    if (separator !== "") throw new Error("Git returned malformed NUL-delimited history output");
+    if (id === undefined || parents === undefined || authorName === undefined || authorEmail === undefined || authoredAt === undefined || subject === undefined
+      || !COMMIT_OBJECT_ID.test(id)
+      || (parents !== "" && !parents.split(" ").every((parent) => COMMIT_OBJECT_ID.test(parent)))) {
+      throw new Error("Git returned malformed NUL-delimited history output");
+    }
+    commits.push({ id, parentIds: parents === "" ? [] : parents.split(" "), authorName, authorEmail, authoredAt, subject });
+  }
+  return commits;
+}
+
+function encodeHistoryCursor(snapshot: { head: string; offset: number }): string {
+  return Buffer.from(JSON.stringify(snapshot)).toString("base64url");
+}
+
+function decodeHistoryCursor(cursor: string): { head: string; offset: number } {
+  if (cursor.length === 0 || cursor.length > 256) throw new Error("Git history cursor is invalid");
+  try {
+    const value: unknown = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+    if (!isRecord(value)) throw new Error();
+    const record = value;
+    const head = record["head"];
+    const offset = record["offset"];
+    if (Object.keys(record).length !== 2 || typeof head !== "string" || !COMMIT_OBJECT_ID.test(head)
+      || typeof offset !== "number" || !Number.isSafeInteger(offset)
+      || offset < 1 || offset > MAX_HISTORY_OFFSET) throw new Error();
+    return { head, offset };
+  } catch {
+    throw new Error("Git history cursor is invalid");
+  }
 }
 
 async function gitDiffWithRunner(runGit: RunGit, cwd: string, options: { path?: string; staged?: boolean }): Promise<GitDiffResponse> {
@@ -446,6 +591,30 @@ function statusProviderResponse(status: GitStatusResponse): ProviderResponse {
   };
 }
 
+function historyProviderResponse(history: GitHistoryResponse): ProviderResponse {
+  return {
+    unborn: history.unborn,
+    commits: history.commits.map(commitProviderResponse),
+    ...(history.nextCursor === undefined ? {} : { nextCursor: history.nextCursor }),
+    truncated: history.truncated,
+  };
+}
+
+function commitDiffProviderResponse(diff: GitCommitDiffResponse): ProviderResponse {
+  return { commit: commitProviderResponse(diff.commit), combined: diff.combined, diff: diff.diff, truncated: diff.truncated };
+}
+
+function commitProviderResponse(commit: GitCommitSummary): ProviderResponse {
+  return {
+    id: commit.id,
+    parentIds: commit.parentIds,
+    authorName: commit.authorName,
+    authorEmail: commit.authorEmail,
+    authoredAt: commit.authoredAt,
+    subject: commit.subject,
+  };
+}
+
 function diffProviderResponse(diff: GitDiffResponse): ProviderResponse {
   return {
     ...(diff.path === undefined ? {} : { path: diff.path }),
@@ -483,6 +652,28 @@ function requireStatusInput(input: JsonValue): void {
   if (input !== null) throw new Error("Git status input must be null");
 }
 
+function parseHistoryInput(input: JsonValue): GitHistoryRequest {
+  if (input === null) return {};
+  if (!isRecord(input)) throw new Error("Git history input must be null or an object");
+  const unsupported = Object.keys(input).find((key) => key !== "cursor");
+  if (unsupported !== undefined) throw new Error(`Git history input contains an unsupported field: ${unsupported}`);
+  const cursor = input["cursor"];
+  if (typeof cursor !== "string") throw new Error("Git history input cursor must be a string");
+  decodeHistoryCursor(cursor);
+  return { cursor };
+}
+
+function parseCommitDiffInput(input: JsonValue): GitCommitDiffRequest {
+  if (!isRecord(input)) throw new Error("Git commit diff input must be an object");
+  const unsupported = Object.keys(input).find((key) => key !== "id");
+  if (unsupported !== undefined) throw new Error(`Git commit diff input contains an unsupported field: ${unsupported}`);
+  const id = input["id"];
+  if (typeof id !== "string" || !COMMIT_OBJECT_ID.test(id)) {
+    throw new Error("Git commit diff input id must be a complete object ID");
+  }
+  return { id };
+}
+
 function parseDiffInput(input: JsonValue): { path?: string; staged?: boolean } {
   if (!isRecord(input)) throw new Error("Git diff input must be an object");
   const unsupported = Object.keys(input).find((key) => key !== "path" && key !== "staged");
@@ -506,6 +697,6 @@ function normalizeRelativePath(input: string | undefined): string {
   return parts.join("/");
 }
 
-function isRecord(value: JsonValue): value is Readonly<Record<string, JsonValue>> {
+function isRecord(value: unknown): value is Readonly<Record<string, JsonValue>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

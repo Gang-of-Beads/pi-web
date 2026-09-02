@@ -14,7 +14,9 @@ import { createServerPluginExecFile } from "../../src/server/shared/plugins/serv
 import type { ServerPluginProviderContribution } from "../../src/server/shared/plugins/serverPluginRuntime.js";
 import { WorkspaceProviderRegistry } from "../../src/server/daemon/workspaces/workspaceProviderRegistry.js";
 import {
+  GIT_COMMIT_DIFF_OPERATION,
   GIT_DIFF_OPERATION,
+  GIT_HISTORY_OPERATION,
   GIT_STATUS_OPERATION,
 } from "./git-backend.js";
 import plugin, { parseGitWorktreeList } from "./server-plugin.js";
@@ -213,9 +215,11 @@ describe("bundled Git workspace provider", () => {
       signal: new AbortController().signal,
     };
 
-    await expect(request({ ...context, operation: "history", input: null })).rejects.toThrow("Unsupported Git workspace backend operation");
+    await expect(request({ ...context, operation: "unknown", input: null })).rejects.toThrow("Unsupported Git workspace backend operation");
     await expect(request({ ...context, operation: GIT_STATUS_OPERATION, input: {} })).rejects.toThrow("status input must be null");
     await expect(request({ ...context, operation: GIT_DIFF_OPERATION, input: { path: "/outside" } })).rejects.toThrow("Absolute paths are not allowed");
+    await expect(request({ ...context, operation: GIT_HISTORY_OPERATION, input: {} })).rejects.toThrow("cursor must be a string");
+    await expect(request({ ...context, operation: GIT_COMMIT_DIFF_OPERATION, input: { id: "short" } })).rejects.toThrow("complete object ID");
     expect(execFile).not.toHaveBeenCalled();
   });
 
