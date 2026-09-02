@@ -170,6 +170,44 @@ describe("bundled Git browser plugin", () => {
     render(null, container);
   });
 
+  it("opens read-only current-HEAD history and renders the selected commit's diff", async () => {
+    const historyCommit = {
+      id: "a".repeat(40),
+      parentIds: ["b".repeat(40)],
+      authorName: "Ada Lovelace",
+      authorEmail: "ada@example.test",
+      authoredAt: "2026-09-02T08:00:00+00:00",
+      subject: "Add history",
+    };
+    const backend = backendFixture({ history: { unborn: false, commits: [historyCommit], truncated: false } });
+    const panel = requiredPanel(activate("git"));
+    const context = panelContext(backend.request);
+    const container = document.createElement("div");
+    document.body.append(container);
+
+    render(panel.render(context), container);
+    await settleBackend();
+    render(panel.render(context), container);
+    button(container, "History").click();
+    await settleBackend();
+    render(panel.render(context), container);
+
+    expect(backend.request).toHaveBeenCalledWith("history", null);
+    expect(container.textContent).toContain("Add history");
+    button(container, "Add history").click();
+    await settleBackend();
+    render(panel.render(context), container);
+
+    expect(backend.request).toHaveBeenCalledWith("commit-diff", { id: historyCommit.id });
+    expect(container.textContent).toContain("Ada Lovelace <ada@example.test>");
+    expect(container.querySelector('[role="table"][aria-label="Commit diff"]')).not.toBeNull();
+
+    button(container, "Changes").click();
+    render(panel.render(context), container);
+    expect(container.textContent).toContain("src/main.ts");
+    render(null, container);
+  });
+
   it("preserves a deep link when entering a fresh workspace after route initialization", async () => {
     window.history.replaceState({}, "", `/?project=${projectId}&workspace=${workspaceId}`);
     const panel = requiredPanel(activate("git"));
@@ -268,7 +306,12 @@ function requiredPanel(contributions: ReturnType<typeof activate>) {
   return panel;
 }
 
-function backendFixture(patch: { files?: ReturnType<typeof changedFile>[]; submodules?: string[]; branch?: string } = {}) {
+function backendFixture(patch: {
+  files?: ReturnType<typeof changedFile>[];
+  submodules?: string[];
+  branch?: string;
+  history?: JsonValue;
+} = {}) {
   const status = {
     isGitRepo: true,
     hash: `status-hash-${patch.branch ?? "main"}`,
@@ -283,6 +326,23 @@ function backendFixture(patch: { files?: ReturnType<typeof changedFile>[]; submo
       files: [...status.files],
       submodules: [...status.submodules],
     });
+    if (operation === "history") return Promise.resolve(patch.history ?? { unborn: false, commits: [], truncated: false });
+    if (operation === "commit-diff") {
+      const id = isRecord(input) && typeof input["id"] === "string" ? input["id"] : "a".repeat(40);
+      return Promise.resolve({
+        commit: {
+          id,
+          parentIds: ["b".repeat(40)],
+          authorName: "Ada Lovelace",
+          authorEmail: "ada@example.test",
+          authoredAt: "2026-09-02T08:00:00+00:00",
+          subject: "Add history",
+        },
+        combined: false,
+        diff: "@@ -1 +1 @@\n-old\n+new",
+        truncated: false,
+      });
+    }
     const staged = isRecord(input) && input["staged"] === true;
     const path = isRecord(input) && typeof input["path"] === "string" ? input["path"] : "diff";
     return Promise.resolve({

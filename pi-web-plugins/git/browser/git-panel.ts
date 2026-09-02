@@ -11,11 +11,18 @@ import type {
   WorkspacePanelContribution,
 } from "@gang-of-beads/pi-web/plugin-api";
 import {
+  GIT_COMMIT_DIFF_OPERATION,
   GIT_DIFF_OPERATION,
+  GIT_HISTORY_OPERATION,
   GIT_STATUS_OPERATION,
+  parseGitCommitDiffResponse,
   parseGitDiffResponse,
+  parseGitHistoryResponse,
   parseGitStatusResponse,
+  type GitCommitDiffResponse,
+  type GitCommitSummary,
   type GitDiffResponse,
+  type GitHistoryResponse,
   type GitStatusFile,
   type GitStatusResponse,
 } from "./git-contract.js";
@@ -32,9 +39,12 @@ const GIT_POLL_INTERVAL_MS = 8_000;
 const GIT_WORKSPACE_STATE_LIMIT = 8;
 const activityElementTag = "pi-web-git-panel-activity";
 
+type GitPanelMode = "changes" | "history";
+
 interface GitWorkspaceUiState {
   context: WorkspacePanelContext;
   retained: boolean;
+  mode: GitPanelMode;
   routeInitialized: boolean;
   status: GitStatusResponse | undefined;
   statusLoading: boolean;
@@ -48,10 +58,25 @@ interface GitWorkspaceUiState {
   statusRequest: Promise<void> | undefined;
   diffRequestSequence: number;
   viewStateCache: GitViewStateCache | undefined;
+  history: GitHistoryResponse | undefined;
+  historyLoading: boolean;
+  historyError: string | undefined;
+  historyRequestSequence: number;
+  historyRequest: Promise<void> | undefined;
+  selectedCommitId: string | undefined;
+  selectedCommitDiff: GitCommitDiffView | undefined;
+  commitDiffLoading: boolean;
+  commitDiffError: string | undefined;
+  commitDiffRequestSequence: number;
 }
 
 interface GitDiffView {
   readonly response: GitDiffResponse;
+  lines: UnifiedDiffLine[] | undefined;
+}
+
+interface GitCommitDiffView {
+  readonly response: GitCommitDiffResponse;
   lines: UnifiedDiffLine[] | undefined;
 }
 
@@ -85,7 +110,7 @@ export function createGitBrowserContributions(
   };
 }
 
-class GitUiController {
+export class GitUiController {
   private readonly states = new Map<string, GitWorkspaceUiState>();
   private activeWorkspaceKey: string | undefined;
   private connectedWorkspaceKey: string | undefined;
@@ -118,6 +143,7 @@ class GitUiController {
       if (state.status?.files.some((file) => file.path === state.selectedDiffPath) === true) void this.refreshDiff(state, state.selectedDiffPath, context);
       else this.clearSelection(state, true);
     }
+    if (state.mode === "history" && state.history === undefined && state.historyRequest === undefined) void this.refreshHistory(context);
   }
 
   disconnect(context: WorkspacePanelContext): void {
@@ -172,6 +198,58 @@ class GitUiController {
       });
     state.statusRequest = request;
     return request;
+  }
+
+  setMode(context: WorkspacePanelContext, mode: GitPanelMode): void {
+    const state = this.stateFor(context);
+    if (state.mode === mode) return;
+    state.mode = mode;
+    this.requestRender(state);
+    if (mode === "history" && state.history === undefined && state.historyRequest === undefined) void this.refreshHistory(context);
+  }
+
+  refreshHistory(context: WorkspacePanelContext): Promise<void> {
+    const state = this.stateFor(context);
+    state.historyRequestSequence += 1;
+    state.history = undefined;
+    state.historyError = undefined;
+    state.selectedCommitId = undefined;
+    state.selectedCommitDiff = undefined;
+    state.commitDiffLoading = false;
+    state.commitDiffError = undefined;
+    return this.loadHistory(state, context, undefined);
+  }
+
+  retryHistory(context: WorkspacePanelContext): void {
+    const state = this.stateFor(context);
+    if (state.historyRequest !== undefined) return;
+    if (state.history === undefined) void this.refreshHistory(context);
+    else void this.loadHistory(state, context, state.history.nextCursor);
+  }
+
+  loadMoreHistory(context: WorkspacePanelContext): void {
+    const state = this.stateFor(context);
+    if (state.history?.nextCursor !== undefined && state.historyRequest === undefined) void this.loadHistory(state, context, state.history.nextCursor);
+  }
+
+  selectCommit(context: WorkspacePanelContext, commit: GitCommitSummary): void {
+    const state = this.stateFor(context);
+    state.selectedCommitId = commit.id;
+    state.selectedCommitDiff = undefined;
+    state.commitDiffError = undefined;
+    state.commitDiffLoading = true;
+    this.requestRender(state);
+    void this.refreshCommitDiff(state, context, commit.id);
+  }
+
+  retryCommitDiff(context: WorkspacePanelContext): void {
+    const state = this.stateFor(context);
+    if (state.selectedCommitId !== undefined && !state.commitDiffLoading) {
+      state.commitDiffError = undefined;
+      state.commitDiffLoading = true;
+      this.requestRender(state);
+      void this.refreshCommitDiff(state, context, state.selectedCommitId);
+    }
   }
 
   selectDiff(context: WorkspacePanelContext, path: string): void {
@@ -237,6 +315,7 @@ class GitUiController {
     const created: GitWorkspaceUiState = {
       context,
       retained: true,
+      mode: "changes",
       routeInitialized: false,
       status: undefined,
       statusLoading: false,
@@ -250,6 +329,16 @@ class GitUiController {
       statusRequest: undefined,
       diffRequestSequence: 0,
       viewStateCache: undefined,
+      history: undefined,
+      historyLoading: false,
+      historyError: undefined,
+      historyRequestSequence: 0,
+      historyRequest: undefined,
+      selectedCommitId: undefined,
+      selectedCommitDiff: undefined,
+      commitDiffLoading: false,
+      commitDiffError: undefined,
+      commitDiffRequestSequence: 0,
     };
     this.states.set(key, created);
     return created;
@@ -303,6 +392,52 @@ class GitUiController {
     this.applyRouteSelection(state, undefined);
     if (replaceUrl && this.connectedWorkspaceKey === workspaceContextKey(state.context) && this.route.matches(state.context)) {
       this.route.write(undefined, { replace: true });
+    }
+  }
+
+  private loadHistory(state: GitWorkspaceUiState, context: WorkspacePanelContext, cursor: string | undefined): Promise<void> {
+    const sequence = state.historyRequestSequence + 1;
+    state.historyRequestSequence = sequence;
+    state.historyLoading = true;
+    state.historyError = undefined;
+    this.requestRender(state);
+    const request = requestGitBackend(context, GIT_HISTORY_OPERATION, cursor === undefined ? null : { cursor })
+      .then(parseGitHistoryResponse)
+      .then((page) => {
+        if (!state.retained || state.historyRequestSequence !== sequence) return;
+        state.history = cursor === undefined
+          ? page
+          : { ...page, commits: [...(state.history?.commits ?? []), ...page.commits] };
+      })
+      .catch((error: unknown) => {
+        if (state.retained && state.historyRequestSequence === sequence) state.historyError = errorMessage(error);
+      })
+      .finally(() => {
+        if (state.historyRequest !== request) return;
+        state.historyRequest = undefined;
+        state.historyLoading = false;
+        this.requestRender(state);
+      });
+    state.historyRequest = request;
+    return request;
+  }
+
+  private async refreshCommitDiff(state: GitWorkspaceUiState, context: WorkspacePanelContext, id: string): Promise<void> {
+    const sequence = state.commitDiffRequestSequence + 1;
+    state.commitDiffRequestSequence = sequence;
+    try {
+      const response = await requestGitBackend(context, GIT_COMMIT_DIFF_OPERATION, { id }).then(parseGitCommitDiffResponse);
+      if (!state.retained || state.commitDiffRequestSequence !== sequence || state.selectedCommitId !== id) return;
+      state.selectedCommitDiff = { response, lines: undefined };
+      state.commitDiffError = undefined;
+    } catch (error) {
+      if (!state.retained || state.commitDiffRequestSequence !== sequence || state.selectedCommitId !== id) return;
+      state.commitDiffError = errorMessage(error);
+    } finally {
+      if (state.retained && state.commitDiffRequestSequence === sequence && state.selectedCommitId === id) {
+        state.commitDiffLoading = false;
+        this.requestRender(state);
+      }
     }
   }
 
@@ -402,20 +537,35 @@ function renderGitPanel(html: HtmlTemplateTag, controller: GitUiController, cont
       <pi-web-git-panel-activity .controller=${controller} .context=${context}></pi-web-git-panel-activity>
       <section class="git-toolbar">
         <strong>Git</strong>
-        ${state.stale ? html`<span class="git-stale">stale</span>` : null}
+        ${state.mode === "changes" && state.stale ? html`<span class="git-stale">stale</span>` : null}
+        ${renderModeToggle(html, controller, context, state.mode)}
         <div class="git-toolbar-actions">
-          ${viewState.expandablePaths.length === 0 ? null : renderExpandCollapseAll(html, controller, context, state, viewState.expandablePaths)}
-          ${renderViewToggle(html, controller, context)}
-          <button type="button" ?disabled=${state.statusLoading} @click=${() => { void controller.refresh(context); }}>Refresh</button>
+          ${state.mode !== "changes" || viewState.expandablePaths.length === 0 ? null : renderExpandCollapseAll(html, controller, context, state, viewState.expandablePaths)}
+          ${state.mode === "changes" ? renderViewToggle(html, controller, context) : null}
+          <button type="button" ?disabled=${state.mode === "changes" ? state.statusLoading : state.historyLoading} @click=${() => { void (state.mode === "changes" ? controller.refresh(context) : controller.refreshHistory(context)); }}>Refresh</button>
         </div>
       </section>
-      ${state.error === undefined ? null : html`<div class="git-error" role="alert">${state.error}</div>`}
-      <section class=${gitSplitClass(state.selectedDiffPath)}>
-        <div class="git-file-list">${renderFileList(html, controller, context, state, viewState)}</div>
-        <div class="git-viewer">${renderDiffViewer(html, state)}</div>
+      ${state.mode !== "changes" || state.error === undefined ? null : html`<div class="git-error" role="alert">${state.error}</div>`}
+      <section class=${gitSplitClass(state.mode === "changes" ? state.selectedDiffPath : state.selectedCommitId)}>
+        <div class="git-file-list">${state.mode === "changes" ? renderFileList(html, controller, context, state, viewState) : renderHistoryList(html, controller, context, state)}</div>
+        <div class="git-viewer">${state.mode === "changes" ? renderDiffViewer(html, state) : renderCommitDiffViewer(html, controller, context, state)}</div>
       </section>
     </section>
   `;
+}
+
+function renderModeToggle(html: HtmlTemplateTag, controller: GitUiController, context: WorkspacePanelContext, mode: GitPanelMode) {
+  return html`
+    <div class="git-view-toggle git-mode-toggle" role="group" aria-label="Git panel view">
+      ${renderModeToggleButton(html, controller, context, mode, "changes", "Changes")}
+      ${renderModeToggleButton(html, controller, context, mode, "history", "History")}
+    </div>
+  `;
+}
+
+function renderModeToggleButton(html: HtmlTemplateTag, controller: GitUiController, context: WorkspacePanelContext, mode: GitPanelMode, value: GitPanelMode, label: string) {
+  const active = mode === value;
+  return html`<button type="button" class=${active ? "is-selected" : ""} aria-pressed=${String(active)} @click=${() => { controller.setMode(context, value); }}>${label}</button>`;
 }
 
 function renderViewToggle(html: HtmlTemplateTag, controller: GitUiController, context: WorkspacePanelContext) {
@@ -459,6 +609,40 @@ function renderFileList(
     ? viewState.nodes.map((node) => renderTreeNode(html, controller, context, state, node, 0))
     : renderListBody(html, controller, context, state, viewState.listModel);
   return html`${summary}${body}`;
+}
+
+function renderHistoryList(html: HtmlTemplateTag, controller: GitUiController, context: WorkspacePanelContext, state: GitWorkspaceUiState) {
+  const history = state.history;
+  if (history === undefined) {
+    if (state.historyLoading) return html`<p class="git-muted">Loading history…</p>`;
+    return html`
+      <p class="git-muted">History unavailable.</p>
+      ${state.historyError === undefined ? null : html`<div class="git-error" role="alert">${state.historyError}<button type="button" @click=${() => { controller.retryHistory(context); }}>Retry</button></div>`}
+    `;
+  }
+  if (history.unborn) return html`<p class="git-muted">This repository has no commits yet.</p>`;
+  return html`
+    ${history.commits.length === 0 ? html`<p class="git-muted">No commits reachable from current HEAD.</p>` : history.commits.map((commit) => renderCommitRow(html, controller, context, state, commit))}
+    ${history.truncated ? html`<p class="git-muted">History output was truncated.</p>` : null}
+    ${state.historyError === undefined ? null : html`<div class="git-error" role="alert">Could not load more history: ${state.historyError}<button type="button" @click=${() => { controller.retryHistory(context); }}>Retry</button></div>`}
+    ${history.nextCursor === undefined ? null : html`<button type="button" class="git-load-more" ?disabled=${state.historyLoading} @click=${() => { controller.loadMoreHistory(context); }}>${state.historyLoading ? "Loading more history…" : "Load more"}</button>`}
+  `;
+}
+
+function renderCommitRow(
+  html: HtmlTemplateTag,
+  controller: GitUiController,
+  context: WorkspacePanelContext,
+  state: GitWorkspaceUiState,
+  commit: GitCommitSummary,
+) {
+  const selected = state.selectedCommitId === commit.id;
+  return html`
+    <button type="button" class=${selected ? "git-commit-row is-selected" : "git-commit-row"} @click=${() => { controller.selectCommit(context, commit); }}>
+      <strong>${commit.subject || "(no subject)"}</strong>
+      <small>${commit.authorName} · ${formatCommitDate(commit.authoredAt)} · ${shortObjectId(commit.id)}${commit.parentIds.length > 1 ? " · merge" : ""}</small>
+    </button>
+  `;
 }
 
 function renderListBody(
@@ -562,6 +746,44 @@ function renderDiffViewer(html: HtmlTemplateTag, state: GitWorkspaceUiState) {
   const diffs = [staged, unstaged].filter((diff) => diff.response.diff !== "");
   if (diffs.length === 0) return html`<p class="git-muted">No staged or unstaged diff.</p>`;
   return html`<div class=${diffs.length === 1 ? "git-diffs is-single" : "git-diffs"}>${diffs.map((diff) => renderDiffSection(html, diff))}</div>`;
+}
+
+function renderCommitDiffViewer(html: HtmlTemplateTag, controller: GitUiController, context: WorkspacePanelContext, state: GitWorkspaceUiState) {
+  if (state.selectedCommitId === undefined) return html`<p class="git-muted">Select a commit.</p>`;
+  const view = state.selectedCommitDiff;
+  const response = view?.response;
+  const commit = response?.commit ?? state.history?.commits.find((item) => item.id === state.selectedCommitId);
+  if (commit === undefined) return html`<p class="git-muted">Selected commit is no longer in this history result.</p>`;
+  const metadata = renderCommitMetadata(html, commit, response?.combined === true);
+  if (state.commitDiffLoading) return html`${metadata}<p class="git-muted">Loading commit diff…</p>`;
+  if (state.commitDiffError !== undefined) return html`${metadata}<div class="git-error" role="alert">Commit diff unavailable: ${state.commitDiffError}<button type="button" @click=${() => { controller.retryCommitDiff(context); }}>Retry</button></div>`;
+  if (response === undefined || view === undefined) return html`${metadata}<p class="git-muted">Commit diff unavailable.</p>`;
+  const lines = view.lines ??= parseUnifiedDiff(response.diff);
+  return html`
+    ${metadata}
+    ${response.truncated ? html`<p class="git-muted">Diff truncated.</p>` : null}
+    ${lines.length === 0 ? html`<p class="git-muted">This commit has no patch.</p>` : html`
+      <div class="git-diff-scroller">
+        <div class="git-diff-grid" role="table" aria-label="Commit diff">
+          ${lines.map((line) => renderDiffLine(html, line))}
+        </div>
+      </div>
+    `}
+  `;
+}
+
+function renderCommitMetadata(html: HtmlTemplateTag, commit: GitCommitSummary, combined: boolean) {
+  return html`
+    <section class="git-commit-metadata">
+      <div class="git-viewer-header"><strong>${commit.subject || "(no subject)"}</strong><small>${combined ? "Merge · combined diff against all parents" : "Commit diff"}</small></div>
+      <dl>
+        <dt>Author</dt><dd>${commit.authorName} &lt;${commit.authorEmail}&gt;</dd>
+        <dt>Date</dt><dd>${formatCommitDate(commit.authoredAt)}</dd>
+        <dt>Commit</dt><dd>${commit.id}</dd>
+        <dt>${commit.parentIds.length === 1 ? "Parent" : "Parents"}</dt><dd>${commit.parentIds.join(" ") || "None"}</dd>
+      </dl>
+    </section>
+  `;
 }
 
 function renderDiffSection(html: HtmlTemplateTag, view: GitDiffView) {
@@ -673,6 +895,15 @@ function stateLabel(index: string, workingTree: string): string {
   return label.slice(0, 1).toUpperCase();
 }
 
+function shortObjectId(id: string): string {
+  return id.slice(0, 12);
+}
+
+function formatCommitDate(value: string): string {
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? value : new Date(timestamp).toLocaleString();
+}
+
 function formatLineNumber(lineNumber: number | undefined): string {
   return lineNumber === undefined ? "" : String(lineNumber);
 }
@@ -706,6 +937,7 @@ const gitPanelStyles = `
   .git-panel .git-view-toggle button:first-child { border-top-left-radius: 7px; border-bottom-left-radius: 7px; }
   .git-panel .git-view-toggle button:last-child { margin-left: -1px; border-top-right-radius: 7px; border-bottom-right-radius: 7px; }
   .git-panel .git-view-toggle button.is-selected { position: relative; z-index: 1; border-color: var(--pi-accent); background: var(--pi-selection-bg); }
+  .git-panel .git-mode-toggle { margin-left: 4px; }
   .git-panel .git-stale { border: 1px solid var(--pi-warning-border); border-radius: 999px; color: var(--pi-warning); padding: 1px 6px; font-size: 12px; }
   .git-panel .git-error { flex: 0 0 auto; margin: 8px; border: 1px solid var(--pi-danger); border-radius: 7px; color: var(--pi-danger); padding: 8px; }
   .git-panel .git-split { flex: 1 1 auto; min-height: 0; display: grid; grid-template-rows: minmax(160px, 34%) minmax(0, 1fr); }
@@ -717,6 +949,10 @@ const gitPanelStyles = `
   .git-panel .git-row { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 4px; width: 100%; border: 0; border-radius: 5px; background: transparent; text-align: left; padding: 4px 6px 4px calc(6px + var(--depth, 0) * 14px); }
   .git-panel .git-row:hover, .git-panel .git-row.is-selected { background: var(--pi-selection-bg); }
   .git-panel .git-row span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .git-panel .git-commit-row { display: flex; width: 100%; flex-direction: column; align-items: stretch; border: 0; border-radius: 5px; background: transparent; padding: 7px; text-align: left; }
+  .git-panel .git-commit-row:hover, .git-panel .git-commit-row.is-selected { background: var(--pi-selection-bg); }
+  .git-panel .git-commit-row strong, .git-panel .git-commit-row small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .git-panel .git-load-more { margin: 8px; }
   .git-panel .git-twisty { color: var(--pi-dim, var(--pi-muted)); }
   .git-panel .git-summary { margin: 4px 6px 8px; color: var(--pi-muted); }
   .git-panel .submodule-badge { display: inline-block; margin-left: 6px; border: 1px solid var(--pi-border); border-radius: 999px; color: var(--pi-muted); padding: 0 5px; font-size: 11px; font-weight: 400; vertical-align: baseline; }
@@ -727,6 +963,10 @@ const gitPanelStyles = `
   .git-panel .git-diff-section:last-child { border-bottom: 0; }
   .git-panel .git-viewer-header { position: sticky; top: 0; display: flex; justify-content: space-between; gap: 8px; padding: 8px; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); }
   .git-panel .git-viewer-header strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .git-panel .git-commit-metadata { flex: 0 0 auto; border-bottom: 1px solid var(--pi-border); }
+  .git-panel .git-commit-metadata dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 3px 8px; margin: 8px; }
+  .git-panel .git-commit-metadata dt { color: var(--pi-muted); }
+  .git-panel .git-commit-metadata dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
   .git-panel .git-diff-scroller { flex: 1 1 auto; min-height: 0; overflow: auto; background: var(--pi-bg); }
   .git-panel .git-diff-grid { display: grid; grid-template-columns: max-content max-content 2ch max-content; width: max-content; min-width: 100%; padding: 6px 0; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; line-height: 1.45; }
   .git-panel .git-diff-line { display: contents; }
