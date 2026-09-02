@@ -1,5 +1,5 @@
 ---
-"@gang-of-beads/pi-web": minor
+"@gang-of-beads/pi-web": patch
 ---
 
 A clay theme pair, in warm ink on paper
