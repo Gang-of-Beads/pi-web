@@ -151,6 +151,14 @@ export const appStyles = css`
   .shell.workspace-panel-collapsed .workspace-panel-edge-button { transform: translateX(calc(-50% + .5px)); }
   workspace-panel { grid-column: 5; min-width: 0; min-height: 0; overflow: hidden; }
   @media (min-width: 1181px) {
+    /* A workspace tool can request the content area without owning or changing
+       the surrounding shell. The selected panel keeps its own tabs and state. */
+    /* Expanded review tools need the full desktop canvas; their own toolbar
+       provides the exit action, so neither app pane remains actionable here. */
+    .shell.workspace-panel-fullscreen { grid-template-columns: minmax(0, 1fr); }
+    .shell.workspace-panel-fullscreen > aside, .shell.workspace-panel-fullscreen > main,
+    .shell.workspace-panel-fullscreen > app-panel-edge-control { display: none; }
+    .shell.workspace-panel-fullscreen > workspace-panel { grid-column: 1; }
     .shell.navigation-panel-collapsed { --navigation-panel-width: 0px; }
     .shell.navigation-panel-collapsed > aside { display: none; }
     .shell.workspace-panel-collapsed { --workspace-panel-width: 0px; }
@@ -268,6 +276,7 @@ interface SessionCleanupDialogState {
 @customElement("pi-web-app")
 export class PiWebApp extends LitElement {
   @state() private state: AppState = initialAppState();
+  @state() private workspacePanelFullscreen = false;
   @query("chat-view") private chatView?: ChatView;
   @query("prompt-editor") private promptEditor?: PromptEditor;
   @query("app-navigation-panel") private navigationPanel?: AppNavigationPanel;
@@ -2370,6 +2379,7 @@ export class PiWebApp extends LitElement {
   private createWorkspaceHost(): WorkspaceHost {
     return {
       requestRender: () => { this.requestUpdate(); },
+      setWorkspacePanelFullscreen: (fullscreen) => { this.workspacePanelFullscreen = fullscreen; },
     };
   }
 
@@ -3288,7 +3298,7 @@ export class PiWebApp extends LitElement {
   override render() {
     const state = this.state;
     return html`
-      <div class=${this.panelCollapse.shellClass(state.mainView, state.selectedWorkspace !== undefined)} style=${this.panelResize.shellStyle({ navigation: this.resizablePanelConstraints("navigation"), workspace: this.resizablePanelConstraints("workspace") })}>
+      <div class=${`${this.panelCollapse.shellClass(state.mainView, state.selectedWorkspace !== undefined)}${this.workspacePanelFullscreen ? " workspace-panel-fullscreen" : ""}`} style=${this.panelResize.shellStyle({ navigation: this.resizablePanelConstraints("navigation"), workspace: this.resizablePanelConstraints("workspace") })}>
         <aside id="navigation-panel">${this.appShell.isMobileNavigationLayout ? null : this.renderNavigationPanel()}</aside>
         ${this.renderNavigationPanelEdgeControl()}
         <main class=${mainViewClass(state.mainView)}>

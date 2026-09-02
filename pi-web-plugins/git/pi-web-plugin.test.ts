@@ -2,7 +2,7 @@
 
 import { html, render, svg } from "lit";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { JsonValue, PluginRuntimeContext, Workspace, WorkspaceBackend, WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
+import type { JsonValue, PluginRuntimeContext, Workspace, WorkspaceBackend, WorkspaceHost, WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
 import { GIT_FILE_VIEW_STORAGE_KEY } from "./browser/gitFileViewPreference.js";
 import plugin from "./browser/pi-web-plugin.js";
 
@@ -20,6 +20,7 @@ const gitWorkspace: Workspace = {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
   window.localStorage.clear();
   window.history.replaceState({}, "", "/");
   document.body.replaceChildren();
@@ -146,8 +147,8 @@ describe("bundled Git browser plugin", () => {
 
     expect(backend.request).toHaveBeenCalledWith("diff", { path: "src/main.ts" });
     expect(backend.request).toHaveBeenCalledWith("diff", { path: "src/main.ts", staged: true });
-    expect(container.textContent).toContain("staged");
-    expect(container.textContent).toContain("unstaged");
+    expect(container.textContent).toContain("Staged changes");
+    expect(container.textContent).toContain("Unstaged changes");
     expect(container.querySelector(".git-panel")).not.toBeNull();
     expect(container.querySelector(".split")).toBeNull();
     const styleRules = (container.querySelector("style")?.textContent ?? "")
@@ -167,6 +168,163 @@ describe("bundled Git browser plugin", () => {
     render(panel.render(context), container);
     expect(button(container, "main.ts")).toBeDefined();
 
+    render(null, container);
+  });
+
+  it("renders lazy per-file review sections in the expanded panel", async () => {
+    vi.stubGlobal("IntersectionObserver", undefined);
+    window.history.replaceState({}, "", `/?project=${projectId}&workspace=${workspaceId}`);
+    const backend = backendFixture({ files: [changedFile("first.ts"), changedFile("second.ts"), changedFile("third.ts")] });
+    const panel = requiredPanel(activate("git"));
+    const context = panelContext(backend.request, gitWorkspace, "local", { setWorkspacePanelFullscreen: vi.fn() });
+    const container = document.createElement("div");
+    document.body.append(container);
+
+    render(panel.render(context), container);
+    await settleBackend();
+    render(panel.render(context), container);
+    button(container, "Expand panel").click();
+    render(panel.render(context), container);
+    await settleBackend();
+    await settleBackend();
+    render(panel.render(context), container);
+
+    expect(container.querySelectorAll(".git-review-section")).toHaveLength(3);
+    expect(backend.request).toHaveBeenCalledWith("diff", { path: "first.ts" });
+    expect(backend.request).toHaveBeenCalledWith("diff", { path: "third.ts", staged: true });
+    expect([...container.querySelectorAll(".git-review-section > .git-viewer-header .git-review-toggle")].map((element) => element.textContent.trim())).toContain("▾ first.ts");
+    expect([...container.querySelectorAll(".git-review-section .git-diff-section > .git-viewer-header strong")].map((element) => element.textContent)).toContain("Unstaged changes");
+    expect([...container.querySelectorAll(".git-review-section .git-diff-section > .git-viewer-header")].some((element) => element.textContent.includes("first.ts"))).toBe(false);
+    button(container, "Collapse all diffs").click();
+    render(panel.render(context), container);
+    expect(container.querySelectorAll('.git-review-toggle[aria-expanded="false"]')).toHaveLength(3);
+    expect(button(container, "Expand all diffs")).toBeDefined();
+  });
+
+  it("toggles the expanded panel layout through the workspace host", async () => {
+    const panel = requiredPanel(activate("git"));
+    const setWorkspacePanelFullscreen = vi.fn<NonNullable<WorkspaceHost["setWorkspacePanelFullscreen"]>>();
+    const context = panelContext(backendFixture().request, gitWorkspace, "local", { setWorkspacePanelFullscreen });
+    const container = document.createElement("div");
+    document.body.append(container);
+
+    render(panel.render(context), container);
+    await settleBackend();
+    render(panel.render(context), container);
+
+    const expand = button(container, "Expand panel");
+    expect(expand.getAttribute("aria-pressed")).toBe("false");
+    expand.click();
+    render(panel.render(context), container);
+
+    expect(setWorkspacePanelFullscreen).toHaveBeenLastCalledWith(true);
+    expect(container.querySelector(".git-split.expanded")).not.toBeNull();
+    const exit = button(container, "Exit expanded view");
+    expect(exit.getAttribute("aria-pressed")).toBe("true");
+    exit.click();
+    render(panel.render(context), container);
+
+    expect(setWorkspacePanelFullscreen).toHaveBeenLastCalledWith(false);
+    expect(container.querySelector(".git-split.list-only")).not.toBeNull();
+    expect(button(container, "Expand panel").getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("opens read-only current-HEAD history and renders the selected commit's diff", async () => {
+    window.history.replaceState({}, "", `/?project=${projectId}&workspace=${workspaceId}`);
+    const historyCommit = {
+      id: "a".repeat(40),
+      parentIds: ["b".repeat(40)],
+      authorName: "Ada Lovelace",
+      authorEmail: "ada@example.test",
+      authoredAt: "2026-09-02T08:00:00+00:00",
+      subject: "Add history",
+    };
+    const backend = backendFixture({
+      history: { unborn: false, commits: [historyCommit], truncated: false },
+      commitDiff: [
+        "diff --git a/src/first.ts b/src/first.ts",
+        "--- a/src/first.ts",
+        "+++ b/src/first.ts",
+        "@@ -1 +1 @@",
+        "-old",
+        "+new",
+        "diff --git a/src/second.ts b/src/second.ts",
+        "--- a/src/second.ts",
+        "+++ b/src/second.ts",
+        "@@ -1 +1 @@",
+        "-before",
+        "+after",
+      ].join("\n"),
+    });
+    const panel = requiredPanel(activate("git"));
+    const context = panelContext(backend.request);
+    const container = document.createElement("div");
+    document.body.append(container);
+
+    render(panel.render(context), container);
+    await settleBackend();
+    render(panel.render(context), container);
+    button(container, "History").click();
+    await settleBackend();
+    render(panel.render(context), container);
+
+    expect(backend.request).toHaveBeenCalledWith("history", null);
+    expect(new URL(window.location.href).searchParams.get("git.workspace.git--mode")).toBe("history");
+    expect(container.textContent).toContain("Add history");
+    button(container, "Add history").click();
+    await settleBackend();
+    render(panel.render(context), container);
+
+    expect(backend.request).toHaveBeenCalledWith("commit-diff", { id: historyCommit.id });
+    expect(new URL(window.location.href).searchParams.get("git.workspace.git--commit")).toBe(historyCommit.id);
+    expect(container.textContent).toContain("Ada Lovelace <ada@example.test>");
+    expect([...container.querySelectorAll(".git-commit-file-toggle")].map((element) => element.textContent.trim())).toEqual(["▾ src/first.ts", "▾ src/second.ts"]);
+    expect(container.querySelectorAll('[role="table"][aria-label^="Commit diff for "]')).toHaveLength(2);
+
+    button(container, "▾ src/first.ts").click();
+    render(panel.render(context), container);
+    expect(button(container, "▸ src/first.ts").getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelectorAll('[role="table"][aria-label^="Commit diff for "]')).toHaveLength(1);
+
+    button(container, "Collapse all file diffs").click();
+    render(panel.render(context), container);
+    expect(container.querySelectorAll('.git-commit-file-toggle[aria-expanded="false"]')).toHaveLength(2);
+    button(container, "Expand all file diffs").click();
+    render(panel.render(context), container);
+    expect(container.querySelectorAll('[role="table"][aria-label^="Commit diff for "]')).toHaveLength(2);
+
+    button(container, "Changes").click();
+    render(panel.render(context), container);
+    expect(new URL(window.location.href).searchParams.get("git.workspace.git--mode")).toBeNull();
+    expect(new URL(window.location.href).searchParams.get("git.workspace.git--commit")).toBeNull();
+    expect(container.textContent).toContain("src/main.ts");
+    render(null, container);
+  });
+
+  it("restores a shared History commit route after a reload", async () => {
+    const historyCommit = {
+      id: "c".repeat(40),
+      parentIds: ["b".repeat(40)],
+      authorName: "Ada Lovelace",
+      authorEmail: "ada@example.test",
+      authoredAt: "2026-09-02T08:00:00+00:00",
+      subject: "Shared history",
+    };
+    window.history.replaceState({}, "", `/?project=${projectId}&workspace=${workspaceId}&git.workspace.git--mode=history&git.workspace.git--commit=${historyCommit.id}&git.workspace.git--expanded=1`);
+    const backend = backendFixture({ history: { unborn: false, commits: [historyCommit], truncated: false } });
+    const panel = requiredPanel(activate("git"));
+    const container = document.createElement("div");
+    document.body.append(container);
+
+    render(panel.render(panelContext(backend.request)), container);
+    await settleBackend();
+    await settleBackend();
+    render(panel.render(panelContext(backend.request)), container);
+
+    expect(backend.request).toHaveBeenCalledWith("history", null);
+    expect(backend.request).toHaveBeenCalledWith("commit-diff", { id: historyCommit.id });
+    expect(container.querySelector(".git-split.expanded")).not.toBeNull();
+    expect(container.textContent).toContain("Shared history");
     render(null, container);
   });
 
@@ -268,7 +426,13 @@ function requiredPanel(contributions: ReturnType<typeof activate>) {
   return panel;
 }
 
-function backendFixture(patch: { files?: ReturnType<typeof changedFile>[]; submodules?: string[]; branch?: string } = {}) {
+function backendFixture(patch: {
+  files?: ReturnType<typeof changedFile>[];
+  submodules?: string[];
+  branch?: string;
+  history?: JsonValue;
+  commitDiff?: string;
+} = {}) {
   const status = {
     isGitRepo: true,
     hash: `status-hash-${patch.branch ?? "main"}`,
@@ -283,6 +447,23 @@ function backendFixture(patch: { files?: ReturnType<typeof changedFile>[]; submo
       files: [...status.files],
       submodules: [...status.submodules],
     });
+    if (operation === "history") return Promise.resolve(patch.history ?? { unborn: false, commits: [], truncated: false });
+    if (operation === "commit-diff") {
+      const id = isRecord(input) && typeof input["id"] === "string" ? input["id"] : "a".repeat(40);
+      return Promise.resolve({
+        commit: {
+          id,
+          parentIds: ["b".repeat(40)],
+          authorName: "Ada Lovelace",
+          authorEmail: "ada@example.test",
+          authoredAt: "2026-09-02T08:00:00+00:00",
+          subject: "Add history",
+        },
+        combined: false,
+        diff: patch.commitDiff ?? "@@ -1 +1 @@\n-old\n+new",
+        truncated: false,
+      });
+    }
     const staged = isRecord(input) && input["staged"] === true;
     const path = isRecord(input) && typeof input["path"] === "string" ? input["path"] : "diff";
     return Promise.resolve({
@@ -300,7 +481,12 @@ function changedFile(path: string, patch: Record<string, JsonValue> = {}) {
   return { path, index: "unmodified", workingTree: "modified", ...patch };
 }
 
-function panelContext(request: WorkspaceBackend["request"] | undefined, workspace = gitWorkspace, machineId = "local"): WorkspacePanelContext {
+function panelContext(
+  request: WorkspaceBackend["request"] | undefined,
+  workspace = gitWorkspace,
+  machineId = "local",
+  host: Partial<WorkspaceHost> = {},
+): WorkspacePanelContext {
   const noop = () => undefined;
   return {
     machine: { id: machineId, name: machineId, kind: machineId === "local" ? "local" : "remote" },
@@ -314,7 +500,7 @@ function panelContext(request: WorkspaceBackend["request"] | undefined, workspac
       moveFile: () => Promise.reject(new Error("not implemented")),
     },
     ...(request === undefined ? {} : { backend: { request } }),
-    host: { requestRender: noop },
+    host: { requestRender: noop, ...host },
     prompt: { insertText: noop, getText: () => "", getSelection: () => null },
     terminal: { open: noop, runCommand: () => Promise.reject(new Error("not implemented")) },
   };

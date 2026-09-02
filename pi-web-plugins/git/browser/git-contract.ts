@@ -1,5 +1,42 @@
 export const GIT_STATUS_OPERATION = "status";
 export const GIT_DIFF_OPERATION = "diff";
+export const GIT_HISTORY_OPERATION = "history";
+export const GIT_COMMIT_DIFF_OPERATION = "commit-diff";
+
+export interface GitCommitSummary {
+  id: string;
+  parentIds: string[];
+  authorName: string;
+  authorEmail: string;
+  authoredAt: string;
+  subject: string;
+}
+
+/** Opaque cursor returned by a preceding history response, if any. */
+export interface GitHistoryRequest {
+  cursor?: string;
+}
+
+export interface GitHistoryResponse {
+  /** `true` when the worktree's HEAD does not yet name a commit. */
+  unborn: boolean;
+  commits: GitCommitSummary[];
+  nextCursor?: string;
+  truncated: boolean;
+}
+
+export interface GitCommitDiffRequest {
+  /** Complete SHA-1 or SHA-256 commit object identifier from a history row. */
+  id: string;
+}
+
+export interface GitCommitDiffResponse {
+  commit: GitCommitSummary;
+  /** A merge patch uses Git's combined (`--cc`) comparison against all parents. */
+  combined: boolean;
+  diff: string;
+  truncated: boolean;
+}
 
 export type GitFileState = "unmodified" | "modified" | "added" | "deleted" | "renamed" | "copied" | "untracked" | "ignored" | "conflicted";
 
@@ -31,6 +68,32 @@ export interface GitDiffResponse {
   truncated: boolean;
 }
 
+export function parseGitHistoryResponse(value: unknown): GitHistoryResponse {
+  const record = requireRecord(value, "Git history response");
+  const nextCursor = optionalString(record, "nextCursor");
+  const unborn = requireBoolean(record, "unborn");
+  const commits = requireArray(record, "commits").map(parseGitCommitSummary);
+  if (unborn && (commits.length !== 0 || nextCursor !== undefined)) {
+    throw new Error("Unborn Git history response must not contain commits or a cursor");
+  }
+  return {
+    unborn,
+    commits,
+    ...(nextCursor === undefined ? {} : { nextCursor }),
+    truncated: requireBoolean(record, "truncated"),
+  };
+}
+
+export function parseGitCommitDiffResponse(value: unknown): GitCommitDiffResponse {
+  const record = requireRecord(value, "Git commit diff response");
+  return {
+    commit: parseGitCommitSummary(record["commit"]),
+    combined: requireBoolean(record, "combined"),
+    diff: requireString(record, "diff"),
+    truncated: requireBoolean(record, "truncated"),
+  };
+}
+
 export function parseGitStatusResponse(value: unknown): GitStatusResponse {
   const record = requireRecord(value, "Git status response");
   const branch = optionalString(record, "branch");
@@ -58,6 +121,23 @@ export function parseGitDiffResponse(value: unknown): GitDiffResponse {
     hash: requireString(record, "hash"),
     diff: requireString(record, "diff"),
     truncated: requireBoolean(record, "truncated"),
+  };
+}
+
+function parseGitCommitSummary(value: unknown): GitCommitSummary {
+  const record = requireRecord(value, "Git commit summary");
+  const id = requireString(record, "id");
+  if (!isCompleteObjectId(id)) throw new Error("Git commit summary id must be a complete object ID");
+  return {
+    id,
+    parentIds: requireStringArray(record["parentIds"], "parentIds").map((parentId) => {
+      if (!isCompleteObjectId(parentId)) throw new Error("Git commit parent ID must be a complete object ID");
+      return parentId;
+    }),
+    authorName: requireString(record, "authorName"),
+    authorEmail: requireString(record, "authorEmail"),
+    authoredAt: requireString(record, "authoredAt"),
+    subject: requireString(record, "subject"),
   };
 }
 
@@ -133,6 +213,10 @@ function optionalNumber(record: Record<string, unknown>, key: string): number | 
 function requireStringArray(value: unknown, key: string): string[] {
   if (!Array.isArray(value) || !value.every((entry) => typeof entry === "string")) throw new Error(`Expected string array field: ${key}`);
   return value;
+}
+
+function isCompleteObjectId(value: string): boolean {
+  return /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/iu.test(value);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

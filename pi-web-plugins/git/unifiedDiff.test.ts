@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseUnifiedDiff, type UnifiedDiffLine, type UnifiedDiffLineKind } from "./browser/unifiedDiff.js";
+import { parseUnifiedDiff, parseUnifiedDiffFiles, type UnifiedDiffLine, type UnifiedDiffLineKind } from "./browser/unifiedDiff.js";
 
 describe("parseUnifiedDiff", () => {
   it("computes inline spans for paired removed and added lines", () => {
@@ -107,6 +107,26 @@ describe("parseUnifiedDiff", () => {
     expect(changedText(removed)).toEqual(["👩🏽‍💻"]);
     expect(changedText(added)).toEqual(["👨🏻‍💻"]);
     for (const span of [...removed.spans, ...added.spans]) expect(span.text).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u);
+  });
+
+  it("groups commit patches by ordinary and combined file boundaries", () => {
+    const files = parseUnifiedDiffFiles([
+      "diff --git a/src/a file.ts b/src/a file.ts",
+      "--- a/src/a file.ts\t",
+      "+++ b/src/a file.ts\t",
+      "@@ -1 +1 @@",
+      "-old",
+      "+new",
+      "diff --cc src/merge.ts",
+      "index 1111111,2222222..3333333",
+      "--- a/src/merge.ts",
+      "+++ b/src/merge.ts",
+      "@@@ -1,1 -1,1 +1,1 @@@",
+    ].join("\n"));
+
+    expect(files.map(({ path }) => path)).toEqual(["src/a file.ts", "src/merge.ts"]);
+    expect(files[0]?.lines.some((line) => line.kind === "add")).toBe(true);
+    expect(files[1]?.lines[0]?.text).toBe("diff --cc src/merge.ts");
   });
 
   it("falls back to bounded whole-middle spans without losing shared text", () => {

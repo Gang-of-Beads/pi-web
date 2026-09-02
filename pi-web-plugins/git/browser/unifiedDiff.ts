@@ -14,6 +14,11 @@ export interface UnifiedDiffLine {
   newLineNumber?: number;
 }
 
+export interface UnifiedDiffFileSection {
+  path: string;
+  lines: UnifiedDiffLine[];
+}
+
 interface InlineDiffResult {
   removed: UnifiedDiffTextSpan[];
   added: UnifiedDiffTextSpan[];
@@ -46,6 +51,49 @@ export function parseUnifiedDiff(diff: string): UnifiedDiffLine[] {
   const parsedLines = parseUnifiedDiffLines(diff);
   applyInlineDiffs(parsedLines);
   return parsedLines;
+}
+
+/** Split a commit-sized patch at Git's ordinary or combined file boundaries. */
+export function parseUnifiedDiffFiles(diff: string): UnifiedDiffFileSection[] {
+  const rawLines = splitDiffLines(diff);
+  if (rawLines.length === 0) return [];
+  const chunks: string[][] = [];
+  let current: string[] = [];
+  for (const rawLine of rawLines) {
+    if (isFileDiffHeader(rawLine) && current.length > 0) {
+      chunks.push(current);
+      current = [];
+    }
+    current.push(rawLine);
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks.map((chunk, index) => ({
+    path: diffFilePath(chunk) ?? `File ${String(index + 1)}`,
+    lines: parseUnifiedDiff(chunk.join("\n")),
+  }));
+}
+
+function isFileDiffHeader(line: string): boolean {
+  return line.startsWith("diff --git ") || line.startsWith("diff --cc ") || line.startsWith("diff --combined ");
+}
+
+function diffFilePath(lines: readonly string[]): string | undefined {
+  for (const prefix of ["+++ b/", "--- a/"]) {
+    const header = lines.find((line) => line.startsWith(prefix));
+    if (header !== undefined) return trimPatchPath(header.slice(prefix.length));
+  }
+  const first = lines[0];
+  if (first?.startsWith("diff --cc ") === true) return trimPatchPath(first.slice("diff --cc ".length));
+  if (first?.startsWith("diff --combined ") === true) return trimPatchPath(first.slice("diff --combined ".length));
+  if (first?.startsWith("diff --git a/") === true) {
+    const pairSeparator = first.lastIndexOf(" b/");
+    if (pairSeparator > "diff --git a/".length) return trimPatchPath(first.slice("diff --git a/".length, pairSeparator));
+  }
+  return undefined;
+}
+
+function trimPatchPath(path: string): string {
+  return path.replace(/\t.*$/u, "").replace(/^"|"$/gu, "");
 }
 
 function parseUnifiedDiffLines(diff: string): UnifiedDiffLine[] {

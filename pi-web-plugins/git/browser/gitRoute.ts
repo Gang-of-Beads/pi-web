@@ -1,29 +1,53 @@
 import type { WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
 
 const legacyDiffNamespace = "core.workspace.git";
+const modeQueryKey = "mode";
 const diffQueryKey = "diff";
+const commitQueryKey = "commit";
+const expandedQueryKey = "expanded";
+
+export type GitPanelModeRoute = "changes" | "history";
+
+/** The durable, shareable portion of a Git panel's workspace-scoped state. */
+export interface GitPanelRouteState {
+  mode: GitPanelModeRoute;
+  diffPath: string | undefined;
+  commitId: string | undefined;
+  expanded: boolean;
+}
 
 export interface GitDiffRoute {
   matches(context: WorkspacePanelContext): boolean;
-  read(): string | undefined;
-  write(path: string | undefined, options?: { replace?: boolean }): void;
+  read(): GitPanelRouteState;
+  write(state: GitPanelRouteState, options?: { replace?: boolean }): void;
 }
 
 export function createGitDiffRoute(panelContributionId: string): GitDiffRoute {
   const namespace = panelContributionId.replaceAll(":", ".");
-  const key = `${namespace}--${diffQueryKey}`;
-  const legacyKey = `${legacyDiffNamespace}--${diffQueryKey}`;
+  const key = (name: string) => `${namespace}--${name}`;
+  const legacyDiffKey = `${legacyDiffNamespace}--${diffQueryKey}`;
   return {
     matches: routeMatchesWorkspace,
     read: () => {
       const params = new URLSearchParams(window.location.search);
-      return nonEmpty(params.get(key)) ?? nonEmpty(params.get(legacyKey));
+      const requestedMode = params.get(key(modeQueryKey)) === "history" ? "history" : "changes";
+      const commitId = nonEmpty(params.get(key(commitQueryKey)));
+      const mode = commitId === undefined ? requestedMode : "history";
+      return {
+        mode,
+        diffPath: mode === "changes" ? nonEmpty(params.get(key(diffQueryKey))) ?? nonEmpty(params.get(legacyDiffKey)) : undefined,
+        commitId: mode === "history" ? commitId : undefined,
+        expanded: params.get(key(expandedQueryKey)) === "1",
+      };
     },
-    write: (path, options) => {
+    write: (state, options) => {
       const url = new URL(window.location.href);
-      url.searchParams.delete(key);
-      url.searchParams.delete(legacyKey);
-      if (path !== undefined && path !== "") url.searchParams.set(key, path);
+      for (const name of [modeQueryKey, diffQueryKey, commitQueryKey, expandedQueryKey]) url.searchParams.delete(key(name));
+      url.searchParams.delete(legacyDiffKey);
+      if (state.mode === "history") url.searchParams.set(key(modeQueryKey), "history");
+      if (state.mode === "changes" && state.diffPath !== undefined && state.diffPath !== "") url.searchParams.set(key(diffQueryKey), state.diffPath);
+      if (state.mode === "history" && state.commitId !== undefined && state.commitId !== "") url.searchParams.set(key(commitQueryKey), state.commitId);
+      if (state.expanded) url.searchParams.set(key(expandedQueryKey), "1");
       commitUrl(url, options?.replace === true);
     },
   };

@@ -13,10 +13,15 @@ describe("the git panel's split", () => {
    * have the screen.
    */
   it("gives the list the whole panel while no file is chosen", () => {
-    expect(gitSplitClass(undefined)).toBe("git-split list-only");
+    expect(gitSplitClass(undefined, false)).toBe("git-split list-only");
   });
 
   it("splits once a file is chosen", () => {
-    expect(gitSplitClass("src/app.ts")).toBe("git-split");
+    expect(gitSplitClass("src/app.ts", false)).toBe("git-split");
+  });
+
+  it("keeps a file list beside the viewer in expanded layout, even before a file is chosen", () => {
+    expect(gitSplitClass(undefined, true)).toBe("git-split expanded");
+    expect(gitSplitClass("src/app.ts", true)).toBe("git-split expanded");
   });
 });

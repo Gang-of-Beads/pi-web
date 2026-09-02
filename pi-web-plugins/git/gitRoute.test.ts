@@ -8,27 +8,35 @@ afterEach(() => {
   window.history.replaceState({}, "", "/");
 });
 
-describe("Git selected-diff route", () => {
-  it("keeps nested deployment paths and unrelated route fields while encoding the plugin namespace", () => {
+describe("Git panel route", () => {
+  it("keeps nested deployment paths and unrelated route fields while encoding the selected Git surface", () => {
     window.history.replaceState({}, "", "/test/ai/?machine=remote-1&project=project%2Fone&workspace=workspace+one&session=s1#panel");
     const route = createGitDiffRoute("machine.remote-1.git:workspace.git");
     const context = panelContext("remote-1", "project/one", "workspace one");
 
     expect(route.matches(context)).toBe(true);
-    route.write("src/a file.ts");
+    route.write({ mode: "history", diffPath: undefined, commitId: "a".repeat(40), expanded: true });
 
     const url = new URL(window.location.href);
     expect(`${url.pathname}${url.hash}`).toBe("/test/ai/#panel");
     expect(url.searchParams.get("machine")).toBe("remote-1");
     expect(url.searchParams.get("session")).toBe("s1");
-    expect(url.searchParams.get("machine.remote-1.git.workspace.git--diff")).toBe("src/a file.ts");
-    expect(route.read()).toBe("src/a file.ts");
+    expect(url.searchParams.get("machine.remote-1.git.workspace.git--mode")).toBe("history");
+    expect(url.searchParams.get("machine.remote-1.git.workspace.git--commit")).toBe("a".repeat(40));
+    expect(url.searchParams.get("machine.remote-1.git.workspace.git--expanded")).toBe("1");
+    expect(route.read()).toEqual({ mode: "history", diffPath: undefined, commitId: "a".repeat(40), expanded: true });
   });
 
-  it("reads the former core namespace so the plugin can migrate existing deep links", () => {
+  it("reads the former core diff namespace and defaults to Changes", () => {
     window.history.replaceState({}, "", "/?project=p1&workspace=w1&core.workspace.git--diff=README.md");
 
-    expect(createGitDiffRoute("git:workspace.git").read()).toBe("README.md");
+    expect(createGitDiffRoute("git:workspace.git").read()).toEqual({ mode: "changes", diffPath: "README.md", commitId: undefined, expanded: false });
+  });
+
+  it("does not retain a Changes diff when the URL selects History", () => {
+    window.history.replaceState({}, "", "/?project=p1&workspace=w1&git.workspace.git--mode=history&git.workspace.git--diff=README.md");
+
+    expect(createGitDiffRoute("git:workspace.git").read()).toEqual({ mode: "history", diffPath: undefined, commitId: undefined, expanded: false });
   });
 });
 
