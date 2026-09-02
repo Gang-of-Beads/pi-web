@@ -1,5 +1,79 @@
 # @gang-of-beads/pi-web
 
+## 1.202609.6
+
+### Patch Changes
+
+- 3db462f: Documentation links point at this repository instead of the upstream site
+
+  The README, the docs pages, the example plugin and the Nix package all linked to
+  `pi-web.dev`, which is the upstream project's live site and carries its install
+  instructions and its package name. Anyone following the README was sent there.
+  The rename fixed repository URLs and the package name and missed the domain
+  entirely; this finishes it - 78 references across 14 files, plus the banner image
+  now served from this repository.
+
+  The two documentation deploy jobs are unchanged and still skipped here, but no
+  longer describe themselves as publishing to a domain this project does not own.
+
+- c4f7a0e: Reach another machine's sessions without leaving where you are
+
+  Quick access only ever listed the machine you were pointed at, so finding a
+  session elsewhere meant switching machines first and finding your way back
+  after. A row of machine tabs now scopes the list. Browsing another machine does
+  not move you to it, and the list you see always belongs to the tab you are on:
+  switching faster than the read lands shows that it is still loading rather than
+  the previous machine's sessions under the new machine's name.
+
+  Project tiles in a row are also the same height again, and a long project name
+  no longer runs underneath the actions button beside it.
+
+- c4f7a0e: A message you sent appears once, not twice
+
+  The browser marks its own message so the transcript does not draw it a second
+  time, and it does that by an id it mints when you send. Four separate places
+  lost that id and fell back to comparing the text instead, which fails whenever
+  the text is not what you typed: a slash command the runtime expands before
+  queueing, a message whose payload is a screenshot and carries no words at all,
+  and a prompt parked while the session was compacting. Pictures were dropped
+  from messages that had them for the same reason.
+
+  Sending a screenshot no longer produces two copies with the reply between them.
+
+- c4f7a0e: Panels and sessions say what they actually know
+
+  A transcript could sit on "Loading this session…" for good. Clearing that
+  notice was restricted to the read that set it, which is right, but two ways of
+  leaving a session advance past a read without starting another one, so nobody
+  was left to clear it.
+
+  The Goals drawer asked for room whether or not the plugin behind it was
+  installed: an uninstalled plugin and an installed one with nothing in it drew
+  the same empty panel. The runtime is now asked directly. A plugin that failed
+  to load still shows its panel, so a broken install is visible rather than
+  tidied away, and a runtime that cannot answer keeps the panel too - not knowing
+  is not the same as knowing there is nothing there.
+
+  A session too young to be written to disk no longer reports "Session not
+  found", which is accurate about the machine and misleading to you: the same
+  words describe a deleted session. Nor does it invite a first message into a
+  session that is not there yet. It says it is still syncing.
+
+- c4f7a0e: Scrolling back through a long session stays where you put it
+
+  Holding your reading position was measured on every frame, which on a long
+  transcript meant walking every message and forcing a layout several times a
+  second while a reply streamed. The transcript crawled, never quite reached the
+  bottom, and snapped back under your thumb. It is now measured only when
+  something above you can actually have moved, and never while your finger is
+  still on the screen.
+
+  Screenshots load lazily, so scrolling back decodes them as they appear. One
+  finishing above you used to carry the page down with it, because the scroller
+  turns off the browser's own anchoring and nothing else put your place back.
+
+- 5c3961d: Add read-only Git commit history, shareable review routes, and a lazy multi-file diff view to Git workspaces.
+
 ## 1.202609.5
 
 ### Patch Changes
