@@ -96,6 +96,52 @@ describe("Git history panel controller", () => {
     ]);
   });
 
+  it("restores a different commit diff on browser history navigation", async () => {
+    const first = { ...commit, id: "1".repeat(40) };
+    const second = { ...commit, id: "2".repeat(40) };
+    let routedCommitId: string | undefined = first.id;
+    const navigableRoute: GitDiffRoute = {
+      matches: () => true,
+      read: () => ({ mode: "history", diffPath: undefined, commitId: routedCommitId, expanded: false }),
+      write: () => { /* no-op */ },
+    };
+    const controller = new GitUiController("git", navigableRoute);
+    const commitDiffIds: string[] = [];
+    const current = context("first", (operation, input) => {
+      if (operation === GIT_HISTORY_OPERATION) return Promise.resolve({ unborn: false, commits: [first, second], truncated: false });
+      if (operation === GIT_COMMIT_DIFF_OPERATION) {
+        const id = typeof input === "object" && input !== null && "id" in input ? input["id"] : undefined;
+        if (typeof id !== "string") throw new Error("Expected commit id");
+        commitDiffIds.push(id);
+        return Promise.resolve({ commit: id === first.id ? first : second, combined: false, diff: "", truncated: false });
+      }
+      return Promise.resolve({ isGitRepo: true, branch: "main", files: [], submodules: [], hash: "status" });
+    });
+
+    controller.connect(current);
+    await vi.waitFor(() => { expect(commitDiffIds).toContain(first.id); });
+    routedCommitId = second.id;
+    controller.handlePopState(current);
+    await vi.waitFor(() => { expect(controller.state(current).selectedCommitDiff?.response.commit.id).toBe(second.id); });
+
+    expect(commitDiffIds).toContain(second.id);
+    expect(controller.state(current).selectedCommitId).toBe(second.id);
+  });
+
+  it("exits the shell fullscreen state when the Git panel disconnects", () => {
+    const setWorkspacePanelFullscreen = vi.fn();
+    const current = context("first", () => Promise.reject(new Error("not used")));
+    current.host.setWorkspacePanelFullscreen = setWorkspacePanelFullscreen;
+    const controller = new GitUiController("git", route);
+
+    controller.connect(current);
+    controller.toggleWorkspacePanelFullscreen(current);
+    controller.disconnect(current);
+
+    expect(setWorkspacePanelFullscreen).toHaveBeenLastCalledWith(false);
+    expect(controller.state(current).workspacePanelFullscreen).toBe(true);
+  });
+
   it("ignores a selected commit diff that resolves after the selection changes", async () => {
     const controller = new GitUiController("git", route);
     let resolveFirst!: (value: JsonValue) => void;

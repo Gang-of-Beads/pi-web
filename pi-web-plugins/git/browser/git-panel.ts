@@ -162,16 +162,26 @@ export class GitUiController {
     this.activeWorkspaceKey = key;
     this.connectedWorkspaceKey = key;
     this.synchronizeRoute(state, changedWorkspace);
+    context.host.setWorkspacePanelFullscreen?.(state.workspacePanelFullscreen);
     if (state.status === undefined && state.statusRequest === undefined) void this.refresh(context);
-    else if (state.selectedDiffPath !== undefined && (state.selectedDiff === undefined || state.selectedStagedDiff === undefined) && !state.diffLoading) {
-      if (state.status?.files.some((file) => file.path === state.selectedDiffPath) === true) void this.refreshDiff(state, state.selectedDiffPath, context);
-      else this.clearSelection(state, true);
+    else if (state.mode === "changes" && state.selectedDiffPath !== undefined) {
+      if (state.status?.files.some((file) => file.path === state.selectedDiffPath) !== true) this.clearSelection(state, true);
+      else if (state.workspacePanelFullscreen) this.enqueueReviewDiff(state, context, state.selectedDiffPath, 100);
+      else if ((state.selectedDiff === undefined || state.selectedStagedDiff === undefined) && !state.diffLoading) void this.refreshDiff(state, state.selectedDiffPath, context);
     }
-    if (state.mode === "history" && state.history === undefined && state.historyRequest === undefined) void this.refreshHistory(context);
+    if (state.mode === "history") {
+      if (state.history === undefined && state.historyRequest === undefined) void this.refreshHistory(context);
+      else if (state.selectedCommitId !== undefined && state.selectedCommitDiff === undefined && !state.commitDiffLoading) {
+        state.commitDiffLoading = true;
+        void this.refreshCommitDiff(state, context, state.selectedCommitId);
+      }
+    }
   }
 
   disconnect(context: WorkspacePanelContext): void {
-    if (this.connectedWorkspaceKey === workspaceContextKey(context)) this.connectedWorkspaceKey = undefined;
+    if (this.connectedWorkspaceKey !== workspaceContextKey(context)) return;
+    this.connectedWorkspaceKey = undefined;
+    context.host.setWorkspacePanelFullscreen?.(false);
   }
 
   handlePopState(context: WorkspacePanelContext): void {

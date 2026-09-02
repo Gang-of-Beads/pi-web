@@ -30,12 +30,13 @@ export function createGitDiffRoute(panelContributionId: string): GitDiffRoute {
     matches: routeMatchesWorkspace,
     read: () => {
       const params = new URLSearchParams(window.location.search);
-      const mode = params.get(key(modeQueryKey)) === "history" ? "history" : "changes";
+      const requestedMode = params.get(key(modeQueryKey)) === "history" ? "history" : "changes";
       const commitId = nonEmpty(params.get(key(commitQueryKey)));
+      const mode = commitId === undefined ? requestedMode : "history";
       return {
-        mode: commitId === undefined ? mode : "history",
+        mode,
         diffPath: mode === "changes" ? nonEmpty(params.get(key(diffQueryKey))) ?? nonEmpty(params.get(legacyDiffKey)) : undefined,
-        commitId: mode === "history" || commitId !== undefined ? commitId : undefined,
+        commitId: mode === "history" ? commitId : undefined,
         expanded: params.get(key(expandedQueryKey)) === "1",
       };
     },
