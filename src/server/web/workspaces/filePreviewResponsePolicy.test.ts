@@ -85,3 +85,24 @@ describe("workspaceFilePreviewResponsePolicy", () => {
     expect(() => workspaceFilePreviewResponsePolicy("archive.zip")).toThrow("Inline preview is not supported");
   });
 });
+
+describe("workspaceFilePreviewResponsePolicy for media", () => {
+  it.each([
+    ["clip.mp4", "video/mp4"],
+    ["scene.webm", "video/webm"],
+    ["take.wav", "audio/wav"],
+    ["voice.mp3", "audio/mpeg"],
+  ])("serves %s inline as %s and lets media load from its own origin", (path, contentType) => {
+    const policy = workspaceFilePreviewResponsePolicy(path);
+    expect(policy.contentType).toBe(contentType);
+    expect(policy.contentDisposition).toContain("inline");
+    expect(policy.contentSecurityPolicy).toContain("media-src 'self'");
+    expect(policy.contentSecurityPolicy).toContain("sandbox");
+  });
+
+  it("keeps non-media previews from loading media at all", () => {
+    for (const path of ["diagram.png", "report.html", "spec.pdf"]) {
+      expect(workspaceFilePreviewResponsePolicy(path).contentSecurityPolicy).toContain("media-src 'none'");
+    }
+  });
+});

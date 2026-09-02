@@ -17,6 +17,11 @@ const HTML_CONTENT_SECURITY_POLICY = "sandbox; default-src 'none'; base-uri 'non
 // denies scripts, navigation helpers, and every subresource except the
 // same-origin plugin document (`object-src 'self'`) that the viewer embeds.
 const PDF_CONTENT_SECURITY_POLICY = "default-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'self'; script-src 'none'; connect-src 'none'; img-src 'none'; media-src 'none'; font-src 'none'; style-src 'none'; worker-src 'none'; frame-ancestors 'self'";
+// Audio and video play back as media documents, either embedded by the app or
+// opened directly. Seeking issues further same-origin range requests for the
+// same bytes, so `media-src` must allow the origin while everything else stays
+// denied; `sandbox` keeps the document on an opaque origin.
+const MEDIA_CONTENT_SECURITY_POLICY = "sandbox; default-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; script-src 'none'; connect-src 'none'; img-src 'none'; media-src 'self'; font-src 'none'; style-src 'none'; worker-src 'none'; frame-ancestors 'self'";
 const DOWNLOAD_CONTENT_SECURITY_POLICY = "sandbox; default-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; script-src 'none'; connect-src 'none'; img-src 'none'; media-src 'none'; font-src 'none'; style-src 'none'; worker-src 'none'; frame-ancestors 'none'";
 const ERROR_CONTENT_SECURITY_POLICY = "sandbox; default-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; script-src 'none'; connect-src 'none'; img-src 'none'; media-src 'none'; font-src 'none'; style-src 'none'; worker-src 'none'; frame-ancestors 'self'";
 
@@ -36,7 +41,9 @@ export function workspaceFilePreviewResponsePolicy(path: string, options: { down
     ? IMAGE_CONTENT_SECURITY_POLICY
     : classification.mediaType === "html"
       ? HTML_CONTENT_SECURITY_POLICY
-      : PDF_CONTENT_SECURITY_POLICY;
+      : classification.mediaType === "audio" || classification.mediaType === "video"
+        ? MEDIA_CONTENT_SECURITY_POLICY
+        : PDF_CONTENT_SECURITY_POLICY;
   return responsePolicy(classification.previewMimeType, "inline", filename, contentSecurityPolicy);
 }
 

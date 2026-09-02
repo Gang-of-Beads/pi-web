@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyWorkspaceFile, workspaceFileName } from "./workspaceFiles.js";
+import { classifyWorkspaceFile, MAX_INLINE_PREVIEW_BYTES, MAX_STREAM_PREVIEW_BYTES, workspaceFilePreviewByteLimit, workspaceFileName } from "./workspaceFiles.js";
 
 describe("classifyWorkspaceFile", () => {
   it.each([
@@ -39,5 +39,28 @@ describe("workspaceFileName", () => {
     expect(workspaceFileName("reports/annual.pdf")).toBe("annual.pdf");
     expect(workspaceFileName(String.raw`C:\reports\annual.pdf`)).toBe("annual.pdf");
     expect(workspaceFileName(String.raw`C:\reports/archive.zip`)).toBe("archive.zip");
+  });
+});
+
+describe("audio and video classification", () => {
+  it.each([
+    ["clip.MP4", "video", "video/mp4"],
+    ["clip.WEBM", "video", "video/webm"],
+    ["clip.MOV", "video", "video/quicktime"],
+    ["take.WAV", "audio", "audio/wav"],
+    ["take.MP3", "audio", "audio/mpeg"],
+    ["voice.OGG", "audio", "audio/ogg"],
+  ])("classifies %s as streamed %s bytes", (path, mediaType, previewMimeType) => {
+    const classification = classifyWorkspaceFile(path);
+    expect(classification).toMatchObject({ mediaType, source: "stream", previewMimeType });
+  });
+
+  it("gives streamed media a larger preview limit than snapshotted previews", () => {
+    const video = classifyWorkspaceFile("clip.mp4");
+    const image = classifyWorkspaceFile("photo.png");
+    if (video === undefined || image === undefined) throw new Error("Expected both classifications");
+    expect(workspaceFilePreviewByteLimit(video)).toEqual({ bytes: MAX_STREAM_PREVIEW_BYTES, label: "512 MB", streamed: true });
+    expect(workspaceFilePreviewByteLimit(image)).toMatchObject({ bytes: MAX_INLINE_PREVIEW_BYTES, streamed: false });
+    expect(MAX_STREAM_PREVIEW_BYTES).toBeGreaterThan(MAX_INLINE_PREVIEW_BYTES);
   });
 });

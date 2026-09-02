@@ -4,7 +4,7 @@ import { basename, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { MAX_INLINE_PREVIEW_BYTES } from "../../../shared/workspaceFiles.js";
 import { cleanupTempWorkspaces, createTempWorkspace } from "./fileContentService.testSupport.js";
-import { readWorkspaceFilePreview } from "./filePreviewService.js";
+import { parseWorkspaceFileRange, readWorkspaceFilePreview } from "./filePreviewService.js";
 
 afterEach(async () => {
   await cleanupTempWorkspaces();
@@ -139,5 +139,62 @@ describe("readWorkspaceFilePreview", () => {
 
     expect(preview.size).toBe(size);
     await expect(previewText(preview.body)).rejects.toThrow("File changed while it was being read");
+  });
+});
+
+describe("readWorkspaceFilePreview media streaming", () => {
+  it("previews media beyond the snapshot limit as a stream instead of refusing it", async () => {
+    const root = await createTempWorkspace();
+    await writeFile(join(root, "clip.mp4"), "");
+    await truncate(join(root, "clip.mp4"), MAX_INLINE_PREVIEW_BYTES + 1);
+
+    const preview = await readWorkspaceFilePreview(root, "clip.mp4");
+
+    expect(preview).toMatchObject({ mediaType: "video", size: MAX_INLINE_PREVIEW_BYTES + 1, streamed: true });
+    expect(Buffer.isBuffer(preview.body)).toBe(false);
+    expect(preview.contentRange).toBeUndefined();
+    if (Buffer.isBuffer(preview.body)) throw new Error("Expected a streamed media preview");
+    preview.body.destroy();
+  });
+
+  it("answers a single byte range so a media element can seek", async () => {
+    const root = await createTempWorkspace();
+    await writeFile(join(root, "clip.mp4"), "0123456789");
+
+    const head = await readWorkspaceFilePreview(root, "clip.mp4", undefined, { range: "bytes=0-3" });
+    expect(head).toMatchObject({ size: 4, streamed: true, contentRange: "bytes 0-3/10" });
+    expect(await previewText(head.body)).toBe("0123");
+
+    const tail = await readWorkspaceFilePreview(root, "clip.mp4", undefined, { range: "bytes=6-" });
+    expect(tail).toMatchObject({ size: 4, contentRange: "bytes 6-9/10" });
+    expect(await previewText(tail.body)).toBe("6789");
+
+    const suffix = await readWorkspaceFilePreview(root, "clip.mp4", undefined, { range: "bytes=-2" });
+    expect(suffix).toMatchObject({ size: 2, contentRange: "bytes 8-9/10" });
+    expect(await previewText(suffix.body)).toBe("89");
+  });
+
+  it("serves the whole file when the range is absent, malformed, or unsatisfiable", async () => {
+    const root = await createTempWorkspace();
+    await writeFile(join(root, "clip.mp4"), "0123456789");
+
+    for (const range of [undefined, "", "bytes=", "bytes=abc-1", "bits=0-1", "bytes=99-120", "bytes=0-3,7-9"]) {
+      const preview = await readWorkspaceFilePreview(root, "clip.mp4", undefined, { range });
+      expect(preview.contentRange).toBeUndefined();
+      expect(preview.size).toBe(10);
+      expect(await previewText(preview.body)).toBe("0123456789");
+    }
+  });
+
+  it.each([
+    ["bytes=0-3", { start: 0, end: 3 }],
+    ["bytes=4-", { start: 4, end: 9 }],
+    ["  bytes=2-4  ", { start: 2, end: 4 }],
+    ["bytes=8-99", { start: 8, end: 9 }],
+    ["bytes=10-12", undefined],
+    ["bytes=-0", undefined],
+    ["bytes=0-0", { start: 0, end: 0 }],
+  ])("parses the range %s within a 10-byte file", (range, expected) => {
+    expect(parseWorkspaceFileRange(range, 10)).toEqual(expected);
   });
 });
