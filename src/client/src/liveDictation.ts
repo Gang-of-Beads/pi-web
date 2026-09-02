@@ -99,6 +99,17 @@ export class LiveDictation {
     this.stopCapture = undefined;
     const socket = this.socket;
     this.socket = undefined;
+    // An empty chunk is how the protocol says the utterance is over. Without
+    // it the tail of a sentence survives only if the service's own silence
+    // detection happened to fire first, so stopping mid-sentence lost words.
+    if (socket !== undefined && socket.readyState === WebSocket.OPEN) {
+      try {
+        socket.send(encodeAzureAudioFrame(this.requestId, new Uint8Array(0)));
+      } catch {
+        // A socket that refuses the farewell is already gone; closing is all
+        // that is left to do, and the words are lost either way.
+      }
+    }
     LiveDictation.closeQuietly(socket);
     // Only settled text survives a stop: a half-formed guess that happened to
     // be on screen is not something the speaker said.
