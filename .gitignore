@@ -44,3 +44,6 @@ dist/
 .pi/.goals-pool-snapshot.json
 .pi/goals/
 .pi/queued-prompt-frames.json
+
+# Working notes for one operator; not project material.
+CHECKLIST.md
