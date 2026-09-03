@@ -2435,7 +2435,6 @@ export class PiWebApp extends LitElement {
           open: (options) => { void this.openRuntimeTerminal(machineId, workspace, options); },
           runCommand: (input) => terminalCommandRuns.runCommand({ ...input, workspace }),
         },
-        openTerminal: (options) => { void this.openRuntimeTerminal(machineId, workspace, options); },
         host: this.createWorkspaceHost(),
         piWebUnstable: { terminalCommandRuns },
         fileTree: this.state.fileTree,
