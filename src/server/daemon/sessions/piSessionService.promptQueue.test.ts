@@ -410,6 +410,46 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
     await service.dispose();
   });
 
+  /**
+   * The replay decides queueing at the moment of replay, not when the message
+   * was queued: a follow-up parked long ago and replayed to an idle runtime is
+   * sent outright, because an idle runtime has no turn-end to drain a parked
+   * follow-up. Only a service-level assertion has teeth here - the predicate's
+   * own tests stayed green while the wiring was missing, and the busy-replay
+   * test above passes with the wiring deleted.
+   */
+  it("replays a parked follow-up as a direct send when the runtime has gone idle", async () => {
+    const steeringMessages = ["an old steer"];
+    const followUpMessages = ["an old follow up"];
+    const hub = new CapturingSessionEventHub();
+    const fake = fakeRuntime("recall-idle-session", {
+      isStreaming: false,
+      pendingMessageCount: 2,
+      getSteeringMessages: () => steeringMessages,
+      getFollowUpMessages: () => followUpMessages,
+    });
+    fake.session.clearQueue = vi.fn(() => {
+      const cleared = { steering: [...steeringMessages], followUp: [...followUpMessages] };
+      steeringMessages.length = 0;
+      followUpMessages.length = 0;
+      return cleared;
+    });
+    const service = new PiSessionService(hub, {
+      agentDir: TEST_AGENT_DIR,
+      modelRuntime: testModelRuntime,
+      createAgentRuntime: runtimeCreator(fake.runtime),
+      sessionManager: sessionGateway([sessionRecord("recall-idle-session")]),
+      heartbeatIntervalMs: 60_000,
+    });
+
+    await service.recallQueuedMessage(sessionRef("recall-idle-session"), { kind: "steer", text: "an old steer" });
+
+    expect(fake.calls.prompt).toEqual([
+      { text: "an old follow up", options: undefined },
+    ]);
+    await service.dispose();
+  });
+
   it("leaves the queue untouched when the recalled message is already gone", async () => {
     // The agent can take a message between the click and the request. Replaying
     // everything unchanged is the honest outcome: nothing is lost, and the
