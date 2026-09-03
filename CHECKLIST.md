@@ -314,6 +314,37 @@ checked and is not the fault: all three tasks from this session are recorded in
 they ran has not been observed, and cannot be settled from the record after the
 fact. It needs watching the panel during a long task, on the phone.
 
+### 15c. The activity list does not refresh; the tab counts while the list is empty
+
+**Established, and fixed.** Photographed: the tab read `ACTIVITY · 1 RUNNING`
+above a list showing nothing. Those two numbers come from different places, and
+only one of them worked.
+
+The 4s poll was deliberately removed in favour of a run-count signal on status
+frames. Three of the four steps were built:
+
+1. the daemon counts and publishes it - `piSessionService.ts:4606`, `:4640`
+2. the parser carries it to the browser - `parsers.ts:599`
+3. the controller compares frames and calls
+   `this.onBackgroundRunCountChanged?.(sessionId)` - `sessionController.ts:1913`
+4. **nothing ever passed an implementation for that callback.**
+
+The optional-call operator means step 4's absence is not an error: it does
+nothing, silently, with every test green. The tab label kept counting because it
+reads the status frame directly and needs no refetch - which is exactly why the
+tab and the list disagreed on screen.
+
+A second fault sat behind it: the daemon omits `backgroundRunCount` when it is
+zero, so a wired callback still would not have fired when the *last* task
+finished. Absent and zero are now the same fact.
+
+The decision is `backgroundRunCountSignal.ts`, with the frame cases pinned.
+
+**This is the fifth instance this round of "the code is right and nothing holds
+it in place".** The other four are #12, #13, #16 and the plugin-surface field.
+This one is worse than untested: it was unwired, and no test that exists could
+have noticed, because the symptom is silence.
+
 ### 16. Receipts cannot be dismissed by hand
 
 **Done, and the mechanism was already right.** Every delivery path settles or

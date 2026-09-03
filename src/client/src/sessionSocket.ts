@@ -1,6 +1,7 @@
 import { realtimeEvents, sessionEvents } from "./api";
 import { parseRealtimeStreamEvent, parseSessionAskClosedEvent, parseSessionAskOpenedEvent, parseSessionDialogClosedEvent, parseSessionDialogOpenedEvent, parseSessionNotificationInboxEvent, parseSessionStartupProgressEvent, parseSessionStreamEvent, parseSessionUnreadEvent } from "./api/parsers";
 import type { RealtimeEvent, SessionRef, SessionUiEvent } from "../../shared/apiTypes";
+import { socketLivenessVerdict, type SocketReadyState } from "./socketLiveness";
 
 export type { GlobalSessionEvent, RealtimeEvent, SessionUiEvent } from "../../shared/apiTypes";
 
@@ -17,6 +18,7 @@ export type BrowserRealtimeEvent = Exclude<RealtimeEvent, { type: "notifications
  * describe as "the page only updates if I refresh it".
  */
 const LIVENESS_TIMEOUT_MS = 50_000;
+const HANDSHAKE_TIMEOUT_MS = 15_000;
 
 /**
  * Reconnect delay with jitter.
@@ -45,6 +47,7 @@ export class SessionSocket {
   private onMalformed: ((frameType: string) => void) | undefined;
   private machineId = "local";
   private lastFrameAt = 0;
+  private connectStartedAt = 0;
 
   /**
    * Drop a connection that has gone silent past the keepalive budget, so the
@@ -54,9 +57,17 @@ export class SessionSocket {
    */
   checkLiveness(now = Date.now()): void {
     const socket = this.socket;
-    if (socket === undefined || !this.shouldReconnect) return;
-    if (socket.readyState !== WebSocket.OPEN) return;
-    if (this.lastFrameAt === 0 || now - this.lastFrameAt < LIVENESS_TIMEOUT_MS) return;
+    if (socket === undefined) return;
+    const verdict = socketLivenessVerdict({
+      readyState: readyStateOf(socket),
+      wantsConnection: this.shouldReconnect,
+      lastFrameAt: this.lastFrameAt,
+      connectStartedAt: this.connectStartedAt,
+      now,
+      silenceBudgetMs: LIVENESS_TIMEOUT_MS,
+      handshakeBudgetMs: HANDSHAKE_TIMEOUT_MS,
+    });
+    if (verdict !== "drop-and-reconnect") return;
     // close() fires onclose, which schedules the reconnect; the reconnect
     // callback is what refetches everything missed while it was dead.
     closeSocketQuietly(socket);
@@ -111,6 +122,7 @@ export class SessionSocket {
     if (session === undefined || session.id === "" || session.cwd === "" || !this.shouldReconnect) return;
     const socket = sessionEvents(session, this.machineId);
     this.socket = socket;
+    this.connectStartedAt = Date.now();
     socket.onopen = () => {
       if (this.socket !== socket) return;
       this.reconnectDelay = 500;
@@ -184,13 +196,22 @@ export class RealtimeSocket {
   private shouldReconnect = false;
   private machineId = "local";
   private lastFrameAt = 0;
+  private connectStartedAt = 0;
 
   /** Same liveness contract as SessionSocket; see checkLiveness there. */
   checkLiveness(now = Date.now()): void {
     const socket = this.socket;
-    if (socket === undefined || !this.shouldReconnect) return;
-    if (socket.readyState !== WebSocket.OPEN) return;
-    if (this.lastFrameAt === 0 || now - this.lastFrameAt < LIVENESS_TIMEOUT_MS) return;
+    if (socket === undefined) return;
+    const verdict = socketLivenessVerdict({
+      readyState: readyStateOf(socket),
+      wantsConnection: this.shouldReconnect,
+      lastFrameAt: this.lastFrameAt,
+      connectStartedAt: this.connectStartedAt,
+      now,
+      silenceBudgetMs: LIVENESS_TIMEOUT_MS,
+      handshakeBudgetMs: HANDSHAKE_TIMEOUT_MS,
+    });
+    if (verdict !== "drop-and-reconnect") return;
     closeSocketQuietly(socket);
   }
 
@@ -222,6 +243,7 @@ export class RealtimeSocket {
     if (!this.shouldReconnect) return;
     const socket = realtimeEvents(this.machineId);
     this.socket = socket;
+    this.connectStartedAt = Date.now();
     socket.onopen = () => {
       if (this.socket !== socket) return;
       this.reconnectDelay = 500;
@@ -400,4 +422,11 @@ function closeSocketQuietly(socket: WebSocket | undefined): void {
     return;
   }
   socket.close();
+}
+
+function readyStateOf(socket: WebSocket): SocketReadyState {
+  if (socket.readyState === WebSocket.CONNECTING) return "connecting";
+  if (socket.readyState === WebSocket.OPEN) return "open";
+  if (socket.readyState === WebSocket.CLOSING) return "closing";
+  return "closed";
 }

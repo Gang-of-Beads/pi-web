@@ -3253,6 +3253,7 @@ export class PiWebApp extends LitElement {
     const layout = {
       isMobileNavigationLayout: this.appShell.isMobileNavigationLayout,
       navigationCollapsed: this.panelCollapse.navigationPanelCollapsed,
+      workspaceToolTabsVisible: this.isDesktopSideBySideLayout(),
     };
     if (!showsWhereAmIBar(layout)) return null;
     return html`

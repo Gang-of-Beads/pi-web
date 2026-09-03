@@ -10,14 +10,18 @@ describe("the bar that says which machine, project and session you are in", () =
    * project, the workspace or the session.
    */
   it("appears on a desktop once the panel that carried the identity is collapsed", () => {
-    expect(showsWhereAmIBar({ isMobileNavigationLayout: false, navigationCollapsed: true })).toBe(true);
+    expect(showsWhereAmIBar({ isMobileNavigationLayout: false, navigationCollapsed: true, workspaceToolTabsVisible: true })).toBe(true);
   });
 
   it("stays out of the way while the panel is showing it", () => {
-    expect(showsWhereAmIBar({ isMobileNavigationLayout: false, navigationCollapsed: false })).toBe(false);
+    expect(showsWhereAmIBar({ isMobileNavigationLayout: false, navigationCollapsed: false, workspaceToolTabsVisible: true })).toBe(false);
   });
 
   it("is how a phone always says where it is", () => {
-    expect(showsWhereAmIBar({ isMobileNavigationLayout: true, navigationCollapsed: false })).toBe(true);
+    expect(showsWhereAmIBar({ isMobileNavigationLayout: true, navigationCollapsed: false, workspaceToolTabsVisible: true })).toBe(true);
+  });
+
+  it("shows the bar when the workspace tool tabs are not on screen", () => {
+    expect(showsWhereAmIBar({ isMobileNavigationLayout: false, navigationCollapsed: false, workspaceToolTabsVisible: false })).toBe(true);
   });
 });
