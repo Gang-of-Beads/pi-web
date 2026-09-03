@@ -272,7 +272,47 @@ Reported, never addressed.
 
 ### 15. The compacting label masks other activity
 
-Reported as "fake done, ordering does not hold". Never addressed.
+**Done.** `isCompacting` and `isStreaming` are independent - `piSessionService.ts:2606`
+itself reads `isStreaming || isCompacting` - so compaction was never entitled to
+replace the chip. It qualifies it now: `agent running · compacting`,
+`running bash · compacting`, `queued · compacting`, and `compacting` alone when
+nothing else is true. Reintroducing the mask turns three tests red.
+
+Two existing assertions went red during this and both were right: `updating
+session` is the mechanism compaction runs through, not a peer, and tree
+navigation is the reader's own action and takes no qualifier. The design was
+corrected, not the tests.
+
+### 15b. The activity panel says nothing is running while the session works
+
+Photographed: `ACTIVITY` open, `Nothing running right now.`, while the session
+was mid-turn running commands.
+
+**Half of this is fixed and half is not established. They are different faults.**
+
+**Fixed - the sentence was lying about its own scope.** The panel knows about
+exactly two things, agent runs and background tasks, and neither covers a bash
+tool call or a streaming turn. It nonetheless printed a claim about the whole
+session. It now names what it knows and refuses to call the session quiet when
+the status says otherwise (`activityEmptyMeaning.ts`):
+
+| session | before | after |
+| --- | --- | --- |
+| agent streaming | `Nothing running right now.` | `No agent runs or tasks. The agent is working in this session.` |
+| command running | `Nothing running right now.` | `No agent runs or tasks. A command is running in this session.` |
+| genuinely quiet | `Nothing running right now.` | `No agent runs or tasks running right now.` |
+
+Two `.not.toContain("Nothing running right now")` assertions would have passed
+trivially against the new wording - silently disabled by a text change - and
+were widened to `"running right now"` so they still protect what they were
+written for.
+
+**Not established - whether the list itself fails to refresh.** Attribution was
+checked and is not the fault: all three tasks from this session are recorded in
+`.pi/tasks/attribution.json` against the right transcript, and they read
+`completed` because they had finished. Whether the panel showed them *while*
+they ran has not been observed, and cannot be settled from the record after the
+fact. It needs watching the panel during a long task, on the phone.
 
 ### 16. Receipts cannot be dismissed by hand
 

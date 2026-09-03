@@ -50,6 +50,7 @@ import { sessionStateBadgeStyles as SessionStateBadgeStyles } from "./sessionSta
 import { readingAnchorDecision, readingScrollCorrection, shouldHoldReadingPosition } from "../readingAnchor";
 import { imageLoadScrollCorrection } from "../imageLoadScroll";
 import { subagentRunStatusExplanation, subagentRunStatusLabel } from "../subagentRunStatusLabel";
+import { activityEmptyMeaning } from "../activityEmptyMeaning";
 import { pluginSurfaceVisibility } from "../pluginSurfaceVisibility";
 
 export const chatStyles = css`
@@ -1680,7 +1681,7 @@ export class ChatView extends LitElement {
       <div class="subagents-list" id="session-activity-list" role="tabpanel" aria-labelledby="drawer-tab-activity">
           ${this.renderActivityFilters(activity, filter)}
           ${(scope === "empty-active" && entries.length === 0)
-            ? html`<p class="activity-empty">Nothing running right now.</p>`
+            ? html`<p class="activity-empty">${activityEmptyMeaning({ isStreaming: this.status?.isStreaming ?? false, isBashRunning: this.status?.isBashRunning ?? false }).text}</p>`
             : null}
           ${repeat(entries, activityEntryKey, (entry) => this.renderActivityEntry(entry))}
           ${finished === 0 ? null : html`

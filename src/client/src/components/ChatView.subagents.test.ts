@@ -65,7 +65,7 @@ describe("subagents strip", () => {
     host.querySelector<HTMLButtonElement>(".drawer-toggle")?.click();
     await new Promise((resolve) => { setTimeout(resolve, 0); });
     expect(host.querySelector<HTMLElement>(".drawer-body")?.hidden).toBe(false);
-    expect(host.textContent).toContain("Nothing running right now");
+    expect(host.textContent).toContain("No agent runs or tasks running right now");
     expect(host.querySelectorAll(".subagent-row").length).toBe(0);
 
     host.querySelector<HTMLButtonElement>(".activity-history-toggle")?.click();
@@ -255,7 +255,7 @@ describe("background tasks", () => {
     ]);
 
     // A lost record is not live work, so it waits with the rest of the history.
-    expect(host.textContent).toContain("Nothing running right now");
+    expect(host.textContent).toContain("No agent runs or tasks running right now");
     host.querySelector<HTMLButtonElement>(".activity-history-toggle")?.click();
     await new Promise((resolve) => { setTimeout(resolve, 0); });
 
@@ -660,7 +660,7 @@ describe("the activity panel's empty claims", () => {
     view.subagents = [{ sessionId: "child-x", cwd: "/repo", status: "unknown" }];
     document.body.append(view);
     await view.updateComplete;
-    expect(view.renderRoot.textContent).not.toContain("Nothing running right now");
+    expect(view.renderRoot.textContent).not.toContain("running right now");
   });
 
   it("does not render one session's rows under another session", async () => {

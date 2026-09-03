@@ -24,4 +24,20 @@ describe("sessionActivityLabel", () => {
     expect(sessionActivityLabel({ entryMutationActive: false, isCompacting: false, isBashRunning: false, isStreaming: false, pendingMessageCount: 2 })).toBe("queued");
     expect(sessionActivityLabel({ entryMutationActive: false, isCompacting: false, isBashRunning: false, isStreaming: false, pendingMessageCount: 0 })).toBe("active");
   });
+
+  it("does not let compaction hide a streaming reply", () => {
+    expect(sessionActivityLabel({ isCompacting: true, isStreaming: true, isBashRunning: false, pendingMessageCount: 0 })).toBe("agent running · compacting");
+  });
+
+  it("does not let compaction hide a running command", () => {
+    expect(sessionActivityLabel({ isCompacting: true, isStreaming: false, isBashRunning: true, pendingMessageCount: 0 })).toBe("running bash · compacting");
+  });
+
+  it("does not let compaction hide waiting messages", () => {
+    expect(sessionActivityLabel({ isCompacting: true, isStreaming: false, isBashRunning: false, pendingMessageCount: 2 })).toBe("queued · compacting");
+  });
+
+  it("says compacting alone when nothing else is happening", () => {
+    expect(sessionActivityLabel({ isCompacting: true, isStreaming: false, isBashRunning: false, pendingMessageCount: 0 })).toBe("compacting");
+  });
 });

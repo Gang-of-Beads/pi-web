@@ -550,7 +550,7 @@ describe("the activity panel under a failed read", () => {
     });
     const text = templateText(template);
     expect(text).toContain("Activity could not be loaded");
-    expect(text).not.toContain("Nothing running right now");
+    expect(text).not.toContain("running right now");
   });
 
   it("keeps the present-tense empty only when the read succeeded and found nothing", () => {
@@ -568,7 +568,7 @@ describe("the activity panel under a failed read", () => {
       total: 0,
       activeCount: 0,
     });
-    expect(templateText(template)).toContain("Nothing running right now");
+    expect(templateText(template)).toContain("No agent runs or tasks running right now");
   });
 });
 
