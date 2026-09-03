@@ -2324,20 +2324,32 @@ export class PiWebApp extends LitElement {
    * view is only meaningful on the mobile stacked layout, and returning there
    * after an explicit pick would undo the tap the user just made.
    */
+  private async openWorkspaceFromQuickSwitcher(workspace: Workspace): Promise<void> {
+    const moved = await this.moveToBrowsedMachine();
+    if (!moved) return;
+    await this.workspaces.selectWorkspace(workspace);
+  }
+
+  /** Move to the browsed machine before acting on anything listed under it. */
+  private async moveToBrowsedMachine(): Promise<boolean> {
+    const browsed = this.quickSwitcherBrowseMachineId;
+    if (browsed === "" || browsed === selectedMachineId(this.state)) return true;
+    const target = this.state.machines.find((candidate) => candidate.id === browsed);
+    if (target === undefined) {
+      this.setState({ error: `The machine this item lives on (${browsed}) is not in the machine list.` });
+      return false;
+    }
+    await this.machines.selectMachine(target);
+    return true;
+  }
+
   private async openSessionFromQuickSwitcher(session: SessionInfo): Promise<void> {
     // A session browsed on another machine's tab lives on that machine. The
     // first version of these tabs could browse but not open: selecting ran
     // against the machine the app was on, which had never heard of the
     // session. Move first, then select.
-    const browsed = this.quickSwitcherBrowseMachineId;
-    if (browsed !== "" && browsed !== selectedMachineId(this.state)) {
-      const target = this.state.machines.find((candidate) => candidate.id === browsed);
-      if (target === undefined) {
-        this.setState({ error: `The machine this session lives on (${browsed}) is not in the machine list.` });
-        return;
-      }
-      await this.machines.selectMachine(target);
-    }
+    const moved = await this.moveToBrowsedMachine();
+    if (!moved) return;
     await this.sessions.selectSession(session);
     await this.focusChatComposer();
   }
@@ -3485,15 +3497,15 @@ export class PiWebApp extends LitElement {
           .interruptedSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.interruptedSessionIds}
           .errorSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.errorSessionIds()}
           .pinnedSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.pinnedSessionIds}
-          .projects=${state.projects}
+          .projects=${this.quickSwitcherBrowsingElsewhere() ? [] : state.projects}
           .machines=${state.machines}
           .browseMachineId=${this.quickSwitcherBrowseMachineId}
           .loadError=${this.quickSwitcherError}
           .onSelectMachine=${(machineId: string) => { this.browseQuickSwitcherMachine(machineId); }}
-          .canStartSession=${this.canStartSession()}
+          .canStartSession=${!this.quickSwitcherBrowsingElsewhere() && this.canStartSession()}
           .onCreateSession=${() => { void this.startSessionAndOpenChat(); }}
           .onOpenSession=${(session: SessionInfo) => { void this.openSessionFromQuickSwitcher(session); }}
-          .onSelectWorkspace=${(workspace: Workspace) => { void this.workspaces.selectWorkspace(workspace); }}
+          .onSelectWorkspace=${(workspace: Workspace) => { void this.openWorkspaceFromQuickSwitcher(workspace); }}
           .onBrowse=${() => { this.openNavigationSection("projects"); }}
           .onTogglePin=${(session: SessionInfo) => { this.togglePinnedSession(session); }}
           .onRenameSession=${(session: SessionInfo, name: string) => {

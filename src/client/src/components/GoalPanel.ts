@@ -40,6 +40,7 @@ export class GoalPanel extends LitElement {
    */
   @property({ attribute: false }) goalsLoad: PanelLoad<GoalRecordSummary[]> = { state: "unloaded", key: undefined, data: [] };
   @property({ attribute: false }) onRefresh?: () => void | Promise<void>;
+  @property({ attribute: false }) presence?: "present" | "absent" | "failed";
   /** Archive a goal the agent is not going to finish; confirmed before it runs. */
   @property({ attribute: false }) onArchive?: (goal: GoalRecordSummary) => void | Promise<void>;
   /**
@@ -154,6 +155,7 @@ export class GoalPanel extends LitElement {
       ? "Couldn't read goals from this workspace."
       : this.isReading ? "Loading goals…"
       : this.isUnread ? "Goals have not been read yet."
+      : this.presence === "absent" ? "Goal tools are not installed for this session."
       : "No goals recorded for this workspace.";
     return html`<p class="empty">${line}</p>`;
   }

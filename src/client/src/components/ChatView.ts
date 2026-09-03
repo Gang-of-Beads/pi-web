@@ -1472,6 +1472,7 @@ export class ChatView extends LitElement {
             <div class="goal-drawer-panel" id="session-goal-list" role="tabpanel" aria-labelledby="drawer-tab-goals">
               <goal-panel
                 .goalsLoad=${this.goalsLoad}
+                .presence=${this.status?.pluginSurfaces?.goals}
                 ?canRunCommands=${true}
                 .commandInFlight=${this.goalCommandInFlight}
                 .onRunCommand=${(goal: GoalRecordSummary, command: string) => this.onRunGoalCommand?.(goal, command)}

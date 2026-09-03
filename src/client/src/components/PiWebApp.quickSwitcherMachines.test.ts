@@ -112,3 +112,16 @@ describe("browsing another machine's tab", () => {
     expect(Reflect.get(app, "quickSwitcherWorkspaces")).toEqual([]);
   });
 });
+
+/** Review finding: the badge-scope guarantee was claimed but unpinned. */
+describe("badges while browsing elsewhere", () => {
+  it("empties every status badge, pin and selection for another machine's rows", () => {
+    const source = PiWebApp.prototype.render.toString();
+    const emptied = source.match(/quickSwitcherBrowsingElsewhere\(\) \? EMPTY_ID_SET/g) ?? [];
+    expect(emptied.length).toBeGreaterThanOrEqual(5);
+    expect(source).toContain("quickSwitcherBrowsingElsewhere() ? EMPTY_STATE_MAP");
+    expect(source).toContain("quickSwitcherBrowsingElsewhere() ? undefined : state.selectedSession");
+    expect(source).toContain("quickSwitcherBrowsingElsewhere() ? [] : state.projects");
+    expect(source).toContain("!this.quickSwitcherBrowsingElsewhere() && this.canStartSession()");
+  });
+});

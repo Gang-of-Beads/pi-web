@@ -31,6 +31,10 @@ export function pluginPresence(loaded: LoadedExtensionsView, providingTools: rea
   // A load failure is reported before absence: an extension that threw is not
   // the same as one nobody installed, and calling it absent would hide a broken
   // install behind a tidy empty state.
+  // Any load failure blocks an absence claim: the extension that failed
+  // might have been this surface's provider, and hiding a surface on a
+  // guess is the fault this module replaces. Erring toward "failed" keeps
+  // the panel visible, which is the safe direction.
   if (loaded.errors.length > 0) return { state: "failed", errors: loaded.errors.map((entry) => entry.error) };
   return { state: "absent" };
 }

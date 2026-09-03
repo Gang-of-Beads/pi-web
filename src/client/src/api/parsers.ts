@@ -574,13 +574,18 @@ function optionalNonEmptyString(record: Record<string, unknown>, key: string): s
  * on that answer. An unrecognised state is dropped for the same reason - a
  * value this build does not understand is not evidence of absence.
  */
+function parsePluginSurfaceState(value: unknown): "present" | "absent" | "failed" | undefined {
+  return value === "present" || value === "absent" || value === "failed" ? value : undefined;
+}
+
 function parsePluginSurfaces(value: unknown): PluginSurfacePresence | undefined {
   if (value === undefined || value === null || typeof value !== "object") return undefined;
-  const goals: unknown = Reflect.get(value, "goals");
-  if (goals !== "present" && goals !== "absent" && goals !== "failed") return undefined;
-  const subagents: unknown = Reflect.get(value, "subagents");
-  const knownSubagents = subagents === "present" || subagents === "absent" || subagents === "failed" ? subagents : undefined;
-  return { goals, ...(knownSubagents === undefined ? {} : { subagents: knownSubagents }) };
+  // Each surface is an independent fact; one unrecognized value must not
+  // discard the others under version skew.
+  const goals = parsePluginSurfaceState(Reflect.get(value, "goals"));
+  const subagents = parsePluginSurfaceState(Reflect.get(value, "subagents"));
+  if (goals === undefined && subagents === undefined) return undefined;
+  return { ...(goals === undefined ? {} : { goals }), ...(subagents === undefined ? {} : { subagents }) };
 }
 
 export function parseSessionStatus(value: unknown): SessionStatus {

@@ -316,3 +316,22 @@ describe("goal-panel failure state", () => {
     expect(shadow(panel).querySelector(".empty")?.textContent).not.toContain("No goals recorded");
   });
 });
+
+describe("goal-panel presence", () => {
+  it("says the tools are not installed only on a definite absence", async () => {
+    const panel = new GoalPanel();
+    panel.goalsLoad = { state: "loaded", key: "test-key", data: [] };
+    panel.presence = "absent";
+    document.body.append(panel);
+    await panel.updateComplete;
+    expect(shadow(panel).querySelector(".empty")?.textContent).toContain("not installed");
+  });
+
+  it("keeps the ordinary empty line when presence is unknown", async () => {
+    const panel = new GoalPanel();
+    panel.goalsLoad = { state: "loaded", key: "test-key", data: [] };
+    document.body.append(panel);
+    await panel.updateComplete;
+    expect(shadow(panel).querySelector(".empty")?.textContent).toContain("No goals recorded");
+  });
+});
