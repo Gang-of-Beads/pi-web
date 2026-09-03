@@ -1,5 +1,19 @@
 # @gang-of-beads/pi-web
 
+## 1.202609.14
+
+### Patch Changes
+
+- c09e84b: The background-task poll stops re-proving what cannot change: registry files are re-parsed only when their stat changes, and only a running task's process is probed - finished tasks no longer cost a process spawn per poll.
+
+## 1.202609.13
+
+### Patch Changes
+
+- 9c7cbcd: Speaking beside an open question form no longer closes it when the message is delivered. Only messages that were already queued before the questions appeared void the form - a remark sent in its presence is an addition to the request, and the questions stay answerable.
+- d0e4cff: The status bar no longer counts the queue. The queued message's gold card is the one representation of queue state - position included - and the footer counter was a leftover second count of the same fact.
+- bf7e68b: A stale tab now knows it. When the server is upgraded, an open page keeps running the bundle it loaded and every fix shipped in between looks still broken; the page now compares versions when it becomes visible and offers a Reload banner - an offer, never an automatic reload.
+
 ## 1.202609.12
 
 ### Patch Changes
