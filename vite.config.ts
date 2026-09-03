@@ -91,7 +91,8 @@ function devDocsPlugin(): Plugin {
   };
 }
 
-const packageVersion: string = (JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")) as { version: string }).version;
+const parsedPackage: unknown = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
+const packageVersion = typeof parsedPackage === "object" && parsedPackage !== null && "version" in parsedPackage && typeof parsedPackage.version === "string" ? parsedPackage.version : "";
 
 export default defineConfig({
   plugins: [devDocsPlugin()],
