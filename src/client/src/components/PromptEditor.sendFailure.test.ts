@@ -2,6 +2,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PromptEditor } from "./PromptEditor";
+import { savePendingPrompt } from "../pendingOutbox";
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -135,3 +136,20 @@ function shadow(editor: PromptEditor): ShadowRoot {
   if (root === null) throw new Error("Expected prompt-editor shadow root");
   return root;
 }
+
+describe("unsent messages are visible and retryable", () => {
+  it("renders a stored pending prompt with retry and discard", async () => {
+    savePendingPrompt("m1:s1", { text: "lost on exit", clientMessageId: "c-lost", at: "2026-09-04T00:00:00.000Z" });
+    const editor = new PromptEditor();
+    editor.machineId = "m1";
+    editor.sessionId = "s1";
+    
+    document.body.append(editor);
+    await editor.updateComplete;
+    const strip = editor.shadowRoot?.querySelector(".pending-prompts");
+    expect(strip?.textContent).toContain("lost on exit");
+    expect(strip?.textContent).toContain("Unsent");
+    expect(strip?.textContent).toContain("Retry");
+    expect(strip?.textContent).toContain("Discard");
+  });
+});

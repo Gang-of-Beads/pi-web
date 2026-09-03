@@ -326,6 +326,7 @@ export class PromptEditor extends LitElement {
     this.createEditor();
     this.pendingPrompts = this.pendingPromptsForSession();
     window.addEventListener("online", this.flushPendingPrompts);
+    if (this.pendingPrompts.length > 0) this.flushPendingPrompts();
   }
 
   override connectedCallback(): void {
@@ -371,6 +372,7 @@ export class PromptEditor extends LitElement {
     return html`
       <footer class=${shellMode ? "shell-mode" : ""} @paste=${(event: ClipboardEvent) => { void this.handlePaste(event); }} @dragover=${(event: DragEvent) => { this.handleDragOver(event); }} @drop=${(event: DragEvent) => { void this.handleDrop(event); }}>
         <input class="attachment-input" type="file" multiple hidden @change=${(event: Event) => { void this.handleFileInput(event); }} />
+        ${this.renderPendingPrompts()}
         ${this.renderAttachments()}
         <div class="editor-wrap">
           ${shellMode ? html`<div class="mode-hint">Shell command${shellInputMode.excludeFromContext ? " · excluded from context" : ""}</div>` : null}
@@ -491,6 +493,29 @@ export class PromptEditor extends LitElement {
         <button class="select-thinking icon-button" title=${`Thinking level: ${thinkingLevelLabel(status.thinkingLevel)}`} aria-label=${`Thinking level: ${thinkingLevelLabel(status.thinkingLevel)}`} @click=${() => this.onSelectThinking?.()}>${renderThinkingGauge(thinkingGauge(status.thinkingLevel, this.availableThinkingLevels))}</button>
       </div>
     `;
+  }
+
+  private renderPendingPrompts() {
+    if (this.pendingPrompts.length === 0) return null;
+    return html`
+      <div class="pending-prompts" role="status">
+        ${this.pendingPrompts.map((prompt) => html`
+          <div class="pending-prompt">
+            <span class="pending-prompt-text">${prompt.text.slice(0, 80)}${prompt.text.length > 80 ? "…" : ""}</span>
+            <span class="pending-prompt-state">Unsent</span>
+            <button type="button" @click=${() => { this.flushPendingPrompts(); }}>Retry</button>
+            <button type="button" class="pending-prompt-discard" @click=${() => { this.discardPendingPrompt(prompt); }}>Discard</button>
+          </div>
+        `)}
+      </div>
+    `;
+  }
+
+  private discardPendingPrompt(prompt: PendingPrompt): void {
+    const key = machineSessionKey(this.machineId, this.sessionId ?? "");
+    if (key === "" || prompt.clientMessageId === undefined) return;
+    forgetPendingPrompt(key, prompt.clientMessageId);
+    this.pendingPrompts = loadPendingPrompts(key);
   }
 
   private renderAttachments() {
@@ -1031,18 +1056,16 @@ export class PromptEditor extends LitElement {
     let remaining = pending;
     void (async () => {
       const stillPending: PendingPrompt[] = [];
-      let networkFailed = false;
       for (const prompt of remaining) {
         try {
           const accepted = await this.onSend?.(prompt.text, prompt.behavior, prompt.attachments, prompt.attachments === undefined ? undefined : this.effectiveAttachmentDelivery(), prompt.clientMessageId === undefined ? undefined : { clientMessageId: prompt.clientMessageId });
-          if (accepted === false) stillPending.push(prompt);
-        } catch (error) {
-          networkFailed = networkFailed || isNetworkFailure(error);
+          if (accepted !== true) stillPending.push(prompt);
+        } catch {
           stillPending.push(prompt);
         }
       }
-      if (stillPending.length === 0) clearPendingPrompts(key);
-      else if (!networkFailed) clearPendingPrompts(key);
+      clearPendingPrompts(key);
+      for (const prompt of stillPending) savePendingPrompt(key, prompt);
       this.pendingPrompts = stillPending.length === 0 ? [] : stillPending;
       remaining = stillPending;
     })();
