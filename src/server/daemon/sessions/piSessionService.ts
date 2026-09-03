@@ -2821,6 +2821,14 @@ export class PiSessionService implements SessionRouteService {
     message["clientMessageId"] = clientMessageId;
   }
 
+  private publishActivityChangeForToolEvent(session: PiAgentSession, event: unknown): void {
+    const eventType = getString(event, "type");
+    if (eventType !== "tool_execution_start" && eventType !== "tool_execution_end") return;
+    const toolName = getString(event, "toolName") ?? "";
+    if (!ACTIVITY_TOOL_NAMES.has(toolName)) return;
+    this.events.publish(session.sessionId, { type: "activity.changed" });
+  }
+
   private enqueuePromptDuringCompaction(session: PiAgentSession, text: string, kind: QueuedPromptKind, images: ImageContent[] = [], echoUserMessage = true, clientMessageId?: string): void {
     const queue = this.compactionPromptQueues.get(session.sessionId) ?? [];
     queue.push({ kind, text, ...(images.length > 0 ? { images } : {}), ...(echoUserMessage ? {} : { echoUserMessage: false }), ...(clientMessageId === undefined ? {} : { clientMessageId }) });
@@ -4233,6 +4241,7 @@ export class PiSessionService implements SessionRouteService {
     }
     active.unsubscribe = session.subscribe((event) => {
       this.stampCommittedUserMessage(session, event);
+      this.publishActivityChangeForToolEvent(session, event);
       this.events.publish(session.sessionId, toClientEvent(event, session.thinkingLevel));
       this.publishActivityForEvent(session, event);
       const eventType = getString(event, "type");
@@ -5401,6 +5410,8 @@ function committedMessageShape(content: unknown): { text: string; imageCount: nu
   }
   return { text: texts.join("\n\n"), imageCount };
 }
+
+const ACTIVITY_TOOL_NAMES = new Set(["subagent", "bg_run", "bg_run_pi_attested", "bg_kill", "spawn_subsession", "fusion_reason", "fusion_investigate", "fusion_research", "fusion_validate"]);
 
 function parseClientMessageId(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;

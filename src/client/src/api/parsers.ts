@@ -904,6 +904,8 @@ export function parseSessionStreamEvent(value: unknown): SessionUiEvent {
       return { type: "prompt.accepted", clientMessageId: requireString(record, "clientMessageId") };
     case "prompt.withdrawn":
       return { type: "prompt.withdrawn", clientMessageId: requireString(record, "clientMessageId") };
+    case "activity.changed":
+      return { type: "activity.changed" };
     default:
       throw new Error("Unsupported session stream event type");
   }

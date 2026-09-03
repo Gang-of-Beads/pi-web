@@ -2157,6 +2157,11 @@ export class SessionController {
       this.dialogScope.observe(event, () => { this.applyOpenedAsk(event.ask); });
       return;
     }
+    if (event.type === "activity.changed") {
+      const selected = this.getState().selectedSession;
+      if (selected !== undefined) this.onBackgroundRunCountChanged?.(selected.id);
+      return;
+    }
     if (event.type === "prompt.withdrawn") {
       // The reader took this message back - here or on another device. The
       // daemon deleted the queue entry, so no transcript claim is coming;
