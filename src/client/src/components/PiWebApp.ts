@@ -2256,6 +2256,7 @@ export class PiWebApp extends LitElement {
   private async loadQuickSwitcherData(force = false): Promise<void> {
     const machineId = this.quickSwitcherBrowseMachineId === "" ? selectedMachineId(this.state) : this.quickSwitcherBrowseMachineId;
     if (!force && this.quickSwitcherMachineId === machineId
+        && this.quickSwitcherError === undefined
         && (this.quickSwitcherSessions.length > 0 || this.quickSwitcherWorkspaces.length > 0)
         && Date.now() - this.quickSwitcherFetchedAt < QUICK_SWITCHER_REFRESH_MS) {
       return;
@@ -2327,6 +2328,16 @@ export class PiWebApp extends LitElement {
   private async openWorkspaceFromQuickSwitcher(workspace: Workspace): Promise<void> {
     const moved = await this.moveToBrowsedMachine();
     if (!moved) return;
+    // selectWorkspace's landing guard requires the workspace's own project to
+    // be selected; without it the returned session list is discarded and the
+    // panel waits on "Loading sessions..." forever.
+    const project = this.state.projects.find((candidate) => candidate.id === workspace.projectId)
+      ?? await this.locateRouteProject(workspace.projectId);
+    if (project === undefined) {
+      this.setState({ error: "The project this workspace belongs to is not in the project list." });
+      return;
+    }
+    if (this.state.selectedProject?.id !== project.id) await this.workspaces.selectProject(project);
     await this.workspaces.selectWorkspace(workspace);
   }
 
@@ -3501,14 +3512,16 @@ export class PiWebApp extends LitElement {
           .machines=${state.machines}
           .browseMachineId=${this.quickSwitcherBrowseMachineId}
           .loadError=${this.quickSwitcherError}
+          .browsingElsewhere=${this.quickSwitcherBrowsingElsewhere()}
           .onSelectMachine=${(machineId: string) => { this.browseQuickSwitcherMachine(machineId); }}
           .canStartSession=${!this.quickSwitcherBrowsingElsewhere() && this.canStartSession()}
           .onCreateSession=${() => { void this.startSessionAndOpenChat(); }}
           .onOpenSession=${(session: SessionInfo) => { void this.openSessionFromQuickSwitcher(session); }}
           .onSelectWorkspace=${(workspace: Workspace) => { void this.openWorkspaceFromQuickSwitcher(workspace); }}
           .onBrowse=${() => { this.openNavigationSection("projects"); }}
-          .onTogglePin=${(session: SessionInfo) => { this.togglePinnedSession(session); }}
-          .onRenameSession=${(session: SessionInfo, name: string) => {
+          .onTogglePin=${(session: SessionInfo) => { void this.moveToBrowsedMachine().then((moved) => { if (moved) this.togglePinnedSession(session); }); }}
+          .onRenameSession=${async (session: SessionInfo, name: string) => {
+            if (!await this.moveToBrowsedMachine()) return;
             this.applyRenameToQuickSwitcher(session.id, name);
             return this.sessions.renameSession(session, name);
           }}

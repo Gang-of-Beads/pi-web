@@ -39,8 +39,12 @@ function drawerFor(surfaces?: PluginSurfaceState): unknown {
 }
 
 describe("the goals drawer against a runtime that was asked", () => {
-  it("asks for no room when nothing provides the surface", () => {
-    expect(drawerFor("absent")).toBeNull();
+  // Review H3 reversed the original assertion here: hiding the whole drawer
+  // on goals-absent also hid ACTIVITY and NOTIFICATIONS, and re-inserted the
+  // strip the moment a task started - the reflow the fixed-membership ruling
+  // forbids. The drawer keeps its room; the GOALS tab says "not installed".
+  it("keeps the drawer even when nothing provides the goals surface", () => {
+    expect(drawerFor("absent")).not.toBeNull();
   });
 
   /** Not knowing is not knowing there is nothing there. */

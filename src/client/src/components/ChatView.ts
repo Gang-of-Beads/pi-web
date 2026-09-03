@@ -1380,9 +1380,10 @@ export class ChatView extends LitElement {
       loading: this.goalsLoad.state === "loading",
       loadFailed: this.goalsLoad.state === "failed",
     });
-    const goalsWorthShowing = goalsVisibility.show;
-    if (activity === undefined && inbox === undefined && !goalsWorthShowing && !this.notificationsFailed) return null;
-    const tab = selectedTopDrawerTab({ activity: activity !== undefined, notifications: inbox !== undefined || this.notificationsFailed, goals: this.goalsLoad.data.length > 0 }, this.topDrawerTab);
+    // Fixed tab membership means the drawer itself is fixed too: hiding the
+    // whole strip when the three sections happen to be empty is the reflow
+    // the ruling forbids, and it made the not-installed sentences unreachable.
+    const tab = selectedTopDrawerTab({ activity: activity !== undefined, notifications: inbox !== undefined || this.notificationsFailed, goals: goalsVisibility.show && goalsVisibility.reason !== "presence-unknown" && this.goalsLoad.data.length > 0 }, this.topDrawerTab);
     const key = this.topDrawerKey();
     const collapsed = this.expandedTopDrawerKeys.has(key)
       ? false
@@ -1666,12 +1667,14 @@ export class ChatView extends LitElement {
         `;
       }
       // Only the runtime's definite absence may claim "not installed".
-      const subagentsAbsent = this.status?.pluginSurfaces?.subagents === "absent";
+      const subagentsPresence = this.status?.pluginSurfaces?.subagents;
       return html`
         <div class="subagents-list" id="session-activity-list" role="tabpanel" aria-labelledby="drawer-tab-activity">
-          <p class="activity-empty">${subagentsAbsent
+          <p class="activity-empty">${subagentsPresence === "absent"
             ? "Subagent tools are not installed for this session. Background tasks still appear here when they run."
-            : "No subagent or background activity from this chat yet."}</p>
+            : subagentsPresence === "failed"
+              ? "A plugin failed to load; subagent tooling may be incomplete. See session warnings."
+              : "No subagent or background activity from this chat yet."}</p>
         </div>
       `;
     }

@@ -44,6 +44,13 @@ export class QuickSwitcher extends LitElement {
   @property({ attribute: false }) browseMachineId = "";
   @property({ attribute: false }) onSelectMachine?: (machineId: string) => void;
   @property({ attribute: false }) loadError?: string;
+  @property({ type: Boolean }) browsingElsewhere = false;
+
+  protected override willUpdate(changed: Map<string, unknown>): void {
+    // A filter chosen on one machine's tab must not judge another machine's
+    // rows: a leftover workspace path renders a false "No sessions yet."
+    if (changed.has("browseMachineId") && changed.get("browseMachineId") !== undefined) this.filter = {};
+  }
   /** Four-state session badge per session, computed upstream. */
   @property({ attribute: false }) sessionStates: ReadonlyMap<string, SessionStateBadgeKind> = new Map();
   @property({ type: Boolean }) canStartSession = false;
@@ -101,12 +108,11 @@ export class QuickSwitcher extends LitElement {
           ${model.groups.map((group) => this.renderGroup(group))}
           ${this.loadError !== undefined
             ? html`<p class="empty" role="alert">${this.loadError}</p>`
-            : null}
-          ${this.loading
-            ? html`<p class="empty">Loading sessions…</p>`
-            : model.matchCount === 0
-              ? html`<p class="empty">${this.query.trim() === "" ? "No sessions yet." : `No sessions match “${this.query.trim()}”.`}</p>`
-              : null}
+            : this.loading
+              ? html`<p class="empty">Loading sessions…</p>`
+              : model.matchCount === 0
+                ? html`<p class="empty">${this.query.trim() === "" ? "No sessions yet." : `No sessions match “${this.query.trim()}”.`}</p>`
+                : null}
           ${otherWorkspaces.length === 0 ? null : html`
             <h3>Workspaces</h3>
             <div class="rows">
@@ -148,9 +154,11 @@ export class QuickSwitcher extends LitElement {
 
   private renderCreateRow() {
     const workspaceLabel = this.selectedWorkspace?.label;
-    const subtitle = workspaceLabel === undefined
-      ? "Select a workspace first"
-      : `In ${workspaceLabel}`;
+    const subtitle = this.browsingElsewhere
+      ? "Open a session on this machine first"
+      : workspaceLabel === undefined
+        ? "Select a workspace first"
+        : `In ${workspaceLabel}`;
     return html`
       <button
         class="row create-row"
