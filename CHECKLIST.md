@@ -316,8 +316,17 @@ fact. It needs watching the panel during a long task, on the phone.
 
 ### 16. Receipts cannot be dismissed by hand
 
-A `withdrawCommand` path was added for dialog receipts; whether it covers the
-reported case is **not established**.
+**Done, and the mechanism was already right.** Every delivery path settles or
+withdraws its row - success and refusal settle, a dialog answer withdraws, a
+throw settles as failed - so `pending` is a short window, not a resting state.
+During that window `ChatView.ts:2358` renders no dismiss button at all, so there
+is no control that refuses when pressed.
+
+Untested until now, like #12 and #13: `commandLedger.dismissable.test.ts` pins
+waiting, succeeded, failed, dialog-answered, unrelated-row and missing-row.
+
+One thing was checked and is not a fault: `issueCommand` mints its own id, so a
+caller cannot collide two rows by supplying one.
 
 ### 17. Desktop and phone are not consistent
 
