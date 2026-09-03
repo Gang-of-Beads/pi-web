@@ -85,11 +85,26 @@ after the content grew. The browser paints the taller document first — with th
 card pushed down — and the correction lands on the next frame. Two paints for
 one change.
 
-Fix in progress locally: hold the bottom edge synchronously in `updated()`,
-before paint. An existing press-hold test caught the first attempt and is not
-yet satisfied.
+Attempted twice, withdrawn twice. Holding the bottom edge synchronously in
+`updated()` is the right shape - one paint instead of two - but both attempts
+failed `ChatView.pressHoldsScroll.test.ts`, which protects a real behaviour: a
+catch-up scheduled by one press must not fire into the next press, because the
+transcript would move between a tap and its click and the tap would land on
+whatever slid into place.
 
-**Not shipped, not finished.**
+Second attempt, and what it ruled out:
+- The failure is not the write. Instrumented, the hold branch never ran.
+- The failure is not a shared-field collision. `lastScrollHeight` belongs to the
+  image-load correction (`update()`, `:906-907`); giving the hold its own field
+  changed nothing.
+- The surviving assertion is the second one, after press two is released:
+  `scrollTop` is 1000 where 0 is required.
+
+The test is right and the change is not, so the change is out. Landing this
+needs the press lifecycle understood first - which press owns a pending
+catch-up, and when that ownership ends - not another attempt at the scroll.
+
+**Not shipped. Working tree is clean of both attempts.**
 
 ### 5. Messages arrive out of order; "Queued" appears before the recovery
 
@@ -238,12 +253,18 @@ Checked against the code. These are the ones that are genuinely still open.
 
 ### 12. Confirm Goal Draft is unreachable while the queue has content
 
-The last unfixed item of the oldest goal. Reported, never addressed.
+**Done.** The waiting slot renders what the session is blocked on outside the
+transcript, so a queue with content no longer displaces it. That was a
+side-effect of earlier work and nothing held it in place:
+`ChatView.dialogOutranksQueue.test.ts` now does, and reintroducing the defect
+(hiding the dialog when the queue is non-empty) turns it red.
 
 ### 13. Orphaned tool calls render as PENDING rather than interrupted
 
-`ToolExecutionView.ts` mentions `interrupted`, so this may be partly done;
-needs reproducing before it is called either way. **Not established.**
+**Done.** `toolExecutionDisplayStatus` (`shared.ts:60`) reads a pending call as
+interrupted once nothing is streaming, and `ToolExecutionView.ts:28` uses it.
+Also untested until now; `toolExecutionDisplayStatus.test.ts` covers pending,
+completed and failed against both streaming states.
 
 ### 14. Agent runs show an Unknown status with no classification
 
