@@ -33,6 +33,7 @@ export class TerminalPanel extends LitElement {
   @property() machineId = "local";
   @property({ attribute: false }) selectedTerminalId: string | undefined;
   @property({ type: Boolean }) autoStart = false;
+  @property({ type: Boolean }) expanded = false;
   @property({ attribute: false }) onSelectTerminal: (terminalId: string | undefined, options?: { replace?: boolean | undefined }) => void = () => undefined;
   @query(".terminal-host") private terminalHost?: HTMLDivElement | null;
   @query(".terminal-copy-content") private terminalCopyContent?: HTMLPreElement | null;
@@ -105,6 +106,15 @@ export class TerminalPanel extends LitElement {
     void this.updateComplete.then(() => { this.fitAndNotify(); });
   }
 
+  private scheduleFitAfterLayout(): void {
+    void this.updateComplete.then(() => {
+      requestAnimationFrame(() => {
+        this.fitAndNotify();
+        this.terminal?.focus();
+      });
+    });
+  }
+
   override willUpdate(changed: PropertyValues<this>): void {
     const workspaceScope = this.workspace === undefined ? undefined : JSON.stringify([this.machineId, this.workspace.path]);
     if (workspaceScope !== this.observedWorkspaceScope) {
@@ -132,6 +142,7 @@ export class TerminalPanel extends LitElement {
   }
 
   override updated(changed: PropertyValues<this>): void {
+    if (changed.has("expanded")) this.scheduleFitAfterLayout();
     if (!this.visible) this.updateCommandRunPolling(false);
     else if (this.hasPendingCommandRuns()) this.updateCommandRunPolling(true);
     this.loadVisibleWorkspaceTerminals();
@@ -692,6 +703,7 @@ export class TerminalPanel extends LitElement {
     .copy-mode-toggle, .soft-keys-toggle, terminal-soft-keys { display: none; }
     .copy-mode-toggle.selected { display: inline-flex; }
     @media (pointer: coarse), (max-width: 760px) {
+      .terminal-tabs > button { height: 44px; }
       .copy-mode-toggle, .soft-keys-toggle { display: inline-flex; }
       terminal-soft-keys { display: block; }
     }

@@ -260,6 +260,7 @@ const THEME_AUTO_OFF_VALUE = "auto:off";
 const THEME_OPTION_PREFIX = "theme:";
 const FILES_ROUTE_NAMESPACE = queryNamespace("core:workspace.files");
 const TERMINAL_ROUTE_NAMESPACE = queryNamespace("core:workspace.terminal");
+const WORKSPACE_ROUTE_NAMESPACE = queryNamespace("core:workspace");
 const MIN_RESIZABLE_CHAT_WIDTH_PX = 320;
 const PANEL_EDGE_COLUMNS_WIDTH_PX = 2;
 const DESKTOP_SIDE_BY_SIDE_MEDIA_QUERY = "(min-width: 1181px)";
@@ -1183,9 +1184,11 @@ export class PiWebApp extends LitElement {
       await this.loadPluginsForSelectedMachine();
       if (!this.isCurrentRouteRestore(restoreSeq)) return;
       const route = resolveAppRoute(parsedRoute, (value) => this.plugins.resolveWorkspacePanelRouteId(value, selectedMachineId(this.state)));
+      const mainView = this.resolveRestoredMainView(restoredMainView) ?? route.view ?? this.defaultRouteView(route);
+      this.workspacePanelFullscreen = false;
       this.setState({
         workspaceTool: route.tool ?? this.state.workspaceTool,
-        mainView: this.resolveRestoredMainView(restoredMainView) ?? route.view ?? this.defaultRouteView(route),
+        mainView,
         selectedFilePath: routeSurface.selectedFilePath,
         selectedTerminalId: routeSurface.selectedTerminalId,
       });
@@ -1194,6 +1197,7 @@ export class PiWebApp extends LitElement {
         return;
       }
       if (this.routeMatchesCurrentSelection(route)) {
+        this.restoreWorkspaceExpandedRoute(route, routeSurface, mainView);
         if (routeSurface.selectedTerminalId !== undefined) this.rememberSelectedTerminal(routeSurface.selectedTerminalId);
         await this.refreshRestoredWorkspaceTool(route.tool, routeSurface.selectedFilePath);
         if (updateUrl) this.updateUrl();
@@ -1208,6 +1212,7 @@ export class PiWebApp extends LitElement {
       await this.workspaces.selectProject(project, { workspaceId: route.workspaceId, sessionId: route.sessionId, updateUrl: false });
       if (!this.isCurrentRouteRestore(restoreSeq)) return;
       this.setState({ selectedFilePath: routeSurface.selectedFilePath, selectedTerminalId: routeSurface.selectedTerminalId });
+      this.restoreWorkspaceExpandedRoute(route, routeSurface, mainView);
       if (routeSurface.selectedTerminalId !== undefined) this.rememberSelectedTerminal(routeSurface.selectedTerminalId);
       await this.refreshRestoredWorkspaceTool(route.tool, routeSurface.selectedFilePath);
       if (updateUrl) this.updateUrl();
@@ -1227,6 +1232,7 @@ export class PiWebApp extends LitElement {
     return {
       selectedFilePath: readNamespacedString(FILES_ROUTE_NAMESPACE, "file"),
       selectedTerminalId: readNamespacedString(TERMINAL_ROUTE_NAMESPACE, "terminal"),
+      workspaceExpanded: readNamespacedString(WORKSPACE_ROUTE_NAMESPACE, "expanded") === "1",
     };
   }
 
@@ -1240,6 +1246,7 @@ export class PiWebApp extends LitElement {
     writeRoute(route, { replace: true });
     setNamespacedQueryKey(FILES_ROUTE_NAMESPACE, "file", undefined, { replace: true });
     setNamespacedQueryKey(TERMINAL_ROUTE_NAMESPACE, "terminal", undefined, { replace: true });
+    setNamespacedQueryKey(WORKSPACE_ROUTE_NAMESPACE, "expanded", undefined, { replace: true });
   }
 
   private shouldDeferRemoteRouteRestore(route: ParsedAppRoute, routeMachineHealth = this.state.machineStatuses[route.machineId ?? "local"]): boolean {
@@ -1369,6 +1376,18 @@ export class PiWebApp extends LitElement {
       && this.state.selectedSession?.id === route.sessionId;
   }
 
+  private restoreWorkspaceExpandedRoute(route: AppRoute, surface: WorkspaceRouteSurface, mainView: AppState["mainView"]): void {
+    const workspace = this.state.selectedWorkspace;
+    this.workspacePanelFullscreen = surface.workspaceExpanded === true
+      && mainView !== "chat"
+      && mainView !== "navigation"
+      && route.tool === mainView
+      && workspace !== undefined
+      && (route.machineId ?? "local") === selectedMachineId(this.state)
+      && route.projectId === workspace.projectId
+      && route.workspaceId === workspace.id;
+  }
+
   private async refreshRestoredWorkspaceTool(tool: QualifiedContributionId | undefined, selectedFilePath: string | undefined): Promise<void> {
     if (tool === "core:workspace.files") {
       await this.files.refreshFiles();
@@ -1425,12 +1444,18 @@ export class PiWebApp extends LitElement {
     this.syncWorkspaceRouteSurfaceToUrl();
   }
 
+  private currentMachineNavigationSnapshot(): MachineNavigationSnapshot {
+    const snapshot = machineNavigationSnapshotFromState(this.state);
+    snapshot.surface.workspaceExpanded = this.state.mainView !== "chat" && this.state.mainView !== "navigation" && this.workspacePanelFullscreen;
+    return snapshot;
+  }
+
   private rememberCurrentMachineNavigation(): void {
-    this.machineNavigation.remember(machineNavigationSnapshotFromState(this.state));
+    this.machineNavigation.remember(this.currentMachineNavigationSnapshot());
   }
 
   private syncWorkspaceRouteSurfaceToUrl(): void {
-    this.writeWorkspaceRouteSurfaceToUrl(machineNavigationSnapshotFromState(this.state).surface);
+    this.writeWorkspaceRouteSurfaceToUrl(this.currentMachineNavigationSnapshot().surface);
   }
 
   private writeMachineNavigationSnapshotToUrl(snapshot: MachineNavigationSnapshot, options?: { replace?: boolean | undefined }): void {
@@ -1441,6 +1466,7 @@ export class PiWebApp extends LitElement {
   private writeWorkspaceRouteSurfaceToUrl(surface: WorkspaceRouteSurface): void {
     setNamespacedQueryKey(FILES_ROUTE_NAMESPACE, "file", surface.selectedFilePath, { replace: true });
     setNamespacedQueryKey(TERMINAL_ROUTE_NAMESPACE, "terminal", surface.selectedTerminalId, { replace: true });
+    setNamespacedQueryKey(WORKSPACE_ROUTE_NAMESPACE, "expanded", surface.workspaceExpanded === true ? "1" : undefined, { replace: true });
   }
 
   private async selectMachineWithMemory(machine: Machine, options: { rememberCurrent?: boolean } = {}): Promise<void> {
@@ -1536,6 +1562,7 @@ export class PiWebApp extends LitElement {
       this.openWorkspaceTool(view);
       return;
     }
+    this.workspacePanelFullscreen = false;
     this.setState({ mainView: view });
     this.updateUrl();
   }
@@ -2379,7 +2406,15 @@ export class PiWebApp extends LitElement {
   private createWorkspaceHost(): WorkspaceHost {
     return {
       requestRender: () => { this.requestUpdate(); },
-      setWorkspacePanelFullscreen: (fullscreen) => { this.workspacePanelFullscreen = fullscreen; },
+      workspacePanelFullscreen: () => this.workspacePanelFullscreen,
+      setWorkspacePanelFullscreen: (fullscreen) => {
+        if (this.workspacePanelFullscreen === fullscreen) return;
+        this.workspacePanelFullscreen = fullscreen;
+        if (this.routeRestoreDepth === 0 && this.state.mainView !== "chat" && this.state.mainView !== "navigation") {
+          setNamespacedQueryKey(WORKSPACE_ROUTE_NAMESPACE, "expanded", fullscreen ? "1" : undefined);
+          this.rememberCurrentMachineNavigation();
+        }
+      },
     };
   }
 

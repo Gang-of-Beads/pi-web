@@ -131,8 +131,10 @@ export interface WorkspaceBackend {
 }
 export interface WorkspaceHost {
     requestRender(): void;
+    /** Whether the active workspace panel currently owns the full app canvas. */
+    workspacePanelFullscreen(): boolean;
     /** Move the active workspace panel into or out of the main content area. */
-    setWorkspacePanelFullscreen?(fullscreen: boolean): void;
+    setWorkspacePanelFullscreen(fullscreen: boolean): void;
 }
 export type WorkspacePanelHost = WorkspaceHost;
 export interface WorkspaceContext {

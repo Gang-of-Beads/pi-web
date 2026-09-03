@@ -598,7 +598,7 @@ describe("PluginRegistry", () => {
       context.host.requestRender();
       return [{ type: "text", text: context.machine.id }];
     });
-    const context = createWorkspaceLabelContext("remote-1", workspace, { files: { readFile, listFiles: vi.fn<WorkspaceFiles["listFiles"]>(() => Promise.resolve(testFileTreeResponse())), writeFile: vi.fn<WorkspaceFiles["writeFile"]>(() => Promise.resolve(testWriteFileResponse())), deleteFile: vi.fn<WorkspaceFiles["deleteFile"]>(() => Promise.resolve(testDeleteFileResponse())), moveFile: vi.fn<WorkspaceFiles["moveFile"]>(() => Promise.resolve(testMoveFileResponse())) }, host: { requestRender } });
+    const context = createWorkspaceLabelContext("remote-1", workspace, { files: { readFile, listFiles: vi.fn<WorkspaceFiles["listFiles"]>(() => Promise.resolve(testFileTreeResponse())), writeFile: vi.fn<WorkspaceFiles["writeFile"]>(() => Promise.resolve(testWriteFileResponse())), deleteFile: vi.fn<WorkspaceFiles["deleteFile"]>(() => Promise.resolve(testDeleteFileResponse())), moveFile: vi.fn<WorkspaceFiles["moveFile"]>(() => Promise.resolve(testMoveFileResponse())) }, host: { requestRender, workspacePanelFullscreen: () => false, setWorkspacePanelFullscreen: () => undefined } });
 
     registry.register({
       id: "example",
@@ -937,7 +937,11 @@ function testWorkspace(patch: Partial<Workspace> = {}): Workspace {
 
 function createWorkspaceLabelContext(machineId: string, workspace = testWorkspace(), helpers: Partial<Pick<WorkspaceLabelContext, "files" | "host">> = {}): WorkspaceLabelContext {
   const files: WorkspaceFiles = helpers.files ?? { readFile: vi.fn<WorkspaceFiles["readFile"]>(() => Promise.resolve(testFileContent())), listFiles: vi.fn<WorkspaceFiles["listFiles"]>(() => Promise.resolve(testFileTreeResponse())), writeFile: vi.fn<WorkspaceFiles["writeFile"]>(() => Promise.resolve(testWriteFileResponse())), deleteFile: vi.fn<WorkspaceFiles["deleteFile"]>(() => Promise.resolve(testDeleteFileResponse())), moveFile: vi.fn<WorkspaceFiles["moveFile"]>(() => Promise.resolve(testMoveFileResponse())) };
-  const host: WorkspaceHost = helpers.host ?? { requestRender: vi.fn<WorkspaceHost["requestRender"]>() };
+  const host: WorkspaceHost = helpers.host ?? {
+    requestRender: vi.fn<WorkspaceHost["requestRender"]>(),
+    workspacePanelFullscreen: () => false,
+    setWorkspacePanelFullscreen: () => undefined,
+  };
   return {
     machine: { id: machineId, name: machineId, kind: machineId === "local" ? "local" : "remote" },
     workspace,
@@ -958,7 +962,7 @@ function createWorkspacePanelContext(machineId: string, prompt: WorkspacePanelCo
     backend: { request: vi.fn(() => Promise.resolve(null)) },
     prompt,
     terminal: { open: vi.fn(), runCommand: vi.fn() },
-    host: { requestRender: vi.fn() },
+    host: { requestRender: vi.fn(), workspacePanelFullscreen: () => false, setWorkspacePanelFullscreen: vi.fn() },
     fileTree: [],
     expandedDirs: {},
     selectedFilePath: undefined,

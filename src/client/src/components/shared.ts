@@ -153,7 +153,9 @@ export const workspacePanelStyles = css`
   @media (hover: hover) { .attachment-zoom-close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
   :host { display: flex; flex-direction: column; min-height: 0; color: var(--pi-text); background: var(--pi-bg); font: var(--pi-text-sm) var(--pi-font-ui); container-type: inline-size; }
   header { flex: 0 0 auto; min-width: 0; border-bottom: 1px solid var(--pi-border); }
-  .workspace-header-scroll-frame { position: relative; min-width: 0; background: var(--pi-bg); }
+  .workspace-header-layout { display: flex; align-items: stretch; min-width: 0; }
+  .workspace-header-scroll-frame { position: relative; flex: 1 1 auto; min-width: 0; background: var(--pi-bg); }
+  .workspace-fullscreen-toggle { flex: 0 0 auto; align-self: center; max-width: none; margin-right: var(--pi-space-4); white-space: nowrap; }
   .workspace-header-scroll-frame::before, .workspace-header-scroll-frame::after { content: ""; position: absolute; top: 0; bottom: 0; z-index: 2; width: 18px; opacity: 0; pointer-events: none; transition: opacity var(--pi-motion-fast) var(--pi-ease); }
   .workspace-header-scroll-frame::before { left: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--pi-shadow-strong) 55%, transparent) 0%, transparent 100%); }
   .workspace-header-scroll-frame::after { right: 0; background: linear-gradient(270deg, color-mix(in srgb, var(--pi-shadow-strong) 55%, transparent) 0%, transparent 100%); }

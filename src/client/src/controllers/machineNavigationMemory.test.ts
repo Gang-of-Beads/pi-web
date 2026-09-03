@@ -36,12 +36,13 @@ describe("SessionStorageMachineNavigationMemory", () => {
     const storage = memoryStorage();
     const memory = new SessionStorageMachineNavigationMemory(storage);
 
-    memory.remember({ machineId: "local", projectId: "local-project", surface: { selectedFilePath: "README.md" } });
+    memory.remember({ machineId: "local", projectId: "local-project", surface: { selectedFilePath: "README.md", workspaceExpanded: true } });
     memory.remember({ machineId: "remote", projectId: "remote-project", workspaceId: "remote-workspace", sessionId: "remote-session", surface: {} });
 
     const restored = new SessionStorageMachineNavigationMemory(storage);
 
     expect(restored.latest("local")?.projectId).toBe("local-project");
+    expect(restored.latest("local")?.surface.workspaceExpanded).toBe(true);
     expect(restored.latest("remote")?.workspaceId).toBe("remote-workspace");
 
     restored.forget("local");

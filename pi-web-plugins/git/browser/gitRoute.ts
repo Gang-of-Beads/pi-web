@@ -1,10 +1,8 @@
 import type { WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
 
-const legacyDiffNamespace = "core.workspace.git";
 const modeQueryKey = "mode";
 const diffQueryKey = "diff";
 const commitQueryKey = "commit";
-const expandedQueryKey = "expanded";
 
 export type GitPanelModeRoute = "changes" | "history";
 
@@ -25,7 +23,6 @@ export interface GitDiffRoute {
 export function createGitDiffRoute(panelContributionId: string): GitDiffRoute {
   const namespace = panelContributionId.replaceAll(":", ".");
   const key = (name: string) => `${namespace}--${name}`;
-  const legacyDiffKey = `${legacyDiffNamespace}--${diffQueryKey}`;
   return {
     matches: routeMatchesWorkspace,
     read: () => {
@@ -35,19 +32,17 @@ export function createGitDiffRoute(panelContributionId: string): GitDiffRoute {
       const mode = commitId === undefined ? requestedMode : "history";
       return {
         mode,
-        diffPath: mode === "changes" ? nonEmpty(params.get(key(diffQueryKey))) ?? nonEmpty(params.get(legacyDiffKey)) : undefined,
+        diffPath: mode === "changes" ? nonEmpty(params.get(key(diffQueryKey))) : undefined,
         commitId: mode === "history" ? commitId : undefined,
-        expanded: params.get(key(expandedQueryKey)) === "1",
+        expanded: params.get("core.workspace--expanded") === "1",
       };
     },
     write: (state, options) => {
       const url = new URL(window.location.href);
-      for (const name of [modeQueryKey, diffQueryKey, commitQueryKey, expandedQueryKey]) url.searchParams.delete(key(name));
-      url.searchParams.delete(legacyDiffKey);
+      for (const name of [modeQueryKey, diffQueryKey, commitQueryKey]) url.searchParams.delete(key(name));
       if (state.mode === "history") url.searchParams.set(key(modeQueryKey), "history");
       if (state.mode === "changes" && state.diffPath !== undefined && state.diffPath !== "") url.searchParams.set(key(diffQueryKey), state.diffPath);
       if (state.mode === "history" && state.commitId !== undefined && state.commitId !== "") url.searchParams.set(key(commitQueryKey), state.commitId);
-      if (state.expanded) url.searchParams.set(key(expandedQueryKey), "1");
       commitUrl(url, options?.replace === true);
     },
   };

@@ -152,7 +152,13 @@ export class GitUiController {
   }
 
   state(context: WorkspacePanelContext): GitWorkspaceUiState {
-    return this.stateFor(context);
+    const state = this.stateFor(context);
+    const hostFullscreen = context.host.workspacePanelFullscreen();
+    if (hostFullscreen !== state.workspacePanelFullscreen) {
+      state.workspacePanelFullscreen = hostFullscreen;
+      if (hostFullscreen && state.selectedDiffPath !== undefined) state.reviewFocusRequest = state.selectedDiffPath;
+    }
+    return state;
   }
 
   connect(context: WorkspacePanelContext): void {
@@ -163,7 +169,7 @@ export class GitUiController {
     this.activeWorkspaceKey = key;
     this.connectedWorkspaceKey = key;
     this.synchronizeRoute(state, changedWorkspace);
-    context.host.setWorkspacePanelFullscreen?.(state.workspacePanelFullscreen);
+    context.host.setWorkspacePanelFullscreen(state.workspacePanelFullscreen);
     if (state.status === undefined && state.statusRequest === undefined) void this.refresh(context);
     else if (state.mode === "changes" && state.selectedDiffPath !== undefined) {
       if (state.status?.files.some((file) => file.path === state.selectedDiffPath) !== true) this.clearSelection(state, true);
@@ -180,9 +186,7 @@ export class GitUiController {
   }
 
   disconnect(context: WorkspacePanelContext): void {
-    if (this.connectedWorkspaceKey !== workspaceContextKey(context)) return;
-    this.connectedWorkspaceKey = undefined;
-    context.host.setWorkspacePanelFullscreen?.(false);
+    if (this.connectedWorkspaceKey === workspaceContextKey(context)) this.connectedWorkspaceKey = undefined;
   }
 
   handlePopState(context: WorkspacePanelContext): void {
@@ -311,22 +315,6 @@ export class GitUiController {
       this.requestRender(state);
       void this.refreshCommitDiff(state, context, state.selectedCommitId);
     }
-  }
-
-  toggleWorkspacePanelFullscreen(context: WorkspacePanelContext): void {
-    const state = this.stateFor(context);
-    const fullscreen = !state.workspacePanelFullscreen;
-    state.workspacePanelFullscreen = fullscreen;
-    context.host.setWorkspacePanelFullscreen?.(fullscreen);
-    if (fullscreen) {
-      const selectedPath = state.selectedDiffPath;
-      if (selectedPath !== undefined) {
-        state.reviewFocusRequest = selectedPath;
-        this.enqueueReviewDiff(state, context, selectedPath, 100);
-      }
-    }
-    this.writeRoute(state);
-    this.requestRender(state);
   }
 
   selectDiff(context: WorkspacePanelContext, path: string): void {
@@ -558,7 +546,7 @@ export class GitUiController {
   private applyRouteState(state: GitWorkspaceUiState, route: ReturnType<GitDiffRoute["read"]>): void {
     state.mode = route.mode;
     state.workspacePanelFullscreen = route.expanded;
-    state.context.host.setWorkspacePanelFullscreen?.(route.expanded);
+    state.context.host.setWorkspacePanelFullscreen(route.expanded);
     if (route.expanded && route.diffPath !== undefined) state.reviewFocusRequest = route.diffPath;
     if (route.mode === "changes") {
       this.clearCommitSelection(state);
@@ -731,7 +719,6 @@ function createGitActions(panelId: string, controller: GitUiController): PluginA
       id: "view.git",
       title: "Go to Git",
       shortcut: "mod+3",
-      shortcutAliases: ["core:view.git"],
       group: "Navigation",
       enabled: hasGitWorkspace,
       run: (context) => { context.selectMainView(panelId); },
@@ -740,7 +727,6 @@ function createGitActions(panelId: string, controller: GitUiController): PluginA
       id: "workspace.refresh-git",
       title: "Refresh Git",
       shortcut: "mod+shift+g",
-      shortcutAliases: ["core:workspace.refresh-git"],
       group: "Workspace",
       enabled: hasGitWorkspace,
       run: (context) => context.refreshWorkspacePanels(panelId),
@@ -767,7 +753,6 @@ function createGitPanel(
       </svg>
     `,
     order: 20,
-    routeAliases: ["git", "core:workspace.git"],
     visible: (context) => controller.isOwnedWorkspace(context.workspace),
     onInvalidate: (context) => controller.invalidate(context),
     render: (context) => renderGitPanel(html, controller, context),
@@ -796,7 +781,6 @@ function renderGitPanel(html: HtmlTemplateTag, controller: GitUiController, cont
           ${state.mode === "changes" && state.workspacePanelFullscreen && (state.status?.files.length ?? 0) > 0 ? renderReviewExpandCollapseAll(html, controller, context, state) : null}
           ${state.mode !== "changes" || state.workspacePanelFullscreen || viewState.expandablePaths.length === 0 ? null : renderExpandCollapseAll(html, controller, context, state, viewState.expandablePaths)}
           ${state.mode === "changes" ? renderViewToggle(html, controller, context) : null}
-          ${context.host.setWorkspacePanelFullscreen === undefined ? null : html`<button type="button" class="git-expand-panel" aria-pressed=${String(state.workspacePanelFullscreen)} @click=${() => { controller.toggleWorkspacePanelFullscreen(context); }}>${state.workspacePanelFullscreen ? "Exit expanded view" : "Expand panel"}</button>`}
           <button type="button" ?disabled=${state.mode === "changes" ? state.statusLoading : state.historyLoading} @click=${() => { void (state.mode === "changes" ? controller.refresh(context) : controller.refreshHistory(context)); }}>Refresh</button>
         </div>
       </section>
