@@ -117,6 +117,13 @@ export interface AppState {
    * cannot distinguish a failed read from a completed one that found nothing,
    * and the panel must not answer a failure with a claim of absence. */
   activityFailed: boolean;
+  /**
+   * The selected session's transcript read failed, with the daemon's own words.
+   * An empty transcript after a failed read must render this, never the empty
+   * claim: a session whose working directory is gone reads identically to a
+   * fresh one otherwise, and the empty state invites writing into it.
+   */
+  transcriptFailed: string | undefined;
   /** Subagent-tool runs for the selected session; see server/sessions/subagentRuns.ts. */
   subagentRuns: readonly SessionSubagentRunInfo[];
   /** Kept out of `messages`: a log is a file, not something the agent said. */
@@ -374,6 +381,7 @@ export function initialAppState(): AppState {
     subagents: [],
     backgroundTasks: [],
     activityFailed: false,
+    transcriptFailed: undefined,
     subagentRuns: [],
     activityOutput: undefined,
     activityConversation: undefined,

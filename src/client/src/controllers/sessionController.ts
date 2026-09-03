@@ -334,6 +334,7 @@ export class SessionController {
       // not empty, and the view must not invite a first message into a
       // session that is about to produce its history.
       isLoadingTranscript: true,
+      transcriptFailed: undefined,
       ...(options?.preserveTreeDialog === true ? {} : { treeDialog: undefined }),
       status: session.archived === true ? undefined : this.getState().sessionStatuses[session.id],
       activity: session.archived === true ? undefined : this.getState().sessionActivities[session.id],
@@ -417,7 +418,7 @@ export class SessionController {
         for (const event of buffered) this.applyEvent(event);
         this.socket.setHandler((event) => { this.applyEvent(event); });
       }
-      this.setState(errorNoticePatch(error));
+      this.setState({ ...errorNoticePatch(error), transcriptFailed: error instanceof Error ? error.message : String(error) });
       if (options?.propagateRefreshError === true) throw error;
     } finally {
       // Only the selection that set the flag may clear it: a superseded

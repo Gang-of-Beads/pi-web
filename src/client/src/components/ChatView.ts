@@ -503,6 +503,7 @@ export const chatStyles = css`
   .empty-session { display: grid; justify-items: center; gap: var(--pi-space-5); margin: var(--pi-space-9) auto; max-width: var(--pi-chat-measure); padding: var(--pi-space-7); color: var(--pi-muted); text-align: center; }
   .empty-session p { margin: 0; }
   .empty-session button { min-height: var(--pi-control-height); padding: var(--pi-space-3) var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
+  .empty-session.transcript-failed .failure-detail { color: var(--pi-muted); font-size: var(--pi-text-sm); white-space: pre-wrap; overflow-wrap: anywhere; }
   .empty-session button:focus-visible { border-color: var(--pi-accent); }
   @media (hover: hover) { .empty-session button:hover { border-color: var(--pi-accent); } }
   @media (pointer: coarse) { .empty-session button { min-height: var(--pi-control-height-touch); } }
@@ -729,6 +730,7 @@ export class ChatView extends LitElement {
   @property({ type: Boolean }) loadingMore = false;
   /** True while this session's transcript is being read for the first time. */
   @property({ type: Boolean }) transcriptLoading = false;
+  @property({ attribute: false }) transcriptFailed?: string;
   @property({ type: Boolean }) isSendingPrompt = false;
   @property({ type: Boolean }) isCompacting = false;
   @property({ type: Number }) pendingMessageCount = 0;
@@ -2497,6 +2499,18 @@ export class ChatView extends LitElement {
       return html`
         <div class="empty-session" role="status">
           <p>Loading this session…</p>
+        </div>
+      `;
+    }
+    // A failed read is the third state, and the one that must never claim
+    // emptiness: a session whose working directory is gone renders identically
+    // to a fresh one otherwise, and the empty claim invites writing into it.
+    // The daemon's own words are the most precise thing on offer.
+    if (this.transcriptFailed !== undefined) {
+      return html`
+        <div class="empty-session transcript-failed" role="alert">
+          <p>Couldn't load this session.</p>
+          <p class="failure-detail">${this.transcriptFailed}</p>
         </div>
       `;
     }
