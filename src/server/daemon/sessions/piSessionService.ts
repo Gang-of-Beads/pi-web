@@ -94,6 +94,7 @@ import { createBackgroundRunCountCycle } from "./backgroundRunCount.js";
 import { BackgroundWorkWatcher } from "./backgroundWorkWatcher.js";
 import { listBackgroundTasks, readTaskOutput } from "./backgroundTasks.js";
 import { promptDeliveryBehavior, type QueuedPromptKind } from "./promptDelivery.js";
+import { AcceptanceLedger } from "./acceptanceLedger.js";
 import { findSubagentRunTranscript, listSubagentRuns, readSessionEntries, readSubagentRunOutput } from "./subagentRuns.js";
 import { createSubsessionToolDefinitions, type SpawnSubsessionInvocation, type SpawnSubsessionResult, type SubsessionCheckResult, type SubsessionReadQuery, type SubsessionReadResult, type SubsessionStatus, type SubsessionSummary, type SubsessionToolDeps } from "./spawnSubsessionTool.js";
 import { buildTranscriptView } from "./subsessionTranscript.js";
@@ -1176,6 +1177,8 @@ export class PiSessionService implements SessionRouteService {
   private readonly deferredSubsessionNotifications = new WeakMap<PiAgentSession, DeferredSubsessionNotification[]>();
   private readonly deferredGeneratedSessionNames = new WeakMap<PiAgentSession, string>();
   private readonly compactionPromptQueues = new Map<string, QueuedPrompt[]>();
+  /** Accepted prompt identities, so a lost response answers instead of re-running. */
+  private readonly acceptanceLedger = new AcceptanceLedger();
   /**
    * Ids the sending browser minted for prompts that went into pi's steer or
    * follow-up queue, in submission order. pi's queue APIs carry text only, so
@@ -2604,6 +2607,18 @@ export class PiSessionService implements SessionRouteService {
     const session = await this.getOrOpen(ref);
     this.assertTreeNavigationInactive(session, "send a prompt");
     this.maybeGenerateSessionName(session, promptText);
+    // A repeat of an identity this daemon already accepted is the sender
+    // recovering a lost answer, not a second message: the composer mints a
+    // fresh id for every deliberate send. Repeat the acceptance - the frame
+    // rides the ring, so the outbox settles - and run nothing twice. The queue
+    // records below cannot do this; they forget an id once it is consumed,
+    // which is the normal fate of a prompt accepted while idle.
+    if (clientMessageId !== undefined && this.acceptanceLedger.has(session.sessionId, clientMessageId)) {
+      this.events.publish(session.sessionId, { type: "prompt.accepted", clientMessageId });
+      this.publishActivity(session, "duplicate message ignored", "active");
+      this.publishStatus(session);
+      return;
+    }
     const isQueued = session.isStreaming || session.isCompacting;
     const behavior = isQueued ? requestedBehavior ?? "followUp" : undefined;
     // A retry of the same request must not queue twice, but a person sending
@@ -2628,6 +2643,7 @@ export class PiSessionService implements SessionRouteService {
     // rides the per-session ring — a lost HTTP response or a lost frame is
     // repaired by replay instead of stranding the sender's bubble.
     if (clientMessageId !== undefined) {
+      this.acceptanceLedger.record(session.sessionId, clientMessageId);
       this.events.publish(session.sessionId, { type: "prompt.accepted", clientMessageId });
     }
     if (session.isCompacting) {
@@ -3860,6 +3876,7 @@ export class PiSessionService implements SessionRouteService {
         this.activities.delete(sessionId);
         this.clearAuthLossWarningsForSession(sessionId);
         this.clearCompactionPromptQueue(sessionId);
+        this.acceptanceLedger.forgetSession(sessionId);
         this.commandService.cancelQueuedReload(sessionId);
         removedActive = true;
       }
