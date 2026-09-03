@@ -3,6 +3,7 @@ import { stat } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, join, resolve, sep } from "node:path";
 import type { Plugin } from "vite";
+import { readFileSync } from "node:fs";
 import { defineConfig } from "vite";
 import { effectivePiWebConfig } from "./src/config";
 
@@ -90,8 +91,13 @@ function devDocsPlugin(): Plugin {
   };
 }
 
+const packageVersion: string = (JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")) as { version: string }).version;
+
 export default defineConfig({
   plugins: [devDocsPlugin()],
+  define: {
+    __PI_WEB_CLIENT_VERSION__: JSON.stringify(packageVersion),
+  },
   root: "src/client",
   base: "./",
   build: {

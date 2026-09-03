@@ -70,6 +70,7 @@ import {
   parsePiWebSelfUpdateStatus,
   parseWorkspaceProviderResolution,
   parseWorkspaceTrustResponse,
+  parseWebServerVersion,
   requireMachineStatusSnapshot,
 } from "./parsers";
 import { messagePath, subagentRunMessagePath } from "./urls";
@@ -112,6 +113,7 @@ export const piWebApi = {
   piWebStatus: (machineId = "local") => request(piWebStatusPath(machineId), parsePiWebStatusResponse),
   checkForUpdates: (machineId = "local") => request(`${piWebStatusPath(machineId)}?refresh=1`, parsePiWebStatusResponse, { cache: "no-store" }),
   piWebRuntime: () => request("api/pi-web/runtime", parsePiWebRuntimeResponse),
+  webServerVersion: () => request("api/pi-web/version", parseWebServerVersion, { cache: "no-store" }),
 };
 
 export const machinesApi = {

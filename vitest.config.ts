@@ -1,6 +1,9 @@
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  define: {
+    __PI_WEB_CLIENT_VERSION__: JSON.stringify("0.0.0-test"),
+  },
   test: {
     // Tests for the /pi-web extension live in src/extensions and resolve the
     // file at extensions/pi-web.ts by path. They must never live inside

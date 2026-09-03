@@ -2043,6 +2043,14 @@ function parsePiWebRuntimeComponent(value: unknown): PiWebRuntimeComponent {
   };
 }
 
+/** The one fact the reload offer needs: what version the web server is running. */
+export function parseWebServerVersion(value: unknown): string | undefined {
+  const record = requireRecord(value);
+  const components = requireRecord(record["components"]);
+  const web = requireRecord(components["web"]);
+  return optionalString(web, "runtimeVersion");
+}
+
 function parsePiWebComponentStatus(value: unknown): PiWebComponentStatus {
   const record = requireRecord(value);
   return {

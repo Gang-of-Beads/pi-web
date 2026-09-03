@@ -8,7 +8,7 @@ import { routeMatchesUrl } from "../routeMatch";
 import { autoFocusesComposer } from "../appShell/appShellController";
 import { touchPrimaryPointer } from "../keyboardDismissal";
 import { customElement, query, state } from "lit/decorators.js";
-import { configApi, effectiveWorkspaceUploadFolder, fleetApi, projectsApi, selfUpdateApi, sessionsApi, terminalsApi, workspacesApi, workspaceEffectiveUploadFolder, type AskUserSubmission, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
+import { configApi, effectiveWorkspaceUploadFolder, fleetApi, piWebApi, projectsApi, selfUpdateApi, sessionsApi, terminalsApi, workspacesApi, workspaceEffectiveUploadFolder, type AskUserSubmission, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
   type QueuedSessionMessage, type SessionBackgroundTaskInfo, type SessionSubagentInfo, type SessionSubagentRunInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
 import type { GoalRecordSummary, PiWebFleetReport, PiWebFleetRunResponse } from "../../../shared/apiTypes";import type { AppAction } from "../actions";
 import { canActOnWorkspaceGoals, composerCwd, goalsForSelectedWorkspace, initialAppState, type AppState } from "../appState";
@@ -92,6 +92,7 @@ import { shouldShowMachinesSection, type AppNavigationPanel, type NavigationFocu
 import "./appShell/AppPanelEdgeControl";
 import "./appShell/AppRefreshControl";
 import { quickSwitcherSessionStates, renameSessionInList } from "../quickSwitcher";
+import { reloadOffer } from "../versionSkew";
 import { readPinnedSessionIds, togglePinnedSessionId, writePinnedSessionIds } from "../sessionPins";
 import { observeTransportRecovery } from "../api/transportHealth";
 import { dismissKeyboardIfRaised } from "../keyboardDismissal";
@@ -428,6 +429,7 @@ export class PiWebApp extends LitElement {
    * session that lives elsewhere moves the app there first.
    */
   @state() private quickSwitcherBrowseMachineId = "";
+  @state() private staleClientServerVersion: string | undefined;
   @state() private sessionCleanupDialog: SessionCleanupDialogState | undefined;
   @state() private settingsSection: SettingsSection | undefined = readSettingsSection();
   @state() private fleetReport: PiWebFleetReport | undefined;
@@ -605,7 +607,12 @@ export class PiWebApp extends LitElement {
 
   private readonly onDocumentVisibilityChange = () => {
     this.updateSubagentPolling();
-    if (document.visibilityState === "visible") void this.refreshSubagents();
+    if (document.visibilityState === "visible") {
+      void this.refreshSubagents();
+      // Coming back to the tab is the moment a stale bundle bites next; a
+      // server upgraded while the phone slept should be offered, not hidden.
+      void this.checkClientFreshness();
+    }
   };
   private readonly onSystemLightThemeChange = () => {
     if (this.themePreference.auto) this.applyPreferredTheme(false);
@@ -827,6 +834,31 @@ export class PiWebApp extends LitElement {
   }
 
   /** Render the "Update now / Skip" strip above the session view. */
+  /**
+   * The tab keeps running the bundle it loaded, however many times the server
+   * underneath is upgraded; every client-side fix shipped in between is
+   * invisible here, and gets reported as still broken. The server states its
+   * version; a mismatch is an offer to reload - the reader's move, never an
+   * automatic one.
+   */
+  private renderStaleClientBanner(): TemplateResult | null {
+    if (this.staleClientServerVersion === undefined) return null;
+    return html`
+      <div class="self-update-banner" role="status" aria-live="polite">
+        <span>The server was updated to ${this.staleClientServerVersion}; this page is running ${__PI_WEB_CLIENT_VERSION__}.</span>
+        <button type="button" @click=${() => { window.location.reload(); }}>Reload</button>
+      </div>`;
+  }
+
+  private async checkClientFreshness(): Promise<void> {
+    try {
+      const serverVersion = await piWebApi.webServerVersion();
+      this.staleClientServerVersion = reloadOffer(__PI_WEB_CLIENT_VERSION__, serverVersion);
+    } catch {
+      // An unreachable version endpoint says nothing about staleness.
+    }
+  }
+
   private renderSelfUpdateBanner(): TemplateResult | null {
     const status = this.state.selfUpdate;
     if (status === undefined || !status.enabled || !status.available) return null;
@@ -928,6 +960,7 @@ export class PiWebApp extends LitElement {
     this.updateSubagentPolling();
     void this.loadClientConfig();
     void this.refreshSelfUpdate();
+    void this.checkClientFreshness();
     void this.ensureGatewayPluginsLoaded();
     void this.loadProjectsAndRestoreRoute().finally(() => { this.schedulePiWebStatusRefresh(); });
   }
@@ -3412,6 +3445,7 @@ export class PiWebApp extends LitElement {
           ${this.renderContextBar()}
 
           ${this.renderErrorBanner(state.error)}
+          ${this.renderStaleClientBanner()}
           ${this.renderSelfUpdateBanner()}
           ${deprecatedAgentInputsBanner(deprecatedAgentInputsWarnings(state.machines, state.machineRuntimes))}
           <div class="mobile-navigation-panel">${this.appShell.isMobileNavigationLayout ? this.renderNavigationPanel() : null}</div>
