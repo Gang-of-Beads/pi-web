@@ -18,8 +18,9 @@ One user message is rendered from four independent sources.
 | 2 | The echo | The daemon publishes `message.append` with `echo: true` so a queued prompt is visible before the agent reaches it. |
 | 3 | The queued row | The status carries `queuedMessages`, and the browser synthesises a row for any entry it cannot match to a bubble. |
 | 4 | The transcript entry | When the prompt finally runs, the real user message lands in the transcript. |
+| 5 | The submitted copy | A retry the daemon cannot match to its first arrival is a second submission: the runtime may have consumed the first one. The outbox entry is replaced by the retry's own echo and transcript entry - a producer of rows, not a matcher. |
 
-Correctness has always depended on these four **agreeing with each other**. When
+Correctness has always depended on these sources **agreeing with each other**. When
 they agree, you see one row. When any pair disagrees, you see two. So a
 duplicate is not an error state in this design - it is the default outcome, held
 off by matching.

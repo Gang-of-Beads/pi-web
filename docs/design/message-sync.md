@@ -127,6 +127,14 @@ Rules that make the states honest:
   places, again.
 - **`settled`** is the transcript, and it is the only terminal state that
   removes anything from the outbox.
+- **`withdrawn`** is the second terminal state: the reader took the message
+  back. It is reached only by a confirmed recall - this device's, or a
+  withdrawal frame carrying the `clientMessageId` from the daemon (another
+  browser's recall, stop, or queue clear must publish one, or this device's
+  bubble stays `queued` forever, because the transcript will never claim a
+  message the daemon deleted). A withdrawn entry is never offered a retry:
+  re-sending what the reader explicitly recalled is the one failure step 8's
+  "unconfirmed with a retry" must not be able to produce.
 
 ### The daemon owns the queue it reports
 
@@ -142,6 +150,25 @@ one at a time. Then:
 
 The correlation module and every rule inside it are deleted, not improved.
 
+**Held → submitted is decided once, at the runtime-call boundary.** Whether a
+parked prompt queues is a property of the runtime's state *when it is handed
+over*, not when it arrived: a follow-up parked long ago and handed to a runtime
+that has gone idle goes out as a direct send, because an idle runtime has no
+turn-end left to drain it. One pure classifier makes the decision
+(`promptDeliveryBehavior`); `session.prompt` is the single throat where it
+applies, so an un-redecided handoff is not representable - a direct call is a
+documented exception, not a second path. Two consequences are part of the
+rule, not incidental:
+
+- **steer is not parked.** A steer means "insert into the turn in progress":
+  busy, it is delivered immediately as a steer; idle, it is just a prompt. A
+  daemon queue that submits a steer in order has already destroyed it.
+- **drain has a liveness rule, not only a trigger.** The named trigger is the
+  runtime's settled event; the rule that makes a missed event self-heal is:
+  queue non-empty ∧ runtime idle → drain. Without it, one lost turn-end during
+  a restart parks a follow-up in the daemon's own queue forever - silently,
+  which is the exact shape this design exists to end.
+
 ### At-least-once, made idempotent by the id
 
 The browser retries from the outbox with the same identity. The daemon keeps a
@@ -149,6 +176,14 @@ short-lived record of identities it has accepted and answers a repeat with the
 same result rather than queueing a second copy. This is the standard
 idempotency-key contract, and it is what makes retrying safe enough to do
 automatically.
+
+The ledger records the disposition of **every accepted prompt, on every path**
+- a direct send accepted while the runtime was idle leaves a record too, not
+only prompts that arrived while busy. Its lifetime is coextensive with the
+owned queue's: same volatility, same restart semantics, because a daemon
+restart between acceptance and transcript claim hands a retry a cold ledger.
+The test that pins the contract: a direct-path prompt is accepted, the response
+is lost, the browser retries with the same id - the message runs exactly once.
 
 ### Resume by sequence, not by hope
 
@@ -199,7 +234,7 @@ interface OutboxEntry {
   lane: "steer" | "followUp";
   text: string;
   attachments: SavedPromptAttachment[];
-  state: "outbox" | "accepted" | "queued" | "running" | "failed";
+  state: "outbox" | "accepted" | "queued" | "running" | "failed" | "withdrawn";
   attempts: number;
   firstSubmittedAt: string;
   lastError?: { kind: "refused" | "unanswered"; message: string };
@@ -217,6 +252,7 @@ the transcript now holds it. Keeping a settled copy is how two rows get built.
 | outbox → accepted | the daemon's 2xx answer to the submission |
 | accepted → queued / running | the daemon's status, by id |
 | any → failed | an explicit refusal (4xx), never a timeout |
+| any → withdrawn | a confirmed recall: this device's, or a daemon withdrawal frame carrying the id |
 | any → gone | the identity appearing in the transcript |
 
 A timeout moves nothing. It records `lastError.kind = "unanswered"` and leaves
