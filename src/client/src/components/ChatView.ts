@@ -49,6 +49,7 @@ import "./ToolExecutionView";
 import { sessionStateBadgeStyles as SessionStateBadgeStyles } from "./sessionStateBadgeStyles";
 import { readingAnchorDecision, readingScrollCorrection, shouldHoldReadingPosition } from "../readingAnchor";
 import { imageLoadScrollCorrection } from "../imageLoadScroll";
+import { bottomAnchorAction } from "../bottomAnchor";
 import { subagentRunStatusExplanation, subagentRunStatusLabel } from "../subagentRunStatusLabel";
 import { activityEmptyMeaning } from "../activityEmptyMeaning";
 import { pluginSurfaceVisibility } from "../pluginSurfaceVisibility";
@@ -925,6 +926,7 @@ export class ChatView extends LitElement {
    *  disabled the bottom hold. A lazy image reads it to report how much it grew
    *  the document since that render. */
   private lastScrollHeight: number | undefined;
+  private heightAtLastBottomHold: number | undefined;
   private readonly openImageZoom = (src: string, alt: string): void => {
     this.zoomedImage = { src, alt };
   };
@@ -1083,6 +1085,7 @@ export class ChatView extends LitElement {
   }
 
   protected override updated(changed: Map<string, unknown>): void {
+    this.holdBottomEdge();
     if (changed.has("loadingMore") && !this.loadingMore) this.loadMoreRequested = false;
     if (changed.has("hasMore") && !this.hasMore) this.loadMoreRequested = false;
     if (changed.has("sessionId")) this.restoreScrollPosition();
@@ -2925,6 +2928,26 @@ export class ChatView extends LitElement {
   private canScrollUp(): boolean {
     const chat = this.chat;
     return chat !== undefined && chat.scrollTop > 0;
+  }
+
+  private holdBottomEdge(): void {
+    const chat = this.chat;
+    if (chat === undefined) return;
+    const currentHeight = chat.scrollHeight;
+    const action = bottomAnchorAction({
+      pinnedToBottom: this.pinnedToBottom,
+      readerHoldsGround: this.followGate.holdsOrSettling(Date.now()),
+      userScrolling: this.userScrollInFlight,
+      previousHeight: this.heightAtLastBottomHold,
+      currentHeight,
+    });
+    this.heightAtLastBottomHold = currentHeight;
+    if (action !== "hold-bottom") return;
+    this.withSuppressedScrollSave(() => {
+      chat.scrollTop = chat.scrollHeight;
+      this.lastScrollTop = chat.scrollTop;
+      this.lastClientHeight = chat.clientHeight;
+    });
   }
 
   private scrollToBottom() {

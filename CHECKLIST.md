@@ -85,26 +85,24 @@ after the content grew. The browser paints the taller document first — with th
 card pushed down — and the correction lands on the next frame. Two paints for
 one change.
 
-Attempted twice, withdrawn twice. Holding the bottom edge synchronously in
-`updated()` is the right shape - one paint instead of two - but both attempts
-failed `ChatView.pressHoldsScroll.test.ts`, which protects a real behaviour: a
-catch-up scheduled by one press must not fire into the next press, because the
-transcript would move between a tap and its click and the tap would land on
-whatever slid into place.
+**Done, on the third attempt.** The bottom edge is held synchronously in
+`updated()` - one paint instead of two.
 
-Second attempt, and what it ruled out:
-- The failure is not the write. Instrumented, the hold branch never ran.
-- The failure is not a shared-field collision. `lastScrollHeight` belongs to the
-  image-load correction (`update()`, `:906-907`); giving the hold its own field
-  changed nothing.
-- The surviving assertion is the second one, after press two is released:
-  `scrollTop` is 1000 where 0 is required.
+The first two attempts failed `ChatView.pressHoldsScroll.test.ts` and the reason
+was neither the timing nor the height comparison. `followsNewest()` is not pure:
+it records a suppressed follow when a pointer is down, and the fix asked it
+every frame. That turned the second press into one that had "suppressed a
+follow", so releasing it caught up to the bottom. The file's own comment warns
+about exactly this - "a probe that recorded a suppressed follow as a side effect
+would turn asking into acting". The fix now asks `holdsOrSettling()`, which is
+pure.
 
-The test is right and the change is not, so the change is out. Landing this
-needs the press lifecycle understood first - which press owns a pending
-catch-up, and when that ownership ends - not another attempt at the scroll.
-
-**Not shipped. Working tree is clean of both attempts.**
+**The first round of tests for this were worthless and said so only under
+mutation.** Removing the press guard, removing the height comparison, and
+removing the call entirely all left the suite green, because the tests covered
+the extracted function and an extracted function cannot tell whether it is
+wired. `ChatView.bottomEdge.test.ts` exercises the component; all three
+mutations now fail.
 
 ### 5. Messages arrive out of order; "Queued" appears before the recovery
 
