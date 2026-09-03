@@ -132,6 +132,9 @@ describe("the session list hosts the rename dialog", () => {
     send.click();
     await list.updateComplete;
     expect(onRename).toHaveBeenCalledTimes(1);
+    // The wiring must hand over the row the menu belonged to, not just any name.
+    expect(onRename.mock.calls[0]?.[0]).toMatchObject({ id: "s1" });
+    expect(onRename.mock.calls[0]?.[1]).toBe("New name");
     expect(list.renderRoot.querySelector("session-rename-dialog")).toBeNull();
   });
 });

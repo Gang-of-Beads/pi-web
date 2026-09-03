@@ -21,8 +21,8 @@ the only way back was the manual refresh; and dropping a dead socket detached
 the very handler that would have reconnected it.
 
 Panels stop overstating what they know. Compaction qualifies the activity chip
-instead of replacing it, so a streaming reply no longer reads as stopped. A
-session between two tool calls is no longer reported as done. The activity panel
+instead of replacing it, so a streaming reply no longer reads as stopped. The
+activity panel
 names the two things it can see rather than declaring the session quiet. A
 subagent run that has not reported says so, instead of "Unknown" beside "Lost".
 
