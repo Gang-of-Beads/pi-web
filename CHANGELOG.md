@@ -1,5 +1,11 @@
 # @gang-of-beads/pi-web
 
+## 1.202609.7
+
+### Patch Changes
+
+- 4dd2c96: Add a shareable full-canvas desktop view for every workspace tool.
+
 ## 1.202609.6
 
 ### Patch Changes

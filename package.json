@@ -1,6 +1,6 @@
 {
   "name": "@gang-of-beads/pi-web",
-  "version": "1.202609.6",
+  "version": "1.202609.7",
   "description": "Web UI for persistent Pi Coding Agent sessions in real workspaces.",
   "license": "MIT",
   "author": "Gang of Beads",
