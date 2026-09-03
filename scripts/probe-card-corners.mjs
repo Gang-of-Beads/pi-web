@@ -83,7 +83,11 @@ async function openTranscript(page) {
 }
 
 async function sampleCards(page, scale) {
-  const cards = await page.evaluateHandle(() => {
+  // Re-query per card, at use time: a live transcript re-renders and detaches
+  // prefetched handles, which the review demonstrated by watching every
+  // handle die before sampling. Stale handles fail loudly, but a probe that
+  // can only run against a frozen page verifies less than it claims.
+  const cardHandle = (at) => page.evaluateHandle((index) => {
     function walk(root, out) {
       for (const node of root.querySelectorAll("*")) {
         if (node.matches?.(".msg") && node.querySelector(":scope > .msg-header") !== null) {
@@ -94,12 +98,21 @@ async function sampleCards(page, scale) {
       }
       return out;
     }
-    return walk(document, []).slice(0, 4);
+    return walk(document, [])[index] ?? null;
+  }, at);
+  const count = await page.evaluate(() => {
+    function walk(root, out) {
+      for (const node of root.querySelectorAll("*")) {
+        if (node.matches?.(".msg") && node.querySelector(":scope > .msg-header") !== null) out.push(node);
+        if (node.shadowRoot) walk(node.shadowRoot, out);
+      }
+      return out;
+    }
+    return Math.min(walk(document, []).length, 4);
   });
-  const count = await page.evaluate((list) => list.length, cards);
   const results = [];
   for (let index = 0; index < count; index += 1) {
-    const card = await page.evaluateHandle(({ list, at }) => list[at], { list: cards, at: index });
+    const card = await cardHandle(index);
     const element = card.asElement();
     if (element === null) continue;
     try {

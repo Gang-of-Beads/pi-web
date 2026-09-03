@@ -22,7 +22,7 @@ function chatStyleText(): string {
   return list.map((sheet) => {
     if (typeof sheet === "object" && sheet !== null && "cssText" in sheet && typeof sheet.cssText === "string") return sheet.cssText;
     return "";
-  }).join("\n");
+  }).join("\n").replace(/\/\*[\s\S]*?\*\//g, "");
 }
 
 function everyRule(selectorPattern: string): string[] {
@@ -31,12 +31,16 @@ function everyRule(selectorPattern: string): string[] {
 }
 
 describe("message card corners have one owner", () => {
-  it("clips children at the card border in every .msg rule that speaks of overflow", () => {
-    const rules = everyRule("\\.msg\\b[^{,]*").filter((rule) => rule.includes("overflow:"));
-    const cardRules = rules.filter((rule) => rule.startsWith(".msg {"));
-    expect(cardRules.length).toBeGreaterThan(0);
-    for (const rule of cardRules) {
-      expect(rule).toContain("overflow: clip");
+  it("clips children at the card border, and no card-family rule may undo it", () => {
+    // The review defeated the first version with a compound-selector override
+    // (.msg.user { overflow: visible }): filtering to rules that START with
+    // .msg { left every sibling selector free to break the clip. Any rule
+    // whose selector mentions .msg is held to it now, comma lists included.
+    const cardFamily = everyRule("[^{}]*\\.msg(?![\\w-])[^{]*");
+    const base = cardFamily.filter((rule) => /(^|,)\s*\.msg\s*\{/.test(rule));
+    expect(base.length).toBeGreaterThan(0);
+    expect(base.some((rule) => rule.includes("overflow: clip"))).toBe(true);
+    for (const rule of cardFamily) {
       expect(rule).not.toMatch(/overflow: (visible|auto|scroll)/);
     }
   });
@@ -47,7 +51,7 @@ describe("message card corners have one owner", () => {
   });
 
   it("keeps every sticky child of a card square - no replicated curve anywhere", () => {
-    const stickyInCard = everyRule("\\.msg[^{,]*").filter((rule) => rule.includes("position: sticky"));
+    const stickyInCard = everyRule("\\.msg(?![\\w-])[^{,]*").filter((rule) => rule.includes("position: sticky"));
     expect(stickyInCard.length).toBeGreaterThan(0);
     for (const rule of stickyInCard) {
       expect(rule).not.toContain("border-radius");
