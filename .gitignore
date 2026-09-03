@@ -44,3 +44,9 @@ dist/
 .pi/.goals-pool-snapshot.json
 .pi/goals/
 .pi/queued-prompt-frames.json
+# The rule for the whole directory: `.pi` holds two kinds of file. Things the
+# project decided - prompts, skills - are committed. Things a session produced
+# while running - goals, ledgers, task logs, working notes like HANDOFF.md and
+# TRACK.md - are one machine's state and stay out of the index.
+.pi/HANDOFF.md
+.pi/TRACK.md
