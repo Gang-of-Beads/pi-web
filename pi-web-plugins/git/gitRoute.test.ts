@@ -27,12 +27,6 @@ describe("Git panel route", () => {
     expect(route.read()).toEqual({ mode: "history", diffPath: undefined, commitId: "a".repeat(40), expanded: true });
   });
 
-  it("reads the former core diff namespace and defaults to Changes", () => {
-    window.history.replaceState({}, "", "/?project=p1&workspace=w1&core.workspace.git--diff=README.md");
-
-    expect(createGitDiffRoute("git:workspace.git").read()).toEqual({ mode: "changes", diffPath: "README.md", commitId: undefined, expanded: false });
-  });
-
   it("does not retain a Changes diff when the URL selects History", () => {
     window.history.replaceState({}, "", "/?project=p1&workspace=w1&git.workspace.git--mode=history&git.workspace.git--diff=README.md");
 
@@ -53,7 +47,7 @@ function panelContext(machineId: string, projectId: string, workspaceId: string)
       moveFile: () => Promise.reject(new Error("not implemented")),
     },
     backend: { request: () => Promise.reject(new Error("not implemented")) },
-    host: { requestRender: noop },
+    host: { requestRender: noop, workspacePanelFullscreen: () => false, setWorkspacePanelFullscreen: noop },
     prompt: { insertText: noop, getText: () => "", getSelection: () => null },
     terminal: { open: noop, runCommand: () => Promise.reject(new Error("not implemented")) },
   };

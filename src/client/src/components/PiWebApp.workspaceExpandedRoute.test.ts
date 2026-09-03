@@ -47,18 +47,18 @@ describe("PiWebApp workspace expanded route", () => {
     const host = callAppMethod(app, "createWorkspaceHost");
     if (!isWorkspaceHost(host)) throw new Error("PiWebApp did not create a workspace host");
 
-    expect(host.workspacePanelFullscreen?.()).toBe(false);
-    host.setWorkspacePanelFullscreen?.(true);
+    expect(host.workspacePanelFullscreen()).toBe(false);
+    host.setWorkspacePanelFullscreen(true);
 
-    expect(host.workspacePanelFullscreen?.()).toBe(true);
+    expect(host.workspacePanelFullscreen()).toBe(true);
     expect(new URL(window.location.href).searchParams.get("core.workspace--expanded")).toBe("1");
 
-    host.setWorkspacePanelFullscreen?.(false);
+    host.setWorkspacePanelFullscreen(false);
     expect(new URL(window.location.href).searchParams.get("core.workspace--expanded")).toBeNull();
 
-    host.setWorkspacePanelFullscreen?.(true);
+    host.setWorkspacePanelFullscreen(true);
     callAppMethod(app, "selectMainView", "chat");
-    expect(host.workspacePanelFullscreen?.()).toBe(false);
+    expect(host.workspacePanelFullscreen()).toBe(false);
     expect(new URL(window.location.href).searchParams.get("core.workspace--expanded")).toBeNull();
   });
 

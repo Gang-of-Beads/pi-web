@@ -153,8 +153,8 @@ export class GitUiController {
 
   state(context: WorkspacePanelContext): GitWorkspaceUiState {
     const state = this.stateFor(context);
-    const hostFullscreen = context.host.workspacePanelFullscreen?.();
-    if (hostFullscreen !== undefined && hostFullscreen !== state.workspacePanelFullscreen) {
+    const hostFullscreen = context.host.workspacePanelFullscreen();
+    if (hostFullscreen !== state.workspacePanelFullscreen) {
       state.workspacePanelFullscreen = hostFullscreen;
       if (hostFullscreen && state.selectedDiffPath !== undefined) state.reviewFocusRequest = state.selectedDiffPath;
     }
@@ -169,7 +169,7 @@ export class GitUiController {
     this.activeWorkspaceKey = key;
     this.connectedWorkspaceKey = key;
     this.synchronizeRoute(state, changedWorkspace);
-    context.host.setWorkspacePanelFullscreen?.(state.workspacePanelFullscreen);
+    context.host.setWorkspacePanelFullscreen(state.workspacePanelFullscreen);
     if (state.status === undefined && state.statusRequest === undefined) void this.refresh(context);
     else if (state.mode === "changes" && state.selectedDiffPath !== undefined) {
       if (state.status?.files.some((file) => file.path === state.selectedDiffPath) !== true) this.clearSelection(state, true);
@@ -546,7 +546,7 @@ export class GitUiController {
   private applyRouteState(state: GitWorkspaceUiState, route: ReturnType<GitDiffRoute["read"]>): void {
     state.mode = route.mode;
     state.workspacePanelFullscreen = route.expanded;
-    state.context.host.setWorkspacePanelFullscreen?.(route.expanded);
+    state.context.host.setWorkspacePanelFullscreen(route.expanded);
     if (route.expanded && route.diffPath !== undefined) state.reviewFocusRequest = route.diffPath;
     if (route.mode === "changes") {
       this.clearCommitSelection(state);
@@ -719,7 +719,6 @@ function createGitActions(panelId: string, controller: GitUiController): PluginA
       id: "view.git",
       title: "Go to Git",
       shortcut: "mod+3",
-      shortcutAliases: ["core:view.git"],
       group: "Navigation",
       enabled: hasGitWorkspace,
       run: (context) => { context.selectMainView(panelId); },
@@ -728,7 +727,6 @@ function createGitActions(panelId: string, controller: GitUiController): PluginA
       id: "workspace.refresh-git",
       title: "Refresh Git",
       shortcut: "mod+shift+g",
-      shortcutAliases: ["core:workspace.refresh-git"],
       group: "Workspace",
       enabled: hasGitWorkspace,
       run: (context) => context.refreshWorkspacePanels(panelId),
@@ -755,7 +753,6 @@ function createGitPanel(
       </svg>
     `,
     order: 20,
-    routeAliases: ["git", "core:workspace.git"],
     visible: (context) => controller.isOwnedWorkspace(context.workspace),
     onInvalidate: (context) => controller.invalidate(context),
     render: (context) => renderGitPanel(html, controller, context),

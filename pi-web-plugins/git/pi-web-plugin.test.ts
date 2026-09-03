@@ -51,10 +51,10 @@ describe("bundled Git browser plugin", () => {
     const refresh = contributions.actions?.find((action) => action.id === "workspace.refresh-git");
 
     expect(contributions.actions?.map(({ id }) => id)).toEqual(["view.git", "workspace.refresh-git"]);
-    expect(panel.routeAliases).toEqual(["git", "core:workspace.git"]);
+    expect(panel.routeAliases).toBeUndefined();
     expect(goToGit?.shortcut).toBe("mod+3");
-    expect(goToGit?.shortcutAliases).toEqual(["core:view.git"]);
-    expect(refresh?.shortcutAliases).toEqual(["core:workspace.refresh-git"]);
+    expect(goToGit?.shortcutAliases).toBeUndefined();
+    expect(refresh?.shortcutAliases).toBeUndefined();
     expect(goToGit?.enabled?.(runtime)).toBe(true);
     await goToGit?.run(runtime);
     expect(selectMainView).toHaveBeenCalledWith("git:workspace.git");
@@ -87,14 +87,14 @@ describe("bundled Git browser plugin", () => {
   });
 
   it("keeps visibility checks free of route side effects", () => {
-    window.history.replaceState({}, "", `/?project=${projectId}&workspace=${workspaceId}&core.workspace.git--diff=README.md`);
+    window.history.replaceState({}, "", `/?project=${projectId}&workspace=${workspaceId}&git.workspace.git--diff=README.md`);
     const replaceState = vi.spyOn(window.history, "replaceState");
     const panel = requiredPanel(activate("git"));
 
     expect(panel.visible?.(panelContext(backendFixture().request))).toBe(true);
 
     expect(replaceState).not.toHaveBeenCalled();
-    expect(new URL(window.location.href).searchParams.get("core.workspace.git--diff")).toBe("README.md");
+    expect(new URL(window.location.href).searchParams.get("git.workspace.git--diff")).toBe("README.md");
   });
 
   it("uses the generic panel invalidation hook and reports an actionable error without a paired backend", async () => {
@@ -283,13 +283,14 @@ describe("bundled Git browser plugin", () => {
     window.history.replaceState({}, "", `/?project=${projectId}&workspace=${workspaceId}&git.workspace.git--mode=history&git.workspace.git--commit=${historyCommit.id}&core.workspace--expanded=1`);
     const backend = backendFixture({ history: { unborn: false, commits: [historyCommit], truncated: false } });
     const panel = requiredPanel(activate("git"));
+    const context = panelContext(backend.request, gitWorkspace, "local", { workspacePanelFullscreen: () => true });
     const container = document.createElement("div");
     document.body.append(container);
 
-    render(panel.render(panelContext(backend.request)), container);
+    render(panel.render(context), container);
     await settleBackend();
     await settleBackend();
-    render(panel.render(panelContext(backend.request)), container);
+    render(panel.render(context), container);
 
     expect(backend.request).toHaveBeenCalledWith("history", null);
     expect(backend.request).toHaveBeenCalledWith("commit-diff", { id: historyCommit.id });
@@ -312,7 +313,7 @@ describe("bundled Git browser plugin", () => {
     const secondWorkspace = { ...gitWorkspace, id: "workspace-2" };
     const secondBackend = backendFixture({ files: [changedFile("README.md")] });
     const secondContext = panelContext(secondBackend.request, secondWorkspace);
-    window.history.replaceState({}, "", `/?project=${projectId}&workspace=${secondWorkspace.id}&core.workspace.git--diff=README.md`);
+    window.history.replaceState({}, "", `/?project=${projectId}&workspace=${secondWorkspace.id}&git.workspace.git--diff=README.md`);
     render(panel.render(secondContext), container);
     await settleBackend();
 
@@ -354,7 +355,7 @@ describe("bundled Git browser plugin", () => {
 
   it("restores deep-linked selections, clears removed files, and polls only while mounted", async () => {
     vi.useFakeTimers();
-    window.history.replaceState({}, "", `/?project=${projectId}&workspace=${workspaceId}&core.workspace.git--diff=README.md`);
+    window.history.replaceState({}, "", `/?project=${projectId}&workspace=${workspaceId}&git.workspace.git--diff=README.md`);
     const backend = backendFixture({ files: [changedFile("README.md")] });
     const panel = requiredPanel(activate("git"));
     const context = panelContext(backend.request);
@@ -367,7 +368,6 @@ describe("bundled Git browser plugin", () => {
 
     expect(backend.request).toHaveBeenCalledWith("diff", { path: "README.md" });
     expect(new URL(window.location.href).searchParams.get("git.workspace.git--diff")).toBe("README.md");
-    expect(new URL(window.location.href).searchParams.has("core.workspace.git--diff")).toBe(false);
 
     const statusCallsBeforePoll = backend.request.mock.calls.filter(([operation]) => operation === "status").length;
     await vi.advanceTimersByTimeAsync(8_000);
@@ -470,7 +470,11 @@ function panelContext(
       moveFile: () => Promise.reject(new Error("not implemented")),
     },
     ...(request === undefined ? {} : { backend: { request } }),
-    host: { requestRender: noop, ...host },
+    host: {
+      requestRender: host.requestRender ?? noop,
+      workspacePanelFullscreen: host.workspacePanelFullscreen ?? (() => false),
+      setWorkspacePanelFullscreen: host.setWorkspacePanelFullscreen ?? noop,
+    },
     prompt: { insertText: noop, getText: () => "", getSelection: () => null },
     terminal: { open: noop, runCommand: () => Promise.reject(new Error("not implemented")) },
   };

@@ -30,7 +30,7 @@ function context(id: string, request: (operation: string, input: JsonValue) => P
       moveFile: () => Promise.reject(new Error("Not used by this test")),
     },
     backend: { request },
-    host: { requestRender() { /* no-op */ }, workspacePanelFullscreen: () => fullscreen },
+    host: { requestRender() { /* no-op */ }, workspacePanelFullscreen: () => fullscreen, setWorkspacePanelFullscreen() { /* no-op */ } },
     prompt: {
       insertText() { /* no-op */ },
       getText: () => "",

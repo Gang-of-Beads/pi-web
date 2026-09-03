@@ -70,7 +70,7 @@ export class WorkspacePanel extends LitElement {
                 </div>
               </div>
             </div>
-            ${context.host.setWorkspacePanelFullscreen === undefined ? null : this.renderFullscreenToggle(context)}
+            ${this.renderFullscreenToggle(context)}
           </div>
         </header>
       `}
@@ -86,7 +86,7 @@ export class WorkspacePanel extends LitElement {
   }
 
   private renderFullscreenToggle(context: WorkspacePanelContext): TemplateResult {
-    const expanded = context.host.workspacePanelFullscreen?.() === true;
+    const expanded = context.host.workspacePanelFullscreen();
     const label = expanded ? "Exit expanded view" : "Expand panel";
     return html`
       <button
@@ -95,7 +95,7 @@ export class WorkspacePanel extends LitElement {
         title=${label}
         aria-label=${label}
         aria-pressed=${String(expanded)}
-        @click=${() => { context.host.setWorkspacePanelFullscreen?.(!expanded); }}
+        @click=${() => { context.host.setWorkspacePanelFullscreen(!expanded); }}
       >${label}</button>
     `;
   }

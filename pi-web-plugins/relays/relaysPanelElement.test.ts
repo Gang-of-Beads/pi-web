@@ -764,7 +764,7 @@ function panelContext(fake: WorkspaceFilesFake, workspaceId = "ws-1"): Workspace
     machine: { id: "machine-1", name: "Local", kind: "local" },
     workspace: { id: workspaceId, projectId: "project-1", path: "/repo", label: "repo", isMain: true },
     files: fake.files,
-    host: { requestRender: () => undefined },
+    host: { requestRender: () => undefined, workspacePanelFullscreen: () => false, setWorkspacePanelFullscreen: () => undefined },
     prompt: { insertText: () => undefined, getText: () => "", getSelection: () => null },
     terminal: { open: () => undefined, runCommand: () => Promise.reject(new Error("terminal not used")) },
   };
