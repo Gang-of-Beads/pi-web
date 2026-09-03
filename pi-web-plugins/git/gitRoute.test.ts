@@ -24,7 +24,6 @@ describe("Git panel route", () => {
     expect(url.searchParams.get("machine.remote-1.git.workspace.git--mode")).toBe("history");
     expect(url.searchParams.get("machine.remote-1.git.workspace.git--commit")).toBe("a".repeat(40));
     expect(url.searchParams.get("core.workspace--expanded")).toBe("1");
-    expect(url.searchParams.get("machine.remote-1.git.workspace.git--expanded")).toBeNull();
     expect(route.read()).toEqual({ mode: "history", diffPath: undefined, commitId: "a".repeat(40), expanded: true });
   });
 

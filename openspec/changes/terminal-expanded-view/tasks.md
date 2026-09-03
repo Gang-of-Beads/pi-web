@@ -2,7 +2,7 @@
 
 - [x] 1.1 Store expansion as scoped `core.workspace--expanded=1` route state, preserve it across tool switches, restore it on reload/shared links/popstate, and verify non-workspace routes cannot inherit it.
 - [x] 1.2 Expose the current Workspace Panel fullscreen presentation through the optional public host contract, update its declaration baseline, and verify legacy plugin contexts remain type-compatible.
-- [x] 1.3 Retain read compatibility for older Git-namespaced expanded links while stopping new legacy writes; verify focused Git route/controller tests.
+- [x] 1.3 Remove Git-specific expanded route reads/writes so only shared Workspace Panel route state remains; verify focused Git route/controller tests.
 
 ## 2. Shared interaction and tool geometry
 

@@ -38,9 +38,6 @@ The application SHALL encode expansion once in Workspace Panel route state along
 - **WHEN** browser back or forward navigates to a route that does not select an expanded Workspace Panel
 - **THEN** the shell SHALL restore the layout represented by that route and SHALL NOT retain stale expansion
 
-#### Scenario: User opens an older Git expanded link
-- **WHEN** the URL contains the previous Git-namespaced expanded field for a matching Git workspace
-- **THEN** the application SHALL honor it and migrate subsequent expansion writes to shared Workspace Panel route state
 
 ### Requirement: Terminal geometry follows shared layout transitions
 When Terminal is the active tool, entering or leaving the shared expanded layout SHALL refit the visible terminal and report the resulting columns and rows through the existing terminal resize channel.

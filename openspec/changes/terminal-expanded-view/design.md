@@ -25,9 +25,9 @@ The shared desktop header renders Expand panel / Exit expanded view using the ho
 Opt-in was rejected after product review because it recreates inconsistent tool capabilities and requires every plugin to implement the same shell behavior. Tool-local controls were rejected because Git and Terminal had already drifted in label, placement, lifecycle, and route ownership.
 
 ### 2. Expansion uses one workspace-scoped route field
-The route surface stores `core.workspace--expanded=1`, scoped by the existing machine/project/workspace/tool route. It is remembered with machine navigation and applied only after the matching workspace tool resolves. Switching tool tabs retains expansion because the owning Workspace Panel remains mounted; leaving workspace-panel views clears it.
+The route surface stores only `core.workspace--expanded=1`, scoped by the existing machine/project/workspace/tool route. It is remembered with machine navigation and applied only after the matching workspace tool resolves. Switching tool tabs retains expansion because the owning Workspace Panel remains mounted; leaving workspace-panel views clears it.
 
-Git's previous `*.git.workspace.git--expanded=1` remains read-compatible. Git stops producing that field; when the legacy route activates the host, the app writes shared state and removes the old field. A separate expanded field per tool was rejected because expansion now belongs to the common panel and would create contradictory values.
+Tool-specific expanded fields are neither read nor written. A separate field per tool was rejected because expansion now belongs to the common panel and would create contradictory values.
 
 ### 3. Child tools observe host geometry but do not own shell controls
 Git derives its expanded internal split from the host's current state, preserving its multi-file review layout without an internal button. Terminal receives the same state to schedule `FitAddon` after parent update plus animation frame; its existing ResizeObserver remains the geometry backstop. Other tools simply receive a larger container.
@@ -38,7 +38,6 @@ The Workspace Panel header is already hidden at widths up to 1180px, so no redun
 ## Risks / Trade-offs
 
 - [A plugin assumes a narrow panel] → expansion changes only its container; validate bundled tools and retain their own responsive CSS/overflow boundaries.
-- [Git legacy route conflicts with shared state] → read legacy only for compatibility, stop writing it, and make the app's shared route authoritative.
 - [Terminal fit runs before the grid settles] → wait for update plus animation frame and retain ResizeObserver.
 - [Many workspace tabs crowd the header] → keep the expansion action fixed outside the independently scrollable tab strip.
 - [Public host contract grows] → retain optional methods so older browser plugins remain compatible.
@@ -47,5 +46,4 @@ The Workspace Panel header is already hidden at widths up to 1180px, so no redun
 
 1. Ship shared header, route, Git compatibility, and Terminal fit changes together with a patch Changeset.
 2. No daemon restart or durable data migration is required.
-3. Older Git expanded URLs remain accepted; new links use `core.workspace--expanded=1`.
-4. Rollback ignores the shared unknown query field and returns to ordinary layout on reload.
+3. Rollback ignores the shared unknown query field and returns to ordinary layout on reload.

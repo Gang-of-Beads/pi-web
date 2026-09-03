@@ -4,7 +4,6 @@ const legacyDiffNamespace = "core.workspace.git";
 const modeQueryKey = "mode";
 const diffQueryKey = "diff";
 const commitQueryKey = "commit";
-const expandedQueryKey = "expanded";
 
 export type GitPanelModeRoute = "changes" | "history";
 
@@ -37,12 +36,12 @@ export function createGitDiffRoute(panelContributionId: string): GitDiffRoute {
         mode,
         diffPath: mode === "changes" ? nonEmpty(params.get(key(diffQueryKey))) ?? nonEmpty(params.get(legacyDiffKey)) : undefined,
         commitId: mode === "history" ? commitId : undefined,
-        expanded: params.get(key(expandedQueryKey)) === "1" || params.get("core.workspace--expanded") === "1",
+        expanded: params.get("core.workspace--expanded") === "1",
       };
     },
     write: (state, options) => {
       const url = new URL(window.location.href);
-      for (const name of [modeQueryKey, diffQueryKey, commitQueryKey, expandedQueryKey]) url.searchParams.delete(key(name));
+      for (const name of [modeQueryKey, diffQueryKey, commitQueryKey]) url.searchParams.delete(key(name));
       url.searchParams.delete(legacyDiffKey);
       if (state.mode === "history") url.searchParams.set(key(modeQueryKey), "history");
       if (state.mode === "changes" && state.diffPath !== undefined && state.diffPath !== "") url.searchParams.set(key(diffQueryKey), state.diffPath);

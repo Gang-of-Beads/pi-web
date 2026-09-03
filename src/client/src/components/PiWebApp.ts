@@ -2412,7 +2412,6 @@ export class PiWebApp extends LitElement {
         this.workspacePanelFullscreen = fullscreen;
         if (this.routeRestoreDepth === 0 && this.state.mainView !== "chat" && this.state.mainView !== "navigation") {
           setNamespacedQueryKey(WORKSPACE_ROUTE_NAMESPACE, "expanded", fullscreen ? "1" : undefined);
-          setNamespacedQueryKey(queryNamespace(this.state.mainView), "expanded", undefined, { replace: true });
           this.rememberCurrentMachineNavigation();
         }
       },

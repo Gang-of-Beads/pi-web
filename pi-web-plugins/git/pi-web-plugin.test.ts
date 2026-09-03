@@ -280,7 +280,7 @@ describe("bundled Git browser plugin", () => {
       authoredAt: "2026-09-02T08:00:00+00:00",
       subject: "Shared history",
     };
-    window.history.replaceState({}, "", `/?project=${projectId}&workspace=${workspaceId}&git.workspace.git--mode=history&git.workspace.git--commit=${historyCommit.id}&git.workspace.git--expanded=1`);
+    window.history.replaceState({}, "", `/?project=${projectId}&workspace=${workspaceId}&git.workspace.git--mode=history&git.workspace.git--commit=${historyCommit.id}&core.workspace--expanded=1`);
     const backend = backendFixture({ history: { unborn: false, commits: [historyCommit], truncated: false } });
     const panel = requiredPanel(activate("git"));
     const container = document.createElement("div");
