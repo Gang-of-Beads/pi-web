@@ -2,7 +2,7 @@ import { afterEach, beforeEach, vi } from "vitest";
 import type { MessagePage, SessionInfo, SessionRef, SessionStatus, Workspace } from "../api";
 import { machineSessionKey } from "../machineKeys";
 import type { SessionUiEvent } from "../sessionSocket";
-import type { SessionEventSocket } from "./sessionController";
+import type { SessionEventSocket, SessionSocketHandlers } from "./sessionController";
 
 export { api as defaultApi } from "../api";
 export type { MessagePage, PromptAttachment, SessionActivity, SessionInfo, SessionRef, SessionStatus, SessionStreamSnapshot, Workspace } from "../api";
@@ -57,16 +57,10 @@ export class EmitSocket implements SessionEventSocket {
   private handler: ((event: SessionUiEvent) => void) | undefined;
   private onInitialOpen: (() => void) | undefined;
 
-  connect(
-    session: SessionRef,
-    onEvent: (event: SessionUiEvent) => void,
-    _onReconnect?: () => void,
-    _machineId?: string,
-    onInitialOpen?: () => void,
-  ): void {
+  connect(session: SessionRef, _machineId: string, handlers: SessionSocketHandlers): void {
     this.connectedSessionIds.push(session.id);
-    this.handler = onEvent;
-    this.onInitialOpen = onInitialOpen;
+    this.handler = handlers.onEvent;
+    this.onInitialOpen = handlers.onInitialOpen;
   }
 
   setHandler(onEvent: (event: SessionUiEvent) => void): void {

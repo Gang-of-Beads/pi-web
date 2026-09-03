@@ -2,6 +2,7 @@ import { realtimeEvents, sessionEvents } from "./api";
 import { parseRealtimeStreamEvent, parseSessionAskClosedEvent, parseSessionAskOpenedEvent, parseSessionDialogClosedEvent, parseSessionDialogOpenedEvent, parseSessionNotificationInboxEvent, parseSessionStartupProgressEvent, parseSessionStreamEvent, parseSessionUnreadEvent } from "./api/parsers";
 import type { RealtimeEvent, SessionRef, SessionUiEvent } from "../../shared/apiTypes";
 import { socketLivenessVerdict, type SocketReadyState } from "./socketLiveness";
+import type { SessionSocketHandlers } from "./controllers/sessionController";
 
 export type { GlobalSessionEvent, RealtimeEvent, SessionUiEvent } from "../../shared/apiTypes";
 
@@ -78,23 +79,15 @@ export class SessionSocket {
     return this.seqMonitor.gapCount;
   }
 
-  connect(
-    session: SessionRef,
-    onEvent: (event: SessionUiEvent) => void,
-    onReconnect?: () => void,
-    machineId = "local",
-    onInitialOpen?: () => void,
-    onMalformed?: (frameType: string) => void,
-    onGap?: (lastSeen: number) => void,
-  ): void {
+  connect(session: SessionRef, machineId: string, handlers: SessionSocketHandlers): void {
     this.close();
     this.machineId = machineId;
     this.session = session;
-    this.onEvent = onEvent;
-    this.onReconnect = onReconnect;
-    this.onInitialOpen = onInitialOpen;
-    this.onMalformed = onMalformed;
-    this.seqMonitor = new ScopeSeqMonitor("session", onGap);
+    this.onEvent = handlers.onEvent;
+    this.onReconnect = handlers.onReconnect;
+    this.onInitialOpen = handlers.onInitialOpen;
+    this.onMalformed = handlers.onMalformed;
+    this.seqMonitor = new ScopeSeqMonitor("session", handlers.onGap);
     this.shouldReconnect = true;
     this.open();
   }

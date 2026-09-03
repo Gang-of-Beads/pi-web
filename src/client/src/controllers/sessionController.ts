@@ -49,21 +49,29 @@ const MESSAGE_PAGE_SIZE = 100;
  */
 const PENDING_FLUSH_DEADLINE_MS = 100;
 
+/**
+ * Every way this socket reports back, named and required.
+ *
+ * These were five optional positional parameters. A caller that skipped one got
+ * silence rather than an error, and no search could prove a handler was wired -
+ * which is how the activity list came to be refreshed by nothing at all.
+ * Required fields make an omission a compile error.
+ */
+export interface SessionSocketHandlers {
+  onEvent: (event: SessionUiEvent) => void;
+  onReconnect: () => void;
+  onInitialOpen: () => void;
+  /** A revisioned frame failed validation: a lost transition, needs resync. */
+  onMalformed: (frameType: string) => void;
+  /** The seq monitor saw a jump; `lastSeen` is the watermark before it. */
+  onGap: (lastSeen: number) => void;
+}
+
 export interface SessionEventSocket {
   /** Optional: implementations that own a real connection verify it here. */
   checkLiveness?(): void;
   reconnectNow?(): void;
-  connect(
-    session: SessionRef,
-    onEvent: (event: SessionUiEvent) => void,
-    onReconnect?: () => void,
-    machineId?: string,
-    onInitialOpen?: () => void,
-    /** A revisioned frame failed validation: a lost transition, needs resync. */
-    onMalformed?: (frameType: string) => void,
-    /** The seq monitor saw a jump; `lastSeen` is the watermark before it. */
-    onGap?: (lastSeen: number) => void,
-  ): void;
+  connect(session: SessionRef, machineId: string, handlers: SessionSocketHandlers): void;
   setHandler(onEvent: (event: SessionUiEvent) => void): void;
   close(): void;
 }
@@ -374,22 +382,16 @@ export class SessionController {
         },
         resync: () => { void this.refreshSelectedSession(session.id); },
       });
-      this.socket.connect(
-        session,
-        (event) => socketBuffer.push(event),
-        () => { void this.refreshSelectedSession(session.id); },
-        machineId,
-        () => { void this.notifications?.refreshSelectedSession(session, machineId); },
-        // A frame that failed validation on a revisioned surface is a lost
-        // transition. The ask and dialog surfaces repair through the same
-        // coalesced status resync as a skipped revision; the inbox repairs
-        // through its own snapshot read.
-        (frameType: string) => {
+      this.socket.connect(session, machineId, {
+        onEvent: (event) => socketBuffer.push(event),
+        onReconnect: () => { void this.refreshSelectedSession(session.id); },
+        onInitialOpen: () => { void this.notifications?.refreshSelectedSession(session, machineId); },
+        onMalformed: (frameType: string) => {
           if (frameType === "notifications.inbox") void this.notifications?.refreshSelectedSession(session, machineId);
           else this.dialogScope.requestResync();
         },
-        (lastSeen: number) => { void this.gapRepair?.onGap(lastSeen); },
-      );
+        onGap: (lastSeen: number) => { void this.gapRepair?.onGap(lastSeen); },
+      });
       await this.requestSelectedSessionRefresh({ session, machineId, selectionSeq: seq });
       if (!this.isCurrentRefreshTarget({ session, machineId, selectionSeq: seq })) return;
       void this.refreshAvailableThinkingLevels();
@@ -2237,12 +2239,13 @@ export class SessionController {
     const backendSessionId = pending.backendSessionId;
     if (backendSessionId === undefined || pending.discarded) return;
     const ref: SessionRef = { id: backendSessionId, cwd: pending.cwd };
-    this.socket.connect(
-      ref,
-      (event) => { this.applyPendingStartEvent(pending, event); },
-      () => { this.resyncPendingStartDialogs(pending); },
-      pending.machineId,
-    );
+    this.socket.connect(ref, pending.machineId, {
+      onEvent: (event) => { this.applyPendingStartEvent(pending, event); },
+      onReconnect: () => { this.resyncPendingStartDialogs(pending); },
+      onInitialOpen: () => { this.resyncPendingStartDialogs(pending); },
+      onMalformed: () => { this.resyncPendingStartDialogs(pending); },
+      onGap: () => { this.resyncPendingStartDialogs(pending); },
+    });
     this.resyncPendingStartDialogs(pending);
   }
 
