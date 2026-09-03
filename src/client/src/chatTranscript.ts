@@ -87,7 +87,7 @@ function applyFinalMessage(messages: ChatLine[], rawMessage: unknown): ChatLine[
 /** The sender-minted id the daemon stamped onto the committed copy. */
 function committedClientMessageId(rawMessage: unknown): string | undefined {
   if (typeof rawMessage !== "object" || rawMessage === null) return undefined;
-  const value = (rawMessage as Record<string, unknown>)["clientMessageId"];
+  const value: unknown = Reflect.get(rawMessage, "clientMessageId");
   return typeof value === "string" && value !== "" ? value : undefined;
 }
 

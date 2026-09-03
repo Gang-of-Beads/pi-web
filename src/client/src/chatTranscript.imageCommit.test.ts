@@ -23,7 +23,7 @@ function trackedPhoto(id: string, data: string, text?: string): ChatLine {
 }
 
 function committedEnd(data: string, options: { clientMessageId?: string; text?: string; mimeType?: string } = {}): SessionUiEvent {
-  return {
+  const event: SessionUiEvent = {
     type: "message.end",
     message: {
       role: "user",
@@ -33,8 +33,8 @@ function committedEnd(data: string, options: { clientMessageId?: string; text?: 
       ],
       ...(options.clientMessageId === undefined ? {} : { clientMessageId: options.clientMessageId }),
     },
-  } as SessionUiEvent;
-
+  };
+  return event;
 }
 
 function photoCount(lines: readonly ChatLine[], data: string): number {
