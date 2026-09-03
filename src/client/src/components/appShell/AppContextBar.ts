@@ -429,9 +429,12 @@ export class AppContextBar extends LitElement {
        session name - both already cut short - 34px of rename, and 136px of
        actions. The actions keep their size whatever the screen does, so every
        pixel they take comes out of the words that say where you are. */
+    /* The narrow band tightens the gap only. Shrinking the buttons to 32px
+       here moved the touch floor down at the exact width the composer moves
+       it up - the parity review's D3 - and 32px is under every floor this
+       project holds. */
     @media (max-width: 430px) {
       .context-actions { gap: var(--pi-space-2); }
-      .context-actions .context-action-button { width: 32px; height: 32px; min-width: 32px; min-height: 32px; }
     }
     .context-actions::before { content: ""; position: absolute; top: 0; bottom: 0; left: -24px; z-index: 0; width: 24px; background: linear-gradient(90deg, transparent, var(--pi-bg)); pointer-events: none; }
     app-refresh-control, .context-action-button { position: relative; z-index: 1; pointer-events: auto; }

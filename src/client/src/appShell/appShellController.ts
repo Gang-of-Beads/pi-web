@@ -3,7 +3,8 @@ import type { AppState } from "../appState";
 import { createPwaDisplayModeMedia, detectPwaDisplayMode } from "../pwaDisplayMode";
 import { ViewportPositionRepairer } from "./viewportPositionRepair";
 
-export const MOBILE_NAVIGATION_MEDIA_QUERY = "(max-width: 760px)";
+import { MOBILE_NAVIGATION_MEDIA_QUERY } from "../breakpoints";
+export { MOBILE_NAVIGATION_MEDIA_QUERY };
 
 export interface AppShellControllerOptions {
   mobileNavigationMedia?: MediaQueryList | undefined;

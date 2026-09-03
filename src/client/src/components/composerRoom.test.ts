@@ -106,14 +106,18 @@ describe("the header's action cluster", () => {
    * circular actions. The actions keep their size whatever the screen does, so
    * every pixel they take comes out of the words that say where you are.
    *
-   * On a phone they give up a little of their own room instead.
+   * On a phone they tighten the gap between them instead. Shrinking the
+   * buttons themselves was tried and taken back: it moved the touch floor
+   * down at the exact width the composer moves it up (the parity review's
+   * D3), and 32px is under every floor this project holds.
    */
-  it("takes less room on a narrow screen", async () => {
+  it("tightens its spacing on a narrow screen without shrinking its targets", async () => {
     const { AppContextBar } = await import("./appShell/AppContextBar");
     const sheet = String(AppContextBar.styles);
     const narrow = /@media \(max-width: (?:430|640)px\)[^{]*\{([\s\S]*?)\n {4}\}/u.exec(sheet)?.[1] ?? "";
 
-    expect(narrow).toMatch(/context-action-button/u);
+    expect(narrow).toMatch(/context-actions\s*\{[^}]*gap/u);
+    expect(narrow).not.toMatch(/context-action-button[^}]*(width|height): 3[0-5]px/u);
   });
 });
 

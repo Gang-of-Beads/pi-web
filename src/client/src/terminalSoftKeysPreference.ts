@@ -1,5 +1,7 @@
 export const TERMINAL_SOFT_KEYS_STORAGE_KEY = "pi-web.terminal.softKeys";
-export const TERMINAL_SOFT_KEYS_DEFAULT_ENVIRONMENT_MEDIA = "(pointer: coarse), (max-width: 760px)";
+import { COARSE_OR_MOBILE_MEDIA_QUERY } from "./breakpoints";
+
+export const TERMINAL_SOFT_KEYS_DEFAULT_ENVIRONMENT_MEDIA = COARSE_OR_MOBILE_MEDIA_QUERY;
 
 export type TerminalSoftKeysStorage = Pick<Storage, "getItem" | "setItem">;
 

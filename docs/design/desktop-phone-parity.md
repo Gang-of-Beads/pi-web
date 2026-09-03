@@ -34,7 +34,16 @@ and are listed separately below.
 - Full-bleed modals on small screens.
 - No initial input focus on touch, so the keyboard does not open uninvited.
 
-## Defects
+## The invariant (added after the design review)
+
+One breakpoint authority: `src/client/src/breakpoints.ts` names every viewport
+line (430 narrow phone, 640 narrow chat, 760 mobile navigation, 1181
+side-by-side, 620 short viewport), TypeScript media-query constants derive
+from it, and `breakpoints.test.ts` fails on any other number appearing in a
+viewport media query anywhere in client code. Container queries are
+content-local and exempt. A copy that cannot exist cannot drift.
+
+## Defects (statuses as of 2026-09-03)
 
 ### D1. Between 761px and 1180px there is no way to switch workspace tools
 
@@ -54,14 +63,14 @@ Plugin panels have none.
 
 **This is the one difference where a control exists at no size in a range.**
 
-### D2. Panel edge controls disappear at two different sizes
+### D2. Panel edge controls disappear at two different sizes - **explained, deliberate**: each follows its own panel's layout line (workspace 1181, navigation 760), both named in the authority.
 
 Workspace edge control: gone at 1180 (`AppPanelEdgeControl.ts:226-229`).
 Navigation edge control: gone at 760 (`AppPanelEdgeControl.ts:230-232`).
 
 Same component, same role, 420px apart. Nothing explains the difference.
 
-### D3. The touch-target floor moves in both directions at one width
+### D3. The touch-target floor moves in both directions at one width - **fixed**: the context bar keeps 36px targets at 430px and tightens only its gap; pinned by composerRoom.test.
 
 At 430px the composer icon buttons grow to 40px (`PromptEditor.ts:191`) while
 the context bar action buttons shrink to 32px (`AppContextBar.ts:434`) - opposite
@@ -69,25 +78,25 @@ directions at the same breakpoint. 32px is below the 36px the session list uses
 at 760 (`SessionList.ts:747-749`) and the 40-44px used on coarse pointers
 throughout `ChatView.ts`.
 
-### D4. Four narrow-phone rules, three numbers, two query types
+### D4. Four narrow-phone rules, three numbers, two query types - **fixed**: 420 folded into the named 430; the container query is content-local by design.
 
 `QuickSwitcher.ts:426` is the only 420px in the tree. The composer and context
 bar use 430px; the workspace tab strip uses a 430px *container* query. Nothing
 distinguishes these cases.
 
-### D5. Two modals choose full-bleed at different widths
+### D5. Two modals choose full-bleed at different widths - **fixed**: both use the 760 line; the whitelist test bans a third number.
 
 `SettingsDialog.ts:662` at 760px, `SessionCleanupDialog.ts:248` at 680px, both
 applying the same override.
 
-### D6. The 760px line is written three times in three mechanisms
+### D6. The 760px line is written three times in three mechanisms - **fixed**: all three derive from the authority; equality pinned in breakpoints.test.
 
 CSS literals, the `MOBILE_NAVIGATION_MEDIA_QUERY` constant, and the compound
 `"(pointer: coarse), (max-width: 760px)"` in `promptEnterBehavior.ts:1` and
 `terminalSoftKeysPreference.ts:2` - the last duplicated as CSS at
 `TerminalPanel.ts:694`. Nothing links the copies to the constant.
 
-### D7. Dead responsive CSS in the shell
+### D7. Dead responsive CSS in the shell - **fixed**: deleted.
 
 `PiWebApp.ts:132-139` and `:185` style a `.context-bar` element that the
 template never renders; the real bar is `<app-context-bar>` with its own shadow

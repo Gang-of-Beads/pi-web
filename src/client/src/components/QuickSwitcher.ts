@@ -423,7 +423,7 @@ export class QuickSwitcher extends LitElement {
        fewer than the single-column row it replaced, so phones get narrower
        columns. The title clamp is not part of this breakpoint: it is the same
        two lines everywhere. */
-    @media (max-width: 420px) {
+    @media (max-width: 430px) {
       .rows { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
     }
     .row-menu { position: absolute; top: calc(100% - 4px); right: 0; z-index: 3; display: grid; gap: var(--pi-space-1); min-width: 160px; padding: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); box-shadow: 0 10px 26px var(--pi-shadow); }

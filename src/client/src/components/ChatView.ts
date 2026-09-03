@@ -298,7 +298,7 @@ export const chatStyles = css`
     .notification-toggle, .notification-row-dismiss, .notification-row-copy { width: 40px; height: 40px; }
     .notification-row { padding-right: 46px; }
   }
-  @media (max-width: 520px) {
+  @media (max-width: 640px) {
     .drawer-header { gap: var(--pi-space-2); padding-inline: 8px; }
     .drawer-tab { padding-inline: var(--pi-space-4); }
     .notification-list, .subagents-list { padding-inline: 8px; }
