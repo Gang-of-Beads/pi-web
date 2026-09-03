@@ -96,6 +96,7 @@ import { listBackgroundTasks, readTaskOutput } from "./backgroundTasks.js";
 import { promptDeliveryBehavior, type QueuedPromptKind } from "./promptDelivery.js";
 import { AcceptanceLedger } from "./acceptanceLedger.js";
 import { CommittedPromptExpectations } from "./committedPromptIdentity.js";
+import { OwnedPromptQueue } from "./ownedPromptQueue.js";
 import { findSubagentRunTranscript, listSubagentRuns, readSessionEntries, readSubagentRunOutput } from "./subagentRuns.js";
 import { createSubsessionToolDefinitions, type SpawnSubsessionInvocation, type SpawnSubsessionResult, type SubsessionCheckResult, type SubsessionReadQuery, type SubsessionReadResult, type SubsessionStatus, type SubsessionSummary, type SubsessionToolDeps } from "./spawnSubsessionTool.js";
 import { buildTranscriptView } from "./subsessionTranscript.js";
@@ -1181,6 +1182,7 @@ export class PiSessionService implements SessionRouteService {
   /** Accepted prompt identities, so a lost response answers instead of re-running. */
   private readonly acceptanceLedger = new AcceptanceLedger();
   private readonly committedExpectations = new CommittedPromptExpectations();
+  private readonly ownedQueue = new OwnedPromptQueue();
   /**
    * Ids the sending browser minted for prompts that went into pi's steer or
    * follow-up queue, in submission order. pi's queue APIs carry text only, so
@@ -1719,14 +1721,16 @@ export class PiSessionService implements SessionRouteService {
     // expansion) and captionless photos have none.
     const active = this.active.get(input.sessionId)?.runtime.session;
     const compactionQueue = this.compactionPromptQueues.get(input.sessionId) ?? [];
-    const queuedMessageTexts = active === undefined ? [] : [
-      ...active.getSteeringMessages(),
-      ...active.getFollowUpMessages(),
+    const ownedEntries = this.ownedQueue.entries(input.sessionId);
+    const queuedMessageTexts = [
+      ...(active === undefined ? [] : [...active.getSteeringMessages(), ...active.getFollowUpMessages()]),
       ...compactionQueue.map((prompt) => prompt.text),
+      ...ownedEntries.map((entry) => entry.text),
     ];
     const queuedMessageIds = [
       ...(this.queuedPromptClientIds.get(input.sessionId) ?? []).map((record) => record.clientMessageId),
       ...compactionQueue.map((prompt) => prompt.clientMessageId).filter((id): id is string => id !== undefined),
+      ...ownedEntries.map((entry) => entry.clientMessageId).filter((id): id is string => id !== undefined),
     ];
     const result = this.pendingAskStore.open({ ...input, queuedMessageTexts, queuedMessageIds });
     // A supersede closes the earlier ask, so the browsers watching it must hear
@@ -2668,8 +2672,9 @@ export class PiSessionService implements SessionRouteService {
       this.publishStatus(session);
       return;
     }
-    if (isQueued && clientMessageId !== undefined) this.recordQueuedPromptClientId(session.sessionId, clientMessageId, promptText, behavior);
-    if (isQueued && images.length > 0) this.recordQueuedPromptImages(session.sessionId, promptText, images);
+    const willPark = isQueued && !session.isCompacting && (behavior ?? "followUp") === "followUp";
+    if (isQueued && !willPark && clientMessageId !== undefined) this.recordQueuedPromptClientId(session.sessionId, clientMessageId, promptText, behavior);
+    if (isQueued && !willPark && images.length > 0) this.recordQueuedPromptImages(session.sessionId, promptText, images);
     // A chat message is not a refusal of the open questions. The card carries a
     // Custom answer for every question, so a remark alongside the form - "and
     // for gpt-5-mini too" - is an addition to the request, and closing the form
@@ -2687,7 +2692,55 @@ export class PiSessionService implements SessionRouteService {
       this.enqueuePromptDuringCompaction(session, promptText, behavior ?? "followUp", images, echoUserMessage, clientMessageId);
       return;
     }
+    if (willPark) {
+      await this.parkPrompt(session, promptText, images, echoUserMessage, clientMessageId);
+      return;
+    }
     void this.submitPrompt(session, promptText, behavior, images, echoUserMessage, clientMessageId);
+  }
+
+  private async parkPrompt(session: PiAgentSession, text: string, images: ImageContent[], echoUserMessage: boolean, clientMessageId?: string): Promise<void> {
+    if (echoUserMessage) this.events.publish(session.sessionId, { type: "message.append", message: userMessage(text, images), echo: true, ...(clientMessageId === undefined ? {} : { clientMessageId }) });
+    await this.ownedQueue.push(session.sessionId, session.sessionManager.getCwd(), {
+      ...(clientMessageId === undefined ? {} : { clientMessageId }),
+      lane: "followUp",
+      text,
+      images: images.map((image) => ({ type: "image", data: image.data, mimeType: image.mimeType })),
+      acceptedAt: new Date().toISOString(),
+      echoUserMessage,
+    });
+    this.publishActivity(session, "message queued", "active");
+    this.publishStatus(session);
+  }
+
+  private drainingOwned = new Set<string>();
+
+  private scheduleOwnedQueueDrain(session: PiAgentSession): void {
+    const sessionId = session.sessionId;
+    if (this.drainingOwned.has(sessionId)) return;
+    if (session.isStreaming || session.isCompacting) return;
+    if (this.ownedQueue.entries(sessionId).length === 0) return;
+    this.drainingOwned.add(sessionId);
+    void (async () => {
+      try {
+        for (;;) {
+          if (session.isStreaming || session.isCompacting) return;
+          const entry = await this.ownedQueue.takeNext(sessionId);
+          if (entry === undefined) return;
+          const images: ImageContent[] = entry.images.map((image) => ({ type: "image", data: image.data, mimeType: image.mimeType }));
+          await this.submitPrompt(session, entry.text, undefined, images, false, entry.clientMessageId);
+          return;
+        }
+      } finally {
+        this.drainingOwned.delete(sessionId);
+        this.publishStatus(session);
+      }
+    })();
+  }
+
+  private async restoreOwnedQueue(session: PiAgentSession, cwd: string): Promise<void> {
+    const entries = await this.ownedQueue.open(session.sessionId, cwd);
+    if (entries.length > 0) this.scheduleOwnedQueueDrain(session);
   }
 
   /**
@@ -3312,6 +3365,9 @@ export class PiSessionService implements SessionRouteService {
     for (const entry of this.queuedMessagesWithClientIds(session)) {
       this.publishWithdrawn(session.sessionId, entry.clientMessageId);
     }
+    for (const entry of await this.ownedQueue.clear(session.sessionId)) {
+      if (entry.clientMessageId !== undefined) this.acceptanceLedger.forget(session.sessionId, entry.clientMessageId);
+    }
     this.queuedPromptClientIds.delete(session.sessionId);
     this.clearCompactionPromptQueue(session.sessionId);
     clearSessionQueue(session);
@@ -3339,6 +3395,16 @@ export class PiSessionService implements SessionRouteService {
   async recallQueuedMessage(ref: PiSessionRef, target: { kind?: QueuedPromptKind; text: string; clientMessageId?: string }): Promise<{ recalled: boolean; status: ClientSessionStatus }> {
     await this.assertWritable(ref);
     const session = await this.getOrOpen(ref);
+
+    const owned = await this.ownedQueue.recall(session.sessionId, { ...(target.clientMessageId === undefined ? {} : { clientMessageId: target.clientMessageId }), ...(target.kind === undefined ? {} : { lane: target.kind }), text: target.text });
+    if (owned !== undefined) {
+      if (owned.clientMessageId !== undefined) {
+        this.acceptanceLedger.forget(session.sessionId, owned.clientMessageId);
+        this.publishWithdrawn(session.sessionId, owned.clientMessageId);
+      }
+      this.publishStatus(session);
+      return { recalled: true, status: this.statusFromSession(session) };
+    }
 
     // The compaction queue is pi-web's own array, so one entry can simply go.
     const compactionQueue = this.compactionPromptQueues.get(session.sessionId);
@@ -3675,6 +3741,7 @@ export class PiSessionService implements SessionRouteService {
     this.clearCompactionPromptQueue(sessionId);
     this.acceptanceLedger.forgetSession(sessionId);
     this.committedExpectations.forgetSession(sessionId);
+    this.ownedQueue.forgetSession(sessionId);
     // A reload queued against a session that is going away has nothing left to
     // reload; saying so beats leaving the person waiting for it.
     this.commandService.cancelQueuedReload(sessionId);
@@ -4239,6 +4306,7 @@ export class PiSessionService implements SessionRouteService {
         if (sessionId !== session.sessionId) this.clearCompactionPromptQueue(sessionId);
       }
     }
+    void this.restoreOwnedQueue(session, active.runtime.cwd);
     active.unsubscribe = session.subscribe((event) => {
       this.stampCommittedUserMessage(session, event);
       this.publishActivityChangeForToolEvent(session, event);
@@ -4249,6 +4317,7 @@ export class PiSessionService implements SessionRouteService {
       if (isDeliveredUserMessageEvent(event)) void this.voidOpenAskForDeliveredMessage(session, event);
       if (eventType === "compaction_end") this.scheduleCompactionQueueDrain(session.sessionId);
       if (eventType === "agent_start" || eventType === "agent_end") this.scheduleCompactionQueueDrain(session.sessionId);
+      if (eventType === "agent_end" || eventType === "turn_end") this.scheduleOwnedQueueDrain(session);
       // A /reload issued mid-turn waits here. agent_end can fire while the turn
       // is still winding down, so runQueuedReload re-checks for active work and
       // simply returns if it is early; the heartbeat below is what makes sure a
@@ -4740,7 +4809,7 @@ export class PiSessionService implements SessionRouteService {
     // One transcript pass feeds both the count and the visible queue list:
     // consumed-message reconciliation walks session.messages, and running it
     // once per status keeps the per-event cost O(history) instead of 3x.
-    const queuedMessages = queuedMessagesFromSession(session, this.compactionQueuedMessages(session.sessionId));
+    const queuedMessages = queuedMessagesFromSession(session, this.compactionQueuedMessages(session.sessionId), this.ownedQueue.entries(session.sessionId));
     const consumed = consumedUserMessageTexts(session);
     const visibleQueued = [];
     for (const message of queuedMessages) {
@@ -4913,13 +4982,13 @@ export class PiSessionService implements SessionRouteService {
   }
 
   private queuedMessagesWithClientIds(session: PiAgentSession): QueuedSessionMessage[] {
-    const queued = queuedMessagesFromSession(session, this.compactionQueuedMessages(session.sessionId));
+    const queued = queuedMessagesFromSession(session, this.compactionQueuedMessages(session.sessionId), this.ownedQueue.entries(session.sessionId));
     this.attachQueuedPromptClientIds(session.sessionId, queued);
     return queued;
   }
 
   private pendingMessageCount(session: PiAgentSession): number {
-    return queuedMessagesFromSession(session, this.compactionQueuedMessages(session.sessionId)).length;
+    return queuedMessagesFromSession(session, this.compactionQueuedMessages(session.sessionId), this.ownedQueue.entries(session.sessionId)).length;
   }
 
   private compactionQueuedMessages(sessionId: string): readonly QueuedPrompt[] {
@@ -4927,7 +4996,7 @@ export class PiSessionService implements SessionRouteService {
   }
 
   private hasQueuedMessageText(session: PiAgentSession, text: string): boolean {
-    return queuedMessagesFromSession(session, this.compactionQueuedMessages(session.sessionId)).some((message) => message.text === text);
+    return queuedMessagesFromSession(session, this.compactionQueuedMessages(session.sessionId), this.ownedQueue.entries(session.sessionId)).some((message) => message.text === text);
   }
 }
 
@@ -5382,7 +5451,7 @@ export function turnStartedAtFromBranch(branch: readonly unknown[]): string | un
   return undefined;
 }
 
-function queuedMessagesFromSession(session: PiAgentSession, extraQueuedMessages: readonly QueuedPrompt[] = []): QueuedSessionMessage[] {
+function queuedMessagesFromSession(session: PiAgentSession, extraQueuedMessages: readonly QueuedPrompt[] = [], ownedEntries: readonly { clientMessageId?: string; lane: "steer" | "followUp"; text: string }[] = []): QueuedSessionMessage[] {
   const consumed = consumedUserMessageTexts(session);
   return [
     ...session.getSteeringMessages().filter((text) => !consumed.has(text)).map((text) => ({ kind: "steer" as const, text })),
@@ -5390,6 +5459,7 @@ function queuedMessagesFromSession(session: PiAgentSession, extraQueuedMessages:
     ...extraQueuedMessages
       .filter((message) => !consumed.has(message.text))
       .map((message) => ({ kind: message.kind, text: message.text, ...(message.clientMessageId === undefined ? {} : { clientMessageId: message.clientMessageId }) })),
+    ...ownedEntries.map((entry) => ({ kind: entry.lane, text: entry.text, ...(entry.clientMessageId === undefined ? {} : { clientMessageId: entry.clientMessageId }) })),
   ];
 }
 

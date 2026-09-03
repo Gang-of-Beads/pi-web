@@ -75,12 +75,14 @@ describe("a recall tells every device the message was taken back", () => {
   });
 
   it("does not withdraw an identity whose message the agent already took", async () => {
-    // The record outlives the entry until the next status publication; a
-    // withdrawal for a delivered identity would tell every device to delete a
-    // row the transcript already claimed.
+    // In the owned-queue model delivery removes the entry, so a drained
+    // prompt has nothing left to withdraw - clearing afterwards says nothing.
     const queue = { steering: [], followUp: [] };
-    const { hub, service } = busyService("withdraw-consumed", queue);
+    const { hub, fake, service } = busyService("withdraw-consumed", queue);
     await service.prompt(sessionRef("withdraw-consumed"), "already taken", "followUp", undefined, { clientMessageId: "c-taken" });
+    fake.session.isStreaming = false;
+    fake.emit({ type: "agent_end" });
+    await vi.waitFor(() => { expect(fake.calls.prompt.map((call) => call.text)).toEqual(["already taken"]); });
 
     await service.clearQueue(sessionRef("withdraw-consumed"));
 

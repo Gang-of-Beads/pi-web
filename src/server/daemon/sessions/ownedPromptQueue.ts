@@ -21,22 +21,27 @@ export class OwnedPromptQueue {
   async open(sessionId: string, cwd: string): Promise<OwnedQueueEntry[]> {
     const path = queueFilePath(cwd, sessionId);
     this.filePaths.set(sessionId, path);
+    let loaded: OwnedQueueEntry[];
     try {
       const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
-      const entries = parseEntries(parsed);
-      this.perSession.set(sessionId, entries);
-      return [...entries];
+      loaded = parseEntries(parsed);
     } catch {
-      this.perSession.set(sessionId, []);
-      return [];
+      loaded = [];
     }
+    const pushedWhileOpening = this.perSession.get(sessionId) ?? [];
+    const known = new Set(pushedWhileOpening.map((entry) => entry.clientMessageId).filter((id) => id !== undefined));
+    const merged = [...loaded.filter((entry) => entry.clientMessageId === undefined || !known.has(entry.clientMessageId)), ...pushedWhileOpening];
+    this.perSession.set(sessionId, merged);
+    if (merged.length !== loaded.length) await this.persist(sessionId);
+    return [...merged];
   }
 
   entries(sessionId: string): OwnedQueueEntry[] {
     return [...(this.perSession.get(sessionId) ?? [])];
   }
 
-  async push(sessionId: string, entry: OwnedQueueEntry): Promise<void> {
+  async push(sessionId: string, cwd: string, entry: OwnedQueueEntry): Promise<void> {
+    if (!this.filePaths.has(sessionId)) this.filePaths.set(sessionId, queueFilePath(cwd, sessionId));
     const list = this.perSession.get(sessionId) ?? [];
     list.push(entry);
     this.perSession.set(sessionId, list);

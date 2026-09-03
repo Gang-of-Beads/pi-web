@@ -244,7 +244,10 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
 
     await service.prompt(sessionRef("queued-session"), "Wait for the current turn", "followUp");
 
-    expect(fake.calls.prompt).toEqual([{ text: "Wait for the current turn", options: { streamingBehavior: "followUp" } }]);
+    // Step 4: a busy follow-up parks in the daemon's own durable queue and is
+    // handed over only when the runtime settles - not pre-delegated to the
+    // runtime's in-memory queue a restart would erase.
+    expect(fake.calls.prompt).toEqual([]);
     // The queue is server-side; the client still sees its own message
     // immediately (mobile otherwise reads as "message disappeared").
     expect(hub.sessionEvents.some(({ event }) => isUserAppendEvent(event))).toBe(true);
