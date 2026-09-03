@@ -7,6 +7,23 @@ owner has stopped seeing it, and where he still sees it that is recorded.
 Nothing here is marked done on the strength of a passing test. The tests passed
 for the duplicate row through ten separate fixes.
 
+## Fixed locally, awaiting release (`48dfab88`)
+
+- **1** one message, one row: a register keyed by identity is the only thing
+  that produces rows; text is never an identity again.
+- **2** a submission has three outcomes, not two: an unanswered request keeps
+  the row and the entry rather than deleting one and restoring the other.
+- **3** every request has a deadline; four bare fetches brought under it.
+- **5b** `Sent` says only what it knows; the queued card carries its position.
+- **5c** one queued representation; the duplicate count is gone.
+- **7** a route restore asks for the project list before concluding it is gone.
+- **18** kingo's PR #28 reviewed and approved.
+- Ordered delivery: sequences, one attempt in flight, unanswered blocks the
+  queue behind it, and the daemon replays an outcome rather than repeating work.
+
+None of this is verified against the owner's phone yet. It is verified by tests
+and by reading, which is exactly the standard that has failed here before.
+
 ---
 
 ## Open — blocking daily use
