@@ -29,6 +29,10 @@ import type { PluginSurfacePresence } from "../../../shared/apiTypes.js";
  */
 const SURFACE_TOOLS = {
   goals: ["create_goal", "get_goal", "update_goal", "focus_goal"],
+  // The activity drawer's subagent rows come from the pi-subagents extension;
+  // its one tool is the whole surface. The original report was this exact
+  // panel: subagents shown on a machine that never installed the plugin.
+  subagents: ["subagent"],
 } as const;
 
 /**
@@ -43,5 +47,8 @@ const SURFACE_TOOLS = {
 export function pluginSurfacePresence(source: ExtensionListSource): PluginSurfacePresence | undefined {
   const loaded = loadedExtensionsView(source);
   if (loaded === undefined) return undefined;
-  return { goals: pluginPresence(loaded, SURFACE_TOOLS.goals).state };
+  return {
+    goals: pluginPresence(loaded, SURFACE_TOOLS.goals).state,
+    subagents: pluginPresence(loaded, SURFACE_TOOLS.subagents).state,
+  };
 }

@@ -578,7 +578,9 @@ function parsePluginSurfaces(value: unknown): PluginSurfacePresence | undefined 
   if (value === undefined || value === null || typeof value !== "object") return undefined;
   const goals: unknown = Reflect.get(value, "goals");
   if (goals !== "present" && goals !== "absent" && goals !== "failed") return undefined;
-  return { goals };
+  const subagents: unknown = Reflect.get(value, "subagents");
+  const knownSubagents = subagents === "present" || subagents === "absent" || subagents === "failed" ? subagents : undefined;
+  return { goals, ...(knownSubagents === undefined ? {} : { subagents: knownSubagents }) };
 }
 
 export function parseSessionStatus(value: unknown): SessionStatus {

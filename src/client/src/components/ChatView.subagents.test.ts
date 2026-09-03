@@ -674,3 +674,42 @@ describe("the activity panel's empty claims", () => {
     expect(view.renderRoot.textContent).not.toContain("A's task");
   });
 });
+
+/**
+ * Not installed and installed-but-idle are different facts. Only the runtime's
+ * definite "nothing provides this surface" may claim absence; the drawer's
+ * ACTIVITY tab keeps its place either way (fixed membership), but its empty
+ * sentence tells the truth about which empty it is.
+ */
+describe("the activity tab's empty sentence", () => {
+  async function mountEmptyWithPresence(subagents?: "present" | "absent" | "failed"): Promise<HTMLElement | DocumentFragment> {
+    const view = new ChatView();
+    view.sessionId = "parent-1";
+    view.subagents = [];
+    Reflect.set(view, "activityRowsSessionId", "parent-1");
+    view.status = {
+      sessionId: "parent-1", isStreaming: false, isCompacting: false, isBashRunning: false, pendingMessageCount: 0,
+      ...(subagents === undefined ? {} : { pluginSurfaces: { goals: "present", subagents } }),
+    };
+    Reflect.set(view, "topDrawerTab", "activity");
+    document.body.append(view);
+    await view.updateComplete;
+    return view.renderRoot;
+  }
+
+  it("says the tools are not installed only on a definite absence", async () => {
+    const host = await mountEmptyWithPresence("absent");
+    expect(host.textContent).toContain("Subagent tools are not installed");
+  });
+
+  it("keeps the ordinary empty sentence when the plugin is installed", async () => {
+    const host = await mountEmptyWithPresence("present");
+    expect(host.textContent).toContain("No subagent or background activity from this chat yet.");
+    expect(host.textContent).not.toContain("not installed");
+  });
+
+  it("never claims absence on no evidence", async () => {
+    const host = await mountEmptyWithPresence(undefined);
+    expect(host.textContent).not.toContain("not installed");
+  });
+});

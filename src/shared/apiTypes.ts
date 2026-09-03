@@ -1303,6 +1303,7 @@ export type PluginSurfaceState = "present" | "absent" | "failed";
  */
 export interface PluginSurfacePresence {
   goals?: PluginSurfaceState;
+  subagents?: PluginSurfaceState;
 }
 
 export interface SessionStatus {

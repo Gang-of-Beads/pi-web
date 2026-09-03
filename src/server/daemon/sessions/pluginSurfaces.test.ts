@@ -19,7 +19,13 @@ function loader(extensions: { path: string; tools: string[] }[], errors: { path:
 
 describe("what a plugin-backed surface can say about itself", () => {
   it("reports a surface as present when something registers its tools", () => {
-    expect(pluginSurfacePresence(loader([{ path: "/x/goal.ts", tools: ["create_goal"] }]))).toEqual({ goals: "present" });
+    expect(pluginSurfacePresence(loader([{ path: "/x/goal.ts", tools: ["create_goal"] }]))).toEqual({ goals: "present", subagents: "absent" });
+  });
+
+  // The original report was the subagents panel shown on a machine that never
+  // installed the plugin; the surface answers for itself like goals does.
+  it("reports the subagents surface from its own tool", () => {
+    expect(pluginSurfacePresence(loader([{ path: "/x/subagents.ts", tools: ["subagent"] }]))).toEqual({ goals: "absent", subagents: "present" });
   });
 
   /**
@@ -32,7 +38,7 @@ describe("what a plugin-backed surface can say about itself", () => {
   });
 
   it("reports absent when nothing registers them and nothing failed", () => {
-    expect(pluginSurfacePresence(loader([{ path: "/x/other.ts", tools: ["unrelated"] }]))).toEqual({ goals: "absent" });
+    expect(pluginSurfacePresence(loader([{ path: "/x/other.ts", tools: ["unrelated"] }]))).toEqual({ goals: "absent", subagents: "absent" });
   });
 
   /** A broken install must not hide behind a tidy empty panel. */
@@ -51,6 +57,6 @@ describe("what a plugin-backed surface can say about itself", () => {
 
   /** A tool that belongs to some other surface does not stand in for this one. */
   it("only answers for the surface it was asked about", () => {
-    expect(pluginSurfacePresence(loader([{ path: "/x/sub.ts", tools: ["subagent"] }]))).toEqual({ goals: "absent" });
+    expect(pluginSurfacePresence(loader([{ path: "/x/sub.ts", tools: ["subagent"] }]))?.goals).toBe("absent");
   });
 });
