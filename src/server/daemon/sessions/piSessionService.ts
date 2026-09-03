@@ -1186,7 +1186,7 @@ export class PiSessionService implements SessionRouteService {
    * looking at is *your* message" instead of making it guess by text.
    * Entries are dropped as soon as their text leaves the queue.
    */
-  private readonly queuedPromptClientIds = new Map<string, { clientMessageId: string; text: string }[]>();
+  private readonly queuedPromptClientIds = new Map<string, { clientMessageId: string; text: string; kind?: string }[]>();
   /**
    * Images that queued prompts carried, keyed by session and matched on text.
    *
@@ -2745,6 +2745,10 @@ export class PiSessionService implements SessionRouteService {
     const promptOptions = buildPromptOptions(effectiveBehavior, images);
     const promptPromise = this.runSessionEntryMutation(session, "send a prompt", () => session.prompt(text, promptOptions)).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
+      // The acceptance was recorded before this handoff; a submission the
+      // runtime refused must give the record back, or every retry of the same
+      // id is answered "accepted" for a prompt that never ran.
+      if (clientMessageId !== undefined) this.acceptanceLedger.forget(session.sessionId, clientMessageId);
       this.publishActivity(session, "error", "error", message);
       this.events.publish(session.sessionId, { type: "session.error", message });
     });
@@ -3228,8 +3232,12 @@ export class PiSessionService implements SessionRouteService {
   async clearQueue(ref: PiSessionRef): Promise<ClientSessionStatus> {
     await this.assertWritable(ref);
     const session = await this.getOrOpen(ref);
-    for (const record of this.queuedPromptClientIds.get(session.sessionId) ?? []) {
-      this.publishWithdrawn(session.sessionId, record.clientMessageId);
+    // Withdraw what is actually queued, not what a stale record remembers: a
+    // consumed entry's record survives until the next status publication, and
+    // a withdrawal for a delivered identity would tell every device to delete
+    // a row the transcript already claimed.
+    for (const entry of this.queuedMessagesWithClientIds(session)) {
+      this.publishWithdrawn(session.sessionId, entry.clientMessageId);
     }
     this.queuedPromptClientIds.delete(session.sessionId);
     this.clearCompactionPromptQueue(session.sessionId);
@@ -3268,7 +3276,7 @@ export class PiSessionService implements SessionRouteService {
         compactionQueue.splice(index, 1);
         if (compactionQueue.length === 0) this.compactionPromptQueues.delete(session.sessionId);
         else this.compactionPromptQueues.set(session.sessionId, compactionQueue);
-        this.publishWithdrawn(session.sessionId, this.forgetQueuedPromptClientId(session.sessionId, target.text, target.clientMessageId) ?? target.clientMessageId);
+        this.publishWithdrawn(session.sessionId, this.forgetQueuedPromptClientId(session.sessionId, target.text, target.clientMessageId, target.kind) ?? target.clientMessageId);
         this.publishStatus(session);
         return { recalled: true, status: this.statusFromSession(session) };
       }
@@ -3311,7 +3319,7 @@ export class PiSessionService implements SessionRouteService {
       if (found) this.takeQueuedPromptImages(session.sessionId, target.text);
       return found;
     });
-    if (removed) this.publishWithdrawn(session.sessionId, this.forgetQueuedPromptClientId(session.sessionId, target.text, target.clientMessageId) ?? target.clientMessageId);
+    if (removed) this.publishWithdrawn(session.sessionId, this.forgetQueuedPromptClientId(session.sessionId, target.text, target.clientMessageId, target.kind) ?? target.clientMessageId);
     this.publishActivity(session, removed ? "queued message recalled" : "queued message already gone", "active");
     this.publishStatus(session);
     // Whether anything was actually taken back is the caller's business: the
@@ -3327,11 +3335,11 @@ export class PiSessionService implements SessionRouteService {
    * is not later re-stamped as still queued. Without an id, the first record
    * with matching text goes, mirroring how the queue itself is matched.
    */
-  private forgetQueuedPromptClientId(sessionId: string, text: string, clientMessageId?: string): string | undefined {
+  private forgetQueuedPromptClientId(sessionId: string, text: string, clientMessageId?: string, kind?: string): string | undefined {
     const records = this.queuedPromptClientIds.get(sessionId);
     if (records === undefined) return undefined;
     const index = clientMessageId === undefined
-      ? records.findIndex((record) => record.text === text)
+      ? records.findIndex((record) => record.text === text && (kind === undefined || record.kind === undefined || record.kind === kind))
       : records.findIndex((record) => record.clientMessageId === clientMessageId);
     if (index === -1) return undefined;
     const [forgotten] = records.splice(index, 1);
@@ -3375,6 +3383,11 @@ export class PiSessionService implements SessionRouteService {
     const discarded = this.queuedMessagesWithClientIds(active.runtime.session);
     this.clearCompactionPromptQueue(sessionId);
     clearSessionQueue(active.runtime.session);
+    // Stop is a confirmed removal like a recall, so it announces the same
+    // way: the pressing device already cleans its rows from the HTTP answer,
+    // but every other device needs the frame or its bubbles wait forever.
+    for (const entry of discarded) this.publishWithdrawn(sessionId, entry.clientMessageId);
+    this.queuedPromptClientIds.delete(sessionId);
     // Settle run-scoped dialogs now, at abort-request time: pi's agent loop
     // waits for a parked `tool_call` dialog handler before it can emit
     // `agent_end`, so leaving settlement to the `agent_end` observer would
@@ -3587,6 +3600,7 @@ export class PiSessionService implements SessionRouteService {
     this.workspaceActivity?.removeSession(sessionId, active.runtime.session.sessionManager.getCwd());
     this.clearAuthLossWarningsForSession(sessionId);
     this.clearCompactionPromptQueue(sessionId);
+    this.acceptanceLedger.forgetSession(sessionId);
     // A reload queued against a session that is going away has nothing left to
     // reload; saying so beats leaving the person waiting for it.
     this.commandService.cancelQueuedReload(sessionId);

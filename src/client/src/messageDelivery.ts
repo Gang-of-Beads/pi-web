@@ -203,6 +203,23 @@ export function removeDeliveryLine(messages: readonly ChatLine[], clientMessageI
   return [...messages.slice(0, index), ...messages.slice(index + 1)];
 }
 
+/**
+ * Remove the withdrawn message's lines - and only those.
+ *
+ * A delivered line is the transcript's, not the queue's: a withdrawal frame
+ * that raced the drain must not delete a row the conversation already
+ * contains. The echo copy is the only form another device holds while the
+ * message waits, so it is matched by its own carried identity.
+ */
+export function withdrawDeliveryLine(messages: readonly ChatLine[], clientMessageId: string): ChatLine[] {
+  return messages.filter((line) => {
+    const delivery = line.meta?.delivery;
+    if (delivery?.clientMessageId === clientMessageId && !deliveryTaken(delivery.state)) return false;
+    if (line.meta?.echo === true && line.meta.echoClientMessageId === clientMessageId) return false;
+    return true;
+  });
+}
+
 export function applyQueueToDelivery(messages: ChatLine[], queued: readonly QueuedSessionMessage[]): ChatLine[] {
   let next = messages;
   const queuedIds = new Map<string, "steer" | "followUp">();

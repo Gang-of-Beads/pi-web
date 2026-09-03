@@ -406,7 +406,7 @@ function appendEchoedMessage(messages: ChatLine[], lines: ChatLine[], clientMess
   if (isEchoOfTrackedMessage(messages, clientMessageId)) return messages;
   const first = lines[0];
   if (first === undefined) return messages;
-  const marked: ChatLine = { ...first, meta: { ...first.meta, echo: true } };
+  const marked: ChatLine = { ...first, meta: { ...first.meta, echo: true, ...(clientMessageId === undefined ? {} : { echoClientMessageId: clientMessageId }) } };
   return [...messages, marked, ...lines.slice(1)];
 }
 

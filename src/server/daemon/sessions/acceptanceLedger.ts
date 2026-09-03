@@ -38,6 +38,19 @@ export class AcceptanceLedger {
     this.acceptedBySession.set(sessionId, accepted);
   }
 
+  /**
+   * Take one acceptance back: the runtime refused the submission after the
+   * ledger recorded it. Leaving the record would answer every retry with a
+   * repeated acceptance for a prompt that never ran - the silent loss the
+   * honesty reviewer proved with an interleaving.
+   */
+  forget(sessionId: string, clientMessageId: string): void {
+    const accepted = this.acceptedBySession.get(sessionId);
+    if (accepted === undefined) return;
+    accepted.delete(clientMessageId);
+    if (accepted.size === 0) this.acceptedBySession.delete(sessionId);
+  }
+
   /** Forget a session that no longer exists. */
   forgetSession(sessionId: string): void {
     this.acceptedBySession.delete(sessionId);

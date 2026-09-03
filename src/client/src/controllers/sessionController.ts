@@ -17,7 +17,7 @@ import { rememberWorkspaceSessions, cachedSessionsFor } from "../workspaceSessio
 import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
 import { clearAskDraft } from "../askDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
-import { findDeliveryLineIndex, applyQueueToDelivery, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery } from "../messageDelivery";
+import { findDeliveryLineIndex, applyQueueToDelivery, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
 import { forgetPendingPrompt, isNetworkFailure, NetworkSendError } from "../pendingOutbox";
 import type { MessageDeliveryState } from "../components/shared";
 import { isShellInput } from "../inputModes";
@@ -2165,7 +2165,7 @@ export class SessionController {
       const selected = current.selectedSession;
       if (selected !== undefined) {
         forgetPendingPrompt(machineSessionKey(selectedMachineId(current), selected.id), event.clientMessageId);
-        const messages = removeDeliveryLine(current.messages, event.clientMessageId);
+        const messages = withdrawDeliveryLine(current.messages, event.clientMessageId);
         if (messages.length !== current.messages.length) this.setState({ messages });
       }
       return;

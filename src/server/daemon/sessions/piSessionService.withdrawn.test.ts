@@ -63,6 +63,31 @@ describe("a recall tells every device the message was taken back", () => {
     await service.dispose();
   });
 
+  it("withdraws the discarded identities when the turn is stopped", async () => {
+    const queue = { steering: [], followUp: ["waiting for a turn"] };
+    const { hub, service } = busyService("withdraw-abort", queue);
+    await service.prompt(sessionRef("withdraw-abort"), "waiting for a turn", "followUp", undefined, { clientMessageId: "c-stop" });
+
+    await service.abort(sessionRef("withdraw-abort"));
+
+    expect(withdrawnIds(hub)).toEqual(["c-stop"]);
+    await service.dispose();
+  });
+
+  it("does not withdraw an identity whose message the agent already took", async () => {
+    // The record outlives the entry until the next status publication; a
+    // withdrawal for a delivered identity would tell every device to delete a
+    // row the transcript already claimed.
+    const queue = { steering: [], followUp: [] };
+    const { hub, service } = busyService("withdraw-consumed", queue);
+    await service.prompt(sessionRef("withdraw-consumed"), "already taken", "followUp", undefined, { clientMessageId: "c-taken" });
+
+    await service.clearQueue(sessionRef("withdraw-consumed"));
+
+    expect(withdrawnIds(hub)).toEqual([]);
+    await service.dispose();
+  });
+
   it("withdraws every known identity when the whole queue is cleared", async () => {
     const queue = { steering: ["first"], followUp: ["second"] };
     const { hub, service } = busyService("withdraw-clear", queue);

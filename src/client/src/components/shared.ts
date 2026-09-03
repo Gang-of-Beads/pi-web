@@ -118,6 +118,12 @@ export interface ChatLine {
      * cannot correlate by id (another device, or this one after a reload).
      */
     echo?: boolean;
+    /**
+     * The sender-minted identity riding on an echo line. The echo is the only
+     * copy another device holds while a message waits in the queue, so a
+     * withdrawal frame must be able to find it by id.
+     */
+    echoClientMessageId?: string;
     model?: { provider?: string; id?: string; responseId?: string };
     /** Thinking level the assistant message was generated with, when known. */
     thinkingLevel?: string;

@@ -71,6 +71,30 @@ describe("a repeated identity answers instead of running twice", () => {
   });
 });
 
+describe("a submission the runtime refused gives its acceptance back", () => {
+  /**
+   * The acceptance is recorded before the fire-and-forget handoff. If the
+   * runtime then refuses, the record must go: answering the retry "accepted"
+   * for a prompt that never ran converts a duplicate risk into a silent loss,
+   * which is strictly worse. Proven with an interleaving by the review.
+   */
+  it("lets a retry re-attempt after the first submission failed", async () => {
+    const { fake, service } = idleService("ledger-refused");
+    let attempts = 0;
+    fake.session.prompt = (text: string, options?: { streamingBehavior?: "steer" | "followUp" }) => {
+      attempts += 1;
+      fake.calls.prompt.push({ text, options });
+      return attempts === 1 ? Promise.reject(new Error("runtime said no")) : Promise.resolve();
+    };
+
+    await service.prompt(sessionRef("ledger-refused"), "hello", undefined, undefined, { clientMessageId: "c-1" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await service.prompt(sessionRef("ledger-refused"), "hello", undefined, undefined, { clientMessageId: "c-1" });
+
+    expect(fake.calls.prompt).toHaveLength(2);
+  });
+});
+
 describe("the ledger itself", () => {
   it("stays bounded, dropping the oldest identity past the limit", () => {
     const ledger = new AcceptanceLedger(3);
@@ -91,5 +115,14 @@ describe("the ledger itself", () => {
     ledger.record("s1", "a");
     ledger.forgetSession("s1");
     expect(ledger.has("s1", "a")).toBe(false);
+  });
+
+  it("gives back one acceptance without touching the rest", () => {
+    const ledger = new AcceptanceLedger();
+    ledger.record("s1", "a");
+    ledger.record("s1", "b");
+    ledger.forget("s1", "a");
+    expect(ledger.has("s1", "a")).toBe(false);
+    expect(ledger.has("s1", "b")).toBe(true);
   });
 });

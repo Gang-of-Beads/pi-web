@@ -169,6 +169,31 @@ describe("SessionController prompt.withdrawn", () => {
     expect(harness.state().messages).toHaveLength(0);
   });
 
+  it("never deletes a row the transcript already claimed", async () => {
+    // A withdrawal that raced the drain: the daemon should not send one for a
+    // delivered identity, and the client must not act on it if one arrives.
+    const harness = await liveSession();
+    const line = { role: "user" as const, parts: [{ type: "text" as const, text: "already answered" }], meta: { delivery: { clientMessageId: "cmid-done", state: "delivered" as const } } };
+    harness.state().messages = [line];
+
+    harness.socket.emit({ type: "prompt.withdrawn", clientMessageId: "cmid-done" });
+
+    expect(harness.state().messages).toHaveLength(1);
+  });
+
+  it("removes the echo copy another device holds for the queued message", async () => {
+    // The echo is the only form this message takes on a device that did not
+    // send it; without matching it by its carried identity the phantom user
+    // line survives the recall forever.
+    const harness = await liveSession();
+    const line = { role: "user" as const, parts: [{ type: "text" as const, text: "queued elsewhere" }], meta: { echo: true, echoClientMessageId: "cmid-echo" } };
+    harness.state().messages = [line];
+
+    harness.socket.emit({ type: "prompt.withdrawn", clientMessageId: "cmid-echo" });
+
+    expect(harness.state().messages).toHaveLength(0);
+  });
+
   it("leaves other identities' lines alone", async () => {
     const harness = await liveSession();
     const line = { role: "user" as const, parts: [{ type: "text" as const, text: "still queued" }], meta: { delivery: { clientMessageId: "cmid-stay", state: "queued" as const } } };
