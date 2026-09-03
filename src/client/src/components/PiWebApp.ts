@@ -315,6 +315,10 @@ export class PiWebApp extends LitElement {
       // /goal-resume, a completed task), and nothing else tells this browser:
       // the panel showed PAUSED 9/10 for a goal that was active.
       onSelectedSessionIdle: () => { void this.workspaces.refreshWorkspaceGoals(); },
+      onBackgroundRunCountChanged: (sessionId: string) => {
+        if (this.state.selectedSession?.id !== sessionId) return;
+        void this.refreshSubagents();
+      },
       onSelectedSessionReady: ({ machineId, session }) => {
         void this.commitReadyChatAfterRender(machineId, session);
         void this.refreshSelfUpdate();

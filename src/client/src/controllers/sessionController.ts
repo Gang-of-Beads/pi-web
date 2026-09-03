@@ -32,6 +32,7 @@ import type { PromptAttachmentDelivery, SessionNotificationInboxEvent, SessionSt
 import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchived, selectPreferredSession, selectionAfterArchivingSession, selectionAfterArchivingSessions, shouldDeselectAfterArchivedCollapse, type SessionSelectionMemory } from "./sessionSelection";
 import { selectedMachineId, type GetState, type SetState, type UpdateUrl } from "./types";
 import { TrailingRefreshCoordinator } from "./trailingRefreshCoordinator";
+import { backgroundRunCountChanged } from "../backgroundRunCountSignal";
 
 const MESSAGE_PAGE_SIZE = 100;
 
@@ -1908,8 +1909,11 @@ export class SessionController {
     // task list can have changed — the strip refetches on demand instead of on
     // a timer. The count is per session; a change for any open session fires
     // once, and the same count again fires nothing.
-    const previousCount = state.sessionStatuses[status.sessionId]?.backgroundRunCount;
-    if (status.backgroundRunCount !== undefined && status.backgroundRunCount !== previousCount) {
+    if (backgroundRunCountChanged({
+      hadPreviousStatus: state.sessionStatuses[status.sessionId] !== undefined,
+      previousCount: state.sessionStatuses[status.sessionId]?.backgroundRunCount,
+      currentCount: status.backgroundRunCount,
+    })) {
       this.onBackgroundRunCountChanged?.(status.sessionId);
     }
     this.setState({
