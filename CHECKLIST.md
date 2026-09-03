@@ -361,9 +361,45 @@ caller cannot collide two rows by supplying one.
 
 ### 17. Desktop and phone are not consistent
 
-The goal asked for a written list of every difference, each marked deliberate
-or a defect. `docs/design/quick-access-and-parity.md` exists but does not
-contain that enumeration. **Not done.**
+**Done.** `docs/design/desktop-phone-parity.md` is the enumeration that was
+asked for: every viewport, pointer and container query, what each changes, and
+whether it is deliberate or a defect. Nine thresholds are in use across three
+mechanisms.
+
+Seven defects are named there. The worst is fixed: between 761px and 1180px
+with the navigation panel expanded, the workspace tab strip is hidden by CSS
+(`shared.ts:181`, at 1180) and its replacement only appears at 760
+(`whereAmIBar.ts`), so in a 421px-wide band **no control switched workspace
+tools at all**. The bar's condition now follows the strip rather than a
+separate number.
+
+The remaining six are recorded, not fixed: two thresholds for the same edge
+control, touch targets moving in opposite directions at 430px, three numbers for
+narrow phones, two modal full-bleed widths, the 760px line written three times,
+and dead `.context-bar` CSS in the shell.
+
+### 20. Message sync stalls until the refresh button is pressed
+
+**Established, and fixed.** Reported as "sync is slow, and sometimes stuck until
+I press refresh at the top right".
+
+Two separate facts:
+
+**The stall.** `checkLiveness` began with `if (socket.readyState !== WebSocket.OPEN) return;`,
+so a socket stuck in `CONNECTING` was examined by nothing. In that state
+`onopen` never fires, `onclose` never fires - so no reconnect is scheduled - and
+liveness skips it. All three automatic recoveries are inapplicable at once, and
+the manual refresh is the only way back. A network change, a weak link or a
+captive portal all produce it.
+
+Silence on an open socket and an unfinished handshake are now separate budgets
+in `socketLiveness.ts` - 50s and 15s. **Both socket classes had the identical
+hole and both are fixed**, per the rule about enumerating producers.
+
+**The slowness, which is by design and worth deciding on.** Even a detectable
+dead connection takes up to 50s to be noticed (daemon keepalive is 20s). That is
+the "slow" in the report. Lowering it trades faster recovery against killing
+genuinely slow connections; **this is a product call and has not been made.**
 
 ### 18. Review kingo's PR #28 (workspace audio and video playback)
 
