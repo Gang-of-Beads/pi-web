@@ -1664,9 +1664,7 @@ export class ChatView extends LitElement {
           </div>
         `;
       }
-      // Not installed and installed-but-idle are different facts. Only the
-      // runtime's definite "nothing provides this surface" may claim absence;
-      // an installed plugin with nothing running keeps the ordinary sentence.
+      // Only the runtime's definite absence may claim "not installed".
       const subagentsAbsent = this.status?.pluginSurfaces?.subagents === "absent";
       return html`
         <div class="subagents-list" id="session-activity-list" role="tabpanel" aria-labelledby="drawer-tab-activity">

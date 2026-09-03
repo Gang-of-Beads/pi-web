@@ -43,6 +43,7 @@ export class QuickSwitcher extends LitElement {
   @property({ attribute: false }) machines: readonly Machine[] = [];
   @property({ attribute: false }) browseMachineId = "";
   @property({ attribute: false }) onSelectMachine?: (machineId: string) => void;
+  @property({ attribute: false }) loadError?: string;
   /** Four-state session badge per session, computed upstream. */
   @property({ attribute: false }) sessionStates: ReadonlyMap<string, SessionStateBadgeKind> = new Map();
   @property({ type: Boolean }) canStartSession = false;
@@ -98,6 +99,9 @@ export class QuickSwitcher extends LitElement {
         <div class="body">
           ${this.renderCreateRow()}
           ${model.groups.map((group) => this.renderGroup(group))}
+          ${this.loadError !== undefined
+            ? html`<p class="empty" role="alert">${this.loadError}</p>`
+            : null}
           ${this.loading
             ? html`<p class="empty">Loading sessions…</p>`
             : model.matchCount === 0

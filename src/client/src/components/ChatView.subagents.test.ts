@@ -689,6 +689,7 @@ describe("the activity tab's empty sentence", () => {
     Reflect.set(view, "activityRowsSessionId", "parent-1");
     view.status = {
       sessionId: "parent-1", isStreaming: false, isCompacting: false, isBashRunning: false, pendingMessageCount: 0,
+      queuedMessages: [], tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }, cost: 0,
       ...(subagents === undefined ? {} : { pluginSurfaces: { goals: "present", subagents } }),
     };
     Reflect.set(view, "topDrawerTab", "activity");

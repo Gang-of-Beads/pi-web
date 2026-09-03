@@ -429,6 +429,7 @@ export class PiWebApp extends LitElement {
    * session that lives elsewhere moves the app there first.
    */
   @state() private quickSwitcherBrowseMachineId = "";
+  @state() private quickSwitcherError: string | undefined;
   @state() private staleClientServerVersion: string | undefined;
   @state() private sessionCleanupDialog: SessionCleanupDialogState | undefined;
   @state() private settingsSection: SettingsSection | undefined = readSettingsSection();
@@ -2282,12 +2283,16 @@ export class PiWebApp extends LitElement {
           return [];
         }
       }));
+      // A late answer for a tab the reader has left renders the wrong machine.
+      if (this.quickSwitcherBrowseMachineId !== machineId) return;
       this.quickSwitcherMachineId = machineId;
       this.quickSwitcherFetchedAt = Date.now();
       this.quickSwitcherWorkspaces = workspaces;
       this.quickSwitcherSessions = dedupeById(sessionLists.flat()).sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified));
+      this.quickSwitcherError = undefined;
     } catch (error) {
-      if (this.quickSwitcherBrowseMachineId === machineId) this.setState({ error: `Failed to load sessions: ${describeError(error)}` });
+      // The app banner renders behind this modal; the failure belongs here.
+      if (this.quickSwitcherBrowseMachineId === machineId) this.quickSwitcherError = `Failed to load sessions: ${describeError(error)}`;
     } finally {
       if (this.quickSwitcherBrowseMachineId === machineId) this.quickSwitcherLoading = false;
     }
@@ -2306,6 +2311,11 @@ export class PiWebApp extends LitElement {
   private browseQuickSwitcherMachine(machineId: string): void {
     if (this.quickSwitcherBrowseMachineId === machineId) return;
     this.quickSwitcherBrowseMachineId = machineId;
+    // Empty is honest; the previous machine's rows under this tab are not.
+    this.quickSwitcherSessions = [];
+    this.quickSwitcherWorkspaces = [];
+    this.quickSwitcherMachineId = undefined;
+    this.quickSwitcherError = undefined;
     void this.loadQuickSwitcherData();
   }
 
@@ -3478,6 +3488,7 @@ export class PiWebApp extends LitElement {
           .projects=${state.projects}
           .machines=${state.machines}
           .browseMachineId=${this.quickSwitcherBrowseMachineId}
+          .loadError=${this.quickSwitcherError}
           .onSelectMachine=${(machineId: string) => { this.browseQuickSwitcherMachine(machineId); }}
           .canStartSession=${this.canStartSession()}
           .onCreateSession=${() => { void this.startSessionAndOpenChat(); }}

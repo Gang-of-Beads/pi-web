@@ -96,3 +96,19 @@ describe("opening a session from another machine's tab", () => {
     expect(order).toEqual(["session"]);
   });
 });
+
+/** Review finding: the previous machine's rows must not sit under a new tab. */
+describe("browsing another machine's tab", () => {
+  it("clears the previous machine's rows the moment the tab changes", () => {
+    const app = createApp();
+    applyState(app, { machines: [machine("local"), machine("remote-b")], selectedMachine: machine("local") });
+    if (!Reflect.set(app, "quickSwitcherSessions", [sessionOn("/somewhere")])) throw new Error("Could not seed sessions");
+    if (!Reflect.set(app, "quickSwitcherBrowseMachineId", "local")) throw new Error("Could not set browse machine");
+    if (!Reflect.set(app, "loadQuickSwitcherData", () => Promise.resolve())) throw new Error("Could not stub the load");
+    const browse: unknown = Reflect.get(app, "browseQuickSwitcherMachine");
+    if (typeof browse !== "function") throw new Error("browseQuickSwitcherMachine unavailable");
+    Reflect.apply(browse, app, ["remote-b"]);
+    expect(Reflect.get(app, "quickSwitcherSessions")).toEqual([]);
+    expect(Reflect.get(app, "quickSwitcherWorkspaces")).toEqual([]);
+  });
+});
