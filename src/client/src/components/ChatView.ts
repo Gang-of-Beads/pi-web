@@ -1681,18 +1681,16 @@ export class ChatView extends LitElement {
       ...activity.runRows.map((row, index): ActivityListEntry => ({ kind: "runs", index, status: row.status, startedAt: row.run.startedAt, row })),
       ...activity.taskRows.map((row, index): ActivityListEntry => ({ kind: "tasks", index, status: row.status, startedAt: row.task.startedAt, row })),
     ]).filter((entry) => filter === "all" || filter === entry.kind);
+    const scope = activity.activeCount === 0 && this.activityScope === "active" ? "empty-active" : this.activityScope;
+    const entries = inFilter.filter((entry) => scope === "all" || !isFinishedActivityStatus(entry.status));
     if (failedLine !== null) {
-      // Retained rows stay visible under the failed line: the failure does not
-      // erase what the last good read saw.
       return html`
         <div class="subagents-list" id="session-activity-list" role="tabpanel" aria-labelledby="drawer-tab-activity">
           ${failedLine}
-          ${repeat(inFilter, activityEntryKey, (entry) => this.renderActivityEntry(entry))}
+          ${repeat(entries, activityEntryKey, (entry) => this.renderActivityEntry(entry))}
         </div>
       `;
     }
-    const scope = activity.activeCount === 0 && this.activityScope === "active" ? "empty-active" : this.activityScope;
-    const entries = inFilter.filter((entry) => scope === "all" || !isFinishedActivityStatus(entry.status));
     // The sentence describes what the reader is looking at. Rows whose status
     // cannot be interpreted are neither active nor finished, so they survive
     // the active scope's filter - and the owner photographed "Nothing running

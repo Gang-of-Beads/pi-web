@@ -714,3 +714,22 @@ describe("the activity tab's empty sentence", () => {
     expect(host.textContent).not.toContain("not installed");
   });
 });
+
+describe("the failed-load branch obeys the active scope", () => {
+  it("keeps finished rows folded when retained rows render under a failure", async () => {
+    const view = new ChatView();
+    view.sessionId = "parent-1";
+    Reflect.set(view, "activityRowsSessionId", "parent-1");
+    view.activityFailed = true;
+    view.subagentRuns = [
+      { runId: "r-done", agent: "worker", status: "done", elapsedMs: 5, startedAt: "2026-09-04T00:00:00.000Z" },
+      { runId: "r-live", agent: "worker", status: "running", elapsedMs: 5, startedAt: "2026-09-04T00:01:00.000Z" },
+    ];
+    Reflect.set(view, "topDrawerTab", "activity");
+    document.body.append(view);
+    await view.updateComplete;
+    const list = view.renderRoot.querySelector("#session-activity-list");
+    expect(list?.textContent).toContain("Running");
+    expect(list?.textContent).not.toContain("Done");
+  });
+});
