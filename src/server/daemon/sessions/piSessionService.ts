@@ -1160,6 +1160,16 @@ export class PiSessionService implements SessionRouteService {
   private readonly activities = new Map<string, { phase: "active" | "idle" | "error"; label: string; detail?: string; at: string }>();
   /** Last counted background runs per open session; see refreshBackgroundRunCounts. */
   private readonly backgroundRunCounts = new Map<string, number>();
+  /**
+   * Sessions between turn_start and turn_end.
+   *
+   * A turn is not the same fact as streaming, bash or compaction, and between
+   * two tool calls none of those is true: the model has stopped emitting and
+   * the next tool has not begun. Reported from those three alone the session
+   * reads as done - a grey dot and "Session is done" while it is mid-turn -
+   * because message_end is the end of one message, not of the turn.
+   */
+  private readonly turnActiveSessionIds = new Set<string>();
   private backgroundRunScanInFlight = false;
   private backgroundRunRefreshRequested = true;
   private readonly backgroundWorkWatcher: BackgroundWorkWatcher;
@@ -4427,8 +4437,18 @@ export class PiSessionService implements SessionRouteService {
       }, 250);
       return;
     }
-    if (eventType === "turn_end") { this.publishActivity(session, "turn complete", "idle"); return; }
-    if (eventType === "turn_start") { this.publishActivity(session, "turn in progress", "active"); return; }
+    if (eventType === "turn_end") {
+      this.turnActiveSessionIds.delete(session.sessionId);
+      this.publishActivity(session, "turn complete", "idle");
+      this.publishStatus(session);
+      return;
+    }
+    if (eventType === "turn_start") {
+      this.turnActiveSessionIds.add(session.sessionId);
+      this.publishActivity(session, "turn in progress", "active");
+      this.publishStatus(session);
+      return;
+    }
     if (eventType === "message_start") { this.publishActivity(session, "message started", "active"); return; }
     if (eventType === "message_end") { this.publishActivity(session, "message complete", "idle"); return; }
     if (eventType === "message_update") { this.publishActivity(session, "receiving response", "active"); return; }
@@ -4604,7 +4624,8 @@ export class PiSessionService implements SessionRouteService {
     }
     this.attachQueuedPromptClientIds(session.sessionId, visibleQueued);
     const backgroundRunCount = this.backgroundRunCounts.get(session.sessionId) ?? 0;
-    const working = session.isStreaming || session.isCompacting || session.isBashRunning;
+    const turnActive = this.turnActiveSessionIds.has(session.sessionId);
+    const working = session.isStreaming || session.isCompacting || session.isBashRunning || turnActive;
     const turnStartedAt = working ? turnStartedAtFromBranch(session.sessionManager.getBranch()) : undefined;
     const surfaces = pluginSurfacePresence(session.resourceLoader);
     return {
@@ -4622,6 +4643,7 @@ export class PiSessionService implements SessionRouteService {
       // working session mid-turn anchors its elapsed readout here instead of
       // re-clocking from the moment it happened to look.
       ...(turnStartedAt === undefined ? {} : { turnStartedAt }),
+      ...(turnActive ? { turnActive: true } : {}),
       pendingMessageCount: visibleQueued.length,
       queuedMessages: visibleQueued,
       messageCount: readableMessageCount(session.sessionManager.getBranch()),

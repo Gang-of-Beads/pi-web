@@ -13,5 +13,6 @@ export function isSessionActive(status?: SessionStatus, activity?: SessionActivi
     || status?.isStreaming === true
     || status?.isBashRunning === true
     || status?.isCompacting === true
+    || status?.turnActive === true
     || (status?.pendingMessageCount ?? 0) > 0;
 }

@@ -1386,6 +1386,14 @@ export interface SessionStatus {
    * server/sessions/backgroundRunCount.ts for how it is counted.
    */
   backgroundRunCount?: number;
+  /**
+   * The session is between turn_start and turn_end.
+   *
+   * Streaming, bash and compaction are all false in the gap between two tool
+   * calls, so a surface reading only those calls a mid-turn session done. A
+   * message ending is not a turn ending.
+   */
+  turnActive?: boolean;
 }
 
 export interface SlashCommand {
