@@ -1,5 +1,21 @@
 # @gang-of-beads/pi-web
 
+## 1.202610.0
+
+### Minor Changes
+
+- 3d05e34: Play audio and video workspace files in the file viewer. MP4, WebM, MOV, MKV, OGV, M4V, MP3, WAV, OGG, OGA, M4A, AAC, and FLAC files now open in a native player instead of a download prompt. Media is streamed rather than buffered and answers byte-range requests, so seeking inside a long clip does not refetch it, and clips up to 512 MB preview. Existing image, HTML, and PDF previews keep their previous limits and containment.
+
+### Patch Changes
+
+- 6f186c2: Starting a subagent or background task now tells the browser. The daemon publishes an activity change the moment such a tool starts or ends, and the activity panel refreshes on the event instead of waiting for a poll that was gated by luck.
+- 9181eae: Every activation from a browsed machine tab moves the app there first - workspace rows included - and the create row, project filters, badges and selection all empty while browsing elsewhere. The goals panel now also says "not installed" only on the runtime's definite word, and one unrecognized surface value no longer discards the others.
+- 10cc6f3: The drawer keeps its room and every tab speaks its own truth: goals-absent no longer hides activity and notifications, failed plugins say so instead of posing as tidy empties, rename and pin from a browsed machine tab move there first, workspace rows land with their project so the session list stops waiting forever, filters reset when the tab changes, and a failed load can actually be retried.
+- 49c3fcd: One row per identity, enforced where state is written: duplicate copies of a message collapse at the single transcript write point whatever produced them, a receipt stuck at Queued settles the moment the runtime goes idle without it, and the queued state has exactly one wording on exactly one card.
+- 021273b: The activity drawer now tells apart "subagent tools are not installed" from "installed with nothing running". The runtime reports the subagents surface like it already reported goals, and only a definite absence changes the sentence - unknown keeps the ordinary empty line, because absence needs evidence.
+- b53fe9f: The quick switcher keeps machines apart under pressure: switching tabs clears the previous machine's rows instead of letting them sit under the new tab's name, a late answer for a tab you already left is dropped, and a failed load reports inside the sheet instead of behind it.
+- 3b10225: The pre-ask void judges messages by identity, not words. A captionless photo or a template the runtime expanded still voids the form it predates, and a remark whose words collide with something queued earlier no longer closes the form - the id is the key, text only a fallback for senders without one. The reload banner also stops treating the server's placeholder version as an update.
+
 ## 1.202609.14
 
 ### Patch Changes
