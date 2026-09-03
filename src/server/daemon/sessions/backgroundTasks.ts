@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { open, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { SessionBackgroundTaskInfo } from "../../../shared/apiTypes.js";
 
@@ -108,15 +108,37 @@ export function taskProcessIsOriginal(
   return Math.abs(startMs - startedAtMs) <= PID_REUSE_TOLERANCE_MS;
 }
 
-/** Task ids this session started, taken from the output paths in its transcript. */
+/**
+ * Task ids this session started, taken from the output paths in its transcript.
+ *
+ * The transcript is read incrementally. This function sits on a client poll
+ * timer, and reading a long-lived session's file in full on every poll -
+ * hundreds of megabytes, regex-swept, per session, every few seconds - was
+ * the event-loop stall behind "pi web is always stuck": 67k calls averaging
+ * 2.4s each, with everything else queued behind them. A transcript only
+ * grows, and bytes already scanned cannot produce new ids, so a watermark
+ * per transcript remembers how far the scan got and only the growth is read,
+ * with a small overlap so a line torn across the boundary is still seen. A
+ * file that shrank was replaced, and is rescanned from the start.
+ */
 export async function taskIdsForSession(transcriptPath: string): Promise<Set<string>> {
-  const ids = new Set<string>();
+  let size: number;
+  try {
+    size = (await stat(transcriptPath)).size;
+  } catch {
+    return new Set();
+  }
+  const state = transcriptScans.get(transcriptPath);
+  if (state?.scannedBytes === size) return new Set(state.ids);
+  const fromScratch = state === undefined || size < state.scannedBytes;
+  const start = fromScratch ? 0 : Math.max(0, state.scannedBytes - SCAN_OVERLAP_BYTES);
   let text: string;
   try {
-    text = await readFile(transcriptPath, "utf8");
+    text = await readTranscriptSlice(transcriptPath, start, size);
   } catch {
-    return ids;
+    return new Set(state === undefined ? [] : state.ids);
   }
+  const ids = fromScratch ? new Set<string>() : state.ids;
   // The tool reports "Output: .pi/tasks/<dir>/<id>.output" when a task starts,
   // and that line is what lands in the transcript.
   const pattern = /\.pi[/\\]tasks[/\\][^"'\s]+?[/\\]([A-Za-z0-9_-]+)\.output/g;
@@ -124,7 +146,37 @@ export async function taskIdsForSession(transcriptPath: string): Promise<Set<str
     const id = match[1];
     if (id !== undefined) ids.add(id);
   }
-  return ids;
+  if (transcriptScans.size >= SCAN_CACHE_LIMIT && !transcriptScans.has(transcriptPath)) transcriptScans.clear();
+  transcriptScans.set(transcriptPath, { scannedBytes: size, ids });
+  return new Set(ids);
+}
+
+interface TranscriptScanState {
+  scannedBytes: number;
+  ids: Set<string>;
+}
+
+const transcriptScans = new Map<string, TranscriptScanState>();
+/** Enough to re-see a task line torn across the previous scan's end. */
+const SCAN_OVERLAP_BYTES = 4096;
+/** A bound on cached transcripts; overflow rescans once rather than growing forever. */
+const SCAN_CACHE_LIMIT = 500;
+
+/** Tests reset the watermark cache so each fixture starts unseen. */
+export function resetTranscriptScanCache(): void {
+  transcriptScans.clear();
+}
+
+async function readTranscriptSlice(path: string, start: number, end: number): Promise<string> {
+  if (end <= start) return "";
+  const handle = await open(path, "r");
+  try {
+    const buffer = Buffer.alloc(end - start);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, start);
+    return buffer.toString("utf8", 0, bytesRead);
+  } finally {
+    await handle.close();
+  }
 }
 
 /**
