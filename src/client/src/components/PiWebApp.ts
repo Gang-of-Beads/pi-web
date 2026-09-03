@@ -216,6 +216,8 @@ const PI_WEB_STATUS_REFRESH_MS = 15 * 60 * 1000;
  * Surface backed up: the activity dock's subagent run, background task and
 /** Reopen within this window serves the list the last open just fetched. */
 const QUICK_SWITCHER_REFRESH_MS = 30_000;
+const EMPTY_ID_SET: ReadonlySet<string> = new Set();
+const EMPTY_STATE_MAP: ReadonlyMap<string, SessionStateBadgeKind> = new Map();
 /** How much of a session's own history to offer the composer's picker. */
 const PROMPT_HISTORY_PROP_LIMIT = 50;
 /**
@@ -420,6 +422,12 @@ export class PiWebApp extends LitElement {
   @state() private pinnedSessionIds: ReadonlySet<string> = readPinnedSessionIds();
   @state() private quickSwitcherWorkspaces: readonly Workspace[] = [];
   private quickSwitcherMachineId: string | undefined;
+  /**
+   * The machine whose sessions the switcher is browsing. Defaults to the
+   * machine the app is on and changes with the machine tabs; opening a
+   * session that lives elsewhere moves the app there first.
+   */
+  @state() private quickSwitcherBrowseMachineId = "";
   @state() private sessionCleanupDialog: SessionCleanupDialogState | undefined;
   @state() private settingsSection: SettingsSection | undefined = readSettingsSection();
   @state() private fleetReport: PiWebFleetReport | undefined;
@@ -2157,6 +2165,7 @@ export class PiWebApp extends LitElement {
     // keyboard covering the list this exists to show.
     dismissKeyboardIfRaised();
     this.quickSwitcherOpen = true;
+    this.quickSwitcherBrowseMachineId = selectedMachineId(this.state);
     this.pushModalLayerFrame();
     // Show what is cached, then refresh behind it. The cache was previously
     // kept for the life of the page, so anything that changed after the first
@@ -2211,7 +2220,7 @@ export class PiWebApp extends LitElement {
   }
 
   private async loadQuickSwitcherData(force = false): Promise<void> {
-    const machineId = selectedMachineId(this.state);
+    const machineId = this.quickSwitcherBrowseMachineId === "" ? selectedMachineId(this.state) : this.quickSwitcherBrowseMachineId;
     if (!force && this.quickSwitcherMachineId === machineId
         && (this.quickSwitcherSessions.length > 0 || this.quickSwitcherWorkspaces.length > 0)
         && Date.now() - this.quickSwitcherFetchedAt < QUICK_SWITCHER_REFRESH_MS) {
@@ -2219,7 +2228,12 @@ export class PiWebApp extends LitElement {
     }
     this.quickSwitcherLoading = true;
     try {
-      const projects = this.state.projects.length > 0 ? this.state.projects : await projectsApi.projects(machineId);
+      // The in-memory project list belongs to the machine the app is on;
+      // browsing another machine's tab must ask that machine, not reuse this
+      // one's projects as if every machine shared them.
+      const projects = machineId === selectedMachineId(this.state) && this.state.projects.length > 0
+        ? this.state.projects
+        : await projectsApi.projects(machineId);
       const workspaceLists = await Promise.all(projects.map(async (project) => {
         try {
           return await workspacesApi.workspaces(project.id, machineId);
@@ -2240,10 +2254,26 @@ export class PiWebApp extends LitElement {
       this.quickSwitcherWorkspaces = workspaces;
       this.quickSwitcherSessions = dedupeById(sessionLists.flat()).sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified));
     } catch (error) {
-      if (selectedMachineId(this.state) === machineId) this.setState({ error: `Failed to load sessions: ${describeError(error)}` });
+      if (this.quickSwitcherBrowseMachineId === machineId) this.setState({ error: `Failed to load sessions: ${describeError(error)}` });
     } finally {
-      if (selectedMachineId(this.state) === machineId) this.quickSwitcherLoading = false;
+      if (this.quickSwitcherBrowseMachineId === machineId) this.quickSwitcherLoading = false;
     }
+  }
+
+  /**
+   * Status badges, pins and selection all describe sessions on the machine
+   * the app is on. Rendering them beside another machine's rows would attach
+   * this machine's facts to that machine's sessions, so while the tabs browse
+   * elsewhere the rows carry no badges at all - absent, not falsely present.
+   */
+  private quickSwitcherBrowsingElsewhere(): boolean {
+    return this.quickSwitcherBrowseMachineId !== "" && this.quickSwitcherBrowseMachineId !== selectedMachineId(this.state);
+  }
+
+  private browseQuickSwitcherMachine(machineId: string): void {
+    if (this.quickSwitcherBrowseMachineId === machineId) return;
+    this.quickSwitcherBrowseMachineId = machineId;
+    void this.loadQuickSwitcherData();
   }
 
   /**
@@ -2252,6 +2282,19 @@ export class PiWebApp extends LitElement {
    * after an explicit pick would undo the tap the user just made.
    */
   private async openSessionFromQuickSwitcher(session: SessionInfo): Promise<void> {
+    // A session browsed on another machine's tab lives on that machine. The
+    // first version of these tabs could browse but not open: selecting ran
+    // against the machine the app was on, which had never heard of the
+    // session. Move first, then select.
+    const browsed = this.quickSwitcherBrowseMachineId;
+    if (browsed !== "" && browsed !== selectedMachineId(this.state)) {
+      const target = this.state.machines.find((candidate) => candidate.id === browsed);
+      if (target === undefined) {
+        this.setState({ error: `The machine this session lives on (${browsed}) is not in the machine list.` });
+        return;
+      }
+      await this.machines.selectMachine(target);
+    }
     await this.sessions.selectSession(session);
     await this.focusChatComposer();
   }
@@ -3389,16 +3432,19 @@ export class PiWebApp extends LitElement {
           .loading=${this.quickSwitcherLoading}
           .sessions=${this.quickSwitcherSessions}
           .workspaces=${this.quickSwitcherWorkspaces}
-          .selectedSession=${state.selectedSession}
-          .selectedWorkspace=${state.selectedWorkspace}
-          .activeSessionIds=${this.activeSessionIds()}
-          .sessionStates=${this.sessionStateKinds()}
-          .waitingSessionIds=${this.waitingSessionIds()}
-          .unreadSessionIds=${this.unreadSessionIds}
-          .interruptedSessionIds=${this.interruptedSessionIds}
-          .errorSessionIds=${this.errorSessionIds()}
-          .pinnedSessionIds=${this.pinnedSessionIds}
+          .selectedSession=${this.quickSwitcherBrowsingElsewhere() ? undefined : state.selectedSession}
+          .selectedWorkspace=${this.quickSwitcherBrowsingElsewhere() ? undefined : state.selectedWorkspace}
+          .activeSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.activeSessionIds()}
+          .sessionStates=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_STATE_MAP : this.sessionStateKinds()}
+          .waitingSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.waitingSessionIds()}
+          .unreadSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.unreadSessionIds}
+          .interruptedSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.interruptedSessionIds}
+          .errorSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.errorSessionIds()}
+          .pinnedSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.pinnedSessionIds}
           .projects=${state.projects}
+          .machines=${state.machines}
+          .browseMachineId=${this.quickSwitcherBrowseMachineId}
+          .onSelectMachine=${(machineId: string) => { this.browseQuickSwitcherMachine(machineId); }}
           .canStartSession=${this.canStartSession()}
           .onCreateSession=${() => { void this.startSessionAndOpenChat(); }}
           .onOpenSession=${(session: SessionInfo) => { void this.openSessionFromQuickSwitcher(session); }}

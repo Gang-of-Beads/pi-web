@@ -2,7 +2,7 @@ import { LitElement, css, html, nothing } from "lit";
 import { quickSwitcherFilterProjects } from "../quickSwitcher";
 import { switcherInitialFocus, touchPrimaryPointer } from "../keyboardDismissal";
 import { customElement, property, state } from "lit/decorators.js";
-import type { Project, SessionInfo, Workspace } from "../api";
+import type { Machine, Project, SessionInfo, Workspace } from "../api";
 import { quickSwitcherFilterActive, quickSwitcherFilterSessions, quickSwitcherModel, quickSwitcherSessionSubtitle, quickSwitcherWorkspaces, type QuickSwitcherFilter, type QuickSwitcherGroup } from "../quickSwitcher";
 import { LongPressTracker } from "../longPress";
 import { renderSessionStateBadge, type SessionStateBadgeKind } from "./activityBadge";
@@ -40,6 +40,9 @@ export class QuickSwitcher extends LitElement {
   @property({ attribute: false }) pinnedSessionIds: ReadonlySet<string> = new Set();
   /** Projects offered as context filters. */
   @property({ attribute: false }) projects: readonly Project[] = [];
+  @property({ attribute: false }) machines: readonly Machine[] = [];
+  @property({ attribute: false }) browseMachineId = "";
+  @property({ attribute: false }) onSelectMachine?: (machineId: string) => void;
   /** Four-state session badge per session, computed upstream. */
   @property({ attribute: false }) sessionStates: ReadonlyMap<string, SessionStateBadgeKind> = new Map();
   @property({ type: Boolean }) canStartSession = false;
@@ -90,6 +93,7 @@ export class QuickSwitcher extends LitElement {
           >
           <button class="close" title="Close" aria-label="Close" @click=${() => this.onClose?.()}>×</button>
         </header>
+        ${this.renderMachineTabs()}
         ${this.renderFilters()}
         <div class="body">
           ${this.renderCreateRow()}
@@ -115,6 +119,26 @@ export class QuickSwitcher extends LitElement {
           <button @click=${() => { this.browse(); }}>Browse machines and projects</button>
         </footer>
       </modal-surface>
+    `;
+  }
+
+  /**
+   * One tab per machine, browsing that machine's sessions without leaving
+   * the switcher. The tabs only exist when there is a choice to make.
+   */
+  private renderMachineTabs() {
+    if (this.machines.length < 2) return null;
+    return html`
+      <div class="machine-tabs" role="tablist" aria-label="Machines">
+        ${this.machines.map((machine) => html`
+          <button
+            class="machine-tab"
+            role="tab"
+            aria-selected=${this.browseMachineId === machine.id ? "true" : "false"}
+            @click=${() => this.onSelectMachine?.(machine.id)}
+          >${machine.name}</button>
+        `)}
+      </div>
     `;
   }
 
@@ -393,6 +417,10 @@ export class QuickSwitcher extends LitElement {
     .row-flag.interrupted { background: transparent; border: 2px solid var(--pi-warning, var(--pi-accent)); }
     /* Filters scroll sideways rather than wrapping into a wall of chips; the
        row keeps one line so it never competes with the list for height. */
+    .machine-tabs { flex: 0 0 auto; display: flex; align-items: stretch; gap: var(--pi-space-2); padding: var(--pi-space-3) var(--pi-space-5) 0; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+    .machine-tabs::-webkit-scrollbar { display: none; }
+    .machine-tab { flex: 0 0 auto; min-height: 36px; border: 1px solid var(--pi-border); border-bottom: 0; border-radius: var(--pi-radius-md) var(--pi-radius-md) 0 0; background: var(--pi-surface); color: var(--pi-text-secondary); padding: var(--pi-space-2) var(--pi-space-6); font: inherit; font-size: var(--pi-text-sm); white-space: nowrap; cursor: pointer; }
+    .machine-tab[aria-selected="true"] { border-color: var(--pi-accent); background: var(--pi-selection-bg); color: var(--pi-text-bright); }
     .filters { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-3); padding: var(--pi-space-4) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
     .filters::-webkit-scrollbar { display: none; }
     .chip { flex: 0 0 auto; min-height: 32px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text-secondary); padding: var(--pi-space-2) var(--pi-space-6); font: inherit; font-size: var(--pi-text-sm); white-space: nowrap; cursor: pointer; }
