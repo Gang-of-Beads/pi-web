@@ -93,6 +93,7 @@ import { createSpawnSessionToolDefinition, type SpawnSessionInvocation, type Spa
 import { createBackgroundRunCountCycle } from "./backgroundRunCount.js";
 import { BackgroundWorkWatcher } from "./backgroundWorkWatcher.js";
 import { listBackgroundTasks, readTaskOutput } from "./backgroundTasks.js";
+import { promptDeliveryBehavior, type QueuedPromptKind } from "./promptDelivery.js";
 import { findSubagentRunTranscript, listSubagentRuns, readSessionEntries, readSubagentRunOutput } from "./subagentRuns.js";
 import { createSubsessionToolDefinitions, type SpawnSubsessionInvocation, type SpawnSubsessionResult, type SubsessionCheckResult, type SubsessionReadQuery, type SubsessionReadResult, type SubsessionStatus, type SubsessionSummary, type SubsessionToolDeps } from "./spawnSubsessionTool.js";
 import { buildTranscriptView } from "./subsessionTranscript.js";
@@ -196,7 +197,7 @@ function refMatchesStartupSession(ref: PiSessionRef, session: PiAgentSession): b
   return cwdPathsEqual(session.sessionManager.getCwd(), ref.cwd);
 }
 
-type QueuedPromptKind = "steer" | "followUp";
+
 
 interface QueuedPrompt {
   kind: QueuedPromptKind;
@@ -2725,7 +2726,17 @@ export class PiSessionService implements SessionRouteService {
     // disappeared" (no optimistic bubble, no dock). The client dedupes an
     // identical user line when the queued message is later consumed.
     if (echoUserMessage) this.events.publish(session.sessionId, { type: "message.append", message: userMessage(text, images), echo: true, ...(clientMessageId === undefined ? {} : { clientMessageId }) });
-    const promptOptions = buildPromptOptions(behavior, images);
+    // The decision to queue was taken when the request arrived; the turn it was
+    // waiting behind can end in the time it takes to get here. Handing
+    // "followUp" to a runtime that has since gone idle parks the message in a
+    // queue with no turn-end left to drain it, so the sender sees "Sent", the
+    // session sees "idle", and nothing happens until some later turn picks it
+    // up - which is also how a message arrives out of order long afterwards.
+    const effectiveBehavior = promptDeliveryBehavior({
+      requestedBehavior: behavior,
+      busyAtSubmit: session.isStreaming || session.isCompacting,
+    });
+    const promptOptions = buildPromptOptions(effectiveBehavior, images);
     const promptPromise = this.runSessionEntryMutation(session, "send a prompt", () => session.prompt(text, promptOptions)).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       this.publishActivity(session, "error", "error", message);
