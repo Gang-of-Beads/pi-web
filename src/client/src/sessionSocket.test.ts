@@ -689,3 +689,50 @@ describe("jitteredReconnectDelay", () => {
     expect(jitteredReconnectDelay(500, () => 0)).toBe(250);
   });
 });
+
+describe("a socket dropped for being dead comes back", () => {
+  let scheduled: (() => void)[] = [];
+
+  beforeEach(() => {
+    FakeWebSocket.instances.length = 0;
+    scheduled = [];
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("document", { baseURI: "https://pi.example.test/" });
+    vi.stubGlobal("window", {
+      clearTimeout: vi.fn(),
+      setTimeout: (callback: () => void) => { scheduled.push(callback); return scheduled.length; },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("reconnects after an open socket is dropped for silence", () => {
+    const socket = new SessionSocket();
+    socket.connect({ id: "session-1", cwd: "/repo" }, "local", handlers());
+    const first = FakeWebSocket.instances.at(-1);
+    if (first === undefined) throw new Error("expected a socket");
+    first.onopen?.();
+
+    const before = FakeWebSocket.instances.length;
+    socket.checkLiveness(Date.now() + 120_000);
+    for (const run of scheduled.splice(0)) run();
+
+    expect(FakeWebSocket.instances.length).toBeGreaterThan(before);
+  });
+
+  it("reconnects after a handshake that never completed is dropped", () => {
+    const socket = new SessionSocket();
+    socket.connect({ id: "session-1", cwd: "/repo" }, "local", handlers());
+    const first = FakeWebSocket.instances.at(-1);
+    if (first === undefined) throw new Error("expected a socket");
+    first.readyState = FakeWebSocket.CONNECTING;
+
+    const before = FakeWebSocket.instances.length;
+    socket.checkLiveness(Date.now() + 120_000);
+    for (const run of scheduled.splice(0)) run();
+
+    expect(FakeWebSocket.instances.length).toBeGreaterThan(before);
+  });
+});

@@ -69,9 +69,14 @@ export class SessionSocket {
       handshakeBudgetMs: HANDSHAKE_TIMEOUT_MS,
     });
     if (verdict !== "drop-and-reconnect") return;
-    // close() fires onclose, which schedules the reconnect; the reconnect
-    // callback is what refetches everything missed while it was dead.
+    // closeSocketQuietly detaches onclose before closing, so the close that
+    // normally schedules the reconnect cannot: dropping a dead socket without
+    // this left nothing connected and nothing trying, which is a worse stall
+    // than the one being repaired. The reconnect is what refetches whatever
+    // was missed, so it is scheduled here rather than hoped for.
+    this.socket = undefined;
     closeSocketQuietly(socket);
+    this.scheduleReconnect();
   }
 
   /** Gap events counted on this socket's per-session scope since connect(). */
@@ -205,7 +210,11 @@ export class RealtimeSocket {
       handshakeBudgetMs: HANDSHAKE_TIMEOUT_MS,
     });
     if (verdict !== "drop-and-reconnect") return;
+    // Same as SessionSocket: the quiet close detaches onclose, so this must
+    // schedule the reconnect itself or the drop is permanent.
+    this.socket = undefined;
     closeSocketQuietly(socket);
+    this.scheduleReconnect();
   }
 
   /** Gap events counted on the global scope since this socket last opened. */
