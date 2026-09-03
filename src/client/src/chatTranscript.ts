@@ -389,6 +389,26 @@ export function messageText(message: ChatLine): string {
     .join("\n\n");
 }
 
+/**
+ * What a message says, words and images both.
+ *
+ * Every supersession rule used to compare words alone and give up on a
+ * message that had none - so a photo sent without a caption could never
+ * replace its own echo, and two different photos sharing a caption read as
+ * one message. The image component is mime, size and the payload's two ends:
+ * enough to tell photographs apart without hashing megabytes per comparison.
+ * Undefined means the message says nothing at all, and nothing is not an
+ * identity.
+ */
+export function messageContentKey(message: ChatLine): string | undefined {
+  const text = messageText(message);
+  const images = message.parts
+    .filter((part): part is Extract<ChatLine["parts"][number], { type: "image" }> => part.type === "image")
+    .map((part) => `${part.mimeType}:${String(part.data.length)}:${part.data.slice(0, 24)}:${part.data.slice(-24)}`);
+  if (text === "" && images.length === 0) return undefined;
+  return `${text}\u0000${images.join("|")}`;
+}
+
 function appendNewMessage(messages: ChatLine[], rawMessage: unknown, clientMessageId?: string, isEcho = false): ChatLine[] {
   const lines = normalizeMessage(rawMessage);
   if (lines.length === 0) return messages;
@@ -413,9 +433,9 @@ function appendEchoedMessage(messages: ChatLine[], lines: ChatLine[], clientMess
 /** The pending echo a committed user message supersedes, or -1. */
 function findEchoLineIndex(messages: ChatLine[], committed: ChatLine | undefined): number {
   if (committed?.role !== "user") return -1;
-  const text = messageText(committed);
-  if (text === "") return -1;
-  return messages.findIndex((line) => line.role === "user" && line.meta?.echo === true && messageText(line) === text);
+  const key = messageContentKey(committed);
+  if (key === undefined) return -1;
+  return messages.findIndex((line) => line.role === "user" && line.meta?.echo === true && messageContentKey(line) === key);
 }
 
 function appendLine(messages: ChatLine[], line: ChatLine): ChatLine[] {

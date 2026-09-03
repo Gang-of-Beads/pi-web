@@ -2,7 +2,7 @@ import type { ChatLine } from "./components/shared";
 import { ChatRole } from "./chatRole";
 import { indexOfIdentity, messageIdentity } from "./messageIdentity";
 import { carryDeliveryForward } from "./messageDelivery";
-import { messageText } from "./chatTranscript";
+import { messageContentKey } from "./chatTranscript";
 
 export interface Arrival {
   readonly transcript: readonly ChatLine[];
@@ -25,9 +25,12 @@ type ArrivalRule = (arrival: Arrival) => ArrivalOutcome | undefined;
 const supersedesOwnEcho: ArrivalRule = ({ transcript, lines }) => {
   const committed = lines[0];
   if (committed?.role !== ChatRole.user) return undefined;
-  const text = messageText(committed);
-  if (text === "") return undefined;
-  const at = transcript.findIndex((line) => line.role === ChatRole.user && line.meta?.echo === true && messageText(line) === text);
+  // Content identity, not text: matching by words alone abandoned every
+  // message whose words were images - the eleventh duplicate report - and
+  // merged distinct messages that happened to share their words.
+  const key = messageContentKey(committed);
+  if (key === undefined) return undefined;
+  const at = transcript.findIndex((line) => line.role === ChatRole.user && line.meta?.echo === true && messageContentKey(line) === key);
   const previous = at === -1 ? undefined : transcript[at];
   if (previous === undefined) return undefined;
   return { kind: "replace", at, line: carryDeliveryForward(previous, committed), rest: lines.slice(1) };
@@ -44,9 +47,9 @@ const alreadyTrackedById: ArrivalRule = ({ transcript, clientMessageId }) => {
 const alreadyShownAsOwnSend: ArrivalRule = ({ transcript, lines }) => {
   const arriving = lines[0];
   if (arriving?.role !== ChatRole.user) return undefined;
-  const text = messageText(arriving);
-  if (text === "") return undefined;
-  const shown = transcript.some((line) => line.role === ChatRole.user && line.meta?.delivery !== undefined && messageText(line) === text);
+  const key = messageContentKey(arriving);
+  if (key === undefined) return undefined;
+  const shown = transcript.some((line) => line.role === ChatRole.user && line.meta?.delivery !== undefined && messageContentKey(line) === key);
   return shown ? { kind: "ignore" } : undefined;
 };
 
@@ -70,10 +73,10 @@ const alreadyInTranscript: ArrivalRule = ({ transcript, lines }) => {
 const repeatsTheLineBefore: ArrivalRule = ({ transcript, lines }) => {
   const arriving = lines[0];
   if (arriving?.role !== ChatRole.user) return undefined;
-  const text = messageText(arriving);
+  const key = messageContentKey(arriving);
   const last = transcript.at(-1);
-  if (text === "" || last?.role !== ChatRole.user) return undefined;
-  return messageText(last) === text ? { kind: "ignore" } : undefined;
+  if (key === undefined || last?.role !== ChatRole.user) return undefined;
+  return messageContentKey(last) === key ? { kind: "ignore" } : undefined;
 };
 
 const RULES: readonly ArrivalRule[] = [
