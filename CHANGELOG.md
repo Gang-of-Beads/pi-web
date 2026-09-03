@@ -1,5 +1,12 @@
 # @gang-of-beads/pi-web
 
+## 1.202609.11
+
+### Patch Changes
+
+- 44df0e0: A message that speaks in images renders once. Supersession now compares words and images both, so a photo without a caption replaces its own echo instead of appearing twice, and two different photos sharing a caption are no longer merged into one message.
+- 44df0e0: One breakpoint authority for the whole client. Every viewport line is named once and tested against copies, the quick switcher and cleanup dialog join the named lines, context-bar buttons keep the 36px touch floor at every width, and the shell's dead responsive CSS is gone.
+
 ## 1.202609.10
 
 ### Patch Changes
