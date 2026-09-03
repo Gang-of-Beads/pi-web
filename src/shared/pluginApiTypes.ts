@@ -42,7 +42,7 @@ export interface FileTreeResponse {
   truncated: boolean;
 }
 
-export type FileContentMediaType = "image" | "html" | "pdf" | "markdown";
+export type FileContentMediaType = "image" | "html" | "pdf" | "markdown" | "audio" | "video";
 
 export interface FileContentResponse {
   path: string;

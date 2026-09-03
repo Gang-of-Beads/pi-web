@@ -112,8 +112,15 @@ export function registerWorkspaceExplorerRoutes(app: FastifyInstance, projects: 
     try {
       const context = await resolveWorkspaceContext(projects, workspaces, request.params.projectId, request.params.workspaceId);
       const download = request.query.download === "1" || request.query.download === "true";
-      const preview = await readWorkspaceFilePreview(context.root, request.query.path, await pathAccessForWorkspaceContext(context, options.config), { download });
+      const preview = await readWorkspaceFilePreview(context.root, request.query.path, await pathAccessForWorkspaceContext(context, options.config), {
+        download,
+        range: request.headers.range,
+      });
       const policy = workspaceFilePreviewResponsePolicy(preview.path, { download });
+      // A media element seeks by asking for byte ranges; advertising the
+      // capability is what makes the browser issue those requests at all.
+      if (preview.streamed === true) reply.header("Accept-Ranges", "bytes");
+      if (preview.contentRange !== undefined) reply.code(206).header("Content-Range", preview.contentRange);
       return await reply
         .header("Content-Type", policy.contentType)
         .header("Cache-Control", "private, max-age=3600")

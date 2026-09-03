@@ -2,7 +2,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FileContentResponse } from "../api";
-import { MAX_INLINE_PREVIEW_BYTES } from "../../../shared/workspaceFiles";
+import { MAX_INLINE_PREVIEW_BYTES, MAX_STREAM_PREVIEW_BYTES } from "../../../shared/workspaceFiles";
 import { workspaceFileViewModeStore, type WorkspaceFileViewMode, type WorkspaceFileViewModeStore } from "../workspaceFileViewMode";
 import { WorkspaceFileViewer, workspaceFilePreviewKind, workspaceFileViewerIdentityKey, type WorkspaceFileViewerIdentity } from "./WorkspaceFileViewer";
 
@@ -378,6 +378,39 @@ describe("workspace file viewer seams", () => {
 
     expect(new Set(variants.map(workspaceFileViewerIdentityKey))).toHaveLength(variants.length);
     for (const variant of variants) expect(workspaceFileViewerIdentityKey(variant)).not.toBe(baseKey);
+  });
+
+  it("plays video through a native player and offers the streaming preview URL", async () => {
+    const viewer = await mountViewer(binaryFile("renders/clip.mp4", { mediaType: "video", mimeType: "video/mp4", size: 4_800_000 }));
+    const video = viewer.shadowRoot?.querySelector("video");
+    expect(video?.hasAttribute("controls")).toBe(true);
+    expect(video?.hasAttribute("playsinline")).toBe(true);
+    expect(video?.getAttribute("preload")).toBe("metadata");
+    expect(video?.getAttribute("src")).toContain("path=renders%2Fclip.mp4");
+    expect(viewer.shadowRoot?.querySelector("iframe, code-viewer")).toBeNull();
+  });
+
+  it("plays audio through a native player instead of a download prompt", async () => {
+    const viewer = await mountViewer(binaryFile("audio/take.wav", { mediaType: "audio", mimeType: "audio/wav", size: 240_000 }));
+    expect(viewer.shadowRoot?.querySelector("audio")?.hasAttribute("controls")).toBe(true);
+    expect(viewer.shadowRoot?.querySelector("video")).toBeNull();
+  });
+
+  it("treats a media codec the browser cannot play as a preview failure with an escape hatch", async () => {
+    const viewer = await mountViewer(binaryFile("renders/clip.mkv", { mediaType: "video", mimeType: "video/x-matroska", size: 1_200_000 }));
+    viewer.shadowRoot?.querySelector("video")?.dispatchEvent(new Event("error"));
+    await viewer.updateComplete;
+    const alert = viewer.shadowRoot?.querySelector("[role='alert']");
+    expect(alert?.textContent).toContain("Preview failed for renders/clip.mkv.");
+    expect(alert?.textContent).toContain("Open it in a new window or use Download above.");
+  });
+
+  it("names the media preview limit when a clip exceeds it instead of the snapshot limit", async () => {
+    const viewer = await mountViewer(binaryFile("renders/huge.mp4", { mediaType: "video", mimeType: "video/mp4", size: MAX_STREAM_PREVIEW_BYTES + 1 }));
+    expect(statusMessage(viewer)).toContain("limit 512 MB");
+
+    const image = await mountViewer(binaryFile("huge.png", { mediaType: "image", mimeType: "image/png", size: MAX_INLINE_PREVIEW_BYTES + 1 }));
+    expect(statusMessage(image)).toContain("limit 10 MB");
   });
 });
 

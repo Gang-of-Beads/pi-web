@@ -557,4 +557,45 @@ describe("buildApp workspace file routes", () => {
     expect(fileResponse.statusCode).toBe(400);
     expect(fileResponse.json()).toEqual({ error: "Workspace not found" });
   });
+
+  it("streams workspace media previews and answers range requests for seeking", async () => {
+    const addResponse = await appTestContext.app.inject({
+      method: "POST",
+      url: "/api/projects",
+      payload: { name: "Media", path: appTestContext.projectDir, create: true },
+    });
+    const project = addResponse.json<Project>();
+    await writeFile(join(appTestContext.projectDir, "clip.mp4"), "0123456789");
+    await writeFile(join(appTestContext.projectDir, "voice.wav"), "abcd");
+
+    const workspacesResponse = await appTestContext.app.inject({ method: "GET", url: `/api/projects/${project.id}/workspaces` });
+    const workspace = workspacesResponse.json<WorkspaceProviderResolution>().workspaces[0];
+    if (workspace === undefined) throw new Error("Expected workspace");
+    const previewUrl = (path: string) => `/api/projects/${project.id}/workspaces/${workspace.id}/file/preview?path=${encodeURIComponent(path)}`;
+
+    const full = await appTestContext.app.inject({ method: "GET", url: previewUrl("clip.mp4") });
+    expect(full.statusCode).toBe(200);
+    expect(full.headers["content-type"]).toBe("video/mp4");
+    expect(full.headers["accept-ranges"]).toBe("bytes");
+    expect(full.headers["content-length"]).toBe("10");
+    expect(full.headers["content-security-policy"]).toContain("media-src 'self'");
+
+    const partial = await appTestContext.app.inject({ method: "GET", url: previewUrl("clip.mp4"), headers: { range: "bytes=2-5" } });
+    expect(partial.statusCode).toBe(206);
+    expect(partial.headers["content-range"]).toBe("bytes 2-5/10");
+    expect(partial.headers["content-length"]).toBe("4");
+    expect(partial.body).toBe("2345");
+
+    const audio = await appTestContext.app.inject({ method: "GET", url: previewUrl("voice.wav") });
+    expect(audio.statusCode).toBe(200);
+    expect(audio.headers["content-type"]).toBe("audio/wav");
+
+    const localAlias = await appTestContext.app.inject({
+      method: "GET",
+      url: `/api/machines/local/projects/${project.id}/workspaces/${workspace.id}/file/preview?path=${encodeURIComponent("clip.mp4")}`,
+      headers: { range: "bytes=0-1" },
+    });
+    expect(localAlias.statusCode).toBe(206);
+    expect(localAlias.headers["content-range"]).toBe("bytes 0-1/10");
+  });
 });

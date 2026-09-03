@@ -5,12 +5,12 @@ import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import type { FileContentResponse } from "../api";
 import { workspaceFilePreviewUrl } from "../api/urls";
 import { renderWorkspaceMarkdownHtml } from "../formatting/workspaceMarkdown";
-import { MAX_INLINE_PREVIEW_BYTES, MAX_INLINE_PREVIEW_LABEL, workspaceFileName } from "../../../shared/workspaceFiles";
+import { MAX_INLINE_PREVIEW_BYTES, MAX_INLINE_PREVIEW_LABEL, MAX_STREAM_PREVIEW_BYTES, MAX_STREAM_PREVIEW_LABEL, workspaceFileName } from "../../../shared/workspaceFiles";
 import { formatFileSize } from "../utils/format";
 import { workspaceFileViewModeStore, type WorkspaceFileViewMode, type WorkspaceFileViewModeStore } from "../workspaceFileViewMode";
 import { formattedTextStyles, interactiveSurfaceStyles } from "./shared";
 
-export type WorkspaceFilePreviewKind = "image" | "html" | "pdf" | "markdown" | "download" | "code";
+export type WorkspaceFilePreviewKind = "image" | "html" | "pdf" | "markdown" | "audio" | "video" | "download" | "code";
 
 export interface WorkspaceFileViewerIdentity {
   machineId: string;
@@ -99,7 +99,7 @@ export class WorkspaceFileViewer extends LitElement {
 
     const token = this.selectionToken;
     const kind = workspaceFilePreviewKind(file);
-    const canOpen = isBrowserPreviewKind(kind) && file.size > 0 && file.size <= MAX_INLINE_PREVIEW_BYTES;
+    const canOpen = isBrowserPreviewKind(kind) && file.size > 0 && file.size <= previewByteLimitForKind(kind);
     return html`
       ${this.renderViewerHeader(file, metadataForFile(file, kind), canOpen)}
       ${hasRawAndPreviewModes(file, kind) ? this.renderModeControls(file, token) : null}
@@ -113,6 +113,8 @@ export class WorkspaceFileViewer extends LitElement {
 
     switch (kind) {
       case "image": return this.renderImagePreview(file, token);
+      case "audio": return this.renderMediaPreview(file, "audio", token);
+      case "video": return this.renderMediaPreview(file, "video", token);
       case "html": return this.renderFramePreview(file, "html", token);
       case "pdf": return this.renderFramePreview(file, "pdf", token);
       case "markdown": return this.renderMarkdownPreview(file);
@@ -174,7 +176,7 @@ export class WorkspaceFileViewer extends LitElement {
   }
 
   private renderMarkdownPreview(file: FileContentResponse): TemplateResult {
-    if (file.size > MAX_INLINE_PREVIEW_BYTES) return this.renderPreviewTooLarge(file);
+    if (file.size > MAX_INLINE_PREVIEW_BYTES) return this.renderPreviewTooLarge(file, "markdown");
     try {
       const sanitized = renderWorkspaceMarkdownHtml(file.content);
       return html`
@@ -187,7 +189,7 @@ export class WorkspaceFileViewer extends LitElement {
   }
 
   private renderImagePreview(file: FileContentResponse, token: number): TemplateResult {
-    if (file.size > MAX_INLINE_PREVIEW_BYTES) return this.renderPreviewTooLarge(file);
+    if (file.size > MAX_INLINE_PREVIEW_BYTES) return this.renderPreviewTooLarge(file, "image");
     if (this.failedPreviewToken === token) return this.renderPreviewFailure(file, token);
     const src = this.previewUrl(file);
     return html`
@@ -203,8 +205,36 @@ export class WorkspaceFileViewer extends LitElement {
     `;
   }
 
+  /**
+   * Audio and video play through the browser's own media elements against the
+   * streaming preview route, which answers range requests, so seeking does not
+   * refetch the file. A codec the browser lacks surfaces as a media error and
+   * lands in the same failure state as a broken image, where Open ↗ and
+   * Download stay available.
+   */
+  private renderMediaPreview(file: FileContentResponse, kind: "audio" | "video", token: number): TemplateResult {
+    if (file.size > previewByteLimitForKind(kind)) return this.renderPreviewTooLarge(file, kind);
+    if (this.failedPreviewToken === token) return this.renderPreviewFailure(file, token);
+    const src = this.previewUrl(file);
+    const onError = () => { this.recordPreviewFailure(token); };
+    // `preload="metadata"` keeps the first paint cheap on a long clip: the
+    // browser fetches only what it needs to report duration and size.
+    if (kind === "audio") {
+      return html`
+        <div class="media-preview">
+          <audio controls preload="metadata" src=${src} referrerpolicy="no-referrer" @error=${onError}>Your browser cannot play this audio file.</audio>
+        </div>
+      `;
+    }
+    return html`
+      <div class="media-preview">
+        <video controls playsinline preload="metadata" src=${src} referrerpolicy="no-referrer" @error=${onError}>Your browser cannot play this video file.</video>
+      </div>
+    `;
+  }
+
   private renderFramePreview(file: FileContentResponse, kind: "html" | "pdf", token: number): TemplateResult {
-    if (file.size > MAX_INLINE_PREVIEW_BYTES) return this.renderPreviewTooLarge(file);
+    if (file.size > MAX_INLINE_PREVIEW_BYTES) return this.renderPreviewTooLarge(file, kind);
     if (this.failedPreviewToken === token) return this.renderPreviewFailure(file, token);
     const src = this.previewUrl(file);
 
@@ -247,8 +277,9 @@ export class WorkspaceFileViewer extends LitElement {
     `;
   }
 
-  private renderPreviewTooLarge(file: FileContentResponse): TemplateResult {
-    return this.renderStatus(`File too large to preview: ${formatFileSize(file.size)} · limit ${MAX_INLINE_PREVIEW_LABEL}. Use Download above.`);
+  private renderPreviewTooLarge(file: FileContentResponse, kind: WorkspaceFilePreviewKind): TemplateResult {
+    const label = isStreamPreviewKind(kind) ? MAX_STREAM_PREVIEW_LABEL : MAX_INLINE_PREVIEW_LABEL;
+    return this.renderStatus(`File too large to preview: ${formatFileSize(file.size)} · limit ${label}. Use Download above.`);
   }
 
   private renderStatus(message: string, alert = false): TemplateResult {
@@ -323,6 +354,9 @@ export class WorkspaceFileViewer extends LitElement {
       .image-preview { flex: 1 1 auto; min-height: 0; box-sizing: border-box; display: flex; align-items: center; justify-content: center; overflow: auto; padding: 16px; }
       .image-preview img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; border: 1px solid var(--pi-border-muted); border-radius: 8px; background-color: var(--pi-surface); background-image: linear-gradient(45deg, color-mix(in srgb, var(--pi-border-muted) 45%, transparent) 25%, transparent 25%), linear-gradient(-45deg, color-mix(in srgb, var(--pi-border-muted) 45%, transparent) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, color-mix(in srgb, var(--pi-border-muted) 45%, transparent) 75%), linear-gradient(-45deg, transparent 75%, color-mix(in srgb, var(--pi-border-muted) 45%, transparent) 75%); background-position: 0 0, 0 8px, 8px -8px, -8px 0; background-size: 16px 16px; box-shadow: 0 8px 24px var(--pi-shadow-soft); }
       .file-frame-preview { flex: 1 1 auto; min-height: 0; width: 100%; border: none; background: var(--pi-surface); }
+      .media-preview { flex: 1 1 auto; min-height: 0; box-sizing: border-box; display: flex; align-items: center; justify-content: center; overflow: auto; padding: 16px; }
+      .media-preview video { display: block; max-width: 100%; max-height: 100%; border-radius: 8px; background: #000; }
+      .media-preview audio { width: min(100%, 480px); }
       .viewer-status { box-sizing: border-box; margin: auto; max-width: 100%; color: var(--pi-muted); padding: 18px; text-align: center; overflow-wrap: anywhere; }
       .preview-state { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; box-sizing: border-box; padding: 24px; color: var(--pi-muted); text-align: center; }
       .preview-state strong { color: var(--pi-text); }
@@ -354,8 +388,19 @@ export function workspaceFilePreviewKind(file: FileContentResponse): WorkspaceFi
   if (file.mediaType === "html") return "html";
   if (file.mediaType === "pdf") return "pdf";
   if (file.mediaType === "markdown") return "markdown";
+  if (file.mediaType === "audio") return "audio";
+  if (file.mediaType === "video") return "video";
   if (file.binary) return "download";
   return "code";
+}
+
+/** Media kinds are streamed and range-serviced, so they carry a larger limit. */
+function isStreamPreviewKind(kind: WorkspaceFilePreviewKind): boolean {
+  return kind === "audio" || kind === "video";
+}
+
+function previewByteLimitForKind(kind: WorkspaceFilePreviewKind): number {
+  return isStreamPreviewKind(kind) ? MAX_STREAM_PREVIEW_BYTES : MAX_INLINE_PREVIEW_BYTES;
 }
 
 /**
@@ -390,8 +435,8 @@ function framePreviewSandbox(kind: "html" | "pdf"): string | undefined {
   return kind === "html" ? "" : undefined;
 }
 
-function isBrowserPreviewKind(kind: WorkspaceFilePreviewKind): kind is "image" | "html" | "pdf" {
-  return kind === "image" || kind === "html" || kind === "pdf";
+function isBrowserPreviewKind(kind: WorkspaceFilePreviewKind): kind is "image" | "html" | "pdf" | "audio" | "video" {
+  return kind === "image" || kind === "html" || kind === "pdf" || kind === "audio" || kind === "video";
 }
 
 function metadataForFile(file: FileContentResponse, kind: WorkspaceFilePreviewKind): string {
