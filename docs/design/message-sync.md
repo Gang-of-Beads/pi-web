@@ -349,3 +349,52 @@ helpers were green through every one of the ten historical duplicates.
    abort and compaction.
 5. **No loading flag outlives its request**: for every panel, a request that
    never answers ends in a reported failure, not a permanent "Loading".
+
+
+---
+
+# The consolidated state machine (implementation contract, 2026-09-04)
+
+Commissioned after the thirteenth duplicate: one machine, both ends, one
+vocabulary. Anything a surface renders about a message MUST be derived from
+these states; a word with no state here is a bug.
+
+## States and their owners
+
+| State | Owner | UI word | Card |
+|---|---|---|---|
+| `composing` | composer | (draft) | - |
+| `outbox` | browser store, written BEFORE the first attempt | `Unsent` + Retry/Discard | strip above composer |
+| `sending` | browser, request in flight | `Sending` | orange, receipt |
+| `accepted`/`queued` | daemon (ledger + owned queue) | `Queued - N` | **yellow, the only queued face** |
+| `running` | runtime | (turn is visibly running) | - |
+| `settled` | transcript (identity claimed) | `Read` | orange, receipt |
+| `withdrawn` | daemon frame / local recall | (row gone) | - |
+| `failed` | explicit refusal only | `Not sent` | orange, receipt |
+
+## Transition rules
+
+- `outbox -> sending -> accepted` on the daemon's 2xx; a timeout moves
+  nothing; `accepted` without a frame heals by idempotent retry (ledger).
+- `queued -> settled` by identity claim, and by level trigger: absent from the
+  queue of an idle runtime = consumed. Re-derived on every status.
+- `sending` heals the same way: on load and reconnect the outbox flushes with
+  the same id; the ledger makes the retry safe. A sending row can therefore
+  wait, retry, or fail - never sit forever.
+- One row per identity is enforced at the transcript write point; producers
+  cannot append a second copy of the same id.
+
+## Ordering
+
+User rows render in daemon acceptance order. Unacknowledged rows (`sending`,
+`outbox`) are by definition the newest sends and render after every
+acknowledged row - a `Sending` row above a yellow `Queued` card is a state
+machine violation, not a styling choice. Placement by daemon sequence lands
+with migration step 6.
+
+## Representation law
+
+One state, one word, one card. The yellow card is the only queued face; an
+orange card can say `Sending`, `Sent`, `Read` or `Not sent` and never any
+queued word. Enforced: the queued classifier drives colour and words from one
+fact, and the lane-variant string is deleted.
