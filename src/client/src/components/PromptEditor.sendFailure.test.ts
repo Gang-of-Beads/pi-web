@@ -139,7 +139,7 @@ function shadow(editor: PromptEditor): ShadowRoot {
 
 describe("unsent messages are visible and retryable", () => {
   it("renders a stored pending prompt with retry and discard", async () => {
-    savePendingPrompt("m1:s1", { text: "lost on exit", clientMessageId: "c-lost", at: "2026-09-04T00:00:00.000Z" });
+    savePendingPrompt("m1:s1", { text: "lost on exit", clientMessageId: "c-lost", at: new Date(Date.now() - 60_000).toISOString() });
     const editor = new PromptEditor();
     editor.machineId = "m1";
     editor.sessionId = "s1";

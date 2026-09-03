@@ -496,10 +496,15 @@ export class PromptEditor extends LitElement {
   }
 
   private renderPendingPrompts() {
-    if (this.pendingPrompts.length === 0) return null;
+    const now = Date.now();
+    const lingering = this.pendingPrompts.filter((prompt) => now - Date.parse(prompt.at) > 4000);
+    if (lingering.length === 0) {
+      if (this.pendingPrompts.length > 0) setTimeout(() => { this.requestUpdate(); }, 4200);
+      return null;
+    }
     return html`
       <div class="pending-prompts" role="status">
-        ${this.pendingPrompts.map((prompt) => html`
+        ${lingering.map((prompt) => html`
           <div class="pending-prompt">
             <span class="pending-prompt-text">${prompt.text.slice(0, 80)}${prompt.text.length > 80 ? "…" : ""}</span>
             <span class="pending-prompt-state">Unsent</span>
