@@ -1,11 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
   <title id="title">PI WEB mark</title>
-  <desc id="desc">A horizontal brand bar.</desc>
-  <style>
-    .bar { fill: #00f0d8; }
-    @media (prefers-color-scheme: light) {
-      .bar { fill: #008c82; }
-    }
-  </style>
-  <rect class="bar" x="128" y="448" width="768" height="128"/>
+  <desc id="desc">A geometric pi glyph on a rounded dark tile.</desc>
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b241e"/>
+      <stop offset="1" stop-color="#15110e"/>
+    </linearGradient>
+    <linearGradient id="glyph" gradientUnits="userSpaceOnUse" x1="262" y1="320" x2="762" y2="704">
+      <stop offset="0" stop-color="#ffb27d"/>
+      <stop offset="1" stop-color="#e8643c"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="1024" height="1024" rx="224" fill="url(#tile)"/>
+  <g fill="none" stroke="url(#glyph)" stroke-width="94" stroke-linecap="round">
+    <path d="M 262 348 Q 306 320 380 320 L 762 320"/>
+    <path d="M 404 320 L 404 704"/>
+    <path d="M 636 320 L 636 620 Q 636 704 724 704"/>
+  </g>
 </svg>
