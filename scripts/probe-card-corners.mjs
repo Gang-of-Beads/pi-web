@@ -66,6 +66,19 @@ async function openTranscript(page) {
     ];
     await chat.updateComplete;
   });
+  // A probe palette, not the theme's: the review found the classifier blind
+  // wherever a header sits within tolerance of the page background (every
+  // assistant card in dark theme, every card in light). The probe is judging
+  // geometry, so it owns the colors it judges with.
+  await page.evaluate(() => {
+    const root = document.documentElement.style;
+    root.setProperty("--pi-bg", "#000000");
+    root.setProperty("--pi-surface", "#00c000");
+    root.setProperty("--pi-selection-bg", "#c00000");
+    root.setProperty("--pi-border", "#0000c0");
+    root.setProperty("--pi-border-muted", "#0000c0");
+    root.setProperty("--pi-accent-border", "#0000c0");
+  });
   await page.waitForTimeout(800);
 }
 

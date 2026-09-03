@@ -3,9 +3,10 @@
 ---
 
 Message card corners cannot break any more: the card clips its children
-instead of trusting them to replicate its curve. The fifth report of notched
-corners traced to corner geometry split across two files - a radius token in
-the cached app shell and component CSS in the bundle - so a stale PWA shell
-squared the headers. One arc, one owner, one file now; verified pixel by
-pixel at three device pixel ratios in dark theme, against both failure
-shapes.
+instead of trusting them to replicate its curve. Every earlier fix needed two
+drawings of the same arc to agree - a sticky header guessing the card's inner
+curve, latterly through a token in one file consumed by CSS in another. One
+arc, one owner, one file now, with a graceful fallback for browsers that do
+not parse overflow: clip. Verified pixel by pixel at three device pixel
+ratios with a probe-owned palette, against both failure shapes, on every
+card type.
