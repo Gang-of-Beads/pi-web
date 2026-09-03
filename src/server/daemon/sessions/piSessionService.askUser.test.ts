@@ -286,6 +286,10 @@ describe("PiSessionService.prompt with an open ask", () => {
     const { service, store, events, fake } = askService({ withActiveSession: true });
     // Opens the runtime, which is what subscribes to its events.
     await service.status(sessionRef(ACTIVE_SESSION_ID));
+    // The message is already waiting in the runtime's queue when the ask
+    // opens - that order is the whole point: the questions were posted by a
+    // run that had not seen it.
+    fake.session.getFollowUpMessages = () => ["queued before the questions"];
     await service.openAsk({ sessionId: ACTIVE_SESSION_ID, questions });
     expect(store.pendingAsk(ACTIVE_SESSION_ID)).toBeDefined();
 
@@ -300,6 +304,24 @@ describe("PiSessionService.prompt with an open ask", () => {
     const [delivered] = fake.calls.sendCustomMessage;
     expect(delivered?.message.content).toContain("unanswered: db");
     expect(delivered?.options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
+    await service.dispose();
+  });
+
+  // The owner's ruling: a chat message beside the form is an addition to the
+  // request, not a refusal of it - every question carries a Custom answer. The
+  // acceptance path honoured that, but when the same message drained from the
+  // queue and committed, the delivered-event path voided the ask anyway: the
+  // sibling producer of the same closed form, caught live on 2026-09-04.
+  it("keeps the ask open when a message sent in its presence is delivered", async () => {
+    const { service, store, fake } = askService({ withActiveSession: true });
+    await service.status(sessionRef(ACTIVE_SESSION_ID));
+    await service.openAsk({ sessionId: ACTIVE_SESSION_ID, questions });
+
+    fake.emit({ type: "message_start", message: { role: "user", content: "and also support sqlite" } });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(store.pendingAsk(ACTIVE_SESSION_ID)?.askId).toBe("ask-1");
+    expect(fake.calls.sendCustomMessage).toEqual([]);
     await service.dispose();
   });
 

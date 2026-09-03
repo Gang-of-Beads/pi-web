@@ -25,6 +25,13 @@ export interface PendingAskStoreOptions {
 export interface PendingAskOpenInput {
   sessionId: string;
   questions: AskUserQuestion[];
+  /**
+   * Texts already waiting in the session's queue when the ask opens. The run
+   * that posted the questions never saw these messages, so their later
+   * delivery voids the ask - while a message sent in the form's presence is an
+   * addition to the request, not a refusal, and leaves it open.
+   */
+  queuedMessageTexts?: readonly string[];
 }
 
 /**
@@ -75,6 +82,7 @@ export class PendingAskStore {
   private readonly now: () => Date;
   private readonly createAskId: () => string;
   private readonly openBySessionId = new Map<string, PendingAskUser>();
+  private readonly preAskQueues = new Map<string, Set<string>>();
 
   constructor(options: PendingAskStoreOptions = {}) {
     this.now = options.now ?? (() => new Date());
@@ -98,6 +106,7 @@ export class PendingAskStore {
       questions,
     };
     this.openBySessionId.set(sessionId, ask);
+    this.preAskQueues.set(sessionId, new Set(input.queuedMessageTexts ?? []));
     return {
       ask: cloneAsk(ask),
       ...(superseded === undefined ? {} : { superseded }),
@@ -142,12 +151,22 @@ export class PendingAskStore {
   /** Drop the open ask of a session that is going away, without reporting an outcome. */
   forgetSession(sessionId: string): void {
     this.openBySessionId.delete(requireSessionId(sessionId));
+    this.preAskQueues.delete(requireSessionId(sessionId));
   }
 
   private requireClose(sessionId: string, reason: AskUserCloseReason, answers: RecordedAnswers): AskUserOutcome {
     const outcome = this.close(sessionId, reason, this.timestamp(), answers);
     if (outcome === undefined) throw new Error(`Pending ask of session ${sessionId} disappeared while closing`);
     return outcome;
+  }
+
+  /**
+   * Whether a just-delivered user message is one that predates the open ask.
+   * A hit is consumed: the queue entry drains exactly once.
+   */
+  claimPreAskDelivery(sessionId: string, text: string): boolean {
+    if (text === "") return false;
+    return this.preAskQueues.get(requireSessionId(sessionId))?.delete(text) === true;
   }
 
   private close(
@@ -159,6 +178,7 @@ export class PendingAskStore {
     const ask = this.openBySessionId.get(sessionId);
     if (ask === undefined) return undefined;
     this.openBySessionId.delete(sessionId);
+    this.preAskQueues.delete(sessionId);
     return askUserOutcome(ask, answers, reason, closedAt);
   }
 

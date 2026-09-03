@@ -1708,7 +1708,16 @@ export class PiSessionService implements SessionRouteService {
    */
   // eslint-disable-next-line @typescript-eslint/require-await -- async so a rejected question set becomes a rejection rather than a synchronous throw from a promise-returning method.
   async openAsk(input: AskUserInvocation): Promise<PendingAskOpenResult> {
-    const result = this.pendingAskStore.open(input);
+    // Snapshot what is already queued: those messages predate the questions,
+    // and only their delivery may void the form. A message sent while the form
+    // is on screen is an addition to the request, not a refusal of it.
+    const active = this.active.get(input.sessionId)?.runtime.session;
+    const queuedMessageTexts = active === undefined ? [] : [
+      ...active.getSteeringMessages(),
+      ...active.getFollowUpMessages(),
+      ...(this.compactionPromptQueues.get(input.sessionId) ?? []).map((prompt) => prompt.text),
+    ];
+    const result = this.pendingAskStore.open({ ...input, queuedMessageTexts });
     // A supersede closes the earlier ask, so the browsers watching it must hear
     // that before they hear about its replacement.
     if (result.superseded !== undefined) this.publishAskClosed(input.sessionId, result.superseded);
@@ -1796,8 +1805,10 @@ export class PiSessionService implements SessionRouteService {
    * questions that were still sitting on their screen (observed 2026-08-24,
    * ask posted at 16:25:45.991, queued message delivered at 16:25:45.997).
    */
-  private async voidOpenAskForDeliveredMessage(session: PiAgentSession): Promise<void> {
+  private async voidOpenAskForDeliveredMessage(session: PiAgentSession, event: unknown): Promise<void> {
     if (this.pendingAskStore.pendingAsk(session.sessionId) === undefined) return;
+    const { text } = committedMessageShape(getProperty(getProperty(event, "message"), "content"));
+    if (!this.pendingAskStore.claimPreAskDelivery(session.sessionId, text)) return;
     await this.voidOpenAskForUserMessage(session);
   }
 
@@ -4197,7 +4208,7 @@ export class PiSessionService implements SessionRouteService {
       this.publishActivityForEvent(session, event);
       const eventType = getString(event, "type");
       if (eventType === "agent_end") this.abortRunScopedExtensionDialogs(session.sessionId);
-      if (isDeliveredUserMessageEvent(event)) void this.voidOpenAskForDeliveredMessage(session);
+      if (isDeliveredUserMessageEvent(event)) void this.voidOpenAskForDeliveredMessage(session, event);
       if (eventType === "compaction_end") this.scheduleCompactionQueueDrain(session.sessionId);
       if (eventType === "agent_start" || eventType === "agent_end") this.scheduleCompactionQueueDrain(session.sessionId);
       // A /reload issued mid-turn waits here. agent_end can fire while the turn
