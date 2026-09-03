@@ -73,4 +73,34 @@ describe("a prompt parked by a compaction", () => {
       queuedMessages: [{ clientMessageId: "c-empty" }],
     });
   });
+
+  /**
+   * The delivery decision is re-made when the queue drains, not when the
+   * message was parked: a follow-up handed to a runtime that has gone idle is
+   * parked where nothing would drain it, so it must go out as a direct send.
+   * Only a service-level assertion has teeth here - the predicate's own tests
+   * stayed green while the wiring was missing.
+   */
+  it("drains a parked follow-up as a direct send once the runtime is idle", async () => {
+    const { fake, service } = compactingService("compaction-drain-idle");
+
+    await service.prompt(sessionRef("compaction-drain-idle"), "hello", "followUp", undefined, { clientMessageId: "c-1" });
+    fake.session.isCompacting = false;
+    fake.emit({ type: "compaction_end" });
+    await vi.waitFor(() => { expect(fake.calls.prompt.length).toBe(1); });
+
+    expect(fake.calls.prompt[0]?.options).toBeUndefined();
+  });
+
+  it("keeps a parked follow-up queued when the runtime is busy again at drain time", async () => {
+    const { fake, service } = compactingService("compaction-drain-busy");
+
+    await service.prompt(sessionRef("compaction-drain-busy"), "hello", "followUp", undefined, { clientMessageId: "c-1" });
+    fake.session.isCompacting = false;
+    fake.session.isStreaming = true;
+    fake.emit({ type: "compaction_end" });
+    await vi.waitFor(() => { expect(fake.calls.prompt.length).toBe(1); });
+
+    expect(fake.calls.prompt[0]?.options).toMatchObject({ streamingBehavior: "followUp" });
+  });
 });

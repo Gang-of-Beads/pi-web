@@ -40,7 +40,8 @@ import type { SessionStateBadgeKind } from "./activityBadge";
 import "./AskUserCard";
 import "./ExtensionDialogCard";
 import type { ExtensionDialogAnswerCallback, ExtensionDialogCancelCallback, ExtensionDialogDismissCallback } from "./ExtensionDialogCard";
-import { deliveryTaken, splitTranscriptAndPending } from "../messageDelivery";
+import { deliveryTaken } from "../messageDelivery";
+import { queuedUserLine, registerUserMessages } from "../userMessageRegister";
 import { registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
 import "./ConversationMeter";
 import "./FormattedText";
@@ -48,6 +49,9 @@ import "./ToolExecutionView";
 import { sessionStateBadgeStyles as SessionStateBadgeStyles } from "./sessionStateBadgeStyles";
 import { readingAnchorDecision, readingScrollCorrection, shouldHoldReadingPosition } from "../readingAnchor";
 import { imageLoadScrollCorrection } from "../imageLoadScroll";
+import { bottomAnchorAction } from "../bottomAnchor";
+import { subagentRunStatusExplanation, subagentRunStatusLabel } from "../subagentRunStatusLabel";
+import { activityEmptyMeaning } from "../activityEmptyMeaning";
 import { pluginSurfaceVisibility } from "../pluginSurfaceVisibility";
 
 export const chatStyles = css`
@@ -470,7 +474,6 @@ export const chatStyles = css`
   .command-dismiss { flex: 0 0 auto; align-self: center; width: 24px; height: 24px; display: grid; place-items: center; padding: 0; border: 1px solid transparent; border-radius: var(--pi-radius-sm); background: transparent; color: inherit; font: inherit; font-size: var(--pi-text-sm); line-height: 1; cursor: pointer; }
   .command-dismiss:focus-visible { outline: var(--pi-focus-ring-width) solid currentColor; outline-offset: var(--pi-focus-ring-offset); }
   @media (hover: hover) { .command-dismiss:hover { border-color: currentColor; } }
-  .queued-strip-count { flex: 1 1 auto; min-width: 0; }
   .queued-clear-button { flex: 0 0 auto; border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-warning); padding: var(--pi-space-1) var(--pi-space-3); font: inherit; cursor: pointer; }
   .queued-clear-button:focus { border-color: var(--pi-warning); color: var(--pi-text-bright); }
   @media (hover: hover) { .queued-clear-button:hover { border-color: var(--pi-warning); color: var(--pi-text-bright); } }
@@ -498,11 +501,14 @@ export const chatStyles = css`
   @media (hover: hover) { .empty-session button:hover { border-color: var(--pi-accent); } }
   @media (pointer: coarse) { .empty-session button { min-height: var(--pi-control-height-touch); } }
   .msg-header { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-5); min-height: 18px; margin-bottom: var(--pi-space-3); }
-  /* The negative margin pulls this flush with the card's inner edge, so it has
-     to round by the card's radius, not a smaller one: the card is 12px and the
-     card does not clip, so an 8px header left a visible 4px notch at each top
-     corner - the "broken corners" the owner reported. */
-  .msg > .msg-header { position: sticky; top: -16px; z-index: 4; margin: -12px -12px var(--pi-space-3); padding: var(--pi-space-1) var(--pi-space-5); border-radius: var(--pi-radius-lg) var(--pi-radius-lg) 0 0; border-bottom: 1px solid color-mix(in srgb, var(--pi-border-muted) 35%, transparent); background: var(--pi-surface); box-shadow: 0 8px 18px var(--pi-shadow-soft); }
+  /* The negative margin pulls this flush with the card's inner edge, which is
+     inside the 1px border, where the radius is one pixel smaller than the
+     card's own. Rounding by the card's radius here leaves a sliver of card
+     showing at each top corner - the "broken corners", reported twice, because
+     the first fix matched the padding to the radius and did not account for
+     the border. --pi-card-inner-radius carries that subtraction so a reader of
+     either rule sees the relationship. */
+  .msg > .msg-header { position: sticky; top: -16px; z-index: 4; margin: calc(-1 * var(--pi-space-6)) calc(-1 * var(--pi-space-6)) var(--pi-space-3); padding: var(--pi-space-1) var(--pi-space-5); border-radius: var(--pi-card-inner-radius) var(--pi-card-inner-radius) 0 0; border-bottom: 1px solid color-mix(in srgb, var(--pi-border-muted) 35%, transparent); background: var(--pi-surface); box-shadow: 0 8px 18px var(--pi-shadow-soft); }
   .msg.user > .msg-header { border-bottom-color: color-mix(in srgb, var(--pi-accent-border) 35%, transparent); background: var(--pi-selection-bg); }
   .msg.assistant > .msg-header .label, .msg.tool-image-output > .msg-header .label { color: var(--pi-text-secondary); }
   .msg.user > .msg-header .label { color: var(--pi-accent); }
@@ -627,14 +633,21 @@ export function chatDeliveryMarkerVisible(delivery: MessageDelivery | undefined)
   return delivery !== undefined && !deliveryTaken(delivery.state);
 }
 
-export function chatDeliveryPresentation(delivery: MessageDelivery): DeliveryPresentation {
+export function chatDeliveryPresentation(delivery: MessageDelivery, queuePosition?: number): DeliveryPresentation {
   if (delivery.state === "sending") return { glyph: "◌", text: "Sending", label: "Sending", tone: "pending" };
   if (delivery.state === "failed") return { glyph: "!", text: "Not sent", label: "Not sent - the server never received this message", tone: "failed" };
   if (delivery.state === "queued") {
+    // The position is the count: it used to be shown a second time, in a
+    // separate strip, reading from a different fact and disagreeing with this.
     const lane = delivery.kind === "steer" ? "Queued to steer" : "Queued";
-    return { glyph: "✓", text: lane, label: `${lane} - the server has this message and the agent will take it next`, tone: "received" };
+    const place = queuePosition === undefined ? "" : ` · ${String(queuePosition)}`;
+    return { glyph: "✓", text: `${lane}${place}`, label: `${lane} - the server has this message and the agent will take it next`, tone: "received" };
   }
-  if (delivery.state === "received") return { glyph: "✓", text: "Sent", label: "Sent - the server received this message", tone: "received" };
+  // "Sent" is a transport receipt and nothing more: the server's HTTP answer
+  // arrived. It is not a promise that anything will happen, and a message can
+  // sit here while the session is idle. Saying "Sent" and meaning "queued" is
+  // what made a stalled message indistinguishable from a running one.
+  if (delivery.state === "received") return { glyph: "✓", text: "Sent", label: "Sent - the server received this message, and has not yet said what it is doing with it", tone: "received" };
   return { glyph: "✓✓", text: "Read", label: "Read - the agent took this message into the conversation", tone: "delivered" };
 }
 
@@ -821,6 +834,14 @@ export class ChatView extends LitElement {
       count is a claim about this workspace, so it only shows when the state
       behind it is keyed to the current selection (in flight, failed, and
       stale-keyed reads all render the bare name instead). */
+  /**
+   * Re-read the goal records.
+   *
+   * The drawer's panel was given no way to do this, so its refresh control did
+   * nothing: a slot that had not been read had no route back, on the surface a
+   * phone actually uses.
+   */
+  @property({ attribute: false }) onRefreshGoals?: () => void;
   @property({ attribute: false }) onRunGoalCommand?: (goal: GoalRecordSummary, command: string) => void | Promise<void>;
   @state() private topDrawerTab: TopDrawerTab | undefined;
   /** Which kinds of activity to list; "all" until the reader narrows it. */
@@ -909,7 +930,14 @@ export class ChatView extends LitElement {
 
   /** The scroller's height as of the last render, so a lazy image can report
    *  how much it grew the document rather than have it re-measured after. */
+  /** The scroller's height as of the last completed render.
+   *
+   *  One writer only, in updated(): a second writer earlier in the same cycle
+   *  recorded the new height before growth could be noticed, which silently
+   *  disabled the bottom hold. A lazy image reads it to report how much it grew
+   *  the document since that render. */
   private lastScrollHeight: number | undefined;
+  private heightAtLastBottomHold: number | undefined;
   private readonly openImageZoom = (src: string, alt: string): void => {
     this.zoomedImage = { src, alt };
   };
@@ -1047,7 +1075,6 @@ export class ChatView extends LitElement {
       ? this.captureReadingAnchor()
       : undefined;
     super.update(changed);
-    if (this.chat) this.lastScrollHeight = this.chat.scrollHeight;
     if (prependAnchor !== undefined) this.restorePrependScrollAnchor(prependAnchor);
     if (readingAnchor !== undefined) this.restoreReadingAnchor(readingAnchor);
   }
@@ -1069,6 +1096,7 @@ export class ChatView extends LitElement {
   }
 
   protected override updated(changed: Map<string, unknown>): void {
+    this.holdBottomEdge();
     if (changed.has("loadingMore") && !this.loadingMore) this.loadMoreRequested = false;
     if (changed.has("hasMore") && !this.hasMore) this.loadMoreRequested = false;
     if (changed.has("sessionId")) this.restoreScrollPosition();
@@ -1442,6 +1470,7 @@ export class ChatView extends LitElement {
                 ?canRunCommands=${true}
                 .commandInFlight=${this.goalCommandInFlight}
                 .onRunCommand=${(goal: GoalRecordSummary, command: string) => this.onRunGoalCommand?.(goal, command)}
+                .onRefresh=${() => this.onRefreshGoals?.()}
               ></goal-panel>
             </div>
           ` : null}
@@ -1667,7 +1696,7 @@ export class ChatView extends LitElement {
       <div class="subagents-list" id="session-activity-list" role="tabpanel" aria-labelledby="drawer-tab-activity">
           ${this.renderActivityFilters(activity, filter)}
           ${(scope === "empty-active" && entries.length === 0)
-            ? html`<p class="activity-empty">Nothing running right now.</p>`
+            ? html`<p class="activity-empty">${activityEmptyMeaning({ isStreaming: this.status?.isStreaming ?? false, isBashRunning: this.status?.isBashRunning ?? false }).text}</p>`
             : null}
           ${repeat(entries, activityEntryKey, (entry) => this.renderActivityEntry(entry))}
           ${finished === 0 ? null : html`
@@ -1980,8 +2009,34 @@ export class ChatView extends LitElement {
     return this.transcriptSplit().settled;
   }
 
+  /**
+   * Every user message, once.
+   *
+   * The settled transcript, the bubbles this browser is still sending, and the
+   * queue the daemon reports are three descriptions of one population. They
+   * used to be reconciled pairwise, so any disagreement produced a second row -
+   * the duplicate reported through ten separate fixes. They are now collected
+   * into one register keyed by message identity, where a key holds one row by
+   * construction. Settled and pending are two slices of that single population
+   * rather than two lists that have to agree with each other.
+   */
   private transcriptSplit(): { settled: ChatLine[]; pending: ChatLine[] } {
-    return splitTranscriptAndPending(this.messages, [...this.clientQueuedMessages, ...(this.status?.queuedMessages ?? [])]);
+    const rows = registerUserMessages({
+      transcript: this.messages,
+      optimistic: this.clientQueuedMessages.map((message, position) => queuedUserLine(message, position)),
+      queued: this.status?.queuedMessages ?? [],
+      synthesise: (message, position) => queuedUserLine(message, position),
+    });
+    // Settled rows go back to their transcript positions; a sparse slot means
+    // that message is pending, so the holes are closed rather than filled.
+    const byPosition = new Map<number, ChatLine>();
+    const pending: ChatLine[] = [];
+    for (const row of rows) {
+      if (row.state !== "settled") pending.push(row.line);
+      else if (row.transcriptIndex !== undefined) byPosition.set(row.transcriptIndex, row.line);
+    }
+    const settled = [...byPosition.entries()].sort((a, b) => a[0] - b[0]).map(([, line]) => line);
+    return { settled, pending };
   }
 
   /**
@@ -2162,7 +2217,11 @@ export class ChatView extends LitElement {
   private renderDeliveryMark(message: ChatLine) {
     const delivery = message.meta?.delivery;
     if (!chatDeliveryMarkerVisible(delivery) || delivery === undefined) return null;
-    const presentation = chatDeliveryPresentation(delivery);
+    // Where this message sits in the server's queue, so the card carries its own
+    // count instead of a second surface counting them all again.
+    const queued = this.status?.queuedMessages ?? [];
+    const index = queued.findIndex((entry) => entry.clientMessageId === delivery.clientMessageId);
+    const presentation = chatDeliveryPresentation(delivery, index === -1 ? undefined : index + 1);
     return html`
       <div class=${`delivery-mark ${presentation.tone}`} role="status" aria-label=${presentation.label}>
         <span class="delivery-glyph" aria-hidden="true">${presentation.glyph}</span>
@@ -2220,14 +2279,17 @@ export class ChatView extends LitElement {
     // thing a panel could add is a second listing of the same text. One action
     // still needs a home: clearing the whole server queue without stopping the
     // work it is waiting behind. A slim strip carries that, nothing more.
+    // The cards above are the queue: each one is gold, says its own state, and
+    // carries its own Recall. Counting them again here was a second listing of
+    // what the reader can already see, in a second visual language, and the two
+    // read from different facts and disagreed. Only the action that has no
+    // other home is left - clearing the whole server queue without stopping the
+    // work it waits behind.
     const serverQueued = this.status?.queuedMessages ?? [];
-    if (serverQueued.length === 0) return null;
+    if (serverQueued.length === 0 || this.onClearServerQueue === undefined) return null;
     return html`
-      <div class="queued-strip" aria-live="polite">
-        <span class="queued-strip-count">${String(serverQueued.length)} queued</span>
-        ${this.onClearServerQueue === undefined ? null : html`
-          <button type="button" class="queued-clear-button" title="Clear queued messages without stopping active work" @click=${() => { this.onClearServerQueue?.(serverQueued); }}>Clear queue</button>
-        `}
+      <div class="queued-strip">
+        <button type="button" class="queued-clear-button" title="Clear queued messages without stopping active work" @click=${() => { this.onClearServerQueue?.(serverQueued); }}>Clear queue</button>
       </div>
     `;
   }
@@ -2880,6 +2942,26 @@ export class ChatView extends LitElement {
     return chat !== undefined && chat.scrollTop > 0;
   }
 
+  private holdBottomEdge(): void {
+    const chat = this.chat;
+    if (chat === undefined) return;
+    const currentHeight = chat.scrollHeight;
+    const action = bottomAnchorAction({
+      pinnedToBottom: this.pinnedToBottom,
+      readerHoldsGround: this.followGate.holdsOrSettling(Date.now()),
+      userScrolling: this.userScrollInFlight,
+      previousHeight: this.heightAtLastBottomHold,
+      currentHeight,
+    });
+    this.heightAtLastBottomHold = currentHeight;
+    if (action !== "hold-bottom") return;
+    this.withSuppressedScrollSave(() => {
+      chat.scrollTop = chat.scrollHeight;
+      this.lastScrollTop = chat.scrollTop;
+      this.lastClientHeight = chat.clientHeight;
+    });
+  }
+
   private scrollToBottom() {
     if (this.scrollToBottomFrame !== undefined) return;
     this.scrollToBottomFrame = requestAnimationFrame(() => {
@@ -3131,6 +3213,7 @@ export interface SubagentRunRow {
   run: SessionSubagentRunInfo;
   status: SessionSubagentRunInfo["status"];
   statusLabel: string;
+  statusExplanation: string;
   duration: string;
   detail: string;
   /** Model and thinking level, when the run recorded what it ran on. */
@@ -3146,7 +3229,8 @@ export interface SubagentRunRow {
  */
 export function subagentRunRows(runs: readonly SessionSubagentRunInfo[]): SubagentRunRow[] {
   return runs.map((run) => {
-    const statusLabel = run.status === "running" ? "Running" : run.status === "done" ? "Done" : run.status === "failed" ? "Failed" : run.status === "lost" ? "Lost" : "Unknown";
+    const statusLabel = subagentRunStatusLabel(run.status);
+    const statusExplanation = subagentRunStatusExplanation(run.status);
     const duration = subagentRunDuration(run.elapsedMs);
     const detail = run.status === "running" ? run.lastActivity ?? "working" : run.task ?? "";
     const model = describeRunModel(run.model);
@@ -3156,6 +3240,7 @@ export function subagentRunRows(runs: readonly SessionSubagentRunInfo[]): Subage
       // failing; it is reported as what it is.
       status: run.status,
       statusLabel,
+      statusExplanation,
       duration,
       detail,
       ...(model === undefined ? {} : { modelLabel: model.label, modelTitle: run.model ?? model.label }),

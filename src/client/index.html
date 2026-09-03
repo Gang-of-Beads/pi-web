@@ -52,6 +52,10 @@
         --pi-radius-sm: 6px;
         --pi-radius-md: 8px;
         --pi-radius-lg: 12px;
+      /* Inside a 1px-bordered card the corner is one pixel tighter; a child
+         pulled flush with the padding edge must round by this, not by
+         --pi-radius-lg, or a sliver of the card shows at each corner. */
+      --pi-card-inner-radius: calc(12px - 1px);
         --pi-radius-xl: 16px;
         --pi-radius-pill: 999px;
 

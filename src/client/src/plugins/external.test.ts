@@ -19,7 +19,7 @@ describe("external plugin manifests", () => {
 
     await expect(loadExternalPlugins()).resolves.toEqual({ registrations: [], failures: [] });
 
-    expect(fetchMock).toHaveBeenCalledWith("https://pi.example.test/pi-web-plugins/manifest.json", { cache: "no-store" });
+    expect(fetchMock).toHaveBeenCalledWith("https://pi.example.test/pi-web-plugins/manifest.json", expect.objectContaining({ cache: "no-store" }));
   });
 
   it("loads manifest-relative modules from a nested deployment", async () => {
@@ -34,7 +34,7 @@ describe("external plugin manifests", () => {
 
     const result = await loadExternalPlugins(manifestUrl, { moduleLoader });
 
-    expect(fetchMock).toHaveBeenCalledWith(manifestUrl, { cache: "no-store" });
+    expect(fetchMock).toHaveBeenCalledWith(manifestUrl, expect.objectContaining({ cache: "no-store" }));
     expect(moduleLoader).toHaveBeenCalledWith("https://pi.example.test/test/ai/pi-web-plugins/info/pi-web-plugin.js?v=1");
     expect(result.failures).toEqual([]);
     expect(result.registrations).toMatchObject([{ id: "info", backendRevision: "server-r1", machineSpecific: false, plugin: { apiVersion: 2, name: "Info" } }]);

@@ -17,7 +17,7 @@ import { rememberWorkspaceSessions, cachedSessionsFor } from "../workspaceSessio
 import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
 import { clearAskDraft } from "../askDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
-import { applyQueueToDelivery, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery } from "../messageDelivery";
+import { findDeliveryLineIndex, applyQueueToDelivery, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery } from "../messageDelivery";
 import { isNetworkFailure, NetworkSendError } from "../pendingOutbox";
 import type { MessageDeliveryState } from "../components/shared";
 import { isShellInput } from "../inputModes";
@@ -25,11 +25,14 @@ import { fileCompletionInsertText } from "../promptCompletions";
 import { SessionSocket, parseSessionSocketEvent, type GlobalSessionEvent, type SessionUiEvent } from "../sessionSocket";
 import { isArchivableSessionInfo, isTransientNewSessionInfo } from "../sessionPersistence";
 import { transcriptLoadingAfter } from "../transcriptLoadingOwnership";
+import { classifySubmission, handleOutcome } from "../messageLifecycle";
+import { isRequestTimeout } from "../api/requestDeadline";
 import { isSessionActive } from "../../../shared/activity";
 import type { PromptAttachmentDelivery, SessionNotificationInboxEvent, SessionStartupProgressEvent } from "../../../shared/apiTypes";
 import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchived, selectPreferredSession, selectionAfterArchivingSession, selectionAfterArchivingSessions, shouldDeselectAfterArchivedCollapse, type SessionSelectionMemory } from "./sessionSelection";
 import { selectedMachineId, type GetState, type SetState, type UpdateUrl } from "./types";
 import { TrailingRefreshCoordinator } from "./trailingRefreshCoordinator";
+import { backgroundRunCountChanged } from "../backgroundRunCountSignal";
 
 const MESSAGE_PAGE_SIZE = 100;
 
@@ -46,21 +49,29 @@ const MESSAGE_PAGE_SIZE = 100;
  */
 const PENDING_FLUSH_DEADLINE_MS = 100;
 
+/**
+ * Every way this socket reports back, named and required.
+ *
+ * These were five optional positional parameters. A caller that skipped one got
+ * silence rather than an error, and no search could prove a handler was wired -
+ * which is how the activity list came to be refreshed by nothing at all.
+ * Required fields make an omission a compile error.
+ */
+export interface SessionSocketHandlers {
+  onEvent: (event: SessionUiEvent) => void;
+  onReconnect: () => void;
+  onInitialOpen: () => void;
+  /** A revisioned frame failed validation: a lost transition, needs resync. */
+  onMalformed: (frameType: string) => void;
+  /** The seq monitor saw a jump; `lastSeen` is the watermark before it. */
+  onGap: (lastSeen: number) => void;
+}
+
 export interface SessionEventSocket {
   /** Optional: implementations that own a real connection verify it here. */
   checkLiveness?(): void;
   reconnectNow?(): void;
-  connect(
-    session: SessionRef,
-    onEvent: (event: SessionUiEvent) => void,
-    onReconnect?: () => void,
-    machineId?: string,
-    onInitialOpen?: () => void,
-    /** A revisioned frame failed validation: a lost transition, needs resync. */
-    onMalformed?: (frameType: string) => void,
-    /** The seq monitor saw a jump; `lastSeen` is the watermark before it. */
-    onGap?: (lastSeen: number) => void,
-  ): void;
+  connect(session: SessionRef, machineId: string, handlers: SessionSocketHandlers): void;
   setHandler(onEvent: (event: SessionUiEvent) => void): void;
   close(): void;
 }
@@ -371,22 +382,16 @@ export class SessionController {
         },
         resync: () => { void this.refreshSelectedSession(session.id); },
       });
-      this.socket.connect(
-        session,
-        (event) => socketBuffer.push(event),
-        () => { void this.refreshSelectedSession(session.id); },
-        machineId,
-        () => { void this.notifications?.refreshSelectedSession(session, machineId); },
-        // A frame that failed validation on a revisioned surface is a lost
-        // transition. The ask and dialog surfaces repair through the same
-        // coalesced status resync as a skipped revision; the inbox repairs
-        // through its own snapshot read.
-        (frameType: string) => {
+      this.socket.connect(session, machineId, {
+        onEvent: (event) => socketBuffer.push(event),
+        onReconnect: () => { void this.refreshSelectedSession(session.id); },
+        onInitialOpen: () => { void this.notifications?.refreshSelectedSession(session, machineId); },
+        onMalformed: (frameType: string) => {
           if (frameType === "notifications.inbox") void this.notifications?.refreshSelectedSession(session, machineId);
           else this.dialogScope.requestResync();
         },
-        (lastSeen: number) => { void this.gapRepair?.onGap(lastSeen); },
-      );
+        onGap: (lastSeen: number) => { void this.gapRepair?.onGap(lastSeen); },
+      });
       await this.requestSelectedSessionRefresh({ session, machineId, selectionSeq: seq });
       if (!this.isCurrentRefreshTarget({ session, machineId, selectionSeq: seq })) return;
       void this.refreshAvailableThinkingLevels();
@@ -564,13 +569,14 @@ export class SessionController {
   private async deliverPromptToSession(session: SessionInfo, text: string, streamingBehavior: "steer" | "followUp" | undefined, attachments: PromptAttachment[] | undefined, delivery: PromptAttachmentDelivery, machineId: string, options: { markSending: boolean; replayClientMessageId?: string }): Promise<boolean> {
     const hasAttachments = attachments !== undefined && attachments.length > 0;
     if (options.markSending) this.markSendingPrompt(session.id, true);
-    // A retry from the outbox re-uses the id the failed bubble already carries,
-    // so the bubble that reads "Not sent" is the one that comes to life again.
-    // Minting a fresh id for the retry would leave the old bubble behind and
-    // show the message twice once the retry landed.
-    const clientMessageId = options.replayClientMessageId ?? this.beginTrackedSend(session, text, attachments ?? []);
-    if (options.replayClientMessageId !== undefined) {
-      this.setState({ messages: restartDelivery(this.getState().messages, options.replayClientMessageId) });
+    // One message carries one id for its whole life. The sender mints it before
+    // the first attempt, writes it to the outbox under that id, and hands it
+    // here, so a retry revives the bubble that reads "Not sent" instead of
+    // adding a second row beside it. An id that already has a row is a replay;
+    // one that does not is this message's first attempt and needs the row.
+    const clientMessageId = this.beginTrackedSend(session, text, attachments ?? [], options.replayClientMessageId);
+    if (clientMessageId !== undefined) {
+      this.setState({ messages: restartDelivery(this.getState().messages, clientMessageId) });
     }
     try {
       if (hasAttachments && delivery === "folder") {
@@ -586,17 +592,21 @@ export class SessionController {
       return true;
     } catch (error) {
       this.setState(errorNoticePatch(error));
-      // A dropped connection keeps the bubble and its "Not sent" mark: the
-      // outbox owns the retry and will revive this same bubble, so the message
-      // stays in exactly one place the whole time. The error travels with the
-      // id so the outbox knows which bubble it is. Other failures hand the
-      // text back to the composer, where a stale "Not sent" bubble would sit
-      // above the restored draft claiming the send never went.
-      if (isNetworkFailure(error)) {
+      // Three outcomes, not two. A dropped connection and an unanswered request
+      // are the same thing to the sender: nobody said what happened, so the
+      // message may well exist on the daemon. Both keep the bubble, keep the
+      // words out of the composer, and leave the entry for the outbox to retry.
+      // Only a definite refusal takes the row away and hands the text back.
+      //
+      // Collapsing unanswered into refused is what deleted a message the daemon
+      // had already accepted, and then offered the same words for sending again.
+      const outcome = classifySubmission(error, (value) => !isNetworkFailure(value) && !isRequestTimeout(value));
+      const handling = handleOutcome(outcome);
+      if (handling.keepInOutbox) {
         if (clientMessageId !== undefined) this.markDelivery(session.id, clientMessageId, "failed");
         throw new NetworkSendError(String(error), clientMessageId, { cause: error });
       }
-      if (clientMessageId !== undefined) this.setState({ messages: removeDeliveryLine(this.getState().messages, clientMessageId) });
+      if (!handling.keepRow && clientMessageId !== undefined) this.setState({ messages: removeDeliveryLine(this.getState().messages, clientMessageId) });
       return false;
     } finally {
       if (options.markSending) this.markSendingPrompt(session.id, false);
@@ -608,10 +618,11 @@ export class SessionController {
    * Only the session on screen gets a bubble: a send to a background session
    * has nothing to attach a mark to, and the id would never be resolved.
    */
-  private beginTrackedSend(session: SessionInfo, text: string, attachments: readonly PromptAttachment[] = []): string | undefined {
-    if (text.trim() === "" && attachments.length === 0) return undefined;
-    if (this.getState().selectedSession?.id !== session.id) return undefined;
-    const clientMessageId = newClientMessageId();
+  private beginTrackedSend(session: SessionInfo, text: string, attachments: readonly PromptAttachment[] = [], suppliedId?: string): string | undefined {
+    if (text.trim() === "" && attachments.length === 0) return suppliedId;
+    if (this.getState().selectedSession?.id !== session.id) return suppliedId;
+    const clientMessageId = suppliedId ?? newClientMessageId();
+    if (findDeliveryLineIndex(this.getState().messages, clientMessageId) !== -1) return clientMessageId;
     this.setState({ messages: [...this.getState().messages, optimisticUserLine(text, clientMessageId, attachments)] });
     return clientMessageId;
   }
@@ -1902,8 +1913,11 @@ export class SessionController {
     // task list can have changed — the strip refetches on demand instead of on
     // a timer. The count is per session; a change for any open session fires
     // once, and the same count again fires nothing.
-    const previousCount = state.sessionStatuses[status.sessionId]?.backgroundRunCount;
-    if (status.backgroundRunCount !== undefined && status.backgroundRunCount !== previousCount) {
+    if (backgroundRunCountChanged({
+      hadPreviousStatus: state.sessionStatuses[status.sessionId] !== undefined,
+      previousCount: state.sessionStatuses[status.sessionId]?.backgroundRunCount,
+      currentCount: status.backgroundRunCount,
+    })) {
       this.onBackgroundRunCountChanged?.(status.sessionId);
     }
     this.setState({
@@ -2227,12 +2241,13 @@ export class SessionController {
     const backendSessionId = pending.backendSessionId;
     if (backendSessionId === undefined || pending.discarded) return;
     const ref: SessionRef = { id: backendSessionId, cwd: pending.cwd };
-    this.socket.connect(
-      ref,
-      (event) => { this.applyPendingStartEvent(pending, event); },
-      () => { this.resyncPendingStartDialogs(pending); },
-      pending.machineId,
-    );
+    this.socket.connect(ref, pending.machineId, {
+      onEvent: (event) => { this.applyPendingStartEvent(pending, event); },
+      onReconnect: () => { this.resyncPendingStartDialogs(pending); },
+      onInitialOpen: () => { this.resyncPendingStartDialogs(pending); },
+      onMalformed: () => { this.resyncPendingStartDialogs(pending); },
+      onGap: () => { this.resyncPendingStartDialogs(pending); },
+    });
     this.resyncPendingStartDialogs(pending);
   }
 

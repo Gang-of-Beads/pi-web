@@ -2,6 +2,7 @@ import { LitElement, css, html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import type { QualifiedContributionId, QualifiedThemeContribution, ThemeTokens } from "../../plugins/types";
 import { interactiveSurfaceStyles } from "../shared";
+import { themeCardSuffix } from "../../themeCardLabel";
 
 /**
  * Choosing how the app looks, where looking for it makes sense.
@@ -73,7 +74,7 @@ export class SettingsAppearancePanel extends LitElement {
       >
         ${this.renderPreview(theme.tokens)}
         <span class="theme-name">${theme.name}</span>
-        <span class="theme-scheme muted">${theme.colorScheme === "light" ? "Light" : "Dark"}${active && !selected ? " · in use" : ""}</span>
+        <span class="theme-scheme muted">${theme.colorScheme === "light" ? "Light" : "Dark"}${themeCardSuffix({ selected, active, autoOverriding: selected && !active })}</span>
         ${theme.description === undefined ? nothing : html`<span class="theme-description muted">${theme.description}</span>`}
       </button>
     `;

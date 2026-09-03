@@ -106,8 +106,21 @@ export class GoalPanel extends LitElement {
     return goal.sourceRoot;
   }
 
+  /** A read is under way. Not the same as never having read. */
   private get isReading(): boolean {
-    return this.goalsLoad.state === "loading" || this.goalsLoad.state === "unloaded";
+    return this.goalsLoad.state === "loading";
+  }
+
+  /**
+   * Nothing has been read for this selection yet.
+   *
+   * Rendered as "Loading goals…" this was a lie with a trap in it: the refresh
+   * control was disabled in the same state, so the one action that would have
+   * started a read was unavailable exactly while nothing was reading. The panel
+   * sat there forever and the only way out was reloading the page.
+   */
+  private get isUnread(): boolean {
+    return this.goalsLoad.state === "unloaded";
   }
 
   private openGoalsLabel(): string {
@@ -140,6 +153,7 @@ export class GoalPanel extends LitElement {
     const line = this.goalsLoad.state === "failed"
       ? "Couldn't read goals from this workspace."
       : this.isReading ? "Loading goals…"
+      : this.isUnread ? "Goals have not been read yet."
       : "No goals recorded for this workspace.";
     return html`<p class="empty">${line}</p>`;
   }

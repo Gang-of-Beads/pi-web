@@ -93,6 +93,7 @@ import { createSpawnSessionToolDefinition, type SpawnSessionInvocation, type Spa
 import { createBackgroundRunCountCycle } from "./backgroundRunCount.js";
 import { BackgroundWorkWatcher } from "./backgroundWorkWatcher.js";
 import { listBackgroundTasks, readTaskOutput } from "./backgroundTasks.js";
+import { promptDeliveryBehavior, type QueuedPromptKind } from "./promptDelivery.js";
 import { findSubagentRunTranscript, listSubagentRuns, readSessionEntries, readSubagentRunOutput } from "./subagentRuns.js";
 import { createSubsessionToolDefinitions, type SpawnSubsessionInvocation, type SpawnSubsessionResult, type SubsessionCheckResult, type SubsessionReadQuery, type SubsessionReadResult, type SubsessionStatus, type SubsessionSummary, type SubsessionToolDeps } from "./spawnSubsessionTool.js";
 import { buildTranscriptView } from "./subsessionTranscript.js";
@@ -196,7 +197,7 @@ function refMatchesStartupSession(ref: PiSessionRef, session: PiAgentSession): b
   return cwdPathsEqual(session.sessionManager.getCwd(), ref.cwd);
 }
 
-type QueuedPromptKind = "steer" | "followUp";
+
 
 interface QueuedPrompt {
   kind: QueuedPromptKind;
@@ -2615,13 +2616,13 @@ export class PiSessionService implements SessionRouteService {
       this.publishStatus(session);
       return;
     }
-    if (isQueued && clientMessageId !== undefined) this.recordQueuedPromptClientId(session.sessionId, clientMessageId, promptText);
+    if (isQueued && clientMessageId !== undefined) this.recordQueuedPromptClientId(session.sessionId, clientMessageId, promptText, behavior);
     if (isQueued && images.length > 0) this.recordQueuedPromptImages(session.sessionId, promptText, images);
-    // A chat message answers the session's open ask in the user's own words, so
-    // the form is void: keeping it open would invite answers to questions the
-    // conversation has already moved past. Ignored duplicates skip this on
-    // purpose: they must not void an ask posted after the queued original.
-    await this.voidOpenAskForUserMessage(session);
+    // A chat message is not a refusal of the open questions. The card carries a
+    // Custom answer for every question, so a remark alongside the form - "and
+    // for gpt-5-mini too" - is an addition to the request, and closing the form
+    // on it threw away three questions the reader never withdrew and left the
+    // reply asking for answers they had been made unable to give.
     // D7: acceptance is a sequenced fact. The frame tells the client the
     // daemon owns this prompt now (sending → queued-server) and — because it
     // rides the per-session ring — a lost HTTP response or a lost frame is
@@ -2695,9 +2696,15 @@ export class PiSessionService implements SessionRouteService {
     return record?.images ?? [];
   }
 
-  private recordQueuedPromptClientId(sessionId: string, clientMessageId: string, text: string): void {
+  /**
+   * Remember which browser message a queued prompt came from, and which lane it
+   * went into. The lane matters because the status lists the queue lane by lane
+   * while submissions arrive interleaved, so correlating without it hands a
+   * steer the id of a follow-up.
+   */
+  private recordQueuedPromptClientId(sessionId: string, clientMessageId: string, text: string, kind?: string): void {
     const records = this.queuedPromptClientIds.get(sessionId) ?? [];
-    records.push({ clientMessageId, text });
+    records.push({ clientMessageId, text, ...(kind === undefined ? {} : { kind }) });
     this.queuedPromptClientIds.set(sessionId, records);
   }
 
@@ -2709,7 +2716,17 @@ export class PiSessionService implements SessionRouteService {
     // disappeared" (no optimistic bubble, no dock). The client dedupes an
     // identical user line when the queued message is later consumed.
     if (echoUserMessage) this.events.publish(session.sessionId, { type: "message.append", message: userMessage(text, images), echo: true, ...(clientMessageId === undefined ? {} : { clientMessageId }) });
-    const promptOptions = buildPromptOptions(behavior, images);
+    // The decision to queue was taken when the request arrived; the turn it was
+    // waiting behind can end in the time it takes to get here. Handing
+    // "followUp" to a runtime that has since gone idle parks the message in a
+    // queue with no turn-end left to drain it, so the sender sees "Sent", the
+    // session sees "idle", and nothing happens until some later turn picks it
+    // up - which is also how a message arrives out of order long afterwards.
+    const effectiveBehavior = promptDeliveryBehavior({
+      requestedBehavior: behavior,
+      busyAtSubmit: session.isStreaming || session.isCompacting,
+    });
+    const promptOptions = buildPromptOptions(effectiveBehavior, images);
     const promptPromise = this.runSessionEntryMutation(session, "send a prompt", () => session.prompt(text, promptOptions)).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       this.publishActivity(session, "error", "error", message);
@@ -3266,7 +3283,8 @@ export class PiSessionService implements SessionRouteService {
           // as bare text is how someone else's recall used to strip your
           // screenshot out of a message you had already sent.
           const images = this.takeQueuedPromptImages(session.sessionId, text);
-          await session.prompt(text, buildPromptOptions(lane.kind, images));
+          const behavior = promptDeliveryBehavior({ requestedBehavior: lane.kind, busyAtSubmit: session.isStreaming || session.isCompacting });
+          await session.prompt(text, buildPromptOptions(behavior, images));
           if (images.length > 0) this.recordQueuedPromptImages(session.sessionId, text, images);
         }
       }
@@ -4421,8 +4439,16 @@ export class PiSessionService implements SessionRouteService {
       }, 250);
       return;
     }
-    if (eventType === "turn_end") { this.publishActivity(session, "turn complete", "idle"); return; }
-    if (eventType === "turn_start") { this.publishActivity(session, "turn in progress", "active"); return; }
+    if (eventType === "turn_end") {
+      this.publishActivity(session, "turn complete", "idle");
+      this.publishStatus(session);
+      return;
+    }
+    if (eventType === "turn_start") {
+      this.publishActivity(session, "turn in progress", "active");
+      this.publishStatus(session);
+      return;
+    }
     if (eventType === "message_start") { this.publishActivity(session, "message started", "active"); return; }
     if (eventType === "message_end") { this.publishActivity(session, "message complete", "idle"); return; }
     if (eventType === "message_update") { this.publishActivity(session, "receiving response", "active"); return; }

@@ -316,6 +316,10 @@ export class PiWebApp extends LitElement {
       // /goal-resume, a completed task), and nothing else tells this browser:
       // the panel showed PAUSED 9/10 for a goal that was active.
       onSelectedSessionIdle: () => { void this.workspaces.refreshWorkspaceGoals(); },
+      onBackgroundRunCountChanged: (sessionId: string) => {
+        if (this.state.selectedSession?.id !== sessionId) return;
+        void this.refreshSubagents();
+      },
       onSelectedSessionReady: ({ machineId, session }) => {
         void this.commitReadyChatAfterRender(machineId, session);
         void this.refreshSelfUpdate();
@@ -1203,7 +1207,16 @@ export class PiWebApp extends LitElement {
         if (updateUrl) this.updateUrl();
         return;
       }
-      const project = this.state.projects.find((p) => p.id === route.projectId);
+      // A project missing from the loaded list is not a project that does not
+      // exist: on a reload the route is restored before the list has arrived,
+      // and giving up here is what dropped the reader on "Select or start a
+      // session" after switching sessions and refreshing. Ask for the list
+      // before concluding anything.
+      let project = this.state.projects.find((p) => p.id === route.projectId);
+      if (!project) {
+        project = await this.locateRouteProject(route.projectId);
+        if (!this.isCurrentRouteRestore(restoreSeq)) return;
+      }
       if (!project) {
         this.setState({ selectedFilePath: undefined, selectedTerminalId: undefined });
         if (updateUrl) this.updateUrl();
@@ -2180,6 +2193,30 @@ export class PiWebApp extends LitElement {
    */
   private applyRenameToQuickSwitcher(sessionId: string, name: string): void {
     this.quickSwitcherSessions = renameSessionInList(this.quickSwitcherSessions, sessionId, name);
+  }
+
+  /**
+   * Find the project a restored route names, when the loaded list does not have
+   * it yet.
+   *
+   * On a reload the route is restored before the project list has arrived, so
+   * looking only at what is loaded concludes the project does not exist and
+   * drops the reader on "Select or start a session" - having just refreshed a
+   * session they were reading. An unloaded list is not evidence of absence.
+   *
+   * Returns undefined only when the read succeeded and the project genuinely is
+   * not there. A failed read answers undefined too, and the caller treats that
+   * as "cannot tell" by leaving the selection alone rather than clearing it.
+   */
+  private async locateRouteProject(projectId: string): Promise<Project | undefined> {
+    try {
+      const projects = await projectsApi.projects(selectedMachineId(this.state));
+      const found = projects.find((candidate) => candidate.id === projectId);
+      if (found !== undefined) this.setState({ projects });
+      return found;
+    } catch {
+      return undefined;
+    }
   }
 
   private async loadQuickSwitcherData(force = false): Promise<void> {
@@ -3192,7 +3229,7 @@ export class PiWebApp extends LitElement {
 
   private renderChatView(state: AppState, session: SessionInfo) {
     return html`
-      <chat-view .goalsLoad=${goalsForSelectedWorkspace(state)} .onRunGoalCommand=${(_goal: GoalRecordSummary, command: string) => this.runGoalCommand(command)} .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .loadingMore=${state.isLoadingEarlierMessages} .transcriptLoading=${state.isLoadingTranscript} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk} .pendingDialogs=${state.pendingDialogs} .commandLedger=${commandsForSession(state.commandLedger, machineSessionKey(selectedMachineId(state), session.id))} .goalCommandInFlight=${this.goalCommandInFlight} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onDismissClosedDialog=${this.handleDismissClosedDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .notificationInbox=${selectedNotificationView(state.selectedNotificationInbox)} .notificationsFailed=${state.selectedNotificationInbox?.status === "stale" && state.selectedNotificationInbox.sessionId === session.id && state.selectedNotificationInbox.cwd === session.cwd} .subagents=${state.subagents} .subagentRuns=${state.subagentRuns} .backgroundTasks=${state.backgroundTasks} .activityFailed=${state.activityFailed} .activityOutput=${state.activityOutput} .onCloseActivityOutput=${this.handleCloseActivityOutput} .activityConversation=${state.activityConversation} .onCloseActivityConversation=${this.handleCloseActivityConversation} .onOpenSubagent=${this.handleOpenSubagentSession} .onOpenSubagentRun=${this.handleOpenSubagentRun} .onOpenBackgroundTask=${this.handleOpenBackgroundTask} .onClearServerQueue=${this.handleClearServerQueue} .onDismissLedgerRow=${(id: string) => { this.sessions.dismissLedgerRow(id); }} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onDismissNotification=${this.handleDismissNotification} .onDismissAllNotifications=${this.handleDismissAllNotifications} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }}></chat-view>
+      <chat-view .goalsLoad=${goalsForSelectedWorkspace(state)} .onRefreshGoals=${() => { void this.workspaces.refreshWorkspaceGoals(); }} .onRunGoalCommand=${(_goal: GoalRecordSummary, command: string) => this.runGoalCommand(command)} .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .loadingMore=${state.isLoadingEarlierMessages} .transcriptLoading=${state.isLoadingTranscript} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk} .pendingDialogs=${state.pendingDialogs} .commandLedger=${commandsForSession(state.commandLedger, machineSessionKey(selectedMachineId(state), session.id))} .goalCommandInFlight=${this.goalCommandInFlight} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onDismissClosedDialog=${this.handleDismissClosedDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .notificationInbox=${selectedNotificationView(state.selectedNotificationInbox)} .notificationsFailed=${state.selectedNotificationInbox?.status === "stale" && state.selectedNotificationInbox.sessionId === session.id && state.selectedNotificationInbox.cwd === session.cwd} .subagents=${state.subagents} .subagentRuns=${state.subagentRuns} .backgroundTasks=${state.backgroundTasks} .activityFailed=${state.activityFailed} .activityOutput=${state.activityOutput} .onCloseActivityOutput=${this.handleCloseActivityOutput} .activityConversation=${state.activityConversation} .onCloseActivityConversation=${this.handleCloseActivityConversation} .onOpenSubagent=${this.handleOpenSubagentSession} .onOpenSubagentRun=${this.handleOpenSubagentRun} .onOpenBackgroundTask=${this.handleOpenBackgroundTask} .onClearServerQueue=${this.handleClearServerQueue} .onDismissLedgerRow=${(id: string) => { this.sessions.dismissLedgerRow(id); }} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onDismissNotification=${this.handleDismissNotification} .onDismissAllNotifications=${this.handleDismissAllNotifications} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }}></chat-view>
     `;
   }
 
@@ -3250,6 +3287,7 @@ export class PiWebApp extends LitElement {
     const layout = {
       isMobileNavigationLayout: this.appShell.isMobileNavigationLayout,
       navigationCollapsed: this.panelCollapse.navigationPanelCollapsed,
+      workspaceToolTabsVisible: this.isDesktopSideBySideLayout(),
     };
     if (!showsWhereAmIBar(layout)) return null;
     return html`

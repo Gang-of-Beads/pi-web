@@ -1,3 +1,4 @@
+import type { SessionSocketHandlers } from "./controllers/sessionController";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RealtimeSocket, SessionSocket, parseRealtimeSocketEvent, parseSessionSocketEvent, jitteredReconnectDelay, revisionedFrameType } from "./sessionSocket";
 
@@ -31,6 +32,17 @@ function inboxEvent() {
     summary: summary(),
     dismissThrough: { order: 1, overflowWatermark: 0 },
     delta: { kind: "added", notification: notification() },
+  };
+}
+
+function handlers(overrides: Partial<SessionSocketHandlers> = {}): SessionSocketHandlers {
+  return {
+    onEvent: () => undefined,
+    onReconnect: () => undefined,
+    onInitialOpen: () => undefined,
+    onMalformed: () => undefined,
+    onGap: () => undefined,
+    ...overrides,
   };
 }
 
@@ -75,7 +87,7 @@ describe("connection liveness", () => {
 
   it("drops a session socket that has been silent past the keepalive budget", () => {
     const session = new SessionSocket();
-    session.connect({ id: "session-1", cwd: "/repo" }, () => undefined);
+    session.connect({ id: "session-1", cwd: "/repo" }, "local", handlers());
     const socket = FakeWebSocket.instances[0];
     if (socket === undefined) throw new Error("expected a session socket");
     socket.onopen?.();
@@ -87,7 +99,7 @@ describe("connection liveness", () => {
 
   it("leaves a session socket alone while frames are still arriving", () => {
     const session = new SessionSocket();
-    session.connect({ id: "session-1", cwd: "/repo" }, () => undefined);
+    session.connect({ id: "session-1", cwd: "/repo" }, "local", handlers());
     const socket = FakeWebSocket.instances[0];
     if (socket === undefined) throw new Error("expected a session socket");
     socket.onopen?.();
@@ -116,7 +128,7 @@ describe("connection liveness", () => {
     // Nothing to prove dead: connect() has not resolved, so silence is expected
     // and closing here would fight the initial handshake.
     const session = new SessionSocket();
-    session.connect({ id: "session-1", cwd: "/repo" }, () => undefined);
+    session.connect({ id: "session-1", cwd: "/repo" }, "local", handlers());
     const socket = FakeWebSocket.instances[0];
     if (socket === undefined) throw new Error("expected a session socket");
 
@@ -465,7 +477,7 @@ describe("dark-launch seq gap counting", () => {
   it("counts one gap when the session stream skips a frame, and applies every frame", async () => {
     const applied: unknown[] = [];
     const session = new SessionSocket();
-    session.connect({ id: "session-1", cwd: "/repo" }, (event) => { applied.push(event); });
+    session.connect({ id: "session-1", cwd: "/repo" }, "local", handlers({ onEvent: (event) => { applied.push(event); } }));
     const socket = FakeWebSocket.instances[0];
     if (socket === undefined) throw new Error("expected a session socket");
     socket.onopen?.();
@@ -482,7 +494,7 @@ describe("dark-launch seq gap counting", () => {
     const applied: unknown[] = [];
     const gaps: number[] = [];
     const session = new SessionSocket();
-    session.connect({ id: "session-1", cwd: "/repo" }, (event) => { applied.push(event); }, undefined, "local", undefined, undefined, (lastSeen) => { gaps.push(lastSeen); });
+    session.connect({ id: "session-1", cwd: "/repo" }, "local", handlers({ onEvent: (event) => { applied.push(event); }, onGap: (lastSeen) => { gaps.push(lastSeen); } }));
     const socket = FakeWebSocket.instances[0];
     if (socket === undefined) throw new Error("expected a session socket");
     socket.onopen?.();
@@ -502,7 +514,7 @@ describe("dark-launch seq gap counting", () => {
   it("fails open: unstamped frames apply and are not counted as gaps", async () => {
     const applied: unknown[] = [];
     const session = new SessionSocket();
-    session.connect({ id: "session-1", cwd: "/repo" }, (event) => { applied.push(event); });
+    session.connect({ id: "session-1", cwd: "/repo" }, "local", handlers({ onEvent: (event) => { applied.push(event); } }));
     const socket = FakeWebSocket.instances[0];
     if (socket === undefined) throw new Error("expected a session socket");
     socket.onopen?.();
@@ -519,7 +531,7 @@ describe("dark-launch seq gap counting", () => {
 
   it("does not count a duplicate or late frame as a gap, nor rewind to it", async () => {
     const session = new SessionSocket();
-    session.connect({ id: "session-1", cwd: "/repo" }, () => undefined);
+    session.connect({ id: "session-1", cwd: "/repo" }, "local", handlers());
     const socket = FakeWebSocket.instances[0];
     if (socket === undefined) throw new Error("expected a session socket");
     socket.onopen?.();
@@ -536,7 +548,7 @@ describe("dark-launch seq gap counting", () => {
 
   it("baselines on the first stamped frame after an open, so a reconnect is not a gap", async () => {
     const session = new SessionSocket();
-    session.connect({ id: "session-1", cwd: "/repo" }, () => undefined);
+    session.connect({ id: "session-1", cwd: "/repo" }, "local", handlers());
     const socket = FakeWebSocket.instances[0];
     if (socket === undefined) throw new Error("expected a session socket");
     socket.onopen?.();
@@ -613,13 +625,13 @@ describe("socket instance isolation", () => {
     const newHandler = vi.fn();
     const onInitialOpen = vi.fn();
     const target = { id: "session-1", cwd: "/repo" };
-    socket.connect(target, oldHandler, undefined, "machine-a");
+    socket.connect(target, "machine-a", handlers({ onEvent: oldHandler }));
     const oldSocket = FakeWebSocket.instances[0];
     if (oldSocket === undefined) throw new Error("expected old session socket");
     const staleClose = oldSocket.onclose;
     oldSocket.onmessage?.({ data: JSON.stringify(inboxEvent()) });
 
-    socket.connect(target, newHandler, undefined, "machine-b", onInitialOpen);
+    socket.connect(target, "machine-b", handlers({ onEvent: newHandler, onInitialOpen }));
     staleClose?.();
     await Promise.resolve();
     await Promise.resolve();
@@ -675,5 +687,52 @@ describe("jitteredReconnectDelay", () => {
 
   it("keeps the delay positive for the smallest window", () => {
     expect(jitteredReconnectDelay(500, () => 0)).toBe(250);
+  });
+});
+
+describe("a socket dropped for being dead comes back", () => {
+  let scheduled: (() => void)[] = [];
+
+  beforeEach(() => {
+    FakeWebSocket.instances.length = 0;
+    scheduled = [];
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("document", { baseURI: "https://pi.example.test/" });
+    vi.stubGlobal("window", {
+      clearTimeout: vi.fn(),
+      setTimeout: (callback: () => void) => { scheduled.push(callback); return scheduled.length; },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("reconnects after an open socket is dropped for silence", () => {
+    const socket = new SessionSocket();
+    socket.connect({ id: "session-1", cwd: "/repo" }, "local", handlers());
+    const first = FakeWebSocket.instances.at(-1);
+    if (first === undefined) throw new Error("expected a socket");
+    first.onopen?.();
+
+    const before = FakeWebSocket.instances.length;
+    socket.checkLiveness(Date.now() + 120_000);
+    for (const run of scheduled.splice(0)) run();
+
+    expect(FakeWebSocket.instances.length).toBeGreaterThan(before);
+  });
+
+  it("reconnects after a handshake that never completed is dropped", () => {
+    const socket = new SessionSocket();
+    socket.connect({ id: "session-1", cwd: "/repo" }, "local", handlers());
+    const first = FakeWebSocket.instances.at(-1);
+    if (first === undefined) throw new Error("expected a socket");
+    first.readyState = FakeWebSocket.CONNECTING;
+
+    const before = FakeWebSocket.instances.length;
+    socket.checkLiveness(Date.now() + 120_000);
+    for (const run of scheduled.splice(0)) run();
+
+    expect(FakeWebSocket.instances.length).toBeGreaterThan(before);
   });
 });

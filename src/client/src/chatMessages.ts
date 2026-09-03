@@ -106,11 +106,27 @@ function assistantErrorLine(message: unknown): ChatLine | undefined {
  * the tool it was calling, so the turn can say so.
  */
 export function describeAssistantFailure(detail: string, message: unknown): string {
+  if (isUnreplayableThinkingFailure(detail)) {
+    return `${detail} (a turn was interrupted while the model was thinking, so this conversation carries a thinking block the provider will not accept again; every retry on this branch fails the same way until the turn holding it is removed)`;
+  }
   if (!/aborted/iu.test(detail)) return detail;
   const tool = lastToolCallName(message);
   return tool === undefined
     ? `${detail} (the turn was stopped before it finished)`
     : `${detail} (stopped while running ${tool})`;
+}
+
+/**
+ * The provider refusing a thinking block it will not see unchanged again.
+ *
+ * A thinking block's signature arrives at the end of the block, so a turn cut
+ * while the model is thinking is stored without one. Replaying it is refused,
+ * and it is replayed on every subsequent request - so the session reads as
+ * randomly broken rather than as holding one bad entry. Naming that is the
+ * difference between an error and a dead end.
+ */
+export function isUnreplayableThinkingFailure(detail: string): boolean {
+  return /thinking/iu.test(detail) && /cannot be modified|must remain as they were/iu.test(detail);
 }
 
 /** The last tool this message was calling, if any. */

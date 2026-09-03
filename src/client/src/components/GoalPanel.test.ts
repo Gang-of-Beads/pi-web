@@ -81,7 +81,29 @@ describe("goal-panel", () => {
     document.body.append(unloaded);
     await unloaded.updateComplete;
     expect(shadow(unloaded).querySelector(".empty")?.textContent).not.toContain("No goals recorded");
-    expect(shadow(unloaded).querySelector(".empty")?.textContent).toContain("Loading goals");
+    // Not "Loading goals" either: nothing is loading, and saying so disabled
+    // the refresh control in the one state that needed it.
+    expect(shadow(unloaded).querySelector(".empty")?.textContent).toContain("not been read yet");
+  });
+
+  it("leaves refresh usable when nothing has been read", async () => {
+    const unloaded = new GoalPanel();
+    unloaded.goalsLoad = { state: "unloaded", key: undefined, data: [] };
+    unloaded.onRefresh = () => undefined;
+    document.body.append(unloaded);
+    await unloaded.updateComplete;
+    const refresh = shadow(unloaded).querySelector("button[aria-label='Refresh goals']");
+    expect(refresh?.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("disables refresh only while a read is actually under way", async () => {
+    const loading = new GoalPanel();
+    loading.goalsLoad = { state: "loading", key: undefined, data: [] };
+    loading.onRefresh = () => undefined;
+    document.body.append(loading);
+    await loading.updateComplete;
+    const refresh = shadow(loading).querySelector("button[aria-label='Refresh goals']");
+    expect(refresh?.hasAttribute("disabled")).toBe(true);
   });
 
   // A paused goal has no other way out of the panel: the extension's own clear

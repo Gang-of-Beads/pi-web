@@ -1,4 +1,4 @@
-import { LitElement, css, html, type PropertyValues, nothing} from "lit";
+import { LitElement, css, html, type PropertyValues, type TemplateResult, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { SessionActivity, SessionInfo, SessionStatus } from "../api";
 import { isCachedNewSessionInfo } from "../cachedNewSessions";
@@ -8,6 +8,7 @@ import { isArchivableSessionInfo, isTransientNewSessionInfo } from "../sessionPe
 import { normalizeSessionPath } from "../sessionPaths";
 import { filterSessionRows, hideCollapsedSubtreeRows, shouldShowSessionSearch } from "../sessionSearch";
 import { isSessionActive } from "../../../shared/activity";
+import "./SessionRenameDialog";
 import { actionMenuPanelStyle } from "./actionMenu";
 import { sessionActivityCategory } from "../../../shared/sessionActivityState";
 import { renderSessionRowIndicator, sessionRowIndicator } from "./sessionRowIndicator";
@@ -187,6 +188,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
             ${allCurrentRows.length === 0 && allArchivedRows.length === 0 && this.startingCount === 0 ? this.renderEmptyListBody() : null}
           </div>
         `}
+        ${this.renderRenameDialog()}
       </section>
     `;
   }
@@ -428,7 +430,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
                       <button title="Archive session" @click=${() => { this.openMenuSessionId = undefined; this.onArchive?.(session); }}>Archive</button>
                       ${descendantCount > 0 ? html`<button title="Archive this session and its descendants" @click=${() => { this.openMenuSessionId = undefined; this.confirmArchiveWithDescendants(session, descendantCount); }}>Archive with descendants (${descendantCount})</button>` : null}
                     ` : null}
-                    <button title="Give this session a name you will recognise" @click=${() => { this.openMenuSessionId = undefined; this.promptRename(session); }}>Rename</button>
+                    <button title="Give this session a name you will recognise" @click=${() => { this.openMenuSessionId = undefined; this.beginRename(session); }}>Rename</button>
                     ${this.onOpenTree === undefined ? null : html`<button title="Browse this session's history and branches" @click=${() => { this.openMenuSessionId = undefined; void this.onOpenTree?.(session); }}>History and branches</button>`}
                     ${session.parentSessionPath !== undefined ? html`<button title="Detach from parent" @click=${() => { this.openMenuSessionId = undefined; this.onDetachParent?.(session); }}>Detach from parent</button>` : null}
                     ${canArchive ? html`<button title=${isSessionActive(this.statuses[session.id], this.activities[session.id]) ? "Stop current session activity before reloading from disk" : "Reload session from disk without refreshing Pi runtime resources"} ?disabled=${isSessionActive(this.statuses[session.id], this.activities[session.id])} @click=${() => { this.openMenuSessionId = undefined; this.onReload?.(session); }}>Reload from disk</button>` : null}
@@ -514,18 +516,23 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     if (confirm(`Archive “${sessionLabel(session)}” and ${String(descendantCount)} ${noun}?`)) this.onArchiveWithDescendants?.(session);
   }
 
-  /**
-   * Ask for a session alias, seeded with the current name so a rename edits
-   * rather than retypes. An unchanged or empty answer is a no-op, and Cancel
-   * returns null, so neither can clear an existing name by accident.
-   */
-  private promptRename(session: SessionInfo): void {
-    const current = session.name ?? "";
-    const next = prompt(`Name for this session:`, current);
-    if (next === null) return;
-    const trimmed = next.trim();
-    if (trimmed === "" || trimmed === current) return;
-    void this.onRename?.(session, trimmed);
+  /** The session whose name is being edited, hosted in the project's own dialog. */
+  @state() private renameSession: SessionInfo | undefined;
+
+  private beginRename(session: SessionInfo): void {
+    this.renameSession = session;
+  }
+
+  private renderRenameDialog(): TemplateResult | null {
+    const session = this.renameSession;
+    if (session === undefined) return null;
+    return html`
+      <session-rename-dialog
+        .sessionName=${session.name ?? ""}
+        .onSubmit=${(name: string) => { this.renameSession = undefined; void this.onRename?.(session, name); }}
+        .onCancel=${() => { this.renameSession = undefined; }}
+      ></session-rename-dialog>
+    `;
   }
 
   private confirmDeleteArchived(session: SessionInfo): void {

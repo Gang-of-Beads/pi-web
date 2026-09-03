@@ -256,23 +256,23 @@ describe("PiSessionService.submitAsk", () => {
 });
 
 describe("PiSessionService.prompt with an open ask", () => {
-  it("voids the open ask and tells the model without waking it, then sends the message", async () => {
+  // A chat message is an addition, not a withdrawal: every question carries a
+  // Custom answer, so a remark alongside the form leaves the questions
+  // answerable. Closing them on it discarded three questions the reader never
+  // withdrew, and the reply then asked for answers they had been made unable to
+  // give (owner's ruling, 2026-09-03).
+  it("leaves the open ask answerable and sends the message", async () => {
     const { service, store, events, fake } = askService({ withActiveSession: true });
     await service.openAsk({ sessionId: ACTIVE_SESSION_ID, questions });
 
     await service.prompt(sessionRef(ACTIVE_SESSION_ID), "Use DuckDB");
 
-    expect(store.pendingAsk(ACTIVE_SESSION_ID)).toBeUndefined();
+    expect(store.pendingAsk(ACTIVE_SESSION_ID)?.askId).toBe("ask-1");
     expect(askEvents(events).map(({ event }) => withoutStamps(event))).toEqual([
       { type: "ask.opened", ask: { askId: "ask-1", askedAt: "2026-02-01T10:00:00.000Z", questions } },
-      { type: "ask.closed", askId: "ask-1", reason: "cancelled" },
     ]);
-    expect(askRevisions(events)).toEqual([1, 2]);
-    const [delivered] = fake.calls.sendCustomMessage;
-    expect(delivered?.message.customType).toBe(ASK_USER_ANSWERS_CUSTOM_TYPE);
-    expect(delivered?.message.content).toContain("closed (cancelled) before it was fully answered");
-    expect(delivered?.message.content).toContain("unanswered: db");
-    expect(delivered?.options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
+    expect(askRevisions(events)).toEqual([1]);
+    expect(fake.calls.sendCustomMessage).toEqual([]);
     expect(fake.calls.prompt.map((call) => call.text)).toEqual(["Use DuckDB"]);
     await service.dispose();
   });
