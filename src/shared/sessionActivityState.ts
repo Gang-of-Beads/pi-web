@@ -31,7 +31,7 @@ export function sessionActivityCategory(
   if (activity?.phase === "error") return "error";
   if (status === undefined) return activity?.phase === "active" ? "working" : undefined;
   if (isWaitingForUser(status)) return "asking";
-  const working = status.isStreaming || status.isBashRunning || status.isCompacting || status.turnActive === true || status.pendingMessageCount > 0;
+  const working = status.isStreaming || status.isBashRunning || status.isCompacting || status.pendingMessageCount > 0;
   if (working) return "working";
   if (activity?.phase === "active") return "working";
   if ((status.backgroundRunCount ?? 0) > 0) return "background";

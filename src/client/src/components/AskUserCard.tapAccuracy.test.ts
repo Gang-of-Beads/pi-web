@@ -74,12 +74,15 @@ describe("ask option hit targets", () => {
 
   it("separates Custom from the last real option", async () => {
     const card = await mount([question("editor", "Choose an editor", [option("vim", "Vim"), option("code", "VS Code")])]);
-    const other = card.shadowRoot?.querySelector<HTMLElement>(".other-option");
-    if (other === null || other === undefined) throw new Error("no Custom option rendered");
-    const style = getComputedStyle(other);
-    // A drawn divider, not just spacing: spacing is invisible at tap speed.
-    expect(style.borderTopStyle).toBe("solid");
-    expect(parseInt(style.paddingTop, 10)).toBeGreaterThan(7);
+    const style = cardStyleText(card);
+    // Every .option already carries a 1px transparent border, so a computed
+    // read of borderTopStyle is true with the divider deleted; the contract is
+    // the drawn declaration itself.
+    const otherRule = /\.other-option\s*\{[^}]*\}/.exec(style)?.[0] ?? "";
+    // happy-dom serializes the shorthand into longhands (mangling the var
+    // into each), so the trace of a declared top border is border-top-width.
+    expect(otherRule).toContain("border-top-width:");
+    expect(otherRule).toContain("padding-top:");
   });
 
   it("delivers a tap to exactly the row pressed", async () => {

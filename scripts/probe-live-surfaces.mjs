@@ -37,9 +37,11 @@ try {
     return walk(document, []).map((node) => (node.textContent ?? "").trim());
   });
   const claimsQuiet = activityText.some((text) => text === "Nothing running right now.");
+  // An unreachable panel is not a pass: it is a check the probe could not
+  // make, and reporting it as ok would let the claim survive unverified.
   record(
     "the activity panel no longer claims the whole session is quiet",
-    claimsQuiet ? "check" : "ok",
+    activityText.length === 0 ? "check" : claimsQuiet ? "check" : "ok",
     activityText.length === 0 ? "panel not open on this surface" : activityText.join(" | "),
   );
 

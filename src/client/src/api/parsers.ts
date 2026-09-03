@@ -597,7 +597,6 @@ export function parseSessionStatus(value: unknown): SessionStatus {
     // shows the grey dot that means nothing is happening while the
     // conversation says "idle . 3 background runs".
     ...optionalField("backgroundRunCount", optionalNumber(record, "backgroundRunCount")),
-    ...optionalField("turnActive", optionalBoolean(record, "turnActive")),
     queuedMessages: record["queuedMessages"] === undefined ? [] : arrayOf(parseQueuedSessionMessage)(record["queuedMessages"]),
     ...optionalField("messageCount", optionalNumber(record, "messageCount")),
     tokens: parseTokens(record["tokens"]),
