@@ -2654,7 +2654,7 @@ export class ChatView extends LitElement {
   }
 
   private isQueuedLine(line: ChatLine): boolean {
-    return this.queueEntryFor(line) !== undefined;
+    return this.queueEntryFor(line) !== undefined || line.meta?.delivery?.state === "queued";
   }
 
   /** The queued bubble's own recall action; see renderQueuedMessages. */

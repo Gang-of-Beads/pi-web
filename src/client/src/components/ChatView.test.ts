@@ -114,18 +114,22 @@ describe("ChatView queued messages stay in place", () => {
     expect(transcriptMessagesOf(view)).toHaveLength(0);
   });
 
-  it("marks a bubble the server still holds, and unmarks it once taken", () => {
-    // Colour and affordance say the same thing: waiting, and recallable. Both
-    // are keyed to the server's queue rather than the bubble's own delivery
-    // state, which can go stale and would otherwise leave a message looking
-    // pending forever.
+  it("marks a bubble the server still holds, and unmarks it once settled", () => {
+    // The owner's ruling: one queued representation. A row that says Queued
+    // wears the queued card, whichever fact still says so - queue membership
+    // or its own receipt. The receipt no longer goes stale (queue absence on
+    // an idle runtime settles it), so the card and the words flip together
+    // instead of the words outliving the gold.
     const view = new ChatView();
     view.messages = [queuedLine("cm-1")];
     view.status = queuedStatus([{ kind: "steer", text: "hello", clientMessageId: "cm-1" }]);
     expect(isQueuedLineOf(view, queuedLine("cm-1"))).toBe(true);
 
     view.status = queuedStatus([]);
-    expect(isQueuedLineOf(view, queuedLine("cm-1"))).toBe(false);
+    expect(isQueuedLineOf(view, queuedLine("cm-1"))).toBe(true);
+
+    const settled = { ...queuedLine("cm-1"), meta: { delivery: { clientMessageId: "cm-1", state: "delivered" as const } } };
+    expect(isQueuedLineOf(view, settled)).toBe(false);
   });
 
   it("marks a synthesized row for a queue entry with no sender id", () => {
@@ -141,7 +145,10 @@ describe("ChatView queued messages stay in place", () => {
     expect(isQueuedLineOf(view, queuedLine("queued:steer:hello"))).toBe(true);
 
     view.status = queuedStatus([]);
-    expect(isQueuedLineOf(view, queuedLine("queued:steer:hello"))).toBe(false);
+    expect(isQueuedLineOf(view, queuedLine("queued:steer:hello"))).toBe(true);
+
+    const settled = { ...queuedLine("queued:steer:hello"), meta: { delivery: { clientMessageId: "queued:steer:hello", state: "delivered" as const } } };
+    expect(isQueuedLineOf(view, settled)).toBe(false);
   });
 
   it("does not list a message that already has a bubble", () => {
@@ -645,5 +652,15 @@ describe("the way back to the newest message", () => {
     Reflect.set(view, "jumpToBottomVisible", false);
 
     expect(jumpTemplate(view)).toBe(null);
+  });
+});
+
+describe("one queued representation", () => {
+  it("a row whose receipt says Queued always wears the queued card", () => {
+    const view = new ChatView();
+    const line = { role: "user" as const, parts: [{ type: "text" as const, text: "held" }], meta: { delivery: { clientMessageId: "c-x", state: "queued" as const } } };
+    const isQueued: unknown = Reflect.get(ChatView.prototype, "isQueuedLine");
+    if (typeof isQueued !== "function") throw new Error("isQueuedLine unavailable");
+    expect(Reflect.apply(isQueued, view, [line])).toBe(true);
   });
 });
