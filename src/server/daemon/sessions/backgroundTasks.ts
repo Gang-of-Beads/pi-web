@@ -220,6 +220,53 @@ async function writeAttributions(cwd: string, attributions: Map<string, string>)
   }
 }
 
+/**
+ * Parsed registry files, reused while their stat is unchanged. The registry
+ * accumulates hundreds of records, almost all of them finished tasks whose
+ * files will never change again; re-reading and re-parsing every one of them
+ * on every poll was the cost that remained after the transcript watermark.
+ * An unchanged size and mtime answers from the cache; anything else re-reads.
+ */
+interface CachedTaskRecord {
+  sizeBytes: number;
+  mtimeMs: number;
+  task: StoredTask;
+}
+
+const taskRecordCache = new Map<string, CachedTaskRecord>();
+const TASK_RECORD_CACHE_LIMIT = 5000;
+
+/** Tests reset the cache so each fixture starts unseen. */
+export function resetTaskRecordCache(): void {
+  taskRecordCache.clear();
+}
+
+async function readTaskRecordFile(full: string): Promise<StoredTask | undefined> {
+  let sizeBytes: number;
+  let mtimeMs: number;
+  try {
+    const info = await stat(full);
+    sizeBytes = info.size;
+    mtimeMs = info.mtimeMs;
+  } catch {
+    return undefined;
+  }
+  const cached = taskRecordCache.get(full);
+  if (cached?.sizeBytes === sizeBytes && cached.mtimeMs === mtimeMs) return cached.task;
+  let task: StoredTask;
+  try {
+    const parsed: unknown = JSON.parse(await readFile(full, "utf8"));
+    task = typeof parsed === "object" && parsed !== null ? parsed : {};
+  } catch {
+    // Torn mid-write or crashed before parsing: held as an empty record and
+    // not cached, so the next poll re-reads once the writer finishes.
+    return {};
+  }
+  if (taskRecordCache.size >= TASK_RECORD_CACHE_LIMIT && !taskRecordCache.has(full)) taskRecordCache.clear();
+  taskRecordCache.set(full, { sizeBytes, mtimeMs, task });
+  return task;
+}
+
 /** Every task record under a workspace, regardless of which session started it. */
 export async function readTaskRecords(cwd: string): Promise<Map<string, { task: StoredTask; file: string }>> {
   const root = join(cwd, TASKS_SUBDIR);
@@ -246,23 +293,8 @@ export async function readTaskRecords(cwd: string): Promise<Map<string, { task: 
       // anyone can actually prove - the filename. Dropping it instead answered
       // "this session never started anything" for a task the reader had
       // started, which is how a running task vanished from the panel.
-      const unreadable: StoredTask = {};
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(await readFile(full, "utf8"));
-      } catch {
-        // Torn mid-write or crashed before parsing: reported as unknown, and
-        // the next poll re-reads it once the writer finishes.
-        const id = basename(file, ".json");
-        records.set(id, { task: unreadable, file: full });
-        continue;
-      }
-      if (typeof parsed !== "object" || parsed === null) {
-        const id = basename(file, ".json");
-        records.set(id, { task: unreadable, file: full });
-        continue;
-      }
-      const task: StoredTask = parsed;
+      const task = await readTaskRecordFile(full);
+      if (task === undefined) continue;
       const id = asString(task.id) ?? basename(file, ".json");
       records.set(id, { task, file: full });
     }
@@ -369,9 +401,12 @@ export async function listBackgroundTasks(
 
     // A "running" record whose process is gone died without being able to
     // record it - a restart, an OOM kill - and is reported as lost rather than
-    // spinning forever.
-    const alive =
-      pid !== undefined && taskProcessIsOriginal(await probeProcessStart(pid), pid, startedAt);
+    // spinning forever. Only a running record needs the probe: spawning ps for
+    // every finished task ever recorded, on every poll, was a per-poll process
+    // storm for answers that cannot change.
+    const alive = rawStatus === "running"
+      && pid !== undefined
+      && taskProcessIsOriginal(await probeProcessStart(pid), pid, startedAt);
     const status = rawStatus === "running" && !alive ? "lost" : rawStatus;
     tasks.push({
       id,
