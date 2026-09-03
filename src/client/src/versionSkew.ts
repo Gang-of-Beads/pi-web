@@ -8,5 +8,9 @@
  */
 export function reloadOffer(clientVersion: string, serverVersion: string | undefined): string | undefined {
   if (clientVersion === "" || serverVersion === undefined || serverVersion === "") return undefined;
+  // The server answers a placeholder when it cannot read its own package
+  // version; offering a reload to "0.0.0-dev" would nag on every visibility
+  // change and reloading would fix nothing. Unknown is not evidence.
+  if (serverVersion === "0.0.0-dev" || clientVersion === "0.0.0-dev") return undefined;
   return serverVersion === clientVersion ? undefined : serverVersion;
 }

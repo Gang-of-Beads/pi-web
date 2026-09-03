@@ -21,4 +21,9 @@ describe("the reload offer", () => {
     expect(reloadOffer("1.202609.12", "")).toBeUndefined();
     expect(reloadOffer("", "1.202609.13")).toBeUndefined();
   });
+
+  it("treats the placeholder version as unknown rather than as an update", () => {
+    expect(reloadOffer("1.202609.12", "0.0.0-dev")).toBeUndefined();
+    expect(reloadOffer("0.0.0-dev", "1.202609.13")).toBeUndefined();
+  });
 });

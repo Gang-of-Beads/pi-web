@@ -26,12 +26,16 @@ export interface PendingAskOpenInput {
   sessionId: string;
   questions: AskUserQuestion[];
   /**
-   * Texts already waiting in the session's queue when the ask opens. The run
-   * that posted the questions never saw these messages, so their later
+   * Messages already waiting in the session's queue when the ask opens. The
+   * run that posted the questions never saw these messages, so their later
    * delivery voids the ask - while a message sent in the form's presence is an
-   * addition to the request, not a refusal, and leaves it open.
+   * addition to the request, not a refusal, and leaves it open. Identity is
+   * the key where it exists: texts drift (template expansion) or vanish
+   * (captionless photos), and a text collision across lanes would void the
+   * form for a remark. Review finding, both directions live.
    */
   queuedMessageTexts?: readonly string[];
+  queuedMessageIds?: readonly string[];
 }
 
 /**
@@ -83,6 +87,7 @@ export class PendingAskStore {
   private readonly createAskId: () => string;
   private readonly openBySessionId = new Map<string, PendingAskUser>();
   private readonly preAskQueues = new Map<string, Set<string>>();
+  private readonly preAskQueueIds = new Map<string, Set<string>>();
 
   constructor(options: PendingAskStoreOptions = {}) {
     this.now = options.now ?? (() => new Date());
@@ -107,6 +112,7 @@ export class PendingAskStore {
     };
     this.openBySessionId.set(sessionId, ask);
     this.preAskQueues.set(sessionId, new Set(input.queuedMessageTexts ?? []));
+    this.preAskQueueIds.set(sessionId, new Set(input.queuedMessageIds ?? []));
     return {
       ask: cloneAsk(ask),
       ...(superseded === undefined ? {} : { superseded }),
@@ -152,6 +158,7 @@ export class PendingAskStore {
   forgetSession(sessionId: string): void {
     this.openBySessionId.delete(requireSessionId(sessionId));
     this.preAskQueues.delete(requireSessionId(sessionId));
+    this.preAskQueueIds.delete(requireSessionId(sessionId));
   }
 
   private requireClose(sessionId: string, reason: AskUserCloseReason, answers: RecordedAnswers): AskUserOutcome {
@@ -162,11 +169,23 @@ export class PendingAskStore {
 
   /**
    * Whether a just-delivered user message is one that predates the open ask.
-   * A hit is consumed: the queue entry drains exactly once.
+   * A hit is consumed: the queue entry drains exactly once. A message that
+   * carries its sender's id is judged by the id alone - a remark sent in the
+   * form's presence shares no id with the pre-ask queue, whatever its words -
+   * and only an id-less delivery falls back to text.
    */
-  claimPreAskDelivery(sessionId: string, text: string): boolean {
-    if (text === "") return false;
-    return this.preAskQueues.get(requireSessionId(sessionId))?.delete(text) === true;
+  claimPreAskDelivery(sessionId: string, delivered: { clientMessageId?: string; text: string }): boolean {
+    const key = requireSessionId(sessionId);
+    if (delivered.clientMessageId !== undefined) return this.preAskQueueIds.get(key)?.delete(delivered.clientMessageId) === true;
+    if (delivered.text === "") return false;
+    return this.preAskQueues.get(key)?.delete(delivered.text) === true;
+  }
+
+  /** Give back a claim whose void could not be delivered, so the next delivery retries it. */
+  restorePreAskDelivery(sessionId: string, delivered: { clientMessageId?: string; text: string }): void {
+    const key = requireSessionId(sessionId);
+    if (delivered.clientMessageId !== undefined) this.preAskQueueIds.get(key)?.add(delivered.clientMessageId);
+    else if (delivered.text !== "") this.preAskQueues.get(key)?.add(delivered.text);
   }
 
   private close(
@@ -179,6 +198,7 @@ export class PendingAskStore {
     if (ask === undefined) return undefined;
     this.openBySessionId.delete(sessionId);
     this.preAskQueues.delete(sessionId);
+    this.preAskQueueIds.delete(sessionId);
     return askUserOutcome(ask, answers, reason, closedAt);
   }
 

@@ -1711,13 +1711,24 @@ export class PiSessionService implements SessionRouteService {
     // Snapshot what is already queued: those messages predate the questions,
     // and only their delivery may void the form. A message sent while the form
     // is on screen is an addition to the request, not a refusal of it.
+    // INVARIANT: this snapshot must enumerate every queue that can later emit
+    // a user message_start - today the runtime's two lanes plus the compaction
+    // parking lot. A queue added without joining this list reopens the class:
+    // its drained messages would either never void the form or void it as
+    // strangers. Identity rides beside the text because texts drift (template
+    // expansion) and captionless photos have none.
     const active = this.active.get(input.sessionId)?.runtime.session;
+    const compactionQueue = this.compactionPromptQueues.get(input.sessionId) ?? [];
     const queuedMessageTexts = active === undefined ? [] : [
       ...active.getSteeringMessages(),
       ...active.getFollowUpMessages(),
-      ...(this.compactionPromptQueues.get(input.sessionId) ?? []).map((prompt) => prompt.text),
+      ...compactionQueue.map((prompt) => prompt.text),
     ];
-    const result = this.pendingAskStore.open({ ...input, queuedMessageTexts });
+    const queuedMessageIds = [
+      ...(this.queuedPromptClientIds.get(input.sessionId) ?? []).map((record) => record.clientMessageId),
+      ...compactionQueue.map((prompt) => prompt.clientMessageId).filter((id): id is string => id !== undefined),
+    ];
+    const result = this.pendingAskStore.open({ ...input, queuedMessageTexts, queuedMessageIds });
     // A supersede closes the earlier ask, so the browsers watching it must hear
     // that before they hear about its replacement.
     if (result.superseded !== undefined) this.publishAskClosed(input.sessionId, result.superseded);
@@ -1807,9 +1818,22 @@ export class PiSessionService implements SessionRouteService {
    */
   private async voidOpenAskForDeliveredMessage(session: PiAgentSession, event: unknown): Promise<void> {
     if (this.pendingAskStore.pendingAsk(session.sessionId) === undefined) return;
-    const { text } = committedMessageShape(getProperty(getProperty(event, "message"), "content"));
-    if (!this.pendingAskStore.claimPreAskDelivery(session.sessionId, text)) return;
-    await this.voidOpenAskForUserMessage(session);
+    const message = getProperty(event, "message");
+    const { text } = committedMessageShape(getProperty(message, "content"));
+    // The stamp ran before this handler in the same subscription, so a prompt
+    // this daemon accepted carries its sender's id here.
+    const stamped = isRecord(message) && typeof message["clientMessageId"] === "string" ? message["clientMessageId"] : undefined;
+    const delivered = { ...(stamped === undefined ? {} : { clientMessageId: stamped }), text };
+    if (!this.pendingAskStore.claimPreAskDelivery(session.sessionId, delivered)) return;
+    try {
+      await this.voidOpenAskForUserMessage(session);
+    } catch (error) {
+      // The claim is spent but the void never reached anyone; give the claim
+      // back so the next delivery of the same message retries it, instead of
+      // leaving the form open forever on a consumed entry.
+      this.pendingAskStore.restorePreAskDelivery(session.sessionId, delivered);
+      throw error;
+    }
   }
 
   /**
@@ -2782,7 +2806,12 @@ export class PiSessionService implements SessionRouteService {
    * devices, a reload - receives a committed copy it can claim by identity.
    */
   private stampCommittedUserMessage(session: PiAgentSession, event: unknown): void {
-    if (getString(event, "type") !== "message_end") return;
+    // Both boundary events: the void gate listens to message_start too, and an
+    // unstamped start would judge the message by its text - the guessing this
+    // stamp exists to end. The claim consumes on first sight; the end event
+    // finds the id already present and returns early.
+    const eventType = getString(event, "type");
+    if (eventType !== "message_start" && eventType !== "message_end") return;
     const message = getProperty(event, "message");
     if (!isRecord(message) || message["role"] !== "user") return;
     if (typeof message["clientMessageId"] === "string") return;

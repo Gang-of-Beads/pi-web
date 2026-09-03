@@ -325,6 +325,47 @@ describe("PiSessionService.prompt with an open ask", () => {
     await service.dispose();
   });
 
+  // Review findings, all three directions of the id key: texts drift under
+  // template expansion, captionless photos have no text at all, and a text
+  // collision must never void the form for a remark that carries its own id.
+  it("voids for a captionless pre-ask photo, by id", async () => {
+    const { service, store, fake } = askService({ withActiveSession: true });
+    await service.status(sessionRef(ACTIVE_SESSION_ID));
+    fake.session.isStreaming = true;
+    await service.prompt(sessionRef(ACTIVE_SESSION_ID), "", "followUp", undefined, { clientMessageId: "c-photo" });
+    await service.openAsk({ sessionId: ACTIVE_SESSION_ID, questions });
+
+    fake.emit({ type: "message_start", message: { role: "user", clientMessageId: "c-photo", content: [{ type: "image", mimeType: "image/png", data: "AAAA" }] } });
+    await vi.waitFor(() => { expect(store.pendingAsk(ACTIVE_SESSION_ID)).toBeUndefined(); });
+    await service.dispose();
+  });
+
+  it("voids for a pre-ask prompt the runtime rewrote, by id", async () => {
+    const { service, store, fake } = askService({ withActiveSession: true });
+    await service.status(sessionRef(ACTIVE_SESSION_ID));
+    fake.session.isStreaming = true;
+    await service.prompt(sessionRef(ACTIVE_SESSION_ID), "/skill review", "followUp", undefined, { clientMessageId: "c-template" });
+    await service.openAsk({ sessionId: ACTIVE_SESSION_ID, questions });
+
+    fake.emit({ type: "message_start", message: { role: "user", clientMessageId: "c-template", content: "the expanded skill body" } });
+    await vi.waitFor(() => { expect(store.pendingAsk(ACTIVE_SESSION_ID)).toBeUndefined(); });
+    await service.dispose();
+  });
+
+  it("never voids for a remark whose words collide with the pre-ask queue", async () => {
+    const { service, store, fake } = askService({ withActiveSession: true });
+    await service.status(sessionRef(ACTIVE_SESSION_ID));
+    fake.session.isStreaming = true;
+    await service.prompt(sessionRef(ACTIVE_SESSION_ID), "continue", "followUp", undefined, { clientMessageId: "c-old" });
+    await service.openAsk({ sessionId: ACTIVE_SESSION_ID, questions });
+
+    fake.emit({ type: "message_start", message: { role: "user", clientMessageId: "c-new", content: "continue" } });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(store.pendingAsk(ACTIVE_SESSION_ID)?.askId).toBe("ask-1");
+    await service.dispose();
+  });
+
   it("leaves an assistant message alone", async () => {
     const { service, store, fake } = askService({ withActiveSession: true });
     await service.status(sessionRef(ACTIVE_SESSION_ID));
