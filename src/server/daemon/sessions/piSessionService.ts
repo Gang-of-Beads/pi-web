@@ -2615,7 +2615,7 @@ export class PiSessionService implements SessionRouteService {
       this.publishStatus(session);
       return;
     }
-    if (isQueued && clientMessageId !== undefined) this.recordQueuedPromptClientId(session.sessionId, clientMessageId, promptText);
+    if (isQueued && clientMessageId !== undefined) this.recordQueuedPromptClientId(session.sessionId, clientMessageId, promptText, behavior);
     if (isQueued && images.length > 0) this.recordQueuedPromptImages(session.sessionId, promptText, images);
     // A chat message answers the session's open ask in the user's own words, so
     // the form is void: keeping it open would invite answers to questions the
@@ -2695,9 +2695,15 @@ export class PiSessionService implements SessionRouteService {
     return record?.images ?? [];
   }
 
-  private recordQueuedPromptClientId(sessionId: string, clientMessageId: string, text: string): void {
+  /**
+   * Remember which browser message a queued prompt came from, and which lane it
+   * went into. The lane matters because the status lists the queue lane by lane
+   * while submissions arrive interleaved, so correlating without it hands a
+   * steer the id of a follow-up.
+   */
+  private recordQueuedPromptClientId(sessionId: string, clientMessageId: string, text: string, kind?: string): void {
     const records = this.queuedPromptClientIds.get(sessionId) ?? [];
-    records.push({ clientMessageId, text });
+    records.push({ clientMessageId, text, ...(kind === undefined ? {} : { kind }) });
     this.queuedPromptClientIds.set(sessionId, records);
   }
 

@@ -40,7 +40,8 @@ import type { SessionStateBadgeKind } from "./activityBadge";
 import "./AskUserCard";
 import "./ExtensionDialogCard";
 import type { ExtensionDialogAnswerCallback, ExtensionDialogCancelCallback, ExtensionDialogDismissCallback } from "./ExtensionDialogCard";
-import { deliveryTaken, splitTranscriptAndPending } from "../messageDelivery";
+import { deliveryTaken } from "../messageDelivery";
+import { queuedUserLine, registerUserMessages } from "../userMessageRegister";
 import { registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
 import "./ConversationMeter";
 import "./FormattedText";
@@ -1980,8 +1981,34 @@ export class ChatView extends LitElement {
     return this.transcriptSplit().settled;
   }
 
+  /**
+   * Every user message, once.
+   *
+   * The settled transcript, the bubbles this browser is still sending, and the
+   * queue the daemon reports are three descriptions of one population. They
+   * used to be reconciled pairwise, so any disagreement produced a second row -
+   * the duplicate reported through ten separate fixes. They are now collected
+   * into one register keyed by message identity, where a key holds one row by
+   * construction. Settled and pending are two slices of that single population
+   * rather than two lists that have to agree with each other.
+   */
   private transcriptSplit(): { settled: ChatLine[]; pending: ChatLine[] } {
-    return splitTranscriptAndPending(this.messages, [...this.clientQueuedMessages, ...(this.status?.queuedMessages ?? [])]);
+    const rows = registerUserMessages({
+      transcript: this.messages,
+      optimistic: this.clientQueuedMessages.map((message, position) => queuedUserLine(message, position)),
+      queued: this.status?.queuedMessages ?? [],
+      synthesise: (message, position) => queuedUserLine(message, position),
+    });
+    // Settled rows go back to their transcript positions; a sparse slot means
+    // that message is pending, so the holes are closed rather than filled.
+    const byPosition = new Map<number, ChatLine>();
+    const pending: ChatLine[] = [];
+    for (const row of rows) {
+      if (row.state !== "settled") pending.push(row.line);
+      else if (row.transcriptIndex !== undefined) byPosition.set(row.transcriptIndex, row.line);
+    }
+    const settled = [...byPosition.entries()].sort((a, b) => a[0] - b[0]).map(([, line]) => line);
+    return { settled, pending };
   }
 
   /**
