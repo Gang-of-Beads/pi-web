@@ -27,7 +27,7 @@ function idleService(sessionId: string) {
 function publishedMessageEnds(hub: CapturingSessionEventHub): unknown[] {
   return hub.sessionEvents
     .filter(({ event }) => Reflect.get(event, "type") === "message.end")
-    .map(({ event }) => Reflect.get(event, "message"));
+    .map(({ event }): unknown => Reflect.get(event, "message"));
 }
 
 describe("the committed copy carries its sender's id", () => {
