@@ -16,14 +16,17 @@ try {
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(3500);
 
+  // The corner fix is structural now: the card clips, nothing depends on a
+  // token in the shell. What remains checkable here is that no stale rule
+  // reintroduces the token dependency.
   const surfaces = await page.evaluate(() => {
     const styles = getComputedStyle(document.documentElement);
-    return { cardInnerRadius: styles.getPropertyValue("--pi-card-inner-radius").trim() };
+    return { staleToken: styles.getPropertyValue("--pi-card-inner-radius").trim() };
   });
   record(
-    "the card-inner-radius token reaches the browser",
-    surfaces.cardInnerRadius === "" ? "check" : "ok",
-    surfaces.cardInnerRadius === "" ? "token absent" : surfaces.cardInnerRadius,
+    "no shell token carries corner geometry any more",
+    surfaces.staleToken === "" ? "ok" : "check",
+    surfaces.staleToken === "" ? "clean" : `still defined: ${surfaces.staleToken}`,
   );
 
   const activityText = await page.evaluate(() => {
