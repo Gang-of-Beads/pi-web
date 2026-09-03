@@ -834,6 +834,14 @@ export class ChatView extends LitElement {
       count is a claim about this workspace, so it only shows when the state
       behind it is keyed to the current selection (in flight, failed, and
       stale-keyed reads all render the bare name instead). */
+  /**
+   * Re-read the goal records.
+   *
+   * The drawer's panel was given no way to do this, so its refresh control did
+   * nothing: a slot that had not been read had no route back, on the surface a
+   * phone actually uses.
+   */
+  @property({ attribute: false }) onRefreshGoals?: () => void;
   @property({ attribute: false }) onRunGoalCommand?: (goal: GoalRecordSummary, command: string) => void | Promise<void>;
   @state() private topDrawerTab: TopDrawerTab | undefined;
   /** Which kinds of activity to list; "all" until the reader narrows it. */
@@ -1462,6 +1470,7 @@ export class ChatView extends LitElement {
                 ?canRunCommands=${true}
                 .commandInFlight=${this.goalCommandInFlight}
                 .onRunCommand=${(goal: GoalRecordSummary, command: string) => this.onRunGoalCommand?.(goal, command)}
+                .onRefresh=${() => this.onRefreshGoals?.()}
               ></goal-panel>
             </div>
           ` : null}
