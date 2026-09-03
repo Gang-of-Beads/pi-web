@@ -2617,11 +2617,11 @@ export class PiSessionService implements SessionRouteService {
     }
     if (isQueued && clientMessageId !== undefined) this.recordQueuedPromptClientId(session.sessionId, clientMessageId, promptText, behavior);
     if (isQueued && images.length > 0) this.recordQueuedPromptImages(session.sessionId, promptText, images);
-    // A chat message answers the session's open ask in the user's own words, so
-    // the form is void: keeping it open would invite answers to questions the
-    // conversation has already moved past. Ignored duplicates skip this on
-    // purpose: they must not void an ask posted after the queued original.
-    await this.voidOpenAskForUserMessage(session);
+    // A chat message is not a refusal of the open questions. The card carries a
+    // Custom answer for every question, so a remark alongside the form - "and
+    // for gpt-5-mini too" - is an addition to the request, and closing the form
+    // on it threw away three questions the reader never withdrew and left the
+    // reply asking for answers they had been made unable to give.
     // D7: acceptance is a sequenced fact. The frame tells the client the
     // daemon owns this prompt now (sending → queued-server) and — because it
     // rides the per-session ring — a lost HTTP response or a lost frame is

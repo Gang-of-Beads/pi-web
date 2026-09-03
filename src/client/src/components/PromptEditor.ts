@@ -1097,7 +1097,7 @@ export class PromptEditor extends LitElement {
     let accepted: boolean | undefined;
     let failure: unknown;
     try {
-      accepted = await this.onSend?.(text, behavior, attachments, attachments === undefined ? undefined : delivery);
+      accepted = await this.onSend?.(text, behavior, attachments, attachments === undefined ? undefined : delivery, { clientMessageId: outboxId });
     } catch (error) {
       accepted = false;
       failure = error;

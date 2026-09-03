@@ -1,10 +1,17 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 import { PromptEditor } from "./components/PromptEditor";
 import { capturePromptAttachments, DEFAULT_FILE_MIME_TYPE, effectivePromptAttachmentDelivery, READ_FAILURE_MESSAGE, type CapturableFile } from "./promptAttachmentCapture";
 import { templateEventHandlerAfterMarker, templateEventHandlerAfterValue } from "./templateInspection.testSupport";
 
 function file(name: string, type: string, size = 10): CapturableFile {
   return { name, type, size };
+}
+
+/** The id the editor minted for this send; one message carries one identity. */
+function lastClientMessageId(spy: Mock<NonNullable<PromptEditor["onSend"]>>): string {
+  const id = spy.mock.calls.at(-1)?.[4]?.clientMessageId;
+  if (id === undefined || id === "") throw new Error("send carried no identity");
+  return id;
 }
 
 describe("capturePromptAttachments", () => {
@@ -121,7 +128,7 @@ describe("PromptEditor attachment wiring", () => {
       expect(onSend).toHaveBeenCalledTimes(1);
       expect(onSend).toHaveBeenCalledWith("inspect attachments", undefined, [
         { kind: "image", mimeType: "image/png", data: "UE5H", name: "shot.png" },
-      ], "inline");
+      ], "inline", { clientMessageId: lastClientMessageId(onSend) });
     } finally {
       restoreFileReader();
     }
@@ -148,7 +155,7 @@ describe("PromptEditor attachment wiring", () => {
     expect(onSend).toHaveBeenCalledTimes(1);
     expect(onSend).toHaveBeenCalledWith("please review", undefined, [
       { kind: "image", mimeType: "image/png", data: "UE5H", name: "shot.png" },
-    ], "inline");
+    ], "inline", { clientMessageId: lastClientMessageId(onSend) });
   });
 });
 

@@ -17,7 +17,7 @@ import { rememberWorkspaceSessions, cachedSessionsFor } from "../workspaceSessio
 import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
 import { clearAskDraft } from "../askDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
-import { applyQueueToDelivery, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery } from "../messageDelivery";
+import { findDeliveryLineIndex, applyQueueToDelivery, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery } from "../messageDelivery";
 import { isNetworkFailure, NetworkSendError } from "../pendingOutbox";
 import type { MessageDeliveryState } from "../components/shared";
 import { isShellInput } from "../inputModes";
@@ -569,13 +569,14 @@ export class SessionController {
   private async deliverPromptToSession(session: SessionInfo, text: string, streamingBehavior: "steer" | "followUp" | undefined, attachments: PromptAttachment[] | undefined, delivery: PromptAttachmentDelivery, machineId: string, options: { markSending: boolean; replayClientMessageId?: string }): Promise<boolean> {
     const hasAttachments = attachments !== undefined && attachments.length > 0;
     if (options.markSending) this.markSendingPrompt(session.id, true);
-    // A retry from the outbox re-uses the id the failed bubble already carries,
-    // so the bubble that reads "Not sent" is the one that comes to life again.
-    // Minting a fresh id for the retry would leave the old bubble behind and
-    // show the message twice once the retry landed.
-    const clientMessageId = options.replayClientMessageId ?? this.beginTrackedSend(session, text, attachments ?? []);
-    if (options.replayClientMessageId !== undefined) {
-      this.setState({ messages: restartDelivery(this.getState().messages, options.replayClientMessageId) });
+    // One message carries one id for its whole life. The sender mints it before
+    // the first attempt, writes it to the outbox under that id, and hands it
+    // here, so a retry revives the bubble that reads "Not sent" instead of
+    // adding a second row beside it. An id that already has a row is a replay;
+    // one that does not is this message's first attempt and needs the row.
+    const clientMessageId = this.beginTrackedSend(session, text, attachments ?? [], options.replayClientMessageId);
+    if (clientMessageId !== undefined) {
+      this.setState({ messages: restartDelivery(this.getState().messages, clientMessageId) });
     }
     try {
       if (hasAttachments && delivery === "folder") {
@@ -617,10 +618,11 @@ export class SessionController {
    * Only the session on screen gets a bubble: a send to a background session
    * has nothing to attach a mark to, and the id would never be resolved.
    */
-  private beginTrackedSend(session: SessionInfo, text: string, attachments: readonly PromptAttachment[] = []): string | undefined {
-    if (text.trim() === "" && attachments.length === 0) return undefined;
-    if (this.getState().selectedSession?.id !== session.id) return undefined;
-    const clientMessageId = newClientMessageId();
+  private beginTrackedSend(session: SessionInfo, text: string, attachments: readonly PromptAttachment[] = [], suppliedId?: string): string | undefined {
+    if (text.trim() === "" && attachments.length === 0) return suppliedId;
+    if (this.getState().selectedSession?.id !== session.id) return suppliedId;
+    const clientMessageId = suppliedId ?? newClientMessageId();
+    if (findDeliveryLineIndex(this.getState().messages, clientMessageId) !== -1) return clientMessageId;
     this.setState({ messages: [...this.getState().messages, optimisticUserLine(text, clientMessageId, attachments)] });
     return clientMessageId;
   }
