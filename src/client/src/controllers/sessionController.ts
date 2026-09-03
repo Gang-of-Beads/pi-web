@@ -18,7 +18,7 @@ import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
 import { clearAskDraft } from "../askDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
 import { findDeliveryLineIndex, applyQueueToDelivery, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine, restartDelivery } from "../messageDelivery";
-import { isNetworkFailure, NetworkSendError } from "../pendingOutbox";
+import { forgetPendingPrompt, isNetworkFailure, NetworkSendError } from "../pendingOutbox";
 import type { MessageDeliveryState } from "../components/shared";
 import { isShellInput } from "../inputModes";
 import { fileCompletionInsertText } from "../promptCompletions";
@@ -2153,6 +2153,21 @@ export class SessionController {
     // so the card follows the daemon's own open/close order.
     if (event.type === "ask.opened") {
       this.dialogScope.observe(event, () => { this.applyOpenedAsk(event.ask); });
+      return;
+    }
+    if (event.type === "prompt.withdrawn") {
+      // The reader took this message back - here or on another device. The
+      // daemon deleted the queue entry, so no transcript claim is coming;
+      // without this frame the row would wait at "Queued" forever, and a
+      // retry would re-send what was explicitly recalled. Terminal: the line
+      // goes, and the outbox entry goes with it.
+      const current = this.getState();
+      const selected = current.selectedSession;
+      if (selected !== undefined) {
+        forgetPendingPrompt(machineSessionKey(selectedMachineId(current), selected.id), event.clientMessageId);
+        const messages = removeDeliveryLine(current.messages, event.clientMessageId);
+        if (messages.length !== current.messages.length) this.setState({ messages });
+      }
       return;
     }
     if (event.type === "prompt.accepted") {

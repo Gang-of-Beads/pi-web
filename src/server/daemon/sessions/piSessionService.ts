@@ -3228,6 +3228,10 @@ export class PiSessionService implements SessionRouteService {
   async clearQueue(ref: PiSessionRef): Promise<ClientSessionStatus> {
     await this.assertWritable(ref);
     const session = await this.getOrOpen(ref);
+    for (const record of this.queuedPromptClientIds.get(session.sessionId) ?? []) {
+      this.publishWithdrawn(session.sessionId, record.clientMessageId);
+    }
+    this.queuedPromptClientIds.delete(session.sessionId);
     this.clearCompactionPromptQueue(session.sessionId);
     clearSessionQueue(session);
     this.publishStatus(session);
@@ -3264,7 +3268,7 @@ export class PiSessionService implements SessionRouteService {
         compactionQueue.splice(index, 1);
         if (compactionQueue.length === 0) this.compactionPromptQueues.delete(session.sessionId);
         else this.compactionPromptQueues.set(session.sessionId, compactionQueue);
-        this.forgetQueuedPromptClientId(session.sessionId, target.text, target.clientMessageId);
+        this.publishWithdrawn(session.sessionId, this.forgetQueuedPromptClientId(session.sessionId, target.text, target.clientMessageId) ?? target.clientMessageId);
         this.publishStatus(session);
         return { recalled: true, status: this.statusFromSession(session) };
       }
@@ -3307,7 +3311,7 @@ export class PiSessionService implements SessionRouteService {
       if (found) this.takeQueuedPromptImages(session.sessionId, target.text);
       return found;
     });
-    if (removed) this.forgetQueuedPromptClientId(session.sessionId, target.text, target.clientMessageId);
+    if (removed) this.publishWithdrawn(session.sessionId, this.forgetQueuedPromptClientId(session.sessionId, target.text, target.clientMessageId) ?? target.clientMessageId);
     this.publishActivity(session, removed ? "queued message recalled" : "queued message already gone", "active");
     this.publishStatus(session);
     // Whether anything was actually taken back is the caller's business: the
@@ -3323,16 +3327,29 @@ export class PiSessionService implements SessionRouteService {
    * is not later re-stamped as still queued. Without an id, the first record
    * with matching text goes, mirroring how the queue itself is matched.
    */
-  private forgetQueuedPromptClientId(sessionId: string, text: string, clientMessageId?: string): void {
+  private forgetQueuedPromptClientId(sessionId: string, text: string, clientMessageId?: string): string | undefined {
     const records = this.queuedPromptClientIds.get(sessionId);
-    if (records === undefined) return;
+    if (records === undefined) return undefined;
     const index = clientMessageId === undefined
       ? records.findIndex((record) => record.text === text)
       : records.findIndex((record) => record.clientMessageId === clientMessageId);
-    if (index === -1) return;
-    records.splice(index, 1);
+    if (index === -1) return undefined;
+    const [forgotten] = records.splice(index, 1);
     if (records.length === 0) this.queuedPromptClientIds.delete(sessionId);
     else this.queuedPromptClientIds.set(sessionId, records);
+    return forgotten?.clientMessageId;
+  }
+
+  /**
+   * Tell every device the reader took this message back.
+   *
+   * Without the frame, another browser's bubble waits on a transcript claim
+   * that will never come - the daemon deleted the entry, so absence is all the
+   * other device would ever see, and its row would sit at "Queued" forever.
+   */
+  private publishWithdrawn(sessionId: string, clientMessageId: string | undefined): void {
+    if (clientMessageId === undefined) return;
+    this.events.publish(sessionId, { type: "prompt.withdrawn", clientMessageId });
   }
 
   async dismissWarning(ref: PiSessionRef, dismissId: string): Promise<ClientSessionStatus> {

@@ -152,6 +152,34 @@ describe("SessionController prompt.accepted delivery transition", () => {
   });
 });
 
+describe("SessionController prompt.withdrawn", () => {
+  /**
+   * A recall deletes the daemon's queue entry, so no transcript claim is
+   * coming for that identity. Another device knows nothing of the click:
+   * without this frame its row waits at "Queued" forever, and a retry would
+   * re-send what the reader explicitly took back. Terminal: the line goes.
+   */
+  it("removes the withdrawn message's line", async () => {
+    const harness = await liveSession();
+    const line = { role: "user" as const, parts: [{ type: "text" as const, text: "take me back" }], meta: { delivery: { clientMessageId: "cmid-w", state: "queued" as const } } };
+    harness.state().messages = [line];
+
+    harness.socket.emit({ type: "prompt.withdrawn", clientMessageId: "cmid-w" });
+
+    expect(harness.state().messages).toHaveLength(0);
+  });
+
+  it("leaves other identities' lines alone", async () => {
+    const harness = await liveSession();
+    const line = { role: "user" as const, parts: [{ type: "text" as const, text: "still queued" }], meta: { delivery: { clientMessageId: "cmid-stay", state: "queued" as const } } };
+    harness.state().messages = [line];
+
+    harness.socket.emit({ type: "prompt.withdrawn", clientMessageId: "cmid-other" });
+
+    expect(harness.state().messages).toHaveLength(1);
+  });
+});
+
 describe("SessionController extension dialog state", () => {
   it("rehydrates open dialogs from the daemon-owned status on selection", async () => {
     const pending = [dialog("dialog-1"), dialog("dialog-2", "select")];
