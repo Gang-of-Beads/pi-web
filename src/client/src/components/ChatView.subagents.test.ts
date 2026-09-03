@@ -335,7 +335,7 @@ describe("run status labels", () => {
   const EXPECTED: Record<SessionSubagentRunInfo["status"], string> = {
     // Stopped now means the reader stopped it. A run whose tracking was lost
     // is reported as lost: saying "Stopped" claimed an action nobody took.
-    running: "Running", done: "Done", failed: "Failed", lost: "Lost", unknown: "Unknown",
+    running: "Running", done: "Done", failed: "Failed", lost: "Lost", unknown: "No report yet",
   };
   const SUBAGENT_RUN_STATUSES: readonly SessionSubagentRunInfo["status"][] = ["running", "done", "failed", "lost", "unknown"];
 

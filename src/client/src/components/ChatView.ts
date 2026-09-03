@@ -49,6 +49,7 @@ import "./ToolExecutionView";
 import { sessionStateBadgeStyles as SessionStateBadgeStyles } from "./sessionStateBadgeStyles";
 import { readingAnchorDecision, readingScrollCorrection, shouldHoldReadingPosition } from "../readingAnchor";
 import { imageLoadScrollCorrection } from "../imageLoadScroll";
+import { subagentRunStatusExplanation, subagentRunStatusLabel } from "../subagentRunStatusLabel";
 import { pluginSurfaceVisibility } from "../pluginSurfaceVisibility";
 
 export const chatStyles = css`
@@ -3176,6 +3177,7 @@ export interface SubagentRunRow {
   run: SessionSubagentRunInfo;
   status: SessionSubagentRunInfo["status"];
   statusLabel: string;
+  statusExplanation: string;
   duration: string;
   detail: string;
   /** Model and thinking level, when the run recorded what it ran on. */
@@ -3191,7 +3193,8 @@ export interface SubagentRunRow {
  */
 export function subagentRunRows(runs: readonly SessionSubagentRunInfo[]): SubagentRunRow[] {
   return runs.map((run) => {
-    const statusLabel = run.status === "running" ? "Running" : run.status === "done" ? "Done" : run.status === "failed" ? "Failed" : run.status === "lost" ? "Lost" : "Unknown";
+    const statusLabel = subagentRunStatusLabel(run.status);
+    const statusExplanation = subagentRunStatusExplanation(run.status);
     const duration = subagentRunDuration(run.elapsedMs);
     const detail = run.status === "running" ? run.lastActivity ?? "working" : run.task ?? "";
     const model = describeRunModel(run.model);
@@ -3201,6 +3204,7 @@ export function subagentRunRows(runs: readonly SessionSubagentRunInfo[]): Subage
       // failing; it is reported as what it is.
       status: run.status,
       statusLabel,
+      statusExplanation,
       duration,
       detail,
       ...(model === undefined ? {} : { modelLabel: model.label, modelTitle: run.model ?? model.label }),
