@@ -11,7 +11,10 @@ import { inputModeForDraft, inputModesEqual, type InputMode } from "../inputMode
 import { machineSessionKey } from "../machineKeys";
 import { detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletionChoices, type PromptCompletionTrigger } from "../promptCompletions";
 import { clearDraft, loadDraft, restoresDraftOnFirstRender, savesOutgoingDraft, saveDraft } from "../promptDraftStorage";
-import { clearPendingPrompts, isNetworkFailure, loadPendingPrompts, NetworkSendError, savePendingPrompt, type PendingPrompt } from "../pendingOutbox";
+import { clearPendingPrompts, isNetworkFailure, loadPendingPrompts, forgetPendingPrompt, savePendingPrompt, type PendingPrompt } from "../pendingOutbox";
+import { classifySubmission, handleOutcome } from "../messageLifecycle";
+import { isRequestTimeout } from "../api/requestDeadline";
+import { newClientMessageId } from "../messageDelivery";
 import { historyIndexStep, type HistoryDirection, loadPromptHistory, rememberPromptHistory, searchPromptHistory } from "../promptHistory";
 import { createMobilePromptEnterMedia, readPromptEnterPreference, shouldSendPromptOnEnterShortcut, shouldUsePromptEnterShiftShortcut } from "../promptEnterBehavior";
 import { createBrowserVoiceRecorder } from "../browserVoiceRecorder";
@@ -1084,6 +1087,13 @@ export class PromptEditor extends LitElement {
     delivery: PromptAttachmentDelivery,
     restorable: { text: string; attachments: PendingAttachment[] },
   ): Promise<void> {
+    const outboxKey = machineSessionKey(this.machineId, this.sessionId ?? "");
+    const outboxId = newClientMessageId();
+    if (outboxKey !== "") {
+      savePendingPrompt(outboxKey, { text, ...(behavior === undefined ? {} : { behavior }), clientMessageId: outboxId, ...(attachments === undefined || attachments.length === 0 ? {} : { attachments }), at: new Date().toISOString() });
+      this.pendingPrompts = loadPendingPrompts(outboxKey);
+    }
+
     let accepted: boolean | undefined;
     let failure: unknown;
     try {
@@ -1092,19 +1102,20 @@ export class PromptEditor extends LitElement {
       accepted = false;
       failure = error;
     }
-    // `undefined` keeps the old contract for handlers that report nothing.
-    if (accepted !== false) return;
-    // A connectivity loss is retried from the outbox instead of dumped back
-    // into the composer: the message survives the drop and goes out
-    // automatically once the network returns.
-    if (isNetworkFailure(failure)) {
-      const key = machineSessionKey(this.machineId, this.sessionId ?? "");
-      if (key !== "") {
-        const clientMessageId = failure instanceof NetworkSendError ? failure.clientMessageId : undefined;
-        savePendingPrompt(key, { text, ...(behavior === undefined ? {} : { behavior }), ...(clientMessageId === undefined ? {} : { clientMessageId }), ...(attachments === undefined || attachments.length === 0 ? {} : { attachments }), at: new Date().toISOString() });
-        this.pendingPrompts = loadPendingPrompts(key);
-        return;
+    if (accepted !== false) {
+      if (outboxKey !== "") {
+        forgetPendingPrompt(outboxKey, outboxId);
+        this.pendingPrompts = loadPendingPrompts(outboxKey);
       }
+      return;
+    }
+    if (handleOutcome(classifySubmission(failure, (value) => !isNetworkFailure(value) && !isRequestTimeout(value))).keepInOutbox) {
+      if (outboxKey !== "") this.pendingPrompts = loadPendingPrompts(outboxKey);
+      return;
+    }
+    if (outboxKey !== "") {
+      forgetPendingPrompt(outboxKey, outboxId);
+      this.pendingPrompts = loadPendingPrompts(outboxKey);
     }
     const current = this.editor?.state.doc.toString() ?? this.draft;
     if (current.trim() !== "") return;

@@ -120,7 +120,6 @@ has it, `queued`/`running` say what it is doing with it, and only the daemon may
 assert those.
 
 ### 5c. "Queued" is shown two ways at once, and means four different things
-
 On screen at the same time: a gold card reading "Queued to steer", and below it
 a separate gold strip reading "1 queued" with a Clear queue button. Two visual
 languages for one fact.
@@ -151,6 +150,48 @@ it to be, not because the application produced it.
 
 **Cause: the agent. Fix: stop emitting it.**
 
+### 6b. `400 ... thinking blocks in the latest assistant message cannot be modified`
+
+Recurring, in more than one session. The turn fails outright and the session
+goes idle holding the error.
+
+Anthropic requires that thinking blocks in the most recent assistant message be
+replayed exactly as they were returned. Something in the round trip is altering
+them.
+
+Established by reading, and what each rules out:
+- `browserMessageProjection.ts:14-16` strips `thinkingSignature`, but only at
+  the three outbound boundaries (`sessionEventHub.ts:2`,
+  `piSessionService.ts:36`, `sessionRoutes.ts:3`). Nothing sends a projected
+  message back. **Ruled out.**
+- `toolResultBounds` bounds text on the way to the browser only (`:5351`,
+  `:5422`, `:5426`) and never touches history. **Ruled out.**
+- PI WEB does rewrite the session file, but only its first line, to drop a
+  parent-session pointer (`clearParentSession`, `:5191-5201`). Message lines are
+  copied through untouched. **Ruled out.**
+
+What remains, and matches the reported sequence exactly: the owner sent a
+steering message *while a turn was running* ("wiki, not jira"), which PI WEB
+delivers as `session.prompt(text, { streamingBehavior: "steer" })`
+(`buildPromptOptions`, `:5318`). Steering interrupts an assistant message that
+is mid-flight - and that message carries the thinking blocks the provider then
+refuses to accept as modified.
+
+**Most likely, not established:** the interruption leaves a partial thinking
+block in the branch, and the next request replays it. Settling this needs the
+actual request body, which is pi's to build, not PI WEB's.
+
+**PI WEB's own fault here is separate and certain:** the turn dies and the
+session is left idle holding a red message, with no retry, no way to drop the
+offending turn, and no explanation of what to do. Whatever the provider's
+complaint, a session that cannot continue must offer a way out.
+
+**Not established:** which of those paths actually alters the block, or whether
+the fault is in pi rather than PI WEB. Needs a reproduction that captures the
+exact request body, not more reading.
+
+**What the user sees meanwhile:** a red system message, a dead turn, and no way
+to continue that conversation.
 ---
 
 ## Open — not yet started

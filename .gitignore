@@ -34,5 +34,13 @@ dist/
 # Local agent runtime artifacts (background task logs, delegate sessions)
 .pi/tasks/
 .pi/delegate/
+# Runtime state, not project material. `.pi/prompts` and `.pi/skills` are
+# committed on purpose: they are things this project decided. Goals, the goal
+# ledger and queued prompt frames are the record of one machine's session, and
+# committing them meant every checkout inherited somebody else's half-finished
+# work - five goals whose task lists all read as incomplete because the plugin
+# had stopped recording against them.
 # Derived cache the goal extension rebuilds from the goal files themselves.
 .pi/.goals-pool-snapshot.json
+.pi/goals/
+.pi/queued-prompt-frames.json

@@ -91,6 +91,16 @@ export function savePendingPrompt(sessionKey: string, prompt: PendingPrompt, sto
   }
 }
 
+export function forgetPendingPrompt(sessionKey: string, clientMessageId: string, storage = browserStorage()): void {
+  try {
+    const remaining = loadPendingPrompts(sessionKey, storage).filter((entry) => entry.clientMessageId !== clientMessageId);
+    if (remaining.length === 0) storage?.removeItem(outboxKey(sessionKey));
+    else storage?.setItem(outboxKey(sessionKey), JSON.stringify(remaining));
+  } catch {
+    return;
+  }
+}
+
 export function clearPendingPrompts(sessionKey: string, storage = browserStorage()): void {
   try {
     storage?.removeItem(outboxKey(sessionKey));
