@@ -1,5 +1,13 @@
 # @gang-of-beads/pi-web
 
+## 1.202609.12
+
+### Patch Changes
+
+- f38d16f: The app icon is a pi mark now. The old icon was a single horizontal bar; the new one draws a geometric coral pi on a warm dark tile, full-bleed for launcher masks with the glyph inside the safe zone, at every size the manifest and iOS ask for.
+- 677e687: The background-task poll no longer reads whole transcripts. It used to read the entire session file - hundreds of megabytes for a long-lived session - on every poll, which starved the event loop and made everything feel stuck. A transcript only grows, so the scan now keeps a watermark and reads just the growth.
+- 001cdc3: The quick switcher grows machine tabs: browse and search any machine's sessions without leaving the sheet, and opening one moves the app to that machine first so the session actually opens. While browsing another machine the rows carry no status badges, because those describe the machine the app is on.
+
 ## 1.202609.11
 
 ### Patch Changes
