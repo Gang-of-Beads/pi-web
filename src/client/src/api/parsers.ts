@@ -1870,7 +1870,7 @@ export function parsePiWebPluginsResponse(value: unknown): PiWebPluginsResponse 
         status: "incompatible",
         restartRequired: false,
         message: "PI WEB does not support plugin lifecycle diagnostics. Update and restart PI WEB, then try again.",
-        recovery: legacyPluginRecoveryCommands(),
+        recovery: { ...PI_WEB_PLUGIN_RECOVERY_COMMANDS },
       },
     };
   }
@@ -1983,10 +1983,6 @@ function parsePiWebPluginRecoveryCommands(value: unknown): PiWebPluginsResponse[
     throw new Error("Invalid PI WEB server plugin recovery commands");
   }
   return commands;
-}
-
-function legacyPluginRecoveryCommands(): PiWebPluginsResponse["serverRuntime"]["recovery"] {
-  return { ...PI_WEB_PLUGIN_RECOVERY_COMMANDS };
 }
 
 function parsePiWebPluginScope(value: unknown): PiWebPluginScope {
