@@ -52,15 +52,19 @@ describe("clear-queue action visibility", () => {
   // The decision to offer the clear-queue action is the same seam that used to
   // sit on the queued panel; the transcript carries it now.
   it("shows the strip only while the server queue holds something", () => {
-    // The action visibility seam used to live on the queued panel; the strip
-    // carries the same decision now, so it is asserted through the render.
+    // The strip used to carry a count as well, which was the queue listed a
+    // second time in a second visual language - the cards above it are already
+    // the count. Only the action it exists to host is left, so that action is
+    // what the visibility is asserted through.
     const empty = new ChatView();
     empty.status = queuedStatus([]);
-    expect(templateText(renderQueuedMessages(empty))).not.toContain("queued");
+    empty.onClearServerQueue = () => undefined;
+    expect(templateText(renderQueuedMessages(empty))).not.toContain("Clear queue");
 
     const held = new ChatView();
     held.status = queuedStatus([{ kind: "steer", text: "server queued" }]);
-    expect(templateText(renderQueuedMessages(held))).toContain("1 queued");
+    held.onClearServerQueue = () => undefined;
+    expect(templateText(renderQueuedMessages(held))).toContain("Clear queue");
   });
 });
 describe("ChatView queued-message clear wiring", () => {
@@ -152,8 +156,8 @@ describe("ChatView queued messages stay in place", () => {
 
   it("draws a queued message from somewhere else in the transcript, not twice", () => {
     // Another device, or an injected command: no bubble here, so one is drawn
-    // for it in the transcript, in queue order. The strip keeps the count and
-    // the clear action but never repeats the text.
+    // for it in the transcript, in queue order. The strip carries the clear
+    // action and never repeats the text or counts the cards a second time.
     const view = new ChatView();
     view.messages = [];
     view.status = queuedStatus([{ kind: "steer", text: "from my phone" }]);
@@ -161,7 +165,7 @@ describe("ChatView queued messages stay in place", () => {
 
     const strip = templateText(renderQueuedMessages(view));
     expect(strip).not.toContain("from my phone");
-    expect(strip).toContain("1 queued");
+    expect(strip).toContain("Clear queue");
     expect([...splitTranscriptAndPending(view.messages, view.status.queuedMessages).settled, ...splitTranscriptAndPending(view.messages, view.status.queuedMessages).pending]).toHaveLength(1);
   });
 });

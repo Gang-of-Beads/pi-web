@@ -25,6 +25,8 @@ import { fileCompletionInsertText } from "../promptCompletions";
 import { SessionSocket, parseSessionSocketEvent, type GlobalSessionEvent, type SessionUiEvent } from "../sessionSocket";
 import { isArchivableSessionInfo, isTransientNewSessionInfo } from "../sessionPersistence";
 import { transcriptLoadingAfter } from "../transcriptLoadingOwnership";
+import { classifySubmission, handleOutcome } from "../messageLifecycle";
+import { isRequestTimeout } from "../api/requestDeadline";
 import { isSessionActive } from "../../../shared/activity";
 import type { PromptAttachmentDelivery, SessionNotificationInboxEvent, SessionStartupProgressEvent } from "../../../shared/apiTypes";
 import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchived, selectPreferredSession, selectionAfterArchivingSession, selectionAfterArchivingSessions, shouldDeselectAfterArchivedCollapse, type SessionSelectionMemory } from "./sessionSelection";
@@ -586,17 +588,21 @@ export class SessionController {
       return true;
     } catch (error) {
       this.setState(errorNoticePatch(error));
-      // A dropped connection keeps the bubble and its "Not sent" mark: the
-      // outbox owns the retry and will revive this same bubble, so the message
-      // stays in exactly one place the whole time. The error travels with the
-      // id so the outbox knows which bubble it is. Other failures hand the
-      // text back to the composer, where a stale "Not sent" bubble would sit
-      // above the restored draft claiming the send never went.
-      if (isNetworkFailure(error)) {
+      // Three outcomes, not two. A dropped connection and an unanswered request
+      // are the same thing to the sender: nobody said what happened, so the
+      // message may well exist on the daemon. Both keep the bubble, keep the
+      // words out of the composer, and leave the entry for the outbox to retry.
+      // Only a definite refusal takes the row away and hands the text back.
+      //
+      // Collapsing unanswered into refused is what deleted a message the daemon
+      // had already accepted, and then offered the same words for sending again.
+      const outcome = classifySubmission(error, (value) => !isNetworkFailure(value) && !isRequestTimeout(value));
+      const handling = handleOutcome(outcome);
+      if (handling.keepInOutbox) {
         if (clientMessageId !== undefined) this.markDelivery(session.id, clientMessageId, "failed");
         throw new NetworkSendError(String(error), clientMessageId, { cause: error });
       }
-      if (clientMessageId !== undefined) this.setState({ messages: removeDeliveryLine(this.getState().messages, clientMessageId) });
+      if (!handling.keepRow && clientMessageId !== undefined) this.setState({ messages: removeDeliveryLine(this.getState().messages, clientMessageId) });
       return false;
     } finally {
       if (options.markSending) this.markSendingPrompt(session.id, false);

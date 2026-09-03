@@ -1199,7 +1199,16 @@ export class PiWebApp extends LitElement {
         if (updateUrl) this.updateUrl();
         return;
       }
-      const project = this.state.projects.find((p) => p.id === route.projectId);
+      // A project missing from the loaded list is not a project that does not
+      // exist: on a reload the route is restored before the list has arrived,
+      // and giving up here is what dropped the reader on "Select or start a
+      // session" after switching sessions and refreshing. Ask for the list
+      // before concluding anything.
+      let project = this.state.projects.find((p) => p.id === route.projectId);
+      if (!project) {
+        project = await this.locateRouteProject(route.projectId);
+        if (!this.isCurrentRouteRestore(restoreSeq)) return;
+      }
       if (!project) {
         this.setState({ selectedFilePath: undefined, selectedTerminalId: undefined });
         if (updateUrl) this.updateUrl();
@@ -2153,6 +2162,30 @@ export class PiWebApp extends LitElement {
    */
   private applyRenameToQuickSwitcher(sessionId: string, name: string): void {
     this.quickSwitcherSessions = renameSessionInList(this.quickSwitcherSessions, sessionId, name);
+  }
+
+  /**
+   * Find the project a restored route names, when the loaded list does not have
+   * it yet.
+   *
+   * On a reload the route is restored before the project list has arrived, so
+   * looking only at what is loaded concludes the project does not exist and
+   * drops the reader on "Select or start a session" - having just refreshed a
+   * session they were reading. An unloaded list is not evidence of absence.
+   *
+   * Returns undefined only when the read succeeded and the project genuinely is
+   * not there. A failed read answers undefined too, and the caller treats that
+   * as "cannot tell" by leaving the selection alone rather than clearing it.
+   */
+  private async locateRouteProject(projectId: string): Promise<Project | undefined> {
+    try {
+      const projects = await projectsApi.projects(selectedMachineId(this.state));
+      const found = projects.find((candidate) => candidate.id === projectId);
+      if (found !== undefined) this.setState({ projects });
+      return found;
+    } catch {
+      return undefined;
+    }
   }
 
   private async loadQuickSwitcherData(force = false): Promise<void> {

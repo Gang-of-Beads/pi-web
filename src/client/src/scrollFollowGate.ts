@@ -26,6 +26,18 @@ export class ScrollFollowGate {
   }
 
   /**
+   * Whether a finger is on the glass right now.
+   *
+   * Separate from followsNewest, which forgives a press held longer than any
+   * real touch so a stuck pointer cannot freeze following forever. Moving the
+   * transcript under a press is a different question: the ground must not shift
+   * while it is being touched, however long the touch has lasted.
+   */
+  pointerIsDown(): boolean {
+    return this.pointerDownAt !== undefined;
+  }
+
+  /**
    * Whether the reader is mid-press or inside the release grace - the span
    * during which the ground under the finger must not change. Pure: render
    * paths ask this every frame, and a probe that recorded a suppressed follow

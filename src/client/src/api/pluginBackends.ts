@@ -12,6 +12,7 @@ import {
 } from "../../../shared/pluginBackendProtocol";
 import { resolveAppUrl, type AppUrlContext } from "../appUrl";
 import { describeError } from "../notice";
+import { fetchWithDeadline } from "./requestDeadline";
 
 export interface PluginBackendRequestTarget {
   pluginId: string;
@@ -59,7 +60,7 @@ export async function requestPluginBackend(
 
   let response: Response;
   try {
-    response = await fetch(pluginBackendRequestUrl(target, operation), {
+    response = await fetchWithDeadline(pluginBackendRequestUrl(target, operation), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body,

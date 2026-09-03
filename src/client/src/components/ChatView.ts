@@ -471,7 +471,6 @@ export const chatStyles = css`
   .command-dismiss { flex: 0 0 auto; align-self: center; width: 24px; height: 24px; display: grid; place-items: center; padding: 0; border: 1px solid transparent; border-radius: var(--pi-radius-sm); background: transparent; color: inherit; font: inherit; font-size: var(--pi-text-sm); line-height: 1; cursor: pointer; }
   .command-dismiss:focus-visible { outline: var(--pi-focus-ring-width) solid currentColor; outline-offset: var(--pi-focus-ring-offset); }
   @media (hover: hover) { .command-dismiss:hover { border-color: currentColor; } }
-  .queued-strip-count { flex: 1 1 auto; min-width: 0; }
   .queued-clear-button { flex: 0 0 auto; border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-warning); padding: var(--pi-space-1) var(--pi-space-3); font: inherit; cursor: pointer; }
   .queued-clear-button:focus { border-color: var(--pi-warning); color: var(--pi-text-bright); }
   @media (hover: hover) { .queued-clear-button:hover { border-color: var(--pi-warning); color: var(--pi-text-bright); } }
@@ -628,14 +627,21 @@ export function chatDeliveryMarkerVisible(delivery: MessageDelivery | undefined)
   return delivery !== undefined && !deliveryTaken(delivery.state);
 }
 
-export function chatDeliveryPresentation(delivery: MessageDelivery): DeliveryPresentation {
+export function chatDeliveryPresentation(delivery: MessageDelivery, queuePosition?: number): DeliveryPresentation {
   if (delivery.state === "sending") return { glyph: "◌", text: "Sending", label: "Sending", tone: "pending" };
   if (delivery.state === "failed") return { glyph: "!", text: "Not sent", label: "Not sent - the server never received this message", tone: "failed" };
   if (delivery.state === "queued") {
+    // The position is the count: it used to be shown a second time, in a
+    // separate strip, reading from a different fact and disagreeing with this.
     const lane = delivery.kind === "steer" ? "Queued to steer" : "Queued";
-    return { glyph: "✓", text: lane, label: `${lane} - the server has this message and the agent will take it next`, tone: "received" };
+    const place = queuePosition === undefined ? "" : ` · ${String(queuePosition)}`;
+    return { glyph: "✓", text: `${lane}${place}`, label: `${lane} - the server has this message and the agent will take it next`, tone: "received" };
   }
-  if (delivery.state === "received") return { glyph: "✓", text: "Sent", label: "Sent - the server received this message", tone: "received" };
+  // "Sent" is a transport receipt and nothing more: the server's HTTP answer
+  // arrived. It is not a promise that anything will happen, and a message can
+  // sit here while the session is idle. Saying "Sent" and meaning "queued" is
+  // what made a stalled message indistinguishable from a running one.
+  if (delivery.state === "received") return { glyph: "✓", text: "Sent", label: "Sent - the server received this message, and has not yet said what it is doing with it", tone: "received" };
   return { glyph: "✓✓", text: "Read", label: "Read - the agent took this message into the conversation", tone: "delivered" };
 }
 
@@ -910,6 +916,12 @@ export class ChatView extends LitElement {
 
   /** The scroller's height as of the last render, so a lazy image can report
    *  how much it grew the document rather than have it re-measured after. */
+  /** The scroller's height as of the last completed render.
+   *
+   *  One writer only, in updated(): a second writer earlier in the same cycle
+   *  recorded the new height before growth could be noticed, which silently
+   *  disabled the bottom hold. A lazy image reads it to report how much it grew
+   *  the document since that render. */
   private lastScrollHeight: number | undefined;
   private readonly openImageZoom = (src: string, alt: string): void => {
     this.zoomedImage = { src, alt };
@@ -1048,7 +1060,6 @@ export class ChatView extends LitElement {
       ? this.captureReadingAnchor()
       : undefined;
     super.update(changed);
-    if (this.chat) this.lastScrollHeight = this.chat.scrollHeight;
     if (prependAnchor !== undefined) this.restorePrependScrollAnchor(prependAnchor);
     if (readingAnchor !== undefined) this.restoreReadingAnchor(readingAnchor);
   }
@@ -2189,7 +2200,11 @@ export class ChatView extends LitElement {
   private renderDeliveryMark(message: ChatLine) {
     const delivery = message.meta?.delivery;
     if (!chatDeliveryMarkerVisible(delivery) || delivery === undefined) return null;
-    const presentation = chatDeliveryPresentation(delivery);
+    // Where this message sits in the server's queue, so the card carries its own
+    // count instead of a second surface counting them all again.
+    const queued = this.status?.queuedMessages ?? [];
+    const index = queued.findIndex((entry) => entry.clientMessageId === delivery.clientMessageId);
+    const presentation = chatDeliveryPresentation(delivery, index === -1 ? undefined : index + 1);
     return html`
       <div class=${`delivery-mark ${presentation.tone}`} role="status" aria-label=${presentation.label}>
         <span class="delivery-glyph" aria-hidden="true">${presentation.glyph}</span>
@@ -2247,14 +2262,17 @@ export class ChatView extends LitElement {
     // thing a panel could add is a second listing of the same text. One action
     // still needs a home: clearing the whole server queue without stopping the
     // work it is waiting behind. A slim strip carries that, nothing more.
+    // The cards above are the queue: each one is gold, says its own state, and
+    // carries its own Recall. Counting them again here was a second listing of
+    // what the reader can already see, in a second visual language, and the two
+    // read from different facts and disagreed. Only the action that has no
+    // other home is left - clearing the whole server queue without stopping the
+    // work it waits behind.
     const serverQueued = this.status?.queuedMessages ?? [];
-    if (serverQueued.length === 0) return null;
+    if (serverQueued.length === 0 || this.onClearServerQueue === undefined) return null;
     return html`
-      <div class="queued-strip" aria-live="polite">
-        <span class="queued-strip-count">${String(serverQueued.length)} queued</span>
-        ${this.onClearServerQueue === undefined ? null : html`
-          <button type="button" class="queued-clear-button" title="Clear queued messages without stopping active work" @click=${() => { this.onClearServerQueue?.(serverQueued); }}>Clear queue</button>
-        `}
+      <div class="queued-strip">
+        <button type="button" class="queued-clear-button" title="Clear queued messages without stopping active work" @click=${() => { this.onClearServerQueue?.(serverQueued); }}>Clear queue</button>
       </div>
     `;
   }

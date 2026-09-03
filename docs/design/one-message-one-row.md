@@ -168,3 +168,82 @@ poisoning its successor.
 Whether the optimistic bubble should exist at all is a product decision, and
 this design assumes it stays. Option C is recorded so the trade is visible, not
 because it is proposed.
+
+---
+
+# The same message, swallowed
+
+Reported after the above: a message sent with screenshots, then a refresh, and
+the message is simply not there. No error, no trace, nothing to retry. Sometimes
+the order is wrong as well.
+
+This is the same fault as the duplicate, one step worse. The duplicate is a
+message with two homes. This is a message with none.
+
+## Where a message lives
+
+| Stage | Where it exists | Survives a refresh? | Survives a daemon restart? |
+|---|---|---|---|
+| Draft, not sent | `promptDraftStorage` in `localStorage` | yes | yes |
+| **Sent, waiting** | **the browser's optimistic bubble, and the runtime's in-memory queue** | **no** | **no** |
+| Consumed by the agent | the transcript file | yes | yes |
+
+The middle row is the defect. Between pressing send and the agent reaching the
+message, it exists only in two volatile places, and both are lost by the two
+things that happen most often: the reader refreshes, and the daemon restarts.
+
+The session daemon restarted three times in one evening during ordinary work -
+an upgrade, a crash recovery, a service reload. Every queued message at each of
+those moments was discarded silently.
+
+## Why it is invisible
+
+A message that vanished and a message that was never sent render identically.
+The composer is empty either way, the transcript has no row either way, and
+nothing reports a loss. The reader cannot even know to retype it, because they
+cannot tell whether it went.
+
+That is the absence-is-not-negation rule broken at the worst possible place: not
+a panel showing an empty list, but the user's own words.
+
+## The invariant
+
+> **From the moment the user presses send, the message is durable and
+> recoverable until it appears in the transcript. A message can be delayed,
+> refused or reported lost, but it cannot silently cease to exist.**
+
+## Design
+
+**A submitted message stays in a durable outbox until the transcript claims
+it.**
+
+1. On send, the message moves from the draft store to an **outbox** in the same
+   durable storage - text, attachments, lane, and the identity it was minted
+   with. It leaves the outbox only when the transcript contains that identity.
+2. On load, the browser reads the outbox and renders its entries exactly as the
+   register renders anything else: one row per identity, in the `queued` state.
+   A message that was in flight when the daemon died reappears, still marked as
+   waiting.
+3. A message in the outbox whose session cannot account for it - the daemon has
+   restarted, its queue is empty, and the transcript does not contain it - is
+   **reported as lost with a retry**, not dropped. Absence is stated, not
+   guessed at.
+4. The daemon's own queue should be recoverable for the same reason, but the
+   browser outbox is what makes the guarantee independent of it: the message
+   survives even if the machine the daemon runs on went away entirely.
+
+This reuses the register rather than adding a fourth source. The outbox is a
+contributor of facts about messages, like the transcript and the queue, and the
+register already guarantees one row per identity - so a recovered message cannot
+double up with the transcript entry that eventually arrives.
+
+## How it would be enforced
+
+Two tests at the level the failure happens:
+
+- A message submitted, then the page reloaded with an empty daemon queue and no
+  transcript entry, appears exactly once and is marked as needing retry.
+- A message submitted, then the page reloaded after the agent consumed it,
+  appears exactly once, settled, and is not offered for retry.
+
+Both fail today: the message appears zero times.
