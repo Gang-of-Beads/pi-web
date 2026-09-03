@@ -458,8 +458,9 @@ export class AskUserCard extends LitElement {
     /* This card is its own shadow root, so the transcript's tap rules do not
        reach it: without these, the option buttons stay eligible for the
        browser's double-tap-zoom click delay and paint the platform's rectangular
-       tap highlight. */
-    button, [role="button"], input, select, summary { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+       tap highlight. The option label is the real hit target - the input is
+       only its dot - so it belongs in this list too. */
+    button, [role="button"], input, select, summary, .option { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
     :host {
       display: block;
       box-sizing: border-box;
@@ -548,7 +549,14 @@ export class AskUserCard extends LitElement {
       border-radius: 8px;
       padding: 7px 8px;
       cursor: pointer;
+      /* The coarse-pointer floor this project already holds everywhere else.
+         A thumb drifting a few pixels on a 36px row surrounded by 7px gaps
+         lands in the next row - reported as Custom answers appearing from
+         option taps, because Custom sits directly under the last option. */
+      min-height: 44px;
+      box-sizing: border-box;
     }
+    .other-option { border-top: 1px solid var(--pi-border-muted); padding-top: 11px; }
     @media (hover: hover) { .option:hover { border-color: var(--pi-border-muted); background: var(--pi-surface-hover); } }
     .option:has(input:checked) { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     input { margin: 2px 0 0; accent-color: var(--pi-accent); }
