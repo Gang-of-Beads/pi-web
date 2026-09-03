@@ -370,3 +370,22 @@ describe("a failure is settled but not silent", () => {
     expect(deliveryTaken("failed")).toBe(false);
   });
 });
+
+describe("queue reconciliation against runtime state", () => {
+  const queuedRow: ChatLine = { role: "user", parts: [{ type: "text", text: "steer me" }], meta: { delivery: { clientMessageId: "c-q", state: "queued" } } };
+
+  it("settles a queued row absent from an idle runtime's queue", () => {
+    const out = applyQueueToDelivery([queuedRow], [], true);
+    expect(out[0]?.meta?.delivery?.state).toBe("delivered");
+  });
+
+  it("leaves a queued row alone while the runtime is mid-turn", () => {
+    const out = applyQueueToDelivery([queuedRow], [], false);
+    expect(out[0]?.meta?.delivery?.state).toBe("queued");
+  });
+
+  it("keeps a row the queue still holds", () => {
+    const out = applyQueueToDelivery([queuedRow], [{ kind: "steer", text: "steer me", clientMessageId: "c-q" }], true);
+    expect(out[0]?.meta?.delivery?.state).toBe("queued");
+  });
+});

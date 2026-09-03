@@ -33,7 +33,7 @@ describe("chatDeliveryPresentation", () => {
   });
 
   it("names the lane a queued message waits in", () => {
-    expect(chatDeliveryPresentation({ clientMessageId: "cm-1", state: "queued", kind: "steer" }).text).toBe("Queued to steer");
+    expect(chatDeliveryPresentation({ clientMessageId: "cm-1", state: "queued", kind: "steer" }).text).toBe("Queued");
     expect(chatDeliveryPresentation({ clientMessageId: "cm-1", state: "queued", kind: "followUp" }).text).toBe("Queued");
   });
 

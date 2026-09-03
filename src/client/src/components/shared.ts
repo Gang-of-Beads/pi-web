@@ -111,6 +111,7 @@ export interface ChatLine {
     responseId?: string;
     /** Present only on messages this browser sent; see MessageDelivery. */
     delivery?: MessageDelivery;
+    clientMessageId?: string;
     /**
      * The server's optimistic copy of an accepted prompt. The agent commits its
      * own copy later, and that copy supersedes this line rather than following

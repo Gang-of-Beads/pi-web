@@ -93,6 +93,7 @@ import "./appShell/AppPanelEdgeControl";
 import "./appShell/AppRefreshControl";
 import { quickSwitcherSessionStates, renameSessionInList } from "../quickSwitcher";
 import { reloadOffer } from "../versionSkew";
+import { oneRowPerIdentity } from "../transcriptInvariant";
 import { readPinnedSessionIds, togglePinnedSessionId, writePinnedSessionIds } from "../sessionPins";
 import { observeTransportRecovery } from "../api/transportHealth";
 import { dismissKeyboardIfRaised } from "../keyboardDismissal";
@@ -1033,6 +1034,7 @@ export class PiWebApp extends LitElement {
   }
 
   private setState(patch: Partial<AppState>) {
+    if (patch.messages !== undefined) patch = { ...patch, messages: oneRowPerIdentity(patch.messages) };
     if (!patchChangesState(this.state, patch)) return;
     const previous = this.state;
     this.state = { ...this.state, ...patch };

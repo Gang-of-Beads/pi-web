@@ -641,11 +641,8 @@ export function chatDeliveryPresentation(delivery: MessageDelivery, queuePositio
   if (delivery.state === "sending") return { glyph: "◌", text: "Sending", label: "Sending", tone: "pending" };
   if (delivery.state === "failed") return { glyph: "!", text: "Not sent", label: "Not sent - the server never received this message", tone: "failed" };
   if (delivery.state === "queued") {
-    // The position is the count: it used to be shown a second time, in a
-    // separate strip, reading from a different fact and disagreeing with this.
-    const lane = delivery.kind === "steer" ? "Queued to steer" : "Queued";
     const place = queuePosition === undefined ? "" : ` · ${String(queuePosition)}`;
-    return { glyph: "✓", text: `${lane}${place}`, label: `${lane} - the server has this message and the agent will take it next`, tone: "received" };
+    return { glyph: "✓", text: `Queued${place}`, label: "Queued - the server has this message and the agent will take it next", tone: "received" };
   }
   // "Sent" is a transport receipt and nothing more: the server's HTTP answer
   // arrived. It is not a promise that anything will happen, and a message can

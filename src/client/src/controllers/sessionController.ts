@@ -1904,7 +1904,8 @@ export class SessionController {
     // The queue in a status update is the authority on which of this browser's
     // messages the agent still has waiting, so it drives the delivery marks on
     // the bubbles the sender is looking at.
-    const messages = isSelected ? applyQueueToDelivery(state.messages, status.queuedMessages) : state.messages;
+    const runtimeIdle = !status.isStreaming && !status.isCompacting && status.pendingMessageCount === 0;
+    const messages = isSelected ? applyQueueToDelivery(state.messages, status.queuedMessages, runtimeIdle) : state.messages;
     const clearsStaleActivity = state.sessionActivities[status.sessionId]?.phase === "active" && !isSessionActive(status);
     // Falling edge only: a turn that just ended is the one moment worth
     // re-reading the goal directory for, and every other status update would

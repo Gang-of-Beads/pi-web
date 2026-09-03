@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyTranscriptEvent } from "./chatTranscript";
+import { normalizeMessage } from "./chatMessages";
+import { oneRowPerIdentity } from "./transcriptInvariant";
 import type { SessionUiEvent } from "./sessionSocket";
 import type { ChatLine } from "./components/shared";
 
@@ -73,5 +75,37 @@ describe("a committed photo claims its bubble", () => {
     const next = applyTranscriptEvent([trackedPhoto("c-1", PHOTO_A), queuedText], committedEnd(PHOTO_A, { clientMessageId: "c-1" }));
     expect(next).toHaveLength(2);
     expect(photoCount(next ?? [], PHOTO_A)).toBe(1);
+  });
+});
+
+/**
+ * The thirteenth report, root found: after a reconnect refetch rebuilds rows
+ * without delivery meta, the ring replays message.end for a message already
+ * on screen. Nothing could claim it - no delivery id, no echo mark, an
+ * assistant at the tail - so the final fallback appended a twin. The end
+ * path now dedupes against the whole transcript like the append path always
+ * did.
+ */
+describe("a replayed commit against a refetched transcript", () => {
+  it("never appends a user message that is already there, by id", () => {
+    const plain: ChatLine = { role: "user", parts: [{ type: "text", text: "steer me" }], meta: { clientMessageId: "c-9" } };
+    const reply: ChatLine = { role: "assistant", parts: [{ type: "text", text: "done" }] };
+    const replay: SessionUiEvent = { type: "message.end", message: { role: "user", clientMessageId: "c-9", content: "steer me" } };
+    const next = oneRowPerIdentity(applyTranscriptEvent([plain, reply], replay) ?? []);
+    expect(next.filter((line) => line.role === "user")).toHaveLength(1);
+  });
+
+  it("never appends a user message whose echo is already there", () => {
+    const echo: ChatLine = { role: "user", parts: [{ type: "text", text: "steer me" }], meta: { echo: true } };
+    const reply: ChatLine = { role: "assistant", parts: [{ type: "text", text: "done" }] };
+    const replay: SessionUiEvent = { type: "message.end", message: { role: "user", content: "steer me" } };
+    const next = oneRowPerIdentity(applyTranscriptEvent([echo, reply], replay) ?? []);
+    expect(next.filter((line) => line.role === "user")).toHaveLength(1);
+  });
+
+  it("keeps the refetched row's identity so the replay can claim it", () => {
+    const raw = { role: "user", clientMessageId: "c-9", content: "steer me" };
+    const [line] = normalizeMessage(raw);
+    expect(line?.meta?.clientMessageId).toBe("c-9");
   });
 });

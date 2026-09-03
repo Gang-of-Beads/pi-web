@@ -180,12 +180,14 @@ function normalizeSource(message: unknown): ChatLine["source"] | undefined {
 function normalizeMeta(message: unknown): ChatLine["meta"] | undefined {
   const timestamp = normalizeTimestamp(getProperty(message, "timestamp"));
   const responseId = getString(message, "responseId");
+  const clientMessageId = getString(message, "clientMessageId");
   const model = normalizeModel(message);
   const thinkingLevel = getString(message, "thinkingLevel");
-  if (timestamp === undefined && model === undefined && (thinkingLevel === undefined || thinkingLevel === "")) return undefined;
+  if (timestamp === undefined && model === undefined && (clientMessageId === undefined || clientMessageId === "") && (thinkingLevel === undefined || thinkingLevel === "")) return undefined;
   return {
     ...(timestamp === undefined ? {} : { timestamp }),
     ...(responseId === undefined || responseId === "" ? {} : { responseId }),
+    ...(clientMessageId === undefined || clientMessageId === "" ? {} : { clientMessageId }),
     ...(model === undefined ? {} : { model }),
     ...(thinkingLevel === undefined || thinkingLevel === "" ? {} : { thinkingLevel }),
   };
