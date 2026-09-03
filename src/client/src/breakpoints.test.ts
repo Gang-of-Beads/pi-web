@@ -38,7 +38,8 @@ function clientSourceFiles(dir: string, out: string[] = []): string[] {
       clientSourceFiles(path, out);
       continue;
     }
-    if (path.endsWith(".ts") && !path.endsWith(".test.ts") && !path.endsWith(".testSupport.ts")) out.push(path);
+    const isSource = (path.endsWith(".ts") || path.endsWith(".html") || path.endsWith(".css")) && !path.endsWith(".test.ts") && !path.endsWith(".testSupport.ts");
+    if (isSource) out.push(path);
   }
   return out;
 }
@@ -46,7 +47,7 @@ function clientSourceFiles(dir: string, out: string[] = []): string[] {
 describe("the breakpoint authority", () => {
   it("is the only source of viewport media-query numbers in client code", () => {
     const offenders: string[] = [];
-    for (const path of clientSourceFiles(join(process.cwd(), "src/client/src"))) {
+    for (const path of clientSourceFiles(join(process.cwd(), "src/client"))) {
       const source = readFileSync(path, "utf-8");
       for (const match of source.matchAll(/@media[^{;\n]*/g)) {
         for (const dimension of match[0].matchAll(/(min|max)-(width|height):\s*(\d+)px/g)) {

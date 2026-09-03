@@ -95,6 +95,7 @@ import { BackgroundWorkWatcher } from "./backgroundWorkWatcher.js";
 import { listBackgroundTasks, readTaskOutput } from "./backgroundTasks.js";
 import { promptDeliveryBehavior, type QueuedPromptKind } from "./promptDelivery.js";
 import { AcceptanceLedger } from "./acceptanceLedger.js";
+import { CommittedPromptExpectations } from "./committedPromptIdentity.js";
 import { findSubagentRunTranscript, listSubagentRuns, readSessionEntries, readSubagentRunOutput } from "./subagentRuns.js";
 import { createSubsessionToolDefinitions, type SpawnSubsessionInvocation, type SpawnSubsessionResult, type SubsessionCheckResult, type SubsessionReadQuery, type SubsessionReadResult, type SubsessionStatus, type SubsessionSummary, type SubsessionToolDeps } from "./spawnSubsessionTool.js";
 import { buildTranscriptView } from "./subsessionTranscript.js";
@@ -1179,6 +1180,7 @@ export class PiSessionService implements SessionRouteService {
   private readonly compactionPromptQueues = new Map<string, QueuedPrompt[]>();
   /** Accepted prompt identities, so a lost response answers instead of re-running. */
   private readonly acceptanceLedger = new AcceptanceLedger();
+  private readonly committedExpectations = new CommittedPromptExpectations();
   /**
    * Ids the sending browser minted for prompts that went into pi's steer or
    * follow-up queue, in submission order. pi's queue APIs carry text only, so
@@ -2732,6 +2734,11 @@ export class PiSessionService implements SessionRouteService {
     // disappeared" (no optimistic bubble, no dock). The client dedupes an
     // identical user line when the queued message is later consumed.
     if (echoUserMessage) this.events.publish(session.sessionId, { type: "message.append", message: userMessage(text, images), echo: true, ...(clientMessageId === undefined ? {} : { clientMessageId }) });
+    // The runtime will commit this prompt without the sender's id; record the
+    // expectation so the committed copy can be stamped when it arrives, and
+    // every client can claim the bubble by identity instead of guessing by
+    // text - a guess a captionless photo can never win.
+    if (clientMessageId !== undefined) this.committedExpectations.expect(session.sessionId, { clientMessageId, text, imageCount: images.length });
     // The decision to queue was taken when the request arrived; the turn it was
     // waiting behind can end in the time it takes to get here. Handing
     // "followUp" to a runtime that has since gone idle parks the message in a
@@ -2754,6 +2761,24 @@ export class PiSessionService implements SessionRouteService {
     });
     void promptPromise;
     return promptPromise;
+  }
+
+  /**
+   * Stamp the runtime's committed copy of a user prompt with the id its
+   * sender minted. The message object is mutated in place before the event is
+   * converted and published: the runtime persists the same object, so the id
+   * survives into the stored transcript, and every client - the sender, other
+   * devices, a reload - receives a committed copy it can claim by identity.
+   */
+  private stampCommittedUserMessage(session: PiAgentSession, event: unknown): void {
+    if (getString(event, "type") !== "message_end") return;
+    const message = getProperty(event, "message");
+    if (!isRecord(message) || message["role"] !== "user") return;
+    if (typeof message["clientMessageId"] === "string") return;
+    const shape = committedMessageShape(message["content"]);
+    const clientMessageId = this.committedExpectations.claim(session.sessionId, shape);
+    if (clientMessageId === undefined) return;
+    message["clientMessageId"] = clientMessageId;
   }
 
   private enqueuePromptDuringCompaction(session: PiAgentSession, text: string, kind: QueuedPromptKind, images: ImageContent[] = [], echoUserMessage = true, clientMessageId?: string): void {
@@ -3601,6 +3626,7 @@ export class PiSessionService implements SessionRouteService {
     this.clearAuthLossWarningsForSession(sessionId);
     this.clearCompactionPromptQueue(sessionId);
     this.acceptanceLedger.forgetSession(sessionId);
+    this.committedExpectations.forgetSession(sessionId);
     // A reload queued against a session that is going away has nothing left to
     // reload; saying so beats leaving the person waiting for it.
     this.commandService.cancelQueuedReload(sessionId);
@@ -4166,6 +4192,7 @@ export class PiSessionService implements SessionRouteService {
       }
     }
     active.unsubscribe = session.subscribe((event) => {
+      this.stampCommittedUserMessage(session, event);
       this.events.publish(session.sessionId, toClientEvent(event, session.thinkingLevel));
       this.publishActivityForEvent(session, event);
       const eventType = getString(event, "type");
@@ -5322,6 +5349,19 @@ function queuedMessagesFromSession(session: PiAgentSession, extraQueuedMessages:
  * short opaque string and ignore anything else rather than letting an oversized
  * value into per-session state.
  */
+function committedMessageShape(content: unknown): { text: string; imageCount: number } {
+  if (typeof content === "string") return { text: content, imageCount: 0 };
+  if (!Array.isArray(content)) return { text: "", imageCount: 0 };
+  const texts: string[] = [];
+  let imageCount = 0;
+  for (const part of content) {
+    if (!isRecord(part)) continue;
+    if (typeof part["text"] === "string") texts.push(part["text"]);
+    if (part["type"] === "image") imageCount += 1;
+  }
+  return { text: texts.join("\n\n"), imageCount };
+}
+
 function parseClientMessageId(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();

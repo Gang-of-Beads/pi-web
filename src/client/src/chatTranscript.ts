@@ -76,14 +76,22 @@ function applyFinalMessage(messages: ChatLine[], rawMessage: unknown): ChatLine[
 
   const ended = normalizeMessage(rawMessage);
   if (ended.length === 0) return undefined;
+  const committedId = committedClientMessageId(rawMessage);
   const displayEnded = ended
     .map((line) => line.role === "assistant" ? withoutToolCalls(line) : line)
     .filter((line) => line.parts.length > 0);
   if (displayEnded.length === 0) return messages;
-  return displayEnded.reduce((next, line) => applyFinalLine(next, line), messages);
+  return displayEnded.reduce((next, line) => applyFinalLine(next, line, committedId), messages);
 }
 
-function applyFinalLine(messages: ChatLine[], displayEnded: ChatLine): ChatLine[] {
+/** The sender-minted id the daemon stamped onto the committed copy. */
+function committedClientMessageId(rawMessage: unknown): string | undefined {
+  if (typeof rawMessage !== "object" || rawMessage === null) return undefined;
+  const value = (rawMessage as Record<string, unknown>)["clientMessageId"];
+  return typeof value === "string" && value !== "" ? value : undefined;
+}
+
+function applyFinalLine(messages: ChatLine[], displayEnded: ChatLine, committedId?: string): ChatLine[] {
   const skillReadIndexes = findMatchingSkillReadIndexes(messages, displayEnded);
   if (skillReadIndexes.length > 0) return replaceSkillReadLines(messages, skillReadIndexes, displayEnded);
   const askUserRecord = displayEnded.parts.find((part) => part.type === "askUserRecord");
@@ -92,7 +100,13 @@ function applyFinalLine(messages: ChatLine[], displayEnded: ChatLine): ChatLine[
   // agent's committed copy replaces it - and the committed copy is what proves
   // the message was taken into the turn.
   if (displayEnded.role === "user") {
-    const tracked = findTrackedUserLineIndex(messages, messageText(displayEnded));
+    // Identity first: the daemon stamps the sender's id onto the committed
+    // copy, so the bubble is claimed even when the runtime resized the photo
+    // and no byte of content matches. Text and content-key matching remain as
+    // fallbacks for unstamped copies.
+    const byId = committedId === undefined ? -1 : messages.findIndex((line) => line.role === "user" && (line.meta?.delivery?.clientMessageId === committedId || line.meta?.echoClientMessageId === committedId));
+    const byText = byId !== -1 ? byId : findTrackedUserLineIndex(messages, messageText(displayEnded));
+    const tracked = byText !== -1 ? byText : findTrackedUserLineIndexByContent(messages, displayEnded);
     const target = tracked === -1 ? findEchoLineIndex(messages, displayEnded) : tracked;
     if (target !== -1) {
       const previous = messages[target];
@@ -115,7 +129,7 @@ function applyFinalLine(messages: ChatLine[], displayEnded: ChatLine): ChatLine[
   }
   const last = messages.at(-1);
   if (last?.role !== displayEnded.role) return [...messages, displayEnded];
-  if (sameMessageText(last, displayEnded)) return [...messages.slice(0, -1), displayEnded];
+  if (sameMessageContent(last, displayEnded)) return [...messages.slice(0, -1), displayEnded];
   return [...messages, displayEnded];
 }
 
@@ -378,8 +392,19 @@ function normalizeSkillPath(path: string): string {
   return path.replace(/\\/g, "/");
 }
 
-function sameMessageText(left: ChatLine, right: ChatLine): boolean {
-  return messageText(left) === messageText(right);
+function findTrackedUserLineIndexByContent(messages: ChatLine[], committed: ChatLine): number {
+  const key = messageContentKey(committed);
+  if (key === undefined) return -1;
+  return messages.findIndex((line) => line.role === "user" && line.meta?.delivery !== undefined && messageContentKey(line) === key);
+}
+
+/**
+ * Same words and same images. Text equality alone read two different
+ * captionless photos as one message and replaced the first with the second.
+ */
+function sameMessageContent(left: ChatLine, right: ChatLine): boolean {
+  const key = messageContentKey(left);
+  return key !== undefined && key === messageContentKey(right);
 }
 
 export function messageText(message: ChatLine): string {
