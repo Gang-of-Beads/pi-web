@@ -15,11 +15,13 @@ afterEach(() => {
  * app to that machine first, then select - in that order.
  */
 function machine(id: string): Machine {
-  return { id, name: id, baseUrl: `https://${id}.example.test`, kind: "remote" } as unknown as Machine;
+  const now = new Date().toISOString();
+  return { id, name: id, baseUrl: `https://${id}.example.test`, kind: "remote", createdAt: now, updatedAt: now };
 }
 
 function sessionOn(cwd: string): SessionInfo {
-  return { id: "s-1", name: "remote session", cwd, modified: new Date().toISOString(), messageCount: 3 } as unknown as SessionInfo;
+  const now = new Date().toISOString();
+  return { id: "s-1", path: `${cwd}/s.jsonl`, name: "remote session", cwd, created: now, modified: now, messageCount: 3, firstMessage: "hi" };
 }
 
 function createApp(): PiWebApp {
@@ -32,10 +34,16 @@ function createApp(): PiWebApp {
   return new PiWebApp();
 }
 
-function callable(app: PiWebApp, name: string): (...args: unknown[]) => unknown {
+function callable(app: PiWebApp, name: string): (...args: unknown[]) => Promise<void> {
   const value: unknown = Reflect.get(app, name);
   if (typeof value !== "function") throw new Error(`PiWebApp.${name} was unavailable`);
-  return value.bind(app) as (...args: unknown[]) => unknown;
+  return async (...args: unknown[]) => { await Reflect.apply(value, app, args); };
+}
+
+function applyState(app: PiWebApp, patch: Record<string, unknown>): void {
+  const setState: unknown = Reflect.get(app, "setState");
+  if (typeof setState !== "function") throw new Error("PiWebApp.setState was unavailable");
+  Reflect.apply(setState, app, [patch]);
 }
 
 describe("opening a session from another machine's tab", () => {
@@ -43,9 +51,7 @@ describe("opening a session from another machine's tab", () => {
     const app = createApp();
     const local = machine("local");
     const remote = machine("remote-b");
-    const setState = Reflect.get(app, "setState");
-    if (typeof setState !== "function") throw new Error("PiWebApp.setState was unavailable");
-    (setState as (patch: unknown) => void).call(app, { machines: [local, remote], selectedMachine: local });
+    applyState(app, { machines: [local, remote], selectedMachine: local });
 
     const order: string[] = [];
     const machinesController: unknown = Reflect.get(app, "machines");
@@ -69,9 +75,7 @@ describe("opening a session from another machine's tab", () => {
   it("selects directly when the session lives on the current machine", async () => {
     const app = createApp();
     const local = machine("local");
-    const setState = Reflect.get(app, "setState");
-    if (typeof setState !== "function") throw new Error("PiWebApp.setState was unavailable");
-    (setState as (patch: unknown) => void).call(app, { machines: [local], selectedMachine: local });
+    applyState(app, { machines: [local], selectedMachine: local });
 
     const order: string[] = [];
     const machinesController: unknown = Reflect.get(app, "machines");

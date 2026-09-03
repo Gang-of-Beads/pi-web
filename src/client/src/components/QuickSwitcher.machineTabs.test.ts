@@ -14,7 +14,8 @@ afterEach(() => {
  * is no choice to make and no tabs to show.
  */
 function machine(id: string, name: string): Machine {
-  return { id, name, baseUrl: `https://${id}.example.test`, kind: "remote" } as unknown as Machine;
+  const now = new Date().toISOString();
+  return { id, name, baseUrl: `https://${id}.example.test`, kind: "remote", createdAt: now, updatedAt: now };
 }
 
 async function mountWithMachines(machines: Machine[], browseMachineId: string, onSelectMachine?: (machineId: string) => void): Promise<QuickSwitcher> {
@@ -36,13 +37,13 @@ describe("the switcher's machine tabs", () => {
   it("shows a tab per machine and marks the browsed one", async () => {
     const switcher = await mountWithMachines([machine("local", "Local"), machine("pi", "hxd-pi")], "pi");
     const rendered = tabs(switcher);
-    expect(rendered.map((tab) => tab.textContent?.trim())).toEqual(["Local", "hxd-pi"]);
+    expect(rendered.map((tab) => tab.textContent.trim())).toEqual(["Local", "hxd-pi"]);
     expect(rendered.map((tab) => tab.getAttribute("aria-selected"))).toEqual(["false", "true"]);
   });
 
   it("shows no tabs when there is only one machine", async () => {
-    const switcher = await mountWithMachines([machine("local", "Local")], "local");
-    expect(tabs(switcher)).toHaveLength(0);
+    const solo = await mountWithMachines([machine("local", "Local")], "local");
+    expect(tabs(solo)).toHaveLength(0);
   });
 
   it("reports the tapped machine to its host", async () => {
@@ -52,8 +53,7 @@ describe("the switcher's machine tabs", () => {
     expect(onSelectMachine).toHaveBeenCalledExactlyOnceWith("pi");
   });
 
-  it("keeps every tab on the touch floor", async () => {
-    const switcher = await mountWithMachines([machine("local", "Local"), machine("pi", "hxd-pi")], "local");
+  it("keeps every tab on the touch floor", () => {
     const sheet = String(QuickSwitcher.styles);
     expect(sheet).toMatch(/\.machine-tab\s*\{[^}]*min-height: 36px/u);
   });
