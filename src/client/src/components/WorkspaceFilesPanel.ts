@@ -74,7 +74,11 @@ export class WorkspaceFilesPanel extends LitElement {
         ${this.renderUploadProgress(context)}
         <section class=${filesSplitClass(context.selectedFilePath)}>
           <div class="list tree">
-            ${context.fileTree.length === 0 ? html`<p class="muted">No files loaded.</p>` : context.fileTree.map((entry) => this.renderTreeEntry(context, entry, 0))}
+            ${context.fileTree.length === 0
+              ? context.fileTreeFailed === undefined
+                ? html`<p class="muted">No files loaded.</p>`
+                : html`<p class="muted tree-failed" role="alert">Couldn't read this workspace's files: ${context.fileTreeFailed}</p>`
+              : context.fileTree.map((entry) => this.renderTreeEntry(context, entry, 0))}
           </div>
           <div class="viewer">
             <workspace-file-viewer

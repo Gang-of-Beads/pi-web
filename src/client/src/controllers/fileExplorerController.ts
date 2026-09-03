@@ -87,9 +87,10 @@ export class FileExplorerController {
       const root = await this.api.workspaceTree(project.id, workspace.id, "", machineId);
       const expanded = { ...this.getState().expandedDirs };
       await Promise.all(Object.keys(expanded).map(async (path) => { expanded[path] = (await this.api.workspaceTree(project.id, workspace.id, path, machineId)).entries; }));
-      this.setState({ fileTree: root.entries, expandedDirs: expanded, fileTreeStale: false });
+      this.setState({ fileTree: root.entries, expandedDirs: expanded, fileTreeStale: false, fileTreeFailed: undefined });
       this.reportedError.clear();
     } catch (error) {
+      this.setState({ fileTreeFailed: describeError(error) });
       this.reportedError.report(describeError(error));
     }
   }

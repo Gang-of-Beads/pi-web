@@ -74,6 +74,7 @@ function panelContext(
     selectedFileContent: undefined,
     selectedFileLoadError: undefined,
     fileTreeStale: false,
+    fileTreeFailed: undefined,
     activeTerminalCount: 0,
     selectedTerminalId: undefined,
     terminalAutoStart: false,

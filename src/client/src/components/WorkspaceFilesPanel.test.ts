@@ -23,6 +23,41 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe("a failed tree read says why", () => {
+  /**
+   * With the workspace directory missing, the tree request failed and the
+   * panel said only "No files loaded." - honest about not loading, silent
+   * about why. The failure now renders with its reason; the bare line is
+   * reserved for a tree nobody has read yet.
+   */
+  function templateText(value: unknown): string {
+    if (typeof value === "string") return value;
+    if (Array.isArray(value)) return value.map(templateText).join("");
+    if (typeof value === "object" && value !== null && "strings" in value && "values" in value) {
+      const strings: unknown = Reflect.get(value, "strings");
+      const values: unknown = Reflect.get(value, "values");
+      if (!Array.isArray(strings) || !Array.isArray(values)) return "";
+      return strings.map((piece, index) => String(piece) + templateText(values[index])).join("");
+    }
+    return "";
+  }
+
+  it("renders the reason instead of the bare unloaded line", () => {
+    const panel = new WorkspaceFilesPanel();
+    panel.context = workspacePanelContext({ fileTreeFailed: "Workspace directory does not exist" });
+    const rendered = templateText(panel.render());
+    expect(rendered).toContain("Couldn't read this workspace's files");
+    expect(rendered).toContain("Workspace directory does not exist");
+    expect(rendered).not.toContain("No files loaded.");
+  });
+
+  it("keeps the bare unloaded line for a tree nobody has read yet", () => {
+    const panel = new WorkspaceFilesPanel();
+    panel.context = workspacePanelContext({});
+    expect(templateText(panel.render())).toContain("No files loaded.");
+  });
+});
+
 describe("workspace-files-panel upload review", () => {
   it("opens review from the hidden file input and submits selected files with defaults", () => {
     vi.stubGlobal("HTMLInputElement", FakeHTMLInputElement);
@@ -417,6 +452,7 @@ function workspacePanelContext(patch: Partial<WorkspacePanelContext> = {}): Work
     selectedFileContent: patch.selectedFileContent,
     selectedFileLoadError: patch.selectedFileLoadError,
     fileTreeStale: patch.fileTreeStale ?? false,
+    fileTreeFailed: patch.fileTreeFailed,
     activeTerminalCount: patch.activeTerminalCount ?? 0,
     selectedTerminalId: patch.selectedTerminalId,
     terminalAutoStart: patch.terminalAutoStart ?? false,

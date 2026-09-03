@@ -193,6 +193,13 @@ export interface AppState {
   workspaceTool: QualifiedContributionId;
   mainView: "navigation" | "chat" | QualifiedContributionId;
   fileTree: FileTreeEntry[];
+  /**
+   * The workspace tree read failed, with the reason. An empty tree after a
+   * failed read renders this, never "No files loaded" alone: honest about not
+   * loading, silent about why was the files panel's version of the empty
+   * claim.
+   */
+  fileTreeFailed: string | undefined;
   expandedDirs: Record<string, FileTreeEntry[]>;
   selectedFilePath: string | undefined;
   selectedFileContent: FileContentResponse | undefined;
@@ -262,6 +269,7 @@ export type WorkspaceScopedStateReset = Pick<AppState,
   | "selectedNotificationInbox"
   | "treeDialog"
   | "fileTree"
+  | "fileTreeFailed"
   | "expandedDirs"
   | "selectedFilePath"
   | "selectedFileContent"
@@ -322,6 +330,7 @@ export function resetWorkspaceScopedState(): WorkspaceScopedStateReset {
     selectedNotificationInbox: undefined,
     treeDialog: undefined,
     fileTree: [],
+    fileTreeFailed: undefined,
     expandedDirs: {},
     selectedFilePath: undefined,
     selectedFileContent: undefined,
@@ -410,6 +419,7 @@ export function initialAppState(): AppState {
     workspaceTool: "core:workspace.files",
     mainView: "chat",
     fileTree: [],
+    fileTreeFailed: undefined,
     expandedDirs: {},
     selectedFilePath: undefined,
     selectedFileContent: undefined,

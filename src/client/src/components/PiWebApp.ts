@@ -2480,6 +2480,7 @@ export class PiWebApp extends LitElement {
         selectedFileContent: this.state.selectedFileContent,
         selectedFileLoadError: this.state.selectedFileLoadError,
         fileTreeStale: this.state.fileTreeStale,
+        fileTreeFailed: this.state.fileTreeFailed,
         activeTerminalCount: this.state.activeTerminalCount,
         selectedTerminalId: this.state.selectedTerminalId,
         terminalAutoStart: this.terminalAutoStartWorkspaceId === workspace.id,

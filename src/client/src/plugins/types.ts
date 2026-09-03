@@ -170,6 +170,7 @@ export interface WorkspacePanelContext extends WorkspaceContext {
   terminal: WorkspacePanelTerminal;
   piWebUnstable?: Pick<PiWebUnstableRuntimeContext, "terminalCommandRuns">;
   fileTree: FileTreeEntry[];
+  fileTreeFailed: string | undefined;
   expandedDirs: Record<string, FileTreeEntry[]>;
   selectedFilePath: string | undefined;
   selectedFileContent: FileContentResponse | undefined;
