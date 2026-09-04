@@ -39,7 +39,7 @@ export class SessionSocket {
   private session: SessionRef | undefined;
   private onEvent: ((event: SessionUiEvent) => void) | undefined;
   private seqMonitor = new ScopeSeqMonitor("session");
-  private reconnectTimer?: number;
+  private reconnectTimer?: ReturnType<typeof setTimeout>;
   private reconnectDelay = 500;
   private shouldReconnect = false;
   private hasOpened = false;
@@ -103,7 +103,7 @@ export class SessionSocket {
 
   close(): void {
     this.shouldReconnect = false;
-    window.clearTimeout(this.reconnectTimer);
+    globalThis.clearTimeout(this.reconnectTimer);
     closeSocketQuietly(this.socket);
     this.socket = undefined;
     this.session = undefined;
@@ -144,10 +144,10 @@ export class SessionSocket {
 
   private scheduleReconnect(): void {
     if (!this.shouldReconnect) return;
-    window.clearTimeout(this.reconnectTimer);
+    globalThis.clearTimeout(this.reconnectTimer);
     const delay = jitteredReconnectDelay(this.reconnectDelay);
     this.reconnectDelay = Math.min(this.reconnectDelay * 1.6, 5000);
-    this.reconnectTimer = window.setTimeout(() => { this.open(); }, delay);
+    this.reconnectTimer = globalThis.setTimeout(() => { this.open(); }, delay);
   }
 
   /**
@@ -156,7 +156,7 @@ export class SessionSocket {
    */
   reconnectNow(): void {
     if (!this.shouldReconnect || this.socket !== undefined) return;
-    window.clearTimeout(this.reconnectTimer);
+    globalThis.clearTimeout(this.reconnectTimer);
     this.reconnectDelay = 500;
     this.open();
   }
@@ -189,7 +189,7 @@ export class RealtimeSocket {
   private onEvent: ((event: BrowserRealtimeEvent) => void) | undefined;
   private readonly seqMonitor = new ScopeSeqMonitor("global");
   private onOpen: (() => void) | undefined;
-  private reconnectTimer?: number;
+  private reconnectTimer?: ReturnType<typeof setTimeout>;
   private reconnectDelay = 500;
   private shouldReconnect = false;
   private machineId = "local";
@@ -233,7 +233,7 @@ export class RealtimeSocket {
 
   close(): void {
     this.shouldReconnect = false;
-    window.clearTimeout(this.reconnectTimer);
+    globalThis.clearTimeout(this.reconnectTimer);
     closeSocketQuietly(this.socket);
     this.socket = undefined;
     this.onEvent = undefined;
@@ -264,10 +264,10 @@ export class RealtimeSocket {
 
   private scheduleReconnect(): void {
     if (!this.shouldReconnect) return;
-    window.clearTimeout(this.reconnectTimer);
+    globalThis.clearTimeout(this.reconnectTimer);
     const delay = jitteredReconnectDelay(this.reconnectDelay);
     this.reconnectDelay = Math.min(this.reconnectDelay * 1.6, 5000);
-    this.reconnectTimer = window.setTimeout(() => { this.open(); }, delay);
+    this.reconnectTimer = globalThis.setTimeout(() => { this.open(); }, delay);
   }
 
   /**
@@ -276,7 +276,7 @@ export class RealtimeSocket {
    */
   reconnectNow(): void {
     if (!this.shouldReconnect || this.socket !== undefined) return;
-    window.clearTimeout(this.reconnectTimer);
+    globalThis.clearTimeout(this.reconnectTimer);
     this.reconnectDelay = 500;
     this.open();
   }

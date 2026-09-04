@@ -2,6 +2,8 @@ import type { SessionSocketHandlers } from "./controllers/sessionController";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RealtimeSocket, SessionSocket, parseRealtimeSocketEvent, parseSessionSocketEvent, jitteredReconnectDelay, revisionedFrameType } from "./sessionSocket";
 
+const nativeSetTimeout = globalThis.setTimeout.bind(globalThis);
+
 function notification(order = 1) {
   return {
     id: `daemon-a:${String(order)}`,
@@ -78,7 +80,8 @@ describe("connection liveness", () => {
     FakeWebSocket.instances.length = 0;
     vi.stubGlobal("WebSocket", FakeWebSocket);
     vi.stubGlobal("document", { baseURI: "https://pi.example.test/" });
-    vi.stubGlobal("window", { clearTimeout: vi.fn(), setTimeout: vi.fn(() => 1) });
+    vi.stubGlobal("clearTimeout", vi.fn());
+    vi.stubGlobal("setTimeout", vi.fn(() => 1));
   });
 
   afterEach(() => {
@@ -461,7 +464,8 @@ describe("dark-launch seq gap counting", () => {
     FakeWebSocket.instances.length = 0;
     vi.stubGlobal("WebSocket", FakeWebSocket);
     vi.stubGlobal("document", { baseURI: "https://pi.example.test/" });
-    vi.stubGlobal("window", { clearTimeout: vi.fn(), setTimeout: vi.fn(() => 1) });
+    vi.stubGlobal("clearTimeout", vi.fn());
+    vi.stubGlobal("setTimeout", vi.fn(() => 1));
   });
 
   afterEach(() => {
@@ -471,7 +475,7 @@ describe("dark-launch seq gap counting", () => {
   async function deliver(socket: FakeWebSocket, frame: unknown): Promise<void> {
     socket.onmessage?.({ data: JSON.stringify(frame) });
     // handleMessage is async: let the parse microtasks settle before asserting.
-    await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
+    await new Promise((resolve) => nativeSetTimeout(resolve, 0));
   }
 
   it("counts one gap when the session stream skips a frame, and applies every frame", async () => {
@@ -612,7 +616,8 @@ describe("socket instance isolation", () => {
     setTimeoutSpy.mockClear();
     vi.stubGlobal("WebSocket", FakeWebSocket);
     vi.stubGlobal("document", { baseURI: "https://pi.example.test/" });
-    vi.stubGlobal("window", { clearTimeout: vi.fn(), setTimeout: setTimeoutSpy });
+    vi.stubGlobal("clearTimeout", vi.fn());
+    vi.stubGlobal("setTimeout", setTimeoutSpy);
   });
 
   afterEach(() => {
@@ -698,10 +703,8 @@ describe("a socket dropped for being dead comes back", () => {
     scheduled = [];
     vi.stubGlobal("WebSocket", FakeWebSocket);
     vi.stubGlobal("document", { baseURI: "https://pi.example.test/" });
-    vi.stubGlobal("window", {
-      clearTimeout: vi.fn(),
-      setTimeout: (callback: () => void) => { scheduled.push(callback); return scheduled.length; },
-    });
+    vi.stubGlobal("clearTimeout", vi.fn());
+    vi.stubGlobal("setTimeout", (callback: () => void) => { scheduled.push(callback); return scheduled.length; });
   });
 
   afterEach(() => {

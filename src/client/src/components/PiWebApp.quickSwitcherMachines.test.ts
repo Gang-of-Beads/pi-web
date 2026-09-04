@@ -112,12 +112,13 @@ describe("browsing another machine's tab", () => {
     expect(Reflect.get(app, "quickSwitcherWorkspaces")).toEqual([]);
   });
 
-  it("clears rows loaded for another machine when the loader runs after a machine switch", async () => {
+  it("clears rows loaded for another machine when the loader runs after a machine switch", () => {
     // The qwen presence lane's P1: switch machines from the header, reopen the
     // switcher, and the cached rows of the OLD machine rendered under the new
     // one - with the new machine's badges - until the refresh landed. The
     // loader now refuses to keep rows whose machine is not the one it loads.
     const app = createApp();
+    vi.stubGlobal("fetch", () => new Promise(() => undefined));
     applyState(app, { machines: [machine("machine-a"), machine("machine-b")], selectedMachine: machine("machine-b") });
     if (!Reflect.set(app, "quickSwitcherSessions", [sessionOn("/from-a")])) throw new Error("Could not seed sessions");
     if (!Reflect.set(app, "quickSwitcherMachineId", "machine-a")) throw new Error("Could not set rows machine");
@@ -125,9 +126,9 @@ describe("browsing another machine's tab", () => {
     const load: unknown = Reflect.get(app, "loadQuickSwitcherData");
     if (typeof load !== "function") throw new Error("loadQuickSwitcherData unavailable");
     const loading: unknown = Reflect.apply(load, app, []);
+    void loading;
     expect(Reflect.get(app, "quickSwitcherSessions")).toEqual([]);
     expect(Reflect.get(app, "quickSwitcherMachineId")).toBeUndefined();
-    if (loading instanceof Promise) await loading.catch(() => undefined);
   });
 
   it("acts on the machine the displayed rows came from, not the requested tab", async () => {
