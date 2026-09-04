@@ -4,7 +4,8 @@ import type { AppAction } from "../actions";
 import { configApi, piPackagesApi, pluginsApi, type Machine, type MachineHealth, type MachineRuntime, type PiPackageMutationResponse, type PiPackageScope, type PiPackagesResponse, type PiWebConfigResponse, type PiWebConfigValues, type PiWebPluginsResponse } from "../api";
 import type { PiWebFleetReport, PiWebFleetRunResponse } from "../../../shared/apiTypes";
 import type { QualifiedContributionId, QualifiedThemeContribution } from "../plugins/types";
-import type { SettingsSection } from "../settingsRoute";
+import { isPluginSettingsSection, type SettingsSection } from "../settingsRoute";
+import type { PluginRuntimeContext, QualifiedSettingsSectionContribution } from "../plugins/types";
 import "./ModalSurface";
 import "./settings/SettingsAppearancePanel";
 import "./settings/SettingsGeneralPanel";
@@ -45,6 +46,8 @@ export class SettingsDialog extends LitElement {
   @property({ attribute: false }) onRefreshFleet?: () => void | Promise<void>;
   @property({ attribute: false }) onRunFleet?: (operation: "restart" | "update", machineIds?: readonly string[]) => Promise<PiWebFleetRunResponse | undefined>;
   @property({ attribute: false }) onNavigate?: (section: SettingsSection) => void;
+  @property({ attribute: false }) pluginSections: readonly QualifiedSettingsSectionContribution[] = [];
+  @property({ attribute: false }) pluginRuntimeContext?: PluginRuntimeContext;
   @property({ attribute: false }) onClose?: () => void;
   @property({ attribute: false }) onConfigSaved?: (config: PiWebConfigValues) => void;
   @property({ attribute: false }) onRefreshMachineRuntime?: (machineId: string) => void | Promise<void>;
@@ -134,6 +137,7 @@ export class SettingsDialog extends LitElement {
             ${this.renderNavButton("packages", "Pi packages", "Selected machine")}
             ${this.renderNavButton("plugins", "PI WEB plugins", "Selected machine")}
             ${this.renderNavButton("shortcuts", "Keyboard", "Gateway shortcuts")}
+            ${this.pluginSections.map((entry) => this.renderNavButton(entry.id, entry.title, "Plugin"))}
           </nav>
           <main class="settings-content">
             ${this.renderActiveSection()}
@@ -144,6 +148,7 @@ export class SettingsDialog extends LitElement {
   }
 
   private renderActiveSection(): TemplateResult {
+    if (isPluginSettingsSection(this.section)) return this.renderPluginSection(this.section);
     // Keep the section -> panel routing in sync with the public
     // `activeSettingsPanelTag` seam below, which tests assert against instead of
     // scraping this template's markup.
@@ -252,6 +257,28 @@ export class SettingsDialog extends LitElement {
         .onSaveMachineConfig=${(config: PiWebConfigValues) => this.saveMachineAccessConfig(config)}
       ></settings-general-panel>
     `;
+  }
+
+  private renderPluginSection(section: QualifiedContributionId): TemplateResult {
+    const entry = this.pluginSections.find((candidate) => candidate.id === section);
+    if (entry === undefined) {
+      return html`<div class="settings-plugin-section settings-plugin-section-missing">
+        <strong>This section is not available</strong>
+        <small>No plugin on this machine provides "${section}".</small>
+      </div>`;
+    }
+    return html`<div class="settings-plugin-section">${this.renderPluginSectionBody(entry)}</div>`;
+  }
+
+  private renderPluginSectionBody(entry: QualifiedSettingsSectionContribution): TemplateResult {
+    const context = this.pluginRuntimeContext;
+    if (context === undefined) return html`<small>This section cannot be drawn without a session context.</small>`;
+    try {
+      return entry.render(context);
+    } catch (error) {
+      console.error(`Plugin ${entry.pluginId} failed rendering its settings section`, error);
+      return html`<strong>This section could not be drawn</strong><small>${entry.pluginId} failed while rendering.</small>`;
+    }
   }
 
   private renderNavButton(section: SettingsSection, label: string, detail: string): TemplateResult {
@@ -677,7 +704,8 @@ export type SettingsPanelTag =
   | "settings-packages-panel"
   | "settings-plugins-panel"
   | "settings-appearance-panel"
-  | "settings-shortcuts-panel";
+  | "settings-shortcuts-panel"
+  | "settings-plugin-section";
 
 /**
  * The single custom-element panel the settings dialog renders for a section.
@@ -688,6 +716,7 @@ export type SettingsPanelTag =
  * `TemplateResult`'s markup.
  */
 export function activeSettingsPanelTag(section: SettingsSection): SettingsPanelTag {
+  if (isPluginSettingsSection(section)) return "settings-plugin-section";
   switch (section) {
     case "appearance":
       return "settings-appearance-panel";

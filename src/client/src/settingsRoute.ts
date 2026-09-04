@@ -1,5 +1,21 @@
 import { writeRouteUrl } from "./historyWrites";
-export type SettingsSection = "general" | "appearance" | "sessiond" | "machines" | "packages" | "plugins" | "shortcuts";
+import type { QualifiedContributionId } from "./plugins/ids";
+
+export type CoreSettingsSection = "general" | "appearance" | "sessiond" | "machines" | "packages" | "plugins" | "shortcuts";
+
+/**
+ * A settings section is either one the core owns or one a plugin contributed.
+ * The two are told apart by shape rather than by a list the core has to keep
+ * updating: a contributed section always carries its plugin's namespace, and
+ * a core section never does.
+ */
+export type SettingsSection = CoreSettingsSection | QualifiedContributionId;
+
+const qualifiedSectionPattern = /^[a-z][a-z0-9.-]*:[a-z][a-z0-9.-]*$/u;
+
+export function isPluginSettingsSection(section: string): section is QualifiedContributionId {
+  return qualifiedSectionPattern.test(section);
+}
 
 export function readSettingsSection(): SettingsSection | undefined {
   return parseSettingsSection(new URLSearchParams(window.location.search).get("settings"));
@@ -23,5 +39,6 @@ export function parseSettingsSection(value: string | null): SettingsSection | un
   if (value === "packages" || value === "pi-packages") return "packages";
   if (value === "plugins") return "plugins";
   if (value === "shortcuts" || value === "keyboard" || value === "keyboard-shortcuts") return "shortcuts";
+  if (value !== null && isPluginSettingsSection(value)) return value;
   return undefined;
 }
