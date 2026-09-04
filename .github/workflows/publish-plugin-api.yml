@@ -35,19 +35,24 @@ jobs:
           npm run build
           npm run build:plugin-api-package
 
+      # The version lives in package.json and nothing else aligns it: a tag
+      # pushed against the wrong commit would otherwise release under the
+      # tag's name whatever version the tree happens to carry.
+      - name: Tag matches package version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          ver="plugin-api-v$(node -p "require('./packages/pi-web-plugin-api/package.json').version")"
+          if [ "$ver" != "${{ github.ref_name }}" ]; then
+            echo "tag ${{ github.ref_name }} does not match package version tag $ver"
+            exit 1
+          fi
+
       - name: Pack
         if: startsWith(github.ref, 'refs/tags/')
         working-directory: packages/pi-web-plugin-api
         run: |
           rm -rf pack-out && mkdir pack-out
           npm pack --silent --pack-destination pack-out >/dev/null
-
-      - name: Attach tarball to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: packages/pi-web-plugin-api/pack-out/*.tgz
-          generate_release_notes: true
 
       # The first release of a package cannot use trusted publishing; with
       # NPM_TOKEN present this bootstraps with the token, and once the trusted
@@ -65,7 +70,17 @@ jobs:
             echo "$pkg@$ver is already on npm; skipping publish (rerun of a released tag)"
           elif [ -n "$NPM_TOKEN" ]; then
             echo "publishing $pkg@$ver with the bootstrap token (no provenance)"
-            npm publish "./pack-out/"*.tgz --access public
+            npm publish "./pack-out/"*.tgz --access public --tag alpha
           else
-            npm publish "./pack-out/"*.tgz --access public --provenance
+            npm publish "./pack-out/"*.tgz --access public --provenance --tag alpha
           fi
+
+      # The release is created only after publish succeeded, so a release page
+      # never advertises a tarball the registry does not have. Rerunning a
+      # partially released tag re-updates the release instead of duplicating it.
+      - name: Attach tarball to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: packages/pi-web-plugin-api/pack-out/*.tgz
+          generate_release_notes: true

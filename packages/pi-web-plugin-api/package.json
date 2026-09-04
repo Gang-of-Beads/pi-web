@@ -15,10 +15,23 @@
       "types": "./dist/server-plugin-api.d.ts"
     }
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Gang-of-Beads/pi-web.git",
+    "directory": "packages/pi-web-plugin-api"
+  },
+  "peerDependencies": {
+    "lit": "^3.0.0"
+  },
+  "peerDependenciesMeta": {
+    "lit": {
+      "optional": true
+    }
+  },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "build": "tsc -p ../../../tsconfig.plugin-api.json --outDir dist"
+    "build": "tsc -p ../../tsconfig.plugin-api.json --outDir dist"
   }
 }
