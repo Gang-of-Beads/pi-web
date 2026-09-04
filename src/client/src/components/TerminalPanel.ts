@@ -4,7 +4,9 @@ import { styleMap, type StyleInfo } from "lit/directives/style-map.js";
 import { Terminal, type ITerminalOptions, type ITheme } from "@xterm/xterm";
 import { FitAddon, type ITerminalDimensions } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import { terminalSocket, terminalsApi, type TerminalCommandRun, type TerminalInfo, type Workspace } from "../api";
+import type { TerminalCommandRun, TerminalInfo, Workspace } from "../api";
+import { workspaceTerminalSessions } from "../plugins/workspaceTerminalSessions";
+import type { WorkspaceTerminalSessions } from "../plugins/types";
 import { writeClipboardText } from "../clipboard";
 import { selectFallbackTerminal, selectPreferredTerminal } from "../controllers/terminalChoice";
 import { createTerminalCopySnapshot, DEFAULT_TERMINAL_ANSI_THEME, type TerminalCopyRunStyle, type TerminalCopySnapshot } from "../terminalCopySnapshot";
@@ -34,6 +36,8 @@ export class TerminalPanel extends LitElement {
   @property({ attribute: false }) selectedTerminalId: string | undefined;
   @property({ type: Boolean }) autoStart = false;
   @property({ type: Boolean }) expanded = false;
+  /** The pty capability this panel works through; the host binds its scope. */
+  @property({ attribute: false }) sessions?: WorkspaceTerminalSessions;
   @property({ attribute: false }) onSelectTerminal: (terminalId: string | undefined, options?: { replace?: boolean | undefined }) => void = () => undefined;
   @query(".terminal-host") private terminalHost?: HTMLDivElement | null;
   @query(".terminal-copy-content") private terminalCopyContent?: HTMLPreElement | null;
@@ -165,8 +169,8 @@ export class TerminalPanel extends LitElement {
       if (workspace === undefined) return;
       const shouldAutoStart = this.consumeAutoStart();
       const [terminals, commandRuns] = await Promise.all([
-        terminalsApi.terminals(workspace.projectId, workspace.id, this.machineId),
-        terminalsApi.listCommandRuns({ projectId: workspace.projectId, workspaceId: workspace.id }, this.machineId),
+        this.terminalSessions().list(),
+        this.terminalSessions().listCommandRuns(),
       ]);
       this.terminals = terminals;
       this.commandRuns = commandRuns;
@@ -222,7 +226,7 @@ export class TerminalPanel extends LitElement {
     this.error = undefined;
     try {
       const size = this.measureTerminalSize() ?? DEFAULT_TERMINAL_SIZE;
-      const terminal = await terminalsApi.startTerminal(this.workspace.projectId, this.workspace.id, size, this.machineId);
+      const terminal = await this.terminalSessions().start(size);
       this.terminals = [...this.terminals, terminal];
       this.selectTerminal(terminal.id);
     } catch (error) {
@@ -234,7 +238,7 @@ export class TerminalPanel extends LitElement {
     event.stopPropagation();
     try {
       if (this.workspace === undefined) return;
-      await terminalsApi.closeTerminal(this.workspace.projectId, this.workspace.id, id, this.machineId);
+      await this.terminalSessions().close(id);
       const next = this.terminals.filter((terminal) => terminal.id !== id);
       this.terminals = next;
       if (this.selectedId === id || this.selectedTerminalId === id) {
@@ -266,7 +270,7 @@ export class TerminalPanel extends LitElement {
     const workspace = this.workspace;
     if (workspace === undefined) return;
     try {
-      const commandRuns = await terminalsApi.listCommandRuns({ projectId: workspace.projectId, workspaceId: workspace.id }, this.machineId);
+      const commandRuns = await this.terminalSessions().listCommandRuns();
       this.commandRuns = commandRuns;
       this.cancellingRunIds = this.cancellingRunIds.filter((runId) => commandRuns.some((run) => run.id === runId && isCommandRunPending(run)));
       this.updateCommandRunPolling(this.hasPendingCommandRuns(commandRuns));
@@ -296,7 +300,7 @@ export class TerminalPanel extends LitElement {
     this.error = undefined;
     this.cancellingRunIds = [...this.cancellingRunIds, run.id];
     try {
-      await terminalsApi.cancelCommandRun(run.id, this.machineId);
+      await this.terminalSessions().cancelCommandRun(run.id);
       await this.loadCommandRuns();
     } catch (error) {
       this.error = describeError(error);
@@ -310,7 +314,7 @@ export class TerminalPanel extends LitElement {
     this.error = undefined;
     this.continuingTerminalIds = [...this.continuingTerminalIds, id];
     try {
-      const terminal = await terminalsApi.continueTerminal(this.workspace.projectId, this.workspace.id, id, this.machineId);
+      const terminal = await this.terminalSessions().continue(id);
       this.terminals = this.terminals.map((item) => item.id === id ? terminal : item);
       if (this.socket === undefined) this.disposeTerminalView();
       this.fitAndNotify();
@@ -339,13 +343,23 @@ export class TerminalPanel extends LitElement {
       this.sendTerminalInput(data);
     });
     const initialSize = this.fitTerminal();
-    this.connectSocket(workspace.projectId, workspace.id, this.selectedId, terminal, initialSize);
+    this.connectSocket(this.selectedId, terminal, initialSize);
     requestAnimationFrame(() => { this.fitAndNotify(); });
     terminal.focus();
   }
 
-  private connectSocket(projectId: string, workspaceId: string, terminalId: string, terminal: Terminal, initialSize: TerminalSize | undefined): void {
-    const socket = terminalSocket(projectId, workspaceId, terminalId, initialSize, this.machineId);
+  /**
+   * The capability the host bound for this workspace, or one bound here from
+   * the same properties. A panel never reaches past it to a route.
+   */
+  private terminalSessions(): WorkspaceTerminalSessions {
+    const workspace = this.workspace;
+    if (workspace === undefined) throw new Error("This panel has no workspace to work in");
+    return this.sessions ?? workspaceTerminalSessions(workspace, this.machineId);
+  }
+
+  private connectSocket(terminalId: string, terminal: Terminal, initialSize: TerminalSize | undefined): void {
+    const socket = this.terminalSessions().connect(terminalId, initialSize);
     socket.binaryType = "arraybuffer";
     this.socket = socket;
     socket.addEventListener("open", () => { this.fitAndNotify(); });
