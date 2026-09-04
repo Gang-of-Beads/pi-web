@@ -81,9 +81,11 @@ describe("the daemon owns the queue", () => {
     fake.session.prompt = () => { throw new Error("Agent is already processing"); };
     fake.session.isStreaming = false;
     fake.emit({ type: "agent_settled" });
+    await vi.waitFor(async () => {
+      const status = await service.status(sessionRef("own-refuse"));
+      expect(status.queuedMessages.map((entry) => entry.clientMessageId)).toEqual(["c-refuse"]);
+    });
     await vi.waitFor(() => { expect(existsSync(queueFilePath(dir, "own-refuse"))).toBe(true); });
-    const status = await service.status(sessionRef("own-refuse"));
-    expect(status.queuedMessages.map((entry) => entry.clientMessageId)).toEqual(["c-refuse"]);
     await service.dispose();
   });
 
