@@ -73,10 +73,8 @@ describe("ChatView open extension dialogs", () => {
 });
 
 describe("ChatView closed extension dialogs", () => {
-  it("renders closed dialogs transiently above the open one and forwards the dismiss callback", async () => {
+  it("renders closed dialogs transiently above the open one", async () => {
     const view = await mountView();
-    const onDismissClosedDialog = vi.fn();
-    view.onDismissClosedDialog = onDismissClosedDialog;
     const closed = closedDialog("dlg-0", "Allow reads?", "answered", true);
     view.closedDialogs = [closed];
     view.pendingDialogs = [openDialog("dlg-1", "Allow file writes?")];
@@ -94,9 +92,6 @@ describe("ChatView closed extension dialogs", () => {
     expect(closedCard.getAttribute("data-scroll-anchor-id")).toBe("closed-dialog:dlg-0");
     expect(closedCard.outcome).toBe(closed);
     expect(cards[1]?.classList.contains("open-dialog-card")).toBe(true);
-
-    closedCard.onDismiss?.("dlg-0");
-    expect(onDismissClosedDialog).toHaveBeenCalledWith("dlg-0");
   });
 });
 

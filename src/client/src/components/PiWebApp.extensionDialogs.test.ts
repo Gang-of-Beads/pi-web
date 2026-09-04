@@ -23,26 +23,21 @@ describe("PiWebApp extension-dialog wiring", () => {
     const controller = appSessionController(app);
     const answerDialog = vi.spyOn(controller, "answerDialog").mockResolvedValue(undefined);
     const cancelDialog = vi.spyOn(controller, "cancelDialog").mockResolvedValue(undefined);
-    const dismissClosedDialog = vi.spyOn(controller, "dismissClosedDialog").mockReturnValue(undefined);
 
     const firstRender = renderChatView(app, state);
     const secondRender = renderChatView(app, state);
     const onAnswer = templateDialogCallback(firstRender, ".onAnswerDialog=");
     const onCancel = templateDialogCallback(firstRender, ".onCancelDialog=");
-    const onDismiss = templateDialogCallback(firstRender, ".onDismissClosedDialog=");
 
     expect(templateValueAfterMarker(firstRender, ".pendingDialogs=")).toBe(state.pendingDialogs);
     expect(templateValueAfterMarker(firstRender, ".closedDialogs=")).toBe(state.closedDialogs);
     expect(templateDialogCallback(secondRender, ".onAnswerDialog=")).toBe(onAnswer);
     expect(templateDialogCallback(secondRender, ".onCancelDialog=")).toBe(onCancel);
-    expect(templateDialogCallback(secondRender, ".onDismissClosedDialog=")).toBe(onDismiss);
 
     onAnswer("dlg-1", true);
     onCancel("dlg-2");
-    onDismiss("dlg-0");
     expect(answerDialog).toHaveBeenCalledWith("dlg-1", true);
     expect(cancelDialog).toHaveBeenCalledWith("dlg-2");
-    expect(dismissClosedDialog).toHaveBeenCalledWith("dlg-0");
   });
 });
 

@@ -1991,15 +1991,14 @@ export class SessionController {
     if (state.closedDialogs.some((entry) => entry.dialog.dialogId === closed.dialog.dialogId)) return;
     const sessionId = state.selectedSession?.id;
     // The outcome card is a display decision; suppressing the dialog is a
-    // correctness one. A dialog that leaves no card must be remembered here and
-    // now, because the id used to reach the suppression list only by way of the
-    // Dismiss button - and a status snapshot built before the close would
-    // otherwise re-open a question the user has already answered.
+    // correctness one. Every settled id joins the suppression list at the
+    // moment of settling: the id used to reach it only by way of the removed
+    // Dismiss button, so a status snapshot built before the close could
+    // re-open a question that had already settled without one.
     this.setState({
       pendingDialogs: state.pendingDialogs.filter((pending) => pending.dialogId !== closed.dialog.dialogId),
-      ...(leavesOutcomeCard(closed)
-        ? { closedDialogs: [...state.closedDialogs, closed] }
-        : { dismissedDialogIds: [...state.dismissedDialogIds, closed.dialog.dialogId] }),
+      dismissedDialogIds: [...state.dismissedDialogIds, closed.dialog.dialogId],
+      ...(leavesOutcomeCard(closed) ? { closedDialogs: [...state.closedDialogs, closed] } : {}),
     });
     // The card is gone; the status map must stop listing the dialog too, or
     // the closed question rides the map back on the next selection and the
@@ -2016,15 +2015,6 @@ export class SessionController {
    * The id is remembered so a status snapshot that predates the close cannot
    * re-open the dialog and deposit the same card a second time.
    */
-  dismissClosedDialog(dialogId: string): void {
-    const state = this.getState();
-    if (!state.closedDialogs.some((entry) => entry.dialog.dialogId === dialogId)) return;
-    this.setState({
-      closedDialogs: state.closedDialogs.filter((entry) => entry.dialog.dialogId !== dialogId),
-      dismissedDialogIds: [...state.dismissedDialogIds, dialogId],
-    });
-  }
-
   private applyOpenedAsk(ask: PendingAskUser): void {
     const state = this.getState();
     if (state.selectedSession === undefined) return;

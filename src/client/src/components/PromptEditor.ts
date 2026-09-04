@@ -1078,6 +1078,8 @@ export class PromptEditor extends LitElement {
    */
   private readonly flushPendingPrompts = (): void => {
     if (!navigator.onLine || this.flushInFlight) return;
+    const send = this.onSend;
+    if (send === undefined) return;
     const key = machineSessionKey(this.machineId, this.sessionId ?? "");
     if (key === "") return;
     const pending = loadPendingPrompts(key);
@@ -1087,10 +1089,11 @@ export class PromptEditor extends LitElement {
       try {
         for (const prompt of pending) {
           if (prompt.clientMessageId === undefined) continue;
+          if (machineSessionKey(this.machineId, this.sessionId ?? "") !== key) return;
           const current = loadPendingPrompts(key);
           if (!current.some((entry) => entry.clientMessageId === prompt.clientMessageId)) continue;
           try {
-            const accepted = await this.onSend?.(prompt.text, prompt.behavior, prompt.attachments, prompt.attachments === undefined ? undefined : this.effectiveAttachmentDelivery(), { clientMessageId: prompt.clientMessageId });
+            const accepted = await send(prompt.text, prompt.behavior, prompt.attachments, prompt.attachments === undefined ? undefined : this.effectiveAttachmentDelivery(), { clientMessageId: prompt.clientMessageId });
             if (accepted !== false) forgetPendingPrompt(key, prompt.clientMessageId);
           } catch {
             continue;

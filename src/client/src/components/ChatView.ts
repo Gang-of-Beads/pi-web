@@ -39,7 +39,7 @@ import type { ChatLine, ChatPart, MessageDelivery } from "./shared";
 import type { SessionStateBadgeKind } from "./activityBadge";
 import "./AskUserCard";
 import "./ExtensionDialogCard";
-import type { ExtensionDialogAnswerCallback, ExtensionDialogCancelCallback, ExtensionDialogDismissCallback } from "./ExtensionDialogCard";
+import type { ExtensionDialogAnswerCallback, ExtensionDialogCancelCallback } from "./ExtensionDialogCard";
 import { deliveryTaken } from "../messageDelivery";
 import { queuedUserLine, registerUserMessages } from "../userMessageRegister";
 import { registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
@@ -744,7 +744,6 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) closedDialogs: ClosedExtensionDialog[] = [];
   @property({ attribute: false }) onAnswerDialog?: ExtensionDialogAnswerCallback;
   @property({ attribute: false }) onCancelDialog?: ExtensionDialogCancelCallback;
-  @property({ attribute: false }) onDismissClosedDialog?: ExtensionDialogDismissCallback;
   /**
    * Put a sent prompt back in the composer, images included. Offered on user
    * messages because a turn that fails after delivery leaves the transcript as
@@ -2398,7 +2397,6 @@ export class ChatView extends LitElement {
             class="closed-dialog-card"
             data-scroll-anchor-id=${`closed-dialog:${closed.dialog.dialogId}`}
             .outcome=${closed}
-            .onDismiss=${this.onDismissClosedDialog}
           ></extension-dialog-card>
         `,
       )}
@@ -2819,10 +2817,7 @@ export class ChatView extends LitElement {
   }
 
   private onTouchStart(event: TouchEvent) {
-    this.touchStartY = event.touches[0]?.clientY;
-    // The reader owns the scroll while their finger is down; an update that
-    // wrote scrollTop underneath them snapped the view back.
-    this.userScrollInFlight = true;
+    this.touchStartY = firstTouchY(event);
     this.notePressStart();
   }
 
@@ -2874,8 +2869,17 @@ export class ChatView extends LitElement {
     this.followGate.notePointerDown(Date.now());
   }
 
+  /**
+   * A gesture owns the scroll; a stationary press does not. Setting the
+   * in-flight flag at touchstart made every finger press read as scrolling,
+   * which routed the bottom hold to leave-alone and let streamed growth slide
+   * the ask card out from under the standing finger - the round-2 reviewers
+   * proved the phone path was byte-identical to the pre-fix behavior. The
+   * flag now arms on the first actual movement.
+   */
   private onTouchMove(event: TouchEvent) {
-    const y = event.touches[0]?.clientY;
+    this.userScrollInFlight = true;
+    const y = firstTouchY(event);
     if (this.touchStartY !== undefined && y !== undefined && y > this.touchStartY && this.canScrollUp()) this.pinnedToBottom = false;
   }
 
@@ -3398,6 +3402,13 @@ export function isFinishedActivityStatus(status: ActivityStatus): boolean {
 }
 
 /** Whether an unknown willUpdate map value is a session's notification tray. */
+/** Test harnesses dispatch bare Events; a real TouchEvent always has touches. */
+function firstTouchY(event: TouchEvent): number | undefined {
+  const touches: unknown = event.touches;
+  if (typeof TouchList !== "undefined" && touches instanceof TouchList) return touches[0]?.clientY;
+  return undefined;
+}
+
 function isNotificationTray(value: unknown): value is SelectedSessionNotificationView {
   return typeof value === "object" && value !== null
     && typeof Reflect.get(value, "sessionId") === "string"

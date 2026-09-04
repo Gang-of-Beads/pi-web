@@ -11,7 +11,6 @@ import type { ClosedExtensionDialog } from "../appState";
 
 export type ExtensionDialogAnswerCallback = (dialogId: string, value: ExtensionDialogAnswer) => void | Promise<void>;
 export type ExtensionDialogCancelCallback = (dialogId: string) => void | Promise<void>;
-export type ExtensionDialogDismissCallback = (dialogId: string) => void;
 
 const COUNTDOWN_TICK_MS = 1_000;
 
@@ -126,7 +125,6 @@ export class ExtensionDialogCard extends LitElement {
   @property({ attribute: false }) outcome?: ClosedExtensionDialog;
   @property({ attribute: false }) onAnswer?: ExtensionDialogAnswerCallback;
   @property({ attribute: false }) onCancel?: ExtensionDialogCancelCallback;
-  @property({ attribute: false }) onDismiss?: ExtensionDialogDismissCallback;
 
   @state() private inputValue = "";
   @state() private closing = false;

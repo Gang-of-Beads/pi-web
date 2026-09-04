@@ -127,7 +127,9 @@ async function main() {
       await page.waitForTimeout(200);
       await page.evaluate(() => {
         const root = window.__view.renderRoot ?? window.__view.shadowRoot;
-        root.querySelector(".chat").dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+        const chat = root.querySelector(".chat");
+        chat.dispatchEvent(new TouchEvent("touchstart", { bubbles: true }));
+        chat.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
       });
 
       // Drive the stream from the page: append a message and grow the last one

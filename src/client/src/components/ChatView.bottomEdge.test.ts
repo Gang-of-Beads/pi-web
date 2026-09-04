@@ -72,6 +72,25 @@ describe("the bottom edge is held without waiting a frame", () => {
     expect(chat.scrollTop).toBe(scrollHeight);
   });
 
+  it("holds the bottom through a stationary TOUCH press - the phone path", async () => {
+    // Round-2 reviewers proved the first fix never reached touch: touchstart
+    // marked the whole press as a scroll gesture, so phones kept the drift.
+    const { view, chat } = await mount();
+    chat.dispatchEvent(new Event("touchstart"));
+    chat.dispatchEvent(pointerEvent("pointerdown"));
+    await growContent(view, 200);
+    expect(chat.scrollTop).toBe(scrollHeight);
+  });
+
+  it("leaves a dragging finger alone", async () => {
+    const { view, chat } = await mount();
+    chat.dispatchEvent(new Event("touchstart"));
+    chat.dispatchEvent(new Event("touchmove"));
+    chat.scrollTop = 40;
+    await growContent(view, 200);
+    expect(chat.scrollTop).toBe(40);
+  });
+
   it("leaves a scrolled-away reader alone while a finger is down", async () => {
     const { view, chat } = await mount();
     await growContent(view, 40);
