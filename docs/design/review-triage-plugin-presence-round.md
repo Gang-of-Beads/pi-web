@@ -31,4 +31,34 @@ The substitution is recorded here rather than silently absorbed.
 PR #32 was verified clean by the lane (ignore entries correct, no derived
 artifacts tracked, Playwright retained deliberately as the probe harness).
 
-## Lane 2 (claude-opus-5) — appended when the lane lands
+## Lane 2 - the record corrected (2026-09-04)
+
+The opus substitute lane never delivered and this section sat as an empty
+placeholder - which the completion auditor rightly called a
+misrepresentation. The mandated qwen3.8-flash-next lane became launchable on
+2026-09-04 (model registered) and ran as an anonymous max-thinking reviewer
+over exactly this round's scope. Verdict: OK with notes. Findings and
+dispositions:
+
+- P1 fixed: the switcher's machine-scope guard keyed the REQUESTED tab, not
+  the machine the displayed rows came from; after a header machine switch the
+  reopened switcher rendered the old machine's cached rows under the new one,
+  with the new machine's badges, and a click selected against the wrong
+  machine. The loader now clears rows whose machine differs from the one it
+  loads, browsingElsewhere considers what is on screen, and
+  moveToBrowsedMachine acts on the rows' own machine. Two regression tests in
+  PiWebApp.quickSwitcherMachines.test.ts.
+- P2 fixed: GoalPanel attributed "failed" to the goal plugin specifically,
+  though the diagnostics channel is shared - reworded to the hedged sibling
+  copy. Both failed sentences pointed readers at "session warnings", a
+  surface that does not exist - now "Notifications".
+- P2 fixed: the goals-tab default flag carried a dead show conjunct and a
+  presence-unknown exclusion that demoted the goals tab against an old
+  daemon with recorded goals; the flag is now content-only, and the dead
+  pluginSurfaceVisibility abstraction is deleted with its tests.
+- P2 noise (recorded, not fixed): QuickSwitcher's changed.get guard on
+  browseMachineId is always-true but harmless; query surviving a tab switch
+  is deliberate and now known.
+- Adjudicated not-true by the lane, with citations: presence staleness on
+  idle sessions, failed/absent conflation in the wire chain, parser
+  intolerance of old daemons, not-installed shown while unknown.

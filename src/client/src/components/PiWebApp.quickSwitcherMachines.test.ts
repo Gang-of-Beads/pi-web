@@ -111,6 +111,38 @@ describe("browsing another machine's tab", () => {
     expect(Reflect.get(app, "quickSwitcherSessions")).toEqual([]);
     expect(Reflect.get(app, "quickSwitcherWorkspaces")).toEqual([]);
   });
+
+  it("clears rows loaded for another machine when the loader runs after a machine switch", async () => {
+    // The qwen presence lane's P1: switch machines from the header, reopen the
+    // switcher, and the cached rows of the OLD machine rendered under the new
+    // one - with the new machine's badges - until the refresh landed. The
+    // loader now refuses to keep rows whose machine is not the one it loads.
+    const app = createApp();
+    applyState(app, { machines: [machine("machine-a"), machine("machine-b")], selectedMachine: machine("machine-b") });
+    if (!Reflect.set(app, "quickSwitcherSessions", [sessionOn("/from-a")])) throw new Error("Could not seed sessions");
+    if (!Reflect.set(app, "quickSwitcherMachineId", "machine-a")) throw new Error("Could not set rows machine");
+    if (!Reflect.set(app, "quickSwitcherBrowseMachineId", "machine-b")) throw new Error("Could not set browse machine");
+    const load: unknown = Reflect.get(app, "loadQuickSwitcherData");
+    if (typeof load !== "function") throw new Error("loadQuickSwitcherData unavailable");
+    const loading: unknown = Reflect.apply(load, app, []);
+    expect(Reflect.get(app, "quickSwitcherSessions")).toEqual([]);
+    expect(Reflect.get(app, "quickSwitcherMachineId")).toBeUndefined();
+    if (loading instanceof Promise) await loading.catch(() => undefined);
+  });
+
+  it("acts on the machine the displayed rows came from, not the requested tab", async () => {
+    const app = createApp();
+    applyState(app, { machines: [machine("machine-a"), machine("machine-b")], selectedMachine: machine("machine-b") });
+    const selected: string[] = [];
+    Reflect.set(app, "machines", { selectMachine: (target: Machine) => { selected.push(target.id); applyState(app, { selectedMachine: target }); return Promise.resolve(); } });
+    if (!Reflect.set(app, "quickSwitcherMachineId", "machine-a")) throw new Error("Could not set rows machine");
+    if (!Reflect.set(app, "quickSwitcherBrowseMachineId", "machine-b")) throw new Error("Could not set browse machine");
+    const move: unknown = Reflect.get(app, "moveToBrowsedMachine");
+    if (typeof move !== "function") throw new Error("moveToBrowsedMachine unavailable");
+    const moved: unknown = await Promise.resolve(Reflect.apply(move, app, []));
+    expect(moved).toBe(true);
+    expect(selected).toEqual(["machine-a"]);
+  });
 });
 
 /** Review finding: the badge-scope guarantee was claimed but unpinned. */

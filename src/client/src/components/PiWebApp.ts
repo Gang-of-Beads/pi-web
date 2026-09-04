@@ -2257,6 +2257,12 @@ export class PiWebApp extends LitElement {
 
   private async loadQuickSwitcherData(force = false): Promise<void> {
     const machineId = this.quickSwitcherBrowseMachineId === "" ? selectedMachineId(this.state) : this.quickSwitcherBrowseMachineId;
+    if (this.quickSwitcherMachineId !== undefined && this.quickSwitcherMachineId !== machineId) {
+      this.quickSwitcherSessions = [];
+      this.quickSwitcherWorkspaces = [];
+      this.quickSwitcherMachineId = undefined;
+      this.quickSwitcherError = undefined;
+    }
     if (!force && this.quickSwitcherMachineId === machineId
         && this.quickSwitcherError === undefined
         && (this.quickSwitcherSessions.length > 0 || this.quickSwitcherWorkspaces.length > 0)
@@ -2308,7 +2314,10 @@ export class PiWebApp extends LitElement {
    * elsewhere the rows carry no badges at all - absent, not falsely present.
    */
   private quickSwitcherBrowsingElsewhere(): boolean {
-    return this.quickSwitcherBrowseMachineId !== "" && this.quickSwitcherBrowseMachineId !== selectedMachineId(this.state);
+    const selected = selectedMachineId(this.state);
+    const requested = this.quickSwitcherBrowseMachineId !== "" && this.quickSwitcherBrowseMachineId !== selected;
+    const shown = this.quickSwitcherMachineId !== undefined && this.quickSwitcherMachineId !== selected;
+    return requested || shown;
   }
 
   private browseQuickSwitcherMachine(machineId: string): void {
@@ -2343,9 +2352,14 @@ export class PiWebApp extends LitElement {
     await this.workspaces.selectWorkspace(workspace);
   }
 
-  /** Move to the browsed machine before acting on anything listed under it. */
+  /**
+   * Move to the machine the DISPLAYED rows came from before acting on one.
+   * Keying this on the requested tab instead of the rows' own machine let a
+   * click during a refresh select a session on a machine that had never
+   * heard of it - the wrong-machine read the qwen presence lane found.
+   */
   private async moveToBrowsedMachine(): Promise<boolean> {
-    const browsed = this.quickSwitcherBrowseMachineId;
+    const browsed = this.quickSwitcherMachineId ?? this.quickSwitcherBrowseMachineId;
     if (browsed === "" || browsed === selectedMachineId(this.state)) return true;
     const target = this.state.machines.find((candidate) => candidate.id === browsed);
     if (target === undefined) {

@@ -156,7 +156,7 @@ export class GoalPanel extends LitElement {
       : this.isReading ? "Loading goals…"
       : this.isUnread ? "Goals have not been read yet."
       : this.presence === "absent" ? "Goal tools are not installed for this session."
-      : this.presence === "failed" ? "The goal plugin failed to load; see session warnings."
+      : this.presence === "failed" ? "A plugin failed to load; goal tooling may be incomplete. See Notifications."
       : "No goals recorded for this workspace.";
     return html`<p class="empty">${line}</p>`;
   }

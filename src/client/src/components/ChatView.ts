@@ -52,7 +52,6 @@ import { imageLoadScrollCorrection } from "../imageLoadScroll";
 import { bottomAnchorAction } from "../bottomAnchor";
 import { subagentRunStatusExplanation, subagentRunStatusLabel } from "../subagentRunStatusLabel";
 import { activityEmptyMeaning } from "../activityEmptyMeaning";
-import { pluginSurfaceVisibility } from "../pluginSurfaceVisibility";
 
 export const chatStyles = css`
   ${SessionStateBadgeStyles}
@@ -1367,19 +1366,10 @@ export class ChatView extends LitElement {
     // them exactly when nothing else was running. A read in flight, or one
     // that failed, is also a reason: hiding the drawer during flight is how
     // the loading state went unseen for its whole life.
-    // Content, a read in flight, or a failed read are all reasons to show the
-    // panel. So is a plugin that failed to load, and so is not knowing: only a
-    // runtime that positively reports nothing behind the surface hides it.
-    const goalsVisibility = pluginSurfaceVisibility({
-      presence: this.status?.pluginSurfaces?.goals,
-      hasContent: this.goalsLoad.data.length > 0,
-      loading: this.goalsLoad.state === "loading",
-      loadFailed: this.goalsLoad.state === "failed",
-    });
     // Fixed tab membership means the drawer itself is fixed too: hiding the
     // whole strip when the three sections happen to be empty is the reflow
     // the ruling forbids, and it made the not-installed sentences unreachable.
-    const tab = selectedTopDrawerTab({ activity: activity !== undefined, notifications: inbox !== undefined || this.notificationsFailed, goals: goalsVisibility.show && goalsVisibility.reason !== "presence-unknown" && this.goalsLoad.data.length > 0 }, this.topDrawerTab);
+    const tab = selectedTopDrawerTab({ activity: activity !== undefined, notifications: inbox !== undefined || this.notificationsFailed, goals: this.goalsLoad.data.length > 0 }, this.topDrawerTab);
     const key = this.topDrawerKey();
     const collapsed = this.expandedTopDrawerKeys.has(key)
       ? false
@@ -1669,7 +1659,7 @@ export class ChatView extends LitElement {
           <p class="activity-empty">${subagentsPresence === "absent"
             ? "Subagent tools are not installed for this session. Background tasks still appear here when they run."
             : subagentsPresence === "failed"
-              ? "A plugin failed to load; subagent tooling may be incomplete. See session warnings."
+              ? "A plugin failed to load; subagent tooling may be incomplete. See Notifications."
               : "No subagent or background activity from this chat yet."}</p>
         </div>
       `;
