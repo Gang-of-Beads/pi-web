@@ -1,5 +1,14 @@
 # @gang-of-beads/pi-web
 
+## 1.202609.17
+
+### Patch Changes
+
+- 6cae7d9: Choosing a theme means getting that theme. Picking Clay Paper under system dark used to render the dark pair member with a "chosen, but following your system" label - a choice something else could override. An explicit pick now turns system-following off; the Auto toggle re-arms it deliberately. A re-pick of the active theme also stops repainting the whole document for nothing.
+- b46f120: Card corners stop breaking and taps stop flashing blue. The ask and dialog cards join the one-corner-owner contract the message cards already obey - the card clips, children paint square - which removes the interrupted upper corners on the phone. And a single inherited rule at the document root turns off the Android tap highlight for every button in every shadow root, including the two components the per-component sweep had missed.
+- 6157264: One message, one copy, everywhere. The durable queue refuses a second entry with the same id, the queued-message list dedupes across every queue lane and filters consumed entries, recall-to-composer never joins the same text twice - the duplicated draft line the owner photographed - and the daemon republishes status after its queue file loads, so the restart window can no longer report an idle empty session while parked messages exist.
+- fe02e73: Update Fastify and Vite dependency trees to remediate published security advisories, including Fastify request-validation and proxy-header issues plus fast-uri, PostCSS, and Nano ID vulnerabilities.
+
 ## 1.202609.16
 
 ### Patch Changes
