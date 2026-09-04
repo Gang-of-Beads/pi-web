@@ -1,5 +1,12 @@
 # @gang-of-beads/pi-web
 
+## 1.202609.18
+
+### Patch Changes
+
+- 7db63ce: pi SDK 0.85.0. The coding agent, ai, agent-core, and the newly split pi-server package move together; the whole suite passes against the new runtime.
+- 367447f: Releases now feed a public binary cache. The publish workflow pushes the Nix builds - including an aarch64-linux build made under emulation - to gang-of-beads.cachix.org, so machines substitute binaries instead of compiling each release themselves; the Raspberry Pi stops spending an hour rebuilding what CI already built.
+
 ## 1.202609.17
 
 ### Patch Changes
