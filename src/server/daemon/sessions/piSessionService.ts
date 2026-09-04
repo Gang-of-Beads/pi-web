@@ -2753,6 +2753,7 @@ export class PiSessionService implements SessionRouteService {
 
   private async restoreOwnedQueue(session: PiAgentSession, cwd: string): Promise<void> {
     const entries = await this.ownedQueue.open(session.sessionId, cwd);
+    this.publishStatus(session);
     // The queue survived the restart; its acceptances must too, or the
     // sender's outbox retry of a parked id is accepted a second time and the
     // prompt runs twice.
@@ -5482,14 +5483,24 @@ export function turnStartedAtFromBranch(branch: readonly unknown[]): string | un
 
 function queuedMessagesFromSession(session: PiAgentSession, extraQueuedMessages: readonly QueuedPrompt[] = [], ownedEntries: readonly { clientMessageId?: string; lane: "steer" | "followUp"; text: string }[] = []): QueuedSessionMessage[] {
   const consumed = consumedUserMessageTexts(session);
-  return [
+  const joined = [
     ...session.getSteeringMessages().filter((text) => !consumed.has(text)).map((text) => ({ kind: "steer" as const, text })),
     ...session.getFollowUpMessages().filter((text) => !consumed.has(text)).map((text) => ({ kind: "followUp" as const, text })),
     ...extraQueuedMessages
       .filter((message) => !consumed.has(message.text))
       .map((message) => ({ kind: message.kind, text: message.text, ...(message.clientMessageId === undefined ? {} : { clientMessageId: message.clientMessageId }) })),
-    ...ownedEntries.map((entry) => ({ kind: entry.lane, text: entry.text, ...(entry.clientMessageId === undefined ? {} : { clientMessageId: entry.clientMessageId }) })),
+    ...ownedEntries
+      .filter((entry) => !consumed.has(entry.text))
+      .map((entry) => ({ kind: entry.lane, text: entry.text, ...(entry.clientMessageId === undefined ? {} : { clientMessageId: entry.clientMessageId }) })),
   ];
+  const seen = new Set<string>();
+  return joined.filter((message) => {
+    const id = "clientMessageId" in message ? message.clientMessageId : undefined;
+    if (id === undefined) return true;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
 }
 
 /**

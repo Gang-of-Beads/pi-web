@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { PiSessionService } from "./piSessionService.js";
-import { queueFilePath } from "./ownedPromptQueue.js";
+import { OwnedPromptQueue, queueFilePath } from "./ownedPromptQueue.js";
 import { CapturingSessionEventHub, fakeRuntime, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime } from "./piSessionService.testSupport.js";
 
 const TEST_AGENT_DIR = "/tmp/pi-web-test-agent";
@@ -86,6 +86,17 @@ describe("the daemon owns the queue", () => {
       expect(status.queuedMessages.map((entry) => entry.clientMessageId)).toEqual(["c-refuse"]);
     });
     await vi.waitFor(() => { expect(existsSync(queueFilePath(dir, "own-refuse"))).toBe(true); });
+    await service.dispose();
+  });
+
+  it("parks one copy when the same id is pushed twice across a ledger gap", async () => {
+    const { service } = await busyService("own-dedupe");
+    await service.prompt(sessionRef("own-dedupe"), "only one copy", "followUp", undefined, { clientMessageId: "c-dup" });
+    const queue: unknown = Reflect.get(service, "ownedQueue");
+    if (!(queue instanceof OwnedPromptQueue)) throw new Error("ownedQueue unavailable");
+    await queue.push("own-dedupe", "/tmp", { clientMessageId: "c-dup", lane: "followUp", text: "only one copy", images: [], acceptedAt: "", echoUserMessage: true });
+
+    expect(queue.entries("own-dedupe")).toHaveLength(1);
     await service.dispose();
   });
 

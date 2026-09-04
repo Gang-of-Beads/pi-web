@@ -80,6 +80,7 @@ export class OwnedPromptQueue {
     return this.serialize(sessionId, async () => {
       if (!this.filePaths.has(sessionId)) this.filePaths.set(sessionId, queueFilePath(cwd, sessionId));
       const list = this.perSession.get(sessionId) ?? [];
+      if (entry.clientMessageId !== undefined && list.some((queued) => queued.clientMessageId === entry.clientMessageId)) return;
       list.push(entry);
       this.perSession.set(sessionId, list);
       await this.persist(sessionId);

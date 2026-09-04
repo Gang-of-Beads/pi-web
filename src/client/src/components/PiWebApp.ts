@@ -3246,7 +3246,14 @@ export class PiWebApp extends LitElement {
    * caller from being the one that forgets.
    */
   private restoreToComposer(messages: readonly QueuedSessionMessage[]): void {
-    const texts = messages.map((message) => message.text).filter((text) => text.trim() !== "");
+    const seen = new Set<string>();
+    const unique = messages.filter((message) => {
+      const key = message.clientMessageId ?? `text:${message.text}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    const texts = unique.map((message) => message.text).filter((text) => text.trim() !== "");
     if (texts.length === 0) return;
     this.promptEditor?.replaceText(texts.join("\n\n"));
     if (this.shouldAutoFocusPrompt()) this.promptEditor?.focusInput();
