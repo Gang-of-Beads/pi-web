@@ -1,7 +1,6 @@
-import { realpathSync } from "node:fs";
 import type { FastifyInstance } from "fastify";
-import { ProjectTrustStore, SettingsManager } from "@earendil-works/pi-coding-agent";
 import type { WorkspaceTrustResponse } from "../../shared/apiTypes.js";
+import { decidedTrustPath, readProjectTrust, writeProjectTrust } from "../shared/plugins/projectTrustReader.js";
 import { expandUserPath } from "../shared/projects/directorySuggestions.js";
 import type { ProjectService } from "../shared/projects/projectService.js";
 import type { WorkspaceCatalog } from "../shared/workspaces/workspaceCatalog.js";
@@ -31,9 +30,7 @@ export function registerProjectTrustRoutes(
   const route = `${prefix}/projects/:projectId/workspaces/:workspaceId/trust`;
 
   async function describe(path: string): Promise<WorkspaceTrustResponse> {
-    const agentDir = await deps.agentDir();
-    const decision = new ProjectTrustStore(agentDir).get(path);
-    const trusted = decision ?? SettingsManager.create(path, agentDir).getDefaultProjectTrust() === "always";
+    const { decision, trusted } = readProjectTrust(path, await deps.agentDir());
     return { path, decision, trusted };
   }
 
@@ -48,12 +45,7 @@ export function registerProjectTrustRoutes(
    * under the short form.)
    */
   function resolveDecidedPath(raw: string): string {
-    const expanded = expandUserPath(raw.trim());
-    try {
-      return realpathSync(expanded);
-    } catch {
-      return expanded;
-    }
+    return decidedTrustPath(raw, expandUserPath);
   }
 
   // Read-only existing-decision lookup for a path the client is about to add:
@@ -91,7 +83,7 @@ export function registerProjectTrustRoutes(
       // Writes go through the SDK store's file lock; an EACCES here (e.g. a
       // read-only, admin-controlled trust.json) surfaces to the client rather
       // than being swallowed.
-      new ProjectTrustStore(agentDir).set(context.root, request.body.trusted);
+      writeProjectTrust(context.root, agentDir, request.body.trusted);
       return await describe(context.root);
     } catch (error) {
       return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });

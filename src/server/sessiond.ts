@@ -23,6 +23,7 @@ import { FileSessionUnreadPersistence, SessionUnreadStore, defaultSessionUnreadF
 import { ProjectScopedSpawnTargetResolver } from "./daemon/sessions/spawnTargetResolver.js";
 import { ProjectService } from "./shared/projects/projectService.js";
 import { ProjectStore, projectStorePath } from "./shared/storage/projectStore.js";
+import { projectPluginRoots } from "./shared/plugins/projectPluginRoots.js";
 import {
   eligibleWorkspaceProviderContributions,
   WorkspaceProviderRegistry,
@@ -91,10 +92,15 @@ app.addHook("onRequest", (_request, reply, done) => {
   }
   void reply.code(503).send({ error: "Session daemon is shutting down" });
 });
+const daemonProjectStore = new ProjectStore(projectStorePath(daemonEnvironment));
 const serverPluginCatalog = new PiWebPluginCatalog({
   cwd: process.cwd(),
   agentDir: activeAgentProfile.dir,
   configProvider: () => config,
+  projectPlugins: () => projectPluginRoots({
+    projectPaths: async () => (await daemonProjectStore.list()).map((project) => project.path),
+    agentDir: () => activeAgentProfile.dir,
+  }),
   warningSink: (message) => { app.log.warn({ component: "server-plugins" }, message); },
 });
 
@@ -216,7 +222,7 @@ async function createSessionDaemonRuntime() {
     });
     catalogRefresher.start();
     auth.subscribe(() => { catalogRefresher.requestRefresh(); });
-    const projects = new ProjectService(new ProjectStore(projectStorePath(daemonEnvironment)));
+    const projects = new ProjectService(daemonProjectStore);
     const providerHealth = await serverPlugins.inspectHealth();
     const workspaceProviders = new WorkspaceProviderRegistry({
       contributions: eligibleWorkspaceProviderContributions(serverPlugins.providerContributions(), providerHealth),
