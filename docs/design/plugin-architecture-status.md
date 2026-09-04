@@ -85,3 +85,29 @@ pack. The guards added for the first three now walk the shipped module graph.
 - **Nothing is published.** `@gang-of-beads/pi-web-plugin-api` has to publish
   before a split repository can build against a version instead of against
   pi-web's working tree.
+
+## Audit verdict, 2026-09-04: first version not complete
+
+An independent audit rejected the completion claim, correctly. Three task
+contracts are unmet, and two of them are named in the objective's own
+extraction list. Recorded here so the next session starts from the verdict
+rather than from the claim:
+
+1. **goals is not extracted.** `web/goals/*`, the two goal routes inside
+   `workspaceExplorerRoutes`, `GoalPanel` and the daemon's hardcoded goal tool
+   names (`pluginSurfaces.ts`) and continuation marker (`injectedTurnKinds.ts`)
+   are all still core. Nothing of this wave has started.
+2. **model catalog stayed core.** Matching pi is a defensible reason and the
+   owner approved it in conversation, but the goal text lists it as an
+   extraction target, so the objective itself needs amending before this can
+   count as satisfied - a documented rationale is not an amended contract.
+3. **No plugin is loaded from a package.** The split repositories exist and
+   carry real history, but `@gang-of-beads/pi-web-plugin-api` is unpublished
+   and pi-web still loads every plugin from `pi-web-plugins/`. The contract's
+   decisive clause - pi-web loading at least one plugin from a package, proven
+   live - is unmet.
+
+Order for the remaining work: extract pi-web-goals whole (client panel, server
+store and routes, and the daemon facts becoming plugin declarations rather than
+constants), then publish the contract package and switch one plugin to
+package loading with a live proof, then re-run the sign-off.
