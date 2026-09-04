@@ -138,6 +138,25 @@ jobs:
             npm publish "./pack-out/${{ steps.pack.outputs.tarball }}" --access public --provenance
           fi
 
+  nix-cache-darwin:
+    name: Cache aarch64-darwin build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v20
+
+      - name: Push Nix builds to the binary cache
+        uses: cachix/cachix-action@v15
+        with:
+          name: gang-of-beads
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - name: Build Nix package
+        run: nix build .#pi-web --no-link
+
   deploy-docs:
     name: Deploy stable docs
     # Stable docs only move on real tag releases; skipped on manual
