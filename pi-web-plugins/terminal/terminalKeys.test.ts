@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { terminalSoftKeySequence, type TerminalModesSnapshot } from "./terminalKeys";
+import { terminalSoftKeySequence, type TerminalModesSnapshot } from "./terminalKeys.js";
 
 describe("terminalSoftKeySequence", () => {
   it("maps common control keys to terminal bytes", () => {

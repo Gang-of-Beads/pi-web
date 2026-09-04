@@ -1,7 +1,7 @@
 import { css, html, LitElement } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import { TERMINAL_SOFT_KEYS, terminalSoftKeySequence, type TerminalModesSnapshot, type TerminalSoftKeyDefinition } from "../terminalKeys";
-import { interactiveSurfaceStyles } from "./shared";
+import { TERMINAL_SOFT_KEYS, terminalSoftKeySequence, type TerminalModesSnapshot, type TerminalSoftKeyDefinition } from "./terminalKeys.js";
+import { terminalSurfaceStyles } from "./hostUi.js";
 
 const SOFT_KEY_TAP_MOVE_THRESHOLD_PX = 8;
 const SYNTHETIC_CLICK_SUPPRESSION_MS = 500;
@@ -81,7 +81,7 @@ export class TerminalSoftKeys extends LitElement {
     `;
   }
 
-  static override styles = [interactiveSurfaceStyles, css`
+  static override styles = [...terminalSurfaceStyles(), css`
     :host { flex: 0 0 auto; display: block; }
     .terminal-soft-keys { display: flex; gap: 6px; align-items: center; padding: 6px; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; touch-action: pan-x; }
     .terminal-soft-keys::-webkit-scrollbar { display: none; }

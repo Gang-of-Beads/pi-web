@@ -12,7 +12,6 @@ import {
   WORKSPACE_SIDE_BY_SIDE_MIN_PX,
 } from "./breakpoints";
 import { MOBILE_PROMPT_ENTER_MEDIA_QUERY } from "./promptEnterBehavior";
-import { TERMINAL_SOFT_KEYS_DEFAULT_ENVIRONMENT_MEDIA } from "./terminalSoftKeysPreference";
 
 /**
  * One breakpoint authority. The parity review found the 760px line written in
@@ -67,7 +66,6 @@ describe("the breakpoint authority", () => {
     // The two preference modules and the shell controller consume the derived
     // strings, so their copies cannot drift from the mobile line.
     expect(MOBILE_PROMPT_ENTER_MEDIA_QUERY).toBe(COARSE_OR_MOBILE_MEDIA_QUERY);
-    expect(TERMINAL_SOFT_KEYS_DEFAULT_ENVIRONMENT_MEDIA).toBe(COARSE_OR_MOBILE_MEDIA_QUERY);
   });
 
   it("keeps the two layout lines apart and ordered", () => {

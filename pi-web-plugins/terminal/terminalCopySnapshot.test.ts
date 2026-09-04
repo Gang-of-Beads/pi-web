@@ -4,7 +4,7 @@ import {
   type TerminalCopyBufferCellSource,
   type TerminalCopyBufferLineSource,
   type TerminalCopyBufferSource,
-} from "./terminalCopySnapshot";
+} from "./terminalCopySnapshot.js";
 
 type CellColor = { mode: "default" } | { mode: "palette"; value: number } | { mode: "rgb"; value: number };
 

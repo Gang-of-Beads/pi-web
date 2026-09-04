@@ -1,6 +1,6 @@
 import type { CSSResultGroup, TemplateResult } from "lit";
-import type { DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "./shared/pluginApiTypes.js";
-export type { FileContentMediaType, FileContentResponse, FileTreeEntry, FileTreeResponse, JsonObject, JsonPrimitive, JsonValue, MachineKind, PiWebComponentStatus, PiWebDockerMode, PiWebInstallationInfo, PiWebInstallationKind, PiWebReleaseStatus, PiWebServiceComponent, PiWebStatusMessage, PiWebStatusResponse, PiWebStatusSeverity, PiWebVersionResponse, TerminalCommandRun, TerminalInfo, TerminalCommandRunHandle, TerminalCommandRunStatus, WorkspaceProviderCapabilities, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, DeleteWorkspaceFileResponse, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, } from "./shared/pluginApiTypes.js";
+import type { TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "./shared/pluginApiTypes.js";
+export type { TerminalInfo, FileContentMediaType, FileContentResponse, FileTreeEntry, FileTreeResponse, JsonObject, JsonPrimitive, JsonValue, MachineKind, PiWebComponentStatus, PiWebDockerMode, PiWebInstallationInfo, PiWebInstallationKind, PiWebReleaseStatus, PiWebServiceComponent, PiWebStatusMessage, PiWebStatusResponse, PiWebStatusSeverity, PiWebVersionResponse, TerminalCommandRun, TerminalCommandRunHandle, TerminalCommandRunStatus, WorkspaceProviderCapabilities, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, DeleteWorkspaceFileResponse, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, } from "./shared/pluginApiTypes.js";
 export type PluginId = string;
 export type LocalContributionId = string;
 export type QualifiedContributionId = string;
@@ -59,6 +59,23 @@ export type PluginLifecycleEvent = {
  * means unconfigured, which a plugin must not read as "configured empty".
  */
 export type PluginSettings = Readonly<Record<string, unknown>>;
+export interface WorkspaceTerminalSessions {
+    list(): Promise<TerminalInfo[]>;
+    start(options?: {
+        name?: string;
+        cols?: number;
+        rows?: number;
+    }): Promise<TerminalInfo>;
+    close(terminalId: string): Promise<void>;
+    closeAll(): Promise<void>;
+    continue(terminalId: string): Promise<TerminalInfo>;
+    connect(terminalId: string, initialSize?: {
+        cols: number;
+        rows: number;
+    }): WebSocket;
+    listCommandRuns(): Promise<TerminalCommandRun[]>;
+    cancelCommandRun(runId: string): Promise<TerminalCommandRun>;
+}
 export interface PluginHostUi {
     readonly copyText: (text: string) => Promise<boolean>;
     readonly describeError: (error: unknown) => string;
@@ -267,6 +284,14 @@ export interface WorkspacePanelTerminal {
         terminalId?: string | undefined;
     }): void;
     runCommand(input: WorkspaceTerminalCommandInput): Promise<TerminalCommandRunHandle>;
+    /** The pty capability itself, scoped by the host to this workspace. */
+    sessions: WorkspaceTerminalSessions;
+    activeCount: number;
+    selectedId: string | undefined;
+    autoStart: boolean;
+    select: (terminalId: string | undefined, options?: {
+        replace?: boolean | undefined;
+    }) => void;
 }
 export interface WorkspacePanelContext extends WorkspaceContext {
     prompt: PluginPromptEditor;

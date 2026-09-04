@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { noPanelTerminal } from "../terminalSessionsTestSupport.js";
 import type { JsonValue, WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
 import { GIT_COMMIT_DIFF_OPERATION, GIT_DIFF_OPERATION, GIT_HISTORY_OPERATION } from "./browser/git-contract.js";
 import { GitUiController } from "./browser/git-panel.js";
@@ -36,10 +37,7 @@ function context(id: string, request: (operation: string, input: JsonValue) => P
       getText: () => "",
       getSelection: () => null,
     },
-    terminal: {
-      open() { /* no-op */ },
-      runCommand: () => Promise.reject(new Error("Not used by this test")),
-    },
+    terminal: noPanelTerminal(),
   };
 }
 

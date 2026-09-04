@@ -1,0 +1,10 @@
+{
+  "name": "@pi-web/terminal-plugin",
+  "private": true,
+  "type": "module",
+  "piWeb": {
+    "plugins": [
+      { "id": "terminal", "browserRoot": ".", "module": "pi-web-plugin.js", "machineSpecific": true }
+    ]
+  }
+}

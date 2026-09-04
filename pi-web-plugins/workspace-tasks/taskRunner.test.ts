@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { noPanelTerminal } from "../terminalSessionsTestSupport.js";
 import type { TerminalCommandRun, WorkspacePanelTerminal } from "@gang-of-beads/pi-web/plugin-api";
 import { runWorkspaceTaskInTerminal } from "./taskRunner";
 import type { WorkspaceTask } from "./config";
@@ -20,10 +21,7 @@ describe("task runner", () => {
   it("starts workspace tasks through the public workspace terminal helper", async () => {
     const task: WorkspaceTask = { id: "build", title: "Build", command: "npm run build", confirm: false };
     const runCommand = vi.fn<WorkspacePanelTerminal["runCommand"]>(() => Promise.resolve({ run, completed: Promise.resolve(run) }));
-    const terminal: WorkspacePanelTerminal = {
-      runCommand,
-      open: vi.fn(),
-    };
+    const terminal: WorkspacePanelTerminal = { ...noPanelTerminal(), runCommand, open: vi.fn() };
 
     const handle = await runWorkspaceTaskInTerminal(terminal, task);
 

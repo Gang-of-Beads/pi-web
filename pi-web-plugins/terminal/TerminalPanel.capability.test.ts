@@ -1,13 +1,12 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TerminalPanel } from "./TerminalPanel";
-import type { TerminalInfo, Workspace } from "../api";
-import type { WorkspaceTerminalSessions } from "../plugins/types";
+import { TerminalPanel } from "./TerminalPanel.js";
+import type { TerminalCommandRun, TerminalInfo, Workspace, WorkspaceTerminalSessions } from "@gang-of-beads/pi-web/plugin-api";
 
 afterEach(() => { document.body.replaceChildren(); });
 
-const workspace: Workspace = { id: "w1", projectId: "p1", path: "/repo", label: "repo", isMain: true, effectiveConfig: {} };
+const workspace: Workspace = { id: "w1", projectId: "p1", path: "/repo", label: "repo", isMain: true };
 
 function terminal(id: string): TerminalInfo {
   return { id, cwd: "/repo", name: id, createdAt: "now", exited: false };
@@ -22,7 +21,7 @@ function sessions(patch: Partial<WorkspaceTerminalSessions> = {}): WorkspaceTerm
     closeAll: () => Promise.resolve(),
     continue: () => Promise.resolve(terminal("t1")),
     connect: () => { throw new Error("not used"); },
-    listCommandRuns: () => Promise.resolve([]),
+    listCommandRuns: (): Promise<TerminalCommandRun[]> => Promise.resolve([]),
     cancelCommandRun: absent,
     ...patch,
   };

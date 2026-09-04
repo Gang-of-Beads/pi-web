@@ -1,7 +1,9 @@
 export const TERMINAL_SOFT_KEYS_STORAGE_KEY = "pi-web.terminal.softKeys";
-import { COARSE_OR_MOBILE_MEDIA_QUERY } from "./breakpoints";
+import { coarseOrMobileQuery } from "./hostUi.js";
 
-export const TERMINAL_SOFT_KEYS_DEFAULT_ENVIRONMENT_MEDIA = COARSE_OR_MOBILE_MEDIA_QUERY;
+export function terminalSoftKeysDefaultEnvironmentMedia(): string | undefined {
+  return coarseOrMobileQuery();
+}
 
 export type TerminalSoftKeysStorage = Pick<Storage, "getItem" | "setItem">;
 
@@ -16,7 +18,9 @@ export function parseTerminalSoftKeysPreference(value: string | null): boolean |
 }
 
 export function createTerminalSoftKeysDefaultEnvironmentMedia(): MediaQueryList | undefined {
-  return typeof window !== "undefined" && "matchMedia" in window ? window.matchMedia(TERMINAL_SOFT_KEYS_DEFAULT_ENVIRONMENT_MEDIA) : undefined;
+  const query = terminalSoftKeysDefaultEnvironmentMedia();
+  if (query === undefined) return undefined;
+  return typeof window !== "undefined" && "matchMedia" in window ? window.matchMedia(query) : undefined;
 }
 
 export function isTerminalSoftKeysDefaultEnvironment(media: MediaQueryList | undefined): boolean {

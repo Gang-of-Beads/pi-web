@@ -1,4 +1,4 @@
-import type { TerminalInfo } from "../api";
+import type { TerminalInfo } from "@gang-of-beads/pi-web/plugin-api";
 
 /**
  * Which terminal a panel shows.

@@ -3,18 +3,16 @@ import { customElement, property, query, state } from "lit/decorators.js";
 import { styleMap, type StyleInfo } from "lit/directives/style-map.js";
 import { Terminal, type ITerminalOptions, type ITheme } from "@xterm/xterm";
 import { FitAddon, type ITerminalDimensions } from "@xterm/addon-fit";
-import "@xterm/xterm/css/xterm.css";
-import type { TerminalCommandRun, TerminalInfo, Workspace } from "../api";
-import { workspaceTerminalSessions } from "../plugins/workspaceTerminalSessions";
-import type { WorkspaceTerminalSessions } from "../plugins/types";
-import { writeClipboardText } from "../clipboard";
-import { selectFallbackTerminal, selectPreferredTerminal } from "../controllers/terminalChoice";
-import { createTerminalCopySnapshot, DEFAULT_TERMINAL_ANSI_THEME, type TerminalCopyRunStyle, type TerminalCopySnapshot } from "../terminalCopySnapshot";
-import { createTerminalSoftKeysDefaultEnvironmentMedia, hasTerminalSoftKeysPreference, initialTerminalSoftKeysEnabled, isTerminalSoftKeysDefaultEnvironment, writeTerminalSoftKeysPreference } from "../terminalSoftKeysPreference";
+import { xtermStyles } from "./xtermStyles.js";
+import type { TerminalCommandRun, TerminalInfo, Workspace, WorkspaceTerminalSessions } from "@gang-of-beads/pi-web/plugin-api";
+import { copyTerminalText } from "./hostUi.js";
+import { selectFallbackTerminal, selectPreferredTerminal } from "./terminalChoice.js";
+import { createTerminalCopySnapshot, DEFAULT_TERMINAL_ANSI_THEME, type TerminalCopyRunStyle, type TerminalCopySnapshot } from "./terminalCopySnapshot.js";
+import { createTerminalSoftKeysDefaultEnvironmentMedia, hasTerminalSoftKeysPreference, initialTerminalSoftKeysEnabled, isTerminalSoftKeysDefaultEnvironment, writeTerminalSoftKeysPreference } from "./terminalSoftKeysPreference.js";
 import "./TerminalSoftKeys";
-import type { TerminalSoftKeyInputOptions } from "./TerminalSoftKeys";
-import { describeError } from "../notice";
-import { interactiveSurfaceStyles } from "./shared";
+import type { TerminalSoftKeyInputOptions } from "./TerminalSoftKeys.js";
+import { describeTerminalError } from "./hostUi.js";
+import { terminalSurfaceStyles } from "./hostUi.js";
 
 const TERMINAL_OPTIONS_BASE: ITerminalOptions = {
   cursorBlink: true,
@@ -178,7 +176,7 @@ export class TerminalPanel extends LitElement {
       this.updateCommandRunPolling(this.hasPendingCommandRuns(commandRuns));
       if (terminals.length === 0 && shouldAutoStart) await this.startTerminal();
     } catch (error) {
-      this.error = describeError(error);
+      this.error = describeTerminalError(error);
     } finally {
       this.loading = false;
     }
@@ -230,7 +228,7 @@ export class TerminalPanel extends LitElement {
       this.terminals = [...this.terminals, terminal];
       this.selectTerminal(terminal.id);
     } catch (error) {
-      this.error = describeError(error);
+      this.error = describeTerminalError(error);
     }
   }
 
@@ -247,7 +245,7 @@ export class TerminalPanel extends LitElement {
         this.onSelectTerminal(nextSelectedId, { replace: true });
       }
     } catch (error) {
-      this.error = describeError(error);
+      this.error = describeTerminalError(error);
     }
   }
 
@@ -275,7 +273,7 @@ export class TerminalPanel extends LitElement {
       this.cancellingRunIds = this.cancellingRunIds.filter((runId) => commandRuns.some((run) => run.id === runId && isCommandRunPending(run)));
       this.updateCommandRunPolling(this.hasPendingCommandRuns(commandRuns));
     } catch (error) {
-      this.error = describeError(error);
+      this.error = describeTerminalError(error);
     }
   }
 
@@ -303,7 +301,7 @@ export class TerminalPanel extends LitElement {
       await this.terminalSessions().cancelCommandRun(run.id);
       await this.loadCommandRuns();
     } catch (error) {
-      this.error = describeError(error);
+      this.error = describeTerminalError(error);
     } finally {
       this.cancellingRunIds = this.cancellingRunIds.filter((runId) => runId !== run.id);
     }
@@ -320,7 +318,7 @@ export class TerminalPanel extends LitElement {
       this.fitAndNotify();
       this.terminal?.focus();
     } catch (error) {
-      this.error = describeError(error);
+      this.error = describeTerminalError(error);
     } finally {
       this.continuingTerminalIds = this.continuingTerminalIds.filter((terminalId) => terminalId !== id);
     }
@@ -353,9 +351,9 @@ export class TerminalPanel extends LitElement {
    * the same properties. A panel never reaches past it to a route.
    */
   private terminalSessions(): WorkspaceTerminalSessions {
-    const workspace = this.workspace;
-    if (workspace === undefined) throw new Error("This panel has no workspace to work in");
-    return this.sessions ?? workspaceTerminalSessions(workspace, this.machineId);
+    if (this.workspace === undefined) throw new Error("This panel has no workspace to work in");
+    if (this.sessions === undefined) throw new Error("This panel was given no terminal capability");
+    return this.sessions;
   }
 
   private connectSocket(terminalId: string, terminal: Terminal, initialSize: TerminalSize | undefined): void {
@@ -384,7 +382,7 @@ export class TerminalPanel extends LitElement {
       }
       if (message.type === "error") terminal.writeln(`\r\n[terminal error: ${message.message}]`);
     } catch (error) {
-      terminal.writeln(`\r\n[terminal error: ${describeError(error)}]`);
+      terminal.writeln(`\r\n[terminal error: ${describeTerminalError(error)}]`);
     }
   }
 
@@ -564,7 +562,7 @@ export class TerminalPanel extends LitElement {
       this.copyStatus = "No terminal output to copy.";
       return;
     }
-    this.copyStatus = await writeClipboardText(text) ? "Copied all terminal output." : "Unable to copy terminal output.";
+    this.copyStatus = await copyTerminalText(text) ? "Copied all terminal output." : "Unable to copy terminal output.";
   }
 
   private renderCopyModeToggle() {
@@ -708,7 +706,7 @@ export class TerminalPanel extends LitElement {
     `;
   }
 
-  static override styles = [interactiveSurfaceStyles, css`
+  static override styles = [...terminalSurfaceStyles(), xtermStyles, css`
     :host { flex: 1 1 auto; min-height: 0; display: flex; }
     .terminal-shell { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--pi-terminal-bg); }
     .terminal-tabs { flex: 0 0 auto; display: flex; gap: 6px; align-items: center; padding: 6px; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); overflow: auto; }

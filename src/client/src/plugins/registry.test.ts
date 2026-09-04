@@ -1,6 +1,6 @@
 import { html } from "lit";
 import { describe, expect, it, vi } from "vitest";
-import { noTerminalSessions } from "./terminalSessionsTestSupport";
+import { noPanelTerminal } from "./terminalSessionsTestSupport";
 import type { DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MoveWorkspaceFileResponse, SessionInfo, SessionStatus, WriteWorkspaceFileResponse, Workspace } from "../api";
 import { initialAppState, type AppState } from "../appState";
 import { markCachedNewSessionInfo } from "../cachedNewSessions";
@@ -24,7 +24,7 @@ describe("PluginRegistry", () => {
     registry.register({ id: "core", plugin: corePlugin });
 
     expect(registry.getActions(createContext().context).some((action) => action.id === "core:actions.show")).toBe(true);
-    expect(registry.getWorkspacePanels().map((panel) => panel.id)).toEqual(["core:workspace.files", "core:workspace.terminal"]);
+    expect(registry.getWorkspacePanels().map((panel) => panel.id)).toEqual(["core:workspace.files"]);
   });
 
   it("rejects legacy browser plugins with an attributed API-version error", () => {
@@ -921,7 +921,7 @@ function createWorkspacePanelContext(machineId: string, prompt: WorkspacePanelCo
     files: { readFile: vi.fn(), listFiles: vi.fn(), writeFile: vi.fn(), deleteFile: vi.fn(), moveFile: vi.fn() },
     backend: { request: vi.fn(() => Promise.resolve(null)) },
     prompt,
-    terminal: { open: vi.fn(), runCommand: vi.fn(), sessions: noTerminalSessions() },
+    terminal: noPanelTerminal(),
     host: { requestRender: vi.fn(), workspacePanelFullscreen: () => false, setWorkspacePanelFullscreen: vi.fn() },
     fileTree: [],
     expandedDirs: {},

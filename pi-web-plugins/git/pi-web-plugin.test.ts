@@ -2,6 +2,7 @@
 
 import { html, render, svg } from "lit";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { noPanelTerminal } from "../terminalSessionsTestSupport.js";
 import type { JsonValue, PluginRuntimeContext, Workspace, WorkspaceBackend, WorkspaceHost, WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
 import { GIT_FILE_VIEW_STORAGE_KEY } from "./browser/gitFileViewPreference.js";
 import plugin from "./browser/pi-web-plugin.js";
@@ -476,7 +477,7 @@ function panelContext(
       setWorkspacePanelFullscreen: host.setWorkspacePanelFullscreen ?? noop,
     },
     prompt: { insertText: noop, getText: () => "", getSelection: () => null },
-    terminal: { open: noop, runCommand: () => Promise.reject(new Error("not implemented")) },
+    terminal: noPanelTerminal(),
   };
 }
 

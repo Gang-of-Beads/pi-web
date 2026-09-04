@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
+import { noPanelTerminal } from "../terminalSessionsTestSupport.js";
 import type { FileContentResponse, FileTreeEntry, FileTreeResponse, WorkspaceFiles, WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
 import { RELAYS_ROOT, type RelayDiscoveryFiles, type RelayTreeNode } from "./relayDiscovery";
 import {
@@ -766,7 +767,7 @@ function panelContext(fake: WorkspaceFilesFake, workspaceId = "ws-1"): Workspace
     files: fake.files,
     host: { requestRender: () => undefined, workspacePanelFullscreen: () => false, setWorkspacePanelFullscreen: () => undefined },
     prompt: { insertText: () => undefined, getText: () => "", getSelection: () => null },
-    terminal: { open: () => undefined, runCommand: () => Promise.reject(new Error("terminal not used")) },
+    terminal: noPanelTerminal(),
   };
 }
 

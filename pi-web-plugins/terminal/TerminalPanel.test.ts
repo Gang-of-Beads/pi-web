@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { TerminalPanel } from "./TerminalPanel";
+import { TerminalPanel } from "./TerminalPanel.js";
+import { xtermStyles } from "./xtermStyles.js";
 
 describe("the terminal's scrollbar", () => {
   /**
@@ -14,9 +15,23 @@ describe("the terminal's scrollbar", () => {
    * put it there.
    */
   it("does not ask for a second, permanent scrollbar", () => {
-    const sheet = String(TerminalPanel.styles);
+    const sheet = terminalStyleText();
     const viewport = /\.xterm-viewport\s*\{([^}]*)\}/u.exec(sheet)?.[1] ?? "";
 
     expect(viewport).not.toMatch(/overflow-y:\s*scroll/u);
   });
 });
+
+/**
+ * The panel's own rules, without the vendored xterm sheet: xterm asks for its
+ * own viewport scrollbar, and what this asserts is that the panel does not ask
+ * for a second one on top of it.
+ */
+function terminalStyleText(): string {
+  const vendored = [xtermStyles].flat(3).map((sheet) => "cssText" in sheet ? sheet.cssText : "");
+  return [TerminalPanel.styles]
+    .flat(3)
+    .map((sheet) => "cssText" in sheet ? sheet.cssText : "")
+    .filter((text) => !vendored.includes(text))
+    .join("\n");
+}

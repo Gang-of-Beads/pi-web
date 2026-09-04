@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { TerminalInfo } from "../api";
-import { selectFallbackTerminal, selectPreferredTerminal } from "./terminalChoice";
+import type { TerminalInfo } from "@gang-of-beads/pi-web/plugin-api";
+import { selectFallbackTerminal, selectPreferredTerminal } from "./terminalChoice.js";
 
 function terminal(id: string, exited = false): TerminalInfo {
   return { id, cwd: "/repo", name: id, createdAt: "now", exited };

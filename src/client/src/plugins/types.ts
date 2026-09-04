@@ -275,6 +275,10 @@ export interface WorkspacePanelTerminal {
    * rather than building routes or sockets of its own.
    */
   sessions: WorkspaceTerminalSessions;
+  activeCount: number;
+  selectedId: string | undefined;
+  autoStart: boolean;
+  select: (terminalId: string | undefined, options?: { replace?: boolean | undefined }) => void;
 }
 
 export interface WorkspaceTerminalSessions {

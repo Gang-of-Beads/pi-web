@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { noTerminalSessions } from "../plugins/terminalSessionsTestSupport";
+import { noPanelTerminal } from "../plugins/terminalSessionsTestSupport";
 import { filesSplitClass } from "./filesSplitLayout";
 import type { FileContentResponse, FileTreeEntry } from "../api";
 import { initialAppState } from "../appState";
@@ -441,7 +441,7 @@ function workspacePanelContext(patch: Partial<WorkspacePanelContext> = {}): Work
     },
     backend: patch.backend ?? { request: vi.fn<NonNullable<WorkspacePanelContext["backend"]>["request"]>(() => Promise.resolve(null)) },
     prompt: patch.prompt ?? { insertText: vi.fn<WorkspacePanelContext["prompt"]["insertText"]>(), getText: vi.fn<WorkspacePanelContext["prompt"]["getText"]>(() => ""), getSelection: vi.fn<WorkspacePanelContext["prompt"]["getSelection"]>(() => null) },
-    terminal: patch.terminal ?? { open: vi.fn<WorkspacePanelContext["terminal"]["open"]>(), runCommand: vi.fn<WorkspacePanelContext["terminal"]["runCommand"]>(() => Promise.reject(new Error("not implemented"))), sessions: noTerminalSessions() },
+    terminal: patch.terminal ?? noPanelTerminal(),
     host: patch.host ?? {
       requestRender: vi.fn<WorkspacePanelContext["host"]["requestRender"]>(),
       workspacePanelFullscreen: () => false,

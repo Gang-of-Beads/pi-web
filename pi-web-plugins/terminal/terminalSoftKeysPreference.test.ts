@@ -5,7 +5,7 @@ import {
   terminalSoftKeysEnabled,
   TERMINAL_SOFT_KEYS_STORAGE_KEY,
   writeTerminalSoftKeysPreference,
-} from "./terminalSoftKeysPreference";
+} from "./terminalSoftKeysPreference.js";
 
 describe("terminal soft key preferences", () => {
   it("uses stored preferences before environment defaults", () => {

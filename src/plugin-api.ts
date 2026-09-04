@@ -1,7 +1,8 @@
 import type { CSSResultGroup, TemplateResult } from "lit";
-import type { DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "./shared/pluginApiTypes.js";
+import type { TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "./shared/pluginApiTypes.js";
 
 export type {
+  TerminalInfo,
   FileContentMediaType,
   FileContentResponse,
   FileTreeEntry,
@@ -21,7 +22,6 @@ export type {
   PiWebStatusSeverity,
   PiWebVersionResponse,
   TerminalCommandRun,
-  TerminalInfo,
   TerminalCommandRunHandle,
   TerminalCommandRunStatus,
   WorkspaceProviderCapabilities,
@@ -82,6 +82,17 @@ export type PluginLifecycleEvent =
  * means unconfigured, which a plugin must not read as "configured empty".
  */
 export type PluginSettings = Readonly<Record<string, unknown>>;
+
+export interface WorkspaceTerminalSessions {
+  list(): Promise<TerminalInfo[]>;
+  start(options?: { name?: string; cols?: number; rows?: number }): Promise<TerminalInfo>;
+  close(terminalId: string): Promise<void>;
+  closeAll(): Promise<void>;
+  continue(terminalId: string): Promise<TerminalInfo>;
+  connect(terminalId: string, initialSize?: { cols: number; rows: number }): WebSocket;
+  listCommandRuns(): Promise<TerminalCommandRun[]>;
+  cancelCommandRun(runId: string): Promise<TerminalCommandRun>;
+}
 
 export interface PluginHostUi {
   readonly copyText: (text: string) => Promise<boolean>;
@@ -308,6 +319,12 @@ export interface WorkspaceTerminalCommandInput {
 export interface WorkspacePanelTerminal {
   open(options?: { terminalId?: string | undefined }): void;
   runCommand(input: WorkspaceTerminalCommandInput): Promise<TerminalCommandRunHandle>;
+  /** The pty capability itself, scoped by the host to this workspace. */
+  sessions: WorkspaceTerminalSessions;
+  activeCount: number;
+  selectedId: string | undefined;
+  autoStart: boolean;
+  select: (terminalId: string | undefined, options?: { replace?: boolean | undefined }) => void;
 }
 
 export interface WorkspacePanelContext extends WorkspaceContext {
