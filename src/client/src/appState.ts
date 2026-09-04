@@ -1,9 +1,8 @@
-import type { AuthProviderOption, CommandOption, CommandResult, ExtensionDialogAnswer, ExtensionDialogCloseReason, FileContentResponse, FileTreeEntry, GoalRecordSummary, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingAskUser, PendingExtensionDialog, PiWebSelfUpdateStatus, PiWebStatusResponse, Project, QueuedSessionMessage, SessionActivity, SessionInfo, SessionModelCatalogEntry, SessionStatus, SessionBackgroundTaskInfo, SessionSubagentInfo, SessionSubagentRunInfo, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";import type { ChatLine } from "./components/shared";
 import { normalizeMessages } from "./chatMessages";
+import type { AuthProviderOption, CommandOption, CommandResult, ExtensionDialogAnswer, ExtensionDialogCloseReason, FileContentResponse, FileTreeEntry, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingAskUser, PendingExtensionDialog, PiWebSelfUpdateStatus, PiWebStatusResponse, Project, QueuedSessionMessage, SessionActivity, SessionInfo, SessionModelCatalogEntry, SessionStatus, SessionBackgroundTaskInfo, SessionSubagentInfo, SessionSubagentRunInfo, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";
+import type { ChatLine } from "./components/shared";
 import type { CommandLedgerEntry } from "./commandLedger";
 import { RetiredBy } from "./notice";
-import { machineWorkspaceKey } from "./machineKeys";
-import { selectedMachineId } from "./controllers/types";
 import type { MachineStatusSnapshot } from "../../shared/machineStatus";
 import type { QualifiedContributionId } from "./plugins/ids";
 import type { SelectedSessionNotificationInbox } from "./sessionNotifications";
@@ -170,7 +169,6 @@ export interface AppState {
    * only reachable through a completed read that answers for the workspace on
    * screen, never through a retained list keyed elsewhere or a read that never
    * happened. */
-  workspaceGoalsLoad: PanelLoad<GoalRecordSummary[]>;
   sessionStatuses: Record<string, SessionStatus>;
   sessionActivities: Record<string, SessionActivity>;
   /** Authoritative projection plus browser-local optimistic overlays for the selected inbox. */
@@ -244,25 +242,9 @@ export type SessionsLoadState = "unloaded" | "loading" | "loaded";
  */
 export type ProjectsLoadState = "unloaded" | "loading" | "loaded" | "failed";
 
-/**
- * What a panel knows about its own data: one of four named states, carried
- * with the selection key the data was read for. An empty array by itself is
- * "not read yet", "the read failed", and "someone else's rows" just as often
- * as it is "genuinely empty", and a panel that derives its empty claim from
- * the shape of the data will render all four as "genuinely empty" - which is
- * how the goals panel told the owner his active goal did not exist.
- */
-export interface PanelLoad<T> {
-  state: "unloaded" | "loading" | "loaded" | "failed";
-  /** The selection the data was read, or is being read, for. */
-  key: string | undefined;
-  data: T;
-}
-
 export type WorkspaceScopedStateReset = Pick<AppState,
   | "sessions"
   | "sessionsLoad"
-  | "workspaceGoalsLoad"
   | "clientQueuedSessionMessages"
   | "commandLedger"
   | "startingSessionCount"
@@ -279,41 +261,6 @@ export type WorkspaceScopedStateReset = Pick<AppState,
   | "error"
 >;
 
-/**
- * The selection key the workspace-scoped surfaces answer for, as
- * machine:project:workspace — the same shape the retained goals state is
- * keyed by.
- */
-export function workspaceSelectionKey(state: Pick<AppState, "selectedMachine" | "selectedWorkspace">): string | undefined {
-  const workspace = state.selectedWorkspace;
-  if (workspace === undefined) return undefined;
-  return machineWorkspaceKey(selectedMachineId(state), workspace.projectId, workspace.id);
-}
-
-/**
- * The goals load for the current selection. The retained slot is handed
- * through only when it was fetched for exactly this machine+project+workspace;
- * on any other selection it would be another project's goal with live Resume
- * and Abandon buttons, so it reads as "nothing loaded yet" for this selection —
- * which is a different thing from a read that completed and found nothing.
- */
-export function goalsForSelectedWorkspace(state: AppState): PanelLoad<GoalRecordSummary[]> {
-  const key = workspaceSelectionKey(state);
-  const slot = state.workspaceGoalsLoad;
-  if (slot.key !== undefined && slot.key === key) return slot;
-  return { state: "unloaded", key, data: [] };
-}
-
-/**
- * Whether acting on the rendered goals (Resume, Abandon) is allowed: only
- * when the goals state answers for the current selection. Defense in depth
- * behind the render gate above — a stale render must be inert, not merely
- * unlikely.
- */
-export function canActOnWorkspaceGoals(state: AppState): boolean {
-  const key = workspaceSelectionKey(state);
-  return state.workspaceGoalsLoad.key !== undefined && state.workspaceGoalsLoad.key === key;
-}
 
 export function resetWorkspaceScopedState(): WorkspaceScopedStateReset {
   return {
@@ -323,7 +270,6 @@ export function resetWorkspaceScopedState(): WorkspaceScopedStateReset {
     // Goals belong to the workspace being left, so they must not linger over
     // the next one while its own records load. The key goes with them: an
     // unkeyed list would be retained by nothing and owned by no one.
-    workspaceGoalsLoad: { state: "unloaded", key: undefined, data: [] },
     clientQueuedSessionMessages: {},
     commandLedger: [],
     startingSessionCount: 0,
@@ -401,7 +347,6 @@ export function initialAppState(): AppState {
     closedDialogs: [],
     dismissedDialogIds: [],
     availableThinkingLevels: [],
-    workspaceGoalsLoad: { state: "unloaded", key: undefined, data: [] },
     sessionStatuses: {},
     sessionActivities: {},
     selectedNotificationInbox: undefined,

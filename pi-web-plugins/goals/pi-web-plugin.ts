@@ -15,8 +15,7 @@ import type { GoalRecordSummary } from "./browser/goalTypes.js";
  * split this boundary exists to remove.
  *
  * Absence stays three states. A workspace that has been read and has no goals
- * is not the same as one whose read failed, and neither is the same as one
- * nobody has read yet.
+ * says so; a workspace nobody has read yet cannot, and says that instead.
  */
 
 const plugin: PiWebPlugin = {
@@ -26,21 +25,49 @@ const plugin: PiWebPlugin = {
     rememberGoalsHostUi(context.ui);
     defineGoalPanel();
 
-    let redraw: (() => void) | undefined;
+    let notify: (() => void) | undefined;
+    let disposed = false;
     const reader = new GoalsReader(
       context.callOperation ?? (() => Promise.reject(new Error("This host does not offer plugin requests."))),
-      () => { redraw?.(); },
+      () => { if (!disposed) notify?.(); },
     );
     let readFor: string | undefined;
+    let commandInFlight = false;
+
+    function readKey(context: DrawerSectionContext): string {
+      return `${context.machineId}\u0000${context.workspacePath ?? ""}\u0000${context.sessionCwd ?? ""}`;
+    }
 
     function sectionFor(section: DrawerSectionContext): TemplateResult {
       const workspacePath = section.workspacePath;
       if (workspacePath === undefined) return html`<div class="goals-unknown">No workspace is selected.</div>`;
-      if (readFor !== workspacePath) {
-        readFor = workspacePath;
-        void reader.read(workspacePath, section.sessionId === "" ? undefined : undefined);
+      const key = readKey(section);
+      notify = section.requestUpdate;
+      if (readFor !== key) {
+        readFor = key;
+        void reader.read(workspacePath, section.sessionCwd);
       }
-      return html`<goal-panel .goalsLoad=${goalsForKey(reader.current(), workspacePath)}></goal-panel>`;
+      const run = section.runCommand;
+      const callOperation = context.callOperation;
+      return html`<goal-panel
+        .goalsLoad=${goalsForKey(reader.current(), workspacePath)}
+        .canRunCommands=${run !== undefined}
+        .commandInFlight=${commandInFlight}
+        .onRefresh=${() => { void reader.read(workspacePath, section.sessionCwd); }}
+        .onRunCommand=${run === undefined ? undefined : (goal: GoalRecordSummary, command: string) => {
+          commandInFlight = true;
+          notify?.();
+          void run(command).finally(() => {
+            commandInFlight = false;
+            void reader.read(workspacePath, section.sessionCwd);
+          });
+          void goal;
+        }}
+        .onArchive=${(goal: GoalRecordSummary) => {
+          void (callOperation?.("goals.archive", { workspacePath, goalId: goal.id }) ?? Promise.resolve())
+            .then(() => reader.read(workspacePath, section.sessionCwd));
+        }}
+      ></goal-panel>`;
     }
 
     return {
@@ -49,29 +76,30 @@ const plugin: PiWebPlugin = {
           id: "goals",
           title: "Goals",
           order: 30,
-          available: (section) => availability(reader.current().data, section),
-          badge: (section) => badgeFor(reader.current().data, section),
+          available: (section) => availability(reader.current(), section),
+          badge: (section) => badgeFor(reader.current(), section),
           render: sectionFor,
         }],
       },
-      dispose: () => { redraw = undefined; },
+      dispose: () => { disposed = true; notify = undefined; },
     };
   },
 };
 
 /**
- * Undefined while the plugin has not read this workspace yet: the shell keeps
- * the tab, because a section that has not looked is not a section with
- * nothing in it.
+ * Three states, keyed by where the answer was asked for: a read in flight or
+ * never started cannot say (the tab stays), a read that found goals says yes,
+ * and a completed empty read says no so the shell can drop the block.
  */
-function availability(goals: readonly GoalRecordSummary[], section: DrawerSectionContext): boolean | undefined {
+function availability(answer: { state: string; key: string | undefined; data: readonly GoalRecordSummary[] }, section: DrawerSectionContext): boolean | undefined {
   if (section.workspacePath === undefined) return false;
-  return goals.length > 0 ? true : undefined;
+  if (answer.state === "loaded") return answer.data.length > 0;
+  return undefined;
 }
 
-function badgeFor(goals: readonly GoalRecordSummary[], section: DrawerSectionContext): number | undefined {
-  if (section.workspacePath === undefined || goals.length === 0) return undefined;
-  return goals.length;
+function badgeFor(answer: { key: string | undefined; data: readonly GoalRecordSummary[] }, section: DrawerSectionContext): number | undefined {
+  if (section.workspacePath === undefined || answer.key !== section.workspacePath) return undefined;
+  return answer.data.length === 0 ? undefined : answer.data.length;
 }
 
 export default plugin;

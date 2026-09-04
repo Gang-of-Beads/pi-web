@@ -51,7 +51,6 @@ import {
   parseBackgroundTaskOutput,
   parseSubagentRunOutput,
   parseInterruptedRunSnapshot,
-  parseWorkspaceGoalsResponse,
   parseSessionUnreadAcknowledgeResponse,
   parseSessionUnreadCatalogSnapshot,
   parseSessionStreamSnapshot,
@@ -64,7 +63,6 @@ import {
   parseTerminalInfo,
   parseThinkingLevelsResponse,
   parseWriteWorkspaceFileResponse,
-  parseGoalArchiveResponse,
   parsePiWebFleetReport,
   parsePiWebFleetRunResponse,
   parsePiWebSelfUpdateStatus,
@@ -224,21 +222,6 @@ export const workspacesApi = {
       parseTerminalCommandRun,
       { method: "DELETE", body: JSON.stringify(body) },
     );
-  },
-  // Goal records live in the workspace, not in a session, so the listing is
-  // workspace-scoped and shared by every session of that workspace.
-  archiveWorkspaceGoal: (projectId: string, workspaceId: string, goalId: string, machineId = "local") => request(
-    `${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/goals/${encodeURIComponent(goalId)}/archive`,
-    parseGoalArchiveResponse,
-    { method: "POST", body: JSON.stringify({}) },
-  ),
-  workspaceGoals: (projectId: string, workspaceId: string, machineId = "local", sessionCwd?: string) => {
-    // The focused session's cwd rides along so the daemon can also read the
-    // root the goal extension records beside when it diverges from the
-    // workspace. Encoded as a query value; the daemon compares it to the
-    // workspace root and unions only when they differ.
-    const sessionQuery = sessionCwd === undefined || sessionCwd === "" ? "" : `?sessionCwd=${encodeURIComponent(sessionCwd)}`;
-    return request(`${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/goals${sessionQuery}`, parseWorkspaceGoalsResponse, { cache: "no-store" });
   },
   workspaceTree: (projectId: string, workspaceId: string, path = "", machineId = "local") => request(`${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/tree?path=${encodeURIComponent(path)}`, parseFileTreeResponse),
   workspaceFile: (projectId: string, workspaceId: string, path: string, machineId = "local") => request(`${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/file?path=${encodeURIComponent(path)}`, parseFileContentResponse),

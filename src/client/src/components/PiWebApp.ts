@@ -13,8 +13,9 @@ import { touchPrimaryPointer } from "../keyboardDismissal";
 import { customElement, query, state } from "lit/decorators.js";
 import { configApi, effectiveWorkspaceUploadFolder, fleetApi, piWebApi, projectsApi, selfUpdateApi, sessionsApi, terminalsApi, workspacesApi, workspaceEffectiveUploadFolder, type AskUserSubmission, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
   type QueuedSessionMessage, type SessionBackgroundTaskInfo, type SessionSubagentInfo, type SessionSubagentRunInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
-import type { GoalRecordSummary, PiWebFleetReport, PiWebFleetRunResponse } from "../../../shared/apiTypes";import type { AppAction } from "../actions";
-import { canActOnWorkspaceGoals, composerCwd, initialAppState, type AppState } from "../appState";
+import type { PiWebFleetReport, PiWebFleetRunResponse } from "../../../shared/apiTypes";
+import type { AppAction } from "../actions";
+import { composerCwd, initialAppState, type AppState } from "../appState";
 import { isSessionActive } from "../../../shared/activity";
 import type { SessionStateBadgeKind } from "./activityBadge";
 import { PI_WEB_CAPABILITIES, supportsPiWebCapability } from "../../../shared/capabilities";
@@ -309,10 +310,6 @@ export class PiWebApp extends LitElement {
     new SessionStorageSessionSelectionMemory(),
     {
       notifications: this.notifications,
-      // A finished turn may have changed the goal file (/goal-tweak,
-      // /goal-resume, a completed task), and nothing else tells this browser:
-      // the panel showed PAUSED 9/10 for a goal that was active.
-      onSelectedSessionIdle: () => { void this.workspaces.refreshWorkspaceGoals(); },
       onBackgroundRunCountChanged: (sessionId: string) => {
         if (this.state.selectedSession?.id !== sessionId) return;
         void this.refreshSubagents();
@@ -320,11 +317,6 @@ export class PiWebApp extends LitElement {
       onSelectedSessionReady: ({ machineId, session }) => {
         void this.commitReadyChatAfterRender(machineId, session);
         void this.refreshSelfUpdate();
-        // Opening a session can move the workspace (a quick switch into another
-        // project): the goals panel must answer for the workspace it now shows,
-        // and until this read lands the gate renders nothing rather than the
-        // previous workspace's goal.
-        void this.workspaces.refreshWorkspaceGoals();
       },
       replacePromptEditorText: async ({ machineId, sessionId, text }) => {
         await this.updateComplete;
@@ -2057,10 +2049,7 @@ export class PiWebApp extends LitElement {
         }}
         .drawerSections=${this.plugins.getDrawerSections(selectedMachineId(this.state))}
         .sectionMachineId=${selectedMachineId(this.state)}
-        .canRunGoalCommands=${canActOnWorkspaceGoals(this.state)}
-        .goalCommandInFlight=${this.goalCommandInFlight}
-        .onArchiveGoal=${(goal: GoalRecordSummary) => this.workspaces.archiveWorkspaceGoal(goal.id)}
-        .onRunGoalCommand=${(_goal: GoalRecordSummary, command: string) => this.runGoalCommand(command)}
+        .onRunSectionCommand=${(command: string) => this.runGoalCommand(command)}
         .onReloadSession=${(session: SessionInfo) => this.sessions.reloadSession(session)}
         .onOpenSessionTree=${(session: SessionInfo) => this.openSessionTree(session)}
         .onCleanupSessions=${() => { this.openSessionCleanupDialog(); }}
@@ -3229,9 +3218,6 @@ export class PiWebApp extends LitElement {
       this.goalCommandInFlight = false;
       this.requestUpdate();
     }
-    // The command may have moved the goal (resume, pause); the panel should
-    // show the goal as it now is, not as the last fetch left it.
-    void this.workspaces.refreshWorkspaceGoals();
   }
 
   private async sendPrompt(text: string, streamingBehavior?: "steer" | "followUp", attachments?: import("../api").PromptAttachment[], delivery?: import("../../../shared/apiTypes").PromptAttachmentDelivery, replay?: { clientMessageId?: string }): Promise<boolean> {
@@ -3361,7 +3347,7 @@ export class PiWebApp extends LitElement {
 
   private renderChatView(state: AppState, session: SessionInfo) {
     return html`
-      <chat-view .onRefreshGoals=${() => { void this.workspaces.refreshWorkspaceGoals(); }} .onRunGoalCommand=${(_goal: GoalRecordSummary, command: string) => this.runGoalCommand(command)} .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .loadingMore=${state.isLoadingEarlierMessages} .transcriptLoading=${state.isLoadingTranscript} .transcriptFailed=${state.transcriptFailed} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk} .pendingDialogs=${state.pendingDialogs} .commandLedger=${commandsForSession(state.commandLedger, machineSessionKey(selectedMachineId(state), session.id))} .goalCommandInFlight=${this.goalCommandInFlight} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .notificationInbox=${selectedNotificationView(state.selectedNotificationInbox)} .notificationsFailed=${state.selectedNotificationInbox?.status === "stale" && state.selectedNotificationInbox.sessionId === session.id && state.selectedNotificationInbox.cwd === session.cwd} .subagents=${state.subagents} .subagentRuns=${state.subagentRuns} .backgroundTasks=${state.backgroundTasks} .activityFailed=${state.activityFailed} .activityOutput=${state.activityOutput} .onCloseActivityOutput=${this.handleCloseActivityOutput} .activityConversation=${state.activityConversation} .onCloseActivityConversation=${this.handleCloseActivityConversation} .onOpenSubagent=${this.handleOpenSubagentSession} .onOpenSubagentRun=${this.handleOpenSubagentRun} .onOpenBackgroundTask=${this.handleOpenBackgroundTask} .onClearServerQueue=${this.handleClearServerQueue} .onDismissLedgerRow=${(id: string) => { this.sessions.dismissLedgerRow(id); }} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onDismissNotification=${this.handleDismissNotification} .onDismissAllNotifications=${this.handleDismissAllNotifications} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }} .findMessageRenderer=${(tag: string) => this.plugins.findMessageRenderer(tag, selectedMachineId(state))} .drawerSections=${this.plugins.getDrawerSections(selectedMachineId(state))} .drawerMachineId=${selectedMachineId(state)} .drawerWorkspacePath=${state.selectedWorkspace?.path}></chat-view>
+      <chat-view .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .loadingMore=${state.isLoadingEarlierMessages} .transcriptLoading=${state.isLoadingTranscript} .transcriptFailed=${state.transcriptFailed} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk} .pendingDialogs=${state.pendingDialogs} .commandLedger=${commandsForSession(state.commandLedger, machineSessionKey(selectedMachineId(state), session.id))} .goalCommandInFlight=${this.goalCommandInFlight} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .notificationInbox=${selectedNotificationView(state.selectedNotificationInbox)} .notificationsFailed=${state.selectedNotificationInbox?.status === "stale" && state.selectedNotificationInbox.sessionId === session.id && state.selectedNotificationInbox.cwd === session.cwd} .subagents=${state.subagents} .subagentRuns=${state.subagentRuns} .backgroundTasks=${state.backgroundTasks} .activityFailed=${state.activityFailed} .activityOutput=${state.activityOutput} .onCloseActivityOutput=${this.handleCloseActivityOutput} .activityConversation=${state.activityConversation} .onCloseActivityConversation=${this.handleCloseActivityConversation} .onOpenSubagent=${this.handleOpenSubagentSession} .onOpenSubagentRun=${this.handleOpenSubagentRun} .onOpenBackgroundTask=${this.handleOpenBackgroundTask} .onClearServerQueue=${this.handleClearServerQueue} .onDismissLedgerRow=${(id: string) => { this.sessions.dismissLedgerRow(id); }} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onDismissNotification=${this.handleDismissNotification} .onDismissAllNotifications=${this.handleDismissAllNotifications} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }} .findMessageRenderer=${(tag: string) => this.plugins.findMessageRenderer(tag, selectedMachineId(state))} .drawerSections=${this.plugins.getDrawerSections(selectedMachineId(state))} .drawerMachineId=${selectedMachineId(state)} .drawerWorkspacePath=${state.selectedWorkspace?.path} .sessionCwd=${session.cwd}></chat-view>
     `;
   }
 

@@ -40,10 +40,6 @@ describe("panel body allocation", () => {
     expect(styleText).not.toContain("flex: 1 1 0px");
   });
 
-  it("caps the goal panel so it cannot push sessions off-screen", () => {
-    expect(styleText).toContain("goal-panel { flex: 0 1 auto;");
-  });
-
   it("keeps a collapsed section at heading height", () => {
     expect(styleText).toContain("session-list[collapsed] { flex: 0 0 auto;");
   });

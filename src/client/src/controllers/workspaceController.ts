@@ -1,10 +1,8 @@
-import { api as defaultApi, type GoalRecordSummary, type Project, type Workspace } from "../api";
-import { resetWorkspaceScopedState, type AppState, type PanelLoad } from "../appState";
+import { api as defaultApi, type Project, type Workspace } from "../api";
+import { resetWorkspaceScopedState, type AppState } from "../appState";
 import { errorNoticePatch } from "../errorNotice";
-import { describeError } from "../notice";
 import { mergeCachedNewSessions } from "../cachedNewSessions";
-import { machineProjectKey, machineWorkspaceKey } from "../machineKeys";
-import { workspaceSelectionKey } from "../appState";
+import { machineProjectKey } from "../machineKeys";
 import { cachedSessionsFor, rememberWorkspaceSessions } from "../workspaceSessionsCache";
 import { selectedMachineId, type GetState, type RouteTarget, type SetState, type UpdateUrl } from "./types";
 import type { SessionController } from "./sessionController";
@@ -14,13 +12,13 @@ import { InMemoryWorkspaceSelectionMemory, selectPreferredWorkspace, type Worksp
 const WORKSPACE_TOPOLOGY_REFRESH_DEBOUNCE_MS = 50;
 
 export interface WorkspaceControllerDependencies {
-  api?: Pick<typeof defaultApi, "sessions" | "workspaces" | "workspaceGoals" | "archiveWorkspaceGoal">;
+  api?: Pick<typeof defaultApi, "sessions" | "workspaces">;
   onBackgroundError?: (message: string, error: unknown) => void;
   topologyRefreshDebounceMs?: number;
 }
 
 export class WorkspaceController {
-  private readonly api: Pick<typeof defaultApi, "sessions" | "workspaces" | "workspaceGoals" | "archiveWorkspaceGoal">;
+  private readonly api: Pick<typeof defaultApi, "sessions" | "workspaces">;
   private readonly onBackgroundError: (message: string, error: unknown) => void;
   private readonly topologyRefreshes: TrailingRefreshCoordinator<string>;
 
@@ -90,74 +88,7 @@ export class WorkspaceController {
         // a failed listing is not evidence that the workspace is empty.
         this.setState({ ...errorNoticePatch(error), sessionsLoad: "unloaded" });
       }
-    } finally {
-      void this.refreshWorkspaceGoals(workspace, machineId);
     }
-  }
-
-  /**
-   * Load the goals recorded under a workspace's `.pi/goals/` directory.
-   *
-   * Goals belong to the workspace, not to a session, so this is refreshed on
-   * workspace selection rather than session selection. Failures are swallowed:
-   * a workspace with no goal extension installed is the common case, and an
-   * unreadable goal directory must not present as a workspace error.
-   */
-  async refreshWorkspaceGoals(
-    workspace = this.getState().selectedWorkspace,
-    machineId = selectedMachineId(this.getState()),
-  ): Promise<void> {
-    if (workspace === undefined) return;
-    const key = machineWorkspaceKey(machineId, workspace.projectId, workspace.id);
-    const previous = this.getState().workspaceGoalsLoad;
-    // Rows this workspace already showed survive a re-read - loading and
-    // failure keep them, so the panel never flashes empty mid-refresh. Rows
-    // keyed to another workspace do not survive: they were never this
-    // selection's, and presenting them here is how another project's goal
-    // ended up on this panel with live controls.
-    const retained = previous.key === key ? previous.data : [];
-    this.setState({ workspaceGoalsLoad: { state: "loading", key, data: retained } });
-    let load: PanelLoad<GoalRecordSummary[]>;
-    try {
-      // The focused session's cwd is the root the goal extension records
-      // beside; when it diverges from the workspace root, only a read that
-      // covers both can see what the extension actually wrote.
-      const sessionCwd = this.getState().selectedSession?.cwd;
-      load = { state: "loaded", key, data: (await this.api.workspaceGoals(workspace.projectId, workspace.id, machineId, sessionCwd)).goals };
-    } catch {
-      // A failed read is not evidence that the goals are gone; blanking the
-      // panel made "offline" and "no goals" look identical and dropped the
-      // Goals tab. The previous rows stay until a read succeeds — but only the
-      // rows that answer for THIS workspace: a list carried over from another
-      // workspace must never present as this one's, with its actions live.
-      load = { state: "failed", key, data: retained };
-    }
-    // Discard a response that lost its race with a newer selection.
-    if (workspaceSelectionKey(this.getState()) !== key) return;
-    this.setState({ workspaceGoalsLoad: load });
-  }
-
-
-  /**
-   * Archive a goal, then re-read the directory so the panel reflects the file
-   * system rather than an assumption.
-   *
-   * A running agent focused on that goal keeps its own copy until it reloads,
-   * so the outcome says whether that is possible instead of pretending the
-   * record is gone for good.
-   */
-  async archiveWorkspaceGoal(goalId: string, workspace = this.getState().selectedWorkspace): Promise<void> {
-    if (workspace === undefined) return;
-    const machineId = selectedMachineId(this.getState());
-    try {
-      const result = await this.api.archiveWorkspaceGoal(workspace.projectId, workspace.id, goalId, machineId);
-      if (result.agentMayRecreate) {
-        this.setState({ error: "Goal archived. A session already working it keeps its own copy until it reloads, so run /goal-refresh there if it comes back." });
-      }
-    } catch (error) {
-      this.setState({ error: `Could not archive the goal: ${describeError(error)}` });
-    }
-    await this.refreshWorkspaceGoals(workspace, machineId);
   }
 
   async refreshProjectWorkspaces(projectId: string): Promise<Workspace[]> {

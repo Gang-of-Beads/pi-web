@@ -107,8 +107,6 @@ function harness() {
       api: {
         workspaces: vi.fn().mockResolvedValue([workspace("/a"), workspace("/b"), workspace("/cold")]),
         sessions: sessionsApi,
-        workspaceGoals: vi.fn(() => Promise.resolve({ goals: [], directory: "/repo/.pi/goals", generatedAt: "now" })),
-        archiveWorkspaceGoal: vi.fn(),
       },
     },
   );

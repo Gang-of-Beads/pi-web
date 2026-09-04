@@ -1,7 +1,7 @@
 import { LitElement, css, html } from "lit";
 import { focusedContextName } from "../../contextName";
 import { customElement, property, query } from "lit/decorators.js";
-import type { GoalRecordSummary, Machine, MachineHealth, Project, SessionActivity, SessionInfo, SessionStatus, Workspace } from "../../api";
+import type { Machine, MachineHealth, Project, SessionActivity, SessionInfo, SessionStatus, Workspace } from "../../api";
 import type { DrawerSectionContext, QualifiedDrawerSectionContribution } from "../../plugins/types";
 import type { MachineStatusSnapshot } from "../../../../shared/machineStatus";
 import type { WorkspaceLabelItem } from "../../plugins/types";
@@ -78,22 +78,10 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) onDeleteArchivedSessions?: (sessions: SessionInfo[]) => void | Promise<void>;
   @property({ attribute: false }) onDetachParentSession?: (session: SessionInfo) => void | Promise<void>;
   @property({ attribute: false }) onRenameSession?: (session: SessionInfo, name: string) => void | Promise<void>;
-  /**
-   * One keyed load slot, carried whole from app state. Splitting it into
-   * separate goals/loading/failed flags is what produced a loading flag that
-   * was set in state and never once reached this panel, so a read in flight
-   * rendered as “no goals”.
-   */
+  /** Sections plugins contribute, drawn beside the session list. */
   @property({ attribute: false }) drawerSections: readonly QualifiedDrawerSectionContribution[] = [];
   @property() sectionMachineId = "local";
-  /** Whether acting on the listed goals is allowed. Withheld when the goals
-   * state answers for a different workspace than the one selected: a stale
-   * render must be inert, not merely unlikely. */
-  @property({ type: Boolean }) canRunGoalCommands = true;
-  @property({ type: Boolean }) goalCommandInFlight = false;
-  @property({ attribute: false }) onRefreshGoals?: () => void | Promise<void>;
-  @property({ attribute: false }) onArchiveGoal?: (goal: GoalRecordSummary) => void | Promise<void>;
-  @property({ attribute: false }) onRunGoalCommand?: (goal: GoalRecordSummary, command: string) => void | Promise<void>;
+  @property({ attribute: false }) onRunSectionCommand?: (command: string) => Promise<void>;
   @property({ attribute: false }) onMarkSessionRead?: (session: SessionInfo) => void | Promise<void>;
   @property({ attribute: false }) onMarkSessionsRead?: (sessions: SessionInfo[]) => void | Promise<void>;
   @property({ attribute: false }) onReloadSession?: (session: SessionInfo) => void | Promise<void>;
@@ -329,9 +317,17 @@ export class AppNavigationPanel extends LitElement {
   }
 
   private sectionContext(): DrawerSectionContext | undefined {
-    const sessionId = this.selectedSession?.id;
-    if (sessionId === undefined) return undefined;
-    return { sessionId, machineId: this.sectionMachineId, workspacePath: this.selectedWorkspace?.path };
+    const session = this.selectedSession;
+    if (session === undefined) return undefined;
+    const runSectionCommand = this.onRunSectionCommand;
+    return {
+      sessionId: session.id,
+      machineId: this.sectionMachineId,
+      workspacePath: this.selectedWorkspace?.path,
+      sessionCwd: session.cwd,
+      requestUpdate: () => { this.requestUpdate(); },
+      runCommand: runSectionCommand === undefined ? undefined : (command) => runSectionCommand(command),
+    };
   }
 
 
@@ -439,7 +435,6 @@ export class AppNavigationPanel extends LitElement {
     session-list[collapsed] { flex: 0 0 auto; min-height: auto; overflow: hidden; }
     /* Goals are workspace context under the session list: capped so a long
        task list cannot push the sessions it belongs to off-screen. */
-    goal-panel { flex: 0 1 auto; min-height: 0; max-height: var(--pi-nav-goals-max-height, 26vh); overflow: auto; border-top: 1px solid var(--pi-border-muted); }
     button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; }
   `;
 }

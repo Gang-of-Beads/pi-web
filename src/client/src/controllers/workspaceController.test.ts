@@ -1,11 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AppState } from "../appState";
-import { canActOnWorkspaceGoals, goalsForSelectedWorkspace, initialAppState } from "../appState";
-import { machineWorkspaceKey } from "../machineKeys";
-import { deferred } from "./sessionController.testSupport";
+import { initialAppState, type AppState } from "../appState";
 import type { Machine, Project, SessionInfo, Workspace } from "../api";
 import type { SessionController } from "./sessionController";
-import type { GoalRecordSummary } from "../api";
 import { WorkspaceController } from "./workspaceController";
 
 function machine(id: string): Machine {
@@ -48,12 +44,11 @@ interface Harness {
   setState: (patch: Partial<AppState>) => void;
 }
 
-type ArchiveWorkspaceGoal = (projectId: string, workspaceId: string, goalId: string, machineId?: string) => Promise<{ goalId: string; archivedPath: string; alreadyArchived: boolean; agentMayRecreate: boolean }>;
 
 function harness(
   initial: Partial<AppState>,
   loadWorkspaces: LoadWorkspaces,
-  options: { topologyRefreshDebounceMs?: number; archiveWorkspaceGoal?: ArchiveWorkspaceGoal; workspaceGoals?: () => Promise<{ goals: GoalRecordSummary[]; directory: string; generatedAt: string }> } = {},
+  options: { topologyRefreshDebounceMs?: number } = {},
 ): Harness {
   let state: AppState = { ...initialAppState(), ...initial };
   const setState = (patch: Partial<AppState>) => { state = { ...state, ...patch }; };
@@ -75,8 +70,6 @@ function harness(
       api: {
         workspaces: loadWorkspaces,
         sessions: vi.fn<(path: string, machineId?: string) => Promise<SessionInfo[]>>().mockResolvedValue([]),
-        workspaceGoals: options.workspaceGoals ?? vi.fn(() => Promise.resolve({ goals: [], directory: "/repo/.pi/goals", generatedAt: "2026-07-27T10:00:00.000Z" })),
-        archiveWorkspaceGoal: options.archiveWorkspaceGoal ?? vi.fn(() => Promise.resolve({ goalId: "goal-1", archivedPath: "/repo/.pi/goals/archived/goal-1.md", alreadyArchived: false, agentMayRecreate: false })),
       },
       onBackgroundError: (message, error) => { backgroundErrors.push({ message, error }); },
       topologyRefreshDebounceMs: options.topologyRefreshDebounceMs ?? 0,
@@ -515,189 +508,5 @@ describe("WorkspaceController.refreshSelectedProjectTopology", () => {
   });
 });
 
-describe("archiveWorkspaceGoal", () => {
-  it("archives the goal and re-reads the directory instead of assuming", async () => {
-    const archiveWorkspaceGoal = vi.fn<ArchiveWorkspaceGoal>()
-      .mockResolvedValue({ goalId: "goal-1", archivedPath: "/repo/.pi/goals/archived/goal-1.md", alreadyArchived: false, agentMayRecreate: false });
-    const { controller, state } = harness(
-      { selectedWorkspace: workspace("project-1", "/repo/ws-1"), projects: [project("project-1", "/repo")] },
-      vi.fn<LoadWorkspaces>().mockResolvedValue([workspace("project-1", "/repo/ws-1")]),
-      { archiveWorkspaceGoal },
-    );
 
-    await controller.archiveWorkspaceGoal("goal-1");
 
-    expect(archiveWorkspaceGoal).toHaveBeenCalledWith("project-1", "/repo/ws-1", "goal-1", "local");
-    expect(state().workspaceGoalsLoad.state).not.toBe("loading");
-  });
-
-  it("says when a running agent may bring the goal back", async () => {
-    const archiveWorkspaceGoal = vi.fn<ArchiveWorkspaceGoal>()
-      .mockResolvedValue({ goalId: "goal-1", archivedPath: "/x", alreadyArchived: false, agentMayRecreate: true });
-    const { controller, state } = harness(
-      { selectedWorkspace: workspace("project-1", "/repo/ws-1"), projects: [project("project-1", "/repo")] },
-      vi.fn<LoadWorkspaces>().mockResolvedValue([workspace("project-1", "/repo/ws-1")]),
-      { archiveWorkspaceGoal },
-    );
-
-    await controller.archiveWorkspaceGoal("goal-1");
-
-    expect(state().error).toContain("/goal-refresh");
-  });
-
-  it("reports a refusal rather than leaving the panel unchanged in silence", async () => {
-    const archiveWorkspaceGoal = vi.fn<ArchiveWorkspaceGoal>().mockRejectedValue(new Error("goal is locked"));
-    const { controller, state } = harness(
-      { selectedWorkspace: workspace("project-1", "/repo/ws-1"), projects: [project("project-1", "/repo")] },
-      vi.fn<LoadWorkspaces>().mockResolvedValue([workspace("project-1", "/repo/ws-1")]),
-      { archiveWorkspaceGoal },
-    );
-
-    await controller.archiveWorkspaceGoal("goal-1");
-
-    expect(state().error).toContain("goal is locked");
-  });
-});
-
-describe("when the goals listing fails", () => {
-  /**
-   * A failed read is not evidence that the goals are gone. Overwriting the
-   * panel with an empty list made "the reader is offline" and "this workspace
-   * has no goals" look identical, and the Goals tab vanished with them. The
-   * rows kept are only ever the rows that answer for this workspace.
-   */
-  it("keeps this workspace's own goals and ends the loading state", async () => {
-    const kept: GoalRecordSummary = {
-      id: "g-kept", objective: "keep me", status: "active", path: "/repo/.pi/goals/g-kept.json",
-      sisyphus: false, autoContinue: false, tasks: [], completedTaskCount: 0, totalTaskCount: 0,
-    };
-    const repo = project("p1", "/repo");
-    const ws = workspace(repo.id, repo.path, { isMain: true });
-    const test = harness(
-      { selectedProject: repo, selectedWorkspace: ws, workspaceGoalsLoad: { state: "loaded" as const, key: machineWorkspaceKey("local", repo.id, ws.id), data: [kept] } },
-      vi.fn(),
-      { workspaceGoals: vi.fn().mockRejectedValue(new Error("daemon restarting")) },
-    );
-
-    await test.controller.refreshWorkspaceGoals();
-
-    expect(test.state().workspaceGoalsLoad.data).toEqual([kept]);
-    expect(test.state().workspaceGoalsLoad.state).toBe("failed");
-  });
-});
-
-describe("goals keyed to the workspace they were fetched for", () => {
-  /**
-   * Retaining rows across a loading or failed read kept the Goals chip alive
-   * (s16), but the retention answered to nothing: after the switcher moved the
-   * selection to another project, the panel went on rendering - and Resume and
-   * Abandon went on acting on - the previous project's goal. Retention is
-   * legitimate only for the workspace the rows were fetched for.
-   */
-  const goalA: GoalRecordSummary = {
-    id: "goal-a", objective: "pi-web's goal", status: "paused", path: "/repo/.pi/goals/goal-a.json",
-    sisyphus: false, autoContinue: false, tasks: [], completedTaskCount: 14, totalTaskCount: 20,
-  };
-
-  it("hides another workspace's retained rows while the new read is in flight", async () => {
-    const elsewhere = workspace("p2", "/elsewhere");
-    const pending = deferred<{ goals: GoalRecordSummary[]; directory: string; generatedAt: string }>();
-    const test = harness(
-      {
-        selectedProject: project("p2", "/elsewhere"),
-        selectedWorkspace: elsewhere,
-        workspaceGoalsLoad: { state: "loaded" as const, key: machineWorkspaceKey("local", "p3", "ws-x"), data: [goalA] },
-      },
-      () => Promise.resolve([elsewhere]),
-      { workspaceGoals: () => pending.promise },
-    );
-
-    const loading = test.controller.refreshWorkspaceGoals(test.state().selectedWorkspace, "local");
-
-    // In flight for THIS workspace the retained rows answer for another key,
-    // so the slot reads as loading with none of them.
-    expect(goalsForSelectedWorkspace(test.state()).state).toBe("loading");
-    expect(goalsForSelectedWorkspace(test.state()).data).toEqual([]);
-
-    pending.resolve({ goals: [], directory: "/elsewhere/.pi/goals", generatedAt: "now" });
-    await loading;
-    expect(goalsForSelectedWorkspace(test.state())).toEqual({ state: "loaded", key: machineWorkspaceKey("local", "p2", elsewhere.id), data: [] });
-  });
-
-  it("never keeps another workspace's rows when the read fails", async () => {
-    const elsewhere = workspace("p2", "/elsewhere");
-    const test = harness(
-      {
-        selectedProject: project("p2", "/elsewhere"),
-        selectedWorkspace: elsewhere,
-        workspaceGoalsLoad: { state: "loaded" as const, key: machineWorkspaceKey("local", "p3", "ws-x"), data: [goalA] },
-      },
-      () => Promise.resolve([]),
-      { workspaceGoals: vi.fn().mockRejectedValue(new Error("read failed")) },
-    );
-
-    await test.controller.refreshWorkspaceGoals(test.state().selectedWorkspace, "local");
-
-    expect(goalsForSelectedWorkspace(test.state()).data).toEqual([]);
-    expect(test.state().workspaceGoalsLoad.data.some((goal) => goal.id === "goal-a")).toBe(false);
-    expect(test.state().workspaceGoalsLoad.state).toBe("failed");
-  });
-
-  it("keeps this workspace's own rows when its read fails", async () => {
-    const elsewhere = workspace("p2", "/elsewhere");
-    const own: GoalRecordSummary = { ...goalA, id: "goal-b", path: "/elsewhere/.pi/goals/goal-b.json" };
-    const test = harness(
-      {
-        selectedProject: project("p2", "/elsewhere"),
-        selectedWorkspace: elsewhere,
-        workspaceGoalsLoad: { state: "loaded" as const, key: machineWorkspaceKey("local", "p2", elsewhere.id), data: [own] },
-      },
-      () => Promise.resolve([]),
-      { workspaceGoals: vi.fn().mockRejectedValue(new Error("read failed")) },
-    );
-
-    await test.controller.refreshWorkspaceGoals(test.state().selectedWorkspace, "local");
-
-    expect(goalsForSelectedWorkspace(test.state())).toEqual({ state: "failed", key: machineWorkspaceKey("local", "p2", elsewhere.id), data: [own] });
-  });
-
-  it("shows the new workspace's list after a switch, never the old rows", async () => {
-    const repo = project("p1", "/repo");
-    const repoWs = workspace(repo.id, repo.path, { isMain: true });
-    const elsewhere = workspace("p2", "/elsewhere");
-    const goals: GoalRecordSummary[] = [goalA];
-    const test = harness(
-      { selectedProject: repo, selectedWorkspace: repoWs },
-      (projectId) => Promise.resolve(projectId === repo.id ? [repoWs] : [elsewhere]),
-      { workspaceGoals: () => Promise.resolve({ goals, directory: "/repo/.pi/goals", generatedAt: "now" }) },
-    );
-
-    await test.controller.refreshWorkspaceGoals();
-    expect(goalsForSelectedWorkspace(test.state())).toEqual({ state: "loaded", key: machineWorkspaceKey("local", repo.id, repoWs.id), data: [goalA] });
-
-    goals.length = 0;
-    await test.controller.selectWorkspace(elsewhere);
-
-    expect(goalsForSelectedWorkspace(test.state()).data).toEqual([]);
-    expect(goalsForSelectedWorkspace(test.state()).state).toBe("loaded");
-    expect(canActOnWorkspaceGoals(test.state())).toBe(true);
-  });
-
-  it("withholds the action controls until the goals state answers for the selection", async () => {
-    const repo = project("p1", "/repo");
-    const repoWs = workspace(repo.id, repo.path, { isMain: true });
-    // Stale rows with no key at all: the state the ancestors switch leaves behind.
-    const test = harness(
-      { selectedProject: repo, selectedWorkspace: repoWs, workspaceGoalsLoad: { state: "loaded" as const, key: undefined, data: [goalA] } },
-      vi.fn(),
-      { workspaceGoals: () => Promise.resolve({ goals: [goalA], directory: "/repo/.pi/goals", generatedAt: "now" }) },
-    );
-
-    expect(canActOnWorkspaceGoals(test.state())).toBe(false);
-
-    await test.controller.refreshWorkspaceGoals();
-
-    expect(canActOnWorkspaceGoals(test.state())).toBe(true);
-    expect(goalsForSelectedWorkspace(test.state()).data).toEqual([goalA]);
-  });
-});

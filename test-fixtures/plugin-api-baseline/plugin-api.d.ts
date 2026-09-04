@@ -133,6 +133,21 @@ export interface DrawerSectionContext {
     sessionId: string;
     machineId: string;
     workspacePath: string | undefined;
+    sessionCwd: string | undefined;
+    /**
+     * Sections are asked during render, so a read that lands after the ask
+     * reaches the screen only through this. The host supplies it; a section
+     * whose data arrives later calls it instead of waiting for an unrelated
+     * rerender to carry the answer.
+     */
+    requestUpdate: () => void;
+    /**
+     * Run a slash command in the focused session, exactly as a person would
+     * have typed it. Sections that act through the session's own command
+     * surface keep the audit trail and focus rules a private channel would
+     * bypass. Absent means the host offers no session to run one in.
+     */
+    runCommand?: ((command: string) => Promise<void>) | undefined;
 }
 export interface DrawerSectionContribution {
     id: LocalContributionId;

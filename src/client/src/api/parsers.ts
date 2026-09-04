@@ -1,7 +1,7 @@
-import { PI_WEB_PLUGIN_LIFECYCLE_VERSION, ASK_USER_ID_MAX_LENGTH, ASK_USER_OPTION_LIMIT, ASK_USER_OTHER_TEXT_MAX_LENGTH, ASK_USER_QUESTION_LIMIT, ASK_USER_TEXT_MAX_LENGTH, EXTENSION_DIALOG_ID_MAX_LENGTH, EXTENSION_DIALOG_INPUT_MAX_LENGTH, EXTENSION_DIALOG_OPTION_LIMIT, EXTENSION_DIALOG_PROSE_MAX_LENGTH, EXTENSION_DIALOG_TEXT_MAX_LENGTH, SESSION_NOTIFICATION_LIMIT, SESSION_NOTIFICATION_MESSAGE_BYTES, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH, SESSION_UNREAD_COMPLETED_AT_MAX_LENGTH, SESSION_UNREAD_CWD_MAX_LENGTH, SESSION_UNREAD_LIMIT, SESSION_UNREAD_SESSION_ID_MAX_LENGTH, type ArchiveSessionsResponse, type AskUserCloseReason, type AskUserCloseResponse, type AskUserOutcome, type AskUserQuestion, type AskUserQuestionOption, type AskUserQuestionRecord, type PendingAskUser, type PendingExtensionDialog, type AuthProviderOption, type AuthProviderStatus, type AuthProvidersResponse, type AuthStatusSource, type AuthType, type CommandOption, type CommandResult, type DeleteWorkspaceFileResponse, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogKind, type ExtensionDialogOutcome, type FileContentResponse, type FileSuggestion, type FileTreeEntry, type FileTreeResponse, type GlobalSessionEvent, type Machine, type MachineHealth, type MachineKind, type MachineRuntime, type MachineStatus, type MessagePage, type ModelSelectionResponse, type MoveWorkspaceFileResponse, type OAuthFlowState, type PiWebCapability, type PiWebComponentStatus, type PiWebConfigEnvOverrides, type PiWebConfigResponse, type PiWebConfigValues, type PiWebDeprecatedAgentInput, type PiWebInstallationInfo, type PiWebPluginConfigMap, type PiWebPluginInfo, type PiWebPluginsResponse, type PiWebPluginScope, type PiWebReleaseStatus, type PiWebRuntimeComponent, type PiWebRuntimeResponse, type PiWebServiceComponent, type PiWebShortcutConfig, type PiWebStatusMessage, type PiWebStatusResponse, type PiWebStatusSeverity, type Project, type QueuedSessionMessage, type SavedPromptAttachment, type SessionBulkArchiveResponse, type SessionBulkDeleteArchivedResponse, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupProjectSummary, type SessionCleanupThresholds, type SessionCleanupTotals, type SessionInfo, type SessionModel, type WorkspaceTrustResponse, type SessionModelCatalogResponse, type SessionModelCatalogEntry, type SessionNotification, type SessionNotificationClearReason, type SessionNotificationDismissThrough, type SessionNotificationInboxDelta, type SessionNotificationInboxEvent, type SessionNotificationDismissResponse, type SessionNotificationInboxSnapshot, type SessionNotificationSeverity, type SessionNotificationSummary, type GoalRecordSummary, type GoalTaskSummary, type WorkspaceGoalsResponse, type PluginSurfacePresence, type SessionStatus, type SessionStatusCatalogSnapshot, type SessionBackgroundTaskInfo, type SessionSubagentInfo, type SessionSubagentRunInfo, type SessionSubagentsSnapshot, type InterruptedRunInfo, type InterruptedRunSnapshot, type SessionStreamSnapshot, type SessionStreamSync, type SessionUiEvent, type SessionUnreadAcknowledgeResponse, type SessionUnreadCatalogSnapshot, type SessionUnreadEvent, type SessionUnreadSummary, type SessionWarning, type SessionWarningSeverity, type SlashCommand, type TerminalCommandRun, type TerminalCommandRunStatus, type TerminalInfo, type TerminalUiEvent, type ThinkingLevelsResponse, type WriteWorkspaceFileResponse, type Workspace, type WorkspaceEffectiveConfig } from "../../../shared/apiTypes";
+import { PI_WEB_PLUGIN_LIFECYCLE_VERSION, ASK_USER_ID_MAX_LENGTH, ASK_USER_OPTION_LIMIT, ASK_USER_OTHER_TEXT_MAX_LENGTH, ASK_USER_QUESTION_LIMIT, ASK_USER_TEXT_MAX_LENGTH, EXTENSION_DIALOG_ID_MAX_LENGTH, EXTENSION_DIALOG_INPUT_MAX_LENGTH, EXTENSION_DIALOG_OPTION_LIMIT, EXTENSION_DIALOG_PROSE_MAX_LENGTH, EXTENSION_DIALOG_TEXT_MAX_LENGTH, SESSION_NOTIFICATION_LIMIT, SESSION_NOTIFICATION_MESSAGE_BYTES, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH, SESSION_UNREAD_COMPLETED_AT_MAX_LENGTH, SESSION_UNREAD_CWD_MAX_LENGTH, SESSION_UNREAD_LIMIT, SESSION_UNREAD_SESSION_ID_MAX_LENGTH, type ArchiveSessionsResponse, type AskUserCloseReason, type AskUserCloseResponse, type AskUserOutcome, type AskUserQuestion, type AskUserQuestionOption, type AskUserQuestionRecord, type PendingAskUser, type PendingExtensionDialog, type AuthProviderOption, type AuthProviderStatus, type AuthProvidersResponse, type AuthStatusSource, type AuthType, type CommandOption, type CommandResult, type DeleteWorkspaceFileResponse, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogKind, type ExtensionDialogOutcome, type FileContentResponse, type FileSuggestion, type FileTreeEntry, type FileTreeResponse, type GlobalSessionEvent, type Machine, type MachineHealth, type MachineKind, type MachineRuntime, type MachineStatus, type MessagePage, type ModelSelectionResponse, type MoveWorkspaceFileResponse, type OAuthFlowState, type PiWebCapability, type PiWebComponentStatus, type PiWebConfigEnvOverrides, type PiWebConfigResponse, type PiWebConfigValues, type PiWebDeprecatedAgentInput, type PiWebInstallationInfo, type PiWebPluginConfigMap, type PiWebPluginInfo, type PiWebPluginsResponse, type PiWebPluginScope, type PiWebReleaseStatus, type PiWebRuntimeComponent, type PiWebRuntimeResponse, type PiWebServiceComponent, type PiWebShortcutConfig, type PiWebStatusMessage, type PiWebStatusResponse, type PiWebStatusSeverity, type Project, type QueuedSessionMessage, type SavedPromptAttachment, type SessionBulkArchiveResponse, type SessionBulkDeleteArchivedResponse, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupProjectSummary, type SessionCleanupThresholds, type SessionCleanupTotals, type SessionInfo, type SessionModel, type WorkspaceTrustResponse, type SessionModelCatalogResponse, type SessionModelCatalogEntry, type SessionNotification, type SessionNotificationClearReason, type SessionNotificationDismissThrough, type SessionNotificationInboxDelta, type SessionNotificationInboxEvent, type SessionNotificationDismissResponse, type SessionNotificationInboxSnapshot, type SessionNotificationSeverity, type SessionNotificationSummary, type PluginSurfacePresence, type SessionStatus, type SessionStatusCatalogSnapshot, type SessionBackgroundTaskInfo, type SessionSubagentInfo, type SessionSubagentRunInfo, type SessionSubagentsSnapshot, type InterruptedRunInfo, type InterruptedRunSnapshot, type SessionStreamSnapshot, type SessionStreamSync, type SessionUiEvent, type SessionUnreadAcknowledgeResponse, type SessionUnreadCatalogSnapshot, type SessionUnreadEvent, type SessionUnreadSummary, type SessionWarning, type SessionWarningSeverity, type SlashCommand, type TerminalCommandRun, type TerminalCommandRunStatus, type TerminalInfo, type TerminalUiEvent, type ThinkingLevelsResponse, type WriteWorkspaceFileResponse, type Workspace, type WorkspaceEffectiveConfig } from "../../../shared/apiTypes";
 import { parseMachineStatusSnapshot, type MachineStatusSnapshot, type MachineStatusUiEvent } from "../../../shared/machineStatus";
 import type { JsonValue, PiPackageInfo, PiPackageMutationAction, PiPackageMutationResponse, PiPackageScope, PiPackagesResponse, SessionActivity, SessionStartupProgressEvent, SessionTreeForkResult, SessionTreeNavigateResult, SessionTreeNode, SessionTreeNodeKind, SessionTreeSnapshot, WorkspaceProviderDiagnostic, WorkspaceProviderDiagnosticCode, WorkspaceProviderResolution, WorkspaceProviderResolutionStatus, WorkspaceProviderTier } from "../../../shared/apiTypes";
-import type { GoalArchiveResponse, PiWebFleetMachineIdentity, PiWebFleetReport, PiWebFleetRunResponse, PiWebFleetTargetOutcome, PiWebFleetTargetReport, PiWebSelfUpdateStatus } from "../../../shared/apiTypes";
+import type { PiWebFleetMachineIdentity, PiWebFleetReport, PiWebFleetRunResponse, PiWebFleetTargetOutcome, PiWebFleetTargetReport, PiWebSelfUpdateStatus } from "../../../shared/apiTypes";
 import { parseKnownPiWebCapabilities } from "../../../shared/capabilities";
 import { parseDeprecatedAgentInputs } from "../../../shared/piWebStatusParsing";
 import { PI_WEB_PLUGIN_RECOVERY_COMMANDS, pluginDisableRecoveryCommand } from "../../../shared/pluginRecoveryCommands";
@@ -643,50 +643,8 @@ export function parseSessionStreamSync(value: unknown): SessionStreamSync {
   throw new Error("Invalid stream sync kind");
 }
 
-export function parseGoalTaskSummary(value: unknown): GoalTaskSummary {
-  const record = requireRecord(value);
-  const subtasks = record["subtasks"] === undefined ? [] : arrayOf(parseGoalTaskSummary)(record["subtasks"]);
-  return {
-    id: requireString(record, "id"),
-    title: requireString(record, "title"),
-    status: requireString(record, "status"),
-    ...optionalField("verificationContract", optionalString(record, "verificationContract")),
-    ...(subtasks.length === 0 ? {} : { subtasks }),
-  };
-}
 
-export function parseGoalRecordSummary(value: unknown): GoalRecordSummary {
-  const record = requireRecord(value);
-  return {
-    id: requireString(record, "id"),
-    objective: requireString(record, "objective"),
-    status: requireString(record, "status"),
-    path: requireString(record, "path"),
-    sisyphus: requireBoolean(record, "sisyphus"),
-    autoContinue: requireBoolean(record, "autoContinue"),
-    ...optionalField("createdAt", optionalString(record, "createdAt")),
-    ...optionalField("updatedAt", optionalString(record, "updatedAt")),
-    ...optionalField("currentTaskId", optionalString(record, "currentTaskId")),
-    ...optionalField("stopReason", optionalString(record, "stopReason")),
-    ...optionalField("pauseReason", optionalString(record, "pauseReason")),
-    ...optionalField("verificationContract", optionalString(record, "verificationContract")),
-    ...optionalField("tokensUsed", optionalNumber(record, "tokensUsed")),
-    ...optionalField("activeSeconds", optionalNumber(record, "activeSeconds")),
-    tasks: arrayOf(parseGoalTaskSummary)(record["tasks"]),
-    completedTaskCount: requireNumber(record, "completedTaskCount"),
-    totalTaskCount: requireNumber(record, "totalTaskCount"),
-    ...optionalField("sourceRoot", optionalString(record, "sourceRoot")),
-  };
-}
 
-export function parseWorkspaceGoalsResponse(value: unknown): WorkspaceGoalsResponse {
-  const record = requireRecord(value);
-  return {
-    goals: arrayOf(parseGoalRecordSummary)(record["goals"]),
-    directory: requireString(record, "directory"),
-    generatedAt: requireString(record, "generatedAt"),
-  };
-}
 
 export function parseSessionStatusCatalogSnapshot(value: unknown): SessionStatusCatalogSnapshot {
   const record = requireRecord(value);
@@ -1636,15 +1594,6 @@ export function parsePiWebSelfUpdateStatus(value: unknown): PiWebSelfUpdateStatu
  * means the machines *that* server knows. Machines that fail to parse are
  * dropped rather than rendered as blanks.
  */
-export function parseGoalArchiveResponse(value: unknown): GoalArchiveResponse {
-  const record = requireRecord(value);
-  return {
-    goalId: requireString(record, "goalId"),
-    archivedPath: typeof record["archivedPath"] === "string" ? record["archivedPath"] : "",
-    alreadyArchived: record["alreadyArchived"] === true,
-    agentMayRecreate: record["agentMayRecreate"] === true,
-  };
-}
 
 export function parsePiWebFleetReport(value: unknown): PiWebFleetReport {
   const record = requireRecord(value);

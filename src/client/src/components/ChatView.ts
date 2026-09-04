@@ -30,7 +30,6 @@ import {
   type SessionNotificationTarget,
 } from "../sessionNotifications";
 import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
-import type { GoalRecordSummary } from "../api";
 import { describeRunModel } from "../modelIdentity";
 import { isWaitingForUser } from "../sessionWaiting";
 import type { SessionBackgroundTaskInfo, SessionNotification, SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
@@ -743,7 +742,6 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) pendingDialogs: PendingExtensionDialog[] = [];
   /** The browser's own receipts for commands it issued in this session. */
   @property({ attribute: false }) commandLedger: CommandLedgerEntry[] = [];
-  @property({ type: Boolean }) goalCommandInFlight = false;
   @property({ attribute: false }) closedDialogs: ClosedExtensionDialog[] = [];
   @property({ attribute: false }) onAnswerDialog?: ExtensionDialogAnswerCallback;
   @property({ attribute: false }) onCancelDialog?: ExtensionDialogCancelCallback;
@@ -823,33 +821,12 @@ export class ChatView extends LitElement {
   /** Whether the drawer's work was running last time this was looked at. */
   private drawerWorkWasRunning = false;
   /** Section the reader last chose; ignored when that section has nothing. */
-  /**
-   * The workspace's goals. On a phone the navigation panel that normally shows
-   * them is not on screen at all, so a running goal was invisible on the device
-   * most likely to be asking what the session is working towards.
-   */
-  /**
-   * One keyed load slot for the goals panel. It replaced three separate flags
-   * after the loading flag travelled from state to state and never once
-   * reached this element: props that travel separately get forgotten.
-   */
-  /** Whether the goals list answers for the workspace on screen. The tab's
-      count is a claim about this workspace, so it only shows when the state
-      behind it is keyed to the current selection (in flight, failed, and
-      stale-keyed reads all render the bare name instead). */
-  /**
-   * Re-read the goal records.
-   *
-   * The drawer's panel was given no way to do this, so its refresh control did
-   * nothing: a slot that had not been read had no route back, on the surface a
-   * phone actually uses.
-   */
-  @property({ attribute: false }) onRefreshGoals?: () => void;
-  @property({ attribute: false }) onRunGoalCommand?: (goal: GoalRecordSummary, command: string) => void | Promise<void>;
   @state() private topDrawerTab: DrawerTab | undefined;
   @property({ attribute: false }) drawerSections: readonly QualifiedDrawerSectionContribution[] = [];
   @property() drawerMachineId = "local";
   @property() drawerWorkspacePath?: string;
+  @property() sessionCwd?: string;
+  @property({ attribute: false }) onRunSectionCommand?: (command: string) => Promise<void>;
   /** Which kinds of activity to list; "all" until the reader narrows it. */
   @state() private activityFilter: ActivityFilter = "all";
   /** Live work only, until the reader asks for the history. */
@@ -1440,6 +1417,7 @@ export class ChatView extends LitElement {
               class=${`drawer-tab${tab === section.id ? " selected" : ""}`}
               aria-selected=${String(tab === section.id)}
               tabindex=${tab === section.id ? "0" : "-1"}
+              aria-controls=${`drawer-panel-${section.id}`}
               @click=${() => { this.selectTopDrawerTab(section.id, collapsed); }}
             >
               <span class="drawer-tab-label">${section.title}${sectionBadgeSuffix(section, sectionContext)}</span>
@@ -1573,10 +1551,14 @@ export class ChatView extends LitElement {
    */
   private drawerSectionContext(): DrawerSectionContext | undefined {
     if (this.sessionId === "") return undefined;
+    const runSectionCommand = this.onRunSectionCommand;
     return {
       sessionId: this.sessionId,
       machineId: this.drawerMachineId,
       workspacePath: this.drawerWorkspacePath,
+      sessionCwd: this.sessionCwd,
+      requestUpdate: () => { this.requestUpdate(); },
+      runCommand: runSectionCommand === undefined ? undefined : (command) => runSectionCommand(command),
     };
   }
 
@@ -3372,8 +3354,6 @@ export function backgroundTaskRows(tasks: readonly SessionBackgroundTaskInfo[]):
   });
 }
 
-export type TopDrawerTab = "activity" | "notifications" | "goals";
-
 /** One row of the activity list, tagged with the kind its filter chip names. */
 export type ActivityListEntry =
   | { kind: "subagents"; index: number; status: ActivityStatus; startedAt?: string | undefined; row: SubagentRow }
@@ -3605,16 +3585,6 @@ function sectionBadgeSuffix(section: QualifiedDrawerSectionContribution, context
   return badge === undefined || badge === "" ? "" : ` (${String(badge)})`;
 }
 
-export function selectedTopDrawerTab(available: { activity: boolean; notifications: boolean; goals?: boolean }, preferred: TopDrawerTab | undefined): TopDrawerTab {
-  if (preferred === "activity") return "activity";
-  if (preferred === "notifications") return "notifications";
-  if (preferred === "goals") return "goals";
-  if (available.notifications) return "notifications";
-  if (available.activity) return "activity";
-  // Goals change slowly, so they never take the drawer from work in flight -
-  // but they are better than handing back a tab that has nothing behind it.
-  return available.goals === true ? "goals" : "activity";
-}
 
 /**
  * The notifications tab's label. The count is part of the claim, so it is only

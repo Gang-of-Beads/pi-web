@@ -15,11 +15,7 @@ import type { QualifiedContributionId } from "./plugins/ids";
  * slowly.
  */
 
-/**
- * `goals` is still a section the chat view builds itself; it becomes an
- * ordinary contributed id when the goals plugin takes it over.
- */
-export type DrawerTab = "activity" | "notifications" | "goals" | QualifiedContributionId;
+export type DrawerTab = "activity" | "notifications" | QualifiedContributionId;
 
 export interface DrawerTabAvailability {
   activity: boolean;
@@ -38,6 +34,6 @@ export function selectedDrawerTab(available: DrawerTabAvailability, preferred: D
 }
 
 function isKnownTab(tab: DrawerTab, available: DrawerTabAvailability): boolean {
-  if (tab === "activity" || tab === "notifications" || tab === "goals") return true;
+  if (tab === "activity" || tab === "notifications") return true;
   return available.sections.includes(tab);
 }

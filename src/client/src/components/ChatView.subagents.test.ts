@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vitest";
 import type { SessionBackgroundTaskInfo, SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
-import { activityEntryKey, type ActivityStatus, backgroundTaskRows, activityFilterInEffect, activityFilterOptions, activityStripSummary, activityTabLabel, ChatView, subagentStatusLabel, isActiveActivityStatus, isFinishedActivityStatus, orderActivityEntries, type ActivityListEntry, selectedTopDrawerTab, subagentRows, subagentRunDuration, subagentRunRows, topDrawerStartsOpen } from "./ChatView";
+import { activityEntryKey, type ActivityStatus, backgroundTaskRows, activityFilterInEffect, activityFilterOptions, activityStripSummary, activityTabLabel, ChatView, subagentStatusLabel, isActiveActivityStatus, isFinishedActivityStatus, orderActivityEntries, type ActivityListEntry, subagentRows, subagentRunDuration, subagentRunRows, topDrawerStartsOpen } from "./ChatView";
 
 const SUBAGENTS: SessionSubagentInfo[] = [
   { sessionId: "01a0child-0001-0000-000000000001", cwd: "/repo/.pi/sub", status: "working" },
@@ -109,28 +109,6 @@ describe("topDrawerStartsOpen", () => {
     expect(topDrawerStartsOpen()).toBe(false);
   });
 
-});
-
-describe("selectedTopDrawerTab", () => {
-  // The reader's last choice wins; an emptied section renders its honest empty
-  // state instead of being abandoned for a section that still has content.
-  it("keeps the reader's section while it has content", () => {
-    expect(selectedTopDrawerTab({ activity: true, notifications: true }, "activity")).toBe("activity");
-    expect(selectedTopDrawerTab({ activity: true, notifications: true }, "notifications")).toBe("notifications");
-  });
-
-  // The reader's last choice always wins: every section renders an honest empty
-  // state now, so an emptied section is content, not a blank drawer — and a
-  // strip that reflows to follow the data is how taps land on the wrong tab.
-  it("keeps the reader's section even after it empties out", () => {
-    expect(selectedTopDrawerTab({ activity: true, notifications: false }, "notifications")).toBe("notifications");
-    expect(selectedTopDrawerTab({ activity: false, notifications: true }, "activity")).toBe("activity");
-  });
-
-  it("falls back to the section that exists only before the reader has chosen", () => {
-    expect(selectedTopDrawerTab({ activity: true, notifications: false }, undefined)).toBe("activity");
-    expect(selectedTopDrawerTab({ activity: true, notifications: true }, undefined)).toBe("notifications");
-  });
 });
 
 describe("activityStripSummary", () => {
@@ -477,36 +455,6 @@ describe("a run says what it is running on", () => {
     }]);
 
     expect(row?.modelLabel).toBeUndefined();
-  });
-});
-
-describe("the goals tab", () => {
-  /**
-   * On a phone the navigation panel is not on screen, and the goals panel lives
-   * inside it, so a running goal was invisible on the device most likely to be
-   * asking "what is this session even doing". The drawer above the transcript
-   * already carries the session's other cross-cutting context.
-   *
-   * It is offered only when the workspace has a goal: an empty tab is a tab
-   * that teaches the reader to ignore the row it sits in.
-   */
-  it("is available only when the workspace has goals", () => {
-    expect(selectedTopDrawerTab({ activity: false, notifications: false, goals: true }, undefined)).toBe("goals");
-    expect(selectedTopDrawerTab({ activity: false, notifications: false, goals: false }, undefined)).not.toBe("goals");
-  });
-
-  it("is kept when it is the tab the reader chose", () => {
-    expect(selectedTopDrawerTab({ activity: true, notifications: true, goals: true }, "goals")).toBe("goals");
-  });
-
-  it("does not steal the drawer from activity or notifications by default", () => {
-    // Goals change slowly; work in flight is what a reader opens the drawer for.
-    expect(selectedTopDrawerTab({ activity: true, notifications: false, goals: true }, undefined)).toBe("activity");
-    expect(selectedTopDrawerTab({ activity: false, notifications: true, goals: true }, undefined)).toBe("notifications");
-  });
-
-  it("keeps a goals tab the reader chose even after it empties out", () => {
-    expect(selectedTopDrawerTab({ activity: true, notifications: false, goals: false }, "goals")).toBe("goals");
   });
 });
 
