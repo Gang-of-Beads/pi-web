@@ -18,5 +18,7 @@ export function workspaceTerminalSessions(workspace: Workspace, machineId: strin
     closeAll: async () => { await terminalsApi.closeWorkspaceTerminals(projectId, id, machineId); },
     continue: (terminalId) => terminalsApi.continueTerminal(projectId, id, terminalId, machineId),
     connect: (terminalId, initialSize) => terminalSocket(projectId, id, terminalId, initialSize, machineId),
+    listCommandRuns: () => terminalsApi.listCommandRuns({ projectId, workspaceId: id }, machineId),
+    cancelCommandRun: (runId) => terminalsApi.cancelCommandRun(runId, machineId),
   };
 }

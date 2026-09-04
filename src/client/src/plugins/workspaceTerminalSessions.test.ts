@@ -9,6 +9,8 @@ vi.mock("../api", () => ({
     closeTerminal: (...args: unknown[]) => { calls.push({ name: "closeTerminal", args }); return Promise.resolve({ closed: 1 }); },
     closeWorkspaceTerminals: (...args: unknown[]) => { calls.push({ name: "closeWorkspaceTerminals", args }); return Promise.resolve({ closed: 2 }); },
     continueTerminal: (...args: unknown[]) => { calls.push({ name: "continueTerminal", args }); return Promise.resolve({ id: "t1" }); },
+    listCommandRuns: (...args: unknown[]) => { calls.push({ name: "listCommandRuns", args }); return Promise.resolve([]); },
+    cancelCommandRun: (...args: unknown[]) => { calls.push({ name: "cancelCommandRun", args }); return Promise.resolve({ id: "r1" }); },
   },
   terminalSocket: (...args: unknown[]) => { calls.push({ name: "terminalSocket", args }); return { kind: "socket" }; },
 }));
@@ -34,6 +36,7 @@ describe("the terminal capability handed to a panel", () => {
     await api.closeAll();
     await api.continue("t1");
     api.connect("t1", { cols: 80, rows: 24 });
+    await api.listCommandRuns();
 
     expect(calls.map((call) => call.name)).toEqual([
       "terminals",
@@ -42,8 +45,13 @@ describe("the terminal capability handed to a panel", () => {
       "closeWorkspaceTerminals",
       "continueTerminal",
       "terminalSocket",
+      "listCommandRuns",
     ]);
     for (const call of calls) {
+      if (call.name === "listCommandRuns") {
+        expect(call.args).toEqual([{ projectId: "p1", workspaceId: "w1" }, "remote-1"]);
+        continue;
+      }
       expect(call.args).toContain("p1");
       expect(call.args).toContain("w1");
       expect(call.args).toContain("remote-1");

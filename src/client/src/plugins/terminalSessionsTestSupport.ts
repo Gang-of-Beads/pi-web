@@ -11,5 +11,7 @@ export function noTerminalSessions(): WorkspaceTerminalSessions {
     closeAll: absent,
     continue: absent,
     connect: () => { throw new Error("No terminal capability in this test"); },
+    listCommandRuns: () => Promise.resolve([]),
+    cancelCommandRun: absent,
   };
 }

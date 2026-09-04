@@ -284,6 +284,9 @@ export interface WorkspaceTerminalSessions {
   closeAll(): Promise<void>;
   continue(terminalId: string): Promise<TerminalInfo>;
   connect(terminalId: string, initialSize?: { cols: number; rows: number }): WebSocket;
+  /** Command runs belonging to this workspace, and the ability to stop one. */
+  listCommandRuns(): Promise<TerminalCommandRun[]>;
+  cancelCommandRun(runId: string): Promise<TerminalCommandRun>;
 }
 
 export interface PiWebUnstableRuntimeContext {
