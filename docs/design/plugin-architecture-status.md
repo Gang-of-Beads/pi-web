@@ -141,3 +141,35 @@ The three audit items above, updated from the work since the verdict:
 is exercised through a locally packed tarball, which is enough to prove
 the loader but not the publish path.
 
+## Package loading on the live stack, 2026-09-05
+
+The package clause is now proven at every layer that does not need the
+registry:
+
+- **The contract ships as a package.** `packages/pi-web-plugin-api` carries
+  the same declarations the repository builds and baseline-tests, published
+  by a tag-scoped workflow (`plugin-api-v*`) so a contract release never
+  re-runs the main release machinery. First publish of a new package cannot
+  use trusted publishing, so the workflow keeps the bootstrap-token route.
+- **A split repository ships an installable plugin.** `pi-web-themes` now
+  declares its plugin in the `piWeb` manifest, commits its bundled browser
+  module (a git install runs no build), and publishes through its own
+  workflow with a freshness gate.
+- **pi-web loaded it live.** On the 8505 stack, with the bundled themes
+  directory removed so a pass could not come from the checkout, the manifest
+  served themes with `source: git:https://github.com/Gang-of-Beads/
+  pi-web-themes.git` and `scope: project`, installed through pi's own
+  package manager. The browser executed the package's module and the theme
+  registry held all eight packs from it, the active preference resolved
+  through the package copy.
+
+Still blocked on the owner, both outside this session's authority:
+
+1. **First publish bootstrap.** npm requires a package to exist before
+   trusted publishing can be configured; the workflows accept an
+   `NPM_TOKEN` secret for that first push, and the token is the owner's to
+   provide.
+2. **model catalog.** The objective's extraction list names it; matching pi
+   argues for keeping it in core. The objective must be amended or the
+   catalog extracted.
+
