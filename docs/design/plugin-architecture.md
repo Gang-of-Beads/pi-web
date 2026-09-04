@@ -280,3 +280,27 @@ Still owed before the panel can move: plugin-visible clipboard, error text,
 surface styles, and breakpoint seams. Each is small; together they are the
 next bounded task, and doing them first keeps the panel from moving as a
 half-migrated feature.
+
+## Themes wave: blocked on one contract mismatch (2026-09-04)
+
+Attempted and reverted rather than left half-done. Moving the theme pack into
+its own package is a two-line change until the types meet: the internal
+`ThemeTokens` is `Record<ThemeToken, string>` - a closed union that makes a
+missing token a compile error, which is why every shipped theme is complete -
+while the published `ThemeTokens` is `Record<string, string>`, and the
+published `QualifiedContributionId` is a plain string where the internal one is
+a `plugin:contribution` template. A pack typed by the public contract is
+therefore not assignable to the internal one, and every route around that ends
+in a type assertion this repository forbids for good reason.
+
+The fix is to align the two contracts, not to cast: publish the token union so
+a plugin theme is complete by construction too, and publish the qualified-id
+shape the host actually mints. That is its own change with its own tests, and
+it is the next task in this wave. Reverting kept the tree green and kept the
+pack from existing in two places.
+
+Also observed while there: the pack is registered in-app today, so themes are
+present on first paint. As a discovered plugin it would load with the others,
+and the first frame would use the stylesheet defaults. Whether that is
+acceptable is a product question for the owner, not something to decide inside
+a refactor.
