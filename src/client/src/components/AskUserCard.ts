@@ -470,9 +470,13 @@ export class AskUserCard extends LitElement {
       font: 14px system-ui, sans-serif;
       container-type: inline-size;
     }
+    /* One corner owner: the card clips, children paint square (the .msg
+       contract; a child replicating the curve is what broke the corners). */
     .card {
       border: 1px solid var(--pi-border);
-      border-radius: 10px;
+      border-radius: var(--pi-radius-lg);
+      overflow: hidden;
+      overflow: clip;
       background: var(--pi-surface);
       display: flex;
       flex-direction: column;
@@ -489,7 +493,6 @@ export class AskUserCard extends LitElement {
       min-height: 22px;
       padding: 7px 10px 6px;
       border-bottom: 1px solid color-mix(in srgb, var(--pi-border-muted) 35%, transparent);
-      border-radius: 9px 9px 0 0;
       background: var(--pi-surface);
       box-shadow: 0 8px 18px var(--pi-shadow-soft);
     }
@@ -605,7 +608,6 @@ export class AskUserCard extends LitElement {
       justify-content: flex-end;
       gap: 12px;
       border-top: 1px solid var(--pi-border-muted);
-      border-radius: 0 0 9px 9px;
       background: var(--pi-surface);
       box-shadow: 0 -8px 18px var(--pi-shadow-soft);
       padding: 12px 16px;

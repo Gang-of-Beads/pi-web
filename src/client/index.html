@@ -151,6 +151,10 @@
          the signal a soft keyboard gives, so the shell shortens for a keyboard
          that is not there. Scale belongs to the app's own control. */
       html { touch-action: pan-x pan-y; }
+      /* Inherited, so this one rule crosses every shadow root - the same
+         channel the design tokens ride. The per-component sweep missed real
+         buttons twice; the root rule cannot miss. */
+      html { -webkit-tap-highlight-color: transparent; }
     </style>
   </head>
   <body>

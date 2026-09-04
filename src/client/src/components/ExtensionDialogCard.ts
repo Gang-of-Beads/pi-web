@@ -332,9 +332,13 @@ export class ExtensionDialogCard extends LitElement {
       font: 14px system-ui, sans-serif;
       container-type: inline-size;
     }
+    /* One corner owner: the card clips, children paint square (the .msg
+       contract; a child replicating the curve is what broke the corners). */
     .card {
       border: 1px solid var(--pi-border);
-      border-radius: 10px;
+      border-radius: var(--pi-radius-lg);
+      overflow: hidden;
+      overflow: clip;
       background: var(--pi-surface);
       /* The waiting-slot contract: fill the slot's height budget as a column
          whose detail is the one scroller and whose actions never scroll
@@ -351,7 +355,6 @@ export class ExtensionDialogCard extends LitElement {
       min-height: 22px;
       padding: 8px 16px 7px;
       border-bottom: 1px solid var(--pi-border-muted);
-      border-radius: 9px 9px 0 0;
       background: var(--pi-surface);
       box-shadow: 0 8px 18px var(--pi-shadow-soft);
     }
@@ -447,7 +450,6 @@ export class ExtensionDialogCard extends LitElement {
       justify-content: flex-end;
       gap: 8px;
       border-top: 1px solid var(--pi-border-muted);
-      border-radius: 0 0 9px 9px;
       background: var(--pi-surface);
       padding: 12px 16px;
     }

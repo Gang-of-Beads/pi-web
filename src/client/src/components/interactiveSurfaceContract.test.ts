@@ -66,3 +66,10 @@ describe("the touch contract every component owes", () => {
     expect(offenders, `components missing the touch contract:\n${offenders.join("\n")}`).toEqual([]);
   });
 });
+
+describe("the root neutralizes the UA tap highlight for every shadow root", () => {
+  it("index.html carries the inherited rule", () => {
+    const html = readFileSync(join(componentsDir, "..", "..", "index.html"), "utf8");
+    expect(html).toContain("-webkit-tap-highlight-color: transparent");
+  });
+});

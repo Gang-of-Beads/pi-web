@@ -64,3 +64,38 @@ describe("message card corners have one owner", () => {
     expect(shell).not.toContain("--pi-card-inner-radius");
   });
 });
+
+import { AskUserCard } from "./AskUserCard";
+import { ExtensionDialogCard } from "./ExtensionDialogCard";
+
+function componentStyleText(component: { styles?: unknown }): string {
+  const styles: unknown = component.styles;
+  const list: unknown[] = Array.isArray(styles) ? styles : [styles];
+  return list.map((sheet) => {
+    if (typeof sheet === "object" && sheet !== null && "cssText" in sheet && typeof sheet.cssText === "string") return sheet.cssText;
+    return "";
+  }).join("\n").replace(/\/\*[\s\S]*?\*\//g, "");
+}
+
+describe("the sibling card components obey the same corner contract", () => {
+  // The .msg fix left ask-user-card and extension-dialog-card on the banned
+  // construction: a child replicating the card's curve under an unclipped
+  // shadow, which is exactly what broke the upper corners on the phone.
+  for (const [name, component] of [["ask-user-card", AskUserCard], ["extension-dialog-card", ExtensionDialogCard]] as const) {
+    it(`${name}: the card clips and owns its radius`, () => {
+      const text = componentStyleText(component);
+      const card = /\.card\s*\{[^}]*\}/.exec(text)?.[0] ?? "";
+      expect(card).toContain("overflow: clip");
+      expect(card).toContain("border-radius: var(--pi-radius-lg)");
+    });
+
+    it(`${name}: no header or footer replicates the curve`, () => {
+      const text = componentStyleText(component);
+      const children = text.match(/\.(card-header|card-footer|dialog-footer)\s*\{[^}]*\}/g) ?? [];
+      expect(children.length).toBeGreaterThan(0);
+      for (const rule of children) {
+        expect(rule).not.toContain("border-radius");
+      }
+    });
+  }
+});
