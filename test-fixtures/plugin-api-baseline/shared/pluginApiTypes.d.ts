@@ -71,6 +71,16 @@ export interface MoveWorkspaceFileResponse {
     modifiedAt: string;
 }
 export type TerminalCommandRunStatus = "queued" | "running" | "succeeded" | "failed";
+/** One live or exited terminal in a workspace. */
+export interface TerminalInfo {
+    id: string;
+    cwd: string;
+    name: string;
+    createdAt: string;
+    exited: boolean;
+    exitCode?: number;
+    commandRunId?: string;
+}
 export interface TerminalCommandRun {
     id: string;
     origin: string;

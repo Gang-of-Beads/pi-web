@@ -1,6 +1,6 @@
 import type { TemplateResult } from "lit";
 import type { AppAction } from "../actions";
-import type { DeleteWorkspaceFileResponse, FileContentResponse, FileTreeEntry, FileTreeResponse, JsonValue, Machine, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, RunTerminalCommandInput, TerminalCommandRun, TerminalCommandRunFilter, TerminalCommandRunHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, Workspace } from "../api";
+import type { DeleteWorkspaceFileResponse, FileContentResponse, FileTreeEntry, FileTreeResponse, JsonValue, Machine, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, RunTerminalCommandInput, TerminalCommandRun, TerminalCommandRunFilter, TerminalCommandRunHandle, TerminalInfo, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, Workspace } from "../api";
 import type { AppState } from "../appState";
 import type { SettingsSection } from "../settingsRoute";
 import type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
@@ -248,6 +248,21 @@ export type WorkspaceTerminalCommandInput = Omit<RunTerminalCommandInput, "works
 export interface WorkspacePanelTerminal {
   open(options?: { terminalId?: string | undefined }): void;
   runCommand(input: WorkspaceTerminalCommandInput): Promise<TerminalCommandRunHandle>;
+  /**
+   * The pty capability itself stays with the host, which owns the daemon that
+   * spawns it; a plugin that draws terminals asks for sessions and a stream
+   * rather than building routes or sockets of its own.
+   */
+  sessions: WorkspaceTerminalSessions;
+}
+
+export interface WorkspaceTerminalSessions {
+  list(): Promise<TerminalInfo[]>;
+  start(options?: { name?: string; cols?: number; rows?: number }): Promise<TerminalInfo>;
+  close(terminalId: string): Promise<void>;
+  closeAll(): Promise<void>;
+  continue(terminalId: string): Promise<TerminalInfo>;
+  connect(terminalId: string, initialSize?: { cols: number; rows: number }): WebSocket;
 }
 
 export interface PiWebUnstableRuntimeContext {

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { noTerminalSessions } from "../plugins/terminalSessionsTestSupport";
 import { html } from "lit";
 import { initialAppState } from "../appState";
 import type { WorkspacePanelContext, QualifiedWorkspacePanelContribution } from "../plugins/types";
@@ -67,7 +68,7 @@ function panelContext(
     files: { readFile: reject, listFiles: reject, writeFile: reject, deleteFile: reject, moveFile: reject },
     host: { requestRender: () => undefined, workspacePanelFullscreen, setWorkspacePanelFullscreen },
     prompt: { insertText: () => undefined, getText: () => "", getSelection: () => null },
-    terminal: { open: () => undefined, runCommand: reject },
+    terminal: { open: () => undefined, runCommand: reject, sessions: noTerminalSessions() },
     fileTree: [],
     expandedDirs: {},
     selectedFilePath: undefined,

@@ -1,5 +1,6 @@
 import { html } from "lit";
 import { describe, expect, it, vi } from "vitest";
+import { noTerminalSessions } from "./terminalSessionsTestSupport";
 import type { DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MoveWorkspaceFileResponse, SessionInfo, SessionStatus, WriteWorkspaceFileResponse, Workspace } from "../api";
 import { initialAppState, type AppState } from "../appState";
 import { markCachedNewSessionInfo } from "../cachedNewSessions";
@@ -920,7 +921,7 @@ function createWorkspacePanelContext(machineId: string, prompt: WorkspacePanelCo
     files: { readFile: vi.fn(), listFiles: vi.fn(), writeFile: vi.fn(), deleteFile: vi.fn(), moveFile: vi.fn() },
     backend: { request: vi.fn(() => Promise.resolve(null)) },
     prompt,
-    terminal: { open: vi.fn(), runCommand: vi.fn() },
+    terminal: { open: vi.fn(), runCommand: vi.fn(), sessions: noTerminalSessions() },
     host: { requestRender: vi.fn(), workspacePanelFullscreen: () => false, setWorkspacePanelFullscreen: vi.fn() },
     fileTree: [],
     expandedDirs: {},

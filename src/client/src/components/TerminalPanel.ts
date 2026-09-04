@@ -6,7 +6,7 @@ import { FitAddon, type ITerminalDimensions } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { terminalSocket, terminalsApi, type TerminalCommandRun, type TerminalInfo, type Workspace } from "../api";
 import { writeClipboardText } from "../clipboard";
-import { selectFallbackTerminal, selectPreferredTerminal } from "../controllers/terminalSelection";
+import { selectFallbackTerminal, selectPreferredTerminal } from "../controllers/terminalChoice";
 import { createTerminalCopySnapshot, DEFAULT_TERMINAL_ANSI_THEME, type TerminalCopyRunStyle, type TerminalCopySnapshot } from "../terminalCopySnapshot";
 import { createTerminalSoftKeysDefaultEnvironmentMedia, hasTerminalSoftKeysPreference, initialTerminalSoftKeysEnabled, isTerminalSoftKeysDefaultEnvironment, writeTerminalSoftKeysPreference } from "../terminalSoftKeysPreference";
 import "./TerminalSoftKeys";

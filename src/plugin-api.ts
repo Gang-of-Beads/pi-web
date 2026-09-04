@@ -21,6 +21,7 @@ export type {
   PiWebStatusSeverity,
   PiWebVersionResponse,
   TerminalCommandRun,
+  TerminalInfo,
   TerminalCommandRunHandle,
   TerminalCommandRunStatus,
   WorkspaceProviderCapabilities,

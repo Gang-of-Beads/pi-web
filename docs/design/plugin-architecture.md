@@ -254,3 +254,29 @@ its choices.
 The parts we already match: a single activation function per plugin, named
 contributions rather than host edits, capability objects handed in rather than
 imported, and refusal of anything the plugin did not declare.
+
+## Terminal wave: what the panel still needs (2026-09-04)
+
+The terminal panel is already a contribution, so moving it looked like a file
+move. It is not: the panel imports six host things a plugin may not reach -
+the terminal routes and socket, the clipboard helper, the error-describing
+notice helper, the shared interactive-surface styles, and the coarse-pointer
+breakpoint query. Moving the files without those seams would have produced a
+plugin that imports core internals, which the bundled-plugin guard rightly
+refuses.
+
+Done in this wave, because both are right regardless of when the panel moves:
+
+- The terminal capability handed to workspace panels now includes the pty
+  sessions themselves - list, start, close, closeAll, continue, connect - with
+  machine, project and workspace bound once by the host. A panel asks for a
+  terminal; it does not know how one is reached. This is the seam the owner's
+  ruling requires: pty stays core, the panel becomes a plugin.
+- The two pure selectors that decide which terminal a panel shows are split
+  out of the selection-memory module, so the panel's decision and the host's
+  storage stop sharing a file.
+
+Still owed before the panel can move: plugin-visible clipboard, error text,
+surface styles, and breakpoint seams. Each is small; together they are the
+next bounded task, and doing them first keeps the panel from moving as a
+half-migrated feature.

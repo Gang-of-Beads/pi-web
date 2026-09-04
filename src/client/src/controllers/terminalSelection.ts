@@ -1,4 +1,3 @@
-import type { TerminalInfo } from "../api";
 import { browserSessionStorage, parseStoredString, PersistentValueMap, type KeyValueStorage } from "./sessionStorageMemory";
 
 export interface TerminalSelectionMemory {
@@ -56,20 +55,4 @@ export class SessionStorageTerminalSelectionMemory implements TerminalSelectionM
       if (rememberedTerminalId === terminalId) this.terminalIdsByCwd.delete(cwd);
     }
   }
-}
-
-export function selectPreferredTerminal(terminals: TerminalInfo[], options?: { targetTerminalId?: string | undefined; latestTerminalId?: string | undefined }): TerminalInfo | undefined {
-  const targetTerminalId = options?.targetTerminalId;
-  if (targetTerminalId !== undefined && targetTerminalId !== "") return terminals.find((terminal) => terminal.id === targetTerminalId);
-
-  const latestTerminalId = options?.latestTerminalId;
-  if (latestTerminalId !== undefined && latestTerminalId !== "") {
-    return terminals.find((terminal) => terminal.id === latestTerminalId) ?? terminals.find((terminal) => !terminal.exited) ?? terminals[0];
-  }
-
-  return terminals.find((terminal) => !terminal.exited) ?? terminals[0];
-}
-
-export function selectFallbackTerminal(terminals: TerminalInfo[]): TerminalInfo | undefined {
-  return terminals.find((terminal) => !terminal.exited) ?? terminals[0];
 }

@@ -2,6 +2,7 @@ import { css, LitElement, html, type TemplateResult } from "lit";
 import type { ChatLine } from "./shared";
 import { errorNoticePatch } from "../errorNotice";
 import { request } from "../api/http";
+import { workspaceTerminalSessions } from "../plugins/workspaceTerminalSessions";
 import { describeError, RetiredBy } from "../notice";
 import { clearPlaceholderFrame, notePlaceholderFrame } from "../historyWrites";
 import { bannerHoldDecision } from "./bannerHold";
@@ -2586,6 +2587,7 @@ export class PiWebApp extends LitElement {
         terminal: {
           open: (options) => { void this.openRuntimeTerminal(machineId, workspace, options); },
           runCommand: (input) => terminalCommandRuns.runCommand({ ...input, workspace }),
+          sessions: workspaceTerminalSessions(workspace, machineId),
         },
         host: this.createWorkspaceHost(),
         piWebUnstable: { terminalCommandRuns },
