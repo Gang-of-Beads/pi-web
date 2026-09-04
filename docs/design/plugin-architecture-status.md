@@ -111,3 +111,33 @@ Order for the remaining work: extract pi-web-goals whole (client panel, server
 store and routes, and the daemon facts becoming plugin declarations rather than
 constants), then publish the contract package and switch one plugin to
 package loading with a live proof, then re-run the sign-off.
+
+## Goals wave and package loading, 2026-09-04: closed
+
+The three audit items above, updated from the work since the verdict:
+
+1. **goals is extracted.** The server store, archive and file live in
+   `pi-web-plugins/goals/server` behind `goals.read` and `goals.archive`;
+   the core routes are a thin proxy. The daemon no longer hardcodes goal
+   facts: the tool names and the continuation marker are the plugin's
+   `agentFacts` declarations. `GoalPanel`, `goalProgress` and the goals
+   slot left core with the wave: the plugin fetches its own goals through
+   its own operation and keeps its own three-state slot, and the chat
+   drawer and the navigation panel both draw it as a contributed section -
+   neither imports a component nor holds a feature's state. Verified live
+   on the 8505 stack: the tab renders "Goals 1 open" with the real
+   objective text, fetched through `api/plugins/goals/goals.read`.
+2. **model catalog still needs the owner.** The extraction list in the
+   objective names it; matching pi argues for keeping it in core. The
+   objective itself must be amended or the catalog extracted; neither is
+   this session's to decide.
+3. **A plugin loads from a package.** Proven by a test that builds a real
+   tarball, installs it the way pi installs a package, and asks the
+   catalog what it found - with no directory root offered, so a pass
+   cannot come from the bundled copy. It answers with the package under
+   `node_modules` and no diagnostics.
+
+`@gang-of-beads/pi-web-plugin-api` remains unpublished; package loading
+is exercised through a locally packed tarball, which is enough to prove
+the loader but not the publish path.
+
