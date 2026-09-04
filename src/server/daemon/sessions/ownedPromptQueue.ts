@@ -14,26 +14,62 @@ export function queueFilePath(cwd: string, sessionId: string): string {
   return join(cwd, ".pi", "queued-prompts", `${sessionId}.json`);
 }
 
+let stagedCounter = 0;
+
+/**
+ * The daemon's own durable parking lot for prompts accepted while the runtime
+ * is busy. Every mutating operation is serialized per session on a promise
+ * chain: the reviewers demonstrated that an open() racing a push() could
+ * persist before reading and destroy the previously parked entries on disk,
+ * and that two concurrent persists sharing one staged filename could commit
+ * torn bytes. One writer at a time makes both impossible by construction.
+ */
 export class OwnedPromptQueue {
   private readonly perSession = new Map<string, OwnedQueueEntry[]>();
   private readonly filePaths = new Map<string, string>();
+  private readonly chains = new Map<string, Promise<unknown>>();
+
+  private serialize<T>(sessionId: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.chains.get(sessionId) ?? Promise.resolve();
+    const next = previous.then(operation, operation);
+    this.chains.set(sessionId, next.catch(() => undefined));
+    return next;
+  }
 
   async open(sessionId: string, cwd: string): Promise<OwnedQueueEntry[]> {
-    const path = queueFilePath(cwd, sessionId);
-    this.filePaths.set(sessionId, path);
-    let loaded: OwnedQueueEntry[];
-    try {
-      const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
-      loaded = parseEntries(parsed);
-    } catch {
-      loaded = [];
-    }
-    const pushedWhileOpening = this.perSession.get(sessionId) ?? [];
-    const known = new Set(pushedWhileOpening.map((entry) => entry.clientMessageId).filter((id) => id !== undefined));
-    const merged = [...loaded.filter((entry) => entry.clientMessageId === undefined || !known.has(entry.clientMessageId)), ...pushedWhileOpening];
-    this.perSession.set(sessionId, merged);
-    if (merged.length !== loaded.length) await this.persist(sessionId);
-    return [...merged];
+    return this.serialize(sessionId, async () => {
+      const path = queueFilePath(cwd, sessionId);
+      this.filePaths.set(sessionId, path);
+      let loaded: OwnedQueueEntry[] = [];
+      let raw: string | undefined;
+      try {
+        raw = await readFile(path, "utf8");
+      } catch {
+        raw = undefined;
+      }
+      if (raw !== undefined) {
+        try {
+          loaded = parseEntries(JSON.parse(raw));
+        } catch {
+          // A file that exists but cannot be parsed is evidence of parked
+          // prompts, not an empty queue; absence is not negation. Keep the
+          // bytes for the operator and say so in the log.
+          await rename(path, `${path}.corrupt`).catch(() => undefined);
+          console.warn(`[ownedPromptQueue] corrupt queue file quarantined: ${path}.corrupt (session ${sessionId})`);
+          loaded = [];
+        }
+      }
+      const inMemory = this.perSession.get(sessionId) ?? [];
+      const knownIds = new Set(inMemory.map((entry) => entry.clientMessageId).filter((id) => id !== undefined));
+      const knownAnonymous = new Set(inMemory.filter((entry) => entry.clientMessageId === undefined).map((entry) => anonymousKey(entry)));
+      const merged = [
+        ...loaded.filter((entry) => entry.clientMessageId === undefined ? !knownAnonymous.has(anonymousKey(entry)) : !knownIds.has(entry.clientMessageId)),
+        ...inMemory,
+      ];
+      this.perSession.set(sessionId, merged);
+      if (merged.length !== loaded.length) await this.persist(sessionId);
+      return [...merged];
+    });
   }
 
   entries(sessionId: string): OwnedQueueEntry[] {
@@ -41,43 +77,62 @@ export class OwnedPromptQueue {
   }
 
   async push(sessionId: string, cwd: string, entry: OwnedQueueEntry): Promise<void> {
-    if (!this.filePaths.has(sessionId)) this.filePaths.set(sessionId, queueFilePath(cwd, sessionId));
-    const list = this.perSession.get(sessionId) ?? [];
-    list.push(entry);
-    this.perSession.set(sessionId, list);
-    await this.persist(sessionId);
+    return this.serialize(sessionId, async () => {
+      if (!this.filePaths.has(sessionId)) this.filePaths.set(sessionId, queueFilePath(cwd, sessionId));
+      const list = this.perSession.get(sessionId) ?? [];
+      list.push(entry);
+      this.perSession.set(sessionId, list);
+      await this.persist(sessionId);
+    });
   }
 
   async takeNext(sessionId: string): Promise<OwnedQueueEntry | undefined> {
-    const list = this.perSession.get(sessionId) ?? [];
-    const at = list.findIndex((entry) => entry.lane === "steer");
-    const taken = at !== -1 ? list.splice(at, 1)[0] : list.shift();
-    if (taken !== undefined) await this.persist(sessionId);
-    return taken;
+    return this.serialize(sessionId, async () => {
+      const list = this.perSession.get(sessionId) ?? [];
+      const at = list.findIndex((entry) => entry.lane === "steer");
+      const taken = at !== -1 ? list.splice(at, 1)[0] : list.shift();
+      if (taken !== undefined) await this.persist(sessionId);
+      return taken;
+    });
+  }
+
+  /** Put a taken entry back at the head: the runtime refused its submission. */
+  async restore(sessionId: string, entry: OwnedQueueEntry): Promise<void> {
+    return this.serialize(sessionId, async () => {
+      const list = this.perSession.get(sessionId) ?? [];
+      list.unshift(entry);
+      this.perSession.set(sessionId, list);
+      await this.persist(sessionId);
+    });
   }
 
   async recall(sessionId: string, match: { clientMessageId?: string; lane?: string; text?: string }): Promise<OwnedQueueEntry | undefined> {
-    const list = this.perSession.get(sessionId) ?? [];
-    const at = list.findIndex((entry) =>
-      match.clientMessageId !== undefined
-        ? entry.clientMessageId === match.clientMessageId
-        : (match.lane === undefined || entry.lane === match.lane) && entry.text === match.text);
-    if (at === -1) return undefined;
-    const [taken] = list.splice(at, 1);
-    await this.persist(sessionId);
-    return taken;
+    return this.serialize(sessionId, async () => {
+      const list = this.perSession.get(sessionId) ?? [];
+      const at = list.findIndex((entry) =>
+        match.clientMessageId !== undefined
+          ? entry.clientMessageId === match.clientMessageId
+          : (match.lane === undefined || entry.lane === match.lane) && entry.text === match.text);
+      if (at === -1) return undefined;
+      const [taken] = list.splice(at, 1);
+      await this.persist(sessionId);
+      return taken;
+    });
   }
 
   async clear(sessionId: string): Promise<OwnedQueueEntry[]> {
-    const list = this.perSession.get(sessionId) ?? [];
-    this.perSession.set(sessionId, []);
-    if (list.length > 0) await this.persist(sessionId);
-    return list;
+    return this.serialize(sessionId, async () => {
+      const list = this.perSession.get(sessionId) ?? [];
+      this.perSession.set(sessionId, []);
+      if (list.length > 0) await this.persist(sessionId);
+      return list;
+    });
   }
 
   forgetSession(sessionId: string): void {
     this.perSession.delete(sessionId);
     this.filePaths.delete(sessionId);
+    this.chains.delete(sessionId);
   }
 
   private async persist(sessionId: string): Promise<void> {
@@ -90,13 +145,21 @@ export class OwnedPromptQueue {
         return;
       }
       await mkdir(dirname(path), { recursive: true });
-      const staged = `${path}.${String(process.pid)}.tmp`;
+      stagedCounter += 1;
+      const staged = `${path}.${String(process.pid)}.${String(stagedCounter)}.tmp`;
       await writeFile(staged, JSON.stringify(list));
       await rename(staged, path);
-    } catch {
-      return;
+    } catch (error) {
+      // "Durable" must not silently mean "best effort": a read-only workspace
+      // or a full disk leaves the queue memory-only, and the operator should
+      // learn that from the log, not from a restart that forgot messages.
+      console.warn(`[ownedPromptQueue] persist failed for session ${sessionId}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
+}
+
+function anonymousKey(entry: OwnedQueueEntry): string {
+  return `${entry.lane}\u0000${entry.text}\u0000${entry.acceptedAt}`;
 }
 
 function field(value: object, name: string): unknown {

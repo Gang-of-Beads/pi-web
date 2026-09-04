@@ -2722,24 +2722,43 @@ export class PiSessionService implements SessionRouteService {
     if (this.ownedQueue.entries(sessionId).length === 0) return;
     this.drainingOwned.add(sessionId);
     void (async () => {
+      let submissionRefused = false;
       try {
-        for (;;) {
-          if (session.isStreaming || session.isCompacting) return;
-          const entry = await this.ownedQueue.takeNext(sessionId);
-          if (entry === undefined) return;
-          const images: ImageContent[] = entry.images.map((image) => ({ type: "image", data: image.data, mimeType: image.mimeType }));
-          await this.submitPrompt(session, entry.text, undefined, images, false, entry.clientMessageId);
-          return;
+        if (session.isStreaming || session.isCompacting) return;
+        const entry = await this.ownedQueue.takeNext(sessionId);
+        if (entry === undefined) return;
+        const images: ImageContent[] = entry.images.map((image) => ({ type: "image", data: image.data, mimeType: image.mimeType }));
+        // "followUp", not undefined: if a fresh prompt made the runtime busy
+        // between the idle check and this submit, promptDeliveryBehavior
+        // re-decides at the moment of handing and the entry joins the
+        // runtime's own lane instead of being refused and destroyed.
+        const outcome = await this.submitPrompt(session, entry.text, "followUp", images, false, entry.clientMessageId);
+        if (outcome === "refused") {
+          submissionRefused = true;
+          await this.ownedQueue.restore(sessionId, entry);
         }
       } finally {
         this.drainingOwned.delete(sessionId);
         this.publishStatus(session);
+        // More entries and an idle runtime: re-arm rather than wait for an
+        // event that may never come. A refused submission does not re-arm -
+        // that would hot-loop against whatever refused it; the next event or
+        // heartbeat retries instead.
+        if (!submissionRefused && !session.isStreaming && !session.isCompacting && this.ownedQueue.entries(sessionId).length > 0) {
+          setTimeout(() => { this.scheduleOwnedQueueDrain(session); }, 100);
+        }
       }
     })();
   }
 
   private async restoreOwnedQueue(session: PiAgentSession, cwd: string): Promise<void> {
     const entries = await this.ownedQueue.open(session.sessionId, cwd);
+    // The queue survived the restart; its acceptances must too, or the
+    // sender's outbox retry of a parked id is accepted a second time and the
+    // prompt runs twice.
+    for (const entry of entries) {
+      if (entry.clientMessageId !== undefined) this.acceptanceLedger.record(session.sessionId, entry.clientMessageId);
+    }
     if (entries.length > 0) this.scheduleOwnedQueueDrain(session);
   }
 
@@ -2814,7 +2833,7 @@ export class PiSessionService implements SessionRouteService {
     this.queuedPromptClientIds.set(sessionId, records);
   }
 
-  private submitPrompt(session: PiAgentSession, text: string, behavior: QueuedPromptKind | undefined, images: ImageContent[] = [], echoUserMessage = true, clientMessageId?: string): Promise<void> {
+  private submitPrompt(session: PiAgentSession, text: string, behavior: QueuedPromptKind | undefined, images: ImageContent[] = [], echoUserMessage = true, clientMessageId?: string): Promise<"delivered" | "refused"> {
     this.publishActivity(session, behavior === "steer" ? "steering queued" : behavior === "followUp" ? "message queued" : "prompt accepted", "active");
     // Echo the user message whether or not the prompt is queued. A queued
     // steer/follow-up otherwise shows nothing until the queue drains and the
@@ -2838,15 +2857,19 @@ export class PiSessionService implements SessionRouteService {
       busyAtSubmit: session.isStreaming || session.isCompacting,
     });
     const promptOptions = buildPromptOptions(effectiveBehavior, images);
-    const promptPromise = this.runSessionEntryMutation(session, "send a prompt", () => session.prompt(text, promptOptions)).catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error);
-      // The acceptance was recorded before this handoff; a submission the
-      // runtime refused must give the record back, or every retry of the same
-      // id is answered "accepted" for a prompt that never ran.
-      if (clientMessageId !== undefined) this.acceptanceLedger.forget(session.sessionId, clientMessageId);
-      this.publishActivity(session, "error", "error", message);
-      this.events.publish(session.sessionId, { type: "session.error", message });
-    });
+    const promptPromise = this.runSessionEntryMutation(session, "send a prompt", () => session.prompt(text, promptOptions)).then(
+      () => "delivered" as const,
+      (error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        // The acceptance was recorded before this handoff; a submission the
+        // runtime refused must give the record back, or every retry of the same
+        // id is answered "accepted" for a prompt that never ran.
+        if (clientMessageId !== undefined) this.acceptanceLedger.forget(session.sessionId, clientMessageId);
+        this.publishActivity(session, "error", "error", message);
+        this.events.publish(session.sessionId, { type: "session.error", message });
+        return "refused" as const;
+      },
+    );
     void promptPromise;
     return promptPromise;
   }
@@ -3365,9 +3388,10 @@ export class PiSessionService implements SessionRouteService {
     for (const entry of this.queuedMessagesWithClientIds(session)) {
       this.publishWithdrawn(session.sessionId, entry.clientMessageId);
     }
-    for (const entry of await this.ownedQueue.clear(session.sessionId)) {
-      if (entry.clientMessageId !== undefined) this.acceptanceLedger.forget(session.sessionId, entry.clientMessageId);
-    }
+    // Ledger records survive the clear on purpose: an outbox retry of a
+    // cleared id must settle as a duplicate, not resurrect and run the
+    // message the user just discarded.
+    await this.ownedQueue.clear(session.sessionId);
     this.queuedPromptClientIds.delete(session.sessionId);
     this.clearCompactionPromptQueue(session.sessionId);
     clearSessionQueue(session);
@@ -4317,7 +4341,11 @@ export class PiSessionService implements SessionRouteService {
       if (isDeliveredUserMessageEvent(event)) void this.voidOpenAskForDeliveredMessage(session, event);
       if (eventType === "compaction_end") this.scheduleCompactionQueueDrain(session.sessionId);
       if (eventType === "agent_start" || eventType === "agent_end") this.scheduleCompactionQueueDrain(session.sessionId);
-      if (eventType === "agent_end" || eventType === "turn_end") this.scheduleOwnedQueueDrain(session);
+      // agent_end/turn_end fire from inside the SDK's still-running loop, so
+      // isStreaming is usually still true there; agent_settled is the one
+      // event emitted after the flag flips. All three are armed, and the
+      // heartbeat backstop below covers a session that settles silently.
+      if (eventType === "agent_end" || eventType === "turn_end" || eventType === "agent_settled" || eventType === "compaction_end") this.scheduleOwnedQueueDrain(session);
       // A /reload issued mid-turn waits here. agent_end can fire while the turn
       // is still winding down, so runQueuedReload re-checks for active work and
       // simply returns if it is early; the heartbeat below is what makes sure a
@@ -4508,6 +4536,7 @@ export class PiSessionService implements SessionRouteService {
       // the session still reports active work transiently, so the event-driven
       // latch may not fire. The heartbeat re-checks once the session settles.
       this.updateSubsessionTracking(session);
+      this.scheduleOwnedQueueDrain(session);
       const activity = this.activities.get(session.sessionId);
       if (!this.hasActiveWork(session)) {
         if (activity?.phase === "active") this.publishStatus(session);
@@ -4534,7 +4563,7 @@ export class PiSessionService implements SessionRouteService {
     return this.treeNavigations.has(session)
       || this.isSessionEntryMutationActive(session)
       || this.isTreeExclusiveOperationActive(session)
-      || sessionHasActiveWork(session, this.compactionQueuedMessages(session.sessionId).length);
+      || sessionHasActiveWork(session, this.compactionQueuedMessages(session.sessionId).length + this.ownedQueue.entries(session.sessionId).length);
   }
 
   private async runTreeExclusiveOperation<T>(

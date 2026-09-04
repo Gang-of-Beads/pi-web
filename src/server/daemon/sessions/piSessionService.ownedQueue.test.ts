@@ -47,6 +47,46 @@ describe("the daemon owns the queue", () => {
     await service.dispose();
   });
 
+  it("drains even though agent_end fires while isStreaming is still true, via agent_settled", async () => {
+    // The real SDK re-broadcasts agent_end from inside the running loop and
+    // clears isStreaming only afterwards, with agent_settled; a drain gated on
+    // the flag at agent_end time never fires. The reviewers proved the old
+    // test passed only because the fake flipped the flag by hand first.
+    const { fake, service } = await busyService("own-settle");
+    await service.prompt(sessionRef("own-settle"), "after the settle", "followUp", undefined, { clientMessageId: "c-settle" });
+
+    fake.emit({ type: "agent_end" });
+    expect(fake.calls.prompt).toHaveLength(0);
+    fake.session.isStreaming = false;
+    fake.emit({ type: "agent_settled" });
+    await vi.waitFor(() => { expect(fake.calls.prompt.map((call) => call.text)).toEqual(["after the settle"]); });
+    await service.dispose();
+  });
+
+  it("drains queued entries one settle at a time, re-arming while entries remain", async () => {
+    const { fake, service } = await busyService("own-two");
+    await service.prompt(sessionRef("own-two"), "first parked", "followUp", undefined, { clientMessageId: "c-two-1" });
+    await service.prompt(sessionRef("own-two"), "second parked", "followUp", undefined, { clientMessageId: "c-two-2" });
+
+    fake.session.isStreaming = false;
+    fake.emit({ type: "agent_settled" });
+    await vi.waitFor(() => { expect(fake.calls.prompt.map((call) => call.text)).toEqual(["first parked", "second parked"]); });
+    await service.dispose();
+  });
+
+  it("restores the entry when the runtime refuses the drained submission", async () => {
+    const { fake, service, dir } = await busyService("own-refuse");
+    await service.prompt(sessionRef("own-refuse"), "refused once", "followUp", undefined, { clientMessageId: "c-refuse" });
+
+    fake.session.prompt = () => { throw new Error("Agent is already processing"); };
+    fake.session.isStreaming = false;
+    fake.emit({ type: "agent_settled" });
+    await vi.waitFor(() => { expect(existsSync(queueFilePath(dir, "own-refuse"))).toBe(true); });
+    const status = await service.status(sessionRef("own-refuse"));
+    expect(status.queuedMessages.map((entry) => entry.clientMessageId)).toEqual(["c-refuse"]);
+    await service.dispose();
+  });
+
   it("delivers a busy steer immediately rather than parking it", async () => {
     const { fake, service, dir } = await busyService("own-steer");
     await service.prompt(sessionRef("own-steer"), "turn left", "steer", undefined, { clientMessageId: "c-steer" });
@@ -65,6 +105,32 @@ describe("the daemon owns the queue", () => {
     expect(existsSync(queueFilePath(dir, "own-recall"))).toBe(false);
     const withdrawn = hub.sessionEvents.filter(({ event }) => Reflect.get(event, "type") === "prompt.withdrawn");
     expect(withdrawn).toHaveLength(1);
+    await service.dispose();
+  });
+
+  it("treats an outbox retry of a restored id as a duplicate after restart", async () => {
+    const first = await busyService("own-idem");
+    await first.service.prompt(sessionRef("own-idem"), "only once", "followUp", undefined, { clientMessageId: "c-idem" });
+    await first.service.dispose();
+
+    const hub = new CapturingSessionEventHub();
+    const fake = fakeRuntime("own-idem", { isStreaming: true });
+    Reflect.set(fake.runtime, "cwd", first.dir);
+    fake.session.sessionManager.getCwd = () => first.dir;
+    const service = new PiSessionService(hub, {
+      agentDir: TEST_AGENT_DIR,
+      modelRuntime: testModelRuntime,
+      createAgentRuntime: runtimeCreator(fake.runtime),
+      sessionManager: sessionGateway([sessionRecord("own-idem")]),
+      heartbeatIntervalMs: 60_000,
+    });
+    await service.status(sessionRef("own-idem"));
+    await vi.waitFor(async () => { expect((await service.status(sessionRef("own-idem"))).queuedMessages).toHaveLength(1); });
+
+    await service.prompt(sessionRef("own-idem"), "only once", "followUp", undefined, { clientMessageId: "c-idem" });
+
+    expect((await service.status(sessionRef("own-idem"))).queuedMessages).toHaveLength(1);
+    expect(fake.calls.prompt).toHaveLength(0);
     await service.dispose();
   });
 

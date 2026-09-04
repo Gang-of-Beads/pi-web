@@ -378,9 +378,10 @@ these states; a word with no state here is a bug.
   nothing; `accepted` without a frame heals by idempotent retry (ledger).
 - `queued -> settled` by identity claim, and by level trigger: absent from the
   queue of an idle runtime = consumed. Re-derived on every status.
-- `sending` heals the same way: on load and reconnect the outbox flushes with
-  the same id; the ledger makes the retry safe. A sending row can therefore
-  wait, retry, or fail - never sit forever.
+- `sending` heals the same way: the outbox flushes with the same id on load,
+  on regained browser connectivity, and by manual Retry; the ledger makes the
+  retry safe. A daemon-only outage with the browser still online is covered by
+  the manual path until a socket-reconnect flush trigger lands (recorded gap).
 - One row per identity is enforced at the transcript write point; producers
   cannot append a second copy of the same id.
 

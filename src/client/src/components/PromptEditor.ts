@@ -11,7 +11,7 @@ import { inputModeForDraft, inputModesEqual, type InputMode } from "../inputMode
 import { machineSessionKey } from "../machineKeys";
 import { detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletionChoices, type PromptCompletionTrigger } from "../promptCompletions";
 import { clearDraft, loadDraft, restoresDraftOnFirstRender, savesOutgoingDraft, saveDraft } from "../promptDraftStorage";
-import { clearPendingPrompts, isNetworkFailure, loadPendingPrompts, forgetPendingPrompt, savePendingPrompt, type PendingPrompt } from "../pendingOutbox";
+import { isNetworkFailure, loadPendingPrompts, forgetPendingPrompt, savePendingPrompt, type PendingPrompt } from "../pendingOutbox";
 import { classifySubmission, handleOutcome } from "../messageLifecycle";
 import { isRequestTimeout } from "../api/requestDeadline";
 import { newClientMessageId } from "../messageDelivery";
@@ -351,12 +351,21 @@ export class PromptEditor extends LitElement {
       }
     }
     if (changed.has("disabled")) this.updateEditorDisabledState();
-    if (changed.has("sessionId") || changed.has("machineId")) this.syncEditorDoc();
+    if (changed.has("sessionId") || changed.has("machineId")) {
+      this.syncEditorDoc();
+      // The strip must carry the scope it belongs to: rows loaded for the
+      // previous session may not render - or act - against this one.
+      this.pendingPrompts = this.pendingPromptsForSession();
+    }
     this.syncAttachmentZoomDialog();
   }
 
   override disconnectedCallback(): void {
     window.removeEventListener("online", this.flushPendingPrompts);
+    if (this.pendingRevealTimer !== undefined) {
+      clearTimeout(this.pendingRevealTimer);
+      this.pendingRevealTimer = undefined;
+    }
     this.editor?.destroy();
     this.editor = undefined;
     this.editorControls = undefined;
@@ -495,11 +504,15 @@ export class PromptEditor extends LitElement {
     `;
   }
 
+  private pendingRevealTimer: ReturnType<typeof setTimeout> | undefined;
+
   private renderPendingPrompts() {
     const now = Date.now();
     const lingering = this.pendingPrompts.filter((prompt) => now - Date.parse(prompt.at) > 4000);
     if (lingering.length === 0) {
-      if (this.pendingPrompts.length > 0) setTimeout(() => { this.requestUpdate(); }, 4200);
+      if (this.pendingPrompts.length > 0 && this.pendingRevealTimer === undefined) {
+        this.pendingRevealTimer = setTimeout(() => { this.pendingRevealTimer = undefined; this.requestUpdate(); }, 4200);
+      }
       return null;
     }
     return html`
@@ -1052,27 +1065,42 @@ export class PromptEditor extends LitElement {
     return key === "" ? [] : loadPendingPrompts(key);
   }
 
+  private flushInFlight = false;
+
+  /**
+   * Re-send stored prompts one at a time, deleting exactly the accepted ids.
+   * Reviewers proved the previous clear-and-replay wiped anything written to
+   * the store while the flush awaited the network - a concurrent send, or a
+   * Discard, which the replay then resurrected. Per-id deletion cannot touch
+   * entries this loop never handled, and a membership re-check before each
+   * send honors a Discard that happened mid-flight. Acceptance uses the same
+   * contract as the direct path: only an explicit false is a refusal.
+   */
   private readonly flushPendingPrompts = (): void => {
-    if (!navigator.onLine) return;
+    if (!navigator.onLine || this.flushInFlight) return;
     const key = machineSessionKey(this.machineId, this.sessionId ?? "");
     if (key === "") return;
     const pending = loadPendingPrompts(key);
     if (pending.length === 0) return;
-    let remaining = pending;
+    this.flushInFlight = true;
     void (async () => {
-      const stillPending: PendingPrompt[] = [];
-      for (const prompt of remaining) {
-        try {
-          const accepted = await this.onSend?.(prompt.text, prompt.behavior, prompt.attachments, prompt.attachments === undefined ? undefined : this.effectiveAttachmentDelivery(), prompt.clientMessageId === undefined ? undefined : { clientMessageId: prompt.clientMessageId });
-          if (accepted !== true) stillPending.push(prompt);
-        } catch {
-          stillPending.push(prompt);
+      try {
+        for (const prompt of pending) {
+          if (prompt.clientMessageId === undefined) continue;
+          const current = loadPendingPrompts(key);
+          if (!current.some((entry) => entry.clientMessageId === prompt.clientMessageId)) continue;
+          try {
+            const accepted = await this.onSend?.(prompt.text, prompt.behavior, prompt.attachments, prompt.attachments === undefined ? undefined : this.effectiveAttachmentDelivery(), { clientMessageId: prompt.clientMessageId });
+            if (accepted !== false) forgetPendingPrompt(key, prompt.clientMessageId);
+          } catch {
+            continue;
+          }
         }
+      } finally {
+        this.flushInFlight = false;
+        const currentKey = machineSessionKey(this.machineId, this.sessionId ?? "");
+        this.pendingPrompts = currentKey === "" ? [] : loadPendingPrompts(currentKey);
       }
-      clearPendingPrompts(key);
-      for (const prompt of stillPending) savePendingPrompt(key, prompt);
-      this.pendingPrompts = stillPending.length === 0 ? [] : stillPending;
-      remaining = stillPending;
     })();
   };
 
