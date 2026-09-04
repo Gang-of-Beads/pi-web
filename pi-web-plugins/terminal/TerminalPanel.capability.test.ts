@@ -13,7 +13,7 @@ function terminal(id: string): TerminalInfo {
 }
 
 function sessions(patch: Partial<WorkspaceTerminalSessions> = {}): WorkspaceTerminalSessions {
-  const absent = (): Promise<never> => Promise.reject(new Error("not used"));
+  const absent = (): Promise<never> => new Promise<never>(() => undefined);
   return {
     list: () => Promise.resolve([terminal("t1")]),
     start: () => Promise.resolve(terminal("t2")),
@@ -52,6 +52,16 @@ describe("the terminal panel works through the capability it was given", () => {
 
     expect(list).toHaveBeenCalled();
     expect(listCommandRuns).toHaveBeenCalled();
+  });
+
+  it("reports a connection it could not open rather than looking empty", async () => {
+    const panel = await mount(sessions({ connect: () => { throw new Error("socket refused"); } }));
+
+    await vi.waitFor(() => {
+      if (!(panel.shadowRoot?.textContent ?? "").includes("socket refused")) throw new Error("no failure reported yet");
+    });
+
+    expect(panel.shadowRoot?.textContent).toContain("socket refused");
   });
 
   it("reports a refused listing instead of showing an empty terminal list as truth", async () => {

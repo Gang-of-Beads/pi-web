@@ -356,8 +356,20 @@ export class TerminalPanel extends LitElement {
     return this.sessions;
   }
 
+  /**
+   * A connection that cannot be opened is reported where the reader is
+   * looking. It used to escape into the update cycle as an unhandled
+   * rejection, which shows up in a console nobody has open and leaves the
+   * panel looking merely empty.
+   */
   private connectSocket(terminalId: string, terminal: Terminal, initialSize: TerminalSize | undefined): void {
-    const socket = this.terminalSessions().connect(terminalId, initialSize);
+    let socket: WebSocket;
+    try {
+      socket = this.terminalSessions().connect(terminalId, initialSize);
+    } catch (error) {
+      this.error = describeTerminalError(error);
+      return;
+    }
     socket.binaryType = "arraybuffer";
     this.socket = socket;
     socket.addEventListener("open", () => { this.fitAndNotify(); });
