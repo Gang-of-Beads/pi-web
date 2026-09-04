@@ -18,5 +18,8 @@
   "ignoreBinaries": [
     "systemd-run",
     "tmux"
+  ],
+  "ignoreDependencies": [
+    "@earendil-works/pi-server"
   ]
 }

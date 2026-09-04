@@ -11,7 +11,7 @@ buildNpmPackage rec {
   npmDepsFetcherVersion = 2;
   # Includes package-lock's root package version as well as dependency entries.
   # Update with `nix build .#pi-web --no-link` whenever package-lock.json moves.
-  npmDepsHash = "sha256-1jSwcZY+8wA9PTKmzWAo7UDs1xxG38YGICsDN5wkAm4=";
+  npmDepsHash = "sha256-gmS7gABuB6mtbfV2jUFZcDo7FlyNHepav36Kk7aAxSk=";
 
   nativeBuildInputs = [ makeWrapper python3 pkg-config ]
     ++ lib.optionals stdenv.isLinux [ stdenv.cc ];
