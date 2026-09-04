@@ -220,3 +220,37 @@ carries file:line evidence in the lane transcripts.
    speechRoutes moves behind the route contribution manifest.
 4. Message/card renderer seam, then daemon service context enrichment,
    then goals/terminal waves per the owner's open-question answers.
+
+## What pi's own extensions teach (read 2026-09-04)
+
+Read against `examples/extensions` and `docs/extensions.md` in the bundled pi
+package. Three differences are worth naming, because pi has already paid for
+its choices.
+
+1. **Push, not pull.** pi's UI seams are `ctx.ui.setStatus(key, text)` and
+   `ctx.ui.setWidget(key, lines, { placement })`: the extension pushes named
+   content when its own state changes, and the host never asks. Our composer
+   status is pull-based - the host calls `status(context)` while rendering -
+   which is why the composer needed a `requestUpdate` seam at all. The pull
+   model also means a plugin's render function runs on the host's schedule
+   rather than its own. Aligning would remove one seam rather than add one,
+   and it is the shape to converge on before more surfaces copy the pull
+   pattern. Not changed yet: voice is the only consumer, and changing the
+   contract and its consumer in one wave is how a half-migrated feature gets
+   two paths.
+2. **Durable entries have a producer.** pi pairs `registerEntryRenderer(type,
+   renderer)` with `appendEntry(type, data)`, so the same extension that draws
+   a card is the one that puts it in the session. Our renderer seam has no
+   browser-side producer by design - custom entries arrive from pi extensions
+   through the transcript - which is coherent, but it means a pi-web plugin
+   can render a card it can never create. If a plugin should be able to write
+   one, that producer belongs in the daemon half, not the browser half.
+3. **Renderers get view state and theme.** pi hands its renderer
+   `(entry, { expanded }, theme)`. Ours hands a frozen view model and no
+   expansion state, so a plugin card cannot offer a collapsed and an expanded
+   form the way built-in tool results do. Worth adding when the first card
+   wants it, not before.
+
+The parts we already match: a single activation function per plugin, named
+contributions rather than host edits, capability objects handed in rather than
+imported, and refusal of anything the plugin did not declare.
