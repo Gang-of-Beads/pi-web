@@ -80,4 +80,26 @@ describe("calling a declared plugin operation", () => {
     expect(seen[0]).toBe(controller.signal);
     await runtime.stop();
   });
+
+  it("collects the agent-side facts each plugin declares", async () => {
+    const runtime = await runtimeWith({
+      agentFacts: {
+        surfaces: [{ surface: "goals", tools: ["get_goal"] }],
+        injectedTurns: [{ id: "goal-continuation", marker: "<pi_goal_continuation", producer: "pi-goal" }],
+      },
+    });
+
+    expect(runtime.declaredAgentFacts()).toEqual({
+      surfaces: [{ surface: "goals", tools: ["get_goal"] }],
+      injectedTurns: [{ id: "goal-continuation", marker: "<pi_goal_continuation", producer: "pi-goal" }],
+    });
+    await runtime.stop();
+  });
+
+  it("reports nothing for a plugin that declares no agent facts", async () => {
+    const runtime = await runtimeWith({});
+
+    expect(runtime.declaredAgentFacts()).toEqual({ surfaces: [], injectedTurns: [] });
+    await runtime.stop();
+  });
 });

@@ -1,5 +1,6 @@
 import { loadedExtensionsView, pluginPresence, type ExtensionListSource } from "./pluginPresence.js";
 import type { PluginSurfacePresence } from "../../../shared/apiTypes.js";
+import { declaredSurfaceTools } from "./declaredAgentFacts.js";
 
 /**
  * The tools that make each plugin-backed surface worth showing.
@@ -27,13 +28,14 @@ import type { PluginSurfacePresence } from "../../../shared/apiTypes.js";
  * for a panel that never reads it is a field nobody can be wrong about, which
  * is worse than absent: it looks like coverage.
  */
-const SURFACE_TOOLS = {
-  goals: ["create_goal", "get_goal", "update_goal", "focus_goal"],
-  // The activity drawer's subagent rows come from the pi-subagents extension;
-  // its one tool is the whole surface. The original report was this exact
-  // panel: subagents shown on a machine that never installed the plugin.
-  subagents: ["subagent"],
-} as const;
+/**
+ * The activity drawer's subagent rows come from the pi-subagents extension,
+ * whose one tool is the whole surface. The original report was this exact
+ * panel: subagents shown on a machine that never installed the plugin. It
+ * stays here because no pi-web plugin fronts it; goals is declared by the
+ * goals plugin instead of being a constant the host has to maintain.
+ */
+const SUBAGENT_TOOLS = ["subagent"] as const;
 
 /**
  * What each plugin-backed surface can honestly say about itself, or undefined
@@ -48,7 +50,7 @@ export function pluginSurfacePresence(source: ExtensionListSource): PluginSurfac
   const loaded = loadedExtensionsView(source);
   if (loaded === undefined) return undefined;
   return {
-    goals: pluginPresence(loaded, SURFACE_TOOLS.goals).state,
-    subagents: pluginPresence(loaded, SURFACE_TOOLS.subagents).state,
+    goals: pluginPresence(loaded, declaredSurfaceTools("goals")).state,
+    subagents: pluginPresence(loaded, SUBAGENT_TOOLS).state,
   };
 }

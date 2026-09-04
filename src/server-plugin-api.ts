@@ -85,9 +85,21 @@ export interface ServerPluginExecFileResult {
  */
 export type ServerPluginOperation = (input: unknown, context: { signal: AbortSignal }) => JsonValue | Promise<JsonValue>;
 
+/**
+ * Facts about the agent-side feature this plugin fronts: the tools that prove
+ * its surface is backed, and the markers its injected turns carry. The host
+ * used to hold these as constants and had to be edited whenever the feature
+ * changed.
+ */
+export interface ServerPluginAgentFacts {
+  surfaces?: readonly { surface: string; tools: readonly string[] }[];
+  injectedTurns?: readonly { id: string; marker: string; producer: string }[];
+}
+
 export interface ServerPluginActivation {
   workspaceProvider?: WorkspaceProvider;
   operations?: Readonly<Record<string, ServerPluginOperation>>;
+  agentFacts?: ServerPluginAgentFacts;
   /** Initialize resources within one host-bounded start invocation. */
   start?(signal: AbortSignal): MaybePromise<void>;
   /** Release resources within one host-bounded stop invocation. */

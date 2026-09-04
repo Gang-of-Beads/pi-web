@@ -2,6 +2,7 @@ import { pathToFileURL } from "node:url";
 import { piWebDataDir } from "../../../config.js";
 import { createPluginScopedStorage } from "./pluginScopedStorage.js";
 import { parsePluginOperations, requirePluginOperation, UnknownPluginOperationError, type PluginOperationMap } from "./pluginOperations.js";
+import { parseAgentFactDeclarations, type AgentFactDeclarations } from "./agentSurfaceDeclarations.js";
 import type {
   JsonObject,
   JsonValue,
@@ -88,6 +89,7 @@ interface ActiveServerPlugin {
   plugin: PiWebServerPlugin;
   activation: ServerPluginActivation;
   operations?: PluginOperationMap;
+  agentFacts?: AgentFactDeclarations;
   contribution?: ServerPluginProviderContribution;
 }
 
@@ -173,6 +175,14 @@ export class ServerPluginRuntime {
     if (active === undefined) throw new UnknownPluginOperationError(`No server plugin named ${pluginId} is active`);
     const handler = requirePluginOperation(active.operations, operation);
     return await handler(input, { signal });
+  }
+
+  /** What every active plugin says about the agent-side facts it fronts. */
+  declaredAgentFacts(): AgentFactDeclarations {
+    return {
+      surfaces: this.activePlugins.flatMap((active) => active.agentFacts?.surfaces ?? []),
+      injectedTurns: this.activePlugins.flatMap((active) => active.agentFacts?.injectedTurns ?? []),
+    };
   }
 
   async inspectHealth(): Promise<readonly ServerPluginHealthInspection[]> {
@@ -274,6 +284,7 @@ export class ServerPluginRuntime {
       phase = "validate";
       const loadedActivation = parseActivation(activationValue);
       const operations = parsePluginOperations(loadedActivation.operations);
+      const agentFacts = parseAgentFactDeclarations(loadedActivation.agentFacts);
       activation = loadedActivation;
       phase = "start";
       const start = loadedActivation.start?.bind(loadedActivation);
@@ -297,6 +308,7 @@ export class ServerPluginRuntime {
         plugin: loadedPlugin,
         activation: loadedActivation,
         ...(operations === undefined ? {} : { operations }),
+        ...(agentFacts === undefined ? {} : { agentFacts }),
         ...(contribution === undefined ? {} : { contribution }),
       }));
       this.recordsById.set(entry.id, recordFor(entry, { state: "active", name: loadedPlugin.name }));
@@ -420,6 +432,7 @@ function parseActivation(value: unknown): ServerPluginActivation {
   const operations = isOperationRecord(value["operations"]) ? value["operations"] : undefined;
   const candidate = {
     workspaceProvider: workspaceProviderValue === undefined ? undefined : snapshotWorkspaceProvider(workspaceProviderValue),
+    agentFacts: value["agentFacts"],
     start: value["start"],
     stop: value["stop"],
     health: value["health"],
@@ -436,6 +449,7 @@ function parseActivation(value: unknown): ServerPluginActivation {
   const health = candidate.health?.bind(value);
   return Object.freeze({
     ...(candidate.workspaceProvider === undefined ? {} : { workspaceProvider: candidate.workspaceProvider }),
+    ...(isRecord(value["agentFacts"]) ? { agentFacts: value["agentFacts"] } : {}),
     ...(operations === undefined ? {} : { operations }),
     ...(start === undefined ? {} : { start: (signal: AbortSignal) => start(signal) }),
     ...(stop === undefined ? {} : { stop: (signal: AbortSignal) => stop(signal) }),

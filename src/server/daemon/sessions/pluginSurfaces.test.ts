@@ -1,5 +1,19 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { pluginSurfacePresence } from "./pluginSurfaces.js";
+import { recordDeclaredAgentFacts, resetDeclaredAgentFacts } from "./declaredAgentFacts.js";
+
+/**
+ * The goals surface is backed by whatever tools the goals plugin declares, so
+ * these read against a declaration rather than a constant the host keeps.
+ */
+beforeEach(() => {
+  recordDeclaredAgentFacts({
+    surfaces: [{ surface: "goals", tools: ["create_goal", "get_goal", "update_goal", "focus_goal"] }],
+    injectedTurns: [],
+  });
+});
+
+afterEach(() => { resetDeclaredAgentFacts(); });
 
 /**
  * A panel for a plugin nobody installed used to look exactly like an installed

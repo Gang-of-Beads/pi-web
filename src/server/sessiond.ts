@@ -24,6 +24,7 @@ import { ProjectScopedSpawnTargetResolver } from "./daemon/sessions/spawnTargetR
 import { ProjectService } from "./shared/projects/projectService.js";
 import { ProjectStore, projectStorePath } from "./shared/storage/projectStore.js";
 import { projectPluginRoots } from "./shared/plugins/projectPluginRoots.js";
+import { recordDeclaredAgentFacts } from "./daemon/sessions/declaredAgentFacts.js";
 import {
   eligibleWorkspaceProviderContributions,
   WorkspaceProviderRegistry,
@@ -189,6 +190,7 @@ async function createSessionDaemonRuntime() {
     logger: app.log,
     execFile: createServerPluginExecFile({ env: daemonEnvironment }),
   });
+  recordDeclaredAgentFacts(serverPlugins.declaredAgentFacts());
   try {
     const eventHub = new SessionEventHub();
     // Keepalives start with the daemon: a browser can only notice a dead
