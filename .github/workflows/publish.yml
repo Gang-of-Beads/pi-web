@@ -67,13 +67,6 @@ jobs:
       - name: Build Nix package
         run: nix build .#pi-web --no-link
 
-      - name: Build Nix package for aarch64-linux
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          sudo apt-get install -y --no-install-recommends qemu-user-static binfmt-support
-          echo "extra-platforms = aarch64-linux" | sudo tee -a /etc/nix/nix.conf
-          sudo systemctl restart nix-daemon || true
-          nix build .#pi-web --no-link --system aarch64-linux
 
       # Release steps only make sense on a tag ref. workflow_dispatch exists to
       # re-run a botched tag release; dispatching on a branch still runs the
@@ -137,6 +130,25 @@ jobs:
           else
             npm publish "./pack-out/${{ steps.pack.outputs.tarball }}" --access public --provenance
           fi
+
+  nix-cache-linux-arm:
+    name: Cache aarch64-linux build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v20
+
+      - name: Push Nix builds to the binary cache
+        uses: cachix/cachix-action@v15
+        with:
+          name: gang-of-beads
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - name: Build Nix package
+        run: nix build .#pi-web --no-link
 
   nix-cache-darwin:
     name: Cache aarch64-darwin build
