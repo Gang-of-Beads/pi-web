@@ -9,11 +9,6 @@
  * simply not offered - sending audio somewhere is an explicit choice.
  */
 
-export interface PiWebAzureSpeechConfig {
-  region: string;
-  resource?: string;
-  key: string;
-}
 
 /**
  * How live transcription reaches a service.

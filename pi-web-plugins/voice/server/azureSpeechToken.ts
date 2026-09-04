@@ -1,5 +1,10 @@
-import type { FastifyInstance } from "fastify";
-import type { PiWebAzureSpeechConfig } from "../../shared/apiTypes.js";
+import type { JsonObject } from "@gang-of-beads/pi-web/server-plugin-api";
+
+export interface PiWebAzureSpeechConfig {
+  region: string;
+  resource?: string;
+  key: string;
+}
 
 /**
  * Handing the browser a credential it can dictate with.
@@ -47,24 +52,23 @@ export function createAzureSpeechTokenService(
   };
 }
 
-export function registerSpeechRoutes(
-  app: FastifyInstance,
-  readConfig: () => PiWebAzureSpeechConfig | undefined | Promise<PiWebAzureSpeechConfig | undefined>,
-  service: AzureSpeechTokenService = createAzureSpeechTokenService(),
-): void {
-  app.post("/api/speech/token", async (_request, reply) => {
-    const config = await readConfig();
-    if (config === undefined) {
-      return await reply.code(404).send({ error: "Live transcription is not configured." });
-    }
-    try {
-      const token = await service.issue(config);
-      // The region travels with the token because the socket host is regional
-      // and the browser has no other way to know which one this token is for.
-      return await reply.send({ token, region: config.region, expiresInSeconds: 540 });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return await reply.code(502).send({ error: message });
-    }
-  });
+/**
+ * Read the plugin's own credential block. Absent or incomplete means the
+ * feature is unconfigured, which the caller must report as such rather than as
+ * a failed request.
+ */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function parseAzureSpeechSettings(settings: JsonObject | undefined): PiWebAzureSpeechConfig | undefined {
+  if (settings === undefined) return undefined;
+  const azure: unknown = settings["azureSpeech"];
+  if (!isRecord(azure)) return undefined;
+  const record = azure;
+  const region = record["region"];
+  const key = record["key"];
+  if (typeof region !== "string" || region === "" || typeof key !== "string" || key === "") return undefined;
+  const resource = record["resource"];
+  return { region, key, ...(typeof resource === "string" ? { resource } : {}) };
 }

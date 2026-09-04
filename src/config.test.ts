@@ -357,57 +357,31 @@ function testOptions(): { env: NodeJS.ProcessEnv } {
   return { env: { PI_WEB_CONFIG: configPath } };
 }
 
-describe("speech-to-text config survives a round trip", () => {
+describe("a plugin's own settings survive a round trip", () => {
   /**
    * The parser builds its result field by field, so a key it does not name is
-   * dropped in silence. `speechToText` was never named: an install could write
-   * the setting, restart, and find no microphone in the composer, with nothing
-   * anywhere to say the setting had been discarded on the way in.
+   * dropped in silence - which is how dictation was once written to config,
+   * discarded on the way in, and left unreachable with nothing to say so.
+   * Plugin blocks are opaque to the core precisely so no plugin ever depends
+   * on the core naming its keys.
    */
-  it("keeps the batch endpoint and the streaming settings", () => {
+  it("keeps an opaque plugin block the core never names", () => {
     const requestedConfig = {
-      speechToText: {
-        endpoint: "https://stt.example/v1/transcribe",
-        model: "whisper-1",
-        language: "zh",
-        streaming: { protocol: "deepgram" as const, url: "wss://api.deepgram.com/v1/listen", tokenEndpoint: "api/speech/token" },
+      plugins: {
+        voice: {
+          enabled: true,
+          settings: {
+            endpoint: "https://stt.example/v1/transcribe",
+            streaming: { protocol: "deepgram", url: "wss://api.deepgram.com/v1/listen" },
+            azureSpeech: { region: "swedencentral", key: "k".repeat(84) },
+          },
+        },
       },
     };
 
     const saved = savePiWebConfig(requestedConfig, testOptions());
 
-    expect(saved.config.speechToText).toEqual(requestedConfig.speechToText);
-    expect(loadPiWebConfig(testOptions()).config.speechToText).toEqual(requestedConfig.speechToText);
-  });
-
-  it("rejects a config that names no endpoint rather than half-enabling dictation", () => {
-    expect(() => savePiWebConfig({ speechToText: { endpoint: "" } }, testOptions()))
-      .toThrow(/speechToText/iu);
-  });
-});
-
-describe("azure speech credentials", () => {
-  /**
-   * The browser talks to Azure directly for latency, so it needs a credential -
-   * but not this one. The subscription key stays here and is exchanged for a
-   * ten-minute token, so the key that could be used for anything never reaches
-   * a page. Storing it means naming it in the parser: a key the parser does not
-   * name is dropped in silence, which is how dictation was unreachable for its
-   * whole life so far.
-   */
-  it("keeps the region, resource and key", () => {
-    const requestedConfig = {
-      azureSpeech: { region: "swedencentral", resource: "res-1", key: "k".repeat(84) },
-    };
-
-    const saved = savePiWebConfig(requestedConfig, testOptions());
-
-    expect(saved.config.azureSpeech).toEqual(requestedConfig.azureSpeech);
-    expect(loadPiWebConfig(testOptions()).config.azureSpeech).toEqual(requestedConfig.azureSpeech);
-  });
-
-  it("rejects a credential with no region, which no token could be issued against", () => {
-    expect(() => savePiWebConfig({ azureSpeech: { region: "", key: "k" } }, testOptions()))
-      .toThrow(/azureSpeech/iu);
+    expect(saved.config.plugins).toEqual(requestedConfig.plugins);
+    expect(loadPiWebConfig(testOptions()).config.plugins).toEqual(requestedConfig.plugins);
   });
 });

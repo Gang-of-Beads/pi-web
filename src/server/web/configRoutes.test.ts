@@ -263,35 +263,30 @@ function responseFor(config: PiWebConfigValues, exists: boolean): PiWebConfigRes
   };
 }
 
-describe("speech-to-text config reaches the browser", () => {
+describe("plugin settings reach the browser", () => {
   /**
-   * The composer renders its dictation control only when it has been handed a
-   * speech-to-text config, and the browser only ever sees the keys this route
-   * forwards. `speechToText` was not among them, so an install could write the
-   * setting, restart, and still never see a microphone: the config was read,
-   * stored, and then dropped on the way out.
+   * The browser only ever sees the keys this route forwards, and a plugin's
+   * block is what tells its browser half whether the feature is configured at
+   * all. Dropping it on the way out is how a setting could be written, stored,
+   * and still leave the feature invisible with nothing to say why.
    */
-  it("forwards the speech-to-text settings", async () => {
+  it("forwards a plugin's own block", async () => {
     savedConfig = {
       ...savedConfig,
-      speechToText: {
-        endpoint: "https://stt.example/v1/transcribe",
-        streaming: { protocol: "browser" },
-      },
+      plugins: { voice: { enabled: true, settings: { endpoint: "https://stt.example/v1/transcribe" } } },
     };
 
     const response = await app.inject({ method: "GET", url: "/api/config" });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json<PiWebConfigResponse>().config.speechToText).toEqual({
-      endpoint: "https://stt.example/v1/transcribe",
-      streaming: { protocol: "browser" },
+    expect(response.json<PiWebConfigResponse>().config.plugins).toEqual({
+      voice: { enabled: true, settings: { endpoint: "https://stt.example/v1/transcribe" } },
     });
   });
 
-  it("says nothing about speech when nothing is configured", async () => {
+  it("says nothing about a plugin nobody configured", async () => {
     const response = await app.inject({ method: "GET", url: "/api/config" });
 
-    expect(response.json<PiWebConfigResponse>().config.speechToText).toBeUndefined();
+    expect(response.json<PiWebConfigResponse>().config.plugins).toBeUndefined();
   });
 });

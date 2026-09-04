@@ -255,80 +255,10 @@ function piWebConfigRecord(config: PiWebConfig): Record<string, unknown> {
     ...(config.subsessions !== undefined ? { subsessions: config.subsessions } : {}),
     ...(config.askUser !== undefined ? { askUser: config.askUser } : {}),
     ...(config.environmentFacts !== undefined ? { environmentFacts: config.environmentFacts } : {}),
-    ...(config.speechToText !== undefined ? { speechToText: config.speechToText } : {}),
-    ...(config.azureSpeech !== undefined ? { azureSpeech: config.azureSpeech } : {}),
     ...(config.agent !== undefined ? { agent: config.agent } : {}),
   };
 }
 
-/**
- * Dictation settings.
- *
- * `endpoint` is the whole feature switch, so an empty one is rejected rather
- * than stored: a config that half-enables dictation produces a control that
- * cannot work, which is worse than no control at all.
- */
-function parseSpeechToTextConfig(value: unknown, path: string): NonNullable<PiWebConfig["speechToText"]> {
-  if (!isRecord(value)) throw new Error(`PI WEB config speechToText must be an object: ${path}`);
-  const endpoint = parseString(value["endpoint"], "speechToText.endpoint", path);
-  if (endpoint.trim() === "") throw new Error(`PI WEB config speechToText.endpoint must not be empty: ${path}`);
-  const model = value["model"];
-  const language = value["language"];
-  const streaming = value["streaming"];
-  return {
-    endpoint,
-    ...(model === undefined ? {} : { model: parseString(model, "speechToText.model", path) }),
-    ...(language === undefined ? {} : { language: parseString(language, "speechToText.language", path) }),
-    ...(streaming === undefined ? {} : { streaming: parseSpeechStreamingConfig(streaming, path) }),
-  };
-}
-
-/**
- * A credential with no region could not have a token issued against it, and a
- * token is only accepted by the host that issued it, so an empty region is
- * rejected rather than stored.
- */
-function parseAzureSpeechConfig(value: unknown, path: string): NonNullable<PiWebConfig["azureSpeech"]> {
-  if (!isRecord(value)) throw new Error(`PI WEB config azureSpeech must be an object: ${path}`);
-  const region = parseString(value["region"], "azureSpeech.region", path);
-  if (region.trim() === "") throw new Error(`PI WEB config azureSpeech.region must not be empty: ${path}`);
-  const key = parseString(value["key"], "azureSpeech.key", path);
-  if (key.trim() === "") throw new Error(`PI WEB config azureSpeech.key must not be empty: ${path}`);
-  const resource = value["resource"];
-  return {
-    region,
-    key,
-    ...(resource === undefined ? {} : { resource: parseString(resource, "azureSpeech.resource", path) }),
-  };
-}
-
-type SpeechStreamingProtocol = NonNullable<NonNullable<PiWebConfig["speechToText"]>["streaming"]>["protocol"];
-
-function isSpeechStreamingProtocol(value: string): value is SpeechStreamingProtocol {
-  return value === "browser" || value === "openai-realtime" || value === "deepgram" || value === "azure-speech";
-}
-
-function parseSpeechStreamingConfig(
-  value: unknown,
-  path: string,
-): NonNullable<NonNullable<PiWebConfig["speechToText"]>["streaming"]> {
-  if (!isRecord(value)) throw new Error(`PI WEB config speechToText.streaming must be an object: ${path}`);
-  const protocol = parseString(value["protocol"], "speechToText.streaming.protocol", path);
-  if (!isSpeechStreamingProtocol(protocol)) {
-    throw new Error(
-      `PI WEB config speechToText.streaming.protocol must be browser, openai-realtime, deepgram or azure-speech: ${path}`,
-    );
-  }
-  const url = value["url"];
-  const model = value["model"];
-  const tokenEndpoint = value["tokenEndpoint"];
-  return {
-    protocol,
-    ...(url === undefined ? {} : { url: parseString(url, "speechToText.streaming.url", path) }),
-    ...(model === undefined ? {} : { model: parseString(model, "speechToText.streaming.model", path) }),
-    ...(tokenEndpoint === undefined ? {} : { tokenEndpoint: parseString(tokenEndpoint, "speechToText.streaming.tokenEndpoint", path) }),
-  };
-}
 
 function parsePiWebConfig(value: Record<string, unknown>, path: string): PiWebConfig {
   return {
@@ -345,8 +275,6 @@ function parsePiWebConfig(value: Record<string, unknown>, path: string): PiWebCo
     ...(value["askUser"] !== undefined ? { askUser: parseAskUser(value["askUser"], path) } : {}),
     ...(value["environmentFacts"] !== undefined ? { environmentFacts: parseBooleanKey(value["environmentFacts"], "environmentFacts", path) } : {}),
     ...(value["extensionDialogsTimeoutMs"] !== undefined ? { extensionDialogsTimeoutMs: parseExtensionDialogsTimeoutMs(value["extensionDialogsTimeoutMs"], path) } : {}),
-    ...(value["speechToText"] !== undefined ? { speechToText: parseSpeechToTextConfig(value["speechToText"], path) } : {}),
-    ...(value["azureSpeech"] !== undefined ? { azureSpeech: parseAzureSpeechConfig(value["azureSpeech"], path) } : {}),
     ...(value["agent"] !== undefined ? { agent: parseAgentConfig(value["agent"], path) } : {}),
   };
 }

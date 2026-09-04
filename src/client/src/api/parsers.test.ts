@@ -65,34 +65,20 @@ describe("API parsers", () => {
   });
 
   it("keeps the config keys the app reads back off the parsed response", () => {
-    // The parser builds each field by name, so a key it does not mention is
-    // dropped on the way in and the feature behind it can never switch on:
-    // dictation was configured and never offered because speechToText was
-    // missing here.
-    const speechToText = { endpoint: "http://127.0.0.1:9000/transcribe", model: "whisper-1", language: "zh", streaming: { protocol: "azure-speech", url: "wss://example", model: "live-1", tokenEndpoint: "api/speech/token" } };
+    // The parser builds its result key by key, so a key it forgets is dropped
+    // in silence - which is how a configured feature could be invisible with
+    // nothing anywhere to say the setting had been discarded.
+    const plugins = { voice: { enabled: true, settings: { endpoint: "http://127.0.0.1:9000/transcribe" } } };
     const parsed = parsePiWebConfigResponse({
-      path: "/tmp/config.json",
+      path: "/tmp/pi-web.json",
       exists: true,
-      config: { speechToText, environmentFacts: false, extensionDialogsTimeoutMs: 60_000 },
-      effectiveConfig: { speechToText, environmentFacts: false, extensionDialogsTimeoutMs: 60_000 },
+      config: { plugins, environmentFacts: false, extensionDialogsTimeoutMs: 60_000 },
+      effectiveConfig: { plugins, environmentFacts: false, extensionDialogsTimeoutMs: 60_000 },
       envOverrides: { host: false, port: false, allowedHosts: false, spawnSessions: false, subsessions: false, askUser: false },
     });
 
-    expect(parsed.effectiveConfig).toEqual({ speechToText, environmentFacts: false, extensionDialogsTimeoutMs: 60_000 });
-  });
-
-  it("rejects a speechToText block the dictation control could not use", () => {
-    const invalid = (speechToText: unknown) => () => parsePiWebConfigResponse({
-      path: "/tmp/config.json",
-      exists: true,
-      config: { speechToText },
-      effectiveConfig: {},
-      envOverrides: { host: false, port: false, allowedHosts: false, spawnSessions: false, subsessions: false, askUser: false },
-    });
-
-    expect(invalid("http://example")).toThrow("Invalid PI WEB speechToText field");
-    expect(invalid({ model: "whisper-1" })).toThrow("Invalid PI WEB speechToText field");
-    expect(invalid({ endpoint: "http://example", streaming: { protocol: "telepathy" } })).toThrow("Invalid PI WEB speechToText.streaming field");
+    expect(parsed.config).toEqual({ plugins, environmentFacts: false, extensionDialogsTimeoutMs: 60_000 });
+    expect(parsed.effectiveConfig).toEqual({ plugins, environmentFacts: false, extensionDialogsTimeoutMs: 60_000 });
   });
 
   it("parses PI WEB runtime responses and ignores the daemon-reported active agent profile", () => {

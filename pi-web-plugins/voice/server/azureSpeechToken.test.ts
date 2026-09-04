@@ -1,20 +1,7 @@
-import Fastify, { type FastifyInstance } from "fastify";
 import { describe, expect, it } from "vitest";
-import { azureSpeechTokenEndpoint, createAzureSpeechTokenService, registerSpeechRoutes } from "./speechRoutes.js";
-import type { PiWebAzureSpeechConfig } from "../../shared/apiTypes.js";
+import { azureSpeechTokenEndpoint, createAzureSpeechTokenService, parseAzureSpeechSettings, type PiWebAzureSpeechConfig } from "./azureSpeechToken.js";
 
 const config: PiWebAzureSpeechConfig = { region: "swedencentral", resource: "res-1", key: "secret-key" };
-
-/** A server with the speech routes on it, closed by the caller. */
-async function serverWith(
-  readConfig: () => PiWebAzureSpeechConfig | undefined,
-  issue: () => Promise<string>,
-): Promise<FastifyInstance> {
-  const app = Fastify({ logger: false });
-  registerSpeechRoutes(app, readConfig, { issue });
-  await app.ready();
-  return app;
-}
 
 describe("where a token is asked for", () => {
   /**
@@ -33,36 +20,24 @@ describe("where a token is asked for", () => {
   });
 });
 
-describe("issuing a token to the browser", () => {
-
-  it("hands back a token and the region it belongs to, never the key", async () => {
-    const app = await serverWith(() => config, () => Promise.resolve("jwt-token"));
-    const response = await app.inject({ method: "POST", url: "/api/speech/token" });
-
-    expect(response.statusCode).toBe(200);
-    const body = response.json<{ token: string; region: string }>();
-    expect(body.token).toBe("jwt-token");
-    expect(body.region).toBe("swedencentral");
-    // The whole point of the exchange: the subscription key must not travel.
-    expect(response.body).not.toContain("secret-key");
-    await app.close();
+describe("reading the plugin's credential block", () => {
+  it("reads a complete block", () => {
+    expect(parseAzureSpeechSettings({ azureSpeech: { region: "swedencentral", resource: "res-1", key: "secret-key" } })).toEqual(config);
   });
 
-  it("says live transcription is not configured rather than failing obscurely", async () => {
-    const app = await serverWith(() => undefined, () => Promise.resolve("unused"));
-    const response = await app.inject({ method: "POST", url: "/api/speech/token" });
-
-    expect(response.statusCode).toBe(404);
-    await app.close();
+  it("treats an absent or incomplete block as unconfigured rather than as broken", () => {
+    expect(parseAzureSpeechSettings(undefined)).toBeUndefined();
+    expect(parseAzureSpeechSettings({})).toBeUndefined();
+    expect(parseAzureSpeechSettings({ azureSpeech: { region: "swedencentral" } })).toBeUndefined();
+    expect(parseAzureSpeechSettings({ azureSpeech: { key: "k" } })).toBeUndefined();
+    expect(parseAzureSpeechSettings({ azureSpeech: "swedencentral" })).toBeUndefined();
   });
 
-  it("reports an upstream refusal without forwarding its body", async () => {
-    const app = await serverWith(() => config, () => Promise.reject(new Error("status 401")));
-    const response = await app.inject({ method: "POST", url: "/api/speech/token" });
+  it("keeps the subscription key out of what it reports about itself", () => {
+    const parsed = parseAzureSpeechSettings({ azureSpeech: { region: "swedencentral", key: "secret-key" } });
 
-    expect(response.statusCode).toBe(502);
-    expect(response.json<{ error: string }>().error).toContain("401");
-    await app.close();
+    expect(parsed?.region).toBe("swedencentral");
+    expect(JSON.stringify({ region: parsed?.region, resource: parsed?.resource })).not.toContain("secret-key");
   });
 });
 

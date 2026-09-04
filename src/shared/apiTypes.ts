@@ -133,67 +133,7 @@ export interface PiWebPathAccessConfig {
   allowedPaths?: string[];
 }
 
-/**
- * Where recorded speech is sent for transcription.
- *
- * `endpoint` is the whole feature switch: without it there is no dictation
- * control at all, so an install that has not opted in never records anything.
- */
-/**
- * The Azure resource that issues short-lived tokens for live transcription.
- *
- * The browser connects to Azure directly for latency, so it needs a
- * credential - but not this one. The subscription key stays on the server and
- * is exchanged for a ten-minute token, so the key that could be used for
- * anything never reaches a page.
- */
-export interface PiWebAzureSpeechConfig {
-  /** Region the socket and the token endpoint both live in. */
-  region: string;
-  /** Resource name, used for the custom-subdomain token endpoint. */
-  resource?: string;
-  /** Subscription key. Never sent to a browser. */
-  key: string;
-}
 
-export interface PiWebSpeechToTextConfig {
-  /** Absolute URL accepting the audio and returning a transcription. */
-  endpoint: string;
-  /** Optional model hint forwarded to the service. */
-  model?: string;
-  /** Language hint, e.g. "en" or "zh"; omitted means let the service decide. */
-  language?: string;
-  /**
-   * Optional live transcription, which shows words as they are spoken instead
-   * of after the recording stops.
-   *
-   * Separate from `endpoint` because it is a different protocol, not a
-   * different URL: an install can have batch dictation without streaming, and
-   * turning streaming on must not silently change what `endpoint` means.
-   */
-  streaming?: PiWebSpeechStreamingConfig;
-}
-
-/**
- * How live transcription reaches a service.
- *
- * `browser` needs nothing configured and streams natively, but sends audio to
- * the browser vendor. The socket protocols connect from the page for latency,
- * so they take a short-lived credential minted by this server rather than an
- * API key, which must never reach a browser.
- */
-export interface PiWebSpeechStreamingConfig {
-  protocol: "browser" | "openai-realtime" | "deepgram" | "azure-speech";
-  /** Socket URL for the socket protocols. Ignored by `browser`. */
-  url?: string;
-  /** Model hint for the streaming service, when it differs from the batch one. */
-  model?: string;
-  /**
-   * Where the browser asks this server for a short-lived credential. Required
-   * for the socket protocols so the account key stays on the server.
-   */
-  tokenEndpoint?: string;
-}
 
 export interface PiWebUploadsConfig {
   defaultFolder?: string;
@@ -227,22 +167,11 @@ export interface PiWebConfigValues {
   port?: number;
   allowedHosts?: string[] | true;
   shortcuts?: PiWebShortcutConfig;
-  azureSpeech?: PiWebAzureSpeechConfig;
   plugins?: PiWebPluginConfigMap;
   /** External filesystem roots PI WEB may expose outside a workspace. */
   pathAccess?: PiWebPathAccessConfig;
   /** Workspace-relative defaults for manual file uploads. */
   uploads?: PiWebUploadsConfig;
-  /**
-   * Speech-to-text for the composer's dictation control.
-   *
-   * Absent by default, and dictation is simply not offered when it is: audio is
-   * sensitive enough that sending it somewhere must be an explicit choice, not
-   * something that happens because a browser API existed. Point `endpoint` at
-   * any service that accepts the recorded audio and answers with a
-   * transcription — a local Whisper server keeps the audio on the machine.
-   */
-  speechToText?: PiWebSpeechToTextConfig;
   /** Maximum accepted HTTP request body size in bytes (uploads/attachments). */
   maxUploadBytes?: number;
   /** When true, LLMs can start new sessions via the spawn_session tool. */
