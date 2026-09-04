@@ -1,4 +1,4 @@
-import type { VoiceRecorder } from "./voiceController";
+import type { VoiceRecorder } from "./voiceController.js";
 
 /**
  * The browser half of dictation: microphone in, audio blob and loudness out.

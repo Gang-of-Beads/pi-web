@@ -1,4 +1,4 @@
-import type { SpeechStreamEvent, SpeechStreamProtocol } from "./speechStreamProtocols";
+import type { SpeechStreamEvent, SpeechStreamProtocol } from "./speechStreamProtocols.js";
 
 /**
  * How a service's deltas combine into the text on screen.

@@ -1,4 +1,4 @@
-import type { SpeechStreamEvent } from "./speechStreamProtocols";
+import type { SpeechStreamEvent } from "./speechStreamProtocols.js";
 
 /**
  * Live transcription using the browser's own recogniser.

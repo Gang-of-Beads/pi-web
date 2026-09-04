@@ -9,7 +9,9 @@ import { describe, expect, it } from "vitest";
  * build is a module the browser cannot resolve: the plugin simply never
  * activates, and the surface it contributed is missing with nothing to say
  * why. The build bundles any entry whose graph reaches a package; this pins
- * that the shipped entries carry nothing unresolvable.
+ * that the shipped entries carry nothing unresolvable - walking the whole
+ * graph, because an extensionless relative import resolves for a bundler and
+ * 404s for a browser, which is how the voice plugin shipped unloadable.
  */
 
 const distRoot = resolve("dist", "pi-web-plugins");
@@ -50,11 +52,26 @@ describe("shipped browser plugin entries", () => {
     expect(entries.length).toBeGreaterThan(0);
 
     const unresolvable: string[] = [];
-    for (const entry of entries) {
-      const source = await readFile(entry, "utf8");
-      for (const match of source.matchAll(bareImport)) {
+    const pending = [...entries];
+    const visited = new Set<string>();
+    while (pending.length > 0) {
+      const file = pending.pop();
+      if (file === undefined || visited.has(file)) continue;
+      visited.add(file);
+      let source: string;
+      try {
+        source = await readFile(file, "utf8");
+      } catch {
+        unresolvable.push(`${file}: missing module`);
+        continue;
+      }
+      for (const match of source.matchAll(new RegExp(bareImport.source, "gu"))) {
         const specifier = match[1] ?? "";
-        if (!specifier.startsWith("./") && !specifier.startsWith("../")) unresolvable.push(`${entry}: ${specifier}`);
+        if (!specifier.startsWith("./") && !specifier.startsWith("../")) {
+          unresolvable.push(`${file}: ${specifier}`);
+          continue;
+        }
+        pending.push(resolve(file, "..", specifier));
       }
     }
 

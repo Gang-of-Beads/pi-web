@@ -1,7 +1,7 @@
-import type { PiWebSpeechToTextConfig } from "./voiceConfig";
-import { chooseDictationRoute, DictationRoute } from "./dictationRoute";
-import { resolveSpeechStreaming } from "./speechStreamProtocols";
-import { isDictationConfigured, transcribeAudio, type TranscriptionResult } from "./speechToText";
+import type { PiWebSpeechToTextConfig } from "./voiceConfig.js";
+import { chooseDictationRoute, DictationRoute } from "./dictationRoute.js";
+import { resolveSpeechStreaming } from "./speechStreamProtocols.js";
+import { isDictationConfigured, transcribeAudio, type TranscriptionResult } from "./speechToText.js";
 import {
   advanceVoiceCapture,
   DEFAULT_VOICE_CAPTURE_CONFIG,
@@ -9,7 +9,7 @@ import {
   toggleVoiceCapture,
   type VoiceCaptureConfig,
   type VoiceCaptureState,
-} from "./voiceCapture";
+} from "./voiceCapture.js";
 
 /**
  * Ties the microphone, the tap/VAD state machine and transcription together.

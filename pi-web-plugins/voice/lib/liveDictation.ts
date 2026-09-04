@@ -1,7 +1,7 @@
-import { decodeAzureFrame, encodeAzureAudioFrame, encodeAzureTextFrame } from "./azureSpeechFrames";
-import { decodeSpeechStreamEvent, type SpeechStreamProtocol } from "./speechStreamProtocols";
-import { SpeechTranscriptBuffer, SPEECH_DELTA_MODES } from "./speechTranscriptBuffer";
-import { downsampleTo, floatToPcm16, pcm16Bytes } from "./pcmAudio";
+import { decodeAzureFrame, encodeAzureAudioFrame, encodeAzureTextFrame } from "./azureSpeechFrames.js";
+import { decodeSpeechStreamEvent, type SpeechStreamProtocol } from "./speechStreamProtocols.js";
+import { SpeechTranscriptBuffer, SPEECH_DELTA_MODES } from "./speechTranscriptBuffer.js";
+import { downsampleTo, floatToPcm16, pcm16Bytes } from "./pcmAudio.js";
 
 /**
  * One live dictation: token, socket, microphone, and the text they produce.

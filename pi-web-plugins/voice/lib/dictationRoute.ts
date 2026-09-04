@@ -1,6 +1,6 @@
-import type { PiWebSpeechToTextConfig } from "./voiceConfig";
-import { isDictationConfigured } from "./speechToText";
-import { resolveSpeechStreaming } from "./speechStreamProtocols";
+import type { PiWebSpeechToTextConfig } from "./voiceConfig.js";
+import { isDictationConfigured } from "./speechToText.js";
+import { resolveSpeechStreaming } from "./speechStreamProtocols.js";
 
 /** How a spoken sentence reaches the composer. */
 export const DictationRoute = {
