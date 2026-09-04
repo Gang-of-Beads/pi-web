@@ -47,6 +47,7 @@ import { runSessionDaemonShutdown } from "./daemon/sessionDaemonShutdown.js";
 import { sessionServiceDependencies } from "./daemon/sessionServiceDependencies.js";
 import { registerWorkspaceCatalogRoutes } from "./daemon/workspaces/workspaceCatalogRoutes.js";
 import { registerPluginBackendRoutes } from "./daemon/workspaces/pluginBackendRoutes.js";
+import { registerPluginOperationRoutes } from "./daemon/plugins/pluginOperationRoutes.js";
 import { registerWorkspaceRemovalRoutes } from "./daemon/workspaces/workspaceRemovalRoutes.js";
 import { createWorkspaceProviderRuntimeSnapshot } from "./shared/workspaces/workspaceCatalog.js";
 import { WorkspaceRemovalService } from "./daemon/workspaces/workspaceRemovalService.js";
@@ -367,7 +368,7 @@ async function createSessionDaemonRuntime() {
   }
 }
 
-function registerSessionDaemonRoutes({ eventHub, machineStatus, statusAttribution, auth, sessions, terminals, runtimeComponent, projects, workspaceProviders, workspaceProviderRuntime, workspaceRemovals }: SessionDaemonRuntime): void {
+function registerSessionDaemonRoutes({ eventHub, machineStatus, statusAttribution, auth, sessions, terminals, runtimeComponent, projects, serverPlugins, workspaceProviders, workspaceProviderRuntime, workspaceRemovals }: SessionDaemonRuntime): void {
   registerMachineStatusRoutes(app, machineStatus);
   registerAuthRoutes(app, auth);
   registerSessionRoutes(app, sessions, eventHub);
@@ -410,6 +411,7 @@ function registerSessionDaemonRoutes({ eventHub, machineStatus, statusAttributio
     workspaces: workspaceProviders,
     providerRuntime: workspaceProviderRuntime,
   });
+  registerPluginOperationRoutes(app, serverPlugins);
   registerPluginBackendRoutes(app, {
     projects,
     backends: workspaceProviders,
