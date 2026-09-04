@@ -1,4 +1,4 @@
-import type { GoalRecordSummary, GoalTaskSummary } from "../../../shared/apiTypes.js";
+import type { GoalRecordSummary, GoalTaskSummary } from "./goalTypes.js";
 
 /**
  * Reading goal records written by the `pi-goal-x` extension.

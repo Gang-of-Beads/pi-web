@@ -39,6 +39,7 @@ import { createSelfUpdateService, registerSelfUpdateRoutes } from "./updates/sel
 import { registerMachineProxyRoutes } from "./machines/machineProxyRoutes.js";
 import { registerPluginBackendProxyRoutes } from "./plugins/pluginBackendProxyRoutes.js";
 import { registerPluginOperationProxyRoutes } from "./plugins/pluginOperationProxyRoutes.js";
+import { registerGoalProxyRoutes } from "./workspaces/goalProxyRoutes.js";
 import { proxyMachinePluginAsset, registerMachinePluginProxyRoutes } from "./machines/machinePluginProxyRoutes.js";
 import type { Project, WorkspaceEffectiveConfig, WorkspaceProviderResolution } from "../shared/types.js";
 
@@ -256,6 +257,8 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
   registerPluginOperationProxyRoutes(app, sessionDaemon);
   registerWorkspaceExplorerRoutes(app, projects, workspaces, "/api", { config: configService });
   registerWorkspaceExplorerRoutes(app, projects, workspaces, "/api/machines/local", { config: configService });
+  registerGoalProxyRoutes(app, projects, workspaces, sessionDaemon, "/api");
+  registerGoalProxyRoutes(app, projects, workspaces, sessionDaemon, "/api/machines/local");
   const projectTrustDeps = {
     agentDir: async () => (await requireActiveAgentProfile(agentProfileProvider)).dir,
   };

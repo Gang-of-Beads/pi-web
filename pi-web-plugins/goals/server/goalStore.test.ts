@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterAll, describe, expect, it } from "vitest";
 import { readWorkspaceGoals } from "./goalStore.js";
-import type { GoalRecordSummary } from "../../../shared/apiTypes.js";
+import type { GoalRecordSummary } from "./goalTypes.js";
 
 const directories: string[] = [];
 

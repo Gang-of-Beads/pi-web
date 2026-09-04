@@ -9,8 +9,8 @@ export interface WorkspaceContext {
 }
 
 export async function resolveWorkspaceContext(
-  projects: ProjectService,
-  workspaces: WorkspaceCatalog,
+  projects: Pick<ProjectService, "requireProject">,
+  workspaces: Pick<WorkspaceCatalog, "resolve">,
   projectId: string,
   workspaceId: string,
 ): Promise<WorkspaceContext> {

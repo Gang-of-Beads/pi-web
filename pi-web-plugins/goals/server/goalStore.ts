@@ -1,6 +1,6 @@
 import { readFile, readdir } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
-import type { GoalRecordSummary, WorkspaceGoalsResponse } from "../../../shared/apiTypes.js";
+import type { GoalRecordSummary, WorkspaceGoalsResponse } from "./goalTypes.js";
 import { parseGoalFile, sortGoalSummaries } from "./goalFile.js";
 
 /**
