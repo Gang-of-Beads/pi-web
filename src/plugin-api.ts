@@ -54,10 +54,33 @@ export interface PluginActivationContext {
   readonly runtimePluginId: PluginId;
   readonly html: HtmlTemplateTag;
   readonly svg: SvgTemplateTag;
+  /** Subscribe to a host fact; the returned function unsubscribes. Absent on hosts older than this contract. */
+  readonly on?: <K extends PluginLifecycleEventKind>(kind: K, listener: PluginLifecycleListener<K>) => () => void;
 }
+
+export type PluginLifecycleEvent =
+  | { kind: "session-selected"; sessionId: string; machineId: string | undefined }
+  | { kind: "session-left"; sessionId: string }
+  | { kind: "connection-changed"; connected: boolean }
+  | { kind: "theme-applied"; themeId: string };
+
+export type PluginLifecycleEventKind = PluginLifecycleEvent["kind"];
+
+export type PluginLifecycleListener<K extends PluginLifecycleEventKind> =
+  (event: Extract<PluginLifecycleEvent, { kind: K }>) => void;
 
 export interface PluginActivationResult {
   contributions: PluginContributions;
+  /** Released when the plugin is unregistered; subscriptions are dropped regardless. */
+  dispose?: () => void;
+}
+
+/** A settings section a plugin owns inside the core settings shell. */
+export interface SettingsSectionContribution {
+  id: LocalContributionId;
+  title: string;
+  order?: number;
+  render: (context: PluginRuntimeContext) => TemplateResult;
 }
 
 export interface PluginContributions {
@@ -66,6 +89,37 @@ export interface PluginContributions {
   workspaceLabels?: WorkspaceLabelContribution[];
   themes?: ThemeContribution[];
   themePairs?: ThemePairContribution[];
+  composer?: ComposerContribution[];
+  settingsSections?: SettingsSectionContribution[];
+}
+
+export type ComposerSlot = "leading" | "trailing";
+
+export interface ComposerRuntimeContext {
+  sessionId: string | undefined;
+  machineId: string | undefined;
+  draft: string;
+  busy: boolean;
+  insertText: (text: string) => void;
+  replaceDraft: (text: string) => void;
+  notify: (message: string, severity: "info" | "warning" | "error") => void;
+}
+
+export interface ComposerStatusLine {
+  text: string;
+  severity: "info" | "problem";
+}
+
+export interface ComposerContribution {
+  id: LocalContributionId;
+  slot: ComposerSlot;
+  title: string;
+  icon?: TemplateResult;
+  order?: number;
+  enabled?: (context: ComposerRuntimeContext) => boolean;
+  disabledReason?: (context: ComposerRuntimeContext) => string | undefined;
+  status?: (context: ComposerRuntimeContext) => ComposerStatusLine | undefined;
+  run: (context: ComposerRuntimeContext) => void | Promise<void>;
 }
 
 export interface PluginMachine {

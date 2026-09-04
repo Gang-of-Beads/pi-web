@@ -30,8 +30,28 @@ export interface PiWebPlugin {
   activate: (context: PluginActivationContext) => PluginActivationResult;
 }
 
+/**
+ * Facts the host reports to plugins. Read-only announcements, never hooks:
+ * a plugin learns that the session changed, it does not get to veto or
+ * mutate the change. Every subscription returns its own unsubscribe, and the
+ * registry disposes whatever a plugin leaves behind, so a plugin cannot
+ * outlive its own teardown.
+ */
+export type PluginLifecycleEvent =
+  | { kind: "session-selected"; sessionId: string; machineId: string | undefined }
+  | { kind: "session-left"; sessionId: string }
+  | { kind: "connection-changed"; connected: boolean }
+  | { kind: "theme-applied"; themeId: string };
+
+export type PluginLifecycleEventKind = PluginLifecycleEvent["kind"];
+
+export type PluginLifecycleListener<K extends PluginLifecycleEventKind> =
+  (event: Extract<PluginLifecycleEvent, { kind: K }>) => void;
+
 export interface PluginActivationContext {
   readonly apiVersion: 2;
+  /** Subscribe to a host fact; the returned function unsubscribes. */
+  readonly on?: <K extends PluginLifecycleEventKind>(kind: K, listener: PluginLifecycleListener<K>) => () => void;
   /** Stable package/source identity, including on federated machines. */
   readonly pluginId: PluginId;
   /** Host-unique identity for qualified contribution references in this runtime. */
@@ -42,6 +62,27 @@ export interface PluginActivationContext {
 
 export interface PluginActivationResult {
   contributions: PluginContributions;
+  /** Released when the plugin is unregistered; subscriptions are dropped regardless. */
+  dispose?: () => void;
+}
+
+/**
+ * A settings section a plugin owns inside the core settings shell. The shell
+ * keeps navigation and persistence; the plugin only renders its body.
+ */
+export interface SettingsSectionContribution {
+  id: LocalContributionId;
+  title: string;
+  order?: number;
+  render: (context: PluginRuntimeContext) => TemplateResult;
+}
+
+export interface QualifiedSettingsSectionContribution extends SettingsSectionContribution {
+  id: QualifiedContributionId;
+  pluginId: PluginId;
+  localId: LocalContributionId;
+  machineId?: string;
+  sourcePluginId?: PluginId;
 }
 
 export interface PluginContributions {
@@ -51,6 +92,7 @@ export interface PluginContributions {
   themes?: ThemeContribution[];
   themePairs?: ThemePairContribution[];
   composer?: ComposerContribution[];
+  settingsSections?: SettingsSectionContribution[];
 }
 
 /**

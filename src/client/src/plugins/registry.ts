@@ -1,6 +1,10 @@
 import { html, svg } from "lit";
 import { requirePluginBackendRevision } from "../../../shared/pluginBackendProtocol";
-import type { ComposerContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
+import type { ComposerContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
+
+function eventHasKind<K extends PluginLifecycleEventKind>(event: PluginLifecycleEvent, kind: K): event is Extract<PluginLifecycleEvent, { kind: K }> {
+  return event.kind === kind;
+}
 
 const idPattern = /^[a-z][a-z0-9.-]*$/u;
 const localIdPattern = /^[a-z][a-z0-9.-]*$/u;
@@ -25,6 +29,9 @@ export class PluginRegistry {
   private readonly themes: QualifiedThemeContribution[] = [];
   private readonly themePairs: QualifiedThemePairContribution[] = [];
   private readonly composerContributions: QualifiedComposerContribution[] = [];
+  private readonly settingsSections: QualifiedSettingsSectionContribution[] = [];
+  private readonly listeners = new Map<PluginLifecycleEventKind, { pluginId: string; listener: (event: PluginLifecycleEvent) => void }[]>();
+  private readonly disposers = new Map<string, (() => void)[]>();
   private readonly pluginIds = new Set<string>();
   private readonly registeringPluginIds = new Set<string>();
   private readonly gatewayPluginIds = new Set<string>();
@@ -47,13 +54,16 @@ export class PluginRegistry {
     try {
       const apiVersion: unknown = plugin.apiVersion;
       if (apiVersion !== 2) throw new Error(`Unsupported browser plugin API version for ${sourcePluginId}: ${String(apiVersion)} (expected 2)`);
-      const contributions = plugin.activate(Object.freeze({
+      const activation = plugin.activate(Object.freeze({
         apiVersion: 2,
         pluginId: sourcePluginId,
         runtimePluginId,
         html,
         svg,
-      })).contributions;
+        on: <K extends PluginLifecycleEventKind>(kind: K, listener: PluginLifecycleListener<K>) => this.subscribe(runtimePluginId, kind, listener),
+      }));
+      const contributions = activation.contributions;
+      if (activation.dispose !== undefined) this.addDisposer(runtimePluginId, activation.dispose);
       const contributionIds = new Set<QualifiedContributionId>();
       const actions = (contributions.actions ?? []).map((action) => this.qualifyAction(runtimePluginId, action, registration.machineId, registration.sourcePluginId, contributionIds));
       const workspacePanels = (contributions.workspacePanels ?? []).map((panel) => this.qualifyWorkspacePanel(runtimePluginId, panel, registration.machineId, registration.sourcePluginId, backendRevision, contributionIds));
@@ -62,6 +72,7 @@ export class PluginRegistry {
         ? (contributions.themes ?? []).map((theme) => this.qualifyTheme(runtimePluginId, theme, contributionIds))
         : [];
       const composer = (contributions.composer ?? []).map((contribution) => this.qualifyComposerContribution(runtimePluginId, contribution, registration.machineId, registration.sourcePluginId, contributionIds));
+      const settingsSections = (contributions.settingsSections ?? []).map((section) => this.qualifySettingsSection(runtimePluginId, section, registration.machineId, registration.sourcePluginId, contributionIds));
       const themePairs = registration.machineId === undefined
         ? (contributions.themePairs ?? []).map((pair) => this.qualifyThemePair(runtimePluginId, pair, contributionIds))
         : [];
@@ -74,6 +85,7 @@ export class PluginRegistry {
       this.themes.push(...themes);
       this.themePairs.push(...themePairs);
       this.composerContributions.push(...composer);
+      this.settingsSections.push(...settingsSections);
       if (registration.machineId === undefined) {
         this.gatewayPluginIds.add(runtimePluginId);
         if (machineSpecific) this.gatewayMachineSpecificPluginIds.add(runtimePluginId);
@@ -121,6 +133,72 @@ export class PluginRegistry {
     return this.composerContributions
       .filter((contribution) => selectedMachineId !== undefined && this.isContributionActive(contribution.pluginId, contribution.machineId, selectedMachineId, contribution.sourcePluginId))
       .sort((left, right) => (left.order ?? 1000) - (right.order ?? 1000) || left.title.localeCompare(right.title));
+  }
+
+  getSettingsSections(selectedMachineId: string | undefined): QualifiedSettingsSectionContribution[] {
+    return this.settingsSections
+      .filter((section) => selectedMachineId !== undefined && this.isContributionActive(section.pluginId, section.machineId, selectedMachineId, section.sourcePluginId))
+      .sort((left, right) => (left.order ?? 1000) - (right.order ?? 1000) || left.title.localeCompare(right.title));
+  }
+
+  /**
+   * Announce a host fact. One plugin throwing must not silence its
+   * siblings or the host, so listeners are isolated per call.
+   */
+  emit(event: PluginLifecycleEvent): void {
+    for (const entry of [...(this.listeners.get(event.kind) ?? [])]) {
+      try {
+        entry.listener(event);
+      } catch (error) {
+        console.error(`Plugin ${entry.pluginId} failed handling ${event.kind}`, error);
+      }
+    }
+  }
+
+  disposePlugin(runtimePluginId: string): void {
+    for (const [kind, entries] of this.listeners) {
+      this.listeners.set(kind, entries.filter((entry) => entry.pluginId !== runtimePluginId));
+    }
+    for (const dispose of this.disposers.get(runtimePluginId) ?? []) {
+      try {
+        dispose();
+      } catch (error) {
+        console.error(`Plugin ${runtimePluginId} failed while disposing`, error);
+      }
+    }
+    this.disposers.delete(runtimePluginId);
+  }
+
+  private subscribe<K extends PluginLifecycleEventKind>(runtimePluginId: string, kind: K, listener: PluginLifecycleListener<K>): () => void {
+    const entry = {
+      pluginId: runtimePluginId,
+      listener: (event: PluginLifecycleEvent) => { if (eventHasKind(event, kind)) listener(event); },
+    };
+    this.listeners.set(kind, [...(this.listeners.get(kind) ?? []), entry]);
+    return () => {
+      this.listeners.set(kind, (this.listeners.get(kind) ?? []).filter((candidate) => candidate !== entry));
+    };
+  }
+
+  private addDisposer(runtimePluginId: string, dispose: () => void): void {
+    this.disposers.set(runtimePluginId, [...(this.disposers.get(runtimePluginId) ?? []), dispose]);
+  }
+
+  private qualifySettingsSection(
+    pluginId: string,
+    section: SettingsSectionContribution,
+    machineId: string | undefined,
+    sourcePluginId: string | undefined,
+    contributionIds: Set<QualifiedContributionId>,
+  ): QualifiedSettingsSectionContribution {
+    return {
+      ...section,
+      id: this.qualify(pluginId, section.id, contributionIds),
+      pluginId,
+      localId: section.id,
+      ...(machineId === undefined ? {} : { machineId }),
+      ...(sourcePluginId === undefined ? {} : { sourcePluginId }),
+    };
   }
 
   getWorkspacePanels(): QualifiedWorkspacePanelContribution[] {
