@@ -44,9 +44,3 @@ export interface GoalRecordSummary {
   sourceRoot?: string;
 }
 
-export interface WorkspaceGoalsResponse {
-  goals: GoalRecordSummary[];
-  /** Absolute path of the goals directory that was read, present even when empty. */
-  directory: string;
-  generatedAt: string;
-}

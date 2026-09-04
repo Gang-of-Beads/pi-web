@@ -105,6 +105,8 @@ export interface PluginHostUi {
   readonly copyText: (text: string) => Promise<boolean>;
   readonly describeError: (error: unknown) => string;
   readonly surfaceStyles: CSSResultGroup;
+  /** The list chrome every built-in list carries, so a contributed list matches them. */
+  readonly listStyles: CSSResultGroup;
   readonly breakpoints: PluginBreakpoints;
 }
 

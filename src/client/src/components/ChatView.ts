@@ -14,7 +14,7 @@ import { ChatScrollController, distanceFromScrollBottom, findFirstVisibleArticle
 import { scrollEdgeClasses, ScrollEdgeTracker } from "../scrollEdges";
 import type { AskUserSubmission, PendingAskUser, PendingExtensionDialog, QueuedSessionMessage, SessionActivity, SessionStatus } from "../api";
 import { commandStateLabel, type CommandLedgerEntry } from "../commandLedger";
-import type { ActivityConversationView, ActivityOutputView, ClosedExtensionDialog, PanelLoad } from "../appState";
+import type { ActivityConversationView, ActivityOutputView, ClosedExtensionDialog } from "../appState";
 import {
   notificationAnnouncementLabel,
   notificationDismissLabel,
@@ -30,7 +30,6 @@ import {
   type SessionNotificationTarget,
 } from "../sessionNotifications";
 import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
-import "./GoalPanel";
 import type { GoalRecordSummary } from "../api";
 import { describeRunModel } from "../modelIdentity";
 import { isWaitingForUser } from "../sessionWaiting";
@@ -834,7 +833,6 @@ export class ChatView extends LitElement {
    * after the loading flag travelled from state to state and never once
    * reached this element: props that travel separately get forgotten.
    */
-  @property({ attribute: false }) goalsLoad: PanelLoad<GoalRecordSummary[]> = { state: "unloaded", key: undefined, data: [] };
   /** Whether the goals list answers for the workspace on screen. The tab's
       count is a claim about this workspace, so it only shows when the state
       behind it is keyed to the current selection (in flight, failed, and
@@ -1434,18 +1432,6 @@ export class ChatView extends LitElement {
             >
               <span class="drawer-tab-label">${notificationDrawerTabLabel(inbox, this.notificationInbox?.sessionId === this.sessionId)}</span>
             </button>
-            <button
-              type="button"
-              role="tab"
-              id="drawer-tab-goals"
-              class=${`drawer-tab drawer-tab-goals${tab === "goals" ? " selected" : ""}`}
-              aria-selected=${String(tab === "goals")}
-              tabindex=${tab === "goals" ? "0" : "-1"}
-              aria-controls="session-goal-list"
-              @click=${() => { this.selectTopDrawerTab("goals", collapsed); }}
-            >
-              <span class="drawer-tab-label">${goalsDrawerTabLabel(this.goalsLoad.data, this.goalsLoad.state === "loaded")}</span>
-            </button>
             ${sectionContext === undefined ? null : sections.map((section) => html`
             <button
               type="button"
@@ -1477,7 +1463,7 @@ export class ChatView extends LitElement {
               aria-label=${toggleLabel}
               title=${toggleLabel}
               aria-expanded=${String(!collapsed)}
-              aria-controls=${tab === "activity" ? "session-activity-list" : tab === "goals" ? "session-goal-list" : "session-notification-list"}
+              aria-controls=${tab === "activity" ? "session-activity-list" : tab === "notifications" ? "session-notification-list" : `drawer-panel-${tab}`}
               @click=${() => { this.toggleTopDrawer(collapsed); }}
             >${renderNotificationDisclosureIcon(collapsed)}</button>
           </div>
@@ -1485,18 +1471,10 @@ export class ChatView extends LitElement {
         <div class="drawer-body" ?hidden=${collapsed}>
           ${tab === "activity" ? this.renderActivityPanel(activity) : null}
           ${tab === "notifications" ? this.renderNotificationPanel(inbox, this.notificationInbox?.sessionId === this.sessionId) : null}
-          ${tab === "goals" ? html`
-            <div class="goal-drawer-panel" id="session-goal-list" role="tabpanel" aria-labelledby="drawer-tab-goals">
-              <goal-panel
-                .goalsLoad=${this.goalsLoad}
-                .presence=${this.status?.pluginSurfaces?.goals}
-                ?canRunCommands=${true}
-                .commandInFlight=${this.goalCommandInFlight}
-                .onRunCommand=${(goal: GoalRecordSummary, command: string) => this.onRunGoalCommand?.(goal, command)}
-                .onRefresh=${() => this.onRefreshGoals?.()}
-              ></goal-panel>
-            </div>
-          ` : null}
+          ${sectionContext === undefined ? null : sections.filter((section) => section.id === tab).map((section) => html`
+            <div class="drawer-section-panel" id=${`drawer-panel-${section.id}`} role="tabpanel" aria-labelledby=${`drawer-tab-${section.id}`}>
+              ${section.render(sectionContext)}
+            </div>`)}
         </div>
       </section>
     `;
@@ -3648,14 +3626,6 @@ export function notificationDrawerTabLabel(inbox: SelectedSessionNotificationVie
   return loaded ? "Notifications (0)" : "Notifications";
 }
 
-/**
- * The goals tab's label. The count is a claim about the workspace, so it only
- * appears when the goals state answers for the current selection; a read that
- * is in flight, failed, or keyed to another workspace shows the bare name.
- */
-export function goalsDrawerTabLabel(goals: readonly unknown[], known: boolean): string {
-  return known ? `Goals ${String(goals.length)}` : "Goals";
-}
 
 /**
  * One-line census of the activity section, so a folded drawer still answers

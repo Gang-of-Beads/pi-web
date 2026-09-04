@@ -32,7 +32,6 @@ function drawerFor(surfaces?: PluginSurfaceState): unknown {
   const view = new ChatView();
   view.sessionId = "s";
   view.status = status(surfaces);
-  view.goalsLoad = { state: "loaded", key: "k", data: [] };
   const render: unknown = Reflect.get(view, "renderTopDrawer");
   if (typeof render !== "function") throw new Error("Could not reach ChatView.renderTopDrawer");
   return render.call(view);

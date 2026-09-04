@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { GoalRecordSummary, GoalTaskSummary } from "./api";
+import type { GoalRecordSummary, GoalTaskSummary } from "./goalTypes.js";
 import {
   findCurrentTask,
   flattenGoalTasks,
@@ -9,7 +9,7 @@ import {
   goalStatusLabel,
   isGoalBlocked,
   isGoalFinished,
-} from "./goalProgress";
+} from "./goalProgress.js";
 
 describe("goalProgressFraction", () => {
   it("reports the completed share", () => {

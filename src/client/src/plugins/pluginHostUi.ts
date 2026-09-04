@@ -1,6 +1,6 @@
 import { writeClipboardText } from "../clipboard";
 import { COARSE_OR_MOBILE_MEDIA_QUERY, DESKTOP_SIDE_BY_SIDE_MEDIA_QUERY, MOBILE_NAVIGATION_MEDIA_QUERY } from "../breakpoints";
-import { interactiveSurfaceStyles } from "../components/shared";
+import { interactiveSurfaceStyles, listStyles } from "../components/shared";
 import { describeError } from "../notice";
 import type { PluginHostUi } from "./types";
 
@@ -18,6 +18,7 @@ export function createPluginHostUi(): PluginHostUi {
     copyText: (text) => writeClipboardText(text),
     describeError,
     surfaceStyles: interactiveSurfaceStyles,
+    listStyles,
     breakpoints: {
       coarseOrMobile: COARSE_OR_MOBILE_MEDIA_QUERY,
       mobileNavigation: MOBILE_NAVIGATION_MEDIA_QUERY,

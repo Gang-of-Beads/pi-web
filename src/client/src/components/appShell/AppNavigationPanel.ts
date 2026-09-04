@@ -2,7 +2,6 @@ import { LitElement, css, html } from "lit";
 import { focusedContextName } from "../../contextName";
 import { customElement, property, query } from "lit/decorators.js";
 import type { GoalRecordSummary, Machine, MachineHealth, Project, SessionActivity, SessionInfo, SessionStatus, Workspace } from "../../api";
-import type { PanelLoad } from "../../appState";
 import type { DrawerSectionContext, QualifiedDrawerSectionContribution } from "../../plugins/types";
 import type { MachineStatusSnapshot } from "../../../../shared/machineStatus";
 import type { WorkspaceLabelItem } from "../../plugins/types";
@@ -16,7 +15,6 @@ import "../MachineSwitcher";
 import "../ProjectList";
 import "../WorkspaceList";
 import "../SessionList";
-import "../GoalPanel";
 
 export type NavigationFocusTarget = NavigationSection | "chat";
 
@@ -86,7 +84,6 @@ export class AppNavigationPanel extends LitElement {
    * was set in state and never once reached this panel, so a read in flight
    * rendered as “no goals”.
    */
-  @property({ attribute: false }) goalsLoad: PanelLoad<GoalRecordSummary[]> = { state: "unloaded", key: undefined, data: [] };
   @property({ attribute: false }) drawerSections: readonly QualifiedDrawerSectionContribution[] = [];
   @property() sectionMachineId = "local";
   /** Whether acting on the listed goals is allowed. Withheld when the goals
@@ -167,7 +164,6 @@ export class AppNavigationPanel extends LitElement {
       ${this.renderProjectList(false, visible !== "projects")}
       ${this.renderWorkspaceList(false, visible !== "workspaces")}
       ${this.renderSessionList(false, visible !== "sessions")}
-      ${visible === "sessions" ? this.renderGoalPanel() : null}
       ${visible === "sessions" ? this.renderContributedSections() : null}
     `;
   }
@@ -216,7 +212,6 @@ export class AppNavigationPanel extends LitElement {
       ${this.renderProjectList(false, visible !== "projects", true)}
       ${this.renderWorkspaceList(false, visible !== "workspaces")}
       ${this.renderSessionList(false, visible !== "sessions")}
-      ${visible === "sessions" ? this.renderGoalPanel() : null}
       ${visible === "sessions" ? this.renderContributedSections() : null}
     `;
   }
@@ -339,25 +334,6 @@ export class AppNavigationPanel extends LitElement {
     return { sessionId, machineId: this.sectionMachineId, workspacePath: this.selectedWorkspace?.path };
   }
 
-  private renderGoalPanel() {
-    if (this.selectedWorkspace === undefined) return null;
-    // Same test the section always made, read off the slot instead of three
-    // flags: a read in flight, one that failed, and one that found rows are
-    // each worth the section's height. Unloaded, and a completed read that
-    // found nothing, are not.
-    const worthShowing = this.goalsLoad.state === "loading" || this.goalsLoad.state === "failed" || this.goalsLoad.data.length > 0;
-    if (!worthShowing) return null;
-    return html`
-      <goal-panel
-        .goalsLoad=${this.goalsLoad}
-        .canRunCommands=${this.selectedSession !== undefined && this.canRunGoalCommands}
-        .commandInFlight=${this.goalCommandInFlight}
-        .onRunCommand=${(goal: GoalRecordSummary, command: string) => this.onRunGoalCommand?.(goal, command)}
-        .onRefresh=${() => this.onRefreshGoals?.()}
-        .onArchive=${(goal: GoalRecordSummary) => this.onArchiveGoal?.(goal)}
-      ></goal-panel>
-    `;
-  }
 
   private renderSessionList(collapsible: boolean, hidden = false) {
     return html`

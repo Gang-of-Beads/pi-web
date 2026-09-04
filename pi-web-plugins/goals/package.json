@@ -4,7 +4,7 @@
   "type": "module",
   "piWeb": {
     "plugins": [
-      { "id": "goals", "serverModule": "server-plugin.js" }
+      { "id": "goals", "browserRoot": ".", "module": "pi-web-plugin.js", "serverModule": "server-plugin.js", "machineSpecific": true }
     ]
   }
 }

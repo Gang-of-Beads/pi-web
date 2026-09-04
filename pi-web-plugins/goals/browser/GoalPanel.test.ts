@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { GoalRecordSummary } from "../api";
-import { GoalPanel } from "./GoalPanel";
+import type { GoalRecordSummary } from "./goalTypes.js";
+import { GoalPanel } from "./GoalPanel.js";
 
 afterEach(() => { document.body.replaceChildren(); });
 

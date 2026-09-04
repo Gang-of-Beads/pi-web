@@ -1,7 +1,7 @@
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import type { GoalRecordSummary, GoalTaskSummary } from "../api";
-import type { PanelLoad } from "../appState";
+import type { GoalRecordSummary, GoalTaskSummary } from "./goalTypes.js";
+import type { GoalsLoad } from "./goalsLoad.js";
 import {
   findCurrentTask,
   flattenGoalTasks,
@@ -12,8 +12,8 @@ import {
   goalStatusLabel,
   isGoalBlocked,
   isGoalFinished,
-} from "../goalProgress";
-import { listStyles, interactiveSurfaceStyles } from "./shared";
+} from "./goalProgress.js";
+import { goalsPanelStyles } from "./hostUi.js";
 
 /**
  * The goals recorded for the selected workspace, with per-task progress.
@@ -38,7 +38,7 @@ export class GoalPanel extends LitElement {
    * as unloaded here. Three travelling flags forgot each other once already -
    * the loading flag existed in state and never once reached this panel.
    */
-  @property({ attribute: false }) goalsLoad: PanelLoad<GoalRecordSummary[]> = { state: "unloaded", key: undefined, data: [] };
+  @property({ attribute: false }) goalsLoad: GoalsLoad<GoalRecordSummary> = { state: "unloaded", key: undefined, data: [] };
   @property({ attribute: false }) onRefresh?: () => void | Promise<void>;
   @property({ attribute: false }) presence?: "present" | "absent" | "failed";
   /** Archive a goal the agent is not going to finish; confirmed before it runs. */
@@ -88,7 +88,7 @@ export class GoalPanel extends LitElement {
    * What the number beside the heading counts. Finished goals stay listed for
    * the record, so counting them would advertise work that is over.
    */
-  private get rows(): GoalRecordSummary[] {
+  private get rows(): readonly GoalRecordSummary[] {
     // A slot whose key does not match this panel's selection is unloaded here,
     // whatever it holds: rows kept across a key change would be another
     // project's goals rendered as this one's.
@@ -283,7 +283,7 @@ export class GoalPanel extends LitElement {
     this.expanded = next;
   }
 
-  static override styles = [interactiveSurfaceStyles, listStyles, css`
+  static override styles = [...goalsPanelStyles(), css`
     h2 { min-height: 30px; }
     h2 > .section-count { flex: 1 1 auto; margin-inline-start: var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: 400; letter-spacing: normal; }
     .refresh-entry { flex: 0 0 auto; display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; font-size: var(--pi-text-sm); }

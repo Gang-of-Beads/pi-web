@@ -1,4 +1,4 @@
-import type { GoalRecordSummary, GoalTaskSummary } from "./api";
+import type { GoalRecordSummary, GoalTaskSummary } from "./goalTypes.js";
 
 /**
  * Presentation helpers for goal records.
