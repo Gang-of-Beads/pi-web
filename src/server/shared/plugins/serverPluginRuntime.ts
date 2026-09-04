@@ -1,6 +1,7 @@
 import { pathToFileURL } from "node:url";
 import { piWebDataDir } from "../../../config.js";
 import { createPluginScopedStorage } from "./pluginScopedStorage.js";
+import { parsePluginOperations, requirePluginOperation, UnknownPluginOperationError, type PluginOperationMap } from "./pluginOperations.js";
 import type {
   JsonObject,
   JsonValue,
@@ -10,6 +11,7 @@ import type {
   ProviderRequestContext,
   ServerPluginActivation,
   ServerPluginActivationContext,
+  ServerPluginOperation,
   ServerPluginExecFileRequest,
   ServerPluginExecFileResult,
   ServerPluginHealth,
@@ -85,6 +87,7 @@ interface ActiveServerPlugin {
   entry: PiWebPluginCatalogEntry;
   plugin: PiWebServerPlugin;
   activation: ServerPluginActivation;
+  operations?: PluginOperationMap;
   contribution?: ServerPluginProviderContribution;
 }
 
@@ -158,6 +161,18 @@ export class ServerPluginRuntime {
 
   providerContributions(): readonly ServerPluginProviderContribution[] {
     return Object.freeze(this.activePlugins.flatMap((active) => active.contribution === undefined ? [] : [active.contribution]));
+  }
+
+  /**
+   * Call one plugin's declared operation. A plugin that is not loaded and an
+   * operation that was never declared both refuse loudly: answering emptily
+   * would read as a successful call that did nothing.
+   */
+  async callOperation(pluginId: string, operation: string, input: unknown, signal: AbortSignal): Promise<JsonValue> {
+    const active = this.activePlugins.find((candidate) => candidate.entry.id === pluginId);
+    if (active === undefined) throw new UnknownPluginOperationError(`No server plugin named ${pluginId} is active`);
+    const handler = requirePluginOperation(active.operations, operation);
+    return await handler(input, { signal });
   }
 
   async inspectHealth(): Promise<readonly ServerPluginHealthInspection[]> {
@@ -258,6 +273,7 @@ export class ServerPluginRuntime {
       })));
       phase = "validate";
       const loadedActivation = parseActivation(activationValue);
+      const operations = parsePluginOperations(loadedActivation.operations);
       activation = loadedActivation;
       phase = "start";
       const start = loadedActivation.start?.bind(loadedActivation);
@@ -280,6 +296,7 @@ export class ServerPluginRuntime {
         entry,
         plugin: loadedPlugin,
         activation: loadedActivation,
+        ...(operations === undefined ? {} : { operations }),
         ...(contribution === undefined ? {} : { contribution }),
       }));
       this.recordsById.set(entry.id, recordFor(entry, { state: "active", name: loadedPlugin.name }));
@@ -399,6 +416,8 @@ function parseActivation(value: unknown): ServerPluginActivation {
     throw new IncompatibleServerPluginError("Server plugins may contribute only one workspaceProvider");
   }
   const workspaceProviderValue = value["workspaceProvider"];
+  parsePluginOperations(value["operations"]);
+  const operations = isOperationRecord(value["operations"]) ? value["operations"] : undefined;
   const candidate = {
     workspaceProvider: workspaceProviderValue === undefined ? undefined : snapshotWorkspaceProvider(workspaceProviderValue),
     start: value["start"],
@@ -417,10 +436,15 @@ function parseActivation(value: unknown): ServerPluginActivation {
   const health = candidate.health?.bind(value);
   return Object.freeze({
     ...(candidate.workspaceProvider === undefined ? {} : { workspaceProvider: candidate.workspaceProvider }),
+    ...(operations === undefined ? {} : { operations }),
     ...(start === undefined ? {} : { start: (signal: AbortSignal) => start(signal) }),
     ...(stop === undefined ? {} : { stop: (signal: AbortSignal) => stop(signal) }),
     ...(health === undefined ? {} : { health: (signal: AbortSignal) => health(signal) }),
   });
+}
+
+function isOperationRecord(value: unknown): value is Readonly<Record<string, ServerPluginOperation>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isServerPluginActivation(value: unknown): value is ServerPluginActivation {

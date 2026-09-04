@@ -69,8 +69,17 @@ export interface ServerPluginExecFileResult {
  * and are aborted when it times out or settles. They are not plugin-lifetime
  * shutdown signals; the host invokes `stop()` explicitly during shutdown.
  */
+/**
+ * A named JSON operation the host exposes as
+ * `api/plugins/<pluginId>/<operation>`. The plugin declares the name; it never
+ * picks a path, and an undeclared name is refused rather than answered.
+ */
+export type ServerPluginOperation = (input: unknown, context: {
+    signal: AbortSignal;
+}) => JsonValue | Promise<JsonValue>;
 export interface ServerPluginActivation {
     workspaceProvider?: WorkspaceProvider;
+    operations?: Readonly<Record<string, ServerPluginOperation>>;
     /** Initialize resources within one host-bounded start invocation. */
     start?(signal: AbortSignal): MaybePromise<void>;
     /** Release resources within one host-bounded stop invocation. */
