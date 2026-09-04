@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { describe, expect, it, vi } from "vitest";
-import type { PiWebSpeechToTextConfig } from "../../shared/apiTypes";
+import type { PiWebSpeechToTextConfig } from "./voiceConfig";
 import type { VoiceCaptureState } from "./voiceCapture";
 import { VoiceController, type VoiceRecorder } from "./voiceController";
 

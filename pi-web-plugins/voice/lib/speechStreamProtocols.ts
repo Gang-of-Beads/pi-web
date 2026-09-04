@@ -1,4 +1,4 @@
-import type { PiWebSpeechStreamingConfig } from "../../shared/apiTypes";
+import type { PiWebSpeechStreamingConfig } from "./voiceConfig";
 import { SPEECH_DELTA_MODES, type SpeechDeltaMode } from "./speechTranscriptBuffer";
 /**
  * Decoding one streaming-transcription message into what the composer needs.

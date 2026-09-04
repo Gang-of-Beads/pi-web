@@ -18,21 +18,11 @@ import { isRequestTimeout } from "../api/requestDeadline";
 import { newClientMessageId } from "../messageDelivery";
 import { historyIndexStep, type HistoryDirection, loadPromptHistory, rememberPromptHistory, searchPromptHistory } from "../promptHistory";
 import { createMobilePromptEnterMedia, readPromptEnterPreference, shouldSendPromptOnEnterShortcut, shouldUsePromptEnterShiftShortcut } from "../promptEnterBehavior";
-import { createBrowserVoiceRecorder } from "../browserVoiceRecorder";
-import { isDictationConfigured } from "../speechToText";
-import { resolveSpeechStreaming } from "../speechStreamProtocols";
-import { isVoiceCaptureActive, voiceCaptureLabel, type VoiceCaptureState } from "../voiceCapture";
-import { requestSpeechToken } from "../api/speechToken";
-import { LiveDictation } from "../liveDictation";
-import { captureMicrophoneSamples } from "../microphoneSamples";
-import { VoiceController } from "../voiceController";
-import type { PiWebSpeechToTextConfig } from "../../../shared/apiTypes";
 import { type CompletionItem} from "./shared";
 import { renderAttachIcon, renderSendIcon, renderQueueIcon, renderSteerIcon, renderStopIcon, renderThinkingGauge } from "./promptEditorIcons";
 import { thinkingGauge, thinkingLevelLabel } from "../../../shared/thinkingLevels";
 import "./AutocompleteMenu";
 import "./PromptHistoryPanel";
-import { draftWithDictation } from "../dictationDraft.js";
 
 export const promptEditorStyles = css`
   /* Mobile browsers paint a rectangular highlight on tap, which looks pasted-on
@@ -94,8 +84,6 @@ export const promptEditorStyles = css`
   .select-thinking .prompt-thinking-gauge .gauge-bar-active { opacity: 1; }
   .editor-attach { position: absolute; right: var(--pi-space-4); bottom: var(--pi-space-4); z-index: 2; width: 32px; height: 32px; }
   .editor-attach .prompt-action-icon { width: 16px; height: 16px; }
-  .editor-dictate { font-size: var(--pi-text-2xs); }
-  .editor-dictate.listening { color: var(--pi-danger); border-color: var(--pi-danger); }
   textarea, .markdown-editor .cm-editor { box-sizing: border-box; width: 100%; min-height: 54px; max-height: 220px; resize: none; overflow: hidden; border-radius: var(--pi-radius-md); border: 1px solid var(--pi-border); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px)/1.4 var(--pi-control-font-family, system-ui, sans-serif); }
   textarea { overflow-y: auto; padding: var(--pi-space-4); padding-right: calc(var(--pi-space-4) + 36px); }
   /* A phone with the keyboard open leaves roughly 400px of viewport, and a
@@ -261,16 +249,10 @@ export class PromptEditor extends LitElement {
   @state() private selectedIndex = 0;
   /** Whether the prompt-history sheet is open over the transcript. */
   @state() private historyOpen = false;
-  /** Absent means dictation is not offered at all. */
-  @property({ attribute: false }) speechToText?: PiWebSpeechToTextConfig;
   /** This session's own user prompts: history that reached the server, so the
    * picker works on a device that never typed here. Most recent first. */
   @property({ attribute: false }) sessionPrompts: string[] = [];
-  @state() private voiceState: VoiceCaptureState = { kind: "idle" };
   @state() private zoomedAttachment?: { src: string; alt: string } | undefined;
-  private voice?: VoiceController;
-  /** The typed text a live dictation started from; cleared when it ends. */
-  private dictationBase: string | undefined;
   @state() private attachments: PendingAttachment[] = [];
   @state() private attachmentError: string | undefined = undefined;
   /**
@@ -388,7 +370,6 @@ export class PromptEditor extends LitElement {
         ${this.renderAttachments()}
         <div class="editor-wrap">
           ${shellMode ? html`<div class="mode-hint">Shell command${shellInputMode.excludeFromContext ? " · excluded from context" : ""}</div>` : null}
-          ${this.renderVoiceHint()}
           ${this.renderComposerContributionStatus()}
           ${this.isCompacting && !shellMode ? html`<div class="mode-hint">Compacting history · message will be queued</div>` : null}
           <div
@@ -403,7 +384,6 @@ export class PromptEditor extends LitElement {
           ${this.renderComposerContributions("leading")}
           ${this.renderCompactStatus()}
           ${this.renderHistoryButton()}
-          ${this.renderDictateButton()}
           ${this.renderComposerContributions("trailing")}
           <button class="icon-button send-button" ?disabled=${busy} title=${queuesInput ? "Steer — joins the current turn at the next safe point" : "Send message"} aria-label=${queuesInput ? "Steer current response (queued if busy)" : "Send message"} @click=${() => { this.send(this.canSteer ? "steer" : "followUp"); }}>${this.canSteer ? renderSteerIcon() : queuesInput ? renderQueueIcon() : renderSendIcon()}</button>
           <button class="icon-button stop-button" ?disabled=${this.disabled || !this.canStop} title=${this.canStop ? "Stop current work and clear queued messages" : "Nothing running"} aria-label="Stop current work" @click=${() => this.onStop?.()}>${renderStopIcon()}</button>
@@ -679,32 +659,6 @@ export class PromptEditor extends LitElement {
     return this.attachments.map((attachment) => pendingToPromptAttachment(attachment));
   }
 
-  /**
-   * The dictation control, rendered only when a transcription endpoint is
-   * configured: without one there is nothing to send audio to, and offering a
-   * microphone that cannot work would be worse than not offering it.
-   */
-  /**
-   * A control of its own, in the row with the others. Starting dictation by
-   * holding the composer was tried and taken back: holding a text field is how
-   * a phone selects text, so the two gestures fought over the same press.
-   */
-  private renderVoiceHint() {
-    const state = this.voiceState;
-    if (state.kind === "idle") return null;
-    const text = state.kind === "error" ? state.message
-      : state.kind === "unavailable" ? state.reason
-      : state.kind === "denied" ? "Microphone permission refused"
-      : state.kind === "transcribing" ? "Transcribing…"
-      : "Listening…";
-    return html`<div class=${`mode-hint${state.kind === "error" || state.kind === "denied" || state.kind === "unavailable" ? " mode-hint-problem" : ""}`} role="status">${text}</div>`;
-  }
-
-  /**
-   * Prompt history answers Ctrl/Cmd+R, which a phone cannot type. The same
-   * sheet gets a visible door in the controls row whenever this session has
-   * prompts behind it.
-   */
   private renderHistoryButton() {
     if (this.disabled) return null;
     const key = draftStorageKey(this.machineId, this.sessionId);
@@ -746,52 +700,6 @@ export class PromptEditor extends LitElement {
     this.focusInput();
   }
 
-  private renderDictateButton() {
-    if (!isDictationConfigured(this.speechToText)) return null;
-    const streaming = resolveSpeechStreaming(this.speechToText.streaming).kind !== "unavailable";
-    const label = voiceCaptureLabel(this.voiceState, { streaming });
-    const active = isVoiceCaptureActive(this.voiceState);
-    return html`
-      <button
-        class=${`editor-dictate icon-button${active ? " listening" : ""}`}
-        type="button"
-        ?disabled=${this.disabled || this.voiceState.kind === "transcribing"}
-        title=${label}
-        aria-label=${label}
-        aria-pressed=${String(active)}
-        @click=${() => { void this.toggleDictation(); }}
-      >${active ? "\u25A0" : "\u25CF"}</button>
-    `;
-  }
-
-  private async toggleDictation(): Promise<void> {
-    this.voice ??= new VoiceController(
-      {
-        recorder: createBrowserVoiceRecorder(),
-        createLiveDictation: (onText, onError) => new LiveDictation({
-          requestToken: requestSpeechToken,
-          openSocket: (url) => new WebSocket(url),
-          captureAudio: captureMicrophoneSamples,
-          onText,
-          onError,
-          newRequestId: () => crypto.randomUUID().replaceAll("-", ""),
-        }),
-      },
-      {
-        // A dictation that is no longer listening has finished its utterance,
-        // so the next one starts from whatever the draft holds by then.
-        onState: (state) => { this.voiceState = state; if (state.kind !== "listening") this.dictationBase = undefined; },
-        // Inserted, never sent: the user reads what was heard before it goes
-        // anywhere.
-        onTranscript: (text) => { this.dictationBase = undefined; this.insertDictatedText(text); },
-        // Every live report repeats everything heard so far, so it replaces the
-        // span dictation owns instead of being appended to it.
-        onLiveTranscript: (text) => { this.applyLiveDictation(text); },
-      },
-    );
-    await this.voice.toggle(this.speechToText);
-  }
-
   /**
    * Append dictated text to whatever is already typed rather than replacing it.
    *
@@ -808,6 +716,7 @@ export class PromptEditor extends LitElement {
       insertText: (text: string) => { this.insertDictatedText(text); },
       replaceDraft: (text: string) => { this.replaceText(text); },
       notify: (message: string, severity: "info" | "warning" | "error") => { this.onPluginNotice?.(message, severity); },
+      requestUpdate: () => { this.requestUpdate(); },
     };
   }
 
@@ -843,18 +752,6 @@ export class PromptEditor extends LitElement {
     const current = this.editor?.state.doc.toString() ?? this.draft;
     const separator = current === "" || current.endsWith(" ") || current.endsWith("\n") ? "" : " ";
     this.replaceText(`${current}${separator}${text}`);
-  }
-
-  /**
-   * Show what has been heard so far, replacing the previous report.
-   *
-   * The text typed before dictation started is captured once and kept; every
-   * later report is folded onto that same base, so the composer holds one copy
-   * of the utterance rather than one per update.
-   */
-  private applyLiveDictation(text: string): void {
-    this.dictationBase ??= this.editor?.state.doc.toString() ?? this.draft;
-    this.replaceText(draftWithDictation(this.dictationBase, text));
   }
 
   private effectiveAttachmentDelivery(): PromptAttachmentDelivery {

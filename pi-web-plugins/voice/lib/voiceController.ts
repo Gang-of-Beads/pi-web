@@ -1,4 +1,4 @@
-import type { PiWebSpeechToTextConfig } from "../../shared/apiTypes";
+import type { PiWebSpeechToTextConfig } from "./voiceConfig";
 import { chooseDictationRoute, DictationRoute } from "./dictationRoute";
 import { resolveSpeechStreaming } from "./speechStreamProtocols";
 import { isDictationConfigured, transcribeAudio, type TranscriptionResult } from "./speechToText";

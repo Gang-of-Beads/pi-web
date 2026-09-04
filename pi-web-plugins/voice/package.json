@@ -1,0 +1,9 @@
+{
+  "name": "@pi-web/voice-plugin",
+  "private": true,
+  "piWeb": {
+    "plugins": [
+      { "id": "voice", "browserRoot": ".", "module": "pi-web-plugin.js", "machineSpecific": true }
+    ]
+  }
+}

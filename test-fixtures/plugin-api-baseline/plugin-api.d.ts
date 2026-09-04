@@ -24,6 +24,11 @@ export interface PluginActivationContext {
     readonly on?: <K extends PluginLifecycleEventKind>(kind: K, listener: PluginLifecycleListener<K>) => () => void;
     /** This plugin's own configuration block, or undefined when unconfigured. */
     readonly settings?: PluginSettings | undefined;
+    /** Call one of this host's JSON endpoints; the host owns path resolution. */
+    readonly fetchJson?: (path: string, init?: {
+        method?: string;
+        body?: unknown;
+    }) => Promise<unknown>;
 }
 export type PluginLifecycleEvent = {
     kind: "session-selected";
@@ -100,6 +105,8 @@ export interface ComposerRuntimeContext {
     insertText: (text: string) => void;
     replaceDraft: (text: string) => void;
     notify: (message: string, severity: "info" | "warning" | "error") => void;
+    /** Ask the composer to redraw after state only the plugin can see changed. */
+    requestUpdate: () => void;
 }
 export interface ComposerStatusLine {
     text: string;

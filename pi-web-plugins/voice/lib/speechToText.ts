@@ -1,4 +1,4 @@
-import type { PiWebSpeechToTextConfig } from "../../shared/apiTypes";
+import type { PiWebSpeechToTextConfig } from "./voiceConfig";
 
 /**
  * Sending recorded speech for transcription.

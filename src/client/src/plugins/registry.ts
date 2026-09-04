@@ -32,6 +32,11 @@ export class PluginRegistry {
   private settingsSections: QualifiedSettingsSectionContribution[] = [];
   private messageRenderers: QualifiedMessageRendererContribution[] = [];
   private readonly settingsByPlugin = new Map<string, PluginSettings>();
+  private readonly fetchJson: ((path: string, init?: { method?: string; body?: unknown }) => Promise<unknown>) | undefined;
+
+  constructor(hostServices?: { fetchJson?: (path: string, init?: { method?: string; body?: unknown }) => Promise<unknown> }) {
+    this.fetchJson = hostServices?.fetchJson;
+  }
   private readonly listeners = new Map<PluginLifecycleEventKind, { pluginId: string; listener: (event: PluginLifecycleEvent) => void }[]>();
   private readonly disposers = new Map<string, (() => void)[]>();
   private readonly pluginIds = new Set<string>();
@@ -64,6 +69,7 @@ export class PluginRegistry {
         runtimePluginId,
         html,
         svg,
+        ...(this.fetchJson === undefined ? {} : { fetchJson: this.fetchJson }),
         on: <K extends PluginLifecycleEventKind>(kind: K, listener: PluginLifecycleListener<K>) => this.subscribe(runtimePluginId, kind, listener),
       }));
       const contributions = activation.contributions;

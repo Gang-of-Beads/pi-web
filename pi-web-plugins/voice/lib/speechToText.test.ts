@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { describe, expect, it, vi } from "vitest";
-import type { PiWebSpeechToTextConfig } from "../../shared/apiTypes";
+import type { PiWebSpeechToTextConfig } from "./voiceConfig";
 import { extractTranscript, isDictationConfigured, transcribeAudio } from "./speechToText";
 
 const config: PiWebSpeechToTextConfig = { endpoint: "http://127.0.0.1:9000/v1/audio/transcriptions" };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { draftWithDictation } from "../dictationDraft.js";
+import { draftWithDictation } from "./dictationDraft.js";
 
 /**
  * The seam between a cumulative reporter and an appending consumer.

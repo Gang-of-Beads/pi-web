@@ -1,6 +1,7 @@
 import { css, LitElement, html, type TemplateResult } from "lit";
 import type { ChatLine } from "./shared";
 import { errorNoticePatch } from "../errorNotice";
+import { request } from "../api/http";
 import { describeError, RetiredBy } from "../notice";
 import { clearPlaceholderFrame, notePlaceholderFrame } from "../historyWrites";
 import { bannerHoldDecision } from "./bannerHold";
@@ -3568,7 +3569,12 @@ export class PiWebApp extends LitElement {
 }
 
 function createPluginRegistry(): PluginRegistry {
-  const registry = new PluginRegistry();
+  const registry = new PluginRegistry({
+    fetchJson: (path, init) => request<unknown>(path, (value) => value, {
+      ...(init?.method === undefined ? {} : { method: init.method }),
+      ...(init?.body === undefined ? {} : { body: JSON.stringify(init.body) }),
+    }),
+  });
   registry.register({ id: "core", plugin: corePlugin });
   registry.register({ id: "themes", plugin: themePackPlugin });
   return registry;
