@@ -61,6 +61,25 @@ export interface PluginContributions {
     themePairs?: ThemePairContribution[];
     composer?: ComposerContribution[];
     settingsSections?: SettingsSectionContribution[];
+    messageRenderers?: MessageRendererContribution[];
+}
+/**
+ * Claims one custom payload tag in the transcript. The runtime supplies the
+ * card chrome so plugin cards keep the corner and settled-outcome contracts;
+ * an unclaimed tag renders as an honest unknown card, never as nothing.
+ */
+export interface MessageRendererViewModel {
+    readonly sessionId: string;
+    readonly messageId: string;
+    readonly tag: string;
+    readonly payload: unknown;
+    readonly streaming: boolean;
+    readonly createdAt: string | undefined;
+}
+export interface MessageRendererContribution {
+    id: LocalContributionId;
+    tag: string;
+    render: (view: MessageRendererViewModel) => TemplateResult;
 }
 export type ComposerSlot = "leading" | "trailing";
 export interface ComposerRuntimeContext {

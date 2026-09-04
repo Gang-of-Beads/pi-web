@@ -1,6 +1,6 @@
 import { html, svg } from "lit";
 import { requirePluginBackendRevision } from "../../../shared/pluginBackendProtocol";
-import type { ComposerContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
+import type { ComposerContribution, MessageRendererContribution, QualifiedMessageRendererContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
 
 function eventHasKind<K extends PluginLifecycleEventKind>(event: PluginLifecycleEvent, kind: K): event is Extract<PluginLifecycleEvent, { kind: K }> {
   return event.kind === kind;
@@ -30,6 +30,7 @@ export class PluginRegistry {
   private readonly themePairs: QualifiedThemePairContribution[] = [];
   private readonly composerContributions: QualifiedComposerContribution[] = [];
   private readonly settingsSections: QualifiedSettingsSectionContribution[] = [];
+  private readonly messageRenderers: QualifiedMessageRendererContribution[] = [];
   private readonly listeners = new Map<PluginLifecycleEventKind, { pluginId: string; listener: (event: PluginLifecycleEvent) => void }[]>();
   private readonly disposers = new Map<string, (() => void)[]>();
   private readonly pluginIds = new Set<string>();
@@ -73,6 +74,7 @@ export class PluginRegistry {
         : [];
       const composer = (contributions.composer ?? []).map((contribution) => this.qualifyComposerContribution(runtimePluginId, contribution, registration.machineId, registration.sourcePluginId, contributionIds));
       const settingsSections = (contributions.settingsSections ?? []).map((section) => this.qualifySettingsSection(runtimePluginId, section, registration.machineId, registration.sourcePluginId, contributionIds));
+      const messageRenderers = (contributions.messageRenderers ?? []).map((renderer) => this.qualifyMessageRenderer(runtimePluginId, renderer, registration.machineId, registration.sourcePluginId, contributionIds));
       const themePairs = registration.machineId === undefined
         ? (contributions.themePairs ?? []).map((pair) => this.qualifyThemePair(runtimePluginId, pair, contributionIds))
         : [];
@@ -86,6 +88,7 @@ export class PluginRegistry {
       this.themePairs.push(...themePairs);
       this.composerContributions.push(...composer);
       this.settingsSections.push(...settingsSections);
+      this.messageRenderers.push(...messageRenderers);
       if (registration.machineId === undefined) {
         this.gatewayPluginIds.add(runtimePluginId);
         if (machineSpecific) this.gatewayMachineSpecificPluginIds.add(runtimePluginId);
@@ -142,6 +145,16 @@ export class PluginRegistry {
   }
 
   /**
+   * The renderer that claims a tag, or undefined when nobody does - which
+   * the transcript must render as an honest unknown card, never as nothing.
+   */
+  findMessageRenderer(tag: string, selectedMachineId: string | undefined): QualifiedMessageRendererContribution | undefined {
+    return this.messageRenderers.find((renderer) => renderer.tag === tag
+      && selectedMachineId !== undefined
+      && this.isContributionActive(renderer.pluginId, renderer.machineId, selectedMachineId, renderer.sourcePluginId));
+  }
+
+  /**
    * Announce a host fact. One plugin throwing must not silence its
    * siblings or the host, so listeners are isolated per call.
    */
@@ -182,6 +195,25 @@ export class PluginRegistry {
 
   private addDisposer(runtimePluginId: string, dispose: () => void): void {
     this.disposers.set(runtimePluginId, [...(this.disposers.get(runtimePluginId) ?? []), dispose]);
+  }
+
+  private qualifyMessageRenderer(
+    pluginId: string,
+    renderer: MessageRendererContribution,
+    machineId: string | undefined,
+    sourcePluginId: string | undefined,
+    contributionIds: Set<QualifiedContributionId>,
+  ): QualifiedMessageRendererContribution {
+    const claimed = this.messageRenderers.find((candidate) => candidate.tag === renderer.tag && candidate.machineId === machineId);
+    if (claimed !== undefined) throw new Error(`Message tag ${renderer.tag} is already rendered by ${claimed.id}`);
+    return {
+      ...renderer,
+      id: this.qualify(pluginId, renderer.id, contributionIds),
+      pluginId,
+      localId: renderer.id,
+      ...(machineId === undefined ? {} : { machineId }),
+      ...(sourcePluginId === undefined ? {} : { sourcePluginId }),
+    };
   }
 
   private qualifySettingsSection(

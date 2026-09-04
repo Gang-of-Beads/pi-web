@@ -93,6 +93,45 @@ export interface PluginContributions {
   themePairs?: ThemePairContribution[];
   composer?: ComposerContribution[];
   settingsSections?: SettingsSectionContribution[];
+  messageRenderers?: MessageRendererContribution[];
+}
+
+/**
+ * A message renderer claims one custom payload tag in the transcript.
+ *
+ * The transcript asks the registry before its built-in renderers and falls
+ * back to the honest card when nobody claims a tag, so an unknown payload
+ * renders as unknown rather than disappearing. A renderer receives a frozen
+ * view model and returns a body only: the runtime supplies the card chrome,
+ * which is what keeps the corner and settled-outcome contracts true for
+ * plugin cards by construction rather than by each plugin remembering.
+ *
+ * Claims are resolved first-writer-wins in registration order, and the
+ * registry refuses a second claim on a tag so a silent override cannot
+ * happen.
+ */
+export interface MessageRendererViewModel {
+  readonly sessionId: string;
+  readonly messageId: string;
+  readonly tag: string;
+  readonly payload: unknown;
+  readonly streaming: boolean;
+  readonly createdAt: string | undefined;
+}
+
+export interface MessageRendererContribution {
+  id: LocalContributionId;
+  /** The custom payload tag this renderer claims. */
+  tag: string;
+  render: (view: MessageRendererViewModel) => TemplateResult;
+}
+
+export interface QualifiedMessageRendererContribution extends MessageRendererContribution {
+  id: QualifiedContributionId;
+  pluginId: PluginId;
+  localId: LocalContributionId;
+  machineId?: string;
+  sourcePluginId?: PluginId;
 }
 
 /**
