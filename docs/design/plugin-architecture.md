@@ -342,3 +342,27 @@ The rule while they are split but not yet published:
 Re-splitting is a single command per plugin:
 `git subtree split --prefix=pi-web-plugins/<name> -b split-<name>` followed by
 `git push <repo> split-<name>:main`.
+
+## The goals panel needs its own data path (2026-09-04)
+
+The drawer seam exists and the goals plugin owns the store, so moving
+`GoalPanel` looked like the last file move of the wave. It is not: the panel is
+fed `goalsLoad` from core state, refreshed by a core controller, and rendered
+in two places - the chat drawer and the navigation panel. Moving the component
+without the data would leave the core holding one plugin's state and the plugin
+holding its view, which is the split this refactor exists to remove; the move
+was reverted rather than left half-done.
+
+What the wave actually needs, in order:
+
+1. The plugin fetches its own goals through its own operation, keyed by
+   workspace, with its own loading and failure states. Absence stays three
+   states, not two: unloaded, loaded-empty, and failed.
+2. The navigation panel gains the same contributed-section seam the drawer
+   has, so both surfaces render the plugin's section rather than a component
+   core imports.
+3. Only then do `GoalPanel`, `goalProgress`, `goalsLoad` and the goal refresh
+   controller leave core, together.
+
+Until then the panel stays core-built and the plugin owns the store, which is
+one feature with one implementation and two hosts - not two producers.
