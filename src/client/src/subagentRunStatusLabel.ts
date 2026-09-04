@@ -7,7 +7,7 @@ const LABELS: Record<RunStatus, string> = {
   done: "Done",
   failed: "Failed",
   lost: "Lost",
-  unknown: "No report yet",
+  unknown: "Running",
 };
 
 const EXPLANATIONS: Record<RunStatus, string> = {
@@ -15,7 +15,7 @@ const EXPLANATIONS: Record<RunStatus, string> = {
   done: "This run reported that it finished.",
   failed: "This run reported a failure.",
   lost: "This run stopped writing without reporting, so its outcome is gone.",
-  unknown: "This run has written nothing yet and nothing is streaming to vouch for it.",
+  unknown: "This run has started but written nothing yet; the report lands when it finishes.",
 };
 
 export function subagentRunStatusLabel(status: RunStatus): string {
