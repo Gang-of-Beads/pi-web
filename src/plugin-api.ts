@@ -56,13 +56,22 @@ export interface PluginActivationContext {
   readonly svg: SvgTemplateTag;
   /** Subscribe to a host fact; the returned function unsubscribes. Absent on hosts older than this contract. */
   readonly on?: <K extends PluginLifecycleEventKind>(kind: K, listener: PluginLifecycleListener<K>) => () => void;
+  /** This plugin's own configuration block, or undefined when unconfigured. */
+  readonly settings?: PluginSettings | undefined;
 }
 
 export type PluginLifecycleEvent =
   | { kind: "session-selected"; sessionId: string; machineId: string | undefined }
   | { kind: "session-left"; sessionId: string }
   | { kind: "connection-changed"; connected: boolean }
-  | { kind: "theme-applied"; themeId: string };
+  | { kind: "theme-applied"; themeId: string }
+  | { kind: "settings-changed"; settings: PluginSettings };
+
+/**
+ * A plugin's own namespaced configuration block, delivered opaquely. Absent
+ * means unconfigured, which a plugin must not read as "configured empty".
+ */
+export type PluginSettings = Readonly<Record<string, unknown>>;
 
 export type PluginLifecycleEventKind = PluginLifecycleEvent["kind"];
 

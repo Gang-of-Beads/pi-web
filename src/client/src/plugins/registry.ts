@@ -1,6 +1,6 @@
 import { html, svg } from "lit";
 import { requirePluginBackendRevision } from "../../../shared/pluginBackendProtocol";
-import type { ComposerContribution, MessageRendererContribution, QualifiedMessageRendererContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
+import type { ComposerContribution, PluginSettings, MessageRendererContribution, QualifiedMessageRendererContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
 
 function eventHasKind<K extends PluginLifecycleEventKind>(event: PluginLifecycleEvent, kind: K): event is Extract<PluginLifecycleEvent, { kind: K }> {
   return event.kind === kind;
@@ -31,6 +31,7 @@ export class PluginRegistry {
   private readonly composerContributions: QualifiedComposerContribution[] = [];
   private readonly settingsSections: QualifiedSettingsSectionContribution[] = [];
   private readonly messageRenderers: QualifiedMessageRendererContribution[] = [];
+  private readonly settingsByPlugin = new Map<string, PluginSettings>();
   private readonly listeners = new Map<PluginLifecycleEventKind, { pluginId: string; listener: (event: PluginLifecycleEvent) => void }[]>();
   private readonly disposers = new Map<string, (() => void)[]>();
   private readonly pluginIds = new Set<string>();
@@ -55,8 +56,10 @@ export class PluginRegistry {
     try {
       const apiVersion: unknown = plugin.apiVersion;
       if (apiVersion !== 2) throw new Error(`Unsupported browser plugin API version for ${sourcePluginId}: ${String(apiVersion)} (expected 2)`);
+      if (registration.settings !== undefined) this.settingsByPlugin.set(runtimePluginId, Object.freeze({ ...registration.settings }));
       const activation = plugin.activate(Object.freeze({
         apiVersion: 2,
+        ...(registration.settings === undefined ? {} : { settings: Object.freeze({ ...registration.settings }) }),
         pluginId: sourcePluginId,
         runtimePluginId,
         html,
@@ -168,6 +171,28 @@ export class PluginRegistry {
     }
   }
 
+  /**
+   * Replace one plugin's configuration and tell only that plugin. A config
+   * write for one plugin must not wake every other plugin's listener, and a
+   * plugin that never subscribed simply reads the new value next time.
+   */
+  applyPluginSettings(runtimePluginId: string, settings: PluginSettings): void {
+    const frozen = Object.freeze({ ...settings });
+    this.settingsByPlugin.set(runtimePluginId, frozen);
+    for (const entry of [...(this.listeners.get("settings-changed") ?? [])]) {
+      if (entry.pluginId !== runtimePluginId) continue;
+      try {
+        entry.listener({ kind: "settings-changed", settings: frozen });
+      } catch (error) {
+        console.error(`Plugin ${runtimePluginId} failed handling settings-changed`, error);
+      }
+    }
+  }
+
+  pluginSettings(runtimePluginId: string): PluginSettings | undefined {
+    return this.settingsByPlugin.get(runtimePluginId);
+  }
+
   disposePlugin(runtimePluginId: string): void {
     for (const [kind, entries] of this.listeners) {
       this.listeners.set(kind, entries.filter((entry) => entry.pluginId !== runtimePluginId));
@@ -180,6 +205,7 @@ export class PluginRegistry {
       }
     }
     this.disposers.delete(runtimePluginId);
+    this.settingsByPlugin.delete(runtimePluginId);
   }
 
   private subscribe<K extends PluginLifecycleEventKind>(runtimePluginId: string, kind: K, listener: PluginLifecycleListener<K>): () => void {

@@ -16,6 +16,8 @@ export interface PiWebPluginRegistration {
   sourcePluginId?: PluginId;
   backendRevision?: string;
   machineSpecific?: boolean;
+  /** The plugin's own namespaced config block; undefined means unconfigured. */
+  settings?: PluginSettings;
 }
 
 export interface WorkspacePluginBinding {
@@ -41,7 +43,19 @@ export type PluginLifecycleEvent =
   | { kind: "session-selected"; sessionId: string; machineId: string | undefined }
   | { kind: "session-left"; sessionId: string }
   | { kind: "connection-changed"; connected: boolean }
-  | { kind: "theme-applied"; themeId: string };
+  | { kind: "theme-applied"; themeId: string }
+  | { kind: "settings-changed"; settings: PluginSettings };
+
+/**
+ * A plugin's own namespaced configuration block, delivered opaquely.
+ *
+ * The core validates it as an opaque namespaced value and never names a
+ * plugin's keys in its own contract - voice's azureSpeech/speechToText
+ * living inside PiWebConfigValues is exactly the coupling this replaces.
+ * Absent means unconfigured, which a plugin must not read as "configured
+ * empty".
+ */
+export type PluginSettings = Readonly<Record<string, unknown>>;
 
 export type PluginLifecycleEventKind = PluginLifecycleEvent["kind"];
 
@@ -52,6 +66,8 @@ export interface PluginActivationContext {
   readonly apiVersion: 2;
   /** Subscribe to a host fact; the returned function unsubscribes. */
   readonly on?: <K extends PluginLifecycleEventKind>(kind: K, listener: PluginLifecycleListener<K>) => () => void;
+  /** This plugin's own configuration block, or undefined when unconfigured. */
+  readonly settings?: PluginSettings | undefined;
   /** Stable package/source identity, including on federated machines. */
   readonly pluginId: PluginId;
   /** Host-unique identity for qualified contribution references in this runtime. */
