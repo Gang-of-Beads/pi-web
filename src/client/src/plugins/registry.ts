@@ -1,6 +1,6 @@
 import { html, svg } from "lit";
 import { requirePluginBackendRevision } from "../../../shared/pluginBackendProtocol";
-import type { PiWebPluginRegistration, PluginAction, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
+import type { ComposerContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
 
 const idPattern = /^[a-z][a-z0-9.-]*$/u;
 const localIdPattern = /^[a-z][a-z0-9.-]*$/u;
@@ -24,6 +24,7 @@ export class PluginRegistry {
   private readonly workspaceLabels: QualifiedWorkspaceLabelContribution[] = [];
   private readonly themes: QualifiedThemeContribution[] = [];
   private readonly themePairs: QualifiedThemePairContribution[] = [];
+  private readonly composerContributions: QualifiedComposerContribution[] = [];
   private readonly pluginIds = new Set<string>();
   private readonly registeringPluginIds = new Set<string>();
   private readonly gatewayPluginIds = new Set<string>();
@@ -60,6 +61,7 @@ export class PluginRegistry {
       const themes = registration.machineId === undefined
         ? (contributions.themes ?? []).map((theme) => this.qualifyTheme(runtimePluginId, theme, contributionIds))
         : [];
+      const composer = (contributions.composer ?? []).map((contribution) => this.qualifyComposerContribution(runtimePluginId, contribution, registration.machineId, registration.sourcePluginId, contributionIds));
       const themePairs = registration.machineId === undefined
         ? (contributions.themePairs ?? []).map((pair) => this.qualifyThemePair(runtimePluginId, pair, contributionIds))
         : [];
@@ -71,6 +73,7 @@ export class PluginRegistry {
       this.workspaceLabels.push(...workspaceLabels);
       this.themes.push(...themes);
       this.themePairs.push(...themePairs);
+      this.composerContributions.push(...composer);
       if (registration.machineId === undefined) {
         this.gatewayPluginIds.add(runtimePluginId);
         if (machineSpecific) this.gatewayMachineSpecificPluginIds.add(runtimePluginId);
@@ -112,6 +115,12 @@ export class PluginRegistry {
       if (disabledReason !== undefined && disabledReason !== "") qualified.disabledReason = disabledReason;
       return qualified;
     });
+  }
+
+  getComposerContributions(selectedMachineId: string | undefined): QualifiedComposerContribution[] {
+    return this.composerContributions
+      .filter((contribution) => selectedMachineId !== undefined && this.isContributionActive(contribution.pluginId, contribution.machineId, selectedMachineId, contribution.sourcePluginId))
+      .sort((left, right) => (left.order ?? 1000) - (right.order ?? 1000) || left.title.localeCompare(right.title));
   }
 
   getWorkspacePanels(): QualifiedWorkspacePanelContribution[] {
@@ -227,6 +236,24 @@ export class PluginRegistry {
       ...(machineId === undefined ? {} : { machineId }),
       visible: (context) => this.isContributionActive(pluginId, machineId, context.machine.id, sourcePluginId) && (visible?.(workspaceLabelContextFor(context, binding)) ?? true),
       items: (context) => this.isContributionActive(pluginId, machineId, context.machine.id, sourcePluginId) ? items(workspaceLabelContextFor(context, binding)) : [],
+    };
+  }
+
+  private qualifyComposerContribution(
+    pluginId: string,
+    contribution: ComposerContribution,
+    machineId: string | undefined,
+    sourcePluginId: string | undefined,
+    contributionIds: Set<QualifiedContributionId>,
+  ): QualifiedComposerContribution {
+    const id = this.qualify(pluginId, contribution.id, contributionIds);
+    return {
+      ...contribution,
+      id,
+      pluginId,
+      localId: contribution.id,
+      ...(machineId === undefined ? {} : { machineId }),
+      ...(sourcePluginId === undefined ? {} : { sourcePluginId }),
     };
   }
 

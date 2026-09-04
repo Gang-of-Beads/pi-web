@@ -50,6 +50,56 @@ export interface PluginContributions {
   workspaceLabels?: WorkspaceLabelContribution[];
   themes?: ThemeContribution[];
   themePairs?: ThemePairContribution[];
+  composer?: ComposerContribution[];
+}
+
+/**
+ * A composer contribution owns one unit of composer behavior: an action
+ * rendered in a slot beside the send button, an optional live status line
+ * under the input, and an optional draft transformer.
+ *
+ * Draft mutation goes through the transformer seam so plugin-inserted text
+ * and keyboard-typed text share one producer; a plugin never reaches into
+ * the editor's state. Status lines exist because voice renders
+ * Listening/Transcribing/permission-refused inside the composer, and an
+ * action slot alone cannot say those things.
+ */
+export type ComposerSlot = "leading" | "trailing";
+
+export interface ComposerRuntimeContext {
+  sessionId: string | undefined;
+  machineId: string | undefined;
+  draft: string;
+  busy: boolean;
+  insertText: (text: string) => void;
+  replaceDraft: (text: string) => void;
+  notify: (message: string, severity: "info" | "warning" | "error") => void;
+}
+
+export interface ComposerStatusLine {
+  text: string;
+  severity: "info" | "problem";
+}
+
+export interface ComposerContribution {
+  id: LocalContributionId;
+  slot: ComposerSlot;
+  title: string;
+  icon?: TemplateResult;
+  order?: number;
+  enabled?: (context: ComposerRuntimeContext) => boolean;
+  disabledReason?: (context: ComposerRuntimeContext) => string | undefined;
+  /** Rendered live under the input while defined; undefined renders nothing. */
+  status?: (context: ComposerRuntimeContext) => ComposerStatusLine | undefined;
+  run: (context: ComposerRuntimeContext) => void | Promise<void>;
+}
+
+export interface QualifiedComposerContribution extends ComposerContribution {
+  id: QualifiedContributionId;
+  pluginId: PluginId;
+  localId: LocalContributionId;
+  machineId?: string;
+  sourcePluginId?: PluginId;
 }
 
 export interface PluginMachine {
