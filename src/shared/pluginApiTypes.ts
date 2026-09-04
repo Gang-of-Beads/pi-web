@@ -184,3 +184,47 @@ export interface PiWebStatusResponse extends PiWebVersionResponse {
   };
   messages: PiWebStatusMessage[];
 }
+
+/**
+ * Every custom property a theme must set.
+ *
+ * A closed union rather than an open record so a theme missing a token is a
+ * compile error, in a plugin package exactly as in the app: an incomplete
+ * theme renders as half of another one, which is worse than not shipping.
+ */
+export type ThemeToken =
+  | "--pi-bg"
+  | "--pi-surface"
+  | "--pi-surface-hover"
+  | "--pi-terminal-bg"
+  | "--pi-terminal-text"
+  | "--pi-border"
+  | "--pi-border-muted"
+  | "--pi-text"
+  | "--pi-text-secondary"
+  | "--pi-text-bright"
+  | "--pi-muted"
+  | "--pi-dim"
+  | "--pi-accent"
+  | "--pi-accent-border"
+  | "--pi-selection-bg"
+  | "--pi-success"
+  | "--pi-success-border"
+  | "--pi-success-bg"
+  | "--pi-success-surface"
+  | "--pi-success-ring"
+  | "--pi-warning"
+  | "--pi-warning-border"
+  | "--pi-warning-surface"
+  | "--pi-danger"
+  | "--pi-purple"
+  | "--pi-purple-border"
+  | "--pi-purple-surface"
+  | "--pi-overlay"
+  | "--pi-shadow-soft"
+  | "--pi-shadow"
+  | "--pi-shadow-strong"
+  | "--pi-bg-overlay-soft"
+  | "--pi-bg-overlay"
+  | "--pi-success-bg-overlay"
+  | "--pi-terminal-selection";

@@ -1,5 +1,6 @@
 import { gitSplitClass } from "./gitSplitLayout.js";
 import type {
+  QualifiedContributionId,
   HtmlTemplateTag,
   JsonValue,
   PluginAction,
@@ -125,7 +126,7 @@ export function createGitBrowserContributions(
   html: HtmlTemplateTag,
   svg: SvgTemplateTag,
 ): PluginContributions {
-  const panelId = `${runtimePluginId}:${GIT_PANEL_LOCAL_ID}`;
+  const panelId: QualifiedContributionId = `${runtimePluginId}:${GIT_PANEL_LOCAL_ID}`;
   const controller = new GitUiController(sourcePluginId, createGitDiffRoute(panelId));
   defineGitPanelActivityElement();
   defineGitReviewSectionActivityElement();
@@ -712,7 +713,7 @@ export class GitUiController {
   }
 }
 
-function createGitActions(panelId: string, controller: GitUiController): PluginAction[] {
+function createGitActions(panelId: QualifiedContributionId, controller: GitUiController): PluginAction[] {
   const hasGitWorkspace = (context: PluginRuntimeContext): boolean => controller.isOwnedWorkspace(context.state.selectedWorkspace);
   return [
     {

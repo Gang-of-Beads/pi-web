@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { QualifiedContributionId, QualifiedThemeContribution, ThemeTokens } from "../../plugins/types";
+import type { QualifiedContributionId, QualifiedThemeContribution, ThemeToken, ThemeTokens } from "../../plugins/types";
 import { PluginRegistry } from "../../plugins/registry";
 import { themePackPlugin } from "../../plugins/themes";
 import { SettingsAppearancePanel } from "./SettingsAppearancePanel";
@@ -21,7 +21,7 @@ function contributedThemes(): QualifiedThemeContribution[] {
   return [...registry.getThemes()];
 }
 
-function tokens(overrides: Partial<ThemeTokens> = {}): ThemeTokens {
+function tokens(overrides: Readonly<Record<ThemeToken, string>> | Partial<Record<ThemeToken, string>> = {}): ThemeTokens {
   const base = contributedThemes()[0];
   if (base === undefined) throw new Error("Expected the theme pack to contribute a theme");
   return { ...base.tokens, ...overrides };
