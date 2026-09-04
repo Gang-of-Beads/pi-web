@@ -1,15 +1,21 @@
 import { html, type TemplateResult } from "lit";
 import type { PiWebPlugin, WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
 import { rememberTerminalHostUi } from "./hostUi.js";
+import { defineTerminalPanel } from "./defineTerminalPanel.js";
 
 /**
  * Terminals as a plugin.
  *
  * The pty capability stays with the host, which owns the daemon that spawns
  * it; this plugin draws the panel and works entirely through the capability it
- * is handed. The panel module is imported only when the panel is first
- * rendered, and only after the host's utilities have been recorded, because a
- * custom element reads its styles when its module is first evaluated.
+ * is handed.
+ *
+ * The panel module is imported for its side effect - defining the element -
+ * from `activate`, after the host's utilities are recorded, because a custom
+ * element reads its styles when its module is first evaluated. A lazy import
+ * from the render function looked equivalent and was not: the bundled entry
+ * kept it as a separate chunk that never ran, so the element was never defined
+ * and the panel rendered as an empty tag.
  */
 
 const plugin: PiWebPlugin = {
@@ -17,6 +23,7 @@ const plugin: PiWebPlugin = {
   name: "Terminal",
   activate: (context) => {
     rememberTerminalHostUi(context.ui);
+    defineTerminalPanel();
     return {
       contributions: {
         workspacePanels: [{
@@ -34,7 +41,6 @@ const plugin: PiWebPlugin = {
 };
 
 function renderTerminalPanel(context: WorkspacePanelContext): TemplateResult {
-  void import("./TerminalPanel.js");
   return html`<terminal-panel
     .workspace=${context.workspace}
     .machineId=${context.machine.id}

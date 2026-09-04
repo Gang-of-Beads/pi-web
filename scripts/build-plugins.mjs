@@ -129,6 +129,11 @@ async function buildFile(file, outputPath) {
       module: ts.ModuleKind.ESNext,
       moduleResolution: ts.ModuleResolutionKind.Bundler,
       verbatimModuleSyntax: true,
+      // Same decorator dialect the app compiles with. Without it a decorated
+      // Lit field survives into the output as a standard decorator, which the
+      // bundler cannot parse and the browser refuses to import.
+      experimentalDecorators: true,
+      useDefineForClassFields: false,
       sourceMap: false,
       inlineSourceMap: false,
     },
