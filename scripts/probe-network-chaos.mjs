@@ -57,9 +57,10 @@ try {
   for (let i = 0; i < 24; i += 1) {
     await page.waitForTimeout(5000);
     final = await page.evaluate((caption) => {
-      function walk(root, out, sel) { for (const n of root.querySelectorAll("*")) { if (n.matches?.(sel)) out.push(n); if (n.shadowRoot) walk(n.shadowRoot, out, sel); } return out; }
+      function leaves(root, out) { for (const n of root.querySelectorAll("*")) { if (n.children.length === 0 && (n.textContent ?? "").includes(caption)) out.push(n); if (n.shadowRoot) leaves(n.shadowRoot, out); } return out; }
+      function rowOf(node) { let c = node; while (c) { if (c.classList?.contains?.("msg")) return c; c = c.parentElement ?? c.getRootNode?.()?.host ?? null; } return null; }
       const app = document.querySelector("pi-web-app");
-      const rows = walk(document, [], ".msg").filter((n) => (n.textContent ?? "").includes(caption));
+      const rows = [...new Set(leaves(document, []).map(rowOf).filter((row) => row !== null))];
       return {
         streaming: app?.state?.status?.isStreaming,
         pending: app?.state?.status?.pendingMessageCount,
@@ -70,9 +71,10 @@ try {
     if (final.streaming === false && final.pending === 0) {
       await page.waitForTimeout(6000);
       final = await page.evaluate((caption) => {
-        function walk(root, out, sel) { for (const n of root.querySelectorAll("*")) { if (n.matches?.(sel)) out.push(n); if (n.shadowRoot) walk(n.shadowRoot, out, sel); } return out; }
+        function leaves(root, out) { for (const n of root.querySelectorAll("*")) { if (n.children.length === 0 && (n.textContent ?? "").includes(caption)) out.push(n); if (n.shadowRoot) leaves(n.shadowRoot, out); } return out; }
+        function rowOf(node) { let c = node; while (c) { if (c.classList?.contains?.("msg")) return c; c = c.parentElement ?? c.getRootNode?.()?.host ?? null; } return null; }
         const app = document.querySelector("pi-web-app");
-        const rows = walk(document, [], ".msg").filter((n) => (n.textContent ?? "").includes(caption));
+        const rows = [...new Set(leaves(document, []).map(rowOf).filter((row) => row !== null))];
         return { streaming: app?.state?.status?.isStreaming, pending: app?.state?.status?.pendingMessageCount, rows: rows.length, receipts: rows.map((n) => /Queued[^"<]*|Sending|Sent|Read|Not sent/.exec(n.textContent ?? "")?.[0]?.trim() ?? "none") };
       }, CAPTION);
       break;
