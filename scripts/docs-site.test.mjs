@@ -6,7 +6,7 @@ const siteScript = readFileSync(new URL("../docs/site.js", import.meta.url), "ut
 const siteStyles = readFileSync(new URL("../docs/styles.css", import.meta.url), "utf8");
 
 function createAnimatedHomePage(initialScrollY = 0) {
-  const window = new Window({ url: "https://pi-web.dev/" });
+  const window = new Window({ url: "https://docs.example.invalid/" });
   const style = window.document.createElement("style");
   style.textContent = siteStyles;
   window.document.head.append(style);

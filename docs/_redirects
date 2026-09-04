@@ -2,6 +2,6 @@
 # Host and scheme redirects need Cloudflare Redirect Rules or custom Worker routing.
 /index.html / 301
 
-# Bare /dev lands on this (stable) worker because the dev worker route is
-# pi-web.dev/dev/*; hand it off to the dev docs with a trailing slash.
+# Bare /dev lands on this (stable) worker; hand it off to the dev docs with a
+# trailing slash.
 /dev /dev/ 301

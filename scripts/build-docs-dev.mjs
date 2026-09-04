@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// Assembles the "dev" variant of the pi-web.dev docs site into docs/.deploy/dev.
+// Assembles the "dev" variant of the docs site into docs/.deploy/dev.
 //
 // The dev variant is served by the pi-web-docs-dev Cloudflare Worker, which owns the
-// pi-web.dev/dev/* route, so every page is nested under a dev/ directory. Pages use
+// dev/* route, so every page is nested under a dev/ directory. Pages use
 // relative asset and link URLs, so they work unchanged under the /dev/ prefix.
 //
 // Differences from the stable site:
@@ -30,7 +30,6 @@ const excludedEntries = new Set([
   "_redirects",
   "404.html",
   "robots.txt",
-  "sitemap.xml",
   "wrangler.dev.jsonc",
   "wrangler.jsonc",
 ]);
@@ -46,8 +45,8 @@ function resolveGitSha() {
 }
 
 function stableUrlFor(htmlFileName) {
-  if (htmlFileName === "index.html") return "https://pi-web.dev/";
-  return `https://pi-web.dev/${htmlFileName.replace(/\.html$/, "")}`;
+  const base = "https://github.com/Gang-of-Beads/pi-web/blob/main/docs";
+  return `${base}/${htmlFileName}`;
 }
 
 function bannerHtml(sha, stableUrl) {

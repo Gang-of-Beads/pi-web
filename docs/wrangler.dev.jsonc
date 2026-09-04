@@ -5,13 +5,7 @@
   "observability": {
     "enabled": true
   },
-  "workers_dev": false,
-  "routes": [
-    {
-      "pattern": "pi-web.dev/dev/*",
-      "zone_name": "pi-web.dev"
-    }
-  ],
+  "workers_dev": true,
   "assets": {
     "directory": "./.deploy/dev",
     "not_found_handling": "404-page"

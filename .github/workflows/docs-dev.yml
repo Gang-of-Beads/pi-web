@@ -3,8 +3,8 @@ name: Deploy dev docs
 # Deploys the docs site from main to whatever Cloudflare account the
 # credentials below belong to. This fork publishes no documentation site: the
 # links in the docs point at this repository, and the job stays skipped while
-# CLOUDFLARE_ACCOUNT_ID is unset. Do not point it at pi-web.dev, which belongs
-# to the upstream project.
+# CLOUDFLARE_ACCOUNT_ID is unset. Never point it at the upstream project's
+# domain, which this repository does not own.
 # Requires the CLOUDFLARE_API_TOKEN repository secret and CLOUDFLARE_ACCOUNT_ID variable.
 
 on:
