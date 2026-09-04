@@ -125,19 +125,35 @@ Packaging and naming:
 - main stays shippable throughout; refactor/* branches hold the work until
   a wave is whole.
 
+## Owner rulings (2026-09-04)
+
+1. Scope: every candidate extracts, including theme data and the model
+   catalog. Core keeps sessions, transcript, composer, navigation, the
+   settings shell and the plugin runtime.
+2. Terminal: the daemon pty capability stays core as a workspace provider;
+   only the panel becomes `pi-web-terminal`.
+3. Plugins live in their own private Gang-of-Beads repositories named
+   `pi-web-<name>`, published under that scope.
+4. Project-local discovery is wanted, with pi's project-trust gate copied.
+5. Done means green on `refactor/*`: no merge to main, no release.
+
+## Blocking order discovered during the voice wave
+
+Voice's server half cannot move until extension point 7 exists: the plugin
+runtime has no route contribution, so `web/speechRoutes.ts` has nowhere to go.
+Removing `speechToText`/`azureSpeech` from the core config contract while the
+route still lives in core would leave the feature half-migrated - a core path
+and a plugin path for one behaviour, which is the multi-producer shape this
+refactor exists to remove. The order is therefore: build route contributions
+and the daemon service context, then move the speech route and the config
+block together, then close the voice wave.
+
 ## Open questions for the owner
 
-1. Terminal: does the daemon pty capability stay core (a workspace
-   provider) with only the panel as plugin, or does the whole capability
-   move behind a service contribution?
-2. Goals: extract now, or after voice proves the daemon service seam?
-3. Project-local plugin discovery (`<project>/.pi-web/plugins/`): wanted, or
-   machine-level only? pi requires project trust before loading local
-   extensions; we would need the same gate.
-4. Message renderer claims: first-writer-wins, or manifest-declared
-   priority? (pi renders by entry kind; we have multiple plugins possibly
-   claiming one custom tag.)
-5. Is `pi-web-model-catalog` worth extracting, or does the picker stay
+1. Message renderer claims: today a second claim on a tag is refused, and a
+   gateway claim and a per-machine claim can coexist with order-dependent
+   precedence. Keep the refusal, or move to manifest-declared priority?
+2. Is `pi-web-model-catalog` worth extracting, or does the picker stay
    core-minimal instead (fewer moving parts, same minimalism)?
 
 ## Scan results (three bllm max lanes, 2026-09-04)
