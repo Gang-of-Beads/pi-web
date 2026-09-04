@@ -1,0 +1,12 @@
+#!/bin/sh
+# A push whose working tree differs from the pushed commits under checked
+# paths is how a locally-green, CI-red split happens: the fix sits uncommitted
+# while the commit under test lacks it. Refuse that push loudly.
+dirty=$(git status --porcelain -- src extensions pi-web-plugins 2>/dev/null | grep -v '^??' || true)
+if [ -n "$dirty" ]; then
+  echo "pre-push: refusing - tracked source files are modified but not committed:" >&2
+  echo "$dirty" >&2
+  echo "Commit or stash them so local verification matches what CI will see." >&2
+  exit 1
+fi
+exit 0
