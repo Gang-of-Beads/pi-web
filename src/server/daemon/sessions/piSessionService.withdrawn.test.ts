@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { PiSessionService } from "./piSessionService.js";
 import { CapturingSessionEventHub, fakeRuntime, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime } from "./piSessionService.testSupport.js";
@@ -19,6 +22,9 @@ function busyService(sessionId: string, queue: { steering: string[]; followUp: s
     getSteeringMessages: () => queue.steering,
     getFollowUpMessages: () => queue.followUp,
   });
+  const cwd = join(tmpdir(), `pi-web-withdraw-${randomUUID()}`);
+  fake.session.sessionManager.getCwd = () => cwd;
+  Reflect.set(fake.runtime, "cwd", cwd);
   fake.session.clearQueue = vi.fn(() => {
     const cleared = { steering: [...queue.steering], followUp: [...queue.followUp] };
     queue.steering.length = 0;
@@ -29,7 +35,7 @@ function busyService(sessionId: string, queue: { steering: string[]; followUp: s
     agentDir: TEST_AGENT_DIR,
     modelRuntime: testModelRuntime,
     createAgentRuntime: runtimeCreator(fake.runtime),
-    sessionManager: sessionGateway([sessionRecord(sessionId)]),
+    sessionManager: sessionGateway([sessionRecord(sessionId, cwd)]),
     heartbeatIntervalMs: 60_000,
   });
   return { hub, fake, service };
@@ -65,10 +71,10 @@ describe("a recall tells every device the message was taken back", () => {
 
   it("withdraws the discarded identities when the turn is stopped", async () => {
     const queue = { steering: [], followUp: ["waiting for a turn"] };
-    const { hub, service } = busyService("withdraw-abort", queue);
+    const { hub, fake, service } = busyService("withdraw-abort", queue);
     await service.prompt(sessionRef("withdraw-abort"), "waiting for a turn", "followUp", undefined, { clientMessageId: "c-stop" });
 
-    await service.abort(sessionRef("withdraw-abort"));
+    await service.abort(sessionRef("withdraw-abort", fake.runtime.cwd));
 
     expect(withdrawnIds(hub)).toEqual(["c-stop"]);
     await service.dispose();

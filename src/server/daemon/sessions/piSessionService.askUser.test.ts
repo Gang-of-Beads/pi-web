@@ -1,3 +1,6 @@
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { ASK_USER_ANSWERS_CUSTOM_TYPE } from "../../../shared/apiTypes.js";
 import { createPiWebCustomToolDefinitions, PiSessionService } from "./piSessionService.js";
@@ -330,9 +333,13 @@ describe("PiSessionService.prompt with an open ask", () => {
   // collision must never void the form for a remark that carries its own id.
   it("voids for a captionless pre-ask photo, by id", async () => {
     const { service, store, fake } = askService({ withActiveSession: true });
-    await service.status(sessionRef(ACTIVE_SESSION_ID));
+    const cwd = await mkdtemp(join(tmpdir(), "pi-web-ask-photo-"));
+    fake.session.sessionManager.getCwd = () => cwd;
+    Reflect.set(fake.runtime, "cwd", cwd);
+    const ref = sessionRef(ACTIVE_SESSION_ID, cwd);
+    await service.status(ref);
     fake.session.isStreaming = true;
-    await service.prompt(sessionRef(ACTIVE_SESSION_ID), "", "followUp", undefined, { clientMessageId: "c-photo" });
+    await service.prompt(ref, "", "followUp", undefined, { clientMessageId: "c-photo" });
     await service.openAsk({ sessionId: ACTIVE_SESSION_ID, questions });
 
     fake.emit({ type: "message_start", message: { role: "user", clientMessageId: "c-photo", content: [{ type: "image", mimeType: "image/png", data: "AAAA" }] } });
@@ -342,9 +349,13 @@ describe("PiSessionService.prompt with an open ask", () => {
 
   it("voids for a pre-ask prompt the runtime rewrote, by id", async () => {
     const { service, store, fake } = askService({ withActiveSession: true });
-    await service.status(sessionRef(ACTIVE_SESSION_ID));
+    const cwd = await mkdtemp(join(tmpdir(), "pi-web-ask-template-"));
+    fake.session.sessionManager.getCwd = () => cwd;
+    Reflect.set(fake.runtime, "cwd", cwd);
+    const ref = sessionRef(ACTIVE_SESSION_ID, cwd);
+    await service.status(ref);
     fake.session.isStreaming = true;
-    await service.prompt(sessionRef(ACTIVE_SESSION_ID), "/skill review", "followUp", undefined, { clientMessageId: "c-template" });
+    await service.prompt(ref, "/skill review", "followUp", undefined, { clientMessageId: "c-template" });
     await service.openAsk({ sessionId: ACTIVE_SESSION_ID, questions });
 
     fake.emit({ type: "message_start", message: { role: "user", clientMessageId: "c-template", content: "the expanded skill body" } });
@@ -354,9 +365,13 @@ describe("PiSessionService.prompt with an open ask", () => {
 
   it("never voids for a remark whose words collide with the pre-ask queue", async () => {
     const { service, store, fake } = askService({ withActiveSession: true });
-    await service.status(sessionRef(ACTIVE_SESSION_ID));
+    const cwd = await mkdtemp(join(tmpdir(), "pi-web-ask-collision-"));
+    fake.session.sessionManager.getCwd = () => cwd;
+    Reflect.set(fake.runtime, "cwd", cwd);
+    const ref = sessionRef(ACTIVE_SESSION_ID, cwd);
+    await service.status(ref);
     fake.session.isStreaming = true;
-    await service.prompt(sessionRef(ACTIVE_SESSION_ID), "continue", "followUp", undefined, { clientMessageId: "c-old" });
+    await service.prompt(ref, "continue", "followUp", undefined, { clientMessageId: "c-old" });
     await service.openAsk({ sessionId: ACTIVE_SESSION_ID, questions });
 
     fake.emit({ type: "message_start", message: { role: "user", clientMessageId: "c-new", content: "continue" } });

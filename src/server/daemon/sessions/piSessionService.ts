@@ -96,7 +96,7 @@ import { listBackgroundTasks, readTaskOutput } from "./backgroundTasks.js";
 import { promptDeliveryBehavior, type QueuedPromptKind } from "./promptDelivery.js";
 import { AcceptanceLedger } from "./acceptanceLedger.js";
 import { CommittedPromptExpectations } from "./committedPromptIdentity.js";
-import { OwnedPromptQueue } from "./ownedPromptQueue.js";
+import { OwnedPromptQueue, type OwnedQueueEntry } from "./ownedPromptQueue.js";
 import { findSubagentRunTranscript, listSubagentRuns, readSessionEntries, readSubagentRunOutput } from "./subagentRuns.js";
 import { createSubsessionToolDefinitions, type SpawnSubsessionInvocation, type SpawnSubsessionResult, type SubsessionCheckResult, type SubsessionReadQuery, type SubsessionReadResult, type SubsessionStatus, type SubsessionSummary, type SubsessionToolDeps } from "./spawnSubsessionTool.js";
 import { buildTranscriptView } from "./subsessionTranscript.js";
@@ -2684,23 +2684,33 @@ export class PiSessionService implements SessionRouteService {
     // daemon owns this prompt now (sending → queued-server) and — because it
     // rides the per-session ring — a lost HTTP response or a lost frame is
     // repaired by replay instead of stranding the sender's bubble.
-    if (clientMessageId !== undefined) {
-      this.acceptanceLedger.record(session.sessionId, clientMessageId);
-      this.events.publish(session.sessionId, { type: "prompt.accepted", clientMessageId });
-    }
     if (session.isCompacting) {
+      if (clientMessageId !== undefined) {
+        this.acceptanceLedger.record(session.sessionId, clientMessageId);
+        this.events.publish(session.sessionId, { type: "prompt.accepted", clientMessageId });
+      }
       this.enqueuePromptDuringCompaction(session, promptText, behavior ?? "followUp", images, echoUserMessage, clientMessageId);
       return;
     }
     if (willPark) {
+      // A parked prompt is accepted only after its queue file commits. Otherwise
+      // a full disk or read-only workspace would make the browser settle its
+      // outbox for a message the daemon forgets at its next restart.
       await this.parkPrompt(session, promptText, images, echoUserMessage, clientMessageId);
+      if (clientMessageId !== undefined) {
+        this.acceptanceLedger.record(session.sessionId, clientMessageId);
+        this.events.publish(session.sessionId, { type: "prompt.accepted", clientMessageId });
+      }
       return;
+    }
+    if (clientMessageId !== undefined) {
+      this.acceptanceLedger.record(session.sessionId, clientMessageId);
+      this.events.publish(session.sessionId, { type: "prompt.accepted", clientMessageId });
     }
     void this.submitPrompt(session, promptText, behavior, images, echoUserMessage, clientMessageId);
   }
 
   private async parkPrompt(session: PiAgentSession, text: string, images: ImageContent[], echoUserMessage: boolean, clientMessageId?: string): Promise<void> {
-    if (echoUserMessage) this.events.publish(session.sessionId, { type: "message.append", message: userMessage(text, images), echo: true, ...(clientMessageId === undefined ? {} : { clientMessageId }) });
     await this.ownedQueue.push(session.sessionId, session.sessionManager.getCwd(), {
       ...(clientMessageId === undefined ? {} : { clientMessageId }),
       lane: "followUp",
@@ -2709,6 +2719,7 @@ export class PiSessionService implements SessionRouteService {
       acceptedAt: new Date().toISOString(),
       echoUserMessage,
     });
+    if (echoUserMessage) this.events.publish(session.sessionId, { type: "message.append", message: userMessage(text, images), echo: true, ...(clientMessageId === undefined ? {} : { clientMessageId }) });
     this.publishActivity(session, "message queued", "active");
     this.publishStatus(session);
   }
@@ -2751,7 +2762,7 @@ export class PiSessionService implements SessionRouteService {
     })();
   }
 
-  private async restoreOwnedQueue(session: PiAgentSession, cwd: string): Promise<void> {
+  private async restoreOwnedQueue(session: PiAgentSession, cwd: string): Promise<OwnedQueueEntry[]> {
     const entries = await this.ownedQueue.open(session.sessionId, cwd);
     this.publishStatus(session);
     // The queue survived the restart; its acceptances must too, or the
@@ -2760,7 +2771,7 @@ export class PiSessionService implements SessionRouteService {
     for (const entry of entries) {
       if (entry.clientMessageId !== undefined) this.acceptanceLedger.record(session.sessionId, entry.clientMessageId);
     }
-    if (entries.length > 0) this.scheduleOwnedQueueDrain(session);
+    return entries;
   }
 
   /**
@@ -4012,7 +4023,7 @@ export class PiSessionService implements SessionRouteService {
       }
       startup.report(STARTUP_PHASE_EXTENSIONS);
       await this.bindSessionExtensions(runtime.session, notificationGeneration);
-      this.bindRuntime(active);
+      await this.bindRuntime(active);
       runtime.setRebindSession(async (session) => {
         const priorGeneration = notificationGeneration;
         let candidateGeneration: SessionNotificationGeneration | undefined;
@@ -4023,7 +4034,7 @@ export class PiSessionService implements SessionRouteService {
             candidateGeneration = this.notificationStore.beginReplacement(priorGeneration, notificationIdentityForSession(session));
             this.notificationGenerationBySession.set(session, candidateGeneration);
           }
-          this.bindRuntime(active, session);
+          await this.bindRuntime(active, session);
           // The runtime being replaced parked every dialog the store still
           // holds for this session; settle those waits before the new
           // runtime's extensions can open fresh dialogs under the same id.
@@ -4323,7 +4334,7 @@ export class PiSessionService implements SessionRouteService {
     this.unreadPublicationRetryDelayMs = this.unreadPublicationRetryInitialMs;
   }
 
-  private bindRuntime(active: ActiveSession<PiSessionRuntime>, session: PiAgentSession = active.runtime.session): void {
+  private async bindRuntime(active: ActiveSession<PiSessionRuntime>, session: PiAgentSession = active.runtime.session): Promise<void> {
     active.unsubscribe();
     for (const [sessionId, candidate] of this.active.entries()) {
       if (candidate === active) {
@@ -4331,7 +4342,11 @@ export class PiSessionService implements SessionRouteService {
         if (sessionId !== session.sessionId) this.clearCompactionPromptQueue(sessionId);
       }
     }
-    void this.restoreOwnedQueue(session, active.runtime.cwd);
+    // Accepting a retry before this finishes would miss an id restored from the
+    // durable queue and execute the same prompt twice after a daemon restart.
+    // Subscribe before draining so the first restored delivery cannot emit
+    // runtime events before this session has a client event bridge.
+    const restoredQueue = await this.restoreOwnedQueue(session, active.runtime.cwd);
     active.unsubscribe = session.subscribe((event) => {
       this.stampCommittedUserMessage(session, event);
       this.publishActivityChangeForToolEvent(session, event);
@@ -4363,6 +4378,7 @@ export class PiSessionService implements SessionRouteService {
       this.updateSubsessionTracking(session);
     });
     this.active.set(session.sessionId, active);
+    if (restoredQueue.length > 0) this.scheduleOwnedQueueDrain(session);
   }
 
   private scheduleCompactionQueueDrain(sessionId: string, delayMs = 0): void {

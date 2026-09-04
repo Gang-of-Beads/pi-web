@@ -119,19 +119,16 @@ process.once("SIGTERM", (signal) => { void requestShutdown(signal); });
  * runner killed pid 5602 mid-turn on 2026-09-04, taking two in-flight agent
  * runs with it - must never take the process down once it is serving.
  *
- * Registered only after startup succeeds: a daemon that survives its own
- * failed startup would hold the state-ownership claim as a zombie that serves
- * nothing, which the round-2 reviewers called out. Startup failures crash
- * loudly and release the claim; running failures are logged and survived.
+ * This intentionally does not handle uncaughtException. Continuing after an
+ * arbitrary synchronous exception can leave the session owner corrupted while
+ * it still holds the ownership claim; systemd must replace that process.
+ * Registered only after startup succeeds so a failed startup still crashes
+ * loudly and releases its claim.
  */
 function survivePluginFailuresWhileServing(): void {
   process.on("unhandledRejection", (reason) => {
     const detail = reason instanceof Error ? (reason.stack ?? reason.message) : String(reason);
     app.log.error({ detail }, "unhandled promise rejection survived by the session daemon");
-  });
-  process.on("uncaughtException", (error) => {
-    const detail = error.stack ?? error.message;
-    app.log.error({ detail }, "uncaught exception survived by the session daemon");
   });
 }
 

@@ -234,6 +234,9 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
   it("echoes queued prompts so the message never looks lost", async () => {
     const hub = new CapturingSessionEventHub();
     const fake = fakeRuntime("queued-session", { isStreaming: true });
+    const cwd = await mkdtemp(join(tmpdir(), "pi-web-queued-session-"));
+    fake.session.sessionManager.getCwd = () => cwd;
+    Reflect.set(fake.runtime, "cwd", cwd);
     const service = new PiSessionService(hub, {
       agentDir: TEST_AGENT_DIR,
       modelRuntime: testModelRuntime,
@@ -618,6 +621,9 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
     // status for every token would re-serialize + broadcast session state on
     // the agent's own event loop and slow streaming relative to the TUI.
     const fake = fakeRuntime("delta-session", { messages: [], isStreaming: true });
+    const cwd = await mkdtemp(join(tmpdir(), "pi-web-delta-session-"));
+    fake.session.sessionManager.getCwd = () => cwd;
+    Reflect.set(fake.runtime, "cwd", cwd);
     const hub = new CapturingSessionEventHub();
     const service = new PiSessionService(hub, {
       agentDir: TEST_AGENT_DIR,
