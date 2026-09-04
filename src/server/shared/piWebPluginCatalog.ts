@@ -5,6 +5,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep, win32 } from "node:p
 import { fileURLToPath } from "node:url";
 import { DefaultPackageManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { loadPiWebConfig, piWebDataDir, type PiWebConfig } from "../../config.js";
+import type { ProjectPluginRootResolution } from "./plugins/projectPluginVerdict.js";
 import type { PiWebPluginScope, PiWebPluginSettings } from "../../shared/apiTypes.js";
 import { isPiWebPluginId, isReservedPiWebPluginId } from "../../shared/pluginIds.js";
 
@@ -59,7 +60,7 @@ export interface PiWebPluginCatalogEntry extends PiWebPluginPackageEntry {
   settingsRevision: string;
 }
 
-export type PiWebPluginCatalogDiagnosticCode = "invalid-package" | "duplicate-id";
+export type PiWebPluginCatalogDiagnosticCode = "invalid-package" | "duplicate-id" | "withheld-untrusted";
 
 export interface PiWebPluginCatalogDiagnostic {
   code: PiWebPluginCatalogDiagnosticCode;
@@ -85,6 +86,8 @@ export interface PiWebPluginPackageArtifact {
 
 export interface PiWebPluginCatalogOptions {
   roots?: LocalPluginRoot[];
+  /** Workspaces whose own plugin directories discovery should consider. */
+  projectPlugins?: () => ProjectPluginRootResolution[] | Promise<ProjectPluginRootResolution[]>;
   cwd?: string;
   agentDir?: string;
   agentDirProvider?: () => string | Promise<string>;
@@ -148,6 +151,7 @@ export class DefaultPiPackageProvider implements PiPackageProvider {
  */
 export class PiWebPluginCatalog {
   private readonly roots: LocalPluginRoot[];
+  private readonly projectPlugins: (() => ProjectPluginRootResolution[] | Promise<ProjectPluginRootResolution[]>) | undefined;
   private readonly agentDir: string | undefined;
   private readonly agentDirProvider: (() => string | Promise<string>) | undefined;
   private readonly staticPackageProvider: PiPackageProvider | undefined;
@@ -159,6 +163,7 @@ export class PiWebPluginCatalog {
   constructor(options: PiWebPluginCatalogOptions = {}) {
     const cwd = options.cwd ?? process.cwd();
     this.roots = options.roots ?? defaultPluginRoots(cwd);
+    this.projectPlugins = options.projectPlugins;
     this.agentDir = options.agentDir;
     this.agentDirProvider = options.agentDirProvider;
     const packageProvider = options.packageProvider;
@@ -174,7 +179,12 @@ export class PiWebPluginCatalog {
   async snapshot(options: PiWebPluginCatalogSnapshotOptions = {}): Promise<PiWebPluginCatalogSnapshot> {
     const config = await this.configProvider();
     const diagnostics: PiWebPluginCatalogDiagnostic[] = [];
-    const plugins = await this.discoverPlugins(this.reporter(diagnostics), options.scope);
+    const projectResolutions = await (this.projectPlugins?.() ?? []);
+    for (const resolution of projectResolutions) {
+      if (resolution.withheld === undefined) continue;
+      diagnostics.push({ code: "withheld-untrusted", source: resolution.withheld.source, message: resolution.withheld.message });
+    }
+    const plugins = await this.discoverPlugins(this.reporter(diagnostics), options.scope, projectResolutions.flatMap((resolution) => resolution.root === undefined ? [] : [resolution.root]));
     return {
       plugins: plugins.map((plugin) => applyDesiredState(plugin, config)),
       diagnostics,
@@ -214,9 +224,9 @@ export class PiWebPluginCatalog {
     };
   }
 
-  private async discoverPlugins(report: ReportDiagnostic, scope: PiWebPluginScope | undefined): Promise<PiWebPluginPackageEntry[]> {
+  private async discoverPlugins(report: ReportDiagnostic, scope: PiWebPluginScope | undefined, projectRoots: LocalPluginRoot[] = []): Promise<PiWebPluginPackageEntry[]> {
     const records = new Map<string, PiWebPluginPackageEntry>();
-    for (const plugin of await this.discoverLocalPlugins(report, scope)) addUnique(records, plugin, report);
+    for (const plugin of await this.discoverLocalPlugins(report, scope, projectRoots)) addUnique(records, plugin, report);
     const packageProvider = scope === "bundled" ? undefined : await this.currentPackageProvider();
     if (packageProvider !== undefined) {
       for (const plugin of await this.discoverPiPackagePlugins(packageProvider, report)) {
@@ -238,9 +248,9 @@ export class PiWebPluginCatalog {
     throw new Error("Pi package plugin discovery requires an explicit active agent directory");
   }
 
-  private async discoverLocalPlugins(report: ReportDiagnostic, scope?: PiWebPluginScope): Promise<PiWebPluginPackageEntry[]> {
+  private async discoverLocalPlugins(report: ReportDiagnostic, scope?: PiWebPluginScope, projectRoots: LocalPluginRoot[] = []): Promise<PiWebPluginPackageEntry[]> {
     const plugins: PiWebPluginPackageEntry[] = [];
-    for (const root of this.roots) {
+    for (const root of [...this.roots, ...projectRoots]) {
       if (scope === undefined || root.scope === scope) {
         plugins.push(...await discoverLocalRoot(root, report, this.directoryEntryNamesProvider));
       }
