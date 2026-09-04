@@ -237,6 +237,8 @@ function normalizeRole(role: unknown): ChatLine["role"] {
 function normalizeContent(content: unknown, message: unknown): ChatPart[] {
   const askUserRecord = askUserRecordPart(message);
   if (askUserRecord !== undefined) return [askUserRecord];
+  const custom = customPart(message);
+  if (custom !== undefined) return [custom];
   if (typeof content === "string") return content !== "" ? [{ type: "text", text: content }] : [];
   if (!Array.isArray(content)) return objectFallback(content);
 
@@ -273,6 +275,20 @@ function normalizeContent(content: unknown, message: unknown): ChatPart[] {
   }).map((part) => part.type === "text" && getString(message, "role") === "toolResult"
     ? toolResultPartFromText(part.text, message)
     : part);
+}
+
+/**
+ * A custom entry the core does not itself understand becomes a tagged part so
+ * the transcript can offer it to a plugin renderer, and render an honest
+ * unknown card when nobody claims the tag. Before this, an unrecognized custom
+ * entry fell through to its model-facing text, which reads as if the message
+ * were ordinary prose.
+ */
+function customPart(message: unknown): Extract<ChatPart, { type: "custom" }> | undefined {
+  if (getString(message, "role") !== "custom") return undefined;
+  const tag = getString(message, "customType");
+  if (tag === undefined || tag === "" || tag === ASK_USER_ANSWERS_CUSTOM_TYPE) return undefined;
+  return { type: "custom", tag, payload: getProperty(message, "details") };
 }
 
 function askUserRecordPart(message: unknown): Extract<ChatPart, { type: "askUserRecord" }> | undefined {

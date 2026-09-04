@@ -36,6 +36,7 @@ import { describeRunModel } from "../modelIdentity";
 import { isWaitingForUser } from "../sessionWaiting";
 import type { SessionBackgroundTaskInfo, SessionNotification, SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
 import type { ChatLine, ChatPart, MessageDelivery } from "./shared";
+import type { QualifiedMessageRendererContribution } from "../plugins/types";
 import type { SessionStateBadgeKind } from "./activityBadge";
 import "./AskUserCard";
 import "./ExtensionDialogCard";
@@ -394,6 +395,8 @@ export const chatStyles = css`
      arc need not agree. The parent clips; children paint square. */
   .msg { max-width: var(--pi-chat-measure); min-width: 0; box-sizing: border-box; margin: 0 auto var(--pi-space-7); padding: var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); overflow: hidden; overflow: clip; }
   .msg.assistant, .msg.tool-image-output { background: var(--pi-surface); }
+  .custom-card { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); padding: var(--pi-space-5); background: var(--pi-surface); overflow: hidden; overflow: clip; display: grid; gap: var(--pi-space-3); }
+  .custom-card-unknown { color: var(--pi-text-muted); }
   .msg.user { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
   /* Held by the server, not yet read: the same warning colour the queue panel
      uses, so "waiting" looks the same wherever it appears. It reverts to the
@@ -727,6 +730,7 @@ export class ChatView extends LitElement {
   /** True while this session's transcript is being read for the first time. */
   @property({ type: Boolean }) transcriptLoading = false;
   @property({ attribute: false }) transcriptFailed?: string;
+  @property({ attribute: false }) findMessageRenderer?: (tag: string) => QualifiedMessageRendererContribution | undefined;
   @property({ type: Boolean }) isSendingPrompt = false;
   @property({ type: Boolean }) isCompacting = false;
   @property({ type: Number }) pendingMessageCount = 0;
@@ -2527,6 +2531,40 @@ export class ChatView extends LitElement {
     return Math.max(this.messageEnd, this.messageStart + this.messages.length);
   }
 
+  /**
+   * The runtime keeps the card chrome and a plugin supplies only the body, so
+   * a plugin card cannot opt out of the corner and settled-outcome contracts.
+   * A tag nobody claims renders as unknown rather than as nothing: absence of
+   * a renderer is not evidence that the message is empty.
+   */
+  private renderCustomPart(part: Extract<ChatPart, { type: "custom" }>) {
+    const renderer = this.findMessageRenderer?.(part.tag);
+    if (renderer === undefined) {
+      return html`<div class="part custom-card custom-card-unknown">
+        <strong>Unrecognized message</strong>
+        <small>Nothing on this machine renders "${part.tag}".</small>
+      </div>`;
+    }
+    const body = this.renderCustomBody(renderer, part);
+    return html`<div class="part custom-card">${body}</div>`;
+  }
+
+  private renderCustomBody(renderer: QualifiedMessageRendererContribution, part: Extract<ChatPart, { type: "custom" }>) {
+    try {
+      return renderer.render({
+        sessionId: this.sessionId,
+        messageId: "",
+        tag: part.tag,
+        payload: part.payload,
+        streaming: this.status?.isStreaming === true,
+        createdAt: undefined,
+      });
+    } catch (error) {
+      console.error(`Plugin ${renderer.pluginId} failed rendering ${part.tag}`, error);
+      return html`<strong>This message could not be rendered</strong><small>${renderer.pluginId} failed while drawing "${part.tag}".</small>`;
+    }
+  }
+
   private renderMessage(message: ChatLine, index: number) {
     const toolOnly = this.isToolExecutionOnlyMessage(message);
     const askUserRecordOnly = this.isAskUserRecordOnlyMessage(message);
@@ -2778,6 +2816,7 @@ export class ChatView extends LitElement {
       const { src, alt } = chatImagePartSource(part);
       return html`<img class="part chat-image" src=${src} alt=${alt} loading="lazy" role="button" tabindex="0" title="Click to enlarge" @load=${this.onImageLoad} @click=${() => { this.openImageZoom(src, alt); }} @keydown=${(event: KeyboardEvent) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); this.openImageZoom(src, alt); } }} />`;
     }
+    if (part.type === "custom") return this.renderCustomPart(part);
     if (part.type === "toolCall") return html`<div class="part tool-line">▶ ${part.toolName}<span class="summary">${part.summary}</span></div>`;
     if (part.type === "toolExecution") return html`<tool-execution-view class="part" .execution=${part} .streaming=${this.status?.isStreaming === true}></tool-execution-view>`;
     if (part.type === "toolResult") return html`
