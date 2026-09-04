@@ -113,6 +113,20 @@ async function requestShutdown(signal: NodeJS.Signals): Promise<void> {
 process.once("SIGINT", (signal) => { void requestShutdown(signal); });
 process.once("SIGTERM", (signal) => { void requestShutdown(signal); });
 
+// The session daemon is the long-lived owner of every active run. A plugin's
+// unhandled rejection - a pi-updater timer touching a disposed extension
+// runner killed pid 5602 mid-turn on 2026-09-04, taking two in-flight agent
+// runs with it - must never take the process down. These are logged loudly
+// and survived; launchd restart remains the recovery for genuine corruption.
+process.on("unhandledRejection", (reason) => {
+  const detail = reason instanceof Error ? (reason.stack ?? reason.message) : String(reason);
+  app.log.error({ detail }, "unhandled promise rejection survived by the session daemon");
+});
+process.on("uncaughtException", (error) => {
+  const detail = error.stack ?? error.message;
+  app.log.error({ detail }, "uncaught exception survived by the session daemon");
+});
+
 // Agent-executed processes (bash tool, terminals, subsessions) are spawned from
 // this process and inherit its environment. The scrub removes only the keys
 // that silently distort the tools agents run; the daemon's PI_WEB_* wiring
