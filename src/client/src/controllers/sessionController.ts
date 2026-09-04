@@ -7,6 +7,7 @@ import { SessionGapRepair } from "../sessionGapRepair";
 import { describeError } from "../notice";
 import { ancestorsForSession } from "../sessionAncestors";
 import { locateSessionWorkspace } from "../sessionAncestorLookup";
+import { sessionLocationVerdict } from "../sessionLocationVerdict";
 import { refreshMayReplaceSelection } from "./sessionRefreshScope";
 import { activityOutputView, subagentRunConversationView, type AppState, type ClosedExtensionDialog } from "../appState";
 import { forgetCachedNewSession, isCachedNewSessionInfo, markCachedNewSessionInfo, mergeCachedNewSessions, rememberCachedNewSession, stripCachedNewSessionMarker } from "../cachedNewSessions";
@@ -317,7 +318,7 @@ export class SessionController {
     // kept every workspace-scoped panel answering for the project being left,
     // so the missing one is fetched instead; until it lands the location is
     // unknown, which is what the panels are told.
-    if (ancestors === undefined && session.cwd !== "") {
+    if (ancestors === undefined && sessionLocationVerdict(session.cwd, state.selectedWorkspace?.path) === "unknown" && session.cwd !== "") {
       void this.locateAndApplySessionWorkspace(session, machineId, seq);
     }
     this.setState({

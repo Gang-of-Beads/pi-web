@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionController } from "./sessionController";
+import * as ancestorLookup from "../sessionAncestorLookup";
 import { initialAppState } from "../appState";
 import { defaultApi, EmitSocket, emptyPage, MemoryStorage, oldSession, status, workspace, type AppState } from "./sessionController.testSupport";
 import type { Project, Workspace } from "../../../shared/apiTypes";
@@ -82,5 +83,30 @@ describe("choosing a session from another workspace", () => {
     });
 
     expect(read().sessions.every((entry) => entry.cwd === "/elsewhere" || entry.cwd === "")).toBe(true);
+  });
+
+  /**
+   * A workspace lists its subdirectory sessions, so a project rooted at a
+   * broad directory contains sessions that a deeper project also claims.
+   * Choosing one must not hand the selection to the deeper claimant: the
+   * Project chip flipped there while the session list kept answering for the
+   * workspace the user chose (owner report, 2026-09-04).
+   */
+  it("keeps an explicit broad selection when it contains the session", async () => {
+    const nested: Workspace = { ...workspace, id: "workspace-3", projectId: "project-3", path: "/repo/nested", label: "nested" };
+    const deeper: Project = { id: "project-3", name: "nested", path: "/repo/nested", createdAt: "2026-05-15T00:00:00.000Z" };
+    const locate = vi.spyOn(ancestorLookup, "locateSessionWorkspace").mockResolvedValue({ workspace: nested, project: deeper });
+    try {
+      const { run, read } = controllerOver({ workspaces: [workspace], projects: [here] });
+
+      await run.selectSession({ ...oldSession, id: "contained", cwd: "/repo/nested" }, { updateUrl: false });
+      await Promise.resolve();
+
+      expect(locate).not.toHaveBeenCalled();
+      expect(read().selectedWorkspace?.id).toBe("workspace-1");
+      expect(read().selectedProject?.id).toBe("project-1");
+    } finally {
+      locate.mockRestore();
+    }
   });
 });
