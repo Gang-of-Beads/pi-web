@@ -1,4 +1,4 @@
-import type { TemplateResult } from "lit";
+import type { CSSResultGroup, TemplateResult } from "lit";
 import type { DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "./shared/pluginApiTypes.js";
 
 export type {
@@ -61,6 +61,13 @@ export interface PluginActivationContext {
   readonly settings?: PluginSettings | undefined;
   /** Call one of this host's JSON endpoints; the host owns path resolution. */
   readonly fetchJson?: (path: string, init?: { method?: string; body?: unknown }) => Promise<unknown>;
+  /**
+   * Host utilities a plugin surface needs but must not reimplement: the same
+   * clipboard fallback chain, the same words for a failure, the same
+   * interactive-surface styles every built-in surface carries, and the same
+   * breakpoints.
+   */
+  readonly ui?: PluginHostUi;
 }
 
 export type PluginLifecycleEvent =
@@ -75,6 +82,19 @@ export type PluginLifecycleEvent =
  * means unconfigured, which a plugin must not read as "configured empty".
  */
 export type PluginSettings = Readonly<Record<string, unknown>>;
+
+export interface PluginHostUi {
+  readonly copyText: (text: string) => Promise<boolean>;
+  readonly describeError: (error: unknown) => string;
+  readonly surfaceStyles: CSSResultGroup;
+  readonly breakpoints: PluginBreakpoints;
+}
+
+export interface PluginBreakpoints {
+  readonly coarseOrMobile: string;
+  readonly mobileNavigation: string;
+  readonly desktopSideBySide: string;
+}
 
 export type PluginLifecycleEventKind = PluginLifecycleEvent["kind"];
 

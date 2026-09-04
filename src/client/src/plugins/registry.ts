@@ -1,6 +1,6 @@
 import { html, svg } from "lit";
 import { requirePluginBackendRevision } from "../../../shared/pluginBackendProtocol";
-import type { ComposerContribution, PluginSettings, MessageRendererContribution, QualifiedMessageRendererContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
+import type { ComposerContribution, PluginHostUi, PluginSettings, MessageRendererContribution, QualifiedMessageRendererContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
 
 function eventHasKind<K extends PluginLifecycleEventKind>(event: PluginLifecycleEvent, kind: K): event is Extract<PluginLifecycleEvent, { kind: K }> {
   return event.kind === kind;
@@ -34,8 +34,11 @@ export class PluginRegistry {
   private readonly settingsByPlugin = new Map<string, PluginSettings>();
   private readonly fetchJson: ((path: string, init?: { method?: string; body?: unknown }) => Promise<unknown>) | undefined;
 
-  constructor(hostServices?: { fetchJson?: (path: string, init?: { method?: string; body?: unknown }) => Promise<unknown> }) {
+  private readonly ui: PluginHostUi | undefined;
+
+  constructor(hostServices?: { fetchJson?: (path: string, init?: { method?: string; body?: unknown }) => Promise<unknown>; ui?: PluginHostUi }) {
     this.fetchJson = hostServices?.fetchJson;
+    this.ui = hostServices?.ui;
   }
   private readonly listeners = new Map<PluginLifecycleEventKind, { pluginId: string; listener: (event: PluginLifecycleEvent) => void }[]>();
   private readonly disposers = new Map<string, (() => void)[]>();
@@ -70,6 +73,7 @@ export class PluginRegistry {
         html,
         svg,
         ...(this.fetchJson === undefined ? {} : { fetchJson: this.fetchJson }),
+        ...(this.ui === undefined ? {} : { ui: this.ui }),
         on: <K extends PluginLifecycleEventKind>(kind: K, listener: PluginLifecycleListener<K>) => this.subscribe(runtimePluginId, kind, listener),
       }));
       const contributions = activation.contributions;

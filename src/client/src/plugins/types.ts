@@ -1,4 +1,4 @@
-import type { TemplateResult } from "lit";
+import type { CSSResultGroup, TemplateResult } from "lit";
 import type { AppAction } from "../actions";
 import type { DeleteWorkspaceFileResponse, FileContentResponse, FileTreeEntry, FileTreeResponse, JsonValue, Machine, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, RunTerminalCommandInput, TerminalCommandRun, TerminalCommandRunFilter, TerminalCommandRunHandle, TerminalInfo, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, Workspace } from "../api";
 import type { AppState } from "../appState";
@@ -57,6 +57,19 @@ export type PluginLifecycleEvent =
  */
 export type PluginSettings = Readonly<Record<string, unknown>>;
 
+export interface PluginHostUi {
+  readonly copyText: (text: string) => Promise<boolean>;
+  readonly describeError: (error: unknown) => string;
+  readonly surfaceStyles: CSSResultGroup;
+  readonly breakpoints: PluginBreakpoints;
+}
+
+export interface PluginBreakpoints {
+  readonly coarseOrMobile: string;
+  readonly mobileNavigation: string;
+  readonly desktopSideBySide: string;
+}
+
 export type PluginLifecycleEventKind = PluginLifecycleEvent["kind"];
 
 export type PluginLifecycleListener<K extends PluginLifecycleEventKind> =
@@ -75,6 +88,14 @@ export interface PluginActivationContext {
    * producer of that decision.
    */
   readonly fetchJson?: (path: string, init?: { method?: string; body?: unknown }) => Promise<unknown>;
+  /**
+   * Host utilities a plugin surface needs but must not reimplement: the same
+   * clipboard fallback chain, the same words for a failure, the same
+   * interactive-surface styles every built-in surface carries, and the same
+   * breakpoints. A plugin copying any of these becomes a second producer of a
+   * decision the host already made.
+   */
+  readonly ui?: PluginHostUi;
   /** Stable package/source identity, including on federated machines. */
   readonly pluginId: PluginId;
   /** Host-unique identity for qualified contribution references in this runtime. */
