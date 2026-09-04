@@ -36,7 +36,8 @@ import { describeRunModel } from "../modelIdentity";
 import { isWaitingForUser } from "../sessionWaiting";
 import type { SessionBackgroundTaskInfo, SessionNotification, SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
 import type { ChatLine, ChatPart, MessageDelivery } from "./shared";
-import type { QualifiedMessageRendererContribution } from "../plugins/types";
+import type { DrawerSectionContext, QualifiedDrawerSectionContribution, QualifiedMessageRendererContribution } from "../plugins/types";
+import { selectedDrawerTab, type DrawerTab } from "../drawerTabSelection";
 import type { SessionStateBadgeKind } from "./activityBadge";
 import "./AskUserCard";
 import "./ExtensionDialogCard";
@@ -847,7 +848,10 @@ export class ChatView extends LitElement {
    */
   @property({ attribute: false }) onRefreshGoals?: () => void;
   @property({ attribute: false }) onRunGoalCommand?: (goal: GoalRecordSummary, command: string) => void | Promise<void>;
-  @state() private topDrawerTab: TopDrawerTab | undefined;
+  @state() private topDrawerTab: DrawerTab | undefined;
+  @property({ attribute: false }) drawerSections: readonly QualifiedDrawerSectionContribution[] = [];
+  @property() drawerMachineId = "local";
+  @property() drawerWorkspacePath?: string;
   /** Which kinds of activity to list; "all" until the reader narrows it. */
   @state() private activityFilter: ActivityFilter = "all";
   /** Live work only, until the reader asks for the history. */
@@ -1373,7 +1377,17 @@ export class ChatView extends LitElement {
     // Fixed tab membership means the drawer itself is fixed too: hiding the
     // whole strip when the three sections happen to be empty is the reflow
     // the ruling forbids, and it made the not-installed sentences unreachable.
-    const tab = selectedTopDrawerTab({ activity: activity !== undefined, notifications: inbox !== undefined || this.notificationsFailed, goals: this.goalsLoad.data.length > 0 }, this.topDrawerTab);
+    const sectionContext = this.drawerSectionContext();
+    const sections = sectionContext === undefined ? [] : this.drawerSections;
+    const sectionsWithContent = sectionContext === undefined
+      ? []
+      : sections.filter((section) => section.available?.(sectionContext) !== false).map((section) => section.id);
+    const tab = selectedDrawerTab({
+      activity: activity !== undefined,
+      notifications: inbox !== undefined || this.notificationsFailed,
+      sections: sections.map((section) => section.id),
+      withContent: sectionsWithContent,
+    }, this.topDrawerTab);
     const key = this.topDrawerKey();
     const collapsed = this.expandedTopDrawerKeys.has(key)
       ? false
@@ -1432,6 +1446,18 @@ export class ChatView extends LitElement {
             >
               <span class="drawer-tab-label">${goalsDrawerTabLabel(this.goalsLoad.data, this.goalsLoad.state === "loaded")}</span>
             </button>
+            ${sectionContext === undefined ? null : sections.map((section) => html`
+            <button
+              type="button"
+              role="tab"
+              id=${`drawer-tab-${section.id}`}
+              class=${`drawer-tab${tab === section.id ? " selected" : ""}`}
+              aria-selected=${String(tab === section.id)}
+              tabindex=${tab === section.id ? "0" : "-1"}
+              @click=${() => { this.selectTopDrawerTab(section.id, collapsed); }}
+            >
+              <span class="drawer-tab-label">${section.title}${sectionBadgeSuffix(section, sectionContext)}</span>
+            </button>`)}
           </div>
           </div>
           <div class="drawer-header-actions">
@@ -1563,7 +1589,20 @@ export class ChatView extends LitElement {
   }
 
   /** Choosing a section is also how a folded drawer is opened on that section. */
-  private selectTopDrawerTab(tab: TopDrawerTab, collapsed: boolean): void {
+  /**
+   * The scope a contributed section is drawn for. Undefined while no session
+   * is selected: a section asked about nothing would have to invent an answer.
+   */
+  private drawerSectionContext(): DrawerSectionContext | undefined {
+    if (this.sessionId === "") return undefined;
+    return {
+      sessionId: this.sessionId,
+      machineId: this.drawerMachineId,
+      workspacePath: this.drawerWorkspacePath,
+    };
+  }
+
+  private selectTopDrawerTab(tab: DrawerTab, collapsed: boolean): void {
     this.topDrawerTab = tab;
     if (collapsed) this.toggleTopDrawer(collapsed);
   }
@@ -3579,6 +3618,15 @@ export interface ActivityPanelState {
  * land on the wrong tab. Availability only decides the tab shown before the
  * reader has chosen one.
  */
+/**
+ * A badge is part of the tab's claim, so an absent one renders nothing rather
+ * than a zero that would state a finished empty over an unknown.
+ */
+function sectionBadgeSuffix(section: QualifiedDrawerSectionContribution, context: DrawerSectionContext): string {
+  const badge = section.badge?.(context);
+  return badge === undefined || badge === "" ? "" : ` (${String(badge)})`;
+}
+
 export function selectedTopDrawerTab(available: { activity: boolean; notifications: boolean; goals?: boolean }, preferred: TopDrawerTab | undefined): TopDrawerTab {
   if (preferred === "activity") return "activity";
   if (preferred === "notifications") return "notifications";
