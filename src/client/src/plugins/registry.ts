@@ -74,6 +74,9 @@ export class PluginRegistry {
         html,
         svg,
         ...(this.fetchJson === undefined ? {} : { fetchJson: this.fetchJson }),
+        ...(this.fetchJson === undefined ? {} : {
+          callOperation: (operation: string, input?: unknown) => this.callPluginOperation(runtimePluginId, operation, input),
+        }),
         ...(this.ui === undefined ? {} : { ui: this.ui }),
         on: <K extends PluginLifecycleEventKind>(kind: K, listener: PluginLifecycleListener<K>) => this.subscribe(runtimePluginId, kind, listener),
       }));
@@ -253,6 +256,11 @@ export class PluginRegistry {
     }
     this.disposers.delete(runtimePluginId);
     this.settingsByPlugin.delete(runtimePluginId);
+  }
+
+  private async callPluginOperation(runtimePluginId: string, operation: string, input: unknown): Promise<unknown> {
+    if (this.fetchJson === undefined) throw new Error("This host does not offer plugin requests.");
+    return await this.fetchJson(`api/plugins/${encodeURIComponent(runtimePluginId)}/${encodeURIComponent(operation)}`, { method: "POST", body: input ?? {} });
   }
 
   private subscribe<K extends PluginLifecycleEventKind>(runtimePluginId: string, kind: K, listener: PluginLifecycleListener<K>): () => void {

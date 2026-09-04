@@ -3,7 +3,7 @@ export interface SpeechCredential {
   region: string;
 }
 
-export type FetchJson = (path: string, init?: { method?: string; body?: unknown }) => Promise<unknown>;
+export type CallOperation = (operation: string, input?: unknown) => Promise<unknown>;
 
 /**
  * The account key stays on the server; the browser gets a short-lived token
@@ -14,8 +14,8 @@ export type FetchJson = (path: string, init?: { method?: string; body?: unknown 
  * An unconfigured install answers that it is unconfigured rather than a
  * credential, and dictation reports that instead of failing obscurely.
  */
-export function speechTokenRequester(fetchJson: FetchJson, pluginId = "voice"): () => Promise<SpeechCredential> {
-  return async () => parseSpeechCredential(await fetchJson(`api/plugins/${pluginId}/speech.token`, { method: "POST" }));
+export function speechTokenRequester(callOperation: CallOperation): () => Promise<SpeechCredential> {
+  return async () => parseSpeechCredential(await callOperation("speech.token"));
 }
 
 export function parseSpeechCredential(value: unknown): SpeechCredential {

@@ -89,6 +89,12 @@ export interface PluginActivationContext {
    */
   readonly fetchJson?: (path: string, init?: { method?: string; body?: unknown }) => Promise<unknown>;
   /**
+   * Call one of this plugin's own declared daemon operations. The plugin names
+   * the operation; the host builds the path, so a plugin never spells out a
+   * URL and cannot drift from where the host actually serves it.
+   */
+  readonly callOperation?: (operation: string, input?: unknown) => Promise<unknown>;
+  /**
    * Host utilities a plugin surface needs but must not reimplement: the same
    * clipboard fallback chain, the same words for a failure, the same
    * interactive-surface styles every built-in surface carries, and the same

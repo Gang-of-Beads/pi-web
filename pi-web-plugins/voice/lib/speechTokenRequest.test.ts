@@ -2,15 +2,15 @@ import { describe, expect, it } from "vitest";
 import { parseSpeechCredential, speechTokenRequester } from "./speechTokenRequest.js";
 
 describe("asking this plugin's daemon half for a token", () => {
-  it("calls the plugin's own declared operation, under its runtime id", async () => {
-    const seen: { path: string; method: string | undefined }[] = [];
+  it("names the operation it wants instead of spelling a url", async () => {
+    const seen: string[] = [];
 
-    await speechTokenRequester((path, init) => {
-      seen.push({ path, method: init?.method });
+    await speechTokenRequester((operation) => {
+      seen.push(operation);
       return Promise.resolve({ configured: true, token: "jwt", region: "swedencentral" });
-    }, "machine.remote.voice")();
+    })();
 
-    expect(seen).toEqual([{ path: "api/plugins/machine.remote.voice/speech.token", method: "POST" }]);
+    expect(seen).toEqual(["speech.token"]);
   });
 
   it("returns the credential without the key that minted it", async () => {

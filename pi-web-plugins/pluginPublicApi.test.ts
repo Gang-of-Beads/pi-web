@@ -23,7 +23,6 @@ const forbiddenPatterns = [
 const allowed = new Map<string, readonly string[]>([
   ["pi-web-plugins/voice/lib/speechToText.ts", ["direct browser fetch"]],
   ["pi-web-plugins/voice/lib/browserSpeechStream.ts", ["direct browser fetch"]],
-  ["pi-web-plugins/voice/lib/speechTokenRequest.ts", ["direct PI WEB API URL"]],
 ]);
 
 describe("bundled PI WEB plugins", () => {
