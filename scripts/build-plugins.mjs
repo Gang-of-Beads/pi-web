@@ -3,6 +3,7 @@ import { watch } from "node:fs";
 import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import ts from "typescript";
+import * as esbuild from "esbuild";
 
 const rootDir = resolve("pi-web-plugins");
 const outDir = resolve("dist/pi-web-plugins");
@@ -18,8 +19,69 @@ if (watchMode) {
 async function buildAll() {
   await rm(outDir, { recursive: true, force: true });
   const result = await buildDirectory(rootDir, outDir);
+  const bundled = await bundleBrowserEntries();
+  if (bundled > 0) console.log(`[plugins] bundled ${String(bundled)} browser entry ${bundled === 1 ? "module" : "modules"}`);
   const suffix = result.transpiled === 1 ? "file" : "files";
   console.log(`[plugins] built ${String(result.transpiled)} TypeScript plugin ${suffix} into ${relative(cwd, outDir)}`);
+}
+
+/**
+ * Browser plugin modules are served raw and loaded by the page, so a bare
+ * specifier like "lit" has nothing to resolve against - there is no import map
+ * and no bundler between the file and the browser. An entry whose graph
+ * reaches a package is therefore bundled in place; entries that only import
+ * package-local files are left as the readable per-file output they already
+ * were.
+ */
+async function bundleBrowserEntries() {
+  const manifests = await browserEntryManifests();
+  let bundled = 0;
+  for (const entry of manifests) {
+    if (!await needsBundling(entry)) continue;
+    await esbuild.build({
+      entryPoints: [entry],
+      outfile: entry,
+      bundle: true,
+      format: "esm",
+      platform: "browser",
+      allowOverwrite: true,
+      target: "es2022",
+      logLevel: "silent",
+    });
+    bundled += 1;
+  }
+  return bundled;
+}
+
+async function browserEntryManifests() {
+  const entries = [];
+  for (const dir of await findPluginDirs(outDir)) {
+    let metadata;
+    try {
+      metadata = JSON.parse(await readFile(resolve(dir, "package.json"), "utf8"));
+    } catch {
+      continue;
+    }
+    const declared = metadata?.piWeb?.plugins;
+    if (!Array.isArray(declared)) continue;
+    for (const declaration of declared) {
+      const browserRoot = typeof declaration?.browserRoot === "string" ? declaration.browserRoot : ".";
+      const modulePath = declaration?.module;
+      if (typeof modulePath !== "string") continue;
+      entries.push(resolve(dir, browserRoot === "." ? modulePath : modulePath));
+    }
+  }
+  return entries;
+}
+
+async function needsBundling(entryPath) {
+  let source;
+  try {
+    source = await readFile(entryPath, "utf8");
+  } catch {
+    return false;
+  }
+  return /(?:^|\n)\s*import\s[^;]*from\s+"(?!\.)/u.test(source);
 }
 
 async function buildDirectory(sourceDir, targetDir) {

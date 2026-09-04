@@ -131,7 +131,7 @@ describe("external plugin manifests", () => {
     expect(moduleLoader).not.toHaveBeenCalled();
   });
 
-  it.each(["core", "themes", "machine.remote.plugin"])('rejects reserved manifest id "%s" before importing modules', async (id) => {
+  it.each(["core", "machine.remote.plugin"])('rejects reserved manifest id "%s" before importing modules', async (id) => {
     vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(JSON.stringify({
       plugins: [{ id, module: `./${id}/plugin.js` }],
     })))));

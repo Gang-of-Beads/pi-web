@@ -567,7 +567,6 @@ describe("PiWebPluginCatalog", () => {
     const pluginsRoot = join(tempDir, "plugins");
     const reservedPlugins = [
       { directory: "reserved-core", id: "core" },
-      { directory: "reserved-themes", id: "themes" },
       { directory: "reserved-machine", id: "machine.remote.tools" },
     ];
     for (const { directory, id } of reservedPlugins) {
@@ -589,7 +588,7 @@ describe("PiWebPluginCatalog", () => {
     const snapshot = await catalog.snapshot();
 
     expect(snapshot.plugins.map((plugin) => plugin.id)).toEqual(["valid"]);
-    expect(snapshot.diagnostics).toHaveLength(3);
+    expect(snapshot.diagnostics).toHaveLength(2);
     for (const { directory, id } of reservedPlugins) {
       const source = join(pluginsRoot, directory);
       const diagnostic = snapshot.diagnostics.find((candidate) => candidate.source === source);

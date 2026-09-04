@@ -32,7 +32,7 @@ const plugin: PiWebPlugin = {
     const unsubscribe = context.on?.("settings-changed", (event: { settings: PluginSettings }) => {
       config = parseVoiceSettings(event.settings);
     });
-    const requestToken = speechTokenRequester(context.fetchJson ?? (() => Promise.reject(new Error("This host does not offer plugin requests."))));
+    const requestToken = speechTokenRequester(context.fetchJson ?? (() => Promise.reject(new Error("This host does not offer plugin requests."))), context.runtimePluginId);
 
     function controllerFor(composer: ComposerRuntimeContext): VoiceController {
       controller ??= new VoiceController(
