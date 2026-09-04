@@ -6,6 +6,7 @@ import { css, LitElement, html, type PropertyValues } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { api, type FileSuggestion, type PromptAttachment, type SessionModel, type SessionStatus, type SlashCommand } from "../api";
 import type { PromptAttachmentDelivery } from "../../../shared/apiTypes";
+import type { ComposerRuntimeContext, ComposerSlot, QualifiedComposerContribution } from "../plugins/types";
 import { capturePromptAttachments, effectivePromptAttachmentDelivery, isInlinePromptAttachment, type CapturedAttachment } from "../promptAttachmentCapture";
 import { inputModeForDraft, inputModesEqual, type InputMode } from "../inputModes";
 import { machineSessionKey } from "../machineKeys";
@@ -236,6 +237,8 @@ export class PromptEditor extends LitElement {
    */
   @property({ attribute: false }) onSend?: (text: string, streamingBehavior?: "steer" | "followUp", attachments?: PromptAttachment[], delivery?: PromptAttachmentDelivery, replay?: { clientMessageId?: string }) => Promise<boolean | undefined> | boolean | undefined;
   @property({ attribute: false }) onStop?: () => void;
+  @property({ attribute: false }) composerContributions: readonly QualifiedComposerContribution[] = [];
+  @property({ attribute: false }) onPluginNotice?: (message: string, severity: "info" | "warning" | "error") => void;
   @property({ attribute: false }) onSelectModel?: () => void;
   @property({ attribute: false }) onSelectThinking?: () => void;
   /** Asked to come back, when the reader taps the collapsed composer. */
@@ -386,6 +389,7 @@ export class PromptEditor extends LitElement {
         <div class="editor-wrap">
           ${shellMode ? html`<div class="mode-hint">Shell command${shellInputMode.excludeFromContext ? " · excluded from context" : ""}</div>` : null}
           ${this.renderVoiceHint()}
+          ${this.renderComposerContributionStatus()}
           ${this.isCompacting && !shellMode ? html`<div class="mode-hint">Compacting history · message will be queued</div>` : null}
           <div
             class=${`markdown-editor${this.disabled ? " markdown-editor-disabled" : ""}`}
@@ -396,9 +400,11 @@ export class PromptEditor extends LitElement {
           <autocomplete-menu .items=${this.completions} .selectedIndex=${this.selectedIndex} .onPick=${(item: CompletionItem) => { this.pick(item); }}></autocomplete-menu>
         </div>
         <div class="actions">
+          ${this.renderComposerContributions("leading")}
           ${this.renderCompactStatus()}
           ${this.renderHistoryButton()}
           ${this.renderDictateButton()}
+          ${this.renderComposerContributions("trailing")}
           <button class="icon-button send-button" ?disabled=${busy} title=${queuesInput ? "Steer — joins the current turn at the next safe point" : "Send message"} aria-label=${queuesInput ? "Steer current response (queued if busy)" : "Send message"} @click=${() => { this.send(this.canSteer ? "steer" : "followUp"); }}>${this.canSteer ? renderSteerIcon() : queuesInput ? renderQueueIcon() : renderSendIcon()}</button>
           <button class="icon-button stop-button" ?disabled=${this.disabled || !this.canStop} title=${this.canStop ? "Stop current work and clear queued messages" : "Nothing running"} aria-label="Stop current work" @click=${() => this.onStop?.()}>${renderStopIcon()}</button>
         </div>
@@ -793,6 +799,46 @@ export class PromptEditor extends LitElement {
    * behaviour worth asserting: a transcript must never wipe a half-written
    * message.
    */
+  private composerContributionContext(): ComposerRuntimeContext {
+    return {
+      sessionId: this.sessionId,
+      machineId: this.machineId,
+      draft: this.editor?.state.doc.toString() ?? this.draft,
+      busy: this.disabled || this.sending,
+      insertText: (text: string) => { this.insertDictatedText(text); },
+      replaceDraft: (text: string) => { this.replaceText(text); },
+      notify: (message: string, severity: "info" | "warning" | "error") => { this.onPluginNotice?.(message, severity); },
+    };
+  }
+
+  private renderComposerContributions(slot: ComposerSlot) {
+    const entries = this.composerContributions.filter((entry) => entry.slot === slot);
+    if (entries.length === 0) return null;
+    const context = this.composerContributionContext();
+    return html`${entries.map((entry) => {
+      const enabled = entry.enabled?.(context) ?? true;
+      const reason = enabled ? undefined : entry.disabledReason?.(context);
+      return html`<button
+        type="button"
+        class="icon-button"
+        ?disabled=${!enabled}
+        title=${reason ?? entry.title}
+        aria-label=${entry.title}
+        @click=${() => { void entry.run(this.composerContributionContext()); }}
+      >${entry.icon ?? entry.title}</button>`;
+    })}`;
+  }
+
+  private renderComposerContributionStatus() {
+    const context = this.composerContributionContext();
+    const lines = this.composerContributions.flatMap((entry) => {
+      const status = entry.status?.(context);
+      return status === undefined ? [] : [{ id: entry.id, status }];
+    });
+    if (lines.length === 0) return null;
+    return html`${lines.map((line) => html`<div class=${line.status.severity === "problem" ? "mode-hint mode-hint-problem" : "mode-hint"}>${line.status.text}</div>`)}`;
+  }
+
   insertDictatedText(text: string): void {
     const current = this.editor?.state.doc.toString() ?? this.draft;
     const separator = current === "" || current.endsWith(" ") || current.endsWith("\n") ? "" : " ";
