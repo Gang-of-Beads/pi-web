@@ -1,4 +1,4 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -34,6 +34,20 @@ describe("the daemon owns the queue", () => {
     expect(existsSync(queueFilePath(dir, "own-park"))).toBe(true);
     const status = await service.status(sessionRef("own-park"));
     expect(status.queuedMessages.map((entry) => entry.clientMessageId)).toEqual(["c-park"]);
+    await service.dispose();
+  });
+
+  it("does not accept or echo a parked prompt that failed its durable write", async () => {
+    const { fake, hub, service, dir } = await busyService("own-persist-failure");
+    await writeFile(join(dir, ".pi"), "not a directory");
+
+    await expect(service.prompt(sessionRef("own-persist-failure"), "must remain in the outbox", "followUp", undefined, { clientMessageId: "c-fail" }))
+      .rejects.toThrow();
+
+    expect(fake.calls.prompt).toHaveLength(0);
+    expect((await service.status(sessionRef("own-persist-failure"))).queuedMessages).toEqual([]);
+    expect(hub.sessionEvents.map(({ event }) => event.type)).not.toContain("prompt.accepted");
+    expect(hub.sessionEvents.map(({ event }) => event.type)).not.toContain("message.append");
     await service.dispose();
   });
 
@@ -137,9 +151,10 @@ describe("the daemon owns the queue", () => {
       sessionManager: sessionGateway([sessionRecord("own-idem")]),
       heartbeatIntervalMs: 60_000,
     });
+    // Opening the session does not return until its durable queue has restored
+    // the acceptance ledger, so a retry in the first request after restart is
+    // still a duplicate rather than a second execution.
     await service.status(sessionRef("own-idem"));
-    await vi.waitFor(async () => { expect((await service.status(sessionRef("own-idem"))).queuedMessages).toHaveLength(1); });
-
     await service.prompt(sessionRef("own-idem"), "only once", "followUp", undefined, { clientMessageId: "c-idem" });
 
     expect((await service.status(sessionRef("own-idem"))).queuedMessages).toHaveLength(1);

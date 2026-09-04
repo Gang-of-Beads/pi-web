@@ -66,8 +66,8 @@ export class OwnedPromptQueue {
         ...loaded.filter((entry) => entry.clientMessageId === undefined ? !knownAnonymous.has(anonymousKey(entry)) : !knownIds.has(entry.clientMessageId)),
         ...inMemory,
       ];
+      if (merged.length !== loaded.length) await this.persist(sessionId, merged);
       this.perSession.set(sessionId, merged);
-      if (merged.length !== loaded.length) await this.persist(sessionId);
       return [...merged];
     });
   }
@@ -81,9 +81,9 @@ export class OwnedPromptQueue {
       if (!this.filePaths.has(sessionId)) this.filePaths.set(sessionId, queueFilePath(cwd, sessionId));
       const list = this.perSession.get(sessionId) ?? [];
       if (entry.clientMessageId !== undefined && list.some((queued) => queued.clientMessageId === entry.clientMessageId)) return;
-      list.push(entry);
-      this.perSession.set(sessionId, list);
-      await this.persist(sessionId);
+      const next = [...list, entry];
+      await this.persist(sessionId, next);
+      this.perSession.set(sessionId, next);
     });
   }
 
@@ -91,8 +91,12 @@ export class OwnedPromptQueue {
     return this.serialize(sessionId, async () => {
       const list = this.perSession.get(sessionId) ?? [];
       const at = list.findIndex((entry) => entry.lane === "steer");
-      const taken = at !== -1 ? list.splice(at, 1)[0] : list.shift();
-      if (taken !== undefined) await this.persist(sessionId);
+      if (at === -1 && list.length === 0) return undefined;
+      const index = at === -1 ? 0 : at;
+      const taken = list[index];
+      const next = [...list.slice(0, index), ...list.slice(index + 1)];
+      await this.persist(sessionId, next);
+      this.perSession.set(sessionId, next);
       return taken;
     });
   }
@@ -101,9 +105,9 @@ export class OwnedPromptQueue {
   async restore(sessionId: string, entry: OwnedQueueEntry): Promise<void> {
     return this.serialize(sessionId, async () => {
       const list = this.perSession.get(sessionId) ?? [];
-      list.unshift(entry);
-      this.perSession.set(sessionId, list);
-      await this.persist(sessionId);
+      const next = [entry, ...list];
+      await this.persist(sessionId, next);
+      this.perSession.set(sessionId, next);
     });
   }
 
@@ -115,8 +119,10 @@ export class OwnedPromptQueue {
           ? entry.clientMessageId === match.clientMessageId
           : (match.lane === undefined || entry.lane === match.lane) && entry.text === match.text);
       if (at === -1) return undefined;
-      const [taken] = list.splice(at, 1);
-      await this.persist(sessionId);
+      const taken = list[at];
+      const next = [...list.slice(0, at), ...list.slice(at + 1)];
+      await this.persist(sessionId, next);
+      this.perSession.set(sessionId, next);
       return taken;
     });
   }
@@ -124,8 +130,8 @@ export class OwnedPromptQueue {
   async clear(sessionId: string): Promise<OwnedQueueEntry[]> {
     return this.serialize(sessionId, async () => {
       const list = this.perSession.get(sessionId) ?? [];
+      if (list.length > 0) await this.persist(sessionId, []);
       this.perSession.set(sessionId, []);
-      if (list.length > 0) await this.persist(sessionId);
       return list;
     });
   }
@@ -136,27 +142,32 @@ export class OwnedPromptQueue {
     this.chains.delete(sessionId);
   }
 
-  private async persist(sessionId: string): Promise<void> {
+  private async persist(sessionId: string, entries: readonly OwnedQueueEntry[]): Promise<void> {
     const path = this.filePaths.get(sessionId);
-    if (path === undefined) return;
-    const list = this.perSession.get(sessionId) ?? [];
-    try {
-      if (list.length === 0) {
-        await unlink(path).catch(() => undefined);
-        return;
+    if (path === undefined) throw new Error(`No queue path registered for session ${sessionId}`);
+    if (entries.length === 0) {
+      try {
+        await unlink(path);
+      } catch (error: unknown) {
+        if (!isMissingFileError(error)) throw error;
       }
-      await mkdir(dirname(path), { recursive: true });
-      stagedCounter += 1;
-      const staged = `${path}.${String(process.pid)}.${String(stagedCounter)}.tmp`;
-      await writeFile(staged, JSON.stringify(list));
+      return;
+    }
+    await mkdir(dirname(path), { recursive: true });
+    stagedCounter += 1;
+    const staged = `${path}.${String(process.pid)}.${String(stagedCounter)}.tmp`;
+    try {
+      await writeFile(staged, JSON.stringify(entries));
       await rename(staged, path);
     } catch (error) {
-      // "Durable" must not silently mean "best effort": a read-only workspace
-      // or a full disk leaves the queue memory-only, and the operator should
-      // learn that from the log, not from a restart that forgot messages.
-      console.warn(`[ownedPromptQueue] persist failed for session ${sessionId}: ${error instanceof Error ? error.message : String(error)}`);
+      await unlink(staged).catch(() => undefined);
+      throw error;
     }
   }
+}
+
+function isMissingFileError(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
 }
 
 function anonymousKey(entry: OwnedQueueEntry): string {
