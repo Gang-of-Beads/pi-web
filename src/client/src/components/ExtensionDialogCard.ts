@@ -241,30 +241,19 @@ export class ExtensionDialogCard extends LitElement {
   }
 
   private renderClosed(closed: ClosedExtensionDialog): TemplateResult {
-    // An answered dialog needs nothing further from the reader, so it stops
-    // being a card: the outcome is one quiet row the transcript keeps, with no
-    // Dismiss to tap. Requiring that tap made every answer cost a second
-    // interaction and left a live button on a settled fact; the durable record
-    // is the notification the daemon files in the drawer.
-    if (closed.reason === "answered") return this.renderAnsweredRow(closed);
-    return html`
-      <article class="card closed-card" aria-labelledby="extension-dialog-closed-heading">
-        <header class="card-header">
-          <h2 id="extension-dialog-closed-heading">${splitDialogTitle(closed.dialog.title).heading}</h2>
-          <span class=${`header-status ${closed.reason}`}>${extensionDialogCloseLabel(closed.reason)}</span>
-        </header>
-        <p class="closed-summary">${extensionDialogCloseSummary(closed)}</p>
-        <footer class="dialog-footer">
-          <button class="secondary-action" type="button" @click=${() => { this.dismissClosed(closed); }}>Dismiss</button>
-        </footer>
-      </article>
-    `;
+    // A settled dialog needs nothing further from the reader, whatever the
+    // reason it settled: the outcome is one quiet row the transcript keeps,
+    // with no Dismiss to tap. Only the answered branch got this in the first
+    // pass, and every cancelled or timed-out update dialog kept charging a
+    // second interaction for a fact that had already settled - reported by
+    // the owner more than ten times before this branch joined the same law.
+    return this.renderAnsweredRow(closed);
   }
 
   private renderAnsweredRow(closed: ClosedExtensionDialog): TemplateResult {
     return html`
       <article class="answered-row" aria-labelledby="extension-dialog-answered-heading">
-        <span class="header-status answered">Answered</span>
+        <span class=${`header-status ${closed.reason}`}>${extensionDialogCloseLabel(closed.reason)}</span>
         <h2 id="extension-dialog-answered-heading">${splitDialogTitle(closed.dialog.title).heading}</h2>
         <p class="answered-answer">${extensionDialogCloseSummary(closed)}</p>
       </article>
@@ -304,10 +293,6 @@ export class ExtensionDialogCard extends LitElement {
     const input = event.currentTarget;
     if (!(input instanceof HTMLInputElement)) return;
     this.inputValue = input.value;
-  }
-
-  private dismissClosed(closed: ClosedExtensionDialog): void {
-    this.onDismiss?.(closed.dialog.dialogId);
   }
 
   private currentIdentity(): string | undefined {

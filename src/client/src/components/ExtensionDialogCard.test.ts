@@ -201,7 +201,7 @@ describe("extension-dialog-card closed outcome", () => {
     expect(buttonsWithText(root, "Dismiss")).toHaveLength(0);
   });
 
-  it("shows the timeout outcome without an answer", async () => {
+  it("shows the timeout outcome as a quiet row with nothing left to tap", async () => {
     const card = new ExtensionDialogCard();
     card.outcome = closedDialog("timeout");
     document.body.append(card);
@@ -209,7 +209,23 @@ describe("extension-dialog-card closed outcome", () => {
     const root = renderRoot(card);
 
     expect(root.querySelector(".header-status")?.textContent).toBe("Timed out");
-    expect(root.querySelector(".closed-summary")?.textContent).toContain("timed out");
+    expect(root.querySelector(".answered-answer")?.textContent).toContain("timed out");
+    expect(buttonsWithText(root, "Dismiss")).toHaveLength(0);
+  });
+
+  it("shows a cancelled dialog as a quiet row with nothing left to tap", async () => {
+    // The tenth-plus report of the update dialog asking to be dismissed after
+    // it had already been dismissed: settled is settled, whatever the reason.
+    const card = new ExtensionDialogCard();
+    card.outcome = closedDialog("cancelled");
+    document.body.append(card);
+    await card.updateComplete;
+    const root = renderRoot(card);
+
+    expect(root.querySelector(".header-status")?.textContent).toBe("Cancelled");
+    expect(root.querySelector(".answered-answer")?.textContent).toContain("Dismissed without an answer");
+    expect(buttonsWithText(root, "Dismiss")).toHaveLength(0);
+    expect(root.querySelector("button")).toBeNull();
   });
 });
 
