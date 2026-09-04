@@ -3086,11 +3086,17 @@ export class PiWebApp extends LitElement {
     });
   }
 
-  /** Apply a theme chosen from the appearance panel and remember it. */
+  /**
+   * Apply a theme chosen from the appearance panel and remember it. An
+   * explicit pick wins outright: the owner chose Clay Paper, saw "chosen,
+   * but following your system" render dark, and reported the light theme
+   * as broken - a choice that something else can override is not a choice.
+   * Auto pair-following is its own toggle, re-armed deliberately.
+   */
   private selectTheme(themeId: QualifiedContributionId): void {
     const theme = this.plugins.getThemes().find((candidate) => candidate.id === themeId);
     if (theme === undefined) return;
-    this.themePreference = { themeId: theme.id, auto: this.themePreference.auto };
+    this.themePreference = { themeId: theme.id, auto: false };
     this.applyPreferredTheme(true);
   }
 
@@ -3124,9 +3130,10 @@ export class PiWebApp extends LitElement {
   private applyPreferredTheme(persist: boolean): void {
     const theme = this.resolveCurrentThemePreference().activeTheme;
     if (theme === undefined) return;
+    if (persist) writeStoredThemePreference(this.themePreference);
+    if (theme.id === this.activeThemeId) return;
     this.activeThemeId = theme.id;
     applyPiWebTheme(theme);
-    if (persist) writeStoredThemePreference(this.themePreference);
   }
 
   private resolveCurrentThemePreference(themes = this.plugins.getThemes()): ThemePreferenceResolution {
