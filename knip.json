@@ -16,6 +16,7 @@
   ],
   "ignoreExportsUsedInFile": true,
   "ignoreBinaries": [
-    "systemd-run"
+    "systemd-run",
+    "tmux"
   ]
 }
