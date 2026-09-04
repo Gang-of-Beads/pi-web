@@ -61,20 +61,23 @@ describe("the bottom edge is held without waiting a frame", () => {
     expect(chat.scrollTop).toBe(scrollHeight);
   });
 
-  it("does not move the ground while a finger is down", async () => {
+  // Contract change, stated openly: the old freeze let streamed growth slide
+  // the bottom-pinned ask card down under the finger (probe: 347px). For a
+  // pinned reader the ground is the bottom edge, so it is held through the
+  // press; a reader who scrolled away is still left alone below.
+  it("holds the bottom through a press for a pinned reader", async () => {
+    const { view, chat } = await mount();
+    chat.dispatchEvent(pointerEvent("pointerdown"));
+    await growContent(view, 200);
+    expect(chat.scrollTop).toBe(scrollHeight);
+  });
+
+  it("leaves a scrolled-away reader alone while a finger is down", async () => {
     const { view, chat } = await mount();
     await growContent(view, 40);
     chat.scrollTop = 0;
+    chat.dispatchEvent(new Event("scroll"));
     chat.dispatchEvent(pointerEvent("pointerdown"));
-    await growContent(view, 200);
-    expect(chat.scrollTop).toBe(0);
-  });
-
-  it("does not move the ground inside the release grace", async () => {
-    const { view, chat } = await mount();
-    chat.dispatchEvent(pointerEvent("pointerdown"));
-    chat.dispatchEvent(pointerEvent("pointerup"));
-    chat.scrollTop = 0;
     await growContent(view, 200);
     expect(chat.scrollTop).toBe(0);
   });

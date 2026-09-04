@@ -722,8 +722,8 @@ describe("the failed-load branch obeys the active scope", () => {
     Reflect.set(view, "activityRowsSessionId", "parent-1");
     view.activityFailed = true;
     view.subagentRuns = [
-      { runId: "r-done", agent: "worker", status: "done", elapsedMs: 5, startedAt: "2026-09-04T00:00:00.000Z" },
-      { runId: "r-live", agent: "worker", status: "running", elapsedMs: 5, startedAt: "2026-09-04T00:01:00.000Z" },
+      { runId: "r-done", agent: "worker", status: "done", elapsedMs: 5, startedAt: "2026-09-04T00:00:00.000Z", hasOutput: false },
+      { runId: "r-live", agent: "worker", status: "running", elapsedMs: 5, startedAt: "2026-09-04T00:01:00.000Z", hasOutput: false },
     ];
     Reflect.set(view, "topDrawerTab", "activity");
     document.body.append(view);

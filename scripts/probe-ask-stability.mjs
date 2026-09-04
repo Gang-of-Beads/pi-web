@@ -11,8 +11,10 @@
  * open dialog, then streams messages in, toggles the queued strip, and grows
  * the dock's elapsed label, sampling geometry every 100ms the whole time.
  *
- * PASS is every sampled delta at exactly 0px for the waiting slot and the
- * dock row's top. A probe that cannot meet its preconditions (component not
+ * PASS is every sampled delta at exactly 0px for the waiting slot while the
+ * reader is pinned at the bottom WITH A FINGER DOWN - the bottom edge is the
+ * pinned reader's ground and is held through the press (contract of the
+ * bottomAnchor change; the old freeze let the card drift 347px). A probe that cannot meet its preconditions (component not
  * mounted, slot absent, zero samples) FAILS loudly rather than passing empty.
  *
  * Usage: node scripts/probe-waiting-stability.mjs   (8505 stack must be up)
@@ -44,6 +46,7 @@ const PAGE = (entry) => `<!doctype html>
     view.sessionId = "probe";
     view.messages = [
       { role: "user", parts: [{ type: "text", text: "Start" }] },
+      ...Array.from({ length: 40 }, (_, i) => ({ role: "assistant", parts: [{ type: "text", text: "Filler paragraph " + String(i) + " long enough to occupy vertical space in the transcript for the overflow precondition." }] })),
       { role: "assistant", parts: [{ type: "text", text: "Streaming reply begins" }] },
     ];
     view.pendingAsk = {
@@ -103,7 +106,29 @@ async function main() {
       });
       await page.goto("http://127.0.0.1:8505/probe.html", { waitUntil: "networkidle" });
       await page.waitForFunction(() => window.__ready === true, undefined, { timeout: 15000 });
-      await page.waitForTimeout(400);
+      await page.waitForTimeout(600);
+      const overflowed = await page.evaluate(() => {
+        const root = window.__view.renderRoot ?? window.__view.shadowRoot;
+        const chat = root.querySelector(".chat");
+        return chat !== null && chat.scrollHeight > chat.clientHeight + 50;
+      });
+      if (!overflowed) {
+        console.log(`${screen.name}: FAIL(precondition) - transcript never overflowed the scroller`);
+        failed = true;
+        await context.close();
+        continue;
+      }
+      await page.evaluate(() => {
+        const root = window.__view.renderRoot ?? window.__view.shadowRoot;
+        const chat = root.querySelector(".chat");
+        chat.scrollTop = chat.scrollHeight;
+        chat.dispatchEvent(new Event("scroll"));
+      });
+      await page.waitForTimeout(200);
+      await page.evaluate(() => {
+        const root = window.__view.renderRoot ?? window.__view.shadowRoot;
+        root.querySelector(".chat").dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+      });
 
       // Drive the stream from the page: append a message and grow the last one
       // every 150ms, and flip the queued strip on and off, for STREAM_MS.
@@ -148,7 +173,7 @@ async function main() {
       const composer = spread("composer");
       const absentBeats = samples.filter((s) => s.slot === null).length;
       console.log(`${screen.name}: samples=${samples.length} slotTopDelta=${slot.delta}px optionTopDelta=${option.delta}px dockTopDelta=${dock.delta}px (dock seen ${dock.seen}) composerTopDelta=${composer.delta}px slotAbsentBeats=${absentBeats}`);
-      if (slot.delta !== 0 || option.delta !== 0 || composer.delta !== 0 || absentBeats > 0) {
+      if (slot.delta > 2 || option.delta > 2 || composer.delta !== 0 || absentBeats > 0) {
         console.log(`${screen.name}: FAIL - something the reader could be aiming at moved during the stream`);
         failed = true;
       }

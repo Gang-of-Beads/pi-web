@@ -2968,7 +2968,6 @@ export class ChatView extends LitElement {
     const currentHeight = chat.scrollHeight;
     const action = bottomAnchorAction({
       pinnedToBottom: this.pinnedToBottom,
-      readerHoldsGround: this.followGate.holdsOrSettling(Date.now()),
       userScrolling: this.userScrollInFlight,
       previousHeight: this.heightAtLastBottomHold,
       currentHeight,
