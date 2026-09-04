@@ -1,3 +1,5 @@
+import { declaredAgentFacts } from "./declaredAgentFacts.js";
+
 /**
  * The closed set of host-injected turn kinds (match-tui-prompt task 3.3,
  * spec "Host-originated turns are declared, not disguised").
@@ -9,11 +11,11 @@
  * it travels under. Anything that cannot be classified is undeclared and must
  * not be injected; the suite enforces it through `assertDeclaredInjectedTurn`.
  *
- * The set is measured from the code, not maintained by folklore:
+ * The set is measured from the code, not maintained by folklore. A plugin
+ * declares the kinds its own feature injects - the goals plugin declares
+ * `goal-continuation`, whose parser anchors the marker at the start of the
+ * text - and the host knows only the kinds no plugin fronts:
  *
- * - `goal-continuation` — the pi-goal extension's continuation prompt, whose
- *   own parser anchors the marker at the start of the text
- *   (goal-format.ts: `<pi_goal_continuation goal_id="…" kind="…" v="2"/>`).
  * - `background-task-notification` — the pi-background-tasks package's
  *   completion turn, composed with the tag as the first line
  *   (registry.ts: `<background-task-notification>` … `</…>`), delivered as a
@@ -27,7 +29,7 @@
  */
 
 export interface InjectedTurnKind {
-  readonly id: "goal-continuation" | "background-task-notification";
+  readonly id: string;
   /** The literal marker the model sees at the start of the injected text. */
   readonly marker: string;
   /** The extension or feature that composes and injects the turn. */
@@ -36,20 +38,31 @@ export interface InjectedTurnKind {
   readonly inputSource: "extension";
 }
 
-export const INJECTED_TURN_KINDS: readonly InjectedTurnKind[] = [
-  {
-    id: "goal-continuation",
-    marker: "<pi_goal_continuation",
-    producer: "pi-goal extension (checkpoint and auto-continuation prompts)",
-    inputSource: "extension",
-  },
+/**
+ * The kinds the host itself knows, because no pi-web plugin fronts their
+ * producer. The goal continuation left this list when the goals plugin took
+ * over declaring its own marker: a feature's marker is a fact about that
+ * feature, and keeping it here meant editing the host whenever the feature
+ * changed its wording.
+ */
+const HOST_KNOWN_KINDS: readonly InjectedTurnKind[] = [
   {
     id: "background-task-notification",
     marker: "<background-task-notification>",
     producer: "pi-background-tasks (bg_run / bg_delegate completion turns)",
     inputSource: "extension",
   },
-] as const;
+];
+
+export function injectedTurnKinds(): readonly InjectedTurnKind[] {
+  const declared = declaredAgentFacts().injectedTurns.map((turn) => ({
+    id: turn.id,
+    marker: turn.marker,
+    producer: turn.producer,
+    inputSource: "extension" as const,
+  }));
+  return [...declared, ...HOST_KNOWN_KINDS];
+}
 
 /**
  * Classify a message text as a declared host-injected turn kind, or undefined
@@ -60,7 +73,7 @@ export const INJECTED_TURN_KINDS: readonly InjectedTurnKind[] = [
  */
 export function classifyInjectedTurn(text: string): InjectedTurnKind | undefined {
   const trimmed = text.trimStart();
-  return INJECTED_TURN_KINDS.find((kind) => trimmed.startsWith(kind.marker));
+  return injectedTurnKinds().find((kind) => trimmed.startsWith(kind.marker));
 }
 
 /**
@@ -73,7 +86,7 @@ export function assertDeclaredInjectedTurn(text: string, context: string): Injec
   const kind = classifyInjectedTurn(text);
   if (kind === undefined) {
     throw new Error(
-      `Undeclared host-injected turn (${context}): text does not carry any declared kind's marker at its start. Declared kinds: ${INJECTED_TURN_KINDS.map((k) => k.id).join(", ")}. Text begins: ${JSON.stringify(text.slice(0, 120))}`,
+      `Undeclared host-injected turn (${context}): text does not carry any declared kind's marker at its start. Declared kinds: ${injectedTurnKinds().map((k) => k.id).join(", ")}. Text begins: ${JSON.stringify(text.slice(0, 120))}`,
     );
   }
   return kind;

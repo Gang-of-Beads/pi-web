@@ -8,8 +8,26 @@
  * output fails here, which is the point — the registry is the contract.
  */
 
-import { describe, expect, it } from "vitest";
-import { assertDeclaredInjectedTurn, classifyInjectedTurn, INJECTED_TURN_KINDS } from "./injectedTurnKinds.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { assertDeclaredInjectedTurn, classifyInjectedTurn, injectedTurnKinds } from "./injectedTurnKinds.js";
+import { recordDeclaredAgentFacts, resetDeclaredAgentFacts } from "./declaredAgentFacts.js";
+
+/**
+ * The goal continuation is declared by the goals plugin now, so these read
+ * against a loaded declaration rather than a constant the host keeps.
+ */
+beforeEach(() => {
+  recordDeclaredAgentFacts({
+    surfaces: [],
+    injectedTurns: [{
+      id: "goal-continuation",
+      marker: "<pi_goal_continuation",
+      producer: "pi-goal extension (checkpoint and auto-continuation prompts)",
+    }],
+  });
+});
+
+afterEach(() => { resetDeclaredAgentFacts(); });
 
 /** The pi-goal fork's continuation prompt, exactly as its formatter composes it. */
 const GOAL_CONTINUATION_TEXT = [
@@ -33,11 +51,8 @@ const BACKGROUND_NOTIFICATION_TEXT = [
 
 describe("injected turn kinds", () => {
   it("declares a closed set whose ids are exactly the two measured producers", () => {
-    // The closed set is two kinds today: the goal continuation and the
-    // background-task notification. A new kind must be added here explicitly —
-    // that edit IS the declaration act the spec requires.
-    expect(INJECTED_TURN_KINDS.map((kind) => kind.id)).toEqual(["goal-continuation", "background-task-notification"]);
-    for (const kind of INJECTED_TURN_KINDS) {
+    expect(injectedTurnKinds().map((kind) => kind.id)).toEqual(["goal-continuation", "background-task-notification"]);
+    for (const kind of injectedTurnKinds()) {
       expect(kind.producer, `kind ${kind.id} must name its producer`).toMatch(/\S/);
       expect(kind.inputSource).toBe("extension");
     }
@@ -70,5 +85,12 @@ describe("injected turn kinds", () => {
     expect(() => assertDeclaredInjectedTurn("<someone-elses-tag>hi</someone-elses-tag>", "mysterious producer")).toThrow(/Declared kinds: goal-continuation, background-task-notification/);
     expect(() => assertDeclaredInjectedTurn(GOAL_CONTINUATION_TEXT, "goal plugin")).not.toThrow();
     expect(() => assertDeclaredInjectedTurn(BACKGROUND_NOTIFICATION_TEXT, "background tasks")).not.toThrow();
+  });
+
+  it("does not classify a goal continuation on a machine whose plugin declared nothing", () => {
+    resetDeclaredAgentFacts();
+
+    expect(classifyInjectedTurn(GOAL_CONTINUATION_TEXT)).toBeUndefined();
+    expect(injectedTurnKinds().map((kind) => kind.id)).toEqual(["background-task-notification"]);
   });
 });
