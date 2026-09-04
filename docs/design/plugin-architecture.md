@@ -139,3 +139,68 @@ Packaging and naming:
    claiming one custom tag.)
 5. Is `pi-web-model-catalog` worth extracting, or does the picker stay
    core-minimal instead (fewer moving parts, same minimalism)?
+
+## Scan results (three bllm max lanes, 2026-09-04)
+
+Consolidated from the client, server, and plugin-runtime scans; each claim
+carries file:line evidence in the lane transcripts.
+
+### Verified facts
+
+- Voice is a closed set: 13 client modules + PromptEditor + the PiWebApp
+  config plumb + api/speechToken + parsers. appState carries no voice field;
+  no shortcut, palette entry, or status-bar indicator knows voice exists.
+  The single render site is <prompt-editor> at PiWebApp. Extraction will not
+  require core-store surgery.
+- Server voice is one module: web/speechRoutes.ts. Terminal splits cleanly
+  into a daemon half (terminals/terminalService, nodePtySpawnHelper,
+  terminalRoutes) and a web proxy half (terminalProxyRoutes). Goals server
+  side is web/goals/* plus two goal routes embedded in
+  workspaceExplorerRoutes (lines 42/58) that must move out with the plugin.
+- Core leak found: the daemon hardcodes goal tool names and the
+  goal-continuation marker (injectedTurnKinds.ts:41-43, pluginSurfaces.ts:31)
+  and a subagents surface. These become plugin-declared facts, not core
+  constants, in the goals wave.
+- The daemon already has a plugin boundary seam (pluginBackendRoutes,
+  workspaceProviderRegistry) but its activation contract contributes exactly
+  one thing (workspaceProvider) with a minimal context (logger, settings,
+  execFile, signal).
+
+### Gap matrix (v1 extension points vs today)
+
+| # | extension point | status | note |
+|---|---|---|---|
+| 1 | message/card renderers | MISSING | transcript dispatch is hardcoded in ChatView; no registry call site |
+| 2 | composer contributions | MISSING | PromptEditor has zero plugin imports; only host-to-plugin insertText capability exists |
+| 3 | settings sections | MISSING | SettingsSection is a closed union of 7 core literals; plugins cannot name a section |
+| 4 | client lifecycle events | MISSING | activation context is frozen identity+tags; no subscribe API and no teardown hook at all |
+| 5 | commands/actions/panels | EXISTS | PluginAction + WorkspacePanelContribution, registered and consumed |
+| 6 | daemon services | PARTIAL | ServerPluginActivation.workspaceProvider only; context lacks storage, session facts, notification bus |
+| 7 | route contributions | PARTIAL | pluginBackendRoutes / proxy routes exist; no declared namespace manifest |
+
+### Catalog corrections from the scan (absorbed into v1)
+
+- F1: composer contributions gain a status/hint region (voice renders
+  Listening/Transcribing/permission-refused lines inside the composer; the
+  action-slot catalog alone cannot absorb it).
+- F2: plugin config delivery. Voice config rides PiWebConfigValues through
+  the core parser and api/config transport end to end. v1 adds
+  plugin-declared config keys: a plugin manifest names its config block, the
+  core parser validates it as an opaque namespaced value, and the plugin
+  receives it through its activation context with change notification. Core
+  stops naming azureSpeech/speechToText in its own contract when voice moves.
+- Teardown is a prerequisite, not an afterthought: plugins get a dispose
+  seam alongside every subscription-bearing API before any event bus ships.
+
+### Build order on this branch
+
+1. Contract wave: composer contributions (slots, status region, draft
+   transformers), client lifecycle events with dispose, plugin-declared
+   config keys. Types + registry + tests first, no consumer change.
+2. Consumer wave: PromptEditor and SettingsDialog read the registry;
+   built-in behavior unchanged (core renders through the same seams it
+   publishes - one producer).
+3. Voice extraction into pi-web-voice consuming only published seams;
+   speechRoutes moves behind the route contribution manifest.
+4. Message/card renderer seam, then daemon service context enrichment,
+   then goals/terminal waves per the owner's open-question answers.
