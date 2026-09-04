@@ -12,11 +12,16 @@
  * the session.
  */
 
+import { normalizeSessionPath } from "./sessionPaths";
+
 export type SessionLocationVerdict = "described" | "unknown";
 
 export function sessionLocationVerdict(cwd: string, selectedWorkspacePath: string | undefined): SessionLocationVerdict {
   if (cwd === "" || selectedWorkspacePath === undefined || selectedWorkspacePath === "") return "unknown";
-  if (cwd === selectedWorkspacePath) return "described";
-  const prefix = selectedWorkspacePath.endsWith("/") ? selectedWorkspacePath : `${selectedWorkspacePath}/`;
-  return cwd.startsWith(prefix) ? "described" : "unknown";
+  const child = normalizeSessionPath(cwd);
+  const parent = normalizeSessionPath(selectedWorkspacePath);
+  if (parent === "" || child === "") return "unknown";
+  if (child === parent) return "described";
+  const separator = parent.includes("\\") || child.includes("\\") ? "\\" : "/";
+  return child.startsWith(`${parent}${separator}`) ? "described" : "unknown";
 }

@@ -105,3 +105,10 @@ reach the path they were aimed at, and two created new stuck states while
 removing dishonest ones. Both failure modes share a shape: the fix was verified
 against the mechanism it changed rather than against the symptom the owner
 reported.
+
+## Broad-selection scope fix round (glm max lane, 2026-09-04)
+
+- P1 locator success desyncs chip vs list (reverse containment / cross-project): TRUE - fixed. locateAndApplySessionWorkspace now mirrors the exact-match path: workspaceMoved reseeds the session list from the keyed cache and refreshes the located workspace's listing. Pinned by "carries the session list when the locator moves the selection".
+- P2 verdict was slash-only and ignored trailing separators: TRUE - fixed. sessionLocationVerdict now normalizes through normalizeSessionPath and derives the separator from the paths, with windows and trailing-separator tests.
+- P2 informational, new-session under a broad selection starts in the broad directory: acknowledged as the documented consequence of respecting the explicit choice; owner can overrule.
+- Case-insensitive filesystems, root workspace, stale-state race, vacuous spy: adjudicated FALSE by the lane with reasoning we verified against the source.

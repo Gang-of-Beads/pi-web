@@ -109,4 +109,35 @@ describe("choosing a session from another workspace", () => {
       locate.mockRestore();
     }
   });
+
+  /**
+   * When the locator does move the selection - the session's directory is
+   * outside the selected workspace - the session list must travel with the
+   * chip, exactly as the exact-match path does. The chip flipping alone left
+   * the list answering for the workspace being left.
+   */
+  it("carries the session list when the locator moves the selection", async () => {
+    const locate = vi.spyOn(ancestorLookup, "locateSessionWorkspace").mockResolvedValue({ workspace: elsewhere, project: there });
+    try {
+      const { run, read } = controllerOver({
+        workspaces: [workspace],
+        projects: [here, there],
+        sessions: [oldSession],
+        sessionsLoad: "loaded",
+      });
+
+      await run.selectSession(sessionOverThere, { updateUrl: false });
+      await vi.waitFor(() => {
+        if (read().selectedWorkspace?.id !== "workspace-2") throw new Error("the locator has not moved the selection yet");
+      });
+
+      expect(read().selectedProject?.id).toBe("project-2");
+      await vi.waitFor(() => {
+        if (read().sessions.some((entry) => entry.cwd === "/repo")) throw new Error("the previous workspace's rows are still listed");
+      });
+      expect(read().sessions.every((entry) => entry.cwd === "/elsewhere" || entry.cwd === "")).toBe(true);
+    } finally {
+      locate.mockRestore();
+    }
+  });
 });

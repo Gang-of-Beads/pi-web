@@ -1813,10 +1813,19 @@ export class SessionController {
     if (found === undefined || seq !== this.selectionSeq) return;
     if (this.getState().selectedSession?.id !== session.id) return;
     const project = this.getState().projects.find((candidate) => candidate.id === found.project.id);
+    const workspaceMoved = found.workspace.id !== this.getState().selectedWorkspace?.id;
     this.setState({
       selectedWorkspace: found.workspace,
       ...(project === undefined ? {} : { selectedProject: project }),
+      // The move that takes the chip must take the session list with it, as
+      // the exact-match path does: rows from the workspace being left,
+      // rendered under the located one, are another workspace's data on the
+      // wrong surface.
+      ...(workspaceMoved
+        ? { sessions: [...(cachedSessionsFor(machineId, found.workspace.path) ?? [])], sessionsLoad: "loading" as const }
+        : {}),
     });
+    if (workspaceMoved) void this.refreshCurrentWorkspaceSessions(machineId);
   }
 
   private applyReleasedCreatedSessions(sessions: readonly SessionInfo[], machineId: string): void {

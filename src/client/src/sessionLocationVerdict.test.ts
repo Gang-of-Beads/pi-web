@@ -30,4 +30,13 @@ describe("sessionLocationVerdict", () => {
   it("handles a workspace path that already ends with a separator", () => {
     expect(sessionLocationVerdict("/home/user/repo/nested", "/home/user/repo/")).toBe("described");
   });
+
+  it("handles a session path with a trailing separator", () => {
+    expect(sessionLocationVerdict("/home/user/repo/", "/home/user/repo")).toBe("described");
+  });
+
+  it("contains windows paths with backslash separators", () => {
+    expect(sessionLocationVerdict("C:\\repo\\nested", "C:\\repo")).toBe("described");
+    expect(sessionLocationVerdict("C:\\repo-two", "C:\\repo")).toBe("unknown");
+  });
 });
