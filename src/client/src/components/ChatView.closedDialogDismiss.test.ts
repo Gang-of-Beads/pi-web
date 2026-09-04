@@ -36,16 +36,17 @@ describe("ChatView settled extension dialog dismissal", () => {
     expect(dismissed).toEqual([]);
   });
 
-  it("still dismisses exactly the unanswered card whose control was pressed", async () => {
+  it("renders a cancelled card as a quiet row with no control to press", async () => {
+    // Contract change, stated openly: the cancelled branch used to keep a live
+    // Dismiss under a label that already said dismissed - reported by the
+    // owner more than ten times. Settled is settled for every close reason.
     const view = await mountView();
-    const dismissed: string[] = [];
-    view.onDismissClosedDialog = (dialogId: string) => { dismissed.push(dialogId); };
     view.closedDialogs = [closedDialog("dlg-a"), cancelledDialog("dlg-b")];
     await view.updateComplete;
 
-    pressDismiss(cardFor(view, "dlg-b"));
-
-    expect(dismissed).toEqual(["dlg-b"]);
+    const card = cardFor(view, "dlg-b");
+    const buttons = [...(card.shadowRoot?.querySelectorAll("button") ?? [])];
+    expect(buttons).toHaveLength(0);
   });
 
   it("keeps each settled card bound to its own dialog id when one is removed", async () => {
@@ -94,9 +95,3 @@ function cardFor(view: ChatView, dialogId: string): ExtensionDialogCard {
   return card;
 }
 
-function pressDismiss(card: ExtensionDialogCard): void {
-  const button = [...(card.shadowRoot?.querySelectorAll("button") ?? [])]
-    .find((el) => el.textContent.trim().toLowerCase() === "dismiss");
-  if (button === undefined) throw new Error("The settled card rendered no Dismiss control");
-  button.click();
-}
