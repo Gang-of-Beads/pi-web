@@ -9,6 +9,11 @@
     };
   };
 
+  nixConfig = {
+    extra-substituters = [ "https://gang-of-beads.cachix.org" ];
+    extra-trusted-public-keys = [ "gang-of-beads.cachix.org-1:oeKLfGX21CJJ8AUAhGoesrIy2i8vlXCEn6yT4x1hqX0=" ];
+  };
+
   outputs = { self, nixpkgs, home-manager }:
     let
       systems = [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" ];
