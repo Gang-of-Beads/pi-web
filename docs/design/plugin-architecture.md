@@ -304,3 +304,16 @@ present on first paint. As a discovered plugin it would load with the others,
 and the first frame would use the stylesheet defaults. Whether that is
 acceptable is a product question for the owner, not something to decide inside
 a refactor.
+
+## Model selection stays core (owner ruling, 2026-09-04)
+
+"Match pi." In pi, `/model` and Ctrl+P are core commands; extensions do not
+provide model selection, they observe it - `model_select` fires when the model
+changes by command, by cycling, or by session restore (docs/extensions.md).
+Choosing the model a session speaks with is part of the session, not a feature
+bolted onto it.
+
+So `pi-web-model-catalog` is dropped from the extraction table. The picker stays
+core and stays minimal. The plugin-visible counterpart, if a plugin ever needs
+it, is the lifecycle event this design already publishes - an announcement a
+plugin may react to, never a hook that can veto or replace the choice.
