@@ -2056,6 +2056,8 @@ export class PiWebApp extends LitElement {
           return this.sessions.renameSession(session, name);
         }}
         .goalsLoad=${goalsForSelectedWorkspace(this.state)}
+        .drawerSections=${this.plugins.getDrawerSections(selectedMachineId(this.state))}
+        .sectionMachineId=${selectedMachineId(this.state)}
         .canRunGoalCommands=${canActOnWorkspaceGoals(this.state)}
         .goalCommandInFlight=${this.goalCommandInFlight}
         .onRefreshGoals=${() => this.workspaces.refreshWorkspaceGoals()}

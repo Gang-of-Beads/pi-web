@@ -3,6 +3,7 @@ import { focusedContextName } from "../../contextName";
 import { customElement, property, query } from "lit/decorators.js";
 import type { GoalRecordSummary, Machine, MachineHealth, Project, SessionActivity, SessionInfo, SessionStatus, Workspace } from "../../api";
 import type { PanelLoad } from "../../appState";
+import type { DrawerSectionContext, QualifiedDrawerSectionContribution } from "../../plugins/types";
 import type { MachineStatusSnapshot } from "../../../../shared/machineStatus";
 import type { WorkspaceLabelItem } from "../../plugins/types";
 import { selectedMachineId } from "../../controllers/types";
@@ -86,6 +87,8 @@ export class AppNavigationPanel extends LitElement {
    * rendered as “no goals”.
    */
   @property({ attribute: false }) goalsLoad: PanelLoad<GoalRecordSummary[]> = { state: "unloaded", key: undefined, data: [] };
+  @property({ attribute: false }) drawerSections: readonly QualifiedDrawerSectionContribution[] = [];
+  @property() sectionMachineId = "local";
   /** Whether acting on the listed goals is allowed. Withheld when the goals
    * state answers for a different workspace than the one selected: a stale
    * render must be inert, not merely unlikely. */
@@ -165,6 +168,7 @@ export class AppNavigationPanel extends LitElement {
       ${this.renderWorkspaceList(false, visible !== "workspaces")}
       ${this.renderSessionList(false, visible !== "sessions")}
       ${visible === "sessions" ? this.renderGoalPanel() : null}
+      ${visible === "sessions" ? this.renderContributedSections() : null}
     `;
   }
 
@@ -213,6 +217,7 @@ export class AppNavigationPanel extends LitElement {
       ${this.renderWorkspaceList(false, visible !== "workspaces")}
       ${this.renderSessionList(false, visible !== "sessions")}
       ${visible === "sessions" ? this.renderGoalPanel() : null}
+      ${visible === "sessions" ? this.renderContributedSections() : null}
     `;
   }
 
@@ -316,6 +321,24 @@ export class AppNavigationPanel extends LitElement {
    * accordion slot of their own. Omitted entirely until a workspace is
    * selected and there is something to report.
    */
+  /**
+   * Sections a plugin contributes, drawn here as well as in the chat drawer:
+   * the navigation panel is where a workspace's side channels live when the
+   * chat is not on screen, and a section that only appeared in one of the two
+   * would be missing exactly when the reader went looking for it.
+   */
+  private renderContributedSections() {
+    const context = this.sectionContext();
+    if (context === undefined) return null;
+    return html`${this.drawerSections.map((section) => section.available?.(context) === false ? null : section.render(context))}`;
+  }
+
+  private sectionContext(): DrawerSectionContext | undefined {
+    const sessionId = this.selectedSession?.id;
+    if (sessionId === undefined) return undefined;
+    return { sessionId, machineId: this.sectionMachineId, workspacePath: this.selectedWorkspace?.path };
+  }
+
   private renderGoalPanel() {
     if (this.selectedWorkspace === undefined) return null;
     // Same test the section always made, read off the slot instead of three
