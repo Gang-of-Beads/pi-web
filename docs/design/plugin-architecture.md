@@ -317,3 +317,28 @@ So `pi-web-model-catalog` is dropped from the extraction table. The picker stays
 core and stays minimal. The plugin-visible counterpart, if a plugin ever needs
 it, is the lifecycle event this design already publishes - an announcement a
 plugin may react to, never a hook that can veto or replace the choice.
+
+## Split repositories, and which one is the source (2026-09-04)
+
+The three extracted plugins now exist as private Gang-of-Beads repositories -
+`pi-web-voice`, `pi-web-terminal`, `pi-web-themes` - seeded by `git subtree
+split`, so each carries the real history of its files rather than one squashed
+import.
+
+The rule while they are split but not yet published:
+
+- **pi-web remains the source.** Changes land in `pi-web-plugins/<name>/` and
+  are re-split into the repository. The repositories are read-only mirrors for
+  installation testing.
+- A change made directly in a split repository is a second source of truth for
+  the same file, which is the multi-producer shape this whole refactor exists
+  to remove. If a plugin needs to become independently editable, the direction
+  reverses in one move: pi-web stops bundling it and consumes the published
+  package instead - never both at once.
+- The reversal waits on the contract package. `@gang-of-beads/pi-web-plugin-api`
+  has to publish before a plugin repository can build against a version rather
+  than against whatever `pi-web` happens to have in its working tree.
+
+Re-splitting is a single command per plugin:
+`git subtree split --prefix=pi-web-plugins/<name> -b split-<name>` followed by
+`git push <repo> split-<name>:main`.
