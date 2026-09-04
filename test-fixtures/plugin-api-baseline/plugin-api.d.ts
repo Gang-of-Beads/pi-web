@@ -112,6 +112,27 @@ export interface PluginContributions {
     composer?: ComposerContribution[];
     settingsSections?: SettingsSectionContribution[];
     messageRenderers?: MessageRendererContribution[];
+    drawerSections?: DrawerSectionContribution[];
+}
+/**
+ * A section in the session drawer, beside Activity and Notifications. The
+ * shell keeps tab selection, keyboard order and the collapsed state; the
+ * plugin brings a label and a body. `available` answering undefined means the
+ * section cannot say yet, and the shell shows the tab rather than claiming the
+ * feature is missing.
+ */
+export interface DrawerSectionContext {
+    sessionId: string;
+    machineId: string;
+    workspacePath: string | undefined;
+}
+export interface DrawerSectionContribution {
+    id: LocalContributionId;
+    title: string;
+    order?: number;
+    available?: (context: DrawerSectionContext) => boolean | undefined;
+    badge?: (context: DrawerSectionContext) => string | number | undefined;
+    render: (context: DrawerSectionContext) => TemplateResult;
 }
 /**
  * Claims one custom payload tag in the transcript. The runtime supplies the

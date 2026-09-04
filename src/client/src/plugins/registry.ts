@@ -1,6 +1,6 @@
 import { html, svg } from "lit";
 import { requirePluginBackendRevision } from "../../../shared/pluginBackendProtocol";
-import type { ComposerContribution, PluginHostUi, PluginSettings, MessageRendererContribution, QualifiedMessageRendererContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
+import type { ComposerContribution, DrawerSectionContribution, QualifiedDrawerSectionContribution, PluginHostUi, PluginSettings, MessageRendererContribution, QualifiedMessageRendererContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
 
 function eventHasKind<K extends PluginLifecycleEventKind>(event: PluginLifecycleEvent, kind: K): event is Extract<PluginLifecycleEvent, { kind: K }> {
   return event.kind === kind;
@@ -31,6 +31,7 @@ export class PluginRegistry {
   private composerContributions: QualifiedComposerContribution[] = [];
   private settingsSections: QualifiedSettingsSectionContribution[] = [];
   private messageRenderers: QualifiedMessageRendererContribution[] = [];
+  private drawerSections: QualifiedDrawerSectionContribution[] = [];
   private readonly settingsByPlugin = new Map<string, PluginSettings>();
   private readonly fetchJson: ((path: string, init?: { method?: string; body?: unknown }) => Promise<unknown>) | undefined;
 
@@ -88,6 +89,7 @@ export class PluginRegistry {
       const composer = (contributions.composer ?? []).map((contribution) => this.qualifyComposerContribution(runtimePluginId, contribution, registration.machineId, registration.sourcePluginId, contributionIds));
       const settingsSections = (contributions.settingsSections ?? []).map((section) => this.qualifySettingsSection(runtimePluginId, section, registration.machineId, registration.sourcePluginId, contributionIds));
       const claimedTags = new Set<string>();
+      const drawerSections = (contributions.drawerSections ?? []).map((section) => this.qualifyDrawerSection(runtimePluginId, section, registration.machineId, registration.sourcePluginId, contributionIds));
       const messageRenderers = (contributions.messageRenderers ?? []).map((renderer) => this.qualifyMessageRenderer(runtimePluginId, renderer, registration.machineId, registration.sourcePluginId, contributionIds, claimedTags));
       const themePairs = registration.machineId === undefined
         ? (contributions.themePairs ?? []).map((pair) => this.qualifyThemePair(runtimePluginId, pair, contributionIds))
@@ -103,6 +105,7 @@ export class PluginRegistry {
       this.composerContributions.push(...composer);
       this.settingsSections.push(...settingsSections);
       this.messageRenderers.push(...messageRenderers);
+      this.drawerSections.push(...drawerSections);
       if (registration.machineId === undefined) {
         this.gatewayPluginIds.add(runtimePluginId);
         if (machineSpecific) this.gatewayMachineSpecificPluginIds.add(runtimePluginId);
@@ -152,6 +155,12 @@ export class PluginRegistry {
   getComposerContributions(selectedMachineId: string | undefined): QualifiedComposerContribution[] {
     return this.composerContributions
       .filter((contribution) => selectedMachineId !== undefined && this.isContributionActive(contribution.pluginId, contribution.machineId, selectedMachineId, contribution.sourcePluginId))
+      .sort((left, right) => (left.order ?? 1000) - (right.order ?? 1000) || left.title.localeCompare(right.title));
+  }
+
+  getDrawerSections(selectedMachineId: string | undefined): QualifiedDrawerSectionContribution[] {
+    return this.drawerSections
+      .filter((section) => selectedMachineId !== undefined && this.isContributionActive(section.pluginId, section.machineId, selectedMachineId, section.sourcePluginId))
       .sort((left, right) => (left.order ?? 1000) - (right.order ?? 1000) || left.title.localeCompare(right.title));
   }
 
@@ -222,6 +231,7 @@ export class PluginRegistry {
     this.composerContributions = this.composerContributions.filter((entry) => entry.pluginId !== runtimePluginId);
     this.settingsSections = this.settingsSections.filter((entry) => entry.pluginId !== runtimePluginId);
     this.messageRenderers = this.messageRenderers.filter((entry) => entry.pluginId !== runtimePluginId);
+    this.drawerSections = this.drawerSections.filter((entry) => entry.pluginId !== runtimePluginId);
     for (const contributionId of [...this.contributionIds]) {
       if (contributionId.startsWith(`${runtimePluginId}:`)) this.contributionIds.delete(contributionId);
     }
@@ -277,6 +287,23 @@ export class PluginRegistry {
       id: this.qualify(pluginId, renderer.id, contributionIds),
       pluginId,
       localId: renderer.id,
+      ...(machineId === undefined ? {} : { machineId }),
+      ...(sourcePluginId === undefined ? {} : { sourcePluginId }),
+    };
+  }
+
+  private qualifyDrawerSection(
+    pluginId: string,
+    section: DrawerSectionContribution,
+    machineId: string | undefined,
+    sourcePluginId: string | undefined,
+    contributionIds: Set<QualifiedContributionId>,
+  ): QualifiedDrawerSectionContribution {
+    return {
+      ...section,
+      id: this.qualify(pluginId, section.id, contributionIds),
+      pluginId,
+      localId: section.id,
       ...(machineId === undefined ? {} : { machineId }),
       ...(sourcePluginId === undefined ? {} : { sourcePluginId }),
     };
