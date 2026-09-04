@@ -28,20 +28,15 @@ commits. Every finding is adjudicated below.
   machine, and an unconfigured install is reported as unconfigured rather than
   as a malformed answer.
 
-## Not fixed, with reason
+## Fixed after the first triage pass
 
-- **Client abort does not reach a plugin operation** (glm-trust P1, true). The
-  web proxy forwards without a signal, so a closed tab leaves the operation
-  running. Real, and worth fixing with the repo's existing
-  `requestCancellation` helper rather than the hand-rolled listener now in the
-  daemon route. Deferred to its own change because it touches the shared
-  sessiond client's cancellation path, which the backend proxy also uses; doing
-  it inside this triage would mix two concerns in one commit.
-- **The trust gate has no production caller yet** (qwen P2-D, true). The
-  classifier, the catalog wiring and the diagnostics exist and are tested end
-  to end against a real directory, but nothing yet passes a workspace's trust
-  state in. That producer belongs with the workspace surface that knows which
-  project is open, and is the next task in this wave.
+- **Client abort now reaches a plugin operation** (glm-trust P1). Both halves
+  use the repository's `requestCancellation` helper instead of a hand-rolled
+  listener that could not fire in the only topology that exists, so a closed
+  tab stops the work rather than leaving it running with its result discarded.
+- **The trust gate has a producer** (qwen P2-D). The daemon resolves each known
+  project's plugin directory through one shared trust reader, read per project
+  so a trusted project cannot vouch for an untrusted sibling.
 
 ## Judged not true
 

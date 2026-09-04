@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import { isPiWebPluginId } from "../../../shared/pluginIds.js";
 import { operationNamePattern, UnknownPluginOperationError } from "../../shared/plugins/pluginOperations.js";
 import { PLUGIN_OPERATION_BODY_MAX_BYTES } from "../../shared/plugins/pluginOperationContract.js";
+import { requestCancellation } from "../../shared/requestCancellation.js";
 
 /**
  * The daemon half of a plugin's declared operations.
@@ -34,14 +35,15 @@ export function registerPluginOperationRoutes(
       if (!isPiWebPluginId(pluginId)) return refuse(reply, 400, `Invalid PI WEB plugin id: ${pluginId}`, pluginId, operation);
       if (!operationNamePattern.test(operation)) return refuse(reply, 400, `Invalid plugin operation name: ${operation}`, pluginId, operation);
 
-      const controller = new AbortController();
-      request.raw.on("aborted", () => { controller.abort(); });
+      const cancellation = requestCancellation(request, reply);
       try {
-        const result = await dispatcher.callOperation(pluginId, operation, request.body, controller.signal);
+        const result = await dispatcher.callOperation(pluginId, operation, request.body, cancellation.signal);
         return await reply.code(200).type("application/json; charset=utf-8").send(JSON.stringify(result ?? null));
       } catch (error) {
-        if (error instanceof UnknownPluginOperationError) return refuse(reply, 404, error.message, pluginId, operation);
-        return refuse(reply, 500, error instanceof Error ? error.message : String(error), pluginId, operation);
+        if (error instanceof UnknownPluginOperationError) return await refuse(reply, 404, error.message, pluginId, operation);
+        return await refuse(reply, 500, error instanceof Error ? error.message : String(error), pluginId, operation);
+      } finally {
+        cancellation.dispose();
       }
     },
   );
