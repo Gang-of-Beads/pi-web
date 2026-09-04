@@ -1,0 +1,24 @@
+{
+  "name": "@gang-of-beads/pi-web-plugin-api",
+  "version": "0.1.0-alpha.1",
+  "description": "Type declarations of the PI WEB plugin contract: the browser and server APIs a plugin is written against.",
+  "license": "MIT",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    "./plugin-api": {
+      "types": "./dist/plugin-api.d.ts"
+    },
+    "./server-plugin-api": {
+      "types": "./dist/server-plugin-api.d.ts"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p ../../../tsconfig.plugin-api.json --outDir dist"
+  }
+}

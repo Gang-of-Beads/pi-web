@@ -55,6 +55,7 @@
     "dev:plugins": "node scripts/build-plugins.mjs --watch",
     "build": "npm run clean && tsc -p tsconfig.build.json && npm run build:plugin-api && npm run build:plugins && vite build",
     "build:plugin-api": "tsc -p tsconfig.plugin-api.json",
+    "build:plugin-api-package": "tsc -p tsconfig.plugin-api.json --outDir packages/pi-web-plugin-api/dist",
     "build:plugins": "tsc -p tsconfig.plugins.json && node scripts/build-plugins.mjs",
     "capture:screenshots": "node scripts/capture-screenshots.mjs",
     "typecheck": "tsc --noEmit",
