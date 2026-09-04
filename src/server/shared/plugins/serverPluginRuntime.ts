@@ -1,4 +1,6 @@
 import { pathToFileURL } from "node:url";
+import { piWebDataDir } from "../../../config.js";
+import { createPluginScopedStorage } from "./pluginScopedStorage.js";
 import type {
   JsonObject,
   JsonValue,
@@ -75,6 +77,8 @@ export interface CreateServerPluginRuntimeOptions {
   importer?: ServerPluginModuleImporter;
   execFile?: ServerPluginExecFile;
   lifecycleTimeoutMs?: number;
+  /** Root for per-plugin durable storage; defaults to the host data directory. */
+  storageBaseDir?: string;
 }
 
 interface ActiveServerPlugin {
@@ -113,6 +117,7 @@ export class ServerPluginRuntime {
     private readonly importer: ServerPluginModuleImporter,
     private readonly execFile: ServerPluginExecFile,
     private readonly lifecycleTimeoutMs: number,
+    private readonly storageBaseDir: string,
   ) {}
 
   static async activate(
@@ -126,6 +131,7 @@ export class ServerPluginRuntime {
       options.importer ?? importServerPluginModule,
       options.execFile ?? createServerPluginExecFile(),
       positiveInteger(options.lifecycleTimeoutMs, DEFAULT_LIFECYCLE_TIMEOUT_MS, "lifecycleTimeoutMs"),
+      options.storageBaseDir ?? piWebDataDir(),
     );
     try {
       await runtime.start(snapshot.plugins);
@@ -246,6 +252,7 @@ export class ServerPluginRuntime {
         packageRoot: entry.packageRoot,
         logger: scopedLogger,
         settings,
+        storage: createPluginScopedStorage(this.storageBaseDir, entry.id),
         execFile: this.execFile,
         signal,
       })));

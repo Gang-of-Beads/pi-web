@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, expectTypeOf, it } from "vitest";
+import { memoryPluginStorage } from "./server/shared/plugins/pluginStorageTestSupport.js";
 import type {
   JsonObject,
   PiWebServerPlugin,
@@ -99,6 +100,7 @@ describe("public server plugin API", () => {
         warn() { /* no-op */ },
         error() { /* no-op */ },
       },
+      storage: memoryPluginStorage(),
       execFile: () => Promise.resolve(commandResult),
     });
 
@@ -110,7 +112,7 @@ describe("public server plugin API", () => {
 
   it("keeps host inputs readonly and concrete services out of the declaration surface", async () => {
     expectTypeOf<keyof ServerPluginActivationContext>().toEqualTypeOf<
-      "apiVersion" | "pluginId" | "packageRoot" | "logger" | "settings" | "execFile" | "signal"
+      "apiVersion" | "pluginId" | "packageRoot" | "logger" | "settings" | "storage" | "execFile" | "signal"
     >();
     expectTypeOf<keyof WorkspaceProvider>().toEqualTypeOf<
       "fallback" | "probe" | "list" | "request" | "prepareRemove"

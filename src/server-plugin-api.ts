@@ -19,6 +19,12 @@ export interface ServerPluginActivationContext {
   readonly logger: ServerPluginLogger;
   readonly settings: JsonObject;
   /**
+   * Durable per-plugin storage. Missing is not empty: `read` answers
+   * undefined for a key that was never written, and a corrupt document reads
+   * as undefined rather than throwing.
+   */
+  readonly storage: ServerPluginStorage;
+  /**
    * Execute an argv-based command through host-owned output and time bounds.
    * The caller must forward the signal for its current bounded operation.
    */
@@ -28,6 +34,14 @@ export interface ServerPluginActivationContext {
    * out or settles; it is not a plugin-lifetime shutdown signal.
    */
   readonly signal: AbortSignal;
+}
+
+/** Host-owned durable storage scoped to one plugin's own directory. */
+export interface ServerPluginStorage {
+  readonly directory: string;
+  readonly read: (key: string) => Promise<JsonValue | undefined>;
+  readonly write: (key: string, value: JsonValue) => Promise<void>;
+  readonly remove: (key: string) => Promise<void>;
 }
 
 /** Host-owned logger supplied through the frozen activation context. */

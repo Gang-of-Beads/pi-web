@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { memoryPluginStorage } from "../../src/server/shared/plugins/pluginStorageTestSupport.js";
 import type {
   ProviderWorkspace,
   ServerPluginActivationContext,
@@ -385,6 +386,7 @@ async function providerFor(execFile: ServerPluginActivationContext["execFile"]):
       error() { /* no-op */ },
     },
     settings: {},
+    storage: memoryPluginStorage(),
     execFile,
     signal: new AbortController().signal,
   });

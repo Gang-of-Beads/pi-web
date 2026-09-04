@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
+import { memoryPluginStorage } from "../../src/server/shared/plugins/pluginStorageTestSupport.js";
 import type { ServerPluginActivationContext, ServerPluginExecFileResult } from "@gang-of-beads/pi-web/server-plugin-api";
 import { createServerPluginExecFile } from "../../src/server/shared/plugins/serverPluginExec.js";
 import {
@@ -37,6 +38,7 @@ const backendContext: ServerPluginActivationContext = {
     error() { /* no-op */ },
   },
   settings: {},
+  storage: memoryPluginStorage(),
   execFile: createServerPluginExecFile({ env: GIT_ENV }),
   signal: new AbortController().signal,
 };
