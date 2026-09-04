@@ -48,7 +48,6 @@ import { RealtimeSocket, type BrowserRealtimeEvent } from "../sessionSocket";
 import type { PluginMachine, PluginPromptEditor, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding } from "../plugins/types";
 import { CLASSIC_THEME_ID, DEFAULT_THEME_PREFERENCE, applyPiWebTheme, findThemePairForTheme, readStoredThemePreference, resolveThemePreference, writeStoredThemePreference, type ThemePreference, type ThemePreferenceResolution } from "../theme";
 import { corePlugin } from "../plugins/core";
-import { themePackPlugin } from "../plugins/themes";
 import { loadExternalPlugins, type ExternalPluginLoadResult } from "../plugins/external";
 import { PluginRegistry, installPluginRuntimeScope, installWorkspaceLabelScope, installWorkspacePanelScope } from "../plugins/registry";
 import { createPluginWorkspaceBackend } from "../plugins/workspaceBackend";
@@ -3582,7 +3581,6 @@ function createPluginRegistry(): PluginRegistry {
     }),
   });
   registry.register({ id: "core", plugin: corePlugin });
-  registry.register({ id: "themes", plugin: themePackPlugin });
   return registry;
 }
 

@@ -8,7 +8,6 @@ import { machineScopedPluginId } from "../../../shared/machinePluginIds";
 import { corePlugin } from "./core";
 import { PluginRegistry, installWorkspaceLabelScope, installWorkspacePanelScope } from "./registry";
 import { createPluginRuntimeContext } from "./pluginRuntimeContextTestSupport";
-import { themePackPlugin } from "./themes";
 import type { PiWebPlugin, ThemeTokens, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding } from "./types";
 import { createPluginWorkspaceBackend } from "./workspaceBackend";
 import type { PluginBackendRequestTarget } from "../api/pluginBackends";
@@ -469,26 +468,6 @@ describe("PluginRegistry", () => {
       ["core:session.stop", "mod+."],
     ]);
     expect(new Set(shortcuts.map(([, shortcut]) => shortcut)).size).toBe(shortcuts.length);
-  });
-
-  it("collects built-in PI WEB themes from an in-app plugin", () => {
-    const registry = new PluginRegistry();
-    registry.register({ id: "themes", plugin: themePackPlugin });
-
-    expect(registry.getThemes().map((theme) => ({ id: theme.id, colorScheme: theme.colorScheme }))).toEqual([
-      { id: "themes:pi-web-dark", colorScheme: "dark" },
-      { id: "themes:pi-web-light", colorScheme: "light" },
-      { id: "themes:classic", colorScheme: "dark" },
-      { id: "themes:high-contrast", colorScheme: "dark" },
-      { id: "themes:night", colorScheme: "dark" },
-      { id: "themes:paper", colorScheme: "light" },
-      { id: "themes:clay-soft", colorScheme: "dark" },
-      { id: "themes:clay-paper", colorScheme: "light" },
-    ]);
-    expect(registry.getThemePairs().map((pair) => ({ id: pair.id, light: pair.light, dark: pair.dark }))).toEqual([
-      { id: "themes:pi-web", light: "themes:pi-web-light", dark: "themes:pi-web-dark" },
-      { id: "themes:clay", light: "themes:clay-paper", dark: "themes:clay-soft" },
-    ]);
   });
 
   it("collects theme contributions in contribution order", () => {

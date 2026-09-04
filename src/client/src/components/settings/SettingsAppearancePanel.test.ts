@@ -2,8 +2,8 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { QualifiedContributionId, QualifiedThemeContribution, ThemeToken, ThemeTokens } from "../../plugins/types";
-import { PluginRegistry } from "../../plugins/registry";
-import { themePackPlugin } from "../../plugins/themes";
+import { html, svg } from "lit";
+import themePackPlugin from "../../../../../pi-web-plugins/themes/pi-web-plugin";
 import { SettingsAppearancePanel } from "./SettingsAppearancePanel";
 
 afterEach(() => {
@@ -16,9 +16,15 @@ afterEach(() => {
  * complete when a token is added.
  */
 function contributedThemes(): QualifiedThemeContribution[] {
-  const registry = new PluginRegistry();
-  registry.register({ id: "themes", plugin: themePackPlugin });
-  return [...registry.getThemes()];
+  const pack = themePackPlugin.activate({ apiVersion: 2, pluginId: "themes", runtimePluginId: "themes", html, svg });
+  return (pack.contributions.themes ?? []).map((theme) => ({
+    id: themeId(theme.id),
+    pluginId: "themes",
+    localId: theme.id,
+    name: theme.name,
+    colorScheme: theme.colorScheme,
+    tokens: theme.tokens,
+  }));
 }
 
 function tokens(overrides: Readonly<Record<ThemeToken, string>> | Partial<Record<ThemeToken, string>> = {}): ThemeTokens {

@@ -1,4 +1,4 @@
-import type { PiWebPlugin, ThemeTokens } from "../types";
+import type { PiWebPlugin, ThemeTokens } from "@gang-of-beads/pi-web/plugin-api";
 
 const classicTokens = {
   "--pi-bg": "#0d1117",
@@ -422,3 +422,5 @@ export const themePackPlugin: PiWebPlugin = {
     },
   }),
 };
+
+export default themePackPlugin;
