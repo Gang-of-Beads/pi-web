@@ -1,3 +1,4 @@
+import { applyThemeFavicon } from "./themeFavicon";
 import type { QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, ThemeToken } from "./plugins/types";
 
 export interface ThemePreference {
@@ -91,6 +92,15 @@ export function applyPiWebTheme(theme: QualifiedThemeContribution): void {
     if (typeof value === "string" && value !== "") root.style.setProperty(token, value);
     else root.style.removeProperty(token);
   }
+  applyThemeFavicon(collectStringTokens(theme.tokens), document);
+}
+
+function collectStringTokens(tokens: QualifiedThemeContribution["tokens"]): Record<string, string> {
+  const collected: Record<string, string> = {};
+  for (const [name, value] of Object.entries(tokens)) {
+    if (typeof value === "string") collected[name] = value;
+  }
+  return collected;
 }
 
 export function resolveThemePreference(options: ResolveThemePreferenceOptions): ThemePreferenceResolution {
