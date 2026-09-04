@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { html, svg } from "lit";
 import type { PluginId } from "@gang-of-beads/pi-web/plugin-api";
-import { themePackPlugin } from "./pi-web-plugin.js";
+import themePackPlugin from "./pi-web-plugin.js";
 
 /**
  * Every theme's text must be readable on the surface it is drawn on.

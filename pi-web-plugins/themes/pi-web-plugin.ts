@@ -330,7 +330,7 @@ const clayPaperTokens = {
   "--pi-terminal-selection": "#5a4a3e",
 } satisfies ThemeTokens;
 
-export const themePackPlugin: PiWebPlugin = {
+const themePackPlugin: PiWebPlugin = {
   apiVersion: 2,
   name: "PI WEB Themes",
   activate: () => ({
