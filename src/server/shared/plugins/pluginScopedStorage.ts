@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import type { JsonValue } from "../../../shared/pluginApiTypes.js";
@@ -88,9 +89,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 async function writeDocument(directory: string, key: string, value: JsonValue): Promise<void> {
   const path = documentPath(directory, key);
   await mkdir(dirname(path), { recursive: true });
-  const staged = `${path}.${String(process.pid)}.staged`;
-  await writeFile(staged, JSON.stringify(value), "utf8");
-  await rename(staged, path);
+  const staged = `${path}.${String(process.pid)}.${randomUUID()}.staged`;
+  try {
+    await writeFile(staged, JSON.stringify(value), "utf8");
+    await rename(staged, path);
+  } catch (error) {
+    await rm(staged, { force: true });
+    throw error;
+  }
 }
 
 async function removeDocument(directory: string, key: string): Promise<void> {

@@ -23,14 +23,14 @@ type RegisteredPluginAction = Omit<PluginAction, "id"> & {
 };
 
 export class PluginRegistry {
-  private readonly actions: RegisteredPluginAction[] = [];
-  private readonly workspacePanels: QualifiedWorkspacePanelContribution[] = [];
-  private readonly workspaceLabels: QualifiedWorkspaceLabelContribution[] = [];
-  private readonly themes: QualifiedThemeContribution[] = [];
-  private readonly themePairs: QualifiedThemePairContribution[] = [];
-  private readonly composerContributions: QualifiedComposerContribution[] = [];
-  private readonly settingsSections: QualifiedSettingsSectionContribution[] = [];
-  private readonly messageRenderers: QualifiedMessageRendererContribution[] = [];
+  private actions: RegisteredPluginAction[] = [];
+  private workspacePanels: QualifiedWorkspacePanelContribution[] = [];
+  private workspaceLabels: QualifiedWorkspaceLabelContribution[] = [];
+  private themes: QualifiedThemeContribution[] = [];
+  private themePairs: QualifiedThemePairContribution[] = [];
+  private composerContributions: QualifiedComposerContribution[] = [];
+  private settingsSections: QualifiedSettingsSectionContribution[] = [];
+  private messageRenderers: QualifiedMessageRendererContribution[] = [];
   private readonly settingsByPlugin = new Map<string, PluginSettings>();
   private readonly listeners = new Map<PluginLifecycleEventKind, { pluginId: string; listener: (event: PluginLifecycleEvent) => void }[]>();
   private readonly disposers = new Map<string, (() => void)[]>();
@@ -77,7 +77,8 @@ export class PluginRegistry {
         : [];
       const composer = (contributions.composer ?? []).map((contribution) => this.qualifyComposerContribution(runtimePluginId, contribution, registration.machineId, registration.sourcePluginId, contributionIds));
       const settingsSections = (contributions.settingsSections ?? []).map((section) => this.qualifySettingsSection(runtimePluginId, section, registration.machineId, registration.sourcePluginId, contributionIds));
-      const messageRenderers = (contributions.messageRenderers ?? []).map((renderer) => this.qualifyMessageRenderer(runtimePluginId, renderer, registration.machineId, registration.sourcePluginId, contributionIds));
+      const claimedTags = new Set<string>();
+      const messageRenderers = (contributions.messageRenderers ?? []).map((renderer) => this.qualifyMessageRenderer(runtimePluginId, renderer, registration.machineId, registration.sourcePluginId, contributionIds, claimedTags));
       const themePairs = registration.machineId === undefined
         ? (contributions.themePairs ?? []).map((pair) => this.qualifyThemePair(runtimePluginId, pair, contributionIds))
         : [];
@@ -98,6 +99,9 @@ export class PluginRegistry {
       } else if (registration.sourcePluginId !== undefined && machineSpecific) {
         addMappedSetValue(this.remoteMachineSpecificPluginIds, registration.sourcePluginId, registration.machineId);
       }
+    } catch (error) {
+      this.releasePluginResources(runtimePluginId);
+      throw error;
     } finally {
       this.registeringPluginIds.delete(runtimePluginId);
     }
@@ -193,7 +197,30 @@ export class PluginRegistry {
     return this.settingsByPlugin.get(runtimePluginId);
   }
 
+  /**
+   * Unregister a plugin whole. Leaving its contributions on screen while its
+   * listeners and state are gone is the worst of both: the surface still
+   * offers actions the plugin can no longer answer for.
+   */
   disposePlugin(runtimePluginId: string): void {
+    this.releasePluginResources(runtimePluginId);
+    this.actions = this.actions.filter((entry) => entry.pluginId !== runtimePluginId);
+    this.workspacePanels = this.workspacePanels.filter((entry) => entry.pluginId !== runtimePluginId);
+    this.workspaceLabels = this.workspaceLabels.filter((entry) => entry.pluginId !== runtimePluginId);
+    this.themes = this.themes.filter((entry) => entry.pluginId !== runtimePluginId);
+    this.themePairs = this.themePairs.filter((entry) => entry.pluginId !== runtimePluginId);
+    this.composerContributions = this.composerContributions.filter((entry) => entry.pluginId !== runtimePluginId);
+    this.settingsSections = this.settingsSections.filter((entry) => entry.pluginId !== runtimePluginId);
+    this.messageRenderers = this.messageRenderers.filter((entry) => entry.pluginId !== runtimePluginId);
+    for (const contributionId of [...this.contributionIds]) {
+      if (contributionId.startsWith(`${runtimePluginId}:`)) this.contributionIds.delete(contributionId);
+    }
+    this.pluginIds.delete(runtimePluginId);
+    this.gatewayPluginIds.delete(runtimePluginId);
+    this.gatewayMachineSpecificPluginIds.delete(runtimePluginId);
+  }
+
+  private releasePluginResources(runtimePluginId: string): void {
     for (const [kind, entries] of this.listeners) {
       this.listeners.set(kind, entries.filter((entry) => entry.pluginId !== runtimePluginId));
     }
@@ -229,9 +256,12 @@ export class PluginRegistry {
     machineId: string | undefined,
     sourcePluginId: string | undefined,
     contributionIds: Set<QualifiedContributionId>,
+    claimedTags: Set<string>,
   ): QualifiedMessageRendererContribution {
     const claimed = this.messageRenderers.find((candidate) => candidate.tag === renderer.tag && candidate.machineId === machineId);
     if (claimed !== undefined) throw new Error(`Message tag ${renderer.tag} is already rendered by ${claimed.id}`);
+    if (claimedTags.has(renderer.tag)) throw new Error(`Message tag ${renderer.tag} is claimed twice by ${pluginId}`);
+    claimedTags.add(renderer.tag);
     return {
       ...renderer,
       id: this.qualify(pluginId, renderer.id, contributionIds),
