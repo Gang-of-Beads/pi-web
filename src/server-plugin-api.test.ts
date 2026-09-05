@@ -112,7 +112,7 @@ describe("public server plugin API", () => {
 
   it("keeps host inputs readonly and concrete services out of the declaration surface", async () => {
     expectTypeOf<keyof ServerPluginActivationContext>().toEqualTypeOf<
-      "apiVersion" | "pluginId" | "packageRoot" | "logger" | "settings" | "storage" | "execFile" | "signal"
+      "apiVersion" | "pluginId" | "packageRoot" | "logger" | "settings" | "storage" | "execFile" | "ports" | "signal"
     >();
     expectTypeOf<keyof WorkspaceProvider>().toEqualTypeOf<
       "fallback" | "probe" | "list" | "request" | "prepareRemove"

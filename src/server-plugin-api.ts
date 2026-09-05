@@ -30,6 +30,13 @@ export interface ServerPluginActivationContext {
    */
   readonly execFile: (request: ServerPluginExecFileRequest) => Promise<ServerPluginExecFileResult>;
   /**
+   * Host-provided services the plugin may consume. Every port is optional: a
+   * host that cannot supply one leaves it undefined, and the plugin degrades
+   * honestly through its health report. Ports are contract types, not core
+   * internals — a plugin never imports the host to narrow them.
+   */
+  readonly ports?: ServerPluginHostPorts;
+  /**
    * Signal for this activation invocation. It is aborted when activation times
    * out or settles; it is not a plugin-lifetime shutdown signal.
    */
@@ -99,6 +106,14 @@ export interface ServerPluginAgentFacts {
 export interface ServerPluginActivation {
   workspaceProvider?: WorkspaceProvider;
   operations?: Readonly<Record<string, ServerPluginOperation>>;
+  /**
+   * Routes the plugin answers at core-shaped paths. The host owns path
+   * resolution and mounts each route under both `/api` and
+   * `/api/machines/local`; a route whose path is named by the federated route
+   * table inherits that entry's transport bounds. A route handler is not
+   * bounded by the lifecycle timeout — its signal is request cancellation.
+   */
+  routes?: readonly ServerPluginRouteContribution[];
   agentFacts?: ServerPluginAgentFacts;
   /** Initialize resources within one host-bounded start invocation. */
   start?(signal: AbortSignal): MaybePromise<void>;
@@ -112,6 +127,67 @@ export interface ServerPluginHealth {
   status: "healthy" | "degraded" | "unhealthy";
   message?: string;
   details?: JsonObject;
+}
+
+/**
+ * A declared route the host mounts. The plugin never picks a URL prefix: the
+ * path is a core-shaped template the host mounts, and an undeclared or
+ * colliding route is refused rather than answered.
+ */
+export interface ServerPluginRouteContribution {
+  method: "GET" | "POST" | "PUT" | "DELETE";
+  path: string;
+  handle(request: ServerPluginRequest, reply: ServerPluginReply, context: ServerPluginRouteContext): Promise<void>;
+}
+
+/** The three input faces a route handler may read: params, query, headers. */
+export interface ServerPluginRequest {
+  readonly params: Readonly<Record<string, string>>;
+  readonly query: Readonly<Record<string, string>>;
+  readonly headers: Readonly<Record<string, string | undefined>>;
+}
+
+/**
+ * A bounded answer: status, headers, and a body. The body may be an async
+ * iterable for streaming answers (a Node Readable satisfies it), which is how
+ * a range-streaming file preview stays expressible over the JSON-only
+ * operation channel.
+ */
+export interface ServerPluginReply {
+  code(status: number): ServerPluginReply;
+  header(name: string, value: string): ServerPluginReply;
+  send(body: string | Uint8Array | AsyncIterable<Uint8Array>): Promise<void>;
+}
+
+/** The cancellation signal of one route invocation: aborted on client disconnect. */
+export interface ServerPluginRouteContext {
+  readonly signal: AbortSignal;
+}
+
+/** Host ports, named fields so plugins consume them without narrowing. */
+export interface ServerPluginHostPorts {
+  /** Resolve one workspace of the identity tuple to its project and workspace paths. */
+  workspaceCatalog?: WorkspaceCatalogPort;
+  /** Read the effective per-project config values plugins may act on. */
+  piWebConfig?: PiWebConfigPort;
+}
+
+export interface WorkspacePathResolution {
+  readonly projectPath: string;
+  readonly workspacePath: string;
+}
+
+export interface WorkspaceCatalogPort {
+  resolveWorkspace(projectId: string, workspaceId: string): Promise<WorkspacePathResolution | undefined>;
+}
+
+/** The path-access slice of the per-project config, as plugins may consume it. */
+export interface PluginPathAccessConfig {
+  readonly allowedPaths?: readonly string[];
+}
+
+export interface PiWebConfigPort {
+  readPathAccess(projectPath: string): Promise<PluginPathAccessConfig | undefined>;
 }
 
 /**

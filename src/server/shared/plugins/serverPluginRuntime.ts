@@ -12,11 +12,16 @@ import type {
   ProviderRequestContext,
   ServerPluginActivation,
   ServerPluginActivationContext,
+  ServerPluginHostPorts,
   ServerPluginOperation,
   ServerPluginExecFileRequest,
   ServerPluginExecFileResult,
   ServerPluginHealth,
   ServerPluginLogger,
+  ServerPluginReply,
+  ServerPluginRequest,
+  ServerPluginRouteContext,
+  ServerPluginRouteContribution,
   WorkspaceProvider,
 } from "../../../server-plugin-api.js";
 import type { PiWebPluginScope } from "../../../shared/apiTypes.js";
@@ -82,6 +87,8 @@ export interface CreateServerPluginRuntimeOptions {
   lifecycleTimeoutMs?: number;
   /** Root for per-plugin durable storage; defaults to the host data directory. */
   storageBaseDir?: string;
+  /** Host-provided ports handed to every activated plugin's context. */
+  hostPorts?: ServerPluginHostPorts;
 }
 
 interface ActiveServerPlugin {
@@ -123,6 +130,7 @@ export class ServerPluginRuntime {
     private readonly execFile: ServerPluginExecFile,
     private readonly lifecycleTimeoutMs: number,
     private readonly storageBaseDir: string,
+    private readonly hostPorts: ServerPluginHostPorts | undefined,
   ) {}
 
   static async activate(
@@ -137,6 +145,7 @@ export class ServerPluginRuntime {
       options.execFile ?? createServerPluginExecFile(),
       positiveInteger(options.lifecycleTimeoutMs, DEFAULT_LIFECYCLE_TIMEOUT_MS, "lifecycleTimeoutMs"),
       options.storageBaseDir ?? piWebDataDir(),
+      options.hostPorts,
     );
     try {
       await runtime.start(snapshot.plugins);
@@ -163,6 +172,11 @@ export class ServerPluginRuntime {
 
   providerContributions(): readonly ServerPluginProviderContribution[] {
     return Object.freeze(this.activePlugins.flatMap((active) => active.contribution === undefined ? [] : [active.contribution]));
+  }
+
+  /** Every route contributed by active plugins, in activation order. */
+  routeContributions(): readonly { pluginId: string; route: ServerPluginRouteContribution }[] {
+    return Object.freeze(this.activePlugins.flatMap((active) => (active.activation.routes ?? []).map((route) => ({ pluginId: active.entry.id, route }))));
   }
 
   /**
@@ -279,10 +293,14 @@ export class ServerPluginRuntime {
         settings,
         storage: createPluginScopedStorage(this.storageBaseDir, entry.id),
         execFile: this.execFile,
+        ...(this.hostPorts === undefined ? {} : { ports: Object.freeze({ ...this.hostPorts }) }),
         signal,
       })));
       phase = "validate";
       const loadedActivation = parseActivation(activationValue);
+      for (const unknownKey of unknownActivationKeys(activationValue)) {
+        this.logger.warn({ pluginId: entry.id, key: unknownKey }, "server plugin activation carries an unknown field; the running host does not implement it");
+      }
       const operations = parsePluginOperations(loadedActivation.operations);
       const agentFacts = parseAgentFactDeclarations(loadedActivation.agentFacts);
       activation = loadedActivation;
@@ -430,6 +448,7 @@ function parseActivation(value: unknown): ServerPluginActivation {
   const workspaceProviderValue = value["workspaceProvider"];
   parsePluginOperations(value["operations"]);
   const operations = isOperationRecord(value["operations"]) ? value["operations"] : undefined;
+  const routes = parseRouteContributions(value["routes"]);
   const candidate = {
     workspaceProvider: workspaceProviderValue === undefined ? undefined : snapshotWorkspaceProvider(workspaceProviderValue),
     agentFacts: value["agentFacts"],
@@ -451,14 +470,57 @@ function parseActivation(value: unknown): ServerPluginActivation {
     ...(candidate.workspaceProvider === undefined ? {} : { workspaceProvider: candidate.workspaceProvider }),
     ...(isRecord(value["agentFacts"]) ? { agentFacts: value["agentFacts"] } : {}),
     ...(operations === undefined ? {} : { operations }),
+    ...(routes === undefined ? {} : { routes }),
     ...(start === undefined ? {} : { start: (signal: AbortSignal) => start(signal) }),
     ...(stop === undefined ? {} : { stop: (signal: AbortSignal) => stop(signal) }),
     ...(health === undefined ? {} : { health: (signal: AbortSignal) => health(signal) }),
   });
 }
 
+const ROUTE_METHODS = new Set<string>(["GET", "POST", "PUT", "DELETE"]);
+
+/**
+ * Routes are frozen behind their declared shape, the same law as provider
+ * snapshots: a plugin cannot grow new surface after validation, and an
+ * invalid declaration fails activation loudly instead of serving an
+ * unvalidated handler.
+ */
+function parseRouteContributions(value: unknown): readonly ServerPluginRouteContribution[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new IncompatibleServerPluginError("Server plugin routes must be an array");
+  return Object.freeze(value.map((entryValue): ServerPluginRouteContribution => {
+    if (!isRouteContribution(entryValue)) throw new IncompatibleServerPluginError("Server plugin route must declare method, path, and handle");
+    const handle = entryValue.handle.bind(entryValue);
+    return Object.freeze({
+      method: entryValue.method,
+      path: entryValue.path,
+      handle: (request: ServerPluginRequest, reply: ServerPluginReply, context: ServerPluginRouteContext) => handle(request, reply, context),
+    });
+  }));
+}
+
+function isRouteContribution(value: unknown): value is ServerPluginRouteContribution {
+  if (!isRecord(value)) return false;
+  const method = value["method"];
+  const path = value["path"];
+  return typeof method === "string"
+    && ROUTE_METHODS.has(method)
+    && typeof path === "string"
+    && path !== ""
+    && path.startsWith("/")
+    && typeof value["handle"] === "function";
+}
+
 function isOperationRecord(value: unknown): value is Readonly<Record<string, ServerPluginOperation>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+const KNOWN_ACTIVATION_KEYS = new Set<string>(["workspaceProvider", "operations", "routes", "agentFacts", "start", "stop", "health"]);
+
+/** An old host reading a newer plugin's activation must not drop fields silently. */
+function unknownActivationKeys(value: unknown): readonly string[] {
+  if (!isRecord(value)) return [];
+  return Object.keys(value).filter((key) => !KNOWN_ACTIVATION_KEYS.has(key));
 }
 
 function isServerPluginActivation(value: unknown): value is ServerPluginActivation {
