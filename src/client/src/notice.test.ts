@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HttpError } from "./api/http";
+import { RequestTimeoutError } from "./api/requestDeadline";
 import { NO_NOTICE, noticeForReader, noticeFromError, noticeFromTransport, retiresOnReply } from "./notice";
 
 describe("what retires a notice", () => {
@@ -36,6 +37,17 @@ describe("a notice made from a thrown error", () => {
    */
   it("retires an HttpError on the next reply", () => {
     expect(retiresOnReply(noticeFromError(new HttpError("Bad Gateway", 502)))).toBe(true);
+  });
+
+  /**
+   * A request deadline is the same claim shape as an HttpError - "the server
+   * did not answer" - so later answers disprove it too. Measured live: a
+   * remote machine answered /status after 30.007s while the browser deadline
+   * fired at 30.000s, and the timeout banner outlived a session that kept
+   * replying, because a plain Error landed on the reader lifetime.
+   */
+  it("retires a request timeout on the next reply", () => {
+    expect(retiresOnReply(noticeFromError(new RequestTimeoutError("/status", 30_000)))).toBe(true);
   });
 
   it("leaves other failures to the reader", () => {

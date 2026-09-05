@@ -44,6 +44,17 @@ describe("isTransientError", () => {
     expect(isTransientError("remote machine request cancelled")).toBe(true);
   });
 
+  /**
+   * A deadline miss is self-healing in exactly the way the reconnect notices
+   * are: the polls re-issue themselves, and the session that was streaming
+   * when the deadline fired goes on replying. Measured live: a remote
+   * machine's /status and /messages both crossed the 30s deadline and the
+   * banner outlived the working session until dismissed by hand.
+   */
+  it("treats a request deadline as transient", () => {
+    expect(isTransientError("The server did not answer within 30s.")).toBe(true);
+  });
+
   it("does not treat a real failure as transient", () => {
     // A permanent failure must never expire on its own; the user has to see it.
     expect(isTransientError("Model response failed: 401 OAuth access token has been revoked")).toBe(false);

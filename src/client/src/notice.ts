@@ -1,4 +1,5 @@
 import { HttpError } from "./api/http";
+import { RequestTimeoutError } from "./api/requestDeadline";
 
 /**
  * What retires a notice.
@@ -60,7 +61,14 @@ export function describeError(error: unknown): string {
 /** A request that did not get through is retired by one that does. */
 export function noticeFromError(error: unknown): Notice {
   const text = describeError(error);
-  return error instanceof HttpError ? noticeFromTransport(text) : noticeForReader(text);
+  if (error instanceof HttpError) return noticeFromTransport(text);
+  // A deadline miss asserts "the server did not answer" - the same claim an
+  // HttpError makes, so later answers disprove it the same way. Measured
+  // live: a remote machine answered /status at 30.007s against a 30.000s
+  // browser deadline, and the timeout banner outlived the working session on
+  // the reader lifetime.
+  if (error instanceof RequestTimeoutError) return noticeFromTransport(text);
+  return noticeForReader(text);
 }
 
 export function retiresOnReply(notice: Notice): boolean {

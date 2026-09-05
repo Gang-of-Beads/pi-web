@@ -61,6 +61,12 @@ function normalizeTransientError(error: string): string | undefined {
   if (/remote machine request cancelled/i.test(error)) {
     return "Connection changed while the request was in flight. Retrying is usually enough.";
   }
+  // A deadline miss says so in its own words (requestDeadline.ts). The polls
+  // re-issue themselves and a session that was streaming goes on replying, so
+  // this heals like a reconnect, not like a failed action.
+  if (/did not answer within/i.test(error)) {
+    return "A request timed out. Polls retry on their own.";
+  }
   // What a dropped connection looks like from `fetch`: Chrome says "Failed to
   // fetch", Safari "Load failed", Firefox "NetworkError when attempting to
   // fetch resource". A phone that slept, a tunnel that blinked, or a web
