@@ -137,6 +137,24 @@
         --pi-bg-overlay: #0d1117e6;
         --pi-success-bg-overlay: #0f1b12ee;
         --pi-terminal-selection: #264f78;
+
+        /* Semantic surface ladder: canvas < panel < card < raised. Themes set
+           the stops explicitly; these fallbacks derive them from the legacy
+           trio, so a theme that ships without the ladder still lands on a
+           coherent one. color-mix keeps the step direction correct for both
+           dark and light palettes. */
+        --pi-surface-canvas: var(--pi-bg);
+        --pi-surface-panel: var(--pi-surface);
+        --pi-surface-card: color-mix(in srgb, var(--pi-surface) 92%, var(--pi-text));
+        --pi-surface-raised: color-mix(in srgb, var(--pi-surface) 84%, var(--pi-text));
+        --pi-surface-active: color-mix(in srgb, var(--pi-surface-hover) 82%, var(--pi-text));
+        --pi-disabled-opacity: 0.45;
+
+        /* Elevation composes full box-shadows from the theme's shadow colors,
+           so a layer never invents its own blur and spread again. */
+        --pi-elevation-1: 0 1px 2px var(--pi-shadow-soft);
+        --pi-elevation-2: 0 2px 10px var(--pi-shadow);
+        --pi-elevation-3: 0 12px 40px var(--pi-shadow-strong);
       }
 
       /* A phone has no width to spare: 32px of a 393px screen went to margins.

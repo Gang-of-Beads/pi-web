@@ -510,9 +510,10 @@ export interface WorkspaceLabelContribution {
 export type ThemeColorScheme = "dark" | "light";
 
 import type { ThemeToken } from "../../../shared/pluginApiTypes";
-export type { ThemeToken };
+import type { LegacyThemeToken, SemanticSurfaceToken } from "../../../shared/pluginApiTypes";
+export type { ThemeToken, LegacyThemeToken, SemanticSurfaceToken };
 
-export type ThemeTokens = Record<ThemeToken, string>;
+export type ThemeTokens = Record<LegacyThemeToken, string> & Partial<Record<SemanticSurfaceToken, string>>;
 
 export interface ThemeContribution {
   id: LocalContributionId;

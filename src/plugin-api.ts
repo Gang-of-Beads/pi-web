@@ -1,8 +1,11 @@
 import type { CSSResultGroup, TemplateResult } from "lit";
-import type { ThemeToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "./shared/pluginApiTypes.js";
+import type { LegacyThemeToken, SemanticSurfaceToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "./shared/pluginApiTypes.js";
+
+export type { ThemeToken } from "./shared/pluginApiTypes.js";
 
 export type {
-  ThemeToken,
+  LegacyThemeToken,
+  SemanticSurfaceToken,
   TerminalInfo,
   FileContentMediaType,
   FileContentResponse,
@@ -432,7 +435,7 @@ export interface WorkspaceLabelContribution {
 }
 
 export type ThemeColorScheme = "dark" | "light";
-export type ThemeTokens = Record<ThemeToken, string>;
+export type ThemeTokens = Record<LegacyThemeToken, string> & Partial<Record<SemanticSurfaceToken, string>>;
 
 export interface ThemeContribution {
   id: LocalContributionId;

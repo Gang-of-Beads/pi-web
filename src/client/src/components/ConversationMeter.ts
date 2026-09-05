@@ -30,7 +30,7 @@ export class ConversationMeter extends LitElement {
   }
 
   static override styles = css`
-    :host { position: absolute; top: -4px; left: 16px; right: 16px; z-index: 6; display: block; height: 12px; opacity: .58; transition: opacity .15s ease; }
+    :host { position: absolute; top: -4px; left: 16px; right: 16px; z-index: 6; display: block; height: 12px; opacity: .58; transition: opacity var(--pi-motion-fast) var(--pi-ease); }
     :host(:focus-within) { opacity: .92; }
     @media (hover: hover) { :host(:hover) { opacity: .92; } }
     .meter { height: 100%; }

@@ -477,7 +477,8 @@ export class AskUserCard extends LitElement {
       border-radius: var(--pi-radius-lg);
       overflow: hidden;
       overflow: clip;
-      background: var(--pi-surface);
+      background: var(--pi-surface-raised);
+      box-shadow: var(--pi-elevation-3);
       display: flex;
       flex-direction: column;
       min-height: 0;
@@ -493,7 +494,7 @@ export class AskUserCard extends LitElement {
       min-height: 22px;
       padding: 7px 10px 6px;
       border-bottom: 1px solid color-mix(in srgb, var(--pi-border-muted) 35%, transparent);
-      background: var(--pi-surface);
+      background: var(--pi-surface-raised);
       box-shadow: 0 8px 18px var(--pi-shadow-soft);
     }
     h2, h3, p { margin-top: 0; }

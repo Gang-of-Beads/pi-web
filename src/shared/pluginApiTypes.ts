@@ -193,6 +193,11 @@ export interface PiWebStatusResponse extends PiWebVersionResponse {
  * theme renders as half of another one, which is worse than not shipping.
  */
 export type ThemeToken =
+  | LegacyThemeToken
+  | SemanticSurfaceToken;
+
+/** The original color contract; every theme sets all of these. */
+export type LegacyThemeToken =
   | "--pi-bg"
   | "--pi-surface"
   | "--pi-surface-hover"
@@ -228,3 +233,15 @@ export type ThemeToken =
   | "--pi-bg-overlay"
   | "--pi-success-bg-overlay"
   | "--pi-terminal-selection";
+
+/**
+ * The semantic surface ladder. A theme may set these stops explicitly; when it
+ * does not, the core derives them from the legacy trio, so packs written
+ * before the ladder keep rendering on a coherent ladder.
+ */
+export type SemanticSurfaceToken =
+  | "--pi-surface-canvas"
+  | "--pi-surface-panel"
+  | "--pi-surface-card"
+  | "--pi-surface-raised"
+  | "--pi-surface-active";

@@ -466,7 +466,7 @@ export class QuickSwitcher extends LitElement {
     @media (max-width: 430px) {
       .rows { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
     }
-    .row-menu { position: absolute; top: calc(100% - 4px); right: 0; z-index: 3; display: grid; gap: var(--pi-space-1); min-width: 160px; padding: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); box-shadow: 0 10px 26px var(--pi-shadow); }
+    .row-menu { position: absolute; top: calc(100% - 4px); right: 0; z-index: 3; display: grid; gap: var(--pi-space-1); min-width: 160px; padding: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface-raised); box-shadow: var(--pi-elevation-2); }
     .row-menu button { min-height: 40px; border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-text); padding: 0 var(--pi-space-5); font: inherit; text-align: left; cursor: pointer; }
     .row-menu button:focus-visible:not(:disabled) { background: var(--pi-selection-bg); }
     @media (hover: hover) { .row-menu button:hover:not(:disabled) { background: var(--pi-selection-bg); } }
