@@ -205,8 +205,9 @@ export class AppNavigationPanel extends LitElement {
 
   /**
    * Mobile shows one primary list at a time instead of stacking every section.
-   * The context bar chips above this panel already act as a breadcrumb for
-   * jumping backwards, so the body should focus on the next useful decision.
+   * The desktop panel's context chips have no compact counterpart here - the
+   * section headers below carry the navigation - so the body should focus on
+   * the next useful decision.
    */
   private renderCompactPrimaryList() {
     const visible = this.compactVisibleSection();

@@ -239,7 +239,9 @@ ChatView's dock strip) to avoid double-touching the same file in two waves.
   on phones is recorded as a follow-up (pre-existing, and enlarging it would
   grow the strip against this ruling).
 - **C6 switcher parity** — ruled as above: no phone quick switcher; the panel
-  is the path, pinned by the probe's session-selection flow.
+  is the path, pinned by the probe's session-selection flow. The desktop
+  counterpart is the context chip row: tapping a chip opens that section's
+  picker in the panel body, which the probe pins.
 
 ## 6. Sequencing
 

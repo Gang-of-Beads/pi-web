@@ -187,13 +187,25 @@ try {
     }));
   }`);
   check("unset context chips name their step without mid-word truncation (C2)", chipState.length >= 2 && chipState.every((chip) => !chip.overflowing && !chip.text.endsWith("…")), JSON.stringify(chipState));
-  const pickerOpen = await deepQuery(desktopPage, "app-context-switcher", `(switcher) => {
-    const chip = Array.from(switcher.shadowRoot.querySelectorAll(".chip")).find((candidate) => (candidate.getAttribute("aria-label") ?? "").startsWith("Choose project"));
-    if (chip === undefined) throw new Error("unset project chip missing");
+  const chipTap = await deepQuery(desktopPage, "app-context-switcher", `(switcher) => {
+    const chip = Array.from(switcher.shadowRoot.querySelectorAll(".chip")).find((candidate) => (candidate.getAttribute("aria-label") ?? "").startsWith("Choose workspace"));
+    if (chip === undefined) throw new Error("unset workspace chip missing");
+    const wasOpen = chip.getAttribute("aria-expanded") === "true";
     chip.click();
-    return chip.getAttribute("aria-expanded") === "true";
+    return wasOpen;
   }`);
-  check("tapping a context chip opens its picker in the panel (C6)", pickerOpen);
+  await desktopPage.waitForTimeout(500);
+  const pickerOpen = await deepQuery(desktopPage, "app-context-switcher", `(switcher) => {
+    const chip = Array.from(switcher.shadowRoot.querySelectorAll(".chip")).find((candidate) => (candidate.getAttribute("aria-label") ?? "").startsWith("Choose workspace"));
+    return chip === null ? false : chip.getAttribute("aria-expanded") === "true";
+  }`);
+  check("tapping a context chip opens its picker in the panel (C6)", chipTap === false && pickerOpen === true, `wasOpen=${String(chipTap)} after=${String(pickerOpen)}`);
+  await deepQuery(desktopPage, "app-context-switcher", `(switcher) => {
+    const chip = Array.from(switcher.shadowRoot.querySelectorAll(".chip")).find((candidate) => (candidate.getAttribute("aria-label") ?? "").startsWith("Choose project"));
+    if (chip !== undefined) chip.click();
+    return true;
+  }`);
+  await desktopPage.waitForTimeout(500);
   const desktopState = await deepQuery(desktopPage, "app-context-bar", `(bar) => {
     if (bar === null) throw new Error("app-context-bar missing on desktop");
     const root = bar.shadowRoot;
