@@ -1,0 +1,15 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`appSurface feature table > exposes ids in a stable order for the contract test 1`] = `
+[
+  "panelToggle",
+  "sessionSwitch",
+  "workingIndicator",
+  "identity",
+  "sessionRename",
+  "toolViews",
+  "actions",
+  "settings",
+  "appRefresh",
+]
+`;
