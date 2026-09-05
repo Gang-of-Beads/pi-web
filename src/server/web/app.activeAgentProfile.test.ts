@@ -57,7 +57,7 @@ describe("buildApp active profile composition", () => {
       expect(packageSources(secondPackages.json())).not.toContain(firstPackageDir);
       expect(pluginIds(secondPlugins.json())).toContain("profile-second");
       expect(pluginIds(secondPlugins.json())).not.toContain("profile-first");
-      expect(getActiveAgentProfile).toHaveBeenCalledTimes(4);
+      expect(getActiveAgentProfile).toHaveBeenCalledTimes(5);
     } finally {
       await app.close();
     }

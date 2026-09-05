@@ -51,6 +51,8 @@ export interface PiWebPluginPackageEntry {
   source: string;
   scope: PiWebPluginScope;
   machineSpecific: boolean;
+  /** Which host process activates the server module; default "daemon". */
+  runs?: PiWebPluginRuns;
 }
 
 export interface PiWebPluginCatalogEntry extends PiWebPluginPackageEntry {
@@ -114,6 +116,21 @@ interface PiWebPluginMetadataEntry {
   module?: string;
   serverModule?: string;
   machineSpecific: boolean;
+  runs?: PiWebPluginRuns;
+}
+
+export type PiWebPluginRuns = "daemon" | "web" | "both";
+
+/**
+ * Keep only the entries whose `runs` declaration addresses the given host
+ * process. Entries without a declaration are daemon-owned - today's behavior
+ * unchanged - so an old plugin package activates exactly where it always did.
+ */
+export function filterCatalogEntriesByRuns(plugins: readonly PiWebPluginCatalogEntry[], runs: readonly PiWebPluginRuns[]): PiWebPluginCatalogEntry[] {
+  return plugins.filter((plugin) => {
+    const addressed = plugin.runs ?? "daemon";
+    return runs.includes(addressed);
+  });
 }
 
 type ReportDiagnostic = (
@@ -362,6 +379,7 @@ async function discoverPluginEntries(
       ...(browserModule === undefined ? {} : { browserModule }),
       ...(serverModule === undefined ? {} : { serverModule }),
       machineSpecific: entry.machineSpecific,
+      ...(entry.runs === undefined ? {} : { runs: entry.runs }),
     });
   }
   return plugins;
@@ -660,14 +678,25 @@ function parsePluginEntries(piWeb: Record<string, unknown>, packagePath: string)
       throw new Error(`PI WEB plugin ${id} has browser and server modules and must be machine-specific in ${packagePath}`);
     }
     const machineSpecific = configuredMachineSpecific ?? (module !== undefined && serverModule !== undefined);
+    const runs = parseRuns(entry["runs"], packagePath, id);
+    if (runs !== undefined && runs !== "daemon" && serverModule === undefined) {
+      throw new Error(`PI WEB plugin ${id} declares runs "${runs}" without a serverModule in ${packagePath}`);
+    }
     return {
       id,
       ...(browserRoot === undefined ? {} : { browserRoot }),
       ...(module === undefined ? {} : { module }),
       ...(serverModule === undefined ? {} : { serverModule }),
       machineSpecific,
+      ...(runs === undefined ? {} : { runs }),
     };
   });
+}
+
+function parseRuns(value: unknown, packagePath: string, pluginId: string): PiWebPluginRuns | undefined {
+  if (value === undefined) return undefined;
+  if (value === "daemon" || value === "web" || value === "both") return value;
+  throw new Error(`Invalid PI WEB plugin runs value for ${pluginId} in ${packagePath}: ${formatUnknownValue(value)}`);
 }
 
 function parseOptionalModule(value: unknown, kind: "browser" | "server", packagePath: string, pluginId: string): string | undefined {

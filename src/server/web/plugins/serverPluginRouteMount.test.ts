@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import Fastify from "fastify";
 import type { PiWebServerPlugin, ServerPluginActivation } from "../../../server-plugin-api.js";
-import type { PiWebPluginCatalogEntry, PiWebPluginCatalogSnapshot } from "../../shared/piWebPluginCatalog.js";
+import type { PiWebPluginCatalogEntry } from "../../shared/piWebPluginCatalog.js";
 import { createServerPluginRuntime, type ServerPluginModuleImporter } from "../../shared/plugins/serverPluginRuntime.js";
 import { mountServerPluginRoutes } from "./serverPluginRouteMount.js";
 
@@ -28,7 +28,7 @@ function previewActivation(): ServerPluginActivation {
         await reply
           .code(200)
           .header("Content-Type", "text/plain")
-          .header("X-Seen-Path", `${request.params["projectId"]}/${request.params["workspaceId"]}`)
+          .header("X-Seen-Path", `${request.params["projectId"] ?? ""}/${request.params["workspaceId"] ?? ""}`)
           .header("X-Seen-Range", request.headers["range"] ?? "none")
           .send(`preview of ${request.query["path"] ?? ""}`);
       },
@@ -43,7 +43,7 @@ async function appWithRoutes(activation: ServerPluginActivation) {
   const runtime = await createServerPluginRuntime({
     catalog: { snapshot: () => Promise.resolve({ plugins: [entry("workspaces")], diagnostics: [] }) },
     importer,
-    logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   });
   const app = Fastify({ logger: false });
   mountServerPluginRoutes(app, runtime, "/api");
@@ -92,8 +92,11 @@ describe("mounting plugin route contributions", () => {
         path: "/stream",
         handle: async (_request, reply) => {
           async function* chunks(): AsyncIterable<Uint8Array> {
-            yield new TextEncoder().encode("first ");
-            yield new TextEncoder().encode("second");
+            const encoder = new TextEncoder();
+            for (const part of ["first ", "second"]) {
+              await Promise.resolve();
+              yield encoder.encode(part);
+            }
           }
           await reply.header("Content-Type", "text/plain").send(chunks());
         },

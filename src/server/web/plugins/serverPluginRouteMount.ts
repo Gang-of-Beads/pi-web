@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { Readable } from "node:stream";
-import type { ServerPluginReply, ServerPluginRequest, ServerPluginRouteContribution } from "../../../server-plugin-api.js";
+import type { ServerPluginReply, ServerPluginRouteContribution } from "../../../server-plugin-api.js";
 import type { ServerPluginRuntime } from "../../shared/plugins/serverPluginRuntime.js";
 
 /**

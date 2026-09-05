@@ -9,8 +9,9 @@ import { ProjectStore } from "../shared/storage/projectStore.js";
 import { ProjectService } from "../shared/projects/projectService.js";
 import type { WorkspaceCatalog } from "../shared/workspaces/workspaceCatalog.js";
 import { SessionDaemonWorkspaceCatalog } from "./workspaces/sessionDaemonWorkspaceCatalog.js";
+import { resolveWorkspaceContext } from "./workspaces/workspaceContext.js";
 import { sendWorkspaceRequestError } from "./workspaces/workspaceRouteErrors.js";
-import { loadEffectiveProjectUploadsConfig } from "./workspaces/projectPiWebConfig.js";
+import { loadEffectiveProjectUploadsConfig, loadEffectiveProjectPathAccess } from "./workspaces/projectPiWebConfig.js";
 import { listDirectorySuggestions } from "../shared/projects/directorySuggestions.js";
 import { SessionDaemonClient } from "../shared/sessiondClient/sessionDaemonClient.js";
 import { loadServerPluginRecoveryConfig } from "../../serverPluginRecovery.js";
@@ -21,6 +22,10 @@ import { registerTerminalProxyRoutes } from "./terminalProxyRoutes.js";
 import { registerWorkspaceDeletionRoutes } from "./workspaces/workspaceDeletionRoutes.js";
 import { createFilePiWebConfigService, registerConfigRoutes, registerLocalMachineConfigRoutes, type PiWebConfigService } from "./configRoutes.js";
 import { PiWebPluginService } from "./piWebPluginService.js";
+import { PiWebPluginCatalog, filterCatalogEntriesByRuns } from "../shared/piWebPluginCatalog.js";
+import { createServerPluginRuntime, type ServerPluginRuntime } from "../shared/plugins/serverPluginRuntime.js";
+import type { ServerPluginRuntimeLogger } from "../shared/plugins/serverPluginRuntime.js";
+import { mountServerPluginRoutes } from "./plugins/serverPluginRouteMount.js";
 import { createActiveProfilePiPackageService, type PiPackageService } from "./piPackageService.js";
 import { registerPiPackageRoutes } from "./piPackageRoutes.js";
 import { createPiWebStatusCache, type PiWebStatusCache } from "./piWebStatusCache.js";
@@ -49,6 +54,9 @@ export interface AppDependencies {
   sessionDaemon?: SessionProxyDaemon;
   agentProfileProvider?: ActiveAgentProfileProvider;
   piWebPlugins?: Pick<PiWebPluginService, "manifest" | "plugins" | "readAsset">;
+  piWebPluginCatalog?: PiWebPluginCatalog;
+  /** Pre-activated web-process plugin runtime; assembled from the catalog when omitted. */
+  serverPluginRuntime?: ServerPluginRuntime;
   piPackages?: PiPackageService;
   piWebStatusCache?: PiWebStatusCache;
   config?: PiWebConfigService;
@@ -190,6 +198,13 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
     runtimeProvider: daemonWorkspaces,
     recoveryProvider: () => loadServerPluginRecoveryConfig(),
   });
+  // The web runtime reads the same config and agent-dir sources the plugin
+  // service does; it stays a separate catalog because the service is often a
+  // fixture and the runtime must exist even when the daemon is unreachable.
+  const piWebPluginCatalog = deps.piWebPluginCatalog ?? new PiWebPluginCatalog({
+    configProvider: readConfig,
+    agentDirProvider: () => desiredPluginAgentDir(agentProfileProvider, configService),
+  });
   const piPackages = deps.piPackages ?? createActiveProfilePiPackageService(agentProfileProvider);
   const piWebStatusCache = deps.piWebStatusCache ?? createPiWebStatusCache(
     async ({ force }) => {
@@ -265,6 +280,64 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
   registerTerminalProxyRoutes(app, projects, workspaces, sessionDaemon, "/api/machines/local");
   registerWorkspaceDeletionRoutes(app, sessionDaemon);
   registerWorkspaceDeletionRoutes(app, sessionDaemon, "/api/machines/local");
+
+  // The web process hosts the plugins addressed to it (`runs: "web" |
+  // "both"`); everything else stays daemon-owned as before, so an old
+  // package activates exactly where it always did. The ports give plugins
+  // the two host services the file routes need without importing core
+  // internals: tuple resolution and the per-project path-access config.
+  // A runtime that cannot activate (daemon profile blip at startup) must not
+  // take the web process down: contributed routes are absent until restart,
+  // which is the honest absence the seam already defines.
+  let webServerPluginRuntime = deps.serverPluginRuntime;
+  if (webServerPluginRuntime === undefined) {
+    const webRuntimeLogger: ServerPluginRuntimeLogger = {
+      debug: (details, message) => {
+        app.log.debug({ ...details }, message);
+      },
+      info: (details, message) => {
+        app.log.info({ ...details }, message);
+      },
+      warn: (details, message) => {
+        app.log.warn({ ...details }, message);
+      },
+      error: (details, message) => {
+        app.log.error({ ...details }, message);
+      },
+    };
+    try {
+      webServerPluginRuntime = await createServerPluginRuntime({
+        catalog: {
+          snapshot: async (scope) => {
+            const snapshot = await piWebPluginCatalog.snapshot(scope);
+            return { ...snapshot, plugins: filterCatalogEntriesByRuns(snapshot.plugins, ["web", "both"]) };
+          },
+        },
+        logger: webRuntimeLogger,
+        hostPorts: {
+          workspaceCatalog: {
+            resolveWorkspace: async (projectId, workspaceId) => {
+              const context = await resolveWorkspaceContext(projects, workspaces, projectId, workspaceId);
+              return { projectPath: context.project.path, workspacePath: context.root };
+            },
+          },
+          piWebConfig: {
+            readPathAccess: async (projectPath) => {
+              return loadEffectiveProjectPathAccess(projectPath, await readConfig());
+            },
+          },
+        },
+      });
+    } catch (error) {
+      app.log.warn({ err: error }, "web-process plugin runtime failed to activate; contributed routes are absent");
+    }
+  }
+  if (webServerPluginRuntime !== undefined) {
+    const mounted = webServerPluginRuntime;
+    app.addHook("onClose", () => mounted.stop());
+    mountServerPluginRoutes(app, mounted, "/api");
+    mountServerPluginRoutes(app, mounted, "/api/machines/local");
+  }
 
   registerMachineProxyRoutes(app, machines);
 

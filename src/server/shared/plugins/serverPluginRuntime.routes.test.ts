@@ -87,7 +87,7 @@ describe("route contributions", () => {
   });
 
   it("refuses a route whose method is not one of the mounted verbs", async () => {
-    const { runtime, log } = await runtimeWith({ routes: [{ method: "PATCH", path: "/x", handle: async () => {} }] });
+    const { runtime, log } = await runtimeWith({ routes: [{ method: "PATCH", path: "/x", handle: () => Promise.resolve(undefined) }] });
     expect(log.warn).toHaveBeenCalled();
     expect(runtime.healthRecords().find((record) => record.pluginId === "workspaces")?.state).toBe("incompatible");
   });
@@ -114,8 +114,8 @@ describe("host ports", () => {
         },
       } satisfies PiWebServerPlugin,
     });
-    const workspaceCatalog = { resolveWorkspace: async () => undefined };
-    const piWebConfig = { readPathAccess: async () => undefined };
+    const workspaceCatalog = { resolveWorkspace: () => Promise.resolve(undefined) };
+    const piWebConfig = { readPathAccess: () => Promise.resolve(undefined) };
     const runtime = await createServerPluginRuntime({
       catalog: { snapshot: () => Promise.resolve(snapshot([entry("workspaces")])) },
       importer,

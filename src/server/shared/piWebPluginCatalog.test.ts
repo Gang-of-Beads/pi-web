@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readdir, realpath, rm, stat, symlink, truncate, utimes,
 import { tmpdir } from "node:os";
 import { join, win32 } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { isWithin, PI_WEB_PLUGIN_ARTIFACT_MAX_BYTES, PiWebPluginCatalog, type PiPackageProvider } from "./piWebPluginCatalog.js";
+import { filterCatalogEntriesByRuns, isWithin, PI_WEB_PLUGIN_ARTIFACT_MAX_BYTES, PiWebPluginCatalog, type PiPackageProvider } from "./piWebPluginCatalog.js";
 
 let tempDir: string;
 
@@ -743,6 +743,53 @@ describe("PiWebPluginCatalog", () => {
     expect(snapshot.plugins).toEqual([]);
     expect(snapshot.diagnostics).toHaveLength(1);
     expect(snapshot.diagnostics[0]?.message).toContain("escapes its package");
+  });
+
+  it("carries the runs declaration through discovery", async () => {
+    const pluginsRoot = join(tempDir, "plugins");
+    await writePlugin(join(pluginsRoot, "web-hosted"), {
+      packageJson: { piWeb: { plugins: [{ id: "web-hosted", serverModule: "server.js", runs: "web" }] } },
+      files: { "server.js": "export default {};" },
+    });
+    await writePlugin(join(pluginsRoot, "everywhere"), {
+      packageJson: { piWeb: { plugins: [{ id: "everywhere", serverModule: "server.js", runs: "both" }] } },
+      files: { "server.js": "export default {};" },
+    });
+    await writePlugin(join(pluginsRoot, "daemon-by-default"), {
+      packageJson: { piWeb: { plugins: [{ id: "daemon-by-default", serverModule: "server.js" }] } },
+      files: { "server.js": "export default {};" },
+    });
+    const catalog = new PiWebPluginCatalog({
+      roots: [{ path: pluginsRoot, source: "fixture", scope: "local" }],
+      packageProvider: false,
+      configProvider: () => ({}),
+    });
+
+    const snapshot = await catalog.snapshot();
+
+    const runsById = Object.fromEntries(snapshot.plugins.map((plugin) => [plugin.id, plugin.runs ?? "daemon"]));
+    expect(runsById).toEqual({ "web-hosted": "web", everywhere: "both", "daemon-by-default": "daemon" });
+    expect(filterCatalogEntriesByRuns(snapshot.plugins, ["web", "both"]).map((plugin) => plugin.id).sort()).toEqual(["everywhere", "web-hosted"]);
+    expect(filterCatalogEntriesByRuns(snapshot.plugins, ["daemon"]).map((plugin) => plugin.id)).toEqual(["daemon-by-default"]);
+  });
+
+  it("reports a runs declaration without a server module as an invalid-package diagnostic", async () => {
+    const pluginsRoot = join(tempDir, "plugins");
+    await writePlugin(join(pluginsRoot, "browser-only-web"), {
+      packageJson: { piWeb: { plugins: [{ id: "browser-only-web", browserRoot: "dist", module: "dist/browser.js", runs: "web" }] } },
+      files: { "dist/browser.js": "export default {};" },
+    });
+    const catalog = new PiWebPluginCatalog({
+      roots: [{ path: pluginsRoot, source: "fixture", scope: "local" }],
+      packageProvider: false,
+      configProvider: () => ({}),
+    });
+
+    const snapshot = await catalog.snapshot();
+
+    expect(snapshot.plugins).toEqual([]);
+    expect(snapshot.diagnostics).toHaveLength(1);
+    expect(snapshot.diagnostics[0]?.message).toContain("declares runs");
   });
 });
 
