@@ -215,8 +215,31 @@ ChatView's dock strip) to avoid double-touching the same file in two waves.
    the strips may merge).
 5. J6 status strip: keep the numbers, add units/labels (tokens, context, cost
    already exist in `StatusBar.ts`; this is presentation only).
-6. J7 desktop panel already hosts the switcher path; close the asymmetry or
-   accept it.
+6. J7 switcher parity: ruled as "the panel is the mobile switcher" — the
+   phone reaches sessions through the panel's own lists and search, and the
+   probe pins the path (boot → panel → project → workspace → session); no
+   duplicate quick switcher was built. The desktop chip picker gets its own
+   probe pin (tapping a chip opens its picker section).
+
+## 5b. Wave UX-C adjudications (recorded as they land)
+
+- **C2 chip truncation** — the unset steps rendered "Choose machine"/"Choose
+  workspace", which a narrow desktop panel cut to "Choo...". Fixed at the
+  source: an unset step renders its own word ("Machine", "Project",
+  "Workspace"), which fits at any width and stays distinct per step; the
+  aria-label keeps the verb ("Choose project"), and a set step shows its real
+  value. Landed in `AppContextSwitcher.ts`; pinned by the probe on the desktop
+  panel (the chips are desktop-panel chrome; the phone panel is the compact
+  single-list variant and never had them).
+- **C4 strip economy** — adjudicated as already-shipped plus a pin: the drawer
+  is one merged strip, collapsed by default (`topDrawerStartsOpen` is false),
+  and tab membership is fixed by an earlier owner decision (a vanishing tab
+  reflowed the strip under the finger). The probe now pins "starts collapsed"
+  and the strip's collapsed geometry; the drawer tabs' own 22px touch height
+  on phones is recorded as a follow-up (pre-existing, and enlarging it would
+  grow the strip against this ruling).
+- **C6 switcher parity** — ruled as above: no phone quick switcher; the panel
+  is the path, pinned by the probe's session-selection flow.
 
 ## 6. Sequencing
 

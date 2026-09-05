@@ -131,6 +131,17 @@ try {
   const statusBarOpen = await deepExists(page, "status-bar");
   check("bottom status bar renders for the selected session", statusBarOpen);
 
+  const drawerState = await deepQuery(page, "chat-view", `(view) => {
+    const drawer = view.shadowRoot.querySelector(".top-drawer");
+    if (drawer === null) return { present: false };
+    return { present: true, collapsed: drawer.className.includes("collapsed"), height: Math.round(drawer.getBoundingClientRect().height) };
+  }`);
+  // C4's ruling: one merged strip, collapsed by default. The height pin
+  // documents today's geometry so growth needs a deliberate wave; the drawer
+  // tabs' own 22px touch height on phones is a recorded follow-up.
+  check("drawer strip starts collapsed (C4)", drawerState.present === false || drawerState.collapsed === true, JSON.stringify(drawerState));
+  check("drawer strip keeps its collapsed geometry", drawerState.present === false || drawerState.height <= 56, `height ${String(drawerState.height)}`);
+
   const rowTitle = await deepQuery(page, "app-context-bar", `(bar) => {
     const root = bar.shadowRoot;
     if (root === null) throw new Error("app-context-bar shadow root missing");
@@ -167,6 +178,22 @@ try {
   await desktopPage.goto(BASE, { waitUntil: "domcontentloaded" });
   await desktopPage.waitForSelector("pi-web-app", { timeout: 15_000 });
   await desktopPage.waitForTimeout(2_500);
+  const chipState = await deepQuery(desktopPage, "app-context-switcher", `(switcher) => {
+    const root = switcher.shadowRoot;
+    if (root === null) throw new Error("app-context-switcher shadow root missing");
+    return Array.from(root.querySelectorAll(".chip-value")).map((node) => ({
+      text: node.textContent.trim(),
+      overflowing: node.scrollWidth > node.clientWidth,
+    }));
+  }`);
+  check("unset context chips name their step without mid-word truncation (C2)", chipState.length >= 2 && chipState.every((chip) => !chip.overflowing && !chip.text.endsWith("…")), JSON.stringify(chipState));
+  const pickerOpen = await deepQuery(desktopPage, "app-context-switcher", `(switcher) => {
+    const chip = Array.from(switcher.shadowRoot.querySelectorAll(".chip")).find((candidate) => (candidate.getAttribute("aria-label") ?? "").startsWith("Choose project"));
+    if (chip === undefined) throw new Error("unset project chip missing");
+    chip.click();
+    return chip.getAttribute("aria-expanded") === "true";
+  }`);
+  check("tapping a context chip opens its picker in the panel (C6)", pickerOpen);
   const desktopState = await deepQuery(desktopPage, "app-context-bar", `(bar) => {
     if (bar === null) throw new Error("app-context-bar missing on desktop");
     const root = bar.shadowRoot;

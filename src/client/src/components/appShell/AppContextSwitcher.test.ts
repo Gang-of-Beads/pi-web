@@ -62,9 +62,10 @@ describe("app-context-switcher", () => {
     expect(chips(several)[0]?.textContent).toContain("Machine");
   });
 
-  it("says Choose when a step has no value yet", async () => {
+  it("keeps the verb in the aria label when a step has no value yet", async () => {
     const element = await mount();
-    expect(chips(element)[0]?.textContent).toContain("Choose");
+    const unsetChip = chips(element)[0];
+    expect(unsetChip?.getAttribute("aria-label")).toBe("Choose project");
   });
 
   it("opens the picker for the step that was tapped", async () => {
@@ -107,19 +108,21 @@ describe("app-context-switcher", () => {
 });
 
 describe("steps with nothing chosen yet", () => {
-  it("says what each unset step would choose, because the label may be hidden", async () => {
+  it("names each unset step with its own word, which fits at any width", async () => {
     const element = await mount((instance) => {
       instance.machines = [machine("local")];
       instance.selectedMachine = machine("local");
     });
 
     const values = [...(element.shadowRoot?.querySelectorAll(".chip-value") ?? [])].map((node) => node.textContent);
+    const labels = [...(element.shadowRoot?.querySelectorAll(".chip") ?? [])].map((node) => node.getAttribute("aria-label"));
 
-    // Three steps sharing a 1440px bar are 103px each, under the 140px
-    // container query that hides the label - so the first screen a new user
-    // sees read "Local | Choose | Choose", with nothing saying which was the
-    // project and which the workspace.
-    expect(values).toEqual(["local", "Choose project", "Choose workspace"]);
+    // Three steps sharing a 393px phone bar cannot fit "Choose project";
+    // the phrase cut to "Choo..." on the first screen a new user sees. The
+    // step's own word fits at any width, stays distinct per step, and the
+    // aria label keeps the verb.
+    expect(values).toEqual(["local", "Project", "Workspace"]);
+    expect(labels).toEqual(["Machine: local. Change it", "Choose project", "Choose workspace"]);
   });
 
   it("shows the value itself once a step has one", async () => {
@@ -130,6 +133,6 @@ describe("steps with nothing chosen yet", () => {
     });
 
     const values = [...(element.shadowRoot?.querySelectorAll(".chip-value") ?? [])].map((node) => node.textContent);
-    expect(values).toEqual(["local", "pi-web", "Choose workspace"]);
+    expect(values).toEqual(["local", "pi-web", "Workspace"]);
   });
 });

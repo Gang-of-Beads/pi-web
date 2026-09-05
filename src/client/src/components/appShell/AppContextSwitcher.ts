@@ -53,6 +53,14 @@ export class AppContextSwitcher extends LitElement {
     addLabel: string | undefined,
   ) {
     const open = this.openSection === section;
+    // An unset step renders the step's own word - "Machine", "Project" -
+    // never "Choose machine": at a phone's three-across width that phrase
+    // cut to "Choo...", a mid-word ellipsis on the one state a first-run
+    // screen always shows. The step word fits at any width, the picker it
+    // opens says "choose", and the aria-label keeps the verb.
+    // With no value the label is redundant with the value, so the label only
+    // renders once a real value sits under it.
+    const unset = value === undefined;
     // The create control sits inside the chip's own border, not beside it in a
     // second box: three free-standing frames plus two plus-buttons made the row
     // read as five controls, and each button took its tap target out of the
@@ -68,13 +76,10 @@ export class AppContextSwitcher extends LitElement {
             title=${value ?? `Choose ${label.toLowerCase()}`}
             @click=${() => { this.onOpenSection?.(section); }}
           >
-            <span class="chip-label">${label}</span>
-            <!-- With no value the label is the only thing telling two steps
-                 apart, and the container query hides it: three steps sharing a
-                 1440px-wide bar are 103px each, under the 140px threshold, so
-                 the first screen read "Local | Choose | Choose". An unset step
-                 says what it would choose. -->
-            <span class="chip-value">${value ?? `Choose ${label.toLowerCase()}`}</span>
+            ${unset
+              ? nothing
+              : html`<span class="chip-label">${label}</span>`}
+            <span class="chip-value">${value ?? label}</span>
           </button>
           ${onAdd === undefined || addLabel === undefined
             ? nothing
