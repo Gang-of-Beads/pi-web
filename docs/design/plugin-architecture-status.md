@@ -173,3 +173,20 @@ Still blocked on the owner, both outside this session's authority:
    argues for keeping it in core. The objective must be amended or the
    catalog extracted.
 
+## Split repository coverage and the review wave, 2026-09-05 (later)
+
+A follow-up audit noted that not every plugin had the private repository
+the objective promised. `Gang-of-Beads/pi-web-goals` now exists, split from
+`pi-web-plugins/goals` with its real history, packaged like the themes pack
+(bundled browser and server modules committed, `piWeb` manifest, the same
+tag-gated publish workflow). The plugin-api contract deliberately lives as
+a subpackage of this repository rather than its own repository: its history
+is this repository's history, and a separate clone would have to track it.
+
+The three-lane review of the goals and publishing wave found the first
+extraction pass unclosed and its fixes are in: the panel's controls wired
+through two new general seams (`requestUpdate`, optional `runCommand`),
+honest empty states, the focused session's cwd back in the read, and core's
+orphaned goals machinery removed. Recorded in
+`review-triage-goals-package-wave.md`.
+
