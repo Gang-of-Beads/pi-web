@@ -101,6 +101,22 @@ config stays in `<project>/.pi-web/config.json`.
    honestly do not render (absence is stated, not silently filled by a
    core fallback).
 
+## Owner rulings, 2026-09-05 (third round, phone screenshot on the 8506 deployment)
+
+1. **The transcript is a plugin too.** Message history (the chat view)
+   moves out of core into a plugin; the shell keeps the composer and renders
+   what plugins contribute.
+2. **Voice finishes as a plugin.** The voice plugin owns its whole surface;
+   remaining core-side voice wiring moves into it.
+3. **Activity and notifications leave the core shell** — the ACTIVITY and
+   NOTIFICATIONS drawer tabs are removed, not converted; a plugin that wants
+   such a surface builds its own page extension.
+
+These extend the moved-set beyond machines/workspaces. The Wave 0 contract
+(dialog and main-view seams, route contributions) is the prerequisite for
+all three, so Wave 0 keeps priority; the new waves slot after Wave B and the
+task tree is restructured when the goal is resumed.
+
 ## Sequencing (amended after review)
 
 The original ordering collapsed under review: the Files main view is not a
