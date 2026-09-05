@@ -22,10 +22,16 @@ plugin owns features over the tuple; the tuple itself is core.
 
 ## Machines: what moves, what stays
 
-Moves to `pi-web-machines` (server + browser modules):
+**Moved-set amended after the design review**: server machines code can
+only run where a web-process plugin runtime exists — today server plugins
+activate only in sessiond, which by the design's own asymmetry must stay
+machine-free. The moved-set below is therefore contingent on the owner's
+extraction-shape decision.
 
-- Server: `machineClient`, `machineService`, `machineStore`, and the
-  machine management routes (~1.5k lines with tests).
+- Server (contingent): `machineClient`, `machineService`, `machineStore`,
+  and the machine management routes (~1.9k lines with tests). Under the
+  "services stay core" shape, these stay and the plugin owns the management
+  UI and CRUD routes over an injected port.
 - Client: `machineController`, `machineStatusController`,
   `machineNavigationMemory`, `MachineDialog`, `MachineList`,
   `MachineSwitcher`, and the machine management actions.
@@ -48,18 +54,23 @@ injection port for fleet routes.
 
 ## Workspaces: what moves, what stays
 
-Moves to `pi-web-workspaces` (server + browser modules):
+**Moved-set amended after the design review** (see
+`review-triage-machines-workspaces-design.md`): the server-side shape below
+depends on an owner decision about the plugin contract; the protocol pieces
+named here move only under that decision.
 
-- Server: the file services (`fileTreeService`, `fileContentService`,
-  `filePreviewService` + response policy/headers, `fileSuggestions`,
-  `pathAccessPolicy`, `effectivePathAccess`, `workspaceContext`,
-  `workspaceDeletionRoutes`, `projectPiWebConfig`) and their routes glue
-  (~2.5k lines with tests).
-- Client: `projectController`, `workspaceController`, `workspaceSelection`,
-  `fileExplorerController`, `ProjectList`, `ProjectDialog`,
-  `WorkspaceList`, workspace files panel/viewer, deletion and upload state,
-  and the workspace sections of the navigation panel (via the contributed
-  sections seam the goals wave built).
+- Server (contingent): the file services (`fileTreeService`,
+  `fileContentService`, `filePreviewService`, `fileSuggestions`,
+  `pathAccessPolicy`, `effectivePathAccess`, `workspaceDeletionRoutes`) and
+  their routes (~3.7k lines with tests). Protocol pieces stay:
+  `filePreviewResponsePolicy`/`Headers`, `workspaceRouteErrors`,
+  `workspaceContext`, and `projectPiWebConfig`'s reader are consumed by core
+  tuple routes and the machines proxy — they are shared/core, not plugin.
+- Client (contingent): `projectController`, `workspaceController`,
+  `workspaceSelection`, `fileExplorerController`, `ProjectList`,
+  `ProjectDialog`, `WorkspaceList`, workspace files panel/viewer, and the
+  workspace sections of the navigation panel. `workspaceSessionsCache`
+  stays core (session lists are core).
 
 Stays core, because the daemon protocol requires it:
 
@@ -77,22 +88,34 @@ lists and the files panel; the `WorkspaceCatalog` port as the server-side
 dependency, injected by core; named operations for CRUD; per-workspace
 config stays in `<project>/.pi-web/config.json`.
 
-## Sequencing
+## Sequencing (amended after review)
 
-1. **Workspaces first.** Its UI is already section-shaped (the goals wave
-   built the navigation seam), its server half is route-shaped behind one
-   port, and removing it from core visibly answers the owner's direction.
-2. **Machines second.** Its mechanism (proxy transport, management UI) moves,
-   but the id dimension it leaves behind means the review has to check every
-   `machinePrefix` consumer.
-3. Both waves get the standing multi-lane bllm review plus a red team focused
-   on: identity-tuple leakage into plugins, plugin-runtime breakage (asset
-   serving, lifecycle handshake), and path-access policy drift between
-   plugin-served and core-served file reads.
+The original ordering collapsed under review: the Files main view is not a
+section but a core-shell first citizen; the preview policy and error
+mappings consumed by core tuple routes and the machines proxy had to be
+re-homed first; and neither wave is independently deployable across
+federated machines unless the file-route family stays core-served. The
+revised order:
+
+1. **Decide the extraction shape** (owner): contract-first (web-process
+   plugin runtime, route contributions with streaming, port injection,
+   dialog seam) versus services-stay-core with UI plugins.
+2. **Re-home the protocol pieces** shared by core routes and the machines
+   proxy (preview policy/headers, workspace route errors, workspace
+   context) — safe under any decision.
+3. **Then the waves**, each with the standing multi-lane bllm review plus a
+   red team focused on: identity-tuple leakage, plugin-runtime breakage
+   (asset serving, lifecycle handshake, runtimeProvider wiring), and
+   path-access policy drift between plugin-served and core-served reads.
+4. **Deployment ordering is a hard constraint**: the in-repo
+   `pi-web-plugins/` intermediate state or the package must exist before
+   core removal, so published builds and the docker runtime never lose the
+   features mid-wave.
 
 ## Known non-goals
 
 - Worktree semantics stay as they are; a worktree is a workspace to the
-  protocol, and no worktree-specific core code exists to extract.
+  protocol. (`worktreePreRemoveHook.ts` is worktree-specific daemon code
+  and stays in the daemon.)
 - The daemon keeps its workspace authority; this wave does not move
   workspace management into the daemon or split sessiond.
