@@ -1,7 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { build } from "esbuild";
 import { describe, expect, it } from "vitest";
 import { PiWebPluginCatalog } from "../piWebPluginCatalog";
 
@@ -14,12 +15,25 @@ import { PiWebPluginCatalog } from "../piWebPluginCatalog";
  * cannot come from the bundled copy.
  */
 
-function packagedPluginRoot(): string {
-  const built = resolve("dist", "pi-web-plugins", "themes", "pi-web-plugin.js");
+/**
+ * The themes plugin bundles its own copy of lit, so the tarball carries one
+ * self-contained ESM file - built here rather than read out of `dist`, which
+ * a fresh checkout does not have when the test suite runs.
+ */
+async function bundleThemesPlugin(): Promise<string> {
+  const source = resolve("pi-web-plugins", "themes", "pi-web-plugin.ts");
+  const staging = mkdtempSync(join(tmpdir(), "pi-web-themes-build-"));
+  const outfile = join(staging, "pi-web-plugin.js");
+  await build({ entryPoints: [source], bundle: true, format: "esm", outfile, logLevel: "silent" });
+  return outfile;
+}
+
+async function packagedPluginRoot(): Promise<string> {
+  const built = await bundleThemesPlugin();
   const staging = mkdtempSync(join(tmpdir(), "pi-web-plugin-package-"));
   const packageDir = join(staging, "package");
   mkdirSync(packageDir, { recursive: true });
-  cpSync(built, join(packageDir, "pi-web-plugin.js"));
+  writeFileSync(join(packageDir, "pi-web-plugin.js"), readFileSync(built), "utf8");
   writeFileSync(join(packageDir, "package.json"), JSON.stringify({
     name: "@gang-of-beads/pi-web-themes",
     version: "0.0.1",
@@ -39,7 +53,7 @@ function packagedPluginRoot(): string {
 
 describe("a plugin installed as a package", () => {
   it("is discovered from node_modules rather than from a repository directory", { timeout: 180_000 }, async () => {
-    const agentDir = packagedPluginRoot();
+    const agentDir = await packagedPluginRoot();
     const catalog = new PiWebPluginCatalog({ cwd: agentDir, agentDir, roots: [], configProvider: () => ({}) });
 
     const snapshot = await catalog.snapshot();
