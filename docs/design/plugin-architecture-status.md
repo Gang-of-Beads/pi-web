@@ -190,3 +190,23 @@ honest empty states, the focused session's cwd back in the read, and core's
 orphaned goals machinery removed. Recorded in
 `review-triage-goals-package-wave.md`.
 
+## Owner rulings, 2026-09-05 (final)
+
+The three open items were put to the owner and answered:
+
+1. **model catalog: the objective is amended, not the catalog extracted.**
+   The owner formalized the earlier in-conversation ruling: model selection
+   and the model catalog stay in core, matching pi, where `/model` and
+   Ctrl+P are core commands and extensions only observe `model_select`. The
+   objective's extraction list is amended accordingly; this is the owner's
+   amendment of the contract, recorded here as such.
+2. **First npm publish: deferred.** The three publish-ready packages and
+   their workflows stay as they are; the tarball and git-install proofs
+   already recorded stand as the package-loading evidence.
+3. **The bundled themes copy is removed.** The owner's answer: when the
+   plugin already exists, the bundled copy should go. `pi-web-plugins/themes`
+   left this repository; the theme pack's home is
+   `Gang-of-Beads/pi-web-themes`, installed as a package. The appearance
+   panel's contract is with any theme-contributing plugin, and its tests now
+   use a fixture pack instead of the real one.
+

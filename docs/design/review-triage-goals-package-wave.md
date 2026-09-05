@@ -61,25 +61,18 @@ refer to the tree as reviewed.
   prepack).** No race - one job, sequential - and esbuild determinism is
   proven byte-for-byte by the freshness gate. Left as harmless redundancy.
 
-## Owner decisions pending
+## Owner decisions, resolved 2026-09-05
 
-- **F7 (high): the bundled themes plugin collides with the published
-  `@gang-of-beads/pi-web-themes` package on any source checkout.** The
-  catalog's first-writer-wins rule keeps the bundled copy and reduces the
-  package copy to a duplicate-id diagnostic, and the settings panel shows a
-  conflict without saying which copy is serving. Removing the bundled copy
-  from the published package (or making package entries outrank bundled ones)
-  is a product-semantics call.
-- **Lane A 4b: `goals.read`/`goals.archive` accept any workspace path through
-  the generic plugin-operation route** with no workspace vouching, while the
-  dedicated proxy routes' stated invariant is that a client must never name a
-  directory the host has not vouched for. Single-user local trust model
-  bounds the exposure; the fix belongs to the generic operation boundary, not
-  to this plugin. Owner call on where vouching lives.
-- **Lane A 4.2: `sourceCheckoutPluginRoots` still points at `plugins/`, a
-  directory that no longer exists** - dead dev-scope discovery. Harmless, but
-  it is a lie in the code; owner call on deleting it or restoring the
-  directory's purpose.
+- **F7: the bundled themes copy is removed.** The owner ruled that when the
+  plugin already exists, the bundled copy should go. `pi-web-plugins/themes`
+  left this repository; the pack's home is `Gang-of-Beads/pi-web-themes`,
+  installed as a package. The appearance panel's tests use a fixture pack.
+  The same logic will eventually apply to the other bundled plugins whose
+  split repositories exist; that is a separate, deliberate step per plugin.
+- **Lane A 4b (vouching placement) and 4.2 (the dead `plugins/` dev root)**
+  were put to the owner alongside the model-catalog and publish questions
+  and left open with the status quo; they are recorded in the status page's
+  owner-rulings section rather than decided unilaterally here.
 
 ## Judged not true
 

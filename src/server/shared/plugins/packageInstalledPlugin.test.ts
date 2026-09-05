@@ -16,13 +16,13 @@ import { PiWebPluginCatalog } from "../piWebPluginCatalog";
  */
 
 /**
- * The themes plugin bundles its own copy of lit, so the tarball carries one
+ * The updates plugin bundles its own copy of lit, so the tarball carries one
  * self-contained ESM file - built here rather than read out of `dist`, which
  * a fresh checkout does not have when the test suite runs.
  */
 async function bundleThemesPlugin(): Promise<string> {
-  const source = resolve("pi-web-plugins", "themes", "pi-web-plugin.ts");
-  const staging = mkdtempSync(join(tmpdir(), "pi-web-themes-build-"));
+  const source = resolve("pi-web-plugins", "updates", "pi-web-plugin.ts");
+  const staging = mkdtempSync(join(tmpdir(), "pi-web-updates-build-"));
   const outfile = join(staging, "pi-web-plugin.js");
   await build({ entryPoints: [source], bundle: true, format: "esm", outfile, logLevel: "silent" });
   return outfile;
@@ -35,7 +35,7 @@ async function packagedPluginRoot(): Promise<string> {
   mkdirSync(packageDir, { recursive: true });
   writeFileSync(join(packageDir, "pi-web-plugin.js"), readFileSync(built), "utf8");
   writeFileSync(join(packageDir, "package.json"), JSON.stringify({
-    name: "@gang-of-beads/pi-web-themes",
+    name: "@gang-of-beads/pi-web-updates",
     version: "0.0.1",
     type: "module",
     files: ["pi-web-plugin.js"],
@@ -45,7 +45,7 @@ async function packagedPluginRoot(): Promise<string> {
 
   const agentDir = join(staging, "agent");
   mkdirSync(join(agentDir, "npm"), { recursive: true });
-  writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:@gang-of-beads/pi-web-themes"] }), "utf8");
+  writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:@gang-of-beads/pi-web-updates"] }), "utf8");
   execFileSync("npm", ["init", "-y", "--silent"], { cwd: join(agentDir, "npm"), stdio: "ignore" });
   execFileSync("npm", ["install", "--silent", "--no-audit", "--no-fund", join(packageDir, tarball)], { cwd: join(agentDir, "npm"), stdio: "ignore" });
   return agentDir;
@@ -59,7 +59,7 @@ describe("a plugin installed as a package", () => {
     const snapshot = await catalog.snapshot();
     const themes = snapshot.plugins.find((plugin) => plugin.id === "themes");
 
-    expect(themes?.packageRoot).toContain(join("node_modules", "@gang-of-beads", "pi-web-themes"));
+    expect(themes?.packageRoot).toContain(join("node_modules", "@gang-of-beads", "pi-web-updates"));
     expect(themes?.browserModule?.path).toBe("pi-web-plugin.js");
     expect(snapshot.diagnostics).toEqual([]);
   });

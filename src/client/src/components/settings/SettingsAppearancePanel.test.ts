@@ -1,23 +1,45 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { QualifiedContributionId, QualifiedThemeContribution, ThemeToken, ThemeTokens } from "../../plugins/types";
-import { html, svg } from "lit";
-import themePackPlugin from "../../../../../pi-web-plugins/themes/pi-web-plugin";
-import { SettingsAppearancePanel } from "./SettingsAppearancePanel";
+import type { QualifiedContributionId, QualifiedThemeContribution } from "../../plugins/types";
+import type { PiWebPlugin, ThemeContribution, ThemeToken, ThemeTokens } from "../../plugins/types";
+import { html, svg } from "lit";import { SettingsAppearancePanel } from "./SettingsAppearancePanel";
 
 afterEach(() => {
   document.body.replaceChildren();
 });
 
+function tokensFor(bg: string): ThemeTokens {
+  const tokens = { "--pi-bg": bg, "--pi-surface": bg, "--pi-surface-hover": bg, "--pi-terminal-bg": bg, "--pi-terminal-text": bg, "--pi-border": bg, "--pi-border-muted": bg, "--pi-text": bg, "--pi-text-secondary": bg, "--pi-text-bright": bg, "--pi-muted": bg, "--pi-dim": bg, "--pi-accent": bg, "--pi-accent-border": bg, "--pi-selection-bg": bg, "--pi-success": bg, "--pi-success-border": bg, "--pi-success-bg": bg, "--pi-success-surface": bg, "--pi-success-ring": bg, "--pi-warning": bg, "--pi-warning-border": bg, "--pi-warning-surface": bg, "--pi-danger": bg, "--pi-purple": bg, "--pi-purple-border": bg, "--pi-purple-surface": bg, "--pi-overlay": bg, "--pi-shadow-soft": bg, "--pi-shadow": bg, "--pi-shadow-strong": bg, "--pi-bg-overlay-soft": bg, "--pi-bg-overlay": bg, "--pi-success-bg-overlay": bg, "--pi-terminal-selection": bg };
+  return tokens;
+}
+
+function pack(name: string, colorScheme: "dark" | "light", bg: string): ThemeContribution {
+  return { id: name, name, colorScheme, tokens: tokensFor(bg) };
+}
+
 /**
- * Real contributed themes as the fixture base, through the registry that the
- * app itself uses: the token sets are complete by construction and stay
- * complete when a token is added.
+ * A minimal contributed pack stands in for the themes plugin, which ships as
+ * its own repository and package: the panel's contract is with any plugin
+ * that contributes themes, not with one specific pack.
  */
+const fixturePackPlugin: PiWebPlugin = {
+  apiVersion: 2,
+  name: "Themes",
+  activate: () => ({
+    contributions: {
+      themes: [
+        pack("fixture-dark", "dark", "#0d1117"),
+        pack("fixture-light", "light", "#ffffff"),
+        pack("fixture-dim", "dark", "#101216"),
+      ],
+    },
+  }),
+};
+
 function contributedThemes(): QualifiedThemeContribution[] {
-  const pack = themePackPlugin.activate({ apiVersion: 2, pluginId: "themes", runtimePluginId: "themes", html, svg });
-  return (pack.contributions.themes ?? []).map((theme) => ({
+  const result = fixturePackPlugin.activate({ apiVersion: 2, pluginId: "themes", runtimePluginId: "themes", html, svg });
+  return (result.contributions.themes ?? []).map((theme) => ({
     id: themeId(theme.id),
     pluginId: "themes",
     localId: theme.id,
