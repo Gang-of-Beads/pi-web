@@ -57,7 +57,6 @@ import { queryNamespace, readNamespacedString, setNamespacedQueryKey } from "../
 import { AppShellController } from "../appShell/appShellController";
 import { BrowserResumeController } from "../appShell/browserResumeController";
 import { NavigationSectionsController, type NavigationSection } from "../appShell/navigationState";
-import { showsWhereAmIBar } from "../appShell/whereAmIBar";
 import { PanelCollapseController, mainViewClass } from "../appShell/panelCollapseController";
 import { PanelResizeController, type PanelResizeConstraints, type ResizablePanelSide } from "../appShell/panelResizeController";
 import { readRoute, resolveAppRoute, resolveWorkspacePanelRouteValue, writeRoute, type AppRoute, type ParsedAppRoute } from "../route";
@@ -68,7 +67,6 @@ import { canDeleteWorkspace, isWorkspaceDeletionPending, isWorkspaceDeletionRunP
 import "./MachineList";
 import "./ProjectList";
 import "./WorkspaceList";
-import { unreadSessionCount } from "./SessionList";
 import "./SessionCleanupDialog";
 import "./SessionTreeNavigator";
 import "./ChatView";
@@ -89,9 +87,7 @@ import "./SettingsDialog";
 import "./WorkspacePanel";
 import type { WorkspacePanelEmptyState } from "./WorkspacePanel";
 import "./appShell/AppContextBar";
-import type { AppMobileView } from "./appShell/AppMobileToolSheet";
-import "./appShell/AppMobileToolSheet";
-import { shouldShowMachinesSection, type AppNavigationPanel, type NavigationFocusTarget } from "./appShell/AppNavigationPanel";
+import { shouldShowMachinesSection, type AppNavigationPanel, type NavigationFocusTarget, type ShellToolTab } from "./appShell/AppNavigationPanel";
 import "./appShell/AppPanelEdgeControl";
 import "./appShell/AppRefreshControl";
 import { quickSwitcherSessionStates, renameSessionInList } from "../quickSwitcher";
@@ -411,7 +407,6 @@ export class PiWebApp extends LitElement {
   @state() private quickSwitcherOpen = false;
   /** True while a question form or dialog field has focus (see composerCollapse). */
   @state() private composerCollapsed = false;
-  @state() private mobileToolSheetOpen = false;
   @state() private quickSwitcherLoading = false;
   @state() private quickSwitcherSessions: readonly SessionInfo[] = [];
   private quickSwitcherFetchedAt = 0;
@@ -488,10 +483,6 @@ export class PiWebApp extends LitElement {
 
   /** Close the topmost modal layer; popstate is the only caller. */
   private closeModalLayer(): void {
-    if (this.mobileToolSheetOpen) {
-      this.mobileToolSheetOpen = false;
-      return;
-    }
     if (this.quickSwitcherOpen) {
       this.quickSwitcherOpen = false;
       return;
@@ -2008,6 +1999,8 @@ export class PiWebApp extends LitElement {
         .canStartSession=${!!this.state.selectedWorkspace}
         .collapsible=${true}
         .compact=${this.appShell.isMobileNavigationLayout}
+        .toolTabs=${this.shellToolTabs()}
+        .onSelectTool=${(id: string) => { this.openShellToolTab(id); }}
         .projectsCollapsed=${this.navigationSections.isCollapsed("projects")}
         .workspacesCollapsed=${this.navigationSections.isCollapsed("workspaces")}
         .sessionsCollapsed=${this.navigationSections.isCollapsed("sessions")}
@@ -2152,7 +2145,6 @@ export class PiWebApp extends LitElement {
   /** True while a modal layer owns the back gesture. */
   private modalLayerOpen(): boolean {
     return this.quickSwitcherOpen
-      || this.mobileToolSheetOpen
       || this.state.actionPaletteOpen
       || this.state.projectDialogOpen
       || this.state.machineDialogOpen
@@ -2515,10 +2507,13 @@ export class PiWebApp extends LitElement {
     return "Select a project and workspace to start a session.";
   }
 
-  private mobilePanelBadge(panel: QualifiedWorkspacePanelContribution): unknown {
+  /** Text-safe badge for the panel row; rich badges stay in list rows. */
+  private mobilePanelBadge(panel: QualifiedWorkspacePanelContribution): string | number | undefined {
     const workspace = this.state.selectedWorkspace;
     if (workspace === undefined) return undefined;
-    return panel.badge?.(this.createWorkspacePanelContext(workspace));
+    const badge: unknown = panel.badge?.(this.createWorkspacePanelContext(workspace));
+    if (typeof badge === "number") return badge;
+    return typeof badge === "string" ? badge : undefined;
   }
 
   private workspaceLabelItems(workspace: Workspace): WorkspaceLabelItem[] {
@@ -3402,83 +3397,50 @@ export class PiWebApp extends LitElement {
   }
 
   private renderContextBar() {
-    const layout = {
-      isMobileNavigationLayout: this.appShell.isMobileNavigationLayout,
-      navigationCollapsed: this.panelCollapse.navigationPanelCollapsed,
-      workspaceToolTabsVisible: this.isDesktopSideBySideLayout(),
-    };
-    if (!showsWhereAmIBar(layout)) return null;
     return html`
       <app-context-bar
-        .machines=${this.state.machines}
-        .machine=${this.state.selectedMachine}
-        .project=${this.state.selectedProject}
-        .workspace=${this.state.selectedWorkspace}
         .session=${this.state.selectedSession}
-        ?emphasizeSession=${this.state.mainView === "chat"}
-        ?isWorking=${this.state.mainView === "chat" && this.state.selectedSession !== undefined && isActive(this.state)}
-        .refreshControl=${this.appShell.shouldShowAppRefreshInContextBar() ? this.renderAppRefresh() : undefined}
-        .mainView=${this.state.mainView}
-        .onShowConversation=${() => { this.selectMainView("chat"); }}
-        .onOpenSection=${(section: NavigationSection) => { this.openNavigationSection(section); }}
+        ?isWorking=${this.state.selectedSession !== undefined && isActive(this.state)}
+        ?panelOpen=${this.shellPanelOpen()}
+        .onTogglePanel=${() => { this.toggleShellPanel(); }}
         .onQuickSwitch=${() => { this.openQuickSwitcher(); }}
-        .onRenameSession=${(name: string) => {
-          const session = this.state.selectedSession;
-          if (session === undefined) return;
-          this.applyRenameToQuickSwitcher(session.id, name);
-          void this.sessions.renameSession(session, name);
-        }}
-        .onShowActions=${() => { this.setState({ actionPaletteOpen: true }); }}
-        .onOpenTools=${() => { this.openMobileToolSheet(); }}
       ></app-context-bar>
     `;
   }
 
-  /**
-   * The workspace views, reachable from one control instead of a strip.
-   *
-   * The strip of unlabelled icons cost 57px on every mobile surface and put the
-   * terminal behind a glyph. The sheet lists the same views by name, so nothing
-   * is lost and the transcript keeps the height.
-   */
-  private renderMobileToolSheet() {
-    if (!this.mobileToolSheetOpen) return null;
-    return html`
-      <app-mobile-tool-sheet
-        .tabs=${this.mobileMainTabs()}
-        .selectedView=${this.state.mainView}
-        .onSelect=${(view: AppState["mainView"]) => { this.selectMainView(view); }}
-        .onClose=${() => { this.mobileToolSheetOpen = false; }}
-      ></app-mobile-tool-sheet>
-    `;
+  /** Whether the collapsible panel is currently presented on this layout. */
+  private shellPanelOpen(): boolean {
+    return this.appShell.isMobileNavigationLayout
+      ? this.state.mainView === "navigation"
+      : !this.panelCollapse.navigationPanelCollapsed;
   }
 
-  private openMobileToolSheet(): void {
-    this.pushModalLayerFrame();
-    this.mobileToolSheetOpen = true;
+  private toggleShellPanel(): void {
+    if (this.appShell.isMobileNavigationLayout) {
+      this.selectMainView(this.state.mainView === "navigation" ? "chat" : "navigation");
+      return;
+    }
+    this.panelCollapse.toggleNavigationPanel();
   }
 
-  private mobileMainTabs(): AppMobileView[] {
-    const unreadCount = unreadSessionCount(this.state.sessions, this.unreadSessionIds);
-    return [
-      {
-        id: "navigation",
-        label: "Sessions",
-        icon: "navigation",
-        className: "navigation-tab",
-        ...(unreadCount === 0 ? {} : { badge: unreadCount, badgeLabel: `${String(unreadCount)} unread`, badgeTone: "unread" }),
-      },
-      { id: "chat", label: "Chat", icon: "chat" },
-      ...this.visibleWorkspacePanels().map((panel): AppMobileView => {
-        const icon = panel.icon;
-        return {
-          id: panel.id,
-          label: panel.title,
-          ...(icon === undefined ? {} : { icon }),
-          badge: this.mobilePanelBadge(panel),
-        };
-      }),
-    ];
+  /** Workspace views as panel rows: one entry, no sheet, no second strip. */
+  private shellToolTabs(): ShellToolTab[] {
+    return this.visibleWorkspacePanels().map((panel) => {
+      const badge = this.mobilePanelBadge(panel);
+      return {
+        id: panel.id,
+        label: panel.title,
+        ...(badge === undefined ? {} : { badge }),
+        selected: this.state.mainView === panel.id,
+      };
+    });
+  }
+
+  /** Resolve the row id back to its typed view; unknown ids are ignored. */
+  private openShellToolTab(id: string): void {
+    const panel = this.visibleWorkspacePanels().find((candidate) => candidate.id === id);
+    if (panel === undefined) return;
+    this.selectMainView(panel.id);
   }
 
   private renderAppRefresh() {
@@ -3511,7 +3473,6 @@ export class PiWebApp extends LitElement {
         ${this.renderWorkspacePanelEdgeControl()}
         ${this.renderWorkspacePanel()}
         ${state.authDialog !== undefined ? html`<auth-dialog .state=${state.authDialog} .onChooseMethod=${(authType: "oauth" | "api_key") => { void this.auth.chooseLoginMethod(authType); }} .onSelectProvider=${(providerId: string, authType: "oauth" | "api_key") => { void this.auth.selectLoginProvider(providerId, authType); }} .onLogoutProvider=${(providerId: string) => { void this.auth.logoutProvider(providerId); }} .onOAuthInput=${(value: string) => { this.auth.updateOAuthInput(value); }} .onOAuthRespond=${(value?: string) => { void this.auth.respondOAuth(value); }} .onOAuthCancel=${() => { void this.auth.cancelOAuth(); }} .onCancel=${() => { this.auth.closeDialog(); }}></auth-dialog>` : null}
-        ${this.renderMobileToolSheet()}
         ${this.quickSwitcherOpen ? html`<quick-switcher
           .loading=${this.quickSwitcherLoading}
           .sessions=${this.quickSwitcherSessions}

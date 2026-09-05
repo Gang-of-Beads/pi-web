@@ -18,6 +18,16 @@ import "../SessionList";
 
 export type NavigationFocusTarget = NavigationSection | "chat";
 
+/** One workspace view row in the panel's tools section: the single entry. */
+export interface ShellToolTab {
+  id: string;
+  label: string;
+  /** Text-safe badge only: the row renders it inline, no rich template. */
+  badge?: string | number;
+  badgeLabel?: string | undefined;
+  selected?: boolean;
+}
+
 @customElement("app-navigation-panel")
 export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) machines: Machine[] = [];
@@ -89,6 +99,9 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) onArchivedCollapsed?: () => void | Promise<void>;
   @property({ attribute: false }) onSelectMachine?: (machine: Machine) => void | Promise<void>;
   @property({ attribute: false }) onRemoveMachine?: (machine: Machine) => void | Promise<void>;
+  /** Workspace views as named rows; the one entry, retired the sheet and the second strip. */
+  @property({ attribute: false }) toolTabs: readonly ShellToolTab[] = [];
+  @property({ attribute: false }) onSelectTool?: (id: string) => void;
   @property({ attribute: false }) onFocusNavigationTarget?: (target: NavigationFocusTarget) => void | Promise<void>;
   @property({ attribute: false }) onCancelKeyboardNavigation?: () => void | Promise<void>;
 
@@ -153,12 +166,18 @@ export class AppNavigationPanel extends LitElement {
       ${this.renderWorkspaceList(false, visible !== "workspaces")}
       ${this.renderSessionList(false, visible !== "sessions")}
       ${visible === "sessions" ? this.renderContributedSections() : null}
+      ${this.renderToolsSection()}
     `;
   }
 
   private renderCompact() {
     return html`
       <div class="compact-shell">
+        <div class="compact-header">
+          ${this.refreshControl}
+          <button class="compact-header-action" title="Open settings" aria-label="Open settings" @click=${() => { this.onOpenSettings?.(); }}>⚙</button>
+          <button class="compact-header-action" title="Show Actions" aria-label="Show Actions" @click=${() => { this.onShowActions?.(); }}>Actions</button>
+        </div>
         ${shouldShowMachinesSection(this.machines) ? html`
           <machine-switcher
             hidden
@@ -180,6 +199,7 @@ export class AppNavigationPanel extends LitElement {
              just switched to instead of vanishing whenever no session could be
              started. -->
         ${this.renderCompactPrimaryList()}
+        ${this.renderToolsSection()}
       </div>
     `;
   }
@@ -316,6 +336,29 @@ export class AppNavigationPanel extends LitElement {
     return html`${this.drawerSections.map((section) => section.available?.(context) === false ? null : section.render(context))}`;
   }
 
+  /**
+   * Workspace views as named rows: the one entrance on every layout. Opening
+   * one hands the id back; the shell resolves it against its typed view set.
+   */
+  private renderToolsSection() {
+    if (this.toolTabs.length === 0) return null;
+    return html`
+      <div class="tools-section" role="group" aria-label="Workspace views">
+        ${this.toolTabs.map((tab) => html`
+          <button
+            type="button"
+            class=${tab.selected === true ? "tool-row selected" : "tool-row"}
+            aria-current=${tab.selected === true ? "true" : undefined}
+            @click=${() => { this.onSelectTool?.(tab.id); }}
+          >
+            <span class="tool-label">${tab.label}</span>
+            ${tab.badge === undefined ? null : html`<span class="tool-badge" aria-label=${tab.badgeLabel ?? String(tab.badge)}>${tab.badge}</span>`}
+          </button>
+        `)}
+      </div>
+    `;
+  }
+
   private sectionContext(): DrawerSectionContext | undefined {
     const session = this.selectedSession;
     if (session === undefined) return undefined;
@@ -420,6 +463,17 @@ export class AppNavigationPanel extends LitElement {
     header { flex: 0 0 auto; box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: 0 var(--pi-space-6); border-bottom: 1px solid var(--pi-border); }
     header button { box-sizing: border-box; height: var(--pi-panel-header-control-height); padding: 0 var(--pi-space-4); font-size: var(--pi-text-xs); }
     .compact-shell { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+    .compact-header { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-end; gap: var(--pi-space-3); padding: var(--pi-space-2) var(--pi-space-4); border-bottom: 1px solid var(--pi-border-muted); }
+    .compact-header-action { display: inline-flex; align-items: center; box-sizing: border-box; min-height: 44px; padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text); font: inherit; }
+    .compact-header-action:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+    @media (hover: hover) { .compact-header-action:hover { background: var(--pi-surface-hover); } }
+    .tools-section { flex: 0 0 auto; display: flex; flex-direction: column; border-top: 1px solid var(--pi-border-muted); }
+    .tool-row { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-3); box-sizing: border-box; min-height: 44px; padding: var(--pi-space-2) var(--pi-space-4); border: 0; background: none; color: var(--pi-text); font: inherit; text-align: start; }
+    .tool-row:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -2px; }
+    @media (hover: hover) { .tool-row:hover { background: var(--pi-surface-hover); } }
+    .tool-row.selected { color: var(--pi-accent); font-weight: 600; }
+    .tool-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tool-badge { flex: 0 0 auto; display: inline-flex; align-items: center; box-sizing: border-box; min-height: 20px; padding: 0 var(--pi-space-2); border-radius: var(--pi-radius-pill); background: var(--pi-selection-bg); color: var(--pi-text); font-size: var(--pi-text-2xs); }
     header strong { flex: 0 0 auto; }
     machine-switcher { flex: 1 1 auto; min-width: 0; }
     :host([compact]) header { display: none; }
