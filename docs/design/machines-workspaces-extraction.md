@@ -117,7 +117,8 @@ revised order:
    contribution seams; honest absence rendering for uninstalled surfaces.
 3. **Re-home the protocol pieces** shared by core routes and the machines
    proxy (preview policy/headers, workspace route errors, workspace
-   context) — fold into Wave 0 or the first extraction wave.
+   context) — the policy/headers reach plugin code through contract
+   re-exports (Wave 0 design), and the rest stay shared/core as triaged.
 4. **Then the waves**, each with the standing multi-lane bllm review plus a
    red team focused on: identity-tuple leakage, plugin-runtime breakage
    (asset serving, lifecycle handshake, runtimeProvider wiring), and
