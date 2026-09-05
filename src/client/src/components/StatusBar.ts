@@ -4,7 +4,7 @@ import type { SessionStatus } from "../api";
 import { formatCost, formatTokenCount } from "../utils/format";
 
 const statusBarStyles = css`
-  :host { display: block; color: var(--pi-muted); font: var(--pi-text-xs) var(--pi-font-ui); }
+  :host { display: block; color: var(--pi-muted); font: var(--pi-text-xs) var(--pi-font-mono); }
   .bar { display: flex; justify-content: flex-end; gap: var(--pi-space-6); align-items: center; min-width: 0; padding: var(--pi-space-4) var(--pi-space-6); border-top: 1px solid var(--pi-border); background: var(--pi-bg); white-space: nowrap; overflow: hidden; }
   span { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .activity { display: inline-flex; align-items: center; gap: var(--pi-space-3); color: var(--pi-muted); }
@@ -25,14 +25,14 @@ export class StatusBar extends LitElement {
     const context = status.contextUsage;
     const contextText = context
       ? context.percent == null
-        ? `context ${formatTokenCount(context.contextWindow)}`
-        : `${context.percent.toFixed(1)}%/${formatTokenCount(context.contextWindow)}`
-      : "context unknown";
+        ? `ctx ${formatTokenCount(context.contextWindow)} window`
+        : `ctx ${context.percent.toFixed(1)}% of ${formatTokenCount(context.contextWindow)}`
+      : "ctx unknown";
     const tokens = status.tokens;
     return html`
       <div class="bar">
-        <span>↑${formatTokenCount(tokens.input)}</span>
-        <span>↓${formatTokenCount(tokens.output)}</span>
+        <span>↑ ${formatTokenCount(tokens.input)} tok</span>
+        <span>↓ ${formatTokenCount(tokens.output)} tok</span>
         <span class="context">${contextText}</span>
         <span>${formatCost(status.cost)}</span>
       </div>

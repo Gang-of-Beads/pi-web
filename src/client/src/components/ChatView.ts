@@ -170,7 +170,7 @@ export const chatStyles = css`
   /* A section name is short and carries a count; cutting it to "ACTIVITY (..."
      loses the number, which is the part worth reading. The names keep their
      width and the running summary beside them gives way instead. */
-  .drawer-tab { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: 22px; padding: var(--pi-space-1) var(--pi-space-4); border: 1px solid transparent; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-2xs); font-weight: 600; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .drawer-tab { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: 22px; padding: var(--pi-space-1) var(--pi-space-4); border: 1px solid transparent; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-2xs); font-weight: 600; white-space: nowrap; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   @media (hover: hover) { .drawer-tab:hover { color: var(--pi-text-bright); } }
   .drawer-tab:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
   .drawer-tab, .activity-filter, .activity-history-toggle { transition: background-color var(--pi-motion-fast) var(--pi-ease), border-color var(--pi-motion-fast) var(--pi-ease), color var(--pi-motion-fast) var(--pi-ease); }
@@ -222,7 +222,7 @@ export const chatStyles = css`
   .subagent-dot.error, .subagent-dot.failed { background: var(--pi-danger); }
   /* The kind, in a word: the filter chips name the same three categories, so a
      row says which one it is without the reader inferring it from the shape. */
-  .subagent-kind { flex: 0 0 auto; color: var(--pi-muted); font-size: var(--pi-text-2xs); text-transform: uppercase; letter-spacing: .04em; }
+  .subagent-kind { flex: 0 0 auto; color: var(--pi-muted); font: var(--pi-text-2xs) var(--pi-font-mono); }
   /* What the run is on. Quiet: it answers "which model, at what thinking
      level" for a reader scanning a fleet, without competing with the agent's
      own name. */
@@ -530,7 +530,7 @@ export const chatStyles = css`
   @media (hover: hover) { .msg-action:hover { color: var(--pi-text); border-color: var(--pi-accent); } }
   .msg:focus-within > .msg-header .msg-actions, .group-msg:focus-within > .msg-header .msg-actions { opacity: 1; }
   @media (hover: hover) { .msg:hover > .msg-header .msg-actions, .group-msg:hover > .msg-header .msg-actions { opacity: 1; } }
-  .label { display: block; color: var(--pi-muted); font-size: var(--pi-text-xs); text-transform: uppercase; }
+  .label { display: block; color: var(--pi-muted); font: var(--pi-text-xs) var(--pi-font-mono); }
   .msg-header .label { margin: 0; }
   .msg-meta { min-width: 0; opacity: .28; border: 0; background: transparent; color: var(--pi-dim); padding: 0; font: var(--pi-text-2xs) var(--pi-font-ui); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity var(--pi-motion-fast) var(--pi-ease); cursor: pointer; user-select: text; -webkit-user-select: text; }
   .msg:focus-within > .msg-header .msg-meta, .group-msg:focus-within > .msg-header .msg-meta, .msg-meta:focus, .msg-meta.expanded { opacity: 1; }

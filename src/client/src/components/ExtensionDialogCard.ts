@@ -36,23 +36,27 @@ export interface DialogTitleParts {
  * newline, so only the first line stays in the header while the remainder
  * becomes a scrollable body that preserves its line breaks.
  *
- * Pure so the split is unit-testable without rendering.
+ * A line too long for the header is PARTITIONED, not repeated: the heading
+ * carries the first words (elided at a word boundary) and the body carries
+ * the rest, so the reader never meets the same sentence twice. Pure so the
+ * split is unit-testable without rendering.
  */
 export function splitDialogTitle(title: string): DialogTitleParts {
   const normalized = title.replace(/\r\n/g, "\n").replace(/^\n+/, "").trimEnd();
   const newlineIndex = normalized.indexOf("\n");
-  if (newlineIndex === -1) {
-    // A single line that still cannot fit the header keeps its full text in the
-    // body, so eliding the heading never loses characters.
-    if (normalized.length <= DIALOG_HEADING_MAX_LENGTH) return { heading: normalized };
-    return { heading: `${normalized.slice(0, DIALOG_HEADING_MAX_LENGTH).trimEnd()}\u2026`, body: normalized };
-  }
+  if (newlineIndex === -1) return splitLongLine(normalized);
   const firstLine = normalized.slice(0, newlineIndex).trimEnd();
-  const headingFits = firstLine.length <= DIALOG_HEADING_MAX_LENGTH;
-  const heading = headingFits ? firstLine : `${firstLine.slice(0, DIALOG_HEADING_MAX_LENGTH).trimEnd()}\u2026`;
-  // An elided first line is repeated inside the body; a fitting one is not.
-  const body = headingFits ? normalized.slice(newlineIndex + 1).replace(/\n+$/, "") : normalized;
-  return body.trim() === "" ? { heading } : { heading, body };
+  const rest = normalized.slice(newlineIndex + 1);
+  if (firstLine.length <= DIALOG_HEADING_MAX_LENGTH) return { heading: firstLine, body: rest };
+  const parts = splitLongLine(firstLine);
+  return { heading: parts.heading, body: `${parts.body ?? ""}\n${rest}` };
+}
+
+function splitLongLine(line: string): DialogTitleParts {
+  if (line.length <= DIALOG_HEADING_MAX_LENGTH) return { heading: line };
+  const spaceIndex = line.lastIndexOf(" ", DIALOG_HEADING_MAX_LENGTH);
+  const splitAt = spaceIndex > 0 ? spaceIndex : DIALOG_HEADING_MAX_LENGTH;
+  return { heading: `${line.slice(0, splitAt).trimEnd()}\u2026`, body: line.slice(splitAt).trimStart() };
 }
 
 /** Header status label for a closed extension dialog. */

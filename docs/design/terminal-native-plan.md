@@ -59,9 +59,13 @@ how to fix it.
   ladder stops with structural role markers.
 - *ALL-CAPS labels* → all three caps sites are removed, replaced by mono
   sentence case. This is the biggest single de-templating move available.
-- *Meta strings joined with middle dots* → the ` · ` joins at `ChatView.ts:645`
-  (queue position), `:703` (meta join), `:3449` and `:3521` (activity counts)
-  become separate spans with structural gap, not punctuation.
+- *Meta strings joined with middle dots* → adjudicated per site at
+  implementation: the queue chip ("Queued · 3", `ChatView.ts:645`), the
+  collapsed-meta tooltip (`:703`), the activity tab ("Activity · 2 running",
+  `:3449`) and the dock ("idle · 2 background runs", `:3521`) keep their dots —
+  each joins a count to its unit, which reads as data, not decoration; the
+  genuine duplication lived in the extension dialog's split title and is fixed
+  there (below).
 - *Monospace for small data labels is itself a generated-page tell* → here mono
   is the subject (the log convention), not decoration: it is applied to data
   the terminal actually emits, without letter-spacing or caps. The tell is the
@@ -88,6 +92,23 @@ how to fix it.
    ruling of "empty state guidance".
 5. Copy pass across buttons and errors per the writing rules; an action keeps
    its name from trigger to receipt.
+
+## Implementation record (updated as sites land)
+
+1. De-cap and mono the three label sites — landed: `.label` renders role and
+   group words as lowercase log text in mono; `.drawer-tab` drops caps and
+   letter-spacing; `.subagent-kind` renders in mono (`ChatView.ts`).
+2. Status strip gains units and mono (`StatusBar.ts`): `↑ 100 tok`,
+   `↓ 2.2k tok`, `ctx 10.8% of 1.0M`, `$5.99` — landed.
+3. Extension dialog title partitioned, not repeated (`splitDialogTitle`):
+   an over-long line splits at a word boundary, heading and body together
+   carry the text once — landed (this was the "ask duplicates its text"
+   finding; the card is the extension dialog, not the ask card).
+4. Empty states invite (C1): `sessionEmptyMessage` gains the unblocking
+   action — Add a project on an empty roster, Start a session with a
+   workspace selected — landed in `PiWebApp.ts`.
+5. Copy pass across buttons and errors: the existing copy already follows
+   the writing rules ("Send answers", "Sending…", errors say what happened);   no change needed — verified against the live surfaces.
 
 ## Non-goals
 

@@ -187,7 +187,8 @@ export const appStyles = css`
   chat-view { flex: 1 1 auto; min-height: 0; overflow: hidden; }
   prompt-editor { flex: 0 0 auto; }
   button { font: var(--pi-text-xs) var(--pi-font-ui); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
-  .empty { margin: auto; color: var(--pi-muted); }
+  .empty { margin: auto; display: flex; flex-direction: column; align-items: center; gap: var(--pi-space-5); text-align: center; color: var(--pi-muted); }
+  .empty button { min-height: var(--pi-control-height-touch); padding: var(--pi-space-4) var(--pi-space-6); border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); background: var(--pi-surface-raised); color: var(--pi-accent); font: var(--pi-text-sm) var(--pi-font-ui); cursor: pointer; }
   .error { display: flex; gap: var(--pi-space-4); align-items: flex-start; padding: var(--pi-space-5) var(--pi-space-7); border-bottom: 1px solid var(--pi-border); color: var(--pi-danger); }
   .error.transient { color: var(--pi-warning); background: color-mix(in srgb, var(--pi-warning) 8%, transparent); }
   .error .error-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
@@ -2507,6 +2508,18 @@ export class PiWebApp extends LitElement {
     return "Select a project and workspace to start a session.";
   }
 
+  /** The one action that unblocks an empty chat surface, next to its text. */
+  private renderEmptyStateAction(): TemplateResult {
+    if (this.state.projectsLoad !== "loaded" && this.state.projectsLoad !== "failed") return html``;
+    if (this.state.selectedWorkspace !== undefined && this.canStartSession()) {
+      return html`<button @click=${() => { void this.startSessionAndOpenChat(); }}>Start a session</button>`;
+    }
+    if (this.state.projects.length === 0) {
+      return html`<button @click=${() => { this.setState({ projectDialogOpen: true }); }}>Add a project</button>`;
+    }
+    return html``;
+  }
+
   /** Text-safe badge for the panel row; rich badges stay in list rows. */
   private mobilePanelBadge(panel: QualifiedWorkspacePanelContribution): string | number | undefined {
     const workspace = this.state.selectedWorkspace;
@@ -3468,7 +3481,7 @@ export class PiWebApp extends LitElement {
             ${state.commandDialog !== undefined ? html`<command-picker .title=${state.commandDialog.title} .options=${state.commandDialog.options} .onPick=${(value: string) => this.sessions.respondToCommand(state.commandDialog?.requestId ?? "", value)} .onCancel=${() => { this.sessions.cancelCommand(); }}></command-picker>` : null}
             ${state.modelDialog !== undefined ? html`<model-picker title=${state.modelDialog.title} .options=${state.modelDialog.options} .catalog=${state.modelDialog.catalog} .selectedValue=${state.modelDialog.selectedValue} .onPick=${(value: string) => { void this.pickModel(value); }} .onToggleEnabled=${this.handleToggleModelEnabled} .onCancel=${() => { this.setState({ modelDialog: undefined }); }}></model-picker>` : null}
             ${state.thinkingDialog !== undefined ? html`<command-picker title=${state.thinkingDialog.title} .options=${state.thinkingDialog.options} .selectedValue=${state.thinkingDialog.selectedValue} .onPick=${(value: string) => { void this.pickThinking(value); }} .onCancel=${() => { this.setState({ thinkingDialog: undefined }); }}></command-picker>` : null}
-          ` : html`<div class="empty">${this.sessionEmptyMessage()}</div>`}
+          ` : html`<div class="empty"><p>${this.sessionEmptyMessage()}</p>${this.renderEmptyStateAction()}</div>`}
         </main>
         ${this.renderWorkspacePanelEdgeControl()}
         ${this.renderWorkspacePanel()}

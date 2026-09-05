@@ -254,19 +254,30 @@ describe("splitDialogTitle", () => {
     expect(splitDialogTitle("Heading\r\nDetail")).toEqual({ heading: "Heading", body: "Detail" });
   });
 
-  it("elides an over-long single line but keeps its full text in the body", () => {
+  it("partitions an over-long single line between heading and body at a word boundary", () => {
     const title = "x".repeat(200);
     const parts = splitDialogTitle(title);
     expect(parts.heading).toHaveLength(121);
     expect(parts.heading.endsWith("\u2026")).toBe(true);
-    expect(parts.body).toBe(title);
+    expect(parts.body).toBe("x".repeat(80));
+    const headingText = parts.heading.slice(0, -1);
+    expect(`${headingText}${parts.body ?? ""}`).toBe(title);
   });
 
-  it("repeats an elided first line inside the body so no characters are lost", () => {
+  it("prefers a word boundary when partitioning an over-long single line", () => {
+    const parts = splitDialogTitle("Update pi 0.85.0 with extensions from github.com/Gang-of-Beads/pi-goal and github.com/nicobailon/pi-subagents plus two more");
+    expect(parts.heading.endsWith("\u2026")).toBe(true);
+    expect(parts.heading.endsWith(" \u2026")).toBe(false);
+    expect(parts.heading.includes(" ")).toBe(true);
+    expect((parts.body ?? "").startsWith(" ")).toBe(false);
+  });
+
+  it("partitions an over-long first line so heading and body never repeat", () => {
     const first = "y".repeat(200);
     const parts = splitDialogTitle(`${first}\ntail`);
     expect(parts.heading.endsWith("\u2026")).toBe(true);
-    expect(parts.body).toBe(`${first}\ntail`);
+    const headingPrefix = parts.heading.slice(0, -1);
+    expect(`${headingPrefix}${parts.body ?? ""}`.split("\n")).toEqual([first, "tail"]);
   });
 });
 
