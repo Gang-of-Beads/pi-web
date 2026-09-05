@@ -88,6 +88,19 @@ lists and the files panel; the `WorkspaceCatalog` port as the server-side
 dependency, injected by core; named operations for CRUD; per-workspace
 config stays in `<project>/.pi-web/config.json`.
 
+## Owner rulings, 2026-09-05 (second round)
+
+1. **Extraction shape: contract-first.** The plugin contract is extended
+   before either extraction: server plugins also activate in the web
+   process, with a route-contribution seam that can answer streaming
+   responses, host-port injection, and a dialog seam on the browser side.
+2. **No preset shell.** The project list, workspace list, machine switcher,
+   and files panel are all plugin-extensible surfaces, not core preset UI.
+   The core shell renders only what plugins contribute; when
+   pi-web-workspaces or pi-web-machines is not installed, those surfaces
+   honestly do not render (absence is stated, not silently filled by a
+   core fallback).
+
 ## Sequencing (amended after review)
 
 The original ordering collapsed under review: the Files main view is not a
@@ -97,17 +110,19 @@ re-homed first; and neither wave is independently deployable across
 federated machines unless the file-route family stays core-served. The
 revised order:
 
-1. **Decide the extraction shape** (owner): contract-first (web-process
-   plugin runtime, route contributions with streaming, port injection,
-   dialog seam) versus services-stay-core with UI plugins.
-2. **Re-home the protocol pieces** shared by core routes and the machines
+1. ~~Decide the extraction shape~~ — decided: contract-first.
+2. **Wave 0, the contract wave**: web-process server-plugin runtime; route
+   contributions with streaming responses; host-port injection into
+   `ServerPluginActivationContext`; browser dialog and main-view/panel
+   contribution seams; honest absence rendering for uninstalled surfaces.
+3. **Re-home the protocol pieces** shared by core routes and the machines
    proxy (preview policy/headers, workspace route errors, workspace
-   context) — safe under any decision.
-3. **Then the waves**, each with the standing multi-lane bllm review plus a
+   context) — fold into Wave 0 or the first extraction wave.
+4. **Then the waves**, each with the standing multi-lane bllm review plus a
    red team focused on: identity-tuple leakage, plugin-runtime breakage
    (asset serving, lifecycle handshake, runtimeProvider wiring), and
    path-access policy drift between plugin-served and core-served reads.
-4. **Deployment ordering is a hard constraint**: the in-repo
+5. **Deployment ordering is a hard constraint**: the in-repo
    `pi-web-plugins/` intermediate state or the package must exist before
    core removal, so published builds and the docker runtime never lose the
    features mid-wave.
