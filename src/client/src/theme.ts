@@ -71,6 +71,15 @@ export const THEME_TOKENS: ThemeToken[] = [
 
 const qualifiedContributionIdPattern = /^[a-z][a-z0-9.-]*:[a-z][a-z0-9.-]*$/u;
 
+/**
+ * Compile-time guard: every ThemeToken the union knows must appear in this
+ * list, or applyPiWebTheme silently never sets or removes the straggler.
+ */
+type UnlistedThemeToken = Exclude<ThemeToken, (typeof THEME_TOKENS)[number]>;
+type ThemeTokensExhaustive = [UnlistedThemeToken] extends [never] ? true : never;
+const _themeTokensExhaustive: ThemeTokensExhaustive = true;
+void _themeTokensExhaustive;
+
 export function readStoredThemePreference(): ThemePreference | undefined {
   try {
     const value = window.localStorage.getItem(THEME_STORAGE_KEY);

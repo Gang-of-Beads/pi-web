@@ -501,9 +501,8 @@ export class AskUserCard extends LitElement {
     h2 {
       margin-bottom: 0;
       color: var(--pi-accent);
-      font-size: 12px;
+      font: var(--pi-text-xs) var(--pi-font-mono);
       line-height: 1.3;
-      text-transform: uppercase;
     }
     .header-status { flex: 0 1 auto; color: var(--pi-muted); font-size: 11px; text-align: end; }
     .header-status.submitted { color: var(--pi-success); }
@@ -623,7 +622,7 @@ export class AskUserCard extends LitElement {
       cursor: pointer;
     }
     @media (hover: hover) { button:hover:not(:disabled) { background: var(--pi-surface-hover); } }
-    button:active:not(:disabled) { background: var(--pi-surface-hover); }
+    button:active:not(:disabled) { background: var(--pi-surface-active); }
     button:disabled { cursor: wait; opacity: .65; }
     .primary-action { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-accent-contrast, white); font-weight: 650; }
     @media (hover: hover) { .primary-action:hover:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 86%, white); } }

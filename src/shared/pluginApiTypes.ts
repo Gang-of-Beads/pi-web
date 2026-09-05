@@ -186,11 +186,13 @@ export interface PiWebStatusResponse extends PiWebVersionResponse {
 }
 
 /**
- * Every custom property a theme must set.
+ * Every custom property a theme may set.
  *
- * A closed union rather than an open record so a theme missing a token is a
- * compile error, in a plugin package exactly as in the app: an incomplete
- * theme renders as half of another one, which is worse than not shipping.
+ * The legacy half is a closed union: a theme missing one is a compile error,
+ * in a plugin package exactly as in the app, because an incomplete theme
+ * renders as half of another one, which is worse than not shipping. The
+ * semantic surface half is optional by design - a theme that does not know
+ * the ladder gets core-derived stops from its own legacy trio.
  */
 export type ThemeToken =
   | LegacyThemeToken

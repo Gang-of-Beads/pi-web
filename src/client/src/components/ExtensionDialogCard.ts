@@ -343,7 +343,8 @@ export class ExtensionDialogCard extends LitElement {
       border-radius: var(--pi-radius-lg);
       overflow: hidden;
       overflow: clip;
-      background: var(--pi-surface);
+      background: var(--pi-surface-raised);
+      box-shadow: var(--pi-elevation-3);
       /* The waiting-slot contract: fill the slot's height budget as a column
          whose detail is the one scroller and whose actions never scroll
          away. */
@@ -359,7 +360,7 @@ export class ExtensionDialogCard extends LitElement {
       min-height: 22px;
       padding: 8px 16px 7px;
       border-bottom: 1px solid var(--pi-border-muted);
-      background: var(--pi-surface);
+      background: var(--pi-surface-raised);
       box-shadow: 0 8px 18px var(--pi-shadow-soft);
     }
     h2, p { margin-top: 0; }
@@ -418,7 +419,7 @@ export class ExtensionDialogCard extends LitElement {
     /* Pressed feedback lives on the active state, not on hover: on a coarse
        pointer the hover state is what made the browser withhold the first
        click. */
-    .option-button:active:not(:disabled) { border-color: var(--pi-accent); background: var(--pi-surface-hover); }
+    .option-button:active:not(:disabled) { border-color: var(--pi-accent); background: var(--pi-surface-active); }
     .dialog-input-form { display: grid; }
     .dialog-input {
       box-sizing: border-box;
@@ -468,7 +469,7 @@ export class ExtensionDialogCard extends LitElement {
       cursor: pointer;
     }
     @media (hover: hover) { button:hover:not(:disabled) { background: var(--pi-surface-hover); } }
-    button:active:not(:disabled) { background: var(--pi-surface-hover); }
+    button:active:not(:disabled) { background: var(--pi-surface-active); }
     button:disabled { cursor: wait; opacity: .65; }
     button:focus-visible, .dialog-input:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 2px; }
     .primary-action { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-accent-contrast, white); font-weight: 650; }

@@ -272,3 +272,54 @@ describe("what a notice may cover", () => {
     expect(order.indexOf(dock)).toBeLessThan(order.indexOf(over));
   });
 });
+
+/*
+ * The surface ladder and elevation scale carry hierarchy the way the layer
+ * scale carries stacking: a theme maps five stops, components pick a stop by
+ * the layer they are, and elevation composes from the theme's shadow colors.
+ * The contract test catches the next raw surface before it forks again.
+ */
+describe("the surface ladder", () => {
+  const LADDER = ["--pi-surface-canvas", "--pi-surface-panel", "--pi-surface-card", "--pi-surface-raised", "--pi-surface-active"];
+  const ELEVATION = ["--pi-elevation-1", "--pi-elevation-2", "--pi-elevation-3"];
+
+  it("is published to every shadow root", () => {
+    for (const token of [...LADDER, ...ELEVATION]) expect(indexHtml).toContain(`${token}:`);
+  });
+
+  it("derives the card and raised stops toward the text color, in one direction", () => {
+    const read = (token: string): string | undefined => new RegExp(`${token}:\\s*([^;]+)`, "u").exec(indexHtml)?.[1]?.trim();
+    const card = read("--pi-surface-card") ?? "";
+    const raised = read("--pi-surface-raised") ?? "";
+    expect(card).toContain("color-mix");
+    expect(raised).toContain("color-mix");
+    const cardShare = /var\(--pi-surface\)\s+([\d.]+)%/u.exec(card)?.[1];
+    const raisedShare = /var\(--pi-surface\)\s+([\d.]+)%/u.exec(raised)?.[1];
+    expect(Number(cardShare)).toBeGreaterThan(50);
+    expect(Number(raisedShare)).toBeLessThan(Number(cardShare));
+  });
+
+  it("composes each elevation from the theme's shadow colors", () => {
+    for (const token of ELEVATION) {
+      const value = new RegExp(`${token}:\\s*([^;]+)`, "u").exec(indexHtml)?.[1] ?? "";
+      expect(value).toContain("var(--pi-shadow");
+    }
+  });
+
+  it("leaves no card painting the flat legacy surface", () => {
+    const root = join(process.cwd(), "src/client/src/components");
+    const offenders: string[] = [];
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) { walk(path); continue; }
+        if (!entry.name.endsWith(".ts") || entry.name.includes(".test.")) continue;
+        const css = readFileSync(path, "utf8");
+        if (/\.card\s*\{[^}]*background:\s*var\(--pi-surface\)/u.test(css)) offenders.push(entry.name);
+      }
+    };
+    walk(root);
+
+    expect(offenders).toEqual([]);
+  });
+});

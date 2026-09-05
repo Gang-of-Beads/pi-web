@@ -159,10 +159,20 @@ export interface PiWebStatusResponse extends PiWebVersionResponse {
     messages: PiWebStatusMessage[];
 }
 /**
- * Every custom property a theme must set.
+ * Every custom property a theme may set.
  *
- * A closed union rather than an open record so a theme missing a token is a
- * compile error, in a plugin package exactly as in the app: an incomplete
- * theme renders as half of another one, which is worse than not shipping.
+ * The legacy half is a closed union: a theme missing one is a compile error,
+ * in a plugin package exactly as in the app, because an incomplete theme
+ * renders as half of another one, which is worse than not shipping. The
+ * semantic surface half is optional by design - a theme that does not know
+ * the ladder gets core-derived stops from its own legacy trio.
  */
-export type ThemeToken = "--pi-bg" | "--pi-surface" | "--pi-surface-hover" | "--pi-terminal-bg" | "--pi-terminal-text" | "--pi-border" | "--pi-border-muted" | "--pi-text" | "--pi-text-secondary" | "--pi-text-bright" | "--pi-muted" | "--pi-dim" | "--pi-accent" | "--pi-accent-border" | "--pi-selection-bg" | "--pi-success" | "--pi-success-border" | "--pi-success-bg" | "--pi-success-surface" | "--pi-success-ring" | "--pi-warning" | "--pi-warning-border" | "--pi-warning-surface" | "--pi-danger" | "--pi-purple" | "--pi-purple-border" | "--pi-purple-surface" | "--pi-overlay" | "--pi-shadow-soft" | "--pi-shadow" | "--pi-shadow-strong" | "--pi-bg-overlay-soft" | "--pi-bg-overlay" | "--pi-success-bg-overlay" | "--pi-terminal-selection";
+export type ThemeToken = LegacyThemeToken | SemanticSurfaceToken;
+/** The original color contract; every theme sets all of these. */
+export type LegacyThemeToken = "--pi-bg" | "--pi-surface" | "--pi-surface-hover" | "--pi-terminal-bg" | "--pi-terminal-text" | "--pi-border" | "--pi-border-muted" | "--pi-text" | "--pi-text-secondary" | "--pi-text-bright" | "--pi-muted" | "--pi-dim" | "--pi-accent" | "--pi-accent-border" | "--pi-selection-bg" | "--pi-success" | "--pi-success-border" | "--pi-success-bg" | "--pi-success-surface" | "--pi-success-ring" | "--pi-warning" | "--pi-warning-border" | "--pi-warning-surface" | "--pi-danger" | "--pi-purple" | "--pi-purple-border" | "--pi-purple-surface" | "--pi-overlay" | "--pi-shadow-soft" | "--pi-shadow" | "--pi-shadow-strong" | "--pi-bg-overlay-soft" | "--pi-bg-overlay" | "--pi-success-bg-overlay" | "--pi-terminal-selection";
+/**
+ * The semantic surface ladder. A theme may set these stops explicitly; when it
+ * does not, the core derives them from the legacy trio, so packs written
+ * before the ladder keep rendering on a coherent ladder.
+ */
+export type SemanticSurfaceToken = "--pi-surface-canvas" | "--pi-surface-panel" | "--pi-surface-card" | "--pi-surface-raised" | "--pi-surface-active";

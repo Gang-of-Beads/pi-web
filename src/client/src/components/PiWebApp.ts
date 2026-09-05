@@ -188,7 +188,7 @@ export const appStyles = css`
   prompt-editor { flex: 0 0 auto; }
   button { font: var(--pi-text-xs) var(--pi-font-ui); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
   .empty { margin: auto; display: flex; flex-direction: column; align-items: center; gap: var(--pi-space-5); text-align: center; color: var(--pi-muted); }
-  .empty button { min-height: var(--pi-control-height-touch); padding: var(--pi-space-4) var(--pi-space-6); border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); background: var(--pi-surface-raised); color: var(--pi-accent); font: var(--pi-text-sm) var(--pi-font-ui); cursor: pointer; }
+  .empty button { min-height: var(--pi-control-height-touch); padding: var(--pi-space-4) var(--pi-space-6); border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-accent); font: var(--pi-text-sm) var(--pi-font-ui); cursor: pointer; }
   .error { display: flex; gap: var(--pi-space-4); align-items: flex-start; padding: var(--pi-space-5) var(--pi-space-7); border-bottom: 1px solid var(--pi-border); color: var(--pi-danger); }
   .error.transient { color: var(--pi-warning); background: color-mix(in srgb, var(--pi-warning) 8%, transparent); }
   .error .error-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
@@ -2504,6 +2504,7 @@ export class PiWebApp extends LitElement {
     if (this.state.projectsLoad !== "loaded" && this.state.projectsLoad !== "failed") return "Loading projects…";
     if (this.state.selectedWorkspace !== undefined) return "Select or start a session.";
     if (this.state.selectedProject !== undefined) return "Select a workspace to start a session.";
+    if (this.state.projectsLoad === "failed" && this.state.projects.length === 0) return "Projects could not be loaded.";
     if (this.state.projects.length === 0) return "Add a project to start a session.";
     return "Select a project and workspace to start a session.";
   }
@@ -2514,7 +2515,7 @@ export class PiWebApp extends LitElement {
     if (this.state.selectedWorkspace !== undefined && this.canStartSession()) {
       return html`<button @click=${() => { void this.startSessionAndOpenChat(); }}>Start a session</button>`;
     }
-    if (this.state.projects.length === 0) {
+    if (this.state.projectsLoad === "loaded" && this.state.projects.length === 0) {
       return html`<button @click=${() => { this.setState({ projectDialogOpen: true }); }}>Add a project</button>`;
     }
     return html``;

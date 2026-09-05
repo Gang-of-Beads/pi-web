@@ -162,11 +162,15 @@ popstate back contract — all verified. No friction found in this audit.
 semantics; theme-compatible). Add the missing layers to `index.html` and
 refactor component CSS onto them:
 
-- Semantic surface ladder: `--pi-surface-canvas/panel/card/raised/overlay`
-  with an elevation scale (`--pi-elevation-0…3`: none/border/shadow-soft/
-  shadow-strong) so hierarchy stops being per-component improvisation.
-- State vocabulary: `--pi-surface-hover/active/selected/disabled` + focus
-  ring composition tokens, replacing per-component color math.
+- Semantic surface ladder: `--pi-surface-canvas/panel/card/raised` plus a
+  pressed state `--pi-surface-active`, with an elevation scale
+  (`--pi-elevation-1…3`, composed from the theme's shadow colors) so hierarchy
+  stops being per-component improvisation. (Shipped set: the proposal's
+  `--pi-surface-overlay` and `--pi-elevation-0` did not survive — overlay and
+  none were already expressed by existing tokens.)
+- State vocabulary: the published part is `--pi-surface-active`; hover stays
+  the legacy `--pi-surface-hover`, selection stays `--pi-selection-bg`, and
+  disabled keeps per-component opacity until a shared consumer exists.
 - Apply the existing motion tokens everywhere transitions exist (audit finds
   ad-hoc `120ms/150ms/180ms` literals in component CSS).
 - The pi-web-themes pack maps old→new tokens (new tokens have fallbacks, so

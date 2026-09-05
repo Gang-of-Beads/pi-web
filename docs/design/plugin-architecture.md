@@ -285,8 +285,8 @@ half-migrated feature.
 
 Attempted and reverted rather than left half-done. Moving the theme pack into
 its own package is a two-line change until the types meet: the internal
-`ThemeTokens` is `Record<ThemeToken, string>` - a closed union that makes a
-missing token a compile error, which is why every shipped theme is complete -
+`ThemeTokens` requires the legacy token set (a closed union that makes a
+missing token a compile error, which is why every shipped theme is complete)
 while the published `ThemeTokens` is `Record<string, string>`, and the
 published `QualifiedContributionId` is a plain string where the internal one is
 a `plugin:contribution` template. A pack typed by the public contract is
