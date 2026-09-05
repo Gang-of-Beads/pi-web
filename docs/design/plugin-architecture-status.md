@@ -210,3 +210,13 @@ The three open items were put to the owner and answered:
    panel's contract is with any theme-contributing plugin, and its tests now
    use a fixture pack instead of the real one.
 
+## Bundled goals removed, 2026-09-05 (later still)
+
+Applying the owner's bundled-copy ruling to goals itself: with
+`Gang-of-Beads/pi-web-goals` existing as the plugin's home, the bundled copy
+left this repository. The agent directory now installs the goals package
+(git), so the feature keeps working in real deployments; the drawer and the
+navigation panel draw whatever goals section a contributed plugin provides,
+which is the seam the wave built. The same logic will be applied to the
+remaining bundled plugins as their split repositories mature.
+
