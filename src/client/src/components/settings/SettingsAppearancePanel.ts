@@ -87,7 +87,13 @@ export class SettingsAppearancePanel extends LitElement {
    */
   private renderPreview(tokens: ThemeTokens) {
     const style = (names: readonly (keyof ThemeTokens)[]) => names
-      .map((name) => `${name.replace("--pi-", "--preview-")}: ${tokens[name]}`)
+      .map((name) => {
+        const value = tokens[name];
+        // A theme may leave a semantic ladder stop unset; the preview then
+        // inherits the core fallback instead of shipping "undefined".
+        return value === undefined ? undefined : `${name.replace("--pi-", "--preview-")}: ${value}`;
+      })
+      .filter((declaration) => declaration !== undefined)
       .join("; ");
     return html`
       <span
