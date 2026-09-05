@@ -67,7 +67,6 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) onRefreshMachine?: (machine: Machine) => void | Promise<void>;
   @property({ attribute: false }) onRenameMachine?: (machine: Machine, name: string) => void | Promise<void>;
   @property({ attribute: false }) onOpenMachine?: (machine: Machine) => void;
-  @property({ attribute: false }) onQuickSwitch?: () => void;
   @property({ attribute: false }) onAddProject?: () => void;
   @property({ attribute: false }) onToggleMachines?: () => void;
   @property({ attribute: false }) onToggleProjects?: () => void;
@@ -193,10 +192,10 @@ export class AppNavigationPanel extends LitElement {
         ` : null}
         <!-- No quick-action bar here. It stacked a third bar above the list -
              a fifth of a phone screen before any content - and duplicated
-             controls that already exist: the context bar opens sessions, the
-             session list starts one, and "Add project" now lives in the
-             Projects heading, where it stays reachable on a machine you have
-             just switched to instead of vanishing whenever no session could be
+             controls that already exist: the resident row opens the panel, the
+             session list starts one, and "Add project" lives in the Projects
+             heading, where it stays reachable on a machine you have just
+             switched to instead of vanishing whenever no session could be
              started. -->
         ${this.renderCompactPrimaryList()}
         ${this.renderToolsSection()}

@@ -8,7 +8,7 @@ export function createCoreWorkspacePanels(): WorkspacePanelContribution[] {
     {
       id: "workspace.files",
       title: "Files",
-      icon: renderBuiltinTabIcon("files"),
+      icon: renderBuiltinTabIcon(),
       order: 10,
       routeAliases: ["files"],
       render: renderFiles,

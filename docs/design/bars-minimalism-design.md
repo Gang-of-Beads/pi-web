@@ -37,9 +37,7 @@
 `src/client/src/appShell/appSurface.ts`：
 
 ```ts
-export type SurfaceSlot =
-  | "bar.leading" | "bar.title" | "bar.affix" | "bar.trailing"
-  | "panel.section" | "panel.footer" | "palette.only" | "hidden";
+export type SurfaceSlot = "bar" | "panel" | "hidden";
 
 export interface AppFeatureSpec {
   id: string;
@@ -48,7 +46,7 @@ export interface AppFeatureSpec {
 }
 ```
 
-渲染器（shell bar / AppNavigationPanel）查同一张表；契约测试枚举全部 feature × 3 布局。T1-T4 取舍写进 `rationale`。
+契约测试钉死两件事：bar 集合固定为 panelToggle/sessionSwitch/workingIndicator，每个 feature 在三个布局上至少一处可达。渲染器侧的完整表驱动（feature → slot 查表渲染）是方案 A 的前置工作，当前以人工走查 + 契约测试过渡。键盘取舍：面板工具行 Tab 可达，ArrowRight 从 sessions 出面板落 chat 是既有设计，工具区键盘序列入后续测试计划。
 
 ## 修复清单（全部落在本次设计内）
 
@@ -57,11 +55,12 @@ export interface AppFeatureSpec {
 | B1 | 桌面面板展开无快切鼠标入口 | 会话名点击 = 快速切换；面板常驻 |
 | B2 | 手机 Settings 只有一条路 | 面板固定 Settings 行 |
 | B3 | <1181px Expand 假控件 | 面板归 layout 管，mobile/narrow 不渲染该钮 |
-| B4 | 工具三重入口 | 手机工具 sheet 退役，工具视图入面板 |
-| B5 | 36px/34px 触达 | 全部 ≥44px、间距 ≥8px |
+| B4 | 工具三重入口 | 手机工具 sheet 退役，工具视图入面板；workspace-panel 手机布局 hideToolTabs |
+| B5 | 36px/34px 触达 | 顶栏与面板头全部 ≥44px（含桌面面板头 var 28→44） |
 | 截断 | 面包屑 22% + 无披露 | 身份入面板；面板行全名 |
+| 回归 | 手机 PWA 刷新钮随顶栏重写丢失 | 恢复 shouldShowAppRefreshInContextBar，panel header 双门控（bllm 评审发现） |
 
-底栏 status-bar：**不动**（owner 裁决保留）。
+底栏 status-bar：**不动**（owner 裁决保留）。评审分拣全文见 `review-triage-shell-row.md`。
 
 ## 测试影响（诚实清单）
 

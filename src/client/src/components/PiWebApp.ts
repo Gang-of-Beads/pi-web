@@ -1823,6 +1823,7 @@ export class PiWebApp extends LitElement {
         .emptyState=${emptyState}
         .tool=${this.state.workspaceTool}
         .panels=${this.visibleWorkspacePanels()}
+        ?hideToolTabs=${this.appShell.isMobileNavigationLayout}
         .onSelectTool=${(tool: QualifiedContributionId) => { this.openWorkspaceTool(tool); }}
       ></workspace-panel>
     `;
@@ -2005,9 +2006,8 @@ export class PiWebApp extends LitElement {
         .workspacesCollapsed=${this.navigationSections.isCollapsed("workspaces")}
         .sessionsCollapsed=${this.navigationSections.isCollapsed("sessions")}
         .workspaceLabelItems=${(workspace: Workspace) => this.workspaceLabelItems(workspace)}
-        .refreshControl=${this.appShell.shouldShowAppRefreshInHeader() ? this.renderAppRefresh() : undefined}
+        .refreshControl=${this.appShell.shouldShowAppRefreshInHeader() || this.appShell.shouldShowAppRefreshInContextBar() ? this.renderAppRefresh() : undefined}
         .onAddProject=${() => { this.openProjectDialog(); }}
-        .onQuickSwitch=${() => { this.openQuickSwitcher(); }}
         .onShowActions=${() => { this.openActionPalette(); }}
         .onOpenSettings=${() => { this.openSettings("general"); }}
         .onAddMachine=${() => { this.openMachineDialog(); }}

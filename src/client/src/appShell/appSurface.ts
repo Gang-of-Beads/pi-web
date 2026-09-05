@@ -13,10 +13,10 @@ export interface AppFeatureSpec {
  *
  * The bar is the single resident row (menu toggle, session name, working
  * indicator). The panel is the single collapsible surface (quick access,
- * machines, tool views, actions, settings). A feature that used to exist in
- * several places must claim exactly one slot per layout here; the renderers
- * read this table and the contract test enumerates every feature × layout so
- * a feature can never silently disappear from one platform.
+ * machines, tool views, actions, settings). The contract test pins the bar to
+ * that minimal set and requires every feature to stay reachable on every
+ * layout, so a feature cannot silently vanish from one platform; full
+ * table-driven rendering is the follow-up when the bar set changes again.
  */
 export const APP_FEATURE_SPECS: readonly AppFeatureSpec[] = [
   {
