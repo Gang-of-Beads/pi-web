@@ -37,19 +37,23 @@ function previewActivation(): ServerPluginActivation {
 }
 
 async function appWithRoutes(activation: ServerPluginActivation) {
-  const importer: ServerPluginModuleImporter = () => Promise.resolve({
-    default: { apiVersion: 1, name: "Files", activate: () => activation } satisfies PiWebServerPlugin,
-  });
-  const runtime = await createServerPluginRuntime({
-    catalog: { snapshot: () => Promise.resolve({ plugins: [entry("workspaces")], diagnostics: [] }) },
-    importer,
-    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-  });
+  const runtime = await runtimeWith(activation);
   const app = Fastify({ logger: false });
   mountServerPluginRoutes(app, runtime, "/api");
   mountServerPluginRoutes(app, runtime, "/api/machines/local");
   await app.ready();
   return { app, runtime };
+}
+
+async function runtimeWith(activation: ServerPluginActivation) {
+  const importer: ServerPluginModuleImporter = () => Promise.resolve({
+    default: { apiVersion: 1, name: "Files", activate: () => activation } satisfies PiWebServerPlugin,
+  });
+  return await createServerPluginRuntime({
+    catalog: { snapshot: () => Promise.resolve({ plugins: [entry("workspaces")], diagnostics: [] }) },
+    importer,
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  });
 }
 
 describe("mounting plugin route contributions", () => {
@@ -114,11 +118,17 @@ describe("mounting plugin route contributions", () => {
   });
 
   it("refuses a colliding mount with a diagnostic and keeps the app serving", async () => {
-    const { app, runtime } = await appWithRoutes(previewActivation());
+    const runtime = await runtimeWith(previewActivation());
+    const app = Fastify({ logger: false });
+    const logError = vi.fn();
+    Reflect.set(app.log, "error", logError);
+    mountServerPluginRoutes(app, runtime, "/api");
+    mountServerPluginRoutes(app, runtime, "/api");
+    await app.ready();
     try {
-      mountServerPluginRoutes(app, runtime, "/api");
       const response = await app.inject({ method: "GET", url: "/api/projects/p/workspaces/w/file/preview" });
       expect(response.statusCode).toBe(200);
+      expect(logError).toHaveBeenCalledWith(expect.objectContaining({ pluginId: "workspaces" }), expect.stringContaining("mount refused"));
     } finally {
       await app.close();
       await runtime.stop();

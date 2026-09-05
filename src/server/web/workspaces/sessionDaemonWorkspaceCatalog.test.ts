@@ -139,6 +139,49 @@ describe("SessionDaemonWorkspaceCatalog", () => {
     expect(error.message).toContain("provider runtime protocol is unsupported");
   });
 
+  it("forwards the process-role declaration and withheld diagnostics through the provider runtime parse", async () => {
+    const request = vi.fn<SessionDaemonRequestClient["request"]>(() => Promise.resolve(jsonResponse({
+      protocolVersion: 1,
+      records: [{
+        pluginId: "web-hosted",
+        source: "bundled",
+        scope: "bundled",
+        runs: "both",
+        moduleRevision: "sha256:abc",
+        settingsRevision: "sha256:settings",
+        machineSpecific: true,
+        state: "active",
+      }],
+      health: [],
+      diagnostics: [{ code: "withheld-untrusted", source: "project", message: "Untrusted plugin directory withheld" }],
+    })));
+    const catalog = new SessionDaemonWorkspaceCatalog({ request });
+
+    const snapshot = await catalog.providerRuntime();
+
+    expect(snapshot.records[0]).toMatchObject({ pluginId: "web-hosted", runs: "both" });
+    expect(snapshot.diagnostics).toEqual([{ code: "withheld-untrusted", source: "project", message: "Untrusted plugin directory withheld" }]);
+
+    const invalidRuns = new SessionDaemonWorkspaceCatalog({
+      request: () => Promise.resolve(jsonResponse({
+        protocolVersion: 1,
+        records: [{
+          pluginId: "web-hosted",
+          source: "bundled",
+          scope: "bundled",
+          runs: "everywhere",
+          moduleRevision: "sha256:abc",
+          settingsRevision: "sha256:settings",
+          machineSpecific: true,
+          state: "active",
+        }],
+        health: [],
+        diagnostics: [],
+      })),
+    });
+    await expect(invalidRuns.providerRuntime()).rejects.toBeInstanceOf(WorkspaceCatalogProtocolError);
+  });
+
   it("distinguishes daemon unavailability, upstream failures, and invalid JSON for route status mapping", async () => {
     const unavailable = new SessionDaemonWorkspaceCatalog({
       request: () => Promise.reject(new Error("connect ECONNREFUSED")),

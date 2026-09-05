@@ -25,6 +25,7 @@ import { PiWebPluginService } from "./piWebPluginService.js";
 import { PiWebPluginCatalog, filterCatalogEntriesByRuns } from "../shared/piWebPluginCatalog.js";
 import { createServerPluginRuntime, type ServerPluginRuntime } from "../shared/plugins/serverPluginRuntime.js";
 import type { ServerPluginRuntimeLogger } from "../shared/plugins/serverPluginRuntime.js";
+import { createWorkspaceProviderRuntimeSnapshot, type WorkspaceProviderRuntimeSnapshot } from "../shared/workspaces/workspaceCatalog.js";
 import { mountServerPluginRoutes } from "./plugins/serverPluginRouteMount.js";
 import { createActiveProfilePiPackageService, type PiPackageService } from "./piPackageService.js";
 import { registerPiPackageRoutes } from "./piPackageRoutes.js";
@@ -192,10 +193,14 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
   const daemonWorkspaces = new SessionDaemonWorkspaceCatalog(sessionDaemon);
   const workspaces = deps.workspaceCatalog ?? daemonWorkspaces;
   const agentProfileProvider = deps.agentProfileProvider ?? new SessionDaemonActiveAgentProfileProvider(sessionDaemon);
+  // Frozen at web-process startup, the same law as the daemon's handshake
+  // snapshot: drift discovered later is exactly what restartRequired reports.
+  let webProviderRuntimeSnapshot: WorkspaceProviderRuntimeSnapshot | undefined;
   const piWebPlugins = deps.piWebPlugins ?? new PiWebPluginService({
     configProvider: readConfig,
     agentDirProvider: () => desiredPluginAgentDir(agentProfileProvider, configService),
     runtimeProvider: daemonWorkspaces,
+    webRuntimeProvider: () => Promise.resolve(webProviderRuntimeSnapshot),
     recoveryProvider: () => loadServerPluginRecoveryConfig(),
   });
   // The web runtime reads the same config and agent-dir sources the plugin
@@ -306,6 +311,7 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
       },
     };
     try {
+      const recovery = loadServerPluginRecoveryConfig();
       webServerPluginRuntime = await createServerPluginRuntime({
         catalog: {
           snapshot: async (scope) => {
@@ -313,6 +319,7 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
             return { ...snapshot, plugins: filterCatalogEntriesByRuns(snapshot.plugins, ["web", "both"]) };
           },
         },
+        ...(recovery.safeStart === undefined ? {} : { safeStart: recovery.safeStart }),
         logger: webRuntimeLogger,
         hostPorts: {
           workspaceCatalog: {
@@ -333,6 +340,12 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
     }
   }
   if (webServerPluginRuntime !== undefined) {
+    webProviderRuntimeSnapshot = createWorkspaceProviderRuntimeSnapshot(
+      webServerPluginRuntime.healthRecords(),
+      await webServerPluginRuntime.inspectHealth(),
+      webServerPluginRuntime.safeStartLevel(),
+      webServerPluginRuntime.catalogDiagnostics(),
+    );
     const mounted = webServerPluginRuntime;
     app.addHook("onClose", () => mounted.stop());
     mountServerPluginRoutes(app, mounted, "/api");

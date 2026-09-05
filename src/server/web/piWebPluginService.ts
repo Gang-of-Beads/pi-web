@@ -8,7 +8,7 @@ import {
   type PiWebPluginPackageEntry,
 } from "../shared/piWebPluginCatalog.js";
 import { reconcilePiWebPluginLifecycle, type ProviderRuntimeLoadResult } from "./piWebPluginLifecycle.js";
-import { WorkspaceCatalogProtocolError, type WorkspaceProviderRuntimeReader } from "../shared/workspaces/workspaceCatalog.js";
+import { WorkspaceCatalogProtocolError, type WorkspaceProviderRuntimeReader, type WorkspaceProviderRuntimeSnapshot } from "../shared/workspaces/workspaceCatalog.js";
 
 export type { PiWebPluginInfo, PiWebPluginsResponse, PiWebPluginScope } from "../../shared/apiTypes.js";
 export {
@@ -61,6 +61,8 @@ const BROWSER_ARTIFACT_CACHE_MAX_BYTES = 64 * 1024 * 1024;
 export interface PiWebPluginServiceOptions extends PiWebPluginCatalogOptions {
   catalog?: PiWebPluginCatalog;
   runtimeProvider?: WorkspaceProviderRuntimeReader;
+  /** The web process's own runtime, frozen at its startup like the daemon's. */
+  webRuntimeProvider?: () => Promise<WorkspaceProviderRuntimeSnapshot | undefined>;
   recoveryProvider?: () => { safeStart?: PiWebPluginSafeStart } | Promise<{ safeStart?: PiWebPluginSafeStart }>;
 }
 
@@ -68,6 +70,7 @@ export interface PiWebPluginServiceOptions extends PiWebPluginCatalogOptions {
 export class PiWebPluginService {
   private readonly catalog: PiWebPluginCatalog;
   private readonly runtimeProvider: WorkspaceProviderRuntimeReader | undefined;
+  private readonly webRuntimeProvider: PiWebPluginServiceOptions["webRuntimeProvider"];
   private readonly recoveryProvider: PiWebPluginServiceOptions["recoveryProvider"];
   private readonly browserArtifacts = new Map<string, CachedBrowserArtifact>();
   private browserArtifactBytes = 0;
@@ -75,6 +78,7 @@ export class PiWebPluginService {
   constructor(options: PiWebPluginServiceOptions = {}) {
     this.catalog = options.catalog ?? new PiWebPluginCatalog(options);
     this.runtimeProvider = options.runtimeProvider;
+    this.webRuntimeProvider = options.webRuntimeProvider;
     this.recoveryProvider = options.recoveryProvider;
   }
 
@@ -169,12 +173,18 @@ export class PiWebPluginService {
   private async cachedArtifactIsActive(artifact: CachedBrowserArtifact): Promise<boolean> {
     if (artifact.backendRevision === undefined) return true;
     const runtime = await this.loadRuntime();
-    if (runtime.status !== "available") return false;
-    const record = runtime.snapshot.records.find(({ pluginId }) => pluginId === artifact.pluginId);
-    const health = runtime.snapshot.health.find(({ pluginId }) => pluginId === artifact.pluginId);
-    return record?.state === "active"
-      && record.moduleRevision === artifact.backendRevision
-      && record.browserRevision === artifact.revision
+    // The web process serves the asset, so its view is authoritative whenever
+    // it holds the plugin at all; the daemon view is the fallback for
+    // daemon-only plugins and for old daemons whose records carry no runs.
+    const web = runtime.views?.web;
+    const webRecord = web?.records.find(({ pluginId }) => pluginId === artifact.pluginId);
+    const snapshot = webRecord !== undefined ? web : runtime.views?.daemon;
+    if (snapshot === undefined) return false;
+    const activeRecord = snapshot.records.find(({ pluginId }) => pluginId === artifact.pluginId);
+    const health = snapshot.health.find(({ pluginId }) => pluginId === artifact.pluginId);
+    return activeRecord?.state === "active"
+      && activeRecord.moduleRevision === artifact.backendRevision
+      && activeRecord.browserRevision === artifact.revision
       && health?.health.status !== "unhealthy";
   }
 
@@ -213,17 +223,37 @@ export class PiWebPluginService {
   }
 
   private async loadRuntime(): Promise<ProviderRuntimeLoadResult> {
+    const [daemon, web] = await Promise.all([this.loadDaemonRuntime(), this.loadWebRuntime()]);
+    if (daemon.status === "available") {
+      const daemonSnapshot = daemon.views.daemon;
+      if (daemonSnapshot === undefined) return { status: "available", views: web === undefined ? {} : { web } };
+      return { status: "available", views: { daemon: daemonSnapshot, ...(web === undefined ? {} : { web }) } };
+    }
+    if (web === undefined) return daemon;
+    return { status: daemon.status, message: daemon.message, views: { web } };
+  }
+
+  private async loadDaemonRuntime(): Promise<ProviderRuntimeLoadResult> {
     if (this.runtimeProvider === undefined) {
       return { status: "unavailable", message: "Session daemon server-plugin runtime is unavailable" };
     }
     try {
-      return { status: "available", snapshot: await this.runtimeProvider.providerRuntime() };
+      return { status: "available", views: { daemon: await this.runtimeProvider.providerRuntime() } };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return {
         status: error instanceof WorkspaceCatalogProtocolError ? "incompatible" : "unavailable",
         message,
       };
+    }
+  }
+
+  private async loadWebRuntime(): Promise<WorkspaceProviderRuntimeSnapshot | undefined> {
+    if (this.webRuntimeProvider === undefined) return undefined;
+    try {
+      return await this.webRuntimeProvider();
+    } catch {
+      return undefined;
     }
   }
 }

@@ -123,19 +123,45 @@ its own instance:
   catalog-level declaration (see Seam 5), not inferred.
 
 The provider-runtime handshake is per process (amended after review — one
-flat snapshot cannot say "web active, daemon failed"):
+flat snapshot cannot say "web active, daemon failed"; implemented as a
+local merge, amended during Wave 0 — the daemon cannot know the web
+process's runtime state, and carrying a web section on the wire would make
+rolling upgrades lie):
 
-- Runtime snapshots are keyed by process role: `{ daemon, web }`, each with
-  its own records, health, and safeStart. The snapshot shape in
-  `shared/workspaces/workspaceCatalog.ts` gains this structure
-  (protocolVersion bump).
-- `restartRequired` is computed per process; a web-activated plugin is not
-  misreported as daemon-missing.
-- `cachedArtifactIsActive` (`piWebPluginService.ts`) reads the web snapshot
-  for web-activated plugins, so asset cache invalidation follows the
-  process that actually serves them.
+- The daemon's handshake payload stays the flat daemon snapshot (wire
+  unchanged, protocolVersion stays 1). The web process freezes its own
+  runtime into the same snapshot shape at startup and the lifecycle
+  reconciliation takes both as role-keyed views
+  (`WorkspaceProviderRuntimeViews` in `piWebPluginLifecycle.ts`).
+- Each desired plugin reconciles against the view of the process its
+  `runs` declaration addresses; `restartRequired` is judged against that
+  process, so a web-activated plugin is not misreported as daemon-missing
+  and stays `active` while the daemon is briefly unavailable.
+- A `both` plugin must be current in BOTH processes before its browser
+  module publishes: the web view serves the browser asset and routes, the
+  daemon still answers the proxied operations until the per-plugin split
+  below ships. Drift in either view means restart-required.
+- `cachedArtifactIsActive` (`piWebPluginService.ts`) reads the web view
+  whenever it holds the plugin, so asset cache invalidation follows the
+  process that actually serves them; the daemon view is the fallback for
+  daemon-only plugins.
 - The web runtime applies the same `safeStart` level as the daemon, so
-  recovery mode keeps the plugin sets aligned at both ends.
+  recovery mode keeps the plugin sets aligned at both ends; a mismatch in
+  either process is restart-required.
+- A web-only record whose desired entry is gone renders as
+  `discovered: false` — the same honest rendering the daemon path always
+  had, instead of vanishing while its routes still serve.
+
+Interim (Wave 0) and deferred to the extraction waves, recorded so the gap
+is a decision rather than an accident: the daemon still activates
+`runs: "web"` plugins (its operations proxy is the only operations channel
+until the per-plugin split), route-mount collisions log a diagnostic and
+leave the contributed route absent while the plugin record stays `active`
+(the runtime cannot see the mount, and the absent route is the honest
+signal), POST/PUT/DELETE are mountable but a handler has no body face yet
+and federated transport bounds are not consulted — both land with the
+first real route migration, and catalog parity (`projectPlugins`) rides
+the pilot.
 
 ## Seam 4: dialog and owned-panel seams (browser)
 

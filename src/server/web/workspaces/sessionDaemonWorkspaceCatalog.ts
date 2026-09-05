@@ -248,11 +248,15 @@ function parseRuntimeRecord(value: unknown, index: number): ServerPluginRuntimeR
   const state = value["state"];
   const scope = value["scope"];
   const phase = value["phase"];
+  const runs = value["runs"];
   if (!isRuntimeState(state)) throw protocolError(`${label} state is invalid`);
   if (scope !== "bundled" && scope !== "local" && scope !== "user" && scope !== "project") {
     throw protocolError(`${label} scope is invalid`);
   }
   if (phase !== undefined && !isLifecyclePhase(phase)) throw protocolError(`${label} phase is invalid`);
+  if (runs !== undefined && runs !== "daemon" && runs !== "web" && runs !== "both") {
+    throw protocolError(`${label} runs is invalid`);
+  }
   const name = optionalString(value, "name", label);
   const message = optionalString(value, "message", label);
   const browserRevision = optionalString(value, "browserRevision", label);
@@ -260,6 +264,7 @@ function parseRuntimeRecord(value: unknown, index: number): ServerPluginRuntimeR
     pluginId: requirePluginId(value, "pluginId", label),
     source: requireString(value, "source", label),
     scope,
+    ...(runs === undefined ? {} : { runs }),
     moduleRevision: requireString(value, "moduleRevision", label),
     ...(browserRevision === undefined ? {} : { browserRevision }),
     settingsRevision: requireString(value, "settingsRevision", label),
@@ -387,7 +392,7 @@ function isLifecyclePhase(value: unknown): value is ServerPluginLifecyclePhase {
 }
 
 function isCatalogDiagnosticCode(value: unknown): value is PiWebPluginCatalogDiagnosticCode {
-  return value === "invalid-package" || value === "duplicate-id";
+  return value === "invalid-package" || value === "duplicate-id" || value === "withheld-untrusted";
 }
 
 function encodedId(value: string, label: string): string {

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ActiveAgentProfileAccessError } from "./activeAgentProfileProvider.js";
 import { computePiWebPluginPackageRevision } from "../shared/piWebPluginCatalog.js";
 import { PiWebPluginCatalog, PiWebPluginService, type PiPackageProvider } from "./piWebPluginService.js";
-import { createWorkspaceProviderRuntimeSnapshot, WorkspaceCatalogProtocolError, type WorkspaceProviderRuntimeReader } from "../shared/workspaces/workspaceCatalog.js";
+import { createWorkspaceProviderRuntimeSnapshot, WorkspaceCatalogProtocolError, WorkspaceCatalogUnavailableError, type WorkspaceProviderRuntimeReader } from "../shared/workspaces/workspaceCatalog.js";
 
 let tempDir: string;
 
@@ -329,6 +329,54 @@ describe("PiWebPluginService", () => {
     await expect(service.manifest()).resolves.toEqual({ lifecycleVersion: 1, plugins: [] });
     const pinnedChunk = await service.readAsset("dual-assets", "chunk.js");
     expect(pinnedChunk?.content.toString("utf8")).toBe("export const value = 'active';");
+  });
+
+  it("judges web-addressed plugins by the local web runtime while the daemon is unreachable", async () => {
+    const pluginDir = join(tempDir, "plugins", "web-hosted");
+    await writePlugin(pluginDir, {
+      packageJson: { piWeb: { plugins: [{ id: "web-hosted", browserRoot: ".", module: "browser.js", serverModule: "server.js", runs: "web" }] } },
+      files: { "browser.js": "export const value = 'r1';", "server.js": "export default {};" },
+    });
+    const catalog = new PiWebPluginCatalog({ roots: [{ path: join(tempDir, "plugins"), source: "test", scope: "local" }], packageProvider: false });
+    const startup = await catalog.snapshot();
+    const entry = startup.plugins.find(({ id }) => id === "web-hosted");
+    if (entry?.serverModule === undefined || entry.browserModule === undefined) throw new Error("fixture plugin was not discovered");
+    const webRuntime = createWorkspaceProviderRuntimeSnapshot(
+      [{
+        pluginId: entry.id,
+        source: entry.source,
+        scope: entry.scope,
+        runs: "web",
+        moduleRevision: entry.serverModule.revision,
+        browserRevision: entry.browserModule.revision,
+        settingsRevision: entry.settingsRevision,
+        machineSpecific: entry.machineSpecific,
+        state: "active",
+      }],
+      [{ pluginId: entry.id, health: { status: "healthy" } }],
+    );
+    const service = new PiWebPluginService({
+      catalog,
+      runtimeProvider: {
+        providerRuntime: () => Promise.reject(new WorkspaceCatalogUnavailableError("connect ECONNREFUSED")),
+      },
+      webRuntimeProvider: () => Promise.resolve(webRuntime),
+    });
+
+    const plugins = await service.plugins();
+    expect(plugins.serverRuntime).toMatchObject({ status: "unavailable" });
+    expect(plugins.plugins.find(({ id }) => id === "web-hosted")).toMatchObject({ discovered: true, server: { state: "active" } });
+    await expect(service.manifest()).resolves.toMatchObject({ plugins: [{ id: "web-hosted" }] });
+
+    const first = await service.readAsset("web-hosted", "browser.js");
+    expect(first?.content.toString("utf8")).toBe("export const value = 'r1';");
+
+    await writeFile(join(pluginDir, "browser.js"), "export const value = 'r2';", "utf8");
+    const drifted = await service.plugins();
+    expect(drifted.plugins.find(({ id }) => id === "web-hosted")).toMatchObject({ server: { state: "active", staleRevision: true, restartRequired: true } });
+    await expect(service.manifest()).resolves.toEqual({ lifecycleVersion: 1, plugins: [] });
+    const pinned = await service.readAsset("web-hosted", "browser.js");
+    expect(pinned?.content.toString("utf8")).toBe("export const value = 'r1';");
   });
 
   it("withholds server-backed browser modules and reports an incompatible sessiond protocol", async () => {

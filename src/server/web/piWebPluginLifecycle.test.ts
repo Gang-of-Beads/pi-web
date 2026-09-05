@@ -46,7 +46,7 @@ describe("PI WEB plugin desired/active lifecycle reconciliation", () => {
       { pluginId: "active-only", health: { status: "healthy" } },
     ]);
 
-    const reconciled = reconcilePiWebPluginLifecycle(desired, { status: "available", snapshot: runtime }, moduleUrl);
+    const reconciled = reconcilePiWebPluginLifecycle(desired, { status: "available", views: { daemon: runtime } }, moduleUrl);
 
     expect(reconciled.browserPlugins.map(({ plugin }) => plugin.id)).toEqual(["active-dual", "browser-on", "desired-off-active"]);
     expect(reconciled.browserPlugins.find(({ plugin }) => plugin.id === "active-dual")?.backendRevision).toBe("server-1");
@@ -82,7 +82,7 @@ describe("PI WEB plugin desired/active lifecycle reconciliation", () => {
       [{ code: "duplicate-id", source: "active-copy", message: "Duplicate PI WEB plugin id: conflicted", pluginId: "conflicted" }],
     );
 
-    const reconciled = reconcilePiWebPluginLifecycle(desired, { status: "available", snapshot: runtime }, moduleUrl, safeStart);
+    const reconciled = reconcilePiWebPluginLifecycle(desired, { status: "available", views: { daemon: runtime } }, moduleUrl, safeStart);
     const conflicted = plugin(reconciled, "conflicted");
 
     expect(reconciled.browserPlugins).toEqual([]);
@@ -100,13 +100,13 @@ describe("PI WEB plugin desired/active lifecycle reconciliation", () => {
     const desired = snapshot([entry("suppressed", { browser: "browser-1", server: "server-1" })]);
     const runtime = createWorkspaceProviderRuntimeSnapshot([], [], "none");
 
-    const reconciled = reconcilePiWebPluginLifecycle(desired, { status: "available", snapshot: runtime }, moduleUrl, "none");
+    const reconciled = reconcilePiWebPluginLifecycle(desired, { status: "available", views: { daemon: runtime } }, moduleUrl, "none");
 
     expect(reconciled.browserPlugins).toEqual([]);
     expect(plugin(reconciled, "suppressed").server).toMatchObject({ state: "disabled", restartRequired: false });
     expect(reconciled.response.serverRuntime).toMatchObject({ safeStart: "none", desiredSafeStart: "none", restartRequired: false });
 
-    const clearing = reconcilePiWebPluginLifecycle(desired, { status: "available", snapshot: runtime }, moduleUrl, "off");
+    const clearing = reconcilePiWebPluginLifecycle(desired, { status: "available", views: { daemon: runtime } }, moduleUrl, "off");
     expect(plugin(clearing, "suppressed").server).toMatchObject({ state: "disabled", restartRequired: true });
     expect(clearing.response.serverRuntime).toMatchObject({ safeStart: "none", desiredSafeStart: "off", restartRequired: true });
   });
@@ -128,17 +128,145 @@ describe("PI WEB plugin desired/active lifecycle reconciliation", () => {
     expect(reconciled.response.serverRuntime).toMatchObject({ status });
     expect(typeof reconciled.response.serverRuntime.message).toBe("string");
   });
+
+  it("judges a web-addressed plugin by the web snapshot even while the daemon is unavailable", () => {
+    const desired = snapshot([
+      entry("web-hosted", { browser: "browser-1", server: "server-1", runs: "web" }),
+      entry("daemon-hosted", { browser: "browser-1", server: "server-1" }),
+    ]);
+    const webRuntime = createWorkspaceProviderRuntimeSnapshot(
+      [record("web-hosted", "active")],
+      [{ pluginId: "web-hosted", health: { status: "healthy" } }],
+    );
+
+    const reconciled = reconcilePiWebPluginLifecycle(
+      desired,
+      { status: "unavailable", message: "connect ECONNREFUSED", views: { web: webRuntime } },
+      moduleUrl,
+    );
+
+    expect(plugin(reconciled, "web-hosted").server).toMatchObject({ state: "active", restartRequired: false });
+    expect(plugin(reconciled, "web-hosted").server?.activeRevision).toBe("server-1");
+    expect(plugin(reconciled, "daemon-hosted").server).toMatchObject({ state: "unknown" });
+    expect(reconciled.response.serverRuntime).toMatchObject({ status: "unavailable" });
+    expect(reconciled.browserPlugins.map(({ plugin }) => plugin.id)).toEqual(["web-hosted"]);
+  });
+
+  it("reports a web-addressed plugin restart-required against the web snapshot alone", () => {
+    const desired = snapshot([
+      entry("web-stale", { browser: "browser-1", server: "server-2", runs: "both" }),
+      entry("daemon-current", { browser: "browser-1", server: "server-1" }),
+    ]);
+    const daemonRuntime = createWorkspaceProviderRuntimeSnapshot(
+      [record("daemon-current", "active"), record("web-stale", "active", { moduleRevision: "server-2" })],
+      [],
+    );
+    const webRuntime = createWorkspaceProviderRuntimeSnapshot(
+      [record("web-stale", "active", { moduleRevision: "server-1" })],
+      [],
+    );
+
+    const reconciled = reconcilePiWebPluginLifecycle(
+      desired,
+      { status: "available", views: { daemon: daemonRuntime, web: webRuntime } },
+      moduleUrl,
+    );
+
+    expect(plugin(reconciled, "web-stale").server).toMatchObject({ state: "active", staleRevision: true, restartRequired: true });
+    expect(plugin(reconciled, "daemon-current").server).toMatchObject({ state: "active", restartRequired: false });
+    expect(reconciled.response.serverRuntime).toMatchObject({ status: "available", restartRequired: true });
+  });
+
+  it("treats a safe-start mismatch in either process as restart-required", () => {
+    const desired = snapshot([entry("web-hosted", { browser: "browser-1", server: "server-1", runs: "web" })]);
+    const daemonRuntime = createWorkspaceProviderRuntimeSnapshot([], [], "none");
+    const webRuntime = createWorkspaceProviderRuntimeSnapshot([], [], "bundled-only");
+
+    const reconciled = reconcilePiWebPluginLifecycle(
+      desired,
+      { status: "available", views: { daemon: daemonRuntime, web: webRuntime } },
+      moduleUrl,
+      "none",
+    );
+
+    expect(reconciled.response.serverRuntime).toMatchObject({ safeStart: "none", restartRequired: true });
+  });
+
+  it("does not report restart-required when both processes already apply the desired safe start", () => {
+    const desired = snapshot([entry("web-hosted", { browser: "browser-1", server: "server-1", runs: "web" })]);
+    const daemonRuntime = createWorkspaceProviderRuntimeSnapshot([], [], "none");
+    const webRuntime = createWorkspaceProviderRuntimeSnapshot([], [], "none");
+
+    const reconciled = reconcilePiWebPluginLifecycle(
+      desired,
+      { status: "available", views: { daemon: daemonRuntime, web: webRuntime } },
+      moduleUrl,
+      "none",
+    );
+
+    expect(reconciled.response.serverRuntime).toMatchObject({ safeStart: "none", restartRequired: false });
+  });
+
+  it("requires both processes to be current before publishing a both-addressed browser module", () => {
+    const desired = snapshot([entry("dual", { browser: "browser-1", server: "server-1", runs: "both" })]);
+    const freshDaemon = createWorkspaceProviderRuntimeSnapshot(
+      [record("dual", "active")],
+      [{ pluginId: "dual", health: { status: "healthy" } }],
+    );
+    const freshWeb = createWorkspaceProviderRuntimeSnapshot(
+      [record("dual", "active")],
+      [{ pluginId: "dual", health: { status: "healthy" } }],
+    );
+    const staleDaemon = createWorkspaceProviderRuntimeSnapshot(
+      [record("dual", "active", { moduleRevision: "server-0" })],
+      [{ pluginId: "dual", health: { status: "healthy" } }],
+    );
+    const failedWeb = createWorkspaceProviderRuntimeSnapshot(
+      [record("dual", "failed", { phase: "start", message: "startup exploded" })],
+      [],
+    );
+
+    const bothFresh = reconcilePiWebPluginLifecycle(desired, { status: "available", views: { daemon: freshDaemon, web: freshWeb } }, moduleUrl);
+    expect(plugin(bothFresh, "dual").server).toMatchObject({ state: "active", staleRevision: false, restartRequired: false });
+    expect(bothFresh.browserPlugins.map(({ plugin }) => plugin.id)).toEqual(["dual"]);
+
+    const daemonStale = reconcilePiWebPluginLifecycle(desired, { status: "available", views: { daemon: staleDaemon, web: freshWeb } }, moduleUrl);
+    expect(plugin(daemonStale, "dual").server).toMatchObject({ state: "active", staleRevision: true, restartRequired: true });
+    expect(daemonStale.browserPlugins).toEqual([]);
+
+    const daemonMissing = reconcilePiWebPluginLifecycle(desired, { status: "available", views: { web: freshWeb } }, moduleUrl);
+    expect(plugin(daemonMissing, "dual").server).toMatchObject({ state: "missing", restartRequired: true });
+    expect(plugin(daemonMissing, "dual").server?.activeRevision).toBe("server-1");
+
+    const webFailed = reconcilePiWebPluginLifecycle(desired, { status: "available", views: { daemon: freshDaemon, web: failedWeb } }, moduleUrl);
+    expect(plugin(webFailed, "dual").server).toMatchObject({ state: "failed", restartRequired: true, message: "startup exploded" });
+    expect(webFailed.browserPlugins).toEqual([]);
+  });
+
+  it("renders a web-only record of a since-removed plugin as undiscovered", () => {
+    const desired = snapshot([]);
+    const webRuntime = createWorkspaceProviderRuntimeSnapshot(
+      [record("gone", "active", { runs: "web" })],
+      [{ pluginId: "gone", health: { status: "healthy" } }],
+    );
+
+    const reconciled = reconcilePiWebPluginLifecycle(desired, { status: "available", views: { web: webRuntime } }, moduleUrl);
+
+    expect(plugin(reconciled, "gone")).toMatchObject({ id: "gone", discovered: false, enabled: false });
+    expect(plugin(reconciled, "gone").server).toMatchObject({ state: "active", restartRequired: true });
+  });
 });
 
 function entry(
   id: string,
-  options: { browser?: string; server?: string; enabled?: boolean; settingsRevision?: string } = {},
+  options: { browser?: string; server?: string; enabled?: boolean; settingsRevision?: string; runs?: "daemon" | "web" | "both" } = {},
 ): PiWebPluginCatalogEntry {
   return {
     id,
     packageRoot: `/plugins/${id}`,
     ...(options.browser === undefined ? {} : { browserModule: { path: "browser.js", filePath: `/plugins/${id}/browser.js`, revision: options.browser } }),
     ...(options.server === undefined ? {} : { serverModule: { path: "server.js", filePath: `/plugins/${id}/server.js`, revision: options.server } }),
+    ...(options.runs === undefined ? {} : { runs: options.runs }),
     source: "fixture",
     scope: "local",
     machineSpecific: options.browser !== undefined && options.server !== undefined,

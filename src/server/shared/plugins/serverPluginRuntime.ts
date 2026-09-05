@@ -31,6 +31,7 @@ import type {
   PiWebPluginCatalogDiagnostic,
   PiWebPluginCatalogEntry,
   PiWebPluginCatalogSnapshot,
+  PiWebPluginRuns,
 } from "../piWebPluginCatalog.js";
 import { createServerPluginExecFile } from "./serverPluginExec.js";
 
@@ -41,6 +42,8 @@ export interface ServerPluginRuntimeRecord {
   pluginId: string;
   source: string;
   scope: PiWebPluginScope;
+  /** Process address from the catalog declaration; absent means daemon. */
+  runs?: PiWebPluginRuns;
   moduleRevision: string;
   browserRevision?: string;
   settingsRevision: string;
@@ -381,6 +384,7 @@ function recordFor(
     pluginId: entry.id,
     source: entry.source,
     scope: entry.scope,
+    ...(entry.runs === undefined ? {} : { runs: entry.runs }),
     moduleRevision: requireServerModule(entry).revision,
     ...(entry.browserModule === undefined ? {} : { browserRevision: entry.browserModule.revision }),
     settingsRevision: entry.settingsRevision,

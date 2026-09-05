@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { Readable } from "node:stream";
 import type { ServerPluginReply, ServerPluginRouteContribution } from "../../../server-plugin-api.js";
+import { requestCancellation } from "../../shared/requestCancellation.js";
 import type { ServerPluginRuntime } from "../../shared/plugins/serverPluginRuntime.js";
 
 /**
@@ -53,7 +54,7 @@ function toFastifyHandler(route: ServerPluginRouteContribution): (request: Fasti
         { signal: cancellation.signal },
       );
     } finally {
-      cancellation.done();
+      cancellation.dispose();
     }
   };
 }
@@ -69,24 +70,6 @@ function stringRecord(value: unknown): Record<string, string> {
     if (typeof entry === "string") values[key] = entry;
   }
   return values;
-}
-
-function requestCancellation(request: FastifyRequest, reply: FastifyLikeReply): { signal: AbortSignal; done: () => void } {
-  const controller = new AbortController();
-  const onClose = (): void => {
-    if (!reply.raw.writableEnded) controller.abort();
-  };
-  const onFinished = (): void => {
-    request.raw.off("close", onClose);
-  };
-  request.raw.on("close", onClose);
-  reply.raw.on("finish", onFinished);
-  return {
-    signal: controller.signal,
-    done: () => {
-      onFinished();
-    },
-  };
 }
 
 function pluginReply(reply: FastifyLikeReply): ServerPluginReply {

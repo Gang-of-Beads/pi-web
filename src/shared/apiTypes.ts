@@ -264,7 +264,7 @@ export interface PiWebPluginRecoveryCommands {
 
 export interface PiWebPluginRuntimeInfo {
   status: PiWebPluginRuntimeStatus;
-  /** Safe-start level active in sessiond; absence means sessiond started normally. */
+  /** Safe-start level active in either process; absence means no process is in recovery. */
   safeStart?: PiWebPluginSafeStart;
   /** Current offline recovery config, including explicit `off` when known. */
   desiredSafeStart?: PiWebPluginSafeStart | "off";

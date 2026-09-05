@@ -126,6 +126,10 @@ export type PiWebPluginRuns = "daemon" | "web" | "both";
  * process. Entries without a declaration are daemon-owned - today's behavior
  * unchanged - so an old plugin package activates exactly where it always did.
  */
+export function pluginRunsOnWeb(runs: PiWebPluginRuns | undefined): boolean {
+  return runs === "web" || runs === "both";
+}
+
 export function filterCatalogEntriesByRuns(plugins: readonly PiWebPluginCatalogEntry[], runs: readonly PiWebPluginRuns[]): PiWebPluginCatalogEntry[] {
   return plugins.filter((plugin) => {
     const addressed = plugin.runs ?? "daemon";
