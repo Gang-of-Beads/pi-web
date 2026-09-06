@@ -647,6 +647,7 @@ export class PromptEditor extends LitElement {
   private async addAttachmentFiles(files: File[]) {
     this.attachmentError = undefined;
     this.attachingCount += 1;
+    const scopeKey = machineSessionKey(this.machineId, this.sessionId ?? "");
     const capture = capturePromptAttachments(files, readFileAsBase64);
     this.attachingSettled = this.attachingSettled
       .then(async () => { await capture; })
@@ -657,6 +658,10 @@ export class PromptEditor extends LitElement {
     } finally {
       this.attachingCount -= 1;
     }
+    // Capture is async: a session switch while it runs clears the composer
+    // per the willUpdate rule, and the late result must not re-enter the
+    // session it no longer belongs to.
+    if (machineSessionKey(this.machineId, this.sessionId ?? "") !== scopeKey) return;
     const { attachments, error } = captured;
     if (attachments.length > 0) {
       this.attachments = [...this.attachments, ...attachments.map((attachment) => ({ id: `attachment-${String(++this.attachmentSeq)}`, ...attachment }))];
@@ -1099,6 +1104,7 @@ export class PromptEditor extends LitElement {
     restorable: { text: string; attachments: PendingAttachment[] },
   ): Promise<void> {
     const outboxKey = machineSessionKey(this.machineId, this.sessionId ?? "");
+    const scopeKey = outboxKey;
     const outboxId = newClientMessageId();
     if (outboxKey !== "") {
       savePendingPrompt(outboxKey, { text, ...(behavior === undefined ? {} : { behavior }), clientMessageId: outboxId, ...(attachments === undefined || attachments.length === 0 ? {} : { attachments }), at: new Date().toISOString() });
@@ -1130,6 +1136,11 @@ export class PromptEditor extends LitElement {
     }
     const current = this.editor?.state.doc.toString() ?? this.draft;
     if (current.trim() !== "") return;
+    // The send is async: a session switch while it runs hands the failure
+    // restore to the wrong composer, writing session A's text and images
+    // into session B's draft. The outbox bookkeeping above stays keyed to
+    // the sending session; only the visible restore is scope-guarded.
+    if (machineSessionKey(this.machineId, this.sessionId ?? "") !== scopeKey) return;
     this.attachments = restorable.attachments;
     this.replaceText(restorable.text);
   }

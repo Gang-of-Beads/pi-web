@@ -227,8 +227,11 @@ export class AppPanelEdgeControl extends LitElement {
       :host([side="navigation"]) { grid-row: 1 / 3; }
       :host([side="workspace"]) { display: none; }
     }
-    @media (max-width: 760px) {
-      :host([side="navigation"]) { display: none; }
+    /* The shell keys its phone layout to coarse-or-mobile, so the edge
+       controls must hide on the same query: a landscape phone is wider than
+       760px yet has no panel column for a control to sit beside. */
+    @media (pointer: coarse), (max-width: 760px) {
+      :host { display: none; }
     }
   `];
 }

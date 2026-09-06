@@ -91,6 +91,43 @@ describe("SessionList bulk selection toolbar", () => {
     expect(checkboxes(list)).toHaveLength(0);
   });
 
+  it("selects only the rows on screen when a search is active", async () => {
+    const filler = Array.from({ length: 6 }, (_, index) => session(`filler-${String(index)}`));
+    const list = await renderSessionList([session("deploy-api"), session("deploy-web"), ...filler]);
+    await typeSearch(list, "deploy");
+
+    currentSelectionToggle(list).click();
+    await list.updateComplete;
+    toolbarButton(list, "Select visible")?.click();
+    await list.updateComplete;
+
+    expect(checkedBoxes(list)).toHaveLength(2);
+    expect(toolbarButton(list, "Clear selected (2)")).not.toBeNull();
+  });
+
+  it("offers no selection entry when the search leaves nothing visible", async () => {
+    const filler = Array.from({ length: 6 }, (_, index) => session(`filler-${String(index)}`));
+    const list = await renderSessionList([session("a"), session("b"), ...filler]);
+    await typeSearch(list, "nothing-matches-this");
+
+    expect(currentSelectionToggleOrNull(list)).toBeNull();
+  });
+
+  it("shows a collapsed subtree flat during selection instead of hiding its rows", async () => {
+    const parent = session("parent");
+    const child = session("child", { parentSessionPath: parent.path });
+    const list = await renderSessionList([parent, child]);
+
+    subtreeToggle(list)?.click();
+    await list.updateComplete;
+    expect(rowTexts(list).some((text) => text.includes("child"))).toBe(false);
+
+    currentSelectionToggle(list).click();
+    await list.updateComplete;
+
+    expect(rowTexts(list).some((text) => text.includes("child"))).toBe(true);
+  });
+
   it("offers the same toggle in the archived scope", async () => {
     const archivedA = session("archived-a", { archived: true, archivedAt: "2026-06-09T00:00:00.000Z" });
     const archivedB = session("archived-b", { archived: true, archivedAt: "2026-06-09T00:00:00.000Z" });
@@ -128,6 +165,25 @@ function currentSelectionToggle(list: SessionList): HTMLButtonElement {
   return button;
 }
 
+function currentSelectionToggleOrNull(list: SessionList): HTMLButtonElement | null {
+  return list.shadowRoot?.querySelector<HTMLButtonElement>("h2:not(.subheading) .bulk-select-entry") ?? null;
+}
+
+async function typeSearch(list: SessionList, query: string): Promise<void> {
+  const input = list.shadowRoot?.querySelector<HTMLInputElement>(".session-search-input");
+  if (input === null || input === undefined) throw new Error("search input missing");
+  input.value = query;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  await list.updateComplete;
+}
+
+function subtreeToggle(list: SessionList): HTMLButtonElement | null {
+  return list.shadowRoot?.querySelector<HTMLButtonElement>("button.subtree-toggle") ?? null;
+}
+
+function rowTexts(list: SessionList): string[] {
+  return [...(list.shadowRoot?.querySelectorAll(".action-row") ?? [])].map((row) => row.textContent || "");
+}
 function archivedSelectionToggle(list: SessionList): HTMLButtonElement {
   const button = list.shadowRoot?.querySelector<HTMLButtonElement>("h2.subheading .bulk-select-entry");
   if (button === null || button === undefined) throw new Error("Expected the archived selection toggle");

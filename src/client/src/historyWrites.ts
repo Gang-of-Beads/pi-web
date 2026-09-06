@@ -24,6 +24,13 @@ export function notePlaceholderFrame(): void { placeholderOutstanding = true; }
 /** The back gesture consumed the frame, so there is nothing left to take. */
 export function clearPlaceholderFrame(): void { placeholderOutstanding = false; }
 
+/**
+ * Whether a modal layer's placeholder frame is still on the history stack.
+ * A layer closed by its own cancel leaves the frame behind on purpose, so a
+ * caller about to `history.back()` must not assume the next frame is its own.
+ */
+export function placeholderFrameOutstanding(): boolean { return placeholderOutstanding; }
+
 /** Write the URL, keeping the pieces of one action to a single entry. */
 export function writeRouteUrl(url: string, replace: boolean, now: number = Date.now(), forcePush = false): void {
   const mode = replace ? "replace" : forcePush && !placeholderOutstanding ? "push" : historyWriteMode({ lastWriteAt, now, placeholderOutstanding });

@@ -16,6 +16,8 @@ export class AppContextBar extends LitElement {
   @property({ type: Boolean }) isWorking = false;
   /** Whether the collapsible panel is currently presented. */
   @property({ type: Boolean }) panelOpen = false;
+  /** Hidden when the panel is the whole view (phone with no session): a toggle would advertise closing the only surface. */
+  @property({ type: Boolean }) panelToggleHidden = false;
   @property({ attribute: false }) onTogglePanel?: () => void;
   /** Opens the quick switcher: the one pointer path to switching sessions. */
   @property({ attribute: false }) onQuickSwitch?: () => void;
@@ -23,6 +25,7 @@ export class AppContextBar extends LitElement {
   override render() {
     return html`
       <nav class="context-bar" aria-label="Current session">
+        ${this.panelToggleHidden ? null : html`
         <button
           type="button"
           class="panel-toggle"
@@ -35,6 +38,7 @@ export class AppContextBar extends LitElement {
             <path d="M4 6h16M4 12h16M4 18h16"></path>
           </svg>
         </button>
+        `}
         ${this.session === undefined
           ? html`<button
               type="button"

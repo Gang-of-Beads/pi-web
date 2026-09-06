@@ -161,7 +161,11 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     const currentRows = filterSessionRows(allCurrentRows, this.searchQuery);
     // Searching reveals descendants regardless of their subtree's collapse
     // state, so matches stay visible without an extra tap on the chevron.
-    const visibleCurrentRows = searching ? currentRows : hideCollapsedSubtreeRows(currentRows, this.collapsedSubtreeRoots, (row) => row.session.path);
+    // Selection mode shows the same flat tree: the rows a bulk action may
+    // select are the rows on screen.
+    const selecting = this.selectionScopes.has("current");
+    const visibleCurrentRows = searching || selecting ? currentRows : hideCollapsedSubtreeRows(currentRows, this.collapsedSubtreeRoots, (row) => row.session.path);
+    const selectableVisibleCurrent = visibleCurrentRows.map((row) => row.session).filter((session) => sessionSelectionScope(session) === "current");
     const archivedRows = filterSessionRows(allArchivedRows, this.searchQuery);
     // While searching, archived matches are the whole point of the query, so
     // they are revealed without forcing a second tap on the section toggle.
@@ -170,11 +174,11 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
 
     return html`
       <section>
-        ${this.renderHeading(allCurrentRows.length + allArchivedRows.length, currentSelectableSessions, unreadCount)}
+        ${this.renderHeading(allCurrentRows.length + allArchivedRows.length, selectableVisibleCurrent, unreadCount)}
         ${this.collapsed ? null : html`
           <div class="list-body">
             ${this.renderSearch(allCurrentRows.length + allArchivedRows.length)}
-            ${this.renderCurrentSelectionToolbar(currentSelectableSessions)}
+            ${this.renderCurrentSelectionToolbar(selectableVisibleCurrent)}
             ${this.startingCount > 0 ? this.renderStartingSession() : null}
             ${visibleCurrentRows.map((row) => this.renderSession(row, descendantCounts.get(row.session.id) ?? 0, "current"))}
             ${archivedRows.length > 0 ? html`
@@ -732,8 +736,11 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .action-row.is-child .action-main { padding-left: calc(38px + var(--depth, 0) * 16px); }
     .subtree-toggle { cursor: pointer; }
     @media (hover: hover) { .subtree-toggle:hover { border-color: var(--pi-border-strong, var(--pi-accent)); color: var(--pi-text); } }
-    @media (pointer: coarse) { .subtree-toggle { top: 0; width: 36px; height: 44px; } }
-    .subtree-toggle.inert { visibility: hidden; }
+    @media (pointer: coarse) {
+      .subtree-toggle { top: 0; width: 36px; height: 44px; }
+      .action-row.has-subtree-toggle .action-main, .action-row.is-child .action-main { padding-left: calc(44px + var(--depth, 0) * 16px); }
+    }
+    .subtree-toggle.inert { cursor: default; }
     .subtree-chevron { display: inline-block; transition: transform 120ms ease; }
     .subtree-chevron.collapsed { transform: rotate(-90deg); }
     /* Search sits inside the scrolling body but stays pinned, so filtering a

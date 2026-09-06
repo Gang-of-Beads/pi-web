@@ -33,12 +33,13 @@ const FILES_ROWS = `(function(){
   var n=0;var visit=function(root){var kids=root.querySelectorAll("*");for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)visit(kids[i].shadowRoot);}var p=root.querySelector("pi-files-panel");if(p&&p.shadowRoot)n+=p.shadowRoot.querySelectorAll("button.row").length;};
   visit(document);return {ok:n>0,rows:n};
 })()`;
-const PANEL_CONTENT = (label) => `(function(){
+const PANEL_CONTENT = (toolPrefix) => `(function(){
   var found=null;var visit=function(root){var kids=root.querySelectorAll("*");for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)visit(kids[i].shadowRoot);}if(found)return;var hit=root.querySelector("workspace-panel");if(hit)found=hit;};
   visit(document);
-  if(!found)return {ok:false,panel:false};
-  var text=found.shadowRoot?found.shadowRoot.textContent:found.textContent;
-  return {ok:text.indexOf(${JSON.stringify(label)})>=0&&text.trim().length>60,title:text.trim().slice(0,50)};
+  if(!found||!found.shadowRoot)return {ok:false,panel:false};
+  var content=found.shadowRoot.querySelector(".panel-content");
+  var chars=content?content.textContent.trim().length:0;
+  return {ok:(found.tool||"").indexOf(${JSON.stringify(toolPrefix)})===0&&chars>40,tool:found.tool,chars:chars};
 })()`;
 const TERMINAL = `(function(){
   var found=null;var visit=function(root){var kids=root.querySelectorAll("*");for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)visit(kids[i].shadowRoot);}if(!found){var hit=root.querySelector("terminal-panel");if(hit)found=hit;}};
@@ -59,13 +60,13 @@ const GOALS_TAB = `(function(){
   extra.click();
   return {ok:true,chat:true,tab:extra.id,pluginTabs:count};
 })()`;
-const GOALS_BODY = `(function(){
+const GOALS_BODY = (tabId) => `(function(){
   var found=null;var visit=function(root){var kids=root.querySelectorAll("*");for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)visit(kids[i].shadowRoot);}if(!found){var hit=root.querySelector("chat-view");if(hit)found=hit;}};
   visit(document);
   if(!found||!found.shadowRoot)return {ok:false};
-  var panels=found.shadowRoot.querySelectorAll("[id^=drawer-panel-]");
-  var ids=[];for(var i=0;i<panels.length;i++)ids.push(panels[i].id);
-  return {ok:ids.length>0,ids:ids};
+  var wanted=${JSON.stringify(tabId)}.replace("drawer-tab-","drawer-panel-");
+  var panel=found.shadowRoot.querySelector("[id='"+wanted+"']");
+  return {ok:panel!==null,wanted:wanted};
 })()`;
 const VOICE = `(function(){
   var found=null;var visit=function(root){var kids=root.querySelectorAll("*");for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)visit(kids[i].shadowRoot);}if(!found){var hit=root.querySelector("prompt-editor");if(hit)found=hit;}};
@@ -100,12 +101,12 @@ console.log("== phone: workspace tool panels");
 
   const tools = [
     ["Files", FILES_ROWS],
-    ["Git", PANEL_CONTENT("Git")],
+    ["Git", PANEL_CONTENT("git:")],
     ["Terminal", TERMINAL],
     ["Tasks", HAS("pi-web-workspace-tasks-panel")],
     ["Relays", HAS("pi-web-relays-panel")],
-    ["Updates", PANEL_CONTENT("Updates")],
-    ["Info", PANEL_CONTENT("Info")],
+    ["Updates", PANEL_CONTENT("updates")],
+    ["Info", PANEL_CONTENT("info")],
   ];
   for (const [label, js] of tools) {
     await tapByPrefix(page, label);
@@ -135,7 +136,7 @@ console.log("== desktop: goals, voice, themes");
 
   const goalsTab = await poll(page, GOALS_TAB);
   record("desktop: goals drawer tab renders and selects", goalsTab && goalsTab.ok === true, goalsTab);
-  const goalsBody = await poll(page, GOALS_BODY);
+  const goalsBody = await poll(page, GOALS_BODY(goalsTab && goalsTab.tab ? goalsTab.tab : ""));
   record("desktop: goals drawer body mounts", goalsBody && goalsBody.ok === true, goalsBody);
   console.log("  goals detail:", JSON.stringify({ tab: goalsTab, body: goalsBody }));
 
