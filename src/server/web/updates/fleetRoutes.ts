@@ -1,6 +1,5 @@
 import type { FastifyInstance } from "fastify";
 import type { Machine, MachineHealth, MachineRuntime, PiWebFleetOperation, PiWebFleetReport, PiWebFleetTargetOutcome, PiWebFleetTargetReport } from "../../../shared/apiTypes.js";
-import { MachineService } from "../machines/machineService.js";
 import type { RestartService } from "./restartRoutes.js";
 import type { SelfUpdateService } from "./selfUpdateRoutes.js";
 
@@ -42,7 +41,6 @@ export interface FleetMachineClient {
 }
 
 export interface FleetRouteDeps {
-  machines?: FleetMachines;
   restart?: RestartService;
   selfUpdate?: SelfUpdateService;
   /** Identity of the server running the fan-out, for the report header. */
@@ -54,9 +52,7 @@ const REMOTE_PATHS: Record<PiWebFleetOperation, string> = {
   update: "/api/pi-web/update/apply",
 };
 
-export function registerFleetRoutes(app: FastifyInstance, deps: FleetRouteDeps = {}): void {
-  const machines = deps.machines ?? new MachineService();
-
+export function registerFleetRoutes(app: FastifyInstance, machines: FleetMachines, deps: FleetRouteDeps): void {
   app.get("/api/pi-web/fleet", async () => await fleetReport(machines, deps));
 
   app.post<{ Body: { operation?: unknown; machineIds?: unknown } | undefined }>("/api/pi-web/fleet/run", async (request, reply) => {

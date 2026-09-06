@@ -3,8 +3,9 @@ import { machineScopedPluginId, parseMachineScopedPluginId, type MachineScopedPl
 import { PI_WEB_PLUGIN_LIFECYCLE_VERSION } from "../../../shared/apiTypes.js";
 import { isPiWebPluginId } from "../../../shared/pluginIds.js";
 import { requirePluginBackendRevision } from "../../../shared/pluginBackendProtocol.js";
-import { RemoteMachineRequestError, type MachineClient } from "./machineClient.js";
-import { MachineService } from "./machineService.js";
+import type { MachineClient } from "../../../server-plugin-api.js";
+import { RemoteMachineRequestError } from "../../../server-plugin-api.js";
+import type { MachineRegistryFace } from "./localMachineRegistry.js";
 
 interface RemotePluginManifestEntry {
   id: string;
@@ -36,7 +37,7 @@ const SAFE_RESPONSE_HEADERS = new Set([
   "x-content-type-options",
 ]);
 
-export function registerMachinePluginProxyRoutes(app: FastifyInstance, machines: MachinePluginProxyMachines = new MachineService()): void {
+export function registerMachinePluginProxyRoutes(app: FastifyInstance, machines: MachineRegistryFace): void {
   app.get<{ Params: { machineId: string } }>("/api/machines/:machineId/pi-web-plugins/manifest.json", async (request, reply) => {
     if (request.params.machineId === "local") return { lifecycleVersion: PI_WEB_PLUGIN_LIFECYCLE_VERSION, plugins: [] };
 

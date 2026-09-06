@@ -118,8 +118,7 @@ interface Options {
 async function buildApp(options: Options = {}): Promise<FastifyInstance> {
   const instance = Fastify();
   const machines = fakeMachineService(options);
-  registerFleetRoutes(instance, {
-    machines,
+  registerFleetRoutes(instance, machines, {
     ...(options.withRestartService === false ? {} : { restart: { restartSupported: () => true, restart: options.restart ?? (() => Promise.resolve()) } }),
     selfUpdate: { status: () => Promise.reject(new Error("unused")), apply: () => Promise.resolve() },
   });

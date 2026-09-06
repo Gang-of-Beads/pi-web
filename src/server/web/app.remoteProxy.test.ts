@@ -1,6 +1,6 @@
 import { Readable } from "node:stream";
 import { describe, expect, it, vi, type MockedFunction } from "vitest";
-import { RemoteMachineRequestError, type MachineClient } from "./machines/machineClient.js";
+import { RemoteMachineRequestError, type MachineClient } from "../../server-plugin-api.js";
 import { PI_PACKAGE_MUTATION_PROXY_TIMEOUT_MS, PLUGIN_BACKEND_FEDERATION_TIMEOUT_MS, SESSION_TREE_FORK_PROXY_TIMEOUT_MS, SESSION_TREE_NAVIGATION_PROXY_TIMEOUT_MS, WORKSPACE_REMOVAL_FEDERATION_TIMEOUT_MS } from "../../shared/federatedRoutes.js";
 import { PLUGIN_BACKEND_RESPONSE_BODY_MAX_BYTES } from "../../shared/pluginBackendProtocol.js";
 import { MAX_INLINE_PREVIEW_BYTES } from "../../shared/workspaceFiles.js";

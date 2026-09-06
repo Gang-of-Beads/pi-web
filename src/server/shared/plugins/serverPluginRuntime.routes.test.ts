@@ -87,7 +87,7 @@ describe("route contributions", () => {
   });
 
   it("refuses a route whose method is not one of the mounted verbs", async () => {
-    const { runtime, log } = await runtimeWith({ routes: [{ method: "PATCH", path: "/x", handle: () => Promise.resolve(undefined) }] });
+    const { runtime, log } = await runtimeWith({ routes: [{ method: "HEAD", path: "/x", handle: () => Promise.resolve(undefined) }] });
     expect(log.warn).toHaveBeenCalled();
     expect(runtime.healthRecords().find((record) => record.pluginId === "workspaces")?.state).toBe("incompatible");
   });

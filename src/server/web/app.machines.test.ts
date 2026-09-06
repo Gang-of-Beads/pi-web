@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { MachineClient } from "./machines/machineClient.js";
+import type { MachineClient } from "../../server-plugin-api.js";
 import type { PiWebConfigResponse, PiWebConfigValues } from "../../shared/apiTypes.js";
 import { appTestContext, configFromMachineConfigWriteBody, fakeRemoteClient, fullPiWebConfig, piWebConfigResponse, registerAppTestHooks, selectedMachinePiWebConfig } from "./app.testSupport.js";
 

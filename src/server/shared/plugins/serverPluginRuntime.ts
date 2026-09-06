@@ -497,7 +497,7 @@ function parseActivation(value: unknown): ServerPluginActivation {
   });
 }
 
-const ROUTE_METHODS = new Set<string>(["GET", "POST", "PUT", "DELETE"]);
+const ROUTE_METHODS = new Set<string>(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 
 /**
  * Routes are frozen behind their declared shape, the same law as provider

@@ -30,6 +30,7 @@ function mountOne(app: FastifyInstance, pluginId: string, route: ServerPluginRou
     GET: () => app.get(mountedPath, toFastifyHandler(route)),
     POST: () => app.post(mountedPath, toFastifyHandler(route)),
     PUT: () => app.put(mountedPath, toFastifyHandler(route)),
+    PATCH: () => app.patch(mountedPath, toFastifyHandler(route)),
     DELETE: () => app.delete(mountedPath, toFastifyHandler(route)),
   }[route.method];
   try {

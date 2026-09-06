@@ -148,7 +148,7 @@ export type { FileSuggestion } from "./shared/pluginApiTypes.js";
  * colliding route is refused rather than answered.
  */
 export interface ServerPluginRouteContribution {
-  method: "GET" | "POST" | "PUT" | "DELETE";
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   path: string;
   handle(request: ServerPluginRequest, reply: ServerPluginReply, context: ServerPluginRouteContext): Promise<void>;
 }
@@ -197,6 +197,12 @@ export interface ServerPluginHostPorts {
   machinesStorePath?: () => string;
   /** The local runtime the machines plugin reads for local health and runtime. */
   localRuntime?: () => Promise<PiWebRuntimeResponse>;
+  /**
+   * A machine registry the host already owns. When present the plugin
+   * contributes its management routes over this registry instead of building
+   * its own, so a host-side registry and the HTTP surface stay one source.
+   */
+  machineRegistry?: MachineRegistryContribution;
 }
 
 export interface WorkspacePathResolution {

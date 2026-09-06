@@ -6,12 +6,13 @@ import { Readable } from "node:stream";
 import type { FastifyInstance } from "fastify";
 import { afterEach, beforeEach } from "vitest";
 import { buildApp } from "./app.js";
-import { createServerPluginRuntime, type ServerPluginRuntime } from "../shared/plugins/serverPluginRuntime.js";
+import { createServerPluginRuntime, type ServerPluginModuleImporter, type ServerPluginRuntime } from "../shared/plugins/serverPluginRuntime.js";
+import type { PiWebPluginCatalogEntry } from "../shared/piWebPluginCatalog.js";
 import { ProjectService } from "../shared/projects/projectService.js";
 import { ProjectStore } from "../shared/storage/projectStore.js";
-import type { MachineClient } from "./machines/machineClient.js";
-import { MachineService } from "./machines/machineService.js";
-import { MachineStore } from "./machines/machineStore.js";
+import type { MachineClient } from "../../../server-plugin-api.js";
+import { MachineService } from "../../../pi-web-plugins/machines/server/machineService.js";
+import { MachineStore } from "../../../pi-web-plugins/machines/server/machineStore.js";
 import type { WorkspaceCatalog } from "../shared/workspaces/workspaceCatalog.js";
 import type { PiPackageService } from "./piPackageService.js";
 import type { SessionProxyDaemon } from "./sessionProxyRoutes.js";
@@ -34,6 +35,7 @@ let app: FastifyInstance | undefined;
 let tempDir: string | undefined;
 let projectDir: string | undefined;
 let remoteClient: MachineClient | undefined;
+let machines: MachineService | undefined;
 let sessionDaemonRequests: CapturedSessionDaemonRequest[] = [];
 let piPackageRequests: CapturedPiPackageRequest[] = [];
 let workspaceCatalog: AppTestWorkspaceCatalog | undefined;
@@ -94,25 +96,26 @@ export function registerAppTestHooks(): void {
     agentProfileResult = { status: "available", profile: appTestAgentProfile(join(tempDir, "agent")) };
     const projects = new ProjectService(new ProjectStore(join(tempDir, "projects.json")));
     workspaceCatalog = new AppTestWorkspaceCatalog(projects);
+    machines = new MachineService(new MachineStore(join(tempDir, "machines.json")), {
+      remoteClientFactory: () => {
+        if (remoteClient === undefined) throw new Error("No remote machine client configured");
+        return remoteClient;
+      },
+      now: () => new Date("2026-05-25T00:00:00.000Z"),
+      localRuntime: () => Promise.resolve({
+        packageName: "@gang-of-beads/pi-web",
+        generatedAt: "2026-05-25T00:00:00.000Z",
+        components: {
+          web: { component: "web", label: "PI WEB", available: true, capabilities: [] },
+          sessiond: { component: "sessiond", label: "PI WEB Session Daemon", available: true, capabilities: [] },
+        },
+        capabilities: [],
+      }),
+    });
     app = await buildApp({
       projects,
       workspaceCatalog,
-      machines: new MachineService(new MachineStore(join(tempDir, "machines.json")), {
-        remoteClientFactory: () => {
-          if (remoteClient === undefined) throw new Error("No remote machine client configured");
-          return remoteClient;
-        },
-        now: () => new Date("2026-05-25T00:00:00.000Z"),
-        localRuntime: () => Promise.resolve({
-          packageName: "@gang-of-beads/pi-web",
-          generatedAt: "2026-05-25T00:00:00.000Z",
-          components: {
-            web: { component: "web", label: "PI WEB", available: true, capabilities: [] },
-            sessiond: { component: "sessiond", label: "PI WEB Session Daemon", available: true, capabilities: [] },
-          },
-          capabilities: [],
-        }),
-      }),
+      machines,
       sessionDaemon: fakeSessionDaemon(),
       agentProfileProvider: { getActiveAgentProfile: () => Promise.resolve(agentProfileResult) },
       config: fakeConfigService(),
@@ -138,7 +141,7 @@ export function registerAppTestHooks(): void {
       },
       clientDist: false,
       logger: false,
-      serverPluginRuntime: await emptyServerPluginRuntime(),
+      serverPluginRuntime: await appTestServerPluginRuntime(),
     });
   });
 
@@ -152,6 +155,7 @@ export function registerAppTestHooks(): void {
     sessionDaemonRequests = [];
     piPackageRequests = [];
     workspaceCatalog = undefined;
+    machines = undefined;
     piWebConfig = {};
     agentProfileResult = { status: "invalid", error: "App test harness was not initialized" };
 
@@ -161,13 +165,41 @@ export function registerAppTestHooks(): void {
 }
 
 /**
- * Seam tests mount their own plugin routes with injected ports; an explicit
- * empty runtime keeps the ambient bundle activation from owning those paths.
+ * The bundled machines plugin is active in every app test, the way it is in
+ * every real deployment: the machine routes the HTTP contract pins come from
+ * the plugin, over a store scoped to the test's temp dir.
  */
-async function emptyServerPluginRuntime(): Promise<ServerPluginRuntime> {
+async function appTestServerPluginRuntime(): Promise<ServerPluginRuntime> {
+  if (machines === undefined) throw new Error("machines service must exist before the test runtime");
+  const testMachines: MachineService = machines;
+  const importer: ServerPluginModuleImporter = async () => await import("../../../pi-web-plugins/machines/server-plugin.js");
+  const machinesEntry: PiWebPluginCatalogEntry = {
+    id: "machines",
+    packageRoot: "/plugins/machines",
+    serverModule: { path: "server-plugin.js", filePath: "/plugins/machines/server-plugin.js", revision: "1" },
+    source: "fixture",
+    scope: "local",
+    machineSpecific: false,
+    enabled: true,
+    settings: {},
+    settingsRevision: "settings-1",
+  };
   return await createServerPluginRuntime({
-    catalog: { snapshot: () => Promise.resolve({ plugins: [], diagnostics: [] }) },
+    catalog: { snapshot: () => Promise.resolve({ plugins: [machinesEntry], diagnostics: [] }) },
+    importer,
     logger: { debug: () => undefined, info: () => undefined, warn: () => undefined, error: () => undefined },
+    hostPorts: {
+      machineRegistry: testMachines,
+      localRuntime: () => Promise.resolve({
+        packageName: "@gang-of-beads/pi-web",
+        generatedAt: "2026-05-25T00:00:00.000Z",
+        components: {
+          web: { component: "web", label: "PI WEB", stale: false, available: true, capabilities: [] },
+          sessiond: { component: "sessiond", label: "PI WEB Session Daemon", stale: false, available: true, capabilities: [] },
+        },
+        capabilities: [],
+      }),
+    },
   });
 }
 

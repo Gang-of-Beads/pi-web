@@ -2745,9 +2745,9 @@ export class PiWebApp extends LitElement {
       },
       openMachine: (machineId) => {
         const machine = machineById(machineId);
-        if (machine === undefined || machine.kind !== "remote") return;
-        if (machine.baseUrl === undefined) return;
-        window.open(machine.baseUrl, "_blank", "noopener,noreferrer");
+        const baseUrl = machine?.kind === "remote" ? machine.baseUrl : undefined;
+        if (baseUrl === undefined) return;
+        window.open(baseUrl, "_blank", "noopener,noreferrer");
       },
       toggleCollapsed: () => { this.navigationSections.toggle("machines"); },
       focusPreviousSection: () => undefined,

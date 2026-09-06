@@ -36,8 +36,6 @@ import {
   SessionDaemonActiveAgentProfileProvider,
   type ActiveAgentProfileProvider,
 } from "./activeAgentProfileProvider.js";
-import { MachineService } from "./machines/machineService.js";
-import { registerMachineRoutes } from "./machines/machineRoutes.js";
 import { registerFleetRoutes } from "./updates/fleetRoutes.js";
 import { createRestartService, registerRestartRoutes } from "./updates/restartRoutes.js";
 import { createSelfUpdateService, registerSelfUpdateRoutes } from "./updates/selfUpdateRoutes.js";
@@ -45,12 +43,13 @@ import { registerMachineProxyRoutes } from "./machines/machineProxyRoutes.js";
 import { registerPluginBackendProxyRoutes } from "./plugins/pluginBackendProxyRoutes.js";
 import { registerPluginOperationProxyRoutes } from "./plugins/pluginOperationProxyRoutes.js";
 import { proxyMachinePluginAsset, registerMachinePluginProxyRoutes } from "./machines/machinePluginProxyRoutes.js";
+import { localMachineFallback, type MachineRegistryFace } from "./machines/localMachineRegistry.js";
 import type { Project, WorkspaceEffectiveConfig, WorkspaceProviderResolution } from "../shared/types.js";
 
 export interface AppDependencies {
   projects?: ProjectService;
   workspaceCatalog?: WorkspaceCatalog;
-  machines?: MachineService;
+  machines?: MachineRegistryFace;
   sessionDaemon?: SessionProxyDaemon;
   agentProfileProvider?: ActiveAgentProfileProvider;
   piWebPlugins?: Pick<PiWebPluginService, "manifest" | "plugins" | "readAsset">;
@@ -220,9 +219,7 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
     },
     { onError: (error) => { app.log.warn({ err: error }, "failed to refresh PI WEB status cache"); } },
   );
-  const machines = deps.machines ?? new MachineService(undefined, {
-    localRuntime: () => getPiWebRuntime(sessionDaemon),
-  });
+
 
   app.get("/pi-web-plugins/manifest.json", async (_request, reply) => withProfileDependency(reply, () => piWebPlugins.manifest()));
 
@@ -255,17 +252,6 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
   const invalidatingConfigService = invalidatePiWebStatusOnWrite(configService, piWebStatusCache);
   registerConfigRoutes(app, invalidatingConfigService);
   registerLocalMachineConfigRoutes(app, invalidatingConfigService);
-  registerMachineRoutes(app, machines);
-  registerMachinePluginProxyRoutes(app, machines);
-  // One service instance per concern, shared by the single-machine routes and
-  // the fleet fan-out, so "update this machine" and "update every machine"
-  // cannot drift into two different local behaviours.
-  const restartService = createRestartService(app.log);
-  const selfUpdateService = createSelfUpdateService(app.log);
-  registerSelfUpdateRoutes(app, { selfUpdate: selfUpdateService });
-  registerRestartRoutes(app, { restart: restartService });
-  registerFleetRoutes(app, { machines, restart: restartService, selfUpdate: selfUpdateService });
-
   registerLocalProjectRoutes(app, projects, workspaces, "/api", { config: configService });
   registerLocalProjectRoutes(app, projects, workspaces, "/api/machines/local", { config: configService });
 
@@ -352,6 +338,20 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
     mountServerPluginRoutes(app, mounted, "/api");
     mountServerPluginRoutes(app, mounted, "/api/machines/local");
   }
+
+  const machines = deps.machines
+    ?? webServerPluginRuntime?.machineRegistry()?.registry
+    ?? localMachineFallback(() => getPiWebRuntime(sessionDaemon));
+
+  registerMachinePluginProxyRoutes(app, machines);
+  // One service instance per concern, shared by the single-machine routes and
+  // the fleet fan-out, so "update this machine" and "update every machine"
+  // cannot drift into two different local behaviours.
+  const restartService = createRestartService(app.log);
+  const selfUpdateService = createSelfUpdateService(app.log);
+  registerSelfUpdateRoutes(app, { selfUpdate: selfUpdateService });
+  registerRestartRoutes(app, { restart: restartService });
+  registerFleetRoutes(app, machines, { restart: restartService, selfUpdate: selfUpdateService });
 
   registerMachineProxyRoutes(app, machines);
 

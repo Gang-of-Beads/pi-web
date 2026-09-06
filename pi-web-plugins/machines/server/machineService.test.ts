@@ -2,10 +2,9 @@ import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PiWebRuntimeResponse } from "../../../shared/apiTypes.js";
-import type { MachineClient } from "./machineClient.js";
+import type { MachineClient, PiWebRuntimeResponse } from "@gang-of-beads/pi-web/server-plugin-api";
 import { MachineService } from "./machineService.js";
-import { MachineStore, machineStorePath } from "./machineStore.js";
+import { MachineStore, machineStorePathIn } from "./machineStore.js";
 
 let tempDir: string;
 let storePath: string;
@@ -14,7 +13,7 @@ let service: MachineService;
 beforeEach(async () => {
   tempDir = await mkdtemp(join(tmpdir(), "pi-web-machines-test-"));
   storePath = join(tempDir, "machines.json");
-  service = new MachineService(new MachineStore(storePath));
+  service = new MachineService(new MachineStore(storePath), { localRuntime: () => Promise.reject(new Error("unused")) });
 });
 
 afterEach(async () => {
@@ -154,6 +153,7 @@ describe("MachineService", () => {
     const requestJson = vi.fn<MachineClient["requestJson"]>(() => Promise.resolve({ statusCode: 200, headers: {}, body }));
     const factoryMachines: unknown[] = [];
     const remoteService = new MachineService(new MachineStore(storePath), {
+      localRuntime: () => Promise.reject(new Error("unused")),
       remoteClientFactory: (machine) => {
         factoryMachines.push(machine);
         return fakeRemoteClient({ requestJson });
@@ -210,6 +210,7 @@ describe("MachineService", () => {
     ];
     const requestJson = vi.fn<MachineClient["requestJson"]>(() => Promise.resolve({ statusCode: 200, headers: {}, body }));
     const remoteService = new MachineService(new MachineStore(storePath), {
+      localRuntime: () => Promise.reject(new Error("unused")),
       remoteClientFactory: () => fakeRemoteClient({ requestJson }),
       now: () => new Date("2026-05-25T00:00:00.000Z"),
     });
@@ -231,6 +232,7 @@ describe("MachineService", () => {
       .mockRejectedValueOnce(new Error("network down"))
       .mockResolvedValueOnce({ statusCode: 200, headers: {}, body });
     const remoteService = new MachineService(new MachineStore(storePath), {
+      localRuntime: () => Promise.reject(new Error("unused")),
       remoteClientFactory: () => fakeRemoteClient({ requestJson }),
       now: () => now,
       runtimeCacheTtlMs: 10_000,
@@ -268,7 +270,7 @@ describe("MachineService", () => {
     expect(renamed).toMatchObject({ id: "local", name: "My Dev Box", kind: "local" });
 
     // The alias persists across service instances (same store file).
-    const otherService = new MachineService(new MachineStore(storePath));
+    const otherService = new MachineService(new MachineStore(storePath), { localRuntime: () => Promise.reject(new Error("unused")) });
     await expect(otherService.list()).resolves.toEqual([
       expect.objectContaining({ id: "local", name: "My Dev Box", kind: "local" }),
     ]);
@@ -287,7 +289,7 @@ describe("MachineService", () => {
 
   it("supports PI_WEB_MACHINES_FILE path overrides", () => {
     const env: NodeJS.ProcessEnv = { PI_WEB_MACHINES_FILE: "data/machines.json" };
-    expect(machineStorePath(env, "/tmp/pi-web")).toBe(resolve("/tmp/pi-web", "data/machines.json"));
+    expect(machineStorePathIn("/tmp/pi-web", env, "/tmp/pi-web")).toBe(resolve("/tmp/pi-web", "data/machines.json"));
   });
 });
 
