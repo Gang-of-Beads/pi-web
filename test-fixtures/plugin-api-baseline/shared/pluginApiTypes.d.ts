@@ -1,4 +1,5 @@
 export type MachineKind = "local" | "remote";
+export type MachineStatus = "unknown" | "online" | "offline" | "error";
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonObject | readonly JsonValue[];
 export interface JsonObject {

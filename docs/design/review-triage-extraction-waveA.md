@@ -89,6 +89,23 @@ settled with `git show`, not by trusting either lane.
   P2, report-only): accepted product semantics of the plugin seam - a failed
   load is honest absence, and the bundled plugin's load is one module import.
 
+## Wave B groundwork found in the tree, and one revert
+
+Landing the machines contract surfaced uncommitted Wave B work written by a
+parallel session while this round was in flight: a server-plugin-api head
+start exporting `Machine`/`MachineHealth` from `shared/apiTypes` plus a
+`MachineRegistryContribution` on the activation context, a
+`pi-web-plugins/machines/` scaffold (store, service, client - no routes,
+no tests), and a "Wave B shape" amendment to the extraction design doc.
+The head start dragged the whole `apiTypes` graph into the plugin-api
+package, breaking the smoke's explicit declaration-set discipline, and its
+exports were declared but unwired. It was reverted here so the machines
+contract could land on the dependency-free `pluginApiTypes` path; the
+registry-face idea itself matches the extraction design's fleet-injection
+plan and is the natural seed for the Wave B server step - to be re-authored
+against `pluginApiTypes` with the owner's review. The browser-side
+`machineSections` point below is independent of it.
+
 ## Clean (verified by the lanes, one line each)
 
 - Focus machine / shared refs self-heal across the panel/sheet ping-pong;

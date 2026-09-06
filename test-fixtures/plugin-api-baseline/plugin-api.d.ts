@@ -1,5 +1,5 @@
 import type { CSSResultGroup, TemplateResult } from "lit";
-import type { FileSuggestion, LegacyThemeToken, SemanticSurfaceToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "./shared/pluginApiTypes.js";
+import type { FileSuggestion, LegacyThemeToken, MachineStatus, SemanticSurfaceToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "./shared/pluginApiTypes.js";
 export type { ThemeToken } from "./shared/pluginApiTypes.js";
 export type { FileSuggestion, LegacyThemeToken, SemanticSurfaceToken, TerminalInfo, FileContentMediaType, FileContentResponse, FileTreeEntry, FileTreeResponse, JsonObject, JsonPrimitive, JsonValue, MachineKind, PiWebComponentStatus, PiWebDockerMode, PiWebInstallationInfo, PiWebInstallationKind, PiWebReleaseStatus, PiWebServiceComponent, PiWebStatusMessage, PiWebStatusResponse, PiWebStatusSeverity, PiWebVersionResponse, TerminalCommandRun, TerminalCommandRunHandle, TerminalCommandRunStatus, WorkspaceProviderCapabilities, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceFileUploadProgress, WorkspaceUploadBatchFileProgress, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, DeleteWorkspaceFileResponse, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, } from "./shared/pluginApiTypes.js";
 export type PluginId = string;
@@ -242,9 +242,63 @@ export interface NavSectionContribution {
     focus?: () => Promise<boolean>;
     render: (context: NavSectionContext) => TemplateResult;
 }
+/** One machine as a contributed machines section renders it. The host folds the health check into `status`. */
+export interface NavMachineSnapshot {
+    readonly id: string;
+    readonly name: string;
+    readonly kind: MachineKind;
+    /** Present on remote machines; the row label renders it after the kind. */
+    readonly baseUrl?: string;
+    readonly status: MachineStatus;
+}
+/**
+ * What the host feeds a contributed machines section. The roster and the
+ * activity flags are the host's; the section renders them through its own
+ * rows and never calls a PI WEB API or spells a URL. Action callbacks are
+ * absent where the host offers no such affordance, and rows omit the
+ * matching menu entries rather than guessing.
+ */
+export interface MachineSectionContext {
+    readonly machines: readonly NavMachineSnapshot[];
+    readonly selectedMachineId: string | undefined;
+    /** Machine-level activity flags per machine id; absent means no snapshot yet. */
+    readonly machineFlags: Readonly<Record<string, NavStatusFlags>>;
+    readonly display: NavSectionDisplay;
+    /** Sections are asked during render; late reads reach the screen through this. */
+    readonly requestUpdate: () => void;
+    readonly selectMachine: (machineId: string) => void;
+    /** Absent where a create control would not belong. */
+    readonly addMachine?: () => void;
+    /** Absent when the host offers no machine removal; local rows never offer it. */
+    readonly removeMachine?: (machineId: string) => void;
+    /** Absent when the host offers no rename. */
+    readonly renameMachine?: (machineId: string, name: string) => void;
+    /** Absent when the host offers no health re-check. */
+    readonly refreshMachine?: (machineId: string) => void;
+    /** Open a remote machine's PI WEB; absent means rows omit the open entry. */
+    readonly openMachine?: (machineId: string) => void;
+    readonly toggleCollapsed: () => void;
+    readonly focusPreviousSection: () => void | Promise<void>;
+    readonly focusNextSection: () => void | Promise<void>;
+    readonly cancelKeyboardNavigation: () => void | Promise<void>;
+}
+/**
+ * The machines section of the app's context navigation. The shell reserves
+ * the `machines` slot, keeps the section order, the keyboard machine and the
+ * collapse state; the plugin brings the body. A contribution with an unknown
+ * id has no slot and does not render.
+ */
+export interface MachineSectionContribution {
+    id: LocalContributionId;
+    order?: number;
+    /** Focus the section's first selectable row; false means nothing to focus. */
+    focus?: () => Promise<boolean>;
+    render: (context: MachineSectionContext) => TemplateResult;
+}
 export interface PluginContributions {
     actions?: PluginAction[];
     navSections?: NavSectionContribution[];
+    machineSections?: MachineSectionContribution[];
     workspacePanels?: WorkspacePanelContribution[];
     workspaceLabels?: WorkspaceLabelContribution[];
     themes?: ThemeContribution[];
