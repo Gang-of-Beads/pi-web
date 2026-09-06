@@ -175,7 +175,7 @@ export class AppNavigationPanel extends LitElement {
       <div class="compact-shell">
         <div class="compact-header">
           <button class="compact-scope" @click=${() => { this.openSection(this.selectedWorkspace === undefined ? "projects" : "workspaces"); }} aria-label="Change project or workspace">
-            <span class="compact-scope-name">${this.compactScopeLabel()}</span>
+            <span class="compact-scope-name" dir="auto">${this.compactScopeLabel()}</span>
           </button>
           ${this.refreshControl}
           <button class="compact-header-action" title="Open settings" aria-label="Open settings" @click=${() => { this.onOpenSettings?.(); }}>⚙</button>
@@ -493,7 +493,7 @@ export class AppNavigationPanel extends LitElement {
     .tool-row.selected .tool-icon { color: var(--pi-accent); }
     .tool-icon svg { width: 100%; height: 100%; }
     .tool-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .tool-badge { flex: 0 0 auto; display: inline-flex; align-items: center; box-sizing: border-box; min-height: 20px; padding: 0 var(--pi-space-2); border-radius: var(--pi-radius-pill); background: var(--pi-selection-bg); color: var(--pi-text); font-size: var(--pi-text-2xs); }
+    .tool-badge { flex: 0 0 auto; display: inline-flex; align-items: center; box-sizing: border-box; min-width: 0; max-width: 45%; min-height: 20px; padding: 0 var(--pi-space-2); border-radius: var(--pi-radius-pill); background: var(--pi-selection-bg); color: var(--pi-text); font-size: var(--pi-text-2xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .compact-scope { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; min-height: 44px; border: 0; background: none; padding: 0; font: inherit; font-size: var(--pi-text-sm); font-weight: 600; color: var(--pi-text); text-align: start; cursor: pointer; }
     .compact-scope:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 2px; border-radius: 8px; }
     .compact-scope-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
