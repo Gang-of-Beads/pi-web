@@ -2,7 +2,7 @@ import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import { focusedContextName } from "../../contextName";
 import { customElement, property, query } from "lit/decorators.js";
 import type { Machine, MachineHealth, Project, SessionActivity, SessionInfo, SessionStatus, Workspace } from "../../api";
-import type { DrawerSectionContext, QualifiedDrawerSectionContribution, NavSectionContext, QualifiedNavSectionContribution } from "../../plugins/types";
+import type { DrawerSectionContext, QualifiedDrawerSectionContribution, MachineSectionContext, QualifiedMachineSectionContribution, NavSectionContext, QualifiedNavSectionContribution } from "../../plugins/types";
 import type { MachineStatusSnapshot } from "../../../../shared/machineStatus";
 import { selectedMachineId } from "../../controllers/types";
 import type { NavigationSection } from "../../appShell/navigationState";
@@ -83,6 +83,10 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) navSections: readonly QualifiedNavSectionContribution[] = [];
   /** The host-built snapshot and actions the contributed sections render. */
   @property({ attribute: false }) navSectionContext?: NavSectionContext;
+  /** Contributed machines section bodies; the `machines` slot falls back to the builtin list. */
+  @property({ attribute: false }) machineSections: readonly QualifiedMachineSectionContribution[] = [];
+  /** The host-built snapshot and actions a contributed machines section renders. */
+  @property({ attribute: false }) machineSectionContext?: MachineSectionContext;
   @property() sectionMachineId = "local";
   @property({ attribute: false }) onRunSectionCommand?: (command: string) => Promise<void>;
   @property({ attribute: false }) onMarkSessionRead?: (session: SessionInfo) => void | Promise<void>;
@@ -151,7 +155,7 @@ export class AppNavigationPanel extends LitElement {
         .onAddMachine=${() => { this.onAddMachine?.(); }}
         .onAddProject=${() => { this.runMaybeAsync(this.onAddProject); }}
       ></app-context-switcher>
-      ${this.renderMachineList(false, visible !== "machines")}
+      ${this.renderMachineSectionSlot(visible !== "machines")}
       ${this.renderNavSectionSlot("projects", visible !== "projects")}
       ${this.renderNavSectionSlot("workspaces", visible !== "workspaces")}
       ${this.renderSessionList(false, visible !== "sessions")}
@@ -245,6 +249,20 @@ export class AppNavigationPanel extends LitElement {
     if (this.selectedWorkspace !== undefined) return "sessions";
     if (this.selectedProject !== undefined) return "workspaces";
     return "projects";
+  }
+
+  private renderMachineSectionSlot(hidden: boolean): unknown {
+    const section = this.machineSections.find((candidate) => candidate.localId === "machines");
+    if (section === undefined || this.machineSectionContext === undefined) return this.renderMachineList(false, hidden);
+    const context: MachineSectionContext = {
+      ...this.machineSectionContext,
+      display: { hidden, collapsible: false, collapsed: false, tiles: false, withCreate: false },
+      toggleCollapsed: () => { this.onToggleMachines?.(); },
+      focusPreviousSection: () => { this.focusPreviousFrom("machines"); },
+      focusNextSection: () => { this.focusNextFrom("machines"); },
+      cancelKeyboardNavigation: () => { this.cancelKeyboardNavigation(); },
+    };
+    return section.render(context);
   }
 
   private renderMachineList(collapsible: boolean, hidden = false) {

@@ -130,6 +130,76 @@ the moved-set against the code as it stands now:
 Deployment ordering is unchanged: the in-repo plugin module lands in the
 same change as the core slots, so no intermediate state loses the pickers.
 
+## Wave B shape (amended after Wave A landed)
+
+Wave A changed three things this section has to absorb: the controllers are
+the host's state machine, not presentation (the original moved-set above
+predates that reading); the client seam is `navSections` with reserved slot
+vocabulary; and `runs: "web"` is a deployment-bearing declaration, not
+decoration. The machines wave therefore splits like this:
+
+- **Server moved-set**: `machineService`, `machineStore`, `machineClient`,
+  and the management route family (`machineRoutes.ts`) move into a
+  `pi-web-plugins/machines/` server plugin. The plugin calls its own
+  service directly — no port in front of what it owns.
+- **Server stays core**: the proxy families (`machineProxyRoutes.ts`,
+  `machinePluginProxyRoutes.ts`) and `fleetRoutes.ts` remain core-served,
+  but they keep only a narrow `MachineRegistry` face (list, get,
+  remoteClient, health, runtime, add, update, remove — the union of what
+  the proxy targets, the fleet fan-out, and the removed management routes
+  actually read). `buildApp` assembles that face from the activated
+  machines plugin's runtime contribution; the dependency points from core
+  to the plugin, not copies. When the plugin is absent the registry is
+  honestly empty: the proxy 404s unknown machines and the fleet fan-out
+  covers only the local machine, which is the same answer an empty store
+  gives today.
+- **Client moved-set**: `MachineList` and `MachineSwitcher` move as the
+  plugin's `machines` navigation section (the switcher is the compact
+  section's heading, so the section body renders it above the list when the
+  display says compact). `MachineDialog` moves as the plugin's dialog behind
+  an `add-machine`/`edit-machine` action, wired through the same
+  `ui.showDialog` seam the add-project dialog uses.
+- **Client stays core**: `machineController`, `machineStatusController`,
+  `machineNavigationMemory`, `machineKeys.ts`, and the machine-scoped
+  contribution gating. They drive app state, URL routing and status
+  hydration — the selection engine, same ruling as the workspace
+  controllers. The settings trio (`SettingsMachinesPanel` and helpers) is
+  not in this wave's contract and stays core until a settings-section seam
+  wave takes it.
+- **Seam shape (as built, client)**: machines get their own contribution
+  kind, `machineSections`, rather than a navSections slot — a machines row
+  is not a workspace section: the host folds each machine's health tree into
+  a plain `MachineStatus` on a `NavMachineSnapshot` (id, name, kind, baseUrl,
+  status), the context carries the machine actions (select/add/remove/
+  rename/refresh/open), and the registry qualifies and unregisters them with
+  a machine-scoped getter. The reserved slot vocabulary grows `machines`;
+  the shell keeps the section order, the keyboard machine and the collapse
+  state.
+- **Seam shape (server, this wave's contract work)**: `ServerPluginActivation`
+  gains `machineRegistry?: MachineRegistryContribution` — list, get,
+  localMachine, add, update, remove, health, runtime, remoteClient — and the
+  contract re-exports the machine protocol types (`Machine`,
+  `MachineHealth`, `MachineRuntime`, `PiWebRuntimeResponse`,
+  `PiWebStatusResponse`, `PiWebComponentStatus`, `PiWebRuntimeComponent`,
+  `PiWebDeprecatedAgentInput`, the `MachineClient` request face,
+  `RemoteMachineRequestError`, the remote timeout constants, and
+  `parsePiWebRuntimeResponse`) so the plugin imports the contract, never
+  core internals. Two new host ports feed the plugin: `machinesStorePath()`
+  (the host resolves the store file, keeping data-dir knowledge core-side)
+  and `localRuntime()` (the local runtime read for local health). The
+  route-body contract is extended to hand parsed JSON objects to route
+  handlers — the machines management family is a route family with JSON
+  bodies, exactly like core's own POST /api/projects, and the current "a
+  JSON call is an operation" stance does not fit it.
+- **Slice state**: the plugin package skeleton exists at
+  `pi-web-plugins/machines/` (manifest with `runs: "web"`; the service,
+  store and client moved and port-adapted — store path injected,
+  `localRuntime` required). The contract edits and the core rewiring land
+  once the parallel client-seam work on `server-plugin-api.ts`/`plugin-api.ts`
+  settles; the intermediate state is deployable — the plugin contributes a
+  registry nothing consumes yet, and the package exists before core removal
+  per the ordering constraint.
+
 ## Owner rulings, 2026-09-05 (second round)
 
 1. **Extraction shape: contract-first.** The plugin contract is extended

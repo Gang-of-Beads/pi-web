@@ -46,7 +46,7 @@ import { selectedNotificationView } from "../sessionNotifications";
 import { SessionUnreadController } from "../sessionUnread";
 import { workspaceViewTransition } from "../workspaceViewTransition";
 import { RealtimeSocket, type BrowserRealtimeEvent } from "../sessionSocket";
-import type { PluginMachine, PluginPromptEditor, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding, PluginDialog, PluginDialogHandle, NavSectionContext } from "../plugins/types";
+import type { PluginMachine, PluginPromptEditor, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding, PluginDialog, PluginDialogHandle, NavSectionContext, MachineSectionContext } from "../plugins/types";
 import { CLASSIC_THEME_ID, DEFAULT_THEME_PREFERENCE, applyPiWebTheme, findThemePairForTheme, readStoredThemePreference, resolveThemePreference, writeStoredThemePreference, type ThemePreference, type ThemePreferenceResolution } from "../theme";
 import { corePlugin } from "../plugins/core";
 import { loadExternalPlugins, type ExternalPluginLoadResult } from "../plugins/external";
@@ -2093,6 +2093,8 @@ export class PiWebApp extends LitElement {
         .drawerSections=${this.plugins.getDrawerSections(selectedMachineId(this.state))}
         .navSections=${this.plugins.getNavSections(selectedMachineId(this.state))}
         .navSectionContext=${this.buildNavSectionContext("panel")}
+        .machineSections=${this.plugins.getMachineSections(selectedMachineId(this.state))}
+        .machineSectionContext=${this.buildMachineSectionContext("panel")}
         .sectionMachineId=${selectedMachineId(this.state)}
         .onRunSectionCommand=${(command: string) => this.runGoalCommand(command)}
         .onReloadSession=${(session: SessionInfo) => this.sessions.reloadSession(session)}
@@ -2693,6 +2695,61 @@ export class PiWebApp extends LitElement {
       },
       retryProjectsLoad: () => { void this.projects.loadProjects(); },
       toggleCollapsed: () => undefined,
+      focusPreviousSection: () => undefined,
+      focusNextSection: () => undefined,
+      cancelKeyboardNavigation: () => undefined,
+    };
+  }
+
+  /**
+  * The host snapshot a contributed machines section renders. The roster is
+  * core state the machines plugin will keep fed once it owns the surface;
+  * until then the panel renders its builtin section and this context waits.
+  */
+  private buildMachineSectionContext(surface: "panel" | "sheet"): MachineSectionContext {
+    const state = this.state;
+    const closeSheet = surface === "sheet";
+    const machineById = (machineId: string): Machine | undefined => state.machines.find((machine) => machine.id === machineId);
+    const requireMachine = (machineId: string): Machine => {
+      const machine = machineById(machineId);
+      if (machine === undefined) throw new Error("This machine is no longer listed");
+      return machine;
+    };
+    return {
+      machines: state.machines.map((machine) => ({
+        id: machine.id,
+        name: machine.name,
+        kind: machine.kind,
+        ...(machine.baseUrl === undefined ? {} : { baseUrl: machine.baseUrl }),
+        status: state.machineStatuses[machine.id]?.status ?? machine.status ?? "unknown",
+      })),
+      selectedMachineId: state.selectedMachine?.id,
+      machineFlags: Object.fromEntries(state.machines.map((machine) => [machine.id, state.machineStatusSnapshots[machine.id]?.machine ?? {}])),
+      display: { hidden: false, collapsible: false, collapsed: false, tiles: false, withCreate: false },
+      requestUpdate: () => { this.requestUpdate(); },
+      selectMachine: (machineId) => {
+        const machine = machineById(machineId);
+        if (machine === undefined) return;
+        if (closeSheet) this.contextSheetOpen = false;
+        void this.selectMachineWithMemory(machine);
+      },
+      addMachine: () => {
+        if (closeSheet) this.contextSheetOpen = false;
+        this.openMachineDialog();
+      },
+      removeMachine: (machineId) => { void this.removeMachine(requireMachine(machineId)); },
+      renameMachine: (machineId, name) => { void this.renameMachine(requireMachine(machineId), name); },
+      refreshMachine: (machineId) => {
+        const machine = requireMachine(machineId);
+        void this.machines.selectMachine(machine).then(() => Promise.all([this.machines.refreshMachineHealth(), this.machines.refreshMachineRuntime()]));
+      },
+      openMachine: (machineId) => {
+        const machine = machineById(machineId);
+        if (machine === undefined || machine.kind !== "remote") return;
+        if (machine.baseUrl === undefined) return;
+        window.open(machine.baseUrl, "_blank", "noopener,noreferrer");
+      },
+      toggleCollapsed: () => { this.navigationSections.toggle("machines"); },
       focusPreviousSection: () => undefined,
       focusNextSection: () => undefined,
       cancelKeyboardNavigation: () => undefined,
