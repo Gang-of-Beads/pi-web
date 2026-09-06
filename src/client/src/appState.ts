@@ -1,12 +1,11 @@
 import { normalizeMessages } from "./chatMessages";
-import type { AuthProviderOption, CommandOption, CommandResult, ExtensionDialogAnswer, ExtensionDialogCloseReason, FileContentResponse, FileTreeEntry, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingAskUser, PendingExtensionDialog, PiWebSelfUpdateStatus, PiWebStatusResponse, Project, QueuedSessionMessage, SessionActivity, SessionInfo, SessionModelCatalogEntry, SessionStatus, SessionBackgroundTaskInfo, SessionSubagentInfo, SessionSubagentRunInfo, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";
+import type { AuthProviderOption, CommandOption, CommandResult, ExtensionDialogAnswer, ExtensionDialogCloseReason, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingAskUser, PendingExtensionDialog, PiWebSelfUpdateStatus, PiWebStatusResponse, Project, QueuedSessionMessage, SessionActivity, SessionInfo, SessionModelCatalogEntry, SessionStatus, SessionBackgroundTaskInfo, SessionSubagentInfo, SessionSubagentRunInfo, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";
 import type { ChatLine } from "./components/shared";
 import type { CommandLedgerEntry } from "./commandLedger";
 import { RetiredBy } from "./notice";
 import type { MachineStatusSnapshot } from "../../shared/machineStatus";
 import type { QualifiedContributionId } from "./plugins/ids";
 import type { SelectedSessionNotificationInbox } from "./sessionNotifications";
-import type { WorkspaceUploadBatchState } from "./workspaceUploadState";
 
 export interface ActivityOutputView {
   readonly title: string;
@@ -190,21 +189,6 @@ export interface AppState {
   machineDialogOpen: boolean;
   workspaceTool: QualifiedContributionId;
   mainView: "navigation" | "chat" | QualifiedContributionId;
-  fileTree: FileTreeEntry[];
-  /**
-   * The workspace tree read failed, with the reason. An empty tree after a
-   * failed read renders this, never "No files loaded" alone: honest about not
-   * loading, silent about why was the files panel's version of the empty
-   * claim.
-   */
-  fileTreeFailed: string | undefined;
-  expandedDirs: Record<string, FileTreeEntry[]>;
-  selectedFilePath: string | undefined;
-  selectedFileContent: FileContentResponse | undefined;
-  selectedFileLoadError: string | undefined;
-  fileTreeStale: boolean;
-  /** Manual workspace file upload batches, keyed by client-owned batch id. */
-  workspaceUploadBatches: Record<string, WorkspaceUploadBatchState>;
   activeTerminalCount: number;
   selectedTerminalId: string | undefined;
   piWebStatus: PiWebStatusResponse | undefined;
@@ -250,13 +234,6 @@ export type WorkspaceScopedStateReset = Pick<AppState,
   | "startingSessionCount"
   | "selectedNotificationInbox"
   | "treeDialog"
-  | "fileTree"
-  | "fileTreeFailed"
-  | "expandedDirs"
-  | "selectedFilePath"
-  | "selectedFileContent"
-  | "selectedFileLoadError"
-  | "fileTreeStale"
   | "selectedTerminalId"
   | "error"
 >;
@@ -275,13 +252,6 @@ export function resetWorkspaceScopedState(): WorkspaceScopedStateReset {
     startingSessionCount: 0,
     selectedNotificationInbox: undefined,
     treeDialog: undefined,
-    fileTree: [],
-    fileTreeFailed: undefined,
-    expandedDirs: {},
-    selectedFilePath: undefined,
-    selectedFileContent: undefined,
-    selectedFileLoadError: undefined,
-    fileTreeStale: false,
     selectedTerminalId: undefined,
     error: "",
   };
@@ -361,16 +331,8 @@ export function initialAppState(): AppState {
     actionPaletteOpen: false,
     projectDialogOpen: false,
     machineDialogOpen: false,
-    workspaceTool: "core:workspace.files",
+    workspaceTool: "files:files",
     mainView: "chat",
-    fileTree: [],
-    fileTreeFailed: undefined,
-    expandedDirs: {},
-    selectedFilePath: undefined,
-    selectedFileContent: undefined,
-    selectedFileLoadError: undefined,
-    fileTreeStale: false,
-    workspaceUploadBatches: {},
     activeTerminalCount: 0,
     selectedTerminalId: undefined,
     piWebStatus: undefined,

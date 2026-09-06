@@ -79,7 +79,7 @@ export function machineNavigationSnapshotFromState(state: AppState): MachineNavi
     tool: state.workspaceTool,
     view: state.mainView,
     surface: {
-      selectedFilePath: hasWorkspace ? state.selectedFilePath : undefined,
+      selectedFilePath: undefined,
       selectedTerminalId: hasWorkspace ? state.selectedTerminalId : undefined,
     },
   };

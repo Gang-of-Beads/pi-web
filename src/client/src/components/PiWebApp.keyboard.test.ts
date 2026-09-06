@@ -8,8 +8,13 @@ import { AuthDialog } from "./AuthDialog";
 import { ChatView } from "./ChatView";
 import { ModalSurface } from "./ModalSurface";
 import { PiWebApp } from "./PiWebApp";
-import { WorkspaceFilesPanel } from "./WorkspaceFilesPanel";
+import { PiFilesPanel } from "../../../../pi-web-plugins/files/filesPanelElement";
+import { rememberFilesHostUi } from "../../../../pi-web-plugins/files/hostUi";
+import filesPlugin from "../../../../pi-web-plugins/files/pi-web-plugin";
+import { PluginRegistry } from "../plugins/registry";
+import { registerRenderedModal } from "./modalLayerRegistry";
 import { WorkspacePanel } from "./WorkspacePanel";
+import type { PluginHostUi } from "../plugins/types";
 
 const IMAGE_DATA = "iVBORw0KGgo=";
 
@@ -179,12 +184,15 @@ async function openUploadReview(app: PiWebApp): Promise<HTMLElement> {
   setAppState(app, {
     selectedWorkspace,
     workspaces: [selectedWorkspace],
-    workspaceTool: "core:workspace.files",
+    workspaceTool: "files:files",
   });
+  appPluginRegistry(app).register({ id: "files", plugin: filesPlugin });
+  rememberFilesHostUi(fakeFilesHostUi());
   const container = renderApp(app);
   const panelHost = requiredElement(container.querySelector<WorkspacePanel>("workspace-panel"), "workspace panel");
   await panelHost.updateComplete;
-  const panel = requiredElement(panelHost.shadowRoot?.querySelector<WorkspaceFilesPanel>("workspace-files-panel"), "workspace files panel");
+  const panel = requiredElement(panelHost.shadowRoot?.querySelector<PiFilesPanel>("pi-files-panel"), "workspace files panel");
+  await panel.updateComplete;
   await panel.updateComplete;
   const uploadButton = buttonWithText(panel.shadowRoot, "Upload");
   uploadButton.focus();
@@ -281,5 +289,25 @@ function workspace(): Workspace {
     label: "main",
     isMain: true,
     effectiveConfig: {},
+  };
+}
+
+function appPluginRegistry(app: PiWebApp): PluginRegistry {
+  const registry: unknown = Reflect.get(app, "plugins");
+  if (!(registry instanceof PluginRegistry)) throw new Error("PiWebApp PluginRegistry was unavailable");
+  return registry;
+}
+
+function fakeFilesHostUi(): PluginHostUi {
+  return {
+    copyText: () => Promise.resolve(true),
+    describeError: (error) => String(error),
+    surfaceStyles: [],
+    listStyles: [],
+    breakpoints: { coarseOrMobile: "", mobileNavigation: "", desktopSideBySide: "" },
+    renderMarkdownHtml: (markdown) => markdown,
+    textStyles: [],
+    registerModal: (registration) => registerRenderedModal({ ...registration, focus: registration.focus ?? (() => undefined) }),
+    query: { read: () => undefined, write: () => undefined },
   };
 }

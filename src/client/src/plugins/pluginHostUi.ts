@@ -1,6 +1,6 @@
 import { writeClipboardText } from "../clipboard";
 import { COARSE_OR_MOBILE_MEDIA_QUERY, DESKTOP_SIDE_BY_SIDE_MEDIA_QUERY, MOBILE_NAVIGATION_MEDIA_QUERY } from "../breakpoints";
-import { interactiveSurfaceStyles, listStyles } from "../components/shared";
+import { formattedTextStyles, interactiveSurfaceStyles, listStyles } from "../components/shared";
 import { registerRenderedModal } from "../components/modalLayerRegistry";
 import { readNamespacedString, setNamespacedQueryKey } from "../namespacedQueryArgs";
 import { renderWorkspaceMarkdownHtml } from "../formatting/workspaceMarkdown";
@@ -28,6 +28,7 @@ export function createPluginHostUi(): PluginHostUi {
       desktopSideBySide: DESKTOP_SIDE_BY_SIDE_MEDIA_QUERY,
     },
     renderMarkdownHtml: (markdown) => renderWorkspaceMarkdownHtml(markdown),
+    textStyles: formattedTextStyles,
     registerModal: (registration) => registerRenderedModal({
       element: registration.element,
       ...(registration.paintElement === undefined ? {} : { paintElement: registration.paintElement }),

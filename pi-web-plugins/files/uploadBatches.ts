@@ -1,5 +1,5 @@
-import type { WriteWorkspaceFileResponse } from "../../shared/apiTypes";
-import { workspaceUploadPath, type WorkspaceUploadBatchProgress } from "./api/workspaceUploads";
+import { workspaceUploadPath } from "./uploadPaths";
+import type { WorkspaceUploadBatchProgress, WriteWorkspaceFileResponse } from "@gang-of-beads/pi-web/plugin-api";
 
 export type WorkspaceUploadFileStatus = "pending" | "uploading" | "completed" | "error" | "cancelled";
 export type WorkspaceUploadBatchStatus = "uploading" | "completed" | "error" | "cancelled";
@@ -20,12 +20,8 @@ export interface WorkspaceUploadFileState {
 
 export interface WorkspaceUploadBatchState {
   id: string;
-  projectId: string;
   workspaceId: string;
-  machineId: string;
   destinationFolder: string;
-  overwrite: boolean;
-  createDirs: boolean;
   files: WorkspaceUploadFileState[];
   currentFileIndex: number;
   loaded: number;
@@ -44,12 +40,8 @@ export interface WorkspaceUploadFileLike {
 
 export interface CreateWorkspaceUploadBatchStateInput {
   id: string;
-  projectId: string;
   workspaceId: string;
-  machineId: string;
   destinationFolder: string;
-  overwrite: boolean;
-  createDirs: boolean;
   files: readonly WorkspaceUploadFileLike[];
   startedAt: string;
 }
@@ -72,12 +64,8 @@ export function createWorkspaceUploadBatchState(input: CreateWorkspaceUploadBatc
   const total = files.reduce((sum, file) => sum + file.total, 0);
   return {
     id: input.id,
-    projectId: input.projectId,
     workspaceId: input.workspaceId,
-    machineId: input.machineId,
     destinationFolder: input.destinationFolder,
-    overwrite: input.overwrite,
-    createDirs: input.createDirs,
     files,
     currentFileIndex: files.length === 0 ? -1 : 0,
     loaded: 0,

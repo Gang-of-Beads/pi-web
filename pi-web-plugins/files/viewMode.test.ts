@@ -9,7 +9,7 @@ import {
   type WorkspaceFileViewMode,
   type WorkspaceFileViewModeRoute,
   type WorkspaceFileViewModeStorage,
-} from "./workspaceFileViewMode";
+} from "./viewMode";
 
 describe("workspace file view mode", () => {
   it("defaults to raw source", () => {

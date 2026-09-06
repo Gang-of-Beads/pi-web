@@ -13,8 +13,7 @@ import { go } from "@codemirror/lang-go";
 import { diff } from "@codemirror/legacy-modes/mode/diff";
 import { LitElement, css, html } from "lit";
 import { customElement, property, query } from "lit/decorators.js";
-
-@customElement("code-viewer")
+@customElement("pi-code-viewer")
 export class CodeViewer extends LitElement {
   @property() content = "";
   @property() language: string | undefined;

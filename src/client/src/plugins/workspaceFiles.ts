@@ -1,6 +1,6 @@
 import type { DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, Workspace } from "../api";
 import type { WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle } from "../../../shared/pluginApiTypes";
-import { uploadWorkspaceFiles } from "../api/workspaceUploads";
+import { DEFAULT_WORKSPACE_UPLOADS_FOLDER, uploadWorkspaceFiles } from "../api/workspaceUploads";
 import { workspaceFilePreviewUrl } from "../api/urls";
 import { MAX_INLINE_PREVIEW_BYTES, MAX_STREAM_PREVIEW_BYTES } from "../../../shared/workspaceFiles";
 import type { WorkspaceFiles } from "./types";
@@ -23,7 +23,7 @@ export interface WorkspaceFilesApi {
  * federated machines behave the same. `onFilesChanged` runs after a mutation
  * succeeds so the host can refresh its file explorer.
  */
-export function createWorkspaceFiles(api: WorkspaceFilesApi, workspace: Pick<Workspace, "id" | "projectId">, machineId: string, onFilesChanged?: () => void): WorkspaceFiles {
+export function createWorkspaceFiles(api: WorkspaceFilesApi, workspace: Pick<Workspace, "id" | "projectId">, machineId: string, onFilesChanged?: () => void, uploadFolder = DEFAULT_WORKSPACE_UPLOADS_FOLDER): WorkspaceFiles {
   return {
     readFile: (path) => api.workspaceFile(workspace.projectId, workspace.id, path, machineId),
     listFiles: (path) => api.workspaceTree(workspace.projectId, workspace.id, path, machineId),
@@ -48,6 +48,7 @@ export function createWorkspaceFiles(api: WorkspaceFilesApi, workspace: Pick<Wor
       machineId,
     }),
     limits: { inlinePreviewBytes: MAX_INLINE_PREVIEW_BYTES, streamPreviewBytes: MAX_STREAM_PREVIEW_BYTES },
+    uploadFolder,
     uploadFiles: (files, options) => {
       const task = uploadWorkspaceFiles(workspace.projectId, workspace.id, files, {
         ...(options?.destinationFolder === undefined ? {} : { destinationFolder: options.destinationFolder }),

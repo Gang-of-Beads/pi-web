@@ -8,7 +8,7 @@ const workspace = { id: "w-1", projectId: "p-1" };
 
 const uploadWorkspaceFilesMock = vi.hoisted(() => vi.fn());
 
-vi.mock("../api/workspaceUploads", () => ({ uploadWorkspaceFiles: uploadWorkspaceFilesMock }));
+vi.mock("../api/workspaceUploads", () => ({ DEFAULT_WORKSPACE_UPLOADS_FOLDER: ".pi-web/uploads", uploadWorkspaceFiles: uploadWorkspaceFilesMock }));
 
 describe("createWorkspaceFiles", () => {
   it("listFiles resolves with the directory listing for the bound workspace and machine", async () => {

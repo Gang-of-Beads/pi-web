@@ -1,33 +1,26 @@
-import { queryNamespace, readNamespacedString, setNamespacedQueryKey } from "./namespacedQueryArgs";
-
+/**
+ * The view-mode seam, carried over from the core viewer: raw source is the
+ * default, a deep link wins once and becomes the device preference, and the
+ * displayed mode is published back to the address bar so a copied link
+ * reproduces the view. The namespace and storage key are wire format shared
+ * with links saved before the extraction.
+ */
 export type WorkspaceFileViewMode = "preview" | "raw";
 
-/**
- * Raw source is the default: a workspace file opens as its literal, escaped
- * bytes, and a rendered preview is something the user asks for.
- */
 export const DEFAULT_WORKSPACE_FILE_VIEW_MODE: WorkspaceFileViewMode = "raw";
 export const WORKSPACE_FILE_VIEW_MODE_STORAGE_KEY = "pi-web.workspace.files.viewMode";
 export const WORKSPACE_FILE_VIEW_MODE_QUERY_KEY = "mode";
-
-const FILES_ROUTE_NAMESPACE = queryNamespace("core:workspace.files");
+export const FILES_ROUTE_NAMESPACE = "core.workspace.files";
 
 export type WorkspaceFileViewModeStorage = Pick<Storage, "getItem" | "setItem">;
 
-/** Address-bar seam, so the deep-link contract can be tested without a browser. */
 export interface WorkspaceFileViewModeRoute {
   read(): string | undefined;
   write(mode: WorkspaceFileViewMode): void;
 }
 
 export interface WorkspaceFileViewModeStore {
-  /**
-   * Effective mode for a viewer that has not been switched yet: a deep link
-   * wins and is adopted as this device's preference, otherwise the stored
-   * preference applies, otherwise raw.
-   */
   adopt(): WorkspaceFileViewMode;
-  /** Record the displayed mode as the device preference and in the address bar. */
   publish(mode: WorkspaceFileViewMode): void;
 }
 
@@ -41,7 +34,6 @@ export function adoptWorkspaceFileViewMode(
 ): WorkspaceFileViewMode {
   const linked = parseWorkspaceFileViewMode(route.read());
   if (linked !== undefined) {
-    // A shared link reproduces what its author saw, and becomes the preference.
     writeStoredWorkspaceFileViewMode(linked, storage);
     return linked;
   }
@@ -75,18 +67,19 @@ export function writeStoredWorkspaceFileViewMode(mode: WorkspaceFileViewMode, st
   }
 }
 
-/** Default store bound to the live address bar and this device's storage. */
-export const workspaceFileViewModeStore: WorkspaceFileViewModeStore = {
-  adopt: () => adoptWorkspaceFileViewMode(browserRoute(), browserStorage()),
-  publish: (mode) => { publishWorkspaceFileViewMode(mode, browserRoute(), browserStorage()); },
-};
-
-function browserRoute(): WorkspaceFileViewModeRoute {
+export function createStore(ui: { query: { read(namespace: string, key: string): string | undefined; write(namespace: string, key: string, value: string | undefined, options?: { replace?: boolean }): void } }): WorkspaceFileViewModeStore {
   return {
-    read: () => (typeof window === "undefined" ? undefined : readNamespacedString(FILES_ROUTE_NAMESPACE, WORKSPACE_FILE_VIEW_MODE_QUERY_KEY)),
+    adopt: () => adoptWorkspaceFileViewMode(browserRoute(ui), browserStorage()),
+    publish: (mode) => { publishWorkspaceFileViewMode(mode, browserRoute(ui), browserStorage()); },
+  };
+}
+
+function browserRoute(ui: Parameters<typeof createStore>[0]): WorkspaceFileViewModeRoute {
+  return {
+    read: () => (typeof window === "undefined" ? undefined : ui.query.read(FILES_ROUTE_NAMESPACE, WORKSPACE_FILE_VIEW_MODE_QUERY_KEY)),
     write: (mode) => {
       if (typeof window === "undefined") return;
-      setNamespacedQueryKey(FILES_ROUTE_NAMESPACE, WORKSPACE_FILE_VIEW_MODE_QUERY_KEY, mode, { replace: true });
+      ui.query.write(FILES_ROUTE_NAMESPACE, WORKSPACE_FILE_VIEW_MODE_QUERY_KEY, mode, { replace: true });
     },
   };
 }

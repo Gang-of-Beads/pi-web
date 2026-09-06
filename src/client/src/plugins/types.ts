@@ -1,6 +1,6 @@
 import type { CSSResultGroup, TemplateResult } from "lit";
 import type { AppAction } from "../actions";
-import type { DeleteWorkspaceFileResponse, FileContentResponse, FileTreeEntry, FileTreeResponse, JsonValue, Machine, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, RunTerminalCommandInput, TerminalCommandRun, TerminalCommandRunFilter, TerminalCommandRunHandle, TerminalInfo, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, Workspace } from "../api";
+import type { DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, Machine, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, RunTerminalCommandInput, TerminalCommandRun, TerminalCommandRunFilter, TerminalCommandRunHandle, TerminalInfo, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, Workspace } from "../api";
 import type { AppState } from "../appState";
 import type { SettingsSection } from "../settingsRoute";
 import type { WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle } from "../../../shared/pluginApiTypes";
@@ -45,6 +45,7 @@ export type PluginLifecycleEvent =
   | { kind: "session-left"; sessionId: string }
   | { kind: "connection-changed"; connected: boolean }
   | { kind: "theme-applied"; themeId: string }
+  | { kind: "session-activity-settled"; sessionId: string; machineId: string }
   | { kind: "settings-changed"; settings: PluginSettings };
 
 /**
@@ -67,6 +68,9 @@ export interface PluginHostUi {
   readonly breakpoints: PluginBreakpoints;
   /** Sanitized markdown HTML, the same rendering the built-in surfaces trust. */
   readonly renderMarkdownHtml: (markdown: string) => string;
+  /** The formatted-text stylesheet, so a plugin's rendered markdown matches
+   *  the transcript's instead of becoming a second producer of it. */
+  readonly textStyles: CSSResultGroup;
   /** Register a rendered modal layer for document-wide modality, focus, and
    *  isTop coordination with the app's own dialogs. */
   readonly registerModal: (registration: {
@@ -322,6 +326,8 @@ export interface WorkspaceFiles {
   previewUrl(path: string, options?: { modifiedAt?: string; download?: boolean }): string;
   /** The file endpoint's preview thresholds for the inline-vs-stream decision. */
   readonly limits: { readonly inlinePreviewBytes: number; readonly streamPreviewBytes: number };
+  /** The workspace's configured default upload folder, workspace-relative. */
+  readonly uploadFolder: string;
   /** Upload a batch of files sequentially with progress and cancellation. */
   uploadFiles(files: readonly File[], options?: {
     destinationFolder?: string;
@@ -456,23 +462,9 @@ export interface WorkspacePanelContext extends WorkspaceContext {
   prompt: PluginPromptEditor;
   terminal: WorkspacePanelTerminal;
   piWebUnstable?: Pick<PiWebUnstableRuntimeContext, "terminalCommandRuns">;
-  fileTree: FileTreeEntry[];
-  fileTreeFailed: string | undefined;
-  expandedDirs: Record<string, FileTreeEntry[]>;
-  selectedFilePath: string | undefined;
-  selectedFileContent: FileContentResponse | undefined;
-  selectedFileLoadError: string | undefined;
-  fileTreeStale: boolean;
   activeTerminalCount: number;
   selectedTerminalId: string | undefined;
   terminalAutoStart: boolean;
-  workspaceUploadDefaultFolder: string;
-  onRefreshFiles: () => void;
-  onExpandDir: (path: string) => void;
-  onSelectFile: (path: string) => void;
-  onStartWorkspaceUpload: (files: readonly File[], options: { destinationFolder: string; createDirs?: boolean; overwrite?: boolean; selectUploadedFile?: boolean }) => { batchId: string; done: Promise<void> } | undefined;
-  onCancelWorkspaceUpload: (batchId: string) => void;
-  onClearWorkspaceUpload: (batchId: string) => void;
   onSelectTerminal: (terminalId: string | undefined, options?: { replace?: boolean | undefined }) => void;
 }
 

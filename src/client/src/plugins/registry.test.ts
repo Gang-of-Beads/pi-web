@@ -24,7 +24,7 @@ describe("PluginRegistry", () => {
     registry.register({ id: "core", plugin: corePlugin });
 
     expect(registry.getActions(createContext().context).some((action) => action.id === "core:actions.show")).toBe(true);
-    expect(registry.getWorkspacePanels().map((panel) => panel.id)).toEqual(["core:workspace.files"]);
+    expect(registry.getWorkspacePanels().map((panel) => panel.id)).toEqual([]);
   });
 
   it("rejects legacy browser plugins with an attributed API-version error", () => {
@@ -903,23 +903,9 @@ function createWorkspacePanelContext(machineId: string, prompt: WorkspacePanelCo
     prompt,
     terminal: noPanelTerminal(),
     host: { requestRender: vi.fn(), workspacePanelFullscreen: () => false, setWorkspacePanelFullscreen: vi.fn() },
-    fileTree: [],
-    expandedDirs: {},
-    selectedFilePath: undefined,
-    selectedFileContent: undefined,
-    selectedFileLoadError: undefined,
-    fileTreeStale: false,
-    fileTreeFailed: undefined,
     activeTerminalCount: 0,
     selectedTerminalId: undefined,
     terminalAutoStart: false,
-    workspaceUploadDefaultFolder: ".pi-web/uploads",
-    onRefreshFiles: vi.fn(),
-    onExpandDir: vi.fn(),
-    onSelectFile: vi.fn(),
-    onStartWorkspaceUpload: vi.fn(),
-    onCancelWorkspaceUpload: vi.fn(),
-    onClearWorkspaceUpload: vi.fn(),
     onSelectTerminal: vi.fn(),
   };
 }

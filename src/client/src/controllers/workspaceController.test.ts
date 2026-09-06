@@ -122,8 +122,6 @@ describe("WorkspaceController.refreshSelectedProjectTopology", () => {
         workspacesByProjectId: { [repo.id]: [main, selected] },
         selectedSession: session(selected.path),
         sessions: [session(selected.path)],
-        selectedFilePath: "src/index.ts",
-        expandedDirs: { src: [] },
         selectedTerminalId: "t1",
       },
       loadWorkspaces,
@@ -136,8 +134,6 @@ describe("WorkspaceController.refreshSelectedProjectTopology", () => {
     expect(after.selectedWorkspace).toBe(selected);
     expect(after.selectedSession).toBe(before.selectedSession);
     expect(after.sessions).toBe(before.sessions);
-    expect(after.selectedFilePath).toBe("src/index.ts");
-    expect(after.expandedDirs).toBe(before.expandedDirs);
     expect(after.selectedTerminalId).toBe("t1");
     expect(test.clearActiveSession).not.toHaveBeenCalled();
     expect(test.updateUrl).not.toHaveBeenCalled();

@@ -48,9 +48,9 @@ Core, kept and maintained by us:
 - The plugin runtime itself: discovery, catalog, activation, contribution
   registries, and the typed contract package.
 
-Everything else is a plugin. Existing precedent: `git`, `info`, `relays`,
-`updates`, `workspace-tasks` already live in `pi-web-plugins/`; goals is an
-extension-backed panel; themes are data-driven.
+Everything else is a plugin. Existing precedent: `files`, `git`, `info`,
+`relays`, `terminal`, `updates`, `voice`, `workspace-tasks` already live in
+`pi-web-plugins/`; goals is an extension-backed panel; themes are data-driven.
 
 Extraction candidates, in migration order:
 

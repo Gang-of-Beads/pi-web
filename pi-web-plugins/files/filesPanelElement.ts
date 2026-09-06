@@ -1,28 +1,39 @@
 import { css, html, LitElement, type PropertyValues, type TemplateResult } from "lit";
-import { filesSplitClass } from "./filesSplitLayout";
 import { customElement, property, query, state } from "lit/decorators.js";
-import type { FileTreeEntry } from "../api";
-import { workspaceUploadPath } from "../api/workspaceUploads";
-import type { WorkspaceUploadBatchState, WorkspaceUploadFileState } from "../workspaceUploadState";
-import type { WorkspacePanelContext } from "../plugins/types";
-import { formatFileSize } from "../utils/format";
-import { registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
-import { workspacePanelStyles, interactiveSurfaceStyles } from "./shared";
-import "./WorkspaceFileViewer";
-import { describeError } from "../notice";
+import type { FileTreeEntry, WorkspacePanelContext, WorkspaceUploadBatchProgress } from "@gang-of-beads/pi-web/plugin-api";
+import { describeFilesError, filesQuery, filesRegisterModal, filesSurfaceStyles } from "./hostUi";
+import { createStore } from "./viewMode";
+import { FilesExplorer, explorerIdentityKey } from "./explorer";
+import { createWorkspaceUploadBatchState, cancelWorkspaceUploadBatch, completeWorkspaceUploadBatch, failWorkspaceUploadBatch, updateWorkspaceUploadBatchProgress, type WorkspaceUploadBatchState, type WorkspaceUploadFileState } from "./uploadBatches";
+import { workspaceUploadPath } from "./uploadPaths";
+import { filesSplitClass } from "./filesSplitLayout";
+import { formatFileSize } from "./format";
+import "./fileViewerElement";
 
 interface PendingWorkspaceUploadReview {
   files: File[];
 }
 
-export interface WorkspaceUploadScope {
-  projectId: string;
-  workspaceId: string;
-  machineId: string;
+interface WorkspaceUploadBatchErrorShape {
+  readonly failures: readonly { path: string; error: string }[];
+  readonly responses: readonly { path: string }[];
 }
 
-@customElement("workspace-files-panel")
-export class WorkspaceFilesPanel extends LitElement {
+/** Mark the live panel's tree stale after a session turn settled. */
+export function markFilesPanelStale(): void {
+  PiFilesPanel.active?.markStale();
+}
+
+/** Ask the live panel to refetch; the host calls this on panel invalidation. */
+export function invalidateFilesPanel(): void {
+  const panel = PiFilesPanel.active;
+  if (panel !== undefined) panel.refresh();
+}
+
+@customElement("pi-files-panel")
+export class PiFilesPanel extends LitElement {
+  /** The one panel instance rendering right now; the host talks to it through the module functions. */
+  static active: PiFilesPanel | undefined;
   @property({ attribute: false }) context: WorkspacePanelContext | undefined;
   @query("#workspace-upload-input") private uploadInput?: HTMLInputElement;
   @query(".dialog-backdrop") private uploadDialogBackdrop?: HTMLElement | null;
@@ -33,27 +44,50 @@ export class WorkspaceFilesPanel extends LitElement {
   @state() private createDirs = true;
   @state() private formError = "";
   @state() private dragActive = false;
+  @state() private batches: Record<string, WorkspaceUploadBatchState> = {};
   private dragDepth = 0;
-  private uploadModalRegistration: RenderedModalRegistration | undefined;
+  private uploadModalRegistration: { readonly isTop: boolean; focus(): boolean; unregister(): void } | undefined;
+  private uploadBatchSequence = 0;
+  private explorer: FilesExplorer | undefined;
+  private explorerIdentityKey = "";
 
   protected override willUpdate(changedProperties: PropertyValues<this>): void {
     if (!changedProperties.has("context")) return;
-    const previous = changedProperties.get("context");
-    if (previous !== undefined && this.context !== undefined && workspaceContextKey(previous) !== workspaceContextKey(this.context)) this.resetPendingUpload();
+    const context = this.context;
+    if (context === undefined) return;
+    if (this.explorer === undefined || explorerIdentityKey(this.explorer.currentIdentity) !== this.contextKey(context)) {
+      this.resetForContext(context);
+    }
   }
 
   protected override updated(): void {
     this.syncUploadModal();
   }
 
+  override connectedCallback(): void {
+    super.connectedCallback();
+    PiFilesPanel.active = this;
+  }
+
   override disconnectedCallback(): void {
+    if (PiFilesPanel.active === this) PiFilesPanel.active = undefined;
     this.releaseUploadModal();
     super.disconnectedCallback();
   }
 
+  markStale(): void {
+    this.explorer?.markStale();
+  }
+
+  refresh(): void {
+    void this.explorer?.refresh();
+  }
+
   override render(): TemplateResult {
     const context = this.context;
-    if (context === undefined) return html`<p class="muted">Files unavailable.</p>`;
+    const explorer = this.explorer;
+    if (context === undefined || explorer === undefined) return html`<p class="muted">Files unavailable.</p>`;
+    const state = explorer.state;
     return html`
       <section
         class=${this.dragActive ? "files-panel dragging" : "files-panel"}
@@ -64,31 +98,34 @@ export class WorkspaceFilesPanel extends LitElement {
       >
         <section class="toolbar">
           <strong>Files</strong>
-          ${context.fileTreeStale ? html`<span class="stale">stale</span>` : null}
+          ${state.stale ? html`<span class="stale">stale</span>` : null}
           <div class="toolbar-actions">
             <button @click=${this.openFilePicker}>Upload</button>
-            <button @click=${context.onRefreshFiles}>Refresh</button>
+            <button @click=${() => { void explorer.refresh(); }}>Refresh</button>
           </div>
           <input id="workspace-upload-input" class="visually-hidden" type="file" multiple @change=${this.handleFileInputChange} />
         </section>
-        ${this.renderUploadProgress(context)}
-        <section class=${filesSplitClass(context.selectedFilePath)}>
+        ${this.renderUploadProgress()}
+        <section class=${filesSplitClass(state.selectedFilePath)}>
           <div class="list tree">
-            ${context.fileTree.length === 0
-              ? context.fileTreeFailed === undefined
+            ${state.tree.length === 0
+              ? state.treeFailed === undefined
                 ? html`<p class="muted">No files loaded.</p>`
-                : html`<p class="muted tree-failed" role="alert">Couldn't read this workspace's files: ${context.fileTreeFailed}</p>`
-              : context.fileTree.map((entry) => this.renderTreeEntry(context, entry, 0))}
+                : html`<p class="muted tree-failed" role="alert">Couldn't read this workspace's files: ${state.treeFailed}</p>`
+              : state.tree.map((entry) => this.renderTreeEntry(explorer, entry, 0))}
           </div>
           <div class="viewer">
-            <workspace-file-viewer
+            <pi-files-viewer
               .machineId=${context.machine.id}
               .projectId=${context.workspace.projectId}
               .workspaceId=${context.workspace.id}
-              .selectedPath=${context.selectedFilePath}
-              .file=${context.selectedFileContent}
-              .loadError=${context.selectedFileLoadError}
-            ></workspace-file-viewer>
+              .selectedPath=${state.selectedFilePath}
+              .file=${state.selectedFileContent}
+              .loadError=${state.selectedFileLoadError}
+              .previewUrlBuilder=${(path: string, options?: { modifiedAt?: string; download?: boolean }) => context.files.previewUrl(path, options)}
+              .modeStore=${this.modeStore()}
+              .limits=${context.files.limits}
+            ></pi-files-viewer>
           </div>
         </section>
         <div class="drop-overlay" aria-hidden=${this.dragActive ? "false" : "true"}>
@@ -102,30 +139,26 @@ export class WorkspaceFilesPanel extends LitElement {
     `;
   }
 
-  private renderTreeEntry(context: WorkspacePanelContext, entry: FileTreeEntry, depth: number): TemplateResult {
-    const children = context.expandedDirs[entry.path];
+  private renderTreeEntry(explorer: FilesExplorer, entry: FileTreeEntry, depth: number): TemplateResult {
+    const children = explorer.state.expandedDirs[entry.path];
     const hasChildren = children !== undefined;
-    const selected = entry.type !== "directory" && context.selectedFilePath === entry.path;
+    const selected = entry.type !== "directory" && explorer.state.selectedFilePath === entry.path;
     return html`
-      <button class=${selected ? "row selected" : "row"} style=${`--depth:${String(depth)}`} @click=${() => { this.selectTreeEntry(context, entry); }}>
+      <button class=${selected ? "row selected" : "row"} style=${`--depth:${String(depth)}`} @click=${() => { this.selectTreeEntry(explorer, entry); }}>
         <span>${entry.type === "directory" ? (hasChildren ? "▾" : "▸") : "·"}</span>
         <span>${entry.name}</span>
       </button>
-      ${hasChildren ? children.map((child) => this.renderTreeEntry(context, child, depth + 1)) : null}
+      ${hasChildren ? children.map((child) => this.renderTreeEntry(explorer, child, depth + 1)) : null}
     `;
   }
 
-  private selectTreeEntry(context: WorkspacePanelContext, entry: FileTreeEntry): void {
-    if (entry.type === "directory") context.onExpandDir(entry.path);
-    else context.onSelectFile(entry.path);
+  private selectTreeEntry(explorer: FilesExplorer, entry: FileTreeEntry): void {
+    if (entry.type === "directory") void explorer.expandDir(entry.path);
+    else explorer.selectFile(entry.path);
   }
 
-  private renderUploadProgress(context: WorkspacePanelContext): TemplateResult | null {
-    const batches = workspaceUploadBatchesForScope(context.state.workspaceUploadBatches, {
-      projectId: context.workspace.projectId,
-      workspaceId: context.workspace.id,
-      machineId: context.machine.id,
-    });
+  private renderUploadProgress(): TemplateResult | null {
+    const batches = Object.values(this.batches).sort((left, right) => right.startedAt.localeCompare(left.startedAt));
     if (batches.length === 0) return null;
     return html`
       <section class="upload-progress" aria-label="Workspace uploads">
@@ -133,12 +166,12 @@ export class WorkspaceFilesPanel extends LitElement {
           <strong>Uploads</strong>
           <small>${uploadSummaryLabel(batches)}</small>
         </div>
-        ${batches.map((batch) => this.renderUploadBatch(context, batch))}
+        ${batches.map((batch) => this.renderUploadBatch(batch))}
       </section>
     `;
   }
 
-  private renderUploadBatch(context: WorkspacePanelContext, batch: WorkspaceUploadBatchState): TemplateResult {
+  private renderUploadBatch(batch: WorkspaceUploadBatchState): TemplateResult {
     return html`
       <article class=${`upload-batch ${batch.status}`}>
         <div class="upload-batch-heading">
@@ -153,7 +186,7 @@ export class WorkspaceFilesPanel extends LitElement {
           ${batch.files.map((file) => this.renderUploadFile(file))}
         </div>
         <div class="upload-actions">
-          ${batch.status === "uploading" ? html`<button @click=${() => { context.onCancelWorkspaceUpload(batch.id); }}>Cancel</button>` : html`<button @click=${() => { context.onClearWorkspaceUpload(batch.id); }}>Dismiss</button>`}
+          ${batch.status === "uploading" ? html`<button @click=${() => { this.cancelUpload(batch.id); }}>Cancel</button>` : html`<button @click=${() => { this.clearUpload(batch.id); }}>Dismiss</button>`}
         </div>
       </article>
     `;
@@ -187,7 +220,7 @@ export class WorkspaceFilesPanel extends LitElement {
           <form @submit=${(event: SubmitEvent) => { this.submitUploadReview(event, context, review); }}>
             <label>
               <span>Destination folder</span>
-              <input id="workspace-upload-destination" .value=${this.destinationFolder} placeholder=${context.workspaceUploadDefaultFolder} @input=${this.handleDestinationInput} />
+              <input id="workspace-upload-destination" .value=${this.destinationFolder} placeholder=${context.files.uploadFolder} @input=${this.handleDestinationInput} />
               <small>Workspace-relative. Leave empty to upload at the workspace root.</small>
             </label>
             <div class="dialog-options">
@@ -258,8 +291,7 @@ export class WorkspaceFilesPanel extends LitElement {
     this.dragDepth = 0;
     this.dragActive = false;
     const files = fileListToArray(event.dataTransfer?.files);
-    const context = this.context;
-    if (files.length > 0 && context !== undefined) startDirectWorkspaceUpload(context, files);
+    if (files.length > 0) this.startUpload(files, { destinationFolder: this.context?.files.uploadFolder ?? "", createDirs: true, overwrite: false, selectUploadedFile: true });
   };
 
   private readonly handleDestinationInput = (event: Event): void => {
@@ -285,12 +317,10 @@ export class WorkspaceFilesPanel extends LitElement {
   };
 
   private openUploadReview(files: File[]): void {
-    const context = this.context;
-    const defaults = workspaceUploadReviewDefaults(context?.workspaceUploadDefaultFolder ?? "");
     this.pendingUpload = { files };
-    this.destinationFolder = defaults.destinationFolder;
-    this.overwrite = defaults.overwrite;
-    this.createDirs = defaults.createDirs;
+    this.destinationFolder = this.context?.files.uploadFolder ?? "";
+    this.overwrite = false;
+    this.createDirs = true;
     this.formError = "";
   }
 
@@ -301,18 +331,91 @@ export class WorkspaceFilesPanel extends LitElement {
       this.formError = validationError;
       return;
     }
-    const run = context.onStartWorkspaceUpload(review.files, {
+    this.startUpload(review.files, {
       destinationFolder: this.destinationFolder,
       createDirs: this.createDirs,
       overwrite: this.overwrite,
       selectUploadedFile: true,
     });
-    if (run !== undefined) this.closeUploadDialog();
+    this.closeUploadDialog();
   }
 
   private closeUploadDialog(): void {
     this.pendingUpload = undefined;
     this.formError = "";
+  }
+
+  private startUpload(files: readonly File[], options: { destinationFolder: string; createDirs: boolean; overwrite: boolean; selectUploadedFile: boolean }): void {
+    const context = this.context;
+    const explorer = this.explorer;
+    if (context === undefined || explorer === undefined || files.length === 0) return;
+    this.uploadBatchSequence += 1;
+    const batchId = `workspace-upload-${String(this.uploadBatchSequence)}`;
+    let batch: WorkspaceUploadBatchState;
+    try {
+      batch = createWorkspaceUploadBatchState({
+        id: batchId,
+        workspaceId: context.workspace.id,
+        destinationFolder: options.destinationFolder,
+        files,
+        startedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      this.formError = describeFilesError(error);
+      return;
+    }
+    this.batches = { ...this.batches, [batch.id]: batch };
+    const task = context.files.uploadFiles(files, {
+      destinationFolder: options.destinationFolder,
+      createDirs: options.createDirs,
+      overwrite: options.overwrite,
+      onProgress: (progress) => { this.updateBatchProgress(batch.id, progress); },
+    });
+    void task.promise
+      .then(async (responses) => {
+        this.completeBatch(batch.id, responses);
+        await explorer.refresh();
+        const uploadedPath = responses[0]?.path;
+        if (options.selectUploadedFile && uploadedPath !== undefined) explorer.selectFile(uploadedPath);
+      })
+      .catch(async (error: unknown) => {
+        this.failBatch(batch.id, error);
+        if (batchErrorResponse(error) === undefined) return;
+        await explorer.refresh();
+      });
+  }
+
+  private cancelUpload(batchId: string): void {
+    const batch = this.batches[batchId];
+    if (batch?.status !== "uploading") return;
+    this.batches = { ...this.batches, [batchId]: cancelWorkspaceUploadBatch(batch, new Date().toISOString()) };
+  }
+
+  private clearUpload(batchId: string): void {
+    this.batches = Object.fromEntries(Object.entries(this.batches).filter(([id]) => id !== batchId));
+  }
+
+  private updateBatchProgress(batchId: string, progress: WorkspaceUploadBatchProgress): void {
+    const batch = this.batches[batchId];
+    if (batch?.status !== "uploading") return;
+    this.batches = { ...this.batches, [batchId]: updateWorkspaceUploadBatchProgress(batch, progress) };
+  }
+
+  private completeBatch(batchId: string, responses: Parameters<typeof completeWorkspaceUploadBatch>[1]): void {
+    const batch = this.batches[batchId];
+    if (batch?.status !== "uploading") return;
+    this.batches = { ...this.batches, [batchId]: completeWorkspaceUploadBatch(batch, responses, new Date().toISOString()) };
+  }
+
+  private failBatch(batchId: string, error: unknown): void {
+    const batch = this.batches[batchId];
+    if (batch?.status !== "uploading") return;
+    if (isUploadCancelled(error)) {
+      this.batches = { ...this.batches, [batchId]: cancelWorkspaceUploadBatch(batch, new Date().toISOString()) };
+      return;
+    }
+    const message = describeFilesError(error);
+    this.batches = { ...this.batches, [batchId]: failWorkspaceUploadBatch(batch, message, new Date().toISOString()) };
   }
 
   private syncUploadModal(): void {
@@ -327,7 +430,7 @@ export class WorkspaceFilesPanel extends LitElement {
       return;
     }
 
-    const registration = registerRenderedModal({
+    const registration = filesRegisterModal({
       element: backdrop,
       // The workspace panel establishes the outer stacking context. Its
       // internal z-index cannot outrank a fixed application dialog outside it.
@@ -338,6 +441,7 @@ export class WorkspaceFilesPanel extends LitElement {
       },
       onTopChange: (isTop) => { this.applyUploadModalAccessibility(dialog, isTop); },
     });
+    if (registration === undefined) return;
     this.uploadModalRegistration = registration;
     registration.focus();
   }
@@ -354,17 +458,38 @@ export class WorkspaceFilesPanel extends LitElement {
     registration?.unregister();
   }
 
-  private resetPendingUpload(): void {
+  private resetForContext(context: WorkspacePanelContext): void {
+    const query = filesQuery();
+    const explorer = new FilesExplorer({
+      listFiles: (path) => context.files.listFiles(path),
+      readFile: (path) => context.files.readFile(path),
+      writeSelectionToUrl: (path) => { query?.write(FILES_ROUTE_NAMESPACE, SELECTION_QUERY_KEY, path, { replace: true }); },
+      readSelectionFromUrl: () => query?.read(FILES_ROUTE_NAMESPACE, SELECTION_QUERY_KEY),
+      describeError: describeFilesError,
+      onChange: () => { this.requestUpdate(); },
+    });
+    this.explorer = explorer;
+    this.explorerIdentityKey = this.contextKey(context);
+    this.batches = {};
     this.closeUploadDialog();
     this.dragDepth = 0;
     this.dragActive = false;
+    explorer.adopt({ machineId: context.machine.id, projectId: context.workspace.projectId, workspaceId: context.workspace.id });
   }
 
-  static override styles = [interactiveSurfaceStyles, 
-    workspacePanelStyles,
+  private contextKey(context: WorkspacePanelContext): string {
+    return `${context.machine.id}:${context.workspace.projectId}:${context.workspace.id}`;
+  }
+
+  private modeStore(): ReturnType<typeof createStore> | undefined {
+    const query = filesQuery();
+    return query === undefined ? undefined : createStore({ query });
+  }
+
+  static override styles = [filesSurfaceStyles(),
     css`
       :host { flex: 1 1 auto; }
-      workspace-file-viewer { flex: 1 1 auto; min-height: 0; }
+      pi-files-viewer { flex: 1 1 auto; min-height: 0; }
       .files-panel { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
       .toolbar-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
       .toolbar .toolbar-actions button { margin-left: 0; }
@@ -413,11 +538,8 @@ export class WorkspaceFilesPanel extends LitElement {
   ];
 }
 
-export function workspaceUploadBatchesForScope(batches: Record<string, WorkspaceUploadBatchState>, scope: WorkspaceUploadScope): WorkspaceUploadBatchState[] {
-  return Object.values(batches)
-    .filter((batch) => batch.projectId === scope.projectId && batch.workspaceId === scope.workspaceId && batch.machineId === scope.machineId)
-    .sort((left, right) => right.startedAt.localeCompare(left.startedAt));
-}
+const FILES_ROUTE_NAMESPACE = "core.workspace.files";
+const SELECTION_QUERY_KEY = "file";
 
 export function workspaceUploadReviewError(files: readonly File[], destinationFolder: string): string | undefined {
   if (files.length === 0) return "Choose at least one file to upload.";
@@ -425,31 +547,22 @@ export function workspaceUploadReviewError(files: readonly File[], destinationFo
     try {
       workspaceUploadPath(destinationFolder, file.name);
     } catch (error) {
-      return describeError(error);
+      return describeFilesError(error);
     }
   }
   return undefined;
 }
 
-export function workspaceUploadReviewDefaults(destinationFolder: string): { destinationFolder: string; createDirs: boolean; overwrite: boolean } {
-  return { destinationFolder, createDirs: true, overwrite: false };
+function batchErrorResponse(error: unknown): WorkspaceUploadBatchErrorShape | undefined {
+  if (!(error instanceof Error)) return undefined;
+  if (!("failures" in error) || !Array.isArray(error.failures)) return undefined;
+  const failures = error.failures;
+  const responses = "responses" in error && Array.isArray(error.responses) ? error.responses : [];
+  return { failures, responses };
 }
 
-export function startDirectWorkspaceUpload(
-  context: Pick<WorkspacePanelContext, "workspaceUploadDefaultFolder" | "onStartWorkspaceUpload">,
-  files: readonly File[],
-): ReturnType<WorkspacePanelContext["onStartWorkspaceUpload"]> {
-  if (files.length === 0) return undefined;
-  return context.onStartWorkspaceUpload(files, {
-    destinationFolder: context.workspaceUploadDefaultFolder,
-    createDirs: true,
-    overwrite: false,
-    selectUploadedFile: true,
-  });
-}
-
-function workspaceContextKey(context: WorkspacePanelContext): string {
-  return `${context.machine.id}:${context.workspace.projectId}:${context.workspace.id}`;
+function isUploadCancelled(error: unknown): boolean {
+  return error instanceof Error && error.name === "WorkspaceUploadCancelledError";
 }
 
 function fileListToArray(files: FileList | null | undefined): File[] {
@@ -460,7 +573,7 @@ function isFileDrag(event: DragEvent): boolean {
   return Array.from(event.dataTransfer?.types ?? []).includes("Files");
 }
 
-function workspaceModalLayerHost(panel: WorkspaceFilesPanel): HTMLElement {
+function workspaceModalLayerHost(panel: PiFilesPanel): HTMLElement {
   const root = panel.getRootNode();
   return root instanceof ShadowRoot && root.host instanceof HTMLElement ? root.host : panel;
 }

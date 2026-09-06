@@ -58,6 +58,10 @@ export type PluginLifecycleEvent = {
     kind: "theme-applied";
     themeId: string;
 } | {
+    kind: "session-activity-settled";
+    sessionId: string;
+    machineId: string;
+} | {
     kind: "settings-changed";
     settings: PluginSettings;
 };
@@ -92,6 +96,9 @@ export interface PluginHostUi {
     readonly breakpoints: PluginBreakpoints;
     /** Sanitized markdown HTML, the same rendering the built-in surfaces trust. */
     readonly renderMarkdownHtml: (markdown: string) => string;
+    /** The formatted-text stylesheet, so a plugin's rendered markdown matches
+     *  the transcript's instead of becoming a second producer of it. */
+    readonly textStyles: CSSResultGroup;
     /** Register a rendered modal layer for document-wide modality, focus, and
      *  isTop coordination with the app's own dialogs. */
     readonly registerModal: (registration: {
@@ -232,12 +239,12 @@ export interface PluginMachine {
 }
 export interface PluginRuntimeState {
     /** Identity of the currently selected machine. Undefined only on older hosts or before machines load. */
-    selectedMachine?: PluginMachine;
-    selectedWorkspace?: Workspace;
+    selectedMachine?: PluginMachine | undefined;
+    selectedWorkspace?: Workspace | undefined;
     selectedSession?: unknown;
-    workspaceTool?: string;
-    mainView?: string;
-    piWebStatus?: PiWebStatusResponse;
+    workspaceTool?: string | undefined;
+    mainView?: string | undefined;
+    piWebStatus?: PiWebStatusResponse | undefined;
 }
 export interface PluginPromptEditor {
     /** Insert text at the current cursor position. Replaces any selection.
@@ -262,7 +269,7 @@ export interface PluginRuntimeContext {
     configureAuth: () => void | Promise<void>;
     logoutAuth: () => void | Promise<void>;
     openThemePicker: () => void;
-    selectMainView: (view: string) => void;
+    selectMainView: (view: QualifiedContributionId | "navigation" | "chat") => void;
     selectWorkspaceTool: (tool: QualifiedContributionId) => void;
     openTerminal: (options?: {
         terminalId?: string | undefined;
@@ -329,6 +336,8 @@ export interface WorkspaceFiles {
         readonly inlinePreviewBytes: number;
         readonly streamPreviewBytes: number;
     };
+    /** The workspace's configured default upload folder, workspace-relative. */
+    readonly uploadFolder: string;
     /** Upload a batch of files sequentially with progress and cancellation. Each
      *  file lands at `destinationFolder/<file.name>`; progress reports per-file
      *  and batch state, and failures carry the per-file errors. */
