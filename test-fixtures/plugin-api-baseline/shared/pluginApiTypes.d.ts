@@ -1,5 +1,12 @@
 export type MachineKind = "local" | "remote";
 export type MachineStatus = "unknown" | "online" | "offline" | "error";
+/**
+ * The machine DTOs the server contract hands plugins. They are type-only
+ * re-exports: the shapes live beside the host's own client types so one
+ * definition serves both, and the re-export keeps the contract's import
+ * surface on this file.
+ */
+export type { Machine, MachineHealth, MachineRuntime, PiWebDeprecatedAgentInput, PiWebRuntimeComponent, PiWebRuntimeResponse } from "./apiTypes.js";
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonObject | readonly JsonValue[];
 export interface JsonObject {

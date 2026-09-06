@@ -77,13 +77,13 @@ describe("production build contents", () => {
     }
   });
 
-  it("exports and maps only the supported type-only plugin API subpaths", async () => {
+  it("exports and maps the supported plugin API subpaths", async () => {
     const metadata: unknown = JSON.parse(await readFile(join(repoRoot, "package.json"), "utf8"));
     if (!isRecord(metadata)) throw new Error("package.json was not an object");
 
     expect(metadata["exports"]).toEqual({
       "./plugin-api": { types: "./dist/plugin-api.d.ts" },
-      "./server-plugin-api": { types: "./dist/server-plugin-api.d.ts" },
+      "./server-plugin-api": { types: "./dist/server-plugin-api.d.ts", import: "./dist/server-plugin-api.js" },
     });
     expect(metadata["typesVersions"]).toEqual({
       "*": {
@@ -170,6 +170,7 @@ async function createCleanPluginBuildFixture(fixtureRoot: string): Promise<void>
     copyFile(join(repoRoot, "package.json"), join(fixtureRoot, "package.json")),
     copyFile(join(repoRoot, "tsconfig.json"), join(fixtureRoot, "tsconfig.json")),
     copyFile(join(repoRoot, "tsconfig.plugins.json"), join(fixtureRoot, "tsconfig.plugins.json")),
+    copyFile(join(repoRoot, "tsconfig.plugin-api.json"), join(fixtureRoot, "tsconfig.plugin-api.json")),
     copyFile(join(repoRoot, "scripts", "build-plugins.mjs"), join(fixtureRoot, "scripts", "build-plugins.mjs")),
     // npm 10 runs `prepare` even under `pack --ignore-scripts`; the hook installer exits 0 without a .git directory.
     copyFile(join(repoRoot, "scripts", "install-git-hooks.mjs"), join(fixtureRoot, "scripts", "install-git-hooks.mjs")),

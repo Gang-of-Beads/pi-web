@@ -18,6 +18,7 @@ import type {
   ServerPluginExecFileResult,
   ServerPluginHealth,
   ServerPluginLogger,
+  MachineRegistryContribution,
   ServerPluginReply,
   ServerPluginRequest,
   ServerPluginRouteContext,
@@ -101,6 +102,7 @@ interface ActiveServerPlugin {
   operations?: PluginOperationMap;
   agentFacts?: AgentFactDeclarations;
   contribution?: ServerPluginProviderContribution;
+  machineRegistry?: { pluginId: string; registry: MachineRegistryContribution };
 }
 
 const DEFAULT_LIFECYCLE_TIMEOUT_MS = 10_000;
@@ -175,6 +177,16 @@ export class ServerPluginRuntime {
 
   providerContributions(): readonly ServerPluginProviderContribution[] {
     return Object.freeze(this.activePlugins.flatMap((active) => active.contribution === undefined ? [] : [active.contribution]));
+  }
+
+  /**
+   * The machine registry a machines plugin contributed. When no active
+   * plugin owns machines the host answers undefined and its machine routes
+   * degrade to an honestly local-only fleet.
+   */
+  machineRegistry(): { pluginId: string; registry: MachineRegistryContribution } | undefined {
+    const found = this.activePlugins.find((active) => active.machineRegistry !== undefined);
+    return found?.machineRegistry;
   }
 
   /** Every route contributed by active plugins, in activation order. */
@@ -331,6 +343,7 @@ export class ServerPluginRuntime {
         ...(operations === undefined ? {} : { operations }),
         ...(agentFacts === undefined ? {} : { agentFacts }),
         ...(contribution === undefined ? {} : { contribution }),
+        ...(loadedActivation.machineRegistry === undefined ? {} : { machineRegistry: { pluginId: entry.id, registry: loadedActivation.machineRegistry } }),
       }));
       this.recordsById.set(entry.id, recordFor(entry, { state: "active", name: loadedPlugin.name }));
       this.logger.info({ pluginId: entry.id, pluginName: loadedPlugin.name }, "server plugin activated");
@@ -450,11 +463,13 @@ function parseActivation(value: unknown): ServerPluginActivation {
     throw new IncompatibleServerPluginError("Server plugins may contribute only one workspaceProvider");
   }
   const workspaceProviderValue = value["workspaceProvider"];
+  const machineRegistryValue = value["machineRegistry"];
   parsePluginOperations(value["operations"]);
   const operations = isOperationRecord(value["operations"]) ? value["operations"] : undefined;
   const routes = parseRouteContributions(value["routes"]);
   const candidate = {
     workspaceProvider: workspaceProviderValue === undefined ? undefined : snapshotWorkspaceProvider(workspaceProviderValue),
+    machineRegistry: machineRegistryValue === undefined ? undefined : requireMachineRegistry(machineRegistryValue),
     agentFacts: value["agentFacts"],
     start: value["start"],
     stop: value["stop"],
@@ -472,6 +487,7 @@ function parseActivation(value: unknown): ServerPluginActivation {
   const health = candidate.health?.bind(value);
   return Object.freeze({
     ...(candidate.workspaceProvider === undefined ? {} : { workspaceProvider: candidate.workspaceProvider }),
+    ...(candidate.machineRegistry === undefined ? {} : { machineRegistry: candidate.machineRegistry }),
     ...(isRecord(value["agentFacts"]) ? { agentFacts: value["agentFacts"] } : {}),
     ...(operations === undefined ? {} : { operations }),
     ...(routes === undefined ? {} : { routes }),
@@ -519,7 +535,7 @@ function isOperationRecord(value: unknown): value is Readonly<Record<string, Ser
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-const KNOWN_ACTIVATION_KEYS = new Set<string>(["workspaceProvider", "operations", "routes", "agentFacts", "start", "stop", "health"]);
+const KNOWN_ACTIVATION_KEYS = new Set<string>(["workspaceProvider", "machineRegistry", "operations", "routes", "agentFacts", "start", "stop", "health"]);
 
 /** An old host reading a newer plugin's activation must not drop fields silently. */
 function unknownActivationKeys(value: unknown): readonly string[] {
@@ -560,6 +576,28 @@ function snapshotWorkspaceProvider(value: unknown): WorkspaceProvider {
     ...(request === undefined ? {} : { request: (context: ProviderRequestContext) => request(context) }),
     ...(prepareRemove === undefined ? {} : { prepareRemove: (context: ProviderRemoveContext) => prepareRemove(context) }),
   });
+}
+
+function requireMachineRegistry(value: unknown): MachineRegistryContribution {
+  if (!isMachineRegistry(value)) throw new IncompatibleServerPluginError("Server plugin machineRegistry must carry all nine registry methods");
+  return {
+    list: () => value.list(),
+    get: (id) => value.get(id),
+    localMachine: () => value.localMachine(),
+    add: (input) => value.add(input),
+    update: (id, input) => value.update(id, input),
+    remove: (id) => value.remove(id),
+    health: (id) => value.health(id),
+    runtime: (id, refresh) => value.runtime(id, refresh),
+    remoteClient: (id) => value.remoteClient(id),
+  };
+}
+
+/** Invoke one validated registry method; the guard above checked its presence. */
+function isMachineRegistry(value: unknown): value is MachineRegistryContribution {
+  if (!isRecord(value)) return false;
+  const methods = ["list", "get", "localMachine", "add", "update", "remove", "health", "runtime", "remoteClient"] as const;
+  return methods.every((method) => typeof value[method] === "function");
 }
 
 function isWorkspaceProvider(value: unknown): value is WorkspaceProvider {

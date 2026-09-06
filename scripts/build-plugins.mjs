@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { watch } from "node:fs";
 import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, relative, resolve } from "node:path";
+import { dirname, relative, resolve, sep } from "node:path";
 import ts from "typescript";
 import * as esbuild from "esbuild";
 
@@ -142,9 +142,22 @@ async function buildFile(file, outputPath) {
   const errors = (transpiled.diagnostics ?? []).filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error);
   if (errors.length > 0) throw new Error(formatDiagnostics(errors));
 
-  const output = `// Generated from ${relative(cwd, file)}. Do not edit directly.\n${transpiled.outputText}`;
+  const output = `// Generated from ${relative(cwd, file)}. Do not edit directly.\n${rewriteContractImports(transpiled.outputText, outputPath)}`;
   await mkdir(dirname(outputPath), { recursive: true });
   await writeFile(outputPath, output);
+}
+
+/**
+ * Server plugin files may import the host contract at runtime (the machines
+ * registry face ships values). The emitted file sits under a nested plugin
+ * package.json whose name is not the host's, so the bare self-specifier the
+ * source uses would not resolve; rewrite it to the relative contract emit.
+ */
+function rewriteContractImports(outputText, outputPath) {
+  const specifier = "@gang-of-beads/pi-web/server-plugin-api";
+  if (!outputText.includes(specifier)) return outputText;
+  const relativePath = relative(dirname(outputPath), resolve(cwd, "dist", "server-plugin-api.js")).split(sep).join("/");
+  return outputText.split(`"${specifier}"`).join(`"${relativePath}"`).split(`'${specifier}'`).join(`'${relativePath}'`);
 }
 
 async function findPluginDirs(dir) {

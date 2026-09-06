@@ -114,11 +114,12 @@ const plugin: PiWebServerPlugin = {
         try {
           const resolved = await resolveRoot(request.params["projectId"], request.params["workspaceId"]);
           if (resolved === undefined) {
-          await sendNotFound(reply);
-          return;
-        }
-          if (request.body === undefined) throw new Error("Request body is required");
-          const response: WriteWorkspaceFileResponse = await writeWorkspaceFile(resolved.root, request.query["path"], Buffer.from(request.body), {
+            await sendNotFound(reply);
+            return;
+          }
+          const body = request.body;
+          if (!(body instanceof Uint8Array)) throw new Error("Request body is required");
+          const response: WriteWorkspaceFileResponse = await writeWorkspaceFile(resolved.root, request.query["path"], Buffer.from(body), {
             createDirs: request.query["createDirs"] !== "false",
             overwrite: request.query["overwrite"] !== "false",
           });

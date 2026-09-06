@@ -1,0 +1,14 @@
+{
+  "name": "@pi-web/machines-plugin",
+  "private": true,
+  "type": "module",
+  "piWeb": {
+    "plugins": [
+      {
+        "id": "machines",
+        "serverModule": "server-plugin.js",
+        "runs": "web"
+      }
+    ]
+  }
+}

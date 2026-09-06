@@ -1,5 +1,10 @@
-import type { JsonObject, JsonPrimitive, JsonValue, WorkspaceRemovalPresentation } from "./shared/pluginApiTypes.js";
+import type { JsonObject, JsonPrimitive, JsonValue, PiWebComponentStatus, PiWebStatusResponse, WorkspaceRemovalPresentation } from "./shared/pluginApiTypes.js";
+import type { Machine, MachineHealth, MachineRuntime, PiWebDeprecatedAgentInput, PiWebRuntimeComponent, PiWebRuntimeResponse } from "./shared/pluginApiTypes.js";
+import { parsePiWebRuntimeResponse } from "./shared/piWebStatusParsing.js";
+import type { WebSocket } from "ws";
 export type { JsonObject, JsonPrimitive, JsonValue, WorkspaceRemovalPresentation };
+export type { Machine, MachineHealth, MachineRuntime, PiWebComponentStatus, PiWebDeprecatedAgentInput, PiWebRuntimeComponent, PiWebRuntimeResponse, PiWebStatusResponse };
+export { parsePiWebRuntimeResponse };
 type MaybePromise<T> = T | Promise<T>;
 /** Public server entry exported by a package's `serverModule`. */
 export interface PiWebServerPlugin {
@@ -105,6 +110,12 @@ export interface ServerPluginActivation {
     workspaceProvider?: WorkspaceProvider;
     operations?: Readonly<Record<string, ServerPluginOperation>>;
     /**
+     * The machine registry this plugin owns. The host consumes it for the
+     * proxy families and the fleet fan-out — dependency points from core to
+     * the plugin, not copies — and never learns what a machine store is.
+     */
+    machineRegistry?: MachineRegistryContribution;
+    /**
      * Routes the plugin answers at core-shaped paths. The host owns path
      * resolution and mounts each route under both `/api` and
      * `/api/machines/local`; a route whose path is named by the federated route
@@ -136,19 +147,21 @@ export interface ServerPluginRouteContribution {
     path: string;
     handle(request: ServerPluginRequest, reply: ServerPluginReply, context: ServerPluginRouteContext): Promise<void>;
 }
-/** The three input faces a route handler may read: params, query, headers. */
+/** The input faces a route handler may read: params, query, headers, body. */
 export interface ServerPluginRequest {
     readonly params: Readonly<Record<string, string>>;
     readonly query: Readonly<Record<string, string>>;
     readonly headers: Readonly<Record<string, string | undefined>>;
     /**
-     * Raw request bytes when the body arrived as text or binary: the host
-     * buffers text/plain and binary bodies and hands them over untouched.
-     * Undefined for bodyless methods and for JSON payloads - a JSON call is an
-     * operation, not a route.
+     * The request body: raw bytes for text and binary payloads (the host
+     * buffers and hands them over untouched), a parsed JSON object for
+     * JSON payloads — the machines management family is a route family with
+     * JSON bodies, the same shape core's own management routes take — and
+     * undefined for bodyless methods.
      */
-    readonly body: Uint8Array | undefined;
+    readonly body: ServerPluginRouteBody | undefined;
 }
+export type ServerPluginRouteBody = Uint8Array | Record<string, JsonValue>;
 /**
  * A bounded answer: status, headers, and a body. The body may be an async
  * iterable for streaming answers (a Node Readable satisfies it), which is how
@@ -170,6 +183,10 @@ export interface ServerPluginHostPorts {
     workspaceCatalog?: WorkspaceCatalogPort;
     /** Read the effective per-project config values plugins may act on. */
     piWebConfig?: PiWebConfigPort;
+    /** The absolute path of the machines store file the host resolves. */
+    machinesStorePath?: () => string;
+    /** The local runtime the machines plugin reads for local health and runtime. */
+    localRuntime?: () => Promise<PiWebRuntimeResponse>;
 }
 export interface WorkspacePathResolution {
     readonly projectPath: string;
@@ -252,4 +269,61 @@ export interface WorkspaceRemovePlan {
      * meaning the removal succeeded.
      */
     command: string;
+}
+/**
+ * The machine registry face core consumes. The proxy families and the fleet
+ * fan-out read machines through this interface; the machines plugin
+ * implements it over its own store and remote client. Every method is the
+ * whole authority the caller holds — no plugin-internal type leaks through.
+ */
+export interface MachineRegistryContribution {
+    list(): Promise<Machine[]>;
+    get(id: string): Promise<Machine | undefined>;
+    /** The local machine with the user's alias applied, if one was set. */
+    localMachine(): Promise<Machine>;
+    add(input: PluginMachineCreateInput): Promise<Machine>;
+    update(id: string, input: PluginMachineUpdateInput): Promise<Machine | undefined>;
+    remove(id: string): Promise<boolean>;
+    health(id: string): Promise<MachineHealth | undefined>;
+    runtime(id: string, refresh?: boolean): Promise<MachineRuntime | undefined>;
+    remoteClient(id: string): Promise<MachineClient | undefined>;
+}
+export interface PluginMachineCreateInput {
+    name?: string;
+    baseUrl?: string;
+    token?: string;
+    headers?: Record<string, string>;
+}
+export type PluginMachineUpdateInput = Partial<PluginMachineCreateInput>;
+/**
+ * One remote machine connection as the proxy consumes it. The response
+ * bodies stream: the outer HTTP edge frames them, so the client hands back
+ * the decoded stream and the wire headers untouched.
+ */
+export interface MachineClient {
+    request(method: string, path: string, body?: unknown, options?: MachineRequestOptions): Promise<MachineHttpResponse>;
+    requestJson(method: string, path: string, body?: unknown, options?: MachineRequestOptions): Promise<MachineJsonResponse>;
+    connectWebSocket(path: string): WebSocket;
+}
+export interface MachineHttpResponse {
+    statusCode: number;
+    headers: Record<string, string | string[] | undefined>;
+    body?: NodeJS.ReadableStream;
+}
+export interface MachineJsonResponse {
+    statusCode: number;
+    headers: Record<string, string | string[] | undefined>;
+    body: unknown;
+}
+export interface MachineRequestOptions {
+    timeoutMs?: number;
+    contentType?: string;
+    signal?: AbortSignal;
+}
+export declare const DEFAULT_REMOTE_REQUEST_TIMEOUT_MS = 30000;
+export declare const DEFAULT_REMOTE_HEALTH_TIMEOUT_MS = 3000;
+/** The failure shape a proxied machine request reports upstream. */
+export declare class RemoteMachineRequestError extends Error {
+    readonly statusCode: 502 | 504;
+    constructor(message: string, statusCode: 502 | 504);
 }

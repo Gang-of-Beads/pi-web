@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { Readable } from "node:stream";
-import type { ServerPluginReply, ServerPluginRouteContribution } from "../../../server-plugin-api.js";
+import type { ServerPluginReply, ServerPluginRouteBody, ServerPluginRouteContribution } from "../../../server-plugin-api.js";
+import type { JsonValue } from "../../../shared/pluginApiTypes.js";
 import { requestCancellation } from "../../shared/requestCancellation.js";
 import type { ServerPluginRuntime } from "../../shared/plugins/serverPluginRuntime.js";
 
@@ -61,10 +62,22 @@ function toFastifyHandler(route: ServerPluginRouteContribution): (request: Fasti
   };
 }
 
-function routeBody(body: unknown): Uint8Array | undefined {
+function routeBody(body: unknown): ServerPluginRouteBody | undefined {
   if (body instanceof Uint8Array) return body;
   if (typeof body === "string") return Buffer.from(body, "utf8");
+  if (isPlainJsonObject(body)) return body;
   return undefined;
+}
+
+function isPlainJsonObject(body: unknown): body is Record<string, JsonValue> {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return false;
+  return Object.values(body).every(isJsonValue);
+}
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") return true;
+  if (Array.isArray(value)) return value.every(isJsonValue);
+  return typeof value === "object" && isPlainJsonObject(value);
 }
 
 /**

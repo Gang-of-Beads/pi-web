@@ -13,7 +13,8 @@
       "types": "./dist/plugin-api.d.ts"
     },
     "./server-plugin-api": {
-      "types": "./dist/server-plugin-api.d.ts"
+      "types": "./dist/server-plugin-api.d.ts",
+      "import": "./dist/server-plugin-api.js"
     }
   },
   "typesVersions": {
@@ -56,7 +57,7 @@
     "build": "npm run clean && tsc -p tsconfig.build.json && npm run build:plugin-api && npm run build:plugins && vite build",
     "build:plugin-api": "tsc -p tsconfig.plugin-api.json",
     "build:plugin-api-package": "tsc -p tsconfig.plugin-api.json --outDir packages/pi-web-plugin-api/dist",
-    "build:plugins": "tsc -p tsconfig.plugins.json && node scripts/build-plugins.mjs",
+    "build:plugins": "npm run build:plugin-api && tsc -p tsconfig.plugins.json && node scripts/build-plugins.mjs",
     "capture:screenshots": "node scripts/capture-screenshots.mjs",
     "typecheck": "tsc --noEmit",
     "typecheck:cached": "tsc --noEmit --incremental --tsBuildInfoFile node_modules/.cache/pi-web/typecheck.tsbuildinfo",
