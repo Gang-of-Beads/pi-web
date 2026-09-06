@@ -60,7 +60,7 @@ export class ProjectController {
       const project = await this.api.addProject(path.trim(), undefined, create, machineId);
       if (selectedMachineId(this.getState()) !== machineId) return undefined;
       const projects = this.getState().projects;
-      this.setState({ projects: [...projects.filter((p) => p.id !== project.id), project], projectDialogOpen: false });
+      this.setState({ projects: [...projects.filter((p) => p.id !== project.id), project] });
       await this.workspaces.selectProject(project);
       if (trustChoice?.changed === true) {
         await this.applyTrustChoice(project, trustChoice.trusted, machineId);

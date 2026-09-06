@@ -1,10 +1,8 @@
 // @vitest-environment happy-dom
 
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { api, trustApi } from "../api";
-import type { ProjectTrustChoice } from "../controllers/projectController";
-import { ProjectDialog } from "./ProjectDialog";
-import { deepActiveElement, pressKey, requiredElement, settleRenderedDialog } from "./modalSurfaceTestSupport";
+import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
+import { ProjectDialog, type ProjectTrustChoice } from "./ProjectDialog";
+import { deepActiveElement, pressKey, requiredElement } from "../../../src/client/src/components/modalSurfaceTestSupport";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -12,33 +10,27 @@ afterEach(() => {
   localStorage.clear();
 });
 
-describe("project-dialog modal surface", () => {
+/**
+ * The add-project form as plugin dialog content: the shell owns the modal
+ * surface (focus, escape, backdrop), so these tests cover the form's own
+ * contract - the debounced folder suggestions, the server-resolved trust
+ * prefills, and the submit answer shape the host's createProject action
+ * consumes.
+ */
+describe("project-dialog form", () => {
   it("focuses the project path input when opened", async () => {
-    const dialog = await mountDialog();
+    const { dialog } = await mountDialog();
 
     expect(deepActiveElement()).toBe(pathInput(dialog));
   });
 
-  // Regression proof for the pre-surface latent bug: the keydown listener lived
-  // on the path input, so Escape with any other control focused did nothing.
-  it("cancels on Escape from a control other than the path input", async () => {
-    const onCancel = vi.fn<() => void>();
-    const dialog = await mountDialog({ onCancel });
-    const checkbox = createCheckbox(dialog);
-    checkbox.focus();
-
-    pressKey(checkbox, "Escape");
-
-    expect(onCancel).toHaveBeenCalledOnce();
-  });
-
   it("submits the typed path on Enter in the path input", async () => {
     const onSubmit = vi.fn<(path: string, create: boolean, trust: ProjectTrustChoice | undefined) => void>();
-    const dialog = await mountDialog({ onSubmit });
+    const { dialog } = await mountDialog({ onSubmit });
     const input = pathInput(dialog);
     input.value = "/work/new-project";
     input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
-    await settleRenderedDialog(dialog);
+    await settleDialog(dialog);
     await waitForTrustRead(dialog);
 
     pressKey(input, "Enter");
@@ -47,14 +39,14 @@ describe("project-dialog modal surface", () => {
   });
 
   it("disables the trust choice until a path is entered", async () => {
-    const dialog = await mountDialog();
+    const { dialog } = await mountDialog();
 
     expect(trustCheckbox(dialog).disabled).toBe(true);
   });
 
   it("prefills the trust choice with the existing decision for the entered path", async () => {
-    const dialog = await mountDialog();
-    vi.mocked(trustApi.projectTrust).mockResolvedValue({ path: "/work/proj", decision: true, trusted: true });
+    const { dialog, projectTrust } = await mountDialog();
+    projectTrust.mockResolvedValue({ path: "/work/proj", decision: true, trusted: true });
     const input = pathInput(dialog);
     input.value = "/work/proj";
     input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
@@ -65,8 +57,8 @@ describe("project-dialog modal surface", () => {
   });
 
   it("keeps an explicitly untrusted existing decision unchecked", async () => {
-    const dialog = await mountDialog();
-    vi.mocked(trustApi.projectTrust).mockResolvedValue({ path: "/work/proj", decision: false, trusted: false });
+    const { dialog, projectTrust } = await mountDialog();
+    projectTrust.mockResolvedValue({ path: "/work/proj", decision: false, trusted: false });
     const input = pathInput(dialog);
     input.value = "/work/proj";
     input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
@@ -78,7 +70,7 @@ describe("project-dialog modal surface", () => {
 
   it("submits a flipped trust choice as a changed decision", async () => {
     const onSubmit = vi.fn<(path: string, create: boolean, trust: ProjectTrustChoice | undefined) => void>();
-    const dialog = await mountDialog({ onSubmit });
+    const { dialog } = await mountDialog({ onSubmit });
     const input = pathInput(dialog);
     input.value = "/work/new-project";
     input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
@@ -86,7 +78,7 @@ describe("project-dialog modal surface", () => {
     const checkbox = trustCheckbox(dialog);
     checkbox.checked = true;
     checkbox.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
-    await settleRenderedDialog(dialog);
+    await settleDialog(dialog);
 
     pressKey(input, "Enter");
 
@@ -97,8 +89,8 @@ describe("project-dialog modal surface", () => {
   // counter, so the trust read fired on every keystroke discarded the in-flight
   // suggestions request and the loading hint never cleared.
   it("renders folder suggestions and clears the loading hint after typing a path", async () => {
-    const dialog = await mountDialog();
-    vi.mocked(api.projectDirectories).mockResolvedValue([{ path: "/work/proj/", kind: "other" }]);
+    const { dialog, projectDirectories } = await mountDialog();
+    projectDirectories.mockResolvedValue([{ path: "/work/proj/", kind: "other" }]);
     const input = pathInput(dialog);
     input.value = "/work/proj";
     input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
@@ -106,17 +98,17 @@ describe("project-dialog modal surface", () => {
     await vi.waitFor(() => {
       expect(dialog.shadowRoot?.querySelectorAll(".suggestions button").length).toBe(1);
     });
-    await settleRenderedDialog(dialog);
+    await settleDialog(dialog);
 
     expect(dialog.shadowRoot?.querySelector(".suggestions button")?.textContent).toContain("/work/proj/");
     expect(dialog.shadowRoot?.textContent).not.toContain("Loading folders…");
   });
 
   it("keeps showing folder suggestions while a slower trust read is still in flight", async () => {
-    const dialog = await mountDialog();
-    vi.mocked(api.projectDirectories).mockResolvedValue([{ path: "/work/proj/", kind: "other" }]);
+    const { dialog, projectDirectories, projectTrust } = await mountDialog();
+    projectDirectories.mockResolvedValue([{ path: "/work/proj/", kind: "other" }]);
     let resolveTrust: ((value: { path: string; decision: boolean | null; trusted: boolean }) => void) | undefined;
-    vi.mocked(trustApi.projectTrust).mockReturnValue(new Promise((resolve) => { resolveTrust = resolve; }));
+    projectTrust.mockReturnValue(new Promise((resolve) => { resolveTrust = resolve; }));
     const input = pathInput(dialog);
     input.value = "/work/proj";
     input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
@@ -125,13 +117,13 @@ describe("project-dialog modal surface", () => {
       expect(dialog.shadowRoot?.querySelectorAll(".suggestions button").length).toBe(1);
     });
     resolveTrust?.({ path: "/work/proj", decision: null, trusted: false });
-    await settleRenderedDialog(dialog);
+    await settleDialog(dialog);
 
     expect(dialog.shadowRoot?.textContent).not.toContain("Loading folders…");
   });
 
   it("explains what trusting a project means and links to the project-trust documentation", async () => {
-    const dialog = await mountDialog();
+    const { dialog } = await mountDialog();
 
     const hint = dialog.shadowRoot?.querySelector<HTMLElement>(".trust-hint");
     expect(hint).not.toBeNull();
@@ -159,8 +151,8 @@ interface ProjectDialogProps {
  */
 describe("folder list freshness", () => {
   it("drops a superseded query's rows the moment the path changes", async () => {
-    const dialog = await mountDialog();
-    vi.mocked(api.projectDirectories).mockResolvedValueOnce([{ path: "/work/one-place/", kind: "other" }]);
+    const { dialog, projectDirectories } = await mountDialog();
+    projectDirectories.mockResolvedValueOnce([{ path: "/work/one-place/", kind: "other" }]);
     const input = pathInput(dialog);
     input.value = "/work/one";
     input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
@@ -170,14 +162,14 @@ describe("folder list freshness", () => {
 
     input.value = "/work/two";
     input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
-    await settleRenderedDialog(dialog);
+    await settleDialog(dialog);
 
     expect(dialog.shadowRoot?.querySelectorAll(".suggestions button")).toHaveLength(0);
   });
 
   it("reads a failed search as a failure, not as no matches", async () => {
-    const dialog = await mountDialog();
-    vi.mocked(api.projectDirectories).mockRejectedValueOnce(new Error("scan exploded"));
+    const { dialog, projectDirectories } = await mountDialog();
+    projectDirectories.mockRejectedValueOnce(new Error("scan exploded"));
     const input = pathInput(dialog);
     input.value = "/work/broken";
     input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
@@ -190,8 +182,8 @@ describe("folder list freshness", () => {
   });
 
   it("keeps the failure reading as a failure after the search is retried and fails again", async () => {
-    const dialog = await mountDialog();
-    vi.mocked(api.projectDirectories).mockRejectedValue(new Error("scan exploded"));
+    const { dialog, projectDirectories } = await mountDialog();
+    projectDirectories.mockRejectedValue(new Error("scan exploded"));
     const input = pathInput(dialog);
     input.value = "/work/broken";
     input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
@@ -216,9 +208,9 @@ describe("folder list freshness", () => {
  */
 describe("folder listing freshness", () => {
   it("never lets an older listing overwrite the newer query's answer", async () => {
-    const dialog = await mountDialog();
+    const { dialog, projectDirectories } = await mountDialog();
     let answerOld: ((value: { path: string; kind: "other" }[]) => void) | undefined;
-    vi.mocked(api.projectDirectories)
+    projectDirectories
       .mockImplementationOnce(() => new Promise((resolve) => { answerOld = resolve; }))
       .mockResolvedValueOnce([{ path: "/work/newer/", kind: "other" }]);
     const input = pathInput(dialog);
@@ -235,39 +227,48 @@ describe("folder listing freshness", () => {
 
     // The stale answer lands after the newer one is already on screen.
     answerOld?.([{ path: "/work/old-and-stale/", kind: "other" }]);
-    await settleRenderedDialog(dialog);
+    await settleDialog(dialog);
 
     expect(dialog.shadowRoot?.querySelector(".suggestions button")?.textContent).toContain("/work/newer/");
     expect(dialog.shadowRoot?.textContent).not.toContain("old-and-stale");
   });
 });
 
-async function mountDialog(props: ProjectDialogProps = {}): Promise<ProjectDialog> {
-  vi.spyOn(api, "projectDirectories").mockResolvedValue([]);
-  vi.spyOn(trustApi, "projectTrust").mockResolvedValue({ path: "", decision: null, trusted: false });
+interface DialogMocks {
+  dialog: ProjectDialog;
+  projectDirectories: Mock<(query: string, signal: AbortSignal) => Promise<{ path: string; kind: "tracked" | "untracked" | "other" }[]>>;
+  projectTrust: Mock<(path: string) => Promise<{ path: string; decision: boolean | null; trusted: boolean }>>;
+}
+
+async function mountDialog(props: ProjectDialogProps = {}): Promise<DialogMocks> {
+  const projectDirectories = vi.fn<(query: string, signal: AbortSignal) => Promise<{ path: string; kind: "tracked" | "untracked" | "other" }[]>>().mockResolvedValue([]);
+  const projectTrust = vi.fn<(path: string) => Promise<{ path: string; decision: boolean | null; trusted: boolean }>>().mockResolvedValue({ path: "", decision: null, trusted: false });
   const dialog = new ProjectDialog();
+  dialog.projectDirectories = projectDirectories;
+  dialog.projectTrust = projectTrust;
   if (props.onSubmit !== undefined) dialog.onSubmit = props.onSubmit;
   if (props.onCancel !== undefined) dialog.onCancel = props.onCancel;
   document.body.append(dialog);
-  await settleRenderedDialog(dialog);
-  return dialog;
+  await settleDialog(dialog);
+  return { dialog, projectDirectories, projectTrust };
+}
+
+/** Two host cycles so a render scheduled from within `updated()` has settled. */
+async function settleDialog(dialog: ProjectDialog): Promise<void> {
+  await dialog.updateComplete;
+  await dialog.updateComplete;
 }
 
 /** Waits until the trust read for the current path has resolved and rendered. */
 async function waitForTrustRead(dialog: ProjectDialog): Promise<void> {
   await vi.waitFor(() => { expect(trustCheckbox(dialog).disabled).toBe(false); });
-  await settleRenderedDialog(dialog);
+  await settleDialog(dialog);
 }
 
 function pathInput(dialog: ProjectDialog): HTMLInputElement {
   return requiredElement(dialog.shadowRoot?.querySelector<HTMLInputElement>("label input"), "project-dialog path input");
 }
 
-function createCheckbox(dialog: ProjectDialog): HTMLInputElement {
-  return requiredElement(dialog.shadowRoot?.querySelector<HTMLInputElement>("input[type='checkbox']"), "project-dialog create checkbox");
-}
-
-/** The trust choice checkbox: the second of the two checkboxes the dialog renders. */
 function trustCheckbox(dialog: ProjectDialog): HTMLInputElement {
   const checkbox = dialog.shadowRoot?.querySelectorAll<HTMLInputElement>("input[type='checkbox']")[1];
   return requiredElement(checkbox, "project-dialog trust checkbox");

@@ -194,7 +194,7 @@ function wireContributedSections(panel: AppNavigationPanel, machineStatusSnapsho
     deletingWorkspaceIds: [],
     statusSnapshot: snapshot === undefined ? undefined : narrowSnapshot(snapshot),
     labelItems: () => [],
-    display: { hidden: false, collapsible: false, collapsed: false, tiles: false },
+    display: { hidden: false, collapsible: false, collapsed: false, tiles: false, withCreate: false },
     requestUpdate: () => undefined,
     selectProject: () => undefined,
     selectWorkspace: () => undefined,

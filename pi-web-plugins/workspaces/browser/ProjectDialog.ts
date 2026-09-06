@@ -1,11 +1,15 @@
 import { LitElement, html } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
-import { api, trustApi, type FileSuggestion } from "../api";
-import type { ProjectTrustChoice } from "../controllers/projectController";
+import type { FileSuggestion } from "@gang-of-beads/pi-web/plugin-api";
 import { css } from "lit";
-import "./ModalSurface";
-import { describeError } from "../notice";
-import { interactiveSurfaceStyles } from "./shared";
+import { describeError } from "./errors";
+import { interactiveSurfaceStyles } from "./sharedStyles";
+
+/** The submitted trust answer; `changed` is false for the pre-filled value. */
+export interface ProjectTrustChoice {
+  trusted: boolean;
+  changed: boolean;
+}
 
 const SUGGESTION_DEBOUNCE_MS = 120;
 
@@ -22,7 +26,10 @@ interface ProjectTrustState {
 export class ProjectDialog extends LitElement {
   @property({ attribute: false }) onSubmit?: (path: string, create: boolean, trust: ProjectTrustChoice | undefined) => unknown;
   @property({ attribute: false }) onCancel?: () => void;
-  @property() machineId = "local";
+  /** Host-provided directory suggestions for the typed path; absent means no suggestions. */
+  @property({ attribute: false }) projectDirectories?: (query: string, signal: AbortSignal) => Promise<FileSuggestion[]>;
+  /** Host-provided server-resolved trust for the typed path; absent means no trust row. */
+  @property({ attribute: false }) projectTrust?: (path: string) => Promise<{ path: string; decision: boolean | null; trusted: boolean }>;
   @state() private path = "";
   @state() private createMissing = true;
   /** Why the last submit did not go through, shown where the submit happened. */
@@ -112,7 +119,8 @@ export class ProjectDialog extends LitElement {
     this.suggestionsAbort = abort;
     this.loading = true;
     try {
-      const suggestions = await api.projectDirectories(query, this.machineId, { signal: abort.signal });
+      if (this.projectDirectories === undefined) throw new Error("Folder suggestions are not available here");
+      const suggestions = await this.projectDirectories(query, abort.signal);
       if (requestId !== this.suggestionRequestId) return;
       this.suggestions = suggestions;
       this.suggestionsQuery = query;
@@ -203,7 +211,8 @@ export class ProjectDialog extends LitElement {
       };
     }
     try {
-      const result = await trustApi.projectTrust(trimmed, this.machineId);
+      if (this.projectTrust === undefined) throw new Error("Project trust is not available here");
+      const result = await this.projectTrust(trimmed);
       if (requestId !== this.trustRequestId || this.trustTouched) return;
       this.trust = { path: result.path, decision: result.decision, trusted: result.trusted, loading: false };
     } catch (error) {
@@ -255,12 +264,16 @@ export class ProjectDialog extends LitElement {
     }
   }
 
+  protected override firstUpdated(): void {
+    this.pathInput?.focus();
+  }
+
   override render() {
     return html`
-      <modal-surface
-        .onClose=${() => this.onCancel?.()}
-        .initialFocus=${"input"}
-        .label=${"Add project"}
+      <div
+        class="dialog"
+        role="dialog"
+        aria-label="Add project"
         @keydown=${(event: KeyboardEvent) => { this.onKeyDown(event); }}
       >
         <header>
@@ -302,13 +315,12 @@ export class ProjectDialog extends LitElement {
           <button @click=${() => { this.onCancel?.(); }}>Cancel</button>
           <button class="primary" ?disabled=${this.path.trim() === "" || this.submitting} @click=${() => { this.submit(); }}>${this.submitting ? "Adding\u2026" : "Add project"}</button>
         </footer>
-      </modal-surface>
+      </div>
     `;
   }
 
   static override styles = [interactiveSurfaceStyles, css`
-    :host { position: fixed; inset: 0; z-index: var(--pi-layer-dialog); color: var(--pi-text); font: 14px system-ui, sans-serif; }
-    modal-surface { --modal-surface-place-items: start center; --modal-surface-backdrop-padding: min(12vh, 90px) 0 0; --modal-surface-width: min(720px, calc(100vw - 40px)); --modal-surface-max-height: calc(100dvh - min(12vh, 90px) - 20px); --modal-surface-max-height: min(700px, calc(100vh - 40px)); }
+    .dialog { display: flex; flex-direction: column; min-height: 0; max-height: 100%; color: var(--pi-text); }
     header, footer { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border-bottom: 1px solid var(--pi-border); }
     footer { border-top: 1px solid var(--pi-border); border-bottom: 0; justify-content: end; }
     .body { flex: 1 1 auto; display: grid; gap: 12px; padding: 12px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }

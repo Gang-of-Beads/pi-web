@@ -107,7 +107,7 @@ function navContext(options: {
     deletingWorkspaceIds: [],
     statusSnapshot: undefined,
     labelItems: () => [],
-    display: { hidden: false, collapsible: false, collapsed: false, tiles: false },
+    display: { hidden: false, collapsible: false, collapsed: false, tiles: false, withCreate: false },
     requestUpdate: () => undefined,
     selectProject: (projectId) => { options.onSelectProject?.(projectId); },
     selectWorkspace: () => undefined,

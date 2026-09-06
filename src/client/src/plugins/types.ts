@@ -3,7 +3,7 @@ import type { AppAction } from "../actions";
 import type { DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, Machine, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, RunTerminalCommandInput, TerminalCommandRun, TerminalCommandRunFilter, TerminalCommandRunHandle, TerminalInfo, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, Workspace } from "../api";
 import type { AppState } from "../appState";
 import type { SettingsSection } from "../settingsRoute";
-import type { WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle } from "../../../shared/pluginApiTypes";
+import type { FileSuggestion, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle } from "../../../shared/pluginApiTypes";
 import type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
 
 export type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
@@ -204,6 +204,8 @@ export interface NavSectionDisplay {
   readonly collapsed: boolean;
   /** Rows render as a responsive tile grid instead of full-width rows. */
   readonly tiles: boolean;
+  /** Whether a create control belongs in this section body right now. */
+  readonly withCreate: boolean;
 }
 
 /**
@@ -513,6 +515,26 @@ export interface TerminalCommandRunsInternalRuntime {
   open(options?: { terminalId?: string | undefined }): void;
 }
 
+/** The add-project dialog's submitted answer. */
+export interface PluginProjectCreateInput {
+  readonly path: string;
+  readonly create?: boolean;
+  readonly trust?: PluginProjectTrustChoice;
+}
+
+/** The dialog's trust checkbox answer; `changed` is false for the pre-filled value. */
+export interface PluginProjectTrustChoice {
+  readonly trusted: boolean;
+  readonly changed: boolean;
+}
+
+/** Server-resolved existing trust for one raw path. */
+export interface PluginProjectTrustRead {
+  readonly path: string;
+  readonly decision: boolean | null;
+  readonly trusted: boolean;
+}
+
 export interface PluginPromptEditor {
   insertText(text: string): void;
   getText(): string;
@@ -526,6 +548,16 @@ export interface PluginRuntimeContext {
   openActionPalette: () => void;
   focusPrompt: () => void;
   addProject: () => void | Promise<void>;
+  /**
+   * Create a project from the add-project dialog's answer. Resolves to the
+   * reason the submit did not go through, or undefined when it did; the host
+   * owns the project's placement in app state and the trust choice's write.
+   */
+  createProject: (input: PluginProjectCreateInput) => Promise<string | undefined>;
+  /** Directory suggestions below the typed path, on the selected machine. */
+  projectDirectories: (query: string, signal: AbortSignal) => Promise<FileSuggestion[]>;
+  /** Server-resolved existing trust for a raw path, on the selected machine. */
+  projectTrust: (path: string) => Promise<PluginProjectTrustRead>;
   addMachine: () => void | Promise<void>;
   refreshSelectedMachine: () => void | Promise<void>;
   removeSelectedMachine: () => void | Promise<void>;

@@ -54,7 +54,7 @@ export class ContextSwitcherSheet extends LitElement {
   private renderNavSection(localId: "projects" | "workspaces"): unknown {
     const section = this.navSections.find((candidate) => candidate.localId === localId);
     if (section === undefined || this.navSectionContext === undefined) return nothing;
-    return section.render({ ...this.navSectionContext, display: { hidden: false, collapsible: false, collapsed: false, tiles: false } });
+    return section.render({ ...this.navSectionContext, display: { hidden: false, collapsible: false, collapsed: false, tiles: false, withCreate: true } });
   }
 
   private renderMachineGroup() {

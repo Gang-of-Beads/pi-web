@@ -290,7 +290,7 @@ export class AppNavigationPanel extends LitElement {
     const { addProject, ...base } = this.navSectionContext;
     const context: NavSectionContext = {
       ...base,
-      display: { hidden, collapsible: this.collapsible, collapsed, tiles: true },
+      display: { hidden, collapsible: this.collapsible, collapsed, tiles: true, withCreate },
       ...(withCreate && addProject !== undefined ? { addProject } : {}),
       toggleCollapsed: () => { (localId === "projects" ? this.onToggleProjects : this.onToggleWorkspaces)?.(); },
       focusPreviousSection: () => { this.focusPreviousFrom(localId); },

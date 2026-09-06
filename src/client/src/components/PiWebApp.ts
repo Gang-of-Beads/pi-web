@@ -11,7 +11,7 @@ import { routeMatchesUrl } from "../routeMatch";
 import { autoFocusesComposer } from "../appShell/appShellController";
 import { touchPrimaryPointer } from "../keyboardDismissal";
 import { customElement, query, state } from "lit/decorators.js";
-import { configApi, effectiveWorkspaceUploadFolder, fleetApi, piWebApi, projectsApi, selfUpdateApi, sessionsApi, terminalsApi, trustApi, workspacesApi, workspaceEffectiveUploadFolder, type AskUserSubmission, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
+import { api, configApi, effectiveWorkspaceUploadFolder, fleetApi, piWebApi, projectsApi, selfUpdateApi, sessionsApi, terminalsApi, trustApi, workspacesApi, workspaceEffectiveUploadFolder, type AskUserSubmission, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
   type QueuedSessionMessage, type SessionBackgroundTaskInfo, type SessionSubagentInfo, type SessionSubagentRunInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
 import type { PiWebFleetReport, PiWebFleetRunResponse } from "../../../shared/apiTypes";
 import type { AppAction } from "../actions";
@@ -23,7 +23,7 @@ import { machineScopedPluginId } from "../../../shared/machinePluginIds";
 import { AuthController } from "../controllers/authController";
 import { MachineController } from "../controllers/machineController";
 import { MachineStatusController } from "../controllers/machineStatusController";
-import { ProjectController, type ProjectTrustChoice } from "../controllers/projectController";
+import { ProjectController } from "../controllers/projectController";
 import { PiWebStatusController } from "../controllers/piWebStatusController";
 import { SessionController } from "../controllers/sessionController";
 import { SessionNotificationController } from "../controllers/sessionNotificationController";
@@ -78,7 +78,6 @@ import "./ModelPicker";
 import "./ActionPalette";
 import "./QuickSwitcher";
 import "./AuthDialog";
-import "./ProjectDialog";
 import "./MachineDialog";
 import type { MachineDialogSubmit } from "./MachineDialog";
 import { hasRenderedModal } from "./modalLayerRegistry";
@@ -509,7 +508,6 @@ export class PiWebApp extends LitElement {
     }
     const state = this.state;
     if (state.actionPaletteOpen) { this.setState({ actionPaletteOpen: false }); return; }
-    if (state.projectDialogOpen) { this.setState({ projectDialogOpen: false }); return; }
     if (state.machineDialogOpen) { this.setState({ machineDialogOpen: false }); return; }
     if (state.commandDialog !== undefined) { this.sessions.cancelCommand(); return; }
     if (state.modelDialog !== undefined) { this.setState({ modelDialog: undefined }); return; }
@@ -2067,7 +2065,7 @@ export class PiWebApp extends LitElement {
         .sessionsCollapsed=${this.navigationSections.isCollapsed("sessions")}
         .workspaceLabelItems=${(workspace: Workspace) => this.workspaceLabelItems(workspace)}
         .refreshControl=${this.appShell.shouldShowAppRefreshInHeader() || this.appShell.shouldShowAppRefreshInContextBar() ? this.renderAppRefresh() : undefined}
-        .onAddProject=${() => { this.openProjectDialog(); }}
+        .onAddProject=${this.hasAddProjectEntry() ? () => { this.openProjectDialog(); } : undefined}
         .onShowActions=${() => { this.openActionPalette(); }}
         .onOpenSettings=${() => { this.openSettings(); }}
         .onAddMachine=${() => { this.openMachineDialog(); }}
@@ -2211,7 +2209,6 @@ export class PiWebApp extends LitElement {
     return this.quickSwitcherOpen
       || this.contextSheetOpen
       || this.state.actionPaletteOpen
-      || this.state.projectDialogOpen
       || this.state.machineDialogOpen
       || this.state.commandDialog !== undefined
       || this.state.modelDialog !== undefined
@@ -2240,9 +2237,19 @@ export class PiWebApp extends LitElement {
     this.setState({ actionPaletteOpen: true });
   }
 
+  /**
+   * The add-project dialog is the workspaces plugin's, opened through the
+   * dialog seam; the shell's affordances run the plugin's reserved action.
+   * Absent plugin means no dialog: the affordances hide with it.
+   */
   private openProjectDialog(): void {
-    this.pushModalLayerFrame();
-    this.setState({ projectDialogOpen: true });
+    const action = this.plugins.getActions(this.createPluginRuntimeContext()).find((candidate) => candidate.localId === "add-project");
+    if (action === undefined) return;
+    void action.run();
+  }
+
+  private hasAddProjectEntry(): boolean {
+    return this.plugins.getActions(this.createPluginRuntimeContext()).some((candidate) => candidate.localId === "add-project");
   }
 
   private openContextSheet(): void {
@@ -2613,7 +2620,7 @@ export class PiWebApp extends LitElement {
       return html`<button @click=${() => { void this.startSessionAndOpenChat(); }}>Start a session</button>`;
     }
     if (this.state.projectsLoad === "loaded" && this.state.projects.length === 0) {
-      return html`<button @click=${() => { this.setState({ projectDialogOpen: true }); }}>Add a project</button>`;
+      return this.hasAddProjectEntry() ? html`<button @click=${() => { this.openProjectDialog(); }}>Add a project</button>` : html``;
     }
     return html``;
   }
@@ -2656,7 +2663,7 @@ export class PiWebApp extends LitElement {
         const workspace = workspaceById(workspaceId);
         return workspace === undefined ? [] : this.workspaceLabelItems(workspace);
       },
-      display: { hidden: false, collapsible: false, collapsed: false, tiles: false },
+      display: { hidden: false, collapsible: false, collapsed: false, tiles: false, withCreate: false },
       requestUpdate: () => { this.requestUpdate(); },
       selectProject: (projectId) => {
         const project = projectById(projectId);
@@ -3002,6 +3009,9 @@ export class PiWebApp extends LitElement {
       openActionPalette: () => { this.openActionPalette(); },
       focusPrompt: () => { void this.focusChatComposer(); },
       addProject: () => { this.openProjectDialog(); },
+      createProject: async (input) => await this.projects.addProject(input.path, input.create, input.trust),
+      projectDirectories: (query, signal) => api.projectDirectories(query, selectedMachineId(this.state), { signal }),
+      projectTrust: async (path) => await trustApi.projectTrust(path, selectedMachineId(this.state)),
       addMachine: () => { this.openMachineDialog(); },
       refreshSelectedMachine: async () => {
         await Promise.all([this.machines.refreshMachineHealth(), this.machines.refreshMachineRuntime()]);
@@ -3709,7 +3719,6 @@ export class PiWebApp extends LitElement {
         ></quick-switcher>` : null}
         ${state.actionPaletteOpen ? html`<action-palette .actions=${this.getActions()} .onRun=${(action: AppAction) => { this.setState({ actionPaletteOpen: false }); this.runAction(action); }} .onCancel=${() => { this.setState({ actionPaletteOpen: false }); }}></action-palette>` : null}
         ${this.renderSessionTreeNavigator(state)}
-        ${state.projectDialogOpen ? html`<project-dialog .machineId=${selectedMachineId(state)} .onSubmit=${(path: string, create: boolean, trust: ProjectTrustChoice | undefined) => this.projects.addProject(path, create, trust)} .onCancel=${() => { this.setState({ projectDialogOpen: false }); }}></project-dialog>` : null}
         ${this.sessionCleanupDialog !== undefined ? html`<session-cleanup-dialog .preview=${this.sessionCleanupDialog.preview} .previewRequest=${this.sessionCleanupDialog.previewRequest} .result=${this.sessionCleanupDialog.result} .loading=${this.sessionCleanupDialog.loading === true} .running=${this.sessionCleanupDialog.running === true} .error=${this.sessionCleanupDialog.error ?? ""} .onPreview=${(request: SessionCleanupRequest) => { void this.previewSessionCleanup(request); }} .onRun=${(request: SessionCleanupRequest) => { void this.runSessionCleanup(request); }} .onClose=${() => { this.closeSessionCleanupDialog(); }}></session-cleanup-dialog>` : null}
         ${state.themeDialog !== undefined ? html`<command-picker title=${state.themeDialog.title} .options=${state.themeDialog.options} .selectedValue=${state.themeDialog.selectedValue} .onPick=${(value: string) => { this.pickTheme(value); }} .onCancel=${() => { this.setState({ themeDialog: undefined }); }}></command-picker>` : null}
         ${this.settingsOpen ? html`<settings-dialog .section=${this.settingsSection} .machine=${state.selectedMachine} .machineRuntime=${this.selectedMachineRuntime()} .actions=${this.getDefaultActions()} .onNavigate=${(section: SettingsSection) => { this.navigateSettings(section); }} .onBackToList=${() => { this.backToSettingsList(); }} .pluginSections=${this.plugins.getSettingsSections(selectedMachineId(state))} .pluginRuntimeContext=${this.createPluginRuntimeContext()} .onClose=${() => { this.closeSettings(); }} .onConfigSaved=${(config: PiWebConfigValues) => { this.applyClientConfig(config); }} .onRefreshMachineRuntime=${async (machineId: string) => { await this.machines.refreshMachineRuntime(machineId); }} .machines=${state.machines} .machineStatuses=${state.machineStatuses} .onAddMachine=${() => { this.openMachineDialog(); }} .onRenameMachine=${async (machine: Machine, name: string) => { await this.renameMachine(machine, name); }} .onRemoveMachine=${(machine: Machine) => { void this.removeMachine(machine); }} .fleetReport=${this.fleetReport} ?fleetLoading=${this.fleetLoading} .fleetError=${this.fleetError} .onRefreshFleet=${() => this.refreshFleet()} .onRunFleet=${(operation: "restart" | "update", machineIds?: readonly string[]) => this.runFleetOperation(operation, machineIds)} .themes=${this.plugins.getThemes()} .selectedThemeId=${this.resolveCurrentThemePreference().selectedTheme?.id} .activeThemeId=${this.activeThemeId} ?followSystemTheme=${this.themePreference.auto} .onSelectTheme=${(themeId: QualifiedContributionId) => { this.selectTheme(themeId); }} .onToggleFollowSystem=${(follow: boolean) => { this.setFollowSystemTheme(follow); }}></settings-dialog>` : null}

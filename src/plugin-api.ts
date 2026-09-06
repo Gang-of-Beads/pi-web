@@ -1,9 +1,10 @@
 import type { CSSResultGroup, TemplateResult } from "lit";
-import type { LegacyThemeToken, SemanticSurfaceToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "./shared/pluginApiTypes.js";
+import type { FileSuggestion, LegacyThemeToken, SemanticSurfaceToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "./shared/pluginApiTypes.js";
 
 export type { ThemeToken } from "./shared/pluginApiTypes.js";
 
 export type {
+  FileSuggestion,
   LegacyThemeToken,
   SemanticSurfaceToken,
   TerminalInfo,
@@ -208,6 +209,8 @@ export interface NavSectionDisplay {
   readonly collapsed: boolean;
   /** Rows render as a responsive tile grid instead of full-width rows. */
   readonly tiles: boolean;
+  /** Whether a create control belongs in this section body right now. */
+  readonly withCreate: boolean;
 }
 
 /**
@@ -384,6 +387,26 @@ export interface PluginRuntimeState {
   piWebStatus?: PiWebStatusResponse | undefined;
 }
 
+/** The add-project dialog's submitted answer. */
+export interface PluginProjectCreateInput {
+  readonly path: string;
+  readonly create?: boolean;
+  readonly trust?: PluginProjectTrustChoice;
+}
+
+/** The dialog's trust checkbox answer; `changed` is false for the pre-filled value. */
+export interface PluginProjectTrustChoice {
+  readonly trusted: boolean;
+  readonly changed: boolean;
+}
+
+/** Server-resolved existing trust for one raw path. */
+export interface PluginProjectTrustRead {
+  readonly path: string;
+  readonly decision: boolean | null;
+  readonly trusted: boolean;
+}
+
 export interface PluginPromptEditor {
   /** Insert text at the current cursor position. Replaces any selection.
    *  If the editor is not focused, focuses it first.
@@ -401,6 +424,16 @@ export interface PluginRuntimeContext {
   openActionPalette: () => void;
   focusPrompt: () => void;
   addProject: () => void | Promise<void>;
+  /**
+   * Create a project from the add-project dialog's answer. Resolves to the
+   * reason the submit did not go through, or undefined when it did; the host
+   * owns the project's placement in app state and the trust choice's write.
+   */
+  createProject: (input: PluginProjectCreateInput) => Promise<string | undefined>;
+  /** Directory suggestions below the typed path, on the selected machine. */
+  projectDirectories: (query: string, signal: AbortSignal) => Promise<FileSuggestion[]>;
+  /** Server-resolved existing trust for a raw path, on the selected machine. */
+  projectTrust: (path: string) => Promise<PluginProjectTrustRead>;
   configureAuth: () => void | Promise<void>;
   logoutAuth: () => void | Promise<void>;
   openThemePicker: () => void;

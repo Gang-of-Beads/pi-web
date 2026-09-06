@@ -3,6 +3,8 @@ import { createRef, ref, type Ref } from "lit/directives/ref.js";
 import type { NavSectionContribution, NavSectionContext, PiWebPlugin } from "@gang-of-beads/pi-web/plugin-api";
 import { ProjectList } from "./ProjectList";
 import { WorkspaceList } from "./WorkspaceList";
+import { openAddProjectDialog } from "./addProjectDialog";
+import { rememberWorkspacesHost } from "./hostUi";
 
 /**
  * The projects and workspaces pickers as a plugin. The shell reserves the
@@ -28,7 +30,7 @@ function renderProjectsSection(context: NavSectionContext): TemplateResult {
     .collapsible=${display.collapsible}
     .collapsed=${display.collapsed}
     .onToggleCollapsed=${() => { context.toggleCollapsed(); }}
-    .onAdd=${context.addProject === undefined ? undefined : () => { context.addProject?.(); }}
+    .onAdd=${display.withCreate && context.addProject !== undefined ? () => { context.addProject?.(); } : undefined}
     .onSelect=${(project: NavSectionContext["projects"][number]) => { context.selectProject(project.id); }}
     .onClose=${context.closeProject === undefined ? undefined : (project: NavSectionContext["projects"][number]) => { context.closeProject?.(project.id); }}
     .onFocusPreviousSection=${() => { void context.focusPreviousSection(); }}
@@ -82,11 +84,22 @@ export function workspacesNavSections(): NavSectionContribution[] {
 const workspacesPlugin: PiWebPlugin = {
   apiVersion: 2,
   name: "Workspaces",
-  activate: () => ({
-    contributions: {
-      navSections: workspacesNavSections(),
-    },
-  }),
+  activate: (context) => {
+    rememberWorkspacesHost(context.ui);
+    return {
+      contributions: {
+        navSections: workspacesNavSections(),
+        actions: [
+          {
+            id: "add-project",
+            title: "Add project",
+            group: "Project",
+            run: (runtimeContext) => { openAddProjectDialog(runtimeContext); },
+          },
+        ],
+      },
+    };
+  },
 };
 
 export default workspacesPlugin;

@@ -183,7 +183,6 @@ export interface AppState {
   themeDialog: { title: string; options: CommandOption[]; selectedValue?: string } | undefined;
   authDialog: AuthDialogState | undefined;
   actionPaletteOpen: boolean;
-  projectDialogOpen: boolean;
   machineDialogOpen: boolean;
   workspaceTool: QualifiedContributionId;
   mainView: "navigation" | "chat" | QualifiedContributionId;
@@ -327,7 +326,6 @@ export function initialAppState(): AppState {
     themeDialog: undefined,
     authDialog: undefined,
     actionPaletteOpen: false,
-    projectDialogOpen: false,
     machineDialogOpen: false,
     workspaceTool: "files:files",
     mainView: "chat",

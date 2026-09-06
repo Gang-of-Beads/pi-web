@@ -46,13 +46,12 @@ describe("ProjectController", () => {
     });
   });
 
-  it("closes the project dialog before selecting the project it added", async () => {
+  it("adds the project to app state before selecting it", async () => {
     const addedProject = project("added", "/added");
-    let state: AppState = { ...initialAppState(), projectDialogOpen: true };
+    let state: AppState = { ...initialAppState() };
     const selectProject = vi.fn((selected: Project): Promise<void> => {
       expect(selected).toBe(addedProject);
       expect(state.projects).toEqual([addedProject]);
-      expect(state.projectDialogOpen).toBe(false);
       return Promise.resolve();
     });
     const controller = new ProjectController(
@@ -77,7 +76,7 @@ describe("ProjectController", () => {
   it("pins a touched trust choice on the project's main workspace after adding it", async () => {
     const addedProject = project("added", "/added");
     const addedWorkspace = workspace(addedProject.id, addedProject.path);
-    let state: AppState = { ...initialAppState(), projectDialogOpen: true };
+    let state: AppState = { ...initialAppState() };
     const setWorkspaceTrust = vi.fn().mockResolvedValue({ path: "/added", decision: true, trusted: true });
     const selectProject = vi.fn((): Promise<void> => {
       state = { ...state, workspaces: [addedWorkspace] };
@@ -105,7 +104,7 @@ describe("ProjectController", () => {
 
   it("does not write trust when the dialog choice was not touched", async () => {
     const addedProject = project("added", "/added");
-    let state: AppState = { ...initialAppState(), projectDialogOpen: true };
+    let state: AppState = { ...initialAppState() };
     const setWorkspaceTrust = vi.fn();
     const selectProject = vi.fn((): Promise<void> => {
       state = { ...state, workspaces: [workspace(addedProject.id, addedProject.path)] };
