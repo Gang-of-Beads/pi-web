@@ -8,7 +8,8 @@ import "./ProjectDialog";
  * The add-project dialog, opened through the host's dialog seam.
  *
  * The shell owns the modal surface - focus, escape, backdrop, layer order -
- * so the plugin only hands in the form and a close callback. Every host face
+ * so the plugin only hands in the form and a close callback. A submit that
+ * resolves without a failure reason closed the deal; the dialog closes. Every host face
  * the form needs (directory suggestions, the path's existing trust, the
  * create call itself) comes from the remembered activation context, so the
  * dialog never calls a PI WEB API and never spells a URL.
@@ -25,7 +26,10 @@ export function openAddProjectDialog(context: PluginRuntimeContext): void {
     content: html`<project-dialog
       .projectDirectories=${(query: string, signal: AbortSignal) => context.projectDirectories(query, signal)}
       .projectTrust=${(path: string) => context.projectTrust(path)}
-      .onSubmit=${(path: string, create: boolean, trust: { trusted: boolean; changed: boolean } | undefined) => context.createProject({ path, create, ...(trust === undefined ? {} : { trust }) })}
+      .onSubmit=${(path: string, create: boolean, trust: { trusted: boolean; changed: boolean } | undefined) => context.createProject({ path, create, ...(trust === undefined ? {} : { trust }) }).then((failure) => {
+        if (failure === undefined) activeDialog?.close();
+        return failure;
+      })}
       .onCancel=${() => { activeDialog?.close(); }}
     ></project-dialog>`,
     onClose: () => { activeDialog = undefined; },

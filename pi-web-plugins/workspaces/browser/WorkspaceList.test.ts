@@ -1,15 +1,17 @@
 // @vitest-environment happy-dom
 
-import { listStyles } from "./sharedStyles";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import type { Workspace } from "@gang-of-beads/pi-web/plugin-api";
+import { css } from "lit";
 import { machineStatusSnapshot } from "../../../src/client/src/machineStatus.testSupport";
 import type { MachineStatusSnapshot } from "../../../src/shared/machineStatus";
 import { WorkspaceList } from "./WorkspaceList";
+import { rememberWorkspacesHost } from "./hostUi";
 
 let restoreClipboardStub: () => void = () => undefined;
 
 afterEach(() => {
+  rememberWorkspacesHost(undefined);
   vi.restoreAllMocks();
   restoreClipboardStub();
   restoreClipboardStub = () => undefined;
@@ -241,12 +243,20 @@ describe("what a tile shows of a long branch name", () => {
    * them. Two wrapped lines show roughly twice the name, which reaches the
    * differing tail.
    */
-  it("wraps to a second line instead of cutting to one identical prefix", () => {
-    const sheet = String(listStyles);
-    const rule = /\.list-body\.tiles \.workspace-primary-label\s*\{([^}]*)\}/u.exec(sheet)?.[1] ?? "";
+  it("forwards the host's tile wrap decision into the element", async () => {
+    const hostListStyles = css`:host { --tile-wrap: wrap; }`;
+    rememberWorkspacesHost({
+      surfaceStyles: css``,
+      listStyles: hostListStyles,
+      showDialog: () => { throw new Error("no dialogs in this test"); },
+    });
+    const element = new WorkspaceList();
+    document.body.append(element);
+    await element.updateComplete;
 
-    expect(rule).toMatch(/-webkit-line-clamp:\s*2/u);
-    expect(rule).toMatch(/word-break:\s*break-all/u);
+    expect(element.shadowRoot?.adoptedStyleSheets).not.toHaveLength(0);
+    const adoptedRules = (element.shadowRoot?.adoptedStyleSheets ?? []).flatMap((sheet) => Array.from(sheet.cssRules).map((rule) => rule.cssText));
+    expect(adoptedRules.some((text) => text.includes("--tile-wrap"))).toBe(true);
   });
 });
 

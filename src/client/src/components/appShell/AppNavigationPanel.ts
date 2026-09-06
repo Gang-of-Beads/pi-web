@@ -4,7 +4,6 @@ import { customElement, property, query } from "lit/decorators.js";
 import type { Machine, MachineHealth, Project, SessionActivity, SessionInfo, SessionStatus, Workspace } from "../../api";
 import type { DrawerSectionContext, QualifiedDrawerSectionContribution, NavSectionContext, QualifiedNavSectionContribution } from "../../plugins/types";
 import type { MachineStatusSnapshot } from "../../../../shared/machineStatus";
-import type { WorkspaceLabelItem } from "../../plugins/types";
 import { selectedMachineId } from "../../controllers/types";
 import type { NavigationSection } from "../../appShell/navigationState";
 import { NAVIGATION_SECTION_ORDER } from "../../appShell/navigationState";
@@ -34,12 +33,7 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) selectedMachine?: Machine;
   @property({ attribute: false }) machineStatuses: Record<string, MachineHealth> = {};
   @property({ attribute: false }) machineStatusSnapshots: Record<string, MachineStatusSnapshot> = {};
-  @property({ attribute: false }) projects: Project[] = [];
-  /** Four-state load discipline threaded from app state; see ProjectList. */
-  @property({ attribute: false }) projectsLoad: "unloaded" | "loading" | "loaded" | "failed" = "unloaded";
-  @property({ attribute: false }) onRetryProjectsLoad?: () => void;
   @property({ attribute: false }) selectedProject?: Project;
-  @property({ attribute: false }) workspaces: Workspace[] = [];
   @property({ attribute: false }) selectedWorkspace?: Workspace;
   @property({ attribute: false }) sessions: SessionInfo[] = [];
   /** Three-state load discipline threaded from app state; see SessionList. */
@@ -49,8 +43,6 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) sessionStatuses: Record<string, SessionStatus> = {};
   @property({ attribute: false }) sendingPrompts: Record<string, true> = {};
   @property({ attribute: false }) unreadSessionIds: ReadonlySet<string> = new Set();
-  @property({ attribute: false }) deletingWorkspaceIds: string[] = [];
-  @property({ attribute: false }) workspaceLabelItems: (workspace: Workspace) => WorkspaceLabelItem[] = () => [];
   @property({ attribute: false }) refreshControl: unknown;
   @property({ type: Boolean, reflect: true }) collapsible = false;
   @property({ type: Boolean, reflect: true }) compact = false;
@@ -74,10 +66,6 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) onToggleProjects?: () => void;
   @property({ attribute: false }) onToggleWorkspaces?: () => void;
   @property({ attribute: false }) onToggleSessions?: () => void;
-  @property({ attribute: false }) onSelectProject?: (project: Project) => void | Promise<void>;
-  @property({ attribute: false }) onCloseProject?: (project: Project) => void | Promise<void>;
-  @property({ attribute: false }) onSelectWorkspace?: (workspace: Workspace) => void | Promise<void>;
-  @property({ attribute: false }) onDeleteWorkspace?: (workspace: Workspace) => void | Promise<void>;
   @property({ attribute: false }) onStartSession?: () => void | Promise<void>;
   @property({ attribute: false }) onSelectSession?: (session: SessionInfo) => void | Promise<void>;
   @property({ attribute: false }) onArchiveSession?: (session: SessionInfo) => void | Promise<void>;
@@ -286,11 +274,10 @@ export class AppNavigationPanel extends LitElement {
   private renderNavSectionSlot(localId: "projects" | "workspaces", hidden: boolean, withCreate = false): unknown {
     const section = this.navSections.find((candidate) => candidate.localId === localId);
     if (section === undefined || this.navSectionContext === undefined) return nothing;
-    const collapsed = localId === "projects" ? this.projectsCollapsed : this.workspacesCollapsed;
     const { addProject, ...base } = this.navSectionContext;
     const context: NavSectionContext = {
       ...base,
-      display: { hidden, collapsible: this.collapsible, collapsed, tiles: true, withCreate },
+      display: { hidden, collapsible: false, collapsed: false, tiles: true, withCreate },
       ...(withCreate && addProject !== undefined ? { addProject } : {}),
       toggleCollapsed: () => { (localId === "projects" ? this.onToggleProjects : this.onToggleWorkspaces)?.(); },
       focusPreviousSection: () => { this.focusPreviousFrom(localId); },

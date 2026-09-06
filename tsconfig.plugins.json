@@ -3,5 +3,6 @@
   "compilerOptions": {
     "noEmit": true
   },
-  "include": ["pi-web-plugins/**/*.ts"]
+  "include": ["pi-web-plugins/**/*.ts"],
+  "exclude": ["pi-web-plugins/**/*.test.ts", "pi-web-plugins/**/testSupport/**/*.ts", "pi-web-plugins/**/*testSupport.ts"]
 }

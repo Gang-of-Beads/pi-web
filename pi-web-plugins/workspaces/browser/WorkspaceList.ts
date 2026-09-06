@@ -7,7 +7,7 @@ import { actionMenuPanelStyle } from "./actionMenu";
 import { hasStatusUnread, renderActionActivityIndicator, statusActivityKind } from "./activityBadge";
 import type { KeyboardNavigableSection } from "./navigationFocus";
 import { focusSelectedOrFirstSelectableRow, handleSelectableRowKeyboard } from "./selectableRow";
-import { listStyles, interactiveSurfaceStyles } from "./sharedStyles";
+import { adoptWorkspacesHostStyles } from "./hostUi";
 import { renderWorkspaceLabelInlineItems } from "./workspaceLabel";
 import { describeError } from "./errors";
 
@@ -31,8 +31,23 @@ function canDeleteWorkspace(workspace: Workspace): boolean {
 
 @customElement("workspace-list")
 export class WorkspaceList extends LitElement implements KeyboardNavigableSection {
+  protected override createRenderRoot(): HTMLElement | DocumentFragment {
+    const root = super.createRenderRoot();
+    if (root instanceof ShadowRoot) adoptWorkspacesHostStyles(root);
+    return root;
+  }
+
   @property({ attribute: false }) workspaces: Workspace[] = [];
   @property({ attribute: false }) selected?: Workspace;
+  /**
+   * The panel hides sections with the `hidden` attribute rather than removing
+   * them, so this element — and with it any query left in the search field —
+   * survives a section switch. Watching the property lets the list retire
+   * that query when it is hidden: reopening the section is a new task, and a
+   * leftover filter silently hiding rows from it reads as workspaces vanishing.
+   */
+  @property({ type: Boolean, reflect: true })
+  override hidden = false;
   /** Host-provided trust reads and writes; absent means the menu omits trust. */
   @property({ attribute: false }) workspaceTrust?: WorkspaceTrustActions;
   @property({ type: Boolean, reflect: true }) collapsible = false;
@@ -75,6 +90,7 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
   protected override updated(changed: PropertyValues<this>): void {
     if (changed.has("workspaces") && this.openMenuWorkspaceId !== undefined && !this.workspaces.some((workspace) => workspace.id === this.openMenuWorkspaceId)) this.openMenuWorkspaceId = undefined;
     if (changed.has("collapsed") && this.collapsed) this.openMenuWorkspaceId = undefined;
+    if (changed.has("hidden") && this.hidden && this.searchQuery !== "") this.searchQuery = "";
     if (this.shouldRevealSelectedRow(changed)) this.scrollSelectedIntoView();
   }
 
@@ -387,7 +403,7 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
     this.renderRoot.querySelector<HTMLElement>(".action-row.selected")?.scrollIntoView({ block: "nearest" });
   }
 
-  static override styles = [interactiveSurfaceStyles, listStyles, css`
+  static override styles = [css`
     .empty-claim { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); }
     .workspace-menu-trust { display: flex; flex-direction: column; gap: 3px; padding: var(--pi-space-2) var(--pi-space-1); }
     .workspace-menu-trust-row { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); }

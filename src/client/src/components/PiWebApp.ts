@@ -2040,13 +2040,8 @@ export class PiWebApp extends LitElement {
         .onSelectMachine=${(machine: Machine) => this.selectNavigationItem("machines", "projects", () => this.selectMachineWithMemory(machine))}
         .onRemoveMachine=${(machine: Machine) => { void this.removeMachine(machine); }}
         .onRenameMachine=${(machine: Machine, name: string) => { void this.renameMachine(machine, name); }}
-        .projects=${this.state.projects}
-        .projectsLoad=${this.state.projectsLoad}
-        .onRetryProjectsLoad=${() => { void this.projects.loadProjects(); }}
         .selectedProject=${this.state.selectedProject}
-        .workspaces=${this.state.workspaces}
         .selectedWorkspace=${this.state.selectedWorkspace}
-        .deletingWorkspaceIds=${pendingWorkspaceDeletionIds(this.state.workspaceDeletionRuns)}
         .sessions=${this.state.sessions}
         .sessionsLoad=${this.state.sessionsLoad}
         .sessionStatuses=${this.state.sessionStatuses}
@@ -2063,7 +2058,6 @@ export class PiWebApp extends LitElement {
         .projectsCollapsed=${this.navigationSections.isCollapsed("projects")}
         .workspacesCollapsed=${this.navigationSections.isCollapsed("workspaces")}
         .sessionsCollapsed=${this.navigationSections.isCollapsed("sessions")}
-        .workspaceLabelItems=${(workspace: Workspace) => this.workspaceLabelItems(workspace)}
         .refreshControl=${this.appShell.shouldShowAppRefreshInHeader() || this.appShell.shouldShowAppRefreshInContextBar() ? this.renderAppRefresh() : undefined}
         .onAddProject=${this.hasAddProjectEntry() ? () => { this.openProjectDialog(); } : undefined}
         .onShowActions=${() => { this.openActionPalette(); }}
@@ -2079,10 +2073,6 @@ export class PiWebApp extends LitElement {
         .onToggleSessions=${() => { this.navigationSections.toggle("sessions"); }}
         .onRequestSection=${(section: NavigationSection) => { this.navigationSections.expand(section); }}
         .onOpenContextSheet=${() => { this.openContextSheet(); }}
-        .onSelectProject=${(project: Project) => this.selectNavigationItem("projects", "workspaces", () => this.workspaces.selectProject(project))}
-        .onCloseProject=${(project: Project) => this.projects.closeProject(project.id)}
-        .onSelectWorkspace=${(workspace: Workspace) => this.selectNavigationItem("workspaces", "sessions", () => this.workspaces.selectWorkspace(workspace))}
-        .onDeleteWorkspace=${(workspace: Workspace) => { void this.deleteWorkspace(workspace); }}
         .onArchivedCollapsed=${() => { this.sessions.clearSelectionAfterArchivedCollapse(); }}
         .onStartSession=${() => this.startSessionFromNavigation()}
         .onSelectSession=${(session: SessionInfo) => this.selectNavigationItem("sessions", "chat", () => this.sessions.selectSession(session).finally(() => { void this.refreshSubagents(); }))}

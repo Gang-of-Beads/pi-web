@@ -3,7 +3,7 @@ import { customElement, property, query, state } from "lit/decorators.js";
 import type { FileSuggestion } from "@gang-of-beads/pi-web/plugin-api";
 import { css } from "lit";
 import { describeError } from "./errors";
-import { interactiveSurfaceStyles } from "./sharedStyles";
+import { adoptWorkspacesHostStyles } from "./hostUi";
 
 /** The submitted trust answer; `changed` is false for the pre-filled value. */
 export interface ProjectTrustChoice {
@@ -24,6 +24,12 @@ interface ProjectTrustState {
 
 @customElement("project-dialog")
 export class ProjectDialog extends LitElement {
+  protected override createRenderRoot(): HTMLElement | DocumentFragment {
+    const root = super.createRenderRoot();
+    if (root instanceof ShadowRoot) adoptWorkspacesHostStyles(root);
+    return root;
+  }
+
   @property({ attribute: false }) onSubmit?: (path: string, create: boolean, trust: ProjectTrustChoice | undefined) => unknown;
   @property({ attribute: false }) onCancel?: () => void;
   /** Host-provided directory suggestions for the typed path; absent means no suggestions. */
@@ -319,7 +325,7 @@ export class ProjectDialog extends LitElement {
     `;
   }
 
-  static override styles = [interactiveSurfaceStyles, css`
+  static override styles = [css`
     .dialog { display: flex; flex-direction: column; min-height: 0; max-height: 100%; color: var(--pi-text); }
     header, footer { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border-bottom: 1px solid var(--pi-border); }
     footer { border-top: 1px solid var(--pi-border); border-bottom: 0; justify-content: end; }

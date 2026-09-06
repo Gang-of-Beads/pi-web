@@ -7,10 +7,16 @@ import { actionMenuPanelStyle } from "./actionMenu";
 import { hasStatusUnread, renderActionActivityIndicator, statusActivityKind } from "./activityBadge";
 import type { KeyboardNavigableSection } from "./navigationFocus";
 import { focusSelectedOrFirstSelectableRow, handleSelectableRowKeyboard } from "./selectableRow";
-import { listStyles, interactiveSurfaceStyles } from "./sharedStyles";
+import { adoptWorkspacesHostStyles } from "./hostUi";
 
 @customElement("project-list")
 export class ProjectList extends LitElement implements KeyboardNavigableSection {
+  protected override createRenderRoot(): HTMLElement | DocumentFragment {
+    const root = super.createRenderRoot();
+    if (root instanceof ShadowRoot) adoptWorkspacesHostStyles(root);
+    return root;
+  }
+
   @property({ attribute: false }) projects: NavProjectSnapshot[] = [];
   /**
    * Whether the projects reaching this list have been loaded, and how the
@@ -250,7 +256,7 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
     if (confirm(`Close ${project.name}?\n\nThis only removes it from PI WEB; it will not change the project folder.`)) this.onClose?.(project);
   }
 
-  static override styles = [interactiveSurfaceStyles, listStyles, css`
+  static override styles = [css`
     .list-empty, .list-loading { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-sm); }
     .filter-count { padding: var(--pi-space-3) var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-xs); }
     .load-failed { display: flex; align-items: center; gap: var(--pi-space-3); padding: var(--pi-space-3) var(--pi-space-2); color: var(--pi-danger); font-size: var(--pi-text-sm); }
