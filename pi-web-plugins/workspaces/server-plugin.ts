@@ -75,9 +75,12 @@ const plugin: PiWebServerPlugin = {
       method: "GET",
       path: "/projects/:projectId/workspaces/:workspaceId/tree",
       async handle(request, reply) {
-        const resolved = await resolveRoot(request.params["projectId"], request.params["workspaceId"]);
-        if (resolved === undefined) return sendNotFound(reply);
         try {
+          const resolved = await resolveRoot(request.params["projectId"], request.params["workspaceId"]);
+          if (resolved === undefined) {
+          await sendNotFound(reply);
+          return;
+        }
           const response: FileTreeResponse = await listWorkspaceTree(resolved.root, request.query["path"], await pathAccessFor(resolved));
           await sendJson(reply, response);
         } catch (error) {
@@ -90,9 +93,12 @@ const plugin: PiWebServerPlugin = {
       method: "GET",
       path: "/projects/:projectId/workspaces/:workspaceId/file",
       async handle(request, reply) {
-        const resolved = await resolveRoot(request.params["projectId"], request.params["workspaceId"]);
-        if (resolved === undefined) return sendNotFound(reply);
         try {
+          const resolved = await resolveRoot(request.params["projectId"], request.params["workspaceId"]);
+          if (resolved === undefined) {
+          await sendNotFound(reply);
+          return;
+        }
           const response = await readWorkspaceFile(resolved.root, request.query["path"], await pathAccessFor(resolved));
           await sendJson(reply, response);
         } catch (error) {
@@ -105,9 +111,12 @@ const plugin: PiWebServerPlugin = {
       method: "PUT",
       path: "/projects/:projectId/workspaces/:workspaceId/file",
       async handle(request, reply) {
-        const resolved = await resolveRoot(request.params["projectId"], request.params["workspaceId"]);
-        if (resolved === undefined) return sendNotFound(reply);
         try {
+          const resolved = await resolveRoot(request.params["projectId"], request.params["workspaceId"]);
+          if (resolved === undefined) {
+          await sendNotFound(reply);
+          return;
+        }
           if (request.body === undefined) throw new Error("Request body is required");
           const response: WriteWorkspaceFileResponse = await writeWorkspaceFile(resolved.root, request.query["path"], Buffer.from(request.body), {
             createDirs: request.query["createDirs"] !== "false",
@@ -124,9 +133,12 @@ const plugin: PiWebServerPlugin = {
       method: "DELETE",
       path: "/projects/:projectId/workspaces/:workspaceId/file",
       async handle(request, reply) {
-        const resolved = await resolveRoot(request.params["projectId"], request.params["workspaceId"]);
-        if (resolved === undefined) return sendNotFound(reply);
         try {
+          const resolved = await resolveRoot(request.params["projectId"], request.params["workspaceId"]);
+          if (resolved === undefined) {
+          await sendNotFound(reply);
+          return;
+        }
           const response: DeleteWorkspaceFileResponse = await deleteWorkspaceFile(resolved.root, request.query["path"]);
           await sendJson(reply, response);
         } catch (error) {
@@ -139,9 +151,12 @@ const plugin: PiWebServerPlugin = {
       method: "POST",
       path: "/projects/:projectId/workspaces/:workspaceId/file/move",
       async handle(request, reply) {
-        const resolved = await resolveRoot(request.params["projectId"], request.params["workspaceId"]);
-        if (resolved === undefined) return sendNotFound(reply);
         try {
+          const resolved = await resolveRoot(request.params["projectId"], request.params["workspaceId"]);
+          if (resolved === undefined) {
+          await sendNotFound(reply);
+          return;
+        }
           const response: MoveWorkspaceFileResponse = await moveWorkspaceFile(resolved.root, request.query["fromPath"], request.query["toPath"], {
             createDirs: request.query["createDirs"] !== "false",
             overwrite: request.query["overwrite"] === "true",
@@ -157,9 +172,12 @@ const plugin: PiWebServerPlugin = {
       method: "GET",
       path: "/projects/:projectId/workspaces/:workspaceId/file/preview",
       async handle(request, reply) {
-        const resolved = await resolveRoot(request.params["projectId"], request.params["workspaceId"]);
-        if (resolved === undefined) return sendNotFound(reply);
         try {
+          const resolved = await resolveRoot(request.params["projectId"], request.params["workspaceId"]);
+          if (resolved === undefined) {
+          await sendNotFound(reply);
+          return;
+        }
           const download = request.query["download"] === "1" || request.query["download"] === "true";
           const result = await readWorkspaceFilePreview(resolved.root, request.query["path"], await pathAccessFor(resolved), {
             download,
@@ -190,9 +208,12 @@ const plugin: PiWebServerPlugin = {
       method: "GET",
       path: "/projects/:projectId/workspaces/:workspaceId/files",
       async handle(request, reply, routeContext) {
-        const resolved = await resolveRoot(request.params["projectId"], request.params["workspaceId"]);
-        if (resolved === undefined) return sendNotFound(reply);
         try {
+          const resolved = await resolveRoot(request.params["projectId"], request.params["workspaceId"]);
+          if (resolved === undefined) {
+          await sendNotFound(reply);
+          return;
+        }
           const query = request.query["q"] ?? "";
           const pathAccess = isAbsoluteishFileSuggestionQuery(query) ? await pathAccessFor(resolved) : undefined;
           const execFile = suggestionRunner(context, routeContext.signal);
@@ -224,18 +245,36 @@ function parseSuggestionScope(scope: string | undefined): "tracked" | "all" | un
 
 interface SuggestionRunnerOptions {
   cwd: string;
+  env?: NodeJS.ProcessEnv | undefined;
 }
 
 type SuggestionRunner = (file: string, args: string[], options: SuggestionRunnerOptions) => Promise<{ stdout: string }>;
 
 /**
- * The suggestions service shells out to git and fzf through a host-bounded
- * runner. The contract's execFile port is that runner: the route's
- * cancellation signal rides along, and the host owns the output bounds the
- * service's own defaults used to name.
+ * The suggestions service shells out to git through the contract's execFile
+ * port. The route's cancellation signal and the service's sanitized
+ * environment ride along; ranking stays the service's JS fallback because the
+ * port cannot feed fzf's stdin, and the host owns the output bound - a
+ * truncated listing fails the run so the service falls back to the plain
+ * filesystem walk instead of ranking a mangled record.
  */
 function suggestionRunner(context: ServerPluginActivationContext, signal: AbortSignal): SuggestionRunner {
-  return (file, args, options) => context.execFile({ file, args, cwd: options.cwd, signal });
+  return async (file, args, options) => {
+    const result = await context.execFile({
+      file,
+      args,
+      cwd: options.cwd,
+      ...(options.env === undefined ? {} : { env: stringValuesOnly(options.env) }),
+      signal,
+    });
+    if (result.stdoutTruncated) throw new Error(`${file} listing exceeded the host output bound`);
+    return { stdout: result.stdout };
+  };
+}
+
+function stringValuesOnly(env: NodeJS.ProcessEnv): Record<string, string> {
+  const entries = Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === "string");
+  return Object.fromEntries(entries);
 }
 
 function sendError(reply: ServerPluginReply, error: unknown, fallbackStatus: number): Promise<void> {

@@ -10,7 +10,7 @@ import { ProjectService } from "../shared/projects/projectService.js";
 import type { WorkspaceCatalog } from "../shared/workspaces/workspaceCatalog.js";
 import { SessionDaemonWorkspaceCatalog } from "./workspaces/sessionDaemonWorkspaceCatalog.js";
 import { resolveWorkspaceContext } from "../shared/workspaces/workspaceContext.js";
-import { sendWorkspaceRequestError } from "../shared/workspaces/workspaceRouteErrors.js";
+import { isWorkspaceIdentityMiss, sendWorkspaceRequestError } from "../shared/workspaces/workspaceRouteErrors.js";
 import { loadEffectiveProjectUploadsConfig, loadEffectiveProjectPathAccess } from "./workspaces/projectPiWebConfig.js";
 import { listDirectorySuggestions } from "../shared/projects/directorySuggestions.js";
 import { SessionDaemonClient } from "../shared/sessiondClient/sessionDaemonClient.js";
@@ -321,7 +321,11 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
         hostPorts: {
           workspaceCatalog: {
             resolveWorkspace: async (projectId, workspaceId) => {
-              const context = await resolveWorkspaceContext(projects, workspaces, projectId, workspaceId);
+              const context = await resolveWorkspaceContext(projects, workspaces, projectId, workspaceId).catch((error: unknown) => {
+                if (isWorkspaceIdentityMiss(error)) return undefined;
+                throw error;
+              });
+              if (context === undefined) return undefined;
               return { projectPath: context.project.path, workspacePath: context.root };
             },
           },

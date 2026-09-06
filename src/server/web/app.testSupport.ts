@@ -6,6 +6,7 @@ import { Readable } from "node:stream";
 import type { FastifyInstance } from "fastify";
 import { afterEach, beforeEach } from "vitest";
 import { buildApp } from "./app.js";
+import { createServerPluginRuntime, type ServerPluginRuntime } from "../shared/plugins/serverPluginRuntime.js";
 import { ProjectService } from "../shared/projects/projectService.js";
 import { ProjectStore } from "../shared/storage/projectStore.js";
 import type { MachineClient } from "./machines/machineClient.js";
@@ -137,6 +138,7 @@ export function registerAppTestHooks(): void {
       },
       clientDist: false,
       logger: false,
+      serverPluginRuntime: await emptyServerPluginRuntime(),
     });
   });
 
@@ -155,6 +157,17 @@ export function registerAppTestHooks(): void {
 
     if (appToClose !== undefined) await appToClose.close();
     if (tempDirToRemove !== undefined) await rm(tempDirToRemove, { recursive: true, force: true });
+  });
+}
+
+/**
+ * Seam tests mount their own plugin routes with injected ports; an explicit
+ * empty runtime keeps the ambient bundle activation from owning those paths.
+ */
+async function emptyServerPluginRuntime(): Promise<ServerPluginRuntime> {
+  return await createServerPluginRuntime({
+    catalog: { snapshot: () => Promise.resolve({ plugins: [], diagnostics: [] }) },
+    logger: { debug: () => undefined, info: () => undefined, warn: () => undefined, error: () => undefined },
   });
 }
 

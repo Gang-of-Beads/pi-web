@@ -8,7 +8,8 @@
         "id": "workspaces",
         "browserRoot": "browser",
         "module": "browser/pi-web-plugin.js",
-        "serverModule": "server-plugin.js"
+        "serverModule": "server-plugin.js",
+        "runs": "web"
       }
     ]
   }
