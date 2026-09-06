@@ -3491,11 +3491,17 @@ export class PiWebApp extends LitElement {
 
   override render() {
     const state = this.state;
+    // A phone with no session selected shows the navigation panel wherever the
+    // route says chat: the empty "Select or start a session." page is a
+    // dead end under touch, and the back gesture from a tool panel lands
+    // exactly there. Desktop keeps the empty state - its panel is always
+    // on screen.
+    const displayView = this.appShell.isMobileNavigationLayout && state.mainView === "chat" && state.selectedSession === undefined ? "navigation" : state.mainView;
     return html`
-      <div class=${`${this.panelCollapse.shellClass(state.mainView, state.selectedWorkspace !== undefined)}${this.workspacePanelFullscreen ? " workspace-panel-fullscreen" : ""}`} style=${this.panelResize.shellStyle({ navigation: this.resizablePanelConstraints("navigation"), workspace: this.resizablePanelConstraints("workspace") })}>
+      <div class=${`${this.panelCollapse.shellClass(displayView, state.selectedWorkspace !== undefined)}${this.workspacePanelFullscreen ? " workspace-panel-fullscreen" : ""}`} style=${this.panelResize.shellStyle({ navigation: this.resizablePanelConstraints("navigation"), workspace: this.resizablePanelConstraints("workspace") })}>
         <aside id="navigation-panel">${this.appShell.isMobileNavigationLayout ? null : this.renderNavigationPanel()}</aside>
         ${this.renderNavigationPanelEdgeControl()}
-        <main class=${mainViewClass(state.mainView)}>
+        <main class=${mainViewClass(displayView)}>
           ${this.renderContextBar()}
 
           ${this.renderErrorBanner(state.error)}

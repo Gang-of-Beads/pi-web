@@ -3,7 +3,7 @@ import type { AppState } from "../appState";
 import { createPwaDisplayModeMedia, detectPwaDisplayMode } from "../pwaDisplayMode";
 import { ViewportPositionRepairer } from "./viewportPositionRepair";
 
-import { MOBILE_NAVIGATION_MEDIA_QUERY } from "../breakpoints";
+import { COARSE_OR_MOBILE_MEDIA_QUERY, MOBILE_NAVIGATION_MEDIA_QUERY } from "../breakpoints";
 export { MOBILE_NAVIGATION_MEDIA_QUERY };
 
 export interface AppShellControllerOptions {
@@ -79,7 +79,10 @@ export class AppShellController implements ReactiveController {
 
 function createMobileNavigationMedia(): MediaQueryList | undefined {
   if (typeof window === "undefined" || !("matchMedia" in window)) return undefined;
-  return window.matchMedia(MOBILE_NAVIGATION_MEDIA_QUERY);
+  // Coarse pointer outranks width: a phone held landscape is wider than the
+  // breakpoint but is still a phone, and the desktop shell squeezed into its
+  // height is unusable - the camera-return report landed exactly there.
+  return window.matchMedia(COARSE_OR_MOBILE_MEDIA_QUERY);
 }
 
 /**
