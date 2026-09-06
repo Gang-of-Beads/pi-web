@@ -2,9 +2,9 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import type { ProjectService } from "../shared/projects/projectService.js";
 import { SessionDaemonClient } from "../shared/sessiondClient/sessionDaemonClient.js";
 import type { SessionProxyDaemon } from "./sessionProxyRoutes.js";
-import { resolveWorkspaceContext } from "./workspaces/workspaceContext.js";
+import { resolveWorkspaceContext } from "../shared/workspaces/workspaceContext.js";
 import type { WorkspaceCatalog } from "../shared/workspaces/workspaceCatalog.js";
-import { sendWorkspaceRequestError } from "./workspaces/workspaceRouteErrors.js";
+import { sendWorkspaceRequestError } from "../shared/workspaces/workspaceRouteErrors.js";
 import { terminalSizeQuery } from "../shared/terminals/terminalSize.js";
 import { bridgeSockets } from "./webSocketBridge.js";
 

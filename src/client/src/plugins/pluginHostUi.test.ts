@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { html } from "lit";
 import { createPluginHostUi } from "./pluginHostUi";
 import { COARSE_OR_MOBILE_MEDIA_QUERY, DESKTOP_SIDE_BY_SIDE_MEDIA_QUERY, MOBILE_NAVIGATION_MEDIA_QUERY } from "../breakpoints";
 import { interactiveSurfaceStyles } from "../components/shared";
@@ -64,5 +65,25 @@ describe("the host utilities handed to plugins", () => {
     new PluginRegistry().register({ id: "terminal", plugin });
 
     expect(seen[0]).toBeUndefined();
+  });
+
+  it("presents dialogs through the host's dialog layer", () => {
+    const opened: string[] = [];
+    const ui = createPluginHostUi({ showDialog: (dialog) => {
+      opened.push(dialog.label);
+      return { close: () => { dialog.onClose?.(); } };
+    } });
+    const onClose = vi.fn();
+
+    const handle = ui.showDialog({ label: "Review", content: html`<p />`, onClose });
+    expect(opened).toEqual(["Review"]);
+    handle.close();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses to present dialogs when the host bound no dialog layer", () => {
+    const ui = createPluginHostUi();
+
+    expect(() => ui.showDialog({ label: "Review", content: html`<p />` })).toThrow("does not present plugin dialogs");
   });
 });

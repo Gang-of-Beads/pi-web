@@ -3,7 +3,7 @@ import type { ChatLine } from "./shared";
 import { errorNoticePatch } from "../errorNotice";
 import { request } from "../api/http";
 import { workspaceTerminalSessions } from "../plugins/workspaceTerminalSessions";
-import { createPluginHostUi } from "../plugins/pluginHostUi";
+import { createPluginHostUi, type PluginDialogHost } from "../plugins/pluginHostUi";
 import { describeError, RetiredBy } from "../notice";
 import { clearPlaceholderFrame, notePlaceholderFrame, placeholderFrameOutstanding } from "../historyWrites";
 import { bannerHoldDecision } from "./bannerHold";
@@ -46,7 +46,7 @@ import { selectedNotificationView } from "../sessionNotifications";
 import { SessionUnreadController } from "../sessionUnread";
 import { workspaceViewTransition } from "../workspaceViewTransition";
 import { RealtimeSocket, type BrowserRealtimeEvent } from "../sessionSocket";
-import type { PluginMachine, PluginPromptEditor, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding } from "../plugins/types";
+import type { PluginMachine, PluginPromptEditor, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding, PluginDialog, PluginDialogHandle } from "../plugins/types";
 import { CLASSIC_THEME_ID, DEFAULT_THEME_PREFERENCE, applyPiWebTheme, findThemePairForTheme, readStoredThemePreference, resolveThemePreference, writeStoredThemePreference, type ThemePreference, type ThemePreferenceResolution } from "../theme";
 import { corePlugin } from "../plugins/core";
 import { loadExternalPlugins, type ExternalPluginLoadResult } from "../plugins/external";
@@ -102,7 +102,14 @@ import { deprecatedAgentInputsBanner, deprecatedAgentInputsWarnings } from "./de
 import { interactiveSurfaceStyles } from "./shared";
 import { documentTitleFor } from "../contextName";
 
+export interface PluginDialogEntry {
+  readonly id: number;
+  readonly dialog: PluginDialog;
+  readonly close: () => void;
+}
+
 export const appStyles = css`
+  .plugin-dialog { position: fixed; inset: 0; z-index: var(--pi-layer-dialog); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
   /* Motion is decoration here: scroll shadows, hover fades, pulsing dots. A
      reader who asked the system for less motion gets none of it. */
   @media (prefers-reduced-motion: reduce) {
@@ -392,7 +399,7 @@ export class PiWebApp extends LitElement {
   private remoteRouteRestoreTimer: number | undefined;
   private remoteRouteRestoreAttempt = 0;
   private remoteRouteRestoreInProgress = false;
-  private readonly plugins = createPluginRegistry();
+  private readonly plugins = createPluginRegistry({ showDialog: (dialog) => this.openPluginDialog(dialog) });
   private readonly loadedMachinePluginIds = new Set<string>();
   private readonly machinePluginLoadPromises = new Map<string, Promise<void>>();
   private gatewayPluginLoadPromise: Promise<void> | undefined;
@@ -423,6 +430,8 @@ export class PiWebApp extends LitElement {
   @state() private quickSwitcherError: string | undefined;
   @state() private staleClientServerVersion: string | undefined;
   @state() private sessionCleanupDialog: SessionCleanupDialogState | undefined;
+  @state() private pluginDialogs: readonly PluginDialogEntry[] = [];
+  private pluginDialogSeq = 0;
   @state() private settingsOpen = readSettingsOpen();
   private settingsListFramePushed = false;
   @state() private settingsSection: SettingsSection | undefined = readSettingsSection();
@@ -511,6 +520,10 @@ export class PiWebApp extends LitElement {
     if (this.sessionCleanupDialog !== undefined) { this.sessionCleanupDialog = undefined; return; }
     if (this.state.treeDialog !== undefined) { this.sessions.closeTreeDialog(); return; }
     if (this.state.authDialog !== undefined) { this.auth.closeDialog(); return; }
+    if (this.pluginDialogs.length > 0) {
+      const top = this.pluginDialogs[this.pluginDialogs.length - 1];
+      if (top !== undefined) top.close();
+    }
   }
   private readonly onPageShow = () => {
     void this.sessionUnread.refreshAll();
@@ -2206,7 +2219,8 @@ export class PiWebApp extends LitElement {
       || this.state.themeDialog !== undefined
       || this.sessionCleanupDialog !== undefined
       || this.state.treeDialog !== undefined
-      || this.state.authDialog !== undefined;
+      || this.state.authDialog !== undefined
+      || this.pluginDialogs.length > 0;
   }
 
   /**
@@ -2235,6 +2249,27 @@ export class PiWebApp extends LitElement {
     dismissKeyboardIfRaised();
     this.contextSheetOpen = true;
     this.pushModalLayerFrame();
+  }
+
+  /**
+   * The host half of the plugin dialog seam: the plugin owns the content and
+   * its close callbacks; the shell owns the surface, the modal-layer frame,
+   * and the back gesture, exactly as for its own dialogs.
+   */
+  private openPluginDialog(dialog: PluginDialog): PluginDialogHandle {
+    const id = ++this.pluginDialogSeq;
+    const entry: PluginDialogEntry = {
+      id,
+      dialog,
+      close: () => {
+        if (!this.pluginDialogs.some((candidate) => candidate.id === id)) return;
+        this.pluginDialogs = this.pluginDialogs.filter((candidate) => candidate.id !== id);
+        dialog.onClose?.();
+      },
+    };
+    this.pluginDialogs = [...this.pluginDialogs, entry];
+    this.pushModalLayerFrame();
+    return { close: entry.close };
   }
 
   private openQuickSwitcher(): void {
@@ -3617,6 +3652,7 @@ export class PiWebApp extends LitElement {
         ${state.themeDialog !== undefined ? html`<command-picker title=${state.themeDialog.title} .options=${state.themeDialog.options} .selectedValue=${state.themeDialog.selectedValue} .onPick=${(value: string) => { this.pickTheme(value); }} .onCancel=${() => { this.setState({ themeDialog: undefined }); }}></command-picker>` : null}
         ${this.settingsOpen ? html`<settings-dialog .section=${this.settingsSection} .machine=${state.selectedMachine} .machineRuntime=${this.selectedMachineRuntime()} .actions=${this.getDefaultActions()} .onNavigate=${(section: SettingsSection) => { this.navigateSettings(section); }} .onBackToList=${() => { this.backToSettingsList(); }} .pluginSections=${this.plugins.getSettingsSections(selectedMachineId(state))} .pluginRuntimeContext=${this.createPluginRuntimeContext()} .onClose=${() => { this.closeSettings(); }} .onConfigSaved=${(config: PiWebConfigValues) => { this.applyClientConfig(config); }} .onRefreshMachineRuntime=${async (machineId: string) => { await this.machines.refreshMachineRuntime(machineId); }} .machines=${state.machines} .machineStatuses=${state.machineStatuses} .onAddMachine=${() => { this.openMachineDialog(); }} .onRenameMachine=${async (machine: Machine, name: string) => { await this.renameMachine(machine, name); }} .onRemoveMachine=${(machine: Machine) => { void this.removeMachine(machine); }} .fleetReport=${this.fleetReport} ?fleetLoading=${this.fleetLoading} .fleetError=${this.fleetError} .onRefreshFleet=${() => this.refreshFleet()} .onRunFleet=${(operation: "restart" | "update", machineIds?: readonly string[]) => this.runFleetOperation(operation, machineIds)} .themes=${this.plugins.getThemes()} .selectedThemeId=${this.resolveCurrentThemePreference().selectedTheme?.id} .activeThemeId=${this.activeThemeId} ?followSystemTheme=${this.themePreference.auto} .onSelectTheme=${(themeId: QualifiedContributionId) => { this.selectTheme(themeId); }} .onToggleFollowSystem=${(follow: boolean) => { this.setFollowSystemTheme(follow); }}></settings-dialog>` : null}
         ${state.machineDialogOpen ? html`<machine-dialog .error=${state.error} .onSubmit=${(input: MachineDialogSubmit) => this.submitMachineDialog(input)} .onCancel=${() => { this.setState({ machineDialogOpen: false }); }}></machine-dialog>` : null}
+        ${this.pluginDialogs.map((entry) => html`<div class="plugin-dialog"><modal-surface .label=${entry.dialog.label} .onClose=${entry.close}>${entry.dialog.content}</modal-surface></div>`)}
       </div>
     `;
   }
@@ -3624,9 +3660,9 @@ export class PiWebApp extends LitElement {
   static override styles = [interactiveSurfaceStyles, appStyles];
 }
 
-function createPluginRegistry(): PluginRegistry {
+function createPluginRegistry(dialogHost: PluginDialogHost): PluginRegistry {
   const registry = new PluginRegistry({
-    ui: createPluginHostUi(),
+    ui: createPluginHostUi(dialogHost),
     fetchJson: (path, init) => request<unknown>(path, (value) => value, {
       ...(init?.method === undefined ? {} : { method: init.method }),
       ...(init?.body === undefined ? {} : { body: JSON.stringify(init.body) }),

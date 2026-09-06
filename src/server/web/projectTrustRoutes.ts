@@ -4,7 +4,7 @@ import { decidedTrustPath, readProjectTrust, writeProjectTrust } from "../shared
 import { expandUserPath } from "../shared/projects/directorySuggestions.js";
 import type { ProjectService } from "../shared/projects/projectService.js";
 import type { WorkspaceCatalog } from "../shared/workspaces/workspaceCatalog.js";
-import { resolveWorkspaceContext } from "./workspaces/workspaceContext.js";
+import { resolveWorkspaceContext } from "../shared/workspaces/workspaceContext.js";
 
 /**
  * Collaborators the trust routes read from the surrounding app: the active

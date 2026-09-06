@@ -1,5 +1,5 @@
 import type { FastifyReply } from "fastify";
-import { workspaceCatalogHttpStatus } from "../../shared/workspaces/workspaceCatalog.js";
+import { workspaceCatalogHttpStatus } from "./workspaceCatalog.js";
 
 export function sendWorkspaceRequestError(
   reply: FastifyReply,

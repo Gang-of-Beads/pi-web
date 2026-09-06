@@ -6,12 +6,12 @@ import { deleteWorkspaceFile, moveWorkspaceFile, readWorkspaceFile, writeWorkspa
 import { isAbsoluteishFileSuggestionQuery, listFileSuggestions, listPathSuggestions } from "./workspaces/fileSuggestions.js";
 import { listWorkspaceTree } from "./workspaces/fileTreeService.js";
 import { readWorkspaceFilePreview } from "./workspaces/filePreviewService.js";
-import { workspaceFilePreviewResponsePolicy } from "./workspaces/filePreviewResponsePolicy.js";
-import { applyWorkspaceFilePreviewErrorResponsePolicy } from "./workspaces/filePreviewResponseHeaders.js";
-import { resolveWorkspaceContext } from "./workspaces/workspaceContext.js";
+import { workspaceFilePreviewResponsePolicy } from "../shared/workspaces/filePreviewResponsePolicy.js";
+import { applyWorkspaceFilePreviewErrorResponsePolicy } from "../shared/workspaces/filePreviewResponseHeaders.js";
+import { resolveWorkspaceContext } from "../shared/workspaces/workspaceContext.js";
 import { pathAccessForWorkspaceContext } from "./workspaces/effectivePathAccess.js";
 import type { WorkspaceCatalog } from "../shared/workspaces/workspaceCatalog.js";
-import { sendWorkspaceRequestError } from "./workspaces/workspaceRouteErrors.js";
+import { sendWorkspaceRequestError } from "../shared/workspaces/workspaceRouteErrors.js";
 
 export interface WorkspaceExplorerRouteOptions {
   config?: Pick<PiWebConfigService, "read">;

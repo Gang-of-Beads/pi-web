@@ -111,6 +111,10 @@ export interface PluginHostUi {
         focus(): boolean;
         unregister(): void;
     };
+    /** Present a dialog over the app's modal layer: the host owns the shared
+     *  surface, focus, Escape, backdrop, and the back gesture; the plugin owns
+     *  only the content and its close callbacks. */
+    readonly showDialog: (dialog: PluginDialog) => PluginDialogHandle;
     /** Namespaced query-string state the host keeps coordinated with route
      *  restoration. The namespace is the plugin's wire format for deep links. */
     readonly query: {
@@ -119,6 +123,19 @@ export interface PluginHostUi {
             replace?: boolean;
         }): void;
     };
+}
+/** A dialog a plugin asks the host to present over the app's modal layer. */
+export interface PluginDialog {
+    /** Accessible name applied to the host's shared modal surface. */
+    readonly label: string;
+    /** The dialog body, rendered as the shared surface's light children. */
+    readonly content: TemplateResult;
+    /** Called once for every close: Escape, backdrop, close(), or unregistration. */
+    readonly onClose?: () => void;
+}
+export interface PluginDialogHandle {
+    /** Close the dialog exactly as a host dismissal would. */
+    readonly close: () => void;
 }
 export interface PluginBreakpoints {
     readonly coarseOrMobile: string;

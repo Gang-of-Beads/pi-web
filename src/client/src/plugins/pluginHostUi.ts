@@ -5,7 +5,16 @@ import { registerRenderedModal } from "../components/modalLayerRegistry";
 import { readNamespacedString, setNamespacedQueryKey } from "../namespacedQueryArgs";
 import { renderWorkspaceMarkdownHtml } from "../formatting/workspaceMarkdown";
 import { describeError } from "../notice";
-import type { PluginHostUi } from "./types";
+import type { PluginDialog, PluginDialogHandle, PluginHostUi } from "./types";
+
+/**
+ * The app-owned dialog layer a host binds when it can present plugin dialogs.
+ * The production host is the shell: dialogs render inside its dialog area with
+ * the same modal-layer frame and back-gesture accounting as its own dialogs.
+ */
+export interface PluginDialogHost {
+  showDialog(dialog: PluginDialog): PluginDialogHandle;
+}
 
 /**
  * The host's own answers, handed to plugins rather than copied by them.
@@ -16,7 +25,7 @@ import type { PluginHostUi } from "./types";
  * define phone behaviour. A plugin reimplementing any of them would drift from
  * the built-in surfaces the moment either side changed.
  */
-export function createPluginHostUi(): PluginHostUi {
+export function createPluginHostUi(dialogHost?: PluginDialogHost): PluginHostUi {
   return {
     copyText: (text) => writeClipboardText(text),
     describeError,
@@ -35,6 +44,10 @@ export function createPluginHostUi(): PluginHostUi {
       focus: registration.focus ?? (() => undefined),
       ...(registration.onTopChange === undefined ? {} : { onTopChange: registration.onTopChange }),
     }),
+    showDialog: (dialog) => {
+      if (dialogHost === undefined) throw new Error("This host does not present plugin dialogs.");
+      return dialogHost.showDialog(dialog);
+    },
     query: {
       read: (namespace, key) => readNamespacedString(namespace, key),
       write: (namespace, key, value, options) => { setNamespacedQueryKey(namespace, key, value, options); },

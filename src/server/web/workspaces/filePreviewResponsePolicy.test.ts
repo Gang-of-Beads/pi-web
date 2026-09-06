@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { workspaceFilePreviewErrorResponsePolicy, workspaceFilePreviewResponsePolicy } from "./filePreviewResponsePolicy.js";
+import { workspaceFilePreviewErrorResponsePolicy, workspaceFilePreviewResponsePolicy } from "../../shared/workspaces/filePreviewResponsePolicy.js";
 
 const IMAGE_CSP = "sandbox; default-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; script-src 'none'; connect-src 'none'; img-src data: blob:; media-src 'none'; font-src 'none'; style-src 'unsafe-inline'; worker-src 'none'; frame-ancestors 'self'";
 const HTML_CSP = "sandbox; default-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; script-src 'none'; connect-src 'none'; img-src data:; media-src 'none'; font-src 'none'; style-src 'unsafe-inline'; worker-src 'none'; frame-ancestors 'self'";

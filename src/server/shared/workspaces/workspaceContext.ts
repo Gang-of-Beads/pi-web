@@ -1,6 +1,6 @@
-import type { ProjectService } from "../../shared/projects/projectService.js";
-import type { Project, WorkspaceListing } from "../../shared/types.js";
-import type { WorkspaceCatalog } from "../../shared/workspaces/workspaceCatalog.js";
+import type { ProjectService } from "../projects/projectService.js";
+import type { Project, WorkspaceListing } from "../types.js";
+import type { WorkspaceCatalog } from "./workspaceCatalog.js";
 
 export interface WorkspaceContext {
   project: Project;

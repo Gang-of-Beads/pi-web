@@ -308,6 +308,7 @@ function fakeFilesHostUi(): PluginHostUi {
     renderMarkdownHtml: (markdown) => markdown,
     textStyles: [],
     registerModal: (registration) => registerRenderedModal({ ...registration, focus: registration.focus ?? (() => undefined) }),
+    showDialog: () => ({ close: () => undefined }),
     query: { read: () => undefined, write: () => undefined },
   };
 }

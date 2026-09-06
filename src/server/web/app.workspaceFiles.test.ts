@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { MAX_INLINE_PREVIEW_BYTES } from "../../shared/workspaceFiles.js";
 import type { Project, WorkspaceProviderResolution } from "../shared/types.js";
 import { appTestContext, registerAppTestHooks } from "./app.testSupport.js";
-import { workspaceFilePreviewErrorResponsePolicy, workspaceFilePreviewResponsePolicy } from "./workspaces/filePreviewResponsePolicy.js";
+import { workspaceFilePreviewErrorResponsePolicy, workspaceFilePreviewResponsePolicy } from "../shared/workspaces/filePreviewResponsePolicy.js";
 
 registerAppTestHooks();
 

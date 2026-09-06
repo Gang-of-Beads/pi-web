@@ -5,7 +5,7 @@ import { PI_PACKAGE_MUTATION_PROXY_TIMEOUT_MS, PLUGIN_BACKEND_FEDERATION_TIMEOUT
 import { PLUGIN_BACKEND_RESPONSE_BODY_MAX_BYTES } from "../../shared/pluginBackendProtocol.js";
 import { MAX_INLINE_PREVIEW_BYTES } from "../../shared/workspaceFiles.js";
 import { appTestContext, fakeRemoteClient, registerAppTestHooks } from "./app.testSupport.js";
-import { workspaceFilePreviewErrorResponsePolicy, workspaceFilePreviewResponsePolicy } from "./workspaces/filePreviewResponsePolicy.js";
+import { workspaceFilePreviewErrorResponsePolicy, workspaceFilePreviewResponsePolicy } from "../shared/workspaces/filePreviewResponsePolicy.js";
 
 registerAppTestHooks();
 

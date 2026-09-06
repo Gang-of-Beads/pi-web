@@ -1,6 +1,6 @@
 import type { PiWebPathAccessConfig } from "../../../shared/apiTypes.js";
 import type { PiWebConfigService } from "../configRoutes.js";
-import type { WorkspaceContext } from "./workspaceContext.js";
+import type { WorkspaceContext } from "../../shared/workspaces/workspaceContext.js";
 import { loadEffectiveProjectPathAccess } from "./projectPiWebConfig.js";
 
 export async function pathAccessForWorkspaceContext(context: WorkspaceContext, config: Pick<PiWebConfigService, "read"> | undefined): Promise<PiWebPathAccessConfig | undefined> {
