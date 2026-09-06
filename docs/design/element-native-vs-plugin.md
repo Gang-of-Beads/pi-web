@@ -48,7 +48,7 @@ re-litigated; only genuinely open items end in the ruling questions.
 | Session list (rows, badges, unread, rename, cleanup, start) | `SessionList.ts`, `SessionRenameDialog.ts`, `SessionCleanupDialog.ts`, `sessionRowIndicator.ts` | native; rich badges move behind `sessionBadges` when step ② lands (ruled) |
 | Session tree navigator (subtree, long-press) | `SessionTreeNavigator.ts`, `rowMenuGestures.ts`, `selectableRow.ts` | native — sessions are core domain |
 | Tools section (the host that lists panels) | `AppNavigationPanel.ts` `renderToolsSection` | native host |
-| Files panel | core contribution `plugins/core/panels.ts` (`workspace.files`) → `WorkspaceFilesPanel.ts`, `WorkspaceFileViewer.ts`, `CodeViewer.ts`, `filesSplitLayout.ts` | **ruling offered** — core contribution today; could extract as a files plugin like git |
+| Files panel | bundled plugin `pi-web-plugins/files` (`files:files`, answers to the `core:workspace.files` alias) | **extracted** (ruled + done, 299a8da0) — the whole files experience is plugin-owned; core keeps the endpoints and the seam |
 | Terminal / Tasks / Relays / Updates / Info panels | bundled plugins `pi-web-plugins/{terminal,workspace-tasks,relays,updates,info}` | already plugins ✓ |
 | Generic panel host (slot, empty states, scroll edges) | `WorkspacePanel.ts` | native — contract plumbing |
 
@@ -99,10 +99,10 @@ keeps only their seams.
    the corrected framing: (a) keep native — app self-update is lifecycle
    chrome, like the refresh pill; (b) still extract if the owner wants the
    pi-web version domain out of core too.
-2. **Files panel** — **ruled: extract as a files plugin**, aligned with
-   git/terminal (external repo, panel + file APIs wrapped by the plugin).
-   Execution lands as its own wave; the core keeps the workspace panel seam
-   and this table records the move.
+2. **Files panel** — **ruled: extract as a files plugin**; done as the
+   bundled `pi-web-plugins/files` (the aligned git/terminal shape is bundled
+   in-repo, not an external repo). See `files-plugin-extraction.md` for the
+   seam list and the wire-format contracts that survived.
 3. **Self-update banner** — **ruled: extract and unify with the pi updater**
    into one update plugin (owner, 2026-09-06). Owner also reported the live
    bug that motivated it:
