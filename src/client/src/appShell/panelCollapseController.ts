@@ -65,3 +65,12 @@ export function mainViewClass(mainView: AppState["mainView"]): "navigation-view"
   if (mainView === "chat") return "chat-view";
   return "workspace-view";
 }
+
+/**
+ * The phone hides the panel toggle exactly when the panel is the whole view:
+ * a toggle would advertise closing the only surface. A tool view stacked above
+ * the panel is not that state — there the toggle is the labeled exit.
+ */
+export function panelToggleHiddenState(options: { mobileLayout: boolean; displayView: AppState["mainView"] }): boolean {
+  return options.mobileLayout && options.displayView === "navigation";
+}

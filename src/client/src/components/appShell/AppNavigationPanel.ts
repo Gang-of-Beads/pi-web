@@ -64,6 +64,8 @@ export class AppNavigationPanel extends LitElement {
   @property({ type: Boolean }) canStartSession = false;
   @property({ attribute: false }) onShowActions?: () => void;
   @property({ attribute: false }) onOpenSettings?: () => void;
+  @property({ attribute: false }) onOpenContextSheet?: () => void;
+  @property({ attribute: false }) onRequestSection?: (section: NavigationSection) => void;
   @property({ attribute: false }) onAddMachine?: () => void;
   @property({ attribute: false }) onOpenSessionTree?: (session: SessionInfo) => void | Promise<void>;
   @property({ attribute: false }) onRefreshMachine?: (machine: Machine) => void | Promise<void>;
@@ -174,7 +176,7 @@ export class AppNavigationPanel extends LitElement {
     return html`
       <div class="compact-shell">
         <div class="compact-header">
-          <button class="compact-scope" @click=${() => { this.openSection(this.selectedWorkspace === undefined ? "projects" : "workspaces"); }} aria-label="Change project or workspace">
+          <button class="compact-scope" @click=${() => { this.onOpenContextSheet?.(); }} aria-label="Change machine, project or workspace">
             <span class="compact-scope-name" dir="auto">${this.compactScopeLabel()}</span>
           </button>
           ${this.refreshControl}
@@ -202,15 +204,15 @@ export class AppNavigationPanel extends LitElement {
              switched to instead of vanishing whenever no session could be
              started. -->
         ${this.renderCompactPrimaryList()}
-        ${this.renderToolsSection()}
+        ${this.compactVisibleSection() === "sessions" ? this.renderToolsSection() : null}
       </div>
     `;
   }
 
   /**
-   * The phone panel shows no context chips, so the header itself names the
-   * scope the lists below belong to - machine by project by workspace - and
-   * tapping it opens the picker for the level that is not yet chosen.
+   * The phone panel shows no context chips, so the header chip names the scope
+   * the lists below belong to - machine by project by workspace - and opens the
+   * context sheet, where every level is listed and the current one is marked.
    */
   private compactScopeLabel(): string {
     if (this.selectedProject === undefined) return "PI WEB";
@@ -220,9 +222,9 @@ export class AppNavigationPanel extends LitElement {
 
   /**
    * Mobile shows one primary list at a time instead of stacking every section.
-   * The desktop panel's context chips have no compact counterpart here - the
-   * section headers below carry the navigation - so the body should focus on
-   * the next useful decision.
+   * The context sheet owns level switching, so the body should focus on the
+   * section the user is working in; the tools grid follows the sessions
+   * section, because its cards act on the workspace that section belongs to.
    */
   private renderCompactPrimaryList() {
     const visible = this.compactVisibleSection();
@@ -240,17 +242,11 @@ export class AppNavigationPanel extends LitElement {
   }
 
   /**
-   * Open a picker from the context row, or close it by choosing it again.
-   *
-   * This reuses the accordion's own toggle rather than a second piece of state,
-   * so the desktop context row and the mobile accordion cannot disagree about
-   * which step is showing.
+   * Open a picker section as a request: the requested section becomes the
+   * visible one regardless of what the fallback order would have shown.
    */
   private openSection(section: NavigationSection): void {
-    if (section === "machines") this.onToggleMachines?.();
-    else if (section === "projects") this.onToggleProjects?.();
-    else if (section === "workspaces") this.onToggleWorkspaces?.();
-    else this.onToggleSessions?.();
+    this.onRequestSection?.(section);
   }
 
   private compactVisibleSection(): NavigationSection {

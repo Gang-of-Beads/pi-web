@@ -107,7 +107,7 @@ function assistantErrorLine(message: unknown): ChatLine | undefined {
  */
 export function describeAssistantFailure(detail: string, message: unknown): string {
   if (isUnreplayableThinkingFailure(detail)) {
-    return `${detail} (a turn was interrupted while the model was thinking, so this conversation carries a thinking block the provider will not accept again; every retry on this branch fails the same way until the turn holding it is removed)`;
+    return `${detail} (a turn was interrupted while the model was thinking, so this conversation carries a thinking block the provider will not accept again; every retry on this branch fails the same way. Open /tree and fork from the user message that asked for the broken turn - the fork drops it and returns your message as a draft.)`;
   }
   if (!/aborted/iu.test(detail)) return detail;
   const tool = lastToolCallName(message);

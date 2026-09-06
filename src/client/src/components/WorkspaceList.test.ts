@@ -250,3 +250,36 @@ describe("what a tile shows of a long branch name", () => {
     expect(rule).toMatch(/word-break:\s*break-all/u);
   });
 });
+
+/**
+ * Absence is not negation: a project with no workspaces (or a search with no
+ * matches) must say so instead of rendering a bare heading over nothing.
+ */
+describe("workspace-list empty claims", () => {
+  it("claims an empty list instead of rendering nothing", async () => {
+    const list = new WorkspaceList();
+    list.workspaces = [];
+    document.body.append(list);
+    await list.updateComplete;
+
+    const claim = list.shadowRoot?.querySelector(".empty-claim");
+    expect(claim?.textContent).toContain("No workspaces here yet.");
+  });
+
+  it("says the search found nothing instead of the empty-list claim", async () => {
+    const list = new WorkspaceList();
+    list.workspaces = Array.from({ length: 8 }, (_, index) => workspace(`ws-${String(index)}`));
+    document.body.append(list);
+    await list.updateComplete;
+
+    const input = list.shadowRoot?.querySelector<HTMLInputElement>("input.list-search-input");
+    if (input === null || input === undefined) throw new Error("search input missing");
+    input.value = "nothing-matches";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    await list.updateComplete;
+
+    const claim = list.shadowRoot?.querySelector(".empty-claim");
+    expect(claim?.textContent).toContain("No workspaces match");
+    expect(claim?.textContent).not.toContain("No workspaces here yet.");
+  });
+});

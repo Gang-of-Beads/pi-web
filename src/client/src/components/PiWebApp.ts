@@ -57,7 +57,8 @@ import { queryNamespace, readNamespacedString, setNamespacedQueryKey } from "../
 import { AppShellController } from "../appShell/appShellController";
 import { BrowserResumeController } from "../appShell/browserResumeController";
 import { NavigationSectionsController, type NavigationSection } from "../appShell/navigationState";
-import { PanelCollapseController, mainViewClass } from "../appShell/panelCollapseController";
+import "./appShell/ContextSwitcherSheet";
+import { PanelCollapseController, mainViewClass, panelToggleHiddenState } from "../appShell/panelCollapseController";
 import { PanelResizeController, type PanelResizeConstraints, type ResizablePanelSide } from "../appShell/panelResizeController";
 import { readRoute, resolveAppRoute, resolveWorkspacePanelRouteValue, writeRoute, type AppRoute, type ParsedAppRoute } from "../route";
 import { readSettingsOpen, readSettingsSection, writeSettingsOpen, writeSettingsSection, type SettingsSection } from "../settingsRoute";
@@ -331,6 +332,7 @@ export class PiWebApp extends LitElement {
     () => this.state,
     (patch) => { this.setState(patch); },
     (status) => { this.sessions.applySessionStatus(status); },
+    { noteDialogOpening: () => { this.pushModalLayerFrame(); } },
   );
   private readonly workspaces = new WorkspaceController(
     () => this.state,
@@ -403,6 +405,7 @@ export class PiWebApp extends LitElement {
   private heldErrorBanner: TemplateResult | null = null;
   private lastScheduledError = "";
   @state() private quickSwitcherOpen = false;
+  @state() private contextSheetOpen = false;
   /** True while a question form or dialog field has focus (see composerCollapse). */
   @state() private composerCollapsed = false;
   @state() private quickSwitcherLoading = false;
@@ -493,6 +496,10 @@ export class PiWebApp extends LitElement {
       this.quickSwitcherOpen = false;
       return;
     }
+    if (this.contextSheetOpen) {
+      this.contextSheetOpen = false;
+      return;
+    }
     const state = this.state;
     if (state.actionPaletteOpen) { this.setState({ actionPaletteOpen: false }); return; }
     if (state.projectDialogOpen) { this.setState({ projectDialogOpen: false }); return; }
@@ -502,6 +509,8 @@ export class PiWebApp extends LitElement {
     if (state.thinkingDialog !== undefined) { this.setState({ thinkingDialog: undefined }); return; }
     if (state.themeDialog !== undefined) { this.setState({ themeDialog: undefined }); return; }
     if (this.sessionCleanupDialog !== undefined) { this.sessionCleanupDialog = undefined; return; }
+    if (this.state.treeDialog !== undefined) { this.sessions.closeTreeDialog(); return; }
+    if (this.state.authDialog !== undefined) { this.auth.closeDialog(); return; }
   }
   private readonly onPageShow = () => {
     void this.sessionUnread.refreshAll();
@@ -1864,8 +1873,7 @@ export class PiWebApp extends LitElement {
         .emptyState=${emptyState}
         .tool=${this.state.workspaceTool}
         .panels=${this.visibleWorkspacePanels()}
-        ?hideToolTabs=${this.appShell.isMobileNavigationLayout}
-        .onSelectTool=${(tool: QualifiedContributionId) => { this.openWorkspaceTool(tool); }}
+        ?hideHeader=${this.appShell.isMobileNavigationLayout}
       ></workspace-panel>
     `;
   }
@@ -2060,6 +2068,8 @@ export class PiWebApp extends LitElement {
         .onToggleProjects=${() => { this.navigationSections.toggle("projects"); }}
         .onToggleWorkspaces=${() => { this.navigationSections.toggle("workspaces"); }}
         .onToggleSessions=${() => { this.navigationSections.toggle("sessions"); }}
+        .onRequestSection=${(section: NavigationSection) => { this.navigationSections.expand(section); }}
+        .onOpenContextSheet=${() => { this.openContextSheet(); }}
         .onSelectProject=${(project: Project) => this.selectNavigationItem("projects", "workspaces", () => this.workspaces.selectProject(project))}
         .onCloseProject=${(project: Project) => this.projects.closeProject(project.id)}
         .onSelectWorkspace=${(workspace: Workspace) => this.selectNavigationItem("workspaces", "sessions", () => this.workspaces.selectWorkspace(workspace))}
@@ -2186,6 +2196,7 @@ export class PiWebApp extends LitElement {
   /** True while a modal layer owns the back gesture. */
   private modalLayerOpen(): boolean {
     return this.quickSwitcherOpen
+      || this.contextSheetOpen
       || this.state.actionPaletteOpen
       || this.state.projectDialogOpen
       || this.state.machineDialogOpen
@@ -2193,7 +2204,9 @@ export class PiWebApp extends LitElement {
       || this.state.modelDialog !== undefined
       || this.state.thinkingDialog !== undefined
       || this.state.themeDialog !== undefined
-      || this.sessionCleanupDialog !== undefined;
+      || this.sessionCleanupDialog !== undefined
+      || this.state.treeDialog !== undefined
+      || this.state.authDialog !== undefined;
   }
 
   /**
@@ -2216,6 +2229,12 @@ export class PiWebApp extends LitElement {
   private openProjectDialog(): void {
     this.pushModalLayerFrame();
     this.setState({ projectDialogOpen: true });
+  }
+
+  private openContextSheet(): void {
+    dismissKeyboardIfRaised();
+    this.contextSheetOpen = true;
+    this.pushModalLayerFrame();
   }
 
   private openQuickSwitcher(): void {
@@ -2474,6 +2493,9 @@ export class PiWebApp extends LitElement {
    */
   private async openSessionTree(session: SessionInfo): Promise<void> {
     if (this.state.selectedSession?.id !== session.id) await this.sessions.selectSession(session);
+    // The tree navigator is a modal layer: it pushes its own frame so the back
+    // gesture closes it instead of restoring a route beneath an open dialog.
+    this.pushModalLayerFrame();
     await this.sessions.runCommand("/tree");
   }
 
@@ -3448,7 +3470,7 @@ export class PiWebApp extends LitElement {
         .session=${this.state.selectedSession}
         ?isWorking=${this.state.selectedSession !== undefined && isActive(this.state)}
         ?panelOpen=${this.shellPanelOpen()}
-        ?panelToggleHidden=${this.appShell.isMobileNavigationLayout && this.state.selectedSession === undefined}
+        ?panelToggleHidden=${panelToggleHiddenState({ mobileLayout: this.appShell.isMobileNavigationLayout, displayView: this.displayMainView() })}
         .onTogglePanel=${() => { this.toggleShellPanel(); }}
         .onQuickSwitch=${() => { this.openQuickSwitcher(); }}
       ></app-context-bar>
@@ -3536,6 +3558,25 @@ export class PiWebApp extends LitElement {
         </main>
         ${this.renderWorkspacePanelEdgeControl()}
         ${this.renderWorkspacePanel()}
+        ${this.contextSheetOpen ? html`<context-switcher-sheet
+          .machines=${state.machines}
+          .selectedMachine=${state.selectedMachine}
+          .machineStatuses=${state.machineStatuses}
+          .machineStatusSnapshots=${state.machineStatusSnapshots}
+          .projects=${state.projects}
+          .projectsLoad=${state.projectsLoad}
+          .onRetryProjectsLoad=${() => { void this.projects.loadProjects(); }}
+          .selectedProject=${state.selectedProject}
+          .workspaces=${state.workspaces}
+          .selectedWorkspace=${state.selectedWorkspace}
+          .deletingWorkspaceIds=${pendingWorkspaceDeletionIds(state.workspaceDeletionRuns)}
+          .workspaceLabelItems=${(workspace: Workspace) => this.workspaceLabelItems(workspace)}
+          .onSelectMachine=${(machine: Machine) => { this.contextSheetOpen = false; void this.selectMachineWithMemory(machine); }}
+          .onSelectProject=${(project: Project) => { this.contextSheetOpen = false; void this.workspaces.selectProject(project); }}
+          .onSelectWorkspace=${(workspace: Workspace) => { this.contextSheetOpen = false; void this.workspaces.selectWorkspace(workspace); }}
+          .onAddProject=${() => { this.contextSheetOpen = false; this.openProjectDialog(); }}
+          .onClose=${() => { this.contextSheetOpen = false; }}
+        ></context-switcher-sheet>` : null}
         ${state.authDialog !== undefined ? html`<auth-dialog .state=${state.authDialog} .onChooseMethod=${(authType: "oauth" | "api_key") => { void this.auth.chooseLoginMethod(authType); }} .onSelectProvider=${(providerId: string, authType: "oauth" | "api_key") => { void this.auth.selectLoginProvider(providerId, authType); }} .onLogoutProvider=${(providerId: string) => { void this.auth.logoutProvider(providerId); }} .onOAuthInput=${(value: string) => { this.auth.updateOAuthInput(value); }} .onOAuthRespond=${(value?: string) => { void this.auth.respondOAuth(value); }} .onOAuthCancel=${() => { void this.auth.cancelOAuth(); }} .onCancel=${() => { this.auth.closeDialog(); }}></auth-dialog>` : null}
         ${this.quickSwitcherOpen ? html`<quick-switcher
           .loading=${this.quickSwitcherLoading}

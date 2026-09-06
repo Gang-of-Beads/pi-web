@@ -15,6 +15,8 @@ interface OAuthResponseTarget {
 export interface AuthControllerDependencies {
   api?: typeof defaultApi;
   pollIntervalMs?: number;
+  /** Called just before the dialog state lands, so the shell can push the modal layer frame the back gesture consumes. */
+  noteDialogOpening?: () => void;
 }
 
 export class AuthController {
@@ -30,6 +32,7 @@ export class AuthController {
    * Cancellation deliberately ignores this guard and stays available.
    */
   private inFlightResponse: OAuthResponseTarget | undefined;
+  private readonly noteDialogOpening: (() => void) | undefined;
 
   constructor(
     private readonly getState: GetState,
@@ -39,6 +42,7 @@ export class AuthController {
   ) {
     this.api = deps.api ?? defaultApi;
     this.pollIntervalMs = deps.pollIntervalMs ?? 1000;
+    this.noteDialogOpening = deps.noteDialogOpening;
   }
 
   dispose(): void {
@@ -100,6 +104,7 @@ export class AuthController {
         else this.setState({ error: `No stored credentials for ${providerId}` });
         return;
       }
+      this.noteDialogOpening?.();
       this.setState({ authDialog: { step: "logout", machineId, providers } });
     } catch (error) {
       if (this.isCurrentAuthOperation(operationGeneration)) this.setState(errorNoticePatch(error));
@@ -182,6 +187,7 @@ export class AuthController {
         return;
       }
       if (exact.length > 1) {
+        this.noteDialogOpening?.();
         this.setState({ authDialog: { step: "providers", mode: "login", machineId, providers: exact } });
         return;
       }

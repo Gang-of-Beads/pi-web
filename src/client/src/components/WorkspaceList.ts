@@ -125,36 +125,47 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
         ${this.collapsed ? null : html`
           ${this.renderSearch()}
           <div class="list-body ${this.tiles ? "tiles" : ""}">
-            ${filterWorkspaces(this.workspaces, this.searchQuery).map((workspace) => {
-              const label = workspacePrimaryLabel(workspace);
-              const items = this.workspaceLabelItems(workspace);
-              return html`
-                <div
-                  class=${`action-row workspace-row ${this.selected?.id === workspace.id ? "selected" : ""}`}
-                  title=${label}
-                  @keydown=${(event: KeyboardEvent) => { this.handleWorkspaceKeydown(event, workspace); }}
-                >
-                  <button
-                    type="button"
-                    class="action-main"
-                    aria-current=${this.selected?.id === workspace.id ? "true" : nothing}
-                    @click=${() => { if (!this.gestures.consumeSuppressedClick()) this.onSelect?.(workspace); }}
-                    @contextmenu=${(event: MouseEvent) => { this.gestures.contextMenu(workspace.id, event); }}
-                    @pointerdown=${(event: PointerEvent) => { this.gestures.pointerDown(workspace.id, event); }}
-                    @pointermove=${(event: PointerEvent) => { this.gestures.pointerMove(event); }}
-                    @pointerup=${() => { this.gestures.cancel(); }}
-                    @pointercancel=${() => { this.gestures.cancel(); }}
-                  >
-                    ${this.renderWorkspaceMain(label, items, workspace)}
-                  </button>
-                  ${this.renderWorkspaceMenu(label, items, workspace)}
-                </div>
-              `;
-            })}
+            ${this.renderWorkspaceRows()}
           </div>
         `}
       </section>
     `;
+  }
+
+  private renderWorkspaceRows(): TemplateResult | TemplateResult[] {
+    const matching = filterWorkspaces(this.workspaces, this.searchQuery);
+    if (matching.length > 0) {
+      return matching.map((workspace) => {
+        const label = workspacePrimaryLabel(workspace);
+        const items = this.workspaceLabelItems(workspace);
+        return html`
+          <div
+            class=${`action-row workspace-row ${this.selected?.id === workspace.id ? "selected" : ""}`}
+            title=${label}
+            @keydown=${(event: KeyboardEvent) => { this.handleWorkspaceKeydown(event, workspace); }}
+          >
+            <button
+              type="button"
+              class="action-main"
+              aria-current=${this.selected?.id === workspace.id ? "true" : nothing}
+              @click=${() => { if (!this.gestures.consumeSuppressedClick()) this.onSelect?.(workspace); }}
+              @contextmenu=${(event: MouseEvent) => { this.gestures.contextMenu(workspace.id, event); }}
+              @pointerdown=${(event: PointerEvent) => { this.gestures.pointerDown(workspace.id, event); }}
+              @pointermove=${(event: PointerEvent) => { this.gestures.pointerMove(event); }}
+              @pointerup=${() => { this.gestures.cancel(); }}
+              @pointercancel=${() => { this.gestures.cancel(); }}
+            >
+              ${this.renderWorkspaceMain(label, items, workspace)}
+            </button>
+            ${this.renderWorkspaceMenu(label, items, workspace)}
+          </div>
+        `;
+      });
+    }
+    if (this.searchQuery.trim() !== "") {
+      return html`<div class="empty-claim" role="status">No workspaces match “${this.searchQuery.trim()}”.</div>`;
+    }
+    return html`<div class="empty-claim" role="status">No workspaces here yet.</div>`;
   }
 
   private renderHeading() {
@@ -368,6 +379,7 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
   }
 
   static override styles = [interactiveSurfaceStyles, listStyles, css`
+    .empty-claim { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); }
     .workspace-menu-trust { display: flex; flex-direction: column; gap: 3px; padding: var(--pi-space-2) var(--pi-space-1); }
     .workspace-menu-trust-row { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); }
     .workspace-menu-trust label { display: flex; align-items: center; gap: var(--pi-space-3); cursor: pointer; }

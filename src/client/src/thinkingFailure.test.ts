@@ -14,6 +14,12 @@ describe("a branch that can no longer be replayed says so", () => {
     expect(text).toContain("every retry on this branch fails the same way");
   });
 
+  it("names the recovery: fork from the user message before the broken turn", () => {
+    const text = describeAssistantFailure(REAL, undefined);
+    expect(text).toContain("fork from the user message");
+    expect(text).toContain("returns your message as a draft");
+  });
+
   it("keeps the provider's own words", () => {
     expect(describeAssistantFailure(REAL, undefined)).toContain("cannot be modified");
   });

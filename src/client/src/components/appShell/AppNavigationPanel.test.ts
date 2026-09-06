@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Machine, Project, Workspace } from "../../api";
 import type { MachineStatusSnapshot } from "../../../../shared/machineStatus";
 import { machineStatusSnapshot } from "../../machineStatus.testSupport";
@@ -9,6 +9,7 @@ import { MachineSwitcher } from "../MachineSwitcher";
 import { ProjectList } from "../ProjectList";
 import { WorkspaceList } from "../WorkspaceList";
 import { AppNavigationPanel, shouldShowMachinesSection } from "./AppNavigationPanel";
+import type { NavigationSection } from "../../appShell/navigationState";
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -77,6 +78,87 @@ describe("machine status wiring", () => {
   });
 });
 
+/**
+ * The compact header chip is the phone's one scope-switching gesture: it must
+ * open the context sheet, not a section toggle whose target the fallback order
+ * can override. The tools grid follows the sessions section, because its cards
+ * act on the workspace that section belongs to - on the pickers they would act
+ * on the workspace the user is navigating away from.
+ */
+describe("compact panel scope and tools", () => {
+  it("opens the context sheet from the scope chip", async () => {
+    const onOpenContextSheet = vi.fn();
+    const panel = await mountPanelWithOptions({}, machine("local"), { onOpenContextSheet });
+
+    const chip = panel.shadowRoot?.querySelector<HTMLButtonElement>("button.compact-scope");
+    if (chip === null || chip === undefined) throw new Error("scope chip missing");
+    chip.click();
+
+    expect(onOpenContextSheet).toHaveBeenCalledTimes(1);
+  });
+
+  it("names machine, project and workspace in the chip's label", async () => {
+    const panel = await mountPanelWithOptions({}, machine("local"));
+
+    const chip = panel.shadowRoot?.querySelector<HTMLButtonElement>("button.compact-scope");
+    expect(chip?.getAttribute("aria-label")).toBe("Change machine, project or workspace");
+  });
+
+  it("shows the tools grid on the sessions section and hides it on the projects picker", async () => {
+    const withSessions = await mountPanelWithOptions({}, machine("local"), { sessionsVisible: true });
+    expect(withSessions.shadowRoot?.querySelector(".tools-section")).not.toBeNull();
+
+    const withProjects = await mountPanelWithOptions({}, machine("local"), { projectsVisible: true });
+    expect(withProjects.shadowRoot?.querySelector(".tools-section")).toBeNull();
+  });
+
+  it("sends the desktop context switcher's section request to the shell", async () => {
+    const onRequestSection = vi.fn();
+    const panel = await mountPanelWithOptions({}, machine("local"), { onRequestSection });
+
+    call(panel, "openSection", ["projects"]);
+
+    expect(onRequestSection).toHaveBeenCalledWith("projects");
+  });
+});
+
+async function mountPanelWithOptions(
+  machineStatusSnapshots: Record<string, MachineStatusSnapshot>,
+  selectedMachine: Machine | undefined,
+  options: {
+    onOpenContextSheet?: () => void;
+    onRequestSection?: (section: NavigationSection) => void;
+    sessionsVisible?: boolean;
+    projectsVisible?: boolean;
+  } = {},
+): Promise<AppNavigationPanel> {
+  const panel = new AppNavigationPanel();
+  panel.compact = true;
+  panel.machines = [machine("local"), machine("remote-a")];
+  if (selectedMachine !== undefined) panel.selectedMachine = selectedMachine;
+  panel.projects = [project("project-1")];
+  panel.workspaces = [workspace("ws-1", "project-1")];
+  panel.machineStatusSnapshots = machineStatusSnapshots;
+  if (options.onOpenContextSheet !== undefined) panel.onOpenContextSheet = options.onOpenContextSheet;
+  if (options.onRequestSection !== undefined) panel.onRequestSection = options.onRequestSection;
+  panel.toolTabs = [{ id: "core:workspace.files", label: "Files", selected: options.sessionsVisible === true }];
+  if (options.sessionsVisible === true) {
+    panel.machinesCollapsed = true;
+    panel.projectsCollapsed = true;
+    panel.workspacesCollapsed = true;
+    panel.sessionsCollapsed = false;
+  }
+  if (options.projectsVisible === true) {
+    panel.machinesCollapsed = true;
+    panel.projectsCollapsed = false;
+    panel.workspacesCollapsed = true;
+    panel.sessionsCollapsed = true;
+  }
+  document.body.append(panel);
+  await panel.updateComplete;
+  return panel;
+}
+
 async function mountPanel(machineStatusSnapshots: Record<string, MachineStatusSnapshot>, selectedMachine: Machine | undefined): Promise<AppNavigationPanel> {
   const panel = new AppNavigationPanel();
   panel.compact = true;
@@ -112,4 +194,10 @@ function project(id: string): Project {
 
 function workspace(id: string, projectId: string): Workspace {
   return { id, projectId, path: `/repo/${id}`, label: id, isMain: true, effectiveConfig: {} };
+}
+
+function call(panel: AppNavigationPanel, name: string, args: unknown[]): unknown {
+  const value: unknown = Reflect.get(panel, name);
+  if (typeof value !== "function") throw new Error(`panel has no ${name}`);
+  return Reflect.apply(value, panel, args);
 }
