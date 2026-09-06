@@ -22,7 +22,7 @@ export interface ThemePreferenceResolution {
 }
 
 export const CLASSIC_THEME_ID: QualifiedContributionId = "themes:classic";
-export const DEFAULT_THEME_ID: QualifiedContributionId = "themes:pi-web-dark";
+export const DEFAULT_THEME_ID: QualifiedContributionId = "themes:clay-soft";
 export const DEFAULT_THEME_PREFERENCE: ThemePreference = { themeId: DEFAULT_THEME_ID, auto: true };
 export const THEME_STORAGE_KEY = "pi-web-app-theme";
 

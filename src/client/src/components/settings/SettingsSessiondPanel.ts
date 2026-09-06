@@ -136,7 +136,7 @@ export class SettingsSessiondPanel extends LitElement {
     .loading-card, .config-path-card, .effective-card { border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-surface); padding: 12px; }
     .loading-card { color: var(--pi-muted); }
     .config-path-card { display: grid; gap: 5px; }
-    .config-path-card span, .field-heading, dt { color: var(--pi-muted); font-size: 12px; font-weight: 700; text-transform: uppercase; }
+    .config-path-card span, .field-heading, dt { color: var(--pi-muted); font-size: 12px; font-weight: 600; }
     code { border: 1px solid var(--pi-border-muted); border-radius: 5px; background: var(--pi-bg); padding: 1px 4px; color: var(--pi-text); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
     .field { display: grid; gap: 7px; }
     .field small { color: var(--pi-muted); line-height: 1.45; }

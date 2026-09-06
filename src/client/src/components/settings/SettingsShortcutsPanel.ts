@@ -355,7 +355,7 @@ export class SettingsShortcutsPanel extends LitElement {
     .loading-card, .config-path-card, .prompt-enter-card { border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-surface); padding: 12px; }
     .loading-card, .config-path-card { color: var(--pi-muted); }
     .config-path-card { display: grid; gap: 5px; }
-    .config-path-card span, .card-eyebrow { color: var(--pi-muted); font-size: 12px; font-weight: 700; text-transform: uppercase; }
+    .config-path-card span, .card-eyebrow { color: var(--pi-muted); font-size: 12px; font-weight: 600; }
     .prompt-enter-card { display: grid; grid-template-columns: minmax(0, .85fr) minmax(260px, 1fr); gap: 12px; align-items: start; }
     .prompt-enter-copy { display: grid; gap: 5px; min-width: 0; }
     .prompt-enter-copy p, .prompt-enter-option small { font-size: 12px; }
@@ -367,7 +367,7 @@ export class SettingsShortcutsPanel extends LitElement {
     .prompt-enter-option small { color: var(--pi-muted); line-height: 1.35; }
     code { border: 1px solid var(--pi-border-muted); border-radius: 5px; background: var(--pi-bg); padding: 1px 4px; color: var(--pi-text); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
     .shortcut-group { margin: 0; }
-    .shortcut-group h3 { margin: 0 0 8px; color: var(--pi-muted); font-size: 12px; text-transform: uppercase; }
+    .shortcut-group h3 { margin: 0 0 8px; color: var(--pi-muted); font-size: 12px; font-weight: 600; }
     .shortcut-list { border: 1px solid var(--pi-border); border-radius: 10px; overflow: hidden; }
     .shortcut-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 48%); gap: 14px; align-items: start; padding: 12px; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-surface); }
     .shortcut-row.shadowed { background: color-mix(in srgb, var(--pi-warning) 5%, var(--pi-surface)); }
@@ -386,7 +386,7 @@ export class SettingsShortcutsPanel extends LitElement {
     .shortcut-status small.conflict.shadowing { color: var(--pi-accent); }
     .shortcut-status small.conflict.shadowed { color: var(--pi-warning); }
     .shortcut-input-label { min-width: 0; display: grid; gap: 5px; }
-    .shortcut-input-label span { color: var(--pi-muted); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    .shortcut-input-label span { color: var(--pi-muted); font-size: 11px; font-weight: 600; }
     input { box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-bg); color: var(--pi-text); padding: 8px 9px; outline: none; font: var(--pi-control-font-size, 16px) var(--pi-control-monospace-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
     input:focus { border-color: var(--pi-accent); box-shadow: 0 0 0 1px var(--pi-accent-border); }
     .shortcut-actions { display: flex; justify-content: flex-end; gap: 7px; flex-wrap: wrap; }

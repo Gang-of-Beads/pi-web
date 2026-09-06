@@ -267,7 +267,7 @@ export class SettingsGeneralPanel extends LitElement {
     .error-message { border-color: var(--pi-danger); color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 10%, var(--pi-surface)); }
     .loading-card { color: var(--pi-muted); }
     .config-path-card { display: grid; gap: 5px; }
-    .config-path-card span, .field-heading, dt { color: var(--pi-muted); font-size: 12px; font-weight: 700; text-transform: uppercase; }
+    .config-path-card span, .field-heading, dt { color: var(--pi-muted); font-size: 12px; font-weight: 600; }
     code { border: 1px solid var(--pi-border-muted); border-radius: 5px; background: var(--pi-bg); padding: 1px 4px; color: var(--pi-text); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
     .config-path-card small, .field small { color: var(--pi-muted); }
     .config-form { display: grid; gap: 14px; }

@@ -112,7 +112,7 @@ export class SettingsMachinesPanel extends LitElement {
     .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--pi-dim); }
     .status-dot.online { background: var(--pi-success); }
     .status-dot.offline { background: var(--pi-danger); }
-    .machine-kind { color: var(--pi-muted); font-size: var(--pi-text-2xs); text-transform: uppercase; letter-spacing: .04em; }
+    .machine-kind { color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: 600; }
     .machine-card-name { font-weight: 600; overflow-wrap: anywhere; }
     .machine-card-sub { color: var(--pi-muted); font-size: var(--pi-text-2xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .machine-card-actions { display: flex; gap: var(--pi-space-3); margin-top: auto; }

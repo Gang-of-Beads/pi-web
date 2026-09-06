@@ -44,6 +44,8 @@ const themes = [
   theme("pi-web-dark", "PI WEB Dark", "dark"),
   theme("pi-web-light", "PI WEB Light", "light"),
   theme("classic", "PI WEB Classic", "dark"),
+  theme("clay-soft", "Clay", "dark"),
+  theme("clay-paper", "Clay Paper", "light"),
 ];
 
 const themePairs: QualifiedThemePairContribution[] = [
@@ -55,17 +57,25 @@ const themePairs: QualifiedThemePairContribution[] = [
     light: "themes:pi-web-light",
     dark: "themes:pi-web-dark",
   },
+  {
+    id: "themes:clay",
+    pluginId: "themes",
+    localId: "clay",
+    name: "Clay",
+    light: "themes:clay-paper",
+    dark: "themes:clay-soft",
+  },
 ];
 
 describe("resolveThemePreference", () => {
   it("resolves the default auto preference to the dark member when the system is dark", () => {
     expect(resolveThemePreference({ themes, themePairs, preference: DEFAULT_THEME_PREFERENCE, prefersLight: false }).activeTheme?.id)
-      .toBe("themes:pi-web-dark");
+      .toBe("themes:clay-soft");
   });
 
   it("resolves the default auto preference to the light member when the system is light", () => {
     expect(resolveThemePreference({ themes, themePairs, preference: DEFAULT_THEME_PREFERENCE, prefersLight: true }).activeTheme?.id)
-      .toBe("themes:pi-web-light");
+      .toBe("themes:clay-paper");
   });
 
   it("keeps an unpaired theme selected when auto is enabled", () => {

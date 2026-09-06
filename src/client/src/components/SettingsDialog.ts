@@ -671,10 +671,10 @@ export class SettingsDialog extends LitElement {
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-dialog); color: var(--pi-text); font: 14px system-ui, sans-serif; }
     modal-surface { --modal-surface-backdrop-padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); --modal-surface-width: min(980px, 100%); --modal-surface-max-height: min(760px, 100%); --modal-surface-min-height: min(620px, 100%); --modal-surface-radius: 14px; }
     .settings-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--pi-border); }
-    .eyebrow { display: block; color: var(--pi-muted); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .eyebrow { display: block; color: var(--pi-muted); font-size: 12px; font-weight: 600; }
     h1 { margin: 0; font-size: 20px; line-height: 1.2; }
     button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; font: inherit; cursor: pointer; }
-    .close-button { width: 34px; height: 34px; display: grid; place-items: center; border: 0; background: transparent; color: var(--pi-muted); padding: 0; font-size: 24px; }
+    .close-button { width: 44px; height: 44px; display: grid; place-items: center; border: 0; background: transparent; color: var(--pi-muted); padding: 0; font-size: 24px; }
     .close-button:focus { color: var(--pi-text); background: var(--pi-surface-hover); }
     @media (hover: hover) { .close-button:hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
     .settings-body { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 220px minmax(0, 1fr); }
@@ -690,8 +690,11 @@ export class SettingsDialog extends LitElement {
       modal-surface { --modal-surface-backdrop-padding: 0; --modal-surface-place-items: stretch; --modal-surface-width: 100%; --modal-surface-max-height: none; --modal-surface-min-height: 0; --modal-surface-border: 0; --modal-surface-radius: 0; }
       .settings-header { padding: max(12px, env(safe-area-inset-top)) 12px 12px; }
       .settings-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-      .settings-nav { display: flex; gap: 8px; padding: 8px; border-right: 0; border-bottom: 1px solid var(--pi-border); overflow-x: auto; overflow-y: hidden; }
-      .settings-nav button { flex: 0 0 auto; width: auto; min-width: 128px; margin: 0; }
+      .settings-nav { display: flex; gap: 6px; padding: 8px; border-right: 0; border-bottom: 1px solid var(--pi-border); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+      .settings-nav::-webkit-scrollbar { display: none; }
+      .settings-nav button { box-sizing: border-box; flex: 0 0 auto; width: auto; min-height: 44px; margin: 0; border-radius: 999px; padding: 6px 16px; align-items: center; }
+      .settings-nav button strong { font-size: 14px; font-weight: 600; white-space: nowrap; }
+      .settings-nav button small { display: none; }
       .settings-content { padding: 14px 12px calc(18px + env(safe-area-inset-bottom)); }
     }
   `];
