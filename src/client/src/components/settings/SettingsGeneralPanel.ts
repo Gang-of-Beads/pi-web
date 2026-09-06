@@ -103,15 +103,15 @@ export class SettingsGeneralPanel extends LitElement {
             </label>
 
             <div class="field">
-              <span class="field-heading">
+              <label class="field-heading" for="allowed-hosts-mode">
                 <span>Allowed hosts</span>
                 ${this.renderOverrideBadge("allowedHosts")}
-              </span>
-              <select .value=${this.gatewayDraft.allowedHostsMode} @change=${(event: Event) => { this.updateGatewayDraft({ allowedHostsMode: selectValue(event) === "all" ? "all" : "list" }); }}>
+              </label>
+              <select id="allowed-hosts-mode" .value=${this.gatewayDraft.allowedHostsMode} @change=${(event: Event) => { this.updateGatewayDraft({ allowedHostsMode: selectValue(event) === "all" ? "all" : "list" }); }}>
                 <option value="list">Only listed hosts</option>
                 <option value="all">Allow every host</option>
               </select>
-              <textarea .value=${this.gatewayDraft.allowedHostsText} ?disabled=${this.gatewayDraft.allowedHostsMode === "all"} rows="4" placeholder="example.local&#10;192.168.1.20" spellcheck="false" @input=${(event: Event) => { this.updateGatewayDraft({ allowedHostsText: textAreaValue(event) }); }}></textarea>
+              <textarea aria-label="Allowed hosts, one per line" .value=${this.gatewayDraft.allowedHostsText} ?disabled=${this.gatewayDraft.allowedHostsMode === "all"} rows="4" placeholder="example.local&#10;192.168.1.20" spellcheck="false" @input=${(event: Event) => { this.updateGatewayDraft({ allowedHostsText: textAreaValue(event) }); }}></textarea>
               <small>Enter one host per line, or choose “Allow every host” to write <code>true</code>.</small>
             </div>
 

@@ -82,7 +82,6 @@ export class SettingsSessiondPanel extends LitElement {
             <label class="toggle">
               <input
                 type="checkbox"
-                aria-label="Enable Ask Questions"
                 .checked=${effectiveAskUser}
                 ?disabled=${this.loading || this.saving || askUserOverridden}
                 @change=${(event: Event) => { void this.toggleAskUser(event); }}

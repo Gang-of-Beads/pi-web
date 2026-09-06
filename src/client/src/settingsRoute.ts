@@ -36,7 +36,9 @@ export function writeSettingsOpen(options?: { replace?: boolean | undefined }): 
   const next = `${url.pathname}${url.search}${url.hash}`;
   const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
   if (next === current) return;
-  writeRouteUrl(String(url), options?.replace === true);
+  // Two settings gestures inside the route coalescer's window would otherwise
+  // replace the list frame out from under the drill chain.
+  writeRouteUrl(String(url), options?.replace === true, undefined, options?.replace !== true);
 }
 
 export function writeSettingsSection(section: SettingsSection | undefined, options?: { replace?: boolean | undefined }): void {
@@ -46,7 +48,7 @@ export function writeSettingsSection(section: SettingsSection | undefined, optio
   const next = `${url.pathname}${url.search}${url.hash}`;
   const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
   if (next === current) return;
-  writeRouteUrl(String(url), options?.replace === true);
+  writeRouteUrl(String(url), options?.replace === true, undefined, options?.replace !== true);
 }
 
 export function parseSettingsSection(value: string | null): SettingsSection | undefined {

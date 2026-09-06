@@ -25,8 +25,8 @@ export function notePlaceholderFrame(): void { placeholderOutstanding = true; }
 export function clearPlaceholderFrame(): void { placeholderOutstanding = false; }
 
 /** Write the URL, keeping the pieces of one action to a single entry. */
-export function writeRouteUrl(url: string, replace: boolean, now: number = Date.now()): void {
-  const mode = replace ? "replace" : historyWriteMode({ lastWriteAt, now, placeholderOutstanding });
+export function writeRouteUrl(url: string, replace: boolean, now: number = Date.now(), forcePush = false): void {
+  const mode = replace ? "replace" : forcePush && !placeholderOutstanding ? "push" : historyWriteMode({ lastWriteAt, now, placeholderOutstanding });
   lastWriteAt = now;
   placeholderOutstanding = false;
   if (mode === "replace") window.history.replaceState({}, "", url);

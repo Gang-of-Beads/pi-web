@@ -21,13 +21,13 @@ import { friendlySelectedMachineSettingsErrorMessage, isSelectedMachineSettingsU
 import { mergeSelectedMachinePluginConfig, pluginEnabledConfigPatch } from "./settings/settingsPluginConfig";
 import { mergeSelectedMachineSessiondConfig } from "./settings/settingsSessiondConfig";
 import { describeError } from "../notice";
-import { MOBILE_NAVIGATION_MEDIA_QUERY } from "../breakpoints";
+import { COARSE_OR_MOBILE_MEDIA_QUERY } from "../breakpoints";
 import { interactiveSurfaceStyles } from "./shared";
 
 @customElement("settings-dialog")
 export class SettingsDialog extends LitElement {
   @state() private phoneLayout = false;
-  private readonly phoneQuery: MediaQueryList | undefined = typeof window !== "undefined" && typeof window.matchMedia === "function" ? window.matchMedia(MOBILE_NAVIGATION_MEDIA_QUERY) : undefined;
+  private readonly phoneQuery: MediaQueryList | undefined = typeof window !== "undefined" && typeof window.matchMedia === "function" ? window.matchMedia(COARSE_OR_MOBILE_MEDIA_QUERY) : undefined;
   /** Undefined means the drill-down root: the phone shows the section list, the desktop falls back to General. */
   @property({ attribute: false }) section: SettingsSection | undefined = undefined;
   @property({ attribute: false }) actions: AppAction[] = [];
@@ -775,7 +775,7 @@ export class SettingsDialog extends LitElement {
     .settings-nav small { color: var(--pi-muted); }
     .settings-content { min-width: 0; min-height: 0; overflow: auto; padding: 18px; }
 
-    @media (max-width: 760px) {
+    @media (pointer: coarse), (max-width: 760px) {
       modal-surface { --modal-surface-backdrop-padding: 0; --modal-surface-place-items: stretch; --modal-surface-width: 100%; --modal-surface-max-height: none; --modal-surface-min-height: 0; --modal-surface-border: 0; --modal-surface-radius: 0; }
       .settings-header { padding: max(12px, env(safe-area-inset-top)) 12px 12px; }
       .settings-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }

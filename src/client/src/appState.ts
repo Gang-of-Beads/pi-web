@@ -163,11 +163,9 @@ export interface AppState {
   dismissedDialogIds: readonly string[];
   /** Thinking levels available for the selected session's current model. */
   availableThinkingLevels: readonly string[];
-  /** Goals recorded for the selected workspace, newest unfinished first,
-   * carried with the selection they were read for: the panel's empty claim is
-   * only reachable through a completed read that answers for the workspace on
-   * screen, never through a retained list keyed elsewhere or a read that never
-   * happened. */
+  /** Statuses keyed by session id, carried with the machine they were read
+   * from: a stale entry answers for a session this machine may no longer
+   * have, so machine switches clear the map instead of retaining it. */
   sessionStatuses: Record<string, SessionStatus>;
   sessionActivities: Record<string, SessionActivity>;
   /** Authoritative projection plus browser-local optimistic overlays for the selected inbox. */

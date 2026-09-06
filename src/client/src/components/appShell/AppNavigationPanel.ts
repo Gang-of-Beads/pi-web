@@ -107,7 +107,6 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) onCancelKeyboardNavigation?: () => void | Promise<void>;
 
   @query("machine-list") private machineList?: KeyboardNavigableSection;
-  @query("machine-switcher") private machineSwitcher?: KeyboardNavigableSection;
   @query("project-list") private projectList?: KeyboardNavigableSection;
   @query("workspace-list") private workspaceList?: KeyboardNavigableSection;
   @query("session-list") private sessionList?: KeyboardNavigableSection;
@@ -115,7 +114,7 @@ export class AppNavigationPanel extends LitElement {
   async focusSection(section: NavigationSection): Promise<boolean> {
     await this.updateComplete;
     switch (section) {
-      case "machines": return await this.focusNavigableSection(this.compact ? this.machineList : this.machineSwitcher);
+      case "machines": return await this.focusNavigableSection(this.machineList);
       case "projects": return await this.focusNavigableSection(this.projectList);
       case "workspaces": return await this.focusNavigableSection(this.workspaceList);
       case "sessions": return await this.focusNavigableSection(this.sessionList);

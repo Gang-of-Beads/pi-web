@@ -171,7 +171,7 @@ export const appStyles = css`
     main.workspace-view .empty { display: none; }
     main.workspace-view { overflow: hidden; }
   }
-  @media (max-width: 760px) {
+  @media (pointer: coarse), (max-width: 760px) {
     .shell { grid-template-columns: minmax(0, 1fr); }
     aside { display: none; }
     main, .shell.workspace-view > workspace-panel { grid-column: 1; }
@@ -421,6 +421,7 @@ export class PiWebApp extends LitElement {
   @state() private staleClientServerVersion: string | undefined;
   @state() private sessionCleanupDialog: SessionCleanupDialogState | undefined;
   @state() private settingsOpen = readSettingsOpen();
+  private settingsListFramePushed = false;
   @state() private settingsSection: SettingsSection | undefined = readSettingsSection();
   @state() private fleetReport: PiWebFleetReport | undefined;
   @state() private fleetLoading = false;
@@ -435,14 +436,10 @@ export class PiWebApp extends LitElement {
       this.closeModalLayer();
       return;
     }
-    if (this.settingsOpen) {
+    if (this.settingsOpen || readSettingsOpen()) {
       // Settings rides the URL instead of a placeholder frame: a pop either
-      // moves between its own screens or leaves settings entirely.
-      if (!readSettingsOpen()) {
-        this.settingsOpen = false;
-        this.settingsSection = undefined;
-        return;
-      }
+      // moves between its own screens or leaves settings entirely, in both
+      // directions. The URL is the single owner of the sheet's visibility.
       this.restoreSettingsRoute();
       return;
     }
@@ -1607,9 +1604,11 @@ export class PiWebApp extends LitElement {
     this.settingsOpen = true;
     if (section === undefined) {
       this.settingsSection = undefined;
+      this.settingsListFramePushed = true;
       writeSettingsOpen();
       return;
     }
+    this.settingsListFramePushed = false;
     this.settingsSection = section;
     writeSettingsSection(section);
   }
@@ -1648,6 +1647,7 @@ export class PiWebApp extends LitElement {
   private closeSettings(): void {
     this.settingsOpen = false;
     this.settingsSection = undefined;
+    this.settingsListFramePushed = false;
     writeSettingsSection(undefined);
   }
 
@@ -1658,13 +1658,12 @@ export class PiWebApp extends LitElement {
 
   /**
    * The phone's section list is the drill-down root. The back control pops
-   * the drilled frame so the system back gesture stays in step with it: from
-   * the list, back leaves settings instead of reopening the section just
-   * left. A deep link that booted straight into a section has nothing to pop
-   * to, so the list replaces the frame instead.
+   * the drilled frame when this sheet session actually pushed one - history
+   * length says nothing about what sits beneath a deep link or a plugin's
+   * section entry - and otherwise replaces the frame with the list root.
    */
   private backToSettingsList(): void {
-    if (window.history.length > 1) {
+    if (this.settingsListFramePushed) {
       window.history.back();
       return;
     }
@@ -1675,6 +1674,7 @@ export class PiWebApp extends LitElement {
   private restoreSettingsRoute(): void {
     this.settingsOpen = readSettingsOpen();
     this.settingsSection = readSettingsSection();
+    this.settingsListFramePushed = false;
   }
 
   private handleWorkspaceChange(previous: AppState, next: AppState) {
@@ -3450,15 +3450,24 @@ export class PiWebApp extends LitElement {
   }
 
   /** Whether the collapsible panel is currently presented on this layout. */
+  /** The view the shell actually renders: on the phone an empty chat shows the panel. */
+  private displayMainView(): AppState["mainView"] {
+    return this.appShell.isMobileNavigationLayout && this.state.mainView === "chat" && this.state.selectedSession === undefined ? "navigation" : this.state.mainView;
+  }
+
   private shellPanelOpen(): boolean {
     return this.appShell.isMobileNavigationLayout
-      ? this.state.mainView === "navigation"
+      ? this.displayMainView() === "navigation"
       : !this.panelCollapse.navigationPanelCollapsed;
   }
 
   private toggleShellPanel(): void {
     if (this.appShell.isMobileNavigationLayout) {
-      this.selectMainView(this.state.mainView === "navigation" ? "chat" : "navigation");
+      if (this.state.selectedSession === undefined) {
+        this.selectMainView("navigation");
+        return;
+      }
+      this.selectMainView(this.displayMainView() === "navigation" ? "chat" : "navigation");
       return;
     }
     this.panelCollapse.toggleNavigationPanel();
@@ -3468,11 +3477,12 @@ export class PiWebApp extends LitElement {
   private shellToolTabs(): ShellToolTab[] {
     return this.visibleWorkspacePanels().map((panel) => {
       const badge = this.mobilePanelBadge(panel);
+      const usableBadge = badge === "" ? undefined : badge;
       return {
         id: panel.id,
         label: panel.title,
         icon: panel.icon,
-        ...(badge === undefined ? {} : { badge }),
+        ...(usableBadge === undefined ? {} : { badge: usableBadge }),
         selected: this.state.mainView === panel.id,
       };
     });
@@ -3496,7 +3506,7 @@ export class PiWebApp extends LitElement {
     // dead end under touch, and the back gesture from a tool panel lands
     // exactly there. Desktop keeps the empty state - its panel is always
     // on screen.
-    const displayView = this.appShell.isMobileNavigationLayout && state.mainView === "chat" && state.selectedSession === undefined ? "navigation" : state.mainView;
+    const displayView = this.displayMainView();
     return html`
       <div class=${`${this.panelCollapse.shellClass(displayView, state.selectedWorkspace !== undefined)}${this.workspacePanelFullscreen ? " workspace-panel-fullscreen" : ""}`} style=${this.panelResize.shellStyle({ navigation: this.resizablePanelConstraints("navigation"), workspace: this.resizablePanelConstraints("workspace") })}>
         <aside id="navigation-panel">${this.appShell.isMobileNavigationLayout ? null : this.renderNavigationPanel()}</aside>

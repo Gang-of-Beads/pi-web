@@ -482,6 +482,11 @@ export const chatStyles = css`
   .command-dismiss:focus-visible { outline: var(--pi-focus-ring-width) solid currentColor; outline-offset: var(--pi-focus-ring-offset); }
   @media (hover: hover) { .command-dismiss:hover { border-color: currentColor; } }
   .queued-clear-button { flex: 0 0 auto; border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-warning); padding: var(--pi-space-1) var(--pi-space-3); font: inherit; cursor: pointer; }
+  @media (pointer: coarse) {
+    .command-dismiss, .image-zoom-close { width: 44px; height: 44px; }
+    .queued-clear-button { min-height: 44px; }
+    .history-load-button { min-height: 44px; }
+  }
   .queued-clear-button:focus { border-color: var(--pi-warning); color: var(--pi-text-bright); }
   @media (hover: hover) { .queued-clear-button:hover { border-color: var(--pi-warning); color: var(--pi-text-bright); } }
   .queued-dialogs { margin: -8px 0 var(--pi-space-7); padding: 0 var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-xs); text-align: center; }

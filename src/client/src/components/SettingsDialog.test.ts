@@ -61,7 +61,7 @@ describe("settings-dialog modal surface", () => {
 describe("settings-dialog phone drill-down", () => {
   function stubPhone(): void {
     vi.spyOn(window, "matchMedia").mockImplementation((query: string) => ({
-      matches: query.includes("max-width: 760px"),
+      matches: query.includes("pointer: coarse") || query.includes("max-width: 760px"),
       media: query,
       addEventListener: () => undefined,
       removeEventListener: () => undefined,

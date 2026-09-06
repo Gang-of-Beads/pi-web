@@ -167,7 +167,8 @@ export const promptEditorStyles = css`
   .attachment-error { flex-basis: 100%; color: var(--pi-danger); font-size: var(--pi-text-xs); }
   button { font: var(--pi-text-xs) var(--pi-font-ui); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
   button:disabled, textarea:disabled, .markdown-editor-disabled .cm-editor { opacity: .5; cursor: not-allowed; }
-      footer { gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-chat-gutter); }
+  @media (max-width: 760px) {
+    footer { gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-chat-gutter); }
     .actions { gap: var(--pi-space-3); }
     .compact-status { flex: 1 1 220px; gap: var(--pi-space-2); }
     .select-model { max-width: min(58vw, 260px); }
@@ -289,6 +290,14 @@ export class PromptEditor extends LitElement {
     this.currentInputMode = inputModeForDraft(this.draft);
     this.completions = [];
     this.selectedIndex = 0;
+    // Attachments belong to the session they were captured in: carried across
+    // a switch they would deliver session A's image into session B's send.
+    // First render restores, it does not clear.
+    if (hadRendered && (sessionChanged || machineChanged)) {
+      this.attachments = [];
+      this.attachmentError = undefined;
+      this.zoomedAttachment = undefined;
+    }
     // The sheet lists one session's history; carried across a switch it would
     // answer for prompts the reader was never looking at.
     if (sessionChanged || machineChanged) this.historyOpen = false;

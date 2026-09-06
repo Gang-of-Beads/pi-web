@@ -40,8 +40,9 @@ describe("SettingsSessiondPanel Ask Questions setting", () => {
 });
 
 function askUserToggle(panel: SettingsSessiondPanel): HTMLInputElement {
-  const toggle = panel.shadowRoot?.querySelector<HTMLInputElement>('input[aria-label="Enable Ask Questions"]');
-  if (toggle === undefined || toggle === null) throw new Error("Ask Questions toggle was not rendered");
+  const toggles = Array.from(panel.shadowRoot?.querySelectorAll<HTMLInputElement>("label.toggle input[type='checkbox']") ?? []);
+  const toggle = toggles.find((input) => (input.closest("label")?.textContent ?? "").includes("ask_user"));
+  if (toggle === undefined) throw new Error("Ask Questions toggle was not rendered");
   return toggle;
 }
 

@@ -732,6 +732,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .action-row.is-child .action-main { padding-left: calc(38px + var(--depth, 0) * 16px); }
     .subtree-toggle { cursor: pointer; }
     @media (hover: hover) { .subtree-toggle:hover { border-color: var(--pi-border-strong, var(--pi-accent)); color: var(--pi-text); } }
+    @media (pointer: coarse) { .subtree-toggle { top: 0; width: 36px; height: 44px; } }
     .subtree-toggle.inert { visibility: hidden; }
     .subtree-chevron { display: inline-block; transition: transform 120ms ease; }
     .subtree-chevron.collapsed { transform: rotate(-90deg); }
