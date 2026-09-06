@@ -59,7 +59,7 @@ import { NavigationSectionsController, type NavigationSection } from "../appShel
 import { PanelCollapseController, mainViewClass } from "../appShell/panelCollapseController";
 import { PanelResizeController, type PanelResizeConstraints, type ResizablePanelSide } from "../appShell/panelResizeController";
 import { readRoute, resolveAppRoute, resolveWorkspacePanelRouteValue, writeRoute, type AppRoute, type ParsedAppRoute } from "../route";
-import { readSettingsSection, writeSettingsSection, type SettingsSection } from "../settingsRoute";
+import { readSettingsOpen, readSettingsSection, writeSettingsOpen, writeSettingsSection, type SettingsSection } from "../settingsRoute";
 import { applyActiveShortcutPreferences } from "../shortcutPreferences";
 import { createTerminalCommandRunsRuntime } from "../runtime/terminalRuntime";
 import { canDeleteWorkspace, isWorkspaceDeletionPending, isWorkspaceDeletionRunPending, latestWorkspaceDeletionRuns, pendingWorkspaceDeletionIds, targetWorkspaceIdForRun, workspaceDeletionRunFilter, workspaceRemovalConfirmation } from "../workspaceDeletion";
@@ -419,6 +419,7 @@ export class PiWebApp extends LitElement {
   @state() private quickSwitcherError: string | undefined;
   @state() private staleClientServerVersion: string | undefined;
   @state() private sessionCleanupDialog: SessionCleanupDialogState | undefined;
+  @state() private settingsOpen = readSettingsOpen();
   @state() private settingsSection: SettingsSection | undefined = readSettingsSection();
   @state() private fleetReport: PiWebFleetReport | undefined;
   @state() private fleetLoading = false;
@@ -431,6 +432,17 @@ export class PiWebApp extends LitElement {
       // opened: consume it by closing the layer, never by moving the route.
       clearPlaceholderFrame();
       this.closeModalLayer();
+      return;
+    }
+    if (this.settingsOpen) {
+      // Settings rides the URL instead of a placeholder frame: a pop either
+      // moves between its own screens or leaves settings entirely.
+      if (!readSettingsOpen()) {
+        this.settingsOpen = false;
+        this.settingsSection = undefined;
+        return;
+      }
+      this.restoreSettingsRoute();
       return;
     }
     // A placeholder frame from a layer that was closed by its own cancel is
@@ -1590,7 +1602,13 @@ export class PiWebApp extends LitElement {
     this.updateUrl();
   }
 
-  private openSettings(section: SettingsSection = "general"): void {
+  private openSettings(section?: SettingsSection): void {
+    this.settingsOpen = true;
+    if (section === undefined) {
+      this.settingsSection = undefined;
+      writeSettingsOpen();
+      return;
+    }
     this.settingsSection = section;
     writeSettingsSection(section);
   }
@@ -1627,6 +1645,7 @@ export class PiWebApp extends LitElement {
   }
 
   private closeSettings(): void {
+    this.settingsOpen = false;
     this.settingsSection = undefined;
     writeSettingsSection(undefined);
   }
@@ -1636,7 +1655,24 @@ export class PiWebApp extends LitElement {
     writeSettingsSection(section);
   }
 
+  /**
+   * The phone's section list is the drill-down root. The back control pops
+   * the drilled frame so the system back gesture stays in step with it: from
+   * the list, back leaves settings instead of reopening the section just
+   * left. A deep link that booted straight into a section has nothing to pop
+   * to, so the list replaces the frame instead.
+   */
+  private backToSettingsList(): void {
+    if (window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+    this.settingsSection = undefined;
+    writeSettingsOpen({ replace: true });
+  }
+
   private restoreSettingsRoute(): void {
+    this.settingsOpen = readSettingsOpen();
     this.settingsSection = readSettingsSection();
   }
 
@@ -2005,7 +2041,7 @@ export class PiWebApp extends LitElement {
         .refreshControl=${this.appShell.shouldShowAppRefreshInHeader() || this.appShell.shouldShowAppRefreshInContextBar() ? this.renderAppRefresh() : undefined}
         .onAddProject=${() => { this.openProjectDialog(); }}
         .onShowActions=${() => { this.openActionPalette(); }}
-        .onOpenSettings=${() => { this.openSettings("general"); }}
+        .onOpenSettings=${() => { this.openSettings(); }}
         .onAddMachine=${() => { this.openMachineDialog(); }}
         .onRefreshMachine=${async (machine: Machine) => {
           await this.machines.selectMachine(machine);
@@ -3512,7 +3548,7 @@ export class PiWebApp extends LitElement {
         ${state.machineDialogOpen ? html`<machine-dialog .error=${state.error} .onSubmit=${(input: MachineDialogSubmit) => this.submitMachineDialog(input)} .onCancel=${() => { this.setState({ machineDialogOpen: false }); }}></machine-dialog>` : null}
         ${this.sessionCleanupDialog !== undefined ? html`<session-cleanup-dialog .preview=${this.sessionCleanupDialog.preview} .previewRequest=${this.sessionCleanupDialog.previewRequest} .result=${this.sessionCleanupDialog.result} .loading=${this.sessionCleanupDialog.loading === true} .running=${this.sessionCleanupDialog.running === true} .error=${this.sessionCleanupDialog.error ?? ""} .onPreview=${(request: SessionCleanupRequest) => { void this.previewSessionCleanup(request); }} .onRun=${(request: SessionCleanupRequest) => { void this.runSessionCleanup(request); }} .onClose=${() => { this.closeSessionCleanupDialog(); }}></session-cleanup-dialog>` : null}
         ${state.themeDialog !== undefined ? html`<command-picker title=${state.themeDialog.title} .options=${state.themeDialog.options} .selectedValue=${state.themeDialog.selectedValue} .onPick=${(value: string) => { this.pickTheme(value); }} .onCancel=${() => { this.setState({ themeDialog: undefined }); }}></command-picker>` : null}
-        ${this.settingsSection !== undefined ? html`<settings-dialog .section=${this.settingsSection} .machine=${state.selectedMachine} .machineRuntime=${this.selectedMachineRuntime()} .actions=${this.getDefaultActions()} .onNavigate=${(section: SettingsSection) => { this.navigateSettings(section); }} .pluginSections=${this.plugins.getSettingsSections(selectedMachineId(state))} .pluginRuntimeContext=${this.createPluginRuntimeContext()} .onClose=${() => { this.closeSettings(); }} .onConfigSaved=${(config: PiWebConfigValues) => { this.applyClientConfig(config); }} .onRefreshMachineRuntime=${async (machineId: string) => { await this.machines.refreshMachineRuntime(machineId); }} .machines=${state.machines} .machineStatuses=${state.machineStatuses} .onAddMachine=${() => { this.openMachineDialog(); }} .onRenameMachine=${async (machine: Machine, name: string) => { await this.renameMachine(machine, name); }} .onRemoveMachine=${(machine: Machine) => { void this.removeMachine(machine); }} .fleetReport=${this.fleetReport} ?fleetLoading=${this.fleetLoading} .fleetError=${this.fleetError} .onRefreshFleet=${() => this.refreshFleet()} .onRunFleet=${(operation: "restart" | "update", machineIds?: readonly string[]) => this.runFleetOperation(operation, machineIds)} .themes=${this.plugins.getThemes()} .selectedThemeId=${this.resolveCurrentThemePreference().selectedTheme?.id} .activeThemeId=${this.activeThemeId} ?followSystemTheme=${this.themePreference.auto} .onSelectTheme=${(themeId: QualifiedContributionId) => { this.selectTheme(themeId); }} .onToggleFollowSystem=${(follow: boolean) => { this.setFollowSystemTheme(follow); }}></settings-dialog>` : null}
+        ${this.settingsOpen ? html`<settings-dialog .section=${this.settingsSection} .machine=${state.selectedMachine} .machineRuntime=${this.selectedMachineRuntime()} .actions=${this.getDefaultActions()} .onNavigate=${(section: SettingsSection) => { this.navigateSettings(section); }} .onBackToList=${() => { this.backToSettingsList(); }} .pluginSections=${this.plugins.getSettingsSections(selectedMachineId(state))} .pluginRuntimeContext=${this.createPluginRuntimeContext()} .onClose=${() => { this.closeSettings(); }} .onConfigSaved=${(config: PiWebConfigValues) => { this.applyClientConfig(config); }} .onRefreshMachineRuntime=${async (machineId: string) => { await this.machines.refreshMachineRuntime(machineId); }} .machines=${state.machines} .machineStatuses=${state.machineStatuses} .onAddMachine=${() => { this.openMachineDialog(); }} .onRenameMachine=${async (machine: Machine, name: string) => { await this.renameMachine(machine, name); }} .onRemoveMachine=${(machine: Machine) => { void this.removeMachine(machine); }} .fleetReport=${this.fleetReport} ?fleetLoading=${this.fleetLoading} .fleetError=${this.fleetError} .onRefreshFleet=${() => this.refreshFleet()} .onRunFleet=${(operation: "restart" | "update", machineIds?: readonly string[]) => this.runFleetOperation(operation, machineIds)} .themes=${this.plugins.getThemes()} .selectedThemeId=${this.resolveCurrentThemePreference().selectedTheme?.id} .activeThemeId=${this.activeThemeId} ?followSystemTheme=${this.themePreference.auto} .onSelectTheme=${(themeId: QualifiedContributionId) => { this.selectTheme(themeId); }} .onToggleFollowSystem=${(follow: boolean) => { this.setFollowSystemTheme(follow); }}></settings-dialog>` : null}
       </div>
     `;
   }

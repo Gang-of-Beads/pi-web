@@ -21,16 +21,21 @@ import { friendlySelectedMachineSettingsErrorMessage, isSelectedMachineSettingsU
 import { mergeSelectedMachinePluginConfig, pluginEnabledConfigPatch } from "./settings/settingsPluginConfig";
 import { mergeSelectedMachineSessiondConfig } from "./settings/settingsSessiondConfig";
 import { describeError } from "../notice";
+import { MOBILE_NAVIGATION_MEDIA_QUERY } from "../breakpoints";
 import { interactiveSurfaceStyles } from "./shared";
 
 @customElement("settings-dialog")
 export class SettingsDialog extends LitElement {
-  @property({ attribute: false }) section: SettingsSection = "general";
+  @state() private phoneLayout = false;
+  private readonly phoneQuery: MediaQueryList | undefined = typeof window !== "undefined" && typeof window.matchMedia === "function" ? window.matchMedia(MOBILE_NAVIGATION_MEDIA_QUERY) : undefined;
+  /** Undefined means the drill-down root: the phone shows the section list, the desktop falls back to General. */
+  @property({ attribute: false }) section: SettingsSection | undefined = undefined;
   @property({ attribute: false }) actions: AppAction[] = [];
   @property({ attribute: false }) machine: Machine | undefined;
   @property({ attribute: false }) machineRuntime: MachineRuntime | undefined;
   @property({ attribute: false }) machines: Machine[] = [];
   @property({ attribute: false }) machineStatuses: Record<string, MachineHealth> = {};
+  @property({ attribute: false }) onBackToList?: () => void;
   @property({ attribute: false }) onAddMachine?: () => void;
   @property({ attribute: false }) onRenameMachine?: (machine: Machine, name: string) => void | Promise<void>;
   @property({ attribute: false }) onRemoveMachine?: (machine: Machine) => void | Promise<void>;
@@ -80,8 +85,14 @@ export class SettingsDialog extends LitElement {
   private packageLoadRequestSeq = 0;
   private packageMutationSeq = 0;
 
+  private readonly handlePhoneQueryChange = (event: MediaQueryListEvent): void => {
+    this.phoneLayout = event.matches;
+  };
+
   override connectedCallback(): void {
     super.connectedCallback();
+    this.phoneLayout = this.phoneQuery?.matches ?? false;
+    this.phoneQuery?.addEventListener("change", this.handlePhoneQueryChange);
     void this.loadConfig();
     void this.loadAccessConfigForTarget();
     void this.reloadSessiondState();
@@ -90,6 +101,7 @@ export class SettingsDialog extends LitElement {
   }
 
   override disconnectedCallback(): void {
+    this.phoneQuery?.removeEventListener("change", this.handlePhoneQueryChange);
     if (this.savedMessageTimer !== undefined) window.clearTimeout(this.savedMessageTimer);
     this.savedMessageTimer = undefined;
     super.disconnectedCallback();
@@ -119,6 +131,8 @@ export class SettingsDialog extends LitElement {
   }
 
   override render(): TemplateResult {
+    if (this.phoneLayout && this.section === undefined) return this.renderPhoneList();
+    if (this.phoneLayout) return this.renderPhoneDetail();
     return html`
       <modal-surface .onClose=${() => this.onClose?.()} .label=${"PI WEB settings"}>
         <header class="settings-header">
@@ -147,12 +161,87 @@ export class SettingsDialog extends LitElement {
     `;
   }
 
+  /** The phone's drill-down root: sections as rows, no tab strip to swipe through. */
+  private renderPhoneList(): TemplateResult {
+    return html`
+      <modal-surface .onClose=${() => this.onClose?.()} .label=${"PI WEB settings"}>
+        <header class="settings-header">
+          <div>
+            <span class="eyebrow">Settings</span>
+            <h1>PI WEB</h1>
+          </div>
+          <button class="close-button" title="Close settings" aria-label="Close settings" @click=${() => this.onClose?.()}>×</button>
+        </header>
+        <nav class="settings-list" aria-label="Settings sections">
+          ${this.renderListRow("general", "General", "Gateway + selected machine")}
+          ${this.renderListRow("appearance", "Appearance", "Theme and system preference")}
+          ${this.renderListRow("machines", "Machines", "All connected devices")}
+          ${this.renderListRow("sessiond", "Session daemon", "Selected machine")}
+          ${this.renderListRow("packages", "Pi packages", "Selected machine")}
+          ${this.renderListRow("plugins", "PI WEB plugins", "Selected machine")}
+          ${this.renderListRow("shortcuts", "Keyboard", "Gateway shortcuts")}
+          ${this.pluginSections.map((entry) => this.renderListRow(entry.id, entry.title, "Plugin"))}
+        </nav>
+      </modal-surface>
+    `;
+  }
+
+  private renderListRow(section: SettingsSection, label: string, detail: string): TemplateResult {
+    return html`
+      <button @click=${() => this.onNavigate?.(section)}>
+        <span class="settings-list-label">
+          <strong>${label}</strong>
+          <small>${detail}</small>
+        </span>
+        <span class="settings-list-chevron" aria-hidden="true">›</span>
+      </button>
+    `;
+  }
+
+  private renderPhoneDetail(): TemplateResult {
+    return html`
+      <modal-surface .onClose=${() => this.onClose?.()} .label=${"PI WEB settings"}>
+        <header class="settings-header">
+          <div class="settings-detail-heading">
+            <button class="settings-back" @click=${() => this.onBackToList?.()}>‹ Settings</button>
+            <h1>${this.detailTitle()}</h1>
+          </div>
+          <button class="close-button" title="Close settings" aria-label="Close settings" @click=${() => this.onClose?.()}>×</button>
+        </header>
+        <main class="settings-content">
+          ${this.renderActiveSection()}
+        </main>
+      </modal-surface>
+    `;
+  }
+
+  private get activeSection(): SettingsSection {
+    return this.section ?? "general";
+  }
+
+  private detailTitle(): string {
+    const section = this.section;
+    if (section !== undefined && isPluginSettingsSection(section)) {
+      return this.pluginSections.find((entry) => entry.id === section)?.title ?? "Plugin";
+    }
+    const titled: Partial<Record<SettingsSection, string>> = {
+      general: "General",
+      appearance: "Appearance",
+      machines: "Machines",
+      sessiond: "Session daemon",
+      packages: "Pi packages",
+      plugins: "PI WEB plugins",
+      shortcuts: "Keyboard",
+    };
+    return titled[section ?? "general"] ?? "Settings";
+  }
+
   private renderActiveSection(): TemplateResult {
-    if (isPluginSettingsSection(this.section)) return this.renderPluginSection(this.section);
+    if (isPluginSettingsSection(this.activeSection)) return this.renderPluginSection(this.activeSection);
     // Keep the section -> panel routing in sync with the public
     // `activeSettingsPanelTag` seam below, which tests assert against instead of
     // scraping this template's markup.
-    if (this.section === "machines") {
+    if (this.activeSection === "machines") {
       return html`
         <settings-machines-panel
           .machines=${this.machines}
@@ -168,7 +257,7 @@ export class SettingsDialog extends LitElement {
         ></settings-machines-panel>
       `;
     }
-    if (this.section === "appearance") {
+    if (this.activeSection === "appearance") {
       return html`
         <settings-appearance-panel
           .themes=${this.themes}
@@ -180,7 +269,7 @@ export class SettingsDialog extends LitElement {
         ></settings-appearance-panel>
       `;
     }
-    if (this.section === "sessiond") {
+    if (this.activeSection === "sessiond") {
       return html`
         <settings-sessiond-panel
           .configResponse=${this.sessiondConfigResponse}
@@ -194,7 +283,7 @@ export class SettingsDialog extends LitElement {
         ></settings-sessiond-panel>
       `;
     }
-    if (this.section === "shortcuts") {
+    if (this.activeSection === "shortcuts") {
       return html`
         <settings-shortcuts-panel
           .actions=${this.actions}
@@ -208,7 +297,7 @@ export class SettingsDialog extends LitElement {
         ></settings-shortcuts-panel>
       `;
     }
-    if (this.section === "packages") {
+    if (this.activeSection === "packages") {
       return html`
         <settings-packages-panel
           .packagesResponse=${this.packagesResponse}
@@ -224,7 +313,7 @@ export class SettingsDialog extends LitElement {
         ></settings-packages-panel>
       `;
     }
-    if (this.section === "plugins") {
+    if (this.activeSection === "plugins") {
       return html`
         <settings-plugins-panel
           .configResponse=${this.selectedPluginConfigResponse}
@@ -282,7 +371,7 @@ export class SettingsDialog extends LitElement {
   }
 
   private renderNavButton(section: SettingsSection, label: string, detail: string): TemplateResult {
-    const selected = this.section === section;
+    const selected = this.activeSection === section;
     return html`
       <button class=${selected ? "selected" : ""} aria-current=${selected ? "page" : "false"} @click=${() => { this.navigate(section); }}>
         <strong>${label}</strong>
@@ -690,11 +779,14 @@ export class SettingsDialog extends LitElement {
       modal-surface { --modal-surface-backdrop-padding: 0; --modal-surface-place-items: stretch; --modal-surface-width: 100%; --modal-surface-max-height: none; --modal-surface-min-height: 0; --modal-surface-border: 0; --modal-surface-radius: 0; }
       .settings-header { padding: max(12px, env(safe-area-inset-top)) 12px 12px; }
       .settings-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-      .settings-nav { display: flex; gap: 6px; padding: 8px; border-right: 0; border-bottom: 1px solid var(--pi-border); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
-      .settings-nav::-webkit-scrollbar { display: none; }
-      .settings-nav button { box-sizing: border-box; flex: 0 0 auto; width: auto; min-height: 44px; margin: 0; border-radius: 999px; padding: 6px 16px; align-items: center; }
-      .settings-nav button strong { font-size: 14px; font-weight: 600; white-space: nowrap; }
-      .settings-nav button small { display: none; }
+      .settings-list { display: flex; flex-direction: column; overflow-y: auto; padding: 6px 0 calc(14px + env(safe-area-inset-bottom)); }
+      .settings-list button { box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 56px; margin: 0; border: 0; border-bottom: 1px solid var(--pi-border); border-radius: 0; padding: 10px 16px; text-align: left; }
+      .settings-list-label { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+      .settings-list-label strong { font-size: 16px; font-weight: 600; color: var(--pi-text); }
+      .settings-list-label small { font-size: 13px; color: var(--pi-text-muted); }
+      .settings-list-chevron { font-size: 22px; color: var(--pi-text-muted); }
+      .settings-detail-heading { display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
+      .settings-back { display: inline-flex; align-items: center; min-height: 44px; margin-left: -8px; border: 0; padding: 0 8px 0 0; font-size: 14px; font-weight: 600; color: var(--pi-accent); }
       .settings-content { padding: 14px 12px calc(18px + env(safe-area-inset-bottom)); }
     }
   `];

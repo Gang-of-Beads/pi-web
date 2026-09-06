@@ -21,6 +21,24 @@ export function readSettingsSection(): SettingsSection | undefined {
   return parseSettingsSection(new URLSearchParams(window.location.search).get("settings"));
 }
 
+/**
+ * Whether the settings sheet is open at all. A bare `?settings` means open at
+ * the phone's section list - the drill-down root - while `?settings=<section>`
+ * means open at, or drilled into, one section.
+ */
+export function readSettingsOpen(): boolean {
+  return new URLSearchParams(window.location.search).has("settings");
+}
+
+export function writeSettingsOpen(options?: { replace?: boolean | undefined }): void {
+  const url = new URL(window.location.href);
+  url.searchParams.set("settings", "");
+  const next = `${url.pathname}${url.search}${url.hash}`;
+  const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (next === current) return;
+  writeRouteUrl(String(url), options?.replace === true);
+}
+
 export function writeSettingsSection(section: SettingsSection | undefined, options?: { replace?: boolean | undefined }): void {
   const url = new URL(window.location.href);
   if (section === undefined) url.searchParams.delete("settings");
