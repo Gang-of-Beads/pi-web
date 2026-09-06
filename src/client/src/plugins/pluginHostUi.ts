@@ -1,6 +1,9 @@
 import { writeClipboardText } from "../clipboard";
 import { COARSE_OR_MOBILE_MEDIA_QUERY, DESKTOP_SIDE_BY_SIDE_MEDIA_QUERY, MOBILE_NAVIGATION_MEDIA_QUERY } from "../breakpoints";
 import { interactiveSurfaceStyles, listStyles } from "../components/shared";
+import { registerRenderedModal } from "../components/modalLayerRegistry";
+import { readNamespacedString, setNamespacedQueryKey } from "../namespacedQueryArgs";
+import { renderWorkspaceMarkdownHtml } from "../formatting/workspaceMarkdown";
 import { describeError } from "../notice";
 import type { PluginHostUi } from "./types";
 
@@ -23,6 +26,17 @@ export function createPluginHostUi(): PluginHostUi {
       coarseOrMobile: COARSE_OR_MOBILE_MEDIA_QUERY,
       mobileNavigation: MOBILE_NAVIGATION_MEDIA_QUERY,
       desktopSideBySide: DESKTOP_SIDE_BY_SIDE_MEDIA_QUERY,
+    },
+    renderMarkdownHtml: (markdown) => renderWorkspaceMarkdownHtml(markdown),
+    registerModal: (registration) => registerRenderedModal({
+      element: registration.element,
+      ...(registration.paintElement === undefined ? {} : { paintElement: registration.paintElement }),
+      focus: registration.focus ?? (() => undefined),
+      ...(registration.onTopChange === undefined ? {} : { onTopChange: registration.onTopChange }),
+    }),
+    query: {
+      read: (namespace, key) => readNamespacedString(namespace, key),
+      write: (namespace, key, value, options) => { setNamespacedQueryKey(namespace, key, value, options); },
     },
   };
 }

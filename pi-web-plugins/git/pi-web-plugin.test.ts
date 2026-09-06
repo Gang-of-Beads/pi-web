@@ -3,6 +3,7 @@
 import { html, render, svg } from "lit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { noPanelTerminal } from "../terminalSessionsTestSupport.js";
+import { stubWorkspaceFiles } from "../../src/client/src/plugins/workspaceFilesTestSupport.js";
 import type { JsonValue, PluginRuntimeContext, Workspace, WorkspaceBackend, WorkspaceHost, WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
 import { GIT_FILE_VIEW_STORAGE_KEY } from "./browser/gitFileViewPreference.js";
 import plugin from "./browser/pi-web-plugin.js";
@@ -463,13 +464,7 @@ function panelContext(
     machine: { id: machineId, name: machineId, kind: machineId === "local" ? "local" : "remote" },
     workspace,
     state: { selectedWorkspace: workspace, workspaceTool: "git:workspace.git", mainView: "git:workspace.git" },
-    files: {
-      readFile: () => Promise.reject(new Error("not implemented")),
-      listFiles: () => Promise.reject(new Error("not implemented")),
-      writeFile: () => Promise.reject(new Error("not implemented")),
-      deleteFile: () => Promise.reject(new Error("not implemented")),
-      moveFile: () => Promise.reject(new Error("not implemented")),
-    },
+    files: stubWorkspaceFiles(),
     ...(request === undefined ? {} : { backend: { request } }),
     host: {
       requestRender: host.requestRender ?? noop,

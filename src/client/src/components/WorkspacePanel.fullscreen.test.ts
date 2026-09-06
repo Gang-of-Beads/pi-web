@@ -2,6 +2,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { noPanelTerminal } from "../plugins/terminalSessionsTestSupport";
+import { stubWorkspaceFiles } from "../plugins/workspaceFilesTestSupport";
 import { html } from "lit";
 import { initialAppState } from "../appState";
 import type { WorkspacePanelContext, QualifiedWorkspacePanelContribution } from "../plugins/types";
@@ -60,12 +61,11 @@ function panelContext(
   workspacePanelFullscreen: () => boolean,
   setWorkspacePanelFullscreen: (expanded: boolean) => void,
 ): WorkspacePanelContext {
-  const reject = () => Promise.reject(new Error("not used"));
   return {
     machine: { id: "local", name: "Local", kind: "local" },
     workspace,
     state: { ...initialAppState(), selectedWorkspace: workspace },
-    files: { readFile: reject, listFiles: reject, writeFile: reject, deleteFile: reject, moveFile: reject },
+    files: stubWorkspaceFiles(),
     host: { requestRender: () => undefined, workspacePanelFullscreen, setWorkspacePanelFullscreen },
     prompt: { insertText: () => undefined, getText: () => "", getSelection: () => null },
     terminal: noPanelTerminal(),

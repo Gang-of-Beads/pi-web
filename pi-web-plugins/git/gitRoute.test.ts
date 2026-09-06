@@ -2,6 +2,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import { noPanelTerminal } from "../terminalSessionsTestSupport.js";
+import { stubWorkspaceFiles } from "../../src/client/src/plugins/workspaceFilesTestSupport.js";
 import type { WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
 import { createGitDiffRoute } from "./browser/gitRoute.js";
 
@@ -40,13 +41,7 @@ function panelContext(machineId: string, projectId: string, workspaceId: string)
   return {
     machine: { id: machineId, name: machineId, kind: machineId === "local" ? "local" : "remote" },
     workspace: { id: workspaceId, projectId, path: "/repo", label: "main", isMain: true },
-    files: {
-      readFile: () => Promise.reject(new Error("not implemented")),
-      listFiles: () => Promise.reject(new Error("not implemented")),
-      writeFile: () => Promise.reject(new Error("not implemented")),
-      deleteFile: () => Promise.reject(new Error("not implemented")),
-      moveFile: () => Promise.reject(new Error("not implemented")),
-    },
+    files: stubWorkspaceFiles(),
     backend: { request: () => Promise.reject(new Error("not implemented")) },
     host: { requestRender: noop, workspacePanelFullscreen: () => false, setWorkspacePanelFullscreen: noop },
     prompt: { insertText: noop, getText: () => "", getSelection: () => null },

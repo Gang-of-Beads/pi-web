@@ -1,8 +1,14 @@
+// @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vitest";
 import type { FileContentResponse, FileTreeResponse } from "../api";
+import type { WorkspaceUploadBatchProgress } from "../../../shared/pluginApiTypes";
 import { createWorkspaceFiles, type WorkspaceFilesApi } from "./workspaceFiles";
 
 const workspace = { id: "w-1", projectId: "p-1" };
+
+const uploadWorkspaceFilesMock = vi.hoisted(() => vi.fn());
+
+vi.mock("../api/workspaceUploads", () => ({ uploadWorkspaceFiles: uploadWorkspaceFilesMock }));
 
 describe("createWorkspaceFiles", () => {
   it("listFiles resolves with the directory listing for the bound workspace and machine", async () => {
@@ -61,6 +67,37 @@ describe("createWorkspaceFiles", () => {
 
     await expect(files.writeFile("out.txt", "hi", { overwrite: false })).rejects.toThrow("File exists: out.txt");
     expect(onFilesChanged).not.toHaveBeenCalled();
+  });
+
+  it("previewUrl builds the bound workspace's preview URL without a leading slash", () => {
+    const files = createWorkspaceFiles(fakeApi(), workspace, "remote-1");
+
+    const url = files.previewUrl("docs/notes.md", { modifiedAt: "2026-06-14T10:00:00.000Z", download: true });
+    expect(url).not.toMatch(/^\//);
+    expect(url).toContain("api/machines/remote-1/projects/p-1/workspaces/w-1/file/preview");
+    expect(url).toContain("path=docs%2Fnotes.md");
+    expect(url).toContain("v=2026-06-14T10%3A00%3A00.000Z");
+    expect(url).toContain("download=1");
+  });
+
+  it("uploadFiles delegates to the upload transport with the bound machine and forwards progress", async () => {
+    const onProgress = vi.fn<(progress: WorkspaceUploadBatchProgress) => void>();
+    const file = new File(["hi"], "note.txt", { type: "text/plain" });
+    const responses = [{ path: "docs/note.txt", size: 2, modifiedAt: "2026-06-14T10:00:00.000Z", created: true }];
+    uploadWorkspaceFilesMock.mockImplementation((_projectId: string, _workspaceId: string, _files: readonly File[], options: { onProgress?: (progress: WorkspaceUploadBatchProgress) => void }) => {
+      options.onProgress?.({ currentFileIndex: 0, files: [{ index: 0, name: "note.txt", path: "docs/note.txt", loaded: 2, total: 2, percent: 1, lengthComputable: true, done: true }], loaded: 2, total: 2, percent: 1, done: true });
+      return { promise: Promise.resolve(responses), cancel: () => undefined };
+    });
+    const files = createWorkspaceFiles(fakeApi(), workspace, "remote-1");
+
+    const upload = files.uploadFiles([file], { destinationFolder: "docs", overwrite: true, onProgress });
+    const written = await upload.promise;
+
+    expect(written).toBe(responses);
+    expect(uploadWorkspaceFilesMock).toHaveBeenCalledWith("p-1", "w-1", [file], expect.objectContaining({ destinationFolder: "docs", overwrite: true, machineId: "remote-1" }));
+    expect(onProgress).toHaveBeenCalledOnce();
+    expect(onProgress.mock.calls[0]?.[0]?.files[0]?.path).toBe("docs/note.txt");
+    expect(typeof upload.cancel).toBe("function");
   });
 });
 

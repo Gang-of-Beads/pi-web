@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { noPanelTerminal } from "../terminalSessionsTestSupport.js";
+import { stubWorkspaceFiles } from "../../src/client/src/plugins/workspaceFilesTestSupport.js";
 import type { JsonValue, WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
 import { GIT_COMMIT_DIFF_OPERATION, GIT_DIFF_OPERATION, GIT_HISTORY_OPERATION } from "./browser/git-contract.js";
 import { GitUiController } from "./browser/git-panel.js";
@@ -23,13 +24,7 @@ function context(id: string, request: (operation: string, input: JsonValue) => P
   return {
     machine: { id: "local", name: "Local", kind: "local" },
     workspace: { id, projectId: "project", path: "/workspace", label: id, isMain: false, provider: { pluginId: "git", capabilities: { request: true, remove: false } } },
-    files: {
-      readFile: () => Promise.reject(new Error("Not used by this test")),
-      listFiles: () => Promise.reject(new Error("Not used by this test")),
-      writeFile: () => Promise.reject(new Error("Not used by this test")),
-      deleteFile: () => Promise.reject(new Error("Not used by this test")),
-      moveFile: () => Promise.reject(new Error("Not used by this test")),
-    },
+    files: stubWorkspaceFiles(),
     backend: { request },
     host: { requestRender() { /* no-op */ }, workspacePanelFullscreen: () => fullscreen, setWorkspacePanelFullscreen() { /* no-op */ } },
     prompt: {

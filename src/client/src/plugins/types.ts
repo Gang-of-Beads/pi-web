@@ -3,6 +3,7 @@ import type { AppAction } from "../actions";
 import type { DeleteWorkspaceFileResponse, FileContentResponse, FileTreeEntry, FileTreeResponse, JsonValue, Machine, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, RunTerminalCommandInput, TerminalCommandRun, TerminalCommandRunFilter, TerminalCommandRunHandle, TerminalInfo, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, Workspace } from "../api";
 import type { AppState } from "../appState";
 import type { SettingsSection } from "../settingsRoute";
+import type { WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle } from "../../../shared/pluginApiTypes";
 import type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
 
 export type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
@@ -64,6 +65,22 @@ export interface PluginHostUi {
   /** The list chrome every built-in list carries, so a contributed list matches them. */
   readonly listStyles: CSSResultGroup;
   readonly breakpoints: PluginBreakpoints;
+  /** Sanitized markdown HTML, the same rendering the built-in surfaces trust. */
+  readonly renderMarkdownHtml: (markdown: string) => string;
+  /** Register a rendered modal layer for document-wide modality, focus, and
+   *  isTop coordination with the app's own dialogs. */
+  readonly registerModal: (registration: {
+    element: HTMLElement;
+    paintElement?: HTMLElement;
+    focus?: () => void;
+    onTopChange?: (isTop: boolean) => void;
+  }) => { readonly isTop: boolean; focus(): boolean; unregister(): void };
+  /** Namespaced query-string state the host keeps coordinated with route
+   *  restoration. The namespace is the plugin's wire format for deep links. */
+  readonly query: {
+    read(namespace: string, key: string): string | undefined;
+    write(namespace: string, key: string, value: string | undefined, options?: { replace?: boolean }): void;
+  };
 }
 
 export interface PluginBreakpoints {
@@ -301,6 +318,17 @@ export interface WorkspaceFiles {
   writeFile(path: string, content: string | Uint8Array, options?: WriteWorkspaceFileOptions): Promise<WriteWorkspaceFileResponse>;
   deleteFile(path: string): Promise<DeleteWorkspaceFileResponse>;
   moveFile(fromPath: string, toPath: string, options?: MoveWorkspaceFileOptions): Promise<MoveWorkspaceFileResponse>;
+  /** Browser-ready URL for streaming or downloading a workspace file. */
+  previewUrl(path: string, options?: { modifiedAt?: string; download?: boolean }): string;
+  /** The file endpoint's preview thresholds for the inline-vs-stream decision. */
+  readonly limits: { readonly inlinePreviewBytes: number; readonly streamPreviewBytes: number };
+  /** Upload a batch of files sequentially with progress and cancellation. */
+  uploadFiles(files: readonly File[], options?: {
+    destinationFolder?: string;
+    createDirs?: boolean;
+    overwrite?: boolean;
+    onProgress?: (progress: WorkspaceUploadBatchProgress) => void;
+  }): WorkspaceUploadCancelHandle;
 }
 
 export interface WorkspaceBackend {

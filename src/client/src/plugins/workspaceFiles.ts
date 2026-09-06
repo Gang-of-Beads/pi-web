@@ -1,4 +1,8 @@
 import type { DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, Workspace } from "../api";
+import type { WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle } from "../../../shared/pluginApiTypes";
+import { uploadWorkspaceFiles } from "../api/workspaceUploads";
+import { workspaceFilePreviewUrl } from "../api/urls";
+import { MAX_INLINE_PREVIEW_BYTES, MAX_STREAM_PREVIEW_BYTES } from "../../../shared/workspaceFiles";
 import type { WorkspaceFiles } from "./types";
 
 /**
@@ -37,6 +41,23 @@ export function createWorkspaceFiles(api: WorkspaceFilesApi, workspace: Pick<Wor
       const result = await api.moveWorkspaceFile(workspace.projectId, workspace.id, fromPath, toPath, options, machineId);
       onFilesChanged?.();
       return result;
+    },
+    previewUrl: (path, options) => workspaceFilePreviewUrl(workspace.projectId, workspace.id, path, {
+      ...(options?.modifiedAt === undefined ? {} : { modifiedAt: options.modifiedAt }),
+      ...(options?.download === undefined ? {} : { download: options.download }),
+      machineId,
+    }),
+    limits: { inlinePreviewBytes: MAX_INLINE_PREVIEW_BYTES, streamPreviewBytes: MAX_STREAM_PREVIEW_BYTES },
+    uploadFiles: (files, options) => {
+      const task = uploadWorkspaceFiles(workspace.projectId, workspace.id, files, {
+        ...(options?.destinationFolder === undefined ? {} : { destinationFolder: options.destinationFolder }),
+        ...(options?.createDirs === undefined ? {} : { createDirs: options.createDirs }),
+        ...(options?.overwrite === undefined ? {} : { overwrite: options.overwrite }),
+        machineId,
+        onProgress: (progress: WorkspaceUploadBatchProgress) => { options?.onProgress?.(progress); },
+      });
+      const handle: WorkspaceUploadCancelHandle = { promise: task.promise, cancel: () => { task.cancel(); } };
+      return handle;
     },
   };
 }

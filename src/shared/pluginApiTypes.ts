@@ -74,6 +74,35 @@ export interface DeleteWorkspaceFileResponse {
   existed: boolean;  // true if the file existed and was deleted, false if it did not exist
 }
 
+export interface WorkspaceFileUploadProgress {
+  loaded: number;
+  total: number;
+  percent: number;
+  lengthComputable: boolean;
+}
+
+export interface WorkspaceUploadBatchFileProgress extends WorkspaceFileUploadProgress {
+  index: number;
+  name: string;
+  path: string;
+  done: boolean;
+  error?: string;
+}
+
+export interface WorkspaceUploadBatchProgress {
+  currentFileIndex: number;
+  files: WorkspaceUploadBatchFileProgress[];
+  loaded: number;
+  total: number;
+  percent: number;
+  done: boolean;
+}
+
+export interface WorkspaceUploadCancelHandle {
+  promise: Promise<WriteWorkspaceFileResponse[]>;
+  cancel(): void;
+}
+
 export interface MoveWorkspaceFileOptions {
   createDirs?: boolean;   // default: true — mkdir -p equivalent for target parent directory
   overwrite?: boolean;    // default: false — throw if target exists (safer default than writeFile)

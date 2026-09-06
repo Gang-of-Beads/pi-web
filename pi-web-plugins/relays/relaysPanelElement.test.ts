@@ -2,6 +2,7 @@
 
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { noPanelTerminal } from "../terminalSessionsTestSupport.js";
+import { stubWorkspaceFiles } from "../../src/client/src/plugins/workspaceFilesTestSupport.js";
 import type { FileContentResponse, FileTreeEntry, FileTreeResponse, WorkspaceFiles, WorkspacePanelContext } from "@gang-of-beads/pi-web/plugin-api";
 import { RELAYS_ROOT, type RelayDiscoveryFiles, type RelayTreeNode } from "./relayDiscovery";
 import {
@@ -734,12 +735,9 @@ function workspaceFilesFake(): WorkspaceFilesFake {
   });
   return {
     files: {
+      ...stubWorkspaceFiles(),
       listFiles,
       readFile,
-      // The panel is read-only; the mutating helpers exist only to satisfy WorkspaceFiles.
-      writeFile: () => Promise.reject(new Error("writeFile not used")),
-      deleteFile: () => Promise.reject(new Error("deleteFile not used")),
-      moveFile: () => Promise.reject(new Error("moveFile not used")),
     },
     listFiles,
     readFile,
