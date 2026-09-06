@@ -1,8 +1,8 @@
-import { LitElement, css, html, type TemplateResult } from "lit";
+import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import { focusedContextName } from "../../contextName";
 import { customElement, property, query } from "lit/decorators.js";
 import type { Machine, MachineHealth, Project, SessionActivity, SessionInfo, SessionStatus, Workspace } from "../../api";
-import type { DrawerSectionContext, QualifiedDrawerSectionContribution } from "../../plugins/types";
+import type { DrawerSectionContext, QualifiedDrawerSectionContribution, NavSectionContext, QualifiedNavSectionContribution } from "../../plugins/types";
 import type { MachineStatusSnapshot } from "../../../../shared/machineStatus";
 import type { WorkspaceLabelItem } from "../../plugins/types";
 import { selectedMachineId } from "../../controllers/types";
@@ -12,8 +12,6 @@ import type { KeyboardNavigableSection } from "../navigationFocus";
 import "../MachineList";
 import "./AppContextSwitcher";
 import "../MachineSwitcher";
-import "../ProjectList";
-import "../WorkspaceList";
 import "../SessionList";
 
 export type NavigationFocusTarget = NavigationSection | "chat";
@@ -93,6 +91,10 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) onRenameSession?: (session: SessionInfo, name: string) => void | Promise<void>;
   /** Sections plugins contribute, drawn beside the session list. */
   @property({ attribute: false }) drawerSections: readonly QualifiedDrawerSectionContribution[] = [];
+  /** Contributed context-navigation section bodies, slotted by reserved id. */
+  @property({ attribute: false }) navSections: readonly QualifiedNavSectionContribution[] = [];
+  /** The host-built snapshot and actions the contributed sections render. */
+  @property({ attribute: false }) navSectionContext?: NavSectionContext;
   @property() sectionMachineId = "local";
   @property({ attribute: false }) onRunSectionCommand?: (command: string) => Promise<void>;
   @property({ attribute: false }) onMarkSessionRead?: (session: SessionInfo) => void | Promise<void>;
@@ -109,16 +111,14 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) onCancelKeyboardNavigation?: () => void | Promise<void>;
 
   @query("machine-list") private machineList?: KeyboardNavigableSection;
-  @query("project-list") private projectList?: KeyboardNavigableSection;
-  @query("workspace-list") private workspaceList?: KeyboardNavigableSection;
   @query("session-list") private sessionList?: KeyboardNavigableSection;
 
   async focusSection(section: NavigationSection): Promise<boolean> {
     await this.updateComplete;
     switch (section) {
       case "machines": return await this.focusNavigableSection(this.machineList);
-      case "projects": return await this.focusNavigableSection(this.projectList);
-      case "workspaces": return await this.focusNavigableSection(this.workspaceList);
+      case "projects": return await this.focusContributedNavSection("projects");
+      case "workspaces": return await this.focusContributedNavSection("workspaces");
       case "sessions": return await this.focusNavigableSection(this.sessionList);
     }
   }
@@ -164,8 +164,8 @@ export class AppNavigationPanel extends LitElement {
         .onAddProject=${() => { this.runMaybeAsync(this.onAddProject); }}
       ></app-context-switcher>
       ${this.renderMachineList(false, visible !== "machines")}
-      ${this.renderProjectList(false, visible !== "projects")}
-      ${this.renderWorkspaceList(false, visible !== "workspaces")}
+      ${this.renderNavSectionSlot("projects", visible !== "projects")}
+      ${this.renderNavSectionSlot("workspaces", visible !== "workspaces")}
       ${this.renderSessionList(false, visible !== "sessions")}
       ${visible === "sessions" ? this.renderContributedSections() : null}
       ${this.renderToolsSection()}
@@ -234,8 +234,8 @@ export class AppNavigationPanel extends LitElement {
            desktop layout above has a context switcher whose Project step
            already carries one, and two of them in one viewport is the clutter
            that switcher was built to remove. -->
-      ${this.renderProjectList(false, visible !== "projects", true)}
-      ${this.renderWorkspaceList(false, visible !== "workspaces")}
+      ${this.renderNavSectionSlot("projects", visible !== "projects", true)}
+      ${this.renderNavSectionSlot("workspaces", visible !== "workspaces")}
       ${this.renderSessionList(false, visible !== "sessions")}
       ${visible === "sessions" ? this.renderContributedSections() : null}
     `;
@@ -283,50 +283,28 @@ export class AppNavigationPanel extends LitElement {
     `;
   }
 
-  private renderProjectList(collapsible: boolean, hidden = false, withCreate = false) {
-    return html`
-      <project-list
-        ?hidden=${hidden}
-        .projects=${this.projects}
-        .projectsLoad=${this.projectsLoad}
-        .onRetryLoad=${() => { this.runMaybeAsync(this.onRetryProjectsLoad); }}
-        .selected=${this.selectedProject}
-        .statusSnapshot=${this.selectedMachineStatusSnapshot()}
-        .collapsible=${collapsible && this.collapsible}
-        .collapsed=${collapsible ? this.projectsCollapsed : false}
-        .onToggleCollapsed=${() => { this.onToggleProjects?.(); }}
-        .onAdd=${withCreate && this.onAddProject !== undefined ? () => { this.runMaybeAsync(this.onAddProject); } : undefined}
-        .onSelect=${(project: Project) => this.onSelectProject?.(project)}
-        .onClose=${(project: Project) => this.onCloseProject?.(project)}
-        .onFocusPreviousSection=${() => { this.focusPreviousFrom("projects"); }}
-        .onFocusNextSection=${() => { this.focusNextFrom("projects"); }}
-        .onCancelKeyboardNavigation=${() => { this.cancelKeyboardNavigation(); }}
-        .tiles=${true}
-      ></project-list>
-    `;
+  private renderNavSectionSlot(localId: "projects" | "workspaces", hidden: boolean, withCreate = false): unknown {
+    const section = this.navSections.find((candidate) => candidate.localId === localId);
+    if (section === undefined || this.navSectionContext === undefined) return nothing;
+    const collapsed = localId === "projects" ? this.projectsCollapsed : this.workspacesCollapsed;
+    const { addProject, ...base } = this.navSectionContext;
+    const context: NavSectionContext = {
+      ...base,
+      display: { hidden, collapsible: this.collapsible, collapsed, tiles: true },
+      ...(withCreate && addProject !== undefined ? { addProject } : {}),
+      toggleCollapsed: () => { (localId === "projects" ? this.onToggleProjects : this.onToggleWorkspaces)?.(); },
+      focusPreviousSection: () => { this.focusPreviousFrom(localId); },
+      focusNextSection: () => { this.focusNextFrom(localId); },
+      cancelKeyboardNavigation: () => { this.cancelKeyboardNavigation(); },
+    };
+    return section.render(context);
   }
 
-  private renderWorkspaceList(collapsible: boolean, hidden = false) {
-    return html`
-      <workspace-list
-        ?hidden=${hidden}
-        .workspaces=${this.workspaces}
-        .selected=${this.selectedWorkspace}
-        .machineId=${this.selectedMachine?.id ?? "local"}
-        .statusSnapshot=${this.selectedMachineStatusSnapshot()}
-        .deletingWorkspaceIds=${this.deletingWorkspaceIds}
-        .collapsible=${collapsible && this.collapsible}
-        .collapsed=${collapsible ? this.workspacesCollapsed : false}
-        .workspaceLabelItems=${this.workspaceLabelItems}
-        .onToggleCollapsed=${() => { this.onToggleWorkspaces?.(); }}
-        .onSelect=${(workspace: Workspace) => this.onSelectWorkspace?.(workspace)}
-        .onDelete=${(workspace: Workspace) => this.onDeleteWorkspace?.(workspace)}
-        .onFocusPreviousSection=${() => { this.focusPreviousFrom("workspaces"); }}
-        .onFocusNextSection=${() => { this.focusNextFrom("workspaces"); }}
-        .onCancelKeyboardNavigation=${() => { this.cancelKeyboardNavigation(); }}
-        .tiles=${true}
-      ></workspace-list>
-    `;
+  private async focusContributedNavSection(localId: "projects" | "workspaces"): Promise<boolean> {
+    await this.updateComplete;
+    const section = this.navSections.find((candidate) => candidate.localId === localId);
+    if (section?.focus === undefined) return false;
+    return await section.focus();
   }
 
   /**

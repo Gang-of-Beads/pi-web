@@ -88,6 +88,48 @@ lists and the files panel; the `WorkspaceCatalog` port as the server-side
 dependency, injected by core; named operations for CRUD; per-workspace
 config stays in `<project>/.pi-web/config.json`.
 
+## Client wave shape (Wave A, after the server half landed)
+
+The server half landed in `b00a0707` (routes are plugin contributions; the
+contract gained a request-body face). The client half rests on a re-read of
+the moved-set against the code as it stands now:
+
+- The pickers move: `ProjectList`, `WorkspaceList`, `ProjectDialog`, plus
+  their presentation closure (`projectSearch`, `contextSearch`,
+  `activityBadge`, `rowMenuGestures`, `selectableRow`, `workspaceDeletion`
+  semantics, clipboard/notice helpers). They become the workspaces plugin's
+  browser module, registered as custom elements the way the files plugin
+  registers its panel.
+- The controllers stay core. `workspaceController` is the selection engine —
+  it drives `AppState`, URL routing, the workspace sessions cache, and the
+  trailing-refresh coordinator — and `projectController` threads the same
+  app state. They are the host's state machine, the client-side sibling of
+  the `WorkspaceCatalog` port, not presentation. This amends the original
+  moved-set above, which predated the navigation-model wave.
+- The seam is `navSections`, modelled on `drawerSections`: the plugin
+  contributes a section body per reserved slot (`projects`, `workspaces`);
+  the shell keeps the slot order, the keyboard section machine, and the
+  collapse state. The host feeds one `NavSectionContext` — the app snapshot
+  (projects, workspaces, selection, load state, machine status), the
+  label-item callback, and action callbacks (select/add/close project,
+  select/delete workspace, retry load) — so the plugin never calls a PI WEB
+  API and never spells a URL, matching the governance test.
+- Both surfaces draw the same contributions: the desktop
+  `AppNavigationPanel` renders the section bodies in their slots; the phone
+  `ContextSwitcherSheet` renders the same bodies compactly. When the plugin
+  is absent the slots render nothing — the section is honestly missing, per
+  the no-preset-shell ruling.
+- `addProject`'s dialog flow moves with the pickers: the plugin renders its
+  own `ProjectDialog` and asks the host through a new `createProject`
+  context action; the host-owned `addProject` context action retires when
+  the core dialog goes.
+- Trust and deletion stay core semantics: the plugin's workspace rows call
+  host actions (`deleteWorkspace`, trust via the host), because the
+  deletion routes and the trust reader stayed core server-side.
+
+Deployment ordering is unchanged: the in-repo plugin module lands in the
+same change as the core slots, so no intermediate state loses the pickers.
+
 ## Owner rulings, 2026-09-05 (second round)
 
 1. **Extraction shape: contract-first.** The plugin contract is extended

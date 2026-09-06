@@ -1,11 +1,10 @@
 // @vitest-environment happy-dom
 
-import { listStyles } from "./shared";
+import { listStyles } from "./sharedStyles";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
-import { trustApi } from "../api";
-import type { Workspace } from "../api";
-import type { MachineStatusSnapshot } from "../../../shared/machineStatus";
-import { machineStatusSnapshot } from "../machineStatus.testSupport";
+import type { Workspace } from "@gang-of-beads/pi-web/plugin-api";
+import { machineStatusSnapshot } from "../../../src/client/src/machineStatus.testSupport";
+import type { MachineStatusSnapshot } from "../../../src/shared/machineStatus";
 import { WorkspaceList } from "./WorkspaceList";
 
 let restoreClipboardStub: () => void = () => undefined;
@@ -24,7 +23,6 @@ describe("workspace-list removal actions", () => {
       removal: {
         actionLabel: "Disconnect view",
         confirmation: "Disconnect this view without deleting files?",
-        precondition: "removal-v1",
       },
     });
     const withoutRemoval = workspace("plain");
@@ -59,7 +57,7 @@ describe("workspace status indicator", () => {
   it("reads workspace status by workspace id", async () => {
     const list = await mountWorkspaceList(
       [workspace("ws-a"), workspace("ws-b")],
-      machineStatusSnapshot({ workspaces: { "ws-b": { "core:unread": true } } }),
+      { statusSnapshot: machineStatusSnapshot({ workspaces: { "ws-b": { "core:unread": true } } }) },
     );
 
     expect(unreadDot(rowFor(list, "ws-a"))).toBeNull();
@@ -69,7 +67,7 @@ describe("workspace status indicator", () => {
   });
 
   it("clears the dot once a newer snapshot reports nothing unread", async () => {
-    const list = await mountWorkspaceList([workspace("ws-a")], machineStatusSnapshot({ workspaces: { "ws-a": { "core:unread": true } } }));
+    const list = await mountWorkspaceList([workspace("ws-a")], { statusSnapshot: machineStatusSnapshot({ workspaces: { "ws-a": { "core:unread": true } } }) });
     expect(list.shadowRoot?.querySelector(".activity-indicator.unread")).not.toBeNull();
 
     list.statusSnapshot = machineStatusSnapshot({ revision: 2 });
@@ -81,7 +79,7 @@ describe("workspace status indicator", () => {
   it("wraps the work dot in an unread ring when the workspace is busy and unread", async () => {
     const list = await mountWorkspaceList(
       [workspace("ws-a")],
-      machineStatusSnapshot({ workspaces: { "ws-a": { "core:terminal": true, "core:unread": true } } }),
+      { statusSnapshot: machineStatusSnapshot({ workspaces: { "ws-a": { "core:terminal": true, "core:unread": true } } }) },
     );
 
     const row = rowFor(list, "ws-a");
@@ -98,7 +96,7 @@ describe("workspace status indicator", () => {
   });
 
   it("still lights a row from a flag id this build does not know", async () => {
-    const list = await mountWorkspaceList([workspace("ws-a")], machineStatusSnapshot({ workspaces: { "ws-a": { "core:future": true } } }));
+    const list = await mountWorkspaceList([workspace("ws-a")], { statusSnapshot: machineStatusSnapshot({ workspaces: { "ws-a": { "core:future": true } } }) });
 
     expect(rowFor(list, "ws-a").querySelector(".activity-indicator.session")).not.toBeNull();
   });
@@ -156,8 +154,8 @@ describe("workspace detail copy buttons", () => {
 
 describe("workspace trust toggle documentation link", () => {
   it("links to the project-trust docs from the toggle's label row instead of verbose text", async () => {
-    vi.spyOn(trustApi, "workspaceTrust").mockResolvedValue({ path: "/repo/ws-a", decision: true, trusted: true });
-    const list = await mountWorkspaceList([workspace("ws-a")]);
+    const workspaceTrust = { get: () => Promise.resolve({ trusted: true }), set: () => Promise.resolve({ trusted: true }) };
+    const list = await mountWorkspaceList([workspace("ws-a")], { workspaceTrust });
     openMenu(list, "ws-a");
     await list.updateComplete;
 
@@ -210,10 +208,11 @@ function restoreStubbedProperty(target: object, key: string, descriptor: Propert
   Object.defineProperty(target, key, descriptor);
 }
 
-async function mountWorkspaceList(workspaces: Workspace[], statusSnapshot?: MachineStatusSnapshot): Promise<WorkspaceList> {
+async function mountWorkspaceList(workspaces: Workspace[], options: { statusSnapshot?: MachineStatusSnapshot; workspaceTrust?: WorkspaceList["workspaceTrust"] } = {}): Promise<WorkspaceList> {
   const list = new WorkspaceList();
   list.workspaces = workspaces;
-  list.statusSnapshot = statusSnapshot;
+  if (options.statusSnapshot !== undefined) list.statusSnapshot = options.statusSnapshot;
+  if (options.workspaceTrust !== undefined) list.workspaceTrust = options.workspaceTrust;
   document.body.append(list);
   await list.updateComplete;
   return list;
@@ -231,7 +230,7 @@ function unreadDot(row: Element): Element | null {
 }
 
 function workspace(id: string, patch: Partial<Workspace> = {}): Workspace {
-  return { id, projectId: "project-1", path: `/repo/${id}`, label: id, isMain: true, effectiveConfig: {}, ...patch };
+  return { id, projectId: "project-1", path: `/repo/${id}`, label: id, isMain: true, ...patch };
 }
 
 describe("what a tile shows of a long branch name", () => {

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
-import type { Workspace } from "../api";
+import type { Workspace } from "@gang-of-beads/pi-web/plugin-api";
 import { WorkspaceList } from "./WorkspaceList";
 
 let scrollIntoView: MockInstance;
@@ -91,7 +91,6 @@ function workspace(id: string, overrides: Partial<Workspace> = {}): Workspace {
     path: `/workspaces/${id}`,
     label: id,
     isMain: false,
-    effectiveConfig: {},
-    ...overrides,
+        ...overrides,
   };
 }

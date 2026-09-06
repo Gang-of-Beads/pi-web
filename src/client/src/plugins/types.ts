@@ -177,8 +177,103 @@ export interface QualifiedSettingsSectionContribution extends SettingsSectionCon
   sourcePluginId?: PluginId;
 }
 
+/** One project as the navigation sections render it. */
+export interface NavProjectSnapshot {
+  readonly id: string;
+  readonly name: string;
+  readonly path: string;
+}
+
+/** Whether the projects reaching the navigation sections have loaded, and how the latest load ended. */
+export type NavProjectsLoad = "unloaded" | "loading" | "loaded" | "failed";
+
+/** Activity flags for one node, keyed by qualified flag id; absent means not set. */
+export type NavStatusFlags = Readonly<Record<string, boolean>>;
+
+/** The slice of the host's machine status the navigation sections render. */
+export interface NavStatusSnapshot {
+  readonly projects: Readonly<Record<string, NavStatusFlags>>;
+  readonly workspaces: Readonly<Record<string, NavStatusFlags>>;
+}
+
+/** Shell chrome the host keeps; the section body applies it to its own rows. */
+export interface NavSectionDisplay {
+  /** The shell hides non-visible sections rather than removing them. */
+  readonly hidden: boolean;
+  readonly collapsible: boolean;
+  readonly collapsed: boolean;
+  /** Rows render as a responsive tile grid instead of full-width rows. */
+  readonly tiles: boolean;
+}
+
+/**
+ * What the host feeds a contributed navigation section. The snapshot and the
+ * actions are the host's; a section renders them through its own rows and
+ * never calls a PI WEB API or spells a URL.
+ */
+export interface NavSectionContext {
+  readonly projects: readonly NavProjectSnapshot[];
+  readonly projectsLoad: NavProjectsLoad;
+  readonly workspaces: readonly Workspace[];
+  readonly selectedProjectId?: string | undefined;
+  readonly selectedWorkspaceId?: string | undefined;
+  readonly machineId: string;
+  readonly deletingWorkspaceIds: readonly string[];
+  readonly statusSnapshot: NavStatusSnapshot | undefined;
+  /** Label items for one workspace, looked up by id; the host owns the label contributions. */
+  readonly labelItems: (workspaceId: string) => WorkspaceLabelItem[];
+  readonly display: NavSectionDisplay;
+  /** Sections are asked during render; late reads reach the screen through this. */
+  readonly requestUpdate: () => void;
+  readonly selectProject: (projectId: string) => void;
+  /** Absent where a close affordance would not belong. */
+  readonly closeProject?: (projectId: string) => void;
+  /** Absent where a create control would not belong. */
+  readonly addProject?: () => void;
+  readonly selectWorkspace: (workspaceId: string) => void;
+  /** Absent when the host offers no workspace removal. */
+  readonly deleteWorkspace?: (workspaceId: string) => void;
+  /** Host-provided trust reads and writes; absent means the rows omit trust. */
+  readonly workspaceTrust?: NavWorkspaceTrustActions | undefined;
+  readonly retryProjectsLoad: () => void;
+  readonly toggleCollapsed: () => void;
+  readonly focusPreviousSection: () => void | Promise<void>;
+  readonly focusNextSection: () => void | Promise<void>;
+  readonly cancelKeyboardNavigation: () => void | Promise<void>;
+}
+
+/** Host-provided trust reads and writes for the listed workspaces. */
+export interface NavWorkspaceTrustActions {
+  get(workspaceId: string): Promise<{ trusted: boolean }>;
+  set(workspaceId: string, trusted: boolean): Promise<{ trusted: boolean }>;
+}
+
+/**
+ * A section of the app's context navigation: the projects and workspaces
+ * pickers. The shell reserves the slot vocabulary, keeps the section order,
+ * the keyboard machine and the collapse state; the plugin brings the body.
+ * The reserved ids are `projects` and `workspaces` - a contribution with an
+ * unknown id has no slot and does not render.
+ */
+export interface NavSectionContribution {
+  id: LocalContributionId;
+  order?: number;
+  /** Focus the section's first selectable row; false means nothing to focus. */
+  focus?: () => Promise<boolean>;
+  render: (context: NavSectionContext) => TemplateResult;
+}
+
+export interface QualifiedNavSectionContribution extends NavSectionContribution {
+  id: QualifiedContributionId;
+  pluginId: PluginId;
+  localId: LocalContributionId;
+  machineId?: string;
+  sourcePluginId?: PluginId;
+}
+
 export interface PluginContributions {
   actions?: PluginAction[];
+  navSections?: NavSectionContribution[];
   workspacePanels?: WorkspacePanelContribution[];
   workspaceLabels?: WorkspaceLabelContribution[];
   themes?: ThemeContribution[];

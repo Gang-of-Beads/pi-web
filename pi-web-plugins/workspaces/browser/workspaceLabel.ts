@@ -1,5 +1,5 @@
 import { html, type TemplateResult } from "lit";
-import type { WorkspaceLabelItem } from "../plugins/types";
+import type { WorkspaceLabelItem } from "@gang-of-beads/pi-web/plugin-api";
 
 export function renderWorkspaceLabelInlineItems(items: WorkspaceLabelItem[] = []): TemplateResult[] {
   return items.map((item, index) => html`${index === 0 ? null : html`<span class="workspace-label-separator">·</span>`}${renderWorkspaceLabelItem(item)}`);

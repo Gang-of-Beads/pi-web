@@ -1,13 +1,15 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Machine, Project, Workspace } from "../../api";
+import type { Machine } from "../../api";
 import type { MachineStatusSnapshot } from "../../../../shared/machineStatus";
 import { machineStatusSnapshot } from "../../machineStatus.testSupport";
+import type { NavSectionContext } from "../../plugins/types";
 import { MachineList } from "../MachineList";
 import { MachineSwitcher } from "../MachineSwitcher";
-import { ProjectList } from "../ProjectList";
-import { WorkspaceList } from "../WorkspaceList";
+import { workspacesNavSections } from "../../../../../pi-web-plugins/workspaces/browser/pi-web-plugin";
+import { ProjectList } from "../../../../../pi-web-plugins/workspaces/browser/ProjectList";
+import { WorkspaceList } from "../../../../../pi-web-plugins/workspaces/browser/WorkspaceList";
 import { AppNavigationPanel, shouldShowMachinesSection } from "./AppNavigationPanel";
 import type { NavigationSection } from "../../appShell/navigationState";
 
@@ -54,8 +56,8 @@ describe("machine status wiring", () => {
 
     expect(section(panel, "machine-switcher", MachineSwitcher).statusSnapshots).toEqual({ local, "remote-a": remote });
     expect(section(panel, "machine-list", MachineList).statusSnapshots).toEqual({ local, "remote-a": remote });
-    expect(section(panel, "project-list", ProjectList).statusSnapshot).toBe(local);
-    expect(section(panel, "workspace-list", WorkspaceList).statusSnapshot).toBe(local);
+    expect(section(panel, "project-list", ProjectList).statusSnapshot).toEqual(narrowSnapshot(local));
+    expect(section(panel, "workspace-list", WorkspaceList).statusSnapshot).toEqual(narrowSnapshot(local));
   });
 
   it("reads the local machine's snapshot before a machine has been selected", async () => {
@@ -66,8 +68,8 @@ describe("machine status wiring", () => {
     const local = machineStatusSnapshot({ projects: { "project-1": { "core:working": true } } });
     const panel = await mountPanel({ local }, undefined);
 
-    expect(section(panel, "project-list", ProjectList).statusSnapshot).toBe(local);
-    expect(section(panel, "workspace-list", WorkspaceList).statusSnapshot).toBe(local);
+    expect(section(panel, "project-list", ProjectList).statusSnapshot).toEqual(narrowSnapshot(local));
+    expect(section(panel, "workspace-list", WorkspaceList).statusSnapshot).toEqual(narrowSnapshot(local));
   });
 
   it("leaves project and workspace sections without a snapshot when the selected machine has none", async () => {
@@ -136,9 +138,8 @@ async function mountPanelWithOptions(
   panel.compact = true;
   panel.machines = [machine("local"), machine("remote-a")];
   if (selectedMachine !== undefined) panel.selectedMachine = selectedMachine;
-  panel.projects = [project("project-1")];
-  panel.workspaces = [workspace("ws-1", "project-1")];
   panel.machineStatusSnapshots = machineStatusSnapshots;
+  wireContributedSections(panel, machineStatusSnapshots, selectedMachine);
   if (options.onOpenContextSheet !== undefined) panel.onOpenContextSheet = options.onOpenContextSheet;
   if (options.onRequestSection !== undefined) panel.onRequestSection = options.onRequestSection;
   panel.toolTabs = [{ id: "core:workspace.files", label: "Files", selected: options.sessionsVisible === true }];
@@ -164,12 +165,45 @@ async function mountPanel(machineStatusSnapshots: Record<string, MachineStatusSn
   panel.compact = true;
   panel.machines = [machine("local"), machine("remote-a")];
   if (selectedMachine !== undefined) panel.selectedMachine = selectedMachine;
-  panel.projects = [project("project-1")];
-  panel.workspaces = [workspace("ws-1", "project-1")];
   panel.machineStatusSnapshots = machineStatusSnapshots;
+  wireContributedSections(panel, machineStatusSnapshots, selectedMachine);
   document.body.append(panel);
   await panel.updateComplete;
   return panel;
+}
+
+function narrowSnapshot(snapshot: MachineStatusSnapshot): NavSectionContext["statusSnapshot"] {
+  return { projects: snapshot.projects, workspaces: snapshot.workspaces };
+}
+
+function wireContributedSections(panel: AppNavigationPanel, machineStatusSnapshots: Record<string, MachineStatusSnapshot>, selectedMachine: Machine | undefined): void {
+  panel.navSections = workspacesNavSections().map((section) => ({
+    ...section,
+    id: `workspaces:${section.id}`,
+    pluginId: "workspaces",
+    localId: section.id,
+  }));
+  const snapshot = machineStatusSnapshots[selectedMachine?.id ?? "local"];
+  panel.navSectionContext = {
+    projects: [project("project-1")],
+    projectsLoad: "loaded",
+    workspaces: [workspace("ws-1", "project-1")],
+    selectedProjectId: "project-1",
+    selectedWorkspaceId: "ws-1",
+    machineId: selectedMachine?.id ?? "local",
+    deletingWorkspaceIds: [],
+    statusSnapshot: snapshot === undefined ? undefined : narrowSnapshot(snapshot),
+    labelItems: () => [],
+    display: { hidden: false, collapsible: false, collapsed: false, tiles: false },
+    requestUpdate: () => undefined,
+    selectProject: () => undefined,
+    selectWorkspace: () => undefined,
+    retryProjectsLoad: () => undefined,
+    toggleCollapsed: () => undefined,
+    focusPreviousSection: () => undefined,
+    focusNextSection: () => undefined,
+    cancelKeyboardNavigation: () => undefined,
+  };
 }
 
 function section<T>(panel: AppNavigationPanel, selector: string, type: abstract new (...args: never) => T): T {
@@ -188,11 +222,11 @@ function machine(id: string): Machine {
   };
 }
 
-function project(id: string): Project {
-  return { id, name: id, path: `/repo/${id}`, createdAt: "2026-06-04T00:00:00.000Z" };
+function project(id: string): NavSectionContext["projects"][number] {
+  return { id, name: id, path: `/repo/${id}` };
 }
 
-function workspace(id: string, projectId: string): Workspace {
+function workspace(id: string, projectId: string): NavSectionContext["workspaces"][number] {
   return { id, projectId, path: `/repo/${id}`, label: id, isMain: true, effectiveConfig: {} };
 }
 

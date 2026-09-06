@@ -11,7 +11,7 @@ import { routeMatchesUrl } from "../routeMatch";
 import { autoFocusesComposer } from "../appShell/appShellController";
 import { touchPrimaryPointer } from "../keyboardDismissal";
 import { customElement, query, state } from "lit/decorators.js";
-import { configApi, effectiveWorkspaceUploadFolder, fleetApi, piWebApi, projectsApi, selfUpdateApi, sessionsApi, terminalsApi, workspacesApi, workspaceEffectiveUploadFolder, type AskUserSubmission, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
+import { configApi, effectiveWorkspaceUploadFolder, fleetApi, piWebApi, projectsApi, selfUpdateApi, sessionsApi, terminalsApi, trustApi, workspacesApi, workspaceEffectiveUploadFolder, type AskUserSubmission, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
   type QueuedSessionMessage, type SessionBackgroundTaskInfo, type SessionSubagentInfo, type SessionSubagentRunInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
 import type { PiWebFleetReport, PiWebFleetRunResponse } from "../../../shared/apiTypes";
 import type { AppAction } from "../actions";
@@ -46,7 +46,7 @@ import { selectedNotificationView } from "../sessionNotifications";
 import { SessionUnreadController } from "../sessionUnread";
 import { workspaceViewTransition } from "../workspaceViewTransition";
 import { RealtimeSocket, type BrowserRealtimeEvent } from "../sessionSocket";
-import type { PluginMachine, PluginPromptEditor, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding, PluginDialog, PluginDialogHandle } from "../plugins/types";
+import type { PluginMachine, PluginPromptEditor, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding, PluginDialog, PluginDialogHandle, NavSectionContext } from "../plugins/types";
 import { CLASSIC_THEME_ID, DEFAULT_THEME_PREFERENCE, applyPiWebTheme, findThemePairForTheme, readStoredThemePreference, resolveThemePreference, writeStoredThemePreference, type ThemePreference, type ThemePreferenceResolution } from "../theme";
 import { corePlugin } from "../plugins/core";
 import { loadExternalPlugins, type ExternalPluginLoadResult } from "../plugins/external";
@@ -66,8 +66,6 @@ import { applyActiveShortcutPreferences } from "../shortcutPreferences";
 import { createTerminalCommandRunsRuntime } from "../runtime/terminalRuntime";
 import { canDeleteWorkspace, isWorkspaceDeletionPending, isWorkspaceDeletionRunPending, latestWorkspaceDeletionRuns, pendingWorkspaceDeletionIds, targetWorkspaceIdForRun, workspaceDeletionRunFilter, workspaceRemovalConfirmation } from "../workspaceDeletion";
 import "./MachineList";
-import "./ProjectList";
-import "./WorkspaceList";
 import "./SessionCleanupDialog";
 import "./SessionTreeNavigator";
 import "./ChatView";
@@ -2105,6 +2103,8 @@ export class PiWebApp extends LitElement {
           return this.sessions.renameSession(session, name);
         }}
         .drawerSections=${this.plugins.getDrawerSections(selectedMachineId(this.state))}
+        .navSections=${this.plugins.getNavSections(selectedMachineId(this.state))}
+        .navSectionContext=${this.buildNavSectionContext("panel")}
         .sectionMachineId=${selectedMachineId(this.state)}
         .onRunSectionCommand=${(command: string) => this.runGoalCommand(command)}
         .onReloadSession=${(session: SessionInfo) => this.sessions.reloadSession(session)}
@@ -2629,6 +2629,77 @@ export class PiWebApp extends LitElement {
 
   private workspaceLabelItems(workspace: Workspace): WorkspaceLabelItem[] {
     return this.plugins.getWorkspaceLabelItems(this.createWorkspaceLabelContext(workspace));
+  }
+
+  /**
+   * One snapshot and action set feeding the workspaces plugin's contributed
+   * pickers on both switcher surfaces. The surfaces vary the display and the
+   * close-on-pick behavior; the data and the actions are the host's.
+   */
+  private buildNavSectionContext(surface: "panel" | "sheet"): NavSectionContext {
+    const state = this.state;
+    const machineId = selectedMachineId(state);
+    const snapshot = state.machineStatusSnapshots[machineId];
+    const projectById = (projectId: string): Project | undefined => state.projects.find((project) => project.id === projectId);
+    const workspaceById = (workspaceId: string): Workspace | undefined => state.workspaces.find((workspace) => workspace.id === workspaceId);
+    const closeSheet = surface === "sheet";
+    return {
+      projects: state.projects.map((project) => ({ id: project.id, name: project.name, path: project.path })),
+      projectsLoad: state.projectsLoad,
+      workspaces: state.workspaces,
+      selectedProjectId: state.selectedProject?.id,
+      selectedWorkspaceId: state.selectedWorkspace?.id,
+      machineId,
+      deletingWorkspaceIds: pendingWorkspaceDeletionIds(state.workspaceDeletionRuns),
+      statusSnapshot: snapshot === undefined ? undefined : { projects: snapshot.projects, workspaces: snapshot.workspaces },
+      labelItems: (workspaceId) => {
+        const workspace = workspaceById(workspaceId);
+        return workspace === undefined ? [] : this.workspaceLabelItems(workspace);
+      },
+      display: { hidden: false, collapsible: false, collapsed: false, tiles: false },
+      requestUpdate: () => { this.requestUpdate(); },
+      selectProject: (projectId) => {
+        const project = projectById(projectId);
+        if (project === undefined) return;
+        if (closeSheet) this.contextSheetOpen = false;
+        void this.selectNavigationItem("projects", "workspaces", () => this.workspaces.selectProject(project));
+      },
+      closeProject: (projectId) => { void this.projects.closeProject(projectId); },
+      addProject: () => {
+        if (closeSheet) this.contextSheetOpen = false;
+        this.openProjectDialog();
+      },
+      selectWorkspace: (workspaceId) => {
+        const workspace = workspaceById(workspaceId);
+        if (workspace === undefined) return;
+        if (closeSheet) this.contextSheetOpen = false;
+        void this.selectNavigationItem("workspaces", "sessions", () => this.workspaces.selectWorkspace(workspace));
+      },
+      deleteWorkspace: (workspaceId) => {
+        const workspace = workspaceById(workspaceId);
+        if (workspace === undefined) return;
+        void this.deleteWorkspace(workspace);
+      },
+      workspaceTrust: {
+        get: async (workspaceId) => {
+          const workspace = workspaceById(workspaceId);
+          if (workspace === undefined) throw new Error("This workspace is no longer listed");
+          const result = await trustApi.workspaceTrust(workspace.projectId, workspace.id, machineId);
+          return { trusted: result.trusted };
+        },
+        set: async (workspaceId, trusted) => {
+          const workspace = workspaceById(workspaceId);
+          if (workspace === undefined) throw new Error("This workspace is no longer listed");
+          const result = await trustApi.setWorkspaceTrust(workspace.projectId, workspace.id, trusted, machineId);
+          return { trusted: result.trusted };
+        },
+      },
+      retryProjectsLoad: () => { void this.projects.loadProjects(); },
+      toggleCollapsed: () => undefined,
+      focusPreviousSection: () => undefined,
+      focusNextSection: () => undefined,
+      cancelKeyboardNavigation: () => undefined,
+    };
   }
 
   private createWorkspaceLabelContext(workspace: Workspace): WorkspaceLabelContext {
@@ -3598,18 +3669,9 @@ export class PiWebApp extends LitElement {
           .selectedMachine=${state.selectedMachine}
           .machineStatuses=${state.machineStatuses}
           .machineStatusSnapshots=${state.machineStatusSnapshots}
-          .projects=${state.projects}
-          .projectsLoad=${state.projectsLoad}
-          .onRetryProjectsLoad=${() => { void this.projects.loadProjects(); }}
-          .selectedProject=${state.selectedProject}
-          .workspaces=${state.workspaces}
-          .selectedWorkspace=${state.selectedWorkspace}
-          .deletingWorkspaceIds=${pendingWorkspaceDeletionIds(state.workspaceDeletionRuns)}
-          .workspaceLabelItems=${(workspace: Workspace) => this.workspaceLabelItems(workspace)}
+          .navSections=${this.plugins.getNavSections(selectedMachineId(state))}
+          .navSectionContext=${this.buildNavSectionContext("sheet")}
           .onSelectMachine=${(machine: Machine) => { this.contextSheetOpen = false; void this.selectMachineWithMemory(machine); }}
-          .onSelectProject=${(project: Project) => { this.contextSheetOpen = false; void this.workspaces.selectProject(project); }}
-          .onSelectWorkspace=${(workspace: Workspace) => { this.contextSheetOpen = false; void this.workspaces.selectWorkspace(workspace); }}
-          .onAddProject=${() => { this.contextSheetOpen = false; this.openProjectDialog(); }}
           .onClose=${() => { this.contextSheetOpen = false; }}
         ></context-switcher-sheet>` : null}
         ${state.authDialog !== undefined ? html`<auth-dialog .state=${state.authDialog} .onChooseMethod=${(authType: "oauth" | "api_key") => { void this.auth.chooseLoginMethod(authType); }} .onSelectProvider=${(providerId: string, authType: "oauth" | "api_key") => { void this.auth.selectLoginProvider(providerId, authType); }} .onLogoutProvider=${(providerId: string) => { void this.auth.logoutProvider(providerId); }} .onOAuthInput=${(value: string) => { this.auth.updateOAuthInput(value); }} .onOAuthRespond=${(value?: string) => { void this.auth.respondOAuth(value); }} .onOAuthCancel=${() => { void this.auth.cancelOAuth(); }} .onCancel=${() => { this.auth.closeDialog(); }}></auth-dialog>` : null}

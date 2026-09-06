@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Project } from "../api";
+import type { NavProjectSnapshot as Project } from "@gang-of-beads/pi-web/plugin-api";
 import { ProjectList } from "./ProjectList";
 
 afterEach(() => {
@@ -140,5 +140,5 @@ function setSearch(list: ProjectList, query: string): void {
 }
 
 function project(id: string): Project {
-  return { id, name: id, path: `/repo/${id}`, createdAt: "2026-06-04T00:00:00.000Z" };
+  return { id, name: id, path: `/repo/${id}` };
 }

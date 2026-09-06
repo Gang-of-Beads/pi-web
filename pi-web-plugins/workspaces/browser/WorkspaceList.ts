@@ -1,19 +1,15 @@
 import { RowMenuGestures } from "./rowMenuGestures";
-import { filterWorkspaces, shouldShowContextSearch } from "../contextSearch";
+import { filterWorkspaces, shouldShowContextSearch } from "./contextSearch";
 import { LitElement, css, html, type PropertyValues, type TemplateResult, nothing} from "lit";import { customElement, property, state } from "lit/decorators.js";
-import { trustApi } from "../api";
-import type { Workspace } from "../api";
-import type { MachineStatusSnapshot } from "../../../shared/machineStatus";
-import { writeClipboardText } from "../clipboard";
-import type { WorkspaceLabelItem } from "../plugins/types";
-import { canDeleteWorkspace } from "../workspaceDeletion";
+import type { Workspace, WorkspaceLabelItem, NavStatusSnapshot } from "@gang-of-beads/pi-web/plugin-api";
+import { writeClipboardText } from "./clipboard";
 import { actionMenuPanelStyle } from "./actionMenu";
 import { hasStatusUnread, renderActionActivityIndicator, statusActivityKind } from "./activityBadge";
 import type { KeyboardNavigableSection } from "./navigationFocus";
 import { focusSelectedOrFirstSelectableRow, handleSelectableRowKeyboard } from "./selectableRow";
-import { listStyles, interactiveSurfaceStyles } from "./shared";
+import { listStyles, interactiveSurfaceStyles } from "./sharedStyles";
 import { renderWorkspaceLabelInlineItems } from "./workspaceLabel";
-import { describeError } from "../notice";
+import { describeError } from "./errors";
 
 interface WorkspaceTrustState {
   loading?: boolean;
@@ -22,12 +18,23 @@ interface WorkspaceTrustState {
   error?: string;
 }
 
+/** Host-provided trust reads and writes for the listed workspaces. */
+export interface WorkspaceTrustActions {
+  get(workspaceId: string): Promise<{ trusted: boolean }>;
+  set(workspaceId: string, trusted: boolean): Promise<{ trusted: boolean }>;
+}
+
+/** Removal availability comes from the owner snapshot, never Git fields. */
+function canDeleteWorkspace(workspace: Workspace): boolean {
+  return workspace.removal !== undefined && !workspace.isMain;
+}
+
 @customElement("workspace-list")
 export class WorkspaceList extends LitElement implements KeyboardNavigableSection {
   @property({ attribute: false }) workspaces: Workspace[] = [];
   @property({ attribute: false }) selected?: Workspace;
-  /** Machine the listed workspaces belong to; targets the trust API. */
-  @property({ attribute: false }) machineId = "local";
+  /** Host-provided trust reads and writes; absent means the menu omits trust. */
+  @property({ attribute: false }) workspaceTrust?: WorkspaceTrustActions;
   @property({ type: Boolean, reflect: true }) collapsible = false;
   @property({ type: Boolean, reflect: true }) collapsed = false;
   /** Render rows as a responsive tile grid instead of full-width rows. */
@@ -36,7 +43,7 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
   @state() private searchQuery = "";
   @property({ attribute: false }) workspaceLabelItems: (workspace: Workspace) => WorkspaceLabelItem[] = () => [];
   /** Status tree of the machine these workspaces belong to; absent means no indicators. */
-  @property({ attribute: false }) statusSnapshot: MachineStatusSnapshot | undefined;
+  @property({ attribute: false }) statusSnapshot: NavStatusSnapshot | undefined;
   @property({ attribute: false }) deletingWorkspaceIds: string[] = [];
   @property({ attribute: false }) onSelect?: (workspace: Workspace) => void;
   @property({ attribute: false }) onDelete?: (workspace: Workspace) => void;
@@ -273,7 +280,8 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
     if (existing?.loading === true || existing?.saving === true) return;
     this.setTrustState(workspace.id, { ...this.trustBase(existing), loading: true });
     try {
-      const result = await trustApi.workspaceTrust(workspace.projectId, workspace.id, this.machineId);
+      if (this.workspaceTrust === undefined) throw new Error("Trust is not available here");
+      const result = await this.workspaceTrust.get(workspace.id);
       this.setTrustState(workspace.id, { trusted: result.trusted });
     } catch (error) {
       this.setTrustState(workspace.id, { error: describeError(error) });
@@ -284,7 +292,8 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
     const existing = this.trustByWorkspaceId[workspace.id];
     this.setTrustState(workspace.id, { ...this.trustBase(existing), saving: true });
     try {
-      const result = await trustApi.setWorkspaceTrust(workspace.projectId, workspace.id, trusted, this.machineId);
+      if (this.workspaceTrust === undefined) throw new Error("Trust is not available here");
+      const result = await this.workspaceTrust.set(workspace.id, trusted);
       this.setTrustState(workspace.id, { trusted: result.trusted });
     } catch (error) {
       // Keep the prior checkbox value (revert the optimistic flip) and surface why.

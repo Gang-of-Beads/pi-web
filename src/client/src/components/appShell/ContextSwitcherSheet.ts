@@ -1,13 +1,11 @@
-import { LitElement, css, html } from "lit";
+import { LitElement, css, html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import type { Machine, MachineHealth, Project, Workspace } from "../../api";
+import type { Machine, MachineHealth } from "../../api";
 import type { MachineStatusSnapshot } from "../../../../shared/machineStatus";
-import type { WorkspaceLabelItem } from "../../plugins/types";
+import type { NavSectionContext, QualifiedNavSectionContribution } from "../../plugins/types";
 import { interactiveSurfaceStyles, listStyles } from "../shared";
 import "../ModalSurface";
 import "../MachineList";
-import "../ProjectList";
-import "../WorkspaceList";
 
 /**
  * The phone's replacement for the desktop context breadcrumb: one sheet
@@ -22,18 +20,11 @@ export class ContextSwitcherSheet extends LitElement {
   @property({ attribute: false }) selectedMachine?: Machine;
   @property({ attribute: false }) machineStatuses: Record<string, MachineHealth> = {};
   @property({ attribute: false }) machineStatusSnapshots: Record<string, MachineStatusSnapshot> = {};
-  @property({ attribute: false }) projects: Project[] = [];
-  @property({ attribute: false }) projectsLoad: "unloaded" | "loading" | "loaded" | "failed" = "unloaded";
-  @property({ attribute: false }) onRetryProjectsLoad?: () => void;
-  @property({ attribute: false }) selectedProject?: Project;
-  @property({ attribute: false }) workspaces: Workspace[] = [];
-  @property({ attribute: false }) selectedWorkspace?: Workspace;
-  @property({ attribute: false }) deletingWorkspaceIds: string[] = [];
-  @property({ attribute: false }) workspaceLabelItems: (workspace: Workspace) => WorkspaceLabelItem[] = () => [];
+  /** Contributed context-navigation section bodies, slotted by reserved id. */
+  @property({ attribute: false }) navSections: readonly QualifiedNavSectionContribution[] = [];
+  /** The host-built snapshot and actions the contributed sections render. */
+  @property({ attribute: false }) navSectionContext?: NavSectionContext;
   @property({ attribute: false }) onSelectMachine?: (machine: Machine) => void;
-  @property({ attribute: false }) onSelectProject?: (project: Project) => void;
-  @property({ attribute: false }) onSelectWorkspace?: (workspace: Workspace) => void;
-  @property({ attribute: false }) onAddProject?: () => void;
   @property({ attribute: false }) onClose?: () => void;
 
   override render() {
@@ -48,30 +39,22 @@ export class ContextSwitcherSheet extends LitElement {
             ${this.renderMachineGroup()}
             <section>
               <h2>Projects</h2>
-              <project-list
-                .projects=${this.projects}
-                .projectsLoad=${this.projectsLoad}
-                .onRetryLoad=${() => { this.onRetryProjectsLoad?.(); }}
-                .selected=${this.selectedProject}
-                .onAdd=${this.onAddProject === undefined ? undefined : () => { this.onAddProject?.(); }}
-                .onSelect=${(project: Project) => { this.onSelectProject?.(project); }}
-              ></project-list>
+              ${this.renderNavSection("projects")}
             </section>
             <section>
               <h2>Workspaces</h2>
-              <workspace-list
-                .workspaces=${this.workspaces}
-                .selected=${this.selectedWorkspace}
-                .machineId=${this.selectedMachine?.id ?? "local"}
-                .deletingWorkspaceIds=${this.deletingWorkspaceIds}
-                .workspaceLabelItems=${this.workspaceLabelItems}
-                .onSelect=${(workspace: Workspace) => { this.onSelectWorkspace?.(workspace); }}
-              ></workspace-list>
+              ${this.renderNavSection("workspaces")}
             </section>
           </div>
         </div>
       </modal-surface>
     `;
+  }
+
+  private renderNavSection(localId: "projects" | "workspaces"): unknown {
+    const section = this.navSections.find((candidate) => candidate.localId === localId);
+    if (section === undefined || this.navSectionContext === undefined) return nothing;
+    return section.render({ ...this.navSectionContext, display: { hidden: false, collapsible: false, collapsed: false, tiles: false } });
   }
 
   private renderMachineGroup() {

@@ -1,10 +1,12 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Machine, Project, Workspace } from "../../api";
+import type { Machine } from "../../api";
+import type { NavSectionContext, QualifiedNavSectionContribution } from "../../plugins/types";
 import { MachineList } from "../MachineList";
-import { ProjectList } from "../ProjectList";
-import { WorkspaceList } from "../WorkspaceList";
+import { workspacesNavSections } from "../../../../../pi-web-plugins/workspaces/browser/pi-web-plugin";
+import { ProjectList } from "../../../../../pi-web-plugins/workspaces/browser/ProjectList";
+import { WorkspaceList } from "../../../../../pi-web-plugins/workspaces/browser/WorkspaceList";
 import { ContextSwitcherSheet } from "./ContextSwitcherSheet";
 
 afterEach(() => {
@@ -14,8 +16,9 @@ afterEach(() => {
 /**
  * The sheet is the phone's context breadcrumb: every level on one surface, the
  * current one marked, a pick hands the decision to the shell's ladder and the
- * shell closes the sheet. The lists stay the pickers - the sheet must not grow
- * a second way to select.
+ * shell closes the sheet. The lists are the workspaces plugin's contributed
+ * sections — the sheet slots them and keeps the headings; it must not grow a
+ * second way to select.
  */
 describe("context-switcher-sheet", () => {
   it("marks the current machine, project and workspace", async () => {
@@ -48,13 +51,13 @@ describe("context-switcher-sheet", () => {
     if (row === null || row === undefined) throw new Error("project row missing");
     row.click();
 
-    expect(onSelectProject).toHaveBeenCalledWith(expect.objectContaining({ id: "project-1" }));
+    expect(onSelectProject).toHaveBeenCalledWith("project-1");
     expect(onClose).not.toHaveBeenCalled();
   });
 
   it("offers Add project in the projects group", async () => {
     const onAddProject = vi.fn();
-    const sheet = await mount({ onAddProject });
+    const sheet = await mount({ addProject: onAddProject });
 
     const projects = deep(sheet, "project-list", ProjectList);
     if (projects === undefined) throw new Error("project list missing");
@@ -65,24 +68,56 @@ describe("context-switcher-sheet", () => {
 
 async function mount(options: {
   machines?: Machine[];
-  onSelectProject?: (project: Project) => void;
-  onAddProject?: () => void;
+  onSelectProject?: (projectId: string) => void;
+  addProject?: () => void;
   onClose?: () => void;
 } = {}): Promise<ContextSwitcherSheet> {
   const machines = options.machines ?? [machine("local"), machine("remote")];
   const sheet = new ContextSwitcherSheet();
   sheet.machines = machines;
   if (machines[0] !== undefined) sheet.selectedMachine = machines[0];
-  sheet.projects = [project("project-1"), project("project-2")];
-  sheet.selectedProject = project("project-1");
-  sheet.workspaces = [workspace("ws-1", "project-1"), workspace("ws-2", "project-1")];
-  sheet.selectedWorkspace = workspace("ws-1", "project-1");
-  if (options.onSelectProject !== undefined) sheet.onSelectProject = options.onSelectProject;
-  if (options.onAddProject !== undefined) sheet.onAddProject = options.onAddProject;
+  sheet.navSections = qualifiedSections();
+  sheet.navSectionContext = navContext(options);
   if (options.onClose !== undefined) sheet.onClose = options.onClose;
   document.body.append(sheet);
   await sheet.updateComplete;
   return sheet;
+}
+
+function qualifiedSections(): QualifiedNavSectionContribution[] {
+  return workspacesNavSections().map((section) => ({
+    ...section,
+    id: `workspaces:${section.id}`,
+    pluginId: "workspaces",
+    localId: section.id,
+  }));
+}
+
+function navContext(options: {
+  onSelectProject?: (projectId: string) => void;
+  addProject?: () => void;
+}): NavSectionContext {
+  return {
+    projects: [project("project-1"), project("project-2")],
+    projectsLoad: "loaded",
+    workspaces: [workspace("ws-1", "project-1"), workspace("ws-2", "project-1")],
+    selectedProjectId: "project-1",
+    selectedWorkspaceId: "ws-1",
+    machineId: "local",
+    deletingWorkspaceIds: [],
+    statusSnapshot: undefined,
+    labelItems: () => [],
+    display: { hidden: false, collapsible: false, collapsed: false, tiles: false },
+    requestUpdate: () => undefined,
+    selectProject: (projectId) => { options.onSelectProject?.(projectId); },
+    selectWorkspace: () => undefined,
+    retryProjectsLoad: () => undefined,
+    toggleCollapsed: () => undefined,
+    focusPreviousSection: () => undefined,
+    focusNextSection: () => undefined,
+    cancelKeyboardNavigation: () => undefined,
+    ...(options.addProject === undefined ? {} : { addProject: options.addProject }),
+  };
 }
 
 function deep<T extends HTMLElement>(sheet: ContextSwitcherSheet, selector: string, type: abstract new (...args: never) => T): T | undefined {
@@ -105,10 +140,10 @@ function machine(id: string): Machine {
   };
 }
 
-function project(id: string): Project {
-  return { id, name: id, path: `/repo/${id}`, createdAt: "2026-06-04T00:00:00.000Z" };
+function project(id: string): NavSectionContext["projects"][number] {
+  return { id, name: id, path: `/repo/${id}` };
 }
 
-function workspace(id: string, projectId: string): Workspace {
+function workspace(id: string, projectId: string): NavSectionContext["workspaces"][number] {
   return { id, projectId, path: `/repo/${id}`, label: id, isMain: true, effectiveConfig: {} };
 }

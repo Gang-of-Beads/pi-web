@@ -1,18 +1,17 @@
 import { RowMenuGestures } from "./rowMenuGestures";
 import { LitElement, css, html, type PropertyValues, nothing} from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import { filterProjects, shouldShowProjectSearch } from "../projectSearch";
-import type { Project } from "../api";
-import type { MachineStatusSnapshot } from "../../../shared/machineStatus";
+import type { NavProjectSnapshot, NavStatusSnapshot } from "@gang-of-beads/pi-web/plugin-api";
+import { filterProjects, shouldShowProjectSearch } from "./projectSearch";
 import { actionMenuPanelStyle } from "./actionMenu";
 import { hasStatusUnread, renderActionActivityIndicator, statusActivityKind } from "./activityBadge";
 import type { KeyboardNavigableSection } from "./navigationFocus";
 import { focusSelectedOrFirstSelectableRow, handleSelectableRowKeyboard } from "./selectableRow";
-import { listStyles, interactiveSurfaceStyles } from "./shared";
+import { listStyles, interactiveSurfaceStyles } from "./sharedStyles";
 
 @customElement("project-list")
 export class ProjectList extends LitElement implements KeyboardNavigableSection {
-  @property({ attribute: false }) projects: Project[] = [];
+  @property({ attribute: false }) projects: NavProjectSnapshot[] = [];
   /**
    * Whether the projects reaching this list have been loaded, and how the
    * latest load ended. `failed` is sticky: it says the latest refresh did not
@@ -33,17 +32,17 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
   @property({ type: Boolean, reflect: true })
   override hidden = false;
 
-  @property({ attribute: false }) selected?: Project;
+  @property({ attribute: false }) selected?: NavProjectSnapshot;
   /** Status tree of the machine these projects belong to; absent means no indicators. */
-  @property({ attribute: false }) statusSnapshot: MachineStatusSnapshot | undefined;
+  @property({ attribute: false }) statusSnapshot: NavStatusSnapshot | undefined;
   @property({ type: Boolean, reflect: true }) collapsible = false;
   @property({ type: Boolean, reflect: true }) collapsed = false;
   /** Render rows as a responsive tile grid instead of full-width rows. */
   @property({ type: Boolean }) tiles = false;
   /** Opens the add-project dialog; omitted where a create control would not belong. */
   @property({ attribute: false }) onAdd?: () => void;
-  @property({ attribute: false }) onSelect?: (project: Project) => void;
-  @property({ attribute: false }) onClose?: (project: Project) => void;
+  @property({ attribute: false }) onSelect?: (project: NavProjectSnapshot) => void;
+  @property({ attribute: false }) onClose?: (project: NavProjectSnapshot) => void;
   @property({ attribute: false }) onToggleCollapsed?: () => void;
   @property({ attribute: false }) onFocusPreviousSection?: () => void | Promise<void>;
   @property({ attribute: false }) onFocusNextSection?: () => void | Promise<void>;
@@ -165,7 +164,7 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
     return html`<div class="list-loading" role="status">Loading projects…</div>`;
   }
 
-  private handleProjectKeydown(event: KeyboardEvent, project: Project): void {
+  private handleProjectKeydown(event: KeyboardEvent, project: NavProjectSnapshot): void {
     handleSelectableRowKeyboard(event, {
       activate: () => this.onSelect?.(project),
       previousSection: this.onFocusPreviousSection === undefined ? undefined : () => { void this.onFocusPreviousSection?.(); },
@@ -224,7 +223,7 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
     return html`<button class="section-toggle" aria-expanded=${String(!this.collapsed)} @click=${() => { this.onToggleCollapsed?.(); }}><span class="section-title"><span class="section-name">${this.collapsed ? "▸" : "▾"} Projects</span>${this.collapsed ? html`<small class="section-selected" title=${selectedTitle}>${selectedSummary}</small>` : null}</span><small class="section-count">${this.projects.length}</small></button>`;
   }
 
-  private renderActivity(project: Project) {
+  private renderActivity(project: NavProjectSnapshot) {
     const flags = this.statusSnapshot?.projects[project.id];
     const kind = statusActivityKind(flags);
     const unreadLabel = hasStatusUnread(flags) ? "Unread sessions in this project" : undefined;
@@ -246,7 +245,7 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
     this.openMenuProjectId = projectId;
   }
 
-  private close(project: Project) {
+  private close(project: NavProjectSnapshot) {
     this.openMenuProjectId = undefined;
     if (confirm(`Close ${project.name}?\n\nThis only removes it from PI WEB; it will not change the project folder.`)) this.onClose?.(project);
   }

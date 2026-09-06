@@ -1,9 +1,8 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it } from "vitest";
-import type { Project } from "../api";
-import type { MachineStatusSnapshot } from "../../../shared/machineStatus";
-import { machineStatusSnapshot } from "../machineStatus.testSupport";
+import type { NavProjectSnapshot as Project } from "@gang-of-beads/pi-web/plugin-api";
+import { machineStatusSnapshot } from "../../../src/client/src/machineStatus.testSupport";
 import { ProjectList } from "./ProjectList";
 
 afterEach(() => {
@@ -73,7 +72,7 @@ describe("project status indicator", () => {
   });
 });
 
-async function mountProjectList(projects: Project[], statusSnapshot: MachineStatusSnapshot | undefined): Promise<ProjectList> {
+async function mountProjectList(projects: Project[], statusSnapshot: ReturnType<typeof machineStatusSnapshot> | undefined): Promise<ProjectList> {
   const list = new ProjectList();
   list.projects = projects;
   list.statusSnapshot = statusSnapshot;
@@ -94,5 +93,5 @@ function unreadDot(row: Element): Element | null {
 }
 
 function project(id: string): Project {
-  return { id, name: id, path: `/repo/${id}`, createdAt: "2026-06-04T00:00:00.000Z" };
+  return { id, name: id, path: `/repo/${id}` };
 }
