@@ -1,4 +1,4 @@
-import { LitElement, css, html } from "lit";
+import { LitElement, css, html, type TemplateResult } from "lit";
 import { focusedContextName } from "../../contextName";
 import { customElement, property, query } from "lit/decorators.js";
 import type { Machine, MachineHealth, Project, SessionActivity, SessionInfo, SessionStatus, Workspace } from "../../api";
@@ -18,10 +18,12 @@ import "../SessionList";
 
 export type NavigationFocusTarget = NavigationSection | "chat";
 
-/** One workspace view row in the panel's tools section: the single entry. */
+/** One workspace view card in the panel's tools section: the single entry. */
 export interface ShellToolTab {
   id: string;
   label: string;
+  /** The contributing panel's icon; the card renders it before the label. */
+  icon?: TemplateResult | undefined;
   /** Text-safe badge only: the row renders it inline, no rich template. */
   badge?: string | number;
   badgeLabel?: string | undefined;
@@ -173,6 +175,9 @@ export class AppNavigationPanel extends LitElement {
     return html`
       <div class="compact-shell">
         <div class="compact-header">
+          <button class="compact-scope" @click=${() => { this.openSection(this.selectedWorkspace === undefined ? "projects" : "workspaces"); }} aria-label="Change project or workspace">
+            <span class="compact-scope-name">${this.compactScopeLabel()}</span>
+          </button>
           ${this.refreshControl}
           <button class="compact-header-action" title="Open settings" aria-label="Open settings" @click=${() => { this.onOpenSettings?.(); }}>⚙</button>
           <button class="compact-header-action" title="Show Actions" aria-label="Show Actions" @click=${() => { this.onShowActions?.(); }}>Actions</button>
@@ -201,6 +206,17 @@ export class AppNavigationPanel extends LitElement {
         ${this.renderToolsSection()}
       </div>
     `;
+  }
+
+  /**
+   * The phone panel shows no context chips, so the header itself names the
+   * scope the lists below belong to - machine by project by workspace - and
+   * tapping it opens the picker for the level that is not yet chosen.
+   */
+  private compactScopeLabel(): string {
+    if (this.selectedProject === undefined) return "PI WEB";
+    const workspaceName = this.selectedWorkspace === undefined ? undefined : this.selectedWorkspace.path.split("/").filter(Boolean).pop();
+    return workspaceName === undefined ? this.selectedProject.name : `${this.selectedProject.name} · ${workspaceName}`;
   }
 
   /**
@@ -351,6 +367,7 @@ export class AppNavigationPanel extends LitElement {
             aria-current=${tab.selected === true ? "true" : undefined}
             @click=${() => { this.onSelectTool?.(tab.id); }}
           >
+            <span class="tool-icon" aria-hidden="true">${tab.icon ?? null}</span>
             <span class="tool-label">${tab.label}</span>
             ${tab.badge === undefined ? null : html`<span class="tool-badge" aria-label=${tab.badgeLabel ?? String(tab.badge)}>${tab.badge}</span>`}
           </button>
@@ -463,17 +480,24 @@ export class AppNavigationPanel extends LitElement {
     header { flex: 0 0 auto; box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: 0 var(--pi-space-6); border-bottom: 1px solid var(--pi-border); }
     header button { box-sizing: border-box; height: var(--pi-panel-header-control-height); padding: 0 var(--pi-space-4); font-size: var(--pi-text-xs); }
     .compact-shell { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
-    .compact-header { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-end; gap: var(--pi-space-3); padding: var(--pi-space-2) var(--pi-space-4); border-bottom: 1px solid var(--pi-border-muted); }
+    .compact-header { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-start; gap: var(--pi-space-3); padding: var(--pi-space-2) var(--pi-space-4); border-bottom: 1px solid var(--pi-border-muted); }
     .compact-header-action { display: inline-flex; align-items: center; box-sizing: border-box; min-height: 44px; padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text); font: inherit; }
     .compact-header-action:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
     @media (hover: hover) { .compact-header-action:hover { background: var(--pi-surface-hover); } }
-    .tools-section { flex: 0 0 auto; display: flex; flex-direction: column; border-top: 1px solid var(--pi-border-muted); }
-    .tool-row { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-3); box-sizing: border-box; min-height: 44px; padding: var(--pi-space-2) var(--pi-space-4); border: 0; background: none; color: var(--pi-text); font: inherit; text-align: start; }
-    .tool-row:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -2px; }
+    .tools-section { flex: 0 0 auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 10px var(--pi-space-4) calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--pi-border-muted); }
+    .tool-row:last-child:nth-child(odd) { grid-column: 1 / -1; }
+    .tool-row { display: flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: 52px; padding: var(--pi-space-2) var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: 12px; background: var(--pi-surface); color: var(--pi-text); font: inherit; text-align: start; }
+    .tool-row:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 2px; }
     @media (hover: hover) { .tool-row:hover { background: var(--pi-surface-hover); } }
-    .tool-row.selected { color: var(--pi-accent); font-weight: 600; }
+    .tool-row.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); color: var(--pi-accent); font-weight: 600; }
+    .tool-icon { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; color: var(--pi-muted); }
+    .tool-row.selected .tool-icon { color: var(--pi-accent); }
+    .tool-icon svg { width: 100%; height: 100%; }
     .tool-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .tool-badge { flex: 0 0 auto; display: inline-flex; align-items: center; box-sizing: border-box; min-height: 20px; padding: 0 var(--pi-space-2); border-radius: var(--pi-radius-pill); background: var(--pi-selection-bg); color: var(--pi-text); font-size: var(--pi-text-2xs); }
+    .compact-scope { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; min-height: 44px; border: 0; background: none; padding: 0; font: inherit; font-size: var(--pi-text-sm); font-weight: 600; color: var(--pi-text); text-align: start; cursor: pointer; }
+    .compact-scope:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 2px; border-radius: 8px; }
+    .compact-scope-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     header strong { flex: 0 0 auto; }
     machine-switcher { flex: 1 1 auto; min-width: 0; }
     :host([compact]) header { display: none; }

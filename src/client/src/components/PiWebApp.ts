@@ -44,6 +44,7 @@ import { isWaitingForUser } from "../sessionWaiting";
 import { sessionCleanupRequestKey } from "../sessionCleanupUi";
 import { selectedNotificationView } from "../sessionNotifications";
 import { SessionUnreadController } from "../sessionUnread";
+import { workspaceViewTransition } from "../workspaceViewTransition";
 import { RealtimeSocket, type BrowserRealtimeEvent } from "../sessionSocket";
 import type { PluginMachine, PluginPromptEditor, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding } from "../plugins/types";
 import { CLASSIC_THEME_ID, DEFAULT_THEME_PREFERENCE, applyPiWebTheme, findThemePairForTheme, readStoredThemePreference, resolveThemePreference, writeStoredThemePreference, type ThemePreference, type ThemePreferenceResolution } from "../theme";
@@ -1472,7 +1473,7 @@ export class PiWebApp extends LitElement {
       projectId: this.state.selectedProject?.id,
       workspaceId: this.state.selectedWorkspace?.id,
       sessionId: this.state.selectedSession?.id,
-      tool: this.state.workspaceTool,
+      tool: this.state.selectedWorkspace === undefined ? undefined : this.state.workspaceTool,
       view: this.state.mainView === "navigation" ? undefined : this.state.mainView,
     }, options);
     this.syncWorkspaceRouteSurfaceToUrl();
@@ -1685,6 +1686,9 @@ export class PiWebApp extends LitElement {
     if (!this.routeRestoreInProgress) {
       this.rememberCurrentMachineNavigation();
       this.writeSelectedTerminalToUrl(selectedTerminalId, { replace: true });
+    }
+    if (workspaceViewTransition({ mobileLayout: this.appShell.isMobileNavigationLayout, hasSession: next.selectedSession !== undefined, view: next.mainView }) === "return-to-picker") {
+      this.setState({ mainView: "navigation" });
     }
     if (next.selectedWorkspace === undefined) return;
     void this.refreshActiveTerminals(next.selectedWorkspace);
@@ -3467,6 +3471,7 @@ export class PiWebApp extends LitElement {
       return {
         id: panel.id,
         label: panel.title,
+        icon: panel.icon,
         ...(badge === undefined ? {} : { badge }),
         selected: this.state.mainView === panel.id,
       };
