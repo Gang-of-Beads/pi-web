@@ -2,7 +2,7 @@ import { appendFile, symlink, truncate, unlink, writeFile } from "node:fs/promis
 import type { Readable } from "node:stream";
 import { basename, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { MAX_INLINE_PREVIEW_BYTES } from "../../../shared/workspaceFiles.js";
+import { MAX_INLINE_PREVIEW_BYTES } from "./workspaceFiles.js";
 import { cleanupTempWorkspaces, createTempWorkspace } from "./fileContentService.testSupport.js";
 import { parseWorkspaceFileRange, readWorkspaceFilePreview } from "./filePreviewService.js";
 

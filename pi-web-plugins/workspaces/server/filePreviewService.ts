@@ -1,7 +1,8 @@
 import { open, type FileHandle } from "node:fs/promises";
 import { pipeline, Readable, Transform } from "node:stream";
-import type { FileContentMediaType, PiWebPathAccessConfig } from "../../../shared/apiTypes.js";
-import { classifyWorkspaceFile, workspaceFilePreviewByteLimit, workspaceFileName } from "../../../shared/workspaceFiles.js";
+import type { FileContentMediaType } from "@gang-of-beads/pi-web/plugin-api";
+import type { PluginPathAccessConfig } from "@gang-of-beads/pi-web/server-plugin-api";
+import { classifyWorkspaceFile, workspaceFilePreviewByteLimit, workspaceFileName } from "./workspaceFiles.js";
 import { resolveWorkspacePathAccessTarget } from "./pathAccessPolicy.js";
 
 export interface WorkspaceFilePreview {
@@ -55,7 +56,7 @@ export function parseWorkspaceFileRange(range: string | undefined, size: number)
 export async function readWorkspaceFilePreview(
   rootPath: string,
   path: string | undefined,
-  pathAccess?: PiWebPathAccessConfig,
+  pathAccess?: PluginPathAccessConfig,
   options: ReadWorkspaceFilePreviewOptions = {},
 ): Promise<WorkspaceFilePreview> {
   if (path === undefined || path === "") throw new Error("path query parameter is required");

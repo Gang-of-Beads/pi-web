@@ -1,14 +1,10 @@
-import { execFile, spawn } from "node:child_process";
 import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, sep, win32 } from "node:path";
-import { promisify } from "node:util";
-import { sanitizedGitEnv } from "../git/gitEnv.js";
-import type { PiWebPathAccessConfig } from "../../../shared/apiTypes.js";
-import type { ClientFileSuggestion } from "../../shared/types.js";
+import { sanitizedGitEnv } from "./gitEnv.js";
+import type { FileSuggestion, PluginPathAccessConfig } from "@gang-of-beads/pi-web/server-plugin-api";
 import { createPathAccessPolicy, isAbsoluteishPath, resolvePathAccessTarget, type PathAccessPolicy } from "./pathAccessPolicy.js";
 
-const execFileAsync = promisify(execFile);
 const commandMaxBuffer = 1024 * 1024 * 8;
 const maxFilesystemFallbackPaths = 20_000;
 const maxFileSuggestions = 80;
@@ -36,12 +32,13 @@ class CommandExitError extends Error {
 export type FileSuggestionScope = "tracked" | "all";
 
 export interface FileSuggestionOptions {
-  kind?: ClientFileSuggestion["kind"] | undefined;
+  kind?: FileSuggestion["kind"] | undefined;
   scope?: FileSuggestionScope | undefined;
-  pathAccess?: PiWebPathAccessConfig | undefined;
+  pathAccess?: PluginPathAccessConfig | undefined;
 }
 
 export interface FileSuggestionDependencies {
+  /** The host-bounded command runner; absent means no scope listing. */
   execFile?: CommandRunner;
   fzf?: CommandRunner;
 }
@@ -50,7 +47,7 @@ export function isAbsoluteishFileSuggestionQuery(query = ""): boolean {
   return isAbsoluteishPath(fileQueryText(query));
 }
 
-export async function listFileSuggestions(cwd: string, query = "", options: FileSuggestionOptions = {}, deps: FileSuggestionDependencies = {}): Promise<ClientFileSuggestion[]> {
+export async function listFileSuggestions(cwd: string, query = "", options: FileSuggestionOptions = {}, deps: FileSuggestionDependencies = {}): Promise<FileSuggestion[]> {
   const queryText = fileQueryText(query);
   if (isAbsoluteishFileSuggestionQuery(query)) {
     return (await listPathSuggestions(cwd, queryText, options.pathAccess, deps))
@@ -59,7 +56,8 @@ export async function listFileSuggestions(cwd: string, query = "", options: File
   }
 
   const normalizedQuery = normalizeFileQuery(query);
-  const command = deps.execFile ?? runCommand;
+  const command = deps.execFile;
+  if (command === undefined) throw new Error("The suggestions service requires a bounded command runner");
   const files = await listFilesForScope(cwd, options.scope, command);
   return (await rankFileSuggestionsWithOptionalFzf(
     cwd,
@@ -69,7 +67,7 @@ export async function listFileSuggestions(cwd: string, query = "", options: File
   )).slice(0, maxFileSuggestions);
 }
 
-export async function listPathSuggestions(cwd: string, prefix = "", pathAccess?: PiWebPathAccessConfig, deps: FileSuggestionDependencies = {}): Promise<ClientFileSuggestion[]> {
+export async function listPathSuggestions(cwd: string, prefix = "", pathAccess?: PluginPathAccessConfig, deps: FileSuggestionDependencies = {}): Promise<FileSuggestion[]> {
   const query = fileQueryText(prefix);
   const fzf = fzfRunnerForDependencies(deps);
   if (isAbsoluteishPath(query)) return listAllowedPathSuggestions(cwd, query, pathAccess, fzf);
@@ -87,13 +85,13 @@ export async function listPathSuggestions(cwd: string, prefix = "", pathAccess?:
   )).slice(0, maxFileSuggestions);
 }
 
-async function listDirectoryEntrySuggestions(cwd: string, directoryPrefix: string): Promise<ClientFileSuggestion[]> {
+async function listDirectoryEntrySuggestions(cwd: string, directoryPrefix: string): Promise<FileSuggestion[]> {
   const policy = await createPathAccessPolicy(cwd, undefined);
   const resolved = await resolveWorkspaceSuggestionDirectory(policy, directoryPrefix);
   if (resolved === undefined) return [];
 
   const entries = await readdir(resolved.target, { withFileTypes: true });
-  const suggestions: ClientFileSuggestion[] = [];
+  const suggestions: FileSuggestion[] = [];
   for (const entry of entries.sort(compareDirectoryEntries)) {
     const childPath = appendRequestPath(resolved.displayPath, entry.name);
     const isDirectory = await suggestionEntryIsDirectory(policy, childPath, entry);
@@ -113,7 +111,7 @@ async function resolveWorkspaceSuggestionDirectory(policy: PathAccessPolicy, dir
   }
 }
 
-async function listAllowedPathSuggestions(cwd: string, query: string, pathAccess: PiWebPathAccessConfig | undefined, fzf: CommandRunner | undefined): Promise<ClientFileSuggestion[]> {
+async function listAllowedPathSuggestions(cwd: string, query: string, pathAccess: PluginPathAccessConfig | undefined, fzf: CommandRunner | undefined): Promise<FileSuggestion[]> {
   const policy = await createPathAccessPolicy(cwd, pathAccess);
   if (policy.allowedRoots.length === 0) throw new Error("Absolute paths are not allowed");
   const rootCandidates = allowedRootSuggestionCandidates(policy, query);
@@ -127,12 +125,12 @@ async function listAllowedPathSuggestions(cwd: string, query: string, pathAccess
   )).slice(0, maxFileSuggestions);
 }
 
-function allowedRootPrefixSuggestions(policy: PathAccessPolicy, query: string): ClientFileSuggestion[] {
+function allowedRootPrefixSuggestions(policy: PathAccessPolicy, query: string): FileSuggestion[] {
   return allowedRootSuggestionCandidates(policy, query).filter((suggestion) => pathStartsWith(suggestion.path, query));
 }
 
-function allowedRootSuggestionCandidates(policy: PathAccessPolicy, query: string): ClientFileSuggestion[] {
-  const suggestions: ClientFileSuggestion[] = [];
+function allowedRootSuggestionCandidates(policy: PathAccessPolicy, query: string): FileSuggestion[] {
+  const suggestions: FileSuggestion[] = [];
   const seen = new Set<string>();
   for (const root of policy.allowedRoots) {
     for (const displayPath of allowedRootDisplayPaths(root.path, query)) {
@@ -157,13 +155,13 @@ function allowedRootDisplayPaths(rootPath: string, query: string): string[] {
   return [tildePath, rootPath];
 }
 
-async function listAllowedDirectoryEntryCandidates(policy: PathAccessPolicy, query: string): Promise<ClientFileSuggestion[]> {
+async function listAllowedDirectoryEntryCandidates(policy: PathAccessPolicy, query: string): Promise<FileSuggestion[]> {
   const { directoryPrefix } = pathSuggestionPrefix(query);
   const resolved = await resolveSuggestionDirectory(policy, directoryPrefix);
   if (resolved === undefined) return [];
 
   const entries = await readdir(resolved.target, { withFileTypes: true });
-  const suggestions: ClientFileSuggestion[] = [];
+  const suggestions: FileSuggestion[] = [];
   for (const entry of entries.sort(compareDirectoryEntries)) {
     const childPath = appendRequestPath(directoryPrefix, entry.name);
     const isDirectory = await suggestionEntryIsDirectory(policy, childPath, entry);
@@ -242,17 +240,17 @@ function isPathSuggestionMiss(error: unknown): boolean {
     || error.message.startsWith("Path is not absolute:");
 }
 
-async function listFilesForScope(cwd: string, scope: FileSuggestionScope | undefined, exec: CommandRunner): Promise<ClientFileSuggestion[]> {
+async function listFilesForScope(cwd: string, scope: FileSuggestionScope | undefined, exec: CommandRunner): Promise<FileSuggestion[]> {
   if (scope === "all") return listAllFiles(cwd, exec);
   if (scope === "tracked") return listTrackedFiles(cwd, exec).catch(() => listPlainFiles(cwd, exec, true));
   return listGitFiles(cwd, exec).catch(() => listPlainFiles(cwd, exec, false));
 }
 
-async function listTrackedFiles(cwd: string, exec: CommandRunner): Promise<ClientFileSuggestion[]> {
+async function listTrackedFiles(cwd: string, exec: CommandRunner): Promise<FileSuggestion[]> {
   return withDirectories(nulRecords(await git(cwd, ["ls-files", "-z"], exec)), "tracked");
 }
 
-async function listGitFiles(cwd: string, exec: CommandRunner): Promise<ClientFileSuggestion[]> {
+async function listGitFiles(cwd: string, exec: CommandRunner): Promise<FileSuggestion[]> {
   const [trackedResult, untrackedResult] = await Promise.allSettled([
     git(cwd, ["ls-files", "-z"], exec),
     git(cwd, ["ls-files", "--others", "--exclude-standard", "-z"], exec),
@@ -266,15 +264,15 @@ async function listGitFiles(cwd: string, exec: CommandRunner): Promise<ClientFil
   ];
 }
 
-async function listAllFiles(cwd: string, exec: CommandRunner): Promise<ClientFileSuggestion[]> {
+async function listAllFiles(cwd: string, exec: CommandRunner): Promise<FileSuggestion[]> {
   const [gitFiles, plainFiles] = await Promise.all([
-    listGitFiles(cwd, exec).catch((): ClientFileSuggestion[] => []),
+    listGitFiles(cwd, exec).catch((): FileSuggestion[] => []),
     listPlainFiles(cwd, exec, true),
   ]);
   return mergeSuggestions(gitFiles, plainFiles);
 }
 
-async function listPlainFiles(cwd: string, exec: CommandRunner, includeIgnored: boolean): Promise<ClientFileSuggestion[]> {
+async function listPlainFiles(cwd: string, exec: CommandRunner, includeIgnored: boolean): Promise<FileSuggestion[]> {
   try {
     const args = includeIgnored ? ["--files", "--hidden", "--no-ignore", "--glob", "!.git", "--glob", "!.git/**"] : ["--files"];
     const { stdout } = await exec("rg", args, { cwd, maxBuffer: commandMaxBuffer });
@@ -337,18 +335,18 @@ function fileQueryText(query: string): string {
 }
 
 function fzfRunnerForDependencies(deps: FileSuggestionDependencies): CommandRunner | undefined {
-  return deps.fzf ?? (deps.execFile === undefined ? runCommand : undefined);
+  return deps.fzf;
 }
 
-async function rankFileSuggestionsWithOptionalFzf(cwd: string, files: ClientFileSuggestion[], normalizedQuery: string, fzf: CommandRunner | undefined): Promise<ClientFileSuggestion[]> {
+async function rankFileSuggestionsWithOptionalFzf(cwd: string, files: FileSuggestion[], normalizedQuery: string, fzf: CommandRunner | undefined): Promise<FileSuggestion[]> {
   return rankSuggestionsWithOptionalFzf(cwd, files, normalizedQuery, () => rankFileSuggestions(files, normalizedQuery), fzf);
 }
 
-async function rankPathSuggestionsWithOptionalFzf(cwd: string, candidates: ClientFileSuggestion[], query: string, fallback: () => ClientFileSuggestion[], fzf: CommandRunner | undefined): Promise<ClientFileSuggestion[]> {
+async function rankPathSuggestionsWithOptionalFzf(cwd: string, candidates: FileSuggestion[], query: string, fallback: () => FileSuggestion[], fzf: CommandRunner | undefined): Promise<FileSuggestion[]> {
   return rankSuggestionsWithOptionalFzf(cwd, candidates, query, fallback, fzf);
 }
 
-async function rankSuggestionsWithOptionalFzf(cwd: string, candidates: ClientFileSuggestion[], query: string, fallback: () => ClientFileSuggestion[], fzf: CommandRunner | undefined): Promise<ClientFileSuggestion[]> {
+async function rankSuggestionsWithOptionalFzf(cwd: string, candidates: FileSuggestion[], query: string, fallback: () => FileSuggestion[], fzf: CommandRunner | undefined): Promise<FileSuggestion[]> {
   if (fzf === undefined || query === "" || candidates.length === 0) return fallback();
 
   try {
@@ -358,10 +356,10 @@ async function rankSuggestionsWithOptionalFzf(cwd: string, candidates: ClientFil
   }
 }
 
-async function fzfFilterSuggestions(cwd: string, candidates: ClientFileSuggestion[], query: string, fzf: CommandRunner): Promise<ClientFileSuggestion[]> {
+async function fzfFilterSuggestions(cwd: string, candidates: FileSuggestion[], query: string, fzf: CommandRunner): Promise<FileSuggestion[]> {
   const byPath = new Map(candidates.map((suggestion) => [suggestion.path, suggestion]));
   const { stdout } = await runFzf(cwd, [...byPath.keys()], query, fzf);
-  const suggestions: ClientFileSuggestion[] = [];
+  const suggestions: FileSuggestion[] = [];
   const seen = new Set<string>();
   for (const path of nulRecords(stdout)) {
     const suggestion = byPath.get(path);
@@ -382,7 +380,7 @@ async function runFzf(cwd: string, candidates: string[], query: string, fzf: Com
   }
 }
 
-function prefixPathSuggestions(candidates: ClientFileSuggestion[], searchPrefix: string): ClientFileSuggestion[] {
+function prefixPathSuggestions(candidates: FileSuggestion[], searchPrefix: string): FileSuggestion[] {
   const normalizedSearchPrefix = searchPrefix.toLowerCase();
   return candidates
     .filter((suggestion) => pathSuggestionName(suggestion.path).toLowerCase().startsWith(normalizedSearchPrefix))
@@ -394,7 +392,7 @@ function pathSuggestionName(path: string): string {
   return stripped.split(/[\\/]+/u).filter(Boolean).at(-1) ?? stripped;
 }
 
-function rankFileSuggestions(files: ClientFileSuggestion[], normalizedQuery: string): ClientFileSuggestion[] {
+function rankFileSuggestions(files: FileSuggestion[], normalizedQuery: string): FileSuggestion[] {
   if (normalizedQuery === "") return [...files].sort(compareFileSuggestions);
   return files
     .map((file) => ({ file, score: fileSuggestionScore(file.path, normalizedQuery) }))
@@ -440,7 +438,7 @@ function isSubsequence(needle: string, haystack: string): boolean {
   return true;
 }
 
-function compareFileSuggestions(a: ClientFileSuggestion, b: ClientFileSuggestion): number {
+function compareFileSuggestions(a: FileSuggestion, b: FileSuggestion): number {
   return Number(!a.path.endsWith("/")) - Number(!b.path.endsWith("/")) || a.path.localeCompare(b.path);
 }
 
@@ -448,7 +446,7 @@ function compareDirectoryEntries(a: { isDirectory(): boolean; name: string }, b:
   return Number(!a.isDirectory()) - Number(!b.isDirectory()) || a.name.localeCompare(b.name);
 }
 
-function kindRank(kind: ClientFileSuggestion["kind"]): number {
+function kindRank(kind: FileSuggestion["kind"]): number {
   switch (kind) {
     case "tracked": return 0;
     case "untracked": return 1;
@@ -458,64 +456,6 @@ function kindRank(kind: ClientFileSuggestion["kind"]): number {
 
 function pathDepth(path: string): number {
   return path.split("/").filter(Boolean).length;
-}
-
-async function runCommand(file: string, args: string[], options: CommandRunnerOptions): Promise<{ stdout: string }> {
-  const { input, ...execOptions } = options;
-  if (input === undefined) return execFileAsync(file, args, execOptions);
-  return runCommandWithInput(file, args, { ...execOptions, input });
-}
-
-async function runCommandWithInput(file: string, args: string[], options: CommandRunnerOptions & { input: string | Buffer }): Promise<{ stdout: string }> {
-  return await new Promise((resolve, reject) => {
-    const child = spawn(file, args, {
-      cwd: options.cwd,
-      ...(options.env === undefined ? {} : { env: options.env }),
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    let settled = false;
-    let stdout = "";
-    let stderr = "";
-    let stdoutBytes = 0;
-    let stderrBytes = 0;
-
-    const rejectOnce = (error: Error) => {
-      if (settled) return;
-      settled = true;
-      reject(error);
-    };
-
-    child.stdout.on("data", (chunk: Buffer) => {
-      stdoutBytes += chunk.length;
-      if (stdoutBytes > options.maxBuffer) {
-        child.kill();
-        rejectOnce(new Error(`${file} stdout exceeded maxBuffer`));
-        return;
-      }
-      stdout += chunk.toString("utf8");
-    });
-    child.stderr.on("data", (chunk: Buffer) => {
-      stderrBytes += chunk.length;
-      if (stderrBytes > options.maxBuffer) {
-        child.kill();
-        rejectOnce(new Error(`${file} stderr exceeded maxBuffer`));
-        return;
-      }
-      stderr += chunk.toString("utf8");
-    });
-    child.on("error", rejectOnce);
-    child.on("close", (code) => {
-      if (settled) return;
-      settled = true;
-      if (code === 0) {
-        resolve({ stdout });
-        return;
-      }
-      reject(new CommandExitError(file, code, stderr));
-    });
-    child.stdin.on("error", () => undefined);
-    child.stdin.end(options.input);
-  });
 }
 
 function errorExitCode(error: unknown): number | undefined {
@@ -534,9 +474,9 @@ function nulRecords(text: string): string[] {
   return text.split("\0").filter((record) => record !== "");
 }
 
-function mergeSuggestions(primary: ClientFileSuggestion[], secondary: ClientFileSuggestion[]): ClientFileSuggestion[] {
+function mergeSuggestions(primary: FileSuggestion[], secondary: FileSuggestion[]): FileSuggestion[] {
   const seen = new Set<string>();
-  const merged: ClientFileSuggestion[] = [];
+  const merged: FileSuggestion[] = [];
   for (const suggestion of [...primary, ...secondary]) {
     if (seen.has(suggestion.path)) continue;
     seen.add(suggestion.path);
@@ -545,9 +485,9 @@ function mergeSuggestions(primary: ClientFileSuggestion[], secondary: ClientFile
   return merged;
 }
 
-function withDirectories(paths: string[], kind: ClientFileSuggestion["kind"]): ClientFileSuggestion[] {
+function withDirectories(paths: string[], kind: FileSuggestion["kind"]): FileSuggestion[] {
   const seen = new Set<string>();
-  const suggestions: ClientFileSuggestion[] = [];
+  const suggestions: FileSuggestion[] = [];
   for (const path of paths) {
     for (const directory of parentDirectories(path)) add(`${directory}/`);
     add(path);

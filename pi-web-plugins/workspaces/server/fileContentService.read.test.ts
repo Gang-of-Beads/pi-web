@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { MAX_WORKSPACE_FILE_CONTENT_BYTES } from "../../../shared/workspaceFiles.js";
+import { MAX_WORKSPACE_FILE_CONTENT_BYTES } from "./workspaceFiles.js";
 import { readWorkspaceFile } from "./fileContentService.js";
 import { cleanupTempWorkspaces, createTempWorkspace } from "./fileContentService.testSupport.js";
 

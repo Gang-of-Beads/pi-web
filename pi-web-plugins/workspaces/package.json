@@ -1,0 +1,13 @@
+{
+  "name": "@pi-web/workspaces-plugin",
+  "private": true,
+  "type": "module",
+  "piWeb": {
+    "plugins": [
+      {
+        "id": "workspaces",
+        "serverModule": "server-plugin.js"
+      }
+    ]
+  }
+}

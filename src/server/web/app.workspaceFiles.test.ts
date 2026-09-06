@@ -1,3 +1,5 @@
+import { execFile as nodeExecFile } from "node:child_process";
+import { promisify } from "node:util";
 import { mkdir, truncate, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -5,11 +7,61 @@ import { MAX_INLINE_PREVIEW_BYTES } from "../../shared/workspaceFiles.js";
 import type { Project, WorkspaceProviderResolution } from "../shared/types.js";
 import { appTestContext, registerAppTestHooks } from "./app.testSupport.js";
 import { workspaceFilePreviewErrorResponsePolicy, workspaceFilePreviewResponsePolicy } from "../shared/workspaces/filePreviewResponsePolicy.js";
+import { loadEffectiveProjectPathAccess } from "./workspaces/projectPiWebConfig.js";
+import { mountServerPluginRoutes } from "./plugins/serverPluginRouteMount.js";
+import type { ServerPluginActivationContext, ServerPluginExecFileResult } from "../../server-plugin-api.js";
+import workspacesPlugin from "../../../pi-web-plugins/workspaces/server-plugin.js";
 
 registerAppTestHooks();
 
+/**
+ * The file family is plugin-served: these tests mount the real plugin's route
+ * contributions through the real seam adapter onto the test app, with the
+ * ports wired to the same catalog and config the core routes used to read.
+ * The shell exec stub keeps the suggestions fallbacks behaving exactly as
+ * they did when the routes ran in core.
+ */
+async function mountWorkspaceFileRoutes(): Promise<void> {
+  const execFile = async (request: { file: string; args?: readonly string[]; cwd?: string }): Promise<ServerPluginExecFileResult> => {
+    const run = promisifiedExecFile;
+    const result = await run(request.file, [...(request.args ?? [])], { cwd: request.cwd, maxBuffer: 1024 * 1024 * 8 });
+    return { exitCode: 0, signal: null, stdout: result.stdout, stderr: result.stderr, stdoutTruncated: false, stderrTruncated: false };
+  };
+  const context: ServerPluginActivationContext = {
+    apiVersion: 1,
+    pluginId: "workspaces",
+    packageRoot: appTestContext.tempDir,
+    logger: { debug: () => undefined, info: () => undefined, warn: () => undefined, error: () => undefined },
+    settings: {},
+    storage: { directory: appTestContext.tempDir, read: () => Promise.resolve(undefined), write: () => Promise.resolve(), remove: () => Promise.resolve() },
+    execFile,
+    ports: {
+      workspaceCatalog: {
+        resolveWorkspace: async (projectId, workspaceId) => {
+          const resolution = await appTestContext.workspaceCatalog.resolveProject(projectId);
+          const workspace = resolution.workspaces.find((candidate) => candidate.id === workspaceId);
+          if (workspace === undefined) return undefined;
+          return { projectPath: appTestContext.projectDir, workspacePath: workspace.path };
+        },
+      },
+      piWebConfig: {
+        readPathAccess: async (projectPath) => loadEffectiveProjectPathAccess(projectPath, appTestContext.piWebConfig),
+      },
+    },
+    signal: new AbortController().signal,
+  };
+  const activation = await workspacesPlugin.activate(context);
+  const routes = activation.routes ?? [];
+  const runtime = { routeContributions: () => routes.map((route) => ({ pluginId: "workspaces", route })) };
+  mountServerPluginRoutes(appTestContext.app, runtime, "/api");
+  mountServerPluginRoutes(appTestContext.app, runtime, "/api/machines/local");
+}
+
+const promisifiedExecFile = promisify(nodeExecFile);
+
 describe("buildApp workspace file routes", () => {
   it("serves workspace SVG only with exact inline-image containment headers", async () => {
+    await mountWorkspaceFileRoutes();
     const addResponse = await appTestContext.app.inject({
       method: "POST",
       url: "/api/projects",
@@ -55,6 +107,7 @@ describe("buildApp workspace file routes", () => {
   });
 
   it("hardens failed local previews with the same error policy the remote proxy enforces", async () => {
+    await mountWorkspaceFileRoutes();
     const addResponse = await appTestContext.app.inject({
       method: "POST",
       url: "/api/projects",
@@ -94,6 +147,7 @@ describe("buildApp workspace file routes", () => {
   });
 
   it("serves HTML and PDF inline with type-appropriate sandbox policies", async () => {
+    await mountWorkspaceFileRoutes();
     const addResponse = await appTestContext.app.inject({
       method: "POST",
       url: "/api/projects",
@@ -140,6 +194,7 @@ describe("buildApp workspace file routes", () => {
   });
 
   it("serves any file as an attachment download regardless of type", async () => {
+    await mountWorkspaceFileRoutes();
     const addResponse = await appTestContext.app.inject({
       method: "POST",
       url: "/api/projects",
@@ -174,6 +229,7 @@ describe("buildApp workspace file routes", () => {
   });
 
   it("advertises a content length that matches the bytes it serves", async () => {
+    await mountWorkspaceFileRoutes();
     const addResponse = await appTestContext.app.inject({
       method: "POST",
       url: "/api/projects",
@@ -205,6 +261,7 @@ describe("buildApp workspace file routes", () => {
   });
 
   it("keeps normal file suggestions workspace-local when path access config is invalid", async () => {
+    await mountWorkspaceFileRoutes();
     const addResponse = await appTestContext.app.inject({
       method: "POST",
       url: "/api/projects",
@@ -228,6 +285,7 @@ describe("buildApp workspace file routes", () => {
   });
 
   it("uses the owning project config for suggestions from an authoritative linked workspace", async () => {
+    await mountWorkspaceFileRoutes();
     const addResponse = await appTestContext.app.inject({
       method: "POST",
       url: "/api/projects",
@@ -261,6 +319,7 @@ describe("buildApp workspace file routes", () => {
   });
 
   it("serves project-configured allowed external files through the workspace explorer", async () => {
+    await mountWorkspaceFileRoutes();
     const addResponse = await appTestContext.app.inject({
       method: "POST",
       url: "/api/projects",
@@ -302,6 +361,7 @@ describe("buildApp workspace file routes", () => {
   });
 
   it("writes workspace files through the HTTP contract", async () => {
+    await mountWorkspaceFileRoutes();
     const addResponse = await appTestContext.app.inject({
       method: "POST",
       url: "/api/projects",
@@ -399,6 +459,7 @@ describe("buildApp workspace file routes", () => {
   });
 
   it("deletes workspace files through the HTTP contract", async () => {
+    await mountWorkspaceFileRoutes();
     const addResponse = await appTestContext.app.inject({
       method: "POST",
       url: "/api/projects",
@@ -446,6 +507,7 @@ describe("buildApp workspace file routes", () => {
   });
 
   it("moves workspace files through the HTTP contract", async () => {
+    await mountWorkspaceFileRoutes();
     const addResponse = await appTestContext.app.inject({
       method: "POST",
       url: "/api/projects",
@@ -531,6 +593,7 @@ describe("buildApp workspace file routes", () => {
   });
 
   it("rejects stale workspace ids absent from the authoritative catalog", async () => {
+    await mountWorkspaceFileRoutes();
     const addResponse = await appTestContext.app.inject({
       method: "POST",
       url: "/api/projects",
@@ -559,6 +622,7 @@ describe("buildApp workspace file routes", () => {
   });
 
   it("streams workspace media previews and answers range requests for seeking", async () => {
+    await mountWorkspaceFileRoutes();
     const addResponse = await appTestContext.app.inject({
       method: "POST",
       url: "/api/projects",

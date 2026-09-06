@@ -72,7 +72,7 @@ describe("route contributions", () => {
       header: vi.fn().mockReturnThis(),
       send: vi.fn().mockResolvedValue(undefined),
     };
-    await contributed.route.handle({ params: {}, query: {}, headers: {} }, reply, { signal: new AbortController().signal });
+    await contributed.route.handle({ params: {}, query: {}, headers: {}, body: undefined }, reply, { signal: new AbortController().signal });
 
     expect(reply.code).toHaveBeenCalledWith(200);
     expect(reply.header).toHaveBeenCalledWith("Content-Type", "text/plain");

@@ -162,7 +162,9 @@ function isPluginSource(fileName) {
 }
 
 function isTestSource(fileName) {
-  return /\.(?:test|spec)\.ts$/u.test(fileName);
+  // Test helpers ship as source for the repo's own vitest run but never in the
+  // package, matching the pack manifest's testSupport exclusion.
+  return /\.(?:test|spec|testSupport)\.ts$/u.test(fileName);
 }
 
 async function hasTypeScriptSource(javaScriptPath) {

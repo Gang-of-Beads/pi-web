@@ -129,6 +129,8 @@ export interface ServerPluginHealth {
   details?: JsonObject;
 }
 
+export type { FileSuggestion } from "./shared/pluginApiTypes.js";
+
 /**
  * A declared route the host mounts. The plugin never picks a URL prefix: the
  * path is a core-shaped template the host mounts, and an undeclared or
@@ -145,6 +147,13 @@ export interface ServerPluginRequest {
   readonly params: Readonly<Record<string, string>>;
   readonly query: Readonly<Record<string, string>>;
   readonly headers: Readonly<Record<string, string | undefined>>;
+  /**
+   * Raw request bytes when the body arrived as text or binary: the host
+   * buffers text/plain and binary bodies and hands them over untouched.
+   * Undefined for bodyless methods and for JSON payloads - a JSON call is an
+   * operation, not a route.
+   */
+  readonly body: Uint8Array | undefined;
 }
 
 /**

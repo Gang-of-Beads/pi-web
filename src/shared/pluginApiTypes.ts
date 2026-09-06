@@ -44,6 +44,11 @@ export interface FileTreeResponse {
 
 export type FileContentMediaType = "image" | "html" | "pdf" | "markdown" | "audio" | "video";
 
+export interface FileSuggestion {
+  path: string;
+  kind: "tracked" | "untracked" | "other";
+}
+
 export interface FileContentResponse {
   path: string;
   language?: string;

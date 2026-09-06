@@ -1,8 +1,8 @@
 import { realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, relative, resolve, sep, win32 } from "node:path";
-import type { PiWebPathAccessConfig } from "../../../shared/apiTypes.js";
-import { normalizeRelativePath } from "../../shared/workspaces/pathSafety.js";
+import type { PluginPathAccessConfig } from "@gang-of-beads/pi-web/server-plugin-api";
+import { normalizeRelativePath } from "./pathSafety.js";
 
 export interface AllowedPathRoot {
   /** Raw config value for diagnostics. */
@@ -34,14 +34,14 @@ export interface PathAccessPolicyOptions {
   homeDir?: string;
 }
 
-export async function createPathAccessPolicy(workspaceRootPath: string, pathAccess: PiWebPathAccessConfig | undefined, options: PathAccessPolicyOptions = {}): Promise<PathAccessPolicy> {
+export async function createPathAccessPolicy(workspaceRootPath: string, pathAccess: PluginPathAccessConfig | undefined, options: PathAccessPolicyOptions = {}): Promise<PathAccessPolicy> {
   return {
     workspaceRoot: await canonicalDirectory(workspaceRootPath, "Workspace path"),
     allowedRoots: await resolveAllowedRoots(pathAccess?.allowedPaths ?? [], options),
   };
 }
 
-export async function resolveWorkspacePathAccessTarget(rootPath: string, requestedPath: string | undefined, pathAccess?: PiWebPathAccessConfig, options: PathAccessPolicyOptions = {}): Promise<ResolvedPathAccessTarget> {
+export async function resolveWorkspacePathAccessTarget(rootPath: string, requestedPath: string | undefined, pathAccess?: PluginPathAccessConfig, options: PathAccessPolicyOptions = {}): Promise<ResolvedPathAccessTarget> {
   const request = requestedPath ?? "";
   const workspaceRoot = await canonicalDirectory(rootPath, "Workspace path");
   const allowedRoots = isAbsoluteishPath(request) ? await resolveAllowedRoots(pathAccess?.allowedPaths ?? [], options) : [];

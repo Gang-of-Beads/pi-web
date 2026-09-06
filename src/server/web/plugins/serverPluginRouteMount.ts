@@ -16,7 +16,8 @@ import type { ServerPluginRuntime } from "../../shared/plugins/serverPluginRunti
  * client disconnects before the response finished, never by a lifecycle
  * bound.
  */
-export function mountServerPluginRoutes(app: FastifyInstance, runtime: ServerPluginRuntime, prefix: string): void {
+export function mountServerPluginRoutes(app: FastifyInstance, runtime: Pick<ServerPluginRuntime, "routeContributions">, prefix: string): void {
+  registerPluginRouteBodyParsers(app);
   for (const { pluginId, route } of runtime.routeContributions()) {
     mountOne(app, pluginId, route, prefix);
   }
@@ -49,6 +50,7 @@ function toFastifyHandler(route: ServerPluginRouteContribution): (request: Fasti
           params: stringRecord(request.params),
           query: singleValuedQuery(request.query),
           headers: singleValuedHeaders(request.headers),
+          body: routeBody(request.body),
         },
         pluginReply(reply),
         { signal: cancellation.signal },
@@ -57,6 +59,24 @@ function toFastifyHandler(route: ServerPluginRouteContribution): (request: Fasti
       cancellation.dispose();
     }
   };
+}
+
+function routeBody(body: unknown): Uint8Array | undefined {
+  if (body instanceof Uint8Array) return body;
+  if (typeof body === "string") return Buffer.from(body, "utf8");
+  return undefined;
+}
+
+/**
+ * Fastify's default parser only handles JSON; a plugin route that writes
+ * workspace files needs text and arbitrary binary bodies. Registration is
+ * app-level and must tolerate repeats: the same parsers the core file routes
+ * registered, so a body the core could read the plugin can read identically.
+ */
+function registerPluginRouteBodyParsers(app: FastifyInstance): void {
+  try { app.addContentTypeParser("text/plain", { parseAs: "string" }, (_request, body, done) => { done(null, Buffer.from(body)); }); } catch { /* already registered */ }
+  try { app.addContentTypeParser("application/octet-stream", { parseAs: "buffer" }, (_request, body, done) => { done(null, body); }); } catch { /* already registered */ }
+  try { app.addContentTypeParser(/^([a-z]+\/[a-z0-9.+-]+)$/u, { parseAs: "buffer" }, (_request, body, done) => { done(null, body); }); } catch { /* already registered */ }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

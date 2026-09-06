@@ -1,7 +1,8 @@
-import type { FileContentMediaType } from "./pluginApiTypes.js";
+import type { FileContentMediaType } from "@gang-of-beads/pi-web/plugin-api";
 
 export const MAX_INLINE_PREVIEW_BYTES = 10 * 1024 * 1024;
 export const MAX_INLINE_PREVIEW_LABEL = "10 MB";
+export const MAX_WORKSPACE_FILE_CONTENT_BYTES = 512 * 1024;
 
 /**
  * Audio and video preview bytes are streamed from the validated descriptor and

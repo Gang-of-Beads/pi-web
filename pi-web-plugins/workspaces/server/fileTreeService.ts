@@ -1,11 +1,12 @@
 import { lstat, readdir } from "node:fs/promises";
 import { isAbsolute, join, win32 } from "node:path";
-import type { FileTreeEntry, FileTreeResponse, PiWebPathAccessConfig } from "../../../shared/apiTypes.js";
+import type { FileTreeEntry, FileTreeResponse } from "@gang-of-beads/pi-web/plugin-api";
+import type { PluginPathAccessConfig } from "@gang-of-beads/pi-web/server-plugin-api";
 import { resolveWorkspacePathAccessTarget } from "./pathAccessPolicy.js";
 
 const MAX_ENTRIES = 1000;
 
-export async function listWorkspaceTree(rootPath: string, path: string | undefined, pathAccess?: PiWebPathAccessConfig): Promise<FileTreeResponse> {
+export async function listWorkspaceTree(rootPath: string, path: string | undefined, pathAccess?: PluginPathAccessConfig): Promise<FileTreeResponse> {
   const { target, displayPath } = await resolveWorkspacePathAccessTarget(rootPath, path, pathAccess);
   const stat = await lstat(target);
   if (!stat.isDirectory()) throw new Error("Path is not a directory");

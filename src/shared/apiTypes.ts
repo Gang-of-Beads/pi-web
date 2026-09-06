@@ -1255,10 +1255,7 @@ export interface SlashCommand {
   source: "extension" | "prompt" | "skill" | "builtin";
 }
 
-export interface FileSuggestion {
-  path: string;
-  kind: "tracked" | "untracked" | "other";
-}
+export type { FileSuggestion } from "./pluginApiTypes.js";
 
 export interface TerminalInfo {
   id: string;
