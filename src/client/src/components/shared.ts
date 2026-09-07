@@ -265,8 +265,9 @@ export const listStyles = css`
      after every base declaration it raises - a media query carries no extra
      specificity, so an earlier coarse rule loses to a later base rule. */
   @media (pointer: coarse) {
-    .list-search-input { height: 44px; }
-    .list-search-clear { width: 44px; height: 44px; }
+    .list-search-input { height: var(--pi-control-height-touch, 44px); }
+    .list-search-clear { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); }
+    .action-menu-panel button { min-height: var(--pi-control-height-touch, 44px); }
   }
   .search-empty { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); }
   section { box-sizing: border-box; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: var(--pi-space-5); }
@@ -282,7 +283,7 @@ export const listStyles = css`
   /* Coarse pointers get the comfort floor. Declared after every base rule it
      raises - a media query carries no extra specificity. */
   @media (pointer: coarse) {
-    .section-add { min-width: 44px; min-height: 44px; }
+    .section-add { min-width: var(--pi-control-height-touch, 44px); min-height: var(--pi-control-height-touch, 44px); }
   }
   /* On a phone the context row above already names the step being chosen, so a
      heading repeating that word only costs the list its first rows. The row's

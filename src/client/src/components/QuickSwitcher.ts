@@ -478,7 +478,13 @@ export class QuickSwitcher extends LitElement {
       .machine-tab { min-height: 44px; }
       .chip { min-height: 44px; min-width: 44px; }
       .row-menu-toggle { width: 44px; min-height: 44px; }
+      /* The toggle is absolutely positioned over the title's trailing edge;
+         the title's padding reserve must grow with it or the menu button
+         swallows taps aimed at the tail of a clamped name. */
+      .row-title { padding-right: 52px; }
       .row-menu button { min-height: 44px; }
+      input { height: 44px; }
+      .rename-input { min-height: 44px; }
     }
     .row-menu button:focus-visible:not(:disabled) { background: var(--pi-selection-bg); }
     @media (hover: hover) { .row-menu button:hover:not(:disabled) { background: var(--pi-selection-bg); } }

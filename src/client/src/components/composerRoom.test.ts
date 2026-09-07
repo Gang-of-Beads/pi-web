@@ -26,6 +26,16 @@ describe("what floats over the composer", () => {
     // Room for one button, not two.
     expect(rule).toMatch(/padding-right:\s*calc\(var\(--pi-space-4\) \+ 36px\)/u);
   });
+
+  /**
+   * The coarse floor grows the attach button to 44px; the plain-text path
+   * must pay for the wider overlay just like the CodeMirror path does, or
+   * the caret and wrapped tails sit under the button on a phone.
+   */
+  it("pays for the wider coarse attach button on the plain-text path", () => {
+    expect(sheets).toContain("textarea { padding-right: calc(var(--pi-space-4) + 44px); }");
+    expect(sheets).toContain(".markdown-editor .cm-content { padding-right: 58px; }");
+  });
 });
 
 describe("the step footer of a question card", () => {

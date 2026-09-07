@@ -720,7 +720,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .pending-session-row.starting-session .action-name { display: flex; align-items: center; gap: var(--pi-space-3); max-height: none; -webkit-line-clamp: 1; }
     .pending-session-row.starting-session .activity-indicator { flex: 0 0 auto; margin: 0; }
     .action-main.selecting { padding-left: calc(32px + var(--depth, 0) * 16px); }
-.session-checkbox { position: absolute; top: 9px; left: calc(8px + var(--depth, 0) * 16px); z-index: 2; margin: 0; }
+.session-checkbox { position: absolute; top: 9px; left: calc(8px + var(--depth, 0) * 16px); z-index: 2; box-sizing: border-box; width: 24px; height: 24px; margin: 0; }
     .subtree-toggle, .subtree-toggle.inert { position: absolute; top: 8px; left: calc(6px + var(--depth, 0) * 16px); z-index: 2; box-sizing: border-box; width: 24px; height: 24px; padding: 0; display: inline-grid; place-items: center; border: 1px solid transparent; border-radius: var(--pi-radius-sm); background: color-mix(in srgb, var(--pi-muted) 14%, transparent); color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: 1; }
     /* Formerly the toggle floated over the row's leading text and swallowed
        taps aimed at the session name. Reserve the gutter in the padding so
@@ -754,15 +754,20 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .search-empty { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); }
     .list-empty, .list-loading { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-sm); }
     @media (max-width: 760px) {
-      /* 16px keeps iOS Safari from zooming the viewport on focus, and the
-         taller controls match the platform minimum touch target. */
-      .session-search-input { height: 44px; font-size: 16px; }
-      .session-search-clear { width: 44px; height: 44px; }
-      .bulk-select-entry { width: 44px; min-width: 44px; height: 44px; }
-      .start-session-button { min-width: 44px; height: 44px; }
-      .cleanup-entry { min-height: 44px; padding: var(--pi-space-3) var(--pi-space-5); }
-      .action-menu-toggle { min-width: 44px; min-height: 44px; }
-      .bulk-row button { min-height: 44px; }
+      /* 16px keeps iOS Safari from zooming the viewport on focus. */
+      .session-search-input { font-size: 16px; }
+    }
+    /* Coarse pointers get the comfort floor at any width - the convention in
+       breakpoints.ts is pointer-scoped, not width-scoped, so tablets keep the
+       floor too. Declared after every base rule it raises. */
+    @media (pointer: coarse) {
+      .session-search-input { height: var(--pi-control-height-touch, 44px); }
+      .session-search-clear { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); }
+      .bulk-select-entry { width: var(--pi-control-height-touch, 44px); min-width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); }
+      .start-session-button { min-width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); }
+      .cleanup-entry { min-height: var(--pi-control-height-touch, 44px); padding: var(--pi-space-3) var(--pi-space-5); }
+      .action-menu-toggle { min-width: var(--pi-control-height-touch, 44px); min-height: var(--pi-control-height-touch, 44px); }
+      .bulk-row button { min-height: var(--pi-control-height-touch, 44px); }
     }
   `];
 }

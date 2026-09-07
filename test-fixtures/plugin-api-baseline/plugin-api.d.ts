@@ -139,9 +139,12 @@ export interface PluginDialog {
      *  centered surface; `fullscreen` presents the content edge-to-edge like a
      *  page, so a surface authored against a large canvas survives direct load
      *  and refresh instead of being squeezed into a card. The content MUST
-     *  work at both presentations unless it pins one explicitly. */
+     *  work at both presentations unless it pins one explicitly. Fullscreen
+     *  covers the backdrop entirely, so the content MUST provide its own close
+     *  control - Escape and the backdrop are overlay affordances only. */
     readonly presentation?: "overlay" | "fullscreen";
-    /** Called once for every close: Escape, backdrop, close(), or unregistration. */
+    /** Called once for every close: Escape, backdrop, close(), or unregistration.
+     *  On a fullscreen presentation only close() and unregistration fire. */
     readonly onClose?: () => void;
 }
 export interface PluginDialogHandle {

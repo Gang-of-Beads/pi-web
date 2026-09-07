@@ -1038,7 +1038,8 @@ test.describe("adding a project on a phone", () => {
     // AA floor and 44px the coarse-pointer comfort floor (--pi-control-height-touch).
     // This probe enforces 30px - stricter than AA, looser than comfort - and
     // comfort on coarse pointers is asserted per surface by the touch-target
-    // probe with its recorded exemptions (the tile menu, the hit-slop actions).
+    // probe; its exemption block is the ledger for the recorded exemptions
+    // (tile menu, hit-slop actions, msg-meta, session checkbox).
     expect(measured.height!).toBeGreaterThanOrEqual(30);
     expect(measured.width!).toBeGreaterThanOrEqual(30);
   });

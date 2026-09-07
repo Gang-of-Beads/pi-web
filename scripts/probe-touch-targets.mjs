@@ -1,19 +1,25 @@
 import { chromium } from "@playwright/test";
 
-const EXE = `${process.env.HOME}/Library/Caches/ms-playwright/chromium-1234/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`;
 const BASE = process.env.TOUCH_BASE ?? "http://127.0.0.1:8505";
 
 const AA_FLOOR = 24;
 const COMFORT = 44;
-/** Recorded exemptions from the coarse 44px comfort floor. The hit-slop
- *  actions extend to 44px through an ::after overlay (invisible to
- *  getBoundingClientRect); the tile menu carries a documented 36px exemption
- *  (shared.ts) because the tile's own cell carries the row's tap area; the
- *  collapsed msg-meta chip is inline in the message header line (WCAG 2.5.8
- *  inline exception) and meets the AA floor. */
+/** Recorded exemptions from the coarse 44px comfort floor, evaluated with
+ *  context: `require` is a selector the element must match for the exemption
+ *  to apply. The tile menu carries a documented 36px exemption (shared.ts)
+ *  because the tile's own cell carries the row's tap area - row variants of
+ *  the same class are NOT exempt. The hit-slop actions extend to 44px through
+ *  an ::after overlay (invisible to getBoundingClientRect) but keep their
+ *  24px AA duty; the collapsed msg-meta chip is inline in the message header
+ *  line (WCAG 2.5.8 inline exception) and meets the AA floor; the session
+ *  checkbox is a secondary control inside a row whose own cell carries the
+ *  tap area. */
 const HIT_SLOP_CLASSES = ["msg-action"];
-const EXEMPT_36 = ["action-menu-toggle"];
-const EXEMPT_INLINE = ["msg-meta"];
+const COMFORT_EXEMPT = [
+  { cls: "action-menu-toggle", require: ".list-body.tiles" },
+  { cls: "msg-meta", require: null },
+  { cls: "session-checkbox", require: null },
+];
 
 const deepAll = (selector) => `(function(){
   var out=[];
@@ -23,10 +29,10 @@ const deepAll = (selector) => `(function(){
 })()`;
 const metrics = `(function(){
   var rows=[];
-  var walk=function(root){var els=root.querySelectorAll("button, a, [role=button], [role=tab]");
+  var walk=function(root){var els=root.querySelectorAll("button, a, input, [role=button], [role=tab]");
     for(var j=0;j<els.length;j++){var el=els[j];var r=el.getBoundingClientRect();
       if(r.width===0&&r.height===0)continue;
-      rows.push({cls:String(el.className||""),label:(el.getAttribute("aria-label")||el.textContent||"").trim().slice(0,40),w:Math.round(r.width),h:Math.round(r.height)});}
+      rows.push({cls:String(el.className && el.className.baseVal !== undefined ? el.className.baseVal : el.className || ""),label:(el.getAttribute("aria-label")||el.textContent||"").trim().slice(0,40),w:Math.round(r.width),h:Math.round(r.height),inTiles:!!el.closest(".list-body.tiles")});}
     var kids=root.querySelectorAll("*");for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)walk(kids[i].shadowRoot);}};
   walk(document);
   return rows;
@@ -36,23 +42,31 @@ const failures = [];
 const audit = (surface, rows) => {
   for (const r of rows) {
     const cls = r.cls;
-    if (HIT_SLOP_CLASSES.some((hit) => cls.includes(hit))) continue;
+    const node = r.node;
     if (r.w < 4 || r.h < 4) continue;
-    if (r.w < AA_FLOOR || r.h < AA_FLOOR) failures.push(`${surface}: ${r.w}x${r.h} "${r.label}" below AA ${AA_FLOOR} (${cls.slice(0, 40)})`);
-    const exempt36 = EXEMPT_36.some((name) => cls.includes(name));
-    const exemptInline = EXEMPT_INLINE.some((name) => cls.includes(name));
-    if (!exempt36 && !exemptInline && (r.w < COMFORT || r.h < COMFORT)) {
-      if (!failures.some((line) => line.startsWith(`${surface}:`) && line.includes(`"${r.label}"`))) {
-        failures.push(`${surface}: ${r.w}x${r.h} "${r.label}" below coarse ${COMFORT} (${cls.slice(0, 40)})`);
-      }
+    if (r.w < AA_FLOOR || r.h < AA_FLOOR) {
+      failures.push(`${surface}: ${r.w}x${r.h} "${r.label}" below AA ${AA_FLOOR} (${cls.slice(0, 40)})`);
+      continue;
+    }
+    const exempt = COMFORT_EXEMPT.find((e) => cls.includes(e.cls) && (!e.require || r.inTiles))
+      || (HIT_SLOP_CLASSES.some((hit) => cls.includes(hit)) ? { cls: "" } : undefined);
+    if (!exempt && (r.w < COMFORT || r.h < COMFORT)) {
+      failures.push(`${surface}: ${r.w}x${r.h} "${r.label}" below coarse ${COMFORT} (${cls.slice(0, 40)})`);
     }
   }
 };
 
-const browser = await chromium.launch({ executablePath: EXE, headless: true });
+const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 393, height: 850 }, hasTouch: true, isMobile: true });
 await page.goto(BASE, { waitUntil: "domcontentloaded" });
 await page.waitForTimeout(3000);
+
+const coarse = await page.evaluate(() => matchMedia("(pointer: coarse)").matches);
+if (!coarse) {
+  console.error("FAIL: emulation does not report (pointer: coarse) - the audit would silently degrade to AA-only");
+  await browser.close();
+  process.exit(1);
+}
 
 audit("boot", await page.evaluate(metrics));
 

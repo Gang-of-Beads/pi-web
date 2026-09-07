@@ -2,7 +2,8 @@ import type { EditorView } from "@codemirror/view";
 import type { ComposerEditorHandle } from "./composerEditorSetup";
 
 type ComposerEditorModule = typeof import("./composerEditorSetup");
-import { css, LitElement, html, type PropertyValues } from "lit";
+import { css, unsafeCSS, LitElement, html, type PropertyValues } from "lit";
+import { SHORT_VIEWPORT_MEDIA_QUERY as shortViewportMediaQuery } from "../breakpoints";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { api, type FileSuggestion, type PromptAttachment, type SessionModel, type SessionStatus, type SlashCommand } from "../api";
 import type { PromptAttachmentDelivery } from "../../../shared/apiTypes";
@@ -90,7 +91,7 @@ export const promptEditorStyles = css`
      composer sized for a full screen took 119px of it - the transcript was
      left with about two lines. The composer keeps a floor so it stays usable
      and gives the rest back to what is being read. */
-  @media (max-height: 620px) {
+  @media ${unsafeCSS(shortViewportMediaQuery)} {
     textarea, .markdown-editor .cm-editor { min-height: 40px; max-height: 22dvh; }
     .markdown-editor .cm-scroller { max-height: 22dvh; }
     .markdown-editor .cm-content { min-height: 28px; }
@@ -158,11 +159,11 @@ export const promptEditorStyles = css`
      the tap lands on the image instead, so on touch the badge grows and the
      chip grows with it rather than swallowing its own control. */
   @media (pointer: coarse) {
-    .attachment-chip { width: 64px; height: 64px; }
-    .attachment-remove { top: 2px; right: 2px; width: 28px; height: 28px; line-height: 26px; font-size: var(--pi-text-md); }
-    .editor-attach { width: 40px; height: 40px; }
-    .markdown-editor .cm-content { padding-right: 54px; }
-    .markdown-editor .cm-placeholder { right: 54px; }
+    .attachment-chip { width: 72px; height: 72px; }
+    .editor-attach { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); }
+    .markdown-editor .cm-content { padding-right: 58px; }
+    .markdown-editor .cm-placeholder { right: 58px; }
+    textarea { padding-right: calc(var(--pi-space-4) + 44px); }
   }
   .attachment-error { flex-basis: 100%; color: var(--pi-danger); font-size: var(--pi-text-xs); }
   button { font: var(--pi-text-xs) var(--pi-font-ui); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
@@ -188,14 +189,14 @@ export const promptEditorStyles = css`
      max-width block above because on a 393px phone both match and the later
      same-specificity rule would otherwise pin the icons at 40px. */
   @media (pointer: coarse) {
-    .icon-button { width: 44px; height: 44px; }
-    .attachment-remove { width: 44px; height: 44px; line-height: 42px; top: 0; right: 0; }
-    .select-model { min-height: 44px; }
-    .select-thinking { min-width: 44px; }
+    .icon-button { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); }
+    .attachment-remove { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); line-height: calc(var(--pi-control-height-touch, 44px) - 2px); top: 0; right: 0; }
+    .select-model { min-height: var(--pi-control-height-touch, 44px); }
+    .select-thinking { min-width: var(--pi-control-height-touch, 44px); }
     /* The compact status row compresses its buttons (min-width: 0, flex
        shrink) at higher specificity than the icon rules above, so the comfort
        floor needs the same selector to win the cascade. */
-    .compact-status > button { min-width: 44px; min-height: 44px; }
+    .compact-status > button { min-width: var(--pi-control-height-touch, 44px); min-height: var(--pi-control-height-touch, 44px); }
   }
 
   /* Hold the whole list layout still while the user is selecting rows: the

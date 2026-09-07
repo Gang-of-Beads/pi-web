@@ -450,7 +450,7 @@ export class AppNavigationPanel extends LitElement {
     .compact-header-action:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
     /* Coarse pointers get the comfort floor: the glyph is small but the hit
        box carries the row's tap weight in the phone header. */
-    @media (pointer: coarse) { .compact-header-action { min-width: 44px; min-height: 44px; } }
+    @media (pointer: coarse) { .compact-header-action { min-width: var(--pi-control-height-touch, 44px); min-height: var(--pi-control-height-touch, 44px); } }
     @media (hover: hover) { .compact-header-action:hover { background: var(--pi-surface-hover); } }
     .tools-section { flex: 0 0 auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 10px var(--pi-space-4) calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--pi-border-muted); }
     .tool-row:last-child:nth-child(odd) { grid-column: 1 / -1; }
