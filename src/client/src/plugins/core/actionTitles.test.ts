@@ -33,9 +33,14 @@ describe("how the app capitalises the things it can do", () => {
   });
 
   it("keeps the product name capitalised", () => {
-    const titles = createCoreActions().map((action) => action.title);
-
-    expect(titles).toContain("Open selected machine PI WEB");
+    // The machine actions that name the product moved to the machines plugin;
+    // the invariant travels with them, so the title is pinned in the plugin
+    // source where the action now lives.
+    const machinesPluginSource = readFileSync(
+      join(import.meta.dirname, "../../../../../pi-web-plugins/machines/browser/pi-web-plugin.ts"),
+      "utf8",
+    );
+    expect(machinesPluginSource).toContain('title: "Open selected machine PI WEB"');
   });
 });
 
