@@ -639,7 +639,16 @@ export class PiWebApp extends LitElement {
     // Lit has now committed the selected chat and app-shell visibility state.
     // Recheck after every rendered transition; the unread controller
     // deduplicates acknowledgements for the observed completion order.
-    this.committedChatIdentity = selectedChatIdentity(this.state);
+    const chatIdentity = selectedChatIdentity(this.state);
+    if (chatIdentity !== this.committedChatIdentity) {
+      // A failed activity read keeps the rows it last saw, but those rows are
+      // facts about the chat they were read for: carrying them under another
+      // selection would render one chat's frozen work on another's dock.
+      if (this.state.subagents.length > 0 || this.state.subagentRuns.length > 0 || this.state.backgroundTasks.length > 0) {
+        this.setState({ subagents: [], subagentRuns: [], backgroundTasks: [] });
+      }
+    }
+    this.committedChatIdentity = chatIdentity;
     this.syncSelectedSessionReadState();
     this.syncFleetOnSettingsSection();
     this.syncDocumentTitle();
@@ -742,14 +751,6 @@ export class PiWebApp extends LitElement {
       return;
     }
     if (!shouldPoll) this.subagentRefreshArmedFor = undefined;
-  }
-
-  /** Open a subagent session listed anywhere in the machine. */
-  private openSubagent(info: SessionSubagentInfo): void {
-    const session = this.quickSwitcherSessions.find((entry) => entry.id === info.sessionId) ??
-      this.state.sessions.find((entry) => entry.id === info.sessionId);
-    if (session === undefined) return;
-    void this.selectNavigationItem("sessions", "chat", () => this.sessions.selectSession(session));
   }
 
   private readonly refreshSubagents = oneReadAtATime(() => this.readSubagents());
@@ -3633,7 +3634,7 @@ export class PiWebApp extends LitElement {
 
   private renderChatView(state: AppState, session: SessionInfo) {
     return html`
-      <chat-view .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .loadingMore=${state.isLoadingEarlierMessages} .transcriptLoading=${state.isLoadingTranscript} .transcriptFailed=${state.transcriptFailed} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk} .pendingDialogs=${state.pendingDialogs} .commandLedger=${commandsForSession(state.commandLedger, machineSessionKey(selectedMachineId(state), session.id))} .goalCommandInFlight=${this.goalCommandInFlight} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .subagents=${state.subagents} .subagentRuns=${state.subagentRuns} .backgroundTasks=${state.backgroundTasks} .onClearServerQueue=${this.handleClearServerQueue} .onDismissLedgerRow=${(id: string) => { this.sessions.dismissLedgerRow(id); }} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }} .findMessageRenderer=${(tag: string) => this.plugins.findMessageRenderer(tag, selectedMachineId(state))} .drawerSections=${this.plugins.getDrawerSections(selectedMachineId(state))} .drawerMachineId=${selectedMachineId(state)} .drawerWorkspacePath=${state.selectedWorkspace?.path} .sessionCwd=${session.cwd}></chat-view>
+      <chat-view .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .loadingMore=${state.isLoadingEarlierMessages} .transcriptLoading=${state.isLoadingTranscript} .transcriptFailed=${state.transcriptFailed} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk} .pendingDialogs=${state.pendingDialogs} .commandLedger=${commandsForSession(state.commandLedger, machineSessionKey(selectedMachineId(state), session.id))} .goalCommandInFlight=${this.goalCommandInFlight} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .subagents=${state.subagents} .subagentRuns=${state.subagentRuns} .backgroundTasks=${state.backgroundTasks} .onClearServerQueue=${this.handleClearServerQueue} .onDismissLedgerRow=${(id: string) => { this.sessions.dismissLedgerRow(id); }} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }} .findMessageRenderer=${(tag: string) => this.plugins.findMessageRenderer(tag, selectedMachineId(state))} .drawerSections=${this.plugins.getDrawerSections(selectedMachineId(state))} .onRunSectionCommand=${(command: string) => this.runGoalCommand(command)} .drawerMachineId=${selectedMachineId(state)} .drawerWorkspacePath=${state.selectedWorkspace?.path} .sessionCwd=${session.cwd}></chat-view>
     `;
   }
 

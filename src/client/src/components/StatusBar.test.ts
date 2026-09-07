@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { StatusBar } from "./StatusBar";
 
 /**
- * Warnings file in the notification drawer now; the status bar's warning
+ * Warnings file as session notifications now; the status bar's warning
  * counter and toggle went with the transcript-top cards. The property probe
  * pins the deletion so a revival cannot land silently.
  */

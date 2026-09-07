@@ -75,7 +75,13 @@ written:
 
 1. Dock background state is a silent pill: no tap, no reveal.
 2. Warnings lose their drawer surface; the gap is accepted until a plugin page
-   returns for them (server-side filing untouched).
+   returns for them (server-side filing untouched). The surface carried more
+   than warnings: the daemon also files dialog outcomes, command receipts and
+   runtime notices as session notifications, and those lose their read-back
+   surface too. The shipped openspec chat specs (settled-outcomes,
+   warning-delivery, panel-load-honesty, pending-input-stability,
+   state-consistency) still describe the drawer as that surface; a plugin page
+   or a spec delta has to reconcile them.
 3. The drawer renders nothing (no frame, no toggle) when no plugin contributes
    a section; `drawerTabSelection` is contributed-sections-only.
 

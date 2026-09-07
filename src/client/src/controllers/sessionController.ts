@@ -2331,8 +2331,9 @@ export class SessionController {
  * so even an unanswered timeout there is part of the story.
  *
  * An answered dialog leaves none. Answering is its own acknowledgment, and the
- * outcome is filed in the notification drawer, so a tail card would only be a
- * row that never leaves: the outcome cards are drawn after the transcript, so
+ * outcome is filed as a session notification for whatever surface a plugin
+ * later gives that drawer, so a tail card would only be a row that never
+ * leaves: the outcome cards are drawn after the transcript, so
  * nothing pushes them off the screen. Dropping the Dismiss button without
  * dropping the card is what pinned an answered update notice to the bottom of
  * the owner's phone.

@@ -41,7 +41,8 @@ describe("SessionController background dialog outcomes", () => {
     harness.socket.emit({ type: "dialog.closed", dialogId: "dlg-1", reason: "answered", answer: "Skip" });
 
     // A choice the user made is worth keeping, even for a background prompt.
-    // Answering is its own acknowledgment and the drawer keeps the record; a
+    // Answering is its own acknowledgment and the filed notification keeps
+    // the record; a
     // card here would outlive every scroll, because outcome cards render last.
     expect(harness.state().closedDialogs).toEqual([]);
     expect(harness.state().dismissedDialogIds).toEqual(["dlg-1"]);

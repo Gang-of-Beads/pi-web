@@ -334,7 +334,8 @@ describe("SessionController extension dialog state", () => {
 
     // Outcome cards render after the transcript, so nothing ever pushes them
     // off screen: an answered dialog that stayed would sit above the composer
-    // for the rest of the session. Its record is the drawer notification.
+    // for the rest of the session. Its record is the filed session
+    // notification.
     expect(harness.state().closedDialogs).toEqual([]);
     expect(harness.state().pendingDialogs).toEqual([]);
     // Suppression cannot depend on the card: a status snapshot built before the

@@ -18,7 +18,7 @@ afterEach(() => {
  *
  * An answered card no longer offers Dismiss at all: it collapses to a quiet
  * row the moment it settles (the owner chose that), and its durable record is
- * the notification the daemon filed in the drawer. No settled card renders a
+ * the notification the daemon filed for the session. No settled card renders a
  * control: settled is settled for every close reason.
  */
 describe("ChatView settled extension dialog dismissal", () => {

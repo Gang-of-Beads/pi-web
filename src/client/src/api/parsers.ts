@@ -2346,18 +2346,6 @@ export function parseBackgroundTasks(value: unknown): SessionBackgroundTaskInfo[
   return tasks;
 }
 
-export function parseBackgroundTaskOutput(value: unknown): string {
-  if (!isRecord(value)) return "";
-  const output = value["output"];
-  return typeof output === "string" ? output : "";
-}
-
-export function parseSubagentRunOutput(value: unknown): string {
-  if (!isRecord(value)) return "";
-  const output = value["output"];
-  return typeof output === "string" ? output : "";
-}
-
 function parseSubagentRuns(value: unknown): SessionSubagentRunInfo[] {
   if (!Array.isArray(value)) return [];
   const runs: SessionSubagentRunInfo[] = [];

@@ -2,8 +2,8 @@ import type { QualifiedContributionId } from "./plugins/ids";
 
 /**
  * Which session-drawer tab is showing. The drawer's own content is all
- * contributed now: activity and notifications moved out to plugins, so a tab
- * is a contributed section's qualified id and nothing else.
+ * contributed now: the built-in pages were removed, so a tab is a contributed
+ * section's qualified id and nothing else.
  *
  * The reader's own choice always wins, including a choice of a section that
  * currently has nothing in it: a tab someone opened deliberately must not be

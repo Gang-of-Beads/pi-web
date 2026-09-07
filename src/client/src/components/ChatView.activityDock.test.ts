@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionActivity, SessionStatus } from "../../../shared/apiTypes";
-import { activityDockLabel, backgroundTaskRows, subagentRunRows, backgroundWorkLabel, ChatView, LONG_TURN_AFTER_MS, turnElapsedLabel } from "./ChatView";
+import { activityDockLabel, backgroundWorkLabel, ChatView, LONG_TURN_AFTER_MS, turnElapsedLabel } from "./ChatView";
 
 function status(over: Partial<SessionStatus>): SessionStatus {
   return {
@@ -104,13 +104,12 @@ describe("backgroundWorkLabel", () => {
   // "idle" alone is a lie while this chat's children are still running: the
   // assistant's turn is over, the work is not.
   it("names the live background work that outlives the turn", () => {
-    expect(backgroundWorkLabel({ rows: [], runRows: [{ status: "running" }], taskRows: [] })).toBe("idle · 1 background run");
-    expect(backgroundWorkLabel({ rows: [{ status: "working" }], runRows: [{ status: "running" }], taskRows: [{ status: "running" }] }))
-      .toBe("idle · 3 background runs");
+    expect(backgroundWorkLabel({ working: 1 })).toBe("idle · 1 background run");
+    expect(backgroundWorkLabel({ working: 3 })).toBe("idle · 3 background runs");
   });
 
   it("leaves a quiet session alone", () => {
-    expect(backgroundWorkLabel({ rows: [], runRows: [{ status: "done" }], taskRows: [{ status: "failed" }] })).toBeUndefined();
+    expect(backgroundWorkLabel({ working: 0 })).toBeUndefined();
     expect(backgroundWorkLabel(undefined)).toBeUndefined();
   });
 });
@@ -207,51 +206,6 @@ describe("a question the user has not answered", () => {
     expect(activityDockLabel("asking", "idle", "waiting on the model")).toBe("Waiting for your answer");
   });
 });
-
-describe("what counts as a failure in the activity summary", () => {
-  /**
-   * Stopping a background task is something the reader did on purpose. Folding
-   * killed tasks in with failed ones made the drawer report dozens of
-   * failures for a session where nothing had gone wrong, which is the same
-   * mistake as calling a deliberately ended turn an error: a human action
-   * reported as a fault teaches the reader to ignore the count.
-   *
-   * Lost is kept separate too: losing track of a task is not the task failing.
-   */
-  it("does not call a stopped task a failure", () => {
-    const rows = backgroundTaskRows([
-      { id: "a", name: "one", status: "killed", startedAt: "", durationMs: 0, command: "true", bytesWritten: 0, hasOutput: false },
-      { id: "b", name: "two", status: "failed", startedAt: "", durationMs: 0, command: "true", bytesWritten: 0, hasOutput: false },
-      { id: "c", name: "three", status: "completed", startedAt: "", durationMs: 0, command: "true", bytesWritten: 0, hasOutput: false },
-    ]);
-
-    expect(rows.map((row) => row.status)).toEqual(["stopped", "failed", "done"]);
-  });
-
-  it("says a stopped task was stopped", () => {
-    const rows = backgroundTaskRows([{ id: "a", name: "one", status: "killed", startedAt: "", durationMs: 0, command: "true", bytesWritten: 0, hasOutput: false }]);
-
-    expect(rows[0]?.statusLabel).toBe("Stopped");
-  });
-});
-
-describe("a subagent run whose fate is unknown", () => {
-  /**
-   * Losing track of a run is the reader losing information, not the run
-   * failing. Reporting it as failed put a fault on the board for something
-   * nobody had established had gone wrong.
-   */
-  it("does not call a lost run a failure", () => {
-    const rows = subagentRunRows([
-      { runId: "r1", status: "lost", elapsedMs: 0, startedAt: "", agent: "reviewer", task: "look", hasOutput: false },
-    ]);
-
-    expect(rows[0]?.status).toBe("lost");
-    expect(rows[0]?.statusLabel).toBe("Lost");
-  });
-});
-
-
 
 describe("the dock's row cannot vanish mid-stream", () => {
   /**

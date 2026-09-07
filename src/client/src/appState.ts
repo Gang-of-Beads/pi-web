@@ -106,7 +106,6 @@ export interface AppState {
    * have, so machine switches clear the map instead of retaining it. */
   sessionStatuses: Record<string, SessionStatus>;
   sessionActivities: Record<string, SessionActivity>;
-  /** Authoritative projection plus browser-local optimistic overlays for the selected inbox. */
   /** Self-update check result for this host; undefined means not checked yet. */
   selfUpdate: PiWebSelfUpdateStatus | undefined;
   /** True while the Update now flow is applying and the page will reconnect. */

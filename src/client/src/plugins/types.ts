@@ -352,17 +352,11 @@ export interface PluginContributions {
 }
 
 /**
- * A section in the session drawer, beside Activity and Notifications.
- *
- * The drawer is where a session's side channels live, and a feature that owns
- * one - goals is the first - had to be built into the chat view to get there.
- * A contributed section brings its own tab label and body; the shell keeps tab
- * selection, keyboard order and the collapsed state, so a plugin cannot make
- * its section behave unlike its neighbours.
- *
- * `available` is what decides whether the tab appears at all. A section that
- * cannot say yet answers undefined, and the shell shows the tab rather than
- * claiming the feature is missing.
+ * A section in the session drawer. The drawer renders exactly what plugins
+ * contribute and disappears when nothing does; the shell keeps tab selection,
+ * keyboard order and the collapsed state, the plugin brings a label and a
+ * body. `available` answering undefined means the section cannot say yet, and
+ * the shell shows the tab rather than claiming the feature is missing.
  */
 export interface DrawerSectionContext {
   sessionId: string;

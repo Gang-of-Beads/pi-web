@@ -309,11 +309,11 @@ export interface PluginContributions {
     drawerSections?: DrawerSectionContribution[];
 }
 /**
- * A section in the session drawer, beside Activity and Notifications. The
- * shell keeps tab selection, keyboard order and the collapsed state; the
- * plugin brings a label and a body. `available` answering undefined means the
- * section cannot say yet, and the shell shows the tab rather than claiming the
- * feature is missing.
+ * A section in the session drawer. The drawer renders exactly what plugins
+ * contribute and disappears when nothing does; the shell keeps tab selection,
+ * keyboard order and the collapsed state, the plugin brings a label and a
+ * body. `available` answering undefined means the section cannot say yet, and
+ * the shell shows the tab rather than claiming the feature is missing.
  */
 export interface DrawerSectionContext {
     sessionId: string;

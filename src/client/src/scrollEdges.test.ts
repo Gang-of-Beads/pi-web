@@ -6,7 +6,8 @@ describe("horizontalScrollEdges", () => {
     expect(horizontalScrollEdges({ scrollLeft: 0, scrollWidth: 240, clientWidth: 240 })).toEqual({ left: false, right: false });
   });
 
-  // Measured from the real drawer tabs: two tabs need 261px and get 240.
+  // Measured against the drawer's tab row: a page one pixel past the
+  // viewport must point right.
   it("points right while the end of the row is out of sight", () => {
     expect(horizontalScrollEdges({ scrollLeft: 0, scrollWidth: 261, clientWidth: 240 })).toEqual({ left: false, right: true });
   });

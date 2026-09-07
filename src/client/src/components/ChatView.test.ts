@@ -167,7 +167,7 @@ describe("ChatView queued messages stay in place", () => {
 });
 
 describe("deleted warning cards stay deleted", () => {
-  // Warnings file in the notification drawer now; the transcript-top cards,
+  // Warnings file as session notifications now; the transcript-top cards,
   // their collapse chevron and their status-bar counter are gone. The render
   // seam assertion pins the deletion so a revival cannot land silently.
   it("no longer exposes a warning-card render seam", () => {

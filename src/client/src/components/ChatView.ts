@@ -15,8 +15,6 @@ import type { AskUserSubmission, PendingAskUser, PendingExtensionDialog, QueuedS
 import { commandStateLabel, type CommandLedgerEntry } from "../commandLedger";
 import type { ClosedExtensionDialog } from "../appState";
 import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
-import { describeRunModel } from "../modelIdentity";
-import { subagentRunStatusExplanation, subagentRunStatusLabel } from "../subagentRunStatusLabel";
 import { isWaitingForUser } from "../sessionWaiting";
 import type { SessionBackgroundTaskInfo, SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
 import type { ChatLine, ChatPart, MessageDelivery } from "./shared";
@@ -158,28 +156,6 @@ export const chatStyles = css`
   .drawer-header-actions { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-1); }
   .drawer-body { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
   .drawer-body[hidden] { display: none; }
-  @media (pointer: coarse) {
-  }
-  /* Two fixed lines per row: the identity line never reflows, and the detail
-     line is one clipped line, because a subagent's task text is a paragraph
-     and a strip that grows with it is the bug this replaced. */
-  /* A row with no output to open is not a button in any useful sense; say so
-     instead of letting a thumb bounce off it. */
-  /* Status changes under the reader's eyes - a row goes running to done while
-     the drawer is open - so the colours that carry that meaning move rather
-     than jump. Paint only: animating the row's size would shift every row
-     below it. The reduced-motion block above collapses these to nothing. */
-  /* Unknown: no evidence either way. The hollow dot and the dashed edge are
-     the app's unsettled language — the run may still be alive — where Lost's
-     flat gray records a settled fact: the process is gone. Without this the
-     two states drew identically and only the word differed. */
-  /* The kind, in a word: the filter chips name the same three categories, so a
-     row says which one it is without the reader inferring it from the shape. */
-  /* What the run is on. Quiet: it answers "which model, at what thinking
-     level" for a reader scanning a fleet, without competing with the agent's
-     own name. */
-  /* Quiet, full-width and last: the history is available without competing
-     with the work that is actually running. */
   /* One rule for the whole drawer: the project sets 44px as its touch height
      (--pi-control-height-touch), and controls added a few at a time had drifted
      to 30, 32, 36 and 40. Placed after every base declaration it overrides -
@@ -187,6 +163,7 @@ export const chatStyles = css`
      earlier in the sheet loses to the base height it was meant to raise. */
   @media (pointer: coarse) {
     .drawer-header { min-height: 44px; }
+    .drawer-collapse { width: 44px; height: 44px; }
   }
   .drawer-control { box-sizing: border-box; min-height: 32px; border: 0; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); cursor: pointer; }
   .drawer-control { padding: 0 var(--pi-space-4); font: var(--pi-text-xs) var(--pi-font-ui); white-space: nowrap; }
@@ -206,19 +183,12 @@ export const chatStyles = css`
   /* Copy and dismiss sit together in one cluster rather than one floating over
      the text: the message wraps under them, so an absolute button either
      overlapped the text or forced padding that made every row look ragged. */
-  @media (pointer: coarse) {
-  }
   @media (max-width: 640px) {
     .drawer-header { gap: var(--pi-space-2); padding-inline: 8px; }
     .drawer-tab { padding-inline: var(--pi-space-4); }
   }
   /* A short window is the case the drawer was breaking: keep it to a slice of
      the viewport so the transcript never becomes a letterbox. */
-  @media (max-height: 620px) {
-    /* Enough for two rows, or the drawer is a header with nothing under it -
-       measured at 390x400 (a phone with the keyboard up): 28px of viewport for
-       456px of content, and the sticky filter row alone was taller than that. */
-  }
   /* The 64px bottom padding was the reservation for the activity dock back when
      it floated over the scroller's bottom edge (both arrived in the commit that
      added the dock); measured at 393x850 the last message sat 80px above the
@@ -264,14 +234,11 @@ export const chatStyles = css`
   .activity-dock.asking { width: fit-content; max-width: min(80%, 420px); }
   /* Idle turn, live children: readable as "waiting on something", not as the
      assistant working. */
-  /* The one dock state that is a control, so it opts back into pointer events
-     and carries an affordance. */
-  .activity-dock.background { width: fit-content; max-width: min(70%, 300px); border-color: var(--pi-purple-border); color: var(--pi-purple); padding: var(--pi-space-2) var(--pi-space-5); font: inherit; font-size: var(--pi-text-xs); pointer-events: auto; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  /* The named work has no drawer page to open: the pill states it and stays a
+     state line - no pointer affordance, because a control that looks
+     actionable and is inert is worse than a sentence. */
+  .activity-dock.background { width: fit-content; max-width: min(70%, 300px); border-color: var(--pi-purple-border); color: var(--pi-purple); padding: var(--pi-space-2) var(--pi-space-5); font: inherit; font-size: var(--pi-text-xs); }
   .activity-dock { transition: color var(--pi-motion-base) var(--pi-ease), background-color var(--pi-motion-base) var(--pi-ease), border-color var(--pi-motion-base) var(--pi-ease); }
-  .activity-dock.background:focus-visible { border-color: var(--pi-purple); background: var(--pi-purple-surface); }
-  @media (hover: hover) { .activity-dock.background:hover { border-color: var(--pi-purple); background: var(--pi-purple-surface); } }
-  @media (pointer: coarse) { .activity-dock.background { min-height: 44px; padding-block: var(--pi-space-4); } }
-  .activity-dock.background:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 2px; }
   .activity-dock.background .dot { background: currentColor; opacity: 1; animation: pulse 1s ease-in-out infinite; }
   .activity-elapsed { flex: 0 0 auto; margin-left: auto; color: inherit; font-size: var(--pi-text-2xs); font-variant-numeric: tabular-nums; opacity: .85; }
   /* A turn that has run for ten minutes without finishing is worth a second
@@ -620,10 +587,6 @@ export class ChatView extends LitElement {
   /** Subagent-tool runs for this session, newest first, live ones first of all. */
   @property({ attribute: false }) subagentRuns?: readonly SessionSubagentRunInfo[];
   @property({ attribute: false }) backgroundTasks?: readonly SessionBackgroundTaskInfo[];
-  @property({ attribute: false }) onOpenBackgroundTask?: (task: SessionBackgroundTaskInfo) => void;
-  @property({ attribute: false }) onOpenSubagentRun?: (run: SessionSubagentRunInfo) => void;
-  /** Open a listed subagent in the navigation. */
-  @property({ attribute: false }) onOpenSubagent?: (subagent: SessionSubagentInfo) => void;
   @property({ attribute: false }) onClearServerQueue?: (queued: QueuedSessionMessage[]) => void;
   /** Close one settled receipt; a pending row is live work and refuses. */
   @property({ attribute: false }) onDismissLedgerRow?: (id: string) => void;
@@ -919,7 +882,11 @@ export class ChatView extends LitElement {
     this.dockResizeObserver?.disconnect();
     this.observedDock = dockEl;
     this.dockResizeObserver = undefined;
-    if (dockEl === undefined || typeof ResizeObserver === "undefined") return;
+    if (dockEl === undefined) {
+      this.publishDockRoom();
+      return;
+    }
+    if (typeof ResizeObserver === "undefined") return;
     this.dockResizeObserver = new ResizeObserver(() => {
       this.publishDockRoom();
     });
@@ -1038,14 +1005,9 @@ export class ChatView extends LitElement {
   }
 
   /**
-   * One drawer above the transcript for everything this conversation is doing
-   * besides replying: the subagents/tasks it started, and the notifications it
-   * received.
-   *
-   * They used to stack, so on a short window each got a sliver and both were
-   * scrolled surfaces inside a scrolled surface. Tabs give whichever one the
-   * reader is asking about the whole drawer, and one control folds the drawer
-   * away entirely.
+   * The session drawer hosts whatever sections plugins contribute - the
+   * goals panel, a terminal, anything registered on this machine - and the
+   * reader's own choice of section survives until they change it.
    */
   /**
    * Folding is an explicit choice per chat, in both directions: the default
@@ -1067,7 +1029,6 @@ export class ChatView extends LitElement {
     this.expandedTopDrawerKeys = expandedKeys;
   }
 
-  /** Choosing a section is also how a folded drawer is opened on that section. */
   /**
    * The scope a contributed section is drawn for. Undefined while no session
    * is selected: a section asked about nothing would have to invent an answer.
@@ -1090,8 +1051,9 @@ export class ChatView extends LitElement {
    * the same session id on another machine or cwd starts fresh.
    */
   private topDrawerKey(): string {
-    return JSON.stringify([null, null, this.sessionId]);
+    return JSON.stringify([this.drawerMachineId, this.drawerWorkspacePath, this.sessionId]);
   }
+
 
   private renderTopDrawer(): TemplateResult | null {
     const sectionContext = this.drawerSectionContext();
@@ -1174,20 +1136,13 @@ export class ChatView extends LitElement {
    * questions. Kinds with nothing in them are not offered.
    */
   private activityPanelState(): ActivityPanelState | undefined {
-    const subagents = this.subagents ?? [];
-    const runs = this.subagentRuns ?? [];
-    const tasks = this.backgroundTasks ?? [];
-    if (subagents.length === 0 && runs.length === 0 && tasks.length === 0) return undefined;
-    const rows = subagentRows(subagents);
-    const runRows = subagentRunRows(runs);
-    const taskRows = backgroundTaskRows(tasks);
-    const summary = activityStripSummary([
-      ...rows.map((row) => row.status),
-      ...runRows.map((row) => row.status),
-      ...taskRows.map((row) => row.status),
-    ]);
-    const activeCount = [...rows, ...runRows, ...taskRows].filter((row) => isActiveActivityStatus(row.status)).length;
-    return { rows, runRows, taskRows, summary, total: rows.length + runRows.length + taskRows.length, activeCount };
+    // The dock pill counts live work; the per-row presentation shapes retired
+    // with the activity panel they were built for.
+    const total = (this.subagents?.length ?? 0) + (this.subagentRuns?.length ?? 0) + (this.backgroundTasks?.length ?? 0);
+    if (total === 0) return undefined;
+    const working = [...this.subagents ?? [], ...this.subagentRuns ?? [], ...this.backgroundTasks ?? []]
+      .filter((row) => row.status === "working" || row.status === "running").length;
+    return { working };
   }
 
   private renderImageZoom() {
@@ -2380,48 +2335,6 @@ export class ChatView extends LitElement {
   static override styles = chatStyles;
 }
 
-/**
- * Row fields for the subagents strip, derived once so the presentation layer
- * stays a dumb map and the shape is testable directly (mirrors
- * chatSessionWarningRows).
- */
-export interface SubagentRow {
-  subagent: SessionSubagentInfo;
-  shortId: string;
-  status: SessionSubagentInfo["status"];
-  /** "Working"/"idle"/"error"/"unknown": the word shown in the strip. */
-  statusLabel: string;
-  cwd: string;
-  ariaLabel: string;
-}
-
-/** How long a run has been going, in the shortest form that stays readable. */
-export function subagentRunDuration(elapsedMs: number): string {
-  const seconds = Math.max(0, Math.round(elapsedMs / 1000));
-  if (seconds < 60) return `${String(seconds)}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${String(minutes)}m ${String(seconds % 60)}s`;
-  return `${String(Math.floor(minutes / 60))}h ${String(minutes % 60)}m`;
-}
-
-export interface SubagentRunRow {
-  run: SessionSubagentRunInfo;
-  status: SessionSubagentRunInfo["status"];
-  statusLabel: string;
-  statusExplanation: string;
-  duration: string;
-  detail: string;
-  /** Model and thinking level, when the run recorded what it ran on. */
-  modelLabel?: string;
-  modelTitle?: string;
-  ariaLabel: string;
-}
-
-/**
- * A row per subagent-tool run. The detail line answers the question the list
- * exists for: a running child shows the step it is on, a finished one shows
- * what it was asked to do, because that is what makes its output worth opening.
- */
 export function topDrawerStartsOpen(): boolean {
   return false;
 }
@@ -2432,103 +2345,18 @@ function sectionBadgeSuffix(section: QualifiedDrawerSectionContribution, context
 }
 
 interface ActivityPanelState {
-  rows: SubagentRow[];
-  runRows: SubagentRunRow[];
-  taskRows: BackgroundTaskRow[];
-  summary: { working: boolean; failed: boolean };
-  total: number;
-  /** How many of those are happening now, which is what the tab reports. */
-  activeCount: number;
+  /** How many pieces of this chat's background work are happening now. */
+  working: number;
 }
 
-
-export function backgroundWorkLabel(activity: { rows: readonly { status: string }[]; runRows: readonly { status: string }[]; taskRows: readonly { status: string }[] } | undefined): string | undefined {
+export function backgroundWorkLabel(activity: { working: number } | undefined): string | undefined {
   if (activity === undefined) return undefined;
-  const running = [...activity.rows, ...activity.runRows, ...activity.taskRows]
-    .filter((row) => row.status === "working" || row.status === "running").length;
-  if (running === 0) return undefined;
-  return running === 1 ? "idle · 1 background run" : `idle · ${String(running)} background runs`;
+  if (activity.working === 0) return undefined;
+  return activity.working === 1 ? "idle · 1 background run" : `idle · ${String(activity.working)} background runs`;
 }
 
 export function activityDockLabel(category: string | undefined, state: string, text: string): string {
   return category === "asking" && state === "idle" ? "Waiting for your answer" : text;
-}
-
-
-export function subagentRunRows(runs: readonly SessionSubagentRunInfo[]): SubagentRunRow[] {
-  return runs.map((run) => {
-    const statusLabel = subagentRunStatusLabel(run.status);
-    const statusExplanation = subagentRunStatusExplanation(run.status);
-    const duration = subagentRunDuration(run.elapsedMs);
-    const detail = run.status === "running" ? run.lastActivity ?? "working" : run.task ?? "";
-    const model = describeRunModel(run.model);
-    return {
-      run,
-      // Losing track of a run is the reader losing information, not the run
-      // failing; it is reported as what it is.
-      status: run.status,
-      statusLabel,
-      statusExplanation,
-      duration,
-      detail,
-      ...(model === undefined ? {} : { modelLabel: model.label, modelTitle: run.model ?? model.label }),
-      ariaLabel: `${statusLabel} ${run.agent} subagent, ${duration}`
-        + (model === undefined ? "" : `, on ${model.label}`)
-        + (detail === "" ? "" : `, ${detail}`),
-    };
-  });
-}
-
-/** What a piece of background work is doing, in the words the drawer uses. */
-export type ActivityStatus = "running" | "working" | "idle" | "done" | "failed" | "error" | "stopped" | "lost" | "unknown";
-
-export interface BackgroundTaskRow {
-  task: SessionBackgroundTaskInfo;
-  /** Collapsed to the three states a strip can show, from the tool's larger vocabulary. */
-  status: ActivityStatus;
-  statusLabel: string;
-  duration: string;
-  detail: string;
-  ariaLabel: string;
-}
-
-/**
- * The task tool reports more statuses than a one-line strip can show, and
- * "lost" is one this reader adds for a running record whose process is gone.
- * They collapse onto the three the subagent rows already use, so the strip
- * stays readable and the styling is shared.
- */
-export function backgroundTaskRows(tasks: readonly SessionBackgroundTaskInfo[]): BackgroundTaskRow[] {
-  return tasks.map((task) => {
-    // Stopping a task is something the reader did on purpose, and losing track
-    // of one is not the task failing. Counting either as a failure taught the
-    // reader to ignore a count that said dozens had failed when none had.
-    const status = task.status === "running" ? "running"
-      : task.status === "completed" ? "done"
-      : task.status === "killed" ? "stopped"
-      : task.status === "failed" ? "failed"
-      : task.status === "lost" ? "lost"
-      : "unknown";
-    const statusLabel = task.status === "completed" ? "Done"
-      : task.status === "running" ? "Running"
-      : task.status === "killed" ? "Stopped"
-      : task.status === "lost" ? "Lost"
-      : task.status.charAt(0).toUpperCase() + task.status.slice(1);
-    const duration = subagentRunDuration(task.durationMs ?? 0);
-    // While it runs the command is what someone wants to see; once it is done
-    // the exit code is, because that is the question they came back to answer.
-    const detail = status === "running"
-      ? task.command.slice(0, 60)
-      : task.exitCode === undefined ? "" : `exit ${String(task.exitCode)}`;
-    return {
-      task,
-      status,
-      statusLabel,
-      duration,
-      detail,
-      ariaLabel: `${statusLabel} background task ${task.name}, ${duration}${detail === "" ? "" : `, ${detail}`}`,
-    };
-  });
 }
 
 
@@ -2539,10 +2367,14 @@ function firstTouchY(event: TouchEvent): number | undefined {
 }
 
 
-export function isActiveActivityStatus(status: ActivityStatus): boolean {
-  return status === "working" || status === "running";
+/** How long a run has been going, in the shortest form that stays readable. */
+export function subagentRunDuration(elapsedMs: number): string {
+  const seconds = Math.max(0, Math.round(elapsedMs / 1000));
+  if (seconds < 60) return `${String(seconds)}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${String(minutes)}m ${String(seconds % 60)}s`;
+  return `${String(Math.floor(minutes / 60))}h ${String(minutes % 60)}m`;
 }
-
 
 export const LONG_TURN_AFTER_MS = 10 * 60 * 1000;
 
@@ -2551,37 +2383,4 @@ export function turnElapsedLabel(startedAtMs: number | undefined, nowMs: number)
   const elapsedMs = Math.max(0, nowMs - startedAtMs);
   if (elapsedMs < 5000) return undefined;
   return { text: subagentRunDuration(elapsedMs), long: elapsedMs >= LONG_TURN_AFTER_MS };
-}
-
-/** Whether the list shows only live work or the whole history. */
-export function activityStripSummary(statuses: readonly ActivityStatus[]): { working: boolean; failed: boolean } {
-  return {
-    working: statuses.some((status) => status === "working" || status === "running"),
-    failed: statuses.some((status) => status === "error" || status === "failed"),
-  };
-}
-
-/** A subagent's status in the same voice the other activity rows use. */
-export function subagentStatusLabel(status: string): string {
-  if (status === "") return "Unknown";
-  return status.charAt(0).toUpperCase() + status.slice(1);
-}
-
-export function subagentRows(subagents: readonly SessionSubagentInfo[]): SubagentRow[] {
-  return subagents.map((subagent) => {
-    const status = subagent.status;
-    const shortId = subagent.sessionId.slice(-8);
-    // Every other row in the same column reports a capitalised status
-    // (Running, Done, Failed), so passing the raw value through put "Working"
-    // directly above "idle" and "error".
-    const statusLabel = subagentStatusLabel(status);
-    return {
-      subagent,
-      shortId,
-      status,
-      statusLabel,
-      cwd: subagent.cwd,
-      ariaLabel: `${statusLabel} subagent ${shortId}`,
-    };
-  });
 }
