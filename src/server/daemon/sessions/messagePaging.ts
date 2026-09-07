@@ -1,18 +1,7 @@
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
 
-export interface MessagePageRequest {
-  before?: number;
-  limit?: number;
-}
-
-export interface MessagePageResult<T> {
-  messages: T[];
-  start: number;
-  total: number;
-}
-
-export function pageMessagesAtSafeBoundary<T>(messages: T[], page?: MessagePageRequest): MessagePageResult<T> {
+export function pageMessagesAtSafeBoundary<T>(messages: T[], page?: { before?: number; limit?: number }) {
   const total = messages.length;
   if (page?.before === undefined && page?.limit === undefined) return { messages, start: 0, total };
   const before = clampInteger(page.before ?? total, 0, total);

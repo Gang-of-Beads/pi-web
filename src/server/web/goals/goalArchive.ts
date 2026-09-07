@@ -32,18 +32,6 @@ import { extractGoalJsonBlock } from "./goalFile.js";
  * a goal that came back.
  */
 
-export interface ArchiveGoalResult {
-  goalId: string;
-  archivedPath: string;
-  /** True when the goal was already gone: archiving is idempotent. */
-  alreadyArchived: boolean;
-  /**
-   * True when an agent could still be holding this goal in memory, in which
-   * case it needs `/goal-refresh` (and ideally `/goal-unfocus`) to let go.
-   */
-  agentMayRecreate: boolean;
-}
-
 export class GoalArchiveError extends Error {
   constructor(message: string, readonly code: "not-found" | "locked" | "invalid") {
     super(message);
@@ -63,7 +51,7 @@ export interface ArchiveGoalOptions {
   now?: () => Date;
 }
 
-export async function archiveWorkspaceGoal(workspacePath: string, goalId: string, options: ArchiveGoalOptions = {}): Promise<ArchiveGoalResult> {
+export async function archiveWorkspaceGoal(workspacePath: string, goalId: string, options: ArchiveGoalOptions = {}) {
   const safeId = goalIdForPath(goalId);
   const directory = join(workspacePath, GOALS_DIRECTORY);
   const now = options.now ?? (() => new Date());
