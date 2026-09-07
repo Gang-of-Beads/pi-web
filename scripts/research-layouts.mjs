@@ -10,7 +10,7 @@ mkdirSync(`${OUT}/desktop`, { recursive: true });
 /* Deep-shadow utilities: every component renders into a shadow root. */
 const deepTap = (label) => `(function(){
   var hit=null;
-  var walk=function(root){var els=root.querySelectorAll("button, [role=button], li, a");for(var j=0;j<els.length;j++){var t=(els[j].getAttribute("aria-label")||els[j].textContent||"").trim();if(hit===null&&t.indexOf(${JSON.stringify(label)})===0){hit=els[j];}}var kids=root.querySelectorAll("*");for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)walk(kids[i].shadowRoot);}};
+  var walk=function(root){var els=root.querySelectorAll("button, [role=button], li, a");for(var j=0;j<els.length;j++){var t=(els[j].getAttribute("aria-label")||els[j].textContent||"").trim();if(hit===null&&t.indexOf(${JSON.stringify(label)})!==-1){hit=els[j];}}var kids=root.querySelectorAll("*");for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)walk(kids[i].shadowRoot);}};
   walk(document);
   if(!hit)return false;hit.click();return true;
 })()`;
@@ -33,8 +33,11 @@ const metrics = `(function(){
 const shot = async (page, dir, name) => {
   await page.screenshot({ path: `${OUT}/${dir}/${name}.png` });
   const rows = await page.evaluate(metrics);
-  const small = rows.filter((r) => (r.tag === "button" || r.tag === "a") && (r.h < 44 || r.w < 44));
-  return { name, elements: rows.length, under44: small.slice(0, 12) };
+  const interactive = rows.filter((r) => r.tag === "button" || r.tag === "a");
+  const inputs = rows.filter((r) => !(r.tag === "button" || r.tag === "a"));
+  const smallInteractive = interactive.filter((r) => r.h < 44 || r.w < 44).sort((a, b) => a.w * a.h - b.w * b.h);
+  const smallInputs = inputs.filter((r) => r.h < 44 || r.w < 44).sort((a, b) => a.w * a.h - b.w * b.h);
+  return { name, elements: rows.length, under44: smallInteractive, inputsUnder44: smallInputs };
 };
 
 const run = [];
@@ -108,6 +111,17 @@ try {
       console.log(`WARN ${dir}: settings trigger not found`);
     }
 
+    // Quick switcher via the session title button in the context bar.
+    const quickOpened = await page.evaluate(deepTap("Open session selection"));
+    await page.waitForTimeout(1400);
+    if (quickOpened) {
+      await capture(page, dir, "08-quick-switcher");
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(800);
+    } else {
+      console.log(`WARN ${dir}: quick switcher trigger not found`);
+    }
+
     await page.close();
   }
 } finally {
@@ -115,7 +129,7 @@ try {
 }
 
 writeFileSync(`${OUT}/metrics.json`, JSON.stringify(run, null, 1));
-const summary = run.map((r) => ({ name: r.name, elements: r.elements, under44: r.under44.length, worst: r.under44.sort((a, b) => a.h - b.h)[0] ?? null }));
-console.log("\n=== tap-target summary (buttons/links under 44px) ===");
-for (const row of summary) console.log(`${row.name}: ${row.elements} elements, ${row.under44} under 44px${row.worst ? `, smallest: ${row.worst.h}x${row.worst.w} "${row.worst.label}"` : ""}`);
+const summary = run.map((r) => ({ name: r.name, elements: r.elements, under44: r.under44.length, worst: r.under44[0] ?? null, inputsUnder44: r.inputsUnder44.length, worstInput: r.inputsUnder44[0] ?? null }));
+console.log("\n=== tap-target summary (sorted by area ascending; interactive + inputs) ===");
+for (const row of summary) console.log(`${row.name}: ${row.elements} elements, ${row.under44} interactive under 44px (worst ${row.worst ? `${row.worst.h}x${row.worst.w} "${row.worst.label}"` : "none"}), ${row.inputsUnder44} inputs under 44px${row.worstInput ? ` (worst ${row.worstInput.h}x${row.worstInput.w} "${row.worstInput.label}")` : ""}`);
 console.log(`\nfull JSON: ${OUT}/metrics.json`);
