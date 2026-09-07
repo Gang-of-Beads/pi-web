@@ -40,7 +40,7 @@ already shown, and SHALL NOT require the reader to reload the page.
 
 Two repair shapes are admissible, to be chosen per surface by the design: replay
 of the missed frames from a cursor the client supplies, or a full resync of the
-scope modelled on the notification inbox's revision check. A repair that cannot
+scope keyed by a revision check on the scope's own join snapshot. A repair that cannot
 complete SHALL be reported to the reader in the surface it affects, following
 the honesty rules of the panel states.
 
@@ -48,7 +48,7 @@ the honesty rules of the panel states.
 
 - **WHEN** a transcript frame is missed while a reply is streaming
 - **THEN** the client SHALL repair the transcript to the server's content and
-  continue the stream without a page reload, without duplicating messages
+  resume streaming without duplicating what was already shown
 
 #### Scenario: Repair cannot complete
 
@@ -69,10 +69,11 @@ SHALL still be detected by sequence.
 - **THEN** the view SHALL show the server's current state and the reader SHALL
   NOT need to reload to see messages produced during the outage
 
-#### Scenario: The count and the content agree
+#### Scenario: The derived summary and its source agree
 
-- **WHEN** a notification arrives, is read, or is dismissed
-- **THEN** the drawer's count and the drawer's list SHALL be derived from one
+- **WHEN** a summary surface derived from session state (such as an unread
+  badge over its list) updates
+- **THEN** the summary and the content it summarizes SHALL be derived from one
   sequenced source, and a summary that cannot be reconciled SHALL trigger the
   same repair as any other gap rather than leaving the two in disagreement
 

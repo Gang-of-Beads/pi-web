@@ -119,14 +119,22 @@ SHALL NOT render "No subagent or background activity from this chat yet."
 - **WHEN** the session's first activity read fails
 - **THEN** the panel shows a failure or loading state, not an empty claim
 
-### Requirement: Notifications distinguish loaded from not loaded and failed
+### Requirement: The session drawer is contributed-sections-only
 
-The notification list SHALL render its empty claim only after a completed,
-matching read; a failed read SHALL name the failure; an unread inbox SHALL NOT
-present as an empty one.
+The session drawer SHALL render exactly the sections contributed by plugins,
+with the reader's own section choice surviving until they change it. When no
+plugin contributes a section, the drawer SHALL NOT render at all - no frame,
+no tab strip, no toggle - and the shell SHALL NOT present built-in Activity or
+Notifications tabs.
 
-#### Scenario: The notification read fails
+#### Scenario: No plugin contributes a section
 
-- **WHEN** the notification read for the current chat fails
-- **THEN** the panel names the failure instead of rendering "No notifications
-  yet." or "No notifications for this chat."
+- **WHEN** the machine's plugin set contributes no drawer section
+- **THEN** the session drawer renders nothing: no frame, no tabs, no toggle,
+  and no empty claim standing in for the removed pages
+
+#### Scenario: A plugin contributes a section
+
+- **WHEN** a plugin contributes a drawer section on this machine
+- **THEN** the drawer shows exactly that section's tab, and the section
+  itself owns its empty, failed and loading states

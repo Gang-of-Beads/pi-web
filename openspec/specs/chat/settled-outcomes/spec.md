@@ -13,14 +13,15 @@ permanent occupant of the viewport.
 
 When the user answers a dialog or question, the answer SHALL be the last
 interaction that surface requires. The surface SHALL leave the waiting area on
-its own, and the outcome SHALL be filed where session notifications live, where
-it can be read back.
+its own, and the outcome SHALL be filed as a session notification at its
+source; reading the outcome back SHALL require a plugin-contributed
+notification surface, and the filing itself SHALL NOT depend on one existing.
 
 #### Scenario: A dialog is answered
 
 - **WHEN** the user answers an extension dialog
 - **THEN** no further tap SHALL be needed to put it away, and the outcome
-  SHALL appear in the session's notification record
+  SHALL be filed in the session's notification record
 
 #### Scenario: Nothing settled squats on the screen
 
