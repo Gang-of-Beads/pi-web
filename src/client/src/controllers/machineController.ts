@@ -11,7 +11,7 @@ export class MachineController {
   constructor(private readonly getState: GetState, private readonly setState: SetState, private readonly updateUrl: UpdateUrl, private readonly projects: Pick<ProjectController, "loadProjects">) {}
 
   async loadMachines(routeMachineId?: string): Promise<void> {
-    this.setState({ error: "", isLoadingMachines: true });
+    this.setState({ error: "", isLoadingMachines: true, machinesLoad: "loading" });
     try {
       const machines = await api.machines();
       const selectedMachine = await this.selectInitialMachine(machines, routeMachineId);
@@ -19,13 +19,17 @@ export class MachineController {
       this.setState({
         machines,
         selectedMachine,
+        machinesLoad: "loaded",
         machineRuntimes: filterKeys(this.getState().machineRuntimes, machineIds),
         machineStatusSnapshots: filterKeys(this.getState().machineStatusSnapshots, machineIds),
       });
       void this.refreshMachineHealthFor(machines);
       void this.refreshMachineRuntimeFor(machines);
     } catch (error) {
-      this.setState(errorNoticePatch(error));
+      // The previous roster stays on screen — a failed listing is not
+      // evidence that the machines are gone — and `failed` sticks until a
+      // load succeeds, mirroring projectsLoad's discipline.
+      this.setState({ ...errorNoticePatch(error), machinesLoad: "failed" });
     } finally {
       this.setState({ isLoadingMachines: false });
     }

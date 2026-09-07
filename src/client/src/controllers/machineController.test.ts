@@ -275,3 +275,75 @@ describe("MachineController", () => {
     expect(updateUrl).toHaveBeenCalledOnce();
   });
 });
+
+describe("MachineController load discipline", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("moves machinesLoad through loading to loaded on a successful roster", async () => {
+    let state: AppState = initialAppState();
+    const setState = (patch: Partial<AppState>) => { state = { ...state, ...patch }; };
+
+    vi.spyOn(api, "machines").mockResolvedValue([localMachine]);
+    vi.spyOn(api, "health").mockResolvedValue({ machineId: "local", ok: true, checkedAt: "2026-05-26T00:00:01.000Z", status: "online" });
+    vi.spyOn(api, "runtime").mockResolvedValue({ machineId: "local", ok: true, checkedAt: "2026-05-26T00:00:02.000Z" });
+
+    const controller = new MachineController(() => state, setState, vi.fn(), { loadProjects: vi.fn() });
+    const loading = controller.loadMachines();
+    expect(state.machinesLoad).toBe("loading");
+    await loading;
+
+    expect(state.machinesLoad).toBe("loaded");
+    expect(state.machines).toEqual([localMachine]);
+  });
+
+  it("keeps the previous roster and answers failed when the listing rejects", async () => {
+    let state: AppState = {
+      ...initialAppState(),
+      machines: [localMachine, remoteMachine],
+      selectedMachine: localMachine,
+      machinesLoad: "loaded",
+    };
+    const setState = (patch: Partial<AppState>) => { state = { ...state, ...patch }; };
+
+    vi.spyOn(api, "machines").mockRejectedValue(new Error("listing refused"));
+
+    const controller = new MachineController(() => state, setState, vi.fn(), { loadProjects: vi.fn() });
+    await controller.loadMachines();
+
+    expect(state.machinesLoad).toBe("failed");
+    expect(state.machines).toEqual([localMachine, remoteMachine]);
+    expect(state.selectedMachine).toEqual(localMachine);
+    expect(state.error).toContain("listing refused");
+  });
+
+  it("returns to loaded when a retry succeeds after a failure", async () => {
+    let state: AppState = {
+      ...initialAppState(),
+      machines: [localMachine],
+      selectedMachine: localMachine,
+      machinesLoad: "failed",
+    };
+    const setState = (patch: Partial<AppState>) => { state = { ...state, ...patch }; };
+
+    const machinesMock = vi.spyOn(api, "machines");
+    let callCount = 0;
+    machinesMock.mockImplementation(() => {
+      callCount += 1;
+        return callCount === 1 ? Promise.reject(new Error("still refused")) : Promise.resolve([localMachine, remoteMachine]);
+    });
+    vi.spyOn(api, "health").mockResolvedValue({ machineId: "local", ok: true, checkedAt: "2026-05-26T00:00:01.000Z", status: "online" });
+    vi.spyOn(api, "runtime").mockResolvedValue({ machineId: "local", ok: true, checkedAt: "2026-05-26T00:00:02.000Z" });
+
+    const controller = new MachineController(() => state, setState, vi.fn(), { loadProjects: vi.fn() });
+    await controller.loadMachines();
+    expect(state.machinesLoad).toBe("failed");
+
+    await controller.loadMachines();
+
+    expect(machinesMock).toHaveBeenCalledTimes(2);
+    expect(state.machinesLoad).toBe("loaded");
+    expect(state.machines).toEqual([localMachine, remoteMachine]);
+  });
+});

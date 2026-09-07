@@ -65,6 +65,8 @@ export interface AppState {
   machines: Machine[];
   selectedMachine: Machine | undefined;
   isLoadingMachines: boolean;
+  /** Four-state load discipline threaded from the machines roster; see MachineController.loadMachines. */
+  machinesLoad: MachinesLoadState;
   machineStatuses: Record<string, MachineHealth>;
   machineRuntimes: Record<string, MachineRuntime>;
   /** Latest per-machine status tree published by each machine's daemon. */
@@ -183,7 +185,6 @@ export interface AppState {
   themeDialog: { title: string; options: CommandOption[]; selectedValue?: string } | undefined;
   authDialog: AuthDialogState | undefined;
   actionPaletteOpen: boolean;
-  machineDialogOpen: boolean;
   workspaceTool: QualifiedContributionId;
   mainView: "navigation" | "chat" | QualifiedContributionId;
   activeTerminalCount: number;
@@ -222,6 +223,9 @@ export type SessionsLoadState = "unloaded" | "loading" | "loaded";
  * missing project list read as "no projects".
  */
 export type ProjectsLoadState = "unloaded" | "loading" | "loaded" | "failed";
+
+/** Four-state load discipline for the machines roster; mirrors ProjectsLoadState. */
+export type MachinesLoadState = "unloaded" | "loading" | "loaded" | "failed";
 
 export type WorkspaceScopedStateReset = Pick<AppState,
   | "sessions"
@@ -278,6 +282,7 @@ export function initialAppState(): AppState {
     selfUpdateApplying: false,
     selectedMachine: undefined,
     isLoadingMachines: false,
+    machinesLoad: "unloaded",
     machineStatuses: {},
     machineRuntimes: {},
     machineStatusSnapshots: {},
@@ -326,7 +331,6 @@ export function initialAppState(): AppState {
     themeDialog: undefined,
     authDialog: undefined,
     actionPaletteOpen: false,
-    machineDialogOpen: false,
     workspaceTool: "files:files",
     mainView: "chat",
     activeTerminalCount: 0,
