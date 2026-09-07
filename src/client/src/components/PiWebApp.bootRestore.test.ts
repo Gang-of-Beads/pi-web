@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PiWebApp } from "./PiWebApp";
+import { PiWebApp, REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS } from "./PiWebApp";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -147,7 +147,7 @@ describe("PiWebApp boot route restore with a failed machines roster", () => {
     expect(Reflect.get(app, "pendingMachineLoadRestore")).toBeDefined();
 
     const retry = unknownFunction(Reflect.get(app, "retryMachineLoadRestore"), "PiWebApp.retryMachineLoadRestore");
-    Reflect.set(app, "machineLoadRestoreAttempt", REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS_LENGTH - 1);
+    Reflect.set(app, "machineLoadRestoreAttempt", REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS.length - 1);
     await retry.call(app);
 
     expect(Reflect.get(app, "pendingMachineLoadRestore")).toBeUndefined();
@@ -191,14 +191,12 @@ describe("PiWebApp boot route restore with a failed machines roster", () => {
   });
 });
 
-const REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS_LENGTH = 5;
-
 function searchParams(): string {
   const location: unknown = window.location;
   if (typeof location !== "object" || location === null) throw new Error("window.location was unavailable");
-  const search: unknown = Reflect.get(location, "search");
-  if (typeof search !== "string") throw new Error("window.location.search was unavailable");
-  return search;
+  const href: unknown = Reflect.get(location, "href");
+  if (typeof href !== "string") throw new Error("window.location.href was unavailable");
+  return new URL(href).search;
 }
 
 function isAppMethod(value: unknown): value is (...args: unknown[]) => unknown {
@@ -216,8 +214,16 @@ function createApp(): PiWebApp {
     setItem: () => undefined,
     removeItem: () => undefined,
   };
+  const location = { search: "", href: "https://pi.example.test/" };
+  const history = {
+    replaceState: (_state: unknown, _unused: string, url: string) => {
+      location.href = new URL(url, "https://pi.example.test/").href;
+      location.search = new URL(url, "https://pi.example.test/").search;
+    },
+  };
   vi.stubGlobal("window", {
-    location: { search: "" },
+    location,
+    history,
     localStorage: storage,
     setTimeout: () => 0,
     clearTimeout: () => undefined,
@@ -233,6 +239,7 @@ function stubWindowLocation(search: string): void {
   const location: unknown = Reflect.get(window, "location");
   if (typeof location === "object" && location !== null) {
     if (!Reflect.set(location, "search", search)) throw new Error("Could not set window.location.search");
+    if (!Reflect.set(location, "href", `https://pi.example.test/${search}`)) throw new Error("Could not set window.location.href");
   }
 }
 

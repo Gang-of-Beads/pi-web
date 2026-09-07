@@ -250,7 +250,7 @@ function isEventTargetLike(value: unknown): value is FocusEventTargetLike {
   return typeof candidate.addEventListener === "function" && typeof candidate.removeEventListener === "function";
 }
 const PI_WEB_STATUS_DEFER_MS = 750;
-const REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS = [1_000, 3_000, 8_000, 15_000, 30_000] as const;
+export const REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS = [1_000, 3_000, 8_000, 15_000, 30_000] as const;
 const GLOBAL_SHORTCUT_LISTENER_OPTIONS = { capture: true } as const;
 const THEME_AUTO_ON_VALUE = "auto:on";
 const THEME_AUTO_OFF_VALUE = "auto:off";
@@ -1353,10 +1353,15 @@ export class PiWebApp extends LitElement {
       if (this.state.machinesLoad !== "loaded") {
         this.machineLoadRestoreAttempt += 1;
         if (this.machineLoadRestoreAttempt >= REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS.length) {
+          this.setRemoteRouteRestoreMessage(route, { exhausted: true });
           this.clearPendingMachineLoadRestore();
           return;
         }
         this.scheduleMachineLoadRestore();
+        return;
+      }
+      if (!this.pendingMachineLoadRestoreStillCurrent(route)) {
+        this.clearPendingMachineLoadRestore();
         return;
       }
       this.clearPendingMachineLoadRestore();
@@ -1364,6 +1369,11 @@ export class PiWebApp extends LitElement {
     } finally {
       this.machineLoadRestoreInProgress = false;
     }
+  }
+
+  private pendingMachineLoadRestoreStillCurrent(route: ParsedAppRoute): boolean {
+    const machineId = route.machineId ?? "local";
+    return machineId !== "local" && readRoute().machineId === route.machineId && this.state.machines.some((machine) => machine.id === machineId);
   }
 
   private clearPendingMachineLoadRestore(): void {
@@ -2103,9 +2113,6 @@ export class PiWebApp extends LitElement {
         .machineStatusSnapshots=${this.state.machineStatusSnapshots}
         .machinesCollapsed=${this.navigationSections.isCollapsed("machines")}
         .onToggleMachines=${() => { this.navigationSections.toggle("machines"); }}
-        .onSelectMachine=${(machine: Machine) => this.selectNavigationItem("machines", "projects", () => this.selectMachineWithMemory(machine))}
-        .onRemoveMachine=${(machine: Machine) => { void this.removeMachine(machine); }}
-        .onRenameMachine=${(machine: Machine, name: string) => { void this.renameMachine(machine, name); }}
         .selectedProject=${this.state.selectedProject}
         .selectedWorkspace=${this.state.selectedWorkspace}
         .sessions=${this.state.sessions}
@@ -2129,11 +2136,6 @@ export class PiWebApp extends LitElement {
         .onShowActions=${() => { this.openActionPalette(); }}
         .onOpenSettings=${() => { this.openSettings(); }}
         .onAddMachine=${() => { this.openMachineDialog(); }}
-        .onRefreshMachine=${async (machine: Machine) => {
-          await this.machines.selectMachine(machine);
-          await Promise.all([this.machines.refreshMachineHealth(), this.machines.refreshMachineRuntime()]);
-        }}
-        .onOpenMachine=${(machine: Machine) => { if (machine.kind === "remote" && machine.baseUrl !== undefined) window.open(machine.baseUrl, "_blank", "noopener,noreferrer"); }}
         .onToggleProjects=${() => { this.navigationSections.toggle("projects"); }}
         .onToggleWorkspaces=${() => { this.navigationSections.toggle("workspaces"); }}
         .onToggleSessions=${() => { this.navigationSections.toggle("sessions"); }}
@@ -2767,18 +2769,16 @@ export class PiWebApp extends LitElement {
   }
 
   /**
-  * The host snapshot a contributed machines section renders. The roster is
-  * core state the machines plugin will keep fed once it owns the surface;
-  * until then the panel renders its builtin section and this context waits.
+  * The host snapshot a contributed machines section renders. Without the
+  * machines plugin no section consumes it; the machine affordances hide and
+  * the context bar still names the selected machine.
   */
   private buildMachineSectionContext(surface: "panel" | "sheet"): MachineSectionContext {
     const state = this.state;
     const closeSheet = surface === "sheet";
     const machineById = (machineId: string): Machine | undefined => state.machines.find((machine) => machine.id === machineId);
-    const requireMachine = (machineId: string): Machine => {
-      const machine = machineById(machineId);
-      if (machine === undefined) throw new Error("This machine is no longer listed");
-      return machine;
+    const staleMachineNotice = (): void => {
+      this.setState(errorNoticePatch(new Error("This machine is no longer listed.")));
     };
     return {
       machines: state.machines.map((machine) => ({
@@ -2802,16 +2802,37 @@ export class PiWebApp extends LitElement {
         if (closeSheet) this.contextSheetOpen = false;
         this.openMachineDialog();
       },
-      removeMachine: (machineId) => { void this.removeMachine(requireMachine(machineId)); },
-      renameMachine: (machineId, name) => { void this.renameMachine(requireMachine(machineId), name); },
+      removeMachine: (machineId) => {
+        const machine = machineById(machineId);
+        if (machine === undefined) {
+          staleMachineNotice();
+          return;
+        }
+        void this.removeMachine(machine);
+      },
+      renameMachine: (machineId, name) => {
+        const machine = machineById(machineId);
+        if (machine === undefined) {
+          staleMachineNotice();
+          return;
+        }
+        void this.renameMachine(machine, name);
+      },
       refreshMachine: (machineId) => {
-        const machine = requireMachine(machineId);
+        const machine = machineById(machineId);
+        if (machine === undefined) {
+          staleMachineNotice();
+          return;
+        }
         void this.machines.selectMachine(machine).then(() => Promise.all([this.machines.refreshMachineHealth(), this.machines.refreshMachineRuntime()]));
       },
       openMachine: (machineId) => {
         const machine = machineById(machineId);
         const baseUrl = machine?.kind === "remote" ? machine.baseUrl : undefined;
-        if (baseUrl === undefined) return;
+        if (baseUrl === undefined) {
+          staleMachineNotice();
+          return;
+        }
         window.open(baseUrl, "_blank", "noopener,noreferrer");
       },
       toggleCollapsed: () => { this.navigationSections.toggle("machines"); },
@@ -3132,17 +3153,27 @@ export class PiWebApp extends LitElement {
       },
       removeMachine: (machineId) => {
         const machine = this.state.machines.find((candidate) => candidate.id === machineId);
-        if (machine !== undefined) void this.removeMachine(machine);
+        if (machine === undefined) {
+          this.setState(errorNoticePatch(new Error("This machine is no longer listed.")));
+          return;
+        }
+        void this.removeMachine(machine);
       },
       refreshMachine: (machineId) => {
         const machine = this.state.machines.find((candidate) => candidate.id === machineId);
-        if (machine === undefined) return;
+        if (machine === undefined) {
+          this.setState(errorNoticePatch(new Error("This machine is no longer listed.")));
+          return;
+        }
         void this.machines.selectMachine(machine).then(() => Promise.all([this.machines.refreshMachineHealth(), this.machines.refreshMachineRuntime()]));
       },
       openMachine: (machineId) => {
         const machine = this.state.machines.find((candidate) => candidate.id === machineId);
         const baseUrl = machine?.kind === "remote" ? machine.baseUrl : undefined;
-        if (baseUrl === undefined) return;
+        if (baseUrl === undefined) {
+          this.setState(errorNoticePatch(new Error("This machine is no longer listed.")));
+          return;
+        }
         window.open(baseUrl, "_blank", "noopener,noreferrer");
       },
       configureAuth: () => this.auth.openLogin(),
@@ -3305,12 +3336,6 @@ export class PiWebApp extends LitElement {
     const fallback = await this.machines.deleteMachine(machine, { selectFallback: !wasSelected });
     if (!this.state.machines.some((candidate) => candidate.id === machine.id)) this.machineNavigation.forget(machine.id);
     if (wasSelected && fallback !== undefined) await this.selectMachineWithMemory(fallback, { rememberCurrent: false });
-  }
-
-  private openSelectedMachine(): void {
-    const machine = this.state.selectedMachine;
-    if (machine?.kind !== "remote" || machine.baseUrl === undefined) return;
-    window.open(machine.baseUrl, "_blank", "noopener,noreferrer");
   }
 
   private runAction(action: AppAction): void {
@@ -3800,13 +3825,11 @@ export class PiWebApp extends LitElement {
         ${this.renderWorkspacePanelEdgeControl()}
         ${this.renderWorkspacePanel()}
         ${this.contextSheetOpen ? html`<context-switcher-sheet
-          .machines=${state.machines}
-          .selectedMachine=${state.selectedMachine}
-          .machineStatuses=${state.machineStatuses}
-          .machineStatusSnapshots=${state.machineStatusSnapshots}
+          .machineSections=${this.plugins.getMachineSections(selectedMachineId(state))}
+          .machineSectionContext=${this.buildMachineSectionContext("sheet")}
           .navSections=${this.plugins.getNavSections(selectedMachineId(state))}
           .navSectionContext=${this.buildNavSectionContext("sheet")}
-          .onSelectMachine=${(machine: Machine) => { this.contextSheetOpen = false; void this.selectMachineWithMemory(machine); }}
+          .onMachineSelected=${() => { this.contextSheetOpen = false; }}
           .onClose=${() => { this.contextSheetOpen = false; }}
         ></context-switcher-sheet>` : null}
         ${state.authDialog !== undefined ? html`<auth-dialog .state=${state.authDialog} .onChooseMethod=${(authType: "oauth" | "api_key") => { void this.auth.chooseLoginMethod(authType); }} .onSelectProvider=${(providerId: string, authType: "oauth" | "api_key") => { void this.auth.selectLoginProvider(providerId, authType); }} .onLogoutProvider=${(providerId: string) => { void this.auth.logoutProvider(providerId); }} .onOAuthInput=${(value: string) => { this.auth.updateOAuthInput(value); }} .onOAuthRespond=${(value?: string) => { void this.auth.respondOAuth(value); }} .onOAuthCancel=${() => { void this.auth.cancelOAuth(); }} .onCancel=${() => { this.auth.closeDialog(); }}></auth-dialog>` : null}

@@ -336,6 +336,12 @@ export class ServerPluginRuntime {
             moduleRevision: requireServerModule(entry).revision,
             provider: loadedActivation.workspaceProvider,
           });
+      if (loadedActivation.machineRegistry !== undefined) {
+        const priorRegistry = this.activePlugins.find((active) => active.machineRegistry !== undefined)?.machineRegistry;
+        if (priorRegistry !== undefined) {
+          this.logger.warn({ first: priorRegistry.pluginId, second: entry.id }, "second server plugin contributed a machine registry; the first contributor owns the registry face");
+        }
+      }
       this.activePlugins.push(Object.freeze({
         entry,
         plugin: loadedPlugin,

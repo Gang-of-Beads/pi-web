@@ -7,7 +7,7 @@ import type {
   ServerPluginRouteBody,
   ServerPluginRouteContribution,
 } from "@gang-of-beads/pi-web/server-plugin-api";
-import { MachineService, type CreateMachineInput, type UpdateMachineInput } from "./server/machineService.js";
+import { MachineService, MachineValidationError, type CreateMachineInput, type UpdateMachineInput } from "./server/machineService.js";
 import { MachineStore, machineStorePathIn } from "./server/machineStore.js";
 
 /**
@@ -194,7 +194,7 @@ function updateInput(body: ServerPluginRouteBody | undefined): UpdateMachineInpu
 }
 
 function machineInput(body: ServerPluginRouteBody | undefined): CreateMachineInput {
-  if (body === undefined || body instanceof Uint8Array) throw new Error("Request body must be a JSON object");
+  if (body === undefined || body instanceof Uint8Array) throw new MachineValidationError("Request body must be a JSON object");
   const name = stringField(body, "name");
   const baseUrl = stringField(body, "baseUrl");
   const token = stringField(body, "token");
@@ -209,15 +209,18 @@ function machineInput(body: ServerPluginRouteBody | undefined): CreateMachineInp
 
 function stringField(body: Record<string, unknown>, field: string): string | undefined {
   const value = body[field];
-  return typeof value === "string" ? value : undefined;
+  if (value === undefined) return undefined;
+  if (typeof value !== "string") throw new MachineValidationError(`Field "${field}" must be a string`);
+  return value;
 }
 
 function headersField(body: Record<string, unknown>): Record<string, string> | undefined {
   const value = body["headers"];
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  if (value === undefined) return undefined;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new MachineValidationError('Field "headers" must be an object of strings');
   const headers: Record<string, string> = {};
   for (const [key, entry] of Object.entries(value)) {
-    if (typeof entry !== "string") return undefined;
+    if (typeof entry !== "string") throw new MachineValidationError(`Header "${key}" must be a string`);
     headers[key] = entry;
   }
   return headers;
@@ -233,7 +236,8 @@ async function sendNotFound(reply: ServerPluginReply): Promise<void> {
 
 async function sendError(reply: ServerPluginReply, error: unknown): Promise<void> {
   const message = error instanceof Error ? error.message : String(error);
-  await reply.code(400).header("Content-Type", "application/json").send(JSON.stringify({ error: message }));
+  const clientError = error instanceof MachineValidationError;
+  await reply.code(clientError ? 400 : 500).header("Content-Type", "application/json").send(JSON.stringify({ error: message }));
 }
 
 export default plugin;

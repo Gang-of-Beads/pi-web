@@ -5,6 +5,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyServerOpt
 import fastifyCompress from "@fastify/compress";
 import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
+import { piWebDataDir } from "../../config.js";
 import { ProjectStore } from "../shared/storage/projectStore.js";
 import { ProjectService } from "../shared/projects/projectService.js";
 import type { WorkspaceCatalog } from "../shared/workspaces/workspaceCatalog.js";
@@ -320,6 +321,8 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
               return loadEffectiveProjectPathAccess(projectPath, await readConfig());
             },
           },
+          machinesStorePath: () => piWebDataDir(),
+          localRuntime: () => getPiWebRuntime(sessionDaemon),
         },
       });
     } catch (error) {

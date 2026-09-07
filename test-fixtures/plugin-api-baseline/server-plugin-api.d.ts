@@ -183,7 +183,7 @@ export interface ServerPluginHostPorts {
     workspaceCatalog?: WorkspaceCatalogPort;
     /** Read the effective per-project config values plugins may act on. */
     piWebConfig?: PiWebConfigPort;
-    /** The absolute path of the machines store file the host resolves. */
+    /** The data directory the machines store file lives in; the plugin resolves the file name. */
     machinesStorePath?: () => string;
     /** The local runtime the machines plugin reads for local health and runtime. */
     localRuntime?: () => Promise<PiWebRuntimeResponse>;

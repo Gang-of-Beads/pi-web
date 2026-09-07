@@ -678,9 +678,6 @@ function parsePluginEntries(piWeb: Record<string, unknown>, packagePath: string)
     const browserRoot = parseBrowserRoot(entry["browserRoot"], packagePath, id, module !== undefined);
 
     const configuredMachineSpecific = parseMachineSpecific(entry["machineSpecific"], packagePath, id);
-    if (module !== undefined && serverModule !== undefined && configuredMachineSpecific === false) {
-      throw new Error(`PI WEB plugin ${id} has browser and server modules and must be machine-specific in ${packagePath}`);
-    }
     const machineSpecific = configuredMachineSpecific ?? (module !== undefined && serverModule !== undefined);
     const runs = parseRuns(entry["runs"], packagePath, id);
     if (runs !== undefined && runs !== "daemon" && serverModule === undefined) {

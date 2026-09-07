@@ -78,7 +78,7 @@ export class MachineService {
   }
 
   async remove(id: string): Promise<boolean> {
-    if (id === "local") throw new Error("Local machine cannot be deleted");
+    if (id === "local") throw new MachineValidationError("Local machine cannot be deleted");
     const removed = await this.store.remove(id);
     if (removed) {
       this.healthCache.delete(id);
@@ -191,24 +191,26 @@ function publicMachine(machine: StoredMachine): Machine {
   return { id: machine.id, name: machine.name, kind: "remote", baseUrl: machine.baseUrl, createdAt: machine.createdAt, updatedAt: machine.updatedAt };
 }
 
+export class MachineValidationError extends Error {}
+
 function validateName(value: string | undefined): string {
   const name = value?.trim();
-  if (name === undefined || name === "") throw new Error("Machine name is required");
+  if (name === undefined || name === "") throw new MachineValidationError("Machine name is required");
   return name;
 }
 
 function validateBaseUrl(value: string | undefined): string {
   const raw = value?.trim();
-  if (raw === undefined || raw === "") throw new Error("Machine baseUrl is required");
+  if (raw === undefined || raw === "") throw new MachineValidationError("Machine baseUrl is required");
   let url: URL;
   try {
     url = new URL(raw);
   } catch {
-    throw new Error("Machine baseUrl must be a valid URL");
+    throw new MachineValidationError("Machine baseUrl must be a valid URL");
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("Machine baseUrl must use http or https");
-  if (url.username !== "" || url.password !== "") throw new Error("Machine baseUrl must not include credentials");
-  if (url.search !== "" || url.hash !== "") throw new Error("Machine baseUrl must not include query or hash");
+  if (url.protocol !== "http:" && url.protocol !== "https:") throw new MachineValidationError("Machine baseUrl must use http or https");
+  if (url.username !== "" || url.password !== "") throw new MachineValidationError("Machine baseUrl must not include credentials");
+  if (url.search !== "" || url.hash !== "") throw new MachineValidationError("Machine baseUrl must not include query or hash");
   return url.href.replace(/\/$/u, "");
 }
 

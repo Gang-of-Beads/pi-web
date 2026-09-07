@@ -538,9 +538,9 @@ describe("PiWebPluginCatalog", () => {
       packageJson: { piWeb: { plugins: [{ id: "unsafe", serverModule: "../escape.js" }] } },
       files: {},
     });
-    await writePlugin(join(pluginsRoot, "dual-unscoped"), {
-      packageJson: { piWeb: { plugins: [{ id: "dual-unscoped", browserRoot: ".", module: "browser.js", serverModule: "server.js", machineSpecific: false }] } },
-      files: { "browser.js": "export default {};", "server.js": "export default {};" },
+    await writePlugin(join(pluginsRoot, "unscoped"), {
+      packageJson: { piWeb: { plugins: [{ id: "unscoped", serverModule: "server.js" }] } },
+      files: { "server.js": "export default {};" },
     });
     const warnings: string[] = [];
     const catalog = new PiWebPluginCatalog({
@@ -551,13 +551,12 @@ describe("PiWebPluginCatalog", () => {
 
     const snapshot = await catalog.snapshot();
 
-    expect(snapshot.plugins.map((plugin) => plugin.id)).toEqual(["valid"]);
-    expect(snapshot.diagnostics).toHaveLength(4);
+    expect(snapshot.plugins.map((plugin) => plugin.id)).toEqual(["unscoped", "valid"]);
+    expect(snapshot.diagnostics).toHaveLength(3);
     expect(snapshot.diagnostics.map((diagnostic) => diagnostic.message)).toEqual(expect.arrayContaining([
       expect.stringContaining("must declare module or serverModule"),
       expect.stringContaining("server module not found for missing"),
       expect.stringContaining("Unsafe PI WEB plugin server module path for unsafe"),
-      expect.stringContaining("must be machine-specific"),
     ]));
     expect(snapshot.diagnostics.every((diagnostic) => diagnostic.source.startsWith(pluginsRoot))).toBe(true);
     expect(warnings).toEqual(snapshot.diagnostics.map((diagnostic) => `Skipping PI WEB plugin from ${diagnostic.source}: ${diagnostic.message}`));

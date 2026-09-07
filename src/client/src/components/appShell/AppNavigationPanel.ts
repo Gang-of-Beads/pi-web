@@ -56,9 +56,6 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) onRequestSection?: (section: NavigationSection) => void;
   @property({ attribute: false }) onAddMachine?: () => void;
   @property({ attribute: false }) onOpenSessionTree?: (session: SessionInfo) => void | Promise<void>;
-  @property({ attribute: false }) onRefreshMachine?: (machine: Machine) => void | Promise<void>;
-  @property({ attribute: false }) onRenameMachine?: (machine: Machine, name: string) => void | Promise<void>;
-  @property({ attribute: false }) onOpenMachine?: (machine: Machine) => void;
   @property({ attribute: false }) onAddProject?: () => void;
   @property({ attribute: false }) onToggleMachines?: () => void;
   @property({ attribute: false }) onToggleProjects?: () => void;
@@ -92,8 +89,6 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) onReloadSession?: (session: SessionInfo) => void | Promise<void>;
   @property({ attribute: false }) onCleanupSessions?: () => void | Promise<void>;
   @property({ attribute: false }) onArchivedCollapsed?: () => void | Promise<void>;
-  @property({ attribute: false }) onSelectMachine?: (machine: Machine) => void | Promise<void>;
-  @property({ attribute: false }) onRemoveMachine?: (machine: Machine) => void | Promise<void>;
   /** Workspace views as named rows; the one entry, retired the sheet and the second strip. */
   @property({ attribute: false }) toolTabs: readonly ShellToolTab[] = [];
   @property({ attribute: false }) onSelectTool?: (id: string) => void;
@@ -145,6 +140,7 @@ export class AppNavigationPanel extends LitElement {
       </header>
       <app-context-switcher
         .machines=${this.machines}
+        .machineStepAvailable=${this.machinesSectionContributed()}
         .selectedMachine=${this.selectedMachine}
         .selectedProject=${this.selectedProject}
         .selectedWorkspace=${this.selectedWorkspace}
@@ -227,8 +223,16 @@ export class AppNavigationPanel extends LitElement {
     this.onRequestSection?.(section);
   }
 
+  private machinesSectionContributed(): boolean {
+    return this.machineSections.some((candidate) => candidate.localId === "machines") && this.machineSectionContext !== undefined;
+  }
+
+  private machinesVisibleForNavigation(): boolean {
+    return this.machinesSectionContributed() && shouldShowMachinesSection(this.machines);
+  }
+
   private compactVisibleSection(): NavigationSection {
-    if (shouldShowMachinesSection(this.machines) && !this.machinesCollapsed) return "machines";
+    if (this.machinesSectionContributed() && shouldShowMachinesSection(this.machines) && !this.machinesCollapsed) return "machines";
     if (!this.projectsCollapsed) return "projects";
     if (!this.workspacesCollapsed) return "workspaces";
     if (!this.sessionsCollapsed) return "sessions";
@@ -414,12 +418,12 @@ export class AppNavigationPanel extends LitElement {
   }
 
   private focusPreviousFrom(section: NavigationSection): void {
-    const target = previousVisibleNavigationTarget(section, this.machines);
+    const target = previousVisibleNavigationTarget(section, this.machinesVisibleForNavigation());
     if (target !== undefined) void this.onFocusNavigationTarget?.(target);
   }
 
   private focusNextFrom(section: NavigationSection): void {
-    void this.onFocusNavigationTarget?.(nextVisibleNavigationTarget(section, this.machines));
+    void this.onFocusNavigationTarget?.(nextVisibleNavigationTarget(section, this.machinesVisibleForNavigation()));
   }
 
   private cancelKeyboardNavigation(): void {
@@ -490,16 +494,16 @@ export function shouldShowMachinesSection(machines: readonly Machine[]): boolean
   return machines.length > 0;
 }
 
-function previousVisibleNavigationTarget(section: NavigationSection, machines: readonly Machine[]): NavigationSection | undefined {
-  const sections = visibleNavigationSections(machines);
+function previousVisibleNavigationTarget(section: NavigationSection, machinesVisible: boolean): NavigationSection | undefined {
+  const sections = visibleNavigationSections(machinesVisible);
   return sections[sections.indexOf(section) - 1];
 }
 
-function nextVisibleNavigationTarget(section: NavigationSection, machines: readonly Machine[]): NavigationFocusTarget {
-  const sections = visibleNavigationSections(machines);
+function nextVisibleNavigationTarget(section: NavigationSection, machinesVisible: boolean): NavigationFocusTarget {
+  const sections = visibleNavigationSections(machinesVisible);
   return sections[sections.indexOf(section) + 1] ?? "chat";
 }
 
-function visibleNavigationSections(machines: readonly Machine[]): NavigationSection[] {
-  return NAVIGATION_SECTION_ORDER.filter((section) => section !== "machines" || shouldShowMachinesSection(machines));
+function visibleNavigationSections(machinesVisible: boolean): NavigationSection[] {
+  return NAVIGATION_SECTION_ORDER.filter((section) => section !== "machines" || machinesVisible);
 }

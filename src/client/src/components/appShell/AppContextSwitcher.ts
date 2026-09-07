@@ -27,13 +27,16 @@ export class AppContextSwitcher extends LitElement {
   /** Which picker the panel body is showing, if any. */
   @property({ attribute: false }) openSection?: ContextSection;
   @property({ attribute: false }) onOpenSection?: (section: ContextSection) => void;
+  /** Whether a contributed machines section can actually render the step's body. */
+  @property({ type: Boolean }) machineStepAvailable = true;
   @property({ attribute: false }) onAddMachine?: () => void;
   @property({ attribute: false }) onAddProject?: () => void;
 
   override render() {
-    // Same rule as the navigation panel: one machine still needs a way to
-    // reach machine management and "Add machine".
-    const showMachines = this.machines.length > 0;
+    // Same rule as the navigation panel, contribution-aware: without the
+    // machines plugin there is no machine management to reach and no picker
+    // to render, so the step hides instead of leading to an empty body.
+    const showMachines = this.machineStepAvailable && this.machines.length > 0;
     return html`
       <nav aria-label="Current context">
         ${showMachines

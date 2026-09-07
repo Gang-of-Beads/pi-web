@@ -88,7 +88,7 @@ export class MachineStore {
     const data = await this.read();
     const machines = data.machines.filter((machine) => machine.id !== id);
     if (machines.length === data.machines.length) return false;
-    await this.write({ machines });
+    await this.write({ ...data, machines });
     return true;
   }
 
