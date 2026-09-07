@@ -147,9 +147,9 @@
   "homepage": "https://github.com/Gang-of-Beads/pi-web",
   "packageManager": "npm@11.11.0",
   "peerDependencies": {
-    "@earendil-works/pi-agent-core": ">=0.84.0",
-    "@earendil-works/pi-ai": ">=0.84.0",
-    "@earendil-works/pi-coding-agent": ">=0.84.0"
+    "@earendil-works/pi-agent-core": ">=0.85.0",
+    "@earendil-works/pi-ai": ">=0.85.0",
+    "@earendil-works/pi-coding-agent": ">=0.85.0"
   },
   "keywords": [
     "pi-package",
