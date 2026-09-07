@@ -3,7 +3,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatView } from "./ChatView";
 import { TOUCH_SETTLE_MS } from "../scrollFollowGate";
-import type { SelectedSessionNotificationView } from "../sessionNotifications";
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -117,80 +116,44 @@ describe("ChatView catching up after a press that suppressed following", () => {
  * reader's touchend and the click it produced.
  */
 
-describe("ChatView holding the notification drawer still under a finger", () => {
-  it("does not show a notification that arrives during a press until the press ends", async () => {
-    const view = await mountViewWithInbox();
-    expandDrawer(view);
+/**
+ * A settled outcome may not change the ground under a standing finger. The
+ * dialog the finger is over may settle server-side mid-press; removing its row
+ * at that instant retargets the imminent click to whatever slides underneath -
+ * the same theft the waiting row was built to end, reintroduced at its exit.
+ * The row leaves after the release settles, on the same grace the transcript's
+ * own catch-up uses.
+ */
+describe("ChatView holding the waiting row for a press", () => {
+  const dialog = { dialogId: "dlg-held", kind: "select" as const, title: "Pick", message: "", options: ["A", "B"], askedAt: "2026-08-30T00:00:00.000Z", runScoped: false };
 
-    notificationList(view).dispatchEvent(pointerEvent("pointerdown"));
-    view.notificationInbox = inboxWithArrival(requiredInbox(view));
+  it("keeps the row while the finger is down and lets it go after the settle", async () => {
+    const view = await mountView();
+    view.pendingDialogs = [dialog];
     await view.updateComplete;
-    expect(renderedNotificationIds(view)).toEqual(["n0", "n1", "n2", "n3"]);
+    expect(view.renderRoot.querySelector(".waiting-slot")).not.toBeNull();
 
-    notificationList(view).dispatchEvent(pointerEvent("pointerup"));
-    await settleCatchUp(view);
+    scroller(view).dispatchEvent(pointerEvent("pointerdown"));
+    view.pendingDialogs = [];
+    await view.updateComplete;
+    expect(view.renderRoot.querySelector(".waiting-slot"), "settling mid-press must not remove the row").not.toBeNull();
 
-    expect(renderedNotificationIds(view)).toEqual(["n-new", "n0", "n1", "n2", "n3"]);
+    scroller(view).dispatchEvent(pointerEvent("pointerup"));
+    await view.updateComplete;
+    expect(view.renderRoot.querySelector(".waiting-slot"), "the click's grace still owns the release instant").not.toBeNull();
+
+    vi.advanceTimersByTime(TOUCH_SETTLE_MS + 1);
+    await view.updateComplete;
+    expect(view.renderRoot.querySelector(".waiting-slot")).toBeNull();
   });
 
-  it("applies an arriving notification immediately when no finger is down", async () => {
-    const view = await mountViewWithInbox();
-    expandDrawer(view);
-
-    view.notificationInbox = inboxWithArrival(requiredInbox(view));
+  it("lets a settled row go at once when no finger is down", async () => {
+    const view = await mountView();
+    view.pendingDialogs = [dialog];
     await view.updateComplete;
-
-    expect(renderedNotificationIds(view)).toEqual(["n-new", "n0", "n1", "n2", "n3"]);
-  });
-
-  it("applies a held notification on the next arrival once the press outlives the backstop", async () => {
-    const view = await mountViewWithInbox();
-    expandDrawer(view);
-
-    notificationList(view).dispatchEvent(pointerEvent("pointerdown"));
-    view.notificationInbox = inboxWithArrival(requiredInbox(view));
+    view.pendingDialogs = [];
     await view.updateComplete;
-    expect(renderedNotificationIds(view)).toEqual(["n0", "n1", "n2", "n3"]);
-
-    // The gate's longest-real-touch backstop opens the hold for a pointer that
-    // never comes back. Like the transcript's, it is consulted by the next
-    // live update rather than by a timer of its own.
-    await vi.advanceTimersByTimeAsync(11_000);
-    view.notificationInbox = inboxWithArrival(requiredInbox(view));
-    await view.updateComplete;
-
-    expect(renderedNotificationIds(view)).toEqual(["n-new", "n0", "n1", "n2", "n3"]);
-  });
-
-  it("delays the post-dismiss focus handoff until the held update renders", async () => {
-    const view = await mountViewWithInbox();
-    expandDrawer(view);
-
-    notificationList(view).dispatchEvent(pointerEvent("pointerdown"));
-    view.onDismissNotification?.("n1");
-    await view.updateComplete;
-    // The tray the drawer renders is still the pre-dismissal one, so the row
-    // the reader dismissed is still on screen under their finger.
-    expect(renderedNotificationIds(view)).toEqual(["n0", "n1", "n2", "n3"]);
-
-    notificationList(view).dispatchEvent(pointerEvent("pointerup"));
-    await settleCatchUp(view);
-
-    expect(renderedNotificationIds(view)).toEqual(["n0", "n2", "n3"]);
-  });
-
-  it("does not hold a tray that was not on screen: another chat's tray shows live mid-press", async () => {
-    const view = await mountViewWithInbox();
-    expandDrawer(view);
-
-    notificationList(view).dispatchEvent(pointerEvent("pointerdown"));
-    view.sessionId = "other-session";
-    view.notificationInbox = { ...inboxWithArrival(requiredInbox(view)), sessionId: "other-session" };
-    await view.updateComplete;
-
-    // The old chat's held tray is not this chat's state to show, and there was
-    // nothing under the finger to keep still, so the new chat's tray shows now.
-    expect(renderedNotificationIds(view)).toEqual(["n-new", "n0", "n1", "n2", "n3"]);
+    expect(view.renderRoot.querySelector(".waiting-slot")).toBeNull();
   });
 });
 
@@ -231,11 +194,6 @@ async function settle(): Promise<void> {
 }
 
 
-async function settleCatchUp(view: ChatView): Promise<void> {
-  vi.advanceTimersByTime(TOUCH_SETTLE_MS + 32);
-  await view.updateComplete;
-  await Promise.resolve();
-}
 
 /**
  * A settled outcome may not change the ground under a standing finger. The
@@ -288,61 +246,12 @@ function scroller(view: ChatView): HTMLElement {
   return chat;
 }
 
-function notificationList(view: ChatView): HTMLElement {
-  const list = view.renderRoot.querySelector<HTMLElement>(".notification-list");
-  if (list === null) throw new Error("the notification list was not rendered");
-  return list;
-}
-
-function expandDrawer(view: ChatView): void {
-  const toggle = view.renderRoot.querySelector<HTMLButtonElement>(".drawer-toggle");
-  if (toggle === null) throw new Error("the drawer toggle was not rendered");
-  if (toggle.getAttribute("aria-expanded") === "false") toggle.click();
-}
-
-function renderedNotificationIds(view: ChatView): string[] {
-  return [...view.renderRoot.querySelectorAll<HTMLElement>(".notification-list [data-notification-id]")]
-    .map((row) => row.dataset["notificationId"] ?? "");
-}
-
-function inboxFixture(sessionId = "s"): SelectedSessionNotificationView {
-  return {
-    machineId: "local",
-    sessionId,
-    cwd: "/tmp/probe",
-    daemonInstanceId: "daemon",
-    notifications: [0, 1, 2, 3].map((i) => ({ id: `n${String(i)}`, message: `Settled notification ${String(i)}`, truncated: false, severity: "info" as const, receivedAt: "2026-08-29T10:00:00.000Z", order: 100 - i })),
-    retainedCount: 4,
-    discardedCount: 0,
-    dismissThrough: { order: 0, overflowWatermark: 0 },
-    pendingDismissedIds: new Set<string>(),
-    dismissAllPending: false,
-    announcements: [],
-  };
-}
 
 /** A fifth notification arrives: newest first, so it prepends above the rest. */
 /**
  * Every test here mounts the view with an inbox; the property is optional for
  * the component, not for these tests.
  */
-function requiredInbox(view: ChatView): SelectedSessionNotificationView {
-  const inbox = view.notificationInbox;
-  if (inbox === undefined) throw new Error("the view was mounted without the inbox these tests arrange");
-  return inbox;
-}
-
-function inboxWithArrival(previous: SelectedSessionNotificationView): SelectedSessionNotificationView {
-  return {
-    ...previous,
-    notifications: [
-      { id: "n-new", message: "A live event arrived mid-press", truncated: false, severity: "info" as const, receivedAt: "2026-08-29T10:05:00.000Z", order: 200 },
-      ...previous.notifications.filter((notification) => notification.id !== "n-new" && notification.id !== "n-new-2"),
-    ],
-    retainedCount: previous.notifications.length + 1,
-  };
-}
-
 async function mountView(): Promise<ChatView> {
   vi.useFakeTimers();
   stubScrollMetrics();
@@ -374,18 +283,3 @@ async function mountView(): Promise<ChatView> {
   return view;
 }
 
-async function mountViewWithInbox(): Promise<ChatView> {
-  const view = await mountView();
-  view.onDismissNotification = (notificationId: string) => {
-    const inbox = view.notificationInbox;
-    if (inbox === undefined) return;
-    view.notificationInbox = {
-      ...inbox,
-      notifications: inbox.notifications.filter((notification) => notification.id !== notificationId),
-      retainedCount: Math.max(0, inbox.retainedCount - 1),
-    };
-  };
-  view.notificationInbox = inboxFixture();
-  await view.updateComplete;
-  return view;
-}

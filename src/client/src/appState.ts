@@ -1,65 +1,9 @@
-import { normalizeMessages } from "./chatMessages";
 import type { AuthProviderOption, CommandOption, CommandResult, ExtensionDialogAnswer, ExtensionDialogCloseReason, Machine, MachineHealth, MachineRuntime, OAuthFlowState, PendingAskUser, PendingExtensionDialog, PiWebSelfUpdateStatus, PiWebStatusResponse, Project, QueuedSessionMessage, SessionActivity, SessionInfo, SessionModelCatalogEntry, SessionStatus, SessionBackgroundTaskInfo, SessionSubagentInfo, SessionSubagentRunInfo, SessionTreeSnapshot, TerminalCommandRun, Workspace } from "./api";
 import type { ChatLine } from "./components/shared";
 import type { CommandLedgerEntry } from "./commandLedger";
 import { RetiredBy } from "./notice";
 import type { MachineStatusSnapshot } from "../../shared/machineStatus";
 import type { QualifiedContributionId } from "./plugins/ids";
-import type { SelectedSessionNotificationInbox } from "./sessionNotifications";
-
-export interface ActivityOutputView {
-  readonly title: string;
-  readonly text: string;
-  readonly empty: boolean;
-}
-
-export function activityOutputView(title: string, text: string): ActivityOutputView {
-  return { title, text, empty: text.trim() === "" };
-}
-
-/**
- * One subagent run's conversation, opened from its activity row.
- *
- * It carries the reason it is read-only rather than leaving the absence to be
- * guessed at: a reader who can watch a child working will look for a way to
- * steer it, and a missing control with no explanation reads as an unfinished
- * feature instead of a boundary. Steering, resuming and interrupting travel
- * over the subagent extension's RPC on the in-process Pi event bus, which this
- * server does not hold.
- */
-export interface ActivityConversationView {
-  readonly title: string;
-  readonly subtitle: string;
-  /**
-   * Normalized here rather than in the view, so a child's turns travel as the
-   * same `ChatLine` the transcript is built from and reach the same renderer.
-   */
-  readonly messages: readonly ChatLine[];
-  readonly total: number;
-  readonly empty: boolean;
-  /** Why this conversation cannot be joined, shown with it. */
-  readonly interventionUnavailable: string;
-}
-
-export const SUBAGENT_INTERVENTION_UNAVAILABLE = "Steering this run is not available from the web app.";
-
-export function subagentRunConversationView(
-  run: { runId: string; agent: string; status: string },
-  page: { messages: readonly unknown[]; total: number },
-): ActivityConversationView {
-  // The same normalization the transcript store applies to a session's own
-  // page. A fork-context child's event log has already been adapted into this
-  // shape server-side, so both kinds of child arrive here identical.
-  const messages = normalizeMessages([...page.messages]);
-  return {
-    title: `${run.agent} · ${run.runId.slice(0, 8)}`,
-    subtitle: `Child run of this session · ${run.status}`,
-    messages,
-    total: page.total,
-    empty: messages.length === 0,
-    interventionUnavailable: SUBAGENT_INTERVENTION_UNAVAILABLE,
-  };
-}
 
 export interface AppState {
   machines: Machine[];
@@ -113,10 +57,6 @@ export interface AppState {
   /** Subagents (child sessions) of the selected session, most urgent first. */
   subagents: readonly SessionSubagentInfo[];
   backgroundTasks: readonly SessionBackgroundTaskInfo[];
-  /** The latest activity read for the selected session failed. Empty arrays
-   * cannot distinguish a failed read from a completed one that found nothing,
-   * and the panel must not answer a failure with a claim of absence. */
-  activityFailed: boolean;
   /**
    * The selected session's transcript read failed, with the daemon's own words.
    * An empty transcript after a failed read must render this, never the empty
@@ -126,10 +66,6 @@ export interface AppState {
   transcriptFailed: string | undefined;
   /** Subagent-tool runs for the selected session; see server/sessions/subagentRuns.ts. */
   subagentRuns: readonly SessionSubagentRunInfo[];
-  /** Kept out of `messages`: a log is a file, not something the agent said. */
-  activityOutput: ActivityOutputView | undefined;
-  /** A child run's conversation, opened from its activity row. */
-  activityConversation: ActivityConversationView | undefined;
   status: SessionStatus | undefined;
   activity: SessionActivity | undefined;
   /**
@@ -171,7 +107,6 @@ export interface AppState {
   sessionStatuses: Record<string, SessionStatus>;
   sessionActivities: Record<string, SessionActivity>;
   /** Authoritative projection plus browser-local optimistic overlays for the selected inbox. */
-  selectedNotificationInbox: SelectedSessionNotificationInbox | undefined;
   /** Self-update check result for this host; undefined means not checked yet. */
   selfUpdate: PiWebSelfUpdateStatus | undefined;
   /** True while the Update now flow is applying and the page will reconnect. */
@@ -233,7 +168,6 @@ export type WorkspaceScopedStateReset = Pick<AppState,
   | "clientQueuedSessionMessages"
   | "commandLedger"
   | "startingSessionCount"
-  | "selectedNotificationInbox"
   | "treeDialog"
   | "selectedTerminalId"
   | "error"
@@ -251,7 +185,6 @@ export function resetWorkspaceScopedState(): WorkspaceScopedStateReset {
     clientQueuedSessionMessages: {},
     commandLedger: [],
     startingSessionCount: 0,
-    selectedNotificationInbox: undefined,
     treeDialog: undefined,
     selectedTerminalId: undefined,
     error: "",
@@ -307,11 +240,8 @@ export function initialAppState(): AppState {
     selectedSession: undefined,
     subagents: [],
     backgroundTasks: [],
-    activityFailed: false,
     transcriptFailed: undefined,
     subagentRuns: [],
-    activityOutput: undefined,
-    activityConversation: undefined,
     status: undefined,
     activity: undefined,
     pendingAsk: undefined,
@@ -321,7 +251,6 @@ export function initialAppState(): AppState {
     availableThinkingLevels: [],
     sessionStatuses: {},
     sessionActivities: {},
-    selectedNotificationInbox: undefined,
     workspacesByProjectId: {},
     workspaceDeletionRuns: {},
     commandDialog: undefined,

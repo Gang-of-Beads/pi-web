@@ -2,35 +2,38 @@ import { describe, expect, it } from "vitest";
 import { selectedDrawerTab, type DrawerTabAvailability } from "./drawerTabSelection";
 
 function availability(patch: Partial<DrawerTabAvailability> = {}): DrawerTabAvailability {
-  return { activity: false, notifications: false, sections: [], withContent: [], ...patch };
+  return { sections: [], withContent: [], ...patch };
 }
 
-describe("which drawer tab is showing", () => {
-  it("keeps the tab the reader chose", () => {
-    expect(selectedDrawerTab(availability({ notifications: true }), "activity")).toBe("activity");
-    expect(selectedDrawerTab(availability({ activity: true }), "notifications")).toBe("notifications");
+describe("which drawer section is showing", () => {
+  it("keeps the section the reader chose", () => {
+    expect(selectedDrawerTab(availability({ sections: ["goals:goals"] }), "goals:goals")).toBe("goals:goals");
+    expect(selectedDrawerTab(availability({ sections: ["goals:goals", "terminal:terminal"] }), "terminal:terminal")).toBe("terminal:terminal");
   });
 
   it("keeps a chosen section even after its contents empty", () => {
-    const chosen = selectedDrawerTab(availability({ activity: true, sections: ["goals:goals"], withContent: [] }), "goals:goals");
+    const chosen = selectedDrawerTab(availability({ sections: ["goals:goals"], withContent: [] }), "goals:goals");
 
     expect(chosen).toBe("goals:goals");
   });
 
   it("does not keep a section this machine does not have", () => {
-    expect(selectedDrawerTab(availability({ activity: true }), "goals:goals")).toBe("activity");
+    expect(selectedDrawerTab(availability({ sections: ["terminal:terminal"] }), "goals:goals")).toBe("terminal:terminal");
   });
 
-  it("prefers work in flight over a section that changes slowly", () => {
-    expect(selectedDrawerTab(availability({ notifications: true, activity: true, sections: ["goals:goals"], withContent: ["goals:goals"] }), undefined)).toBe("notifications");
-    expect(selectedDrawerTab(availability({ activity: true, sections: ["goals:goals"], withContent: ["goals:goals"] }), undefined)).toBe("activity");
-  });
-
-  it("falls to a section with something in it rather than an empty built-in", () => {
+  it("falls to a section with something in it when nothing was chosen", () => {
     expect(selectedDrawerTab(availability({ sections: ["goals:goals"], withContent: ["goals:goals"] }), undefined)).toBe("goals:goals");
   });
 
-  it("lands on activity when nothing anywhere has content", () => {
-    expect(selectedDrawerTab(availability({ sections: ["goals:goals"] }), undefined)).toBe("activity");
+  it("prefers a section with content over one that is empty", () => {
+    expect(selectedDrawerTab(availability({ sections: ["terminal:terminal", "goals:goals"], withContent: ["goals:goals"] }), undefined)).toBe("goals:goals");
+  });
+
+  it("lands on the first section even when nothing has content", () => {
+    expect(selectedDrawerTab(availability({ sections: ["goals:goals", "terminal:terminal"] }), undefined)).toBe("goals:goals");
+  });
+
+  it("renders nothing when no section exists", () => {
+    expect(selectedDrawerTab(availability(), undefined)).toBeUndefined();
   });
 });

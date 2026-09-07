@@ -1,6 +1,5 @@
 import { css, LitElement, html, type TemplateResult } from "lit";
 import { scrollbarWidthOf } from "../scrollbarWidth";
-import { dropsExpansionAsWorkFinishes } from "../topDrawerExpansion";
 import { showsJumpToBottom } from "../chatScrollPosition";
 import { ScrollFollowGate, TOUCH_SETTLE_MS } from "../scrollFollowGate";
 import { customElement, property, query, state } from "lit/decorators.js";
@@ -14,25 +13,12 @@ import { ChatScrollController, distanceFromScrollBottom, findFirstVisibleArticle
 import { scrollEdgeClasses, ScrollEdgeTracker } from "../scrollEdges";
 import type { AskUserSubmission, PendingAskUser, PendingExtensionDialog, QueuedSessionMessage, SessionActivity, SessionStatus } from "../api";
 import { commandStateLabel, type CommandLedgerEntry } from "../commandLedger";
-import type { ActivityConversationView, ActivityOutputView, ClosedExtensionDialog } from "../appState";
-import {
-  notificationAnnouncementLabel,
-  notificationDismissLabel,
-  notificationFocusTargetAfterDismiss,
-  notificationInboxOverflowLabel,
-  notificationInboxTotalCount,
-  notificationMessageTruncationLabel,
-  notificationSeverityLabel,
-  notificationTargetKey,
-  notificationTrayHeading,
-  type NotificationFocusTarget,
-  type SelectedSessionNotificationView,
-  type SessionNotificationTarget,
-} from "../sessionNotifications";
+import type { ClosedExtensionDialog } from "../appState";
 import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
 import { describeRunModel } from "../modelIdentity";
+import { subagentRunStatusExplanation, subagentRunStatusLabel } from "../subagentRunStatusLabel";
 import { isWaitingForUser } from "../sessionWaiting";
-import type { SessionBackgroundTaskInfo, SessionNotification, SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
+import type { SessionBackgroundTaskInfo, SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
 import type { ChatLine, ChatPart, MessageDelivery } from "./shared";
 import type { DrawerSectionContext, QualifiedDrawerSectionContribution, QualifiedMessageRendererContribution } from "../plugins/types";
 import { selectedDrawerTab, type DrawerTab } from "../drawerTabSelection";
@@ -50,8 +36,6 @@ import { sessionStateBadgeStyles as SessionStateBadgeStyles } from "./sessionSta
 import { readingAnchorDecision, readingScrollCorrection, shouldHoldReadingPosition } from "../readingAnchor";
 import { imageLoadScrollCorrection } from "../imageLoadScroll";
 import { bottomAnchorAction } from "../bottomAnchor";
-import { subagentRunStatusExplanation, subagentRunStatusLabel } from "../subagentRunStatusLabel";
-import { activityEmptyMeaning } from "../activityEmptyMeaning";
 
 export const chatStyles = css`
   ${SessionStateBadgeStyles}
@@ -153,10 +137,7 @@ export const chatStyles = css`
   /* The two sections are told apart by colour, not only by label: activity is
      violet (work this chat started), notifications keep the app's warning
      palette (something happened to you). */
-  .drawer-tab-activity.selected { border-color: var(--pi-purple-border); background: var(--pi-purple-surface); color: var(--pi-purple); }
-  .drawer-tab-notifications.selected { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); color: var(--pi-warning); }
   .drawer-header:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -3px; }
-  /* Two tabs need 261px and get 240 on a phone, with the scrollbar hidden. */
   .drawer-tabs-frame { position: relative; flex: 1 1 auto; min-width: 0; }
   .drawer-tabs-frame::before, .drawer-tabs-frame::after { content: ""; position: absolute; top: 0; bottom: 0; z-index: 2; width: 18px; opacity: 0; pointer-events: none; transition: opacity var(--pi-motion-fast) var(--pi-ease); }
   .drawer-tabs-frame::before { left: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--pi-shadow-strong) 55%, transparent) 0%, transparent 100%); }
@@ -173,134 +154,63 @@ export const chatStyles = css`
   .drawer-tab { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: 22px; padding: var(--pi-space-1) var(--pi-space-4); border: 1px solid transparent; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-2xs); font-weight: 600; white-space: nowrap; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   @media (hover: hover) { .drawer-tab:hover { color: var(--pi-text-bright); } }
   .drawer-tab:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
-  .drawer-tab, .activity-filter, .activity-history-toggle { transition: background-color var(--pi-motion-fast) var(--pi-ease), border-color var(--pi-motion-fast) var(--pi-ease), color var(--pi-motion-fast) var(--pi-ease); }
   .drawer-tab.selected { border-color: var(--pi-border); background: var(--pi-surface); color: var(--pi-text-bright); }
   .drawer-header-actions { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-1); }
   .drawer-body { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
   .drawer-body[hidden] { display: none; }
-  .activity-filters { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; gap: var(--pi-space-2); margin-bottom: var(--pi-space-2); padding-bottom: var(--pi-space-2); background: color-mix(in srgb, var(--pi-purple) 7%, var(--pi-bg)); }
-  .activity-filter { display: inline-flex; align-items: center; gap: var(--pi-space-2); min-height: 26px; padding: var(--pi-space-1) var(--pi-space-4); border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-2xs); cursor: pointer; -webkit-tap-highlight-color: transparent; }
-  @media (hover: hover) { .activity-filter:hover { color: var(--pi-text-bright); } }
-  .activity-filter:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
-  .activity-filter.selected { border-color: var(--pi-purple-border); background: var(--pi-purple-surface); color: var(--pi-purple); }
-  .activity-filter-count { color: var(--pi-muted); font-variant-numeric: tabular-nums; }
-  .activity-filter.selected .activity-filter-count { color: inherit; }
   @media (pointer: coarse) {
-    .activity-filter { min-height: 44px; }
   }
-  .subagents-list { mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent 100%); flex: 0 1 auto; min-height: 0; max-height: min(34vh, 260px); display: grid; gap: var(--pi-space-3); align-content: start; overflow-y: auto; overscroll-behavior-y: contain; box-sizing: border-box; padding: 0 var(--pi-space-5) var(--pi-space-5); }
-  .subagents-list[hidden] { display: none; }
   /* Two fixed lines per row: the identity line never reflows, and the detail
      line is one clipped line, because a subagent's task text is a paragraph
      and a strip that grows with it is the bug this replaced. */
-  .subagent-row { box-sizing: border-box; min-width: 0; display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto auto auto; align-items: center; gap: var(--pi-space-2) var(--pi-space-4); min-height: 38px; padding: var(--pi-space-4) var(--pi-space-5); border: 1px solid var(--pi-border-muted); border-inline-start: 4px solid var(--pi-dim); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; text-align: start; transition: background var(--pi-motion-fast) var(--pi-ease), border-color var(--pi-motion-fast) var(--pi-ease); }
-  .subagent-row:focus-visible { background: var(--pi-surface-hover); }
-  @media (hover: hover) { .subagent-row:hover { background: var(--pi-surface-hover); } }
-  .subagent-row:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
   /* A row with no output to open is not a button in any useful sense; say so
      instead of letting a thumb bounce off it. */
-  .subagent-row:disabled { cursor: default; opacity: .72; }
-  @media (hover: hover) { .subagent-row:disabled:hover { background: var(--pi-surface); } }
   /* Status changes under the reader's eyes - a row goes running to done while
      the drawer is open - so the colours that carry that meaning move rather
      than jump. Paint only: animating the row's size would shift every row
      below it. The reduced-motion block above collapses these to nothing. */
-  .subagent-row { transition: background-color var(--pi-motion-base) var(--pi-ease), border-color var(--pi-motion-base) var(--pi-ease); }
-  .subagent-row.status-working, .subagent-row.status-running { border-color: var(--pi-accent-border); border-inline-start-color: var(--pi-accent); background: color-mix(in srgb, var(--pi-accent) 14%, var(--pi-surface)); }
-  .subagent-row.status-idle, .subagent-row.status-done { border-inline-start-color: var(--pi-success); background: color-mix(in srgb, var(--pi-success) 7%, var(--pi-surface)); }
-  .subagent-row.status-error, .subagent-row.status-failed { border-inline-start-color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 8%, var(--pi-surface)); }
   /* Unknown: no evidence either way. The hollow dot and the dashed edge are
      the app's unsettled language — the run may still be alive — where Lost's
      flat gray records a settled fact: the process is gone. Without this the
      two states drew identically and only the word differed. */
-  .subagent-row.status-unknown { border-inline-start-style: dashed; }
-  .subagent-dot.unknown { background: transparent; border: 1.5px solid var(--pi-muted); box-sizing: border-box; }
-  .subagent-row .subagent-status.unknown { background: transparent; border: 1px dashed var(--pi-border); }
-  .subagent-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--pi-muted); }
-  .subagent-dot.working, .subagent-dot.running { background: var(--pi-accent); animation: pulse 1s ease-in-out infinite; }
-  .subagent-dot.idle, .subagent-dot.done { background: var(--pi-success); }
-  .subagent-dot.error, .subagent-dot.failed { background: var(--pi-danger); }
   /* The kind, in a word: the filter chips name the same three categories, so a
      row says which one it is without the reader inferring it from the shape. */
-  .subagent-kind { flex: 0 0 auto; color: var(--pi-muted); font: var(--pi-text-2xs) var(--pi-font-mono); }
   /* What the run is on. Quiet: it answers "which model, at what thinking
      level" for a reader scanning a fleet, without competing with the agent's
      own name. */
-  .subagent-model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-variant-numeric: tabular-nums; }
-  .subagent-id { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--pi-font-ui); font-size: var(--pi-text-sm); font-weight: var(--pi-weight-medium); letter-spacing: -0.01em; color: var(--pi-text-bright); }
-  .subagent-status { flex: 0 0 auto; padding: 1px var(--pi-space-4); border-radius: var(--pi-radius-pill); background: var(--pi-border-muted); color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: 600; letter-spacing: .02em; white-space: nowrap; }
-  .subagent-row .subagent-status.working, .subagent-row .subagent-status.running { background: var(--pi-selection-bg); color: var(--pi-accent); }
-  .subagent-row .subagent-status.idle, .subagent-row .subagent-status.done { background: var(--pi-success-surface); color: var(--pi-success); }
-  .subagent-row .subagent-status.error, .subagent-row .subagent-status.failed { background: color-mix(in srgb, var(--pi-danger) 18%, transparent); color: var(--pi-danger); }
-  .subagent-duration { flex: 0 0 auto; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .subagent-detail { grid-column: 3 / -1; min-width: 0; overflow: hidden; color: var(--pi-muted); font-size: var(--pi-text-xs); line-height: var(--pi-leading-tight); text-overflow: ellipsis; white-space: nowrap; }
-  .activity-empty { margin: var(--pi-space-2) 0; color: var(--pi-muted); font-size: var(--pi-text-xs); }
   /* Quiet, full-width and last: the history is available without competing
      with the work that is actually running. */
-  .activity-history-toggle { justify-self: stretch; min-height: 30px; margin-top: var(--pi-space-1); border: 1px dashed var(--pi-border); border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-2xs); cursor: pointer; -webkit-tap-highlight-color: transparent; }
-  .activity-history-toggle:focus-visible { border-color: var(--pi-purple-border); color: var(--pi-purple); }
-  @media (hover: hover) { .activity-history-toggle:hover { border-color: var(--pi-purple-border); color: var(--pi-purple); } }
-  .activity-history-toggle:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
-  .subagent-chevron { flex: 0 0 auto; color: var(--pi-muted); font-size: var(--pi-text-xs); }
   /* One rule for the whole drawer: the project sets 44px as its touch height
      (--pi-control-height-touch), and controls added a few at a time had drifted
      to 30, 32, 36 and 40. Placed after every base declaration it overrides -
      a media query carries no extra specificity, so the same rule written
      earlier in the sheet loses to the base height it was meant to raise. */
   @media (pointer: coarse) {
-    .drawer-tab, .subagent-row, .activity-history-toggle { min-height: 44px; }
     .drawer-header { min-height: 44px; }
   }
-  .notification-control, .notification-row-dismiss { box-sizing: border-box; min-height: 32px; border: 0; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); cursor: pointer; }
-  .notification-control { padding: 0 var(--pi-space-4); font: var(--pi-text-xs) var(--pi-font-ui); white-space: nowrap; }
-  .notification-toggle { display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; }
-  .notification-control:focus-visible, .notification-row-dismiss:focus-visible { background: var(--pi-selection-bg); color: var(--pi-text-bright); }
-  @media (hover: hover) { .notification-control:hover, .notification-row-dismiss:hover { background: var(--pi-selection-bg); color: var(--pi-text-bright); } }
-  .notification-control:focus-visible, .notification-row-dismiss:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
-  .notification-control:disabled, .notification-row-dismiss:disabled { opacity: .5; background: transparent; cursor: default; }
-  .notification-icon { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
-  .notification-disclosure-icon.expanded { transform: rotate(90deg); }
-  .notification-close-icon { width: 16px; height: 16px; }
-  .notification-list { flex: 0 1 auto; min-height: 0; max-height: min(38vh, 320px); overflow-y: auto; overscroll-behavior-y: contain; box-sizing: border-box; padding: 0 var(--pi-space-5) var(--pi-space-3); }
-  .notification-list[hidden] { display: none; }
-  .notification-overflow { margin: 0; padding: var(--pi-space-4) var(--pi-space-1); border-bottom: 1px solid var(--pi-border-muted); color: var(--pi-muted); font-size: var(--pi-text-2xs); overflow-wrap: anywhere; }
+  .drawer-control { box-sizing: border-box; min-height: 32px; border: 0; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); cursor: pointer; }
+  .drawer-control { padding: 0 var(--pi-space-4); font: var(--pi-text-xs) var(--pi-font-ui); white-space: nowrap; }
+  .drawer-collapse { display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; }
+  .drawer-control:focus-visible { background: var(--pi-selection-bg); color: var(--pi-text-bright); }
+  @media (hover: hover) { .drawer-control:hover { background: var(--pi-selection-bg); color: var(--pi-text-bright); } }
+  .drawer-control:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+  .drawer-control:disabled { opacity: .5; background: transparent; cursor: default; }
+  .drawer-icon { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+  .drawer-disclosure-icon.expanded { transform: rotate(90deg); }
   /* Severity is carried by the row itself, not only by a small coloured word:
      an error and a routine notice were otherwise structurally identical, so the
      tray had to be read to be triaged. The accent is a left border plus a very
      light wash, which stays legible in both themes without shouting. */
-  .notification-row { position: relative; min-width: 0; display: grid; gap: var(--pi-space-2); box-sizing: border-box; margin: var(--pi-space-3) 0; padding: var(--pi-space-5) var(--pi-space-5) var(--pi-space-5) var(--pi-space-6); border: 1px solid var(--pi-border-muted); border-left: 3px solid var(--pi-border); border-radius: var(--pi-radius-md); color: var(--pi-text); }
-  .notification-row.warning { border-left-color: var(--pi-warning); background: color-mix(in srgb, var(--pi-warning) 6%, transparent); }
-  .notification-row.error { border-left-color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 7%, transparent); }
-  .notification-row:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: calc(var(--pi-focus-ring-offset) * -1); }
-  .notification-metadata { min-width: 0; display: flex; align-items: baseline; gap: var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-2xs); }
-  .notification-severity { color: var(--pi-muted); font-size: inherit; font-weight: 600; }
-  .notification-row.warning .notification-severity { color: var(--pi-warning); }
-  .notification-row.error .notification-severity { color: var(--pi-danger); }
-  .notification-message { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; text-align: start; unicode-bidi: plaintext; -webkit-user-select: text; user-select: text; }
   /* Only the first line needs to clear the buttons; later lines use the full
      width, so a long error does not wrap into a narrow column. */
-  .notification-metadata { padding-right: 72px; }
-  .notification-truncated { margin: 0; color: var(--pi-muted); font-size: var(--pi-text-2xs); overflow-wrap: anywhere; }
   /* Copy and dismiss sit together in one cluster rather than one floating over
      the text: the message wraps under them, so an absolute button either
      overlapped the text or forced padding that made every row look ragged. */
-  .notification-row-actions { position: absolute; top: 4px; right: 4px; display: flex; gap: var(--pi-space-1); }
-  .notification-row-dismiss, .notification-row-copy { display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; }
-  .notification-row-copy { min-height: 32px; border: 0; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); font-size: var(--pi-text-base); cursor: pointer; }
-  .notification-row-copy:focus-visible { background: var(--pi-selection-bg); color: var(--pi-text-bright); }
-  @media (hover: hover) { .notification-row-copy:hover { background: var(--pi-selection-bg); color: var(--pi-text-bright); } }
-  .notification-row-copy:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
-  .visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0 0 0 0) !important; clip-path: inset(50%) !important; white-space: nowrap !important; border: 0 !important; }
-  .notification-live span { display: block; }
   @media (pointer: coarse) {
-    .notification-control, .notification-row-dismiss, .notification-row-copy { min-height: 40px; }
-    .notification-toggle, .notification-row-dismiss, .notification-row-copy { width: 40px; height: 40px; }
-    .notification-row { padding-right: 46px; }
   }
   @media (max-width: 640px) {
     .drawer-header { gap: var(--pi-space-2); padding-inline: 8px; }
     .drawer-tab { padding-inline: var(--pi-space-4); }
-    .notification-list, .subagents-list { padding-inline: 8px; }
   }
   /* A short window is the case the drawer was breaking: keep it to a slice of
      the viewport so the transcript never becomes a letterbox. */
@@ -308,9 +218,6 @@ export const chatStyles = css`
     /* Enough for two rows, or the drawer is a header with nothing under it -
        measured at 390x400 (a phone with the keyboard up): 28px of viewport for
        456px of content, and the sticky filter row alone was taller than that. */
-    .subagents-list { max-height: 26vh; min-height: 96px; }
-    .notification-list { max-height: 30vh; min-height: 96px; }
-    .activity-filters { position: static; }
   }
   /* The 64px bottom padding was the reservation for the activity dock back when
      it floated over the scroller's bottom edge (both arrived in the commit that
@@ -365,7 +272,6 @@ export const chatStyles = css`
   @media (hover: hover) { .activity-dock.background:hover { border-color: var(--pi-purple); background: var(--pi-purple-surface); } }
   @media (pointer: coarse) { .activity-dock.background { min-height: 44px; padding-block: var(--pi-space-4); } }
   .activity-dock.background:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 2px; }
-  .activity-dock.background .subagent-chevron { color: inherit; }
   .activity-dock.background .dot { background: currentColor; opacity: 1; animation: pulse 1s ease-in-out infinite; }
   .activity-elapsed { flex: 0 0 auto; margin-left: auto; color: inherit; font-size: var(--pi-text-2xs); font-variant-numeric: tabular-nums; opacity: .85; }
   /* A turn that has run for ten minutes without finishing is worth a second
@@ -430,34 +336,9 @@ export const chatStyles = css`
   .image-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
   @media (hover: hover) { .image-zoom-close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
   .image-zoom-close:focus-visible { outline: 1px solid var(--pi-border); outline-offset: 2px; }
-  dialog.activity-output { position: fixed; inset: 0; margin: auto; box-sizing: border-box; width: min(92vw, 900px); max-height: calc(88vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); padding: 0; color: var(--pi-text); background: var(--pi-surface); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); overflow: hidden; }
-  dialog.activity-output[open] { display: flex; flex-direction: column; }
-  dialog.activity-output::backdrop { background: rgba(0, 0, 0, 0.6); }
-  .activity-output-head { display: flex; align-items: center; gap: var(--pi-space-3); padding: var(--pi-space-4) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); }
-  .activity-output-title { flex: 1; min-width: 0; margin: 0; font-size: var(--pi-font-size-sm, 13px); font-weight: 600; color: var(--pi-text-bright); overflow-wrap: anywhere; }
-  .activity-output-close { display: inline-grid; place-items: center; flex: none; width: 44px; height: 44px; margin: calc(-1 * var(--pi-space-2)) calc(-1 * var(--pi-space-2)) calc(-1 * var(--pi-space-2)) 0; padding: 0; font: 18px/1 system-ui, sans-serif; color: var(--pi-muted); background: transparent; border: none; border-radius: var(--pi-radius-sm); cursor: pointer; }
-  .activity-output-close:focus-visible { color: var(--pi-text-bright); }
-  @media (hover: hover) { .activity-output-close:hover { color: var(--pi-text-bright); } }
-  .activity-output-close:focus-visible { outline: 1px solid var(--pi-border); outline-offset: -2px; }
-  .activity-output-body { flex: 1; min-height: 0; margin: 0; padding: var(--pi-space-4) var(--pi-space-5); font: var(--pi-code-font-size, 12px)/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; overscroll-behavior: contain; }
-  .activity-output-empty { margin: 0; padding: var(--pi-space-6) var(--pi-space-5); color: var(--pi-muted); text-align: center; }
   /* A child's conversation, over the parent's. It borrows the output viewer's
      frame because it is the same kind of thing - something opened from an
      activity row - but its body is a message list rather than a log. */
-  dialog.activity-conversation { position: fixed; inset: 0; margin: auto; box-sizing: border-box; width: min(92vw, 900px); max-height: calc(88vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); padding: 0; color: var(--pi-text); background: var(--pi-surface); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); overflow: hidden; }
-  dialog.activity-conversation[open] { display: flex; flex-direction: column; }
-  dialog.activity-conversation::backdrop { background: rgba(0, 0, 0, 0.6); }
-  .activity-conversation-head { display: flex; align-items: flex-start; gap: var(--pi-space-3); padding: var(--pi-space-4) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); }
-  .activity-conversation-identity { flex: 1; min-width: 0; }
-  .activity-conversation-title { margin: 0; font-size: var(--pi-font-size-sm, 13px); font-weight: 600; color: var(--pi-text-bright); overflow-wrap: anywhere; }
-  .activity-conversation-subtitle { margin: var(--pi-space-1) 0 0; font-size: var(--pi-text-xs); color: var(--pi-muted); overflow-wrap: anywhere; }
-  .activity-conversation-close { display: inline-grid; place-items: center; flex: none; width: 44px; height: 44px; margin: calc(-1 * var(--pi-space-2)) calc(-1 * var(--pi-space-2)) calc(-1 * var(--pi-space-2)) 0; padding: 0; font: 18px/1 system-ui, sans-serif; color: var(--pi-muted); background: transparent; border: none; border-radius: var(--pi-radius-sm); cursor: pointer; }
-  .activity-conversation-close:focus-visible { color: var(--pi-text-bright); }
-  @media (hover: hover) { .activity-conversation-close:hover { color: var(--pi-text-bright); } }
-  .activity-conversation-close:focus-visible { outline: 1px solid var(--pi-border); outline-offset: -2px; }
-  .activity-conversation-boundary { flex: none; margin: 0; padding: var(--pi-space-3) var(--pi-space-5); font-size: var(--pi-text-xs); color: var(--pi-muted); background: var(--pi-bg-overlay); border-bottom: 1px solid var(--pi-border-muted); }
-  .activity-conversation-body { flex: 1; min-height: 0; padding: var(--pi-space-5) var(--pi-chat-gutter); overflow: auto; overscroll-behavior: contain; }
-  .activity-conversation-empty { margin: 0; padding: var(--pi-space-6) var(--pi-space-5); color: var(--pi-muted); text-align: center; }
   .group-msg { max-width: 100%; min-width: 0; box-sizing: border-box; padding: var(--pi-space-5) 0; border-top: 1px solid var(--pi-border-muted); color: var(--pi-text); overflow: visible; }
   .group-msg.tool { color: var(--pi-warning); }
   .group-msg.tool-execution-shell { color: var(--pi-text); }
@@ -571,7 +452,6 @@ export const chatStyles = css`
 const DOCK_CLEARANCE_PX = 8;
 
 const messageTimestampFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "medium" });
-const notificationTimestampFormatter = new Intl.DateTimeFormat(undefined, { timeStyle: "short" });
 
 /** Narrow the previous-status slot of a change to the one field queueGrew reads. */
 function recordWithQueuedMessages(value: unknown): { queuedMessages?: readonly QueuedSessionMessage[] } | undefined {
@@ -581,30 +461,14 @@ function recordWithQueuedMessages(value: unknown): { queuedMessages?: readonly Q
   return { queuedMessages: queued };
 }
 
-function renderNotificationDisclosureIcon(collapsed: boolean) {
+function renderDrawerDisclosureIcon(collapsed: boolean) {
   return html`
-    <svg class=${`notification-icon notification-disclosure-icon${collapsed ? "" : " expanded"}`} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <svg class=${`drawer-icon drawer-disclosure-icon${collapsed ? "" : " expanded"}`} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
       <path d="m9 18 6-6-6-6"></path>
     </svg>
   `;
 }
 
-function renderNotificationCloseIcon() {
-  return html`
-    <svg class="notification-icon notification-close-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path d="M6 6l12 12"></path>
-      <path d="M18 6 6 18"></path>
-    </svg>
-  `;
-}
-
-function isSessionNotificationTarget(value: unknown): value is SessionNotificationTarget {
-  return typeof value === "object"
-    && value !== null
-    && typeof Reflect.get(value, "machineId") === "string"
-    && typeof Reflect.get(value, "cwd") === "string"
-    && typeof Reflect.get(value, "sessionId") === "string";
-}
 
 function clampPercent(value: number): number {
   return clampNumber(value, 0, 100);
@@ -613,11 +477,6 @@ function clampPercent(value: number): number {
 function clampNumber(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
   return Math.min(max, Math.max(min, value));
-}
-
-interface PendingNotificationFocus {
-  chatKey: string;
-  focusTarget: NotificationFocusTarget;
 }
 
 
@@ -756,22 +615,11 @@ export class ChatView extends LitElement {
    * the only remaining copy of what was sent.
    */
   @property({ attribute: false }) onResendMessage?: (prompt: RecoveredPrompt) => void | Promise<void>;
-  @property({ attribute: false }) notificationInbox?: SelectedSessionNotificationView;
   /** Child sessions (subagents) spawned by this session, most urgent first. */
   @property({ attribute: false }) subagents?: readonly SessionSubagentInfo[];
   /** Subagent-tool runs for this session, newest first, live ones first of all. */
   @property({ attribute: false }) subagentRuns?: readonly SessionSubagentRunInfo[];
   @property({ attribute: false }) backgroundTasks?: readonly SessionBackgroundTaskInfo[];
-  /** The latest activity read for this chat failed. A failed read is not an
-   * empty one: without this flag the panel's only words for empty arrays were
-   * claims of absence, and a chat whose first poll never succeeded read as one
-   * that had simply never started anything. */
-  @property({ type: Boolean }) activityFailed = false;
-  /** The latest notifications read for this chat failed. The projection keeps
-   * that fact in its status and then drops every non-fresh projection on the
-   * way to the view, so the panel receives a bare undefined and its only words
-   * for a dead read were the two absence sentences. */
-  @property({ type: Boolean }) notificationsFailed = false;
   @property({ attribute: false }) onOpenBackgroundTask?: (task: SessionBackgroundTaskInfo) => void;
   @property({ attribute: false }) onOpenSubagentRun?: (run: SessionSubagentRunInfo) => void;
   /** Open a listed subagent in the navigation. */
@@ -781,41 +629,20 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) onDismissLedgerRow?: (id: string) => void;
   /** Take one queued message back into the composer, leaving the rest queued. */
   @property({ attribute: false }) onRecallQueuedMessage?: (message: QueuedSessionMessage) => void;
-  @property({ attribute: false }) onDismissNotification?: (notificationId: string) => void;
-  @property({ attribute: false }) onDismissAllNotifications?: () => void;
   @property({ attribute: false }) onLoadMore?: () => void;
   /** Puts the cursor in the composer, for the empty session's way forward. */
   @property({ attribute: false }) onFocusComposer?: () => void;
-  /** A log or artifact opened from the activity list, read in its own view. */
-  @property({ attribute: false }) activityOutput?: ActivityOutputView | undefined;
-  @property({ attribute: false }) onCloseActivityOutput?: () => void;
-  /** A child run's conversation, opened from its activity row. */
-  @property({ attribute: false }) activityConversation?: ActivityConversationView | undefined;
-  @property({ attribute: false }) onCloseActivityConversation?: () => void;
   @query(".chat") private chat?: HTMLDivElement;
   @query(".drawer-tabs") private drawerTabs?: HTMLElement | null;
   @query("dialog.image-zoom") private imageZoomDialog?: HTMLDialogElement;
-  @query("dialog.activity-output") private activityOutputDialog?: HTMLDialogElement;
-  @query("dialog.activity-conversation") private activityConversationDialog?: HTMLDialogElement;
   @state() private pinnedToBottom = true;
   /** True while a touch gesture is moving the scroller; see onTouchStart. */
   private userScrollInFlight = false;
   private readonly followGate = new ScrollFollowGate();
-  /** Same invariant as the transcript's gate, for the notifications drawer's own scroller. */
-  private readonly drawerGate = new ScrollFollowGate();
-  /**
-   * The drawer tray a held press is keeping still, or undefined when the drawer
-   * follows live notifications. While it is set, the drawer renders THIS tray
-   * instead of the newest one: a notification arriving mid-press prepends a row
-   * and would move every card below it, including the one under the finger.
-   */
-  @state() private drawerHold: { inbox: SelectedSessionNotificationView | undefined } | undefined;
-  private drawerCatchUpTimer: ReturnType<typeof setTimeout> | undefined;
   /** Whether the newest message is far enough away to be worth a button. */
   @state() private jumpToBottomVisible = false;
   @state() private zoomedImage: { src: string; alt: string } | undefined = undefined;
   @state() private expandedMetaKey: string | undefined;
-  @state() private copiedNotificationId: string | undefined;
   @state() private copiedMessageKey: string | undefined;
   @state() private currentConversationIndex: number | undefined;
   /** Exact chats whose top drawer the reader folded away, so switching
@@ -823,8 +650,6 @@ export class ChatView extends LitElement {
   @state() private collapsedTopDrawerKeys: ReadonlySet<string> = new Set();
   /** Exact chats the reader explicitly unfolded, which outranks the default. */
   @state() private expandedTopDrawerKeys: ReadonlySet<string> = new Set();
-  /** Whether the drawer's work was running last time this was looked at. */
-  private drawerWorkWasRunning = false;
   /** Section the reader last chose; ignored when that section has nothing. */
   @state() private topDrawerTab: DrawerTab | undefined;
   @property({ attribute: false }) drawerSections: readonly QualifiedDrawerSectionContribution[] = [];
@@ -832,19 +657,11 @@ export class ChatView extends LitElement {
   @property() drawerWorkspacePath?: string;
   @property() sessionCwd?: string;
   @property({ attribute: false }) onRunSectionCommand?: (command: string) => Promise<void>;
-  /** Which kinds of activity to list; "all" until the reader narrows it. */
-  @state() private activityFilter: ActivityFilter = "all";
-  /** Live work only, until the reader asks for the history. */
-  @state() private activityScope: ActivityScope = "active";
   /** When this browser first saw the current turn working, and a clock to age it. */
   @state() private turnStartedAtMs: number | undefined;
   @state() private turnNowMs = 0;
   private turnClockTimer: number | undefined;
-  @state() private retainedEmptyNotificationTrayTargetKey: string | undefined;
-  private pendingNotificationFocus: PendingNotificationFocus | undefined;
   private imageZoomModalRegistration: RenderedModalRegistration | undefined;
-  private activityOutputModalRegistration: RenderedModalRegistration | undefined;
-  private activityConversationModalRegistration: RenderedModalRegistration | undefined;
   private readonly disclosures = new ChatDisclosureController();
   private readonly scrollController = new ChatScrollController();
   private readonly drawerTabEdgeTracker = new ScrollEdgeTracker(() => { this.requestUpdate(); });
@@ -863,12 +680,6 @@ export class ChatView extends LitElement {
   /** Which open card's alignment a press deferred, so the release can replay it. */
   private conversationRailFrame: number | undefined;
   private groupedMessagesInput?: ChatLine[];
-  /** The session the retained subagent/run/task rows were delivered for. The
-   * controller keeps one un-keyed list in state and clears it only on a machine
-   * or workspace switch, so after a session switch the rows still here belong
-   * to the previous selection; rendering them under the new one is how one
-   * chat's tasks appeared beneath another chat's name. */
-  private activityRowsSessionId: string | undefined;
   private groupedMessagesStart = 0;
   private groupedMessagesCache: ChatGroup[] = [];
   private readonly messageMetaCache = new WeakMap<ChatLine, string>();
@@ -962,7 +773,6 @@ export class ChatView extends LitElement {
     this.dockResizeObserver = undefined;
     this.observedDock = undefined;
     this.releaseImageZoomModal();
-    this.releaseActivityOutputModal();
     this.prependRestoreToken += 1;
     if (this.restoreScrollFrame !== undefined) cancelAnimationFrame(this.restoreScrollFrame);
     if (this.loadMoreCheckFrame !== undefined) cancelAnimationFrame(this.loadMoreCheckFrame);
@@ -971,10 +781,6 @@ export class ChatView extends LitElement {
     if (this.catchUpFollowTimer !== undefined) {
       clearTimeout(this.catchUpFollowTimer);
       this.catchUpFollowTimer = undefined;
-    }
-    if (this.drawerCatchUpTimer !== undefined) {
-      clearTimeout(this.drawerCatchUpTimer);
-      this.drawerCatchUpTimer = undefined;
     }
     window.removeEventListener("resize", this.onViewportResize);
     window.removeEventListener("pagehide", this.onPageHide);
@@ -992,9 +798,6 @@ export class ChatView extends LitElement {
     // date the new session's work from the old one's start.
     this.turnStartedAtMs = undefined;
     this.disclosures.syncSession(this.sessionId);
-    this.pendingNotificationFocus = undefined;
-    this.retainedEmptyNotificationTrayTargetKey = undefined;
-    this.drawerHold = undefined;
     this.scrollController.clearScheduledSave();
     this.suppressScrollSave = false;
     this.suppressLoadMoreRequests = false;
@@ -1013,26 +816,9 @@ export class ChatView extends LitElement {
   }
 
   protected override willUpdate(changed: Map<string, unknown>): void {
-    this.foldDrawerAsWorkFinishes();
-    if (changed.has("subagents") || changed.has("subagentRuns") || changed.has("backgroundTasks")) {
-      // Lit applies every property before willUpdate, so a delivery that rides
-      // in the same update as a session switch is stamped with the new session -
-      // which is the session those rows were fetched for.
-      this.activityRowsSessionId = this.sessionId;
-    }
     if (changed.has("sessionId")) {
       this.savePreviousSessionScrollPosition(changed.get("sessionId"));
       this.prepareSessionUiState();
-    } else if (changed.has("notificationInbox") && this.notificationTargetChanged(changed.get("notificationInbox"))) {
-      this.pendingNotificationFocus = undefined;
-      this.retainedEmptyNotificationTrayTargetKey = undefined;
-      // Another chat's tray is not a held update of this one.
-      this.drawerHold = undefined;
-    }
-    if (changed.has("notificationInbox")) {
-      // The willUpdate map's values are unknown; the tray guard narrows the shape.
-      const previous = changed.get("notificationInbox");
-      this.offerDrawerInbox(isNotificationTray(previous) ? this.visibleInboxOf(previous) : undefined);
     }
     if (changed.has("messages") || changed.has("pendingAsk") || changed.has("pendingDialogs") || changed.has("closedDialogs")) this.pinnedToBottom = this.pinnedToBottom && (this.didChatHeightChange() || this.isNearBottom());
   }
@@ -1098,13 +884,6 @@ export class ChatView extends LitElement {
     if (changed.has("messages") || changed.has("messageStart") || changed.has("messageTotal") || changed.has("hasMore") || changed.has("loadingMore")) this.scheduleConversationRailUpdate();
     if (changed.has("messages") || changed.has("messageStart") || changed.has("hasMore") || changed.has("loadingMore") || changed.has("pendingAsk") || changed.has("pendingDialogs") || changed.has("closedDialogs")) this.continuePendingScrollRestore();
     if (changed.has("messages") || changed.has("hasMore") || changed.has("loadingMore")) this.requestLoadMoreIfNeeded();
-    if (changed.has("notificationInbox") && this.drawerHold === undefined && this.pendingNotificationFocus !== undefined) this.focusPendingNotificationTarget();
-    // The flush of a press-held tray is when the rows the focus handoff looks
-    // for actually appear.
-    if (changed.has("drawerHold") && this.drawerHold === undefined && this.pendingNotificationFocus !== undefined) this.focusPendingNotificationTarget();
-    if (changed.has("zoomedImage")) this.syncImageZoomDialog();
-    if (changed.has("activityOutput")) this.syncActivityOutputDialog();
-    if (changed.has("activityConversation")) this.syncActivityConversationDialog();
     this.drawerTabEdgeTracker.observe(this.drawerTabs ?? undefined);
     this.publishScrollbarWidth();
     this.observeDock();
@@ -1114,6 +893,7 @@ export class ChatView extends LitElement {
     const chat = this.chat;
     if (chat !== undefined) this.jumpToBottomVisible = showsJumpToBottom(chat);
     if (changed.has("status") || changed.has("activity") || changed.has("isSendingPrompt")) this.syncTurnClock();
+    if (changed.has("zoomedImage")) this.syncImageZoomDialog();
   }
 
   /**
@@ -1193,93 +973,16 @@ export class ChatView extends LitElement {
     this.releaseImageZoomModal();
   }
 
-  private syncActivityOutputDialog(): void {
-    const dialog = this.activityOutputDialog;
-    if (dialog === undefined) return;
-    if (this.activityOutput !== undefined) {
-      if (this.activityOutputModalRegistration === undefined) {
-        const registration = registerRenderedModal({
-          element: dialog,
-          nativeTopLayer: true,
-          focus: () => {
-            const close = this.renderRoot.querySelector<HTMLElement>(".activity-output-close");
-            (close ?? dialog).focus();
-          },
-        });
-        this.activityOutputModalRegistration = registration;
-        try {
-          if (!dialog.open) dialog.showModal();
-        } catch (error) {
-          this.activityOutputModalRegistration = undefined;
-          registration.unregister();
-          throw error;
-        }
-      }
-      this.activityOutputModalRegistration.focus();
-      return;
-    }
-    if (dialog.open) dialog.close();
-    this.releaseActivityOutputModal();
-  }
-
-  private releaseActivityOutputModal(): void {
-    const registration = this.activityOutputModalRegistration;
-    this.activityOutputModalRegistration = undefined;
-    registration?.unregister();
-  }
-
-  private syncActivityConversationDialog(): void {
-    const dialog = this.activityConversationDialog;
-    if (dialog === undefined) return;
-    if (this.activityConversation !== undefined) {
-      if (this.activityConversationModalRegistration === undefined) {
-        const registration = registerRenderedModal({
-          element: dialog,
-          nativeTopLayer: true,
-          focus: () => {
-            const close = this.renderRoot.querySelector<HTMLElement>(".activity-conversation-close");
-            (close ?? dialog).focus();
-          },
-        });
-        this.activityConversationModalRegistration = registration;
-        try {
-          if (!dialog.open) dialog.showModal();
-        } catch (error) {
-          this.activityConversationModalRegistration = undefined;
-          registration.unregister();
-          throw error;
-        }
-      }
-      this.activityConversationModalRegistration.focus();
-      return;
-    }
-    if (dialog.open) dialog.close();
-    this.releaseActivityConversationModal();
-  }
-
-  private releaseActivityConversationModal(): void {
-    const registration = this.activityConversationModalRegistration;
-    this.activityConversationModalRegistration = undefined;
-    registration?.unregister();
-  }
-
   private releaseImageZoomModal(): void {
     const registration = this.imageZoomModalRegistration;
     this.imageZoomModalRegistration = undefined;
     registration?.unregister();
   }
 
-  private notificationTargetChanged(previous: unknown): boolean {
-    const currentInbox = this.notificationInbox;
-    if (!isSessionNotificationTarget(previous) || currentInbox === undefined) return previous !== currentInbox;
-    return notificationTargetKey(previous) !== notificationTargetKey(currentInbox);
-  }
-
   override render() {
     const groups = this.groupedMessages();
     return html`
       ${this.renderTopNotices()}
-      ${this.renderNotificationLiveRegions()}
       <div class="chat-wrap">
         ${this.renderConversationRail()}
         <div class="chat" @scroll=${() => { this.onScroll(); }} @wheel=${(event: WheelEvent) => { this.onWheel(event); }} @touchend=${() => { this.onTouchEnd(); }} @touchcancel=${() => { this.onTouchEnd(); }} @pointerdown=${() => { this.notePressStart(); }} @pointerup=${() => { this.releasePointer(); }} @pointercancel=${() => { this.releasePointer(); }} @touchstart=${(event: TouchEvent) => { this.onTouchStart(event); }} @touchmove=${(event: TouchEvent) => { this.onTouchMove(event); }}>
@@ -1304,8 +1007,6 @@ export class ChatView extends LitElement {
         ${this.renderActivityDock()}
       </div>
       ${this.renderImageZoom()}
-      ${this.renderActivityOutput()}
-      ${this.renderActivityConversation()}
     `;
   }
 
@@ -1346,189 +1047,6 @@ export class ChatView extends LitElement {
    * reader is asking about the whole drawer, and one control folds the drawer
    * away entirely.
    */
-  private renderTopDrawer(): TemplateResult | null {
-    const activity = this.activityPanelState();
-    const inbox = this.drawerInbox();
-    // Goals count as a reason to have a drawer: on a phone this is the only
-    // place they appear, so gating the drawer on the other two sections hid
-    // them exactly when nothing else was running. A read in flight, or one
-    // that failed, is also a reason: hiding the drawer during flight is how
-    // the loading state went unseen for its whole life.
-    // Fixed tab membership means the drawer itself is fixed too: hiding the
-    // whole strip when the three sections happen to be empty is the reflow
-    // the ruling forbids, and it made the not-installed sentences unreachable.
-    const sectionContext = this.drawerSectionContext();
-    const sections = sectionContext === undefined ? [] : this.drawerSections;
-    const sectionsWithContent = sectionContext === undefined
-      ? []
-      : sections.filter((section) => section.available?.(sectionContext) !== false).map((section) => section.id);
-    const tab = selectedDrawerTab({
-      activity: activity !== undefined,
-      notifications: inbox !== undefined || this.notificationsFailed,
-      sections: sections.map((section) => section.id),
-      withContent: sectionsWithContent,
-    }, this.topDrawerTab);
-    const key = this.topDrawerKey();
-    const collapsed = this.expandedTopDrawerKeys.has(key)
-      ? false
-      : this.collapsedTopDrawerKeys.has(key) || !topDrawerStartsOpen();
-    const toggleLabel = collapsed ? "Show session activity and notifications" : "Hide session activity and notifications";
-    const notificationCount = inbox === undefined ? 0 : notificationInboxTotalCount(inbox);
-    // Membership is fixed: the three tabs render for the drawer's whole life,
-    // whether their section is running, empty, or still unknown. A tab that
-    // appears or vanishes with its data reflows the strip under the finger —
-    // the owner's mis-tap on the drained NOTIFICATIONS tab. Honest empties are
-    // rendered by the panels, not by removing the entrance.
-    return html`
-      <section
-        class=${`top-drawer${collapsed ? " collapsed" : ""}`}
-        role="region"
-        aria-label="Session drawer"
-        @focusout=${(event: FocusEvent) => { this.releaseEmptyNotificationTray(event); }}
-      >
-        <header class="drawer-header" data-notification-focus="header" tabindex="-1">
-          <div class=${`drawer-tabs-frame${scrollEdgeClasses(this.drawerTabEdgeTracker.edges)}`}>
-          <div class="drawer-tabs" role="tablist" aria-label="Session drawer sections" @scroll=${() => { this.drawerTabEdgeTracker.refresh(); }} @keydown=${(event: KeyboardEvent) => { this.onDrawerTabsKeydown(event); }}>
-            <button
-              type="button"
-              role="tab"
-              id="drawer-tab-activity"
-              class=${`drawer-tab drawer-tab-activity${tab === "activity" ? " selected" : ""}`}
-              aria-selected=${String(tab === "activity")}
-              tabindex=${tab === "activity" ? "0" : "-1"}
-              aria-controls="session-activity-list"
-              @click=${() => { this.selectTopDrawerTab("activity", collapsed); }}
-            >
-              ${activity?.summary.working === true ? html`<span class="subagent-dot working" aria-hidden="true"></span>` : null}
-              <span class="drawer-tab-label">${activityTabLabel({ active: activity?.activeCount ?? 0 })}</span>
-            </button>
-            <button
-              type="button"
-              role="tab"
-              id="drawer-tab-notifications"
-              class=${`drawer-tab drawer-tab-notifications${tab === "notifications" ? " selected" : ""}`}
-              aria-selected=${String(tab === "notifications")}
-              tabindex=${tab === "notifications" ? "0" : "-1"}
-              aria-controls="session-notification-list"
-              @click=${() => { this.selectTopDrawerTab("notifications", collapsed); }}
-            >
-              <span class="drawer-tab-label">${notificationDrawerTabLabel(inbox, this.notificationInbox?.sessionId === this.sessionId)}</span>
-            </button>
-            ${sectionContext === undefined ? null : sections.map((section) => html`
-            <button
-              type="button"
-              role="tab"
-              id=${`drawer-tab-${section.id}`}
-              class=${`drawer-tab${tab === section.id ? " selected" : ""}`}
-              aria-selected=${String(tab === section.id)}
-              tabindex=${tab === section.id ? "0" : "-1"}
-              aria-controls=${`drawer-panel-${section.id}`}
-              @click=${() => { this.selectTopDrawerTab(section.id, collapsed); }}
-            >
-              <span class="drawer-tab-label">${section.title}${sectionBadgeSuffix(section, sectionContext)}</span>
-            </button>`)}
-          </div>
-          </div>
-          <div class="drawer-header-actions">
-            ${tab === "notifications" && inbox !== undefined ? html`
-              <button
-                type="button"
-                class="notification-control notification-clear"
-                aria-label="Clear all notifications"
-                title="Clear all notifications"
-                ?disabled=${inbox.dismissAllPending || notificationCount === 0 || this.onDismissAllNotifications === undefined}
-                @click=${() => { this.dismissAllNotifications(); }}
-              >Clear</button>
-            ` : null}
-            <button
-              type="button"
-              class="notification-control notification-toggle drawer-toggle"
-              aria-label=${toggleLabel}
-              title=${toggleLabel}
-              aria-expanded=${String(!collapsed)}
-              aria-controls=${tab === "activity" ? "session-activity-list" : tab === "notifications" ? "session-notification-list" : `drawer-panel-${tab}`}
-              @click=${() => { this.toggleTopDrawer(collapsed); }}
-            >${renderNotificationDisclosureIcon(collapsed)}</button>
-          </div>
-        </header>
-        <div class="drawer-body" ?hidden=${collapsed}>
-          ${tab === "activity" ? this.renderActivityPanel(activity) : null}
-          ${tab === "notifications" ? this.renderNotificationPanel(inbox, this.notificationInbox?.sessionId === this.sessionId) : null}
-          ${sectionContext === undefined ? null : sections.filter((section) => section.id === tab).map((section) => html`
-            <div class="drawer-section-panel" id=${`drawer-panel-${section.id}`} role="tabpanel" aria-labelledby=${`drawer-tab-${section.id}`}>
-              ${section.render(sectionContext)}
-            </div>`)}
-        </div>
-      </section>
-    `;
-  }
-
-  /** The inbox this chat should show, or undefined when there is nothing to show. */
-  private visibleNotificationInbox(): SelectedSessionNotificationView | undefined {
-    return this.visibleInboxOf(this.notificationInbox);
-  }
-
-  private visibleInboxOf(inbox: SelectedSessionNotificationView | undefined): SelectedSessionNotificationView | undefined {
-    if (inbox?.sessionId !== this.sessionId) return undefined;
-    const hasPendingOverlay = inbox.pendingDismissedIds.size > 0 || inbox.dismissAllPending;
-    const retainsFocusTarget = this.retainedEmptyNotificationTrayTargetKey === notificationTargetKey(inbox);
-    if (notificationInboxTotalCount(inbox) === 0 && !hasPendingOverlay && !retainsFocusTarget) return undefined;
-    return inbox;
-  }
-
-  /** The tray the drawer draws: the held one while a press keeps it still, else the live one. */
-  private drawerInbox(): SelectedSessionNotificationView | undefined {
-    const hold = this.drawerHold;
-    return hold === undefined ? this.visibleNotificationInbox() : hold.inbox;
-  }
-
-  /**
-   * Offer a live tray update to the drawer. A press on the drawer holds it
-   * back - with the same gate and settle grace the transcript uses - so rows
-   * cannot move under a finger that is already down. The update is applied on
-   * release, or immediately once a press outlives the stuck-pointer backstop.
-   */
-  private offerDrawerInbox(previouslyVisible: SelectedSessionNotificationView | undefined): void {
-    if (this.drawerGate.followsNewest(Date.now())) {
-      if (this.drawerHold !== undefined) this.drawerHold = undefined;
-      return;
-    }
-    // Nothing was rendered where the drawer would be - a tray appearing for the
-    // first time, or another chat's - so there is no content under the finger
-    // to keep still, and the tray may show live.
-    if (previouslyVisible === undefined) return;
-    // Hold what was rendered before this change arrived, not the change itself:
-    // the finger's target must stay where it is until the press ends.
-    this.drawerHold ??= { inbox: previouslyVisible };
-    this.scheduleDrawerCatchUp();
-  }
-
-  private releaseDrawerPointer(): void {
-    this.drawerGate.notePointerUp(Date.now());
-    if (!this.drawerGate.takeSuppressedFollow()) return;
-    this.scheduleDrawerCatchUp();
-  }
-
-  /** Apply what the press held back once the settle grace has let the tap land. */
-  private scheduleDrawerCatchUp(): void {
-    if (this.drawerCatchUpTimer !== undefined) clearTimeout(this.drawerCatchUpTimer);
-    this.drawerCatchUpTimer = setTimeout(() => {
-      this.drawerCatchUpTimer = undefined;
-      // A new press re-holds; its own release reschedules this.
-      if (!this.drawerGate.followsNewest(Date.now())) return;
-      if (this.drawerHold !== undefined) this.drawerHold = undefined;
-    }, TOUCH_SETTLE_MS);
-  }
-
-  /**
-   * Collapse and tab choice follow the exact chat, not just its session id, so
-   * the same session id on another machine or cwd starts fresh.
-   */
-  private topDrawerKey(): string {
-    const inbox = this.notificationInbox;
-    return inbox?.sessionId === this.sessionId ? notificationTargetKey(inbox) : JSON.stringify([null, null, this.sessionId]);
-  }
-
   /**
    * Folding is an explicit choice per chat, in both directions: the default
    * only decides what happens before the reader has said anything, and must
@@ -1567,7 +1085,74 @@ export class ChatView extends LitElement {
     };
   }
 
-  private selectTopDrawerTab(tab: DrawerTab, collapsed: boolean): void {
+  /**
+   * Collapse and tab choice follow the exact chat, not just its session id, so
+   * the same session id on another machine or cwd starts fresh.
+   */
+  private topDrawerKey(): string {
+    return JSON.stringify([null, null, this.sessionId]);
+  }
+
+  private renderTopDrawer(): TemplateResult | null {
+    const sectionContext = this.drawerSectionContext();
+    if (sectionContext === undefined) return null;
+    const sections = this.drawerSections;
+    if (sections.length === 0) return null;
+    const sectionsWithContent = sections.filter((section) => section.available?.(sectionContext) !== false).map((section) => section.id);
+    const tab = selectedDrawerTab({ sections: sections.map((section) => section.id), withContent: sectionsWithContent }, this.topDrawerTab);
+    if (tab === undefined) return null;
+    const key = this.topDrawerKey();
+    const collapsed = this.expandedTopDrawerKeys.has(key)
+      ? false
+      : this.collapsedTopDrawerKeys.has(key) || !topDrawerStartsOpen();
+    const toggleLabel = collapsed ? "Show session sections" : "Hide session sections";
+    return html`
+      <section
+        class=${`top-drawer${collapsed ? " collapsed" : ""}`}
+        role="region"
+        aria-label="Session drawer"
+      >
+        <header class="drawer-header" tabindex="-1">
+          <div class=${`drawer-tabs-frame${scrollEdgeClasses(this.drawerTabEdgeTracker.edges)}`}>
+          <div class="drawer-tabs" role="tablist" aria-label="Session drawer sections" @scroll=${() => { this.drawerTabEdgeTracker.refresh(); }} @keydown=${(event: KeyboardEvent) => { this.onDrawerTabsKeydown(event); }}>
+            ${sections.map((section) => html`
+            <button
+              type="button"
+              role="tab"
+              id=${`drawer-tab-${section.id}`}
+              class=${`drawer-tab${tab === section.id ? " selected" : ""}`}
+              aria-selected=${String(tab === section.id)}
+              tabindex=${tab === section.id ? "0" : "-1"}
+              aria-controls=${`drawer-panel-${section.id}`}
+              @click=${() => { this.selectTopDrawerTab(section.id, collapsed); }}
+            >
+              <span class="drawer-tab-label">${section.title}${sectionBadgeSuffix(section, sectionContext)}</span>
+            </button>`)}
+          </div>
+          </div>
+          <div class="drawer-header-actions">
+            <button
+              type="button"
+              class="drawer-control drawer-collapse drawer-toggle"
+              aria-label=${toggleLabel}
+              title=${toggleLabel}
+              aria-expanded=${String(!collapsed)}
+              aria-controls=${`drawer-panel-${tab}`}
+              @click=${() => { this.toggleTopDrawer(collapsed); }}
+            >${renderDrawerDisclosureIcon(collapsed)}</button>
+          </div>
+        </header>
+        <div class="drawer-body" ?hidden=${collapsed}>
+          ${sections.filter((section) => section.id === tab).map((section) => html`
+            <div class="drawer-section-panel" id=${`drawer-panel-${section.id}`} role="tabpanel" aria-labelledby=${`drawer-tab-${section.id}`}>
+              ${section.render(sectionContext)}
+            </div>`)}
+        </div>
+      </section>
+    `;
+  }
+
+  private selectTopDrawerTab(tab: Exclude<DrawerTab, undefined>, collapsed: boolean): void {
     this.topDrawerTab = tab;
     if (collapsed) this.toggleTopDrawer(collapsed);
   }
@@ -1588,32 +1173,7 @@ export class ChatView extends LitElement {
    * and "what are my subagents doing" and "did that build finish" are separate
    * questions. Kinds with nothing in them are not offered.
    */
-  private renderActivityFilters(activity: ActivityPanelState, selected: ActivityFilter): TemplateResult | null {
-    const options = activityFilterOptions(activity);
-    if (options.length <= 1) return null;
-    return html`
-      <div class="activity-filters" role="group" aria-label="Filter session activity">
-        ${options.map((option) => html`
-          <button
-            type="button"
-            class=${`activity-filter activity-filter-${option.id}${option.id === selected ? " selected" : ""}`}
-            aria-pressed=${String(option.id === selected)}
-            @click=${() => { this.activityFilter = option.id; }}
-          >${option.label}${option.count === 0 ? null : html` <span class="activity-filter-count">${String(option.count)}</span>`}</button>
-        `)}
-      </div>
-    `;
-  }
-
-  /** Whether the retained activity rows were delivered for the session now on
-   * screen. Rows that outlive their session read here as not delivered, so the
-   * panel below renders an honest not-loaded instead of another chat's work. */
-  private activityRowsDeliveredForSelectedSession(): boolean {
-    return this.activityRowsSessionId !== undefined && this.activityRowsSessionId === this.sessionId;
-  }
-
   private activityPanelState(): ActivityPanelState | undefined {
-    if (!this.activityRowsDeliveredForSelectedSession()) return undefined;
     const subagents = this.subagents ?? [];
     const runs = this.subagentRuns ?? [];
     const tasks = this.backgroundTasks ?? [];
@@ -1628,353 +1188,6 @@ export class ChatView extends LitElement {
     ]);
     const activeCount = [...rows, ...runRows, ...taskRows].filter((row) => isActiveActivityStatus(row.status)).length;
     return { rows, runRows, taskRows, summary, total: rows.length + runRows.length + taskRows.length, activeCount };
-  }
-
-  private renderActivityPanel(activity: ActivityPanelState | undefined): TemplateResult {
-    // A failed read says so in every state: with nothing retained (the panel
-    // was never read) and with retained rows alike. Retention keeps the older
-    // rows visible below the line - a running task must not vanish because a
-    // read failed - but the failure is never dressed as a completed empty.
-    const failedLine = this.activityFailed
-      ? html`<p class="activity-empty activity-failed">Activity could not be loaded. It will retry automatically.</p>`
-      : null;
-    // The tab is always present, so its panel answers even when this chat has
-    // never started anything: an empty section reads as empty, never vanishes.
-    if (activity === undefined) {
-      // Not loaded and loaded-empty are different states wearing the same
-      // undefined. The owner photographed the absence claim printed over a chat
-      // whose activity was never read; a definitive "none" may only be spoken
-      // by a read that completed and found nothing. A read that failed is a
-      // third state: it says so instead of borrowing either sentence.
-      if (failedLine !== null) {
-        return html`
-          <div class="subagents-list" id="session-activity-list" role="tabpanel" aria-labelledby="drawer-tab-activity">
-            ${failedLine}
-          </div>
-        `;
-      }
-      if (!this.activityRowsDeliveredForSelectedSession()) {
-        return html`
-          <div class="subagents-list" id="session-activity-list" role="tabpanel" aria-labelledby="drawer-tab-activity">
-            <p class="activity-empty">Activity has not been read for this chat yet.</p>
-          </div>
-        `;
-      }
-      // Only the runtime's definite absence may claim "not installed".
-      const subagentsPresence = this.status?.pluginSurfaces?.subagents;
-      return html`
-        <div class="subagents-list" id="session-activity-list" role="tabpanel" aria-labelledby="drawer-tab-activity">
-          <p class="activity-empty">${subagentsPresence === "absent"
-            ? "Subagent tools are not installed for this session. Background tasks still appear here when they run."
-            : subagentsPresence === "failed"
-              ? "A plugin failed to load; subagent tooling may be incomplete. See Notifications."
-              : "No subagent or background activity from this chat yet."}</p>
-        </div>
-      `;
-    }
-    const filter = activityFilterInEffect(this.activityFilter, activity);
-    const inFilter = orderActivityEntries([
-      ...activity.rows.map((row, index): ActivityListEntry => ({ kind: "subagents", index, status: row.status, row })),
-      ...activity.runRows.map((row, index): ActivityListEntry => ({ kind: "runs", index, status: row.status, startedAt: row.run.startedAt, row })),
-      ...activity.taskRows.map((row, index): ActivityListEntry => ({ kind: "tasks", index, status: row.status, startedAt: row.task.startedAt, row })),
-    ]).filter((entry) => filter === "all" || filter === entry.kind);
-    const scope = activity.activeCount === 0 && this.activityScope === "active" ? "empty-active" : this.activityScope;
-    const entries = inFilter.filter((entry) => scope === "all" || !isFinishedActivityStatus(entry.status));
-    if (failedLine !== null) {
-      return html`
-        <div class="subagents-list" id="session-activity-list" role="tabpanel" aria-labelledby="drawer-tab-activity">
-          ${failedLine}
-          ${repeat(entries, activityEntryKey, (entry) => this.renderActivityEntry(entry))}
-        </div>
-      `;
-    }
-    // The sentence describes what the reader is looking at. Rows whose status
-    // cannot be interpreted are neither active nor finished, so they survive
-    // the active scope's filter - and the owner photographed "Nothing running
-    // right now" printed directly above two such rows. Only a list that is
-    // actually empty may claim emptiness.
-    // Only whether history exists, not how much: the number belongs to what is
-    // happening now, and a total that counts hundreds of settled rows drowns
-    // the one that is running.
-    const finished = inFilter.filter((entry) => isFinishedActivityStatus(entry.status)).length;
-    return html`
-      <div class="subagents-list" id="session-activity-list" role="tabpanel" aria-labelledby="drawer-tab-activity">
-          ${this.renderActivityFilters(activity, filter)}
-          ${(scope === "empty-active" && entries.length === 0)
-            ? html`<p class="activity-empty">${activityEmptyMeaning({ isStreaming: this.status?.isStreaming ?? false, isBashRunning: this.status?.isBashRunning ?? false }).text}</p>`
-            : null}
-          ${repeat(entries, activityEntryKey, (entry) => this.renderActivityEntry(entry))}
-          ${finished === 0 ? null : html`
-            <button
-              type="button"
-              class="activity-history-toggle"
-              aria-controls="session-activity-list"
-              aria-expanded=${String(this.activityScope === "all")}
-              @click=${(event: MouseEvent) => { this.toggleActivityScope(event.currentTarget); }}
-            >${this.activityScope === "all" ? "Hide finished" : "Show finished"}</button>
-          `}
-      </div>
-    `;
-  }
-
-  /** One row, in the shape its kind needs; the kind also labels it for a reader. */
-  private renderActivityEntry(entry: ActivityListEntry): TemplateResult {
-    if (entry.kind === "subagents") {
-      const row = entry.row;
-      return html`
-        <button
-          type="button"
-          class="subagent-row status-${row.status}"
-          title=${row.cwd}
-          aria-label=${row.ariaLabel}
-          @click=${() => { this.onOpenSubagent?.(row.subagent); }}
-        >
-          <span class="subagent-dot ${row.status}" aria-hidden="true"></span>
-          <span class="subagent-kind" aria-hidden="true">Subagent</span>
-          <span class="subagent-id" dir="ltr">${row.shortId}</span>
-          <span class="subagent-status ${row.status}">${row.statusLabel}</span>
-          <span class="subagent-chevron" aria-hidden="true">\u203a</span>
-        </button>
-      `;
-    }
-    if (entry.kind === "runs") {
-      const row = entry.row;
-      return html`
-        <button
-          type="button"
-          class="subagent-row status-${row.status}"
-          title=${row.run.task ?? row.run.agent}
-          aria-label=${row.ariaLabel}
-          @click=${() => { this.onOpenSubagentRun?.(row.run); }}
-        >
-          <span class="subagent-dot ${row.status}" aria-hidden="true"></span>
-          <span class="subagent-kind" aria-hidden="true">Agent</span>
-          <span class="subagent-id" dir="ltr">${row.run.agent}</span>
-          ${row.modelLabel === undefined
-            ? null
-            : html`<span class="subagent-model" dir="ltr" title=${row.modelTitle ?? row.modelLabel}>${row.modelLabel}</span>`}
-          <span class="subagent-status ${row.status}">${row.statusLabel}</span>
-          <span class="subagent-duration">${row.duration}</span>
-          <span class="subagent-chevron" aria-hidden="true">\u203a</span>
-          ${row.detail === "" ? null : html`<span class="subagent-detail">${row.detail}</span>`}
-        </button>
-      `;
-    }
-    const row = entry.row;
-    return html`
-      <button
-        type="button"
-        class="subagent-row status-${row.status} background-task-row background-task-${String(entry.index)}"
-        title=${row.task.command}
-        aria-label=${row.ariaLabel}
-        ?disabled=${!row.task.hasOutput}
-        @click=${() => { this.onOpenBackgroundTask?.(row.task); }}
-      >
-        <span class="subagent-dot ${row.status}" aria-hidden="true"></span>
-        <span class="subagent-kind" aria-hidden="true">Task</span>
-        <span class="subagent-id" dir="ltr">${row.task.name}</span>
-        <span class="subagent-status ${row.status}">${row.statusLabel}</span>
-        <span class="subagent-duration">${row.duration}</span>
-        ${row.task.hasOutput ? html`<span class="subagent-chevron" aria-hidden="true">\u203a</span>` : null}
-        ${row.detail === "" ? null : html`<span class="subagent-detail" dir="ltr">${row.detail}</span>`}
-      </button>
-    `;
-  }
-
-  /**
-   * Three states, three sentences. `loaded` is true only when a view exists for
-   * this session, and a view exists only for a fresh, completed read - so "No
-   * notifications for this chat." is reachable only through a read that
-   * succeeded and found nothing. "No notifications yet." covers the read still
-   * in flight or not started. A failed read says it failed and names its
-   * retry: event-driven (socket recovery, next refresh), not on a clock, so
-   * the line does not promise a timer it does not have.
-   */
-  private renderNotificationPanel(inbox: SelectedSessionNotificationView | undefined, loaded: boolean): TemplateResult {
-    return html`
-        <div class="notification-list" id="session-notification-list" role="tabpanel" aria-labelledby="drawer-tab-notifications" @pointerdown=${() => { this.drawerGate.notePointerDown(Date.now()); }} @pointerup=${() => { this.releaseDrawerPointer(); }} @pointercancel=${() => { this.releaseDrawerPointer(); }} @touchstart=${() => { this.drawerGate.notePointerDown(Date.now()); }} @touchend=${() => { this.releaseDrawerPointer(); }} @touchcancel=${() => { this.releaseDrawerPointer(); }}>
-          ${inbox === undefined
-            ? this.notificationsFailed
-              ? html`<p class="notification-empty notification-failed" role="status">Notifications could not be loaded. They retry when the connection recovers.</p>`
-              : html`<p class="notification-empty">${loaded ? "No notifications for this chat." : "No notifications yet."}</p>`
-            : null}
-          ${inbox !== undefined && inbox.discardedCount !== 0 ? html`
-            <p class="notification-overflow">${notificationInboxOverflowLabel(inbox.discardedCount)}</p>
-          ` : null}
-          ${inbox === undefined ? null : repeat(inbox.notifications, (notification) => notification.id, (notification) => {
-            const label = notificationSeverityLabel(notification.severity);
-            const truncationLabel = notificationMessageTruncationLabel(notification);
-            return html`
-              <article class=${`notification-row ${notification.severity}`} data-notification-id=${notification.id} tabindex="-1">
-                <div class="notification-metadata">
-                  <strong class="notification-severity">${label}</strong>
-                  <span aria-hidden="true">·</span>
-                  <time datetime=${notification.receivedAt}>${notificationTimestampFormatter.format(new Date(notification.receivedAt))}</time>
-                </div>
-                <p class="notification-message" dir="auto">${notification.message}</p>
-                ${truncationLabel === undefined ? null : html`<p class="notification-truncated">${truncationLabel}</p>`}
-                <div class="notification-row-actions">
-                  <button
-                    type="button"
-                    class="notification-row-copy"
-                    aria-label=${this.copiedNotificationId === notification.id ? "Message copied" : `Copy ${notificationSeverityLabel(notification.severity).toLowerCase()} message`}
-                    title=${this.copiedNotificationId === notification.id ? "Copied" : "Copy message"}
-                    @click=${() => { void this.copyNotification(notification); }}
-                  ><span aria-hidden="true">${this.copiedNotificationId === notification.id ? "✓" : "⧉"}</span></button>
-                  <button
-                    type="button"
-                    class="notification-row-dismiss"
-                    aria-label=${notificationDismissLabel(notification)}
-                    title="Dismiss notification"
-                    ?disabled=${inbox.pendingDismissedIds.has(notification.id) || inbox.dismissAllPending || this.onDismissNotification === undefined}
-                    @click=${() => { this.dismissNotification(notification.id); }}
-                  >${renderNotificationCloseIcon()}</button>
-                </div>
-              </article>
-            `;
-          })}
-          ${inbox?.notifications.length === 0 ? html`<p class="notification-empty">No notifications for this chat.</p>` : null}
-        </div>
-    `;
-  }
-
-  private renderNotificationLiveRegions() {
-    const announcements = this.notificationInbox?.sessionId === this.sessionId ? this.notificationInbox.announcements : [];
-    const polite = announcements.filter((announcement) => announcement.severity !== "error");
-    const assertive = announcements.filter((announcement) => announcement.severity === "error");
-    return html`
-      <div class="visually-hidden notification-live" aria-live="polite" aria-atomic="false">${repeat(polite, (announcement) => announcement.id, (announcement) => html`<span data-announcement-id=${announcement.id}>${notificationAnnouncementLabel(announcement)}</span>`)}</div>
-      <div class="visually-hidden notification-live" aria-live="assertive" aria-atomic="false">${repeat(assertive, (announcement) => announcement.id, (announcement) => html`<span data-announcement-id=${announcement.id}>${notificationAnnouncementLabel(announcement)}</span>`)}</div>
-    `;
-  }
-
-  private dismissNotification(notificationId: string): void {
-    const inbox = this.notificationInbox;
-    if (inbox === undefined || this.onDismissNotification === undefined) return;
-    const focusTarget = notificationFocusTargetAfterDismiss(inbox.notifications, notificationId);
-    const chatKey = notificationTargetKey(inbox);
-    this.pendingNotificationFocus = { chatKey, focusTarget };
-    if (focusTarget.kind === "header") this.retainedEmptyNotificationTrayTargetKey = chatKey;
-    this.onDismissNotification(notificationId);
-  }
-
-  private dismissAllNotifications(): void {
-    const inbox = this.notificationInbox;
-    if (inbox === undefined || this.onDismissAllNotifications === undefined) return;
-    const chatKey = notificationTargetKey(inbox);
-    this.pendingNotificationFocus = { chatKey, focusTarget: { kind: "header" } };
-    this.retainedEmptyNotificationTrayTargetKey = chatKey;
-    this.onDismissAllNotifications();
-  }
-
-  private releaseEmptyNotificationTray(event: FocusEvent): void {
-    const tray = event.currentTarget;
-    const next = event.relatedTarget;
-    if (tray instanceof HTMLElement && next instanceof Node && tray.contains(next)) return;
-    // Removing the activated row can emit focusout before updated() moves focus.
-    if (this.pendingNotificationFocus !== undefined) return;
-    const inbox = this.notificationInbox;
-    if (inbox !== undefined
-      && this.retainedEmptyNotificationTrayTargetKey === notificationTargetKey(inbox)
-      && notificationInboxTotalCount(inbox) === 0) this.retainedEmptyNotificationTrayTargetKey = undefined;
-  }
-
-  private focusPendingNotificationTarget(): void {
-    const pending = this.pendingNotificationFocus;
-    this.pendingNotificationFocus = undefined;
-    const inbox = this.notificationInbox;
-    if (pending === undefined || inbox === undefined || notificationTargetKey(inbox) !== pending.chatKey) return;
-    const target = pending.focusTarget;
-    if (target.kind === "header") {
-      this.renderRoot.querySelector<HTMLElement>("[data-notification-focus='header']")?.focus();
-      return;
-    }
-    const row = Array.from(this.renderRoot.querySelectorAll<HTMLElement>("[data-notification-id]"))
-      .find((candidate) => candidate.dataset["notificationId"] === target.notificationId);
-    if (row !== undefined) {
-      row.focus();
-      return;
-    }
-    if (notificationInboxTotalCount(inbox) === 0) this.retainedEmptyNotificationTrayTargetKey = pending.chatKey;
-    this.renderRoot.querySelector<HTMLElement>("[data-notification-focus='header']")?.focus();
-  }
-
-  private readonly closeActivityOutput = (): void => {
-    if (this.activityOutput !== undefined) this.onCloseActivityOutput?.();
-  };
-  private readonly onActivityOutputDialogClick = (event: MouseEvent): void => {
-    if (event.target === this.activityOutputDialog) this.closeActivityOutput();
-  };
-
-  private renderActivityOutput() {
-    const output = this.activityOutput;
-    return html`
-      <dialog class="activity-output" @click=${this.onActivityOutputDialogClick} @close=${this.closeActivityOutput} @cancel=${this.closeActivityOutput}>
-        ${output === undefined ? null : html`
-          <header class="activity-output-head">
-            <h2 class="activity-output-title">${output.title}</h2>
-            <button type="button" class="activity-output-close" aria-label="Close output" @click=${this.closeActivityOutput}>×</button>
-          </header>
-          ${output.empty
-            ? html`<p class="activity-output-empty">Nothing has been written to this log yet.</p>`
-            : html`<pre class="activity-output-body">${output.text}</pre>`}
-        `}
-      </dialog>
-    `;
-  }
-
-  private readonly closeActivityConversation = (): void => {
-    if (this.activityConversation !== undefined) this.onCloseActivityConversation?.();
-  };
-  private readonly onActivityConversationDialogClick = (event: MouseEvent): void => {
-    if (event.target === this.activityConversationDialog) this.closeActivityConversation();
-  };
-
-  /**
-   * A child run's conversation, over the parent's rather than inside it.
-   *
-   * The turns are drawn by the same header and part renderers the transcript
-   * uses, so a child's tool calls, thinking and text look like what they are.
-   * What is deliberately not reused is `renderMessage`: it stamps scroll
-   * markers and anchor ids belonging to the parent's scroller, and a second
-   * list carrying them would corrupt the restore position of the conversation
-   * underneath. This is the same split `renderMessageGroupBody` already makes.
-   */
-  private renderActivityConversation() {
-    const conversation = this.activityConversation;
-    return html`
-      <dialog class="activity-conversation" @click=${this.onActivityConversationDialogClick} @close=${this.closeActivityConversation} @cancel=${this.closeActivityConversation}>
-        ${conversation === undefined ? null : html`
-          <header class="activity-conversation-head">
-            <div class="activity-conversation-identity">
-              <h2 class="activity-conversation-title">${conversation.title}</h2>
-              <p class="activity-conversation-subtitle">${conversation.subtitle}</p>
-            </div>
-            <button type="button" class="activity-conversation-close" aria-label="Close conversation" @click=${this.closeActivityConversation}>×</button>
-          </header>
-          <p class="activity-conversation-boundary" role="note">${conversation.interventionUnavailable}</p>
-          ${conversation.empty
-            ? html`<p class="activity-conversation-empty">This run has not written anything yet.</p>`
-            : html`
-              <div class="activity-conversation-body">
-                ${conversation.messages.map((message, index) => this.renderActivityConversationMessage(message, index))}
-              </div>
-            `}
-        `}
-      </dialog>
-    `;
-  }
-
-  private renderActivityConversationMessage(message: ChatLine, index: number) {
-    const toolOnly = this.isToolExecutionOnlyMessage(message);
-    const askUserRecordOnly = this.isAskUserRecordOnlyMessage(message);
-    const shellClass = toolOnly ? "msg tool-execution-shell" : "msg ask-user-record-shell";
-    return html`
-      <article class=${toolOnly || askUserRecordOnly ? shellClass : `msg ${message.role}`}>
-        ${toolOnly || askUserRecordOnly ? null : this.renderMessageHeader(message, `child:${String(index)}`)}
-        ${message.parts.map((part) => this.renderPart(part, message))}
-      </article>
-    `;
   }
 
   private renderImageZoom() {
@@ -2148,21 +1361,15 @@ export class ChatView extends LitElement {
     // happening" when something is.
     const background = backgroundWorkLabel(this.activityPanelState());
     const showBackground = background !== undefined && (category === "idle" || category === undefined);
-    // Naming live background work and then ignoring a tap on it is a dead end:
-    // the thing it names lives one control away, in the drawer.
+    // The named work has no drawer page to open any more: the dock states it
+    // and stays a pill, because a control that looks actionable and is inert
+    // is worse than a state line.
     if (showBackground) {
       return html`
-        <button
-          type="button"
-          class="activity-dock background"
-          aria-live="polite"
-          title="Show what this chat is running"
-          @click=${() => { this.revealActivity(); }}
-        >
+        <div class="activity-dock background" aria-live="polite">
           <span class="dot"></span>
           <span class="activity-text">${background}</span>
-          <span class="subagent-chevron" aria-hidden="true">›</span>
-        </button>
+        </div>
       `;
     }
     const elapsed = category === "working" ? turnElapsedLabel(this.turnStartedAtMs, this.turnNowMs) : undefined;
@@ -2175,41 +1382,6 @@ export class ChatView extends LitElement {
         ${elapsed === undefined ? null : html`<span class="activity-elapsed" aria-hidden="true">${elapsed.text}</span>`}
       </div>
     `;
-  }
-
-  /**
-   * Give the screen back when the work the drawer was opened for ends.
-   *
-   * Opening the drawer used to be permanent, so a reader who opened it to
-   * watch a subagent kept it open for the rest of the chat - on a tab left
-   * open for days, always open, holding a block of screen to report that
-   * nothing is running.
-   */
-  private foldDrawerAsWorkFinishes(): void {
-    const working = this.activityPanelState()?.summary.working === true;
-    const drop = dropsExpansionAsWorkFinishes({ wasWorking: this.drawerWorkWasRunning, working });
-    this.drawerWorkWasRunning = working;
-    if (!drop) return;
-    const key = this.topDrawerKey();
-    if (!this.expandedTopDrawerKeys.has(key)) return;
-    const expandedKeys = new Set(this.expandedTopDrawerKeys);
-    expandedKeys.delete(key);
-    this.expandedTopDrawerKeys = expandedKeys;
-  }
-
-  /** Open the drawer on the running work the dock just named. */
-  private revealActivity(): void {
-    const key = this.topDrawerKey();
-    const collapsedKeys = new Set(this.collapsedTopDrawerKeys);
-    collapsedKeys.delete(key);
-    const expandedKeys = new Set(this.expandedTopDrawerKeys);
-    expandedKeys.add(key);
-    this.collapsedTopDrawerKeys = collapsedKeys;
-    this.expandedTopDrawerKeys = expandedKeys;
-    this.topDrawerTab = "activity";
-    // Scope, not filter: the reader asked to see what is running, not to have
-    // their chosen kind thrown away.
-    this.activityScope = "active";
   }
 
   /**
@@ -2233,19 +1405,6 @@ export class ChatView extends LitElement {
         <span class="delivery-text">${presentation.text}</span>
       </div>
     `;
-  }
-
-  /**
-   * Show or hide the finished rows, and keep the control that did it in view.
-   *
-   * It renders under the rows it reveals, so revealing them pushes it out of
-   * the scrolling list: the reader taps "Show 5 finished" and the button they
-   * just pressed is gone, with the keyboard focus left on something offscreen.
-   */
-  private toggleActivityScope(control: EventTarget | null): void {
-    this.activityScope = this.activityScope === "all" ? "active" : "all";
-    if (!(control instanceof HTMLElement)) return;
-    void this.updateComplete.then(() => { control.scrollIntoView({ block: "nearest" }); });
   }
 
   /**
@@ -2751,26 +1910,6 @@ export class ChatView extends LitElement {
       .join("\n\n");
     this.messageCopyTextCache.set(message, text);
     return text;
-  }
-
-  /**
-   * Put a notification's message on the clipboard.
-   *
-   * The message alone, without the severity or timestamp shown beside it: what
-   * gets pasted into a bug report or a search box should be what went wrong.
-   * A notification is often the only place that detail exists, and taking it by
-   * drag-selecting wrapped lines inside a scrolling list is painful on a phone,
-   * where the drag fights the scroll.
-   */
-  private async copyNotification(notification: SessionNotification): Promise<void> {
-    if (!await writeClipboardText(notification.message)) return;
-    const id = notification.id;
-    this.copiedNotificationId = id;
-    // Plain setTimeout, not window.setTimeout: the tray renders in environments
-    // that have timers but no window object.
-    setTimeout(() => {
-      if (this.copiedNotificationId === id) this.copiedNotificationId = undefined;
-    }, 1200);
   }
 
   private async copyMessage(message: ChatLine, key: string, event: MouseEvent): Promise<void> {
@@ -3283,6 +2422,39 @@ export interface SubagentRunRow {
  * exists for: a running child shows the step it is on, a finished one shows
  * what it was asked to do, because that is what makes its output worth opening.
  */
+export function topDrawerStartsOpen(): boolean {
+  return false;
+}
+
+function sectionBadgeSuffix(section: QualifiedDrawerSectionContribution, context: DrawerSectionContext): string {
+  const badge = section.badge?.(context);
+  return badge === undefined || badge === "" ? "" : ` (${String(badge)})`;
+}
+
+interface ActivityPanelState {
+  rows: SubagentRow[];
+  runRows: SubagentRunRow[];
+  taskRows: BackgroundTaskRow[];
+  summary: { working: boolean; failed: boolean };
+  total: number;
+  /** How many of those are happening now, which is what the tab reports. */
+  activeCount: number;
+}
+
+
+export function backgroundWorkLabel(activity: { rows: readonly { status: string }[]; runRows: readonly { status: string }[]; taskRows: readonly { status: string }[] } | undefined): string | undefined {
+  if (activity === undefined) return undefined;
+  const running = [...activity.rows, ...activity.runRows, ...activity.taskRows]
+    .filter((row) => row.status === "working" || row.status === "running").length;
+  if (running === 0) return undefined;
+  return running === 1 ? "idle · 1 background run" : `idle · ${String(running)} background runs`;
+}
+
+export function activityDockLabel(category: string | undefined, state: string, text: string): string {
+  return category === "asking" && state === "idle" ? "Waiting for your answer" : text;
+}
+
+
 export function subagentRunRows(runs: readonly SessionSubagentRunInfo[]): SubagentRunRow[] {
   return runs.map((run) => {
     const statusLabel = subagentRunStatusLabel(run.status);
@@ -3359,57 +2531,19 @@ export function backgroundTaskRows(tasks: readonly SessionBackgroundTaskInfo[]):
   });
 }
 
-/** One row of the activity list, tagged with the kind its filter chip names. */
-export type ActivityListEntry =
-  | { kind: "subagents"; index: number; status: ActivityStatus; startedAt?: string | undefined; row: SubagentRow }
-  | { kind: "runs"; index: number; status: ActivityStatus; startedAt?: string | undefined; row: SubagentRunRow }
-  | { kind: "tasks"; index: number; status: ActivityStatus; startedAt?: string | undefined; row: BackgroundTaskRow };
 
-/**
- * What this row is, independent of where it currently sits.
- *
- * The list re-sorts on live status, so a run finishing moves every row below
- * it. Rendered by position, Lit reuses the DOM of whatever used to be at that
- * index and only patches the text - so a control the reader is reaching for
- * becomes a different control under the finger, which is what the owner saw as
- * the list jittering and the button running away. Keyed by identity, a row that
- * moves takes its element with it.
- */
-export function activityEntryKey(entry: ActivityListEntry): string {
-  if (entry.kind === "subagents") return `subagents:${entry.row.subagent.sessionId}`;
-  if (entry.kind === "runs") return `runs:${entry.row.run.runId}`;
-  return `tasks:${entry.row.task.id}`;
+function firstTouchY(event: TouchEvent): number | undefined {
+  const touches: unknown = event.touches;
+  if (typeof TouchList !== "undefined" && touches instanceof TouchList) return touches[0]?.clientY;
+  return undefined;
 }
 
-/**
- * The order the list is read in: running work first, then the most recent.
- *
- * Grouping by kind put a finished task above a running subagent purely because
- * of which list it came from, so the row that mattered was somewhere in the
- * middle. Kind is a filter, not an ordering.
- */
-export function orderActivityEntries(entries: readonly ActivityListEntry[]): ActivityListEntry[] {
-  return [...entries].sort((left, right) => {
-    const liveDelta = Number(isActiveActivityStatus(right.status)) - Number(isActiveActivityStatus(left.status));
-    if (liveDelta !== 0) return liveDelta;
-    // Subagents carry no start time, so without this they sink below finished work.
-    const finishedDelta = Number(isFinishedActivityStatus(left.status)) - Number(isFinishedActivityStatus(right.status));
-    if (finishedDelta !== 0) return finishedDelta;
-    const startedDelta = (right.startedAt ?? "").localeCompare(left.startedAt ?? "");
-    if (startedDelta !== 0) return startedDelta;
-    return left.kind.localeCompare(right.kind);
-  });
+
+export function isActiveActivityStatus(status: ActivityStatus): boolean {
+  return status === "working" || status === "running";
 }
 
-/**
- * How long the reader has been watching this turn, and whether that is long
- * enough to be worth questioning.
- *
- * A turn that has been running for hours looks exactly like one that started a
- * second ago: same dots, same wording. That is how a session held open by a
- * background process nobody can see reads as "still thinking" all night, while
- * every message typed into it silently queues behind it.
- */
+
 export const LONG_TURN_AFTER_MS = 10 * 60 * 1000;
 
 export function turnElapsedLabel(startedAtMs: number | undefined, nowMs: number): { text: string; long: boolean } | undefined {
@@ -3420,193 +2554,6 @@ export function turnElapsedLabel(startedAtMs: number | undefined, nowMs: number)
 }
 
 /** Whether the list shows only live work or the whole history. */
-export type ActivityScope = "active" | "all";
-
-/** Statuses that mean "this is happening now". */
-export function isActiveActivityStatus(status: ActivityStatus): boolean {
-  return status === "working" || status === "running";
-}
-
-/** Terminal only. A subagent rests at "idle" between turns, so idle is not finished. */
-export function isFinishedActivityStatus(status: ActivityStatus): boolean {
-  return status === "done" || status === "failed" || status === "error" || status === "lost" || status === "stopped";
-}
-
-/** Whether an unknown willUpdate map value is a session's notification tray. */
-/** Test harnesses dispatch bare Events; a real TouchEvent always has touches. */
-function firstTouchY(event: TouchEvent): number | undefined {
-  const touches: unknown = event.touches;
-  if (typeof TouchList !== "undefined" && touches instanceof TouchList) return touches[0]?.clientY;
-  return undefined;
-}
-
-function isNotificationTray(value: unknown): value is SelectedSessionNotificationView {
-  return typeof value === "object" && value !== null
-    && typeof Reflect.get(value, "sessionId") === "string"
-    && Array.isArray(Reflect.get(value, "notifications"));
-}
-
-/**
- * The tab's own label. A chat that has run forty tasks and is running two says
- * so: the number that matters is what is live, not the size of the history.
- */
-export function activityTabLabel(counts: { active: number }): string {
-  return counts.active > 0 ? `Activity · ${String(counts.active)} running` : "Activity";
-}
-
-/** Kinds of work the activity list can be narrowed to. */
-export type ActivityFilter = "all" | "subagents" | "runs" | "tasks";
-
-export interface ActivityFilterOption {
-  id: ActivityFilter;
-  label: string;
-  count: number;
-}
-
-/**
- * The filter chips worth offering: "All" plus every kind that has rows.
- *
- * A chip counts what is running, not what has ever run. The totals said 109
- * while the panel said "Nothing running right now", which is a number
- * describing history dressed as a number describing the present. A kind that
- * has only finished rows keeps its chip - the reader still needs it to look
- * through history - but shows no count.
- */
-export function activityFilterOptions(activity: { rows: readonly ActivityStatusRow[]; runRows: readonly ActivityStatusRow[]; taskRows: readonly ActivityStatusRow[] }): ActivityFilterOption[] {
-  const kinds: ActivityFilterOption[] = ([
-    { id: "subagents", label: "Subagents", rows: activity.rows },
-    { id: "runs", label: "Agent runs", rows: activity.runRows },
-    { id: "tasks", label: "Tasks", rows: activity.taskRows },
-  ] as const)
-    .filter((kind) => kind.rows.length > 0)
-    .map((kind) => ({ id: kind.id, label: kind.label, count: activeActivityCount(kind.rows) }));
-  if (kinds.length <= 1) return kinds;
-  return [{ id: "all", label: "All", count: kinds.reduce((running, kind) => running + kind.count, 0) }, ...kinds];
-}
-
-interface ActivityStatusRow {
-  readonly status: ActivityStatus;
-}
-
-function activeActivityCount(rows: readonly ActivityStatusRow[]): number {
-  return rows.filter((row) => !isFinishedActivityStatus(row.status)).length;
-}
-
-/**
- * The filter actually applied. A chosen kind that has emptied out falls back to
- * "all", so a filter cannot leave the reader staring at an empty list.
- */
-export function activityFilterInEffect(chosen: ActivityFilter, activity: { rows: readonly unknown[]; runRows: readonly unknown[]; taskRows: readonly unknown[] }): ActivityFilter {
-  if (chosen === "subagents" && activity.rows.length > 0) return "subagents";
-  if (chosen === "runs" && activity.runRows.length > 0) return "runs";
-  if (chosen === "tasks" && activity.taskRows.length > 0) return "tasks";
-  return "all";
-}
-
-/**
- * "Activity" means nothing on its own -- the reader has to be told, once, in
- * the panel itself, what these rows are and what tapping one does.
- */
-
-/**
- * The drawer opens by itself only when it has something the reader has not
- * seen yet. Finished work waits behind one line instead of covering the
- * transcript -- which on a phone is most of the screen.
- */
-/**
- * What the dock should say instead of "idle" when the assistant's own turn is
- * over but this chat still has work in flight, or `undefined` when there is
- * none and "idle" is the truth.
- */
-export function backgroundWorkLabel(activity: { rows: readonly { status: string }[]; runRows: readonly { status: string }[]; taskRows: readonly { status: string }[] } | undefined): string | undefined {
-  if (activity === undefined) return undefined;
-  const running = [...activity.rows, ...activity.runRows, ...activity.taskRows]
-    .filter((row) => row.status === "working" || row.status === "running").length;
-  if (running === 0) return undefined;
-  return running === 1 ? "idle · 1 background run" : `idle · ${String(running)} background runs`;
-}
-
-/**
- * What the dock says, once the state and the badge it was mapped to are both
- * known.
- *
- * The two were computed apart and could disagree. A run parked on an extension
- * dialog is "waiting for the user", so the badge said asking - but the state
- * behind it is still the word idle, and that word is what got drawn. The
- * reader was told nothing was happening by a marker that knew something was:
- * the run was holding still for an answer nobody was being asked for.
- *
- * The ask card takes the bottom of the screen when the question is a question
- * set, and the dock steps aside for it. A dialog has no such card here, which
- * is why this is the only place left to say it.
- *
- * The decision reads the state rather than the words drawn from it: the words
- * are whatever the activity feed last called itself, so matching on them would
- * miss the case as soon as a feed labelled the same state differently.
- */
-export function activityDockLabel(category: string | undefined, state: string, text: string): string {
-  return category === "asking" && state === "idle" ? "Waiting for your answer" : text;
-}
-
-/**
- * The drawer starts shut, whatever is happening.
- *
- * It used to open itself whenever something was running, had failed, or a
- * notification had arrived - which on a busy session is most of the time. That
- * took a fifth of a phone screen from the conversation to report things the
- * collapsed strip already summarises, and the reader had to close it again on
- * every visit. Attention belongs in the strip; taking the screen belongs to
- * the reader.
- */
-export function topDrawerStartsOpen(): boolean {
-  return false;
-}
-
-/** What the drawer renders for the activity section, derived once. */
-export interface ActivityPanelState {
-  rows: SubagentRow[];
-  runRows: SubagentRunRow[];
-  taskRows: BackgroundTaskRow[];
-  summary: { working: boolean; failed: boolean };
-  total: number;
-  /** How many of those are happening now, which is what the tab reports. */
-  activeCount: number;
-}
-
-/**
- * Which drawer section to show. The reader's last choice always wins: every
- * section now renders an honest empty state, so an emptied section is still
- * content, not a blank drawer — and the strip must not reflow to follow the
- * data, because a strip that changes shape under a reading finger is how taps
- * land on the wrong tab. Availability only decides the tab shown before the
- * reader has chosen one.
- */
-/**
- * A badge is part of the tab's claim, so an absent one renders nothing rather
- * than a zero that would state a finished empty over an unknown.
- */
-function sectionBadgeSuffix(section: QualifiedDrawerSectionContribution, context: DrawerSectionContext): string {
-  const badge = section.badge?.(context);
-  return badge === undefined || badge === "" ? "" : ` (${String(badge)})`;
-}
-
-
-/**
- * The notifications tab's label. The count is part of the claim, so it is only
- * shown when the store has actually reported: a tab that reads "(0)" before
- * the inbox has loaded would state a finished empty over an unknown.
- */
-export function notificationDrawerTabLabel(inbox: SelectedSessionNotificationView | undefined, loaded: boolean): string {
-  if (inbox !== undefined) return notificationTrayHeading(inbox);
-  return loaded ? "Notifications (0)" : "Notifications";
-}
-
-
-/**
- * One-line census of the activity section, so a folded drawer still answers
- * the only question a folded drawer has to answer: is anything still running,
- * and how much finished work is waiting to be opened.
- */
 export function activityStripSummary(statuses: readonly ActivityStatus[]): { working: boolean; failed: boolean } {
   return {
     working: statuses.some((status) => status === "working" || status === "running"),

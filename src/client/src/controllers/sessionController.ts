@@ -1,4 +1,4 @@
-import { api as defaultApi, isNotFoundError, type AskUserCloseResponse, type AskUserSubmission, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingAskUser, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionBackgroundTaskInfo, SessionSubagentRunInfo, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Workspace } from "../api";
+import { api as defaultApi, type AskUserCloseResponse, type AskUserSubmission, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingAskUser, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Workspace } from "../api";
 import { projectsApi, workspacesApi } from "../api";
 import { errorNoticePatch } from "../errorNotice";
 import { commandOutcomeFor, dismissCommand, issueCommand, settleCommand, withdrawCommand, type CommandLedgerSource } from "../commandLedger";
@@ -9,7 +9,7 @@ import { ancestorsForSession } from "../sessionAncestors";
 import { locateSessionWorkspace } from "../sessionAncestorLookup";
 import { sessionLocationVerdict } from "../sessionLocationVerdict";
 import { refreshMayReplaceSelection } from "./sessionRefreshScope";
-import { activityOutputView, subagentRunConversationView, type AppState, type ClosedExtensionDialog } from "../appState";
+import { type AppState, type ClosedExtensionDialog } from "../appState";
 import { forgetCachedNewSession, isCachedNewSessionInfo, markCachedNewSessionInfo, mergeCachedNewSessions, rememberCachedNewSession, stripCachedNewSessionMarker } from "../cachedNewSessions";
 import { textMessage } from "../chatMessages";
 import { carryUnsettledForward } from "../transcriptReconcile";
@@ -29,7 +29,7 @@ import { transcriptLoadingAfter } from "../transcriptLoadingOwnership";
 import { classifySubmission, handleOutcome } from "../messageLifecycle";
 import { isRequestTimeout } from "../api/requestDeadline";
 import { isSessionActive } from "../../../shared/activity";
-import type { PromptAttachmentDelivery, SessionNotificationInboxEvent, SessionStartupProgressEvent } from "../../../shared/apiTypes";
+import type { PromptAttachmentDelivery, SessionStartupProgressEvent } from "../../../shared/apiTypes";
 import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchived, selectPreferredSession, selectionAfterArchivingSession, selectionAfterArchivingSessions, shouldDeselectAfterArchivedCollapse, type SessionSelectionMemory } from "./sessionSelection";
 import { selectedMachineId, type GetState, type SetState, type UpdateUrl } from "./types";
 import { TrailingRefreshCoordinator } from "./trailingRefreshCoordinator";
@@ -61,7 +61,8 @@ const PENDING_FLUSH_DEADLINE_MS = 100;
 export interface SessionSocketHandlers {
   onEvent: (event: SessionUiEvent) => void;
   onReconnect: () => void;
-  onInitialOpen: () => void;
+  /** Fires once, on the first open of the connection; not every socket cares. */
+  onInitialOpen?: () => void;
   /** A revisioned frame failed validation: a lost transition, needs resync. */
   onMalformed: (frameType: string) => void;
   /** The seq monitor saw a jump; `lastSeen` is the watermark before it. */
@@ -75,13 +76,6 @@ export interface SessionEventSocket {
   connect(session: SessionRef, machineId: string, handlers: SessionSocketHandlers): void;
   setHandler(onEvent: (event: SessionUiEvent) => void): void;
   close(): void;
-}
-
-export interface SessionNotificationSessionBridge {
-  prepareSelectedSession(session: SessionInfo, machineId: string): void;
-  clearSelectedSession(): void;
-  refreshSelectedSession(session: SessionRef, machineId: string): Promise<void>;
-  applyInboxEvent(machineId: string, event: SessionNotificationInboxEvent): void;
 }
 
 export interface PromptEditorTextReplacement {
@@ -99,7 +93,6 @@ export interface SessionControllerDependencies {
   api?: typeof defaultApi;
   socket?: SessionEventSocket;
   transcripts?: ChatTranscriptStore;
-  notifications?: SessionNotificationSessionBridge;
   replacePromptEditorText?: (replacement: PromptEditorTextReplacement) => void | Promise<void>;
   onSelectedSessionReady?: (selection: SelectedSessionReady) => void;
   /**
@@ -169,7 +162,6 @@ export class SessionController {
   private readonly socket: SessionEventSocket;
   private readonly api: typeof defaultApi;
   private readonly transcripts: ChatTranscriptStore;
-  private readonly notifications: SessionNotificationSessionBridge | undefined;
   private readonly replacePromptEditorText: SessionControllerDependencies["replacePromptEditorText"];
   private readonly onSelectedSessionReady: SessionControllerDependencies["onSelectedSessionReady"];
   private readonly onSelectedSessionIdle: SessionControllerDependencies["onSelectedSessionIdle"];
@@ -220,7 +212,6 @@ export class SessionController {
     this.socket = deps.socket ?? new SessionSocket();
     this.api = deps.api ?? defaultApi;
     this.transcripts = deps.transcripts ?? new ChatTranscriptStore();
-    this.notifications = deps.notifications;
     this.replacePromptEditorText = deps.replacePromptEditorText;
     this.onSelectedSessionReady = deps.onSelectedSessionReady;
     this.onSelectedSessionIdle = deps.onSelectedSessionIdle;
@@ -245,7 +236,6 @@ export class SessionController {
   clearActiveSession() {
     this.selectionSeq += 1;
     this.socket.close();
-    this.notifications?.clearSelectedSession();
     this.streamWatermark = undefined;
     this.clearPendingUpdates();
     // Note: sendingPrompts is intentionally NOT cleared here. Deselecting a
@@ -304,7 +294,6 @@ export class SessionController {
     this.dialogScope = new RevisionScope({ resync: () => { void this.refreshSelectedSession(); } });
     this.clearPendingUpdates();
     const machineId = selectedMachineId(this.getState());
-    this.notifications?.prepareSelectedSession(session, machineId);
     const transcriptKey = this.sessionCacheKey(session.id);
     const cached = this.transcripts.cachedView(transcriptKey);
     // Choosing a session moves where you are, not just what you are reading:
@@ -387,11 +376,7 @@ export class SessionController {
       this.socket.connect(session, machineId, {
         onEvent: (event) => socketBuffer.push(event),
         onReconnect: () => { void this.refreshSelectedSession(session.id); },
-        onInitialOpen: () => { void this.notifications?.refreshSelectedSession(session, machineId); },
-        onMalformed: (frameType: string) => {
-          if (frameType === "notifications.inbox") void this.notifications?.refreshSelectedSession(session, machineId);
-          else this.dialogScope.requestResync();
-        },
+        onMalformed: () => { this.dialogScope.requestResync(); },
         onGap: (lastSeen: number) => { void this.gapRepair?.onGap(lastSeen); },
       });
       await this.requestSelectedSessionRefresh({ session, machineId, selectionSeq: seq });
@@ -1316,74 +1301,6 @@ export class SessionController {
    * operations cannot be offered from this surface and the view says so rather
    * than showing a control that would do nothing.
    */
-  async openSubagentRunConversation(run: SessionSubagentRunInfo) {
-    const state = this.getState();
-    const session = state.selectedSession;
-    if (session === undefined || isClientPendingStartSessionInfo(session)) return;
-    const machineId = selectedMachineId(state);
-    try {
-      const page = await this.api.subagentRunMessages(session, run.runId, undefined, machineId);
-      this.setState({ activityConversation: subagentRunConversationView(run, page) });
-    } catch (error) {
-      // A child that has not opened a transcript yet has nothing to show, which
-      // is an answer rather than a fault - fall back to whatever it returned.
-      if (isNotFoundError(error)) {
-        await this.openSubagentRunOutput(run);
-        return;
-      }
-      this.setState(errorNoticePatch(error));
-    }
-  }
-
-  /**
-   * Show what a finished subagent run returned. Kept for the runs that have no
-   * transcript to open - a child that died before writing one - where the
-   * result artifact is all there is.
-   */
-  async openSubagentRunOutput(run: SessionSubagentRunInfo) {
-    const state = this.getState();
-    const session = state.selectedSession;
-    if (session === undefined || isClientPendingStartSessionInfo(session)) return;
-    const machineId = selectedMachineId(state);
-    try {
-      const output = await this.api.subagentRunOutput(session, run.runId, machineId);
-      this.setState({ activityOutput: activityOutputView(`Subagent ${run.agent} (${run.runId.slice(0, 8)})`, output) });
-    } catch (error) {
-      // Nothing written yet is an answer, not a fault.
-      if (isNotFoundError(error)) {
-        this.setState({ activityOutput: activityOutputView(`Subagent ${run.agent} (${run.runId.slice(0, 8)})`, "") });
-        return;
-      }
-      this.setState(errorNoticePatch(error));
-    }
-  }
-
-  /**
-   * Show a background task's log tail. Like a subagent artifact it is a file
-   * rather than a conversation, so it is appended as tool output instead of
-   * opened as a session.
-   */
-  async openBackgroundTaskOutput(task: SessionBackgroundTaskInfo) {
-    const state = this.getState();
-    const session = state.selectedSession;
-    if (session === undefined || isClientPendingStartSessionInfo(session)) return;
-    const machineId = selectedMachineId(state);
-    try {
-      const output = await this.api.backgroundTaskOutput(session, task.id, machineId);
-      this.setState({ activityOutput: activityOutputView(`Background task ${task.name} (${task.id})`, output) });
-    } catch (error) {
-      this.setState(errorNoticePatch(error));
-    }
-  }
-
-  closeActivityOutput(): void {
-    if (this.getState().activityOutput !== undefined) this.setState({ activityOutput: undefined });
-  }
-
-  closeActivityConversation(): void {
-    if (this.getState().activityConversation !== undefined) this.setState({ activityConversation: undefined });
-  }
-
   async dismissWarning(dismissId: string) {
     const state = this.getState();
     const session = state.selectedSession;
@@ -1558,7 +1475,6 @@ export class SessionController {
         this.api.messages(target.session, { limit: MESSAGE_PAGE_SIZE }, target.machineId),
         this.api.status(target.session, target.machineId),
         this.api.streamSnapshot(target.session, target.machineId),
-        this.notifications?.refreshSelectedSession(target.session, target.machineId) ?? Promise.resolve(),
       ]);
       if (!this.isCurrentRefreshTarget(target)) return;
       // Seed the in-flight partial assistant message on top of committed history
@@ -1660,7 +1576,6 @@ export class SessionController {
     this.sessionSelection.rememberSession({ ...session, cwd: this.workspaceSelectionKey(session.cwd) });
     this.selectionSeq += 1;
     this.socket.close();
-    this.notifications?.clearSelectedSession();
     this.streamWatermark = undefined;
     this.clearPendingUpdates();
     const state = this.getState();
@@ -2119,13 +2034,6 @@ export class SessionController {
   }
 
   private applyEvent(event: SessionUiEvent) {
-    // Notification revisions use their own join snapshot. Handle them before the
-    // transcript watermark so a notification event sharing an already-seeded
-    // transcript sequence cannot be lost.
-    if (event.type === "notifications.inbox") {
-      this.notifications?.applyInboxEvent(selectedMachineId(this.getState()), event);
-      return;
-    }
     // Drop events already reflected in the seeded join snapshot (committed
     // history + partial). Everything past the watermark applies exactly once,
     // so live content streams directly on top of the seeded partial.

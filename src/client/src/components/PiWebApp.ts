@@ -26,7 +26,6 @@ import { MachineStatusController } from "../controllers/machineStatusController"
 import { ProjectController } from "../controllers/projectController";
 import { PiWebStatusController } from "../controllers/piWebStatusController";
 import { SessionController } from "../controllers/sessionController";
-import { SessionNotificationController } from "../controllers/sessionNotificationController";
 import { WorkspaceController } from "../controllers/workspaceController";
 import { emptyMachineNavigationSnapshot, machineNavigationSnapshotFromState, routeFromMachineNavigationSnapshot, SessionStorageMachineNavigationMemory, type MachineNavigationSnapshot, type WorkspaceRouteSurface } from "../controllers/machineNavigationMemory";
 import { SessionStorageSessionSelectionMemory } from "../controllers/sessionSelection";
@@ -42,7 +41,6 @@ import { composedPathOf, composerCollapsedForFocus, composerCollapseTransition, 
 import { oneReadAtATime, shouldPollSessionActivity } from "../sessionActivityPolling";
 import { isWaitingForUser } from "../sessionWaiting";
 import { sessionCleanupRequestKey } from "../sessionCleanupUi";
-import { selectedNotificationView } from "../sessionNotifications";
 import { SessionUnreadController } from "../sessionUnread";
 import { workspaceViewTransition } from "../workspaceViewTransition";
 import { RealtimeSocket, type BrowserRealtimeEvent } from "../sessionSocket";
@@ -298,18 +296,12 @@ export class PiWebApp extends LitElement {
   private committedChatIdentity: string | undefined;
   private readyChatIdentity: string | undefined;
 
-  private readonly notifications = new SessionNotificationController(
-    () => this.state,
-    (patch) => { this.setState(patch); },
-    { onBackgroundError: (message, error) => { console.warn(message, error); } },
-  );
   private readonly sessions = new SessionController(
     () => this.state,
     (patch) => { this.setState(patch); },
     () => { this.updateUrl(); },
     new SessionStorageSessionSelectionMemory(),
     {
-      notifications: this.notifications,
       onBackgroundRunCountChanged: (sessionId: string) => {
         if (this.state.selectedSession?.id !== sessionId) return;
         void this.refreshSubagents();
@@ -777,16 +769,12 @@ export class PiWebApp extends LitElement {
       const subagentsChanged = !sameSubagents(snapshot.subsessions, this.state.subagents);
       const runsChanged = !sameSubagentRuns(snapshot.toolRuns, this.state.subagentRuns);
       const tasksChanged = !sameBackgroundTasks(tasks, this.state.backgroundTasks);
-      if (!subagentsChanged && !runsChanged && !tasksChanged) {
-        if (this.state.activityFailed) this.setState({ activityFailed: false });
-        return;
-      }
-      this.setState({ subagents: snapshot.subsessions, subagentRuns: snapshot.toolRuns, backgroundTasks: tasks, activityFailed: false });
+      if (!subagentsChanged && !runsChanged && !tasksChanged) return;
+      this.setState({ subagents: snapshot.subsessions, subagentRuns: snapshot.toolRuns, backgroundTasks: tasks });
     } catch {
-      // The failure itself must reach the panel: empty arrays otherwise read as
-      // a completed read that found nothing, and the strip claimed absence over
-      // a chat whose activity had never loaded.
-      if (!this.state.activityFailed) this.setState({ activityFailed: true });
+      // A failed read keeps the previously read rows: the dock pill keeps
+      // showing the work it last saw instead of answering a failure with a
+      // claim of absence.
     }
   }
 
@@ -1024,7 +1012,6 @@ export class PiWebApp extends LitElement {
     this.keyboard.reset();
     this.auth.dispose();
     this.sessions.dispose();
-    this.notifications.dispose();
     this.realtime.close();
     this.closeMachineActivitySockets();
     if (this.piWebStatusTimer !== undefined) window.clearInterval(this.piWebStatusTimer);
@@ -1057,7 +1044,6 @@ export class PiWebApp extends LitElement {
     this.handleWorkspaceChange(previous, this.state);
     this.handleMachineChange(previous, this.state);
     if (machineActivitySubscriptionInputsChanged(previous, this.state)) this.syncMachineActivitySubscriptions();
-    this.notifications.syncEnvironment(previous, this.state);
     // Only the timer here: `setState` must stay free of network side effects,
     // and the selection paths that can afford an immediate read already ask for
     // one. The poll picks up every other path within its interval.
@@ -3604,27 +3590,6 @@ export class PiWebApp extends LitElement {
   // Openable even without a result file: the server falls back to the run's own
   // transcript, so a running child shows what it has done so far instead of
   // being an inert row.
-  private readonly handleOpenSubagentRun = (run: SessionSubagentRunInfo): void => {
-    void this.sessions.openSubagentRunConversation(run);
-  };
-
-  private readonly handleOpenBackgroundTask = (task: SessionBackgroundTaskInfo): void => {
-    if (!task.hasOutput) return;
-    void this.sessions.openBackgroundTaskOutput(task);
-  };
-
-  private readonly handleCloseActivityOutput = (): void => {
-    this.sessions.closeActivityOutput();
-  };
-
-  private readonly handleCloseActivityConversation = (): void => {
-    this.sessions.closeActivityConversation();
-  };
-
-  private readonly handleOpenSubagentSession = (info: SessionSubagentInfo): void => {
-    this.openSubagent(info);
-  };
-
   private readonly handleRecallQueuedMessage = (message: QueuedSessionMessage): void => {
     // The composer is filled only once the server confirms the message left the
     // queue, so a recall that lost the race to the agent does not offer the
@@ -3639,14 +3604,6 @@ export class PiWebApp extends LitElement {
   private readonly handleAnswerDialog = (dialogId: string, value: ExtensionDialogAnswer): Promise<void> => this.sessions.answerDialog(dialogId, value);
 
   private readonly handleCancelDialog = (dialogId: string): Promise<void> => this.sessions.cancelDialog(dialogId);
-
-  private readonly handleDismissNotification = (notificationId: string): void => {
-    void this.notifications.dismissNotification(notificationId);
-  };
-
-  private readonly handleDismissAllNotifications = (): void => {
-    void this.notifications.dismissAll();
-  };
 
   /**
    * Put a sent prompt back in the composer so a failed turn can be retried
@@ -3676,7 +3633,7 @@ export class PiWebApp extends LitElement {
 
   private renderChatView(state: AppState, session: SessionInfo) {
     return html`
-      <chat-view .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .loadingMore=${state.isLoadingEarlierMessages} .transcriptLoading=${state.isLoadingTranscript} .transcriptFailed=${state.transcriptFailed} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk} .pendingDialogs=${state.pendingDialogs} .commandLedger=${commandsForSession(state.commandLedger, machineSessionKey(selectedMachineId(state), session.id))} .goalCommandInFlight=${this.goalCommandInFlight} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .notificationInbox=${selectedNotificationView(state.selectedNotificationInbox)} .notificationsFailed=${state.selectedNotificationInbox?.status === "stale" && state.selectedNotificationInbox.sessionId === session.id && state.selectedNotificationInbox.cwd === session.cwd} .subagents=${state.subagents} .subagentRuns=${state.subagentRuns} .backgroundTasks=${state.backgroundTasks} .activityFailed=${state.activityFailed} .activityOutput=${state.activityOutput} .onCloseActivityOutput=${this.handleCloseActivityOutput} .activityConversation=${state.activityConversation} .onCloseActivityConversation=${this.handleCloseActivityConversation} .onOpenSubagent=${this.handleOpenSubagentSession} .onOpenSubagentRun=${this.handleOpenSubagentRun} .onOpenBackgroundTask=${this.handleOpenBackgroundTask} .onClearServerQueue=${this.handleClearServerQueue} .onDismissLedgerRow=${(id: string) => { this.sessions.dismissLedgerRow(id); }} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onDismissNotification=${this.handleDismissNotification} .onDismissAllNotifications=${this.handleDismissAllNotifications} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }} .findMessageRenderer=${(tag: string) => this.plugins.findMessageRenderer(tag, selectedMachineId(state))} .drawerSections=${this.plugins.getDrawerSections(selectedMachineId(state))} .drawerMachineId=${selectedMachineId(state)} .drawerWorkspacePath=${state.selectedWorkspace?.path} .sessionCwd=${session.cwd}></chat-view>
+      <chat-view .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .loadingMore=${state.isLoadingEarlierMessages} .transcriptLoading=${state.isLoadingTranscript} .transcriptFailed=${state.transcriptFailed} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .clientQueuedMessages=${state.clientQueuedSessionMessages[session.id] ?? []} .status=${state.status} .activity=${state.activity} .pendingAsk=${state.pendingAsk} .pendingDialogs=${state.pendingDialogs} .commandLedger=${commandsForSession(state.commandLedger, machineSessionKey(selectedMachineId(state), session.id))} .goalCommandInFlight=${this.goalCommandInFlight} .closedDialogs=${state.closedDialogs} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onResendMessage=${this.handleResendMessage} .askDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onSubmitAsk=${this.handleSubmitAsk} .subagents=${state.subagents} .subagentRuns=${state.subagentRuns} .backgroundTasks=${state.backgroundTasks} .onClearServerQueue=${this.handleClearServerQueue} .onDismissLedgerRow=${(id: string) => { this.sessions.dismissLedgerRow(id); }} .onRecallQueuedMessage=${this.handleRecallQueuedMessage} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }} .findMessageRenderer=${(tag: string) => this.plugins.findMessageRenderer(tag, selectedMachineId(state))} .drawerSections=${this.plugins.getDrawerSections(selectedMachineId(state))} .drawerMachineId=${selectedMachineId(state)} .drawerWorkspacePath=${state.selectedWorkspace?.path} .sessionCwd=${session.cwd}></chat-view>
     `;
   }
 

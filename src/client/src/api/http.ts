@@ -9,10 +9,6 @@ export class HttpError extends Error {
   }
 }
 
-export function isNotFoundError(error: unknown): boolean {
-  return error instanceof HttpError && error.status === 404;
-}
-
 export async function request<T>(url: string, parse: (value: unknown) => T, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   if (init?.body !== undefined && !headers.has("content-type")) headers.set("content-type", "application/json");

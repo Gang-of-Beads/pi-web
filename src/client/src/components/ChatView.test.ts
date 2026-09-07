@@ -2,11 +2,6 @@ import type { TemplateResult } from "lit";
 import { describe, expect, it, vi } from "vitest";
 import type { QueuedSessionMessage, SessionStatus } from "../api";
 import { splitTranscriptAndPending } from "../messageDelivery";
-import {
-  notificationTargetKey,
-  notificationTrayIsCollapsed,
-  type SelectedSessionNotificationView,
-} from "../sessionNotifications";
 import type { ChatLine } from "./shared";
 import {
   ChatView,
@@ -19,12 +14,6 @@ import {
   chatDeliveryPresentation,
 } from "./ChatView";
 import { templateEventHandlerAfterMarker, templateEventHandlerNearMarker, templateText } from "../templateInspection.testSupport";
-
-type RenderActivityPanel = (this: ChatView, activity: unknown) => TemplateResult;
-
-function isRenderActivityPanel(value: unknown): value is RenderActivityPanel {
-  return typeof value === "function";
-}
 
 describe("chatDeliveryPresentation", () => {
   it("reads as one mark for received and two for taken into the turn", () => {
@@ -186,72 +175,6 @@ describe("deleted warning cards stay deleted", () => {
   });
 });
 
-describe("ChatView session drawer wiring", () => {
-  // Escape hatch: these cases verify only the tray buttons' Lit callback wiring.
-  // Content and identity decisions use pure seams, and stable semantic class
-  // markers keep handler extraction narrow. A minimal render-root fake verifies
-  // the resulting focus move. Per-row wiring is not testable this way - the rows
-  // are a keyed list, whose directive holds its raw inputs rather than rendered
-  // templates - so that case renders for real in ChatView.notifications.test.ts.
-
-  it("wires clear-all and recovers header focus while the emptied tray is retained", () => {
-    const view = withNotificationInbox(new ChatView());
-    const onDismissAllNotifications = vi.fn();
-    const headerFocus = installNotificationFocusRoot(view);
-    view.onDismissAllNotifications = onDismissAllNotifications;
-
-    const rendered = renderTopDrawer(view);
-    if (rendered === null) throw new Error("expected a session drawer");
-    templateEventHandlerAfterMarker(rendered, "notification-clear")(new Event("click"));
-    view.notificationInbox = emptyNotificationInbox(requireNotificationInbox(view));
-
-    expect(renderTopDrawer(view)).not.toBeNull();
-    focusPendingNotificationTarget(view);
-    expect(onDismissAllNotifications).toHaveBeenCalledOnce();
-    expect(headerFocus).toHaveBeenCalledOnce();
-  });
-
-  it("does not move pending dismissal focus into another exact chat", () => {
-    const view = withNotificationInbox(new ChatView());
-    const headerFocus = installNotificationFocusRoot(view);
-    view.onDismissAllNotifications = vi.fn();
-
-    const rendered = renderTopDrawer(view);
-    if (rendered === null) throw new Error("expected a session drawer");
-    templateEventHandlerAfterMarker(rendered, "notification-clear")(new Event("click"));
-    view.notificationInbox = { ...requireNotificationInbox(view), machineId: "remote" };
-    focusPendingNotificationTarget(view);
-
-    expect(headerFocus).not.toHaveBeenCalled();
-  });
-
-  it("keeps a collapsed tray closed for new arrivals and isolates matching session ids by exact chat", () => {
-    const view = withNotificationInbox(new ChatView());
-    const inbox = requireNotificationInbox(view);
-    const rendered = renderTopDrawer(view);
-    if (rendered === null) throw new Error("expected a session drawer");
-
-    // The drawer starts folded now, so the first click opens it; the second is
-    // the one that records a deliberate collapse.
-    templateEventHandlerAfterMarker(rendered, "notification-toggle")(new Event("click"));
-    templateEventHandlerAfterMarker(renderTopDrawer(view) ?? rendered, "notification-toggle")(new Event("click"));
-
-    const collapsedTargetKeys: unknown = Reflect.get(view, "collapsedTopDrawerKeys");
-    if (!(collapsedTargetKeys instanceof Set)) throw new Error("Expected collapsed notification target keys");
-    const firstNotification = inbox.notifications[0];
-    if (firstNotification === undefined) throw new Error("expected a retained notification");
-    const newArrival = {
-      ...inbox,
-      notifications: [{ ...firstNotification, id: "daemon-a:2", order: 2 }, ...inbox.notifications],
-      retainedCount: 2,
-    };
-    expect(notificationTrayIsCollapsed(collapsedTargetKeys, newArrival)).toBe(true);
-    expect(notificationTrayIsCollapsed(collapsedTargetKeys, { ...newArrival, cwd: "/other" })).toBe(false);
-    expect(notificationTrayIsCollapsed(collapsedTargetKeys, { ...newArrival, machineId: "remote" })).toBe(false);
-    expect(collapsedTargetKeys.has(notificationTargetKey(inbox))).toBe(true);
-  });
-});
-
 describe("chatMessageMetadataLabel", () => {
   it("uses one full date and model label without a model prefix", () => {
     const timestamp = "2026-07-10T19:15:30.000Z";
@@ -360,8 +283,6 @@ interface GroupBodyRenderCall {
 type RenderQueuedMessages = (this: ChatView) => TemplateResult;
 type RenderMessageGroup = (this: ChatView, messages: ChatLine[], startIndex: number, endIndex: number, defaultOpen: boolean) => TemplateResult;
 type RenderMessageGroupBody = (this: ChatView, messages: ChatLine[], startIndex: number) => TemplateResult;
-type RenderTopDrawer = (this: ChatView) => TemplateResult | null;
-type FocusPendingNotificationTarget = (this: ChatView) => void;
 type TemplateEventHandler = (event: Event) => void;
 
 /** The transcript half of the split, reached the same way as the dock half. */
@@ -401,17 +322,6 @@ function renderMessageGroup(view: ChatView, messages: ChatLine[], startIndex: nu
   return method.call(view, messages, startIndex, endIndex, defaultOpen);
 }
 
-function renderTopDrawer(view: ChatView): TemplateResult | null {
-  const method: unknown = Reflect.get(view, "renderTopDrawer");
-  if (!isRenderTopDrawer(method)) throw new Error("ChatView.renderTopDrawer is not callable");
-  return method.call(view);
-}
-
-function focusPendingNotificationTarget(view: ChatView): void {
-  const method: unknown = Reflect.get(view, "focusPendingNotificationTarget");
-  if (!isFocusPendingNotificationTarget(method)) throw new Error("ChatView.focusPendingNotificationTarget is not callable");
-  method.call(view);
-}
 
 function observeGroupBodyRenders(view: ChatView): GroupBodyRenderCall[] {
   const method: unknown = Reflect.get(view, "renderMessageGroupBody");
@@ -437,14 +347,6 @@ function isRenderMessageGroupBody(value: unknown): value is RenderMessageGroupBo
   return typeof value === "function";
 }
 
-function isRenderTopDrawer(value: unknown): value is RenderTopDrawer {
-  return typeof value === "function";
-}
-
-function isFocusPendingNotificationTarget(value: unknown): value is FocusPendingNotificationTarget {
-  return typeof value === "function";
-}
-
 function dispatchDetailsToggle(handler: TemplateEventHandler, open: boolean): void {
   const hadDetailsElement = Reflect.has(globalThis, "HTMLDetailsElement");
   const previousDetailsElement = Reflect.get(globalThis, "HTMLDetailsElement");
@@ -465,61 +367,6 @@ function dispatchDetailsToggle(handler: TemplateEventHandler, open: boolean): vo
 }
 
 
-function withNotificationInbox(view: ChatView): ChatView {
-  const notificationInbox: SelectedSessionNotificationView = {
-    machineId: "local",
-    sessionId: "session-1",
-    cwd: "/repo",
-    daemonInstanceId: "daemon-a",
-    notifications: [{
-      id: "daemon-a:1",
-      message: "plain <strong>text</strong>\nsecond line",
-      truncated: false,
-      severity: "warning",
-      receivedAt: "2026-07-18T00:00:00.000Z",
-      order: 1,
-    }],
-    retainedCount: 1,
-    discardedCount: 0,
-    highestSeverity: "warning",
-    dismissThrough: { order: 1, overflowWatermark: 0 },
-    pendingDismissedIds: new Set(),
-    dismissAllPending: false,
-    announcements: [],
-  };
-  view.sessionId = notificationInbox.sessionId;
-  view.notificationInbox = notificationInbox;
-  return view;
-}
-
-function requireNotificationInbox(view: ChatView): SelectedSessionNotificationView {
-  if (view.notificationInbox === undefined) throw new Error("expected a notification inbox");
-  return view.notificationInbox;
-}
-
-function emptyNotificationInbox(inbox: SelectedSessionNotificationView): SelectedSessionNotificationView {
-  const empty: SelectedSessionNotificationView = {
-    ...inbox,
-    notifications: [],
-    retainedCount: 0,
-    discardedCount: 0,
-    pendingDismissedIds: new Set(),
-    dismissAllPending: false,
-  };
-  delete empty.highestSeverity;
-  return empty;
-}
-
-function installNotificationFocusRoot(view: ChatView): ReturnType<typeof vi.fn> {
-  const headerFocus = vi.fn();
-  const renderRoot = {
-    querySelector: (selector: string) => selector === "[data-notification-focus='header']" ? { focus: headerFocus } : null,
-    querySelectorAll: () => [],
-  };
-  if (!Reflect.set(view, "renderRoot", renderRoot)) throw new Error("Could not install notification focus root");
-  return headerFocus;
-}
-
 function queuedStatus(queuedMessages: QueuedSessionMessage[]): SessionStatus {
   return {
     sessionId: "session-1",
@@ -532,52 +379,6 @@ function queuedStatus(queuedMessages: QueuedSessionMessage[]): SessionStatus {
     cost: 0,
   };
 }
-
-describe("the activity panel under a failed read", () => {
-  // Caught live: with the daemon down (99 failed fetches), the panel kept
-  // rendering the present-tense "Nothing running right now." - a failing read
-  // was wearing a completed read's sentence. The panel state was retained
-  // (empty arrays from the last good read), so the failed branch - which only
-  // guarded the never-read case - was unreachable. A failed read says so
-  // whether or not older rows are retained.
-  it("says the read failed instead of claiming present emptiness over retained rows", () => {
-    const view = new ChatView();
-    view.sessionId = "session-1";
-    Reflect.set(view, "activityRowsSessionId", "session-1");
-    view.activityFailed = true;
-    const render: unknown = Reflect.get(view, "renderActivityPanel");
-    if (!isRenderActivityPanel(render)) throw new Error("renderActivityPanel is not callable");
-    const template = render.call(view, {
-      rows: [],
-      runRows: [],
-      taskRows: [],
-      summary: { working: false },
-      total: 0,
-      activeCount: 0,
-    });
-    const text = templateText(template);
-    expect(text).toContain("Activity could not be loaded");
-    expect(text).not.toContain("running right now");
-  });
-
-  it("keeps the present-tense empty only when the read succeeded and found nothing", () => {
-    const view = new ChatView();
-    view.sessionId = "session-1";
-    Reflect.set(view, "activityRowsSessionId", "session-1");
-    view.activityFailed = false;
-    const render: unknown = Reflect.get(view, "renderActivityPanel");
-    if (!isRenderActivityPanel(render)) throw new Error("renderActivityPanel is not callable");
-    const template = render.call(view, {
-      rows: [],
-      runRows: [],
-      taskRows: [],
-      summary: { working: false },
-      total: 0,
-      activeCount: 0,
-    });
-    expect(templateText(template)).toContain("No agent runs or tasks running right now");
-  });
-});
 
 describe("ChatView queue-follow scroll (queueGrew)", () => {
   // A message queued from elsewhere arrives via status.queuedMessages, not via

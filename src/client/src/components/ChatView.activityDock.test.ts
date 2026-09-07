@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionActivity, SessionStatus } from "../../../shared/apiTypes";
-import { activityDockLabel, backgroundTaskRows, isActiveActivityStatus, isFinishedActivityStatus, subagentRunRows, backgroundWorkLabel, ChatView, LONG_TURN_AFTER_MS, turnElapsedLabel } from "./ChatView";
+import { activityDockLabel, backgroundTaskRows, subagentRunRows, backgroundWorkLabel, ChatView, LONG_TURN_AFTER_MS, turnElapsedLabel } from "./ChatView";
 
 function status(over: Partial<SessionStatus>): SessionStatus {
   return {
@@ -112,30 +112,6 @@ describe("backgroundWorkLabel", () => {
   it("leaves a quiet session alone", () => {
     expect(backgroundWorkLabel({ rows: [], runRows: [{ status: "done" }], taskRows: [{ status: "failed" }] })).toBeUndefined();
     expect(backgroundWorkLabel(undefined)).toBeUndefined();
-  });
-});
-
-describe("background work dock is a control", () => {
-  // Naming live background work and then ignoring a tap on it is a dead end;
-  // the drawer that lists it is one control away.
-  it("opens the activity drawer on the running work it names", async () => {
-    const view = new ChatView();
-    view.sessionId = "s";
-    view.status = status({});
-    view.activity = activity("idle");
-    view.subagentRuns = [{ runId: "r1", agent: "scout", status: "running", elapsedMs: 1000, startedAt: "2026-08-24T10:00:00.000Z", hasOutput: false }];
-    document.body.append(view);
-    await view.updateComplete;
-
-    const dock = view.renderRoot.querySelector<HTMLButtonElement>(".activity-dock.background");
-    expect(dock?.textContent).toContain("1 background run");
-
-    dock?.click();
-    await view.updateComplete;
-
-    expect(view.renderRoot.querySelector<HTMLElement>(".drawer-body")?.hidden).toBe(false);
-    expect(view.renderRoot.querySelector(".drawer-tab-activity")?.getAttribute("aria-selected")).toBe("true");
-    expect(view.renderRoot.querySelectorAll(".subagent-row").length).toBe(1);
   });
 });
 
@@ -276,17 +252,6 @@ describe("a subagent run whose fate is unknown", () => {
 });
 
 
-
-describe("whether a stopped task is over", () => {
-  /**
-   * A task the reader stopped will not do anything else. Leaving it out of the
-   * terminal statuses would have kept it listed as unfinished work forever.
-   */
-  it("treats a stopped task as finished", () => {
-    expect(isFinishedActivityStatus("stopped")).toBe(true);
-    expect(isActiveActivityStatus("stopped")).toBe(false);
-  });
-});
 
 describe("the dock's row cannot vanish mid-stream", () => {
   /**

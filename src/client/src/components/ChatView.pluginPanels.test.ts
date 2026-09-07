@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
+import { html } from "lit";
 import { ChatView } from "./ChatView.js";
 import type { SessionStatus } from "../api.js";
 import type { PluginSurfaceState } from "../../../shared/apiTypes.js";
+import type { QualifiedDrawerSectionContribution } from "../plugins/types.js";
 
 /**
- * The Goals drawer used to ask for room whether or not the plugin behind it
- * existed: an uninstalled plugin and an installed one with nothing in it drew
- * the same empty panel.
- *
- * These assertions are on the component, not on the classifier. The classifier
- * had its own passing tests while the field it reads never crossed the wire,
- * so the feature did nothing at all and nothing said so.
+ * The drawer is sections-driven now: it renders exactly what plugins
+ * contribute and disappears when nothing does. These assertions pin the
+ * hosting contract - a contributed section keeps the drawer alive whatever the
+ * runtime answered, because the section itself owns the "not installed" and
+ * failure sentences.
  */
 
 function status(surfaces?: PluginSurfaceState): SessionStatus {
@@ -28,35 +28,49 @@ function status(surfaces?: PluginSurfaceState): SessionStatus {
   };
 }
 
-function drawerFor(surfaces?: PluginSurfaceState): unknown {
+function goalsSection(): QualifiedDrawerSectionContribution {
+  return {
+    id: "goals:goals",
+    pluginId: "goals",
+    localId: "goals",
+    title: "Goals",
+    render: () => html`<div class="goal-list"></div>`,
+  };
+}
+
+function drawerFor(surfaces?: PluginSurfaceState, sections: QualifiedDrawerSectionContribution[] = [goalsSection()]): unknown {
   const view = new ChatView();
   view.sessionId = "s";
   view.status = status(surfaces);
+  view.drawerSections = sections;
   const render: unknown = Reflect.get(view, "renderTopDrawer");
   if (typeof render !== "function") throw new Error("Could not reach ChatView.renderTopDrawer");
   return render.call(view);
 }
 
 describe("the goals drawer against a runtime that was asked", () => {
-  // Review H3 reversed the original assertion here: hiding the whole drawer
-  // on goals-absent also hid ACTIVITY and NOTIFICATIONS, and re-inserted the
-  // strip the moment a task started - the reflow the fixed-membership ruling
-  // forbids. The drawer keeps its room; the GOALS tab says "not installed".
-  it("keeps the drawer even when nothing provides the goals surface", () => {
+  // The drawer hosts whatever a plugin contributes; the surface answer is the
+  // section's business, not the shell's. The shell's own honesty rule is the
+  // other edge: no sections at all means no drawer, never an empty frame.
+  it("keeps hosting the goals section when nothing provides the goals surface", () => {
     expect(drawerFor("absent")).not.toBeNull();
   });
 
   /** Not knowing is not knowing there is nothing there. */
-  it("keeps its room when the runtime could not answer", () => {
+  it("keeps hosting the section when the runtime could not answer", () => {
     expect(drawerFor(undefined)).not.toBeNull();
   });
 
   /** A broken install stays visible rather than tidied away as uninstalled. */
-  it("keeps its room when the plugin failed to load", () => {
+  it("keeps hosting the section when the plugin failed to load", () => {
     expect(drawerFor("failed")).not.toBeNull();
   });
 
-  it("keeps its room for an installed plugin with nothing recorded yet", () => {
+  it("keeps hosting the section for an installed plugin with nothing recorded yet", () => {
     expect(drawerFor("present")).not.toBeNull();
+  });
+
+  it("renders nothing when no plugin contributes a section", () => {
+    expect(drawerFor("present", [])).toBeNull();
   });
 });
