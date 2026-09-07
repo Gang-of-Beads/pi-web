@@ -33,7 +33,7 @@ import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from ".
 import "./GoalPanel";
 import type { GoalRecordSummary } from "../api";
 import { describeRunModel } from "../modelIdentity";
-import { isWaitingForUser } from "../sessionWaiting";
+import { isWaitingForUser } from "../../../shared/sessionActivityState";
 import type { SessionBackgroundTaskInfo, SessionNotification, SessionSubagentInfo, SessionSubagentRunInfo } from "../../../shared/apiTypes";
 import type { ChatLine, ChatPart, MessageDelivery } from "./shared";
 import type { SessionStateBadgeKind } from "./activityBadge";

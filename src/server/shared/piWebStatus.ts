@@ -81,7 +81,7 @@ export interface PiWebStatusOptions {
   hasCommand?: (command: string) => Promise<boolean>;
 }
 
-const latestReleaseLookupCache = createPiWebReleaseLookupCache(fetchLatestNpmVersion);
+const lookupLatestRelease = createPiWebReleaseLookupCache(fetchLatestNpmVersion);
 const runtimePackageInfo = readPackageInfoSync();
 
 export function getPiWebRuntimeComponent(component: PiWebServiceComponent, capabilities: readonly PiWebCapability[] = [], deprecatedAgentInputs: readonly PiWebDeprecatedAgentInput[] = []): PiWebRuntimeComponent {
@@ -403,7 +403,7 @@ async function getLatestReleaseStatus(currentVersion: string, force: boolean): P
     return { packageName: PI_WEB_PACKAGE_NAME, updateAvailable: false, checkedAt: new Date(checkedAtMs).toISOString(), skipped: true };
   }
 
-  return releaseStatusFromCache(await latestReleaseLookupCache.get(currentVersion, { force }), currentVersion);
+  return releaseStatusFromCache(await lookupLatestRelease(currentVersion, { force }), currentVersion);
 }
 
 function releaseStatusFromCache(cache: PiWebReleaseLookup, currentVersion: string): PiWebReleaseStatus {
