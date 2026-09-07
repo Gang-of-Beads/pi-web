@@ -20,7 +20,7 @@ export interface WorkspaceCatalogue<W extends { path: string }, P> {
 export async function locateSessionWorkspace<W extends { path: string }, P extends { id: string }>(
   cwd: string,
   catalogue: WorkspaceCatalogue<W, P>,
-): Promise<{ workspace: W; project: P } | undefined> {
+): Promise<{ workspace: W; project: P; workspaces: readonly W[] } | undefined> {
   if (cwd === "") return undefined;
   let projects: readonly P[];
   try {
@@ -38,7 +38,7 @@ export async function locateSessionWorkspace<W extends { path: string }, P exten
       continue;
     }
     const workspace = workspaces.find((candidate) => candidate.path === cwd);
-    if (workspace !== undefined) return { workspace, project };
+    if (workspace !== undefined) return { workspace, project, workspaces };
   }
   return undefined;
 }

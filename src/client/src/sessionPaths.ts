@@ -14,5 +14,6 @@
  * symlinks, which the server already handles before values reach the browser.
  */
 export function normalizeSessionPath(path: string): string {
-  return path.replace(/[/\\]+$/u, "");
+  const normalized = path.replace(/[/\\]+$/u, "");
+  return normalized === "" && path !== "" ? path[0] ?? "" : normalized;
 }
