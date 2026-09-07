@@ -30,6 +30,7 @@ export const SHORT_VIEWPORT_MAX_PX = 620;
 
 export const MOBILE_NAVIGATION_MEDIA_QUERY = `(max-width: ${String(MOBILE_NAVIGATION_MAX_PX)}px)`;
 export const DESKTOP_SIDE_BY_SIDE_MEDIA_QUERY = `(min-width: ${String(WORKSPACE_SIDE_BY_SIDE_MIN_PX)}px)`;
+export const SHORT_VIEWPORT_MEDIA_QUERY = `(max-height: ${String(SHORT_VIEWPORT_MAX_PX)}px)`;
 
 /**
  * Coarse pointers get phone behavior at any width; small windows get it on any

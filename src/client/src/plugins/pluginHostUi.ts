@@ -1,5 +1,5 @@
 import { writeClipboardText } from "../clipboard";
-import { COARSE_OR_MOBILE_MEDIA_QUERY, DESKTOP_SIDE_BY_SIDE_MEDIA_QUERY, MOBILE_NAVIGATION_MEDIA_QUERY } from "../breakpoints";
+import { COARSE_OR_MOBILE_MEDIA_QUERY, DESKTOP_SIDE_BY_SIDE_MEDIA_QUERY, MOBILE_NAVIGATION_MEDIA_QUERY, SHORT_VIEWPORT_MEDIA_QUERY } from "../breakpoints";
 import { formattedTextStyles, interactiveSurfaceStyles, listStyles, workspacePanelStyles } from "../components/shared";
 import { registerRenderedModal } from "../components/modalLayerRegistry";
 import { readNamespacedString, setNamespacedQueryKey } from "../namespacedQueryArgs";
@@ -36,6 +36,7 @@ export function createPluginHostUi(dialogHost?: PluginDialogHost): PluginHostUi 
       coarseOrMobile: COARSE_OR_MOBILE_MEDIA_QUERY,
       mobileNavigation: MOBILE_NAVIGATION_MEDIA_QUERY,
       desktopSideBySide: DESKTOP_SIDE_BY_SIDE_MEDIA_QUERY,
+      shortViewport: SHORT_VIEWPORT_MEDIA_QUERY,
     },
     renderMarkdownHtml: (markdown) => renderWorkspaceMarkdownHtml(markdown),
     textStyles: formattedTextStyles,

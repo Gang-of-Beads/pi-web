@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { html } from "lit";
 import { createPluginHostUi } from "./pluginHostUi";
-import { COARSE_OR_MOBILE_MEDIA_QUERY, DESKTOP_SIDE_BY_SIDE_MEDIA_QUERY, MOBILE_NAVIGATION_MEDIA_QUERY } from "../breakpoints";
+import { COARSE_OR_MOBILE_MEDIA_QUERY, DESKTOP_SIDE_BY_SIDE_MEDIA_QUERY, MOBILE_NAVIGATION_MEDIA_QUERY, SHORT_VIEWPORT_MEDIA_QUERY } from "../breakpoints";
 import { interactiveSurfaceStyles } from "../components/shared";
 import { describeError } from "../notice";
 import { PluginRegistry } from "./registry";
@@ -15,6 +15,7 @@ describe("the host utilities handed to plugins", () => {
       coarseOrMobile: COARSE_OR_MOBILE_MEDIA_QUERY,
       mobileNavigation: MOBILE_NAVIGATION_MEDIA_QUERY,
       desktopSideBySide: DESKTOP_SIDE_BY_SIDE_MEDIA_QUERY,
+      shortViewport: SHORT_VIEWPORT_MEDIA_QUERY,
     });
   });
 

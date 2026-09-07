@@ -166,6 +166,8 @@ export interface PluginBreakpoints {
   readonly coarseOrMobile: string;
   readonly mobileNavigation: string;
   readonly desktopSideBySide: string;
+  /** Short-viewport line (keyboard up, landscape phones): vertical chrome shrinks. */
+  readonly shortViewport: string;
 }
 
 export type PluginLifecycleEventKind = PluginLifecycleEvent["kind"];

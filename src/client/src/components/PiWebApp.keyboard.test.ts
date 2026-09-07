@@ -305,7 +305,7 @@ function fakeFilesHostUi(): PluginHostUi {
     surfaceStyles: [],
     listStyles: [],
     workspacePanelStyles: [],
-    breakpoints: { coarseOrMobile: "", mobileNavigation: "", desktopSideBySide: "" },
+    breakpoints: { coarseOrMobile: "", mobileNavigation: "", desktopSideBySide: "", shortViewport: "" },
     renderMarkdownHtml: (markdown) => markdown,
     textStyles: [],
     registerModal: (registration) => registerRenderedModal({ ...registration, focus: registration.focus ?? (() => undefined) }),
