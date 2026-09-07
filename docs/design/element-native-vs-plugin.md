@@ -57,10 +57,10 @@ re-litigated; only genuinely open items end in the ruling questions.
 | Element | Home | Verdict |
 |---|---|---|
 | Transcript host (groups, event groups, scroll anchoring, reading position) | `ChatView.ts`, `chatTranscript.ts`, `chatMessages.ts`, `readingAnchor.ts`, `bottomAnchor.ts` | native — the product's host |
-| Message rendering | `ToolExecutionView.ts`, `FormattedText.ts` + `messageRenderers` seam | native host, plugin renderers already supported ✓ |
+| Message rendering | `ToolExecutionView.ts`, `FormattedText.ts` + `messageRenderers` seam | native host, plugin renderers already supported ✓ (owner confirmed 2026-09-07: audit wins over the goal's original \"迁出\" wording — the transcript host stays native) |
 | Role headers / log voice | `ChatView.ts` `.label`, `.drawer-tab`, `.subagent-kind` | native |
-| **Activity drawer content** (subagents, background tasks, their output) | `ChatView.ts` top drawer, `sessionActivityPolling.ts`, `subagentRunStatusLabel.ts` | ruled → pi-web-activity (step ②, pending); dock skeleton stays native behind `activityDock` |
-| **Notifications drawer content** (per-session notifications, dismiss) | `ChatView.ts`, `sessionNotifications.ts`, `sessionWarningVisibility.ts` | ruled → pi-web-notifications (step ③, pending) |
+| **Activity drawer content** (subagents, background tasks, their output) | removed from the shell in `e12be019` (wave D, owner ruled \"不转换\") | removed — the dock pill skeleton stays native; a plugin page is the future home |
+| **Notifications drawer content** (per-session notifications, dismiss) | removed from the shell in `e12be019` (wave D, owner ruled \"不转换\") | removed — server-side warning filing untouched; a plugin page is the future home |
 | Activity dock (waiting/sending/turn clock/reveal) | `ChatView.ts` `.activity-dock`, `turnActiveState` | native skeleton (ruled); plugin contributions land behind `activityDock` |
 | Conversation meter (progress bar) | `ConversationMeter.ts` | native — transcript chrome |
 | Ask-user card | `AskUserCard.ts` | native — the `askUser` tool is a core host contract |
