@@ -59,10 +59,12 @@ try {
   const composer = await page.evaluate(deepCount("prompt-editor"));
   check("composer present once a chat is open", composer > 0, `prompt-editors=${String(composer)}`);
 
-  // The drawer-present leg: with the goals plugin contributing, the drawer
-  // must exist and its tabs must name contributed sections only.
+  // The drawer leg: every tab must name a contributed section. Whether any
+  // section exists depends on the stack's installed plugins - a stack without
+  // one shows no drawer at all, which is the same contributed-only contract.
   const chatTabs = await page.evaluate(`${deepAll(".drawer-tab-label")}.map(function(n){return n.textContent.trim();})`);
-  check("drawer shows contributed sections only in chat", chatTabs.length > 0 && chatTabs.every((t) => !/^(Activity|Notifications)/.test(t)), chatTabs.join("|") || "no tabs");
+  const builtIn = chatTabs.filter((t) => /^(Activity|Notifications)/.test(t));
+  check("drawer shows contributed sections only in chat", builtIn.length === 0, chatTabs.length > 0 ? chatTabs.join("|") : "no contributing plugin on this stack");
   const chatBody = await page.evaluate(deepText());
   check("no notifications chrome in the open chat", !/Notifications/i.test(chatBody));
   const dockInfo = await page.evaluate(deepQuerySingle(".activity-dock.background"));
