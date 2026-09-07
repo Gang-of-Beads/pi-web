@@ -1,11 +1,8 @@
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import type { Machine, MachineHealth } from "../../api";
-import type { MachineStatusSnapshot } from "../../../../shared/machineStatus";
-import type { NavSectionContext, QualifiedNavSectionContribution } from "../../plugins/types";
+import type { NavSectionContext, MachineSectionContext, QualifiedMachineSectionContribution, QualifiedNavSectionContribution } from "../../plugins/types";
 import { interactiveSurfaceStyles, listStyles } from "../shared";
 import "../ModalSurface";
-import "../MachineList";
 
 /**
  * The phone's replacement for the desktop context breadcrumb: one sheet
@@ -16,16 +13,17 @@ import "../MachineList";
  */
 @customElement("context-switcher-sheet")
 export class ContextSwitcherSheet extends LitElement {
-  @property({ attribute: false }) machines: Machine[] = [];
-  @property({ attribute: false }) selectedMachine?: Machine;
-  @property({ attribute: false }) machineStatuses: Record<string, MachineHealth> = {};
-  @property({ attribute: false }) machineStatusSnapshots: Record<string, MachineStatusSnapshot> = {};
   /** Contributed context-navigation section bodies, slotted by reserved id. */
   @property({ attribute: false }) navSections: readonly QualifiedNavSectionContribution[] = [];
   /** The host-built snapshot and actions the contributed sections render. */
   @property({ attribute: false }) navSectionContext?: NavSectionContext;
-  @property({ attribute: false }) onSelectMachine?: (machine: Machine) => void;
+  /** Contributed machines section bodies; the sheet's machine group renders them. */
+  @property({ attribute: false }) machineSections: readonly QualifiedMachineSectionContribution[] = [];
+  /** The host-built machine snapshot and actions the machine section renders. */
+  @property({ attribute: false }) machineSectionContext?: MachineSectionContext;
   @property({ attribute: false }) onClose?: () => void;
+  /** A machine row was picked; the host closes the sheet. */
+  @property({ attribute: false }) onMachineSelected?: () => void;
 
   override render() {
     return html`
@@ -58,19 +56,31 @@ export class ContextSwitcherSheet extends LitElement {
   }
 
   private renderMachineGroup() {
-    if (this.machines.length < 2) return null;
+    if (this.machineCount() < 2) return null;
+    const section = this.machineSections.find((candidate) => candidate.localId === "machines");
+    if (section === undefined || this.machineSectionContext === undefined) return nothing;
+    const context: MachineSectionContext = {
+      ...this.machineSectionContext,
+      display: { hidden: false, collapsible: false, collapsed: false, tiles: false, withCreate: false },
+      selectMachine: (machineId) => {
+        this.machineSectionContext?.selectMachine(machineId);
+        this.onMachineSelected?.();
+      },
+      toggleCollapsed: () => undefined,
+      focusPreviousSection: () => undefined,
+      focusNextSection: () => undefined,
+      cancelKeyboardNavigation: () => undefined,
+    };
     return html`
       <section>
         <h2>Machines</h2>
-        <machine-list
-          .machines=${this.machines}
-          .selected=${this.selectedMachine}
-          .statuses=${this.machineStatuses}
-          .statusSnapshots=${this.machineStatusSnapshots}
-          .onSelect=${(machine: Machine) => { this.onSelectMachine?.(machine); }}
-        ></machine-list>
+        ${section.render(context)}
       </section>
     `;
+  }
+
+  private machineCount(): number {
+    return this.machineSectionContext?.machines.length ?? 0;
   }
 
   static override styles = [interactiveSurfaceStyles, listStyles, css`

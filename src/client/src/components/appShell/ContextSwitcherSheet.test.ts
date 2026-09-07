@@ -2,8 +2,9 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Machine } from "../../api";
-import type { NavSectionContext, QualifiedNavSectionContribution } from "../../plugins/types";
-import { MachineList } from "../MachineList";
+import type { NavSectionContext, QualifiedMachineSectionContribution, QualifiedNavSectionContribution } from "../../plugins/types";
+import { MachineList } from "../../../../../pi-web-plugins/machines/browser/MachineList";
+import { machinesSection } from "../../../../../pi-web-plugins/machines/browser/pi-web-plugin";
 import { workspacesNavSections } from "../../../../../pi-web-plugins/workspaces/browser/pi-web-plugin";
 import { ProjectList } from "../../../../../pi-web-plugins/workspaces/browser/ProjectList";
 import { WorkspaceList } from "../../../../../pi-web-plugins/workspaces/browser/WorkspaceList";
@@ -25,7 +26,7 @@ describe("context-switcher-sheet", () => {
     const sheet = await mount();
 
     const machines = deep(sheet, "machine-list", MachineList);
-    expect(machines?.selected?.id).toBe("local");
+    expect(machines?.selectedMachineId).toBe("local");
     const projects = deep(sheet, "project-list", ProjectList);
     if (projects === undefined) throw new Error("project list missing");
     expect(projects.selected?.id).toBe("project-1");
@@ -74,8 +75,20 @@ async function mount(options: {
 } = {}): Promise<ContextSwitcherSheet> {
   const machines = options.machines ?? [machine("local"), machine("remote")];
   const sheet = new ContextSwitcherSheet();
-  sheet.machines = machines;
-  if (machines[0] !== undefined) sheet.selectedMachine = machines[0];
+  const machineSections: QualifiedMachineSectionContribution[] = [{ ...machinesSection(), id: "machines:machines", pluginId: "machines", localId: "machines" }];
+  sheet.machineSections = machineSections;
+  sheet.machineSectionContext = {
+    machines: machines.map((machine) => ({ id: machine.id, name: machine.name, kind: machine.kind, status: "unknown" as const })),
+    selectedMachineId: machines[0]?.id,
+    machineFlags: {},
+    display: { hidden: false, collapsible: false, collapsed: false, tiles: false, withCreate: false },
+    requestUpdate: () => undefined,
+    selectMachine: () => undefined,
+    toggleCollapsed: () => undefined,
+    focusPreviousSection: () => undefined,
+    focusNextSection: () => undefined,
+    cancelKeyboardNavigation: () => undefined,
+  };
   sheet.navSections = qualifiedSections();
   sheet.navSectionContext = navContext(options);
   if (options.onClose !== undefined) sheet.onClose = options.onClose;

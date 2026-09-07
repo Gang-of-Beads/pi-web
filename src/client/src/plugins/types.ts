@@ -580,6 +580,13 @@ export interface TerminalCommandRunsInternalRuntime {
   open(options?: { terminalId?: string | undefined }): void;
 }
 
+/** The add-machine dialog's submitted answer. */
+export interface MachineCreateInput {
+  readonly name: string;
+  readonly baseUrl: string;
+  readonly token?: string;
+}
+
 /** The add-project dialog's submitted answer. */
 export interface PluginProjectCreateInput {
   readonly path: string;
@@ -619,6 +626,13 @@ export interface PluginRuntimeContext {
    * owns the project's placement in app state and the trust choice's write.
    */
   createProject: (input: PluginProjectCreateInput) => Promise<string | undefined>;
+  /**
+   * Create a machine from the add-machine dialog's answer. Resolves to the
+   * reason the submit did not go through, or undefined when it did; the host
+   * owns the machine's placement in app state and the selection that follows.
+   * Absent where the host offers no machine creation.
+   */
+  createMachine?: (input: MachineCreateInput) => Promise<string | undefined>;
   /** Directory suggestions below the typed path, on the selected machine. */
   projectDirectories: (query: string, signal: AbortSignal) => Promise<FileSuggestion[]>;
   /** Server-resolved existing trust for a raw path, on the selected machine. */
