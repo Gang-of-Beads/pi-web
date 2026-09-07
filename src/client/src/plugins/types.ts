@@ -102,6 +102,12 @@ export interface PluginDialog {
   readonly label: string;
   /** The dialog body, rendered as the shared surface's light children. */
   readonly content: TemplateResult;
+  /** How the host presents the dialog. `overlay` (default) is the shared
+   *  centered surface; `fullscreen` presents the content edge-to-edge like a
+   *  page, so a surface authored against a large canvas survives direct load
+   *  and refresh instead of being squeezed into a card. The content MUST
+   *  work at both presentations unless it pins one explicitly. */
+  readonly presentation?: "overlay" | "fullscreen";
   /** Called once for every close: Escape, backdrop, close(), or unregistration. */
   readonly onClose?: () => void;
 }

@@ -68,6 +68,17 @@ describe("the plugin dialog seam", () => {
     expect(text).toContain("modal-surface");
     expect(text).toContain("probe-body");
   });
+
+  it("defaults to the overlay presentation and takes fullscreen only when asked", () => {
+    const app = createApp();
+    const open = openPluginDialogFn(app);
+    open({ label: "Sheet", content: html`<p>Small</p>` });
+    open({ label: "Console", content: html`<p>Wide</p>`, presentation: "fullscreen" });
+
+    const text = templateToString(app.render());
+    expect(text).toContain("plugin-dialog-fullscreen");
+    expect(text.split("plugin-dialog-fullscreen")).toHaveLength(2);
+  });
 });
 
 function createApp(): PiWebApp {
@@ -95,6 +106,7 @@ function createApp(): PiWebApp {
 interface PluginDialogInput {
   label: string;
   content: TemplateResult;
+  presentation?: "overlay" | "fullscreen";
   onClose?: () => void;
 }
 
