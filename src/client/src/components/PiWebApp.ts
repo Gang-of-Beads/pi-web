@@ -393,6 +393,10 @@ export class PiWebApp extends LitElement {
   private remoteRouteRestoreTimer: number | undefined;
   private remoteRouteRestoreAttempt = 0;
   private remoteRouteRestoreInProgress = false;
+  private pendingMachineLoadRestore: ParsedAppRoute | undefined;
+  private machineLoadRestoreTimer: number | undefined;
+  private machineLoadRestoreAttempt = 0;
+  private machineLoadRestoreInProgress = false;
   private readonly plugins = createPluginRegistry({ showDialog: (dialog) => this.openPluginDialog(dialog) });
   private readonly loadedMachinePluginIds = new Set<string>();
   private readonly machinePluginLoadPromises = new Map<string, Promise<void>>();
@@ -1034,6 +1038,7 @@ export class PiWebApp extends LitElement {
     document.removeEventListener("visibilitychange", this.onDocumentVisibilityChange);
     this.listenForFormFocus("remove");
     this.clearPendingRemoteRouteRestore();
+    this.clearPendingMachineLoadRestore();
     super.disconnectedCallback();
   }
 
@@ -1066,6 +1071,20 @@ export class PiWebApp extends LitElement {
     this.restoreSettingsRoute();
     const route = readRoute();
     await this.machines.loadMachines(route.machineId);
+    if (this.state.machinesLoad === "failed" && (route.machineId ?? "local") !== "local") {
+      // A failed roster cannot resolve the route's machine: rewriting now
+      // would flatten a machine+project+session deep link to the local
+      // machine, which is how a reload on a flaky connection lost the whole
+      // machine dimension. Defer to the retry loop instead - it re-lists
+      // the machines and re-enters this boot path once the listing
+      // recovers, leaving the URL untouched while it waits.
+      this.deferMachineLoadRestore(route);
+      return;
+    }
+    await this.restoreBootRoute(route);
+  }
+
+  private async restoreBootRoute(route: ParsedAppRoute) {
     const effectiveRoute = this.routeForSelectedMachine(route);
     const initialRouteMachineHealth = this.state.machineStatuses[effectiveRoute.machineId ?? "local"];
     if (effectiveRoute !== route) this.replaceRouteAndClearWorkspaceQuery(effectiveRoute);
@@ -1306,6 +1325,57 @@ export class PiWebApp extends LitElement {
     if (routeMachineHealth?.ok !== false) return false;
     if (route.projectId === undefined || route.projectId === "") return this.state.projects.length === 0;
     return this.state.selectedProject?.id !== route.projectId;
+  }
+
+  private deferMachineLoadRestore(route: ParsedAppRoute): void {
+    this.pendingMachineLoadRestore = route;
+    this.machineLoadRestoreAttempt = 0;
+    this.scheduleMachineLoadRestore();
+  }
+
+  private scheduleMachineLoadRestore(delayMs = remoteRouteRestoreRetryDelay(this.machineLoadRestoreAttempt)): void {
+    if (this.pendingMachineLoadRestore === undefined) return;
+    this.clearMachineLoadRestoreTimer();
+    this.machineLoadRestoreTimer = window.setTimeout(() => {
+      this.machineLoadRestoreTimer = undefined;
+      void this.retryMachineLoadRestore();
+    }, delayMs);
+  }
+
+  private async retryMachineLoadRestore(): Promise<void> {
+    if (this.machineLoadRestoreInProgress) return;
+    const route = this.pendingMachineLoadRestore;
+    if (route === undefined) return;
+    this.machineLoadRestoreInProgress = true;
+    try {
+      await this.machines.loadMachines(route.machineId);
+      if (this.pendingMachineLoadRestore !== route) return;
+      if (this.state.machinesLoad !== "loaded") {
+        this.machineLoadRestoreAttempt += 1;
+        if (this.machineLoadRestoreAttempt >= REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS.length) {
+          this.clearPendingMachineLoadRestore();
+          return;
+        }
+        this.scheduleMachineLoadRestore();
+        return;
+      }
+      this.clearPendingMachineLoadRestore();
+      await this.restoreBootRoute(route);
+    } finally {
+      this.machineLoadRestoreInProgress = false;
+    }
+  }
+
+  private clearPendingMachineLoadRestore(): void {
+    this.clearMachineLoadRestoreTimer();
+    this.pendingMachineLoadRestore = undefined;
+    this.machineLoadRestoreAttempt = 0;
+  }
+
+  private clearMachineLoadRestoreTimer(): void {
+    if (this.machineLoadRestoreTimer === undefined) return;
+    window.clearTimeout(this.machineLoadRestoreTimer);
+    this.machineLoadRestoreTimer = undefined;
   }
 
   private deferRemoteRouteRestore(route: ParsedAppRoute): void {

@@ -50,6 +50,157 @@ describe("PiWebApp boot route restore with a failed projects listing", () => {
   });
 });
 
+/**
+ * Caught live alongside the projects-listing failure above: the machines
+ * roster failed on boot while the URL carried a remote machine's deep link.
+ * The boot rewrote the route to the local machine, flattening the machine,
+ * project and session out of the address bar. A failed roster is a reason to
+ * retry the boot, not to flatten the link.
+ */
+describe("PiWebApp boot route restore with a failed machines roster", () => {
+  it("defers a non-local deep link for retry instead of rewriting the URL", async () => {
+    const app = createApp();
+    stubWindowLocation("?machine=remote-1&project=93ebd97a&workspace=0fc561d6");
+    stubBackgroundRefreshes(app);
+
+    let loadMachinesCalls = 0;
+    const machines: unknown = Reflect.get(app, "machines");
+    if (typeof machines !== "object" || machines === null || !Reflect.set(machines, "loadMachines", () => {
+      loadMachinesCalls += 1;
+      unknownFunction(Reflect.get(app, "setState"), "PiWebApp.setState").call(app, { machinesLoad: "failed" });
+      return Promise.resolve();
+    })) {
+      throw new Error("Could not replace machines.loadMachines");
+    }
+
+    const restore = unknownFunction(Reflect.get(app, "loadProjectsAndRestoreRoute"), "PiWebApp.loadProjectsAndRestoreRoute");
+    await restore.call(app);
+
+    const pending: unknown = Reflect.get(app, "pendingMachineLoadRestore");
+    expect(pending).toBeDefined();
+    expect(loadMachinesCalls).toBe(1);
+    expect(searchParams()).toContain("machine=remote-1");
+  });
+
+  it("retries the roster and re-enters the boot restore once it loads", async () => {
+    const app = createApp();
+    stubWindowLocation("?machine=remote-1&project=93ebd97a&workspace=0fc561d6");
+    stubBackgroundRefreshes(app);
+
+    let loadMachinesCalls = 0;
+    const machines: unknown = Reflect.get(app, "machines");
+    if (typeof machines !== "object" || machines === null || !Reflect.set(machines, "loadMachines", () => {
+      loadMachinesCalls += 1;
+      const setState = unknownFunction(Reflect.get(app, "setState"), "PiWebApp.setState");
+      setState.call(app, loadMachinesCalls === 1
+        ? { machinesLoad: "failed" }
+        : { machinesLoad: "loaded", selectedMachine: { id: "remote-1", name: "remote-1", kind: "remote" } });
+      return Promise.resolve();
+    })) {
+      throw new Error("Could not replace machines.loadMachines");
+    }
+    const projects: unknown = Reflect.get(app, "projects");
+    if (typeof projects !== "object" || projects === null || !Reflect.set(projects, "loadProjects", () => {
+      unknownFunction(Reflect.get(app, "setState"), "PiWebApp.setState").call(app, { projectsLoad: "loaded" });
+      return Promise.resolve(undefined);
+    })) {
+      throw new Error("Could not replace projects.loadProjects");
+    }
+    if (!Reflect.set(app, "loadPluginsForSelectedMachine", () => Promise.resolve())) {
+      throw new Error("Could not replace plugin loading");
+    }
+    if (!Reflect.set(app, "withChatScrollTransition", (task: () => Promise<void>) => task())) {
+      throw new Error("Could not replace the chat scroll transition");
+    }
+    if (!Reflect.set(app, "restoreRouteFor", () => Promise.resolve())) {
+      throw new Error("Could not replace route restoration");
+    }
+
+    const boot = unknownFunction(Reflect.get(app, "loadProjectsAndRestoreRoute"), "PiWebApp.loadProjectsAndRestoreRoute");
+    await boot.call(app);
+    expect(Reflect.get(app, "pendingMachineLoadRestore")).toBeDefined();
+
+    const retry = unknownFunction(Reflect.get(app, "retryMachineLoadRestore"), "PiWebApp.retryMachineLoadRestore");
+    await retry.call(app);
+
+    expect(loadMachinesCalls).toBe(2);
+    expect(Reflect.get(app, "pendingMachineLoadRestore")).toBeUndefined();
+    expect(searchParams()).toContain("machine=remote-1");
+    expect(searchParams()).toContain("project=93ebd97a");
+  });
+
+  it("exhausts the ladder with the URL and the failed panel untouched", async () => {
+    const app = createApp();
+    stubWindowLocation("?machine=remote-1");
+    stubBackgroundRefreshes(app);
+
+    const machines: unknown = Reflect.get(app, "machines");
+    if (typeof machines !== "object" || machines === null || !Reflect.set(machines, "loadMachines", () => {
+      unknownFunction(Reflect.get(app, "setState"), "PiWebApp.setState").call(app, { machinesLoad: "failed" });
+      return Promise.resolve();
+    })) {
+      throw new Error("Could not replace machines.loadMachines");
+    }
+
+    const boot = unknownFunction(Reflect.get(app, "loadProjectsAndRestoreRoute"), "PiWebApp.loadProjectsAndRestoreRoute");
+    await boot.call(app);
+    expect(Reflect.get(app, "pendingMachineLoadRestore")).toBeDefined();
+
+    const retry = unknownFunction(Reflect.get(app, "retryMachineLoadRestore"), "PiWebApp.retryMachineLoadRestore");
+    Reflect.set(app, "machineLoadRestoreAttempt", REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS_LENGTH - 1);
+    await retry.call(app);
+
+    expect(Reflect.get(app, "pendingMachineLoadRestore")).toBeUndefined();
+    expect(searchParams()).toContain("machine=remote-1");
+  });
+
+  it("leaves a local-machine route alone when the roster fails", async () => {
+    const app = createApp();
+    stubWindowLocation("?project=93ebd97a");
+    stubBackgroundRefreshes(app);
+    const projects: unknown = Reflect.get(app, "projects");
+    if (typeof projects !== "object" || projects === null || !Reflect.set(projects, "loadProjects", () => {
+      unknownFunction(Reflect.get(app, "setState"), "PiWebApp.setState").call(app, { projectsLoad: "loaded" });
+      return Promise.resolve(undefined);
+    })) {
+      throw new Error("Could not replace projects.loadProjects");
+    }
+    if (!Reflect.set(app, "loadPluginsForSelectedMachine", () => Promise.resolve())) {
+      throw new Error("Could not replace plugin loading");
+    }
+    if (!Reflect.set(app, "withChatScrollTransition", (task: () => Promise<void>) => task())) {
+      throw new Error("Could not replace the chat scroll transition");
+    }
+    if (!Reflect.set(app, "restoreRouteFor", () => Promise.resolve())) {
+      throw new Error("Could not replace route restoration");
+    }
+
+    const machines: unknown = Reflect.get(app, "machines");
+    if (typeof machines !== "object" || machines === null || !Reflect.set(machines, "loadMachines", () => {
+      unknownFunction(Reflect.get(app, "setState"), "PiWebApp.setState").call(app, { machinesLoad: "failed" });
+      return Promise.resolve();
+    })) {
+      throw new Error("Could not replace machines.loadMachines");
+    }
+
+    const restore = unknownFunction(Reflect.get(app, "loadProjectsAndRestoreRoute"), "PiWebApp.loadProjectsAndRestoreRoute");
+    await restore.call(app);
+
+    expect(Reflect.get(app, "pendingMachineLoadRestore")).toBeUndefined();
+    expect(searchParams()).toContain("project=93ebd97a");
+  });
+});
+
+const REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS_LENGTH = 5;
+
+function searchParams(): string {
+  const location: unknown = window.location;
+  if (typeof location !== "object" || location === null) throw new Error("window.location was unavailable");
+  const search: unknown = Reflect.get(location, "search");
+  if (typeof search !== "string") throw new Error("window.location.search was unavailable");
+  return search;
+}
+
 function isAppMethod(value: unknown): value is (...args: unknown[]) => unknown {
   return typeof value === "function";
 }
