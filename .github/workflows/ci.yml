@@ -1,9 +1,8 @@
 name: CI
 
-# Pull requests validate feature branches; main is validated again after every
-# merge. Running both `push` and `pull_request` on feature branches duplicated
-# the Linux/Windows matrix for the exact same commit. Tag pushes are covered by
-# the release workflow (publish.yml).
+# Pull requests validate feature branches on Linux; main is validated again
+# after every merge. Windows compatibility is checked only by the release
+# workflow, where it gates publication. Tag pushes are covered by publish.yml.
 on:
   push:
     branches: [main]
@@ -13,16 +12,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   verify:
-    name: Verify and package (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      # Report Linux and Windows results independently instead of cancelling
-      # the matrix on the first failure.
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
+    name: Verify and package (Linux)
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -43,8 +40,9 @@ jobs:
         run: npm run build
 
       - name: Smoke test npm 12 global package install
-        if: runner.os == 'Linux'
         run: npm run smoke:package-install
 
+      # Build already ran above; suppress prepack so this only inspects the
+      # package contents instead of rebuilding the project a second time.
       - name: Check npm package contents
-        run: npm run pack:dry
+        run: npm pack --dry-run --ignore-scripts
