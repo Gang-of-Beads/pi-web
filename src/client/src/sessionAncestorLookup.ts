@@ -12,14 +12,9 @@
  * Undefined means "nobody claims this directory", which the caller must treat
  * as unknown rather than as an empty workspace.
  */
-export interface WorkspaceCatalogue<W extends { path: string }, P> {
-  projects: () => Promise<readonly P[]>;
-  workspaces: (projectId: string) => Promise<readonly W[]>;
-}
-
 export async function locateSessionWorkspace<W extends { path: string }, P extends { id: string }>(
   cwd: string,
-  catalogue: WorkspaceCatalogue<W, P>,
+  catalogue: { projects: () => Promise<readonly P[]>; workspaces: (projectId: string) => Promise<readonly W[]> },
 ): Promise<{ workspace: W; project: P; workspaces: readonly W[] } | undefined> {
   if (cwd === "") return undefined;
   let projects: readonly P[];

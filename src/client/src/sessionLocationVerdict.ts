@@ -14,9 +14,7 @@
 
 import { normalizeSessionPath } from "./sessionPaths";
 
-export type SessionLocationVerdict = "described" | "unknown";
-
-export function sessionLocationVerdict(cwd: string, selectedWorkspacePath: string | undefined): SessionLocationVerdict {
+export function sessionLocationVerdict(cwd: string, selectedWorkspacePath: string | undefined) {
   if (cwd === "" || selectedWorkspacePath === undefined || selectedWorkspacePath === "") return "unknown";
   const child = normalizeSessionPath(cwd);
   const parent = normalizeSessionPath(selectedWorkspacePath);
