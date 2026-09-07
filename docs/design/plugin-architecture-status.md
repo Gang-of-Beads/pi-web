@@ -220,3 +220,32 @@ navigation panel draw whatever goals section a contributed plugin provides,
 which is the seam the wave built. The same logic will be applied to the
 remaining bundled plugins as their split repositories mature.
 
+
+## Extraction waves executed, 2026-09-06 → 09-07
+
+The machines/workspaces extraction plan ran as four waves, each closed with a
+written multi-lane review and a live 8505 probe:
+
+- **Wave A** — machines list/switcher/dialog into `pi-web-plugins/machines`,
+  machine slot in the navigation panel contributed, honest empty roster.
+- **Wave B** — sheet slot, palette machine actions, deep-link-preserving load
+  retries, `MachineValidationError` classification, `machineSpecific: false`
+  for dual-module plugins. Review triage in
+  `review-triage-extraction-waveB.md`; probe `scripts/probe-waveb.mjs` (13
+  checks).
+- **Wave D** — owner ruled the notifications and activity drawer pages leave
+  the shell without conversion (`docs/design/wave-d-drawer-removal.md`). The
+  drawer is contributed-sections-only and the dock is a silent pill; the
+  notifications data layer retired with the page.
+- **Wave C** — owner confirmed the element audit wins over the goal's original
+  migration wording: the transcript host stays native; the `messageRenderers`
+  seam (plugin renderers, honest unknown-tag card) is the deliverable.
+
+Remaining known gaps, none new:
+
+- Warnings filed server-side have no client page until a plugin builds one
+  (the notifications page's removal accepted this gap explicitly).
+- Subagent run and background-task conversation viewers died with the activity
+  panel; the dock pill still names live work.
+- The bundled `files`, `git`, `relays`, `terminal`, `updates`, `voice` and
+  `workspaces` plugins stay bundled until their split repositories mature.
