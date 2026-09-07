@@ -3,7 +3,7 @@ import { customElement, property } from "lit/decorators.js";
 import { ifDefined } from "lit/directives/if-defined.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import type { FileContentResponse } from "@gang-of-beads/pi-web/plugin-api";
-import { filesRenderMarkdownHtml, filesSurfaceStyles, filesTextStyles } from "./hostUi";
+import { adoptFilesHostStyles, filesRenderMarkdownHtml } from "./hostUi";
 import type { WorkspaceFileViewMode, WorkspaceFileViewModeStore } from "./viewMode";
 import { formatFileSize, workspaceFileName } from "./format";
 
@@ -328,7 +328,14 @@ export class WorkspaceFileViewer extends LitElement {
     return hasRawAndPreviewModes(file, workspaceFilePreviewKind(file));
   }
 
-  static override styles = [filesSurfaceStyles(), filesTextStyles(), css`
+  protected override createRenderRoot(): HTMLElement | DocumentFragment {
+    const root = super.createRenderRoot();
+    if (root instanceof ShadowRoot) adoptFilesHostStyles(root);
+    return root;
+  }
+
+  static override styles = [
+    css`
     :host { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: auto; color: var(--pi-text); font: 14px system-ui, sans-serif; }
     .viewer-header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); }
     .viewer-header strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

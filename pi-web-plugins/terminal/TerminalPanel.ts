@@ -12,7 +12,7 @@ import { createTerminalSoftKeysDefaultEnvironmentMedia, hasTerminalSoftKeysPrefe
 import "./TerminalSoftKeys";
 import type { TerminalSoftKeyInputOptions } from "./TerminalSoftKeys.js";
 import { describeTerminalError } from "./hostUi.js";
-import { terminalSurfaceStyles } from "./hostUi.js";
+import { adoptTerminalHostStyles } from "./hostUi.js";
 
 const TERMINAL_OPTIONS_BASE: ITerminalOptions = {
   cursorBlink: true,
@@ -718,7 +718,13 @@ export class TerminalPanel extends LitElement {
     `;
   }
 
-  static override styles = [...terminalSurfaceStyles(), xtermStyles, css`
+  protected override createRenderRoot(): HTMLElement | DocumentFragment {
+    const root = super.createRenderRoot();
+    if (root instanceof ShadowRoot) adoptTerminalHostStyles(root);
+    return root;
+  }
+
+  static override styles = [xtermStyles, css`
     :host { flex: 1 1 auto; min-height: 0; display: flex; }
     .terminal-shell { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--pi-terminal-bg); }
     .terminal-tabs { flex: 0 0 auto; display: flex; gap: 6px; align-items: center; padding: 6px; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); overflow: auto; }

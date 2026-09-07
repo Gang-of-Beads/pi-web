@@ -1,16 +1,15 @@
-import type { CSSResultGroup } from "lit";
+import type { CSSResultGroup, CSSResultArray } from "lit";
 import type { PluginHostUi } from "@gang-of-beads/pi-web/plugin-api";
 
 /**
  * The host utilities this plugin was activated with.
  *
- * The panels are custom elements, so their styles are read when the module is
- * first imported - before any call could hand them in. The plugin therefore
- * records what the host gave it and imports the elements afterwards, which is
- * why this holder exists rather than a parameter. Absent means the host
- * offered none: the elements then copy nothing and simply go without, because
- * copying the host's styles or wording would drift the moment either side
- * changed.
+ * `static styles` freezes at module load, which runs before the host is
+ * remembered - the elements are imported for their side effects by the plugin
+ * entry before activate() runs - so the host sheets are adopted per element
+ * instance in createRenderRoot instead. Absent means the host offered none:
+ * the elements then adopt nothing and simply go without, because copying the
+ * host's styles or wording would drift the moment either side changed.
  */
 
 let hostUi: PluginHostUi | undefined;
@@ -19,12 +18,30 @@ export function rememberFilesHostUi(ui: PluginHostUi | undefined): void {
   hostUi = ui;
 }
 
-export function filesSurfaceStyles(): CSSResultGroup[] {
-  return hostUi === undefined ? [] : [hostUi.surfaceStyles];
+function isCssResultGroupArray(group: CSSResultGroup): group is CSSResultArray {
+  return Array.isArray(group);
 }
 
-export function filesTextStyles(): CSSResultGroup[] {
-  return hostUi === undefined ? [] : [hostUi.textStyles];
+function cssResultSheets(groups: CSSResultGroup[]): CSSStyleSheet[] {
+  const sheets: CSSStyleSheet[] = [];
+  const collect = (group: CSSResultGroup): void => {
+    if (!isCssResultGroupArray(group) && "cssText" in group) {
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(group.cssText);
+      sheets.push(sheet);
+      return;
+    }
+    if (isCssResultGroupArray(group)) group.forEach(collect);
+  };
+  groups.forEach(collect);
+  return sheets;
+}
+
+export function adoptFilesHostStyles(root: ShadowRoot): void {
+  if (hostUi === undefined) return;
+  const sheets = cssResultSheets([hostUi.surfaceStyles, hostUi.workspacePanelStyles, hostUi.textStyles]);
+  if (sheets.length === 0) return;
+  root.adoptedStyleSheets = [...root.adoptedStyleSheets, ...sheets];
 }
 
 export function describeFilesError(error: unknown): string {

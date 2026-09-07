@@ -35,14 +35,8 @@ export class ContextSwitcherSheet extends LitElement {
           </div>
           <div class="sheet-body">
             ${this.renderMachineGroup()}
-            <section>
-              <h2>Projects</h2>
-              ${this.renderNavSection("projects")}
-            </section>
-            <section>
-              <h2>Workspaces</h2>
-              ${this.renderNavSection("workspaces")}
-            </section>
+            ${this.renderNavSection("projects")}
+            ${this.renderNavSection("workspaces")}
           </div>
         </div>
       </modal-surface>

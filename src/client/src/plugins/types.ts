@@ -65,6 +65,11 @@ export interface PluginHostUi {
   readonly surfaceStyles: CSSResultGroup;
   /** The list chrome every built-in list carries, so a contributed list matches them. */
   readonly listStyles: CSSResultGroup;
+  /** The workspace-panel body baseline (toolbar, list, viewer, empty states),
+   *  so a contributed panel body matches the built-in panel instead of
+   *  inventing its own chrome. Adopt per element instance in createRenderRoot:
+   *  static styles freeze at module load, before the host is remembered. */
+  readonly workspacePanelStyles: CSSResultGroup;
   readonly breakpoints: PluginBreakpoints;
   /** Sanitized markdown HTML, the same rendering the built-in surfaces trust. */
   readonly renderMarkdownHtml: (markdown: string) => string;

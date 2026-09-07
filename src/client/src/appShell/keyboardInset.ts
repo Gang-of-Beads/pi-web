@@ -12,6 +12,15 @@
  * That amount is not simply the keyboard height: the visual viewport can also
  * be offset by pinch-zoom or by the page being scrolled under a collapsed URL
  * bar, and those must not be mistaken for a keyboard.
+ *
+ * Chromium also honors the `interactive-widget=resizes-content` viewport
+ * descriptor (index.html), which shrinks the layout viewport itself when the
+ * keyboard opens. The measurement converges under either browser behavior:
+ * with the descriptor active, `innerHeight` and the visual viewport shrink
+ * together, so the computed inset reads ~0 and the measured visible height -
+ * the value the shell actually uses - is already correct. On iOS, which lacks
+ * the descriptor, the inset carries the whole fix. A double compensation
+ * cannot happen because both values come from the same measurement pass.
  */
 
 export interface VisualViewportLike {

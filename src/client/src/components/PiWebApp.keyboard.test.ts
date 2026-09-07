@@ -304,6 +304,7 @@ function fakeFilesHostUi(): PluginHostUi {
     describeError: (error) => String(error),
     surfaceStyles: [],
     listStyles: [],
+    workspacePanelStyles: [],
     breakpoints: { coarseOrMobile: "", mobileNavigation: "", desktopSideBySide: "" },
     renderMarkdownHtml: (markdown) => markdown,
     textStyles: [],

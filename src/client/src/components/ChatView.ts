@@ -156,18 +156,18 @@ export const chatStyles = css`
   .drawer-header-actions { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-1); }
   .drawer-body { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
   .drawer-body[hidden] { display: none; }
-  /* One rule for the whole drawer: the project sets 44px as its touch height
-     (--pi-control-height-touch), and controls added a few at a time had drifted
-     to 30, 32, 36 and 40. Placed after every base declaration it overrides -
-     a media query carries no extra specificity, so the same rule written
-     earlier in the sheet loses to the base height it was meant to raise. */
-  @media (pointer: coarse) {
-    .drawer-header { min-height: 44px; }
-    .drawer-collapse { width: 44px; height: 44px; }
-  }
+  /* Base sizes first, the coarse override after them: a media query carries no
+     extra specificity, so a coarse rule written earlier loses to a base rule
+     written later - the exact drift that pinned the collapse toggle at 32px on
+     touch screens once already (shared.ts keeps the same incident record). */
   .drawer-control { box-sizing: border-box; min-height: 32px; border: 0; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); cursor: pointer; }
   .drawer-control { padding: 0 var(--pi-space-4); font: var(--pi-text-xs) var(--pi-font-ui); white-space: nowrap; }
   .drawer-collapse { display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; }
+  @media (pointer: coarse) {
+    .drawer-header { min-height: 44px; }
+    .drawer-tab { min-height: var(--pi-control-height-touch); }
+    .drawer-collapse { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); }
+  }
   .drawer-control:focus-visible { background: var(--pi-selection-bg); color: var(--pi-text-bright); }
   @media (hover: hover) { .drawer-control:hover { background: var(--pi-selection-bg); color: var(--pi-text-bright); } }
   .drawer-control:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }

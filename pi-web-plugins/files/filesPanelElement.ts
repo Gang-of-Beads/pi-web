@@ -1,7 +1,7 @@
 import { css, html, LitElement, type PropertyValues, type TemplateResult } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import type { FileTreeEntry, WorkspacePanelContext, WorkspaceUploadBatchProgress } from "@gang-of-beads/pi-web/plugin-api";
-import { describeFilesError, filesQuery, filesRegisterModal, filesSurfaceStyles } from "./hostUi";
+import { adoptFilesHostStyles, describeFilesError, filesQuery, filesRegisterModal } from "./hostUi";
 import { createStore } from "./viewMode";
 import { FilesExplorer, explorerIdentityKey } from "./explorer";
 import { createWorkspaceUploadBatchState, cancelWorkspaceUploadBatch, completeWorkspaceUploadBatch, failWorkspaceUploadBatch, updateWorkspaceUploadBatchProgress, type WorkspaceUploadBatchState, type WorkspaceUploadFileState } from "./uploadBatches";
@@ -486,7 +486,13 @@ export class PiFilesPanel extends LitElement {
     return query === undefined ? undefined : createStore({ query });
   }
 
-  static override styles = [filesSurfaceStyles(),
+  protected override createRenderRoot(): HTMLElement | DocumentFragment {
+    const root = super.createRenderRoot();
+    if (root instanceof ShadowRoot) adoptFilesHostStyles(root);
+    return root;
+  }
+
+  static override styles = [
     css`
       :host { flex: 1 1 auto; }
       pi-files-viewer { flex: 1 1 auto; min-height: 0; }
