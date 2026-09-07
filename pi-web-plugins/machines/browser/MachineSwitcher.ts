@@ -1,28 +1,31 @@
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import type { Machine, MachineHealth, MachineStatus } from "../api";
-import type { MachineStatusSnapshot } from "../../../shared/machineStatus";
+import type { NavMachineSnapshot } from "@gang-of-beads/pi-web/plugin-api";
 import { actionMenuPanelStyle } from "./actionMenu";
-import { hasStatusUnread, renderActivityIndicator, statusActivityKind } from "./activityBadge";
-import { canRemoveMachine } from "./MachineList";
+import { hasStatusUnread, renderActionActivityIndicator, statusActivityKind } from "./activityBadge";
+import { canRemoveMachine, machineStatusLabel } from "./MachineList";
 import type { KeyboardNavigableSection } from "./navigationFocus";
-import { interactiveSurfaceStyles } from "./shared";
+import { adoptMachinesHostStyles } from "./hostUi";
 
+/**
+ * The compact machine picker: one button naming the selected machine, opening
+ * a grid of the whole fleet. The phone shell keeps it mounted but hidden for
+ * keyboard navigation, so the hidden state is enforced on :host where a
+ * display rule cannot outrank it.
+ */
 @customElement("machine-switcher")
 export class MachineSwitcher extends LitElement implements KeyboardNavigableSection {
-  @property({ attribute: false }) machines: Machine[] = [];
-  @property({ attribute: false }) selected?: Machine;
-  @property({ attribute: false }) statuses: Record<string, MachineHealth> = {};
-  /** Per-machine status trees, keyed by machine id; a machine without one shows no indicator. */
-  @property({ attribute: false }) statusSnapshots: Record<string, MachineStatusSnapshot> = {};
-  @property({ attribute: false }) onSelect?: (machine: Machine) => void | Promise<void>;
-  @property({ attribute: false }) onRemove?: (machine: Machine) => void | Promise<void>;
+  @property({ attribute: false }) machines: NavMachineSnapshot[] = [];
+  @property({ attribute: false }) selectedMachineId?: string;
+  @property({ attribute: false }) machineFlags: Readonly<Record<string, NavStatusFlagsShape>> = {};
+  @property({ attribute: false }) onSelect?: (machineId: string) => void | Promise<void>;
+  @property({ attribute: false }) onRemove?: (machineId: string) => void | Promise<void>;
   @property({ attribute: false }) onFocusNextSection?: () => void | Promise<void>;
   @property({ attribute: false }) onCancelKeyboardNavigation?: () => void | Promise<void>;
   @state() private open = false;
   @state() private menuStyle = "";
-  @state() private openActionsMachineId: string | undefined;
   @state() private actionMenuStyle = "";
+  @state() private openActionsMachineId: string | undefined;
 
   private readonly onDocumentClick = (event: MouseEvent) => {
     if (event.composedPath().includes(this)) return;
@@ -40,6 +43,12 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     super.disconnectedCallback();
   }
 
+  protected override createRenderRoot(): HTMLElement | DocumentFragment {
+    const root = super.createRenderRoot();
+    if (root instanceof ShadowRoot) adoptMachinesHostStyles(root);
+    return root;
+  }
+
   protected override updated(changed: PropertyValues<this>): void {
     if (changed.has("machines") && this.open && this.selectedMachine() === undefined) this.open = false;
     if (changed.has("machines") && this.openActionsMachineId !== undefined && !this.machines.some((machine) => machine.id === this.openActionsMachineId)) this.openActionsMachineId = undefined;
@@ -54,7 +63,7 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
   override render() {
     const selected = this.selectedMachine();
     if (selected === undefined) return null;
-    const status = machineStatus(selected, this.statuses);
+    const status = selected.status;
     const label = selected.name;
     return html`
       <div class="machine-switcher">
@@ -84,9 +93,9 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     `;
   }
 
-  private renderMachineOption(machine: Machine): TemplateResult {
-    const selected = this.selected?.id === machine.id;
-    const status = machineStatus(machine, this.statuses);
+  private renderMachineOption(machine: NavMachineSnapshot): TemplateResult {
+    const selected = this.selectedMachineId === machine.id;
+    const status = machine.status;
     const hasActions = canRemoveMachine(machine) && this.onRemove !== undefined;
     const actionsOpen = this.openActionsMachineId === machine.id;
     return html`
@@ -123,21 +132,20 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     `;
   }
 
-  private renderActivity(machine: Machine): TemplateResult | undefined {
-    const flags = this.statusSnapshots[machine.id]?.machine;
-    const status = machineStatus(machine, this.statuses);
+  private renderActivity(machine: NavMachineSnapshot): TemplateResult | undefined {
+    const flags = this.machineFlags[machine.id];
     // Unread survives offline: an offline machine keeps its last-known unread
     // state (stale-but-present still counts), so only the work dot is gated.
-    const kind = status === "offline" || status === "error" ? undefined : statusActivityKind(flags);
+    const kind = machine.status === "offline" || machine.status === "error" ? undefined : statusActivityKind(flags);
     const unreadLabel = hasStatusUnread(flags) ? "Unread sessions on this machine" : undefined;
-    return renderActivityIndicator(kind, kind === "terminal" ? "Machine terminal active" : "Machine active", unreadLabel);
+    return renderActionActivityIndicator(kind, kind === "terminal" ? "Machine terminal active" : "Machine active", unreadLabel);
   }
 
-  private selectedMachine(): Machine | undefined {
-    return this.selected ?? this.machines.find((machine) => machine.id === "local") ?? this.machines[0];
+  private selectedMachine(): NavMachineSnapshot | undefined {
+    return this.machines.find((machine) => machine.id === this.selectedMachineId) ?? this.machines.find((machine) => machine.id === "local") ?? this.machines[0];
   }
 
-  private machineSwitcherAriaLabel(machine: Machine): string {
+  private machineSwitcherAriaLabel(machine: NavMachineSnapshot): string {
     return `Machine: ${machine.name}. Switch machine.`;
   }
 
@@ -264,19 +272,19 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     this.openActionsMachineId = machineId;
   }
 
-  private select(machine: Machine): void {
+  private select(machine: NavMachineSnapshot): void {
     this.open = false;
     this.openActionsMachineId = undefined;
-    void this.onSelect?.(machine);
+    void this.onSelect?.(machine.id);
   }
 
-  private removeMachine(machine: Machine): void {
+  private removeMachine(machine: NavMachineSnapshot): void {
     this.open = false;
     this.openActionsMachineId = undefined;
-    void this.onRemove?.(machine);
+    void this.onRemove?.(machine.id);
   }
 
-  static override styles = [interactiveSurfaceStyles, css`
+  static override styles = css`
     :host { min-width: 0; display: block; }
     /* A display rule on :host outranks the HTML hidden attribute, so an element
        rendered with the hidden attribute stays on screen unless this says so.
@@ -332,18 +340,13 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     .machine-option-actions-panel button.danger:focus-visible { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); }
     @media (hover: hover) { .machine-option-actions-panel button.danger:hover { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); } }
     @keyframes pulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
-  `];
+  `;
 }
 
-function machineStatus(machine: Machine, statuses: Record<string, MachineHealth>): MachineStatus {
-  return statuses[machine.id]?.status ?? machine.status ?? "unknown";
-}
+/** The machine-level flag map the host folds into the section context. */
+type NavStatusFlagsShape = Readonly<Record<string, boolean>>;
 
-function machineStatusLabel(status: MachineStatus): string {
-  return status === "online" ? "online" : status === "offline" ? "offline" : status === "error" ? "error" : "unknown";
-}
-
-function machineTitle(machine: Machine): string {
+function machineTitle(machine: NavMachineSnapshot): string {
   return machine.baseUrl ?? machine.name;
 }
 

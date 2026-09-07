@@ -1,34 +1,37 @@
 import { RowMenuGestures } from "./rowMenuGestures";
-import { filterMachines, shouldShowContextSearch } from "../contextSearch";
-import { LitElement, css, html, type PropertyValues, nothing} from "lit";
+import { filterMachines, shouldShowContextSearch } from "./contextSearch";
+import { LitElement, css, html, type PropertyValues, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import type { Machine, MachineHealth } from "../api";
-import type { MachineStatusSnapshot } from "../../../shared/machineStatus";
+import type { NavMachineSnapshot } from "@gang-of-beads/pi-web/plugin-api";
 import { actionMenuPanelStyle } from "./actionMenu";
 import { hasStatusUnread, renderActionActivityIndicator, statusActivityKind } from "./activityBadge";
 import type { KeyboardNavigableSection } from "./navigationFocus";
 import { focusSelectedOrFirstSelectableRow, handleSelectableRowKeyboard } from "./selectableRow";
-import { listStyles, interactiveSurfaceStyles } from "./shared";
+import { adoptMachinesHostStyles } from "./hostUi";
 
+/**
+ * The machine fleet as a row list. Every machine the host feeds in is a plain
+ * snapshot with its health folded into `status`, so the list never calls a PI
+ * WEB API and never spells a URL; the row menu offers exactly the actions the
+ * section context says the host provides.
+ */
 @customElement("machine-list")
 export class MachineList extends LitElement implements KeyboardNavigableSection {
-  @property({ attribute: false }) machines: Machine[] = [];
+  @property({ attribute: false }) machines: NavMachineSnapshot[] = [];
   /** What the reader has typed to narrow a long fleet. */
   @state() private searchQuery = "";
-  @property({ attribute: false }) selected?: Machine;
-  @property({ attribute: false }) statuses: Record<string, MachineHealth> = {};
-  /** Per-machine status trees, keyed by machine id; a machine without one shows no indicator. */
-  @property({ attribute: false }) statusSnapshots: Record<string, MachineStatusSnapshot> = {};
+  @property({ attribute: false }) selectedMachineId?: string;
+  @property({ attribute: false }) machineFlags: Readonly<Record<string, NavStatusFlagsShape>> = {};
   @property({ type: Boolean, reflect: true }) collapsible = false;
   @property({ type: Boolean, reflect: true }) collapsed = false;
-  @property({ attribute: false }) onSelect?: (machine: Machine) => void;
-  @property({ attribute: false }) onRemove?: (machine: Machine) => void | Promise<void>;
+  @property({ attribute: false }) onSelect?: (machineId: string) => void;
+  @property({ attribute: false }) onRemove?: (machineId: string) => void | Promise<void>;
   /** Rename any machine, local included: the local one is a display alias. */
-  @property({ attribute: false }) onRename?: (machine: Machine, name: string) => void | Promise<void>;
+  @property({ attribute: false }) onRename?: (machineId: string, name: string) => void | Promise<void>;
   /** Re-check one machine's health; previously palette-only. */
-  @property({ attribute: false }) onRefresh?: (machine: Machine) => void | Promise<void>;
+  @property({ attribute: false }) onRefresh?: (machineId: string) => void | Promise<void>;
   /** Open a remote machine's own PI WEB; previously palette-only. */
-  @property({ attribute: false }) onOpen?: (machine: Machine) => void;
+  @property({ attribute: false }) onOpen?: (machineId: string) => void;
   @property({ attribute: false }) onToggleCollapsed?: () => void;
   /** Add a machine from the list itself, not only from Settings. */
   @property({ attribute: false }) onAdd?: () => void;
@@ -53,6 +56,12 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
     super.disconnectedCallback();
   }
 
+  protected override createRenderRoot(): HTMLElement | DocumentFragment {
+    const root = super.createRenderRoot();
+    if (root instanceof ShadowRoot) adoptMachinesHostStyles(root);
+    return root;
+  }
+
   protected override updated(changed: PropertyValues<this>): void {
     if (changed.has("machines") && this.openMenuMachineId !== undefined && !this.machines.some((machine) => machine.id === this.openMenuMachineId)) this.openMenuMachineId = undefined;
     if (changed.has("collapsed") && this.collapsed) this.openMenuMachineId = undefined;
@@ -61,6 +70,10 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
   async focusSelectedOrFirst(): Promise<boolean> {
     await this.updateComplete;
     return focusSelectedOrFirstSelectableRow(this.renderRoot, { fallbackSelector: ".section-toggle" });
+  }
+
+  private machineById(machineId: string): NavMachineSnapshot | undefined {
+    return this.machines.find((machine) => machine.id === machineId);
   }
 
   /** Shown once the fleet is long enough to scan, and while a query is active. */
@@ -101,24 +114,24 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
     `;
   }
 
-  private renderMachine(machine: Machine) {
-    const status = this.statuses[machine.id]?.status ?? machine.status ?? "unknown";
-    const statusLabel = status === "online" ? "online" : status === "offline" ? "offline" : status === "error" ? "error" : "unknown";
+  private renderMachine(machine: NavMachineSnapshot) {
+    const status = machine.status;
+    const statusLabel = machineStatusLabel(status);
     // The local machine used to have no menu at all, so its rename lived only
     // in a settings panel nobody found. Any machine with at least one action
     // gets the same menu affordance.
     const hasActions = machineRowActions(machine, { remove: this.onRemove !== undefined, rename: this.onRename !== undefined, refresh: this.onRefresh !== undefined, open: this.onOpen !== undefined }).length > 0;
     return html`
       <div
-        class=${`action-row machine-row ${this.selected?.id === machine.id ? "selected" : ""} ${hasActions ? "" : "no-actions"}`}
+        class=${`action-row machine-row ${this.selectedMachineId === machine.id ? "selected" : ""} ${hasActions ? "" : "no-actions"}`}
         title=${machine.baseUrl ?? machine.name}
         @keydown=${(event: KeyboardEvent) => { this.handleMachineKeydown(event, machine); }}
       >
         <button
           type="button"
           class="action-main"
-          aria-current=${this.selected?.id === machine.id ? "true" : nothing}
-          @click=${() => { if (!this.gestures.consumeSuppressedClick()) this.onSelect?.(machine); }}
+          aria-current=${this.selectedMachineId === machine.id ? "true" : nothing}
+          @click=${() => { if (!this.gestures.consumeSuppressedClick()) this.onSelect?.(machine.id); }}
           @contextmenu=${(event: MouseEvent) => { this.gestures.contextMenu(machine.id, event); }}
           @pointerdown=${(event: PointerEvent) => { this.gestures.pointerDown(machine.id, event); }}
           @pointermove=${(event: PointerEvent) => { this.gestures.pointerMove(event); }}
@@ -133,17 +146,16 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
     `;
   }
 
-  private renderActivity(machine: Machine) {
-    const flags = this.statusSnapshots[machine.id]?.machine;
-    const status = this.statuses[machine.id]?.status ?? machine.status;
+  private renderActivity(machine: NavMachineSnapshot) {
+    const flags = this.machineFlags[machine.id];
     // Unread survives offline: an offline machine keeps its last-known unread
     // state (stale-but-present still counts), so only the work dot is gated.
-    const kind = status === "offline" || status === "error" ? undefined : statusActivityKind(flags);
+    const kind = machine.status === "offline" || machine.status === "error" ? undefined : statusActivityKind(flags);
     const unreadLabel = hasStatusUnread(flags) ? "Unread sessions on this machine" : undefined;
     return renderActionActivityIndicator(kind, kind === "terminal" ? "Machine terminal active" : "Machine active", unreadLabel);
   }
 
-  private renderMachineMenu(machine: Machine) {
+  private renderMachineMenu(machine: NavMachineSnapshot) {
     const open = this.openMenuMachineId === machine.id;
     const menuId = machineMenuId(machine.id);
     return html`
@@ -158,9 +170,9 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
         >⋯</button>
         ${open ? html`
           <div class="action-menu-panel machine-menu-panel" id=${menuId} style=${this.menuStyle} @click=${(event: MouseEvent) => { event.stopPropagation(); }}>
-            ${this.onRefresh === undefined ? null : html`<button title=${`Check ${machine.name} again`} @click=${() => { this.openMenuMachineId = undefined; void this.onRefresh?.(machine); }}>Check again</button>`}
+            ${this.onRefresh === undefined ? null : html`<button title=${`Check ${machine.name} again`} @click=${() => { this.openMenuMachineId = undefined; void this.onRefresh?.(machine.id); }}>Check again</button>`}
             ${this.onRename === undefined ? null : html`<button title=${machine.kind === "local" ? "Rename this device (display name only)" : `Rename ${machine.name}`} @click=${() => { this.promptRename(machine); }}>Rename…</button>`}
-            ${this.onOpen === undefined || machine.kind !== "remote" ? null : html`<button title=${`Open ${machine.name} in a new tab`} @click=${() => { this.openMenuMachineId = undefined; this.onOpen?.(machine); }}>Open PI WEB</button>`}
+            ${this.onOpen === undefined || machine.kind !== "remote" ? null : html`<button title=${`Open ${machine.name} in a new tab`} @click=${() => { this.openMenuMachineId = undefined; this.onOpen?.(machine.id); }}>Open PI WEB</button>`}
             ${canRemoveMachine(machine) && this.onRemove !== undefined ? html`<button class="danger" title=${`Remove ${machine.name}`} @click=${() => { this.removeMachine(machine); }}>Remove</button>` : null}
           </div>
         ` : null}
@@ -182,8 +194,9 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
 
   private renderHeading() {
     if (!this.collapsible) return html`<span>Machines</span>`;
-    const selectedSummary = this.selected?.name ?? "No machine selected";
-    const selectedTitle = this.selected?.baseUrl ?? selectedSummary;
+    const selected = this.selectedMachineId === undefined ? undefined : this.machineById(this.selectedMachineId);
+    const selectedSummary = selected?.name ?? "No machine selected";
+    const selectedTitle = selected?.baseUrl ?? selectedSummary;
     return html`<button class="section-toggle" aria-expanded=${String(!this.collapsed)} @click=${() => { this.onToggleCollapsed?.(); }}><span class="section-title"><span class="section-name">${this.collapsed ? "▸" : "▾"} Machines</span>${this.collapsed ? html`<small class="section-selected" title=${selectedTitle}>${selectedSummary}</small>` : null}</span><small class="section-count">${this.machines.length}</small></button>`;
   }
 
@@ -207,21 +220,21 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
    * Cancel or an unchanged answer cannot clear a name by accident (mirrors the
    * session list's rename).
    */
-  private promptRename(machine: Machine): void {
+  private promptRename(machine: NavMachineSnapshot): void {
     this.openMenuMachineId = undefined;
     const next = prompt(machine.kind === "local" ? "Name for this device:" : `Name for ${machine.name}:`, machine.name);
     if (next === null) return;
     const trimmed = next.trim();
     if (trimmed === "" || trimmed === machine.name) return;
-    void this.onRename?.(machine, trimmed);
+    void this.onRename?.(machine.id, trimmed);
   }
 
-  private removeMachine(machine: Machine): void {
+  private removeMachine(machine: NavMachineSnapshot): void {
     this.openMenuMachineId = undefined;
-    void this.onRemove?.(machine);
+    void this.onRemove?.(machine.id);
   }
 
-  private handleMachineKeydown(event: KeyboardEvent, machine: Machine): void {
+  private handleMachineKeydown(event: KeyboardEvent, machine: NavMachineSnapshot): void {
     if (event.key === "Escape" && this.openMenuMachineId === machine.id) {
       event.preventDefault();
       event.stopPropagation();
@@ -229,28 +242,29 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
       return;
     }
     handleSelectableRowKeyboard(event, {
-      activate: () => this.onSelect?.(machine),
+      activate: () => this.onSelect?.(machine.id),
       nextSection: this.onFocusNextSection === undefined ? undefined : () => { void this.onFocusNextSection?.(); },
       cancel: this.onCancelKeyboardNavigation === undefined ? undefined : () => { void this.onCancelKeyboardNavigation?.(); },
     });
   }
 
-  static override styles = [interactiveSurfaceStyles, 
-    listStyles,
-    css`
-      .machine-row { border-radius: var(--pi-radius-lg); }
-      .machine-row.no-actions .action-main { border-radius: var(--pi-radius-lg); }
-      .machine-row .action-main { min-height: 58px; align-content: center; }
-      .machine-primary { display: flex; align-items: baseline; gap: var(--pi-space-3); }
-      .machine-primary-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-      .machine-menu-panel button.danger { color: var(--pi-danger); }
-      .machine-menu-panel button.danger:focus { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); }
-      @media (hover: hover) { .machine-menu-panel button.danger:hover { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); } }
-    `,
-  ];
+  static override styles = css`
+    :host { display: block; min-width: 0; }
+    .machine-row { border-radius: var(--pi-radius-lg); }
+    .machine-row.no-actions .action-main { border-radius: var(--pi-radius-lg); }
+    .machine-row .action-main { min-height: 58px; align-content: center; }
+    .machine-primary { display: flex; align-items: baseline; gap: var(--pi-space-3); }
+    .machine-primary-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .machine-menu-panel button.danger { color: var(--pi-danger); }
+    .machine-menu-panel button.danger:focus { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); }
+    @media (hover: hover) { .machine-menu-panel button.danger:hover { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); } }
+  `;
 }
 
-export function canRemoveMachine(machine: Machine): boolean {
+/** The machine-level flag map the host folds into the section context. */
+type NavStatusFlagsShape = Readonly<Record<string, boolean>>;
+
+export function canRemoveMachine(machine: Pick<NavMachineSnapshot, "kind">): boolean {
   return machine.kind === "remote";
 }
 
@@ -258,13 +272,17 @@ export function canRemoveMachine(machine: Machine): boolean {
  * Which row-menu actions a machine actually offers, so the menu button appears
  * exactly when there is something behind it.
  */
-export function machineRowActions(machine: Machine, available: { remove: boolean; rename: boolean; refresh: boolean; open: boolean }): string[] {
+export function machineRowActions(machine: Pick<NavMachineSnapshot, "kind">, available: { remove: boolean; rename: boolean; refresh: boolean; open: boolean }): string[] {
   const actions: string[] = [];
   if (available.refresh) actions.push("refresh");
   if (available.rename) actions.push("rename");
   if (available.open && machine.kind === "remote") actions.push("open");
   if (available.remove && canRemoveMachine(machine)) actions.push("remove");
   return actions;
+}
+
+export function machineStatusLabel(status: NavMachineSnapshot["status"]): string {
+  return status === "online" ? "online" : status === "offline" ? "offline" : status === "error" ? "error" : "unknown";
 }
 
 function machineMenuId(machineId: string): string {

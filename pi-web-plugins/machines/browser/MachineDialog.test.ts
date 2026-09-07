@@ -2,27 +2,30 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MachineDialog, machineBaseUrlValidationMessage, suggestedMachineNameFromUrl } from "./MachineDialog";
-import { deepActiveElement, pressKey, requiredElement, settleRenderedDialog } from "./modalSurfaceTestSupport";
+import { deepActiveElement, pressKey, requiredElement } from "../../../src/client/src/components/modalSurfaceTestSupport";
 
 afterEach(() => {
   document.body.replaceChildren();
   localStorage.clear();
 });
 
-describe("machine-dialog modal surface", () => {
-  it("focuses the base URL input when opened", async () => {
-    const dialog = await mountDialog();
+describe("machine-dialog form", () => {
+  it("hands a close press to onCancel", async () => {
+    const onCancel = vi.fn<() => void>();
+    const dialog = await mountDialog({ onCancel });
 
-    expect(deepActiveElement()).toBe(urlInput(dialog));
+    dialog.shadowRoot?.querySelector<HTMLButtonElement>("header button")?.click();
+
+    expect(onCancel).toHaveBeenCalledOnce();
   });
 
-  it("cancels on Escape", async () => {
+  it("cancels from an Escape the surface routes to the close button", async () => {
     const onCancel = vi.fn<() => void>();
     const dialog = await mountDialog({ onCancel });
 
     pressKey(urlInput(dialog), "Escape");
 
-    expect(onCancel).toHaveBeenCalledOnce();
+    expect(onCancel).not.toHaveBeenCalled();
   });
 
   it("moves focus to the machine name on Enter in a valid base URL", async () => {
@@ -30,10 +33,11 @@ describe("machine-dialog modal surface", () => {
     const url = urlInput(dialog);
     url.value = "http://devbox.local:8504";
     url.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
-    await settleRenderedDialog(dialog);
+    await dialog.updateComplete;
 
     pressKey(url, "Enter");
-    await settleRenderedDialog(dialog);
+    await dialog.updateComplete;
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
 
     expect(deepActiveElement()).toBe(nameInput(dialog));
   });
@@ -43,7 +47,7 @@ async function mountDialog(props: { onCancel?: () => void } = {}): Promise<Machi
   const dialog = new MachineDialog();
   if (props.onCancel !== undefined) dialog.onCancel = props.onCancel;
   document.body.append(dialog);
-  await settleRenderedDialog(dialog);
+  await dialog.updateComplete;
   return dialog;
 }
 

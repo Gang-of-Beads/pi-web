@@ -1,24 +1,30 @@
 import { LitElement, css, html } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
-import "./ModalSurface";
-import { interactiveSurfaceStyles } from "./shared";
+import type { MachineCreateInput } from "@gang-of-beads/pi-web/plugin-api";
+import { adoptMachinesHostStyles } from "./hostUi";
 
-export interface MachineDialogSubmit {
-  name: string;
-  baseUrl: string;
-  token?: string;
-}
-
+/**
+ * The add-machine form, rendered inside the shell's dialog surface. A submit
+ * resolves to the reason it did not go through, or undefined when it did; the
+ * opener owns closing the dialog, the way the add-project dialog does.
+ */
 @customElement("machine-dialog")
 export class MachineDialog extends LitElement {
-  @property({ attribute: false }) onSubmit?: (input: MachineDialogSubmit) => void | Promise<void>;
+  protected override createRenderRoot(): HTMLElement | DocumentFragment {
+    const root = super.createRenderRoot();
+    if (root instanceof ShadowRoot) adoptMachinesHostStyles(root);
+    return root;
+  }
+
+  @property({ attribute: false }) onSubmit?: (input: MachineCreateInput) => Promise<string | undefined>;
   @property({ attribute: false }) onCancel?: () => void;
-  @property() error = "";
 
   @state() private url = "";
   @state() private name = "";
   @state() private token = "";
   @state() private submitting = false;
+  /** Why the last submit did not go through, shown where the submit happened. */
+  @state() private submitError: string | undefined = undefined;
   @query("input[name='name']") private nameInput?: HTMLInputElement;
 
   private nameEdited = false;
@@ -44,7 +50,7 @@ export class MachineDialog extends LitElement {
     this.token = event.target.value;
   }
 
-  // Escape and backdrop presses are owned by the modal surface (routed to
+  // Escape and backdrop presses are owned by the dialog surface (routed to
   // `onCancel`); this handler keeps the form's Enter-to-advance behavior.
   private handleKeyDown(event: KeyboardEvent): void {
     if (event.key === "Enter" && event.target instanceof HTMLInputElement && event.target.name === "baseUrl" && machineBaseUrlValidationMessage(this.url) === undefined) {
@@ -66,13 +72,15 @@ export class MachineDialog extends LitElement {
     if (input === undefined || this.submitting) return;
     this.submitting = true;
     try {
-      await this.onSubmit?.(input);
+      const failure = await this.onSubmit?.(input);
+      if (failure === undefined) return;
+      this.submitError = failure;
     } finally {
       if (this.isConnected) this.submitting = false;
     }
   }
 
-  private validInput(): MachineDialogSubmit | undefined {
+  private validInput(): MachineCreateInput | undefined {
     const baseUrl = this.url.trim();
     const name = this.name.trim();
     if (baseUrl === "" || name === "" || machineBaseUrlValidationMessage(baseUrl) !== undefined) return undefined;
@@ -85,49 +93,41 @@ export class MachineDialog extends LitElement {
     const urlError = hasUrl ? machineBaseUrlValidationMessage(this.url) : undefined;
     const canSubmit = this.validInput() !== undefined && !this.submitting;
     return html`
-      <modal-surface
-        .onClose=${() => this.onCancel?.()}
-        .initialFocus=${"input[name='baseUrl']"}
-        .label=${"Add machine"}
-        @keydown=${(event: KeyboardEvent) => { this.handleKeyDown(event); }}
-      >
-        <form @submit=${(event: SubmitEvent) => { this.handleSubmit(event); }}>
-          <header>
-            <strong>Add machine</strong>
-            <button type="button" @click=${() => { this.onCancel?.(); }} aria-label="Close">×</button>
-          </header>
-          <div class="body">
-            ${this.error === "" ? null : html`<div class="dialog-error" role="alert">${this.error}</div>`}
+      <form @submit=${(event: SubmitEvent) => { this.handleSubmit(event); }} @keydown=${(event: KeyboardEvent) => { this.handleKeyDown(event); }}>
+        <header>
+          <strong>Add machine</strong>
+          <button type="button" @click=${() => { this.onCancel?.(); }} aria-label="Close">×</button>
+        </header>
+        <div class="body">
+          ${this.submitError === undefined ? null : html`<div class="dialog-error" role="alert">${this.submitError}</div>`}
+          <label>
+            Remote PI WEB URL
+            <input name="baseUrl" type="url" .value=${this.url} @input=${(event: InputEvent) => { this.handleUrlInput(event); }} placeholder="http://dev-box.local:8504" autocomplete="url" inputmode="url" />
+          </label>
+          <small class=${urlError === undefined ? "hint" : "field-error"}>${urlError ?? "Enter the reachable base URL first, including http:// or https://."}</small>
+          ${hasUrl ? html`
             <label>
-              Remote PI WEB URL
-              <input name="baseUrl" type="url" .value=${this.url} @input=${(event: InputEvent) => { this.handleUrlInput(event); }} placeholder="http://dev-box.local:8504" autocomplete="url" inputmode="url" />
+              Machine name
+              <input name="name" type="text" .value=${this.name} @input=${(event: InputEvent) => { this.handleNameInput(event); }} placeholder=${this.previousSuggestedName || "Dev Box"} autocomplete="off" />
             </label>
-            <small class=${urlError === undefined ? "hint" : "field-error"}>${urlError ?? "Enter the reachable base URL first, including http:// or https://."}</small>
-            ${hasUrl ? html`
-              <label>
-                Machine name
-                <input name="name" type="text" .value=${this.name} @input=${(event: InputEvent) => { this.handleNameInput(event); }} placeholder=${this.previousSuggestedName || "Dev Box"} autocomplete="off" />
-              </label>
-              <small class="hint">Suggested from the URL. Edit it to use a friendlier sidebar label.</small>
-              <label>
-                Bearer token <span class="optional">optional</span>
-                <input name="token" type="password" .value=${this.token} @input=${(event: InputEvent) => { this.handleTokenInput(event); }} placeholder="Leave blank if the remote machine does not require one" autocomplete="off" />
-              </label>
-              <small class="hint">Paste only the token value; PI WEB sends it as an Authorization: Bearer header.</small>
-            ` : html`<p class="hint intro">After you enter a URL, PI WEB will suggest a machine name and let you add an optional bearer token.</p>`}
-          </div>
-          <footer>
-            <button type="button" @click=${() => { this.onCancel?.(); }}>Cancel</button>
-            <button class="primary" type="submit" ?disabled=${!canSubmit}>${this.submitting ? "Adding…" : "Add machine"}</button>
-          </footer>
-        </form>
-      </modal-surface>
+            <small class="hint">Suggested from the URL. Edit it to use a friendlier sidebar label.</small>
+            <label>
+              Bearer token <span class="optional">optional</span>
+              <input name="token" type="password" .value=${this.token} @input=${(event: InputEvent) => { this.handleTokenInput(event); }} placeholder="Leave blank if the remote machine does not require one" autocomplete="off" />
+            </label>
+            <small class="hint">Paste only the token value; PI WEB sends it as an Authorization: Bearer header.</small>
+          ` : html`<p class="hint intro">After you enter a URL, PI WEB will suggest a machine name and let you add an optional bearer token.</p>`}
+        </div>
+        <footer>
+          <button type="button" @click=${() => { this.onCancel?.(); }}>Cancel</button>
+          <button class="primary" type="submit" ?disabled=${!canSubmit}>${this.submitting ? "Adding…" : "Add machine"}</button>
+        </footer>
+      </form>
     `;
   }
 
-  static override styles = [interactiveSurfaceStyles, css`
-    :host { position: fixed; inset: 0; z-index: var(--pi-layer-dialog); color: var(--pi-text); font: 14px system-ui, sans-serif; }
-    modal-surface { --modal-surface-place-items: start center; --modal-surface-backdrop-padding: min(12vh, 90px) 0 0; --modal-surface-width: min(560px, calc(100vw - 40px)); --modal-surface-max-height: min(640px, calc(100vh - 40px)); }
+  static override styles = css`
+    :host { color: var(--pi-text); font: 14px system-ui, sans-serif; }
     /* The form is the surface's single slotted child: the section's flex column
        constrains it (min-height: 0 so the body can shrink and scroll). */
     form { display: flex; flex-direction: column; min-height: 0; }
@@ -146,7 +146,7 @@ export class MachineDialog extends LitElement {
     header button { border: 0; background: transparent; color: var(--pi-muted); font-size: 22px; padding: 0 8px; }
     .primary { border-color: var(--pi-success-border); background: var(--pi-success-border); }
     button:disabled { opacity: .5; cursor: not-allowed; }
-  `];
+  `;
 }
 
 export function suggestedMachineNameFromUrl(value: string): string {

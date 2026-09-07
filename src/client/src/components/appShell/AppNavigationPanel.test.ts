@@ -1,12 +1,11 @@
 // @vitest-environment happy-dom
 
+import { html } from "lit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Machine } from "../../api";
 import type { MachineStatusSnapshot } from "../../../../shared/machineStatus";
 import { machineStatusSnapshot } from "../../machineStatus.testSupport";
-import type { NavSectionContext } from "../../plugins/types";
-import { MachineList } from "../MachineList";
-import { MachineSwitcher } from "../MachineSwitcher";
+import type { MachineSectionContext, NavSectionContext } from "../../plugins/types";
 import { workspacesNavSections } from "../../../../../pi-web-plugins/workspaces/browser/pi-web-plugin";
 import { ProjectList } from "../../../../../pi-web-plugins/workspaces/browser/ProjectList";
 import { WorkspaceList } from "../../../../../pi-web-plugins/workspaces/browser/WorkspaceList";
@@ -49,13 +48,16 @@ describe("panel body allocation", () => {
 });
 
 describe("machine status wiring", () => {
-  it("gives machine sections every snapshot and project and workspace sections the selected machine's", async () => {
+  it("gives contributed machine sections every machine flag fold and project and workspace sections the selected machine's", async () => {
     const local = machineStatusSnapshot({ machine: { "core:working": true } });
     const remote = machineStatusSnapshot({ machine: { "core:unread": true } });
-    const panel = await mountPanel({ local, "remote-a": remote }, machine("local"));
+    const seen: MachineSectionContext[] = [];
+    const panel = await mountPanel({ local, "remote-a": remote }, machine("local"), (context) => { seen.push(context); });
 
-    expect(section(panel, "machine-switcher", MachineSwitcher).statusSnapshots).toEqual({ local, "remote-a": remote });
-    expect(section(panel, "machine-list", MachineList).statusSnapshots).toEqual({ local, "remote-a": remote });
+    expect(seen).toHaveLength(2);
+    expect(seen[0]?.display.tiles).toBe(true);
+    expect(seen[1]?.display.tiles).toBe(false);
+    expect(seen[1]?.machineFlags).toEqual({ local: { "core:working": true }, "remote-a": { "core:unread": true } });
     expect(section(panel, "project-list", ProjectList).statusSnapshot).toEqual(narrowSnapshot(local));
     expect(section(panel, "workspace-list", WorkspaceList).statusSnapshot).toEqual(narrowSnapshot(local));
   });
@@ -160,13 +162,17 @@ async function mountPanelWithOptions(
   return panel;
 }
 
-async function mountPanel(machineStatusSnapshots: Record<string, MachineStatusSnapshot>, selectedMachine: Machine | undefined): Promise<AppNavigationPanel> {
+async function mountPanel(
+  machineStatusSnapshots: Record<string, MachineStatusSnapshot>,
+  selectedMachine: Machine | undefined,
+  onMachineSection?: (context: MachineSectionContext) => void,
+): Promise<AppNavigationPanel> {
   const panel = new AppNavigationPanel();
   panel.compact = true;
   panel.machines = [machine("local"), machine("remote-a")];
   if (selectedMachine !== undefined) panel.selectedMachine = selectedMachine;
   panel.machineStatusSnapshots = machineStatusSnapshots;
-  wireContributedSections(panel, machineStatusSnapshots, selectedMachine);
+  wireContributedSections(panel, machineStatusSnapshots, selectedMachine, onMachineSection);
   document.body.append(panel);
   await panel.updateComplete;
   return panel;
@@ -176,7 +182,33 @@ function narrowSnapshot(snapshot: MachineStatusSnapshot): NavSectionContext["sta
   return { projects: snapshot.projects, workspaces: snapshot.workspaces };
 }
 
-function wireContributedSections(panel: AppNavigationPanel, machineStatusSnapshots: Record<string, MachineStatusSnapshot>, selectedMachine: Machine | undefined): void {
+function wireContributedSections(
+  panel: AppNavigationPanel,
+  machineStatusSnapshots: Record<string, MachineStatusSnapshot>,
+  selectedMachine: Machine | undefined,
+  onMachineSection?: (context: MachineSectionContext) => void,
+): void {
+  panel.machineSections = [{
+    id: "machines:machines",
+    pluginId: "machines",
+    localId: "machines",
+    render: (context) => {
+      onMachineSection?.(context);
+      return html`<div class="contributed-machines"></div>`;
+    },
+  }];
+  panel.machineSectionContext = {
+    machines: panel.machines.map((machine) => ({ id: machine.id, name: machine.name, kind: machine.kind, status: "unknown" as const })),
+    selectedMachineId: selectedMachine?.id,
+    machineFlags: Object.fromEntries(Object.entries(machineStatusSnapshots).map(([id, snapshot]) => [id, snapshot.machine])),
+    display: { hidden: false, collapsible: false, collapsed: false, tiles: false, withCreate: false },
+    requestUpdate: () => undefined,
+    selectMachine: () => undefined,
+    toggleCollapsed: () => undefined,
+    focusPreviousSection: () => undefined,
+    focusNextSection: () => undefined,
+    cancelKeyboardNavigation: () => undefined,
+  };
   panel.navSections = workspacesNavSections().map((section) => ({
     ...section,
     id: `workspaces:${section.id}`,

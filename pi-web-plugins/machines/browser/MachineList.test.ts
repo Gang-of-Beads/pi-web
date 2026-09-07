@@ -1,9 +1,8 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Machine, MachineHealth, MachineStatus } from "../api";
-import type { MachineStatusSnapshot } from "../../../shared/machineStatus";
-import { machineStatusSnapshot } from "../machineStatus.testSupport";
+import type { NavMachineSnapshot } from "@gang-of-beads/pi-web/plugin-api";
+import { machineStatusSnapshot } from "../../../src/client/src/machineStatus.testSupport";
 import { canRemoveMachine, machineRowActions, MachineList } from "./MachineList";
 
 afterEach(() => {
@@ -38,7 +37,7 @@ describe("machineRowActions", () => {
 
 describe("machine rename", () => {
   it("renames the local machine from its row menu, seeded with the current name", async () => {
-    const onRename = vi.fn<(machine: Machine, name: string) => void>();
+    const onRename = vi.fn<(machineId: string, name: string) => void>();
     const list = await mountMachineList([machine("local", "local")]);
     list.onRename = onRename;
     await list.updateComplete;
@@ -55,11 +54,11 @@ describe("machine rename", () => {
     rename?.click();
 
     expect(promptSpy).toHaveBeenCalledWith("Name for this device:", "local");
-    expect(onRename).toHaveBeenCalledExactlyOnceWith(machine("local", "local"), "Studio Mac");
+    expect(onRename).toHaveBeenCalledExactlyOnceWith("local", "Studio Mac");
   });
 
   it("treats Cancel and an unchanged name as no rename", async () => {
-    const onRename = vi.fn<(machine: Machine, name: string) => void>();
+    const onRename = vi.fn<(machineId: string, name: string) => void>();
     const list = await mountMachineList([machine("local", "local")]);
     list.onRename = onRename;
     await list.updateComplete;
@@ -92,7 +91,7 @@ describe("machine status indicator", () => {
         "remote-a": machineStatusSnapshot({ machine: { "core:unread": true } }),
         "remote-b": machineStatusSnapshot({ machine: { "core:unread": true } }),
       },
-      { "remote-b": machineHealth("remote-b", "offline") },
+      { "remote-b": "offline" },
     );
 
     expect(unreadDot(rowFor(list, "local"))).toBeNull();
@@ -107,7 +106,7 @@ describe("machine status indicator", () => {
     const list = await mountMachineList([machine("local", "local")], { local: machineStatusSnapshot({ machine: { "core:unread": true } }) });
     expect(list.shadowRoot?.querySelector(".activity-indicator.unread")).not.toBeNull();
 
-    list.statusSnapshots = { local: machineStatusSnapshot({ revision: 2 }) };
+    list.machineFlags = { local: machineStatusSnapshot({ revision: 2 }).machine };
     await list.updateComplete;
 
     expect(list.shadowRoot?.querySelector(".activity-indicator.unread")).toBeNull();
@@ -154,7 +153,7 @@ describe("machine status indicator", () => {
     const list = await mountMachineList(
       [machine("remote-a", "remote")],
       { "remote-a": machineStatusSnapshot({ machine: { "core:working": true } }) },
-      { "remote-a": machineHealth("remote-a", "offline") },
+      { "remote-a": "offline" },
     );
 
     expect(rowFor(list, "remote-a").querySelector(".activity-indicator")).toBeNull();
@@ -162,14 +161,16 @@ describe("machine status indicator", () => {
 });
 
 async function mountMachineList(
-  machines: Machine[],
-  statusSnapshots: Record<string, MachineStatusSnapshot> = {},
-  statuses: Record<string, MachineHealth> = {},
+  machines: NavMachineSnapshot[],
+  snapshots: Record<string, ReturnType<typeof machineStatusSnapshot>> = {},
+  statuses: Record<string, NavMachineSnapshot["status"]> = {},
 ): Promise<MachineList> {
   const list = new MachineList();
-  list.machines = machines;
-  list.statusSnapshots = statusSnapshots;
-  list.statuses = statuses;
+  list.machines = machines.map((machine) => {
+    const status = statuses[machine.id];
+    return status === undefined ? machine : { ...machine, status };
+  });
+  list.machineFlags = Object.fromEntries(Object.entries(snapshots).map(([id, snapshot]) => [id, snapshot.machine]));
   document.body.append(list);
   await list.updateComplete;
   return list;
@@ -186,18 +187,8 @@ function unreadDot(row: Element): Element | null {
   return row.querySelector(".activity-indicator.unread");
 }
 
-function machine(id: string, kind: Machine["kind"]): Machine {
-  return {
-    id,
-    name: id,
-    kind,
-    createdAt: "2026-06-04T00:00:00.000Z",
-    updatedAt: "2026-06-04T00:00:00.000Z",
-  };
-}
-
-function machineHealth(machineId: string, status: MachineStatus): MachineHealth {
-  return { machineId, ok: status === "online", checkedAt: "2026-06-04T00:00:00.000Z", status };
+function machine(id: string, kind: NavMachineSnapshot["kind"]): NavMachineSnapshot {
+  return { id, name: id, kind, status: "unknown" };
 }
 
 describe("machine list create control", () => {

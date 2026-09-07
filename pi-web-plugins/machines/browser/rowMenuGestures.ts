@@ -1,4 +1,4 @@
-import { LongPressTracker } from "../longPress";
+import { LongPressTracker } from "./longPress";
 
 /**
  * Open a row's action menu the way each platform expects.

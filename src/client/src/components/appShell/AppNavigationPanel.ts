@@ -8,9 +8,7 @@ import { selectedMachineId } from "../../controllers/types";
 import type { NavigationSection } from "../../appShell/navigationState";
 import { NAVIGATION_SECTION_ORDER } from "../../appShell/navigationState";
 import type { KeyboardNavigableSection } from "../navigationFocus";
-import "../MachineList";
 import "./AppContextSwitcher";
-import "../MachineSwitcher";
 import "../SessionList";
 
 export type NavigationFocusTarget = NavigationSection | "chat";
@@ -83,7 +81,7 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) navSections: readonly QualifiedNavSectionContribution[] = [];
   /** The host-built snapshot and actions the contributed sections render. */
   @property({ attribute: false }) navSectionContext?: NavSectionContext;
-  /** Contributed machines section bodies; the `machines` slot falls back to the builtin list. */
+  /** Contributed machines section bodies; the `machines` slot renders them. */
   @property({ attribute: false }) machineSections: readonly QualifiedMachineSectionContribution[] = [];
   /** The host-built snapshot and actions a contributed machines section renders. */
   @property({ attribute: false }) machineSectionContext?: MachineSectionContext;
@@ -175,19 +173,7 @@ export class AppNavigationPanel extends LitElement {
           <button class="compact-header-action" title="Open settings" aria-label="Open settings" @click=${() => { this.onOpenSettings?.(); }}>⚙</button>
           <button class="compact-header-action" title="Show Actions" aria-label="Show Actions" @click=${() => { this.onShowActions?.(); }}>Actions</button>
         </div>
-        ${shouldShowMachinesSection(this.machines) ? html`
-          <machine-switcher
-            hidden
-            .machines=${this.machines}
-            .selected=${this.selectedMachine}
-            .statuses=${this.machineStatuses}
-            .statusSnapshots=${this.machineStatusSnapshots}
-            .onSelect=${(machine: Machine) => this.onSelectMachine?.(machine)}
-            .onRemove=${(machine: Machine) => this.onRemoveMachine?.(machine)}
-            .onFocusNextSection=${() => { this.focusNextFrom("machines"); }}
-            .onCancelKeyboardNavigation=${() => { this.cancelKeyboardNavigation(); }}
-          ></machine-switcher>
-        ` : null}
+        ${this.renderMachineHeaderSwitcher()}
         <!-- No quick-action bar here. It stacked a third bar above the list -
              a fifth of a phone screen before any content - and duplicated
              controls that already exist: the resident row opens the panel, the
@@ -221,7 +207,7 @@ export class AppNavigationPanel extends LitElement {
   private renderCompactPrimaryList() {
     const visible = this.compactVisibleSection();
     return html`
-      ${this.renderMachineList(false, visible !== "machines")}
+      ${this.renderMachineSectionSlot(visible !== "machines")}
       <!-- The create control belongs to the heading here and only here: the
            desktop layout above has a context switcher whose Project step
            already carries one, and two of them in one viewport is the clutter
@@ -251,9 +237,30 @@ export class AppNavigationPanel extends LitElement {
     return "projects";
   }
 
+  /**
+   * The phone header's machine picker, rendered by the machines plugin through
+   * the section's compact form (`tiles`); the element stays mounted but hidden
+   * for keyboard navigation, its own `:host([hidden])` contract. No plugin
+   * means no picker: the context bar still names the machine.
+   */
+  private renderMachineHeaderSwitcher(): unknown {
+    const section = this.machineSections.find((candidate) => candidate.localId === "machines");
+    if (section === undefined || this.machineSectionContext === undefined) return nothing;
+    if (!shouldShowMachinesSection(this.machines)) return nothing;
+    const context: MachineSectionContext = {
+      ...this.machineSectionContext,
+      display: { hidden: false, collapsible: false, collapsed: false, tiles: true, withCreate: false },
+      toggleCollapsed: () => { this.onToggleMachines?.(); },
+      focusPreviousSection: () => { this.focusPreviousFrom("machines"); },
+      focusNextSection: () => { this.focusNextFrom("machines"); },
+      cancelKeyboardNavigation: () => { this.cancelKeyboardNavigation(); },
+    };
+    return section.render(context);
+  }
+
   private renderMachineSectionSlot(hidden: boolean): unknown {
     const section = this.machineSections.find((candidate) => candidate.localId === "machines");
-    if (section === undefined || this.machineSectionContext === undefined) return this.renderMachineList(false, hidden);
+    if (section === undefined || this.machineSectionContext === undefined) return nothing;
     const context: MachineSectionContext = {
       ...this.machineSectionContext,
       display: { hidden, collapsible: false, collapsed: false, tiles: false, withCreate: false },
@@ -263,30 +270,6 @@ export class AppNavigationPanel extends LitElement {
       cancelKeyboardNavigation: () => { this.cancelKeyboardNavigation(); },
     };
     return section.render(context);
-  }
-
-  private renderMachineList(collapsible: boolean, hidden = false) {
-    if (!shouldShowMachinesSection(this.machines)) return null;
-    return html`
-      <machine-list
-        ?hidden=${hidden}
-        .machines=${this.machines}
-        .selected=${this.selectedMachine}
-        .statuses=${this.machineStatuses}
-        .statusSnapshots=${this.machineStatusSnapshots}
-        .collapsible=${collapsible && this.collapsible}
-        .collapsed=${collapsible ? this.machinesCollapsed : false}
-        .onToggleCollapsed=${() => { this.onToggleMachines?.(); }}
-        .onSelect=${(machine: Machine) => this.onSelectMachine?.(machine)}
-        .onAdd=${() => { this.onAddMachine?.(); }}
-        .onRemove=${(machine: Machine) => this.onRemoveMachine?.(machine)}
-        .onRename=${(machine: Machine, name: string) => this.onRenameMachine?.(machine, name)}
-        .onRefresh=${(machine: Machine) => this.onRefreshMachine?.(machine)}
-        .onOpen=${(machine: Machine) => { this.onOpenMachine?.(machine); }}
-        .onFocusNextSection=${() => { this.focusNextFrom("machines"); }}
-        .onCancelKeyboardNavigation=${() => { this.cancelKeyboardNavigation(); }}
-      ></machine-list>
-    `;
   }
 
   private renderNavSectionSlot(localId: "projects" | "workspaces", hidden: boolean, withCreate = false): unknown {

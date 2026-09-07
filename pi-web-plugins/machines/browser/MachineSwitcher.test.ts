@@ -1,9 +1,8 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it } from "vitest";
-import type { Machine } from "../api";
-import type { MachineStatusSnapshot } from "../../../shared/machineStatus";
-import { machineStatusSnapshot } from "../machineStatus.testSupport";
+import type { NavMachineSnapshot } from "@gang-of-beads/pi-web/plugin-api";
+import { machineStatusSnapshot } from "../../../src/client/src/machineStatus.testSupport";
 import { MachineSwitcher } from "./MachineSwitcher";
 
 afterEach(() => {
@@ -18,7 +17,7 @@ describe("machine-switcher status indicator", () => {
     expect(dot).not.toBeNull();
     expect(dot?.getAttribute("title")).toBe("Unread sessions on this machine");
 
-    switcher.statusSnapshots = { local: machineStatusSnapshot({ revision: 2 }) };
+    switcher.machineFlags = { local: machineStatusSnapshot({ revision: 2 }).machine };
     await switcher.updateComplete;
 
     expect(switcherButton(switcher).querySelector(".activity-indicator.unread")).toBeNull();
@@ -56,13 +55,13 @@ describe("machine-switcher status indicator", () => {
   });
 });
 
-async function mountSwitcher(machines: Machine[], statusSnapshots: Record<string, MachineStatusSnapshot>): Promise<MachineSwitcher> {
+async function mountSwitcher(machines: NavMachineSnapshot[], snapshots: Record<string, ReturnType<typeof machineStatusSnapshot>>): Promise<MachineSwitcher> {
   const switcher = new MachineSwitcher();
   switcher.machines = machines;
   const selected = machines[0];
   if (selected === undefined) throw new Error("Expected at least one machine");
-  switcher.selected = selected;
-  switcher.statusSnapshots = statusSnapshots;
+  switcher.selectedMachineId = selected.id;
+  switcher.machineFlags = Object.fromEntries(Object.entries(snapshots).map(([id, snapshot]) => [id, snapshot.machine]));
   document.body.append(switcher);
   await switcher.updateComplete;
   return switcher;
@@ -85,12 +84,6 @@ function unreadDot(option: Element): Element | null {
   return option.querySelector(".activity-indicator.unread");
 }
 
-function machine(id: string, kind: Machine["kind"]): Machine {
-  return {
-    id,
-    name: id,
-    kind,
-    createdAt: "2026-06-04T00:00:00.000Z",
-    updatedAt: "2026-06-04T00:00:00.000Z",
-  };
+function machine(id: string, kind: NavMachineSnapshot["kind"]): NavMachineSnapshot {
+  return { id, name: id, kind, status: "unknown" };
 }

@@ -65,7 +65,6 @@ import { readSettingsOpen, readSettingsSection, writeSettingsOpen, writeSettings
 import { applyActiveShortcutPreferences } from "../shortcutPreferences";
 import { createTerminalCommandRunsRuntime } from "../runtime/terminalRuntime";
 import { canDeleteWorkspace, isWorkspaceDeletionPending, isWorkspaceDeletionRunPending, latestWorkspaceDeletionRuns, pendingWorkspaceDeletionIds, targetWorkspaceIdForRun, workspaceDeletionRunFilter, workspaceRemovalConfirmation } from "../workspaceDeletion";
-import "./MachineList";
 import "./SessionCleanupDialog";
 import "./SessionTreeNavigator";
 import "./ChatView";
@@ -78,8 +77,6 @@ import "./ModelPicker";
 import "./ActionPalette";
 import "./QuickSwitcher";
 import "./AuthDialog";
-import "./MachineDialog";
-import type { MachineDialogSubmit } from "./MachineDialog";
 import { hasRenderedModal } from "./modalLayerRegistry";
 import "./SettingsDialog";
 import "./WorkspacePanel";
@@ -508,7 +505,6 @@ export class PiWebApp extends LitElement {
     }
     const state = this.state;
     if (state.actionPaletteOpen) { this.setState({ actionPaletteOpen: false }); return; }
-    if (state.machineDialogOpen) { this.setState({ machineDialogOpen: false }); return; }
     if (state.commandDialog !== undefined) { this.sessions.cancelCommand(); return; }
     if (state.modelDialog !== undefined) { this.setState({ modelDialog: undefined }); return; }
     if (state.thinkingDialog !== undefined) { this.setState({ thinkingDialog: undefined }); return; }
@@ -2201,7 +2197,6 @@ export class PiWebApp extends LitElement {
     return this.quickSwitcherOpen
       || this.contextSheetOpen
       || this.state.actionPaletteOpen
-      || this.state.machineDialogOpen
       || this.state.commandDialog !== undefined
       || this.state.modelDialog !== undefined
       || this.state.thinkingDialog !== undefined
@@ -3060,6 +3055,12 @@ export class PiWebApp extends LitElement {
       projectDirectories: (query, signal) => api.projectDirectories(query, selectedMachineId(this.state), { signal }),
       projectTrust: async (path) => await trustApi.projectTrust(path, selectedMachineId(this.state)),
       addMachine: () => { this.openMachineDialog(); },
+      createMachine: async (input) => {
+        const machine = await this.machines.addMachine(input);
+        if (machine === undefined) return this.state.error !== "" ? this.state.error : "Adding the machine did not go through.";
+        this.schedulePiWebStatusRefresh();
+        return undefined;
+      },
       refreshSelectedMachine: async () => {
         await Promise.all([this.machines.refreshMachineHealth(), this.machines.refreshMachineRuntime()]);
       },
@@ -3200,17 +3201,15 @@ export class PiWebApp extends LitElement {
     if (this.shouldAutoFocusPrompt()) this.promptEditor?.focusInput();
   }
 
+  /**
+   * The add-machine dialog is the machines plugin's, opened through the
+   * dialog seam; the shell's affordances run the plugin's reserved action.
+   * Absent plugin means no dialog: the affordances hide with it.
+   */
   private openMachineDialog(): void {
-    this.pushModalLayerFrame();
-    this.setState({ machineDialogOpen: true, error: "" });
-  }
-
-  private async submitMachineDialog(input: MachineDialogSubmit): Promise<void> {
-    const machine = await this.machines.addMachine(input);
-    if (machine !== undefined) {
-      this.setState({ machineDialogOpen: false });
-      this.schedulePiWebStatusRefresh();
-    }
+    const action = this.plugins.getActions(this.createPluginRuntimeContext()).find((candidate) => candidate.localId === "add-machine");
+    if (action === undefined) return;
+    void action.run();
   }
 
   private async renameMachine(machine: Machine, name: string): Promise<void> {
@@ -3769,7 +3768,6 @@ export class PiWebApp extends LitElement {
         ${this.sessionCleanupDialog !== undefined ? html`<session-cleanup-dialog .preview=${this.sessionCleanupDialog.preview} .previewRequest=${this.sessionCleanupDialog.previewRequest} .result=${this.sessionCleanupDialog.result} .loading=${this.sessionCleanupDialog.loading === true} .running=${this.sessionCleanupDialog.running === true} .error=${this.sessionCleanupDialog.error ?? ""} .onPreview=${(request: SessionCleanupRequest) => { void this.previewSessionCleanup(request); }} .onRun=${(request: SessionCleanupRequest) => { void this.runSessionCleanup(request); }} .onClose=${() => { this.closeSessionCleanupDialog(); }}></session-cleanup-dialog>` : null}
         ${state.themeDialog !== undefined ? html`<command-picker title=${state.themeDialog.title} .options=${state.themeDialog.options} .selectedValue=${state.themeDialog.selectedValue} .onPick=${(value: string) => { this.pickTheme(value); }} .onCancel=${() => { this.setState({ themeDialog: undefined }); }}></command-picker>` : null}
         ${this.settingsOpen ? html`<settings-dialog .section=${this.settingsSection} .machine=${state.selectedMachine} .machineRuntime=${this.selectedMachineRuntime()} .actions=${this.getDefaultActions()} .onNavigate=${(section: SettingsSection) => { this.navigateSettings(section); }} .onBackToList=${() => { this.backToSettingsList(); }} .pluginSections=${this.plugins.getSettingsSections(selectedMachineId(state))} .pluginRuntimeContext=${this.createPluginRuntimeContext()} .onClose=${() => { this.closeSettings(); }} .onConfigSaved=${(config: PiWebConfigValues) => { this.applyClientConfig(config); }} .onRefreshMachineRuntime=${async (machineId: string) => { await this.machines.refreshMachineRuntime(machineId); }} .machines=${state.machines} .machineStatuses=${state.machineStatuses} .onAddMachine=${() => { this.openMachineDialog(); }} .onRenameMachine=${async (machine: Machine, name: string) => { await this.renameMachine(machine, name); }} .onRemoveMachine=${(machine: Machine) => { void this.removeMachine(machine); }} .fleetReport=${this.fleetReport} ?fleetLoading=${this.fleetLoading} .fleetError=${this.fleetError} .onRefreshFleet=${() => this.refreshFleet()} .onRunFleet=${(operation: "restart" | "update", machineIds?: readonly string[]) => this.runFleetOperation(operation, machineIds)} .themes=${this.plugins.getThemes()} .selectedThemeId=${this.resolveCurrentThemePreference().selectedTheme?.id} .activeThemeId=${this.activeThemeId} ?followSystemTheme=${this.themePreference.auto} .onSelectTheme=${(themeId: QualifiedContributionId) => { this.selectTheme(themeId); }} .onToggleFollowSystem=${(follow: boolean) => { this.setFollowSystemTheme(follow); }}></settings-dialog>` : null}
-        ${state.machineDialogOpen ? html`<machine-dialog .error=${state.error} .onSubmit=${(input: MachineDialogSubmit) => this.submitMachineDialog(input)} .onCancel=${() => { this.setState({ machineDialogOpen: false }); }}></machine-dialog>` : null}
         ${this.pluginDialogs.map((entry) => html`<div class="plugin-dialog"><modal-surface .label=${entry.dialog.label} .onClose=${entry.close}>${entry.dialog.content}</modal-surface></div>`)}
       </div>
     `;

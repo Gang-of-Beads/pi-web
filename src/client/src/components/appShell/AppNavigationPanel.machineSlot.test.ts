@@ -47,10 +47,10 @@ async function mountPanel(options: { machineSections?: readonly QualifiedMachine
 }
 
 describe("the machines slot", () => {
-  it("renders the builtin machine list when no plugin contributes the section", async () => {
+  it("renders nothing in the slot when no plugin contributes the section", async () => {
     const panel = await mountPanel();
 
-    expect(panel.shadowRoot?.querySelector("machine-list")).not.toBeNull();
+    expect(panel.shadowRoot?.querySelector("machine-list")).toBeNull();
     expect(panel.shadowRoot?.querySelector(".contributed-machines")).toBeNull();
   });
 
