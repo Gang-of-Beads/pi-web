@@ -184,6 +184,20 @@ export const promptEditorStyles = css`
     .markdown-editor .cm-cursor { height: 1.4em !important; }
   }
 
+  /* Coarse pointers get the comfort floor. This block sits after the
+     max-width block above because on a 393px phone both match and the later
+     same-specificity rule would otherwise pin the icons at 40px. */
+  @media (pointer: coarse) {
+    .icon-button { width: 44px; height: 44px; }
+    .attachment-remove { width: 44px; height: 44px; line-height: 42px; top: 0; right: 0; }
+    .select-model { min-height: 44px; }
+    .select-thinking { min-width: 44px; }
+    /* The compact status row compresses its buttons (min-width: 0, flex
+       shrink) at higher specificity than the icon rules above, so the comfort
+       floor needs the same selector to win the cascade. */
+    .compact-status > button { min-width: 44px; min-height: 44px; }
+  }
+
   /* Hold the whole list layout still while the user is selecting rows: the
      checkbox and toolbar must not make rows jump between drags. */
   @media (max-width: 760px) {

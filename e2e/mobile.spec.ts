@@ -1034,8 +1034,11 @@ test.describe("adding a project on a phone", () => {
     expect(measured.quickActionsBar, "and it must not have brought a bar back with it").toBe(false);
     expect(measured.right).not.toBeNull();
     expect(measured.right!, "the control must be inside the viewport").toBeLessThanOrEqual(measured.viewportWidth);
-    // The tap-target floor: a control that exists but cannot be hit reliably
-    // is the same problem in a smaller box.
+    // The tap-target floor, per the two-token policy: 24px is the WCAG 2.5.8
+    // AA floor and 44px the coarse-pointer comfort floor (--pi-control-height-touch).
+    // This probe enforces 30px - stricter than AA, looser than comfort - and
+    // comfort on coarse pointers is asserted per surface by the touch-target
+    // probe with its recorded exemptions (the tile menu, the hit-slop actions).
     expect(measured.height!).toBeGreaterThanOrEqual(30);
     expect(measured.width!).toBeGreaterThanOrEqual(30);
   });

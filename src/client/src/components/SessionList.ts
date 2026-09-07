@@ -756,13 +756,13 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     @media (max-width: 760px) {
       /* 16px keeps iOS Safari from zooming the viewport on focus, and the
          taller controls match the platform minimum touch target. */
-      .session-search-input { height: 40px; font-size: 16px; }
-      .session-search-clear { width: 40px; height: 40px; }
-      .bulk-select-entry { width: 36px; min-width: 36px; height: 36px; }
-      .start-session-button { min-width: 36px; height: 36px; }
-      .cleanup-entry { min-height: 36px; padding: var(--pi-space-3) var(--pi-space-5); }
-      .action-menu-toggle { min-width: 36px; min-height: 36px; }
-      .bulk-row button { min-height: 36px; }
+      .session-search-input { height: 44px; font-size: 16px; }
+      .session-search-clear { width: 44px; height: 44px; }
+      .bulk-select-entry { width: 44px; min-width: 44px; height: 44px; }
+      .start-session-button { min-width: 44px; height: 44px; }
+      .cleanup-entry { min-height: 44px; padding: var(--pi-space-3) var(--pi-space-5); }
+      .action-menu-toggle { min-width: 44px; min-height: 44px; }
+      .bulk-row button { min-height: 44px; }
     }
   `];
 }

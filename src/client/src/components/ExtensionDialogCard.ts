@@ -517,6 +517,9 @@ export class ExtensionDialogCard extends LitElement {
       /* Every actionable control is a touch target on a phone, not just the
          primary one: the options are the whole point of a select dialog. */
       .primary-action, .secondary-action, .option-button { min-height: 42px; }
+      /* Coarse pointers get the comfort floor; declared after the base rule it
+         raises - a media query carries no extra specificity. */
+      @media (pointer: coarse) { .primary-action, .secondary-action, .option-button { min-height: 44px; } }
       /* A cap alone contains nothing: overflow is visible by default, so the
          text kept painting past the bottom of its box and straight through the
          option buttons below it. A goal draft showed its wording between and

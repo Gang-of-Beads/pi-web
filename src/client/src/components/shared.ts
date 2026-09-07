@@ -261,6 +261,13 @@ export const listStyles = css`
   .list-search-input::-webkit-search-cancel-button { display: none; }
   .list-search-input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
   .list-search-clear { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; font-size: var(--pi-text-lg); line-height: 1; }
+  /* Coarse pointers get the comfort floor on the shared search row. Placed
+     after every base declaration it raises - a media query carries no extra
+     specificity, so an earlier coarse rule loses to a later base rule. */
+  @media (pointer: coarse) {
+    .list-search-input { height: 44px; }
+    .list-search-clear { width: 44px; height: 44px; }
+  }
   .search-empty { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); }
   section { box-sizing: border-box; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: var(--pi-space-5); }
   h2 { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; gap: var(--pi-space-4); margin: 0 0 var(--pi-space-4); color: var(--pi-muted); font-size: var(--pi-text-xs); }
@@ -272,6 +279,11 @@ export const listStyles = css`
   .section-add { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: var(--pi-space-2); min-width: 32px; min-height: 32px; padding: 0 var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font-size: var(--pi-text-lg); line-height: 1; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   .section-add:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -2px; }
   @media (hover: hover) { .section-add:hover { border-color: var(--pi-accent); } }
+  /* Coarse pointers get the comfort floor. Declared after every base rule it
+     raises - a media query carries no extra specificity. */
+  @media (pointer: coarse) {
+    .section-add { min-width: 44px; min-height: 44px; }
+  }
   /* On a phone the context row above already names the step being chosen, so a
      heading repeating that word only costs the list its first rows. The row's
      own controls (count, create, clean up) stay, so nothing is lost with it. */
@@ -317,7 +329,10 @@ export const listStyles = css`
      exists to keep clear landed back on the button. */
   .list-body.tiles { --pi-tile-menu-size: 32px; --pi-tile-menu-inset: 6px; }
   /* Touch needs a bigger target than a mouse; 32px is the smallest a finger
-     hits reliably next to a tile's own tap area. */
+     hits reliably next to a tile's own tap area. Recorded exemption from the
+     coarse 44px comfort floor: the tile grid's own cells carry the row's tap
+     area, and the 36px menu sits inside that cell (24px AA floor still
+     applies and is met). */
   @media (pointer: coarse) {
     .list-body.tiles { --pi-tile-menu-size: 36px; --pi-tile-menu-inset: 4px; }
     .list-body.tiles .action-menu-toggle { height: 36px; min-width: 36px; }

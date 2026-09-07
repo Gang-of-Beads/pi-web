@@ -393,7 +393,7 @@ export const chatStyles = css`
   @media (hover: none) {
     .msg-actions { opacity: 1; }
     .msg-meta { opacity: .75; max-width: 26px; }
-    .msg-meta:not(.expanded) { display: inline-grid; width: 26px; height: 22px; place-items: center; font-size: 0; text-overflow: clip; }
+    .msg-meta:not(.expanded) { display: inline-grid; width: 26px; height: 24px; place-items: center; font-size: 0; text-overflow: clip; }
     .msg-meta::before { content: "ⓘ"; font-size: var(--pi-text-sm); }
     .msg-meta.expanded { opacity: 1; max-width: 100%; }
     .msg-meta.expanded::before { content: ""; }

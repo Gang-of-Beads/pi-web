@@ -468,6 +468,18 @@ export class QuickSwitcher extends LitElement {
     }
     .row-menu { position: absolute; top: calc(100% - 4px); right: 0; z-index: 3; display: grid; gap: var(--pi-space-1); min-width: 160px; padding: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface-raised); box-shadow: var(--pi-elevation-2); }
     .row-menu button { min-height: 40px; border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-text); padding: 0 var(--pi-space-5); font: inherit; text-align: left; cursor: pointer; }
+    /* Coarse pointers get the comfort floor: every target the quick switcher
+       ships measures 44px on touch. Placed after every base declaration it
+       raises - a media query carries no extra specificity, so an earlier
+       coarse rule loses to a later base rule (the drawer collapse shipped
+       exactly that bug once). */
+    @media (pointer: coarse) {
+      .close { width: 44px; height: 44px; }
+      .machine-tab { min-height: 44px; }
+      .chip { min-height: 44px; min-width: 44px; }
+      .row-menu-toggle { width: 44px; min-height: 44px; }
+      .row-menu button { min-height: 44px; }
+    }
     .row-menu button:focus-visible:not(:disabled) { background: var(--pi-selection-bg); }
     @media (hover: hover) { .row-menu button:hover:not(:disabled) { background: var(--pi-selection-bg); } }
     .row-menu button:disabled { opacity: .5; cursor: not-allowed; }

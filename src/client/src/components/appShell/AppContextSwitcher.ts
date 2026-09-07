@@ -114,7 +114,7 @@ export class AppContextSwitcher extends LitElement {
     @container (max-width: 140px) { .chip-label { display: none; } }
     .add { flex: 0 0 auto; align-self: stretch; width: 34px; border: 0; border-left: 1px solid var(--pi-border); background: none; color: var(--pi-muted); font-size: var(--pi-text-lg); line-height: 1; cursor: pointer; }
     .step.open .add { border-left-color: color-mix(in srgb, var(--pi-accent) 40%, var(--pi-border)); }
-    @media (pointer: coarse) { .add { width: 40px; } }
+    @media (pointer: coarse) { .add { width: 44px; } }
     @media (hover: hover) { .add:hover { color: var(--pi-text); } }
   `;
 }
