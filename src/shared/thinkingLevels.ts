@@ -1,17 +1,15 @@
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-
-// pi owns the set of thinking levels. We re-export pi's type so the domain has a
-// single source of truth, while the HTTP/wire contract (apiTypes.ts) keeps using
-// `string` so an unknown level reported by a newer pi runtime degrades gracefully
-// instead of failing to parse.
-export type { ThinkingLevel };
+// pi owns the set of thinking levels; this union mirrors it because the published
+// plugin contract must carry no host dependency, and the HTTP/wire contract
+// (apiTypes.ts) keeps using `string` so an unknown level reported by a newer pi
+// runtime degrades gracefully instead of failing to parse. thinkingLevels.test.ts
+// pins the mirror against pi's union in both directions.
+export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 /**
- * Known levels in increasing intensity, derived from pi's `ThinkingLevel` union.
- * The `satisfies` clause makes this fail to compile if pi removes or renames a
- * level; thinkingLevels.test.ts adds a compile-time check for additions too. When
- * either breaks, update this list and give the new level a label/description
- * where thinking levels are presented.
+ * Known levels in increasing intensity, kept in sync with pi's `ThinkingLevel`
+ * union by thinkingLevels.test.ts's two-direction type assertions. When they
+ * break, update this list and give the new level a label/description where
+ * thinking levels are presented.
  */
 export const KNOWN_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const satisfies readonly ThinkingLevel[];
 

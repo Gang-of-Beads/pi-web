@@ -5,7 +5,13 @@ import ts from "typescript";
 const publicApiDeclarationPaths = [
   "plugin-api.d.ts",
   "server-plugin-api.d.ts",
+  "shared/activeAgentProfile.d.ts",
+  "shared/apiTypes.d.ts",
+  "shared/capabilities.d.ts",
+  "shared/machineStatus.d.ts",
+  "shared/piWebStatusParsing.d.ts",
   "shared/pluginApiTypes.d.ts",
+  "shared/thinkingLevels.d.ts",
 ];
 const expectedPackageDeclarationPaths = [
   ...publicApiDeclarationPaths.map((path) => `dist/${path}`),
@@ -62,16 +68,27 @@ export async function smokeInstalledPluginApi({ packageRoot, fixtureRoot, repoRo
     assertPluginApiResolution(browserPath, mode.options, packageRoot);
     assertStrictPluginConsumer("browser-only", [browserPath], mode, packageRoot, repoRoot, [
       "dist/plugin-api.d.ts",
+      "dist/shared/apiTypes.d.ts",
+      "dist/shared/machineStatus.d.ts",
       "dist/shared/pluginApiTypes.d.ts",
+      "dist/shared/thinkingLevels.d.ts",
     ]);
     assertStrictPluginConsumer("server-only", [serverPath], mode, packageRoot, repoRoot, [
       "dist/server-plugin-api.d.ts",
+      "dist/shared/apiTypes.d.ts",
+      "dist/shared/machineStatus.d.ts",
+      "dist/shared/piWebStatusParsing.d.ts",
       "dist/shared/pluginApiTypes.d.ts",
-    ]);
+      "dist/shared/thinkingLevels.d.ts",
+    ], ["node"]);
     assertStrictPluginConsumer("dual-entry example", dualEntryPaths, mode, packageRoot, repoRoot, [
       "dist/plugin-api.d.ts",
       "dist/server-plugin-api.d.ts",
+      "dist/shared/apiTypes.d.ts",
+      "dist/shared/machineStatus.d.ts",
+      "dist/shared/piWebStatusParsing.d.ts",
       "dist/shared/pluginApiTypes.d.ts",
+      "dist/shared/thinkingLevels.d.ts",
     ], ["node"]);
   }
 }

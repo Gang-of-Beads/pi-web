@@ -1,11 +1,9 @@
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-export type { ThinkingLevel };
+export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 /**
- * Known levels in increasing intensity, derived from pi's `ThinkingLevel` union.
- * The `satisfies` clause makes this fail to compile if pi removes or renames a
- * level; thinkingLevels.test.ts adds a compile-time check for additions too. When
- * either breaks, update this list and give the new level a label/description
- * where thinking levels are presented.
+ * Known levels in increasing intensity, kept in sync with pi's `ThinkingLevel`
+ * union by thinkingLevels.test.ts's two-direction type assertions. When they
+ * break, update this list and give the new level a label/description where
+ * thinking levels are presented.
  */
 export declare const KNOWN_THINKING_LEVELS: readonly ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 export declare function isKnownThinkingLevel(value: string): value is ThinkingLevel;

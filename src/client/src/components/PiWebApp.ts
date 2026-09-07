@@ -3054,18 +3054,27 @@ export class PiWebApp extends LitElement {
       createProject: async (input) => await this.projects.addProject(input.path, input.create, input.trust),
       projectDirectories: (query, signal) => api.projectDirectories(query, selectedMachineId(this.state), { signal }),
       projectTrust: async (path) => await trustApi.projectTrust(path, selectedMachineId(this.state)),
-      addMachine: () => { this.openMachineDialog(); },
       createMachine: async (input) => {
         const machine = await this.machines.addMachine(input);
         if (machine === undefined) return this.state.error !== "" ? this.state.error : "Adding the machine did not go through.";
         this.schedulePiWebStatusRefresh();
         return undefined;
       },
-      refreshSelectedMachine: async () => {
-        await Promise.all([this.machines.refreshMachineHealth(), this.machines.refreshMachineRuntime()]);
+      removeMachine: (machineId) => {
+        const machine = this.state.machines.find((candidate) => candidate.id === machineId);
+        if (machine !== undefined) void this.removeMachine(machine);
       },
-      removeSelectedMachine: () => this.removeMachine(),
-      openSelectedMachine: () => { this.openSelectedMachine(); },
+      refreshMachine: (machineId) => {
+        const machine = this.state.machines.find((candidate) => candidate.id === machineId);
+        if (machine === undefined) return;
+        void this.machines.selectMachine(machine).then(() => Promise.all([this.machines.refreshMachineHealth(), this.machines.refreshMachineRuntime()]));
+      },
+      openMachine: (machineId) => {
+        const machine = this.state.machines.find((candidate) => candidate.id === machineId);
+        const baseUrl = machine?.kind === "remote" ? machine.baseUrl : undefined;
+        if (baseUrl === undefined) return;
+        window.open(baseUrl, "_blank", "noopener,noreferrer");
+      },
       configureAuth: () => this.auth.openLogin(),
       logoutAuth: () => this.auth.openLogout(),
       openThemePicker: () => { this.openThemeDialog(); },

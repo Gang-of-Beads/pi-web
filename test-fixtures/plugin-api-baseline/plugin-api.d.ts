@@ -458,6 +458,15 @@ export interface PluginRuntimeContext {
      * Absent where the host offers no machine creation.
      */
     createMachine?: (input: MachineCreateInput) => Promise<string | undefined>;
+    /**
+     * Machine management capabilities the host offers over its core selection
+     * engine. Absent where the host offers no such management; the machines
+     * plugin's palette actions omit the matching entries rather than guessing.
+     */
+    removeMachine?: (machineId: string) => void | Promise<void>;
+    refreshMachine?: (machineId: string) => void | Promise<void>;
+    /** Open a remote machine's PI WEB in a new tab; remote machines only. */
+    openMachine?: (machineId: string) => void | Promise<void>;
     /** Directory suggestions below the typed path, on the selected machine. */
     projectDirectories: (query: string, signal: AbortSignal) => Promise<FileSuggestion[]>;
     /** Server-resolved existing trust for a raw path, on the selected machine. */

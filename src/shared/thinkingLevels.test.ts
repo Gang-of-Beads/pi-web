@@ -2,15 +2,18 @@ import { describe, expect, it } from "vitest";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { KNOWN_THINKING_LEVELS, isKnownThinkingLevel, thinkingGauge, thinkingLevelLabel } from "./thinkingLevels";
 
-// Compile-time drift guard: if pi ADDS a thinking level we do not know about,
-// `Extra` becomes that level and this assignment fails to type-check. Combined
-// with the `satisfies readonly ThinkingLevel[]` clause in thinkingLevels.ts
-// (which catches removals/renames), this pins KNOWN_THINKING_LEVELS to pi's
-// union exactly. When this breaks, update KNOWN_THINKING_LEVELS and give the new
-// level a label/description where thinking levels are presented.
+// Compile-time drift guards: `Extra` fails to type-check if pi adds a level the
+// contract union lacks, and `Stale` fails if the contract union carries a level
+// pi removed. Together they pin thinkingLevels.ts's mirror to pi's union exactly
+// in both directions. When either breaks, update the union in thinkingLevels.ts
+// and give the new level a label/description where thinking levels are presented.
 type Extra = Exclude<ThinkingLevel, (typeof KNOWN_THINKING_LEVELS)[number]>;
 const _noUnknownLevels: Extra extends never ? true : never = true;
 void _noUnknownLevels;
+
+type Stale = Exclude<(typeof KNOWN_THINKING_LEVELS)[number], ThinkingLevel>;
+const _noStaleLevels: Stale extends never ? true : never = true;
+void _noStaleLevels;
 
 describe("thinkingLevels", () => {
   it("recognizes all known levels and rejects others", () => {

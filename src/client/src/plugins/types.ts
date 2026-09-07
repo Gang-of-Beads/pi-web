@@ -637,10 +637,15 @@ export interface PluginRuntimeContext {
   projectDirectories: (query: string, signal: AbortSignal) => Promise<FileSuggestion[]>;
   /** Server-resolved existing trust for a raw path, on the selected machine. */
   projectTrust: (path: string) => Promise<PluginProjectTrustRead>;
-  addMachine: () => void | Promise<void>;
-  refreshSelectedMachine: () => void | Promise<void>;
-  removeSelectedMachine: () => void | Promise<void>;
-  openSelectedMachine: () => void | Promise<void>;
+  /**
+   * Machine management capabilities the host offers over its core selection
+   * engine. Absent where the host offers no such management; the machines
+   * plugin's palette actions omit the matching entries rather than guessing.
+   */
+  removeMachine?: (machineId: string) => void | Promise<void>;
+  refreshMachine?: (machineId: string) => void | Promise<void>;
+  /** Open a remote machine's PI WEB in a new tab; remote machines only. */
+  openMachine?: (machineId: string) => void | Promise<void>;
   configureAuth: () => void | Promise<void>;
   logoutAuth: () => void | Promise<void>;
   openThemePicker: () => void;

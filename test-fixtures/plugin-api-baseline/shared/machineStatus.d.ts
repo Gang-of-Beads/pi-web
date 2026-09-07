@@ -4,8 +4,9 @@
  *
  * sessiond resolves `cwd → workspace → project` and rolls status up, so the
  * browser never attributes anything itself: it renders whatever node flags the
- * snapshot carries. The types are deliberately internal — nothing here is
- * exported from the plugin API.
+ * snapshot carries. The types crossed into the plugin API when the machines
+ * contract started carrying runtime values; they remain a wire projection,
+ * not a plugin extension point.
  */
 /**
  * Status of a single node (machine, project, workspace, or the unattributed
