@@ -1,10 +1,12 @@
 # Industry layout & interaction research: mobile/desktop patterns from the field
 
-Status: research in progress (goal mtr1vkjr-o92wsy). Method: five adversarial
-`researcher` lanes (web search + public source investigation), cross-review,
-then a synthesis mapping transferable patterns back to PI WEB. No product code
-changes. Evidence base: every pattern card carries a source (URL or
-repo:path); the cross-review adjudicates sources, not vibes.
+Status: **research complete, cross-reviewed（task-1..4 全部完成）**。Method: five adversarial
+`researcher` lanes (web search + public source investigation, 52 sourced pattern cards),
+parent-side live-fetch verification (7 claims: 5 confirmed, 2 corrected), two-lane
+cross-review (consistency + transferability red team, 20 findings all adopted).
+No product code changes. Full lane briefs archived under subagent-artifacts (paths in §2);
+the digest lives here: §2 patterns + verification, §3 cross-mapping, §4 wave corrections,
+§5 adjudication. Owner decision points consolidated in §4.3/§5 tail.
 
 ## 1. Lane plan（task-1 分工表）
 
@@ -56,12 +58,55 @@ Lane 产物（完整模式卡）在 subagent-artifacts 留档；本节为消化�
 
 ## 3. Cross-mapping to PI WEB（task-4）
 
-（待综合时填写：适用 / 需改造 / 不适用 + 理由）
+对照基准：仓库实读（PiWebApp.ts、breakpoints.ts、pluginHostUi.ts、keyboardInset.ts、promptEnterBehavior.ts、panelCollapseController.ts、index.html、shared.ts）。三档：**已实现**（业界模式本仓已有且常更优）、**需改造**（方向对、机制/数值要改）、**不采纳**（与仓库已立机制冲突）。
 
-## 4. Wave corrections（task-4）
+| # | 业界模式 | 判档 | 对照证据与改造点 |
+|---|---|---|---|
+| 1 | 键盘×视口策略（interactive-widget + dvh + visualViewport inset） | **已实现（超出业界基线）** | `keyboardInset.ts` 已发布 `--pi-app-keyboard-inset`/`--pi-app-viewport-offset-top`；`--pi-app-visible-height` 用测量而非 dvh 假设（PiWebApp.ts:122 "100dvh is an assumption…a measurement"）。缺口：① `interactive-widget=resizes-content` meta 不存在（Chromium 免费收益，需确认不与 keyboardInset 双重补偿）；② iOS `visualViewport.resize` 可靠性有 WICG #79（Safari 15 不触发/陈旧 height）反证，需真机探针后再写入提案 |
+| 2 | 触面双层 token（24px AA + 44px coarse） | **需改造** | token 已存在（index.html:80-81）但情性（touch 版仅 2 处消费）；** enforcement 才是缺口**：document 级 coarse 层穿不透 shadow root（min-height 不继承，index.html:171-174 已记录教训），必须走 per-host adopted/spread 样式块（listStyles 模式）+ 渲染后 DOM 断言；已发 coarse 块本身含 sub-44 目标（shared.ts:321-324 36px tile menu、PromptEditor 28px attachment-remove、ChatView 28px image-zoom-close） |
+| 3 | 导航形态切换（600/840 三档） | **需改造（保留自家数值）** | 单分类器思想对且已半落地；但 **600/840 不可采纳**：三栏壳地板 1002px（PiWebApp.ts:127）、side-by-side 实测 1181、插件契约已发布 `ui.breakpoints={coarseOrMobile:760, mobileNavigation, desktopSideBySide:1181}`（pluginHostUi.ts:31-37）——引 600/840 = 双词汇表 = L1 卡 8 自己的反模式；且宽度单轴不够：高度轴（SHORT_VIEWPORT 620）与指针轴是独立一等公民（breakpoints.ts:38-40 文档明写） |
+| 4 | master-detail 单路由 + URL 承载选中 | **已实现** | mainView 按 QualifiedContributionId 键控；选中态走 `ui.query`/namespacedQueryArgs；panelCollapseController 建模 navigation\|chat\|workspace。真缺口：`PluginDialog` 无尺寸/呈现契约（types.ts:95-102）——同一直播件在 overlay 与直接加载页面两种宿主下无契约，L5 卡 6 的 dismissal 混乱是同源成本 |
+| 5 | 面板态键控持久化 + 手机全屏 | **已实现（方向一致）** | panelToggleHiddenState 按作用域持久化；workspace 面板手机全屏；Sentry drawerKey/Grafana localStorage 先例只确认键控身份做法 |
+| 6 | composer 状态机 + 单槽位 Send⇄Stop | **需改造（不可照搬）** | 已发形态 = 单控件跨 send/steer/queue 三义（PromptEditor.ts:373/:397/:975）+ stop 并存且**同时活着**——ai-sdk 单值 status 模型的隐藏假设（send/stop 互斥）不成立；照搬=降级（steer 功能消失）；真形态是 `(canSteer, isCompacting, sending)` 两正交轴；enterkeyhint 须从 `promptEnterBehavior.ts` 派生（手机 Enter=newline）而非硬编码 send |
+| 7 | 16px 输入底线 | **需改造（三机制耦合）** | composer 是 CodeMirror `.cm-content` 非 input/textarea；当前缩放抑制靠 `html{touch-action:pan-x pan-y}`（刻意，keyboardInset 启发式依赖它）——16px 底线只在解锁 pinch 时才需要，且解锁会破坏 keyboardInset；`font:` 简写在 shadow 边界重置 font-size，宿主级选择器不可靠 |
+| 8 | container queries on 插件宿主区域 | **方向对、落点改** | 仓库已立政策：container queries 豁免 device-line 规则、落在**叶内容**（AskUserCard/ExtensionDialogCard/AppContextSwitcher），非宿主区域——`inline-size` 收容使内容自适应宽度失效并重锚定 absolute 后代（附件 zoom 等）；"fastest-adopted 2023"最高级未经证实，撤 |
+| 9 | 反模式清单 | **适用** | 键盘失败类（opencode 同型）、overlay 生命周期卫生（shadow 边界使 body 泄漏类更隐蔽）、rage taps、五手段 dismissal 竞争直接适用；Ars postmortem 弱化为 slice-and-revert（AGENTS.md 已编码该原则，无 flag 基建可 staging） |
+| 10 | vaul/Base UI drawer 引入 | **不采纳** | vaul 已失修（L3 实仓验证）；Lit 自有组件已有对应能力；作模式参考不作依赖 |
 
-（待综合时填写：对 mobile-layout-research.md §6 wave 提案的修正意见）
+## 4. Wave corrections（task-4，对 mobile-layout-research.md §6 的修正意见）
 
-## 5. Adjudication record（task-3）
+1. **L1 wave（缺陷修复）维持并强化**：files/terminal 时序 bug 修复路径（per-host adopt）与业界发现一致（document 级 coarse 层穿不透 shadow root 是业界同款陷阱）；抽屉级联修复用 `--pi-control-height-touch` token 与业界双层 token 模式一致。无修正，照做。
+2. **新增候选（低风险一行）**：`interactive-widget=resizes-content` viewport meta——Chromium 上键盘语义声明化；前置条件：与 `keyboardInset.ts` 的 iOS fallback 做不双重补偿审查（L4 卡 1 反模式明写双补偿跳动）。
+3. **owner 决策点新增**：① 触面密度语义（L2 {24+44} vs L2 卡 4 {24+32+44} vs L5 {44-everywhere} 三案并陈，重开 CHECKLIST.md:694）；② 断点词汇表（保留 760/1181 契约 vs 引入 M3 三档——qwen 车道裁决强烈倾向保留）；③ `PluginDialog` 呈现契约（overlay/全页双形态 + dismissal 栈深语义）作为新缝缺口立项与否。
+4. **不采纳项**（防提案污染）：600/840 断点、vaul/Base UI 依赖、container-type 上宿主区域、ai-sdk 式单值 composer 分类器、`user-scalable=no` 回归。
 
-（待交叉评审分拣后填写）
+## 5. Adjudication record（task-3，bllm 双车道交叉评审）
+
+两车道（glm-consistency 一致性 / qwen-transferability 迁移性红队，后者实读仓库源码裁决）。产物：`…/subagent-artifacts/{dd2c4a72,760aa344}_reviewer_0_output.md`。20 项发现全部属实（ lanes 自带证据），分拣如下：
+
+| # | 发现 | 车道 | 处置 |
+|---|---|---|---|
+| 1 | L1 卡 4 "svh/dvh 修键盘"与 L5 卡 1/CSSWG #7194 矛盾（dvh 刻意不跟随键盘） | glm | fixed：§3 行 1 按修正后口径（interactive-widget/visualViewport 修键盘，svh/dvh 只修浏览器 chrome） |
+| 2 | L2 Ionic structure.scss 证据 corrected-false 且 load-bearing | glm | fixed：§2 核验表已撤换；verdict 的 Ionic 句不进提案 |
+| 3 | L2 Primer 32px 重复四次当无障碍底线 | glm | fixed：全报告统一为 24px 底线 / 32px 视觉高度 |
+| 4 | 桌面/鼠标触面底线三案并陈 {24+44}/{24+32+44}/{44-everywhere} | glm | needs-owner：进 §4.3① |
+| 5 | L1 卡 5 无保留引用 vaul（L3 已验证失修）；glm 纠正归属（vaul 在 L1 非 L4） | glm | fixed：§3 行 10 不采纳 + L4 澄清 |
+| 6 | L4 卡 2 iOS visualViewport fallback 自标 [spec] 但 WICG #79 反证 + 自家 Gaps 延后确认 | glm | fixed：§3 行 1 缺口② 降信为需真机探针 |
+| 7 | L1 卡 3 container-query 例证与自己 Gaps/Dropped 台账矛盾（Primer/shadcn 未验证+"fastest-adopted"超承诺） | glm | fixed：§3 行 8 撤最高级、落点改叶内容 |
+| 8 | L1 卡 1 扩展档名（mediumExpanded≥1200）与验证过的五档表冲突 | glm | fixed：本报告只引五档表；档数是产品语义挂 owner |
+| 9 | L4 卡 5 reload() 陈旧名（现 regenerate()）+ Chrome 108 月份差 | glm | fixed：§2 卡 7 采 regenerate()/Nov |
+| 10 | L4 卡 7 附件移除徽标 "44px 合规" 与自述 32px 命中区打架 | glm | fixed：记录为徽标=44px 命中区才合规 |
+| 11 | 600/840 数值不适合本壳（地板 1002/契约 1181/双词汇风险） | qwen | fixed：§3 行 3/§4.3② 保留 760/1181 |
+| 12 | document 级 coarse 层穿不透 shadow root（min-height 不继承；index.html:171-174 在案教训；已发 coarse 块含 sub-44） | qwen | fixed：§3 行 2 改 per-host adopted/spread + DOM 断言 |
+| 13 | 16px 底线的机制/代价错（touch-action 已抑制缩放且 keyboardInset 依赖；composer 是 .cm-content；font 简写穿不过 shadow） | qwen | fixed：§3 行 7 三机制耦合口径 |
+| 14 | ai-sdk 单值分类器是降级（本仓 send/steer/queue+stop 同时活着） | qwen | fixed：§3 行 6 两正交轴口径 |
+| 15 | 宽度单轴不够（高度轴 620 + 指针轴是一等公民） | qwen | fixed：§3 行 3 三轴口径 |
+| 16 | container-type 落宿主区域会破坏内容自适应宿主+重锚定 absolute 后代（仓库政策=叶内容） | qwen | fixed：§3 行 8 |
+| 17 | enterkeyhint 须派生（promptEnterBehavior 手机 Enter=newline）非硬编码 send | qwen | fixed：§3 行 6 |
+| 18 | peek detent 放 terminal 输出违反 L3 卡 5 自己的 NN/g 护栏（工具面是主目的地非 overlay） | qwen | fixed：peek 模式限 per-session 状态，不进 terminal |
+| 19 | "插件视图免费获得可分享 URL" 过Claim（机制是 Next.js 专属；真缺口是 PluginDialog 双呈现契约） | qwen | fixed：§3 行 4 真缺口改写 |
+| 20 | Ars postmortem 不可迁移为 load-staging 证据（单运维无 fleet） | qwen | fixed：§3 行 9 弱化为 slice-and-revert |
+
+两车道打架处：无正面冲突——glm 管一致性、qwen 管迁移性，重叠区（键盘故事、L1 卡 3/4）结论互补；glm 发现 5 纠正了任务书里 "L4 引用 vaul" 的归属错（实为 L1 卡 5）。核验基线（父进程 7 条抽查）双方均接受未再翻案。
+
+**裁决后剩余 owner 决策点**（汇总）：① 触面密度语义三案（§4.3①）；② 断点词汇表 760/1181 vs M3 三档（§4.3②）；③ PluginDialog 呈现契约立项（§4.3③）；④ interactive-widget meta 是否随 L1 wave 落地（§4.2，前置双重补偿审查）。
