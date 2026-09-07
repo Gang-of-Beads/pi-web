@@ -183,6 +183,15 @@ tag-gated publish workflow). The plugin-api contract deliberately lives as
 a subpackage of this repository rather than its own repository: its history
 is this repository's history, and a separate clone would have to track it.
 
+The extraction waves closed the remaining split-repository gaps, verified by
+the completion audit: `Gang-of-Beads/pi-web-machines` was created from the
+same `git subtree split` of `pi-web-plugins/machines` (main at the wave B
+review fixes, content identical to the tree), and `pi-web-workspaces` was
+fast-forwarded to the wave A/B final state (split commits prefix-preserving:
+the previously pushed hashes remain, three new commits on top). The split
+mirrors refresh by rerunning the subtree split and pushing; a stale mirror is
+a gap, not a verdict on the extraction.
+
 The three-lane review of the goals and publishing wave found the first
 extraction pass unclosed and its fixes are in: the panel's controls wired
 through two new general seams (`requestUpdate`, optional `runCommand`),
