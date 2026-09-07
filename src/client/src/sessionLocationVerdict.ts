@@ -23,5 +23,5 @@ export function sessionLocationVerdict(cwd: string, selectedWorkspacePath: strin
   if (parent === "" || child === "") return "unknown";
   if (child === parent) return "described";
   const separator = parent.includes("\\") || child.includes("\\") ? "\\" : "/";
-  return child.startsWith(`${parent}${separator}`) ? "described" : "unknown";
+  return child.startsWith(parent === separator ? parent : `${parent}${separator}`) ? "described" : "unknown";
 }

@@ -44,12 +44,17 @@ describe("choosing a session from another workspace", () => {
    * Sessions list beside it still listed the workspace you came from.
    */
   it("takes the project and workspace with it", async () => {
-    const { run, read } = controllerOver({ workspaces: [workspace, elsewhere], projects: [here, there] });
+    const { run, read } = controllerOver({
+      workspaces: [workspace, elsewhere],
+      projects: [here, there],
+      fileTree: [{ name: "old", path: "/repo/old", type: "file" }],
+    });
 
     await run.selectSession(sessionOverThere, { updateUrl: false });
 
     expect(read().selectedWorkspace?.id).toBe("workspace-2");
     expect(read().selectedProject?.id).toBe("project-2");
+    expect(read().fileTree).toEqual([]);
   });
 
   /**
@@ -95,7 +100,7 @@ describe("choosing a session from another workspace", () => {
   it("keeps an explicit broad selection when it contains the session", async () => {
     const nested: Workspace = { ...workspace, id: "workspace-3", projectId: "project-3", path: "/repo/nested", label: "nested" };
     const deeper: Project = { id: "project-3", name: "nested", path: "/repo/nested", createdAt: "2026-05-15T00:00:00.000Z" };
-    const locate = vi.spyOn(ancestorLookup, "locateSessionWorkspace").mockResolvedValue({ workspace: nested, project: deeper });
+    const locate = vi.spyOn(ancestorLookup, "locateSessionWorkspace").mockResolvedValue({ workspace: nested, project: deeper, workspaces: [nested] });
     try {
       const { run, read } = controllerOver({ workspaces: [workspace], projects: [here] });
 
@@ -116,14 +121,16 @@ describe("choosing a session from another workspace", () => {
    * chip, exactly as the exact-match path does. The chip flipping alone left
    * the list answering for the workspace being left.
    */
-  it("carries the session list when the locator moves the selection", async () => {
-    const locate = vi.spyOn(ancestorLookup, "locateSessionWorkspace").mockResolvedValue({ workspace: elsewhere, project: there });
+  it("carries the whole project and workspace scope when the locator moves the selection", async () => {
+    const sibling = { ...elsewhere, id: "workspace-3", path: "/elsewhere/sibling", label: "sibling" };
+    const locate = vi.spyOn(ancestorLookup, "locateSessionWorkspace").mockResolvedValue({ workspace: elsewhere, project: there, workspaces: [elsewhere, sibling] });
     try {
       const { run, read } = controllerOver({
         workspaces: [workspace],
-        projects: [here, there],
+        projects: [here],
         sessions: [oldSession],
         sessionsLoad: "loaded",
+        fileTree: [{ name: "old", path: "/repo/old", type: "file" }],
       });
 
       await run.selectSession(sessionOverThere, { updateUrl: false });
@@ -132,6 +139,10 @@ describe("choosing a session from another workspace", () => {
       });
 
       expect(read().selectedProject?.id).toBe("project-2");
+      expect(read().projects.some((project) => project.id === "project-2")).toBe(true);
+      expect(read().workspaces.map((entry) => entry.id)).toEqual(["workspace-2", "workspace-3"]);
+      expect(read().workspacesByProjectId["project-2"]?.map((entry) => entry.id)).toEqual(["workspace-2", "workspace-3"]);
+      expect(read().fileTree).toEqual([]);
       await vi.waitFor(() => {
         if (read().sessions.some((entry) => entry.cwd === "/repo")) throw new Error("the previous workspace's rows are still listed");
       });
