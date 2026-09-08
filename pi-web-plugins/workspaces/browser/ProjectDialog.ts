@@ -363,8 +363,8 @@ export class ProjectDialog extends LitElement {
       /* The body scrolls now, so the list does not need to reserve a slice of
          the viewport for itself. */
       .suggestions { max-height: 38dvh; }
-      .suggestions button { min-height: 44px; padding: 10px 12px; }
-      footer button { min-height: 44px; }
+      .suggestions button { min-height: var(--pi-control-height-touch); padding: 10px 12px; }
+      footer button { min-height: var(--pi-control-height-touch); }
     }
     button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; }
     header button { border: 0; background: transparent; color: var(--pi-muted); font-size: 22px; padding: 0 8px; }

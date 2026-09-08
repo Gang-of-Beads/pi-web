@@ -55,6 +55,6 @@ describe("the switcher's machine tabs", () => {
 
   it("keeps every tab on the touch floor", () => {
     const sheet = String(QuickSwitcher.styles);
-    expect(sheet).toMatch(/\.machine-tab\s*\{[^}]*min-height: 36px/u);
+    expect(sheet).toMatch(/\.machine-tab\s*\{[^}]*min-height: var\(--pi-control-height-comfort\)/u);
   });
 });

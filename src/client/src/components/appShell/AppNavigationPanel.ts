@@ -460,7 +460,7 @@ export class AppNavigationPanel extends LitElement {
     .header-icon-action svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
     .compact-shell { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
     .compact-header { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-start; gap: var(--pi-space-3); padding: var(--pi-space-2) var(--pi-space-4); border-bottom: 1px solid var(--pi-border-muted); }
-    .compact-header-action { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: 44px; padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text); font: inherit; }
+    .compact-header-action { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: var(--pi-control-height-touch); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text); font: inherit; }
     .compact-header-action:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
     /* Coarse pointers get the comfort floor: the glyph is small but the hit
        box carries the row's tap weight in the phone header. */
@@ -477,7 +477,7 @@ export class AppNavigationPanel extends LitElement {
     .tool-icon svg { width: 100%; height: 100%; }
     .tool-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .tool-badge { flex: 0 0 auto; display: inline-flex; align-items: center; box-sizing: border-box; min-width: 0; max-width: 45%; min-height: 20px; padding: 0 var(--pi-space-2); border-radius: var(--pi-radius-pill); background: var(--pi-selection-bg); color: var(--pi-text); font-size: var(--pi-text-2xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .compact-scope { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; min-height: 44px; border: 0; background: none; padding: 0; font: inherit; font-size: var(--pi-text-sm); font-weight: 600; color: var(--pi-text); text-align: start; cursor: pointer; }
+    .compact-scope { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; min-height: var(--pi-control-height-touch); border: 0; background: none; padding: 0; font: inherit; font-size: var(--pi-text-sm); font-weight: 600; color: var(--pi-text); text-align: start; cursor: pointer; }
     .compact-scope:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 2px; border-radius: var(--pi-radius-md); }
     .compact-scope-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     header strong { flex: 0 0 auto; }

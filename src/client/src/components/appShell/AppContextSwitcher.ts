@@ -101,7 +101,7 @@ export class AppContextSwitcher extends LitElement {
     /* One frame per step carries both the picker and the create control, so
        the row shows three things instead of five and every pixel of the
        border goes to the value's width instead of two extra tap targets. */
-    .seg { box-sizing: border-box; display: flex; align-items: stretch; min-height: 44px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); }
+    .seg { box-sizing: border-box; display: flex; align-items: stretch; min-height: var(--pi-control-height-touch); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); }
     .step.open .seg { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     @media (hover: hover) { .seg:hover { border-color: var(--pi-accent); } }
     .chip { flex: 1 1 auto; min-width: 0; display: grid; gap: 1px; justify-items: start; align-content: center; border: 0; background: none; padding: var(--pi-space-2) var(--pi-space-4); font: inherit; text-align: left; cursor: pointer; }
@@ -112,7 +112,7 @@ export class AppContextSwitcher extends LitElement {
        the value is the half that answers "where am I?". The picker it opens
        says its own name. */
     @container (max-width: 140px) { .chip-label { display: none; } }
-    .add { flex: 0 0 auto; align-self: stretch; width: 34px; border: 0; border-left: 1px solid var(--pi-border); background: none; color: var(--pi-muted); font-size: var(--pi-text-lg); line-height: 1; cursor: pointer; }
+    .add { flex: 0 0 auto; align-self: stretch; width: var(--pi-control-height-comfort); border: 0; border-left: 1px solid var(--pi-border); background: none; color: var(--pi-muted); font-size: var(--pi-text-lg); line-height: 1; cursor: pointer; }
     .step.open .add { border-left-color: color-mix(in srgb, var(--pi-accent) 40%, var(--pi-border)); }
     @media (pointer: coarse) { .add { width: var(--pi-control-height-touch, 44px); } }
     @media (hover: hover) { .add:hover { color: var(--pi-text); } }

@@ -119,7 +119,7 @@ export const appStyles = css`
   dialog.attachment-zoom[open] { display: flex; }
   dialog.attachment-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
   .attachment-zoom-full { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: var(--pi-radius-md); object-fit: contain; }
-  .attachment-zoom-close { position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: 44px; height: 44px; padding: 0; font: 16px/1 system-ui, sans-serif; color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
+  .attachment-zoom-close { position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; font: 16px/1 system-ui, sans-serif; color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
   .attachment-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
   @media (hover: hover) { .attachment-zoom-close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
   /* 100dvh is an assumption about what the browser subtracts; --pi-app-visible-height is a measurement. */
@@ -203,7 +203,7 @@ export const appStyles = css`
 
   .self-update-banner { display: flex; align-items: center; gap: var(--pi-space-4); flex-wrap: wrap; box-sizing: border-box; margin: 0 var(--pi-space-6) var(--pi-space-5); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-lg); background: var(--pi-warning-surface); color: var(--pi-warning); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); }
   .self-update-banner.applying { border-color: var(--pi-accent-border); background: var(--pi-surface); color: var(--pi-text); }
-  .self-update-banner button { min-height: 32px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; padding: var(--pi-space-2) var(--pi-space-5); }
+  .self-update-banner button { min-height: var(--pi-control-height); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; padding: var(--pi-space-2) var(--pi-space-5); }
   @media (hover: hover) { .self-update-banner button:hover { border-color: var(--pi-accent); } }
   .self-update-banner button.skip { color: var(--pi-muted); background: transparent; }
   .self-update-banner .state-dot { background: currentColor; }

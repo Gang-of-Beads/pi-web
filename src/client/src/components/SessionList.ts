@@ -673,7 +673,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
   }
 
   static override styles = [interactiveSurfaceStyles, listStyles, sessionStateBadgeStyles, css`
-    h2 { min-height: 30px; gap: var(--pi-space-2); }
+    h2 { min-height: var(--pi-control-height); gap: var(--pi-space-2); }
     /* The shared heading spreads its children across the full width, which
        floats the checkbox, the unread count, Clean up and the start button
        apart like five unrelated controls. One group, pushed right, reads as
@@ -681,8 +681,8 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     h2 > .bulk-select-entry { margin-left: auto; }
     h2 > .section-count { flex: 0 0 auto; display: inline; color: var(--pi-muted); font-size: inherit; }
     h2 > .section-unread-count { flex: 0 0 auto; display: inline; color: var(--pi-accent); font-size: inherit; text-transform: none; }
-    .bulk-select-entry { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; font-size: var(--pi-text-sm); line-height: 1; text-transform: none; }
-    .start-session-button { box-sizing: border-box; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: var(--pi-space-2); min-width: 30px; height: 30px; padding: 0 var(--pi-space-5); }
+    .bulk-select-entry { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-control-height); height: var(--pi-control-height); padding: 0; font-size: var(--pi-text-sm); line-height: 1; text-transform: none; }
+    .start-session-button { box-sizing: border-box; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: var(--pi-space-2); min-width: var(--pi-control-height); height: var(--pi-control-height); padding: 0 var(--pi-space-5); }
     .section-add-label { font-size: var(--pi-text-xs); white-space: nowrap; }
     /* Quiet by default. Three outlined buttons of equal weight said nothing
        about which one starts work and which one deletes it; a secondary action
@@ -737,7 +737,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .subtree-toggle { cursor: pointer; }
     @media (hover: hover) { .subtree-toggle:hover { border-color: var(--pi-border-strong, var(--pi-accent)); color: var(--pi-text); } }
     @media (pointer: coarse) {
-      .subtree-toggle { top: 0; width: 36px; height: 44px; }
+      .subtree-toggle { top: 0; width: var(--pi-control-height-comfort); height: var(--pi-control-height-touch); }
       .action-row.has-subtree-toggle .action-main, .action-row.is-child .action-main { padding-left: calc(44px + var(--depth, 0) * 16px); }
     }
     .subtree-toggle.inert { cursor: default; }
@@ -746,11 +746,11 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     /* Search sits inside the scrolling body but stays pinned, so filtering a
        long list never scrolls the field out of reach on a phone. */
     .session-search { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: var(--pi-space-3); margin: 0 0 var(--pi-space-3); padding-bottom: var(--pi-space-3); background: var(--pi-bg); }
-    .session-search-input { box-sizing: border-box; flex: 1 1 auto; min-width: 0; height: 34px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 0 var(--pi-space-5); font: var(--pi-control-font-size, 14px) var(--pi-control-font-family, system-ui, sans-serif); }
+    .session-search-input { box-sizing: border-box; flex: 1 1 auto; min-width: 0; height: var(--pi-control-height-comfort); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 0 var(--pi-space-5); font: var(--pi-control-font-size, 14px) var(--pi-control-font-family, system-ui, sans-serif); }
     .session-search-input::placeholder { color: var(--pi-dim); }
     .session-search-input::-webkit-search-cancel-button { display: none; }
     .session-search-input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
-    .session-search-clear { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; font-size: var(--pi-text-lg); line-height: 1; }
+    .session-search-clear { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); padding: 0; font-size: var(--pi-text-lg); line-height: 1; }
     .search-empty { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); }
     .list-empty, .list-loading { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-sm); }
     @media (max-width: 760px) {

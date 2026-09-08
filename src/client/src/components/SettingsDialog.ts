@@ -763,7 +763,7 @@ export class SettingsDialog extends LitElement {
     .eyebrow { display: block; color: var(--pi-muted); font-size: 12px; font-weight: 600; }
     h1 { margin: 0; font-size: 20px; line-height: 1.2; }
     button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; font: inherit; cursor: pointer; }
-    .close-button { width: 44px; height: 44px; display: grid; place-items: center; border: 0; background: transparent; color: var(--pi-muted); padding: 0; font-size: 24px; }
+    .close-button { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); display: grid; place-items: center; border: 0; background: transparent; color: var(--pi-muted); padding: 0; font-size: 24px; }
     .close-button:focus { color: var(--pi-text); background: var(--pi-surface-hover); }
     @media (hover: hover) { .close-button:hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
     .settings-body { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 220px minmax(0, 1fr); }
@@ -786,7 +786,7 @@ export class SettingsDialog extends LitElement {
       .settings-list-label small { font-size: 13px; color: var(--pi-muted); }
       .settings-list-chevron { font-size: 22px; color: var(--pi-muted); }
       .settings-detail-heading { display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
-      .settings-back { display: inline-flex; align-items: center; min-height: 44px; margin-left: -8px; border: 0; padding: 0 8px 0 0; font-size: 14px; font-weight: 600; color: var(--pi-accent); }
+      .settings-back { display: inline-flex; align-items: center; min-height: var(--pi-control-height-touch); margin-left: -8px; border: 0; padding: 0 8px 0 0; font-size: 14px; font-weight: 600; color: var(--pi-accent); }
       .settings-content { padding: 14px 12px calc(18px + env(safe-area-inset-bottom)); }
     }
   `];

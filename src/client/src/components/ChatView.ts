@@ -59,7 +59,7 @@ export const chatStyles = css`
   dialog.attachment-zoom[open] { display: flex; }
   dialog.attachment-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
   .attachment-zoom-full { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: var(--pi-radius-md); object-fit: contain; }
-  .attachment-zoom-close { position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: 44px; height: 44px; padding: 0; font: 16px/1 system-ui, sans-serif; color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
+  .attachment-zoom-close { position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; font: 16px/1 system-ui, sans-serif; color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
   .attachment-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
   @media (hover: hover) { .attachment-zoom-close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
   /* Tap targets should not wait for a double-tap-zoom gesture to be ruled out.
@@ -99,7 +99,7 @@ export const chatStyles = css`
     right: calc(var(--pi-chat-gutter) + var(--pi-chat-scrollbar, 0px) + var(--pi-space-4));
     bottom: calc(var(--pi-chat-dock-room, 0px) + var(--pi-space-4)); z-index: var(--pi-layer-sticky);
     display: flex; align-items: center; justify-content: center;
-    width: 40px; height: 40px; padding: 0;
+    width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); padding: 0;
     border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md);
     background: var(--pi-surface-raised); color: var(--pi-text);
     font-size: 18px; line-height: 1; cursor: pointer;
@@ -163,11 +163,11 @@ export const chatStyles = css`
      extra specificity, so a coarse rule written earlier loses to a base rule
      written later - the exact drift that pinned the collapse toggle at 32px on
      touch screens once already (shared.ts keeps the same incident record). */
-  .drawer-control { box-sizing: border-box; min-height: 32px; border: 0; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); cursor: pointer; }
+  .drawer-control { box-sizing: border-box; min-height: var(--pi-control-height); border: 0; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); cursor: pointer; }
   .drawer-control { padding: 0 var(--pi-space-4); font: var(--pi-text-xs) var(--pi-font-ui); white-space: nowrap; }
-  .drawer-collapse { display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; }
+  .drawer-collapse { display: inline-grid; place-items: center; width: var(--pi-control-height); height: var(--pi-control-height); padding: 0; }
   @media (pointer: coarse) {
-    .drawer-header { min-height: 44px; }
+    .drawer-header { min-height: var(--pi-control-height-touch); }
     .drawer-tab { min-height: var(--pi-control-height-touch); }
     .drawer-collapse { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); }
   }
@@ -302,7 +302,7 @@ export const chatStyles = css`
   dialog.image-zoom[open] { display: flex; }
   dialog.image-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
   .image-zoom-full { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: var(--pi-radius-md); object-fit: contain; cursor: zoom-out; }
-  .image-zoom-close { position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; font: 16px/1 system-ui, sans-serif; color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
+  .image-zoom-close { position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: var(--pi-control-height); height: var(--pi-control-height); padding: 0; font: 16px/1 system-ui, sans-serif; color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
   .image-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
   @media (hover: hover) { .image-zoom-close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
   .image-zoom-close:focus-visible { outline: 1px solid var(--pi-border); outline-offset: 2px; }
@@ -334,9 +334,9 @@ export const chatStyles = css`
   @media (hover: hover) { .command-dismiss:hover { border-color: currentColor; } }
   .queued-clear-button { flex: 0 0 auto; border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-warning); padding: var(--pi-space-1) var(--pi-space-3); font: inherit; cursor: pointer; }
   @media (pointer: coarse) {
-    .command-dismiss, .image-zoom-close { width: 44px; height: 44px; }
-    .queued-clear-button { min-height: 44px; }
-    .history-load-button { min-height: 44px; }
+    .command-dismiss, .image-zoom-close { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); }
+    .queued-clear-button { min-height: var(--pi-control-height-touch); }
+    .history-load-button { min-height: var(--pi-control-height-touch); }
   }
   .queued-clear-button:focus { border-color: var(--pi-warning); color: var(--pi-text-bright); }
   @media (hover: hover) { .queued-clear-button:hover { border-color: var(--pi-warning); color: var(--pi-text-bright); } }

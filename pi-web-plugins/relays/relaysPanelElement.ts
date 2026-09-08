@@ -518,7 +518,7 @@ function relaysStyles(): string {
       .viewer > * { box-sizing: border-box; min-width: 0; max-width: 100%; }
       button, select { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: inherit; }
       button { cursor: pointer; padding: 6px 10px; }
-      button.icon-button { flex: 0 0 auto; display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; }
+      button.icon-button { flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-control-height); height: var(--pi-control-height); padding: 0; }
       button.icon-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
       select { min-width: 0; max-width: 240px; padding: 5px 6px; }
       .document-tab { flex: 0 0 auto; white-space: nowrap; font-size: 12px; padding: 4px 10px; }

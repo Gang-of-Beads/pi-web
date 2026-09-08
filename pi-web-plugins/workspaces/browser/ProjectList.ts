@@ -260,6 +260,6 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
     .list-empty, .list-loading { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-sm); }
     .filter-count { padding: var(--pi-space-3) var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-xs); }
     .load-failed { display: flex; align-items: center; gap: var(--pi-space-3); padding: var(--pi-space-3) var(--pi-space-2); color: var(--pi-danger); font-size: var(--pi-text-sm); }
-    .load-retry { min-height: 28px; padding: 0 var(--pi-space-4); font-size: var(--pi-text-xs); }
+    .load-retry { min-height: var(--pi-control-height); padding: 0 var(--pi-space-4); font-size: var(--pi-text-xs); }
   `];
 }

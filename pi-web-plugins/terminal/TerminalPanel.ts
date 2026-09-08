@@ -728,12 +728,12 @@ export class TerminalPanel extends LitElement {
     :host { flex: 1 1 auto; min-height: 0; display: flex; }
     .terminal-shell { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--pi-terminal-bg); }
     .terminal-tabs { flex: 0 0 auto; display: flex; gap: 6px; align-items: center; padding: 6px; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); overflow: auto; }
-    .terminal-tabs > button { box-sizing: border-box; height: 30px; line-height: 16px; }
+    .terminal-tabs > button { box-sizing: border-box; height: var(--pi-control-height); line-height: 16px; }
     /* Desktop xterm already has mouse selection and hardware keys; keep touch controls to touch/narrow layouts. */
     .copy-mode-toggle, .soft-keys-toggle, terminal-soft-keys { display: none; }
     .copy-mode-toggle.selected { display: inline-flex; }
     @media (pointer: coarse), (max-width: 760px) {
-      .terminal-tabs > button { height: 44px; }
+      .terminal-tabs > button { height: var(--pi-control-height-touch); }
       .copy-mode-toggle, .soft-keys-toggle { display: inline-flex; }
       terminal-soft-keys { display: block; }
     }
@@ -762,7 +762,7 @@ export class TerminalPanel extends LitElement {
     .terminal-copy-toolbar { box-sizing: border-box; flex: 0 0 auto; display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 47px; padding: 6px; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); color: var(--pi-muted); font: 12px system-ui, sans-serif; }
     .terminal-copy-toolbar > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .terminal-copy-toolbar small { margin-left: auto; white-space: nowrap; color: var(--pi-dim); }
-    .terminal-copy-toolbar button { flex: 0 0 auto; width: auto; min-height: 34px; padding: 6px 9px; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .terminal-copy-toolbar button { flex: 0 0 auto; width: auto; min-height: var(--pi-control-height-comfort); padding: 6px 9px; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .terminal-copy-layers { flex: 1 1 auto; min-height: 0; display: grid; overflow: hidden; background: var(--pi-terminal-bg); }
     /* xterm renders the configured 13px terminal font in 17px-high cells. */
     .terminal-copy-content, .terminal-copy-selector { grid-area: 1 / 1; box-sizing: border-box; min-width: 0; min-height: 0; width: 100%; height: 100%; margin: 0; padding: 6px; border: 0; border-radius: 0; font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; line-height: 17px; letter-spacing: normal; font-variant-ligatures: none; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-all; }

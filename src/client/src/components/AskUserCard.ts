@@ -556,7 +556,7 @@ export class AskUserCard extends LitElement {
          A thumb drifting a few pixels on a 36px row surrounded by 7px gaps
          lands in the next row - reported as Custom answers appearing from
          option taps, because Custom sits directly under the last option. */
-      min-height: 44px;
+      min-height: var(--pi-control-height-touch);
       box-sizing: border-box;
     }
     .other-option { border-top: 1px solid var(--pi-border-muted); padding-top: 11px; }
@@ -660,7 +660,7 @@ export class AskUserCard extends LitElement {
       fieldset.question { padding: 10px 12px; }
       .partial-confirmation { align-items: stretch; flex-direction: column; }
       .confirmation-actions { justify-content: flex-end; }
-      .primary-action { min-height: 42px; }
+      .primary-action { min-height: var(--pi-control-height-touch); }
     }
   `;
 }

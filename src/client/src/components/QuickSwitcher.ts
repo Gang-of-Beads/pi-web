@@ -398,7 +398,7 @@ export class QuickSwitcher extends LitElement {
       --modal-surface-max-height: min(88dvh, 760px);
     }
     header { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--pi-space-4); align-items: center; padding: var(--pi-space-5); border-bottom: 1px solid var(--pi-border); }
-    input { box-sizing: border-box; min-width: 0; height: 40px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-bg); color: var(--pi-text); padding: 0 var(--pi-space-5); font: var(--pi-text-lg) var(--pi-font-ui); }
+    input { box-sizing: border-box; min-width: 0; height: var(--pi-control-height-comfort); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-bg); color: var(--pi-text); padding: 0 var(--pi-space-5); font: var(--pi-text-lg) var(--pi-font-ui); }
     input::-webkit-search-cancel-button { display: none; }
     input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
     .close { border: 0; background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); line-height: 1; padding: 0 var(--pi-space-4); cursor: pointer; }
@@ -436,13 +436,13 @@ export class QuickSwitcher extends LitElement {
        row keeps one line so it never competes with the list for height. */
     .machine-tabs { flex: 0 0 auto; display: flex; align-items: stretch; gap: var(--pi-space-2); padding: var(--pi-space-3) var(--pi-space-5) 0; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
     .machine-tabs::-webkit-scrollbar { display: none; }
-    .machine-tab { flex: 0 0 auto; min-height: 36px; border: 1px solid var(--pi-border); border-bottom: 0; border-radius: var(--pi-radius-md) var(--pi-radius-md) 0 0; background: var(--pi-surface); color: var(--pi-text-secondary); padding: var(--pi-space-2) var(--pi-space-6); font: inherit; font-size: var(--pi-text-sm); white-space: nowrap; cursor: pointer; }
+    .machine-tab { flex: 0 0 auto; min-height: var(--pi-control-height-comfort); border: 1px solid var(--pi-border); border-bottom: 0; border-radius: var(--pi-radius-md) var(--pi-radius-md) 0 0; background: var(--pi-surface); color: var(--pi-text-secondary); padding: var(--pi-space-2) var(--pi-space-6); font: inherit; font-size: var(--pi-text-sm); white-space: nowrap; cursor: pointer; }
     .machine-tab[aria-selected="true"] { border-color: var(--pi-accent); background: var(--pi-selection-bg); color: var(--pi-text-bright); }
     .filters { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-3); padding: var(--pi-space-4) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
     .filters::-webkit-scrollbar { display: none; }
     /* Chips ghost by default and carry their selected state in the tint, not
        in an outline: a row of outlined pills read as a wall of boxes (C4). */
-    .chip { flex: 0 0 auto; min-height: 32px; border: 0; border-radius: var(--pi-radius-pill); background: var(--pi-surface-hover); color: var(--pi-text-secondary); padding: var(--pi-space-2) var(--pi-space-6); font: inherit; font-size: var(--pi-text-sm); white-space: nowrap; cursor: pointer; }
+    .chip { flex: 0 0 auto; min-height: var(--pi-control-height); border: 0; border-radius: var(--pi-radius-pill); background: var(--pi-surface-hover); color: var(--pi-text-secondary); padding: var(--pi-space-2) var(--pi-space-6); font: inherit; font-size: var(--pi-text-sm); white-space: nowrap; cursor: pointer; }
     .chip.on { background: var(--pi-selection-bg); color: var(--pi-text-bright); }
     /* Nested chips read as a second level, not as peers of the projects. */
     .chip.nested { font-size: var(--pi-text-xs); }
@@ -473,33 +473,33 @@ export class QuickSwitcher extends LitElement {
       .rows { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
     }
     .row-menu { position: absolute; top: calc(100% - 4px); right: 0; z-index: 3; display: grid; gap: var(--pi-space-1); min-width: 160px; padding: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface-raised); box-shadow: var(--pi-elevation-2); }
-    .row-menu button { min-height: 40px; border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-text); padding: 0 var(--pi-space-5); font: inherit; text-align: left; cursor: pointer; }
+    .row-menu button { min-height: var(--pi-control-height-comfort); border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-text); padding: 0 var(--pi-space-5); font: inherit; text-align: left; cursor: pointer; }
     /* Coarse pointers get the comfort floor: every target the quick switcher
        ships measures 44px on touch. Placed after every base declaration it
        raises - a media query carries no extra specificity, so an earlier
        coarse rule loses to a later base rule (the drawer collapse shipped
        exactly that bug once). */
     @media (pointer: coarse) {
-      .close { width: 44px; height: 44px; }
-      .machine-tab { min-height: 44px; }
-      .chip { min-height: 44px; min-width: 44px; }
+      .close { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); }
+      .machine-tab { min-height: var(--pi-control-height-touch); }
+      .chip { min-height: var(--pi-control-height-touch); min-width: var(--pi-control-height-touch); }
       .row-menu-toggle { width: var(--qs-menu-size); min-height: var(--qs-menu-size); }
-      .row-menu button { min-height: 44px; }
-      input { height: 44px; }
-      .rename-input { min-height: 44px; }
-      .rename-actions button { width: 44px; min-height: 44px; }
+      .row-menu button { min-height: var(--pi-control-height-touch); }
+      input { height: var(--pi-control-height-touch); }
+      .rename-input { min-height: var(--pi-control-height-touch); }
+      .rename-actions button { width: var(--pi-control-height-touch); min-height: var(--pi-control-height-touch); }
     }
     .row-menu button:focus-visible:not(:disabled) { background: var(--pi-selection-bg); }
     @media (hover: hover) { .row-menu button:hover:not(:disabled) { background: var(--pi-selection-bg); } }
     .row-menu button:disabled { opacity: .5; cursor: not-allowed; }
     .pin-mark { color: var(--pi-accent); }
     .rename-row { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-space-5); }
-    .rename-input { box-sizing: border-box; width: 100%; min-height: 40px; border: 1px solid var(--pi-accent); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: 0 var(--pi-space-5); font: var(--pi-text-lg) var(--pi-font-ui); }
+    .rename-input { box-sizing: border-box; width: 100%; min-height: var(--pi-control-height-comfort); border: 1px solid var(--pi-accent); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: 0 var(--pi-space-5); font: var(--pi-text-lg) var(--pi-font-ui); }
     .rename-actions { display: flex; gap: var(--pi-space-3); }
-    .rename-actions button { width: 40px; min-height: 40px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
+    .rename-actions button { width: var(--pi-control-height-comfort); min-height: var(--pi-control-height-comfort); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
     .empty { margin: var(--pi-space-7) var(--pi-space-2); color: var(--pi-muted); }
     footer { flex: 0 0 auto; padding: var(--pi-space-5); padding-bottom: max(10px, env(safe-area-inset-bottom)); border-top: 1px solid var(--pi-border); }
-    footer button { width: 100%; min-height: 44px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
+    footer button { width: 100%; min-height: var(--pi-control-height-touch); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
   `];
 }
 

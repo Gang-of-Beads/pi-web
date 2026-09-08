@@ -241,7 +241,7 @@ export class SessionCleanupDialog extends LitElement {
     button:disabled { opacity: .5; cursor: not-allowed; }
     button.danger { color: var(--pi-danger); }
     @media (hover: hover) { button.danger:not(:disabled):hover { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); } }
-    .close-button { width: 34px; height: 34px; display: grid; place-items: center; border: 0; background: transparent; color: var(--pi-muted); padding: 0; font-size: 24px; }
+    .close-button { width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); display: grid; place-items: center; border: 0; background: transparent; color: var(--pi-muted); padding: 0; font-size: 24px; }
     .close-button:focus { color: var(--pi-text); background: var(--pi-surface-hover); }
     @media (hover: hover) { .close-button:hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
 

@@ -48,7 +48,7 @@ export const promptEditorStyles = css`
   dialog.attachment-zoom[open] { display: flex; }
   dialog.attachment-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
   .attachment-zoom-full { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: var(--pi-radius-md); object-fit: contain; }
-  .attachment-zoom-close { position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: 44px; height: 44px; padding: 0; font: 16px/1 system-ui, sans-serif; color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
+  .attachment-zoom-close { position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; font: 16px/1 system-ui, sans-serif; color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
   .attachment-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
   @media (hover: hover) { .attachment-zoom-close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
   /* Tap targets should not wait for a double-tap-zoom gesture to be ruled out.
@@ -61,7 +61,7 @@ export const promptEditorStyles = css`
   /* Collapsed: one line that gives the screen back to whatever input is being
      used, and says what is still in the draft so it does not look lost. */
   footer.collapsed { padding: var(--pi-space-3) var(--pi-space-5); }
-  .expand-composer { display: flex; align-items: center; gap: var(--pi-space-4); width: 100%; min-height: 44px; padding: var(--pi-space-2) var(--pi-space-5); border: 1px dashed var(--pi-border); border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-sm); text-align: start; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .expand-composer { display: flex; align-items: center; gap: var(--pi-space-4); width: 100%; min-height: var(--pi-control-height-touch); padding: var(--pi-space-2) var(--pi-space-5); border: 1px dashed var(--pi-border); border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-sm); text-align: start; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .expand-composer:focus-visible { border-color: var(--pi-accent); color: var(--pi-text-bright); }
   @media (hover: hover) { .expand-composer:hover { border-color: var(--pi-accent); color: var(--pi-text-bright); } }
   .expand-composer:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
@@ -72,18 +72,18 @@ export const promptEditorStyles = css`
   .actions { display: flex; gap: var(--pi-space-4); align-items: center; justify-content: flex-end; flex-wrap: nowrap; white-space: nowrap; }
   .compact-status { display: flex; min-width: 0; align-items: center; gap: var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); flex: 1 1 0; }
   .compact-status > button { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .select-model { max-width: min(42vw, 320px); min-height: 36px; display: inline-flex; align-items: center; box-sizing: border-box; overflow: hidden; }
+  .select-model { max-width: min(42vw, 320px); min-height: var(--pi-control-height-comfort); display: inline-flex; align-items: center; box-sizing: border-box; overflow: hidden; }
   /* Separate boxes so the provider gives way first and the model id survives. */
   .select-model-provider { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .select-model-id { flex: 0 0 auto; white-space: nowrap; }
-  .icon-button { flex: 0 0 auto; display: inline-grid; place-items: center; width: 36px; height: 36px; box-sizing: border-box; padding: 0; }
+  .icon-button { flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); box-sizing: border-box; padding: 0; }
   .icon-button .prompt-action-icon, .icon-button .prompt-thinking-gauge { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
   .icon-button .prompt-action-icon-filled { fill: currentColor; stroke: none; }
   .send-button:not(:disabled) { color: var(--pi-accent, var(--pi-text)); }
   .stop-button:not(:disabled) { color: var(--pi-danger); }
   .select-thinking .prompt-thinking-gauge .gauge-bar { fill: currentColor; stroke: none; opacity: .28; }
   .select-thinking .prompt-thinking-gauge .gauge-bar-active { opacity: 1; }
-  .editor-attach { position: absolute; right: var(--pi-space-4); bottom: var(--pi-space-4); z-index: 2; width: 32px; height: 32px; }
+  .editor-attach { position: absolute; right: var(--pi-space-4); bottom: var(--pi-space-4); z-index: 2; width: var(--pi-control-height); height: var(--pi-control-height); }
   .editor-attach .prompt-action-icon { width: 16px; height: 16px; }
   textarea, .markdown-editor .cm-editor { box-sizing: border-box; width: 100%; min-height: 54px; max-height: 220px; resize: none; overflow: hidden; border-radius: var(--pi-radius-md); border: 1px solid var(--pi-border); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px)/1.4 var(--pi-control-font-family, system-ui, sans-serif); }
   textarea { overflow-y: auto; padding: var(--pi-space-4); padding-right: calc(var(--pi-space-4) + 36px); }
@@ -152,7 +152,7 @@ export const promptEditorStyles = css`
   .attachment-chip { position: relative; width: 56px; height: 56px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); overflow: hidden; background: var(--pi-bg); }
   .attachment-chip img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .attachment-chip-file { display: grid; place-items: center; }
-  .attachment-file-preview { display: grid; place-items: center; width: 34px; height: 26px; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-surface); color: var(--pi-muted); font: 700 10px/1 system-ui, sans-serif; letter-spacing: .03em; }
+  .attachment-file-preview { display: grid; place-items: center; width: var(--pi-control-height-comfort); height: 26px; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-surface); color: var(--pi-muted); font: 700 10px/1 system-ui, sans-serif; letter-spacing: .03em; }
   .attachment-file-name { position: absolute; right: 4px; bottom: 3px; left: 4px; overflow: hidden; color: var(--pi-muted); font-size: 10px; line-height: 1.2; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
   .attachment-remove { position: absolute; top: 1px; right: 1px; width: 18px; height: 18px; padding: 0; line-height: 16px; border-radius: 50%; border: 1px solid var(--pi-border); background: var(--pi-surface); color: var(--pi-text); font-size: var(--pi-text-sm); cursor: pointer; }
   /* A thumb is about 9mm wide. An 18px remove badge on a 56px thumbnail means
@@ -187,8 +187,8 @@ export const promptEditorStyles = css`
     /* Narrow screens are phones: the touch targets get *bigger*, not smaller,
        and the caret keeps the line height it has on wide screens. The model
        chip rises with them so the toolbar stays one height. */
-    .icon-button { width: 40px; height: 40px; }
-    .select-model { min-height: 40px; }
+    .icon-button { width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); }
+    .select-model { min-height: var(--pi-control-height-comfort); }
     .markdown-editor .cm-cursor { height: 1.4em !important; }
   }
 
@@ -213,8 +213,8 @@ export const promptEditorStyles = css`
     h2 { margin: 0 0 var(--pi-space-3); }
     .action-row { margin: var(--pi-space-2) 0; }
     .action-main { padding: 6px 20px 6px calc(8px + var(--depth, 0) * 14px); }
-    .list-search-input { height: 30px; font-size: var(--pi-text-sm); padding: 0 var(--pi-space-4); }
-    .list-search-clear { width: 30px; height: 30px; }
+    .list-search-input { height: var(--pi-control-height); font-size: var(--pi-text-sm); padding: 0 var(--pi-space-4); }
+    .list-search-clear { width: var(--pi-control-height); height: var(--pi-control-height); }
     .list-body.tiles { gap: var(--pi-space-3); grid-template-columns: 1fr; }
     .list-body.tiles .action-main { min-height: 48px; padding: var(--pi-space-4) 28px var(--pi-space-4) var(--pi-space-4); }
   }`;

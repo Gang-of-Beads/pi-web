@@ -69,15 +69,15 @@ export class AppContextBar extends LitElement {
     :host { position: relative; z-index: var(--pi-layer-sticky); flex: 0 0 auto; min-width: 0; }
     .context-bar { position: relative; flex: 0 0 auto; min-width: 0; display: flex; align-items: center; gap: var(--pi-space-2); padding: var(--pi-space-2) var(--pi-space-3); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); }
     button { cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
-    .panel-toggle { flex: 0 0 auto; display: grid; place-items: center; box-sizing: border-box; width: 44px; height: 44px; padding: 0; border: 0; border-radius: var(--pi-radius-lg); background: transparent; color: var(--pi-text); }
+    .panel-toggle { flex: 0 0 auto; display: grid; place-items: center; box-sizing: border-box; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; border: 0; border-radius: var(--pi-radius-lg); background: transparent; color: var(--pi-text); }
     .panel-toggle:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -2px; }
     @media (hover: hover) { .panel-toggle:hover { background: var(--pi-surface-hover); } }
     .toggle-icon { width: 20px; height: 20px; pointer-events: none; }
-    .session-title { flex: 1 1 auto; min-width: 0; min-height: 44px; display: inline-flex; align-items: center; box-sizing: border-box; overflow: hidden; border: 0; background: none; color: var(--pi-text-bright, var(--pi-text)); padding: var(--pi-space-2) var(--pi-space-2); font: inherit; font-weight: 650; text-align: start; text-overflow: ellipsis; white-space: nowrap; }
+    .session-title { flex: 1 1 auto; min-width: 0; min-height: var(--pi-control-height-touch); display: inline-flex; align-items: center; box-sizing: border-box; overflow: hidden; border: 0; background: none; color: var(--pi-text-bright, var(--pi-text)); padding: var(--pi-space-2) var(--pi-space-2); font: inherit; font-weight: 650; text-align: start; text-overflow: ellipsis; white-space: nowrap; }
     .session-title.empty { color: var(--pi-muted); font-weight: 500; }
     .session-title:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: -2px; }
     @media (hover: hover) { .session-title:hover { color: var(--pi-text-bright); } }
-    .working { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 3px; min-height: 44px; padding: var(--pi-space-2) var(--pi-space-3); }
+    .working { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 3px; min-height: var(--pi-control-height-touch); padding: var(--pi-space-2) var(--pi-space-3); }
     .working-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--pi-accent, var(--pi-text-bright)); animation: working-bounce 1.2s ease-in-out infinite; }
     .working-dot:nth-child(2) { animation-delay: .2s; }
     .working-dot:nth-child(3) { animation-delay: .4s; }

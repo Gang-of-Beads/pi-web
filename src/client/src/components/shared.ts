@@ -156,7 +156,7 @@ export const workspacePanelStyles = css`
   dialog.attachment-zoom[open] { display: flex; }
   dialog.attachment-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
   .attachment-zoom-full { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: var(--pi-radius-md); object-fit: contain; }
-  .attachment-zoom-close { position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: 44px; height: 44px; padding: 0; font: 16px/1 system-ui, sans-serif; color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
+  .attachment-zoom-close { position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; font: 16px/1 system-ui, sans-serif; color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
   .attachment-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
   @media (hover: hover) { .attachment-zoom-close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
   :host { display: flex; flex-direction: column; min-height: 0; color: var(--pi-text); background: var(--pi-bg); font: var(--pi-text-sm) var(--pi-font-ui); container-type: inline-size; }
@@ -171,7 +171,7 @@ export const workspacePanelStyles = css`
   .workspace-header-strip { display: flex; justify-content: space-between; align-items: center; gap: var(--pi-space-4); min-width: 0; padding: var(--pi-space-4); overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; }
   .tabs { flex: 0 0 auto; display: flex; gap: var(--pi-space-3); align-items: center; }
   .tabs button { flex: 0 0 auto; white-space: nowrap; }
-  .tabs button.icon-tab { min-width: 34px; }
+  .tabs button.icon-tab { min-width: var(--pi-control-height-comfort); }
   button { font: var(--pi-text-xs) var(--pi-font-ui); display: inline-flex; align-items: center; gap: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-3) var(--pi-space-4); cursor: pointer; }
   button.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
   .tab-icon { flex: 0 0 auto; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
@@ -240,7 +240,7 @@ export const listStyles = css`
   dialog.attachment-zoom[open] { display: flex; }
   dialog.attachment-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
   .attachment-zoom-full { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: var(--pi-radius-md); object-fit: contain; }
-  .attachment-zoom-close { position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: 44px; height: 44px; padding: 0; font: 16px/1 system-ui, sans-serif; color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
+  .attachment-zoom-close { position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; font: 16px/1 system-ui, sans-serif; color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
   .attachment-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
   @media (hover: hover) { .attachment-zoom-close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
   /* Tap targets should not wait for a double-tap-zoom gesture to be ruled out.
@@ -258,11 +258,11 @@ export const listStyles = css`
   /* Search affordance shared by the lists that have one, so a second list does
      not drift from the first. Class named for the role, not the list. */
   .list-search { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: var(--pi-space-3); margin: 0 0 var(--pi-space-3); padding-bottom: var(--pi-space-3); background: var(--pi-bg); }
-  .list-search-input { box-sizing: border-box; flex: 1 1 auto; min-width: 0; height: 34px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 0 var(--pi-space-5); font: var(--pi-control-font-size, 14px) var(--pi-control-font-family, system-ui, sans-serif); }
+  .list-search-input { box-sizing: border-box; flex: 1 1 auto; min-width: 0; height: var(--pi-control-height-comfort); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 0 var(--pi-space-5); font: var(--pi-control-font-size, 14px) var(--pi-control-font-family, system-ui, sans-serif); }
   .list-search-input::placeholder { color: var(--pi-dim); }
   .list-search-input::-webkit-search-cancel-button { display: none; }
   .list-search-input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
-  .list-search-clear { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; font-size: var(--pi-text-lg); line-height: 1; }
+  .list-search-clear { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); padding: 0; font-size: var(--pi-text-lg); line-height: 1; }
   /* Coarse pointers get the comfort floor on the shared search row. Placed
      after every base declaration it raises - a media query carries no extra
      specificity, so an earlier coarse rule loses to a later base rule. */
@@ -279,7 +279,7 @@ export const listStyles = css`
      content, and the heading was already a flex row with a free trailing edge.
      Sized to the tap-target floor even though the glyph is small. */
   .section-add-label { font-size: var(--pi-text-xs); white-space: nowrap; }
-  .section-add { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: var(--pi-space-2); min-width: 32px; min-height: 32px; padding: 0 var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font-size: var(--pi-text-lg); line-height: 1; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+  .section-add { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: var(--pi-space-2); min-width: var(--pi-control-height); min-height: var(--pi-control-height); padding: 0 var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font-size: var(--pi-text-lg); line-height: 1; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   .section-add:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -2px; }
   @media (hover: hover) { .section-add:hover { border-color: var(--pi-accent); } }
   /* Coarse pointers get the comfort floor. Declared after every base rule it
@@ -323,7 +323,7 @@ export const listStyles = css`
      sits against it and draws the divider. A tile floats it in the corner with
      nothing on its left, so the same rule left the button open on one side.
      Give it back a full border and its own radius. */
-  .list-body.tiles .action-menu-toggle { height: 32px; min-width: 32px; border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-muted); }
+  .list-body.tiles .action-menu-toggle { height: var(--pi-control-height); min-width: var(--pi-control-height); border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-muted); }
   @media (hover: hover) { .list-body.tiles .action-menu-toggle:hover { background: var(--pi-surface-hover); color: var(--pi-text); } }
   /* Both the menu button's own corner and the activity dot's offset are derived
      from these, so nothing has to guess the button's width. The defaults are
@@ -339,7 +339,7 @@ export const listStyles = css`
      applies and is met). */
   @media (pointer: coarse) {
     .list-body.tiles { --pi-tile-menu-size: 36px; --pi-tile-menu-inset: 4px; }
-    .list-body.tiles .action-menu-toggle { height: 36px; min-width: 36px; }
+    .list-body.tiles .action-menu-toggle { height: var(--pi-control-height-comfort); min-width: var(--pi-control-height-comfort); }
     .list-body.tiles .action-menu { top: 4px; right: 4px; }
   }
   /* The activity dot shares the menu button's centre line: both corner marks
@@ -424,7 +424,7 @@ export const listStyles = css`
   .unread-ring .activity-indicator { width: 5px; height: 5px; margin: 0; vertical-align: 0; }
   .action-activity .unread-ring { margin: 0; vertical-align: 0; }
   .action-menu { position: relative; align-self: stretch; }
-  .action-menu-toggle { display: grid; place-items: center; height: 100%; min-width: 32px; padding: 0; color: var(--pi-muted); border: 0; border-radius: 0; background: transparent; }
+  .action-menu-toggle { display: grid; place-items: center; height: 100%; min-width: var(--pi-control-height); padding: 0; color: var(--pi-muted); border: 0; border-radius: 0; background: transparent; }
   @media (hover: hover) { .action-menu-toggle:hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
   .action-menu-panel { position: fixed; z-index: var(--pi-layer-popover); box-sizing: border-box; min-width: min(120px, calc(100vw - 16px)); overflow: auto; padding: var(--pi-space-2); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); box-shadow: 0 8px 24px var(--pi-shadow); overflow-wrap: anywhere; }
   .action-menu-panel button { display: block; width: 100%; text-align: left; white-space: normal; overflow-wrap: anywhere; border: 0; background: transparent; color: var(--pi-text); }

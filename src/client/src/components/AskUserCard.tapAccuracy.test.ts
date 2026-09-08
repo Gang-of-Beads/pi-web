@@ -60,7 +60,7 @@ describe("ask option hit targets", () => {
     if (optionRules.length === 0) throw new Error("no .option rules in the card stylesheet");
     const sized = optionRules.find((rule) => rule.includes("min-height"));
     if (sized === undefined) throw new Error("no .option rule sets a min-height");
-    expect(sized).toContain("44px");
+    expect(sized).toContain("var(--pi-control-height-touch)");
   });
 
   it("keeps the tap-delay and zoom heuristics off the option labels", async () => {

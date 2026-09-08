@@ -76,8 +76,12 @@
         --pi-chat-gutter: 16px;
         --pi-panel-header-height: 36px;
         --pi-panel-header-control-height: 44px;
-        /* Touch floor first: a control is 44px on a finger, 32px under a mouse. */
+        /* Touch floor first: a control is 44px on a finger, 32px under a mouse.
+           The comfort step between them is what search fields, model chips and
+           menu rows want; leaving it unnamed is how 30, 34, 36, 38 and 40 all
+           shipped as the same intention. */
         --pi-control-height: 32px;
+        --pi-control-height-comfort: 36px;
         --pi-control-height-touch: 44px;
         --pi-motion-fast: 120ms;
         --pi-motion-base: 180ms;
