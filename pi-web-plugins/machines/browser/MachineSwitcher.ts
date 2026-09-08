@@ -333,6 +333,13 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     .machine-option-actions-panel { position: fixed; z-index: var(--pi-layer-popover); box-sizing: border-box; min-width: min(120px, calc(100vw - 16px)); overflow: auto; padding: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface-raised); box-shadow: var(--pi-elevation-2); }
     .machine-option-actions-panel button { display: block; width: 100%; padding: 7px 9px; text-align: left; white-space: nowrap; }
     .machine-option-actions-panel button.danger { color: var(--pi-danger); }
+    /* The row menu is the same verb as every other row menu in the app, so it
+       carries the same touch floor: this one shipped a 26px trigger and 28px
+       items while the session switcher one screen away shipped 44px. */
+    @media (pointer: coarse) {
+      .machine-option-actions-toggle { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); }
+      .machine-option-actions-panel button { min-height: var(--pi-control-height-touch, 44px); }
+    }
     .machine-option-main:focus-visible, .machine-option-actions-toggle:focus-visible, .machine-option.selected .machine-option-main { background: var(--pi-selection-bg); }
     @media (hover: hover) { .machine-option-main:hover, .machine-option-actions-toggle:hover { background: var(--pi-selection-bg); } }
     .machine-option-actions-panel button:focus-visible { background: var(--pi-selection-bg); }

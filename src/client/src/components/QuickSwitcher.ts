@@ -389,7 +389,8 @@ export class QuickSwitcher extends LitElement {
   }
 
   static override styles = [interactiveSurfaceStyles, sessionStateBadgeStyles, css`
-    :host { position: fixed; inset: 0; z-index: var(--pi-layer-overlay); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
+    :host { position: fixed; inset: 0; z-index: var(--pi-layer-overlay); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); --qs-menu-size: 32px; }
+    @media (pointer: coarse) { :host { --qs-menu-size: var(--pi-control-height-touch, 44px); } }
     modal-surface {
       --modal-surface-place-items: end center;
       --modal-surface-backdrop-padding: 0;
@@ -408,7 +409,7 @@ export class QuickSwitcher extends LitElement {
        scrolling a list that wasted half its width on every row. auto-fit keeps
        a single column when there is only room for one. */
     .rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--pi-space-3); align-content: start; }
-    .row { position: relative; display: grid; gap: var(--pi-space-1); width: 100%; min-height: 52px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-5) 34px var(--pi-space-5) var(--pi-space-6); text-align: left; cursor: pointer; }
+    .row { position: relative; display: grid; gap: var(--pi-space-1); width: 100%; min-height: 52px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-5) calc(var(--qs-menu-size) + var(--pi-space-2)) var(--pi-space-5) var(--pi-space-6); text-align: left; cursor: pointer; }
     @media (hover: hover) { .row:hover:not(:disabled) { background: var(--pi-surface-hover); } }
     .row:disabled { opacity: .55; cursor: not-allowed; }
     /* One clamp at every width: a title that wraps to two lines on a phone and
@@ -420,7 +421,11 @@ export class QuickSwitcher extends LitElement {
     .create-row .row-title { font-weight: 650; }
     .session-row.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     .session-row.unread .row-title { color: var(--pi-text-bright); font-weight: 650; }
-    .row-flag, .row-state { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); }
+    /* The state mark sits under the corner menu button rather than beside it:
+       the toggle spans the tile's top-right corner down to 44px on touch, and
+       a badge centred on the tile's midline landed inside that box - tapping
+       the state opened the menu. */
+    .row-flag, .row-state { position: absolute; bottom: var(--pi-space-4); right: 12px; }
     .row-state { display: inline-flex; align-items: center; }
     .row-flag { width: 8px; height: 8px; border-radius: 50%; }
     .row-flag.unread { background: var(--pi-accent); }
@@ -452,15 +457,14 @@ export class QuickSwitcher extends LitElement {
     .row-wrap > .row { height: 100%; }
     /* A long press must not race the platform's own text callout. */
     .row-wrap .session-row { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
-    .row-menu-toggle { flex: 0 0 auto; width: 40px; min-height: 52px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-muted); font-size: var(--pi-text-lg); line-height: 1; cursor: pointer; }
-    .row-menu-toggle:focus-visible { color: var(--pi-text); border-color: var(--pi-accent); }
-    @media (hover: hover) { .row-menu-toggle:hover { color: var(--pi-text); border-color: var(--pi-accent); } }
     /* On a narrow phone the menu button's own column left the name about a
        hundred pixels, so two tiles read worse than one. The button moves into
        the tile's corner instead: it is used occasionally, the name is read
-       every time. */
-    .row-title { padding-right: 30px; }
-    .row-menu-toggle { position: absolute; top: 0; right: 0; width: 32px; min-height: 32px; border-color: transparent; background: transparent; }
+       every time. The tile reserves the button's width once, on the row, so
+       the title and the subtitle end at the same right edge. */
+    .row-menu-toggle { position: absolute; top: 0; right: 0; width: var(--qs-menu-size); min-height: var(--qs-menu-size); border: 1px solid transparent; border-radius: var(--pi-radius-lg); background: transparent; color: var(--pi-muted); font-size: var(--pi-text-lg); line-height: 1; cursor: pointer; }
+    .row-menu-toggle:focus-visible { color: var(--pi-text); border-color: var(--pi-accent); }
+    @media (hover: hover) { .row-menu-toggle:hover { color: var(--pi-text); border-color: var(--pi-accent); } }
     /* A half-width tile on a small phone shows about nine characters per line,
        fewer than the single-column row it replaced, so phones get narrower
        columns. The title clamp is not part of this breakpoint: it is the same
@@ -479,14 +483,11 @@ export class QuickSwitcher extends LitElement {
       .close { width: 44px; height: 44px; }
       .machine-tab { min-height: 44px; }
       .chip { min-height: 44px; min-width: 44px; }
-      .row-menu-toggle { width: 44px; min-height: 44px; }
-      /* The toggle is absolutely positioned over the title's trailing edge;
-         the title's padding reserve must grow with it or the menu button
-         swallows taps aimed at the tail of a clamped name. */
-      .row-title { padding-right: 52px; }
+      .row-menu-toggle { width: var(--qs-menu-size); min-height: var(--qs-menu-size); }
       .row-menu button { min-height: 44px; }
       input { height: 44px; }
       .rename-input { min-height: 44px; }
+      .rename-actions button { width: 44px; min-height: 44px; }
     }
     .row-menu button:focus-visible:not(:disabled) { background: var(--pi-selection-bg); }
     @media (hover: hover) { .row-menu button:hover:not(:disabled) { background: var(--pi-selection-bg); } }

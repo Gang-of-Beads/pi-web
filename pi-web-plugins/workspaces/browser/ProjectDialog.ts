@@ -332,6 +332,7 @@ export class ProjectDialog extends LitElement {
     .body { flex: 1 1 auto; display: grid; gap: 12px; padding: 12px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
     label { display: grid; gap: 6px; color: var(--pi-muted); }
     input[type="text"], input:not([type]) { box-sizing: border-box; width: 100%; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-bg); color: var(--pi-text); padding: 9px; font: var(--pi-control-font-size, 16px) var(--pi-control-monospace-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
+    input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
     .check { display: flex; grid-template-columns: auto 1fr; align-items: center; color: var(--pi-text); }
     .suggestions { min-height: 90px; max-height: 320px; overflow: auto; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); }
     .suggestions button { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 0; border-bottom: 1px solid var(--pi-border); border-radius: 0; background: transparent; color: var(--pi-text); padding: 8px 10px; text-align: left; font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
@@ -351,6 +352,10 @@ export class ProjectDialog extends LitElement {
       .check input { box-sizing: border-box; width: 24px; height: 24px; margin: 0; accent-color: var(--pi-accent); }
       input[type="text"], input:not([type]) { min-height: var(--pi-control-height-touch, 44px); }
       .trust-hint a { display: inline-block; min-height: 24px; }
+      /* The footer's floor keyed to viewport width left a tablet-class touch
+         device with ~33px Cancel/Add while this same file raised the close
+         control by pointer type. */
+      footer button { min-height: var(--pi-control-height-touch, 44px); }
     }
     @media (max-width: 760px) {
       /* Suggestion rows double as the primary navigation control on a phone,
