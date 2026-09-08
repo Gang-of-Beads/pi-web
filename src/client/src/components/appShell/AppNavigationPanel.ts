@@ -1,4 +1,4 @@
-import { LitElement, css, html, nothing, type TemplateResult } from "lit";
+import { LitElement, css, html, nothing, svg, type TemplateResult } from "lit";
 import { focusedContextName } from "../../contextName";
 import { customElement, property, query } from "lit/decorators.js";
 import type { Machine, MachineHealth, Project, SessionActivity, SessionInfo, SessionStatus, Workspace } from "../../api";
@@ -12,6 +12,18 @@ import "./AppContextSwitcher";
 import "../SessionList";
 
 export type NavigationFocusTarget = NavigationSection | "chat";
+
+/** The settings gear in the house stroke style: a text glyph rides font
+ *  baselines and never sits in the center of its button, so both headers draw
+ *  this icon instead. */
+function renderGearIcon(): TemplateResult {
+  return svg`
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <circle cx="12" cy="12" r="3"></circle>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+    </svg>
+  `;
+}
 
 /** One workspace view card in the panel's tools section: the single entry. */
 export interface ShellToolTab {
@@ -134,7 +146,7 @@ export class AppNavigationPanel extends LitElement {
         <strong title=${this.headerName()}>${this.headerName()}</strong>
         <div class="header-actions">
           ${this.refreshControl}
-          <button title="Open settings" aria-label="Open settings" @click=${() => { this.onOpenSettings?.(); }}>⚙</button>
+          <button class="header-icon-action" title="Open settings" aria-label="Open settings" @click=${() => { this.onOpenSettings?.(); }}>${renderGearIcon()}</button>
           <button title="Show Actions" aria-label="Show Actions" @click=${() => { this.onShowActions?.(); }}>Actions</button>
         </div>
       </header>
@@ -166,7 +178,7 @@ export class AppNavigationPanel extends LitElement {
             <span class="compact-scope-name" dir="auto">${this.compactScopeLabel()}</span>
           </button>
           ${this.refreshControl}
-          <button class="compact-header-action" title="Open settings" aria-label="Open settings" @click=${() => { this.onOpenSettings?.(); }}>⚙</button>
+          <button class="compact-header-action header-icon-action" title="Open settings" aria-label="Open settings" @click=${() => { this.onOpenSettings?.(); }}>${renderGearIcon()}</button>
           <button class="compact-header-action" title="Show Actions" aria-label="Show Actions" @click=${() => { this.onShowActions?.(); }}>Actions</button>
         </div>
         ${this.renderMachineHeaderSwitcher()}
@@ -444,9 +456,11 @@ export class AppNavigationPanel extends LitElement {
     :host([compact]) { flex: 1 1 auto; }
     header { flex: 0 0 auto; box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: 0 var(--pi-space-6); border-bottom: 1px solid var(--pi-border); }
     header button { box-sizing: border-box; height: var(--pi-panel-header-control-height); padding: 0 var(--pi-space-4); font-size: var(--pi-text-xs); }
+    .header-icon-action { display: inline-flex; align-items: center; justify-content: center; }
+    .header-icon-action svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
     .compact-shell { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
     .compact-header { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-start; gap: var(--pi-space-3); padding: var(--pi-space-2) var(--pi-space-4); border-bottom: 1px solid var(--pi-border-muted); }
-    .compact-header-action { display: inline-flex; align-items: center; box-sizing: border-box; min-height: 44px; padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text); font: inherit; }
+    .compact-header-action { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: 44px; padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text); font: inherit; }
     .compact-header-action:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
     /* Coarse pointers get the comfort floor: the glyph is small but the hit
        box carries the row's tap weight in the phone header. */
