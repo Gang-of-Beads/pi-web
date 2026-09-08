@@ -549,7 +549,7 @@ export class AskUserCard extends LitElement {
       align-items: start;
       gap: 8px;
       border: 1px solid transparent;
-      border-radius: 8px;
+      border-radius: var(--pi-radius-md);
       padding: 7px 8px;
       cursor: pointer;
       /* The coarse-pointer floor this project already holds everywhere else.
@@ -582,7 +582,7 @@ export class AskUserCard extends LitElement {
       overflow-y: auto;
       resize: vertical;
       border: 1px solid var(--pi-border);
-      border-radius: 8px;
+      border-radius: var(--pi-radius-md);
       background: var(--pi-bg);
       color: var(--pi-text);
       padding: 8px;
@@ -614,7 +614,7 @@ export class AskUserCard extends LitElement {
     }
     button {
       border: 1px solid var(--pi-border);
-      border-radius: 8px;
+      border-radius: var(--pi-radius-md);
       background: var(--pi-surface);
       color: var(--pi-text);
       padding: 7px 10px;
@@ -632,7 +632,7 @@ export class AskUserCard extends LitElement {
     .question-jump {
       display: inline;
       border: 0;
-      border-radius: 3px;
+      border-radius: var(--pi-radius-xs);
       background: transparent;
       color: inherit;
       padding: 0;

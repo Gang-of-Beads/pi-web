@@ -542,10 +542,10 @@ export class SessionTreeNavigator extends LitElement {
     .tree-intro { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; color: var(--pi-muted); }
     .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; font-size: 12px; }
     .legend > span { display: inline-flex; align-items: center; gap: 5px; }
-    .marker { width: 9px; height: 9px; border-radius: 999px; background: var(--pi-border); }
+    .marker { width: 9px; height: 9px; border-radius: var(--pi-radius-pill); background: var(--pi-border); }
     .active-path-marker { background: var(--pi-accent); }
     .active-leaf-marker { box-shadow: 0 0 0 2px var(--pi-accent); background: var(--pi-bg); }
-    .tree { min-height: 0; overflow: auto; border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-surface); overscroll-behavior: contain; }
+    .tree { min-height: 0; overflow: auto; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); overscroll-behavior: contain; }
     .tree-row { min-height: 48px; display: grid; grid-template-columns: 20px minmax(82px, auto) minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 7px 10px 7px calc(10px + var(--tree-indent)); border-bottom: 1px solid var(--pi-border-muted); cursor: pointer; outline: none; content-visibility: auto; contain-intrinsic-block-size: 48px; }
     .tree-row:last-child { border-bottom: 0; }
     @media (hover: hover) { .tree-row:hover { background: var(--pi-surface-hover); } }
@@ -554,7 +554,7 @@ export class SessionTreeNavigator extends LitElement {
     .tree-row.active-path:not(.selected) { background: color-mix(in srgb, var(--pi-accent) 7%, var(--pi-surface)); }
     .tree-row.active-leaf { box-shadow: inset 3px 0 var(--pi-accent); }
     .tree-row.bookkeeping { color: var(--pi-muted); }
-    .disclosure { width: 20px; height: 28px; display: grid; place-items: center; border-radius: 5px; color: var(--pi-muted); font-size: 15px; user-select: none; }
+    .disclosure { width: 20px; height: 28px; display: grid; place-items: center; border-radius: var(--pi-radius-xs); color: var(--pi-muted); font-size: 15px; user-select: none; }
     @media (hover: hover) { .disclosure:not(.leaf):hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
     .disclosure.leaf { opacity: .5; }
     .metadata { display: contents; }
@@ -562,7 +562,7 @@ export class SessionTreeNavigator extends LitElement {
     .tree-row > .metadata > .kind { grid-column: 2; grid-row: 1; }
     .tree-row > .entry { grid-column: 3; grid-row: 1; }
     .tree-row > .metadata > .badges { grid-column: 4; grid-row: 1; }
-    .kind { --kind-border: var(--pi-border); --kind-background: var(--pi-surface); display: inline-flex; align-items: center; width: fit-content; border: 1px solid var(--kind-border); border-radius: 999px; padding: 2px 7px; color: var(--pi-text); background: var(--kind-background); font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .kind { --kind-border: var(--pi-border); --kind-background: var(--pi-surface); display: inline-flex; align-items: center; width: fit-content; border: 1px solid var(--kind-border); border-radius: var(--pi-radius-pill); padding: 2px 7px; color: var(--pi-text); background: var(--kind-background); font-size: 11px; font-weight: 700; white-space: nowrap; }
     .kind-tone-user { --kind-border: var(--pi-accent-border); --kind-background: var(--pi-selection-bg); }
     .kind-tone-assistant { --kind-border: var(--pi-border); --kind-background: var(--pi-surface); }
     .kind-tone-tool { --kind-border: var(--pi-warning-border); --kind-background: var(--pi-warning-surface); }
@@ -572,26 +572,26 @@ export class SessionTreeNavigator extends LitElement {
     .entry { min-width: 0; display: flex; align-items: baseline; gap: 8px; }
     .summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-text); }
     .bookkeeping .summary { color: var(--pi-muted); }
-    .label { max-width: 180px; overflow: hidden; text-overflow: ellipsis; border-radius: 4px; padding: 1px 5px; background: var(--pi-bg-overlay); color: var(--pi-muted); font-size: 11px; white-space: nowrap; }
+    .label { max-width: 180px; overflow: hidden; text-overflow: ellipsis; border-radius: var(--pi-radius-xs); padding: 1px 5px; background: var(--pi-bg-overlay); color: var(--pi-muted); font-size: 11px; white-space: nowrap; }
     time { color: var(--pi-muted); font-size: 11px; white-space: nowrap; }
     .badges { display: flex; align-items: center; justify-content: end; gap: 5px; }
-    .badge { border-radius: 999px; padding: 2px 7px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .badge { border-radius: var(--pi-radius-pill); padding: 2px 7px; font-size: 11px; font-weight: 700; white-space: nowrap; }
     .badge.path { background: color-mix(in srgb, var(--pi-accent) 14%, transparent); color: var(--pi-text); }
     .badge.leaf { border: 1px solid var(--pi-accent); color: var(--pi-text); }
     .confirmation-step { padding: 24px max(18px, env(safe-area-inset-right)) 24px max(18px, env(safe-area-inset-left)); }
     .confirmation-card { width: min(760px, 100%); margin: 0 auto; display: grid; gap: 16px; }
-    .selected-entry, .side-effects-note, .dialog-error, .dialog-status, .empty { border: 1px solid var(--pi-border); border-radius: 10px; padding: 12px 14px; }
+    .selected-entry, .side-effects-note, .dialog-error, .dialog-status, .empty { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); padding: 12px 14px; }
     .selected-entry { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 8px 10px; background: var(--pi-surface); }
     .selected-entry p { grid-column: 2; color: var(--pi-muted); font-size: 12px; }
     fieldset { min-width: 0; margin: 0; padding: 0; border: 0; display: grid; gap: 9px; }
     legend { margin-bottom: 8px; font-weight: 700; }
-    .choice-option { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 10px; border: 1px solid var(--pi-border); border-radius: 10px; padding: 11px 12px; background: var(--pi-surface); cursor: pointer; }
+    .choice-option { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 10px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); padding: 11px 12px; background: var(--pi-surface); cursor: pointer; }
     .choice-option.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     .choice-option input { margin-top: 3px; accent-color: var(--pi-accent); }
     .choice-option span { display: grid; gap: 3px; }
     .choice-option small { color: var(--pi-muted); }
     .custom-focus { display: grid; gap: 6px; margin: 2px 0 0 30px; font-weight: 600; }
-    textarea { width: 100%; resize: vertical; min-height: 94px; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-bg); color: var(--pi-text); padding: 9px 10px; font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); }
+    textarea { width: 100%; resize: vertical; min-height: 94px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: 9px 10px; font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); }
     textarea:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }
     .character-count { justify-self: end; color: var(--pi-muted); font-size: 11px; font-weight: 400; }
     .validation-error { margin-inline-start: 30px; color: var(--pi-danger); font-size: 12px; }
@@ -599,7 +599,7 @@ export class SessionTreeNavigator extends LitElement {
     .dialog-error { border-color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 10%, var(--pi-bg)); color: var(--pi-danger); }
     .dialog-status { border-color: var(--pi-success-border); background: var(--pi-success-bg); }
     .empty { color: var(--pi-muted); background: var(--pi-surface); }
-    button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 8px 11px; font: inherit; cursor: pointer; }
+    button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 8px 11px; font: inherit; cursor: pointer; }
     @media (hover: hover) { button:not(:disabled):hover { background: var(--pi-surface-hover); } }
     button:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }
     button:disabled { opacity: .52; cursor: not-allowed; }

@@ -1312,7 +1312,7 @@ const gitPanelStyles = `
   .git-panel { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; color: var(--pi-text); background: var(--pi-bg); font: 13px system-ui, sans-serif; }
   .git-panel ${activityElementTag} { display: none; }
   .git-panel ${reviewSectionActivityElementTag} { display: block; min-width: 0; }
-  .git-panel button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--pi-border); border-radius: 7px; background: var(--pi-surface); color: var(--pi-text); padding: 5px 7px; cursor: pointer; }
+  .git-panel button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 5px 7px; cursor: pointer; }
   .git-panel button:disabled { cursor: wait; opacity: .65; }
   .git-panel small, .git-panel .git-muted { color: var(--pi-muted); }
   .git-panel p { margin: 10px; }
@@ -1320,12 +1320,12 @@ const gitPanelStyles = `
   .git-panel .git-toolbar-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
   .git-panel .git-view-toggle { display: inline-flex; }
   .git-panel .git-view-toggle button { border-radius: 0; }
-  .git-panel .git-view-toggle button:first-child { border-top-left-radius: 7px; border-bottom-left-radius: 7px; }
-  .git-panel .git-view-toggle button:last-child { margin-left: -1px; border-top-right-radius: 7px; border-bottom-right-radius: 7px; }
+  .git-panel .git-view-toggle button:first-child { border-top-left-radius: var(--pi-radius-md); border-bottom-left-radius: var(--pi-radius-md); }
+  .git-panel .git-view-toggle button:last-child { margin-left: -1px; border-top-right-radius: var(--pi-radius-md); border-bottom-right-radius: var(--pi-radius-md); }
   .git-panel .git-view-toggle button.is-selected { position: relative; z-index: 1; border-color: var(--pi-accent); background: var(--pi-selection-bg); }
   .git-panel .git-mode-toggle { margin-left: 4px; }
-  .git-panel .git-stale { border: 1px solid var(--pi-warning-border); border-radius: 999px; color: var(--pi-warning); padding: 1px 6px; font-size: 12px; }
-  .git-panel .git-error { flex: 0 0 auto; margin: 8px; border: 1px solid var(--pi-danger); border-radius: 7px; color: var(--pi-danger); padding: 8px; }
+  .git-panel .git-stale { border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); color: var(--pi-warning); padding: 1px 6px; font-size: 12px; }
+  .git-panel .git-error { flex: 0 0 auto; margin: 8px; border: 1px solid var(--pi-danger); border-radius: var(--pi-radius-md); color: var(--pi-danger); padding: 8px; }
   .git-panel .git-split { flex: 1 1 auto; min-height: 0; display: grid; grid-template-rows: minmax(160px, 34%) minmax(0, 1fr); }
   /* With nothing selected there is no diff to show, so the list takes the
      panel rather than sitting above an empty pane. */
@@ -1336,16 +1336,16 @@ const gitPanelStyles = `
   .git-panel .git-split.expanded { grid-template-columns: minmax(220px, 28%) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
   .git-panel .git-split.expanded .git-file-list { border-right: 1px solid var(--pi-border); border-bottom: 0; }
   .git-panel .git-file-list { min-height: 0; overflow: auto; border-bottom: 1px solid var(--pi-border); padding: 6px; }
-  .git-panel .git-row { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 4px; width: 100%; border: 0; border-radius: 5px; background: transparent; text-align: left; padding: 4px 6px 4px calc(6px + var(--depth, 0) * 14px); }
+  .git-panel .git-row { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 4px; width: 100%; border: 0; border-radius: var(--pi-radius-xs); background: transparent; text-align: left; padding: 4px 6px 4px calc(6px + var(--depth, 0) * 14px); }
   .git-panel .git-row:hover, .git-panel .git-row.is-selected { background: var(--pi-selection-bg); }
   .git-panel .git-row span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .git-panel .git-commit-row { display: flex; width: 100%; flex-direction: column; align-items: stretch; border: 0; border-radius: 5px; background: transparent; padding: 7px; text-align: left; }
+  .git-panel .git-commit-row { display: flex; width: 100%; flex-direction: column; align-items: stretch; border: 0; border-radius: var(--pi-radius-xs); background: transparent; padding: 7px; text-align: left; }
   .git-panel .git-commit-row:hover, .git-panel .git-commit-row.is-selected { background: var(--pi-selection-bg); }
   .git-panel .git-commit-row strong, .git-panel .git-commit-row small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .git-panel .git-load-more { margin: 8px; }
   .git-panel .git-twisty { color: var(--pi-dim, var(--pi-muted)); }
   .git-panel .git-summary { margin: 4px 6px 8px; color: var(--pi-muted); }
-  .git-panel .submodule-badge { display: inline-block; margin-left: 6px; border: 1px solid var(--pi-border); border-radius: 999px; color: var(--pi-muted); padding: 0 5px; font-size: 11px; font-weight: 400; vertical-align: baseline; }
+  .git-panel .submodule-badge { display: inline-block; margin-left: 6px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); color: var(--pi-muted); padding: 0 5px; font-size: 11px; font-weight: 400; vertical-align: baseline; }
   .git-panel .git-viewer { min-height: 0; overflow: auto; display: flex; flex-direction: column; }
   .git-panel .git-review-diffs { min-width: 0; }
   .git-panel .git-review-section { min-width: 0; min-height: 120px; border-bottom: 1px solid var(--pi-border); scroll-margin-top: 8px; }
@@ -1379,6 +1379,6 @@ const gitPanelStyles = `
   .git-panel .git-diff-cell.hunk { background: color-mix(in srgb, var(--pi-accent) 9%, transparent); color: var(--pi-accent); }
   .git-panel .git-diff-cell.add { background: color-mix(in srgb, var(--pi-success) 12%, transparent); }
   .git-panel .git-diff-cell.remove { background: color-mix(in srgb, var(--pi-danger) 12%, transparent); }
-  .git-panel .git-content.add .inline-change { border-radius: 2px; background: color-mix(in srgb, var(--pi-success) 36%, transparent); color: var(--pi-text); }
-  .git-panel .git-content.remove .inline-change { border-radius: 2px; background: color-mix(in srgb, var(--pi-danger) 36%, transparent); color: var(--pi-text); }
+  .git-panel .git-content.add .inline-change { border-radius: var(--pi-radius-xs); background: color-mix(in srgb, var(--pi-success) 36%, transparent); color: var(--pi-text); }
+  .git-panel .git-content.remove .inline-change { border-radius: var(--pi-radius-xs); background: color-mix(in srgb, var(--pi-danger) 36%, transparent); color: var(--pi-text); }
 `;

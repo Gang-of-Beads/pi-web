@@ -198,9 +198,9 @@ export class SettingsPluginsPanel extends LitElement {
     :host { display: block; }
     input { font: inherit; }
     input:disabled { opacity: .55; cursor: not-allowed; }
-    .loading-card, .plugin-note, .plugin-card, .recovery { border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-surface); padding: 12px; }
+    .loading-card, .plugin-note, .plugin-card, .recovery { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); padding: 12px; }
     .loading-card, .plugin-note { color: var(--pi-muted); }
-    code { border: 1px solid var(--pi-border-muted); border-radius: 5px; background: var(--pi-bg); padding: 1px 4px; color: var(--pi-text); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+    code { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-bg); padding: 1px 4px; color: var(--pi-text); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
     .plugin-list { display: grid; gap: 10px; }
     .plugin-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; }
     .plugin-card.disabled { opacity: .8; }
@@ -210,7 +210,7 @@ export class SettingsPluginsPanel extends LitElement {
     .diagnostic { color: var(--pi-text) !important; }
     .command { line-height: 1.5; }
     .status-list { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px; }
-    .status { border: 1px solid var(--pi-border-muted); border-radius: 999px; padding: 2px 7px; color: var(--pi-muted); font-size: 11px; line-height: 1.3; }
+    .status { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-pill); padding: 2px 7px; color: var(--pi-muted); font-size: 11px; line-height: 1.3; }
     .status.success { border-color: var(--pi-success-border); color: var(--pi-success); background: var(--pi-success-surface); }
     .status.warning { border-color: var(--pi-warning-border); color: var(--pi-text); background: var(--pi-warning-surface); }
     .status.error { border-color: var(--pi-danger); color: var(--pi-danger); }

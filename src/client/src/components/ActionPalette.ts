@@ -103,7 +103,7 @@ export class ActionPalette extends LitElement {
     header { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 10px; border-bottom: 1px solid var(--pi-border); }
     input { min-width: 0; border: 0; outline: none; background: transparent; color: var(--pi-text); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); padding: 8px; }
     /* The border is removed for the flush look, so focus needs its own ring. */
-    input:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: -2px; border-radius: 6px; }
+    input:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: -2px; border-radius: var(--pi-radius-sm); }
     input::placeholder { color: var(--pi-dim); }
     button { border: 0; background: transparent; color: var(--pi-text); cursor: pointer; }
     header button { color: var(--pi-muted); font-size: 22px; padding: 2px 8px; }
@@ -118,7 +118,7 @@ export class ActionPalette extends LitElement {
     small { display: block; color: var(--pi-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .disabled-reason { color: var(--pi-warning); }
     .group { grid-column: 1 / -1; font-size: 12px; }
-    kbd { align-self: center; border: 1px solid var(--pi-border); border-radius: 6px; background: var(--pi-surface); color: var(--pi-muted); padding: 2px 6px; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: nowrap; }
+    kbd { align-self: center; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); padding: 2px 6px; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: nowrap; }
     .empty { padding: 24px; color: var(--pi-muted); text-align: center; }
     /* A shortcut badge is an affordance for a keyboard. On a touch screen it
        is a label for a key nobody can press, and the column it holds open was

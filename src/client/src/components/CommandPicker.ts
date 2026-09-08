@@ -104,7 +104,7 @@ export class CommandPicker extends LitElement {
     .options:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: -2px; }
     button { border: 0; background: transparent; color: var(--pi-text); cursor: pointer; }
     header button { font-size: 20px; color: var(--pi-muted); }
-    input { box-sizing: border-box; margin: 10px 12px; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); padding: 8px 10px; outline: none; }
+    input { box-sizing: border-box; margin: 10px 12px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); padding: 8px 10px; outline: none; }
     input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
     input:focus { border-color: var(--pi-accent); }
     .options button { display: block; width: 100%; padding: 10px 12px; border-bottom: 1px solid var(--pi-border-muted); text-align: left; }

@@ -516,7 +516,7 @@ function relaysStyles(): string {
       /* Grid children default to min-width: auto; without these caps a wide code
          block or table would silently stretch the whole viewer track. */
       .viewer > * { box-sizing: border-box; min-width: 0; max-width: 100%; }
-      button, select { border: 1px solid var(--pi-border); border-radius: 7px; background: var(--pi-surface); color: var(--pi-text); font: inherit; }
+      button, select { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: inherit; }
       button { cursor: pointer; padding: 6px 10px; }
       button.icon-button { flex: 0 0 auto; display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; }
       button.icon-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
@@ -528,7 +528,7 @@ function relaysStyles(): string {
          No inner padding: the wrapper's border lines sit flush on the button
          row (a continuous edge), and the -1px vertical margins cancel the
          border's height so expanding never grows the strip or its neighbors. */
-      .directory-group { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; min-width: 0; border: 1px solid var(--pi-border-muted); border-radius: 10px; background: var(--pi-bg-overlay-soft); padding: 0; margin: -1px 0; }
+      .directory-group { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; min-width: 0; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-lg); background: var(--pi-bg-overlay-soft); padding: 0; margin: -1px 0; }
       /* Folder chips interleave with file tabs; the chevron rotates while expanded. */
       .directory-tab { display: inline-flex; align-items: center; gap: 5px; }
       .directory-tab .chevron { flex: 0 0 auto; width: 9px; height: 9px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform 0.12s ease; }
@@ -537,7 +537,7 @@ function relaysStyles(): string {
          highlights instead, without taking the fill reserved for the open document. */
       .directory-tab.contains-active { border-color: var(--pi-accent-border); color: var(--pi-accent); }
       .directory-tab.contains-active::after { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--pi-accent); }
-      code, pre { border: 1px solid var(--pi-border-muted); border-radius: 6px; background: var(--pi-bg); color: var(--pi-text-secondary); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      code, pre { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-sm); background: var(--pi-bg); color: var(--pi-text-secondary); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
       code { padding: 2px 5px; }
       pre { margin: 0; overflow: auto; padding: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
       .document.markdown { line-height: 1.5; overflow-wrap: anywhere; }
@@ -563,9 +563,9 @@ function relaysStyles(): string {
       .document.markdown th, .document.markdown td { border: 1px solid var(--pi-border-muted); padding: 4px 8px; }
       .status pre { margin-top: 8px; }
       .muted { color: var(--pi-muted); }
-      .empty-state { border: 1px dashed var(--pi-border-muted); border-radius: 8px; color: var(--pi-muted); padding: 12px; }
+      .empty-state { border: 1px dashed var(--pi-border-muted); border-radius: var(--pi-radius-md); color: var(--pi-muted); padding: 12px; }
       .empty-state p { margin: 6px 0 0; }
-      .status { border: 1px solid var(--pi-border); border-radius: 8px; padding: 10px; }
+      .status { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); padding: 10px; }
       .status.info { border-color: var(--pi-accent-border); background: var(--pi-bg-overlay-soft); }
       .status.error { border-color: var(--pi-danger); color: var(--pi-danger); }
       .empty { padding: 16px; color: var(--pi-muted); }

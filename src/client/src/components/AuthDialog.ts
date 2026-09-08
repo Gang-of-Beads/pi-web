@@ -271,7 +271,7 @@ export class AuthDialog extends LitElement {
     input:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: -2px; }
     button { border: 0; background: transparent; color: var(--pi-text); cursor: pointer; }
     header button { font-size: 20px; color: var(--pi-muted); }
-    input { margin: 10px 12px; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); padding: 8px 10px; outline: none; }
+    input { margin: 10px 12px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); padding: 8px 10px; outline: none; }
     input:focus { border-color: var(--pi-accent); }
     .options button { display: block; width: 100%; padding: 10px 12px; border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
     .options button.selected { background: var(--pi-selection-bg); }
@@ -282,10 +282,10 @@ export class AuthDialog extends LitElement {
     .form { display: grid; gap: 12px; padding: 14px; overflow: auto; }
     .form p { margin: 0; color: var(--pi-text-secondary); overflow-wrap: anywhere; }
     .form a { color: var(--pi-accent); overflow-wrap: anywhere; }
-    .form code { border: 1px solid var(--pi-border); border-radius: 4px; background: var(--pi-surface); padding: 1px 4px; }
+    .form code { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-xs); background: var(--pi-surface); padding: 1px 4px; }
     label { color: var(--pi-muted); }
     .actions { display: flex; justify-content: flex-end; gap: 8px; }
-    .actions button, .inline-options button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; }
+    .actions button, .inline-options button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; }
     .actions button.primary { border-color: var(--pi-success-border); background: var(--pi-success-surface); color: var(--pi-success); }
     .actions button:disabled { opacity: .6; cursor: wait; }
     .warning { color: var(--pi-warning); }

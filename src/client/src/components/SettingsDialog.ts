@@ -758,11 +758,11 @@ export class SettingsDialog extends LitElement {
 
   static override styles = [interactiveSurfaceStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-dialog); color: var(--pi-text); font: 14px system-ui, sans-serif; }
-    modal-surface { --modal-surface-backdrop-padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); --modal-surface-width: min(980px, 100%); --modal-surface-max-height: min(760px, 100%); --modal-surface-min-height: min(620px, 100%); --modal-surface-radius: 14px; }
+    modal-surface { --modal-surface-backdrop-padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); --modal-surface-width: min(980px, 100%); --modal-surface-max-height: min(760px, 100%); --modal-surface-min-height: min(620px, 100%); --modal-surface-radius: var(--pi-radius-lg); }
     .settings-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--pi-border); }
     .eyebrow { display: block; color: var(--pi-muted); font-size: 12px; font-weight: 600; }
     h1 { margin: 0; font-size: 20px; line-height: 1.2; }
-    button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; font: inherit; cursor: pointer; }
+    button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; font: inherit; cursor: pointer; }
     .close-button { width: 44px; height: 44px; display: grid; place-items: center; border: 0; background: transparent; color: var(--pi-muted); padding: 0; font-size: 24px; }
     .close-button:focus { color: var(--pi-text); background: var(--pi-surface-hover); }
     @media (hover: hover) { .close-button:hover { color: var(--pi-text); background: var(--pi-surface-hover); } }

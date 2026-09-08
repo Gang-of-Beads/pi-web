@@ -132,18 +132,18 @@ export class SettingsSessiondPanel extends LitElement {
   static override styles = [interactiveSurfaceStyles, css`
     :host { display: block; }
     h3 { margin: 0; font-size: 13px; line-height: 1.3; }
-    .loading-card, .config-path-card, .effective-card { border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-surface); padding: 12px; }
+    .loading-card, .config-path-card, .effective-card { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); padding: 12px; }
     .loading-card { color: var(--pi-muted); }
     .config-path-card { display: grid; gap: 5px; }
     .config-path-card span, .field-heading, dt { color: var(--pi-muted); font-size: 12px; font-weight: 600; }
-    code { border: 1px solid var(--pi-border-muted); border-radius: 5px; background: var(--pi-bg); padding: 1px 4px; color: var(--pi-text); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+    code { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-bg); padding: 1px 4px; color: var(--pi-text); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
     .field { display: grid; gap: 7px; }
     .field small { color: var(--pi-muted); line-height: 1.45; }
     .field-heading { display: flex; align-items: center; gap: 8px; }
     .toggle { display: flex; align-items: center; gap: 9px; cursor: pointer; }
     .toggle input { width: 16px; height: 16px; }
     .toggle input:disabled { cursor: not-allowed; }
-    .override-badge { border: 1px solid var(--pi-warning-border); border-radius: 999px; color: var(--pi-warning); background: var(--pi-warning-surface); padding: 2px 7px; font-size: 11px; font-weight: 600; text-transform: none; }
+    .override-badge { border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); color: var(--pi-warning); background: var(--pi-warning-surface); padding: 2px 7px; font-size: 11px; font-weight: 600; text-transform: none; }
     .effective-card { display: grid; gap: 10px; }
     .effective-card dl { display: grid; gap: 8px; margin: 0; }
     .effective-card dl > div { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 12px; align-items: baseline; }

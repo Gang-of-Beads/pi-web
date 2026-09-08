@@ -426,7 +426,7 @@ export class ExtensionDialogCard extends LitElement {
       width: calc(100% - 32px);
       margin: 12px 16px 0;
       border: 1px solid var(--pi-border);
-      border-radius: 8px;
+      border-radius: var(--pi-radius-md);
       background: var(--pi-bg);
       color: var(--pi-text);
       padding: 8px;
@@ -464,7 +464,7 @@ export class ExtensionDialogCard extends LitElement {
        primary action's fill keep the affordances (C2/C4/C6). */
     button {
       border: 0;
-      border-radius: 8px;
+      border-radius: var(--pi-radius-md);
       background: var(--pi-surface-hover);
       color: var(--pi-text);
       padding: 7px 12px;
@@ -494,7 +494,7 @@ export class ExtensionDialogCard extends LitElement {
       min-width: 0;
       padding: 6px 12px;
       border: 1px solid var(--pi-border-muted);
-      border-radius: 8px;
+      border-radius: var(--pi-radius-md);
       background: var(--pi-surface);
     }
     .answered-row h2 {
