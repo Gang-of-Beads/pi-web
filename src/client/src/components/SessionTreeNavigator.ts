@@ -603,7 +603,7 @@ export class SessionTreeNavigator extends LitElement {
     @media (hover: hover) { button:not(:disabled):hover { background: var(--pi-surface-hover); } }
     button:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }
     button:disabled { opacity: .52; cursor: not-allowed; }
-    button.primary { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-bg); font-weight: 700; }
+    button.primary { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-on-accent, var(--pi-bg)); font-weight: 700; }
     @media (hover: hover) { button.primary:not(:disabled):hover { filter: brightness(1.08); } }
     button.danger { color: var(--pi-danger); }
     .footer-spacer { flex: 1; }

@@ -295,7 +295,7 @@ function taskStyles(): string {
       code, pre { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-sm); background: var(--pi-bg); color: var(--pi-text-secondary); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
       code { overflow: auto; padding: 5px 7px; white-space: nowrap; }
       pre { margin: 8px 0 0; overflow: auto; padding: 8px; white-space: pre-wrap; }
-      button { border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); background: var(--pi-accent); color: var(--pi-bg); cursor: pointer; padding: 6px 10px; font: inherit; }
+      button { border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); background: var(--pi-accent); color: var(--pi-on-accent, var(--pi-bg)); cursor: pointer; padding: 6px 10px; font: inherit; }
       button.secondary { border-color: var(--pi-border); background: var(--pi-surface); color: var(--pi-text); }
       button:disabled { cursor: wait; opacity: 0.65; }
       .empty-state { border: 1px dashed var(--pi-border-muted); border-radius: var(--pi-radius-md); color: var(--pi-muted); padding: 12px; }

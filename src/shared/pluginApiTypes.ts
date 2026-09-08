@@ -240,7 +240,20 @@ export interface PiWebStatusResponse extends PiWebVersionResponse {
  */
 export type ThemeToken =
   | LegacyThemeToken
-  | SemanticSurfaceToken;
+  | SemanticSurfaceToken
+  | ForegroundToken;
+
+/**
+ * Foregrounds a theme may name for a filled surface it owns. Optional by
+ * design: a theme that omits one keeps the previous fallback, which is why
+ * adding this cannot break a theme that already shipped.
+ *
+ * --pi-on-accent exists because the background colour was standing in for the
+ * label on an accent fill, and a background is chosen to sit behind content,
+ * not to carry a label: the shipped dark theme measured 3.74:1 on its own
+ * primary buttons.
+ */
+export type ForegroundToken = "--pi-on-accent";
 
 /** The original color contract; every theme sets all of these. */
 export type LegacyThemeToken =

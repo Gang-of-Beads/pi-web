@@ -522,7 +522,7 @@ function relaysStyles(): string {
       button.icon-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
       select { min-width: 0; max-width: 240px; padding: 5px 6px; }
       .document-tab { flex: 0 0 auto; white-space: nowrap; font-size: 12px; padding: 4px 10px; }
-      .document-tab.active { border-color: var(--pi-accent-border); background: var(--pi-accent); color: var(--pi-bg); }
+      .document-tab.active { border-color: var(--pi-accent-border); background: var(--pi-accent); color: var(--pi-on-accent, var(--pi-bg)); }
       /* An expanded folder wraps its chip and children in one rounded group so
          nested tabs read as contained by their folder; nested groups stack.
          No inner padding: the wrapper's border lines sit flush on the button

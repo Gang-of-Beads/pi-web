@@ -41,6 +41,7 @@ export const THEME_TOKENS: ThemeToken[] = [
   "--pi-dim",
   "--pi-accent",
   "--pi-accent-border",
+  "--pi-on-accent",
   "--pi-selection-bg",
   "--pi-success",
   "--pi-success-border",

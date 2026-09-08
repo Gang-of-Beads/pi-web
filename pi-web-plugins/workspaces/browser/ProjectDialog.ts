@@ -372,7 +372,7 @@ export class ProjectDialog extends LitElement {
     /* The primary action is accent-filled like every other dialog's: the
        green here was a border token pressed into service as a fill and never
        carried a label above 4.1:1. */
-    .primary { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-bg); }
+    .primary { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-on-accent, var(--pi-bg)); }
     button:disabled { opacity: .5; cursor: not-allowed; }
   `];
 }

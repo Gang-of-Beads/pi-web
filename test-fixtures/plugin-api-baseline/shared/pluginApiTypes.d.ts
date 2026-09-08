@@ -204,7 +204,18 @@ export interface PiWebStatusResponse extends PiWebVersionResponse {
  * semantic surface half is optional by design - a theme that does not know
  * the ladder gets core-derived stops from its own legacy trio.
  */
-export type ThemeToken = LegacyThemeToken | SemanticSurfaceToken;
+export type ThemeToken = LegacyThemeToken | SemanticSurfaceToken | ForegroundToken;
+/**
+ * Foregrounds a theme may name for a filled surface it owns. Optional by
+ * design: a theme that omits one keeps the previous fallback, which is why
+ * adding this cannot break a theme that already shipped.
+ *
+ * --pi-on-accent exists because the background colour was standing in for the
+ * label on an accent fill, and a background is chosen to sit behind content,
+ * not to carry a label: the shipped dark theme measured 3.74:1 on its own
+ * primary buttons.
+ */
+export type ForegroundToken = "--pi-on-accent";
 /** The original color contract; every theme sets all of these. */
 export type LegacyThemeToken = "--pi-bg" | "--pi-surface" | "--pi-surface-hover" | "--pi-terminal-bg" | "--pi-terminal-text" | "--pi-border" | "--pi-border-muted" | "--pi-text" | "--pi-text-secondary" | "--pi-text-bright" | "--pi-muted" | "--pi-dim" | "--pi-accent" | "--pi-accent-border" | "--pi-selection-bg" | "--pi-success" | "--pi-success-border" | "--pi-success-bg" | "--pi-success-surface" | "--pi-success-ring" | "--pi-warning" | "--pi-warning-border" | "--pi-warning-surface" | "--pi-danger" | "--pi-purple" | "--pi-purple-border" | "--pi-purple-surface" | "--pi-overlay" | "--pi-shadow-soft" | "--pi-shadow" | "--pi-shadow-strong" | "--pi-bg-overlay-soft" | "--pi-bg-overlay" | "--pi-success-bg-overlay" | "--pi-terminal-selection";
 /**
