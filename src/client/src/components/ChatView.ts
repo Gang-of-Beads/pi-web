@@ -1061,6 +1061,8 @@ export class ChatView extends LitElement {
     const sections = this.drawerSections;
     if (sections.length === 0) return null;
     const sectionsWithContent = sections.filter((section) => section.available?.(sectionContext) !== false).map((section) => section.id);
+    if (sectionsWithContent.length === 0) return null;
+    const contentSections = sections.filter((section) => sectionsWithContent.includes(section.id));
     const tab = selectedDrawerTab({ sections: sections.map((section) => section.id), withContent: sectionsWithContent }, this.topDrawerTab);
     if (tab === undefined) return null;
     const key = this.topDrawerKey();
@@ -1077,7 +1079,7 @@ export class ChatView extends LitElement {
         <header class="drawer-header" tabindex="-1">
           <div class=${`drawer-tabs-frame${scrollEdgeClasses(this.drawerTabEdgeTracker.edges)}`}>
           <div class="drawer-tabs" role="tablist" aria-label="Session drawer sections" @scroll=${() => { this.drawerTabEdgeTracker.refresh(); }} @keydown=${(event: KeyboardEvent) => { this.onDrawerTabsKeydown(event); }}>
-            ${sections.map((section) => html`
+            ${contentSections.map((section) => html`
             <button
               type="button"
               role="tab"
@@ -1105,7 +1107,7 @@ export class ChatView extends LitElement {
           </div>
         </header>
         <div class="drawer-body" ?hidden=${collapsed}>
-          ${sections.filter((section) => section.id === tab).map((section) => html`
+          ${contentSections.filter((section) => section.id === tab).map((section) => html`
             <div class="drawer-section-panel" id=${`drawer-panel-${section.id}`} role="tabpanel" aria-labelledby=${`drawer-tab-${section.id}`}>
               ${section.render(sectionContext)}
             </div>`)}

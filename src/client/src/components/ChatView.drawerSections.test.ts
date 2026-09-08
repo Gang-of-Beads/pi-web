@@ -65,4 +65,19 @@ describe("contributed sections in the session drawer", () => {
 
     expect(view.renderRoot.querySelector(".drawer-toggle")).not.toBeNull();
   });
+
+  it("hides the tab of a section that answers unavailable", async () => {
+    const view = await mount([
+      section({ id: "polls:polls", pluginId: "polls", localId: "polls", title: "Polls", available: () => false }),
+      section({ id: "tasks:tasks", pluginId: "tasks", localId: "tasks", title: "Tasks" }),
+    ]);
+
+    expect(contributedTabIds(view)).toEqual(["drawer-tab-tasks:tasks"]);
+  });
+
+  it("disappears entirely when every section answers unavailable", async () => {
+    const view = await mount([section({ id: "goals:goals", title: "Goals", available: () => false })]);
+
+    expect(view.renderRoot.querySelector(".top-drawer")).toBeNull();
+  });
 });

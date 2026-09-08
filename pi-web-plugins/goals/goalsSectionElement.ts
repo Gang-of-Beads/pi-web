@@ -22,7 +22,7 @@ export const goalsSectionStyles = `
   @media (pointer: coarse) { .refresh { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); } }
   .refresh:hover { color: var(--pi-text); background: var(--pi-surface-hover); }
   .refresh:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
-  .unavailable { margin: 0; color: var(--pi-muted); font-size: var(--pi-text-xs); }
+  .pending { margin: 0; padding: var(--pi-space-3) 0; color: var(--pi-muted); font-size: var(--pi-text-xs); }
 `;
 
 export interface GoalsSectionState {
@@ -74,7 +74,7 @@ export class PiWebGoalsSection extends LitElement {
   override render() {
     const goal = activeGoal(this.state);
     if (goal === undefined) {
-      return this.state === undefined ? nothing : html`<p class="unavailable">No goal records found.</p>`;
+      return this.state === undefined ? html`<p class="pending">Reading goal records…</p>` : nothing;
     }
     const progress = progressLabel(goal);
     return html`
