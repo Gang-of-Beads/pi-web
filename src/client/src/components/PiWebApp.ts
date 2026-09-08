@@ -239,7 +239,9 @@ const PROMPT_HISTORY_PROP_LIMIT = 50;
  * Surface backed up: every socket's liveness - the check that turns a dead
  * but OPEN connection into the reconnect that refetches state.
  */
-const SOCKET_LIVENESS_CHECK_MS = 15_000;
+const SOCKET_LIVENESS_CHECK_MS = 5_000;
+/** A tap is a person waiting: probe the sockets, but not on every finger down. */
+const INTERACTION_LIVENESS_THROTTLE_MS = 2_000;
 
 interface FocusEventTargetLike {
   addEventListener(type: string, listener: (event: FocusEvent) => void): void;
@@ -377,6 +379,7 @@ export class PiWebApp extends LitElement {
   private workspaceDeletionPollTimer: number | undefined;
   private subagentRefreshArmedFor: string | undefined;
   private livenessTimer: number | undefined;
+  private lastInteractionLivenessAt = 0;
   private refreshingWorkspaceDeletionRuns = false;
   private readonly handledWorkspaceDeletionRunIds = new Set<string>();
   private readonly terminalCommandRunRuntimes = new Map<string, TerminalCommandRunsInternalRuntime>();
@@ -532,6 +535,19 @@ export class PiWebApp extends LitElement {
   private readonly onBrowserOnline = () => {
     this.realtime.reconnectNow();
     this.sessions.reconnectSocketNow();
+    this.checkSocketLiveness();
+  };
+
+  /**
+   * A tap is somebody waiting for this surface. A socket the network killed
+   * without a FIN stays OPEN and silent, and waiting out the periodic probe
+   * spends seconds of a person's attention on a connection already known to be
+   * dead the moment they touch the screen.
+   */
+  private readonly onInteractionLivenessProbe = () => {
+    const now = Date.now();
+    if (now - this.lastInteractionLivenessAt < INTERACTION_LIVENESS_THROTTLE_MS) return;
+    this.lastInteractionLivenessAt = now;
     this.checkSocketLiveness();
   };
 
@@ -960,6 +976,7 @@ export class PiWebApp extends LitElement {
     // Surface backed up: every socket's liveness (SOCKET_LIVENESS_CHECK_MS).
     this.livenessTimer = window.setInterval(() => { this.checkSocketLiveness(); }, SOCKET_LIVENESS_CHECK_MS);
     window.addEventListener("online", this.onBrowserOnline);
+    window.addEventListener("pointerdown", this.onInteractionLivenessProbe, { passive: true, capture: true });
     this.updateSubagentPolling();
     void this.loadClientConfig();
     void this.refreshSelfUpdate();
@@ -1027,6 +1044,7 @@ export class PiWebApp extends LitElement {
     if (this.livenessTimer !== undefined) window.clearInterval(this.livenessTimer);
     this.livenessTimer = undefined;
     window.removeEventListener("online", this.onBrowserOnline);
+    window.removeEventListener("pointerdown", this.onInteractionLivenessProbe, { capture: true });
     document.removeEventListener("visibilitychange", this.onDocumentVisibilityChange);
     this.listenForFormFocus("remove");
     this.clearPendingRemoteRouteRestore();

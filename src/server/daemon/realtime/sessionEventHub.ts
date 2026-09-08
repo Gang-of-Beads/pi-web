@@ -21,7 +21,8 @@ export interface RealtimeSocket {
  * reloads it by hand. A frame every 20s keeps the path warm and, more
  * importantly, gives the client something to miss.
  */
-export const KEEPALIVE_INTERVAL_MS = 20_000;
+export { KEEPALIVE_INTERVAL_MS } from "./keepaliveInterval.js";
+import { KEEPALIVE_INTERVAL_MS } from "./keepaliveInterval.js";
 /** A slower browser reconnects and repairs rather than buffering without bound. */
 export const MAX_SOCKET_BUFFERED_BYTES = 1024 * 1024;
 /** Inactive sessions beyond this LRU bound fall back to an authoritative resync. */

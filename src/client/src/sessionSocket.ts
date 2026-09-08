@@ -18,8 +18,13 @@ export type BrowserRealtimeEvent = Exclude<RealtimeEvent, { type: "notifications
  * the reconnect that would refetch state never runs. That is the failure people
  * describe as "the page only updates if I refresh it".
  */
-const LIVENESS_TIMEOUT_MS = 50_000;
-const HANDSHAKE_TIMEOUT_MS = 15_000;
+/**
+ * Silence budget: two keepalives (20s each on the daemon) plus a margin. It
+ * used to be 50s, which meant a socket the network killed without a FIN kept
+ * looking alive for the better part of a minute after the network came back.
+ */
+export const LIVENESS_TIMEOUT_MS = 42_000;
+export const HANDSHAKE_TIMEOUT_MS = 10_000;
 
 /**
  * Reconnect delay with jitter.
