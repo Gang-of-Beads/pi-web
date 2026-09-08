@@ -1,0 +1,119 @@
+import { chromium } from "@playwright/test";
+import { mkdirSync, writeFileSync } from "node:fs";
+
+const BASE = process.env.TOUCH_BASE ?? "http://127.0.0.1:8505";
+const OUT = "/tmp/uiux-audit";
+mkdirSync(OUT, { recursive: true });
+
+const AA_FLOOR = 24;
+const COMFORT = 44;
+const HIT_SLOP_CLASSES = ["msg-action"];
+const COMFORT_EXEMPT = [
+  { cls: "action-menu-toggle", require: "tiles" },
+  { cls: "msg-meta", require: null },
+  { cls: "session-checkbox", require: null },
+];
+
+/** Drills: each step opens one surface or popover state. Failure of any
+ *  precondition is loud. */
+const DRILLS = [
+  { name: "boot", fresh: true, open: null },
+  { name: "sessions", fresh: true, opens: ["project"] },
+  { name: "chat", fresh: true, opens: ["project", "session"] },
+  { name: "chat-drawer", opens: ["drawer"] },
+  { name: "msg-row-menu", fresh: true, opens: ["project", "session", "msgMenu"] },
+  { name: "model-picker", fresh: true, opens: ["project", "session", "modelPicker"] },
+  { name: "thinking-picker", opens: ["thinkingPicker"] },
+  { name: "settings", fresh: true, opens: ["settings"] },
+  { name: "settings-appearance", opens: ["settingsAppearance"] },
+  { name: "quick-switcher", fresh: true, opens: ["quickSwitcher"] },
+  { name: "qs-row-menu", opens: ["qsRowMenu"] },
+  { name: "context-sheet", fresh: true, opens: ["contextSheet"] },
+  { name: "add-project-dialog", fresh: true, opens: ["addProject"] },
+];
+
+const OPENERS = {
+  project: `(function(){var found=null;var visit=function(root){var kids=root.querySelectorAll('*');for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot&&!found)visit(kids[i].shadowRoot);if(kids[i].shadowRoot&&kids[i].tagName==='PROJECT-LIST')found=kids[i];}};visit(document);if(!found)throw 'no project-list';var el=found.shadowRoot.querySelector('button.action-main');if(!el)throw 'no tile';el.click();return true;})()`,
+  session: `(function(){var found=null;var visit=function(root){var kids=root.querySelectorAll('*');for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot&&!found)visit(kids[i].shadowRoot);if(kids[i].shadowRoot&&kids[i].tagName==='SESSION-LIST')found=kids[i];}};visit(document);if(!found)throw 'no session-list';var el=found.shadowRoot.querySelector('.action-row .action-main');if(!el)throw 'no row';el.click();return true;})()`,
+  drawer: `(function(){var hit=null;var walk=function(root){var els=root.querySelectorAll('button');for(var j=0;j<els.length;j++){var t=els[j].getAttribute('aria-label')||'';if(hit===null&&t.indexOf('session')!==-1&&t.toLowerCase().indexOf('sections')!==-1)hit=els[j];}var kids=root.querySelectorAll('*');for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)walk(kids[i].shadowRoot);}};walk(document);if(!hit)throw 'no drawer trigger';hit.click();return true;})()`,
+  msgMenu: `(function(){var hit=null;var walk=function(root){var els=root.querySelectorAll('button.msg-action');for(var j=0;j<els.length;j++){if(!hit)hit=els[j];}var kids=root.querySelectorAll('*');for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)walk(kids[i].shadowRoot);}};walk(document);if(!hit)throw 'no msg-action';hit.click();return true;})()`,
+  modelPicker: `(function(){var hit=null;var walk=function(root){var els=root.querySelectorAll('button.select-model');for(var j=0;j<els.length;j++){if(!hit)hit=els[j];}var kids=root.querySelectorAll('*');for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)walk(kids[i].shadowRoot);}};walk(document);if(!hit)throw 'no select-model';hit.click();return true;})()`,
+  thinkingPicker: `(function(){var hit=null;var walk=function(root){var els=root.querySelectorAll('button.select-thinking');for(var j=0;j<els.length;j++){if(!hit)hit=els[j];}var kids=root.querySelectorAll('*');for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)walk(kids[i].shadowRoot);}};walk(document);if(!hit)throw 'no select-thinking';hit.click();return true;})()`,
+  settings: `(function(){var hit=null;var walk=function(root){var els=root.querySelectorAll('button');for(var j=0;j<els.length;j++){var t=els[j].getAttribute('aria-label')||'';if(hit===null&&t.indexOf('Open settings')!==-1)hit=els[j];}var kids=root.querySelectorAll('*');for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)walk(kids[i].shadowRoot);}};walk(document);if(!hit)throw 'no settings trigger';hit.click();return true;})()`,
+  settingsAppearance: `(function(){var hit=null;var walk=function(root){var els=root.querySelectorAll('button, [role=tab]');for(var j=0;j<els.length;j++){var t=(els[j].textContent||'')+(els[j].getAttribute('aria-label')||'');if(hit===null&&t.indexOf('Appearance')!==-1)hit=els[j];}var kids=root.querySelectorAll('*');for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)walk(kids[i].shadowRoot);}};walk(document);if(!hit)throw 'no appearance entry';hit.click();return true;})()`,
+  quickSwitcher: `(function(){var hit=null;var walk=function(root){var els=root.querySelectorAll('button');for(var j=0;j<els.length;j++){var t=(els[j].getAttribute('aria-label')||els[j].textContent||'');if(hit===null&&t.indexOf('Open session selection')!==-1)hit=els[j];}var kids=root.querySelectorAll('*');for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)walk(kids[i].shadowRoot);}};walk(document);if(!hit)throw 'no quick switcher trigger';hit.click();return true;})()`,
+  qsRowMenu: `(function(){var hit=null;var walk=function(root){var els=root.querySelectorAll('button.row-menu-toggle');for(var j=0;j<els.length;j++){if(!hit)hit=els[j];}var kids=root.querySelectorAll('*');for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)walk(kids[i].shadowRoot);}};walk(document);if(!hit)throw 'no row-menu-toggle';hit.click();return true;})()`,
+  contextSheet: `(function(){var hit=null;var walk=function(root){var els=root.querySelectorAll('button');for(var j=0;j<els.length;j++){var t=(els[j].getAttribute('aria-label')||els[j].textContent||'');if(hit===null&&(t.indexOf('Switch')!==-1||t.indexOf('context')!==-1))hit=els[j];}var kids=root.querySelectorAll('*');for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)walk(kids[i].shadowRoot);}};walk(document);if(!hit)throw 'no context trigger';hit.click();return true;})()`,
+  addProject: `(function(){var hit=null;var walk=function(root){var els=root.querySelectorAll('button');for(var j=0;j<els.length;j++){var t=(els[j].getAttribute('aria-label')||els[j].textContent||'');if(hit===null&&t.indexOf('Add project')!==-1)hit=els[j];}var kids=root.querySelectorAll('*');for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)walk(kids[i].shadowRoot);}};walk(document);if(!hit)throw 'no add project';hit.click();return true;})()`,
+};
+
+const METRICS = `(function(){
+  var rows=[];var borders=0;var colors={};
+  var walk=function(root){var els=root.querySelectorAll("button, a, input, [role=button], [role=tab], [role=menuitem]");
+    for(var j=0;j<els.length;j++){var el=els[j];var r=el.getBoundingClientRect();
+      if(r.width===0&&r.height===0)continue;
+      var cs=getComputedStyle(el);
+      var cls=String(el.className&&el.className.baseVal!==undefined?el.className.baseVal:el.className||"");
+      rows.push({cls:cls.slice(0,60),tag:el.tagName,label:(el.getAttribute("aria-label")||el.textContent||"").trim().slice(0,40),w:Math.round(r.width),h:Math.round(r.height),x:Math.round(r.left),y:Math.round(r.top),opacity:cs.opacity,visibility:cs.visibility,disabled:el.disabled===true,inTiles:!!el.closest(".list-body.tiles")});
+      var b=cs.borderStyle;
+      if(b!=="none"&&parseFloat(cs.borderTopWidth)>0)borders++;
+      if(el.tagName==="INPUT"&&el.type==="checkbox"){/*native*/}
+    }
+    var kids=root.querySelectorAll("*");for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)walk(kids[i].shadowRoot);}};
+  walk(document);
+  return {rows:rows,borders:borders};
+})()`;
+
+const browser = await chromium.launch({ headless: true });
+const page = await browser.newPage({ viewport: { width: 393, height: 850 }, hasTouch: true, isMobile: true });
+await page.goto(BASE, { waitUntil: "domcontentloaded" });
+await page.waitForTimeout(3000);
+const coarse = await page.evaluate(() => matchMedia("(pointer: coarse)").matches);
+if (!coarse) { console.error("FAIL: emulation is not (pointer: coarse)"); process.exit(1); }
+
+const inventory = {};
+const failures = [];
+
+for (const drill of DRILLS) {
+  if (drill.fresh) {
+    await page.goto(BASE, { waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(2500);
+  }
+  for (const key of drill.opens ?? []) {
+    try {
+      await page.evaluate(OPENERS[key]);
+      await page.waitForTimeout(1400);
+    } catch (error) {
+      const message = String(error).replace(/^Error:\s*/, "").slice(0, 120);
+      failures.push(`${drill.name}: precondition missing (${key}) - ${message}`);
+      await page.screenshot({ path: `${OUT}/${drill.name}-OPENFAIL.png` });
+      break;
+    }
+  }
+  await page.screenshot({ path: `${OUT}/${drill.name}.png` });
+  const m = await page.evaluate(METRICS);
+  inventory[drill.name] = { rows: m.rows, borders: m.borders, controlCount: m.rows.length };
+  for (const r of m.rows) {
+    const where = `${drill.name}: ${r.cls || r.tag} "${r.label}"`;
+    if (r.opacity === "0" || r.visibility === "hidden") continue;
+    if (r.w < 4 || r.h < 4) continue;
+    if (r.disabled) continue;
+    if (r.w < AA_FLOOR || r.h < AA_FLOOR) {
+      if (!HIT_SLOP_CLASSES.some((hit) => r.cls.includes(hit))) failures.push(`${where} ${r.w}x${r.h} below AA ${AA_FLOOR}`);
+      continue;
+    }
+    const exempt = COMFORT_EXEMPT.find((e) => r.cls.includes(e.cls) && (!e.require || r.inTiles))
+      || (HIT_SLOP_CLASSES.some((hit) => r.cls.includes(hit)) ? {} : undefined);
+    if (!exempt && (r.w < COMFORT || r.h < COMFORT)) failures.push(`${where} ${r.w}x${r.h} below coarse ${COMFORT}`);
+  }
+}
+
+writeFileSync(`${OUT}/inventory.json`, JSON.stringify(inventory, null, 1));
+await browser.close();
+
+const summary = Object.entries(inventory).map(([name, s]) => `${name}: ${s.controlCount} controls, ${s.borders} bordered elements`).join("\n");
+if (failures.length > 0) {
+  console.error(`AUDIT FAILED (${failures.length}):\n${failures.slice(0, 30).join("\n")}\n---\n${summary}`);
+  process.exit(1);
+}
+console.log(`AUDIT PASSED (floors + visibility)\n${summary}`);
