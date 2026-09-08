@@ -542,7 +542,7 @@ export class SessionTreeNavigator extends LitElement {
     .tree-intro { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; color: var(--pi-muted); }
     .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; font-size: 12px; }
     .legend > span { display: inline-flex; align-items: center; gap: 5px; }
-    .marker { width: 9px; height: 9px; border-radius: var(--pi-radius-pill); background: var(--pi-border); }
+    .marker { width: var(--pi-dot-md); height: var(--pi-dot-md); border-radius: var(--pi-radius-pill); background: var(--pi-border); }
     .active-path-marker { background: var(--pi-accent); }
     .active-leaf-marker { box-shadow: 0 0 0 2px var(--pi-accent); background: var(--pi-bg); }
     .tree { min-height: 0; overflow: auto; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); overscroll-behavior: contain; }

@@ -109,7 +109,7 @@ export class SettingsMachinesPanel extends LitElement {
     .machine-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--pi-space-4); }
     .machine-card { box-sizing: border-box; display: flex; flex-direction: column; gap: var(--pi-space-3); min-height: 96px; padding: var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); }
     .machine-card-header { display: flex; align-items: center; gap: var(--pi-space-3); }
-    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--pi-dim); }
+    .status-dot { width: var(--pi-dot-md); height: var(--pi-dot-md); border-radius: 50%; background: var(--pi-dim); }
     .status-dot.online { background: var(--pi-success); }
     .status-dot.offline { background: var(--pi-danger); }
     .machine-kind { color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: 600; }

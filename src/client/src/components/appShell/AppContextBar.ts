@@ -77,8 +77,8 @@ export class AppContextBar extends LitElement {
     .session-title.empty { color: var(--pi-muted); font-weight: 500; }
     .session-title:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: -2px; }
     @media (hover: hover) { .session-title:hover { color: var(--pi-text-bright); } }
-    .working { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 3px; min-height: var(--pi-control-height-touch); padding: var(--pi-space-2) var(--pi-space-3); }
-    .working-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--pi-accent, var(--pi-text-bright)); animation: working-bounce 1.2s ease-in-out infinite; }
+    .working { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-1); min-height: var(--pi-control-height-touch); padding: var(--pi-space-2) var(--pi-space-3); }
+    .working-dot { width: var(--pi-dot-sm); height: var(--pi-dot-sm); border-radius: 50%; background: var(--pi-accent, var(--pi-text-bright)); animation: working-bounce 1.2s ease-in-out infinite; }
     .working-dot:nth-child(2) { animation-delay: .2s; }
     .working-dot:nth-child(3) { animation-delay: .4s; }
     @keyframes working-bounce { 0%, 60%, 100% { transform: translateY(0); opacity: .55; } 30% { transform: translateY(-3px); opacity: 1; } }

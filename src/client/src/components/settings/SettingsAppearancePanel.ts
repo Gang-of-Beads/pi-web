@@ -132,12 +132,12 @@ export class SettingsAppearancePanel extends LitElement {
     /* The theme actually on screen is a state, not prose: it used to be an
        11px "· in use" suffix on a card drawn exactly like every unrelated one. */
     .theme.active { border-color: var(--pi-border-strong, var(--pi-muted)); }
-    .theme.active .theme-name::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: var(--pi-space-3); border-radius: 50%; background: var(--pi-accent); vertical-align: middle; }
+    .theme.active .theme-name::after { content: ""; display: inline-block; width: var(--pi-dot-sm); height: var(--pi-dot-sm); margin-left: var(--pi-space-3); border-radius: 50%; background: var(--pi-accent); vertical-align: middle; }
     .theme-name { font-weight: 600; }
     .theme-scheme, .theme-description { font-size: var(--pi-text-2xs); }
     .preview { display: grid; gap: var(--pi-space-3); height: 74px; margin-bottom: var(--pi-space-3); padding: var(--pi-space-4); border: 1px solid var(--preview-border, var(--pi-border)); border-radius: var(--pi-radius-md); background: var(--preview-bg, var(--pi-bg)); }
     .preview-surface { display: grid; align-content: center; gap: var(--pi-space-3); padding: var(--pi-space-3) var(--pi-space-4); border: 1px solid var(--preview-border, var(--pi-border)); border-radius: var(--pi-radius-sm); background: var(--preview-surface, var(--pi-surface)); }
-    .preview-line { display: block; height: 5px; border-radius: var(--pi-radius-pill); background: var(--preview-text, var(--pi-text)); }
+    .preview-line { display: block; height: var(--pi-dot-xs); border-radius: var(--pi-radius-pill); background: var(--preview-text, var(--pi-text)); }
     .preview-line.long { width: 78%; }
     .preview-line.short { width: 46%; background: var(--preview-muted, var(--pi-muted)); }
     .preview-dots { display: flex; gap: var(--pi-space-3); }

@@ -23,7 +23,7 @@ import { css } from "lit";
  * single dot becomes three.
  */
 export const sessionStateBadgeStyles = css`
-  .session-state { box-sizing: border-box; display: inline-grid; place-items: center; width: 9px; height: 9px; flex: 0 0 auto; border-radius: 50%; vertical-align: 1px; }
+  .session-state { box-sizing: border-box; display: inline-grid; place-items: center; width: var(--pi-dot-md); height: var(--pi-dot-md); flex: 0 0 auto; border-radius: 50%; vertical-align: 1px; }
   .session-state.idle { background: var(--pi-dim); animation: none; }
   /* Hollow, so "still running" cannot be mistaken for "working": the ring is
      the same purple the chat dock uses for background work. */
@@ -35,8 +35,8 @@ export const sessionStateBadgeStyles = css`
      it", distinct from the blue of work in progress. The same hue as the
      background ring, which is the other "turn over" mark. */
   .session-state.unread { background: var(--pi-purple); box-shadow: 0 0 0 2px color-mix(in srgb, var(--pi-purple) 22%, transparent); }
-  .state-dots { display: inline-flex; align-items: center; gap: 2px; }
-  .state-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--pi-accent, var(--pi-success)); animation: session-state-bounce 1.1s ease-in-out infinite; }
+  .state-dots { display: inline-flex; align-items: center; gap: var(--pi-space-1); }
+  .state-dot { width: var(--pi-dot-xs); height: var(--pi-dot-xs); border-radius: 50%; background: var(--pi-accent, var(--pi-success)); animation: session-state-bounce 1.1s ease-in-out infinite; }
   @keyframes session-state-bounce { 0%, 60%, 100% { transform: translateY(0); opacity: .5; } 30% { transform: translateY(-2px); opacity: 1; } }
   @media (prefers-reduced-motion: reduce) {
     .state-dot { animation: none; }

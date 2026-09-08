@@ -9,7 +9,7 @@ const statusBarStyles = css`
   span { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .activity { display: inline-flex; align-items: center; gap: var(--pi-space-3); color: var(--pi-muted); }
   .activity.active { color: var(--pi-success); }
-  .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: .45; flex: 0 0 auto; }
+  .dot { width: var(--pi-dot-sm); height: var(--pi-dot-sm); border-radius: 50%; background: currentColor; opacity: .45; flex: 0 0 auto; }
   .activity.active .dot { animation: pulse 1s ease-in-out infinite; opacity: 1; }
   .muted { color: var(--pi-dim); }
   @keyframes pulse { 0%, 100% { transform: scale(.75); opacity: .55; } 50% { transform: scale(1.2); opacity: 1; } }

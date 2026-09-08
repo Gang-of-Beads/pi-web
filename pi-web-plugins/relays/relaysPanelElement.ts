@@ -536,7 +536,7 @@ function relaysStyles(): string {
       /* The selection survives a folder collapse: the nearest collapsed ancestor
          highlights instead, without taking the fill reserved for the open document. */
       .directory-tab.contains-active { border-color: var(--pi-accent-border); color: var(--pi-accent); }
-      .directory-tab.contains-active::after { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--pi-accent); }
+      .directory-tab.contains-active::after { content: ""; width: var(--pi-dot-xs); height: var(--pi-dot-xs); border-radius: 50%; background: var(--pi-accent); }
       code, pre { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-sm); background: var(--pi-bg); color: var(--pi-text-secondary); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
       code { padding: 2px 5px; }
       pre { margin: 0; overflow: auto; padding: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }

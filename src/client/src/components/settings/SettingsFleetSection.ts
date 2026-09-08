@@ -119,7 +119,7 @@ export class SettingsFleetSection extends LitElement {
     .machine .detail { grid-column: 2; color: var(--pi-muted); font-size: var(--pi-text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .machine .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .machine .row-actions { grid-row: 1 / span 2; grid-column: 3; display: flex; gap: var(--pi-space-3); }
-    .dot { grid-row: 1 / span 2; width: 8px; height: 8px; border-radius: 50%; background: var(--pi-success); }
+    .dot { grid-row: 1 / span 2; width: var(--pi-dot-md); height: var(--pi-dot-md); border-radius: 50%; background: var(--pi-success); }
     .machine.offline .dot { background: var(--pi-danger); }
     .machine.offline .name { color: var(--pi-muted); }
     .empty { color: var(--pi-muted); font-size: var(--pi-text-xs); }
