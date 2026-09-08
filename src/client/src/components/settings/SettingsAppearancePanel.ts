@@ -129,6 +129,10 @@ export class SettingsAppearancePanel extends LitElement {
     @media (hover: hover) { .theme:hover { border-color: var(--pi-accent); } }
     .theme:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
     .theme.selected { border-color: var(--pi-accent); box-shadow: 0 0 0 1px var(--pi-accent) inset; }
+    /* The theme actually on screen is a state, not prose: it used to be an
+       11px "· in use" suffix on a card drawn exactly like every unrelated one. */
+    .theme.active { border-color: var(--pi-border-strong, var(--pi-muted)); }
+    .theme.active .theme-name::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: var(--pi-space-3); border-radius: 50%; background: var(--pi-accent); vertical-align: middle; }
     .theme-name { font-weight: 600; }
     .theme-scheme, .theme-description { font-size: var(--pi-text-2xs); }
     .preview { display: grid; gap: var(--pi-space-3); height: 74px; margin-bottom: var(--pi-space-3); padding: var(--pi-space-4); border: 1px solid var(--preview-border, var(--pi-border)); border-radius: var(--pi-radius-md); background: var(--preview-bg, var(--pi-bg)); }

@@ -50,8 +50,10 @@ describe("contributed sections in the session drawer", () => {
     const withBadge = await mount([section({ id: "polls:polls", title: "Polls", badge: () => 3 })]);
     const without = await mount([section({ id: "polls:polls", title: "Polls" })]);
 
-    expect(tabLabels(withBadge)).toContain("Polls (3)");
+    expect(tabLabels(withBadge)).toContain("Polls");
+    expect(withBadge.renderRoot.querySelector(".drawer-tab-badge")?.textContent.trim()).toBe("3");
     expect(tabLabels(without)).toContain("Polls");
+    expect(without.renderRoot.querySelector(".drawer-tab-badge")).toBeNull();
   });
 
   it("contributes nothing while no session is selected", async () => {

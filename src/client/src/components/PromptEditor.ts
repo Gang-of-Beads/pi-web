@@ -72,7 +72,7 @@ export const promptEditorStyles = css`
   .actions { display: flex; gap: var(--pi-space-4); align-items: center; justify-content: flex-end; flex-wrap: nowrap; white-space: nowrap; }
   .compact-status { display: flex; min-width: 0; align-items: center; gap: var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); flex: 1 1 0; }
   .compact-status > button { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .select-model { max-width: min(42vw, 320px); min-height: 40px; display: inline-flex; align-items: center; box-sizing: border-box; overflow: hidden; }
+  .select-model { max-width: min(42vw, 320px); min-height: 36px; display: inline-flex; align-items: center; box-sizing: border-box; overflow: hidden; }
   /* Separate boxes so the provider gives way first and the model id survives. */
   .select-model-provider { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .select-model-id { flex: 0 0 auto; white-space: nowrap; }
@@ -185,8 +185,10 @@ export const promptEditorStyles = css`
     .select-model { max-width: 48vw; }
     button { padding: var(--pi-space-3) var(--pi-space-4); }
     /* Narrow screens are phones: the touch targets get *bigger*, not smaller,
-       and the caret keeps the line height it has on wide screens. */
+       and the caret keeps the line height it has on wide screens. The model
+       chip rises with them so the toolbar stays one height. */
     .icon-button { width: 40px; height: 40px; }
+    .select-model { min-height: 40px; }
     .markdown-editor .cm-cursor { height: 1.4em !important; }
   }
 

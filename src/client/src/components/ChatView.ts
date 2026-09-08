@@ -1,4 +1,4 @@
-import { css, LitElement, html, type TemplateResult } from "lit";
+import { css, LitElement, html, nothing, type TemplateResult } from "lit";
 import { scrollbarWidthOf } from "../scrollbarWidth";
 import { showsJumpToBottom } from "../chatScrollPosition";
 import { ScrollFollowGate, TOUCH_SETTLE_MS } from "../scrollFollowGate";
@@ -153,6 +153,9 @@ export const chatStyles = css`
   @media (hover: hover) { .drawer-tab:hover { color: var(--pi-text-bright); } }
   .drawer-tab:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
   .drawer-tab.selected { border-color: var(--pi-border); background: var(--pi-surface); color: var(--pi-text-bright); }
+  /* The count is a mark, not part of the name: bare "(3)" wore the label's
+     own size, colour and weight and could not be scanned. */
+  .drawer-tab-badge { flex: 0 0 auto; display: inline-block; min-width: 14px; border-radius: var(--pi-radius-pill); background: var(--pi-selection-bg); color: var(--pi-text-bright); padding: 0 var(--pi-space-2); font-size: var(--pi-text-2xs); line-height: 16px; text-align: center; }
   .drawer-header-actions { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-1); }
   .drawer-body { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
   .drawer-body[hidden] { display: none; }
@@ -1092,7 +1095,7 @@ export class ChatView extends LitElement {
               aria-controls=${`drawer-panel-${section.id}`}
               @click=${() => { this.selectTopDrawerTab(section.id, collapsed); }}
             >
-              <span class="drawer-tab-label">${section.title}${sectionBadgeSuffix(section, sectionContext)}</span>
+              <span class="drawer-tab-label">${section.title}</span>${sectionBadgeMark(section, sectionContext)}
             </button>`)}
           </div>
           </div>
@@ -2343,9 +2346,10 @@ export function topDrawerStartsOpen(): boolean {
   return false;
 }
 
-function sectionBadgeSuffix(section: QualifiedDrawerSectionContribution, context: DrawerSectionContext): string {
+function sectionBadgeMark(section: QualifiedDrawerSectionContribution, context: DrawerSectionContext): TemplateResult | typeof nothing {
   const badge = section.badge?.(context);
-  return badge === undefined || badge === "" ? "" : ` (${String(badge)})`;
+  if (badge === undefined || badge === "") return nothing;
+  return html`<span class="drawer-tab-badge">${String(badge)}</span>`;
 }
 
 interface ActivityPanelState {
