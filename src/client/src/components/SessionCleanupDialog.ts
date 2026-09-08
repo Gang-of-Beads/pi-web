@@ -244,6 +244,12 @@ export class SessionCleanupDialog extends LitElement {
     .close-button { width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); display: grid; place-items: center; border: 0; background: transparent; color: var(--pi-muted); padding: 0; font-size: 24px; }
     .close-button:focus { color: var(--pi-text); background: var(--pi-surface-hover); }
     @media (hover: hover) { .close-button:hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
+    /* Coarse pointers get the comfort floor, as every sibling dialog does:
+       this one shipped ~36px footer actions and ~29px selection controls. */
+    @media (pointer: coarse) {
+      button { min-height: var(--pi-control-height-touch); }
+      .close-button { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); }
+    }
 
     @media (max-width: 760px) {
       modal-surface { --modal-surface-backdrop-padding: 0; --modal-surface-place-items: stretch; --modal-surface-width: 100%; --modal-surface-max-height: none; --modal-surface-border: 0; --modal-surface-radius: 0; }

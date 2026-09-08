@@ -278,8 +278,11 @@ export const listStyles = css`
      bar of its own: a stacked bar cost a fifth of a phone screen before any
      content, and the heading was already a flex row with a free trailing edge.
      Sized to the tap-target floor even though the glyph is small. */
+  /* The glyph is the mark and the label is the word: sized apart on purpose,
+     and sized here so every "+ something" control in the app agrees. */
   .section-add-label { font-size: var(--pi-text-xs); white-space: nowrap; }
-  .section-add { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: var(--pi-space-2); min-width: var(--pi-control-height); min-height: var(--pi-control-height); padding: 0 var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font-size: var(--pi-text-lg); line-height: 1; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+  .section-add-glyph { font-size: var(--pi-text-lg); line-height: 1; }
+  .section-add { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: var(--pi-space-2); min-width: var(--pi-control-height); min-height: var(--pi-control-height); padding: 0 var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); line-height: 1; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   .section-add:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -2px; }
   @media (hover: hover) { .section-add:hover { border-color: var(--pi-accent); } }
   /* Coarse pointers get the comfort floor. Declared after every base rule it

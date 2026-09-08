@@ -144,7 +144,7 @@ export class MachineDialog extends LitElement {
     .dialog-error { border: 1px solid var(--pi-danger); border-radius: var(--pi-radius-md); background: color-mix(in srgb, var(--pi-danger) 10%, transparent); color: var(--pi-danger); padding: 9px; line-height: 1.35; }
     button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; }
     header button { border: 0; background: transparent; color: var(--pi-muted); font-size: 22px; padding: 0 8px; }
-    .primary { border-color: var(--pi-success-border); background: var(--pi-success-border); color: var(--pi-bg); }
+    .primary { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-bg); }
     button:disabled { opacity: .5; cursor: not-allowed; }
     /* Coarse pointers get the comfort floor: this dialog shipped 33px footer
        buttons and a 22x30 close next to a sibling dialog that raised both. */

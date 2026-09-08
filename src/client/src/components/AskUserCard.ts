@@ -660,7 +660,12 @@ export class AskUserCard extends LitElement {
       fieldset.question { padding: 10px 12px; }
       .partial-confirmation { align-items: stretch; flex-direction: column; }
       .confirmation-actions { justify-content: flex-end; }
-      .primary-action { min-height: var(--pi-control-height-touch); }
+    }
+    /* The floor is pointer-scoped by policy, not width-scoped: a tablet in
+       landscape is a coarse pointer inside a wide container, and this card's
+       own option rows already carry 44px unconditionally. */
+    @media (pointer: coarse) {
+      .primary-action, .secondary-action { min-height: var(--pi-control-height-touch); }
     }
   `;
 }

@@ -189,7 +189,7 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
    */
   private renderAdd() {
     if (this.onAdd === undefined) return null;
-    return html`<button class="section-add" title="Add machine" aria-label="Add machine" @click=${(event: Event) => { event.stopPropagation(); this.onAdd?.(); }}><span aria-hidden="true">+</span><span class="section-add-label">Add machine</span></button>`;
+    return html`<button class="section-add" title="Add machine" aria-label="Add machine" @click=${(event: Event) => { event.stopPropagation(); this.onAdd?.(); }}><span class="section-add-glyph" aria-hidden="true">+</span><span class="section-add-label">Add machine</span></button>`;
   }
 
   private renderHeading() {

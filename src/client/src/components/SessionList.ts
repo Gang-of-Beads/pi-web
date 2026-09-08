@@ -299,7 +299,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
   private renderStartButton() {
     const title = this.startingCount > 0 ? "Start another session" : "Start a new session";
     const label = this.startingCount > 0 ? "Another" : "New session";
-    return html`<button class="start-session-button" title=${title} aria-label=${title} ?disabled=${!this.canStart} @click=${(event: MouseEvent) => { event.stopPropagation(); this.onStart?.(); }}><span aria-hidden="true">+</span><span class="section-add-label">${label}</span></button>`;
+    return html`<button class="start-session-button" title=${title} aria-label=${title} ?disabled=${!this.canStart} @click=${(event: MouseEvent) => { event.stopPropagation(); this.onStart?.(); }}><span class="section-add-glyph" aria-hidden="true">+</span><span class="section-add-label">${label}</span></button>`;
   }
 
   private renderStartingSession() {
@@ -680,7 +680,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
        one toolbar; the title keeps the left edge. */
     h2 > .bulk-select-entry { margin-left: auto; }
     h2 > .section-count { flex: 0 0 auto; display: inline; color: var(--pi-muted); font-size: inherit; }
-    h2 > .section-unread-count { flex: 0 0 auto; display: inline; color: var(--pi-accent); font-size: inherit; text-transform: none; }
+    h2 > .section-unread-count { flex: 0 0 auto; display: inline-block; min-width: 14px; border-radius: var(--pi-radius-pill); background: var(--pi-selection-bg); color: var(--pi-accent); padding: 0 var(--pi-space-2); font-size: var(--pi-text-2xs); line-height: 16px; text-align: center; text-transform: none; }
     .bulk-select-entry { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-control-height); height: var(--pi-control-height); padding: 0; font-size: var(--pi-text-sm); line-height: 1; text-transform: none; }
     .start-session-button { box-sizing: border-box; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: var(--pi-space-2); min-width: var(--pi-control-height); height: var(--pi-control-height); padding: 0 var(--pi-space-5); }
     .section-add-label { font-size: var(--pi-text-xs); white-space: nowrap; }
@@ -720,7 +720,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .pending-session-row.starting-session .action-name { display: flex; align-items: center; gap: var(--pi-space-3); max-height: none; -webkit-line-clamp: 1; }
     .pending-session-row.starting-session .activity-indicator { flex: 0 0 auto; margin: 0; }
     .action-main.selecting { padding-left: calc(32px + var(--depth, 0) * 16px); }
-.session-checkbox { position: absolute; top: 9px; left: calc(8px + var(--depth, 0) * 16px); z-index: 2; box-sizing: border-box; width: 24px; height: 24px; margin: 0; }
+.session-checkbox { position: absolute; top: 9px; left: calc(8px + var(--depth, 0) * 16px); z-index: 3; box-sizing: border-box; width: 24px; height: 24px; margin: 0; }
     .subtree-toggle, .subtree-toggle.inert { position: absolute; top: 8px; left: calc(6px + var(--depth, 0) * 16px); z-index: 2; box-sizing: border-box; width: 24px; height: 24px; padding: 0; display: inline-grid; place-items: center; border: 1px solid transparent; border-radius: var(--pi-radius-sm); background: color-mix(in srgb, var(--pi-muted) 14%, transparent); color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: 1; }
     /* Formerly the toggle floated over the row's leading text and swallowed
        taps aimed at the session name. Reserve the gutter in the padding so
@@ -740,7 +740,10 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
       .subtree-toggle { top: 0; width: var(--pi-control-height-comfort); height: var(--pi-control-height-touch); }
       .action-row.has-subtree-toggle .action-main, .action-row.is-child .action-main { padding-left: calc(44px + var(--depth, 0) * 16px); }
     }
-    .subtree-toggle.inert { cursor: default; }
+    /* While selecting, the inert toggle shares the leading slot with the
+       checkbox and, on a coarse pointer, covers it entirely: a tap aimed at
+       the checkbox landed on a control that does nothing. Inert means inert. */
+    .subtree-toggle.inert { cursor: default; pointer-events: none; }
     .subtree-chevron { display: inline-block; transition: transform 120ms ease; }
     .subtree-chevron.collapsed { transform: rotate(-90deg); }
     /* Search sits inside the scrolling body but stays pinned, so filtering a
