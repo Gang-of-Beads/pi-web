@@ -185,7 +185,7 @@ export class SettingsPackagesPanel extends LitElement {
     .package-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
     .package-toolbar > div, .package-main { display: grid; gap: 6px; min-width: 0; }
     h3, p { margin: 0; }
-    h3 { font-size: 15px; line-height: 1.25; }
+    h3 { font-size: var(--pi-text-md); line-height: 1.25; }
     p, small { color: var(--pi-muted); line-height: 1.45; }
     button, input { font: inherit; }
     button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; }
@@ -195,12 +195,12 @@ export class SettingsPackagesPanel extends LitElement {
     .secondary { flex: 0 0 auto; }
     .danger { border-color: color-mix(in srgb, var(--pi-danger) 55%, var(--pi-border)); color: var(--pi-danger); }
     .loading-card, .install-card, .package-card { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); padding: 12px; }
-    .field-error { color: var(--pi-danger); font-size: 12px; }
+    .field-error { color: var(--pi-danger); font-size: var(--pi-text-xs); }
     .install-card { display: grid; gap: 8px; }
     .install-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
     .package-section { display: block; }
     .loading-card, .action-note { color: var(--pi-muted); }
-    .action-note { margin-bottom: 10px; font-size: 12px; }
+    .action-note { margin-bottom: 10px; font-size: var(--pi-text-xs); }
     .package-list { display: grid; gap: 10px; }
     .package-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; }
     .package-card.filtered { opacity: .82; }

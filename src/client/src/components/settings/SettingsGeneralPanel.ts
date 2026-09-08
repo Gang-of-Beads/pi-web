@@ -254,7 +254,7 @@ export class SettingsGeneralPanel extends LitElement {
     :host { display: block; }
     .card-heading { display: grid; gap: 6px; min-width: 0; }
     h3, p { margin: 0; }
-    h3 { font-size: 13px; line-height: 1.3; }
+    h3 { font-size: var(--pi-text-sm); line-height: 1.3; }
     p { color: var(--pi-muted); line-height: 1.45; }
     button, input, select, textarea { font: inherit; }
     button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; }
@@ -267,7 +267,7 @@ export class SettingsGeneralPanel extends LitElement {
     .error-message { border-color: var(--pi-danger); color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 10%, var(--pi-surface)); }
     .loading-card { color: var(--pi-muted); }
     .config-path-card { display: grid; gap: 5px; }
-    .config-path-card span, .field-heading, dt { color: var(--pi-muted); font-size: 12px; font-weight: 600; }
+    .config-path-card span, .field-heading, dt { color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: 600; }
     code { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-bg); padding: 1px 4px; color: var(--pi-text); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
     .config-path-card small, .field small { color: var(--pi-muted); }
     .config-form { display: grid; gap: 14px; }
@@ -277,7 +277,7 @@ export class SettingsGeneralPanel extends LitElement {
     input:focus, select:focus, textarea:focus { border-color: var(--pi-accent); box-shadow: 0 0 0 1px var(--pi-accent-border); }
     textarea { resize: vertical; min-height: 94px; font-family: var(--pi-control-monospace-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
     textarea:disabled { opacity: .55; }
-    .override-badge { border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); color: var(--pi-warning); background: var(--pi-warning-surface); padding: 2px 7px; font-size: 11px; font-weight: 600; text-transform: none; }
+    .override-badge { border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); color: var(--pi-warning); background: var(--pi-warning-surface); padding: 2px 7px; font-size: var(--pi-text-2xs); font-weight: 600; text-transform: none; }
     .effective-card { display: grid; gap: 10px; }
     .effective-card dl { display: grid; gap: 8px; margin: 0; }
     .effective-card dl > div { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 12px; align-items: baseline; }

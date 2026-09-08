@@ -106,7 +106,7 @@ export class ActionPalette extends LitElement {
     input:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: -2px; border-radius: var(--pi-radius-sm); }
     input::placeholder { color: var(--pi-dim); }
     button { border: 0; background: transparent; color: var(--pi-text); cursor: pointer; }
-    header button { color: var(--pi-muted); font-size: 22px; padding: 2px 8px; }
+    header button { color: var(--pi-muted); font-size: var(--pi-text-xl); padding: 2px 8px; }
     .options { flex: 1 1 auto; min-height: 0; overflow: auto; }
     .options button { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 12px; width: 100%; padding: 10px 12px; border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
     .options button.selected { background: var(--pi-selection-bg); }
@@ -117,7 +117,7 @@ export class ActionPalette extends LitElement {
     strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     small { display: block; color: var(--pi-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .disabled-reason { color: var(--pi-warning); }
-    .group { grid-column: 1 / -1; font-size: 12px; }
+    .group { grid-column: 1 / -1; font-size: var(--pi-text-xs); }
     kbd { align-self: center; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); padding: 2px 6px; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: nowrap; }
     .empty { padding: 24px; color: var(--pi-muted); text-align: center; }
     /* A shortcut badge is an affordance for a keyboard. On a touch screen it

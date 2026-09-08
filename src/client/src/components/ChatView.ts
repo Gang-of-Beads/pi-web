@@ -102,7 +102,7 @@ export const chatStyles = css`
     width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); padding: 0;
     border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md);
     background: var(--pi-surface-raised); color: var(--pi-text);
-    font-size: 18px; line-height: 1; cursor: pointer;
+    font-size: var(--pi-text-lg); line-height: 1; cursor: pointer;
     box-shadow: var(--pi-elevation-2);
   }
   .jump-to-bottom:focus-visible { border-color: var(--pi-accent); }

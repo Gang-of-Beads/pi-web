@@ -277,7 +277,7 @@ export class ModelPicker extends LitElement {
     .options { min-height: 0; overflow: auto; outline: none; }
     .options:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -2px; }
     button { border: 0; background: transparent; color: var(--pi-text); cursor: pointer; }
-    header button { font-size: 20px; color: var(--pi-muted); }
+    header button { font-size: var(--pi-text-xl); color: var(--pi-muted); }
     input.search { box-sizing: border-box; margin: 10px 12px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); padding: 8px 10px; outline: none; }
     input.search:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
     input.search:focus { border-color: var(--pi-accent); }
@@ -298,7 +298,7 @@ export class ModelPicker extends LitElement {
     @media (hover: hover) { .catalog-row:hover { background: var(--pi-selection-bg); } }
     .catalog-row input[type="checkbox"] { margin: 0 0 0 12px; accent-color: var(--pi-accent); }
     .catalog-row .pick { flex: 1; min-width: 0; display: block; padding: 10px 12px; text-align: left; }
-    .group-header { padding: 8px 12px 4px; color: var(--pi-muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .group-header { padding: 8px 12px 4px; color: var(--pi-muted); font-size: var(--pi-text-xs); text-transform: uppercase; letter-spacing: 0.04em; }
     small { display: block; margin-top: 4px; color: var(--pi-muted); }
     .empty { padding: 24px; color: var(--pi-muted); text-align: center; }
   `];

@@ -520,14 +520,14 @@ export class PiFilesPanel extends LitElement {
       .upload-file.cancelled .upload-file-status { color: var(--pi-warning); }
       .upload-file-main { min-width: 0; display: grid; gap: 1px; }
       .upload-file-main span, .upload-file-main small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .upload-file-status { font-size: 12px; white-space: nowrap; }
+      .upload-file-status { font-size: var(--pi-text-xs); white-space: nowrap; }
       .upload-actions { justify-content: end; }
       .dialog-backdrop { position: fixed; inset: 0; z-index: var(--pi-layer-popover); box-sizing: border-box; display: grid; place-items: center; padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); background: var(--pi-overlay); }
       .upload-dialog { box-sizing: border-box; width: min(560px, 100%); max-height: min(720px, 100%); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-bg); box-shadow: 0 18px 70px var(--pi-shadow-strong); }
       .upload-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--pi-border-muted); }
-      .upload-dialog h2 { margin: 2px 0 0; font-size: 18px; line-height: 1.2; }
-      .eyebrow { color: var(--pi-muted); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
-      .close-button { font-size: 20px; line-height: 1; padding: 4px 9px; }
+      .upload-dialog h2 { margin: 2px 0 0; font-size: var(--pi-text-lg); line-height: 1.2; }
+      .eyebrow { color: var(--pi-muted); font-size: var(--pi-text-2xs); letter-spacing: .08em; text-transform: uppercase; }
+      .close-button { font-size: var(--pi-text-xl); line-height: 1; padding: 4px 9px; }
       form { min-height: 0; display: flex; flex-direction: column; gap: 12px; overflow: auto; padding: 16px; }
       form > label { display: grid; gap: 6px; }
       form > label > span, .review-files > strong { font-weight: 600; }

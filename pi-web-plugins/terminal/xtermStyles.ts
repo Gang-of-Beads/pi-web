@@ -242,7 +242,7 @@ export const xtermStyles = css`
 /* Arrows */
 .xterm .xterm-scrollable-element > .scrollbar > .scra {
 	cursor: pointer;
-	font-size: 11px !important;
+	font-size: var(--pi-text-2xs) !important;
 }
 
 .xterm .xterm-scrollable-element > .visible {

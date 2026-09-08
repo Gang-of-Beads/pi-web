@@ -743,7 +743,7 @@ export class TerminalPanel extends LitElement {
     .soft-keys-toggle { flex: 0 0 auto; }
     .soft-keys-toggle .keyboard-icon { display: block; flex: 0 0 auto; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
     button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    button small { color: var(--pi-muted); font-size: 14px; line-height: 1; }
+    button small { color: var(--pi-muted); font-size: var(--pi-text-base); line-height: 1; }
     @media (hover: hover) { button small:hover { color: var(--pi-danger); } }
     button.danger { color: var(--pi-danger); }
     button:disabled { opacity: .5; cursor: not-allowed; }

@@ -270,7 +270,7 @@ export class AuthDialog extends LitElement {
     .options:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: -2px; }
     input:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: -2px; }
     button { border: 0; background: transparent; color: var(--pi-text); cursor: pointer; }
-    header button { font-size: 20px; color: var(--pi-muted); }
+    header button { font-size: var(--pi-text-xl); color: var(--pi-muted); }
     input { margin: 10px 12px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); padding: 8px 10px; outline: none; }
     input:focus { border-color: var(--pi-accent); }
     .options button { display: block; width: 100%; padding: 10px 12px; border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
@@ -295,7 +295,7 @@ export class AuthDialog extends LitElement {
     .inline-options { display: grid; gap: 8px; }
     .inline-options button { display: grid; gap: 2px; text-align: left; }
     .inline-options small { color: var(--pi-muted); }
-    em { color: var(--pi-success); font-style: normal; font-size: 12px; }
+    em { color: var(--pi-success); font-style: normal; font-size: var(--pi-text-xs); }
   `];
 }
 

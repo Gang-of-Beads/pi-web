@@ -211,10 +211,10 @@ export class SessionCleanupDialog extends LitElement {
     header, footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--pi-border); }
     footer { border-top: 1px solid var(--pi-border); border-bottom: 0; justify-content: end; }
     .body { flex: 1 1 auto; min-height: 0; overflow: auto; display: grid; gap: 14px; padding: 16px; }
-    .eyebrow { display: block; color: var(--pi-muted); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .eyebrow { display: block; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
     h1, h2, p { margin: 0; }
-    h1 { font-size: 20px; line-height: 1.2; }
-    h2 { font-size: 15px; }
+    h1 { font-size: var(--pi-text-xl); line-height: 1.2; }
+    h2 { font-size: var(--pi-text-md); }
     .intro, .hint, .empty { color: var(--pi-muted); }
     fieldset { margin: 0; padding: 0; border: 0; display: grid; gap: 10px; }
     .toggle-row { display: grid; grid-template-columns: auto minmax(0, max-content) 88px auto; align-items: center; gap: 8px; color: var(--pi-text); }
@@ -228,7 +228,7 @@ export class SessionCleanupDialog extends LitElement {
     .preview { display: grid; gap: 10px; min-width: 0; }
     .selection-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
     .selection-controls span { color: var(--pi-muted); }
-    .selection-controls button { padding: 5px 7px; font-size: 12px; }
+    .selection-controls button { padding: 5px 7px; font-size: var(--pi-text-xs); }
     .table-scroll { max-width: 100%; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; -webkit-overflow-scrolling: touch; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); }
     table { width: 100%; min-width: 620px; border-collapse: collapse; }
     th, td { border-bottom: 1px solid var(--pi-border-muted); padding: 8px 10px; text-align: right; }
@@ -241,7 +241,7 @@ export class SessionCleanupDialog extends LitElement {
     button:disabled { opacity: .5; cursor: not-allowed; }
     button.danger { color: var(--pi-danger); }
     @media (hover: hover) { button.danger:not(:disabled):hover { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); } }
-    .close-button { width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); display: grid; place-items: center; border: 0; background: transparent; color: var(--pi-muted); padding: 0; font-size: 24px; }
+    .close-button { width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); display: grid; place-items: center; border: 0; background: transparent; color: var(--pi-muted); padding: 0; font-size: var(--pi-text-xl); }
     .close-button:focus { color: var(--pi-text); background: var(--pi-surface-hover); }
     @media (hover: hover) { .close-button:hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
     /* Coarse pointers get the comfort floor, as every sibling dialog does:

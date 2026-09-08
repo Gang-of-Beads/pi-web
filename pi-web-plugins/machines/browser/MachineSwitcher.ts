@@ -297,12 +297,12 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     .machine-switcher-button:focus-visible { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     @media (hover: hover) { .machine-switcher-button:hover { border-color: var(--pi-accent); background: var(--pi-selection-bg); } }
     .machine-switcher-text { flex: 1 1 auto; min-width: 0; display: grid; gap: 1px; }
-    .machine-switcher-kicker { color: var(--pi-muted); font-size: 10px; line-height: 1; text-transform: uppercase; letter-spacing: .02em; }
-    .machine-switcher-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; line-height: 1.2; }
-    .machine-status { flex: 0 0 auto; color: var(--pi-muted); font-size: 11px; }
+    .machine-switcher-kicker { color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: 1; text-transform: uppercase; letter-spacing: .02em; }
+    .machine-switcher-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--pi-text-xs); font-weight: 600; line-height: 1.2; }
+    .machine-status { flex: 0 0 auto; color: var(--pi-muted); font-size: var(--pi-text-2xs); }
     .machine-status.online { color: var(--pi-success); }
     .machine-status.offline, .machine-status.error { color: var(--pi-danger); }
-    .machine-chevron { flex: 0 0 auto; color: var(--pi-muted); font-size: 11px; }
+    .machine-chevron { flex: 0 0 auto; color: var(--pi-muted); font-size: var(--pi-text-2xs); }
     .activity-indicator { flex: 0 0 auto; display: inline-block; width: var(--pi-dot-sm); height: var(--pi-dot-sm); background: var(--pi-success); animation: pulse 1s ease-in-out infinite; }
     .activity-indicator.session { border-radius: 50%; background: var(--pi-success); }
     .activity-indicator.terminal { border-radius: var(--pi-radius-xs); background: var(--pi-accent); }
@@ -319,14 +319,14 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     .machine-option-main { min-width: 0; min-height: 60px; display: grid; gap: 3px; padding: 9px 8px 8px; text-align: left; align-content: start; }
     .machine-option-name { min-width: 0; display: flex; align-items: center; gap: 6px; }
     .machine-option-name span:last-child { min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .machine-option-status { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; color: var(--pi-muted); font-size: 11px; font-weight: 500; }
+    .machine-option-status { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: 500; }
     .machine-option-status .dot { width: var(--pi-dot-sm); height: var(--pi-dot-sm); border-radius: 50%; background: var(--pi-dim); }
     .machine-option-status.online { color: var(--pi-success); }
     .machine-option-status.online .dot { background: var(--pi-success); }
     .machine-option-status.offline .dot { background: var(--pi-dim); }
     .machine-option-status.error { color: var(--pi-danger); }
     .machine-option-status.error .dot { background: var(--pi-danger); }
-    .machine-option-main small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: 11px; line-height: 1.3; }
+    .machine-option-main small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: 1.3; }
     .machine-option-actions { position: absolute; top: 4px; right: 4px; }
     .machine-option-actions-toggle { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; color: var(--pi-muted); border-radius: var(--pi-radius-sm); }
     .machine-option.no-actions .machine-option-actions { display: none; }

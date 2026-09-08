@@ -1324,7 +1324,7 @@ const gitPanelStyles = `
   .git-panel .git-view-toggle button:last-child { margin-left: -1px; border-top-right-radius: var(--pi-radius-md); border-bottom-right-radius: var(--pi-radius-md); }
   .git-panel .git-view-toggle button.is-selected { position: relative; z-index: 1; border-color: var(--pi-accent); background: var(--pi-selection-bg); }
   .git-panel .git-mode-toggle { margin-left: 4px; }
-  .git-panel .git-stale { border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); color: var(--pi-warning); padding: 1px 6px; font-size: 12px; }
+  .git-panel .git-stale { border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); color: var(--pi-warning); padding: 1px 6px; font-size: var(--pi-text-xs); }
   .git-panel .git-error { flex: 0 0 auto; margin: 8px; border: 1px solid var(--pi-danger); border-radius: var(--pi-radius-md); color: var(--pi-danger); padding: 8px; }
   .git-panel .git-split { flex: 1 1 auto; min-height: 0; display: grid; grid-template-rows: minmax(160px, 34%) minmax(0, 1fr); }
   /* With nothing selected there is no diff to show, so the list takes the
@@ -1345,7 +1345,7 @@ const gitPanelStyles = `
   .git-panel .git-load-more { margin: 8px; }
   .git-panel .git-twisty { color: var(--pi-dim, var(--pi-muted)); }
   .git-panel .git-summary { margin: 4px 6px 8px; color: var(--pi-muted); }
-  .git-panel .submodule-badge { display: inline-block; margin-left: 6px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); color: var(--pi-muted); padding: 0 5px; font-size: 11px; font-weight: 400; vertical-align: baseline; }
+  .git-panel .submodule-badge { display: inline-block; margin-left: 6px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); color: var(--pi-muted); padding: 0 5px; font-size: var(--pi-text-2xs); font-weight: 400; vertical-align: baseline; }
   .git-panel .git-viewer { min-height: 0; overflow: auto; display: flex; flex-direction: column; }
   .git-panel .git-review-diffs { min-width: 0; }
   .git-panel .git-review-section { min-width: 0; min-height: 120px; border-bottom: 1px solid var(--pi-border); scroll-margin-top: 8px; }

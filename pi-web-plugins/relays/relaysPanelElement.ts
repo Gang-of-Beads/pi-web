@@ -521,7 +521,7 @@ function relaysStyles(): string {
       button.icon-button { flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-control-height); height: var(--pi-control-height); padding: 0; }
       button.icon-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
       select { min-width: 0; max-width: 240px; padding: 5px 6px; }
-      .document-tab { flex: 0 0 auto; white-space: nowrap; font-size: 12px; padding: 4px 10px; }
+      .document-tab { flex: 0 0 auto; white-space: nowrap; font-size: var(--pi-text-xs); padding: 4px 10px; }
       .document-tab.active { border-color: var(--pi-accent-border); background: var(--pi-accent); color: var(--pi-on-accent, var(--pi-bg)); }
       /* An expanded folder wraps its chip and children in one rounded group so
          nested tabs read as contained by their folder; nested groups stack.
@@ -545,10 +545,10 @@ function relaysStyles(): string {
       .document.markdown > :last-child { margin-bottom: 0; }
       .document.markdown h1, .document.markdown h2, .document.markdown h3, .document.markdown h4 { line-height: 1.25; margin: 14px 0 8px; }
       .document.markdown h1:first-child, .document.markdown h2:first-child, .document.markdown h3:first-child, .document.markdown h4:first-child { margin-top: 0; }
-      .document.markdown h1 { font-size: 18px; }
-      .document.markdown h2 { font-size: 16px; }
-      .document.markdown h3 { font-size: 14px; }
-      .document.markdown h4 { font-size: 13px; }
+      .document.markdown h1 { font-size: var(--pi-text-lg); }
+      .document.markdown h2 { font-size: var(--pi-text-lg); }
+      .document.markdown h3 { font-size: var(--pi-text-base); }
+      .document.markdown h4 { font-size: var(--pi-text-sm); }
       .document.markdown ul, .document.markdown ol { padding-left: 22px; }
       .document.markdown li + li { margin-top: 3px; }
       .document.markdown pre { white-space: pre; overflow-wrap: normal; }

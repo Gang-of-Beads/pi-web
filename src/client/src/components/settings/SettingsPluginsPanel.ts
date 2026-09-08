@@ -210,7 +210,7 @@ export class SettingsPluginsPanel extends LitElement {
     .diagnostic { color: var(--pi-text) !important; }
     .command { line-height: 1.5; }
     .status-list { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px; }
-    .status { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-pill); padding: 2px 7px; color: var(--pi-muted); font-size: 11px; line-height: 1.3; }
+    .status { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-pill); padding: 2px 7px; color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: 1.3; }
     .status.success { border-color: var(--pi-success-border); color: var(--pi-success); background: var(--pi-success-surface); }
     .status.warning { border-color: var(--pi-warning-border); color: var(--pi-text); background: var(--pi-warning-surface); }
     .status.error { border-color: var(--pi-danger); color: var(--pi-danger); }

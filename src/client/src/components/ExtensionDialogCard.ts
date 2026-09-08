@@ -367,12 +367,12 @@ export class ExtensionDialogCard extends LitElement {
     h2 {
       min-width: 0;
       margin-bottom: 0;
-      font-size: 14px;
+      font-size: var(--pi-text-base);
       font-weight: 650;
       line-height: 1.35;
       overflow-wrap: anywhere;
     }
-    .header-status { flex: 0 0 auto; color: var(--pi-muted); font-size: 11px; text-align: end; }
+    .header-status { flex: 0 0 auto; color: var(--pi-muted); font-size: var(--pi-text-2xs); text-align: end; }
     .header-status.answered { color: var(--pi-success); }
     .header-status.timeout, .header-status.aborted, .header-status.session-ended { color: var(--pi-warning); }
     .dialog-message {
@@ -389,7 +389,7 @@ export class ExtensionDialogCard extends LitElement {
     .dialog-detail {
       border-bottom: 1px solid var(--pi-border-muted);
       padding: 12px 16px;
-      font-size: 13px;
+      font-size: var(--pi-text-sm);
       line-height: 1.45;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
@@ -482,7 +482,7 @@ export class ExtensionDialogCard extends LitElement {
       margin: 0;
       padding: 12px 16px;
       color: var(--pi-muted);
-      font-size: 13px;
+      font-size: var(--pi-text-sm);
       line-height: 1.4;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
@@ -500,7 +500,7 @@ export class ExtensionDialogCard extends LitElement {
     .answered-row h2 {
       min-width: 0;
       margin: 0;
-      font-size: 12px;
+      font-size: var(--pi-text-xs);
       font-weight: 600;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -510,7 +510,7 @@ export class ExtensionDialogCard extends LitElement {
       min-width: 0;
       margin: 0;
       color: var(--pi-muted);
-      font-size: 12px;
+      font-size: var(--pi-text-xs);
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;

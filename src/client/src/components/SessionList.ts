@@ -762,7 +762,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .list-empty, .list-loading { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-sm); }
     @media (max-width: 760px) {
       /* 16px keeps iOS Safari from zooming the viewport on focus. */
-      .session-search-input { font-size: 16px; }
+      .session-search-input { font-size: var(--pi-text-lg); }
     }
     /* Coarse pointers get the comfort floor at any width - the convention in
        breakpoints.ts is pointer-scoped, not width-scoped, so tablets keep the

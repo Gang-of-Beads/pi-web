@@ -97,7 +97,7 @@ export class SettingsPanelFrame extends LitElement {
     .section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
     .heading-copy { display: grid; gap: 6px; min-width: 0; }
     .heading-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
-    h2 { margin: 0; font-size: 17px; line-height: 1.25; }
+    h2 { margin: 0; font-size: var(--pi-text-lg); line-height: 1.25; }
     .description { color: var(--pi-muted); line-height: 1.45; }
     .description ::slotted(*) { margin: 0; }
     button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; font: inherit; cursor: pointer; }

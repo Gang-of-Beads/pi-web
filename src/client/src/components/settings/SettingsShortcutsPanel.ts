@@ -346,7 +346,7 @@ export class SettingsShortcutsPanel extends LitElement {
   static override styles = [interactiveSurfaceStyles, css`
     :host { display: block; }
     h3, p { margin: 0; }
-    h3 { font-size: 13px; line-height: 1.3; }
+    h3 { font-size: var(--pi-text-sm); line-height: 1.3; }
     p { color: var(--pi-muted); line-height: 1.45; }
     button, input { font: inherit; }
     button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; }
@@ -355,10 +355,10 @@ export class SettingsShortcutsPanel extends LitElement {
     .loading-card, .config-path-card, .prompt-enter-card { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); padding: 12px; }
     .loading-card, .config-path-card { color: var(--pi-muted); }
     .config-path-card { display: grid; gap: 5px; }
-    .config-path-card span, .card-eyebrow { color: var(--pi-muted); font-size: 12px; font-weight: 600; }
+    .config-path-card span, .card-eyebrow { color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: 600; }
     .prompt-enter-card { display: grid; grid-template-columns: minmax(0, .85fr) minmax(260px, 1fr); gap: 12px; align-items: start; }
     .prompt-enter-copy { display: grid; gap: 5px; min-width: 0; }
-    .prompt-enter-copy p, .prompt-enter-option small { font-size: 12px; }
+    .prompt-enter-copy p, .prompt-enter-option small { font-size: var(--pi-text-xs); }
     .prompt-enter-options { display: grid; gap: 7px; }
     .prompt-enter-option { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: start; color: var(--pi-text); }
     .prompt-enter-option input { box-sizing: border-box; width: 14px; min-width: 14px; height: 14px; margin: 3px 0 0; padding: 0; border: 0; background: transparent; accent-color: var(--pi-accent); font-family: inherit; }
@@ -367,7 +367,7 @@ export class SettingsShortcutsPanel extends LitElement {
     .prompt-enter-option small { color: var(--pi-muted); line-height: 1.35; }
     code { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-bg); padding: 1px 4px; color: var(--pi-text); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
     .shortcut-group { margin: 0; }
-    .shortcut-group h3 { margin: 0 0 8px; color: var(--pi-muted); font-size: 12px; font-weight: 600; }
+    .shortcut-group h3 { margin: 0 0 8px; color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: 600; }
     .shortcut-list { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); overflow: hidden; }
     .shortcut-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 48%); gap: 14px; align-items: start; padding: 12px; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-surface); }
     .shortcut-row.shadowed { background: color-mix(in srgb, var(--pi-warning) 5%, var(--pi-surface)); }
@@ -379,20 +379,20 @@ export class SettingsShortcutsPanel extends LitElement {
     .shortcut-id { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .shortcut-editor { min-width: 0; display: grid; gap: 8px; }
     .shortcut-status { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
-    .shortcut-status small { color: var(--pi-muted); font-size: 11px; }
+    .shortcut-status small { color: var(--pi-muted); font-size: var(--pi-text-2xs); }
     .shortcut-status small.custom { color: var(--pi-accent); }
     .shortcut-status small.disabled { color: var(--pi-warning); }
     .shortcut-status small.conflict { border: 1px solid currentColor; border-radius: var(--pi-radius-pill); padding: 2px 7px; }
     .shortcut-status small.conflict.shadowing { color: var(--pi-accent); }
     .shortcut-status small.conflict.shadowed { color: var(--pi-warning); }
     .shortcut-input-label { min-width: 0; display: grid; gap: 5px; }
-    .shortcut-input-label span { color: var(--pi-muted); font-size: 11px; font-weight: 600; }
+    .shortcut-input-label span { color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: 600; }
     input { box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: 8px 9px; outline: none; font: var(--pi-control-font-size, 16px) var(--pi-control-monospace-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
     input:focus { border-color: var(--pi-accent); box-shadow: 0 0 0 1px var(--pi-accent-border); }
     .shortcut-actions { display: flex; justify-content: flex-end; gap: 7px; flex-wrap: wrap; }
     kbd { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-bg); color: var(--pi-text-secondary); padding: 3px 7px; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: nowrap; }
-    .unassigned { color: var(--pi-muted); font-size: 12px; }
-    .recording-hint { color: var(--pi-accent); font-size: 12px; }
+    .unassigned { color: var(--pi-muted); font-size: var(--pi-text-xs); }
+    .recording-hint { color: var(--pi-accent); font-size: var(--pi-text-xs); }
 
     @media (max-width: 760px) {
       .prompt-enter-card { grid-template-columns: minmax(0, 1fr); }

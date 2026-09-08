@@ -288,7 +288,7 @@ function taskStyles(): string {
       .tasks-viewer { display: grid; align-content: start; gap: 12px; }
       .tasks { display: grid; gap: 14px; }
       .task-group { display: grid; gap: 10px; }
-      .task-group h3 { margin: 4px 0 0; color: var(--pi-text-secondary); font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; }
+      .task-group h3 { margin: 4px 0 0; color: var(--pi-text-secondary); font-size: var(--pi-text-sm); text-transform: uppercase; letter-spacing: 0.04em; }
       .task-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); padding: 12px; }
       .task-copy { display: grid; min-width: 0; gap: 5px; }
       .task-copy span, .muted { color: var(--pi-muted); }

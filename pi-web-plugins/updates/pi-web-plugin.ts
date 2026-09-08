@@ -99,7 +99,7 @@ function renderUpdatesPanel(html: HtmlTemplateTag, terminal: WorkspacePanelTermi
       .updates-message.warning { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); }
       .updates-message.error { border-color: var(--pi-danger); }
       .updates-message-title { display: flex; gap: 8px; align-items: baseline; }
-      .updates-message-title span { color: var(--pi-muted); font-size: 12px; text-transform: uppercase; }
+      .updates-message-title span { color: var(--pi-muted); font-size: var(--pi-text-xs); text-transform: uppercase; }
       .updates-version-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 10px; border-bottom: 1px solid var(--pi-border-muted); padding: 6px 0; }
       .updates-version-row small { grid-column: 1 / -1; color: var(--pi-muted); }
       .updates-command { min-width: 0; display: grid; grid-template-columns: minmax(90px, auto) minmax(0, 1fr) auto; gap: 8px; align-items: center; }
@@ -109,7 +109,7 @@ function renderUpdatesPanel(html: HtmlTemplateTag, terminal: WorkspacePanelTermi
       .updates-command-actions button.primary { border-color: var(--pi-accent-border); color: var(--pi-text-bright); }
       .updates-recommended { border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); padding: 10px; background: var(--pi-surface); }
       .updates-recommended > strong { color: var(--pi-text-bright); }
-      .updates-meta { display: grid; gap: 2px; color: var(--pi-muted); font-size: 12px; }
+      .updates-meta { display: grid; gap: 2px; color: var(--pi-muted); font-size: var(--pi-text-xs); }
       @media (max-width: 520px) {
         .updates-command { grid-template-columns: minmax(0, 1fr) auto; }
         .updates-command > span { grid-column: 1 / -1; }

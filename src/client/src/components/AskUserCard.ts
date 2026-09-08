@@ -504,7 +504,7 @@ export class AskUserCard extends LitElement {
       font: var(--pi-text-xs) var(--pi-font-mono);
       line-height: 1.3;
     }
-    .header-status { flex: 0 1 auto; color: var(--pi-muted); font-size: 11px; text-align: end; }
+    .header-status { flex: 0 1 auto; color: var(--pi-muted); font-size: var(--pi-text-2xs); text-align: end; }
     .header-status.submitted { color: var(--pi-success); }
     .header-status.superseded { color: var(--pi-warning); }
     .questions {
@@ -539,7 +539,7 @@ export class AskUserCard extends LitElement {
     .question-detail {
       margin: 4px 0 10px;
       color: var(--pi-muted);
-      font-size: 12px;
+      font-size: var(--pi-text-xs);
       line-height: 1.4;
     }
     .options { display: grid; gap: 7px; }
@@ -566,8 +566,8 @@ export class AskUserCard extends LitElement {
     input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 2px; }
     .option-copy { min-width: 0; display: grid; gap: 2px; }
     .option-label { line-height: 1.35; }
-    .option-detail { color: var(--pi-muted); font-size: 12px; line-height: 1.35; }
-    .other-answer { display: grid; gap: 5px; color: var(--pi-muted); font-size: 12px; padding: 4px 8px 4px 32px; }
+    .option-detail { color: var(--pi-muted); font-size: var(--pi-text-xs); line-height: 1.35; }
+    .other-answer { display: grid; gap: 5px; color: var(--pi-muted); font-size: var(--pi-text-xs); padding: 4px 8px 4px 32px; }
     .other-answer:only-child { padding-left: 0; padding-right: 0; }
     /* Grows with the answer instead of keeping a long reply behind a
        three-line slot: field-sizing handles it natively where it exists and
@@ -628,7 +628,7 @@ export class AskUserCard extends LitElement {
     @media (hover: hover) { .primary-action:hover:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 86%, white); } }
     .primary-action:active:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 86%, white); }
     .partial-confirmation { min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
-    .partial-confirmation p { min-width: 0; margin: 0; color: var(--pi-warning); font-size: 12px; line-height: 1.4; }
+    .partial-confirmation p { min-width: 0; margin: 0; color: var(--pi-warning); font-size: var(--pi-text-xs); line-height: 1.4; }
     .question-jump {
       display: inline;
       border: 0;
@@ -640,15 +640,15 @@ export class AskUserCard extends LitElement {
       text-underline-offset: 2px;
     }
     .confirmation-actions { flex: 0 0 auto; display: flex; gap: 7px; }
-    .record-summary { margin: 0; color: var(--pi-muted); padding: 12px 16px; font-size: 12px; }
+    .record-summary { margin: 0; color: var(--pi-muted); padding: 12px 16px; font-size: var(--pi-text-xs); }
     .record-questions { display: grid; }
     .record-question { min-width: 0; padding: 14px 16px; }
     .record-question + .record-question { border-top: 1px solid var(--pi-border-muted); }
-    .record-question h3 { display: flex; gap: 5px; margin-bottom: 8px; font-size: 14px; line-height: 1.35; }
+    .record-question h3 { display: flex; gap: 5px; margin-bottom: 8px; font-size: var(--pi-text-base); line-height: 1.35; }
     .record-answers { display: grid; gap: 4px; margin: 0; padding-left: 22px; line-height: 1.4; }
     .other-record-text { white-space: pre-wrap; overflow-wrap: anywhere; }
     .unanswered-record { margin: 0; color: var(--pi-muted); font-style: italic; }
-    .draft-note { margin: 7px 0 0; color: var(--pi-warning); font-size: 11px; }
+    .draft-note { margin: 7px 0 0; color: var(--pi-warning); font-size: var(--pi-text-2xs); }
     @container (max-width: 580px) {
       fieldset.question, .record-question { padding: 14px 12px; }
       .record-summary { padding-inline: 12px; }
