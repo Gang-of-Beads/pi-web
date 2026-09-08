@@ -364,7 +364,7 @@ export class ProjectDialog extends LitElement {
     button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; }
     header button { border: 0; background: transparent; color: var(--pi-muted); font-size: 22px; padding: 0 8px; }
     @media (pointer: coarse) { header button { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); } }
-    .primary { border-color: var(--pi-success-border); background: var(--pi-success-border); }
+    .primary { border-color: var(--pi-success-border); background: var(--pi-success-border); color: var(--pi-bg); }
     button:disabled { opacity: .5; cursor: not-allowed; }
   `];
 }

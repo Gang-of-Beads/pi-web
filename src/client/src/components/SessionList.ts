@@ -694,7 +694,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .bulk-select-entry:focus-visible { color: var(--pi-text); background: var(--pi-surface-hover); }
     @media (hover: hover) { .bulk-select-entry:hover:not(:disabled) { color: var(--pi-text); background: var(--pi-surface-hover); } }
     /* The one action this panel exists for. */
-    .start-session-button { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-accent-contrast, #fff); font-weight: 600; }
+    .start-session-button { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-bg); font-weight: 600; }
     .start-session-button:focus-visible { background: color-mix(in srgb, var(--pi-accent) 88%, black); }
     @media (hover: hover) { .start-session-button:hover:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 88%, black); } }
     .start-session-button:disabled { border-color: var(--pi-border); background: var(--pi-surface); color: var(--pi-muted); font-weight: 400; }

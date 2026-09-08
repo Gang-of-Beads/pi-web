@@ -29,10 +29,16 @@ export class SessionRenameDialog extends LitElement {
     header, footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border-bottom: 1px solid var(--pi-border); }
     footer { border-bottom: none; border-top: 1px solid var(--pi-border); }
     .body { display: flex; flex-direction: column; gap: 8px; padding: 12px; overflow: auto; }
-    label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
-    input { font: inherit; color: inherit; background: var(--pi-bg-raised); border: 1px solid var(--pi-border); border-radius: 6px; padding: 8px 10px; }
+    label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--pi-muted); }
+    input { font: inherit; color: var(--pi-text); background: var(--pi-bg); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); padding: 8px 10px; }
+    input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
     .hint { color: var(--pi-muted); font-size: 12px; margin: 0; }
-    button { font: inherit; }
+    button { font: inherit; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; }
+    header button { border: 0; background: transparent; color: var(--pi-muted); font-size: 22px; padding: 0 8px; }
+    .primary { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-bg); font-weight: 600; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    footer { justify-content: flex-end; gap: var(--pi-space-4); }
+    @media (pointer: coarse) { footer button, header button { min-height: var(--pi-control-height-touch, 44px); } header button { width: var(--pi-control-height-touch, 44px); } input { min-height: var(--pi-control-height-touch, 44px); } }
   `];
 
   protected override willUpdate(changed: PropertyValues<this>): void {

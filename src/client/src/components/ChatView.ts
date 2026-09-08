@@ -43,7 +43,7 @@ export const chatStyles = css`
      nothing is lost for keyboard users. */
   button, [role="button"], a, summary, label, input, select { font: var(--pi-text-xs) var(--pi-font-ui); -webkit-tap-highlight-color: transparent; }
   /* Follows the control's own shape rather than boxing a circle. */
-  button:focus-visible, [role="button"]:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); border-radius: inherit; }
+  button:focus-visible, [role="button"]:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
   /* Motion is a preference, not a decoration: a user who asks for less of it
      gets none. Kept to a blanket rule because every animation here is
      ornamental — progress bars, pulses, fades — so there is no reduced variant
@@ -268,7 +268,7 @@ export const chatStyles = css`
   .msg { max-width: var(--pi-chat-measure); min-width: 0; box-sizing: border-box; margin: 0 auto var(--pi-space-7); padding: var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface-card); overflow: hidden; overflow: clip; }
   .msg.assistant, .msg.tool-image-output { background: var(--pi-surface); }
   .custom-card { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); padding: var(--pi-space-5); background: var(--pi-surface); overflow: hidden; overflow: clip; display: grid; gap: var(--pi-space-3); }
-  .custom-card-unknown { color: var(--pi-text-muted); }
+  .custom-card-unknown { color: var(--pi-muted); }
   .msg.user { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
   /* Held by the server, not yet read: the same warning colour the queue panel
      uses, so "waiting" looks the same wherever it appears. It reverts to the
@@ -375,10 +375,12 @@ export const chatStyles = css`
   .msg.skill > .msg-header { border-bottom-color: color-mix(in srgb, var(--pi-purple-border) 35%, transparent); background: var(--pi-purple-surface); }
   .group-msg > .msg-header { position: sticky; top: -26px; z-index: 4; margin: -10px 0 var(--pi-space-4); padding: var(--pi-space-4) 0 var(--pi-space-3); border-bottom: 1px solid color-mix(in srgb, var(--pi-border-muted) 35%, transparent); background: var(--pi-bg); }
   .msg-header-trailing { min-width: 0; flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: flex-end; gap: var(--pi-space-4); }
-  .msg-actions { flex: 0 0 auto; display: inline-flex; gap: var(--pi-space-3); opacity: 0; transition: opacity var(--pi-motion-fast) var(--pi-ease); }
-  .msg-action { position: relative; display: inline-grid; place-items: center; width: 24px; height: 24px; box-sizing: border-box; border: 0; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); padding: 0; font: var(--pi-text-base) var(--pi-font-ui); line-height: 1; cursor: pointer; }
-  /* A fingertip is wider than the drawn button, so the reach grows, not the icon. */
-  .msg-action::after { content: ""; position: absolute; inset: -10px; }
+  .msg-actions { flex: 0 0 auto; display: inline-flex; gap: var(--pi-space-3); opacity: 0; transition: opacity var(--pi-motion-fast) var(--pi-ease); }  .msg-action { position: relative; display: inline-grid; place-items: center; width: 24px; height: 24px; box-sizing: border-box; border: 0; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); padding: 0; font: var(--pi-text-base) var(--pi-font-ui); line-height: 1; cursor: pointer; }
+  /* A fingertip is wider than the drawn button, so the reach grows, not the
+     icon - but only as far as the gap allows: a symmetric 10px expansion over
+     a 6px gap made each button's right edge belong to its neighbour. */
+  .msg-action::after { content: ""; position: absolute; inset: -10px -3px; }
+  @media (pointer: coarse) { .msg-actions { gap: var(--pi-space-8); } .msg-action::after { inset: -10px; } }
   .msg-action:focus { color: var(--pi-text); border-color: var(--pi-accent); }
   @media (hover: hover) { .msg-action:hover { color: var(--pi-text); border-color: var(--pi-accent); } }
   .msg:focus-within > .msg-header .msg-actions, .group-msg:focus-within > .msg-header .msg-actions { opacity: 1; }

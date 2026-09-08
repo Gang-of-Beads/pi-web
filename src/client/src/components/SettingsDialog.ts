@@ -783,8 +783,8 @@ export class SettingsDialog extends LitElement {
       .settings-list button { box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 56px; margin: 0; border: 0; border-bottom: 1px solid var(--pi-border); border-radius: 0; padding: 10px 16px; text-align: left; }
       .settings-list-label { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
       .settings-list-label strong { font-size: 16px; font-weight: 600; color: var(--pi-text); }
-      .settings-list-label small { font-size: 13px; color: var(--pi-text-muted); }
-      .settings-list-chevron { font-size: 22px; color: var(--pi-text-muted); }
+      .settings-list-label small { font-size: 13px; color: var(--pi-muted); }
+      .settings-list-chevron { font-size: 22px; color: var(--pi-muted); }
       .settings-detail-heading { display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
       .settings-back { display: inline-flex; align-items: center; min-height: 44px; margin-left: -8px; border: 0; padding: 0 8px 0 0; font-size: 14px; font-weight: 600; color: var(--pi-accent); }
       .settings-content { padding: 14px 12px calc(18px + env(safe-area-inset-bottom)); }

@@ -624,7 +624,7 @@ export class AskUserCard extends LitElement {
     @media (hover: hover) { button:hover:not(:disabled) { background: var(--pi-surface-hover); } }
     button:active:not(:disabled) { background: var(--pi-surface-active); }
     button:disabled { cursor: wait; opacity: .65; }
-    .primary-action { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-accent-contrast, white); font-weight: 650; }
+    .primary-action { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-bg); font-weight: 650; }
     @media (hover: hover) { .primary-action:hover:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 86%, white); } }
     .primary-action:active:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 86%, white); }
     .partial-confirmation { min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 10px; }

@@ -32,7 +32,7 @@ export const promptEditorStyles = css`
      nothing is lost for keyboard users. */
   button, [role="button"], a, summary, label, input, select { font: var(--pi-text-xs) var(--pi-font-ui); -webkit-tap-highlight-color: transparent; }
   /* Follows the control's own shape rather than boxing a circle. */
-  button:focus-visible, [role="button"]:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); border-radius: inherit; }
+  button:focus-visible, [role="button"]:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
   /* Motion is a preference, not a decoration: a user who asks for less of it
      gets none. Kept to a blanket rule because every animation here is
      ornamental — progress bars, pulses, fades — so there is no reduced variant
