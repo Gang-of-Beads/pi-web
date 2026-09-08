@@ -166,7 +166,12 @@ export const promptEditorStyles = css`
     textarea { padding-right: calc(var(--pi-space-4) + 44px); }
   }
   .attachment-error { flex-basis: 100%; color: var(--pi-danger); font-size: var(--pi-text-xs); }
-  button { font: var(--pi-text-xs) var(--pi-font-ui); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
+  /* Ghost by default: the composer reads as text plus a few quiet controls,
+     with the send action carrying the only accent. Borders said chip on every
+     control and the row read busier than the content it serves; hover, focus,
+     and the press states still signal interactivity (C2/C4). */
+  button { font: var(--pi-text-xs) var(--pi-font-ui); border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
+  button:not(:disabled):active { background: var(--pi-surface-hover); }
   button:disabled, textarea:disabled, .markdown-editor-disabled .cm-editor { opacity: .5; cursor: not-allowed; }
   @media (max-width: 760px) {
     footer { gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-chat-gutter); }

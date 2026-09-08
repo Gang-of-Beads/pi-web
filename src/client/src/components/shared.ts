@@ -321,7 +321,8 @@ export const listStyles = css`
      sits against it and draws the divider. A tile floats it in the corner with
      nothing on its left, so the same rule left the button open on one side.
      Give it back a full border and its own radius. */
-  .list-body.tiles .action-menu-toggle { height: 32px; min-width: 32px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); }
+  .list-body.tiles .action-menu-toggle { height: 32px; min-width: 32px; border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-muted); }
+  @media (hover: hover) { .list-body.tiles .action-menu-toggle:hover { background: var(--pi-surface-hover); color: var(--pi-text); } }
   /* Both the menu button's own corner and the activity dot's offset are derived
      from these, so nothing has to guess the button's width. The defaults are
      declared before the coarse-pointer override: a media query adds no

@@ -435,10 +435,12 @@ export class QuickSwitcher extends LitElement {
     .machine-tab[aria-selected="true"] { border-color: var(--pi-accent); background: var(--pi-selection-bg); color: var(--pi-text-bright); }
     .filters { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-3); padding: var(--pi-space-4) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
     .filters::-webkit-scrollbar { display: none; }
-    .chip { flex: 0 0 auto; min-height: 32px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text-secondary); padding: var(--pi-space-2) var(--pi-space-6); font: inherit; font-size: var(--pi-text-sm); white-space: nowrap; cursor: pointer; }
-    .chip.on { border-color: var(--pi-accent); background: var(--pi-selection-bg); color: var(--pi-text-bright); }
+    /* Chips ghost by default and carry their selected state in the tint, not
+       in an outline: a row of outlined pills read as a wall of boxes (C4). */
+    .chip { flex: 0 0 auto; min-height: 32px; border: 0; border-radius: var(--pi-radius-pill); background: var(--pi-surface-hover); color: var(--pi-text-secondary); padding: var(--pi-space-2) var(--pi-space-6); font: inherit; font-size: var(--pi-text-sm); white-space: nowrap; cursor: pointer; }
+    .chip.on { background: var(--pi-selection-bg); color: var(--pi-text-bright); }
     /* Nested chips read as a second level, not as peers of the projects. */
-    .chip.nested { border-style: dashed; font-size: var(--pi-text-xs); }
+    .chip.nested { font-size: var(--pi-text-xs); }
     .chip:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
     /* One box per session. The menu button used to have a column of its own
        beside the tile, so a row of three sessions read as six boxes; it is
