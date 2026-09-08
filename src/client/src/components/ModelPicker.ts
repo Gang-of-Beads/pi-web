@@ -279,6 +279,15 @@ export class ModelPicker extends LitElement {
     header button { font-size: 20px; color: var(--pi-muted); }
     input.search { margin: 10px 12px; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); padding: 8px 10px; outline: none; }
     input.search:focus { border-color: var(--pi-accent); }
+    /* Coarse pointers get the comfort floor across the popover chrome: the
+       close button, scope chips, search field, and catalog checkboxes are all
+       touch targets on a phone. Declared after every base rule it raises. */
+    @media (pointer: coarse) {
+      header button { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); }
+      .scope-toggle button { min-height: var(--pi-control-height-touch, 44px); }
+      input.search { min-height: var(--pi-control-height-touch, 44px); }
+      input[type="checkbox"] { box-sizing: border-box; width: 24px; height: 24px; }
+    }
     .options > button { display: block; width: 100%; padding: 10px 12px; border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
     .options > button.selected { background: var(--pi-selection-bg); }
     @media (hover: hover) { .options > button:hover { background: var(--pi-selection-bg); } }

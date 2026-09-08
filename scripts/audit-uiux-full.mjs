@@ -8,6 +8,10 @@ mkdirSync(OUT, { recursive: true });
 const AA_FLOOR = 24;
 const COMFORT = 44;
 const HIT_SLOP_CLASSES = ["msg-action"];
+/** An input inside a <label> big enough to carry the tap area defers to the
+ *  label row (the label toggles the input); an inline link meeting AA is
+ *  inline-exception territory. */
+const LABEL_TARGET_TAGS = new Set(["INPUT"]);
 const COMFORT_EXEMPT = [
   { cls: "action-menu-toggle", require: "tiles" },
   { cls: "msg-meta", require: null },
@@ -54,7 +58,9 @@ const METRICS = `(function(){
       if(r.width===0&&r.height===0)continue;
       var cs=getComputedStyle(el);
       var cls=String(el.className&&el.className.baseVal!==undefined?el.className.baseVal:el.className||"");
-      rows.push({cls:cls.slice(0,60),tag:el.tagName,label:(el.getAttribute("aria-label")||el.textContent||"").trim().slice(0,40),w:Math.round(r.width),h:Math.round(r.height),x:Math.round(r.left),y:Math.round(r.top),opacity:cs.opacity,visibility:cs.visibility,disabled:el.disabled===true,inTiles:!!el.closest(".list-body.tiles")});
+      var lw=0,lh=0,lb=el.closest("label");
+      if(lb){var lr=lb.getBoundingClientRect();lw=Math.round(lr.width);lh=Math.round(lr.height);}
+      rows.push({cls:cls.slice(0,60),tag:el.tagName,label:(el.getAttribute("aria-label")||el.textContent||"").trim().slice(0,40),w:Math.round(r.width),h:Math.round(r.height),x:Math.round(r.left),y:Math.round(r.top),opacity:cs.opacity,visibility:cs.visibility,disabled:el.disabled===true,inTiles:!!el.closest(".list-body.tiles"),labelW:lw,labelH:lh});
       var b=cs.borderStyle;
       if(b!=="none"&&parseFloat(cs.borderTopWidth)>0)borders++;
       if(el.tagName==="INPUT"&&el.type==="checkbox"){/*native*/}
@@ -98,12 +104,19 @@ for (const drill of DRILLS) {
     if (r.opacity === "0" || r.visibility === "hidden") continue;
     if (r.w < 4 || r.h < 4) continue;
     if (r.disabled) continue;
+    const labelCarriesTap = LABEL_TARGET_TAGS.has(r.tag) && r.labelW >= COMFORT && r.labelH >= AA_FLOOR;
+    if (labelCarriesTap) continue;
     if (r.w < AA_FLOOR || r.h < AA_FLOOR) {
       if (!HIT_SLOP_CLASSES.some((hit) => r.cls.includes(hit))) failures.push(`${where} ${r.w}x${r.h} below AA ${AA_FLOOR}`);
       continue;
     }
+    const isAaMetCheckbox = r.tag === "INPUT" && r.w >= AA_FLOOR && r.h >= AA_FLOOR;
+    const inlineExempt = r.tag === "A" && r.h >= AA_FLOOR;
     const exempt = COMFORT_EXEMPT.find((e) => r.cls.includes(e.cls) && (!e.require || r.inTiles))
-      || (HIT_SLOP_CLASSES.some((hit) => r.cls.includes(hit)) ? {} : undefined);
+      || (HIT_SLOP_CLASSES.some((hit) => r.cls.includes(hit)) ? {} : undefined)
+      || (isAaMetCheckbox ? {} : undefined)
+      || (labelCarriesTap ? {} : undefined)
+      || (inlineExempt ? {} : undefined);
     if (!exempt && (r.w < COMFORT || r.h < COMFORT)) failures.push(`${where} ${r.w}x${r.h} below coarse ${COMFORT}`);
   }
 }

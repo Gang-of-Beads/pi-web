@@ -111,5 +111,13 @@ export class CommandPicker extends LitElement {
     @media (hover: hover) { .options button:hover { background: var(--pi-selection-bg); } }
     small { display: block; margin-top: 4px; color: var(--pi-muted); }
     .empty { padding: 24px; color: var(--pi-muted); text-align: center; }
+    /* Coarse pointers get the comfort floor across the picker chrome: the
+       close control, the search field, and every option row are touch targets
+       on a phone. Declared after every base rule it raises. */
+    @media (pointer: coarse) {
+      header button { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); }
+      input { min-height: var(--pi-control-height-touch, 44px); }
+      .options button { min-height: var(--pi-control-height-touch, 44px); }
+    }
   `];
 }

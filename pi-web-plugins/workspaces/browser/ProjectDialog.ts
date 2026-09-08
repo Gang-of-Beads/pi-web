@@ -343,6 +343,15 @@ export class ProjectDialog extends LitElement {
     .submit-error { flex: 0 0 auto; margin: 0; padding: 0 12px 12px; color: var(--pi-danger); line-height: 1.35; }
     .trust-hint { color: var(--pi-muted); line-height: 1.3; }
     .trust-hint a { color: var(--pi-accent); }
+    /* Coarse pointers get the comfort floor and the AA floor across the form:
+       the close control, the path field, and the trust checkbox are touch
+       targets; the inline trust link meets AA through its row's line box plus
+       an explicit minimum. Declared after every base rule it raises. */
+    @media (pointer: coarse) {
+      .check input { box-sizing: border-box; width: 24px; height: 24px; margin: 0; accent-color: var(--pi-accent); }
+      input[type="text"], input:not([type]) { min-height: var(--pi-control-height-touch, 44px); }
+      .trust-hint a { display: inline-block; min-height: 24px; }
+    }
     @media (max-width: 760px) {
       /* Suggestion rows double as the primary navigation control on a phone,
          so they get a full touch target and room for long paths. */
@@ -354,6 +363,7 @@ export class ProjectDialog extends LitElement {
     }
     button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; }
     header button { border: 0; background: transparent; color: var(--pi-muted); font-size: 22px; padding: 0 8px; }
+    @media (pointer: coarse) { header button { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); } }
     .primary { border-color: var(--pi-success-border); background: var(--pi-success-border); }
     button:disabled { opacity: .5; cursor: not-allowed; }
   `];
