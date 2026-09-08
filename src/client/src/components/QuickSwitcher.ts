@@ -403,7 +403,7 @@ export class QuickSwitcher extends LitElement {
     input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
     .close { border: 0; background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); line-height: 1; padding: 0 var(--pi-space-4); cursor: pointer; }
     .body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: var(--pi-space-5); overscroll-behavior: contain; }
-    h3 { margin: var(--pi-space-7) var(--pi-space-2) var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: 600; text-transform: uppercase; }
+    h3 { margin: var(--pi-space-7) 0 var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: 600; text-transform: uppercase; }
     /* Tiles rather than one session per row. A phone showed four wide,
        mostly empty cards at a time, so choosing between a dozen sessions meant
        scrolling a list that wasted half its width on every row. auto-fit keeps

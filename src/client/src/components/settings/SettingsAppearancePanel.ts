@@ -121,7 +121,7 @@ export class SettingsAppearancePanel extends LitElement {
     h2 { margin: 0 0 var(--pi-space-2); font-family: var(--pi-font-display); font-size: var(--pi-text-lg); font-weight: var(--pi-weight-semibold); letter-spacing: -0.01em; }
     .muted { margin: 0; color: var(--pi-muted); font-size: var(--pi-text-xs); line-height: 1.4; }
     .follow { display: flex; align-items: flex-start; gap: var(--pi-space-5); margin-bottom: var(--pi-space-7); padding: var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); cursor: pointer; }
-    .follow input { width: 24px; height: 24px; margin: var(--pi-space-1) 0 0; accent-color: var(--pi-accent); }
+    .follow input { flex: 0 0 auto; width: 24px; height: 24px; margin: var(--pi-space-1) 0 0; accent-color: var(--pi-accent); }
     .follow span { display: grid; gap: var(--pi-space-1); }
     .follow-title { font-weight: 600; }
     .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--pi-space-5); }
@@ -135,6 +135,9 @@ export class SettingsAppearancePanel extends LitElement {
     .theme.active .theme-name::after { content: ""; display: inline-block; width: var(--pi-dot-sm); height: var(--pi-dot-sm); margin-left: var(--pi-space-3); border-radius: 50%; background: var(--pi-accent); vertical-align: middle; }
     .theme-name { font-weight: 600; }
     .theme-scheme, .theme-description { font-size: var(--pi-text-2xs); }
+    /* Cards in a grid share a height: the description decides it, so it is
+       clamped rather than left to the length of the sentence somebody wrote. */
+    .theme-description { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-height: calc(2 * 1.4em); overflow: hidden; }
     .preview { display: grid; gap: var(--pi-space-3); height: 74px; margin-bottom: var(--pi-space-3); padding: var(--pi-space-4); border: 1px solid var(--preview-border, var(--pi-border)); border-radius: var(--pi-radius-md); background: var(--preview-bg, var(--pi-bg)); }
     .preview-surface { display: grid; align-content: center; gap: var(--pi-space-3); padding: var(--pi-space-3) var(--pi-space-4); border: 1px solid var(--preview-border, var(--pi-border)); border-radius: var(--pi-radius-sm); background: var(--preview-surface, var(--pi-surface)); }
     .preview-line { display: block; height: var(--pi-dot-xs); border-radius: var(--pi-radius-pill); background: var(--preview-text, var(--pi-text)); }

@@ -705,6 +705,10 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .action-row.unread .action-name { color: var(--pi-text-bright); font-weight: 650; }
     .plain-heading { min-width: 0; }
     .action-name-line { min-width: 0; display: flex; align-items: flex-start; gap: var(--pi-space-3); }
+    /* The state mark arrives after the subtitle in flow order, and the row is a
+       block: with no position of its own an 8px dot took a whole line of its
+       own under the name, adding 18px to every row that had one. */
+    .action-main .session-state { position: absolute; top: 50%; right: var(--pi-space-4); transform: translateY(-50%); }
     .action-name-line .action-name { flex: 1 1 auto; min-width: 0; }
     /* Badges must not sit inside the line-clamped title, or a long name hides them entirely. */
     .row-badges { flex: 0 0 auto; display: flex; align-items: flex-start; gap: var(--pi-space-2); }

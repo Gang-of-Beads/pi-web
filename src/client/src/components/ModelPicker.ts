@@ -290,7 +290,7 @@ export class ModelPicker extends LitElement {
       input.search { min-height: var(--pi-control-height-touch, 44px); }
       input[type="checkbox"] { box-sizing: border-box; width: 24px; height: 24px; }
     }
-    .options > button { display: block; width: 100%; font: inherit; padding: 10px 12px; border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
+    .options > button { display: block; width: 100%; font: var(--pi-text-sm)/1.25 var(--pi-font-ui); padding: 10px 12px; border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
     .options > button.selected { background: var(--pi-selection-bg); }
     @media (hover: hover) { .options > button:hover { background: var(--pi-selection-bg); } }
     .catalog-row { display: flex; align-items: center; border-bottom: 1px solid var(--pi-border-muted); }
