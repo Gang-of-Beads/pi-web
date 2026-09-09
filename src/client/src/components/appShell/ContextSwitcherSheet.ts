@@ -85,7 +85,9 @@ export class ContextSwitcherSheet extends LitElement {
     .sheet-close { box-sizing: border-box; display: grid; place-items: center; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); padding: 0; border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); line-height: 1; cursor: pointer; }
     @media (pointer: coarse) { .sheet-close { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); } }
     .sheet-close:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
-    .sheet-body { display: flex; flex-direction: column; gap: var(--pi-space-4); min-height: 0; }
+    /* Three lists stacked with nothing above naming them: keep their headings,
+       which the phone panel drops because its context row says the same word. */
+    .sheet-body { --pi-list-word-heading-display: inline; --pi-list-word-heading-margin: 0 0 var(--pi-space-4); display: flex; flex-direction: column; gap: var(--pi-space-4); min-height: 0; }
     /* The sheet itself scrolls. Letting each contributed list shrink turned one
        scrollable surface into three squeezed ones - a second machine rendered
        as an 8.9px sliver that read as a rendering artefact, not a row. */

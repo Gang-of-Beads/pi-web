@@ -1,4 +1,5 @@
 import { css, html, LitElement, type PropertyValues, type TemplateResult } from "lit";
+import { settingsControlStyles } from "./settingsControlStyles.js";
 import { customElement, property, state } from "lit/decorators.js";
 import { DEFAULT_WORKSPACE_UPLOADS_FOLDER, type PiWebConfigEnvOverrides, type PiWebConfigResponse, type PiWebConfigValues } from "../../api";
 import "./SettingsPanelFrame";
@@ -250,7 +251,7 @@ export class SettingsGeneralPanel extends LitElement {
     this.machineLocalError = "";
   }
 
-  static override styles = [interactiveSurfaceStyles, css`
+  static override styles = [interactiveSurfaceStyles, settingsControlStyles, css`
     :host { display: block; }
     .card-heading { display: grid; gap: var(--pi-space-3); min-width: 0; }
     h3, p { margin: 0; }

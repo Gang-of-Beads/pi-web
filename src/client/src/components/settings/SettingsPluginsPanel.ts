@@ -1,4 +1,5 @@
 import { css, html, LitElement, nothing, type TemplateResult } from "lit";
+import { settingsControlStyles } from "./settingsControlStyles.js";
 import { customElement, property } from "lit/decorators.js";
 import type { PiWebConfigResponse, PiWebPluginInfo, PiWebPluginsResponse } from "../../api";
 import { PI_WEB_PLUGIN_RECOVERY_COMMANDS } from "../../../../shared/pluginRecoveryCommands";
@@ -194,7 +195,7 @@ export class SettingsPluginsPanel extends LitElement {
     await this.onTogglePlugin?.(plugin.id, enabled);
   }
 
-  static override styles = [interactiveSurfaceStyles, css`
+  static override styles = [interactiveSurfaceStyles, settingsControlStyles, css`
     :host { display: block; }
     input { font: inherit; }
     input:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }

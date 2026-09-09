@@ -1,4 +1,5 @@
 import { LitElement, css, html, nothing } from "lit";
+import { settingsControlStyles } from "./settingsControlStyles.js";
 import { customElement, property } from "lit/decorators.js";
 import type { QualifiedContributionId, QualifiedThemeContribution, ThemeTokens } from "../../plugins/types";
 import { interactiveSurfaceStyles } from "../shared";
@@ -115,7 +116,7 @@ export class SettingsAppearancePanel extends LitElement {
     `;
   }
 
-  static override styles = [interactiveSurfaceStyles, css`
+  static override styles = [interactiveSurfaceStyles, settingsControlStyles, css`
     :host { display: block; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
     .heading { margin-bottom: var(--pi-space-6); }
     h2 { margin: 0 0 var(--pi-space-2); font-family: var(--pi-font-display); font-size: var(--pi-text-lg); font-weight: var(--pi-weight-semibold); letter-spacing: -0.01em; }

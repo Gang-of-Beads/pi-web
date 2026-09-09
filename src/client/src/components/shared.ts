@@ -298,8 +298,10 @@ export const listStyles = css`
     h2 { margin-bottom: var(--pi-space-2); }
     /* A heading that is only a word: the context row already said it. Headings
        carrying controls (count, create, clean up) are untouched. */
-    h2 > span:only-child { display: none; }
-    h2:has(> span:only-child) { margin: 0; }
+    /* Inheritable, so a surface that stacks several of these lists can ask for
+       their names back: the context sheet has no row above naming the step. */
+    h2 > span:only-child { display: var(--pi-list-word-heading-display, none); }
+    h2:has(> span:only-child) { margin: var(--pi-list-word-heading-margin, 0); }
   }
   .list-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
   /* Tile/card layout for management lists (workspaces, projects, machines).
@@ -434,7 +436,7 @@ export const listStyles = css`
      controls measured 44px was the widest touch-floor split left. */
   @media (pointer: coarse) { .action-menu-toggle { min-width: var(--pi-control-height-touch); } }
   .action-menu-panel { position: fixed; z-index: var(--pi-layer-popover); box-sizing: border-box; min-width: min(120px, calc(100vw - 16px)); overflow: auto; padding: var(--pi-space-2); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); box-shadow: var(--pi-elevation-2); overflow-wrap: anywhere; }
-  .action-menu-panel button { display: block; width: 100%; text-align: left; white-space: normal; overflow-wrap: anywhere; border: 0; background: transparent; color: var(--pi-text); }
+  .action-menu-panel button { display: block; min-height: var(--pi-control-height-comfort); width: 100%; text-align: left; white-space: normal; overflow-wrap: anywhere; border: 0; background: transparent; color: var(--pi-text); }
   @media (hover: hover) { .action-menu-panel button:hover { background: var(--pi-selection-bg); } }
   button.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
   button:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }

@@ -1,4 +1,5 @@
 import { css, html, LitElement, type TemplateResult } from "lit";
+import { settingsControlStyles } from "./settingsControlStyles.js";
 import { customElement, property } from "lit/decorators.js";
 import type { PiWebConfigResponse, PiWebConfigValues } from "../../api";
 import "./SettingsPanelFrame";
@@ -129,7 +130,7 @@ export class SettingsSessiondPanel extends LitElement {
     await this.onSave?.(askUserConfigPatch(enabled));
   }
 
-  static override styles = [interactiveSurfaceStyles, css`
+  static override styles = [interactiveSurfaceStyles, settingsControlStyles, css`
     :host { display: block; }
     h3 { margin: 0; font-size: var(--pi-text-sm); line-height: 1.3; }
     .loading-card, .config-path-card, .effective-card { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); padding: var(--pi-space-6); }

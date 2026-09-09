@@ -331,8 +331,10 @@ export class ProjectDialog extends LitElement {
     footer { border-top: 1px solid var(--pi-border); border-bottom: 0; justify-content: end; }
     .body { flex: 1 1 auto; display: grid; gap: var(--pi-space-6); padding: var(--pi-space-6); min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
     label { display: grid; gap: var(--pi-space-3); color: var(--pi-muted); }
-    input[type="text"], input:not([type]) { box-sizing: border-box; width: 100%; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: var(--pi-space-5); font: var(--pi-control-font-size, 16px) var(--pi-control-monospace-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
+    input[type="text"], input:not([type]) { box-sizing: border-box; min-height: var(--pi-control-height); width: 100%; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: var(--pi-space-5); font: var(--pi-control-font-size, 16px) var(--pi-control-monospace-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
     input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
+    .check input { flex: 0 0 auto; box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); margin: 0; accent-color: var(--pi-accent); }
+    footer button { min-height: var(--pi-control-height); }
     .check { display: flex; align-items: center; color: var(--pi-text); }
     .suggestions { min-height: 90px; max-height: 320px; overflow: auto; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); }
     .suggestions button { display: block; width: 100%; min-height: var(--pi-control-height); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 0; border-bottom: 1px solid var(--pi-border); border-radius: 0; background: transparent; color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); text-align: left; font: var(--pi-text-sm) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }

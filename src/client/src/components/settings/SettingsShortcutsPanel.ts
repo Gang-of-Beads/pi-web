@@ -1,4 +1,5 @@
 import { css, html, LitElement, type PropertyValues, type TemplateResult } from "lit";
+import { settingsControlStyles } from "./settingsControlStyles.js";
 import { customElement, property, state } from "lit/decorators.js";
 import type { AppAction } from "../../actions";
 import type { PiWebConfigResponse, PiWebConfigValues, PiWebShortcutConfig } from "../../api";
@@ -343,7 +344,7 @@ export class SettingsShortcutsPanel extends LitElement {
     this.recordingListenerActive = false;
   }
 
-  static override styles = [interactiveSurfaceStyles, css`
+  static override styles = [interactiveSurfaceStyles, settingsControlStyles, css`
     :host { display: block; }
     h3, p { margin: 0; }
     h3 { font-size: var(--pi-text-sm); line-height: 1.3; }

@@ -1,4 +1,5 @@
 import { LitElement, css, html, nothing } from "lit";
+import { settingsControlStyles } from "./settingsControlStyles.js";
 import { customElement, property, state } from "lit/decorators.js";
 import type { PiWebFleetReport, PiWebFleetRunResponse } from "../../../../shared/apiTypes";
 import { interactiveSurfaceStyles } from "../shared";
@@ -102,7 +103,7 @@ export class SettingsFleetSection extends LitElement {
     }
   }
 
-  static override styles = [interactiveSurfaceStyles, css`
+  static override styles = [interactiveSurfaceStyles, settingsControlStyles, css`
     :host { display: block; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
     .fleet { display: grid; gap: var(--pi-space-5); }
     header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--pi-space-6); }

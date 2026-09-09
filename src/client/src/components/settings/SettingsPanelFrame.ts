@@ -1,4 +1,5 @@
 import { css, html, LitElement, nothing, type TemplateResult } from "lit";
+import { settingsControlStyles } from "./settingsControlStyles.js";
 import { customElement, property } from "lit/decorators.js";
 import { interactiveSurfaceStyles } from "../shared";
 
@@ -91,7 +92,7 @@ export class SettingsPanelFrame extends LitElement {
     `;
   }
 
-  static override styles = [interactiveSurfaceStyles, css`
+  static override styles = [interactiveSurfaceStyles, settingsControlStyles, css`
     :host { display: block; }
     .panel { display: block; }
     .section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--pi-space-7); margin-bottom: var(--pi-space-7); }

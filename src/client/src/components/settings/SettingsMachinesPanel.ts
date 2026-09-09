@@ -1,4 +1,5 @@
 import { LitElement, css, html } from "lit";
+import { settingsControlStyles } from "./settingsControlStyles.js";
 import { customElement, property, state } from "lit/decorators.js";
 import type { Machine, MachineHealth } from "../../api";
 import type { PiWebFleetReport, PiWebFleetRunResponse } from "../../../../shared/apiTypes";
@@ -100,7 +101,7 @@ export class SettingsMachinesPanel extends LitElement {
     await this.onRename?.(machine, name);
   }
 
-  static override styles = [interactiveSurfaceStyles, css`
+  static override styles = [interactiveSurfaceStyles, settingsControlStyles, css`
     :host { display: block; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
     .machines-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--pi-space-6); margin-bottom: var(--pi-space-6); }
     h2 { margin: 0 0 var(--pi-space-2); font-family: var(--pi-font-display); font-size: var(--pi-text-lg); font-weight: var(--pi-weight-semibold); letter-spacing: -0.01em; }

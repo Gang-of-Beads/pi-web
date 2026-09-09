@@ -1,4 +1,5 @@
 import { css, html, LitElement, type TemplateResult } from "lit";
+import { settingsControlStyles } from "./settingsControlStyles.js";
 import { customElement, property, state } from "lit/decorators.js";
 import type { PiPackageInfo, PiPackageScope, PiPackagesResponse } from "../../api";
 import "./SettingsPanelFrame";
@@ -180,7 +181,7 @@ export class SettingsPackagesPanel extends LitElement {
     return this.operation !== undefined;
   }
 
-  static override styles = [interactiveSurfaceStyles, css`
+  static override styles = [interactiveSurfaceStyles, settingsControlStyles, css`
     :host { display: block; }
     .package-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--pi-space-7); margin-bottom: var(--pi-space-7); }
     .package-toolbar > div, .package-main { display: grid; gap: var(--pi-space-3); min-width: 0; }
