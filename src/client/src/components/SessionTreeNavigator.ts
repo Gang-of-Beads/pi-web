@@ -590,10 +590,10 @@ export class SessionTreeNavigator extends LitElement {
     .choice-option input { margin-top: var(--pi-space-2); accent-color: var(--pi-accent); }
     .choice-option span { display: grid; gap: var(--pi-space-2); }
     .choice-option small { color: var(--pi-muted); }
-    .custom-focus { display: grid; gap: var(--pi-space-3); margin: var(--pi-space-1) 0 0 30px; font-weight: 600; }
+    .custom-focus { display: grid; gap: var(--pi-space-3); margin: var(--pi-space-1) 0 0 30px; font-weight: var(--pi-weight-semibold); }
     textarea { width: 100%; resize: vertical; min-height: 94px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: var(--pi-space-5) var(--pi-space-5); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); }
     textarea:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
-    .character-count { justify-self: end; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: 400; }
+    .character-count { justify-self: end; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-regular); }
     .validation-error { margin-inline-start: 30px; color: var(--pi-danger); font-size: var(--pi-text-xs); }
     .side-effects-note { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); }
     .dialog-error { border-color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 10%, var(--pi-bg)); color: var(--pi-danger); }

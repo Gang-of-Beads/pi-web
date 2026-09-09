@@ -149,7 +149,7 @@ export const chatStyles = css`
   /* A section name is short and carries a count; cutting it to "ACTIVITY (..."
      loses the number, which is the part worth reading. The names keep their
      width and the running summary beside them gives way instead. */
-  .drawer-tab { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: 22px; padding: var(--pi-space-1) var(--pi-space-4); border: 1px solid transparent; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-2xs); font-weight: 600; white-space: nowrap; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .drawer-tab { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: 22px; padding: var(--pi-space-1) var(--pi-space-4); border: 1px solid transparent; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-semibold); white-space: nowrap; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   @media (hover: hover) { .drawer-tab:hover { color: var(--pi-text-bright); } }
   .drawer-tab:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
   .drawer-tab.selected { border-color: var(--pi-border); background: var(--pi-surface); color: var(--pi-text-bright); }
@@ -219,7 +219,7 @@ export const chatStyles = css`
      their own. Nothing is pinned, so the transcript scrolls at any card
      height and the card covers none of its own rows. */
   .waiting-slot { display: flex; flex-direction: column; gap: var(--pi-space-4); margin: 0 0 var(--pi-space-4); }
-  .activity-dock { flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) var(--pi-space-5); z-index: var(--pi-layer-sticky); display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: 0 8px 28px var(--pi-shadow); backdrop-filter: blur(6px); }
+  .activity-dock { flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) var(--pi-space-5); z-index: var(--pi-layer-sticky); display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: var(--pi-elevation-2); backdrop-filter: blur(6px); }
   /* Idle is the state nobody needs a full-width banner for: keep the signal,
      drop the bar that looked like an empty card above the composer.
 
@@ -229,7 +229,9 @@ export const chatStyles = css`
      stopped hugging and started drawing a fixed 240px stub with one word in
      its left corner - the empty card again, only narrower. A row hugs when it
      is told to. */
-  .activity-dock.idle { width: fit-content; max-width: min(60%, 240px); opacity: .75; padding: var(--pi-space-2) var(--pi-space-5); font-size: var(--pi-text-xs); }
+  /* Quiet through colour, not opacity: the .75 layer put 12px muted text at
+     3.96:1 on the dock, under the AA floor it reads at full strength. */
+  .activity-dock.idle { width: fit-content; max-width: min(60%, 240px); padding: var(--pi-space-2) var(--pi-space-5); font-size: var(--pi-text-xs); }
   /* Waiting on an answer is one short phrase too, and a phrase stretched over
      1223px of empty bar is the same empty card in a different colour. Only the
      working state keeps the full row, because it carries the elapsed clock at
@@ -332,7 +334,7 @@ export const chatStyles = css`
   .command-dismiss { flex: 0 0 auto; align-self: center; width: 24px; height: 24px; display: grid; place-items: center; padding: 0; border: 1px solid transparent; border-radius: var(--pi-radius-sm); background: transparent; color: inherit; font: inherit; font-size: var(--pi-text-sm); line-height: 1; cursor: pointer; }
   .command-dismiss:focus-visible { outline: var(--pi-focus-ring-width) solid currentColor; outline-offset: var(--pi-focus-ring-offset); }
   @media (hover: hover) { .command-dismiss:hover { border-color: currentColor; } }
-  .queued-clear-button { flex: 0 0 auto; border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-warning); padding: var(--pi-space-1) var(--pi-space-3); font: inherit; cursor: pointer; }
+  .queued-clear-button { flex: 0 0 auto; min-height: var(--pi-control-height); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-warning); padding: var(--pi-space-1) var(--pi-space-3); font: inherit; cursor: pointer; }
   @media (pointer: coarse) {
     .command-dismiss, .image-zoom-close { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); }
     .queued-clear-button { min-height: var(--pi-control-height-touch); }
@@ -349,7 +351,7 @@ export const chatStyles = css`
   .delivery-mark.pending .delivery-glyph { animation: pulse 1.4s ease-in-out infinite; }
   .delivery-mark.received { color: var(--pi-muted); }
   .delivery-mark.delivered { color: var(--pi-success); }
-  .delivery-mark.failed { color: var(--pi-danger); font-weight: 600; }
+  .delivery-mark.failed { color: var(--pi-danger); font-weight: var(--pi-weight-semibold); }
   .session-activity { max-width: 100%; min-width: 0; box-sizing: border-box; display: grid; gap: var(--pi-space-2); margin: 0 auto var(--pi-space-7); padding: var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); overflow: hidden; }
   .session-activity.compacting { border-color: var(--pi-purple-border); background: var(--pi-purple-surface); }
   .session-activity strong { color: var(--pi-purple); }
@@ -369,7 +371,7 @@ export const chatStyles = css`
      arc the border uses, in one rasterization. Every previous fix had this
      element guess the card's inner curve, and the guess broke at the phone's
      fractional device pixel ratio - five reports of the same corners. */
-  .msg > .msg-header { position: sticky; top: -16px; z-index: 4; margin: calc(-1 * var(--pi-space-6)) calc(-1 * var(--pi-space-6)) var(--pi-space-3); padding: var(--pi-space-1) var(--pi-space-5); border-bottom: 1px solid color-mix(in srgb, var(--pi-border-muted) 35%, transparent); background: var(--pi-surface-card); box-shadow: 0 8px 18px var(--pi-shadow-soft); }
+  .msg > .msg-header { position: sticky; top: -16px; z-index: 4; margin: calc(-1 * var(--pi-space-6)) calc(-1 * var(--pi-space-6)) var(--pi-space-3); padding: var(--pi-space-1) var(--pi-space-5); border-bottom: 1px solid color-mix(in srgb, var(--pi-border-muted) 35%, transparent); background: var(--pi-surface-card); box-shadow: var(--pi-elevation-2); }
   .msg.user > .msg-header { border-bottom-color: color-mix(in srgb, var(--pi-accent-border) 35%, transparent); background: var(--pi-selection-bg); }
   .msg.assistant > .msg-header .label, .msg.tool-image-output > .msg-header .label { color: var(--pi-text-secondary); }
   .msg.user > .msg-header .label { color: var(--pi-accent); }

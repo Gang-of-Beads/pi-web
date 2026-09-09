@@ -5,7 +5,7 @@ import { type CompletionItem, interactiveSurfaceStyles } from "./shared";
 
 const autocompleteStyles = css`
   :host { display: block; }
-  .menu { position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); z-index: var(--pi-layer-raised); max-height: 260px; overflow: auto; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); box-shadow: 0 10px 30px var(--pi-shadow); }
+  .menu { position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); z-index: var(--pi-layer-raised); max-height: 260px; overflow: auto; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); box-shadow: var(--pi-elevation-2); }
   button { font: var(--pi-text-xs) var(--pi-font-ui); display: grid; grid-template-columns: minmax(120px, 1fr) auto; gap: var(--pi-space-2) var(--pi-space-5); width: 100%; border: 0; border-bottom: 1px solid var(--pi-border); border-radius: 0; background: transparent; color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); text-align: left; cursor: pointer; }
   button:last-child { border-bottom: 0; }
   button.selected { background: var(--pi-selection-bg); }

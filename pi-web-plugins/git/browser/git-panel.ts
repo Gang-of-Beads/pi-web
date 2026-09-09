@@ -1345,12 +1345,12 @@ const gitPanelStyles = `
   .git-panel .git-load-more { margin: var(--pi-space-4); }
   .git-panel .git-twisty { color: var(--pi-dim, var(--pi-muted)); }
   .git-panel .git-summary { margin: var(--pi-space-2) var(--pi-space-3) var(--pi-space-4); color: var(--pi-muted); }
-  .git-panel .submodule-badge { display: inline-block; margin-left: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); color: var(--pi-muted); padding: 0 var(--pi-space-3); font-size: var(--pi-text-2xs); font-weight: 400; vertical-align: baseline; }
+  .git-panel .submodule-badge { display: inline-block; margin-left: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); color: var(--pi-muted); padding: 0 var(--pi-space-3); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-regular); vertical-align: baseline; }
   .git-panel .git-viewer { min-height: 0; overflow: auto; display: flex; flex-direction: column; }
   .git-panel .git-review-diffs { min-width: 0; }
   .git-panel .git-review-section { min-width: 0; min-height: 120px; border-bottom: 1px solid var(--pi-border); scroll-margin-top: var(--pi-space-4); }
   .git-panel .git-review-section.is-focused { box-shadow: inset 3px 0 0 var(--pi-accent); }
-  .git-panel .git-review-toggle { min-width: 0; overflow: hidden; border: 0; background: transparent; padding: var(--pi-space-1); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+  .git-panel .git-review-toggle { min-width: 0; overflow: hidden; border: 0; background: transparent; padding: var(--pi-space-1); font-weight: var(--pi-weight-semibold); text-overflow: ellipsis; white-space: nowrap; }
   .git-panel .git-review-placeholder { min-height: 96px; display: grid; place-items: center; color: var(--pi-muted); }
   .git-panel .git-review-section > .git-diffs { min-height: 160px; }
   .git-panel .git-diffs { flex: 1 1 auto; min-height: 0; overflow: auto; display: grid; grid-template-rows: minmax(120px, 1fr) minmax(120px, 1fr); }
@@ -1366,7 +1366,7 @@ const gitPanelStyles = `
   .git-panel .git-commit-files-actions { display: flex; justify-content: flex-end; padding: var(--pi-space-4); border-bottom: 1px solid var(--pi-border-muted); }
   .git-panel .git-commit-files { min-height: 0; display: flex; flex-direction: column; }
   .git-panel .git-commit-file { min-width: 0; border-bottom: 1px solid var(--pi-border); }
-  .git-panel .git-commit-file-toggle { min-width: 0; overflow: hidden; border: 0; background: transparent; padding: var(--pi-space-1); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+  .git-panel .git-commit-file-toggle { min-width: 0; overflow: hidden; border: 0; background: transparent; padding: var(--pi-space-1); font-weight: var(--pi-weight-semibold); text-overflow: ellipsis; white-space: nowrap; }
   .git-panel .git-commit-file:last-child { border-bottom: 0; }
   .git-panel .git-diff-scroller { flex: 1 1 auto; min-height: 0; overflow: auto; background: var(--pi-bg); }
   .git-panel .git-diff-grid { display: grid; grid-template-columns: max-content max-content 2ch max-content; width: max-content; min-width: 100%; padding: var(--pi-space-3) 0; font: var(--pi-text-xs) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); line-height: 1.45; }

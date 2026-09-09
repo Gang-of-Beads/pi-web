@@ -235,7 +235,7 @@ export class SessionCleanupDialog extends LitElement {
     thead th:first-child, td.select-cell { width: 72px; text-align: center; }
     th:nth-child(2), td:nth-child(2) { text-align: left; }
     tbody tr.unselected { opacity: .58; }
-    tbody th { max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 500; }
+    tbody th { max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: var(--pi-weight-medium); }
     tfoot th, tfoot td { border-bottom: 0; font-weight: 700; }
     button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); font: inherit; cursor: pointer; }
     button:disabled { opacity: .5; cursor: not-allowed; }

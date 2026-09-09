@@ -298,7 +298,7 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     @media (hover: hover) { .machine-switcher-button:hover { border-color: var(--pi-accent); background: var(--pi-selection-bg); } }
     .machine-switcher-text { flex: 1 1 auto; min-width: 0; display: grid; gap: var(--pi-space-1); }
     .machine-switcher-kicker { color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: 1; text-transform: uppercase; letter-spacing: .02em; }
-    .machine-switcher-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--pi-text-xs); font-weight: 600; line-height: 1.2; }
+    .machine-switcher-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--pi-text-xs); font-weight: var(--pi-weight-semibold); line-height: 1.2; }
     .machine-status { flex: 0 0 auto; color: var(--pi-muted); font-size: var(--pi-text-2xs); }
     .machine-status.online { color: var(--pi-success); }
     .machine-status.offline, .machine-status.error { color: var(--pi-danger); }
@@ -318,8 +318,8 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     .machine-option-main, .machine-option-actions-toggle, .machine-option-actions-panel button { border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-text); cursor: pointer; }
     .machine-option-main { min-width: 0; min-height: 60px; display: grid; gap: var(--pi-space-2); padding: var(--pi-space-5) var(--pi-space-4) var(--pi-space-4); text-align: left; align-content: start; }
     .machine-option-name { min-width: 0; display: flex; align-items: center; gap: var(--pi-space-3); }
-    .machine-option-name span:last-child { min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .machine-option-status { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: 500; }
+    .machine-option-name span:last-child { min-width: 0; font-weight: var(--pi-weight-semibold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .machine-option-status { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-medium); }
     .machine-option-status .dot { width: var(--pi-dot-sm); height: var(--pi-dot-sm); border-radius: 50%; background: var(--pi-dim); }
     .machine-option-status.online { color: var(--pi-success); }
     .machine-option-status.online .dot { background: var(--pi-success); }

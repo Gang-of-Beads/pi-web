@@ -81,11 +81,11 @@ export class ContextSwitcherSheet extends LitElement {
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-overlay); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
     .sheet { display: flex; flex-direction: column; gap: var(--pi-space-4); width: 100%; max-height: 100%; box-sizing: border-box; padding: var(--pi-space-4); overflow-y: auto; }
     .sheet-header { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); }
-    .sheet-title { font-weight: 600; }
+    .sheet-title { font-weight: var(--pi-weight-semibold); }
     .sheet-close { box-sizing: border-box; display: grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); line-height: 1; cursor: pointer; }
     .sheet-close:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -2px; }
     .sheet-body { display: flex; flex-direction: column; gap: var(--pi-space-4); min-height: 0; }
-    .sheet-body h2 { margin: 0 0 var(--pi-space-2); font-size: var(--pi-text-sm); font-weight: 600; color: var(--pi-muted); }
+    .sheet-body h2 { margin: 0 0 var(--pi-space-2); font-size: var(--pi-text-sm); font-weight: var(--pi-weight-semibold); color: var(--pi-muted); }
   `];
 }
 

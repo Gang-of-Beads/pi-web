@@ -107,7 +107,7 @@ export class AppContextSwitcher extends LitElement {
     .chip { flex: 1 1 auto; min-width: 0; display: grid; gap: var(--pi-space-1); justify-items: start; align-content: center; border: 0; background: none; padding: var(--pi-space-2) var(--pi-space-4); font: inherit; text-align: left; cursor: pointer; }
     .chip:focus-visible, .add:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -2px; }
     .chip-label { color: var(--pi-muted); font-size: var(--pi-text-2xs); text-transform: uppercase; letter-spacing: .04em; }
-    .chip-value { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--pi-text-sm); font-weight: 600; }
+    .chip-value { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--pi-text-sm); font-weight: var(--pi-weight-semibold); }
     /* When a step is too narrow for label and value, the label goes first:
        the value is the half that answers "where am I?". The picker it opens
        says its own name. */

@@ -495,7 +495,7 @@ export class AskUserCard extends LitElement {
       padding: var(--pi-space-4) var(--pi-space-5) var(--pi-space-3);
       border-bottom: 1px solid color-mix(in srgb, var(--pi-border-muted) 35%, transparent);
       background: var(--pi-surface-raised);
-      box-shadow: 0 8px 18px var(--pi-shadow-soft);
+      box-shadow: var(--pi-elevation-2);
     }
     h2, h3, p { margin-top: 0; }
     h2 {
@@ -531,7 +531,7 @@ export class AskUserCard extends LitElement {
       gap: var(--pi-space-3);
       color: var(--pi-text);
       padding: 0;
-      font-weight: 650;
+      font-weight: var(--pi-weight-strong);
       line-height: 1.35;
     }
     .question-number { color: var(--pi-muted); }
@@ -624,7 +624,7 @@ export class AskUserCard extends LitElement {
     @media (hover: hover) { button:hover:not(:disabled) { background: var(--pi-surface-hover); } }
     button:active:not(:disabled) { background: var(--pi-surface-active); }
     button:disabled { cursor: wait; opacity: .65; }
-    .primary-action { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-on-accent, var(--pi-bg)); font-weight: 650; }
+    .primary-action { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-on-accent, var(--pi-bg)); font-weight: var(--pi-weight-strong); }
     @media (hover: hover) { .primary-action:hover:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 86%, white); } }
     .primary-action:active:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 86%, white); }
     .partial-confirmation { min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: var(--pi-space-5); }

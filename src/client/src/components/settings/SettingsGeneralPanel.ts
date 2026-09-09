@@ -267,7 +267,7 @@ export class SettingsGeneralPanel extends LitElement {
     .error-message { border-color: var(--pi-danger); color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 10%, var(--pi-surface)); }
     .loading-card { color: var(--pi-muted); }
     .config-path-card { display: grid; gap: var(--pi-space-3); }
-    .config-path-card span, .field-heading, dt { color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: 600; }
+    .config-path-card span, .field-heading, dt { color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: var(--pi-weight-semibold); }
     code { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-bg); padding: var(--pi-space-1) var(--pi-space-2); color: var(--pi-text); font: var(--pi-text-xs) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); overflow-wrap: anywhere; }
     .config-path-card small, .field small { color: var(--pi-muted); }
     .config-form { display: grid; gap: var(--pi-space-7); }
@@ -277,7 +277,7 @@ export class SettingsGeneralPanel extends LitElement {
     input:focus, select:focus, textarea:focus { border-color: var(--pi-accent); box-shadow: 0 0 0 1px var(--pi-accent-border); }
     textarea { resize: vertical; min-height: 94px; font-family: var(--pi-control-monospace-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
     textarea:disabled { opacity: .55; }
-    .override-badge { border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); color: var(--pi-warning); background: var(--pi-warning-surface); padding: var(--pi-space-1) var(--pi-space-4); font-size: var(--pi-text-2xs); font-weight: 600; text-transform: none; }
+    .override-badge { border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); color: var(--pi-warning); background: var(--pi-warning-surface); padding: var(--pi-space-1) var(--pi-space-4); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-semibold); text-transform: none; }
     .effective-card { display: grid; gap: var(--pi-space-5); }
     .effective-card dl { display: grid; gap: var(--pi-space-4); margin: 0; }
     .effective-card dl > div { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: var(--pi-space-6); align-items: baseline; }

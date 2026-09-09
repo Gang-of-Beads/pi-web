@@ -760,10 +760,10 @@ export class SettingsDialog extends LitElement {
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-dialog); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui, system-ui, sans-serif); }
     modal-surface { --modal-surface-backdrop-padding: max(var(--pi-space-8), env(safe-area-inset-top)) max(var(--pi-space-8), env(safe-area-inset-right)) max(var(--pi-space-8), env(safe-area-inset-bottom)) max(var(--pi-space-8), env(safe-area-inset-left)); --modal-surface-width: min(980px, 100%); --modal-surface-max-height: min(760px, 100%); --modal-surface-min-height: min(620px, 100%); --modal-surface-radius: var(--pi-radius-lg); }
     .settings-header { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-6); padding: var(--pi-space-7) var(--pi-space-7); border-bottom: 1px solid var(--pi-border); }
-    .eyebrow { display: block; color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: 600; }
+    .eyebrow { display: block; color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: var(--pi-weight-semibold); }
     h1 { margin: 0; font-size: var(--pi-text-xl); line-height: 1.2; }
     button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); font: inherit; cursor: pointer; }
-    .close-button { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); display: grid; place-items: center; border: 0; background: transparent; color: var(--pi-muted); padding: 0; font-size: var(--pi-text-xl); }
+    .close-button { width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); display: grid; place-items: center; border: 0; background: transparent; color: var(--pi-muted); padding: 0; font-size: var(--pi-text-xl); }
     .close-button:focus { color: var(--pi-text); background: var(--pi-surface-hover); }
     @media (hover: hover) { .close-button:hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
     .settings-body { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 220px minmax(0, 1fr); }
@@ -775,6 +775,7 @@ export class SettingsDialog extends LitElement {
     .settings-nav small { color: var(--pi-muted); }
     .settings-content { min-width: 0; min-height: 0; overflow: auto; padding: var(--pi-space-8); }
 
+    @media (pointer: coarse) { .close-button { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); } }
     @media (pointer: coarse), (max-width: 760px) {
       modal-surface { --modal-surface-backdrop-padding: 0; --modal-surface-place-items: stretch; --modal-surface-width: 100%; --modal-surface-max-height: none; --modal-surface-min-height: 0; --modal-surface-border: 0; --modal-surface-radius: 0; }
       .settings-header { padding: max(var(--pi-space-6), env(safe-area-inset-top)) var(--pi-space-6) var(--pi-space-6); }
@@ -782,11 +783,11 @@ export class SettingsDialog extends LitElement {
       .settings-list { display: flex; flex-direction: column; overflow-y: auto; padding: var(--pi-space-3) 0 calc(var(--pi-space-6) + env(safe-area-inset-bottom)); }
       .settings-list button { box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-6); width: 100%; min-height: 56px; margin: 0; border: 0; border-bottom: 1px solid var(--pi-border); border-radius: 0; padding: var(--pi-space-5) var(--pi-space-7); text-align: left; }
       .settings-list-label { display: flex; flex-direction: column; gap: var(--pi-space-1); min-width: 0; }
-      .settings-list-label strong { font-size: var(--pi-text-lg); font-weight: 600; color: var(--pi-text); }
+      .settings-list-label strong { font-size: var(--pi-text-lg); font-weight: var(--pi-weight-semibold); color: var(--pi-text); }
       .settings-list-label small { font-size: var(--pi-text-sm); color: var(--pi-muted); }
       .settings-list-chevron { font-size: var(--pi-text-xl); color: var(--pi-muted); }
       .settings-detail-heading { display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
-      .settings-back { display: inline-flex; align-items: center; min-height: var(--pi-control-height-touch); margin-left: calc(-1 * var(--pi-space-4)); border: 0; padding: 0 var(--pi-space-4) 0 0; font-size: var(--pi-text-base); font-weight: 600; color: var(--pi-accent); }
+      .settings-back { display: inline-flex; align-items: center; min-height: var(--pi-control-height-touch); margin-left: calc(-1 * var(--pi-space-4)); border: 0; padding: 0 var(--pi-space-4) 0 0; font-size: var(--pi-text-base); font-weight: var(--pi-weight-semibold); color: var(--pi-accent); }
       .settings-content { padding: var(--pi-space-6) var(--pi-space-6) calc(var(--pi-space-7) + env(safe-area-inset-bottom)); }
     }
   `];

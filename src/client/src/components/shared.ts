@@ -355,7 +355,7 @@ export const listStyles = css`
   .section-toggle { display: flex; flex: 1 1 auto; min-width: 0; align-items: center; justify-content: space-between; gap: var(--pi-space-4); width: 100%; border: 0; background: transparent; color: inherit; padding: 0; font: inherit; text-align: left; text-transform: inherit; }
   .section-toggle span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .section-title { display: grid; gap: var(--pi-space-1); min-width: 0; }
-  .section-toggle .section-selected { display: block; color: var(--pi-text); font-size: var(--pi-text-xs); font-weight: 600; line-height: 1.25; text-transform: none; }
+  .section-toggle .section-selected { display: block; color: var(--pi-text); font-size: var(--pi-text-xs); font-weight: var(--pi-weight-semibold); line-height: 1.25; text-transform: none; }
   .section-toggle .section-count { flex: 0 0 auto; display: inline; color: var(--pi-muted); font-size: inherit; }
   .section-toggle small { display: inline; color: inherit; font-size: inherit; }
   /* One surface per row. The body and the overflow menu used to be two
@@ -391,7 +391,7 @@ export const listStyles = css`
   .action-menu-panel .detail-copy:focus { color: var(--pi-text); border-color: var(--pi-accent); background: var(--pi-surface-hover); }
   @media (hover: hover) { .action-menu-panel .detail-copy:hover { color: var(--pi-text); border-color: var(--pi-accent); background: var(--pi-surface-hover); } }
   .tree-marker { color: var(--pi-dim); margin-right: var(--pi-space-3); }
-  .badge { display: inline-block; margin-left: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); color: var(--pi-muted); padding: 0 var(--pi-space-3); font-size: var(--pi-text-2xs); font-weight: 400; }
+  .badge { display: inline-block; margin-left: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); color: var(--pi-muted); padding: 0 var(--pi-space-3); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-regular); }
   .action-activity { position: absolute; top: 5px; right: 6px; z-index: 1; display: grid; place-items: center; width: 10px; height: 10px; }
   .action-activity .activity-indicator { margin: 0; vertical-align: 0; }
   .activity-indicator { flex: 0 0 auto; display: inline-block; width: var(--pi-dot-sm); height: var(--pi-dot-sm); margin-right: var(--pi-space-3); background: var(--pi-success); animation: pulse 1s ease-in-out infinite; vertical-align: 1px; }
@@ -433,7 +433,7 @@ export const listStyles = css`
      so it carries the same floor: a 32px column in a sheet whose other
      controls measured 44px was the widest touch-floor split left. */
   @media (pointer: coarse) { .action-menu-toggle { min-width: var(--pi-control-height-touch); } }
-  .action-menu-panel { position: fixed; z-index: var(--pi-layer-popover); box-sizing: border-box; min-width: min(120px, calc(100vw - 16px)); overflow: auto; padding: var(--pi-space-2); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); box-shadow: 0 8px 24px var(--pi-shadow); overflow-wrap: anywhere; }
+  .action-menu-panel { position: fixed; z-index: var(--pi-layer-popover); box-sizing: border-box; min-width: min(120px, calc(100vw - 16px)); overflow: auto; padding: var(--pi-space-2); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); box-shadow: var(--pi-elevation-2); overflow-wrap: anywhere; }
   .action-menu-panel button { display: block; width: 100%; text-align: left; white-space: normal; overflow-wrap: anywhere; border: 0; background: transparent; color: var(--pi-text); }
   @media (hover: hover) { .action-menu-panel button:hover { background: var(--pi-selection-bg); } }
   button.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }

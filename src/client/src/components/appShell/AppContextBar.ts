@@ -45,14 +45,14 @@ export class AppContextBar extends LitElement {
               class="session-title empty"
               aria-label="No session selected. Open session selection."
               @click=${() => { this.onQuickSwitch?.(); }}
-            >Sessions</button>`
+            ><span class="session-title-text">Sessions</span></button>`
           : html`<button
               type="button"
               class="session-title"
               title=${this.session.path}
               aria-label=${`Session: ${sessionContextLabel(this.session)}. Open session selection.`}
               @click=${() => { this.onQuickSwitch?.(); }}
-            >${sessionContextLabel(this.session)}</button>`}
+            ><span class="session-title-text">${sessionContextLabel(this.session)}</span></button>`}
         ${this.isWorking
           ? html`<span
               class="working"
@@ -73,8 +73,12 @@ export class AppContextBar extends LitElement {
     .panel-toggle:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -2px; }
     @media (hover: hover) { .panel-toggle:hover { background: var(--pi-surface-hover); } }
     .toggle-icon { width: 20px; height: 20px; pointer-events: none; }
-    .session-title { flex: 1 1 auto; min-width: 0; min-height: var(--pi-control-height-touch); display: inline-flex; align-items: center; box-sizing: border-box; overflow: hidden; border: 0; background: none; color: var(--pi-text-bright, var(--pi-text)); padding: var(--pi-space-2) var(--pi-space-2); font: inherit; font-weight: 650; text-align: start; text-overflow: ellipsis; white-space: nowrap; }
-    .session-title.empty { color: var(--pi-muted); font-weight: 500; }
+    .session-title { flex: 1 1 auto; min-width: 0; min-height: var(--pi-control-height-touch); display: inline-flex; align-items: center; box-sizing: border-box; overflow: hidden; border: 0; background: none; color: var(--pi-text-bright, var(--pi-text)); padding: var(--pi-space-2) var(--pi-space-2); font: inherit; font-weight: var(--pi-weight-strong); text-align: start; text-overflow: ellipsis; white-space: nowrap; }
+    .session-title.empty { color: var(--pi-muted); font-weight: var(--pi-weight-medium); }
+    /* text-overflow needs a block box with the text in it: on the flex button
+       itself the name was clipped mid-glyph with no ellipsis, while the phone
+       scope chip beside it truncated properly. */
+    .session-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .session-title:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -2px; }
     @media (hover: hover) { .session-title:hover { color: var(--pi-text-bright); } }
     .working { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-1); min-height: var(--pi-control-height-touch); padding: var(--pi-space-2) var(--pi-space-3); }

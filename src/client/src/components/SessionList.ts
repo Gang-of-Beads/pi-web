@@ -694,15 +694,15 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .bulk-select-entry:focus-visible { color: var(--pi-text); background: var(--pi-surface-hover); }
     @media (hover: hover) { .bulk-select-entry:hover:not(:disabled) { color: var(--pi-text); background: var(--pi-surface-hover); } }
     /* The one action this panel exists for. */
-    .start-session-button { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-on-accent, var(--pi-bg)); font-weight: 600; }
+    .start-session-button { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-on-accent, var(--pi-bg)); font-weight: var(--pi-weight-semibold); }
     .start-session-button:focus-visible { background: color-mix(in srgb, var(--pi-accent) 88%, black); }
     @media (hover: hover) { .start-session-button:hover:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 88%, black); } }
-    .start-session-button:disabled { border-color: var(--pi-border); background: var(--pi-surface); color: var(--pi-muted); font-weight: 400; }
+    .start-session-button:disabled { border-color: var(--pi-border); background: var(--pi-surface); color: var(--pi-muted); font-weight: var(--pi-weight-regular); }
     .bulk-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pi-space-3); margin: 0 0 var(--pi-space-3); }
     .bulk-row button { padding: var(--pi-space-3) var(--pi-space-4); font-size: var(--pi-text-xs); white-space: nowrap; }
     .bulk-actions { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-3); margin-left: auto; }
     .action-name, .section-selected { text-align: start; unicode-bidi: plaintext; }
-    .action-row.unread .action-name { color: var(--pi-text-bright); font-weight: 650; }
+    .action-row.unread .action-name { color: var(--pi-text-bright); font-weight: var(--pi-weight-strong); }
     .plain-heading { min-width: 0; }
     .action-name-line { min-width: 0; display: flex; align-items: flex-start; gap: var(--pi-space-3); }
     /* The state mark arrives after the subtitle in flow order, and the row is a
@@ -735,7 +735,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
        carried by weight, colour and surface. Indent alone could not do it -
        a parent reserves a gutter for its disclosure control, which pushed the
        child's name further left than its parent's. */
-    .action-row.is-child .action-name { color: var(--pi-muted); font-weight: 400; }
+    .action-row.is-child .action-name { color: var(--pi-muted); font-weight: var(--pi-weight-regular); }
     .action-row.is-child .action-main { background: transparent; border-color: var(--pi-border-muted); }
     .action-row.is-child .action-main { padding-left: calc(38px + var(--depth, 0) * var(--pi-space-7)); }
     .subtree-toggle { cursor: pointer; }

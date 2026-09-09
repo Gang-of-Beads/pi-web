@@ -139,7 +139,7 @@ export class MachineDialog extends LitElement {
     input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
     .hint { color: var(--pi-muted); }
     .intro { margin: var(--pi-space-2) 0 0; line-height: 1.4; }
-    .optional { color: var(--pi-muted); font-weight: 400; }
+    .optional { color: var(--pi-muted); font-weight: var(--pi-weight-regular); }
     .field-error { color: var(--pi-danger); }
     .dialog-error { border: 1px solid var(--pi-danger); border-radius: var(--pi-radius-md); background: color-mix(in srgb, var(--pi-danger) 10%, transparent); color: var(--pi-danger); padding: var(--pi-space-5); line-height: 1.35; }
     button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }

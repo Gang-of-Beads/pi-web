@@ -117,7 +117,7 @@ export class SettingsFleetSection extends LitElement {
     .machines { display: grid; gap: var(--pi-space-3); margin: 0; padding: 0; list-style: none; }
     .machine { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); }
     .machine .detail { grid-column: 2; color: var(--pi-muted); font-size: var(--pi-text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .machine .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .machine .name { font-weight: var(--pi-weight-semibold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .machine .row-actions { grid-row: 1 / span 2; grid-column: 3; display: flex; gap: var(--pi-space-3); }
     .dot { grid-row: 1 / span 2; width: var(--pi-dot-md); height: var(--pi-dot-md); border-radius: 50%; background: var(--pi-success); }
     .machine.offline .dot { background: var(--pi-danger); }

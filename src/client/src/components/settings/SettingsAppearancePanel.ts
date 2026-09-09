@@ -123,7 +123,7 @@ export class SettingsAppearancePanel extends LitElement {
     .follow { display: flex; align-items: flex-start; gap: var(--pi-space-5); margin-bottom: var(--pi-space-7); padding: var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); cursor: pointer; }
     .follow input { flex: 0 0 auto; width: 24px; height: 24px; margin: var(--pi-space-1) 0 0; accent-color: var(--pi-accent); }
     .follow span { display: grid; gap: var(--pi-space-1); }
-    .follow-title { font-weight: 600; }
+    .follow-title { font-weight: var(--pi-weight-semibold); }
     .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--pi-space-5); }
     .theme { display: grid; gap: var(--pi-space-2); padding: var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); font: inherit; text-align: left; cursor: pointer; }
     @media (hover: hover) { .theme:hover { border-color: var(--pi-accent); } }
@@ -133,7 +133,7 @@ export class SettingsAppearancePanel extends LitElement {
        11px "· in use" suffix on a card drawn exactly like every unrelated one. */
     .theme.active { border-color: var(--pi-border-strong, var(--pi-muted)); }
     .theme.active .theme-name::after { content: ""; display: inline-block; width: var(--pi-dot-sm); height: var(--pi-dot-sm); margin-left: var(--pi-space-3); border-radius: 50%; background: var(--pi-accent); vertical-align: middle; }
-    .theme-name { font-weight: 600; }
+    .theme-name { font-weight: var(--pi-weight-semibold); }
     .theme-scheme, .theme-description { font-size: var(--pi-text-2xs); }
     /* Cards in a grid share a height: the description decides it, so it is
        clamped rather than left to the length of the sentence somebody wrote. */

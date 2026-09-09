@@ -135,7 +135,7 @@ export class SettingsSessiondPanel extends LitElement {
     .loading-card, .config-path-card, .effective-card { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); padding: var(--pi-space-6); }
     .loading-card { color: var(--pi-muted); }
     .config-path-card { display: grid; gap: var(--pi-space-3); }
-    .config-path-card span, .field-heading, dt { color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: 600; }
+    .config-path-card span, .field-heading, dt { color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: var(--pi-weight-semibold); }
     code { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-bg); padding: var(--pi-space-1) var(--pi-space-2); color: var(--pi-text); font: var(--pi-text-xs) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); overflow-wrap: anywhere; }
     .field { display: grid; gap: var(--pi-space-4); }
     .field small { color: var(--pi-muted); line-height: 1.45; }
@@ -143,7 +143,7 @@ export class SettingsSessiondPanel extends LitElement {
     .toggle { display: flex; align-items: center; gap: var(--pi-space-5); cursor: pointer; }
     .toggle input { width: 16px; height: 16px; }
     .toggle input:disabled { cursor: not-allowed; }
-    .override-badge { border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); color: var(--pi-warning); background: var(--pi-warning-surface); padding: var(--pi-space-1) var(--pi-space-4); font-size: var(--pi-text-2xs); font-weight: 600; text-transform: none; }
+    .override-badge { border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); color: var(--pi-warning); background: var(--pi-warning-surface); padding: var(--pi-space-1) var(--pi-space-4); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-semibold); text-transform: none; }
     .effective-card { display: grid; gap: var(--pi-space-5); }
     .effective-card dl { display: grid; gap: var(--pi-space-4); margin: 0; }
     .effective-card dl > div { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: var(--pi-space-6); align-items: baseline; }

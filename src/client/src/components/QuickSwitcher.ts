@@ -403,7 +403,7 @@ export class QuickSwitcher extends LitElement {
     input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
     .close { border: 0; background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); line-height: 1; padding: 0 var(--pi-space-4); cursor: pointer; }
     .body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: var(--pi-space-5); overscroll-behavior: contain; }
-    h3 { margin: var(--pi-space-7) 0 var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: 600; text-transform: uppercase; }
+    h3 { margin: var(--pi-space-7) 0 var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: var(--pi-weight-semibold); text-transform: uppercase; }
     /* Tiles rather than one session per row. A phone showed four wide,
        mostly empty cards at a time, so choosing between a dozen sessions meant
        scrolling a list that wasted half its width on every row. auto-fit keeps
@@ -418,9 +418,9 @@ export class QuickSwitcher extends LitElement {
     .row-title { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-height: calc(2 * 1.3em); font-size: var(--pi-text-md); line-height: 1.3; overflow-wrap: anywhere; }
     .row-subtitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-xs); }
     .create-row { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
-    .create-row .row-title { font-weight: 650; }
+    .create-row .row-title { font-weight: var(--pi-weight-strong); }
     .session-row.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
-    .session-row.unread .row-title { color: var(--pi-text-bright); font-weight: 650; }
+    .session-row.unread .row-title { color: var(--pi-text-bright); font-weight: var(--pi-weight-strong); }
     /* The state mark sits under the corner menu button rather than beside it:
        the toggle spans the tile's top-right corner down to 44px on touch, and
        a badge centred on the tile's midline landed inside that box - tapping
