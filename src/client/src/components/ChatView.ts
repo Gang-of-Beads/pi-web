@@ -55,11 +55,11 @@ export const chatStyles = css`
   /* A pending image attachment opens full-size in its own dialog: the native
      top layer covers the page, Esc and a backdrop click close it, and the
      controls are reachable by keyboard like every other control in the app. */
-  dialog.attachment-zoom { position: fixed; inset: 0; margin: auto; max-width: calc(96vw - env(safe-area-inset-left) - env(safe-area-inset-right)); max-height: calc(96vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); width: fit-content; height: fit-content; padding: 0; border: none; background: transparent; overflow: visible; }
+  dialog.attachment-zoom { box-sizing: border-box; position: fixed; inset: 0; margin: auto; max-width: calc(96vw - env(safe-area-inset-left) - env(safe-area-inset-right)); max-height: calc(96vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); width: fit-content; height: fit-content; padding: 0; border: none; background: transparent; overflow: visible; }
   dialog.attachment-zoom[open] { display: flex; }
   dialog.attachment-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
   .attachment-zoom-full { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: var(--pi-radius-md); object-fit: contain; }
-  .attachment-zoom-close { position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; font: var(--pi-text-lg)/1 var(--pi-font-ui, system-ui, sans-serif); color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
+  .attachment-zoom-close { box-sizing: border-box; position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; font: var(--pi-text-lg)/1 var(--pi-font-ui, system-ui, sans-serif); color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
   .attachment-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
   @media (hover: hover) { .attachment-zoom-close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
   /* Tap targets should not wait for a double-tap-zoom gesture to be ruled out.
@@ -94,7 +94,7 @@ export const chatStyles = css`
      edge exactly on the message's own right border: two edges on one line,
      reading as a button welded to the card rather than one floating over it.
      It is inset by a step of the scale so the border stays visible. */
-  .jump-to-bottom {
+  .jump-to-bottom { box-sizing: border-box;
     position: absolute;
     right: calc(var(--pi-chat-gutter) + var(--pi-chat-scrollbar, 0px) + var(--pi-space-4));
     bottom: calc(var(--pi-chat-dock-room, 0px) + var(--pi-space-4)); z-index: var(--pi-layer-sticky);
@@ -300,11 +300,11 @@ export const chatStyles = css`
   .group-body { padding: 0 var(--pi-space-6) var(--pi-space-6); }
   .chat-image { display: block; max-width: 100%; max-height: 320px; margin: var(--pi-space-4) 0 0; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-md); object-fit: contain; cursor: zoom-in; }
   .chat-image:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent, var(--pi-success-border)); outline-offset: var(--pi-focus-ring-offset); }
-  dialog.image-zoom { position: fixed; inset: 0; margin: auto; max-width: calc(96vw - env(safe-area-inset-left) - env(safe-area-inset-right)); max-height: calc(96vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); width: fit-content; height: fit-content; padding: 0; border: none; background: transparent; overflow: visible; }
+  dialog.image-zoom { box-sizing: border-box; position: fixed; inset: 0; margin: auto; max-width: calc(96vw - env(safe-area-inset-left) - env(safe-area-inset-right)); max-height: calc(96vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); width: fit-content; height: fit-content; padding: 0; border: none; background: transparent; overflow: visible; }
   dialog.image-zoom[open] { display: flex; }
   dialog.image-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
   .image-zoom-full { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: var(--pi-radius-md); object-fit: contain; cursor: zoom-out; }
-  .image-zoom-close { position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; font: var(--pi-text-lg)/1 var(--pi-font-ui, system-ui, sans-serif); color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
+  .image-zoom-close { box-sizing: border-box; position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; font: var(--pi-text-lg)/1 var(--pi-font-ui, system-ui, sans-serif); color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
   .image-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
   @media (hover: hover) { .image-zoom-close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
   .image-zoom-close:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
@@ -331,7 +331,7 @@ export const chatStyles = css`
   .command-row.ok { color: var(--pi-success); border-color: var(--pi-success-border); background: var(--pi-success-surface); }
   .command-row .command-text { font-family: var(--pi-font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .command-row .command-state { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .85; }
-  .command-dismiss { flex: 0 0 auto; align-self: center; width: 24px; height: 24px; display: grid; place-items: center; padding: 0; border: 1px solid transparent; border-radius: var(--pi-radius-sm); background: transparent; color: inherit; font: inherit; font-size: var(--pi-text-sm); line-height: 1; cursor: pointer; }
+  .command-dismiss { box-sizing: border-box; flex: 0 0 auto; align-self: center; width: 24px; height: 24px; display: grid; place-items: center; padding: 0; border: 1px solid transparent; border-radius: var(--pi-radius-sm); background: transparent; color: inherit; font: inherit; font-size: var(--pi-text-sm); line-height: 1; cursor: pointer; }
   .command-dismiss:focus-visible { outline: var(--pi-focus-ring-width) solid currentColor; outline-offset: var(--pi-focus-ring-offset); }
   @media (hover: hover) { .command-dismiss:hover { border-color: currentColor; } }
   .queued-clear-button { flex: 0 0 auto; min-height: var(--pi-control-height); border: 0; border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-warning); padding: var(--pi-space-1) var(--pi-space-3); font: inherit; cursor: pointer; }

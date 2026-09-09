@@ -69,7 +69,7 @@ export const xtermStyles = css`
     z-index: 5;
 }
 
-.xterm .xterm-helper-textarea {
+.xterm .xterm-helper-textarea { box-sizing: border-box;
     padding: 0;
     border: 0;
     margin: 0;

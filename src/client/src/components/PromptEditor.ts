@@ -44,11 +44,11 @@ export const promptEditorStyles = css`
   /* A pending image attachment opens full-size in its own dialog: the native
      top layer covers the page, Esc and a backdrop click close it, and the
      controls are reachable by keyboard like every other control in the app. */
-  dialog.attachment-zoom { position: fixed; inset: 0; margin: auto; max-width: calc(96vw - env(safe-area-inset-left) - env(safe-area-inset-right)); max-height: calc(96vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); width: fit-content; height: fit-content; padding: 0; border: none; background: transparent; overflow: visible; }
+  dialog.attachment-zoom { box-sizing: border-box; position: fixed; inset: 0; margin: auto; max-width: calc(96vw - env(safe-area-inset-left) - env(safe-area-inset-right)); max-height: calc(96vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); width: fit-content; height: fit-content; padding: 0; border: none; background: transparent; overflow: visible; }
   dialog.attachment-zoom[open] { display: flex; }
   dialog.attachment-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
   .attachment-zoom-full { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: var(--pi-radius-md); object-fit: contain; }
-  .attachment-zoom-close { position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; font: var(--pi-text-lg)/1 var(--pi-font-ui, system-ui, sans-serif); color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
+  .attachment-zoom-close { box-sizing: border-box; position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; font: var(--pi-text-lg)/1 var(--pi-font-ui, system-ui, sans-serif); color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
   .attachment-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
   @media (hover: hover) { .attachment-zoom-close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
   /* Tap targets should not wait for a double-tap-zoom gesture to be ruled out.
@@ -61,7 +61,7 @@ export const promptEditorStyles = css`
   /* Collapsed: one line that gives the screen back to whatever input is being
      used, and says what is still in the draft so it does not look lost. */
   footer.collapsed { padding: var(--pi-space-3) var(--pi-space-5); }
-  .expand-composer { display: flex; align-items: center; gap: var(--pi-space-4); width: 100%; min-height: var(--pi-control-height-touch); padding: var(--pi-space-2) var(--pi-space-5); border: 1px dashed var(--pi-border); border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-sm); text-align: start; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .expand-composer { box-sizing: border-box; display: flex; align-items: center; gap: var(--pi-space-4); width: 100%; min-height: var(--pi-control-height-touch); padding: var(--pi-space-2) var(--pi-space-5); border: 1px dashed var(--pi-border); border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-sm); text-align: start; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .expand-composer:focus-visible { border-color: var(--pi-accent); color: var(--pi-text-bright); }
   @media (hover: hover) { .expand-composer:hover { border-color: var(--pi-accent); color: var(--pi-text-bright); } }
   .expand-composer:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
@@ -149,12 +149,12 @@ export const promptEditorStyles = css`
      before the user starts editing the message body and never get hidden below
      the keyboard/action row on mobile. */
   .attachments { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pi-space-4); margin: 0; padding: 0 0 var(--pi-space-1); }
-  .attachment-chip { position: relative; width: 56px; height: 56px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); overflow: hidden; background: var(--pi-bg); }
+  .attachment-chip { box-sizing: border-box; position: relative; width: 56px; height: 56px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); overflow: hidden; background: var(--pi-bg); }
   .attachment-chip img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .attachment-chip-file { display: grid; place-items: center; }
-  .attachment-file-preview { display: grid; place-items: center; width: var(--pi-control-height-comfort); height: 26px; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-surface); color: var(--pi-muted); font: 700 var(--pi-text-2xs)/1 var(--pi-font-ui, system-ui, sans-serif); letter-spacing: .03em; }
+  .attachment-file-preview { box-sizing: border-box; display: grid; place-items: center; width: var(--pi-control-height-comfort); height: 26px; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-surface); color: var(--pi-muted); font: 700 var(--pi-text-2xs)/1 var(--pi-font-ui, system-ui, sans-serif); letter-spacing: .03em; }
   .attachment-file-name { position: absolute; right: 4px; bottom: 3px; left: 4px; overflow: hidden; color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: 1.2; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
-  .attachment-remove { position: absolute; top: 1px; right: 1px; width: 18px; height: 18px; padding: 0; line-height: 16px; border-radius: 50%; border: 1px solid var(--pi-border); background: var(--pi-surface); color: var(--pi-text); font-size: var(--pi-text-sm); cursor: pointer; }
+  .attachment-remove { box-sizing: border-box; position: absolute; top: 1px; right: 1px; width: 18px; height: 18px; padding: 0; line-height: 16px; border-radius: 50%; border: 1px solid var(--pi-border); background: var(--pi-surface); color: var(--pi-text); font-size: var(--pi-text-sm); cursor: pointer; }
   /* A thumb is about 9mm wide. An 18px remove badge on a 56px thumbnail means
      the tap lands on the image instead, so on touch the badge grows and the
      chip grows with it rather than swallowing its own control. */

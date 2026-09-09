@@ -773,7 +773,7 @@ export class TerminalPanel extends LitElement {
     .terminal-host .xterm.focus, .terminal-host .xterm:focus { outline: none; }
     .terminal-host .xterm-helpers { position: absolute; top: 0; z-index: 5; }
     /* Hide the helper textarea without using !important on the positional properties (left/top/width/height/z-index). xterm sets those inline during IME/dead-key composition (e.g. "~" on a Swedish layout) so the composition is positioned at the cursor and committed correctly; forcing them here would pin the textarea off-screen with zero size and break composition. */
-    .terminal-host .xterm-helper-textarea { position: absolute; left: -9999em; top: 0; width: 0; height: 0; padding: 0 !important; border: 0 !important; margin: 0 !important; opacity: 0 !important; z-index: -5; white-space: nowrap !important; overflow: hidden !important; resize: none !important; outline: 0 !important; appearance: none !important; }
+    .terminal-host .xterm-helper-textarea { box-sizing: border-box; position: absolute; left: -9999em; top: 0; width: 0; height: 0; padding: 0 !important; border: 0 !important; margin: 0 !important; opacity: 0 !important; z-index: -5; white-space: nowrap !important; overflow: hidden !important; resize: none !important; outline: 0 !important; appearance: none !important; }
     /* The composition view shows pending dead-key/IME input. Without these rules it renders as a static block in the top-left corner instead of overlaying the cursor. */
     .terminal-host .composition-view { position: absolute; display: none; white-space: nowrap; z-index: 1; background: var(--pi-terminal-bg, #000); color: var(--pi-terminal-text, #fff); }
     .terminal-host .composition-view.active { display: block; }

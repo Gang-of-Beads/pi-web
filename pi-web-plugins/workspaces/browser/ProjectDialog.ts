@@ -337,7 +337,7 @@ export class ProjectDialog extends LitElement {
     footer button { min-height: var(--pi-control-height); }
     .check { display: flex; align-items: center; color: var(--pi-text); }
     .suggestions { min-height: 90px; max-height: 320px; overflow: auto; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); }
-    .suggestions button { display: block; width: 100%; min-height: var(--pi-control-height); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 0; border-bottom: 1px solid var(--pi-border); border-radius: 0; background: transparent; color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); text-align: left; font: var(--pi-text-sm) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
+    .suggestions button { box-sizing: border-box; display: block; width: 100%; min-height: var(--pi-control-height); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 0; border-bottom: 1px solid var(--pi-border); border-radius: 0; background: transparent; color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); text-align: left; font: var(--pi-text-sm) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
     .suggestions button.selected { background: var(--pi-selection-bg); }
     @media (hover: hover) { .suggestions button:hover { background: var(--pi-selection-bg); } }
     .hint { padding: var(--pi-space-6); color: var(--pi-muted); }

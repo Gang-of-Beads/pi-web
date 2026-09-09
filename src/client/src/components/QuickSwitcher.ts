@@ -408,7 +408,7 @@ export class QuickSwitcher extends LitElement {
        scrolling a list that wasted half its width on every row. auto-fit keeps
        a single column when there is only room for one. */
     .rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--pi-space-3); align-content: start; }
-    .row { font: inherit; position: relative; display: grid; gap: var(--pi-space-1); width: 100%; min-height: 52px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-5) calc(var(--qs-menu-size) + var(--pi-space-2)) var(--pi-space-5) var(--pi-space-6); text-align: left; cursor: pointer; }
+    .row { box-sizing: border-box; font: inherit; position: relative; display: grid; gap: var(--pi-space-1); width: 100%; min-height: 52px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-5) calc(var(--qs-menu-size) + var(--pi-space-2)) var(--pi-space-5) var(--pi-space-6); text-align: left; cursor: pointer; }
     @media (hover: hover) { .row:hover:not(:disabled) { background: var(--pi-surface-hover); } }
     /* The row dims, but the line that says what to do first must stay readable:
        dimming the remedy with the control took it to 2.14:1. */
@@ -464,7 +464,7 @@ export class QuickSwitcher extends LitElement {
        the tile's corner instead: it is used occasionally, the name is read
        every time. The tile reserves the button's width once, on the row, so
        the title and the subtitle end at the same right edge. */
-    .row-menu-toggle { font: var(--pi-text-xs) var(--pi-font-ui); position: absolute; top: 0; right: 0; width: var(--qs-menu-size); min-height: var(--qs-menu-size); border: 1px solid transparent; border-radius: var(--pi-radius-lg); background: transparent; color: var(--pi-muted); font-size: var(--pi-text-lg); line-height: 1; cursor: pointer; }
+    .row-menu-toggle { box-sizing: border-box; font: var(--pi-text-xs) var(--pi-font-ui); position: absolute; top: 0; right: 0; width: var(--qs-menu-size); min-height: var(--qs-menu-size); border: 1px solid transparent; border-radius: var(--pi-radius-lg); background: transparent; color: var(--pi-muted); font-size: var(--pi-text-lg); line-height: 1; cursor: pointer; }
     .row-menu-toggle:focus-visible { color: var(--pi-text); border-color: var(--pi-accent); }
     @media (hover: hover) { .row-menu-toggle:hover { color: var(--pi-text); border-color: var(--pi-accent); } }
     /* A half-width tile on a small phone shows about nine characters per line,
@@ -504,7 +504,7 @@ export class QuickSwitcher extends LitElement {
     .rename-actions button { box-sizing: border-box; font: inherit; width: var(--pi-control-height-comfort); min-height: var(--pi-control-height-comfort); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
     .empty { margin: var(--pi-space-7) var(--pi-space-2); color: var(--pi-muted); }
     footer { flex: 0 0 auto; padding: var(--pi-space-5); padding-bottom: max(var(--pi-space-5), env(safe-area-inset-bottom)); border-top: 1px solid var(--pi-border); }
-    footer button { font: inherit; width: 100%; min-height: var(--pi-control-height-touch); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
+    footer button { box-sizing: border-box; font: inherit; width: 100%; min-height: var(--pi-control-height-touch); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
   `];
 }
 

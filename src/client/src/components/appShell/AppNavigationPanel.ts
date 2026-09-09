@@ -479,7 +479,7 @@ export class AppNavigationPanel extends LitElement {
     .tool-icon svg { width: 100%; height: 100%; }
     .tool-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .tool-badge { flex: 0 0 auto; display: inline-flex; align-items: center; box-sizing: border-box; min-width: 14px; max-width: 45%; line-height: 16px; padding: 0 var(--pi-space-2); border-radius: var(--pi-radius-pill); background: var(--pi-selection-bg); color: var(--pi-text-bright); font-size: var(--pi-text-2xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .compact-scope { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; min-height: var(--pi-control-height-touch); border: 0; background: none; padding: 0; font: inherit; font-size: var(--pi-text-sm); font-weight: var(--pi-weight-semibold); color: var(--pi-text); text-align: start; cursor: pointer; }
+    .compact-scope { box-sizing: border-box; flex: 1 1 auto; min-width: 0; display: flex; align-items: center; min-height: var(--pi-control-height-touch); border: 0; background: none; padding: 0; font: inherit; font-size: var(--pi-text-sm); font-weight: var(--pi-weight-semibold); color: var(--pi-text); text-align: start; cursor: pointer; }
     .compact-scope:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); border-radius: var(--pi-radius-md); }
     .compact-scope-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     /* An unnamed session falls back to its whole first message, so a header
