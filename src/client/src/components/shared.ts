@@ -321,7 +321,7 @@ export const listStyles = css`
      measured 82 against 95 before this. */
   .list-body.tiles .action-main { min-height: calc(var(--pi-row-min-height) + var(--pi-space-9)); }
   .list-body.tiles .action-name { min-height: 2.5em; }
-  .list-body.tiles small { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-height: 2.6em; max-height: 2.6em; overflow: hidden; text-overflow: ellipsis; overflow-wrap: anywhere; }
+  .list-body.tiles small { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-height: 2.6em; max-height: 2.6em; overflow: hidden; text-overflow: ellipsis; overflow-wrap: anywhere;  line-height: 1.3; }
   .list-body.tiles .action-menu { position: absolute; top: var(--pi-tile-menu-inset); right: var(--pi-tile-menu-inset); align-self: auto; }
   /* One nowrap line cut most tile names to the same prefix; two wrapped lines
      reach the tail that tells worktree-agent-a0… tiles apart. break-all because
@@ -404,6 +404,10 @@ export const listStyles = css`
      the content edge. The tile variant, where the menu overlays the card, does
      share the centre line and states that for itself below. */
   .action-activity { position: absolute; top: 50%; transform: translateY(-50%); right: var(--pi-space-3); z-index: 1; display: grid; place-items: center; width: var(--pi-dot-md); height: var(--pi-dot-md); }
+  /* Persistent wrapper, hidden when idle: same cascade trap as every other
+     persistent mark - the author display rule would beat the UA [hidden]
+     rule without this companion. */
+  .action-activity[hidden] { display: none; }
   .action-activity .activity-indicator { margin: 0; vertical-align: 0; }
   .activity-indicator { flex: 0 0 auto; display: inline-block; width: var(--pi-dot-sm); height: var(--pi-dot-sm); margin-right: var(--pi-space-3); background: var(--pi-success); animation: pulse 1s ease-in-out infinite; vertical-align: 1px; }
   /*

@@ -1909,12 +1909,16 @@ export class SessionController {
     const machineId = selectedMachineId(this.getState());
     const key = `${machineId}:${session.id}`;
     if (this.prefetched.has(key)) return;
+    // Forgotten on failure, so the next intent is a real attempt: the same
+    // rule the lazy surfaces follow. A prefetch that stays remembered after
+    // failing gives up warming permanently on one dropped request.
     this.prefetched.add(key);
+    const forget = () => { this.prefetched.delete(key); };
     void this.api.messages(session, { limit: MESSAGE_PAGE_SIZE }, machineId)
       // Store it where opening the session will look: a prefetch that only warms
       // an in-flight map saves nothing once it has settled.
-      .then((page) => { this.transcripts.mergeHistory(this.sessionCacheKey(session.id), page); })
-      .catch(() => undefined);
+      .then((page) => { this.transcripts.mergeHistory(machineSessionKey(machineId, session.id), page); })
+      .catch(() => { forget(); });
   }
 
   private readonly prefetched = new Set<string>();

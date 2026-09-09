@@ -496,7 +496,10 @@ export class AppNavigationPanel extends LitElement {
     .compact-working-dot:nth-child(3) { animation-delay: .4s; }
     @keyframes compact-working-bounce { 0%, 60%, 100% { transform: translateY(0); opacity: .55; } 30% { transform: translateY(-3px); opacity: 1; } }
     @media (prefers-reduced-motion: reduce) { .compact-working-dot { animation: none; opacity: .8; } }
-    .compact-fold { padding: 0; }
+    /* A width, not a padding override: the shared action rule sets padding
+       after this rule wins on order, so the earlier padding override here was dead - the button
+       rendered as an 8px glyph in a 24px pill. Squared box, centred glyph. */
+    .compact-fold { box-sizing: border-box; width: var(--pi-panel-header-control-height); padding: 0; }
     .compact-fold-icon { width: var(--pi-dot-md); height: var(--pi-dot-md); pointer-events: none; }
     .compact-actions-row { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-4); box-sizing: border-box; min-height: var(--pi-control-height-touch); padding: var(--pi-space-2) var(--pi-chrome-inset); border-bottom: 1px solid var(--pi-border); background: var(--pi-bg); }
     .compact-actions-row .compact-header-action { flex: 1 1 auto; }

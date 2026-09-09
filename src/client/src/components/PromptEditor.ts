@@ -61,7 +61,10 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
   footer { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--pi-space-4); padding: var(--pi-space-6) var(--pi-chat-gutter); border-top: 1px solid var(--pi-border); max-width: var(--pi-chat-measure, 100%); margin-inline: auto; }
   /* Collapsed: one line that gives the screen back to whatever input is being
      used, and says what is still in the draft so it does not look lost. */
-  footer.collapsed { padding: var(--pi-space-3) var(--pi-space-5); }
+  /* Same column as the expanded composer and the transcript: the private
+     10px inset made the box edge jump 6px one way on desktop and the other
+     way on the phone when the composer collapsed. */
+  footer.collapsed { padding: var(--pi-space-3) var(--pi-chat-gutter); }
   .expand-composer { box-sizing: border-box; display: flex; align-items: center; gap: var(--pi-space-4); width: 100%; min-height: var(--pi-control-height-touch); padding: var(--pi-space-2) var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-muted); font: inherit; font-size: var(--pi-text-sm); text-align: start; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .expand-composer:focus-visible { border-color: var(--pi-accent); color: var(--pi-text-bright); }
   @media (hover: hover) { .expand-composer:hover { border-color: var(--pi-accent); color: var(--pi-text-bright); } }

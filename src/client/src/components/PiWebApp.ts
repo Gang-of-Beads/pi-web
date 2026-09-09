@@ -279,6 +279,8 @@ interface SessionCleanupDialogState {
 @customElement("pi-web-app")
 export class PiWebApp extends LitElement {
   @state() private state: AppState = initialAppState();
+  /** Whether the tree dialog's first appearance has already fetched its module. */
+  private treeDialogAnnounced = false;
   @state() private workspacePanelFullscreen = false;
   @query("chat-view") private chatView?: ChatView;
   @query("prompt-editor") private promptEditor?: PromptEditor;
@@ -653,6 +655,15 @@ export class PiWebApp extends LitElement {
 
   protected override willUpdate(): void {
     this.toggleAttribute("pwa-display-mode", this.appShell.isPwaDisplayMode);
+    // The tree module is fetched when its dialog first appears, outside the
+    // render path: a load call from render schedules an update on every settle,
+    // and once the module has settled that is an unbounded microtask loop.
+    if (this.state.treeDialog !== undefined && !this.treeDialogAnnounced) {
+      this.treeDialogAnnounced = true;
+      this.openLazySurface("session-tree", "Session tree");
+    } else if (this.state.treeDialog === undefined) {
+      this.treeDialogAnnounced = false;
+    }
   }
 
   protected override updated(): void {
@@ -1713,10 +1724,23 @@ export class PiWebApp extends LitElement {
    * Silence there is the worst outcome: a control that does nothing, forever.
    */
   private openLazySurface(surface: LazySurface, title: string): void {
-    void loadSurface(surface).then(
-      () => { this.requestUpdate(); },
-      () => { this.setState({ error: `${title} could not load. This tab may be running an older version - reload to get it.` }); },
-    );
+    // Ask for one update when the module first arrives. Requesting on every
+    // settle is a render loop when the caller sits in the render path: each
+    // settled promise resolves in a microtask, the microtask re-enters render,
+    // and the macro task that would paint never runs.
+    const first = loadSurface(surface);
+    if (first !== undefined) {
+      void first.then(
+        () => { this.requestUpdate(); },
+        () => { this.setState({ error: `${title} could not load. This tab may be running an older version - reload to get it.` }); },
+      );
+      return;
+    }
+    // A settled success needs no update; a settled failure must retire the
+    // failure message it planted, or a retry that succeeds leaves a banner
+    // claiming the opposite of the screen.
+    const failure = `${title} could not load. This tab may be running an older version - reload to get it.`;
+    if (this.state.error === failure) this.setState({ error: "" });
   }
 
   private openSettings(section?: SettingsSection): void {
@@ -2640,7 +2664,6 @@ export class PiWebApp extends LitElement {
   }
 
   private renderSessionTreeNavigator(state: AppState) {
-    if (state.treeDialog !== undefined) this.openLazySurface("session-tree", "Session tree");
     return state.treeDialog === undefined ? null : html`
       <session-tree-navigator
         .tree=${state.treeDialog}

@@ -36,7 +36,7 @@ export function trackLoad<K>(loads: Map<K, Promise<void>>, key: K, pending: Prom
   return pending;
 }
 
-export function loadSurface(surface: LazySurface): Promise<void> {
+export function loadSurface(surface: LazySurface): Promise<void> | undefined {
   const existing = started.get(surface);
   if (existing !== undefined) return existing;
   return trackLoad(started, surface, loaders[surface]().then(() => undefined));
@@ -50,7 +50,7 @@ export function loadSurface(surface: LazySurface): Promise<void> {
 export function warmLazySurfaces(schedule: (task: () => void) => void = defaultSchedule): void {
   schedule(() => {
     for (const surface of Object.keys(loaders)) {
-      if (isLazySurface(surface)) void loadSurface(surface).catch(() => undefined);
+      if (isLazySurface(surface)) loadSurface(surface)?.catch(() => undefined);
     }
   });
 }

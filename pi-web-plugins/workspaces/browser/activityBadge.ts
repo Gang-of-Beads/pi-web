@@ -37,7 +37,9 @@ export function hasStatusUnread(flags: NavStatusFlags | undefined): boolean {
 
 export function renderActionActivityIndicator(kind: ActivityIndicatorKind | undefined, label = "Active", unreadLabel?: string): TemplateResult {
   const present = kind !== undefined || unreadLabel !== undefined;
-  const markKind = kind ?? "unread";
+  // An idle row must not carry "unread": the rail selects on that class and
+  // a hidden wrapper would still light every idle row's rail through :has().
+  const markKind = kind ?? (present ? "unread" : "idle");
   const description = kind === undefined
     ? (unreadLabel ?? "")
     : (unreadLabel === undefined ? label : `${unreadLabel} · ${label}`);
