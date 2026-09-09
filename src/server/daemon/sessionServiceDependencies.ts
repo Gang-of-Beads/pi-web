@@ -10,6 +10,8 @@ import type { HostContributions } from "./sessions/hostContributions.js";
  */
 export interface SessionServiceDependencyInput {
   agentDir: string;
+  /** Where the durable operation ledger keeps its rows. */
+  operationLedgerDir?: string;
   /** Daemon-lifetime session archive, constructed against the captured daemon environment. */
   archiveStore: NonNullable<PiSessionServiceDependencies["archiveStore"]>;
   sessionManager: PiSessionServiceDependencies["sessionManager"];
@@ -48,6 +50,7 @@ export function sessionServiceDependencies(input: SessionServiceDependencyInput)
   return {
     modelRuntime: input.modelRuntime,
     agentDir: input.agentDir,
+    ...(input.operationLedgerDir === undefined ? {} : { operationLedgerDir: input.operationLedgerDir }),
     archiveStore: input.archiveStore,
     workspaceActivity: input.workspaceActivity,
     logger: input.logger,

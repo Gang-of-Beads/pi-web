@@ -34,7 +34,7 @@ import { TerminalService } from "./daemon/terminals/terminalService.js";
 import { registerTerminalRoutes } from "./daemon/terminals/terminalRoutes.js";
 import { getPiWebRuntimeComponent } from "./shared/piWebStatus.js";
 import { SESSIOND_RUNTIME_CAPABILITIES } from "../shared/capabilities.js";
-import { agentSessionDirEnvOverride, effectivePiWebConfig, maxUploadBytes, offlineModeEnabled, PI_CODING_AGENT_DIR_ENV, PI_CODING_AGENT_SESSION_DIR_ENV } from "../config.js";
+import { piWebDataDir, agentSessionDirEnvOverride, effectivePiWebConfig, maxUploadBytes, offlineModeEnabled, PI_CODING_AGENT_DIR_ENV, PI_CODING_AGENT_SESSION_DIR_ENV } from "../config.js";
 import { createActiveAgentProfileDescriptor } from "./daemon/activeAgentProfile.js";
 import { loadServerPluginRecoveryConfig } from "../serverPluginRecovery.js";
 import { PiWebPluginCatalog } from "./shared/piWebPluginCatalog.js";
@@ -262,6 +262,9 @@ async function createSessionDaemonRuntime() {
       modelRuntime: auth.runtime,
       agentDir: activeAgentProfile.dir,
       archiveStore: new SessionArchiveStore(defaultSessionArchiveFilePath(daemonEnvironment)),
+      // Operation rows live beside the archive, in the daemon's own data
+      // directory: the daemon owns this state and is the only writer.
+      operationLedgerDir: piWebDataDir(daemonEnvironment),
       workspaceActivity,
       logger: app.log,
       ...(spawnTargets === undefined ? {} : { spawnTargets }),

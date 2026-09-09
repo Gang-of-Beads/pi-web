@@ -95,6 +95,7 @@ import { BackgroundWorkWatcher } from "./backgroundWorkWatcher.js";
 import { listBackgroundTasks, readTaskOutput } from "./backgroundTasks.js";
 import { promptDeliveryBehavior, type QueuedPromptKind } from "./promptDelivery.js";
 import { AcceptanceLedger } from "./acceptanceLedger.js";
+import { createDurableAcceptanceLedger, type AcceptanceFace } from "./operationLedger.js";
 import { CommittedPromptExpectations } from "./committedPromptIdentity.js";
 import { OwnedPromptQueue, type OwnedQueueEntry } from "./ownedPromptQueue.js";
 import { findSubagentRunTranscript, listSubagentRuns, readSessionEntries, readSubagentRunOutput } from "./subagentRuns.js";
@@ -1082,6 +1083,8 @@ function createPiWebEditToolDefinition(cwd: string) {
 
 export interface PiSessionServiceDependencies {
   agentDir: string;
+  /** Where operation rows are kept, so a restart can answer a retry. */
+  operationLedgerDir?: string;
   sessionManager: PiSessionManagerGateway;
   archiveStore?: SessionArchiveRepository;
   createRuntime?: PiWebCreateAgentSessionRuntimeFactory;
@@ -1180,7 +1183,12 @@ export class PiSessionService implements SessionRouteService {
   private readonly deferredGeneratedSessionNames = new WeakMap<PiAgentSession, string>();
   private readonly compactionPromptQueues = new Map<string, QueuedPrompt[]>();
   /** Accepted prompt identities, so a lost response answers instead of re-running. */
-  private readonly acceptanceLedger = new AcceptanceLedger();
+  /**
+   * Durable when the daemon has a data directory, in-memory otherwise (tests
+   * and embedded runs). The old ledger said out loud that a restart forgot it,
+   * which turned the browser's correct retry into a second run of the prompt.
+   */
+  private readonly acceptanceLedger: AcceptanceFace;
   private readonly committedExpectations = new CommittedPromptExpectations();
   private readonly ownedQueue = new OwnedPromptQueue();
   /**
@@ -1259,6 +1267,9 @@ export class PiSessionService implements SessionRouteService {
   private unreadPublicationStopped = false;
 
   constructor(private readonly events: SessionEventHub, deps: PiSessionServiceDependencies) {
+    this.acceptanceLedger = deps.operationLedgerDir === undefined
+      ? new AcceptanceLedger()
+      : createDurableAcceptanceLedger(deps.operationLedgerDir);
     this.hostContributions = deps.hostContributions ?? EMPTY_HOST_CONTRIBUTIONS;
     this.archiveStore = deps.archiveStore ?? new SessionArchiveStore();
     this.agentDir = deps.agentDir;
