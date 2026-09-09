@@ -1,5 +1,5 @@
 import type { EditorView } from "@codemirror/view";
-import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
+import { renderCrossIcon, renderUpIcon, uiIconStyle } from "./uiIcons.js";
 import type { ComposerEditorHandle } from "./composerEditorSetup";
 
 type ComposerEditorModule = typeof import("./composerEditorSetup");
@@ -62,11 +62,13 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
   /* Collapsed: one line that gives the screen back to whatever input is being
      used, and says what is still in the draft so it does not look lost. */
   footer.collapsed { padding: var(--pi-space-3) var(--pi-space-5); }
-  .expand-composer { box-sizing: border-box; display: flex; align-items: center; gap: var(--pi-space-4); width: 100%; min-height: var(--pi-control-height-touch); padding: var(--pi-space-2) var(--pi-space-5); border: 1px dashed var(--pi-border); border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-sm); text-align: start; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .expand-composer { box-sizing: border-box; display: flex; align-items: center; gap: var(--pi-space-4); width: 100%; min-height: var(--pi-control-height-touch); padding: var(--pi-space-2) var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-muted); font: inherit; font-size: var(--pi-text-sm); text-align: start; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .expand-composer:focus-visible { border-color: var(--pi-accent); color: var(--pi-text-bright); }
   @media (hover: hover) { .expand-composer:hover { border-color: var(--pi-accent); color: var(--pi-text-bright); } }
   .expand-composer:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
   .expand-composer-label { flex: 0 0 auto; }
+  .expand-composer-hint { display: inline-flex; flex: 0 0 auto; margin-inline-start: auto; color: var(--pi-muted); }
+  .expand-composer-hint .ui-icon { width: var(--pi-dot-md); height: var(--pi-dot-md); }
   .expand-composer-draft { min-width: 0; overflow: hidden; color: var(--pi-muted); font-size: var(--pi-text-xs); text-overflow: ellipsis; white-space: nowrap; }
   footer.shell-mode { border-top-color: var(--pi-success); background: var(--pi-success-bg); }
   .editor-wrap { position: relative; min-width: 0; }
@@ -428,6 +430,7 @@ export class PromptEditor extends LitElement {
         >
           <span class="expand-composer-label">Message pi…</span>
           ${this.draftPreview === "" ? null : html`<span class="expand-composer-draft" dir="auto">${this.draftPreview}</span>`}
+          <span class="expand-composer-hint">${renderUpIcon()}</span>
         </button>
       </footer>
     `;
