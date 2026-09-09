@@ -701,7 +701,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     @media (hover: hover) { .start-session-button:hover:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 88%, black); } }
     .start-session-button:disabled { border-color: var(--pi-border); background: var(--pi-surface); color: var(--pi-muted); font-weight: var(--pi-weight-regular); }
     .bulk-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pi-space-3); margin: 0 0 var(--pi-space-3); }
-    .bulk-row button { padding: var(--pi-space-3) var(--pi-space-4); font-size: var(--pi-text-xs); white-space: nowrap; }
+    .bulk-row button { min-height: var(--pi-control-height); padding: var(--pi-space-3) var(--pi-space-4); font-size: var(--pi-text-xs); white-space: nowrap; }
     .bulk-actions { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-3); margin-left: auto; }
     .action-name, .section-selected { text-align: start; unicode-bidi: plaintext; }
     .action-row.unread .action-name { color: var(--pi-text-bright); font-weight: var(--pi-weight-strong); }
@@ -716,7 +716,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .row-badges { flex: 0 0 auto; display: flex; align-items: flex-start; gap: var(--pi-space-2); }
     .row-badges .badge { margin-left: 0; white-space: nowrap; }
     /* Same glyph as a normal child marker, dimmed: the row is a child whose parent is not displayed here. */
-    .orphan-marker { color: var(--pi-dim); opacity: .65; }
+    .orphan-marker { color: var(--pi-muted); }
     .bulk-row.selecting { padding: var(--pi-space-3); border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-md); background: color-mix(in srgb, var(--pi-surface) 65%, transparent); }
     button.danger, .action-menu-panel button.danger { color: var(--pi-danger); }
     @media (hover: hover) { button.danger:hover, .action-menu-panel button.danger:hover { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); } }
@@ -727,7 +727,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .pending-session-row.starting-session .activity-indicator { flex: 0 0 auto; margin: 0; }
     .action-main.selecting { padding-left: calc(var(--pi-space-3) + var(--pi-checkbox-size) + var(--pi-space-3) + var(--depth, 0) * var(--pi-space-7)); }
     @media (pointer: coarse) { .action-main.selecting { padding-left: calc(var(--pi-space-3) + (var(--pi-control-height-comfort) - var(--pi-checkbox-size)) / 2 + var(--pi-checkbox-size) + var(--pi-space-3) + var(--depth, 0) * var(--pi-space-7)); } }
-.session-checkbox { position: absolute; top: var(--pi-space-4); left: calc(var(--pi-row-gutter-start) + var(--depth, 0) * var(--pi-space-7)); z-index: 3; box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); margin: 0; }
+.session-checkbox { accent-color: var(--pi-accent); position: absolute; top: var(--pi-space-4); left: calc(var(--pi-row-gutter-start) + var(--depth, 0) * var(--pi-space-7)); z-index: 3; box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); margin: 0; }
     /* One formula for the leading gutter: the slot starts at --pi-row-gutter-start,
        is --pi-row-gutter-size wide, and the text clears it by one breathing step.
        Spelled out, the mouse row breathed 8px here and the touch row 2px. */

@@ -361,7 +361,7 @@ export class SettingsShortcutsPanel extends LitElement {
     .prompt-enter-copy p, .prompt-enter-option small { font-size: var(--pi-text-xs); }
     .prompt-enter-options { display: grid; gap: var(--pi-space-4); }
     .prompt-enter-option { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--pi-space-4); align-items: start; color: var(--pi-text); }
-    .prompt-enter-option input { box-sizing: border-box; box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); margin: var(--pi-space-2) 0 0; padding: 0; border: 0; background: transparent; accent-color: var(--pi-accent); font-family: inherit; }
+    .prompt-enter-option input { box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); margin: var(--pi-space-2) 0 0; padding: 0; border: 0; background: transparent; accent-color: var(--pi-accent); font-family: inherit; }
     .prompt-enter-option input:focus { border-color: transparent; box-shadow: none; outline: var(--pi-focus-ring-width) solid var(--pi-accent-border); outline-offset: var(--pi-focus-ring-offset); }
     .prompt-enter-option span { display: grid; gap: var(--pi-space-1); }
     .prompt-enter-option small { color: var(--pi-muted); line-height: 1.35; }

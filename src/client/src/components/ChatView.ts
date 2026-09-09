@@ -131,7 +131,7 @@ export const chatStyles = css`
     .top-drawer:not(.collapsed) .drawer-header { position: sticky; top: 0; z-index: 1; background: var(--pi-bg); }
     .top-drawer:not(.collapsed) .drawer-body { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
   }
-  .drawer-header { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: var(--pi-space-2) var(--pi-chat-gutter); }
+  .drawer-header { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: 0 var(--pi-chat-gutter); }
   /* The two sections are told apart by colour, not only by label: activity is
      violet (work this chat started), notifications keep the app's warning
      palette (something happened to you). */

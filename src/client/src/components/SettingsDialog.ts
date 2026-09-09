@@ -781,7 +781,7 @@ export class SettingsDialog extends LitElement {
       .settings-header { padding: max(var(--pi-space-6), env(safe-area-inset-top)) var(--pi-space-6) var(--pi-space-6); }
       .settings-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
       .settings-list { display: flex; flex-direction: column; overflow-y: auto; padding: var(--pi-space-3) 0 calc(var(--pi-space-6) + env(safe-area-inset-bottom)); }
-      .settings-list button { box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-6); width: 100%; min-height: 56px; margin: 0; border: 0; border-bottom: 1px solid var(--pi-border); border-radius: 0; padding: var(--pi-space-5) var(--pi-space-7); text-align: left; }
+      .settings-list button { font: inherit; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-6); width: 100%; min-height: 56px; margin: 0; border: 0; border-bottom: 1px solid var(--pi-border); border-radius: 0; padding: var(--pi-space-5) var(--pi-space-7); text-align: left; }
       .settings-list-label { display: flex; flex-direction: column; gap: var(--pi-space-1); min-width: 0; }
       .settings-list-label strong { font-size: var(--pi-text-lg); font-weight: var(--pi-weight-semibold); color: var(--pi-text); }
       .settings-list-label small { font-size: var(--pi-text-sm); color: var(--pi-muted); }
