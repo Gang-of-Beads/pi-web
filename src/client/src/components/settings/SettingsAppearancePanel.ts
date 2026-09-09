@@ -128,13 +128,13 @@ export class SettingsAppearancePanel extends LitElement {
     .theme.selected { border-color: var(--pi-accent); box-shadow: 0 0 0 1px var(--pi-accent) inset; }
     /* The theme actually on screen is a state, not prose: it used to be an
        11px "· in use" suffix on a card drawn exactly like every unrelated one. */
-    .theme.active { border-color: var(--pi-border-strong, var(--pi-muted)); }
+    .theme.active:not(.selected) { border-color: var(--pi-border-strong, var(--pi-muted)); }
     .theme.active .theme-name::after { content: ""; display: inline-block; width: var(--pi-dot-sm); height: var(--pi-dot-sm); margin-left: var(--pi-space-3); border-radius: 50%; background: var(--pi-accent); vertical-align: middle; }
     .theme-name { font-weight: var(--pi-weight-semibold); }
     .theme-scheme, .theme-description { font-size: var(--pi-text-2xs); }
     /* The scheme line grew a suffix ("· in use", "· follows the system") and
        became the second variable-height line in a grid whose cards must match. */
-    .theme-scheme { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; min-height: calc(1 * 1.4em); overflow: hidden; }
+    .theme-scheme { min-height: calc(2 * 1.4em); }
     /* Cards in a grid share a height: the description decides it, so it is
        clamped rather than left to the length of the sentence somebody wrote. */
     .theme-description { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-height: calc(2 * 1.4em); overflow: hidden; }

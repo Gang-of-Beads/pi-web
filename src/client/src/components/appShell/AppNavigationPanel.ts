@@ -463,7 +463,7 @@ export class AppNavigationPanel extends LitElement {
        where the desktop rail measures 45. Same rule, same height. */
     /* The compact row speaks pills; a control that renders itself follows the
        row it is in rather than carrying the rail's corner into it. */
-    .compact-header { --pi-header-control-radius: var(--pi-radius-pill); flex: 0 0 auto; box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; justify-content: flex-start; gap: var(--pi-space-3); padding: 0 var(--pi-chrome-inset); border-bottom: 1px solid var(--pi-border-muted); }
+    .compact-header { --pi-header-control-radius: var(--pi-radius-pill); flex: 0 0 auto; box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; justify-content: flex-start; gap: var(--pi-space-3); padding: 0 var(--pi-chrome-inset); border-bottom: 1px solid var(--pi-border); }
     .compact-header-action { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: var(--pi-control-height-touch); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text); font: inherit; }
     .compact-header-action:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     /* Coarse pointers get the comfort floor: the glyph is small but the hit

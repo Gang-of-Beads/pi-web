@@ -94,6 +94,7 @@ export const chatStyles = css`
      edge exactly on the message's own right border: two edges on one line,
      reading as a button welded to the card rather than one floating over it.
      It is inset by a step of the scale so the border stays visible. */
+  .jump-icon { width: 16px; height: 16px; }
   .jump-to-bottom { box-sizing: border-box;
     position: absolute;
     right: calc(var(--pi-chat-gutter) + var(--pi-chat-scrollbar, 0px) + var(--pi-space-4));
@@ -249,13 +250,13 @@ export const chatStyles = css`
   /* A turn that has run for ten minutes without finishing is worth a second
      look; the reader has no other way to tell it from one that just started. */
   .activity-dock.long-running { border-color: var(--pi-warning-border); color: var(--pi-warning); }
-  .activity-dock.active { border-color: var(--pi-success-border); color: var(--pi-success); background: var(--pi-success-bg-overlay); }
+  .activity-dock.working { border-color: var(--pi-success-border); color: var(--pi-success); background: var(--pi-success-bg-overlay); }
   .activity-dock.sending { border-color: var(--pi-warning-border); color: var(--pi-warning); background: var(--pi-warning-surface); }
   .activity-dock.asking { border-color: var(--pi-warning-border); color: var(--pi-warning); background: var(--pi-warning-surface); }
   .activity-dock.error { border-color: var(--pi-danger); color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 12%, transparent); }
   .activity-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dot { width: var(--pi-dot-md); height: var(--pi-dot-md); border-radius: 50%; background: currentColor; opacity: .45; flex: 0 0 auto; }
-  .activity-dock.active .dot { animation: pulse 1s ease-in-out infinite; opacity: 1; }
+  .activity-dock.working .dot { animation: pulse 1s ease-in-out infinite; opacity: 1; }
   .activity-dock .state-dot { background: currentColor; }
   .activity-dock.working .state-dot { opacity: 1; }
   /* One column, shared by the transcript, the composer and the status dock.
@@ -1012,7 +1013,7 @@ export class ChatView extends LitElement {
         title="Jump to the newest message"
         aria-label="Jump to the newest message"
         @click=${() => { this.pinnedToBottom = true; this.scrollToBottom(); this.jumpToBottomVisible = false; }}
-      >↓</button>
+      ><svg class="jump-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"></path><path d="m6 13 6 6 6-6"></path></svg></button>
     `;
   }
 

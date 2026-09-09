@@ -141,7 +141,8 @@ export const appStyles = css`
   .context-chip { flex: 0 0 auto; min-width: 0; display: inline-flex; align-items: baseline; gap: var(--pi-space-3); border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-2) var(--pi-space-4); font: inherit; text-align: left; }
   @media (hover: hover) { .context-chip:hover { background: var(--pi-surface-hover); } }
   .context-chip:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
-  .context-chip.empty { border-style: dashed; color: var(--pi-muted); }
+  .context-chip.empty p { margin: 0; }
+  .empty { border-style: dashed; color: var(--pi-muted); }
   .context-kind { display: none; }
   .context-value { min-width: 0; overflow: visible; text-overflow: clip; white-space: nowrap; }
   .tab-badge { display: inline-block; min-width: 14px; margin-left: var(--pi-space-2); border: 1px solid var(--pi-success-border); border-radius: var(--pi-radius-pill); background: var(--pi-success-surface); color: var(--pi-success); padding: 0 var(--pi-space-3); font-size: var(--pi-text-2xs); line-height: 16px; text-align: center; }

@@ -204,7 +204,7 @@ export class SettingsDialog extends LitElement {
       <modal-surface .onClose=${() => this.onClose?.()} .label=${"PI WEB settings"}>
         <header class="settings-header">
           <div class="settings-detail-heading">
-            <button class="settings-back" @click=${() => this.onBackToList?.()}>‹ Settings</button>
+            <button class="settings-back" @click=${() => this.onBackToList?.()}><span class="settings-back-icon">${renderDisclosureIcon(false)}</span> Settings</button>
             <h1>${this.detailTitle()}</h1>
           </div>
           <button class="close-button" title="Close settings" aria-label="Close settings" @click=${() => this.onClose?.()}>×</button>
@@ -793,6 +793,7 @@ export class SettingsDialog extends LitElement {
          with the row a reader arrives on. */
       .settings-header { align-items: flex-start; }
       .close-button { margin-top: 0; }
+      .settings-back-icon { display: inline-flex; transform: rotate(180deg); }
       .settings-back { box-sizing: border-box; display: inline-flex; align-items: center; min-height: var(--pi-control-height-touch); margin-left: calc(-1 * var(--pi-space-4)); border: 0; background: transparent; padding: 0 var(--pi-space-4) 0 0; font-size: var(--pi-text-base); font-weight: var(--pi-weight-semibold); color: var(--pi-accent); }
       .settings-content { padding: var(--pi-space-6) var(--pi-space-6) calc(var(--pi-space-7) + env(safe-area-inset-bottom)); }
     }
