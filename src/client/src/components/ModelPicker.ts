@@ -267,8 +267,14 @@ export class ModelPicker extends LitElement {
     }
   }
 
+  /** Opened from inside a dialog, a picker is a child of it and must paint
+   *  above it: the layer tokens rank kinds of surface, so a popover opened
+   *  over a dialog dimmed the backdrop and then rendered underneath it. */
+  @property({ type: Boolean, reflect: true }) aboveDialog = false;
+
   static override styles = [interactiveSurfaceStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-popover); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui, system-ui, sans-serif); }
+    :host([abovedialog]) { z-index: calc(var(--pi-layer-dialog) + 1); }
     modal-surface { --modal-surface-width: min(720px, calc(100vw - 40px)); --modal-surface-max-height: min(640px, calc(100vh - 40px)); }
     header { display: flex; align-items: center; justify-content: space-between; padding: var(--pi-space-6); border-bottom: 1px solid var(--pi-border); }
     .scope-toggle { display: flex; gap: var(--pi-space-2); margin: var(--pi-space-5) var(--pi-space-6) 0; padding: var(--pi-space-2); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); }

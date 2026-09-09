@@ -30,6 +30,13 @@ const EXEMPTIONS = new Map<string, string>([
   ["src/client/src/components/PromptEditor.ts", "textarea and CodeMirror content heights are line metrics, not control geometry"],
 ]);
 
+/** Prose is not a declaration: a comment explaining why a bar measures 44px
+ *  is documentation, and reading it as an escape made the guard punish the
+ *  explanation the fix was asked to leave behind. */
+function withoutComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//gu, " ");
+}
+
 function styleSources(root: string): string[] {
   const found: string[] = [];
   const walk = (dir: string): void => {
@@ -50,7 +57,7 @@ describe("the control height scale", () => {
     for (const root of ROOTS) {
       for (const file of styleSources(root)) {
         if (EXEMPTIONS.has(file)) continue;
-        const source = readFileSync(file, "utf8");
+        const source = withoutComments(readFileSync(file, "utf8"));
         for (const match of source.matchAll(CONTROL_RANGE)) offences.push(`${file}: ${match[0]}`);
         for (const match of source.matchAll(CONTROL_SIZED_PROPERTY)) offences.push(`${file}: ${match[0]}`);
       }

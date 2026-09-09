@@ -387,7 +387,10 @@ export const chatStyles = css`
      icon - but only as far as the gap allows: a symmetric 10px expansion over
      a 6px gap made each button's right edge belong to its neighbour. */
   .msg-action::after { content: ""; position: absolute; inset: -10px -3px; }
-  @media (pointer: coarse) { .msg-actions { gap: var(--pi-space-8); } .msg-action::after { inset: -10px; } }
+  /* The row is icons and one text control: the meta button sits at the end of
+     the same flex row, so the expansion must clear it too - a symmetric 10px
+     bleed put 2px of the info control inside the copy button. */
+  @media (pointer: coarse) { .msg-header-trailing { gap: var(--pi-space-8); } .msg-actions { gap: var(--pi-space-8); } .msg-action::after { inset: -10px -3px; } }
   .msg-action:focus { color: var(--pi-text); border-color: var(--pi-accent); }
   @media (hover: hover) { .msg-action:hover { color: var(--pi-text); border-color: var(--pi-accent); } }
   .msg:focus-within > .msg-header .msg-actions, .group-msg:focus-within > .msg-header .msg-actions { opacity: 1; }

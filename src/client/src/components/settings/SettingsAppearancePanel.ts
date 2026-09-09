@@ -142,8 +142,12 @@ export class SettingsAppearancePanel extends LitElement {
     /* Cards in a grid share a height: the description decides it, so it is
        clamped rather than left to the length of the sentence somebody wrote. */
     .theme-description { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-height: calc(2 * 1.4em); overflow: hidden; }
-    .preview { display: grid; gap: var(--pi-space-3); height: 74px; margin-bottom: var(--pi-space-3); padding: var(--pi-space-4); border: 1px solid var(--preview-border, var(--pi-border)); border-radius: var(--pi-radius-md); background: var(--preview-bg, var(--pi-bg)); }
-    .preview-surface { display: grid; align-content: center; gap: var(--pi-space-3); padding: var(--pi-space-3) var(--pi-space-4); border: 1px solid var(--preview-border, var(--pi-border)); border-radius: var(--pi-radius-sm); background: var(--preview-surface, var(--pi-surface)); }
+    /* Concentric by construction: an inner corner is the outer one minus the
+       padding between them, so the two arcs stay parallel when either token
+       moves. Card lg(12) - space-5(10) = 2 for the preview inside the card;
+       md(8) - space-4(8) clamps to xs for the surface inside the preview. */
+    .preview { display: grid; gap: var(--pi-space-3); height: 74px; margin-bottom: var(--pi-space-3); padding: var(--pi-space-4); border: 1px solid var(--preview-border, var(--pi-border)); border-radius: max(var(--pi-radius-xs), calc(var(--pi-radius-lg) - var(--pi-space-5))); background: var(--preview-bg, var(--pi-bg)); }
+    .preview-surface { display: grid; align-content: center; gap: var(--pi-space-3); padding: var(--pi-space-3) var(--pi-space-4); border: 1px solid var(--preview-border, var(--pi-border)); border-radius: max(var(--pi-radius-xs), calc(var(--pi-radius-md) - var(--pi-space-4))); background: var(--preview-surface, var(--pi-surface)); }
     .preview-line { display: block; height: var(--pi-dot-xs); border-radius: var(--pi-radius-pill); background: var(--preview-text, var(--pi-text)); }
     .preview-line.long { width: 78%; }
     .preview-line.short { width: 46%; background: var(--preview-muted, var(--pi-muted)); }
