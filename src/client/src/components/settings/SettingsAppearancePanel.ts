@@ -30,13 +30,8 @@ export class SettingsAppearancePanel extends LitElement {
 
   override render() {
     return html`
-      <settings-panel-frame>
-        <div class="heading">
-          <div>
-            <h2>Appearance</h2>
-            <p class="muted">Pick a theme, or let the system's light and dark preference choose between a matching pair.</p>
-          </div>
-        </div>
+      <settings-panel-frame heading="Appearance">
+        <p slot="description">Pick a theme, or let the system's light and dark preference choose between a matching pair.</p>
 
         <label class="follow">
           <input

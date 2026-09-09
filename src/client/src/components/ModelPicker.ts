@@ -298,11 +298,11 @@ export class ModelPicker extends LitElement {
       input[type="checkbox"] { box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); accent-color: var(--pi-accent); }
     }
     .options > button { display: block; width: 100%; font: var(--pi-text-sm)/1.25 var(--pi-font-ui); padding: var(--pi-space-5) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
-    .options > button.selected { background: var(--pi-selection-bg); }
-    @media (hover: hover) { .options > button:hover { background: var(--pi-selection-bg); } }
+    .options > button.selected { background: var(--pi-selection-bg); border-color: var(--pi-accent); }
+    @media (hover: hover) { .options > button:hover { background: var(--pi-surface-hover); } }
     .catalog-row { display: flex; align-items: center; border-bottom: 1px solid var(--pi-border-muted); }
-    .catalog-row.selected { background: var(--pi-selection-bg); }
-    @media (hover: hover) { .catalog-row:hover { background: var(--pi-selection-bg); } }
+    .catalog-row.selected { background: var(--pi-selection-bg); border-color: var(--pi-accent); }
+    @media (hover: hover) { .catalog-row:hover { background: var(--pi-surface-hover); } }
     .catalog-row input[type="checkbox"] { box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); margin: 0 0 0 var(--pi-space-6); accent-color: var(--pi-accent); }
     .catalog-row .pick { font: var(--pi-text-sm)/1.25 var(--pi-font-ui); flex: 1; min-width: 0; display: block; padding: var(--pi-space-5) var(--pi-space-6); text-align: left; }
     .group-header { padding: var(--pi-space-4) var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-xs); text-transform: uppercase; letter-spacing: 0.04em; }

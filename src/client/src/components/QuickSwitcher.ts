@@ -498,7 +498,9 @@ export class QuickSwitcher extends LitElement {
     /* "· main" was prose inside a two-line clamp, so the state it carried was
        the first thing a long workspace name cut off. */
     .row-tag { display: inline-block; margin-left: var(--pi-space-2); border-radius: var(--pi-radius-pill); background: var(--pi-selection-bg); color: var(--pi-text-bright); padding: 0 var(--pi-space-2); font-size: var(--pi-text-2xs); line-height: 16px; vertical-align: middle; }
-    .rename-row { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-space-5); }
+    /* The row keeps its own inset when it enters edit mode: content that shifts
+       under the caret is the one thing a rename must not do. */
+    .rename-row { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--pi-space-4); padding: var(--pi-space-5) var(--pi-space-6); }
     .rename-input { box-sizing: border-box; width: 100%; min-height: var(--pi-control-height-comfort); border: 1px solid var(--pi-accent); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: 0 var(--pi-space-5); font: var(--pi-text-lg) var(--pi-font-ui); }
     .rename-actions { display: flex; gap: var(--pi-space-3); }
     .rename-actions button { box-sizing: border-box; font: inherit; width: var(--pi-control-height-comfort); min-height: var(--pi-control-height-comfort); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }

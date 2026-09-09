@@ -569,7 +569,7 @@ export class AskUserCard extends LitElement {
     .option-copy { min-width: 0; display: grid; gap: var(--pi-space-1); }
     .option-label { line-height: 1.35; }
     .option-detail { color: var(--pi-muted); font-size: var(--pi-text-xs); line-height: 1.35; }
-    .other-answer { display: grid; gap: var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); padding: var(--pi-space-2) var(--pi-space-4) var(--pi-space-2) calc(var(--pi-space-4) + var(--pi-checkbox-size) + var(--pi-space-4)); }
+    .other-answer { display: grid; gap: var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); padding: var(--pi-space-2) var(--pi-space-4) var(--pi-space-2) calc(1px + var(--pi-space-4) + var(--pi-checkbox-size) + var(--pi-space-4)); }
     .other-answer:only-child { padding-left: 0; padding-right: 0; }
     /* Grows with the answer instead of keeping a long reply behind a
        three-line slot: field-sizing handles it natively where it exists and

@@ -34,14 +34,9 @@ export class SettingsMachinesPanel extends LitElement {
 
   override render() {
     return html`
-      <settings-panel-frame>
-        <div class="machines-heading">
-          <div>
-            <h2>Machines</h2>
-            <p class="muted">Renaming the local machine applies a display alias; other fields stay fixed.</p>
-          </div>
-          <button type="button" class="add-button" @click=${() => this.onAdd?.()}>Add machine</button>
-        </div>
+      <settings-panel-frame heading="Machines">
+        <p slot="description">Renaming the local machine applies a display alias; other fields stay fixed.</p>
+        <div slot="actions"><button type="button" class="add-button" @click=${() => this.onAdd?.()}>Add machine</button></div>
         <div class="machine-grid">
           ${this.machines.map((machine) => this.renderMachineCard(machine))}
           ${this.machines.length === 0 ? html`<p class="empty">No machines configured.</p>` : null}

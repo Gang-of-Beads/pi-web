@@ -114,8 +114,8 @@ export class CommandPicker extends LitElement {
     input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     input:focus { border-color: var(--pi-accent); }
     .options button { display: block; width: 100%; font: var(--pi-text-sm)/1.25 var(--pi-font-ui); padding: var(--pi-space-5) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
-    .options button.selected { background: var(--pi-selection-bg); }
-    @media (hover: hover) { .options button:hover { background: var(--pi-selection-bg); } }
+    .options button.selected { background: var(--pi-selection-bg); border-color: var(--pi-accent); }
+    @media (hover: hover) { .options button:hover { background: var(--pi-surface-hover); } }
     small { display: block; margin-top: var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-2xs); }
     .empty { padding: var(--pi-space-9); color: var(--pi-muted); text-align: center; }
     /* Coarse pointers get the comfort floor across the picker chrome: the
