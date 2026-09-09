@@ -135,6 +135,9 @@ export class SettingsAppearancePanel extends LitElement {
     .theme.active .theme-name::after { content: ""; display: inline-block; width: var(--pi-dot-sm); height: var(--pi-dot-sm); margin-left: var(--pi-space-3); border-radius: 50%; background: var(--pi-accent); vertical-align: middle; }
     .theme-name { font-weight: var(--pi-weight-semibold); }
     .theme-scheme, .theme-description { font-size: var(--pi-text-2xs); }
+    /* The scheme line grew a suffix ("· in use", "· follows the system") and
+       became the second variable-height line in a grid whose cards must match. */
+    .theme-scheme { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; min-height: calc(1 * 1.4em); overflow: hidden; }
     /* Cards in a grid share a height: the description decides it, so it is
        clamped rather than left to the length of the sentence somebody wrote. */
     .theme-description { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-height: calc(2 * 1.4em); overflow: hidden; }

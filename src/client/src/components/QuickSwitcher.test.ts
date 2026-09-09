@@ -66,7 +66,7 @@ describe("quick-switcher", () => {
     const rows = sessionRows(switcher);
     const byName = (name: string) => rows.find((row) => rowTitle(row) === name);
     expect(byName("streaming")?.querySelectorAll(".state-dot").length).toBe(3);
-    expect(byName("streaming")?.querySelector(".session-state")?.getAttribute("class")).toContain("working");
+    expect(byName("streaming")?.querySelector(".session-state")?.getAttribute("class")).toContain("running");
     expect(byName("finished")?.querySelector(".session-state")?.getAttribute("class")).toContain("idle");
     expect(byName("waiting on me")?.querySelector(".session-state")?.getAttribute("class")).toContain("asking");
     expect(byName("model error")?.querySelector(".session-state")?.getAttribute("class")).toContain("error");
@@ -84,7 +84,7 @@ describe("quick-switcher", () => {
 
     const row = sessionRows(switcher).find((candidate) => rowTitle(candidate) === "just opened");
     expect(row?.querySelectorAll(".state-dot").length).toBe(3);
-    expect(row?.querySelector(".session-state")?.getAttribute("class")).toContain("working");
+    expect(row?.querySelector(".session-state")?.getAttribute("class")).toContain("running");
   });
 
   it("shows only the interrupted ring for a cut-off session, not a green idle dot", async () => {

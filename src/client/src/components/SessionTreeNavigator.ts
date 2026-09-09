@@ -556,7 +556,7 @@ export class SessionTreeNavigator extends LitElement {
     .tree-row.bookkeeping { color: var(--pi-muted); }
     .disclosure { width: 20px; height: var(--pi-control-height); display: grid; place-items: center; border-radius: var(--pi-radius-xs); color: var(--pi-muted); font-size: var(--pi-text-md); user-select: none; }
     @media (hover: hover) { .disclosure:not(.leaf):hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
-    .disclosure.leaf { opacity: .5; }
+    .disclosure.leaf { opacity: var(--pi-disabled-opacity); }
     .metadata { display: contents; }
     .tree-row > .disclosure { grid-column: 1; grid-row: 1; }
     .tree-row > .metadata > .kind { grid-column: 2; grid-row: 1; }
@@ -602,7 +602,7 @@ export class SessionTreeNavigator extends LitElement {
     button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-6); font: inherit; cursor: pointer; }
     @media (hover: hover) { button:not(:disabled):hover { background: var(--pi-surface-hover); } }
     button:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
-    button:disabled { opacity: .52; cursor: not-allowed; }
+    button:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
     button.primary { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-on-accent, var(--pi-bg)); font-weight: 700; }
     @media (hover: hover) { button.primary:not(:disabled):hover { filter: brightness(1.08); } }
     button.danger { color: var(--pi-danger); }

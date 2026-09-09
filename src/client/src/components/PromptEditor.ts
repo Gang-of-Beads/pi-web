@@ -172,7 +172,7 @@ export const promptEditorStyles = css`
      and the press states still signal interactivity (C2/C4). */
   button { font: var(--pi-text-xs) var(--pi-font-ui); border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
   button:not(:disabled):active { background: var(--pi-surface-hover); }
-  button:disabled, textarea:disabled, .markdown-editor-disabled .cm-editor { opacity: .5; cursor: not-allowed; }
+  button:disabled, textarea:disabled, .markdown-editor-disabled .cm-editor { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
   @media (max-width: 760px) {
     footer { gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-chat-gutter); }
     .actions { gap: var(--pi-space-3); }

@@ -189,7 +189,7 @@ export class SettingsPackagesPanel extends LitElement {
     p, small { color: var(--pi-muted); line-height: 1.45; }
     button, input { font: inherit; }
     button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
-    button:disabled, input:disabled { opacity: .55; cursor: not-allowed; }
+    button:disabled, input:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
     input { box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); }
     label { font-weight: 700; }
     .secondary { flex: 0 0 auto; }

@@ -101,7 +101,7 @@ export class SettingsPanelFrame extends LitElement {
     .description { color: var(--pi-muted); line-height: 1.45; }
     .description ::slotted(*) { margin: 0; }
     button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); font: inherit; cursor: pointer; }
-    button:disabled { opacity: .55; cursor: not-allowed; }
+    button:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
     .secondary { flex: 0 0 auto; }
     .notice-stack { display: grid; gap: var(--pi-space-6); margin-bottom: var(--pi-space-7); }
     .notice { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); padding: var(--pi-space-6); line-height: 1.45; }

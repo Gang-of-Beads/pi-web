@@ -371,12 +371,12 @@ export class ProjectDialog extends LitElement {
       footer button { min-height: var(--pi-control-height-touch); }
     }
     button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
-    header button { border: 0; background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); padding: 0 var(--pi-space-4); }
+    header button { display: grid; place-items: center; width: var(--pi-control-height); height: var(--pi-control-height); padding: 0; line-height: 1; border: 0; background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); padding: 0 var(--pi-space-4); }
     @media (pointer: coarse) { header button { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); } }
     /* The primary action is accent-filled like every other dialog's: the
        green here was a border token pressed into service as a fill and never
        carried a label above 4.1:1. */
     .primary { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-on-accent, var(--pi-bg)); }
-    button:disabled { opacity: .5; cursor: not-allowed; }
+    button:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
   `];
 }

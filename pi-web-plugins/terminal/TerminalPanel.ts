@@ -746,7 +746,7 @@ export class TerminalPanel extends LitElement {
     button small { color: var(--pi-muted); font-size: var(--pi-text-base); line-height: 1; }
     @media (hover: hover) { button small:hover { color: var(--pi-danger); } }
     button.danger { color: var(--pi-danger); }
-    button:disabled { opacity: .5; cursor: not-allowed; }
+    button:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
     .command-run-notice { flex: 0 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--pi-space-5); align-items: center; padding: var(--pi-space-4) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-surface); color: var(--pi-text); }
     .command-run-notice.running { border-color: var(--pi-warning-border); }
     .command-run-notice.succeeded { border-color: var(--pi-success-border); }

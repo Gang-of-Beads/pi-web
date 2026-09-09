@@ -258,7 +258,7 @@ export class SettingsGeneralPanel extends LitElement {
     p { color: var(--pi-muted); line-height: 1.45; }
     button, input, select, textarea { font: inherit; }
     button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
-    button:disabled { opacity: .55; cursor: not-allowed; }
+    button:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
     .settings-sections { display: grid; gap: var(--pi-space-7); }
     .settings-card, .message, .loading-card, .config-path-card, .effective-card { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); padding: var(--pi-space-6); }
     .settings-card { display: grid; gap: var(--pi-space-7); }
@@ -276,7 +276,7 @@ export class SettingsGeneralPanel extends LitElement {
     input, select, textarea { box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: var(--pi-space-5) var(--pi-space-5); outline: none; font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); }
     input:focus, select:focus, textarea:focus { border-color: var(--pi-accent); box-shadow: 0 0 0 1px var(--pi-accent-border); }
     textarea { resize: vertical; min-height: 94px; font-family: var(--pi-control-monospace-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
-    textarea:disabled { opacity: .55; }
+    textarea:disabled { opacity: var(--pi-disabled-opacity); }
     .override-badge { border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); color: var(--pi-warning); background: var(--pi-warning-surface); padding: var(--pi-space-1) var(--pi-space-4); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-semibold); text-transform: none; }
     .effective-card { display: grid; gap: var(--pi-space-5); }
     .effective-card dl { display: grid; gap: var(--pi-space-4); margin: 0; }

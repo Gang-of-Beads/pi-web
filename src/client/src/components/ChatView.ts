@@ -174,7 +174,7 @@ export const chatStyles = css`
   .drawer-control:focus-visible { background: var(--pi-selection-bg); color: var(--pi-text-bright); }
   @media (hover: hover) { .drawer-control:hover { background: var(--pi-selection-bg); color: var(--pi-text-bright); } }
   .drawer-control:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
-  .drawer-control:disabled { opacity: .5; background: transparent; cursor: default; }
+  .drawer-control:disabled { opacity: var(--pi-disabled-opacity); background: transparent; cursor: default; }
   .drawer-icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
   .drawer-disclosure-icon.expanded { transform: rotate(90deg); }
   /* Severity is carried by the row itself, not only by a small coloured word:
@@ -320,7 +320,7 @@ export const chatStyles = css`
   .history-load-button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text-secondary); padding: var(--pi-space-3) var(--pi-space-6); font: var(--pi-text-xs) var(--pi-font-ui); cursor: pointer; }
   .history-load-button:focus { border-color: var(--pi-accent); color: var(--pi-text-bright); }
   @media (hover: hover) { .history-load-button:hover { border-color: var(--pi-accent); color: var(--pi-text-bright); } }
-  .history-load-button:disabled { cursor: default; opacity: .55; }
+  .history-load-button:disabled { cursor: default; opacity: var(--pi-disabled-opacity); }
   /* Queued messages are drawn in the transcript, gold; this slim strip carries
      only the count and the clear action the queue as a whole needs. */
   .queued-strip { display: flex; align-items: center; gap: var(--pi-space-3); margin: 0 0 var(--pi-space-4); padding: var(--pi-space-2) var(--pi-space-3); color: var(--pi-warning); font-size: var(--pi-text-xs); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); background: var(--pi-warning-surface); }
@@ -374,7 +374,9 @@ export const chatStyles = css`
   .msg > .msg-header { position: sticky; top: calc(-1 * var(--pi-space-7)); z-index: 4; margin: calc(-1 * var(--pi-space-6)) calc(-1 * var(--pi-space-6)) var(--pi-space-3); padding: var(--pi-space-1) var(--pi-space-5); border-bottom: 1px solid color-mix(in srgb, var(--pi-border-muted) 35%, transparent); background: var(--pi-surface-card); box-shadow: var(--pi-elevation-2); }
   .msg.user > .msg-header { border-bottom-color: color-mix(in srgb, var(--pi-accent-border) 35%, transparent); background: var(--pi-selection-bg); }
   .msg.assistant > .msg-header .label, .msg.tool-image-output > .msg-header .label { color: var(--pi-text-secondary); }
-  .msg.user > .msg-header .label { color: var(--pi-accent); }
+  /* The role label sits on the selection fill; accent-on-selection measured
+     3.93:1, the weakest of the three roles, on the one that says "you". */
+  .msg.user > .msg-header .label { color: var(--pi-text); font-weight: var(--pi-weight-semibold); }
   .msg.tool > .msg-header { border-bottom-color: color-mix(in srgb, var(--pi-warning-border) 35%, transparent); background: var(--pi-warning-surface); }
   .msg.bash > .msg-header { border-bottom-color: color-mix(in srgb, var(--pi-success) 35%, transparent); background: var(--pi-success-bg); }
   .msg.skill > .msg-header { border-bottom-color: color-mix(in srgb, var(--pi-purple-border) 35%, transparent); background: var(--pi-purple-surface); }
@@ -399,7 +401,7 @@ export const chatStyles = css`
   .msg-meta:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); border-radius: var(--pi-radius-xs); }
   @media (hover: none) {
     .msg-actions { opacity: 1; }
-    .msg-meta { opacity: .75; max-width: 26px; }
+    .msg-meta { opacity: 1; color: var(--pi-muted); max-width: var(--pi-space-9); }
     .msg-meta:not(.expanded) { display: inline-grid; width: 26px; height: 24px; place-items: center; font-size: 0; text-overflow: clip; }
     .msg-meta::before { content: "ⓘ"; font-size: var(--pi-text-sm); }
     .msg-meta.expanded { opacity: 1; max-width: 100%; }

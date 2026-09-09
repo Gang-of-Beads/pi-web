@@ -5,7 +5,8 @@ import { customElement, property, state } from "lit/decorators.js";
 import type { Machine, Project, SessionInfo, Workspace } from "../api";
 import { quickSwitcherFilterActive, quickSwitcherFilterSessions, quickSwitcherModel, quickSwitcherSessionSubtitle, quickSwitcherWorkspaces, type QuickSwitcherFilter, type QuickSwitcherGroup } from "../quickSwitcher";
 import { LongPressTracker } from "../longPress";
-import { renderSessionStateBadge, type SessionStateBadgeKind } from "./activityBadge";
+import { renderSessionRowIndicator, sessionRowIndicator } from "./sessionRowIndicator";
+import type { SessionStateBadgeKind } from "./activityBadge";
 import { sessionStateBadgeStyles } from "./sessionStateBadgeStyles";
 import { sessionLabel } from "../sessionLabels";
 import { keyboardEventOriginatesFromNativeActivationControl } from "./keyboardEventTarget";
@@ -208,9 +209,7 @@ export class QuickSwitcher extends LitElement {
         >
           <span class="row-title" dir="auto">${pinned ? html`<span class="pin-mark" title="Pinned" aria-label="Pinned">${"\u2691"}</span> ` : nothing}${sessionLabel(session)}</span>
           <span class="row-subtitle">${quickSwitcherSessionSubtitle(session, this.workspaces)}</span>
-          <span class="row-state">${renderSessionStateBadge(stateKind, unread && stateKind === undefined ? "Unread activity" : undefined)}</span>
-          ${interrupted ? html`<span class="row-flag interrupted" title="A restart interrupted this run" aria-label="A restart interrupted this run"></span>` : null}
-          ${stateKind === undefined && !interrupted && unread ? html`<span class="row-flag unread" title="Unread activity" aria-label="Unread activity"></span>` : null}
+          ${interrupted ? html`<span class="row-flag interrupted" title="A restart interrupted this run" aria-label="A restart interrupted this run"></span>` : html`<span class="row-state">${renderSessionRowIndicator(sessionRowIndicator(stateKind, unread))}</span>`}
         </button>
         <button
           class="row-menu-toggle"
@@ -409,9 +408,12 @@ export class QuickSwitcher extends LitElement {
        scrolling a list that wasted half its width on every row. auto-fit keeps
        a single column when there is only room for one. */
     .rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--pi-space-3); align-content: start; }
-    .row { position: relative; display: grid; gap: var(--pi-space-1); width: 100%; min-height: 52px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-5) calc(var(--qs-menu-size) + var(--pi-space-2)) var(--pi-space-5) var(--pi-space-6); text-align: left; cursor: pointer; }
+    .row { font: inherit; position: relative; display: grid; gap: var(--pi-space-1); width: 100%; min-height: 52px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-5) calc(var(--qs-menu-size) + var(--pi-space-2)) var(--pi-space-5) var(--pi-space-6); text-align: left; cursor: pointer; }
     @media (hover: hover) { .row:hover:not(:disabled) { background: var(--pi-surface-hover); } }
-    .row:disabled { opacity: .55; cursor: not-allowed; }
+    /* The row dims, but the line that says what to do first must stay readable:
+       dimming the remedy with the control took it to 2.14:1. */
+    .row:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
+    .row:disabled .row-subtitle { opacity: calc(1 / var(--pi-disabled-opacity)); color: var(--pi-text); }
     /* One clamp at every width: a title that wraps to two lines on a phone and
        one on a desktop makes the same list two different shapes. Two lines are
        always reserved, so a short name and a long one occupy the same box. */
@@ -491,7 +493,7 @@ export class QuickSwitcher extends LitElement {
     }
     .row-menu button:focus-visible:not(:disabled) { background: var(--pi-selection-bg); }
     @media (hover: hover) { .row-menu button:hover:not(:disabled) { background: var(--pi-selection-bg); } }
-    .row-menu button:disabled { opacity: .5; cursor: not-allowed; }
+    .row-menu button:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
     .pin-mark { color: var(--pi-accent); }
     .rename-row { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-space-5); }
     .rename-input { box-sizing: border-box; width: 100%; min-height: var(--pi-control-height-comfort); border: 1px solid var(--pi-accent); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: 0 var(--pi-space-5); font: var(--pi-text-lg) var(--pi-font-ui); }
@@ -499,7 +501,7 @@ export class QuickSwitcher extends LitElement {
     .rename-actions button { width: var(--pi-control-height-comfort); min-height: var(--pi-control-height-comfort); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
     .empty { margin: var(--pi-space-7) var(--pi-space-2); color: var(--pi-muted); }
     footer { flex: 0 0 auto; padding: var(--pi-space-5); padding-bottom: max(var(--pi-space-5), env(safe-area-inset-bottom)); border-top: 1px solid var(--pi-border); }
-    footer button { width: 100%; min-height: var(--pi-control-height-touch); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
+    footer button { font: inherit; width: 100%; min-height: var(--pi-control-height-touch); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
   `];
 }
 

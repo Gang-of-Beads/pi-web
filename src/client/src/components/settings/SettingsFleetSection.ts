@@ -110,7 +110,7 @@ export class SettingsFleetSection extends LitElement {
     .muted { margin: 0; color: var(--pi-muted); font-size: var(--pi-text-xs); line-height: 1.4; }
     .error { margin: 0; color: var(--pi-danger); font-size: var(--pi-text-xs); }
     button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-3) var(--pi-space-5); font: inherit; font-size: var(--pi-text-xs); cursor: pointer; }
-    button:disabled { opacity: .5; cursor: not-allowed; }
+    button:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
     button:focus-visible:not(:disabled) { border-color: var(--pi-accent); }
     @media (hover: hover) { button:hover:not(:disabled) { border-color: var(--pi-accent); } }
     .ghost { flex: 0 0 auto; }

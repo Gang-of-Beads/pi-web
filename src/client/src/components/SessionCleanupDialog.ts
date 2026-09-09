@@ -220,7 +220,7 @@ export class SessionCleanupDialog extends LitElement {
     .toggle-row { display: grid; grid-template-columns: auto minmax(0, max-content) 88px auto; align-items: center; gap: var(--pi-space-4); color: var(--pi-text); }
     input[type="checkbox"] { box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); accent-color: var(--pi-accent); }
     input.days { box-sizing: border-box; width: 88px; min-width: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); }
-    input.days:disabled { opacity: .55; }
+    input.days:disabled { opacity: var(--pi-disabled-opacity); }
     .warning, .dialog-error, .result { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); padding: var(--pi-space-5) var(--pi-space-6); }
     .warning { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); color: var(--pi-text); }
     .dialog-error { border-color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 10%, var(--pi-bg)); color: var(--pi-danger); }
@@ -238,7 +238,7 @@ export class SessionCleanupDialog extends LitElement {
     tbody th { max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); font-weight: var(--pi-weight-medium); }
     tfoot th, tfoot td { border-bottom: 0; font-weight: 700; }
     button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); font: inherit; cursor: pointer; }
-    button:disabled { opacity: .5; cursor: not-allowed; }
+    button:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
     button.danger { color: var(--pi-danger); }
     @media (hover: hover) { button.danger:not(:disabled):hover { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); } }
     .close-button { width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); display: grid; place-items: center; border: 0; background: transparent; color: var(--pi-muted); padding: 0; font-size: var(--pi-text-xl); }

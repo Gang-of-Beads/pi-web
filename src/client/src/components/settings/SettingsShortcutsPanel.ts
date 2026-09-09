@@ -350,7 +350,7 @@ export class SettingsShortcutsPanel extends LitElement {
     p { color: var(--pi-muted); line-height: 1.45; }
     button, input { font: inherit; }
     button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
-    button:disabled, input:disabled { opacity: .55; cursor: not-allowed; }
+    button:disabled, input:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
     .primary { border-color: var(--pi-accent); background: var(--pi-selection-bg); color: var(--pi-text-bright); }
     .loading-card, .config-path-card, .prompt-enter-card { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); padding: var(--pi-space-6); }
     .loading-card, .config-path-card { color: var(--pi-muted); }
