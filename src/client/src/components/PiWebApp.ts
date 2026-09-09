@@ -196,7 +196,7 @@ export const appStyles = css`
   .error { display: flex; gap: var(--pi-space-4); align-items: flex-start; padding: var(--pi-space-5) var(--pi-space-7); border-bottom: 1px solid var(--pi-border); color: var(--pi-danger); }
   .error.transient { color: var(--pi-warning); background: color-mix(in srgb, var(--pi-warning) 8%, transparent); }
   .error .error-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
-  .error .error-dismiss { flex: 0 0 auto; padding: 0 var(--pi-space-3); border: 0; background: none; color: inherit; line-height: 1.4; }
+  .error .error-dismiss { flex: 0 0 auto; min-height: var(--pi-control-height); padding: 0 var(--pi-space-3); border: 0; background: none; color: inherit; line-height: 1.4; }
   .deprecation-notice { padding: var(--pi-space-5) var(--pi-space-7); border-bottom: 1px solid var(--pi-border); color: var(--pi-warning); }
   .deprecation-notice .deprecation-notice-text { margin: 0; overflow-wrap: anywhere; }
   .deprecation-notice .deprecation-notice-text + .deprecation-notice-text { margin-top: var(--pi-space-2); }

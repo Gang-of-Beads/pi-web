@@ -144,7 +144,7 @@ export class SettingsAppearancePanel extends LitElement {
     .preview-line.long { width: 78%; }
     .preview-line.short { width: 46%; background: var(--preview-muted, var(--pi-muted)); }
     .preview-dots { display: flex; gap: var(--pi-space-3); }
-    .preview-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .preview-dot { width: var(--pi-dot-md); height: var(--pi-dot-md); border-radius: 50%; }
     .preview-dot.accent { background: var(--preview-accent, var(--pi-accent)); }
     .preview-dot.success { background: var(--preview-success, var(--pi-success)); }
     .preview-dot.warning { background: var(--preview-warning, var(--pi-warning)); }

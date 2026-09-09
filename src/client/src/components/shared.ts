@@ -334,21 +334,21 @@ export const listStyles = css`
      specificity, so declaring them afterwards pinned the size at 32px on touch
      screens while the button itself measured 36px, and the dot the derivation
      exists to keep clear landed back on the button. */
-  .list-body.tiles { --pi-tile-menu-size: 32px; --pi-tile-menu-inset: 6px; }
+  .list-body.tiles { --pi-tile-menu-size: var(--pi-control-height); --pi-tile-menu-inset: var(--pi-space-3); }
   /* Touch needs a bigger target than a mouse; 32px is the smallest a finger
      hits reliably next to a tile's own tap area. Recorded exemption from the
      coarse 44px comfort floor: the tile grid's own cells carry the row's tap
      area, and the 36px menu sits inside that cell (24px AA floor still
      applies and is met). */
   @media (pointer: coarse) {
-    .list-body.tiles { --pi-tile-menu-size: 36px; --pi-tile-menu-inset: 4px; }
+    .list-body.tiles { --pi-tile-menu-size: var(--pi-control-height-comfort); --pi-tile-menu-inset: var(--pi-space-2); }
     .list-body.tiles .action-menu-toggle { height: var(--pi-control-height-comfort); min-width: var(--pi-control-height-comfort); }
     .list-body.tiles .action-menu { top: 4px; right: 4px; }
   }
   /* The activity dot shares the menu button's centre line: both corner marks
      are derived from the same inset and size, so they read as one row of
      corner affordances instead of two marks 10px apart. */
-  .list-body.tiles .action-activity { top: calc(var(--pi-tile-menu-inset) + (var(--pi-tile-menu-size) / 2) - 5px); right: calc(var(--pi-tile-menu-inset) + var(--pi-tile-menu-size) + var(--pi-space-3)); }
+  .list-body.tiles .action-activity { top: calc(var(--pi-tile-menu-inset) + (var(--pi-tile-menu-size) / 2) - 5px); right: calc(var(--pi-tile-menu-inset) + var(--pi-tile-menu-size) + var(--pi-space-2)); }
   button { font: var(--pi-text-xs) var(--pi-font-ui); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
   section > button { display: block; width: 100%; text-align: left; margin: var(--pi-space-3) 0; }
   .subheading { margin-top: var(--pi-space-7); }
@@ -392,7 +392,7 @@ export const listStyles = css`
   @media (hover: hover) { .action-menu-panel .detail-copy:hover { color: var(--pi-text); border-color: var(--pi-accent); background: var(--pi-surface-hover); } }
   .tree-marker { color: var(--pi-dim); margin-right: var(--pi-space-3); }
   .badge { display: inline-block; margin-left: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); color: var(--pi-muted); padding: 0 var(--pi-space-3); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-regular); }
-  .action-activity { position: absolute; top: 5px; right: 6px; z-index: 1; display: grid; place-items: center; width: 10px; height: 10px; }
+  .action-activity { position: absolute; top: var(--pi-space-3); right: var(--pi-space-3); z-index: 1; display: grid; place-items: center; width: var(--pi-dot-md); height: var(--pi-dot-md); }
   .action-activity .activity-indicator { margin: 0; vertical-align: 0; }
   .activity-indicator { flex: 0 0 auto; display: inline-block; width: var(--pi-dot-sm); height: var(--pi-dot-sm); margin-right: var(--pi-space-3); background: var(--pi-success); animation: pulse 1s ease-in-out infinite; vertical-align: 1px; }
   /*

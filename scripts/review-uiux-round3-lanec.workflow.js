@@ -1,0 +1,66 @@
+const REPO = '/Users/hanxiao.du/Desktop/vincent/projects/pi-web';
+const FIXED = [
+  'ROUND TWO fixes: inert subtree toggle no longer covers the row checkbox; cleanup entry meets the control height; cleanup dialog and ask-user card raise controls by pointer type; add-project/add-machine confirms use the accent fill; unread count is a badge; both lightboxes close at one size; + glyph one size; chip label on the type scale',
+  '--pi-on-accent: themes name the label colour on an accent fill (dark theme was 3.74:1); nine accent-filled controls read it',
+  'picker rows state their own type (no more UA Arial 13.3px, no more 1px taller check-marked row); small reads the type scale; row menus outside tiles get the coarse floor; msg-meta draws the app focus ring',
+  'session row state mark is positioned (no longer a whole extra line); appearance cards clamp descriptions; follow-the-system checkbox stays square; quick switcher group headings align with cards; thinking picker max has a description',
+  'TYPE SCALE mechanical: every font-size reads --pi-text-*; typeScale.test.ts guards it',
+  'SPACING SCALE mechanical: every rhythm-sized padding/margin/gap reads --pi-space-*; spacingScale.test.ts guards it',
+  'undefined tokens --pi-text-muted / --pi-accent-contrast / --pi-bg-raised (all replaced)',
+  'focus-visible no longer inherits the parent border-radius',
+  'message-row action hit boxes no longer overlap',
+  'session rename dialog now styled like its sibling dialogs',
+  'quick switcher: single derived menu-size reserve, one toggle rule, state mark moved out of the toggle box, rename actions on the touch floor',
+  'tile activity dot shares the menu button centre line',
+  'machine dialog + machine row menu got coarse-pointer floors; add-project footer keyed to pointer type',
+  'model/command picker focus rings restored; ModelPicker search box-sizing fixed',
+  'refresh control matches the header control height; settings gear is an SVG icon',
+  'drawer tab count is a badge; appearance panel marks the live theme; composer toolbar has one height',
+  'RADIUS SCALE: every border-radius reads --pi-radius-*; radiusScale.test.ts fails on a pixel literal',
+  'CONTROL HEIGHT SCALE: --pi-control-height (32) / -comfort (36) / -touch (44); controlHeightScale.test.ts fails on a control-sized literal',
+  'DOT SCALE: --pi-dot-xs|sm|md; dotScale.test.ts fails on a sixth size',
+];
+const KNOWN_OPEN = [
+  'modal layer inversion: pickers claim --pi-layer-popover (30) under dialogs at 50 while the modal registry promotes them (product/architecture decision, deliberately unfixed)',
+  '"current value" in pickers is prose appended to the label while .selected marks the keyboard cursor (owner product semantics, deliberately unfixed)',
+  'drawer tab min-height 22px is deliberate and pinned by composerRoom.test.ts (judged not true)',
+];
+
+const SURFACES = 'boot; sessions; chat; chat-drawer; msg-row-menu; model-picker; thinking-picker; settings; settings-appearance; quick-switcher; qs-row-menu; context-sheet; add-project-dialog';
+
+const lanePrompt = (focus, files, surfaces, out) => [
+  'You are one lane of ROUND THREE of a visual-polish convergence audit of the PI WEB client (Lit web app).',
+  'Repo: ' + REPO + ' (branch refactor/plugin-architecture, current HEAD). Client source: src/client/src/, plugin surfaces: pi-web-plugins/.',
+  'Round one fixed these; do NOT re-report them, verify them if you like: ' + FIXED.join(' | '),
+  'These are known and deliberately open; do NOT report them: ' + KNOWN_OPEN.join(' | '),
+  'The 13 audited surfaces: ' + SURFACES,
+  'Your lane focus: ' + focus,
+  'Primary files: ' + files,
+  'Focus surfaces: ' + surfaces,
+  'Hunt ONLY for NEW findings in: geometric centring of icons/glyphs in their controls; alignment of icon+text rows; sibling controls of unequal height or padding; spacing rhythm breaks; scale escapes (a value that should read a token but does not, in radius, control height, dot size, spacing or type size); bare text carrying UI state where a mark is the house pattern; contrast below AA on a filled control.',
+  'Method: read the real source and cite file:line you verified. A finding without a verified line number is worthless. Say TOTAL: 0 findings if the lane finds nothing - a clean lane is the goal, not a failure.',
+  'Format per finding: ## F<n> title / - file:line / - surface / - finding (state it geometrically) / - minimal failure scenario / - confidence.',
+  'Write the report with your bash tool (no heredocs; use printf or python3 -c) to: ' + out,
+  'End your reply with DONE.',
+].join('\n\n');
+
+const laneC = () => runs.run('r3-lane-c', {
+  agent: 'opus-design-reviewer-b',
+  label: 'opus full round2',
+  task: lanePrompt(
+    'a full pass over all 13 surfaces with a polish lens, including live measurement against the running stack at http://127.0.0.1:8505 if you can drive @playwright/test (chromium is installed); prefer measured evidence over inference',
+    'src/client/src/components (whole tree), pi-web-plugins (browser surfaces)',
+    SURFACES,
+    '/tmp/uiux-r3-lane-c.md'
+  ),
+  output: '/tmp/uiux-r3-lane-c.md'
+});
+
+
+const result = await runs.run('r3-lane-c-retry', { agent: 'opus-design-reviewer-b', label: 'opus round3 retry', task: lanePrompt(
+    'a full pass over all 13 surfaces with a polish lens; prefer measured evidence from the running stack at http://127.0.0.1:8505 if you can drive @playwright/test chromium',
+    'src/client/src/components (whole tree), pi-web-plugins (browser surfaces)',
+    SURFACES,
+    '/tmp/uiux-r3-lane-c.md'
+  ), output: '/tmp/uiux-r3-lane-c.md' });
+return { ok: true, file: '/tmp/uiux-r3-lane-c.md' };

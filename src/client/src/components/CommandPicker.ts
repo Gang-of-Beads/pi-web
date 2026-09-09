@@ -103,14 +103,14 @@ export class CommandPicker extends LitElement {
        needs a visible ring of its own when reached by keyboard. */
     .options:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -2px; }
     button { border: 0; background: transparent; color: var(--pi-text); cursor: pointer; }
-    header button { font-size: var(--pi-text-xl); color: var(--pi-muted); }
+    header button { display: grid; place-items: center; width: var(--pi-control-height); height: var(--pi-control-height); padding: 0; font-size: var(--pi-text-xl); line-height: 1; color: var(--pi-muted); }
     input { box-sizing: border-box; margin: var(--pi-space-5) var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); padding: var(--pi-space-4) var(--pi-space-5); outline: none; }
     input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
     input:focus { border-color: var(--pi-accent); }
     .options button { display: block; width: 100%; font: var(--pi-text-sm)/1.25 var(--pi-font-ui); padding: var(--pi-space-5) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
     .options button.selected { background: var(--pi-selection-bg); }
     @media (hover: hover) { .options button:hover { background: var(--pi-selection-bg); } }
-    small { display: block; margin-top: var(--pi-space-2); color: var(--pi-muted); }
+    small { display: block; margin-top: var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-2xs); }
     .empty { padding: var(--pi-space-9); color: var(--pi-muted); text-align: center; }
     /* Coarse pointers get the comfort floor across the picker chrome: the
        close control, the search field, and every option row are touch targets

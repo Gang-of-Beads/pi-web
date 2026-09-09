@@ -389,7 +389,7 @@ export class QuickSwitcher extends LitElement {
   }
 
   static override styles = [interactiveSurfaceStyles, sessionStateBadgeStyles, css`
-    :host { position: fixed; inset: 0; z-index: var(--pi-layer-overlay); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); --qs-menu-size: 32px; }
+    :host { position: fixed; inset: 0; z-index: var(--pi-layer-overlay); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); --qs-menu-size: var(--pi-control-height); }
     @media (pointer: coarse) { :host { --qs-menu-size: var(--pi-control-height-touch, 44px); } }
     modal-surface {
       --modal-surface-place-items: end center;
@@ -425,7 +425,7 @@ export class QuickSwitcher extends LitElement {
        the toggle spans the tile's top-right corner down to 44px on touch, and
        a badge centred on the tile's midline landed inside that box - tapping
        the state opened the menu. */
-    .row-flag, .row-state { position: absolute; bottom: var(--pi-space-4); right: 12px; }
+    .row-flag, .row-state { position: absolute; bottom: var(--pi-space-4); right: var(--pi-space-6); }
     .row-state { display: inline-flex; align-items: center; }
     .row-flag { width: var(--pi-dot-md); height: var(--pi-dot-md); border-radius: 50%; }
     .row-flag.unread { background: var(--pi-accent); }

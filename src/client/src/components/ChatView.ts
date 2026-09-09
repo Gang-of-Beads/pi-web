@@ -327,7 +327,7 @@ export const chatStyles = css`
   /* The command receipts wear the queued-message gold: provisional, the
      browser's own record, not server history. */
   .command-row { display: flex; align-items: baseline; gap: var(--pi-space-3); min-width: 0; margin: 0 0 var(--pi-space-3); padding: var(--pi-space-2) var(--pi-space-3); font-size: var(--pi-text-xs); color: var(--pi-warning); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-md); background: var(--pi-warning-surface); }
-  .command-row.failed { color: var(--pi-error); border-color: var(--pi-error-border); background: var(--pi-error-surface); }
+  .command-row.failed { color: var(--pi-danger); border-color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 12%, transparent); }
   .command-row.ok { color: var(--pi-success); border-color: var(--pi-success-border); background: var(--pi-success-surface); }
   .command-row .command-text { font-family: var(--pi-font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .command-row .command-state { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .85; }

@@ -787,7 +787,7 @@ export class SettingsDialog extends LitElement {
       .settings-list-label small { font-size: var(--pi-text-sm); color: var(--pi-muted); }
       .settings-list-chevron { font-size: var(--pi-text-xl); color: var(--pi-muted); }
       .settings-detail-heading { display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
-      .settings-back { display: inline-flex; align-items: center; min-height: var(--pi-control-height-touch); margin-left: calc(-1 * var(--pi-space-4)); border: 0; padding: 0 var(--pi-space-4) 0 0; font-size: var(--pi-text-base); font-weight: var(--pi-weight-semibold); color: var(--pi-accent); }
+      .settings-back { display: inline-flex; align-items: center; min-height: var(--pi-control-height-touch); margin-left: calc(-1 * var(--pi-space-4)); border: 0; background: transparent; padding: 0 var(--pi-space-4) 0 0; font-size: var(--pi-text-base); font-weight: var(--pi-weight-semibold); color: var(--pi-accent); }
       .settings-content { padding: var(--pi-space-6) var(--pi-space-6) calc(var(--pi-space-7) + env(safe-area-inset-bottom)); }
     }
   `];

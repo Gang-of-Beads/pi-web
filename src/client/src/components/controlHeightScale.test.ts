@@ -18,6 +18,12 @@ import { join } from "node:path";
  */
 const ROOTS = ["src/client/src", "pi-web-plugins"];
 const CONTROL_RANGE = /(?:min-)?(?:height|width):\s*(2[89]|3\d|4[0-4])px/gu;
+/**
+ * A custom property is not a hiding place: `--qs-menu-size: 32px` fed a control's
+ * width just as directly as writing the number on the control, and read as
+ * compliant to a guard that only looked at height/width declarations.
+ */
+const CONTROL_SIZED_PROPERTY = /--[a-z-]*(?:menu-size|control-height|header-height)[a-z-]*:\s*(2[89]|3\d|4[0-4])px/gu;
 
 /** Content metrics, not controls: the composer grows with the text in it. */
 const EXEMPTIONS = new Map<string, string>([
@@ -44,7 +50,9 @@ describe("the control height scale", () => {
     for (const root of ROOTS) {
       for (const file of styleSources(root)) {
         if (EXEMPTIONS.has(file)) continue;
-        for (const match of readFileSync(file, "utf8").matchAll(CONTROL_RANGE)) offences.push(`${file}: ${match[0]}`);
+        const source = readFileSync(file, "utf8");
+        for (const match of source.matchAll(CONTROL_RANGE)) offences.push(`${file}: ${match[0]}`);
+        for (const match of source.matchAll(CONTROL_SIZED_PROPERTY)) offences.push(`${file}: ${match[0]}`);
       }
     }
 

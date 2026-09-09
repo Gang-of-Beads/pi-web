@@ -339,7 +339,11 @@ export class ProjectDialog extends LitElement {
     .suggestions button.selected { background: var(--pi-selection-bg); }
     @media (hover: hover) { .suggestions button:hover { background: var(--pi-selection-bg); } }
     .hint { padding: var(--pi-space-6); color: var(--pi-muted); }
-    small.hint { padding: 0; line-height: 1.4; }
+    /* The host list sheet clamps every <small> to one nowrap line; these are
+       sentences, and the trust link inside one of them was being pushed past
+       the dialog edge and clipped away entirely. */
+    small.hint, .trust-hint { padding: 0; overflow: visible; text-overflow: clip; white-space: normal; }
+    small.hint { line-height: 1.4; }
     .trust-error { color: var(--pi-danger, #c0392b); }
     .submit-error { flex: 0 0 auto; margin: 0; padding: 0 var(--pi-space-6) var(--pi-space-6); color: var(--pi-danger); line-height: 1.35; }
     .trust-hint { color: var(--pi-muted); line-height: 1.3; }
