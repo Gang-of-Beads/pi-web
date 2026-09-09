@@ -107,7 +107,8 @@ export class ActionPalette extends LitElement {
     input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); border-radius: var(--pi-radius-sm); }
     input::placeholder { color: var(--pi-dim); }
     button { font: inherit; border: 0; background: transparent; color: var(--pi-text); cursor: pointer; }
-    header button { color: var(--pi-muted); font-size: var(--pi-text-xl); padding: var(--pi-space-1) var(--pi-space-4); }
+    header button { box-sizing: border-box; display: grid; place-items: center; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); line-height: 1; color: var(--pi-muted); font-size: var(--pi-text-xl); padding: var(--pi-space-1) var(--pi-space-4); }
+    @media (pointer: coarse) { header button { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); } }
     .options { flex: 1 1 auto; min-height: 0; overflow: auto; }
     .options button { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--pi-space-2) var(--pi-space-6); width: 100%; padding: var(--pi-space-5) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
     .options button.selected { background: var(--pi-selection-bg); }

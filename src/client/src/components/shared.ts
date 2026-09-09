@@ -316,6 +316,12 @@ export const listStyles = css`
      button measured 32px at a 6px inset, and 36px at 4px on coarse pointers, so
      a long name ran underneath the button on every phone. Derive it instead. */
   .list-body.tiles .action-main { border-radius: var(--pi-radius-lg); padding: var(--pi-space-5) calc(var(--pi-tile-menu-inset) + var(--pi-tile-menu-size) + var(--pi-space-2)) var(--pi-space-5) var(--pi-space-5); min-height: var(--pi-row-min-height); align-content: center; }
+  /* One height for one shape. The title clamps to two lines and the path to
+     two, so a long name cannot make its tile taller than the one beside it -
+     measured 82 against 95 before this. */
+  .list-body.tiles .action-main { min-height: calc(var(--pi-row-min-height) + var(--pi-space-9)); }
+  .list-body.tiles .action-name { min-height: 2.5em; }
+  .list-body.tiles small { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-height: 2.6em; max-height: 2.6em; overflow: hidden; text-overflow: ellipsis; overflow-wrap: anywhere; }
   .list-body.tiles .action-menu { position: absolute; top: var(--pi-tile-menu-inset); right: var(--pi-tile-menu-inset); align-self: auto; }
   /* One nowrap line cut most tile names to the same prefix; two wrapped lines
      reach the tail that tells worktree-agent-a0… tiles apart. break-all because
