@@ -550,7 +550,7 @@ export class SessionTreeNavigator extends LitElement {
     .tree-row:last-child { border-bottom: 0; }
     @media (hover: hover) { .tree-row:hover { background: var(--pi-surface-hover); } }
     .tree-row.selected { background: var(--pi-selection-bg); box-shadow: inset 3px 0 var(--pi-accent); }
-    .tree-row:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -2px; }
+    .tree-row:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     .tree-row.active-path:not(.selected) { background: color-mix(in srgb, var(--pi-accent) 7%, var(--pi-surface)); }
     .tree-row.active-leaf { box-shadow: inset 3px 0 var(--pi-accent); }
     .tree-row.bookkeeping { color: var(--pi-muted); }
@@ -592,7 +592,7 @@ export class SessionTreeNavigator extends LitElement {
     .choice-option small { color: var(--pi-muted); }
     .custom-focus { display: grid; gap: var(--pi-space-3); margin: var(--pi-space-1) 0 0 30px; font-weight: var(--pi-weight-semibold); }
     textarea { width: 100%; resize: vertical; min-height: 94px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: var(--pi-space-5) var(--pi-space-5); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); }
-    textarea:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+    textarea:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     .character-count { justify-self: end; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-regular); }
     .validation-error { margin-inline-start: 30px; color: var(--pi-danger); font-size: var(--pi-text-xs); }
     .side-effects-note { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); }
@@ -601,7 +601,7 @@ export class SessionTreeNavigator extends LitElement {
     .empty { color: var(--pi-muted); background: var(--pi-surface); }
     button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-6); font: inherit; cursor: pointer; }
     @media (hover: hover) { button:not(:disabled):hover { background: var(--pi-surface-hover); } }
-    button:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+    button:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     button:disabled { opacity: .52; cursor: not-allowed; }
     button.primary { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-on-accent, var(--pi-bg)); font-weight: 700; }
     @media (hover: hover) { button.primary:not(:disabled):hover { filter: brightness(1.08); } }

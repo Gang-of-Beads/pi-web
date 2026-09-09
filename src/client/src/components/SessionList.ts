@@ -680,7 +680,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
        one toolbar; the title keeps the left edge. */
     h2 > .bulk-select-entry { margin-left: auto; }
     h2 > .section-count { flex: 0 0 auto; display: inline; color: var(--pi-muted); font-size: inherit; }
-    h2 > .section-unread-count { flex: 0 0 auto; display: inline-block; min-width: 14px; border-radius: var(--pi-radius-pill); background: var(--pi-selection-bg); color: var(--pi-accent); padding: 0 var(--pi-space-2); font-size: var(--pi-text-2xs); line-height: 16px; text-align: center; text-transform: none; }
+    h2 > .section-unread-count { flex: 0 0 auto; display: inline-block; min-width: 14px; border-radius: var(--pi-radius-pill); background: var(--pi-selection-bg); color: var(--pi-text-bright); padding: 0 var(--pi-space-2); font-size: var(--pi-text-2xs); line-height: 16px; text-align: center; text-transform: none; }
     .bulk-select-entry { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-control-height); height: var(--pi-control-height); padding: 0; font-size: var(--pi-text-sm); line-height: 1; text-transform: none; }
     .start-session-button { box-sizing: border-box; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: var(--pi-space-2); min-width: var(--pi-control-height); height: var(--pi-control-height); padding: 0 var(--pi-space-5); }
     .section-add-label { font-size: var(--pi-text-xs); white-space: nowrap; }
@@ -723,8 +723,9 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .pending-session-row.starting-session .action-main { border-radius: var(--pi-radius-md); border-style: dashed; color: var(--pi-muted); }
     .pending-session-row.starting-session .action-name { display: flex; align-items: center; gap: var(--pi-space-3); max-height: none; -webkit-line-clamp: 1; }
     .pending-session-row.starting-session .activity-indicator { flex: 0 0 auto; margin: 0; }
-    .action-main.selecting { padding-left: calc(32px + var(--depth, 0) * var(--pi-space-7)); }
-.session-checkbox { position: absolute; top: var(--pi-space-4); left: calc(var(--pi-space-3) + var(--depth, 0) * 16px); z-index: 3; box-sizing: border-box; width: 24px; height: 24px; margin: 0; }
+    .action-main.selecting { padding-left: calc(var(--pi-space-3) + var(--pi-checkbox-size) + var(--pi-space-3) + var(--depth, 0) * var(--pi-space-7)); }
+    @media (pointer: coarse) { .action-main.selecting { padding-left: calc(var(--pi-space-3) + (var(--pi-control-height-comfort) - var(--pi-checkbox-size)) / 2 + var(--pi-checkbox-size) + var(--pi-space-3) + var(--depth, 0) * var(--pi-space-7)); } }
+.session-checkbox { position: absolute; top: var(--pi-space-4); left: calc(var(--pi-space-3) + var(--depth, 0) * 16px); z-index: 3; box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); margin: 0; }
     .subtree-toggle, .subtree-toggle.inert { position: absolute; top: 8px; left: calc(6px + var(--depth, 0) * 16px); z-index: 2; box-sizing: border-box; width: 24px; height: 24px; padding: 0; display: inline-grid; place-items: center; border: 1px solid transparent; border-radius: var(--pi-radius-sm); background: color-mix(in srgb, var(--pi-muted) 14%, transparent); color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: 1; }
     /* Formerly the toggle floated over the row's leading text and swallowed
        taps aimed at the session name. Reserve the gutter in the padding so
@@ -744,7 +745,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
       .subtree-toggle { top: 0; width: var(--pi-control-height-comfort); height: var(--pi-control-height-touch); }
       /* The checkbox shares that slot: centre it in the toggle box rather than
          leaving two leading controls a few pixels out of true. */
-      .session-checkbox { top: calc((var(--pi-control-height-touch) - 24px) / 2); left: calc(var(--pi-space-3) + (var(--pi-control-height-comfort) - 24px) / 2 + var(--depth, 0) * var(--pi-space-7)); }
+      .session-checkbox { top: calc((var(--pi-control-height-touch) - var(--pi-checkbox-size)) / 2); left: calc(var(--pi-space-3) + (var(--pi-control-height-comfort) - var(--pi-checkbox-size)) / 2 + var(--depth, 0) * var(--pi-space-7)); }
       .action-row.has-subtree-toggle .action-main, .action-row.is-child .action-main { padding-left: calc(44px + var(--depth, 0) * var(--pi-space-7)); }
     }
     /* While selecting, the inert toggle shares the leading slot with the
@@ -759,7 +760,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .session-search-input { box-sizing: border-box; flex: 1 1 auto; min-width: 0; height: var(--pi-control-height-comfort); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 0 var(--pi-space-5); font: var(--pi-control-font-size, 14px) var(--pi-control-font-family, system-ui, sans-serif); }
     .session-search-input::placeholder { color: var(--pi-dim); }
     .session-search-input::-webkit-search-cancel-button { display: none; }
-    .session-search-input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+    .session-search-input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     .session-search-clear { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); padding: 0; font-size: var(--pi-text-lg); line-height: 1; }
     .search-empty { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); }
     .list-empty, .list-loading { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-sm); }

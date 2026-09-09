@@ -348,7 +348,7 @@ export class WorkspaceFileViewer extends LitElement {
     .viewer-mode button, .preview-state button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-2) var(--pi-space-5); cursor: pointer; font: inherit; }
     .viewer-mode button { font-size: var(--pi-text-xs); }
     .viewer-mode button[aria-pressed="true"] { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
-    .viewer-mode button:focus-visible, .preview-state button:focus-visible, a:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+    .viewer-mode button:focus-visible, .preview-state button:focus-visible, a:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     pi-code-viewer { flex: 1 1 auto; min-height: 0; }
     .markdown-preview { flex: 1 1 auto; min-height: 0; box-sizing: border-box; overflow: auto; padding: var(--pi-space-7); }
     .preview-note { flex: 0 0 auto; margin: 0; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-surface); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-5); font-size: var(--pi-text-xs); }

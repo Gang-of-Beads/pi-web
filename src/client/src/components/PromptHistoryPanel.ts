@@ -122,7 +122,7 @@ export class PromptHistoryPanel extends LitElement {
     .history-search { box-sizing: border-box; min-width: 0; height: var(--pi-control-height-touch); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-bg); color: var(--pi-text); padding: 0 var(--pi-space-5); /* 16px keeps iOS from zooming the field on focus. */ font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); }
     .history-search::placeholder { color: var(--pi-dim); }
     .history-search::-webkit-search-cancel-button { display: none; }
-    .history-search:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+    .history-search:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     .close { display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); box-sizing: border-box; padding: 0; border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); line-height: 1; cursor: pointer; }
     .close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
     @media (hover: hover) { .close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
@@ -131,7 +131,7 @@ export class PromptHistoryPanel extends LitElement {
     .entry:last-child { border-bottom: 0; }
     .entry.selected { background: var(--pi-selection-bg); }
     @media (hover: hover) { .entry:hover { background: var(--pi-selection-bg); } }
-    .entry:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -2px; }
+    .entry:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     .entry-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; font: var(--pi-text-sm) var(--pi-font-ui); line-height: 1.4; }
     .empty { margin: var(--pi-space-7) var(--pi-space-2); color: var(--pi-muted); text-align: center; }
   `;

@@ -31,7 +31,7 @@ export class SessionRenameDialog extends LitElement {
     .body { display: flex; flex-direction: column; gap: var(--pi-space-4); padding: var(--pi-space-6); overflow: auto; }
     label { display: flex; flex-direction: column; gap: var(--pi-space-2); font-size: var(--pi-text-sm); color: var(--pi-muted); }
     input { font: inherit; color: var(--pi-text); background: var(--pi-bg); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); padding: var(--pi-space-4) var(--pi-space-5); }
-    input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+    input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     .hint { color: var(--pi-muted); font-size: var(--pi-text-xs); margin: 0; }
     button { font: inherit; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
     header button { border: 0; background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); padding: 0 var(--pi-space-4); }

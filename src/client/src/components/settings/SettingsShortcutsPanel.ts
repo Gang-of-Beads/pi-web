@@ -362,7 +362,7 @@ export class SettingsShortcutsPanel extends LitElement {
     .prompt-enter-options { display: grid; gap: var(--pi-space-4); }
     .prompt-enter-option { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--pi-space-4); align-items: start; color: var(--pi-text); }
     .prompt-enter-option input { box-sizing: border-box; width: 14px; min-width: 14px; height: 14px; margin: var(--pi-space-2) 0 0; padding: 0; border: 0; background: transparent; accent-color: var(--pi-accent); font-family: inherit; }
-    .prompt-enter-option input:focus { border-color: transparent; box-shadow: none; outline: var(--pi-focus-ring-width) solid var(--pi-accent-border); outline-offset: 2px; }
+    .prompt-enter-option input:focus { border-color: transparent; box-shadow: none; outline: var(--pi-focus-ring-width) solid var(--pi-accent-border); outline-offset: var(--pi-focus-ring-offset); }
     .prompt-enter-option span { display: grid; gap: var(--pi-space-1); }
     .prompt-enter-option small { color: var(--pi-muted); line-height: 1.35; }
     code { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-bg); padding: var(--pi-space-1) var(--pi-space-2); color: var(--pi-text); font: var(--pi-text-xs) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); overflow-wrap: anywhere; }
@@ -376,7 +376,7 @@ export class SettingsShortcutsPanel extends LitElement {
     .shortcut-main { min-width: 0; display: grid; gap: var(--pi-space-2); }
     .shortcut-main strong, .shortcut-main small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .shortcut-main small { color: var(--pi-muted); }
-    .shortcut-id { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .shortcut-id { font-family: var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
     .shortcut-editor { min-width: 0; display: grid; gap: var(--pi-space-4); }
     .shortcut-status { display: flex; align-items: center; justify-content: flex-end; gap: var(--pi-space-4); flex-wrap: wrap; }
     .shortcut-status small { color: var(--pi-muted); font-size: var(--pi-text-2xs); }

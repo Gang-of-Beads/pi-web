@@ -400,7 +400,7 @@ export class QuickSwitcher extends LitElement {
     header { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--pi-space-4); align-items: center; padding: var(--pi-space-5); border-bottom: 1px solid var(--pi-border); }
     input { box-sizing: border-box; min-width: 0; height: var(--pi-control-height-comfort); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-bg); color: var(--pi-text); padding: 0 var(--pi-space-5); font: var(--pi-text-lg) var(--pi-font-ui); }
     input::-webkit-search-cancel-button { display: none; }
-    input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+    input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     .close { border: 0; background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); line-height: 1; padding: 0 var(--pi-space-4); cursor: pointer; }
     .body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: var(--pi-space-5); overscroll-behavior: contain; }
     h3 { margin: var(--pi-space-7) 0 var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: var(--pi-weight-semibold); text-transform: uppercase; }
@@ -446,7 +446,7 @@ export class QuickSwitcher extends LitElement {
     .chip.on { background: var(--pi-selection-bg); color: var(--pi-text-bright); }
     /* Nested chips read as a second level, not as peers of the projects. */
     .chip.nested { font-size: var(--pi-text-xs); }
-    .chip:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+    .chip:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     /* One box per session. The menu button used to have a column of its own
        beside the tile, so a row of three sessions read as six boxes; it is
        used occasionally, while the name is read every time. */

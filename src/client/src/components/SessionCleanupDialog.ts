@@ -218,7 +218,7 @@ export class SessionCleanupDialog extends LitElement {
     .intro, .hint, .empty { color: var(--pi-muted); }
     fieldset { margin: 0; padding: 0; border: 0; display: grid; gap: var(--pi-space-5); }
     .toggle-row { display: grid; grid-template-columns: auto minmax(0, max-content) 88px auto; align-items: center; gap: var(--pi-space-4); color: var(--pi-text); }
-    input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--pi-accent); }
+    input[type="checkbox"] { box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); accent-color: var(--pi-accent); }
     input.days { box-sizing: border-box; width: 88px; min-width: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); }
     input.days:disabled { opacity: .55; }
     .warning, .dialog-error, .result { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); padding: var(--pi-space-5) var(--pi-space-6); }
@@ -235,7 +235,7 @@ export class SessionCleanupDialog extends LitElement {
     thead th:first-child, td.select-cell { width: 72px; text-align: center; }
     th:nth-child(2), td:nth-child(2) { text-align: left; }
     tbody tr.unselected { opacity: .58; }
-    tbody th { max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: var(--pi-weight-medium); }
+    tbody th { max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); font-weight: var(--pi-weight-medium); }
     tfoot th, tfoot td { border-bottom: 0; font-weight: 700; }
     button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); font: inherit; cursor: pointer; }
     button:disabled { opacity: .5; cursor: not-allowed; }

@@ -261,7 +261,7 @@ export const listStyles = css`
   .list-search-input { box-sizing: border-box; flex: 1 1 auto; min-width: 0; height: var(--pi-control-height-comfort); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 0 var(--pi-space-5); font: var(--pi-control-font-size, 14px) var(--pi-control-font-family, system-ui, sans-serif); }
   .list-search-input::placeholder { color: var(--pi-dim); }
   .list-search-input::-webkit-search-cancel-button { display: none; }
-  .list-search-input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+  .list-search-input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
   .list-search-clear { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); padding: 0; font-size: var(--pi-text-lg); line-height: 1; }
   /* Coarse pointers get the comfort floor on the shared search row. Placed
      after every base declaration it raises - a media query carries no extra
@@ -283,7 +283,7 @@ export const listStyles = css`
   .section-add-label { font-size: var(--pi-text-xs); white-space: nowrap; }
   .section-add-glyph { font-size: var(--pi-text-lg); line-height: 1; }
   .section-add { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: var(--pi-space-2); min-width: var(--pi-control-height); min-height: var(--pi-control-height); padding: 0 var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); line-height: 1; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
-  .section-add:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -2px; }
+  .section-add:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
   @media (hover: hover) { .section-add:hover { border-color: var(--pi-accent); } }
   /* Coarse pointers get the comfort floor. Declared after every base rule it
      raises - a media query carries no extra specificity. */
@@ -474,7 +474,7 @@ export const formattedTextStyles = css`
   h3 { font-size: var(--pi-text-md); }
   h4 { font-size: var(--pi-text-base); }
   .table-scroll { max-width: 100%; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
-  .table-scroll:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 2px; }
+  .table-scroll:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
   table { border-collapse: collapse; width: max-content; min-width: 100%; max-width: none; }
   th, td { border: 1px solid var(--pi-border); padding: var(--pi-space-2) var(--pi-space-4); max-width: 48ch; overflow-wrap: anywhere; }
   th { background: var(--pi-surface); }

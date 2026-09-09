@@ -21,7 +21,7 @@ export const goalsSectionStyles = `
   .refresh { flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-control-height); height: var(--pi-control-height); padding: 0; border: 0; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); font-size: var(--pi-text-md); cursor: pointer; }
   @media (pointer: coarse) { .refresh { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); } }
   .refresh:hover { color: var(--pi-text); background: var(--pi-surface-hover); }
-  .refresh:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+  .refresh:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
   .pending { margin: 0; padding: var(--pi-space-3) 0; color: var(--pi-muted); font-size: var(--pi-text-xs); }
 `;
 

@@ -89,6 +89,9 @@
         /* State marks: one motif at three sizes. A dot means "this is working"
            or "this is its state" everywhere it appears, and it shipped at 4, 5,
            6, 7 and 8px on one screen before the scale was named. */
+        /* A tick box is a control the finger aims at, not a glyph: one size,
+           everywhere, so two settings panels cannot ship two of them. */
+        --pi-checkbox-size: 24px;
         --pi-dot-xs: 4px;
         --pi-dot-sm: 6px;
         --pi-dot-md: 8px;
@@ -98,6 +101,10 @@
         --pi-ease: cubic-bezier(0.2, 0, 0, 1);
         --pi-focus-ring-width: 2px;
         --pi-focus-ring-offset: 2px;
+        /* Inside a scrolling or clipped box the ring is drawn inward instead;
+           43 rules were spelling both offsets by hand. */
+        --pi-focus-ring-offset-inset: -2px;
+        --pi-focus-ring-offset-tight: 1px;
         /*
          * Type stacks, named by role. Nothing is downloaded: this app is a PWA
          * that has to work offline and on a LAN address, so the identity comes

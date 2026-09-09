@@ -64,7 +64,7 @@ export const promptEditorStyles = css`
   .expand-composer { display: flex; align-items: center; gap: var(--pi-space-4); width: 100%; min-height: var(--pi-control-height-touch); padding: var(--pi-space-2) var(--pi-space-5); border: 1px dashed var(--pi-border); border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-sm); text-align: start; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .expand-composer:focus-visible { border-color: var(--pi-accent); color: var(--pi-text-bright); }
   @media (hover: hover) { .expand-composer:hover { border-color: var(--pi-accent); color: var(--pi-text-bright); } }
-  .expand-composer:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+  .expand-composer:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
   .expand-composer-label { flex: 0 0 auto; }
   .expand-composer-draft { min-width: 0; overflow: hidden; color: var(--pi-dim); font-size: var(--pi-text-xs); text-overflow: ellipsis; white-space: nowrap; }
   footer.shell-mode { border-top-color: var(--pi-success); background: var(--pi-success-bg); }

@@ -267,8 +267,8 @@ export class AuthDialog extends LitElement {
     .options { min-height: 0; overflow: auto; outline: none; }
     /* Focusable for arrow-key navigation, so it needs its own ring; and the
        input's border is not enough of a signal on its own. */
-    .options:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -2px; }
-    input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -2px; }
+    .options:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
+    input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     button { border: 0; background: transparent; color: var(--pi-text); cursor: pointer; }
     header button { font-size: var(--pi-text-xl); color: var(--pi-muted); }
     input { margin: var(--pi-space-5) var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); padding: var(--pi-space-4) var(--pi-space-5); outline: none; }

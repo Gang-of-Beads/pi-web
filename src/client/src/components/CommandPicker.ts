@@ -101,11 +101,11 @@ export class CommandPicker extends LitElement {
     .options { min-height: 0; overflow: auto; outline: none; }
     /* The container takes focus (tabindex=0) for arrow-key navigation, so it
        needs a visible ring of its own when reached by keyboard. */
-    .options:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -2px; }
+    .options:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     button { border: 0; background: transparent; color: var(--pi-text); cursor: pointer; }
     header button { display: grid; place-items: center; width: var(--pi-control-height); height: var(--pi-control-height); padding: 0; font-size: var(--pi-text-xl); line-height: 1; color: var(--pi-muted); }
     input { box-sizing: border-box; margin: var(--pi-space-5) var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); padding: var(--pi-space-4) var(--pi-space-5); outline: none; }
-    input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+    input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     input:focus { border-color: var(--pi-accent); }
     .options button { display: block; width: 100%; font: var(--pi-text-sm)/1.25 var(--pi-font-ui); padding: var(--pi-space-5) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
     .options button.selected { background: var(--pi-selection-bg); }

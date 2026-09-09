@@ -30,13 +30,13 @@ export class ConversationMeter extends LitElement {
   }
 
   static override styles = css`
-    :host { position: absolute; top: -4px; left: 16px; right: 16px; z-index: 6; display: block; height: 12px; opacity: .58; transition: opacity var(--pi-motion-fast) var(--pi-ease); }
+    :host { position: absolute; top: -4px; left: var(--pi-chat-gutter, var(--pi-space-7)); right: var(--pi-chat-gutter, var(--pi-space-7)); z-index: 6; display: block; height: 12px; opacity: .58; transition: opacity var(--pi-motion-fast) var(--pi-ease); }
     :host(:focus-within) { opacity: .92; }
     @media (hover: hover) { :host(:hover) { opacity: .92; } }
     .meter { height: 100%; }
     .track { position: relative; height: var(--pi-dot-xs); margin-top: var(--pi-space-2); border-radius: var(--pi-radius-pill); background: color-mix(in srgb, var(--pi-border-muted) 34%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--pi-bg) 55%, transparent); }
     .progress { position: absolute; left: 0; width: var(--position); top: 0; bottom: 0; border-radius: var(--pi-radius-pill); background: color-mix(in srgb, var(--pi-accent) 42%, var(--pi-border-muted)); }
-    .marker { position: absolute; left: var(--position); top: 50%; width: 10px; height: 10px; border: 2px solid var(--pi-bg); border-radius: 50%; background: var(--pi-accent); box-shadow: var(--pi-elevation-1); transform: translate(-50%, -50%); }
+    .marker { position: absolute; left: var(--position); top: 50%; width: var(--pi-dot-md); height: var(--pi-dot-md); border: 2px solid var(--pi-bg); border-radius: 50%; background: var(--pi-accent); box-shadow: var(--pi-elevation-1); transform: translate(-50%, -50%); }
   `;
 }
 

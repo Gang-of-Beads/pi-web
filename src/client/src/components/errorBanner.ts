@@ -15,7 +15,7 @@ export function errorBanner(error: string, onDismiss: () => void): TemplateResul
   const transient = normalizeTransientError(error);
   return html`<div class=${`error${transient === undefined ? "" : " transient"}`} role=${transient === undefined ? "alert" : "status"}>
     <span class="error-text">${transient ?? error}</span>
-    <button type="button" class="error-dismiss" aria-label="Dismiss error" title="Dismiss error" @click=${() => { onDismiss(); }}>✕</button>
+    <button type="button" class="error-dismiss" aria-label="Dismiss error" title="Dismiss error" @click=${() => { onDismiss(); }}>×</button>
   </div>`;
 }
 

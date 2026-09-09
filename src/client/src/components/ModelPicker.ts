@@ -275,11 +275,11 @@ export class ModelPicker extends LitElement {
     .scope-toggle button { flex: 1; font: inherit; padding: var(--pi-space-3) var(--pi-space-5); border-radius: var(--pi-radius-xs); color: var(--pi-muted); }
     .scope-toggle button[aria-pressed="true"] { background: var(--pi-selection-bg); color: var(--pi-text); }
     .options { min-height: 0; overflow: auto; outline: none; }
-    .options:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -2px; }
+    .options:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     button { border: 0; background: transparent; color: var(--pi-text); cursor: pointer; }
     header button { display: grid; place-items: center; width: var(--pi-control-height); height: var(--pi-control-height); padding: 0; font-size: var(--pi-text-xl); line-height: 1; color: var(--pi-muted); }
     input.search { box-sizing: border-box; margin: var(--pi-space-5) var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); padding: var(--pi-space-4) var(--pi-space-5); outline: none; }
-    input.search:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+    input.search:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     input.search:focus { border-color: var(--pi-accent); }
     /* Coarse pointers get the comfort floor across the popover chrome: the
        close button, scope chips, search field, and catalog checkboxes are all
@@ -288,7 +288,7 @@ export class ModelPicker extends LitElement {
       header button { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); }
       .scope-toggle button { min-height: var(--pi-control-height-touch, 44px); }
       input.search { min-height: var(--pi-control-height-touch, 44px); }
-      input[type="checkbox"] { box-sizing: border-box; width: 24px; height: 24px; }
+      input[type="checkbox"] { box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); accent-color: var(--pi-accent); }
     }
     .options > button { display: block; width: 100%; font: var(--pi-text-sm)/1.25 var(--pi-font-ui); padding: var(--pi-space-5) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
     .options > button.selected { background: var(--pi-selection-bg); }

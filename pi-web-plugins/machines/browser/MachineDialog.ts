@@ -136,7 +136,7 @@ export class MachineDialog extends LitElement {
     .body { display: grid; gap: var(--pi-space-4); padding: var(--pi-space-6); min-height: 0; overflow: auto; }
     label { display: grid; gap: var(--pi-space-3); color: var(--pi-muted); }
     input { box-sizing: border-box; width: 100%; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: var(--pi-space-5); font: var(--pi-control-font-size, 16px) var(--pi-control-monospace-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
-    input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+    input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     .hint { color: var(--pi-muted); }
     .intro { margin: var(--pi-space-2) 0 0; line-height: 1.4; }
     .optional { color: var(--pi-muted); font-weight: var(--pi-weight-regular); }

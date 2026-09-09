@@ -135,7 +135,7 @@ export const chatStyles = css`
   /* The two sections are told apart by colour, not only by label: activity is
      violet (work this chat started), notifications keep the app's warning
      palette (something happened to you). */
-  .drawer-header:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -3px; }
+  .drawer-header:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
   .drawer-tabs-frame { position: relative; flex: 1 1 auto; min-width: 0; }
   .drawer-tabs-frame::before, .drawer-tabs-frame::after { content: ""; position: absolute; top: 0; bottom: 0; z-index: 2; width: 18px; opacity: 0; pointer-events: none; transition: opacity var(--pi-motion-fast) var(--pi-ease); }
   .drawer-tabs-frame::before { left: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--pi-shadow-strong) 55%, transparent) 0%, transparent 100%); }
@@ -151,7 +151,7 @@ export const chatStyles = css`
      width and the running summary beside them gives way instead. */
   .drawer-tab { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: 22px; padding: var(--pi-space-1) var(--pi-space-4); border: 1px solid transparent; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-semibold); white-space: nowrap; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   @media (hover: hover) { .drawer-tab:hover { color: var(--pi-text-bright); } }
-  .drawer-tab:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+  .drawer-tab:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
   .drawer-tab.selected { border-color: var(--pi-border); background: var(--pi-surface); color: var(--pi-text-bright); }
   /* The count is a mark, not part of the name: bare "(3)" wore the label's
      own size, colour and weight and could not be scanned. */
@@ -173,9 +173,9 @@ export const chatStyles = css`
   }
   .drawer-control:focus-visible { background: var(--pi-selection-bg); color: var(--pi-text-bright); }
   @media (hover: hover) { .drawer-control:hover { background: var(--pi-selection-bg); color: var(--pi-text-bright); } }
-  .drawer-control:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+  .drawer-control:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
   .drawer-control:disabled { opacity: .5; background: transparent; cursor: default; }
-  .drawer-icon { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+  .drawer-icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
   .drawer-disclosure-icon.expanded { transform: rotate(90deg); }
   /* Severity is carried by the row itself, not only by a small coloured word:
      an error and a routine notice were otherwise structurally identical, so the
@@ -251,8 +251,8 @@ export const chatStyles = css`
   .activity-dock.long-running { border-color: var(--pi-warning-border); color: var(--pi-warning); }
   .activity-dock.active { border-color: var(--pi-success-border); color: var(--pi-success); background: var(--pi-success-bg-overlay); }
   .activity-dock.sending { border-color: var(--pi-warning-border); color: var(--pi-warning); background: var(--pi-warning-surface); }
-  .activity-dock.asking { border-color: var(--pi-warning-border); color: var(--pi-warning); background: var(--pi-warning-bg-overlay); }
-  .activity-dock.error { border-color: var(--pi-danger-border); color: var(--pi-danger); background: var(--pi-danger-bg-overlay); }
+  .activity-dock.asking { border-color: var(--pi-warning-border); color: var(--pi-warning); background: var(--pi-warning-surface); }
+  .activity-dock.error { border-color: var(--pi-danger); color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 12%, transparent); }
   .activity-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dot { width: var(--pi-dot-md); height: var(--pi-dot-md); border-radius: 50%; background: currentColor; opacity: .45; flex: 0 0 auto; }
   .activity-dock.active .dot { animation: pulse 1s ease-in-out infinite; opacity: 1; }
@@ -307,7 +307,7 @@ export const chatStyles = css`
   .image-zoom-close { position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; font: var(--pi-text-lg)/1 var(--pi-font-ui, system-ui, sans-serif); color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
   .image-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
   @media (hover: hover) { .image-zoom-close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
-  .image-zoom-close:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 2px; }
+  .image-zoom-close:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
   /* A child's conversation, over the parent's. It borrows the output viewer's
      frame because it is the same kind of thing - something opened from an
      activity row - but its body is a message list rather than a log. */
@@ -334,7 +334,7 @@ export const chatStyles = css`
   .command-dismiss { flex: 0 0 auto; align-self: center; width: 24px; height: 24px; display: grid; place-items: center; padding: 0; border: 1px solid transparent; border-radius: var(--pi-radius-sm); background: transparent; color: inherit; font: inherit; font-size: var(--pi-text-sm); line-height: 1; cursor: pointer; }
   .command-dismiss:focus-visible { outline: var(--pi-focus-ring-width) solid currentColor; outline-offset: var(--pi-focus-ring-offset); }
   @media (hover: hover) { .command-dismiss:hover { border-color: currentColor; } }
-  .queued-clear-button { flex: 0 0 auto; min-height: var(--pi-control-height); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-warning); padding: var(--pi-space-1) var(--pi-space-3); font: inherit; cursor: pointer; }
+  .queued-clear-button { flex: 0 0 auto; min-height: var(--pi-control-height); border: 0; border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-warning); padding: var(--pi-space-1) var(--pi-space-3); font: inherit; cursor: pointer; }
   @media (pointer: coarse) {
     .command-dismiss, .image-zoom-close { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); }
     .queued-clear-button { min-height: var(--pi-control-height-touch); }
@@ -371,7 +371,7 @@ export const chatStyles = css`
      arc the border uses, in one rasterization. Every previous fix had this
      element guess the card's inner curve, and the guess broke at the phone's
      fractional device pixel ratio - five reports of the same corners. */
-  .msg > .msg-header { position: sticky; top: -16px; z-index: 4; margin: calc(-1 * var(--pi-space-6)) calc(-1 * var(--pi-space-6)) var(--pi-space-3); padding: var(--pi-space-1) var(--pi-space-5); border-bottom: 1px solid color-mix(in srgb, var(--pi-border-muted) 35%, transparent); background: var(--pi-surface-card); box-shadow: var(--pi-elevation-2); }
+  .msg > .msg-header { position: sticky; top: calc(-1 * var(--pi-space-7)); z-index: 4; margin: calc(-1 * var(--pi-space-6)) calc(-1 * var(--pi-space-6)) var(--pi-space-3); padding: var(--pi-space-1) var(--pi-space-5); border-bottom: 1px solid color-mix(in srgb, var(--pi-border-muted) 35%, transparent); background: var(--pi-surface-card); box-shadow: var(--pi-elevation-2); }
   .msg.user > .msg-header { border-bottom-color: color-mix(in srgb, var(--pi-accent-border) 35%, transparent); background: var(--pi-selection-bg); }
   .msg.assistant > .msg-header .label, .msg.tool-image-output > .msg-header .label { color: var(--pi-text-secondary); }
   .msg.user > .msg-header .label { color: var(--pi-accent); }
@@ -396,7 +396,7 @@ export const chatStyles = css`
   .msg:focus-within > .msg-header .msg-meta, .group-msg:focus-within > .msg-header .msg-meta, .msg-meta:focus, .msg-meta.expanded { opacity: 1; }
   @media (hover: hover) { .msg:hover > .msg-header .msg-meta, .group-msg:hover > .msg-header .msg-meta { opacity: 1; } }
   .msg-meta.expanded { flex: 1 1 auto; max-width: 100%; white-space: normal; overflow: visible; overflow-wrap: anywhere; text-overflow: clip; }
-  .msg-meta:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 3px; border-radius: var(--pi-radius-xs); }
+  .msg-meta:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); border-radius: var(--pi-radius-xs); }
   @media (hover: none) {
     .msg-actions { opacity: 1; }
     .msg-meta { opacity: .75; max-width: 26px; }

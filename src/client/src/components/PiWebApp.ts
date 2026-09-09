@@ -203,6 +203,9 @@ export const appStyles = css`
 
   .self-update-banner { display: flex; align-items: center; gap: var(--pi-space-4); flex-wrap: wrap; box-sizing: border-box; margin: 0 var(--pi-space-6) var(--pi-space-5); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-lg); background: var(--pi-warning-surface); color: var(--pi-warning); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); }
   .self-update-banner.applying { border-color: var(--pi-accent-border); background: var(--pi-surface); color: var(--pi-text); }
+  /* The banner sits in the same column as the transcript controls, which are
+     all 44px on a finger; a 32px row here was a second touch floor. */
+  @media (pointer: coarse) { .self-update-banner button, .error .error-dismiss { min-height: var(--pi-control-height-touch); } }
   .self-update-banner button { min-height: var(--pi-control-height); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; padding: var(--pi-space-2) var(--pi-space-5); }
   @media (hover: hover) { .self-update-banner button:hover { border-color: var(--pi-accent); } }
   .self-update-banner button.skip { color: var(--pi-muted); background: transparent; }

@@ -70,7 +70,7 @@ export class AppContextBar extends LitElement {
     .context-bar { position: relative; flex: 0 0 auto; min-width: 0; display: flex; align-items: center; gap: var(--pi-space-2); padding: var(--pi-space-2) var(--pi-space-3); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); }
     button { cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
     .panel-toggle { flex: 0 0 auto; display: grid; place-items: center; box-sizing: border-box; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; border: 0; border-radius: var(--pi-radius-lg); background: transparent; color: var(--pi-text); }
-    .panel-toggle:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -2px; }
+    .panel-toggle:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     @media (hover: hover) { .panel-toggle:hover { background: var(--pi-surface-hover); } }
     .toggle-icon { width: 20px; height: 20px; pointer-events: none; }
     .session-title { flex: 1 1 auto; min-width: 0; min-height: var(--pi-control-height-touch); display: inline-flex; align-items: center; box-sizing: border-box; overflow: hidden; border: 0; background: none; color: var(--pi-text-bright, var(--pi-text)); padding: var(--pi-space-2) var(--pi-space-2); font: inherit; font-weight: var(--pi-weight-strong); text-align: start; text-overflow: ellipsis; white-space: nowrap; }
@@ -79,7 +79,7 @@ export class AppContextBar extends LitElement {
        itself the name was clipped mid-glyph with no ellipsis, while the phone
        scope chip beside it truncated properly. */
     .session-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .session-title:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -2px; }
+    .session-title:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     @media (hover: hover) { .session-title:hover { color: var(--pi-text-bright); } }
     .working { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-1); min-height: var(--pi-control-height-touch); padding: var(--pi-space-2) var(--pi-space-3); }
     .working-dot { width: var(--pi-dot-sm); height: var(--pi-dot-sm); border-radius: 50%; background: var(--pi-accent, var(--pi-text-bright)); animation: working-bounce 1.2s ease-in-out infinite; }

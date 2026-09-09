@@ -461,7 +461,7 @@ export class AppNavigationPanel extends LitElement {
     .compact-shell { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
     .compact-header { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-start; gap: var(--pi-space-3); padding: var(--pi-space-2) var(--pi-space-4); border-bottom: 1px solid var(--pi-border-muted); }
     .compact-header-action { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: var(--pi-control-height-touch); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text); font: inherit; }
-    .compact-header-action:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
+    .compact-header-action:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     /* Coarse pointers get the comfort floor: the glyph is small but the hit
        box carries the row's tap weight in the phone header. */
     @media (pointer: coarse) { .compact-header-action { min-width: var(--pi-control-height-touch, 44px); min-height: var(--pi-control-height-touch, 44px); } }
@@ -469,18 +469,21 @@ export class AppNavigationPanel extends LitElement {
     .tools-section { flex: 0 0 auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pi-space-4); padding: var(--pi-space-5) var(--pi-space-4) calc(var(--pi-space-5) + env(safe-area-inset-bottom)); border-top: 1px solid var(--pi-border-muted); }
     .tool-row:last-child:nth-child(odd) { grid-column: 1 / -1; }
     .tool-row { display: flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: 52px; padding: var(--pi-space-2) var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); font: inherit; text-align: start; }
-    .tool-row:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 2px; }
+    .tool-row:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
     @media (hover: hover) { .tool-row:hover { background: var(--pi-surface-hover); } }
     .tool-row.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); color: var(--pi-accent); font-weight: var(--pi-weight-semibold); }
     .tool-icon { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; color: var(--pi-muted); }
     .tool-row.selected .tool-icon { color: var(--pi-accent); }
     .tool-icon svg { width: 100%; height: 100%; }
     .tool-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .tool-badge { flex: 0 0 auto; display: inline-flex; align-items: center; box-sizing: border-box; min-width: 0; max-width: 45%; min-height: 20px; padding: 0 var(--pi-space-2); border-radius: var(--pi-radius-pill); background: var(--pi-selection-bg); color: var(--pi-text); font-size: var(--pi-text-2xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tool-badge { flex: 0 0 auto; display: inline-flex; align-items: center; box-sizing: border-box; min-width: 14px; max-width: 45%; line-height: 16px; padding: 0 var(--pi-space-2); border-radius: var(--pi-radius-pill); background: var(--pi-selection-bg); color: var(--pi-text-bright); font-size: var(--pi-text-2xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .compact-scope { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; min-height: var(--pi-control-height-touch); border: 0; background: none; padding: 0; font: inherit; font-size: var(--pi-text-sm); font-weight: var(--pi-weight-semibold); color: var(--pi-text); text-align: start; cursor: pointer; }
-    .compact-scope:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 2px; border-radius: var(--pi-radius-md); }
+    .compact-scope:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); border-radius: var(--pi-radius-md); }
     .compact-scope-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    header strong { flex: 0 0 auto; }
+    /* An unnamed session falls back to its whole first message, so a header
+       title that refuses to shrink pushed the settings and Actions buttons
+       out of the panel entirely. */
+    header strong { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     machine-switcher { flex: 1 1 auto; min-width: 0; }
     :host([compact]) header { display: none; }
     .header-actions { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-4); }

@@ -103,7 +103,7 @@ export class ActionPalette extends LitElement {
     header { display: grid; grid-template-columns: 1fr auto; gap: var(--pi-space-4); padding: var(--pi-space-5); border-bottom: 1px solid var(--pi-border); }
     input { min-width: 0; border: 0; outline: none; background: transparent; color: var(--pi-text); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); padding: var(--pi-space-4); }
     /* The border is removed for the flush look, so focus needs its own ring. */
-    input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -2px; border-radius: var(--pi-radius-sm); }
+    input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); border-radius: var(--pi-radius-sm); }
     input::placeholder { color: var(--pi-dim); }
     button { border: 0; background: transparent; color: var(--pi-text); cursor: pointer; }
     header button { color: var(--pi-muted); font-size: var(--pi-text-xl); padding: var(--pi-space-1) var(--pi-space-4); }

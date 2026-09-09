@@ -521,7 +521,7 @@ export class AskUserCard extends LitElement {
       background: transparent;
     }
     fieldset.question:first-child { border-top: 0; }
-    fieldset.question:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -3px; }
+    fieldset.question:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     legend {
       box-sizing: border-box;
       width: 100%;
@@ -563,7 +563,7 @@ export class AskUserCard extends LitElement {
     @media (hover: hover) { .option:hover { border-color: var(--pi-border-muted); background: var(--pi-surface-hover); } }
     .option:has(input:checked) { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     input { margin: var(--pi-space-1) 0 0; accent-color: var(--pi-accent); }
-    input:focus-visible, textarea:focus-visible, button:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 2px; }
+    input:focus-visible, textarea:focus-visible, button:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
     .option-copy { min-width: 0; display: grid; gap: var(--pi-space-1); }
     .option-label { line-height: 1.35; }
     .option-detail { color: var(--pi-muted); font-size: var(--pi-text-xs); line-height: 1.35; }
