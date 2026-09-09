@@ -122,7 +122,7 @@ export class SettingsAppearancePanel extends LitElement {
     .muted { margin: 0; color: var(--pi-muted); font-size: var(--pi-text-xs); line-height: 1.4; }
     .follow { display: flex; align-items: flex-start; gap: var(--pi-space-5); margin-bottom: var(--pi-space-7); padding: var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); cursor: pointer; }
     .follow { align-items: center; }
-    .follow input { flex: 0 0 auto; margin: 0; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); margin: var(--pi-space-1) 0 0; accent-color: var(--pi-accent); }
+    .follow input { flex: 0 0 auto; margin: 0; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); accent-color: var(--pi-accent); }
     .follow span { display: grid; gap: var(--pi-space-1); }
     .follow-title { font-weight: var(--pi-weight-semibold); }
     .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--pi-space-5); }

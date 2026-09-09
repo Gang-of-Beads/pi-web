@@ -370,7 +370,7 @@ export class ProjectDialog extends LitElement {
       .suggestions button { min-height: var(--pi-control-height-touch); padding: var(--pi-space-5) var(--pi-space-6); }
       footer button { min-height: var(--pi-control-height-touch); }
     }
-    button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
+    button { font: inherit; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
     header button { display: grid; place-items: center; width: var(--pi-control-height); height: var(--pi-control-height); padding: 0; line-height: 1; border: 0; background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); padding: 0 var(--pi-space-4); }
     @media (pointer: coarse) { header button { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); } }
     /* The primary action is accent-filled like every other dialog's: the

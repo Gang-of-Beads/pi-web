@@ -348,7 +348,7 @@ export const listStyles = css`
   /* The activity dot shares the menu button's centre line: both corner marks
      are derived from the same inset and size, so they read as one row of
      corner affordances instead of two marks 10px apart. */
-  .list-body.tiles .action-activity { top: calc(var(--pi-tile-menu-inset) + (var(--pi-tile-menu-size) / 2) - 5px); right: calc(var(--pi-tile-menu-inset) + var(--pi-tile-menu-size) + var(--pi-space-2)); }
+  .list-body.tiles .action-activity { top: calc(var(--pi-tile-menu-inset) + (var(--pi-tile-menu-size) / 2) - (var(--pi-dot-md) / 2)); right: calc(var(--pi-tile-menu-inset) + var(--pi-tile-menu-size) + var(--pi-space-2)); }
   button { font: var(--pi-text-xs) var(--pi-font-ui); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
   section > button { display: block; width: 100%; text-align: left; margin: var(--pi-space-3) 0; }
   .subheading { margin-top: var(--pi-space-7); }

@@ -743,7 +743,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
        child's name further left than its parent's. */
     .action-row.is-child .action-name { color: var(--pi-muted); font-weight: var(--pi-weight-regular); }
     .action-row.is-child .action-main { background: transparent; border-color: var(--pi-border-muted); }
-    .action-row.is-child .action-main { padding-left: calc(38px + var(--depth, 0) * var(--pi-space-7)); }
+    .action-row.is-child .action-main { padding-left: calc(var(--pi-row-gutter-start) + var(--pi-row-gutter-size) + var(--pi-space-4) + var(--depth, 0) * var(--pi-space-7)); }
     .subtree-toggle { cursor: pointer; }
     @media (hover: hover) { .subtree-toggle:hover { border-color: var(--pi-border-strong, var(--pi-accent)); color: var(--pi-text); } }
     @media (pointer: coarse) {

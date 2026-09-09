@@ -206,18 +206,7 @@ export const promptEditorStyles = css`
     .compact-status > button { min-width: var(--pi-control-height-touch, 44px); min-height: var(--pi-control-height-touch, 44px); }
   }
 
-  /* Hold the whole list layout still while the user is selecting rows: the
-     checkbox and toolbar must not make rows jump between drags. */
-  @media (max-width: 760px) {
-    section { padding: var(--pi-space-4); }
-    h2 { margin: 0 0 var(--pi-space-3); }
-    .action-row { margin: var(--pi-space-2) 0; }
-    .action-main { padding: var(--pi-space-3) var(--pi-space-8) var(--pi-space-3) calc(var(--pi-space-4) + var(--depth, 0) * var(--pi-space-6)); }
-    .list-search-input { height: var(--pi-control-height); font-size: var(--pi-text-sm); padding: 0 var(--pi-space-4); }
-    .list-search-clear { width: var(--pi-control-height); height: var(--pi-control-height); }
-    .list-body.tiles { gap: var(--pi-space-3); grid-template-columns: 1fr; }
-    .list-body.tiles .action-main { min-height: 48px; padding: var(--pi-space-4) 28px var(--pi-space-4) var(--pi-space-4); }
-  }`;
+  `;
 
 type PendingAttachment = CapturedAttachment & { id: string };
 

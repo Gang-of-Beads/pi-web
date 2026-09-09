@@ -196,7 +196,7 @@ export const appStyles = css`
   .error { display: flex; gap: var(--pi-space-4); align-items: flex-start; padding: var(--pi-space-5) var(--pi-space-7); border-bottom: 1px solid var(--pi-border); color: var(--pi-danger); }
   .error.transient { color: var(--pi-warning); background: color-mix(in srgb, var(--pi-warning) 8%, transparent); }
   .error .error-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
-  .error .error-dismiss { flex: 0 0 auto; min-height: var(--pi-control-height); padding: 0 var(--pi-space-3); border: 0; background: none; color: inherit; line-height: 1.4; }
+  .error .error-dismiss { flex: 0 0 auto; display: grid; place-items: center; min-width: var(--pi-control-height); min-height: var(--pi-control-height); padding: 0 var(--pi-space-3); border: 0; background: none; color: inherit; line-height: 1.4; }
   .deprecation-notice { padding: var(--pi-space-5) var(--pi-space-7); border-bottom: 1px solid var(--pi-border); color: var(--pi-warning); }
   .deprecation-notice .deprecation-notice-text { margin: 0; overflow-wrap: anywhere; }
   .deprecation-notice .deprecation-notice-text + .deprecation-notice-text { margin-top: var(--pi-space-2); }
@@ -205,7 +205,7 @@ export const appStyles = css`
   .self-update-banner.applying { border-color: var(--pi-accent-border); background: var(--pi-surface); color: var(--pi-text); }
   /* The banner sits in the same column as the transcript controls, which are
      all 44px on a finger; a 32px row here was a second touch floor. */
-  @media (pointer: coarse) { .self-update-banner button, .error .error-dismiss { min-height: var(--pi-control-height-touch); } }
+  @media (pointer: coarse) { .self-update-banner button { min-height: var(--pi-control-height-touch); } .error .error-dismiss { min-width: var(--pi-control-height-touch); min-height: var(--pi-control-height-touch); } }
   .self-update-banner button { min-height: var(--pi-control-height); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; padding: var(--pi-space-2) var(--pi-space-5); }
   @media (hover: hover) { .self-update-banner button:hover { border-color: var(--pi-accent); } }
   .self-update-banner button.skip { color: var(--pi-muted); background: transparent; }
