@@ -1,5 +1,5 @@
 import { chromium } from "@playwright/test";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const BASE = process.env.TOUCH_BASE ?? "http://127.0.0.1:8505";
 const OUT = "/tmp/uiux-audit";
@@ -74,6 +74,40 @@ const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 393, height: 850 }, hasTouch: true, isMobile: true });
 await page.goto(BASE, { waitUntil: "domcontentloaded" });
 await page.waitForTimeout(3000);
+/**
+ * What the stack is serving has to be what was built, or a pass means nothing.
+ * One audit run reported three failures and the next reported none; the
+ * difference was a page that had loaded a half-written bundle while the stack
+ * rebuilt. That must fail loudly and by name, not read as flakiness.
+ */
+function builtEntryAsset() {
+  const built = readFileSync("dist/client/index.html", "utf8");
+  const match = built.match(/assets\/index-[A-Za-z0-9_-]+\.js/u);
+  if (match === null) throw new Error("no entry asset in dist/client/index.html");
+  return match[0];
+}
+
+const pageErrors = [];
+page.on("pageerror", (error) => { pageErrors.push(String(error).slice(0, 160)); });
+
+const servedEntry = await page.evaluate(() => {
+  const script = [...document.querySelectorAll("script[src]")].map((tag) => tag.getAttribute("src") ?? "").find((src) => src.includes("assets/index-"));
+  return script ?? "";
+});
+const expectedEntry = builtEntryAsset();
+if (!servedEntry.includes(expectedEntry)) {
+  console.error(`FAIL: the stack is serving ${servedEntry || "no entry bundle"}, the build on disk is ${expectedEntry}. Rebuild and restart before auditing.`);
+  await browser.close();
+  process.exit(1);
+}
+
+const bootControls = await page.evaluate(`(function(){var n=0;var walk=function(root){n+=root.querySelectorAll("button, a[href], input, select, textarea, [role=button]").length;var kids=root.querySelectorAll("*");for(var i=0;i<kids.length;i++){if(kids[i].shadowRoot)walk(kids[i].shadowRoot);}};walk(document);return n;})()`);
+if (bootControls < 10) {
+  console.error(`FAIL: boot rendered ${String(bootControls)} controls; the page did not finish loading, so an empty pass would be a lie.`);
+  await browser.close();
+  process.exit(1);
+}
+
 const coarse = await page.evaluate(() => matchMedia("(pointer: coarse)").matches);
 if (!coarse) { console.error("FAIL: emulation is not (pointer: coarse)"); process.exit(1); }
 
@@ -129,4 +163,9 @@ if (failures.length > 0) {
   console.error(`AUDIT FAILED (${failures.length}):\n${failures.slice(0, 30).join("\n")}\n---\n${summary}`);
   process.exit(1);
 }
-console.log(`AUDIT PASSED (floors + visibility)\n${summary}`);
+if (pageErrors.length > 0) {
+  console.error(`FAIL: the page raised ${String(pageErrors.length)} script error(s): ${pageErrors.slice(0, 3).join(" | ")}`);
+  await browser.close();
+  process.exit(1);
+}
+console.log(`AUDIT PASSED (floors + visibility, current build, no page errors)\n${summary}`);
