@@ -1,5 +1,5 @@
 import type { ComposerRuntimeContext, ComposerStatusLine } from "@gang-of-beads/pi-web/plugin-api";
-import { isVoiceCaptureActive, voiceCaptureLabel, type VoiceCaptureState } from "./lib/voiceCapture.js";
+import { voiceCaptureLabel, type VoiceCaptureState } from "./lib/voiceCapture.js";
 import { isDictationConfigured } from "./lib/speechToText.js";
 import { resolveSpeechStreaming } from "./lib/speechStreamProtocols.js";
 import type { PiWebSpeechToTextConfig } from "./lib/voiceConfig.js";
@@ -24,9 +24,6 @@ export function dictationLabel(state: VoiceCaptureState, config: PiWebSpeechToTe
   return voiceCaptureLabel(state, { streaming: resolveSpeechStreaming(config?.streaming).kind !== "unavailable" });
 }
 
-export function dictationGlyph(state: VoiceCaptureState): string {
-  return isVoiceCaptureActive(state) ? "\u25A0" : "\u25CF";
-}
 
 /**
  * Transcribing is the only state that disables the control: it is already busy

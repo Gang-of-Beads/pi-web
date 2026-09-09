@@ -7,7 +7,7 @@ import { VoiceController } from "./lib/voiceController.js";
 import { draftWithDictation } from "./lib/dictationDraft.js";
 import type { VoiceCaptureState } from "./lib/voiceCapture.js";
 import { parseVoiceSettings } from "./voiceSettings.js";
-import { dictationEnabled, dictationGlyph, dictationLabel, dictationOffered, dictationStatus } from "./composerVoice.js";
+import { dictationEnabled, dictationLabel, dictationOffered, dictationStatus } from "./composerVoice.js";
 import type { PiWebSpeechToTextConfig } from "./lib/voiceConfig.js";
 
 /**
@@ -90,5 +90,5 @@ const plugin: PiWebPlugin = {
   },
 };
 
-export { dictationGlyph, dictationLabel };
+export { dictationLabel };
 export default plugin;

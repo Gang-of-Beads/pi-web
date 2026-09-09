@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dictationEnabled, dictationGlyph, dictationLabel, dictationOffered, dictationStatus } from "../composerVoice.js";
+import { dictationEnabled, dictationLabel, dictationOffered, dictationStatus } from "../composerVoice.js";
 import type { VoiceCaptureState } from "./voiceCapture.js";
 
 const configured = { endpoint: "https://stt.example/v1" };
@@ -54,10 +54,5 @@ describe("how the control reads", () => {
 
     expect(streaming).not.toBe("");
     expect(batch).not.toBe("");
-  });
-
-  it("shows a stop glyph only while capture is active", () => {
-    expect(dictationGlyph({ kind: "listening" })).toBe("\u25A0");
-    expect(dictationGlyph({ kind: "idle" })).toBe("\u25CF");
   });
 });
