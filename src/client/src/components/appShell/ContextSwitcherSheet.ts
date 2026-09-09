@@ -67,7 +67,10 @@ export class ContextSwitcherSheet extends LitElement {
     };
     /* The contributed machines section renders its own heading; a second one
        here printed "Machines" twice, in two sizes, one above the other. */
-    return html`<section>${section.render(context)}</section>`;
+    /* No wrapper: listStyles gives every <section> flex: 1 1 auto; min-height: 0,
+       which collapsed this one to 16px and let the machine list paint over the
+       projects below it. The contributed section brings its own frame. */
+    return section.render(context);
   }
 
   private machineCount(): number {
@@ -86,7 +89,7 @@ export class ContextSwitcherSheet extends LitElement {
     /* The sheet itself scrolls. Letting each contributed list shrink turned one
        scrollable surface into three squeezed ones - a second machine rendered
        as an 8.9px sliver that read as a rendering artefact, not a row. */
-    .sheet-body machine-list, .sheet-body project-list, .sheet-body workspace-list { flex: 0 0 auto; min-height: auto; overflow: visible; }
+    .sheet-body machine-list, .sheet-body project-list, .sheet-body workspace-list { flex: 0 0 auto; min-height: auto; }
     .sheet-body h2 { margin: 0 0 var(--pi-space-2); font-size: var(--pi-text-sm); font-weight: var(--pi-weight-semibold); color: var(--pi-muted); }
   `];
 }
