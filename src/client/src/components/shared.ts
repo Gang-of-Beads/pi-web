@@ -197,7 +197,7 @@ export const workspacePanelStyles = css`
   @media (hover: hover) { .workspace-label-link:hover { text-decoration: underline; } }
   .toolbar { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-4); padding: var(--pi-space-4); border-bottom: 1px solid var(--pi-border-muted); }
   .toolbar button { margin-left: auto; }
-  .stale { border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); color: var(--pi-warning); padding: 1px var(--pi-space-3); font-size: var(--pi-text-xs); }
+  .stale { border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); color: var(--pi-warning); padding: var(--pi-space-1) var(--pi-space-3); font-size: var(--pi-text-xs); }
   .split { flex: 1 1 auto; min-height: 0; display: grid; grid-template-rows: minmax(160px, 34%) minmax(0, 1fr); }
   /* With nothing selected there is no second pane to show, so the list takes
      the panel rather than sitting above an empty one. */
@@ -377,7 +377,7 @@ export const listStyles = css`
   .workspace-primary { min-width: 0; display: flex; align-items: baseline; gap: var(--pi-space-3); }
   .workspace-primary-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .workspace-status { flex: 0 0 auto; color: var(--pi-warning); font-size: var(--pi-text-xs); }
-  .workspace-secondary { margin-top: 3px; }
+  .workspace-secondary { margin-top: var(--pi-space-2); }
   .workspace-menu-panel { width: max-content; min-width: min(120px, calc(100vw - 16px)); padding: var(--pi-space-4); }
   .workspace-menu-actions { margin: 0 0 var(--pi-space-4); padding-bottom: var(--pi-space-4); border-bottom: 1px solid var(--pi-border-muted); }
   .workspace-menu-actions button.danger { color: var(--pi-danger); }
@@ -456,8 +456,8 @@ export const formattedTextStyles = css`
   p, ul, ol, pre, blockquote, .table-scroll, .code-block-wrapper { margin: 0 0 var(--pi-space-5); }
   :is(p, ul, ol, pre, blockquote, .table-scroll, .code-block-wrapper):last-child { margin-bottom: 0; }
   ul, ol { padding-left: var(--pi-space-9); }
-  li + li { margin-top: 3px; }
-  code { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-xs); background: var(--pi-bg); padding: 1px var(--pi-space-2); font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; direction: ltr; text-align: left; unicode-bidi: isolate; }
+  li + li { margin-top: var(--pi-space-2); }
+  code { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-xs); background: var(--pi-bg); padding: var(--pi-space-1) var(--pi-space-2); font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; direction: ltr; text-align: left; unicode-bidi: isolate; }
   .code-block-wrapper { position: relative; }
   .code-block-wrapper pre { margin: 0; padding-right: 40px; }
   pre { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); padding: var(--pi-space-5); overflow-x: auto; overflow-y: hidden; direction: ltr; text-align: left; unicode-bidi: isolate; }

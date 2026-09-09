@@ -505,32 +505,32 @@ function relaysStyles(): string {
          (the app container is a fixed-height flex column; with shrink enabled
          the viewer's huge content basis starves them down to a sliver once a
          tall document renders). The viewer absorbs all shrinking instead. */
-      .toolbar { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--pi-border-muted); }
+      .toolbar { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: var(--pi-space-5) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); }
       .toolbar[hidden], .document-tabs[hidden] { display: none; }
-      .toolbar-actions { display: inline-flex; align-items: center; flex-wrap: nowrap; justify-content: flex-end; gap: 8px; min-width: 0; }
+      .toolbar-actions { display: inline-flex; align-items: center; flex-wrap: nowrap; justify-content: flex-end; gap: var(--pi-space-4); min-width: 0; }
       .relay-name { min-width: 0; color: var(--pi-text-secondary); overflow-wrap: anywhere; }
       /* Bottom padding (not viewer margin) so the gap below the tabs persists
          when the viewer's content scrolls up against its top edge. */
-      .document-tabs { flex: 0 0 auto; display: flex; flex-wrap: nowrap; gap: 6px; padding: 8px 12px; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; }
-      .viewer { flex: 1 1 auto; box-sizing: border-box; display: grid; align-content: start; gap: 12px; min-height: 0; overflow: auto; padding: 12px; }
+      .document-tabs { flex: 0 0 auto; display: flex; flex-wrap: nowrap; gap: var(--pi-space-3); padding: var(--pi-space-4) var(--pi-space-6); overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; }
+      .viewer { flex: 1 1 auto; box-sizing: border-box; display: grid; align-content: start; gap: var(--pi-space-6); min-height: 0; overflow: auto; padding: var(--pi-space-6); }
       /* Grid children default to min-width: auto; without these caps a wide code
          block or table would silently stretch the whole viewer track. */
       .viewer > * { box-sizing: border-box; min-width: 0; max-width: 100%; }
       button, select { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: inherit; }
-      button { cursor: pointer; padding: 6px 10px; }
+      button { cursor: pointer; padding: var(--pi-space-3) var(--pi-space-5); }
       button.icon-button { flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-control-height); height: var(--pi-control-height); padding: 0; }
       button.icon-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
-      select { min-width: 0; max-width: 240px; padding: 5px 6px; }
-      .document-tab { flex: 0 0 auto; white-space: nowrap; font-size: var(--pi-text-xs); padding: 4px 10px; }
+      select { min-width: 0; max-width: 240px; padding: var(--pi-space-3) var(--pi-space-3); }
+      .document-tab { flex: 0 0 auto; white-space: nowrap; font-size: var(--pi-text-xs); padding: var(--pi-space-2) var(--pi-space-5); }
       .document-tab.active { border-color: var(--pi-accent-border); background: var(--pi-accent); color: var(--pi-on-accent, var(--pi-bg)); }
       /* An expanded folder wraps its chip and children in one rounded group so
          nested tabs read as contained by their folder; nested groups stack.
          No inner padding: the wrapper's border lines sit flush on the button
          row (a continuous edge), and the -1px vertical margins cancel the
          border's height so expanding never grows the strip or its neighbors. */
-      .directory-group { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; min-width: 0; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-lg); background: var(--pi-bg-overlay-soft); padding: 0; margin: -1px 0; }
+      .directory-group { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-3); min-width: 0; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-lg); background: var(--pi-bg-overlay-soft); padding: 0; margin: -1px 0; }
       /* Folder chips interleave with file tabs; the chevron rotates while expanded. */
-      .directory-tab { display: inline-flex; align-items: center; gap: 5px; }
+      .directory-tab { display: inline-flex; align-items: center; gap: var(--pi-space-3); }
       .directory-tab .chevron { flex: 0 0 auto; width: 9px; height: 9px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform 0.12s ease; }
       .directory-tab[aria-expanded="true"] .chevron { transform: rotate(90deg); }
       /* The selection survives a folder collapse: the nearest collapsed ancestor
@@ -538,37 +538,37 @@ function relaysStyles(): string {
       .directory-tab.contains-active { border-color: var(--pi-accent-border); color: var(--pi-accent); }
       .directory-tab.contains-active::after { content: ""; width: var(--pi-dot-xs); height: var(--pi-dot-xs); border-radius: 50%; background: var(--pi-accent); }
       code, pre { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-sm); background: var(--pi-bg); color: var(--pi-text-secondary); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-      code { padding: 2px 5px; }
-      pre { margin: 0; overflow: auto; padding: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+      code { padding: var(--pi-space-1) var(--pi-space-3); }
+      pre { margin: 0; overflow: auto; padding: var(--pi-space-4); white-space: pre-wrap; overflow-wrap: anywhere; }
       .document.markdown { line-height: 1.5; overflow-wrap: anywhere; }
-      .document.markdown p, .document.markdown ul, .document.markdown ol, .document.markdown pre, .document.markdown blockquote, .document.markdown .table-scroll { margin: 0 0 10px; }
+      .document.markdown p, .document.markdown ul, .document.markdown ol, .document.markdown pre, .document.markdown blockquote, .document.markdown .table-scroll { margin: 0 0 var(--pi-space-5); }
       .document.markdown > :last-child { margin-bottom: 0; }
-      .document.markdown h1, .document.markdown h2, .document.markdown h3, .document.markdown h4 { line-height: 1.25; margin: 14px 0 8px; }
+      .document.markdown h1, .document.markdown h2, .document.markdown h3, .document.markdown h4 { line-height: 1.25; margin: var(--pi-space-7) 0 var(--pi-space-4); }
       .document.markdown h1:first-child, .document.markdown h2:first-child, .document.markdown h3:first-child, .document.markdown h4:first-child { margin-top: 0; }
       .document.markdown h1 { font-size: var(--pi-text-lg); }
       .document.markdown h2 { font-size: var(--pi-text-lg); }
       .document.markdown h3 { font-size: var(--pi-text-base); }
       .document.markdown h4 { font-size: var(--pi-text-sm); }
-      .document.markdown ul, .document.markdown ol { padding-left: 22px; }
-      .document.markdown li + li { margin-top: 3px; }
+      .document.markdown ul, .document.markdown ol { padding-left: var(--pi-space-9); }
+      .document.markdown li + li { margin-top: var(--pi-space-2); }
       .document.markdown pre { white-space: pre; overflow-wrap: normal; }
       .document.markdown pre code { border: 0; background: transparent; padding: 0; }
       .document.markdown img { box-sizing: border-box; max-width: 100%; }
-      .document.markdown blockquote { border-left: 3px solid var(--pi-border-muted); color: var(--pi-muted); padding-left: 10px; }
+      .document.markdown blockquote { border-left: 3px solid var(--pi-border-muted); color: var(--pi-muted); padding-left: var(--pi-space-5); }
       .document.markdown a { color: var(--pi-accent); }
       .document.markdown .table-scroll { max-width: 100%; overflow-x: auto; }
       /* Cells wrap at word boundaries only: a wide table keeps its natural width
          and scrolls inside .table-scroll instead of being squeezed unreadably. */
       .document.markdown table { border-collapse: collapse; overflow-wrap: normal; }
-      .document.markdown th, .document.markdown td { border: 1px solid var(--pi-border-muted); padding: 4px 8px; }
-      .status pre { margin-top: 8px; }
+      .document.markdown th, .document.markdown td { border: 1px solid var(--pi-border-muted); padding: var(--pi-space-2) var(--pi-space-4); }
+      .status pre { margin-top: var(--pi-space-4); }
       .muted { color: var(--pi-muted); }
-      .empty-state { border: 1px dashed var(--pi-border-muted); border-radius: var(--pi-radius-md); color: var(--pi-muted); padding: 12px; }
-      .empty-state p { margin: 6px 0 0; }
-      .status { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); padding: 10px; }
+      .empty-state { border: 1px dashed var(--pi-border-muted); border-radius: var(--pi-radius-md); color: var(--pi-muted); padding: var(--pi-space-6); }
+      .empty-state p { margin: var(--pi-space-3) 0 0; }
+      .status { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); padding: var(--pi-space-5); }
       .status.info { border-color: var(--pi-accent-border); background: var(--pi-bg-overlay-soft); }
       .status.error { border-color: var(--pi-danger); color: var(--pi-danger); }
-      .empty { padding: 16px; color: var(--pi-muted); }
+      .empty { padding: var(--pi-space-7); color: var(--pi-muted); }
     </style>
   `;
 }

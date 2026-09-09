@@ -337,32 +337,32 @@ export class WorkspaceFileViewer extends LitElement {
   static override styles = [
     css`
     :host { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: auto; color: var(--pi-text); font: 14px system-ui, sans-serif; }
-    .viewer-header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); }
+    .viewer-header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: var(--pi-space-4); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); }
     .viewer-header strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .viewer-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+    .viewer-actions { display: flex; align-items: center; gap: var(--pi-space-4); flex: 0 0 auto; }
     small { color: var(--pi-muted); }
     .viewer-action, .download-link { flex: 0 0 auto; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-text); text-decoration: none; white-space: nowrap; }
-    .viewer-action { padding: 3px 8px; font-size: var(--pi-text-xs); }
+    .viewer-action { padding: var(--pi-space-2) var(--pi-space-4); font-size: var(--pi-text-xs); }
     @media (hover: hover) { .viewer-action:hover, .download-link:hover { border-color: var(--pi-border); background: var(--pi-bg); } }
-    .viewer-mode { flex: 0 0 auto; display: flex; justify-content: flex-end; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); }
-    .viewer-mode button, .preview-state button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-text); padding: 4px 9px; cursor: pointer; font: inherit; }
+    .viewer-mode { flex: 0 0 auto; display: flex; justify-content: flex-end; gap: var(--pi-space-2); padding: var(--pi-space-3) var(--pi-space-4); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); }
+    .viewer-mode button, .preview-state button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-2) var(--pi-space-5); cursor: pointer; font: inherit; }
     .viewer-mode button { font-size: var(--pi-text-xs); }
     .viewer-mode button[aria-pressed="true"] { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     .viewer-mode button:focus-visible, .preview-state button:focus-visible, a:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }
     pi-code-viewer { flex: 1 1 auto; min-height: 0; }
-    .markdown-preview { flex: 1 1 auto; min-height: 0; box-sizing: border-box; overflow: auto; padding: 16px; }
-    .preview-note { flex: 0 0 auto; margin: 0; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-surface); color: var(--pi-muted); padding: 7px 10px; font-size: var(--pi-text-xs); }
-    .image-preview { flex: 1 1 auto; min-height: 0; box-sizing: border-box; display: flex; align-items: center; justify-content: center; overflow: auto; padding: 16px; }
+    .markdown-preview { flex: 1 1 auto; min-height: 0; box-sizing: border-box; overflow: auto; padding: var(--pi-space-7); }
+    .preview-note { flex: 0 0 auto; margin: 0; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-surface); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-5); font-size: var(--pi-text-xs); }
+    .image-preview { flex: 1 1 auto; min-height: 0; box-sizing: border-box; display: flex; align-items: center; justify-content: center; overflow: auto; padding: var(--pi-space-7); }
     .image-preview img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-md); background-color: var(--pi-surface); background-image: linear-gradient(45deg, color-mix(in srgb, var(--pi-border-muted) 45%, transparent) 25%, transparent 25%), linear-gradient(-45deg, color-mix(in srgb, var(--pi-border-muted) 45%, transparent) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, color-mix(in srgb, var(--pi-border-muted) 45%, transparent) 75%), linear-gradient(-45deg, transparent 75%, color-mix(in srgb, var(--pi-border-muted) 45%, transparent) 75%); background-position: 0 0, 0 8px, 8px -8px, -8px 0; background-size: 16px 16px; box-shadow: 0 8px 24px var(--pi-shadow-soft); }
     .file-frame-preview { flex: 1 1 auto; min-height: 0; width: 100%; border: none; background: var(--pi-surface); }
-    .media-preview { flex: 1 1 auto; min-height: 0; box-sizing: border-box; display: flex; align-items: center; justify-content: center; overflow: auto; padding: 16px; }
+    .media-preview { flex: 1 1 auto; min-height: 0; box-sizing: border-box; display: flex; align-items: center; justify-content: center; overflow: auto; padding: var(--pi-space-7); }
     .media-preview video { display: block; max-width: 100%; max-height: 100%; border-radius: var(--pi-radius-md); background: #000; }
     .media-preview audio { width: min(100%, 480px); }
-    .viewer-status { box-sizing: border-box; margin: auto; max-width: 100%; color: var(--pi-muted); padding: 18px; text-align: center; overflow-wrap: anywhere; }
-    .preview-state { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; box-sizing: border-box; padding: 24px; color: var(--pi-muted); text-align: center; }
+    .viewer-status { box-sizing: border-box; margin: auto; max-width: 100%; color: var(--pi-muted); padding: var(--pi-space-8); text-align: center; overflow-wrap: anywhere; }
+    .preview-state { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--pi-space-6); box-sizing: border-box; padding: var(--pi-space-9); color: var(--pi-muted); text-align: center; }
     .preview-state strong { color: var(--pi-text); }
     .preview-state p { margin: 0; }
-    .download-link { display: inline-block; padding: 8px 16px; font-size: var(--pi-text-sm); }
+    .download-link { display: inline-block; padding: var(--pi-space-4) var(--pi-space-7); font-size: var(--pi-text-sm); }
     @media (max-width: 640px) {
       .viewer-header { align-items: flex-start; flex-direction: column; }
       .viewer-actions { width: 100%; flex-wrap: wrap; }

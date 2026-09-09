@@ -759,34 +759,34 @@ export class SettingsDialog extends LitElement {
   static override styles = [interactiveSurfaceStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-dialog); color: var(--pi-text); font: 14px system-ui, sans-serif; }
     modal-surface { --modal-surface-backdrop-padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); --modal-surface-width: min(980px, 100%); --modal-surface-max-height: min(760px, 100%); --modal-surface-min-height: min(620px, 100%); --modal-surface-radius: var(--pi-radius-lg); }
-    .settings-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--pi-border); }
+    .settings-header { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-6); padding: var(--pi-space-7) var(--pi-space-7); border-bottom: 1px solid var(--pi-border); }
     .eyebrow { display: block; color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: 600; }
     h1 { margin: 0; font-size: var(--pi-text-xl); line-height: 1.2; }
-    button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; font: inherit; cursor: pointer; }
+    button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); font: inherit; cursor: pointer; }
     .close-button { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); display: grid; place-items: center; border: 0; background: transparent; color: var(--pi-muted); padding: 0; font-size: var(--pi-text-xl); }
     .close-button:focus { color: var(--pi-text); background: var(--pi-surface-hover); }
     @media (hover: hover) { .close-button:hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
     .settings-body { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 220px minmax(0, 1fr); }
-    .settings-nav { min-height: 0; padding: 10px; border-right: 1px solid var(--pi-border); background: var(--pi-surface); overflow: auto; }
-    .settings-nav button { display: grid; gap: 2px; width: 100%; margin: 0 0 6px; text-align: left; border-color: transparent; background: transparent; }
+    .settings-nav { min-height: 0; padding: var(--pi-space-5); border-right: 1px solid var(--pi-border); background: var(--pi-surface); overflow: auto; }
+    .settings-nav button { display: grid; gap: var(--pi-space-1); width: 100%; margin: 0 0 var(--pi-space-3); text-align: left; border-color: transparent; background: transparent; }
     .settings-nav button:focus { background: var(--pi-surface-hover); }
     @media (hover: hover) { .settings-nav button:hover { background: var(--pi-surface-hover); } }
     .settings-nav button.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     .settings-nav small { color: var(--pi-muted); }
-    .settings-content { min-width: 0; min-height: 0; overflow: auto; padding: 18px; }
+    .settings-content { min-width: 0; min-height: 0; overflow: auto; padding: var(--pi-space-8); }
 
     @media (pointer: coarse), (max-width: 760px) {
       modal-surface { --modal-surface-backdrop-padding: 0; --modal-surface-place-items: stretch; --modal-surface-width: 100%; --modal-surface-max-height: none; --modal-surface-min-height: 0; --modal-surface-border: 0; --modal-surface-radius: 0; }
       .settings-header { padding: max(12px, env(safe-area-inset-top)) 12px 12px; }
       .settings-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
       .settings-list { display: flex; flex-direction: column; overflow-y: auto; padding: 6px 0 calc(14px + env(safe-area-inset-bottom)); }
-      .settings-list button { box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 56px; margin: 0; border: 0; border-bottom: 1px solid var(--pi-border); border-radius: 0; padding: 10px 16px; text-align: left; }
-      .settings-list-label { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+      .settings-list button { box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-6); width: 100%; min-height: 56px; margin: 0; border: 0; border-bottom: 1px solid var(--pi-border); border-radius: 0; padding: var(--pi-space-5) var(--pi-space-7); text-align: left; }
+      .settings-list-label { display: flex; flex-direction: column; gap: var(--pi-space-1); min-width: 0; }
       .settings-list-label strong { font-size: var(--pi-text-lg); font-weight: 600; color: var(--pi-text); }
       .settings-list-label small { font-size: var(--pi-text-sm); color: var(--pi-muted); }
       .settings-list-chevron { font-size: var(--pi-text-xl); color: var(--pi-muted); }
       .settings-detail-heading { display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
-      .settings-back { display: inline-flex; align-items: center; min-height: var(--pi-control-height-touch); margin-left: -8px; border: 0; padding: 0 8px 0 0; font-size: var(--pi-text-base); font-weight: 600; color: var(--pi-accent); }
+      .settings-back { display: inline-flex; align-items: center; min-height: var(--pi-control-height-touch); margin-left: -8px; border: 0; padding: 0 var(--pi-space-4) 0 0; font-size: var(--pi-text-base); font-weight: 600; color: var(--pi-accent); }
       .settings-content { padding: 14px 12px calc(18px + env(safe-area-inset-bottom)); }
     }
   `];

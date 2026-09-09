@@ -212,12 +212,12 @@ function renderWorkspaceSection(html: HtmlTemplateTag, workspace: Workspace): Te
 export function renderInfoPanel(html: HtmlTemplateTag, context: WorkspacePanelContext): TemplateResult {
   return html`
     <style>
-      .viewer.info-status { flex: 1 1 auto; min-height: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; padding: 12px; overflow-y: auto; overflow-x: hidden; }
-      .viewer.info-status section { flex: 0 0 auto; min-width: 0; display: grid; gap: 8px; align-content: start; }
+      .viewer.info-status { flex: 1 1 auto; min-height: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: var(--pi-space-7); padding: var(--pi-space-6); overflow-y: auto; overflow-x: hidden; }
+      .viewer.info-status section { flex: 0 0 auto; min-width: 0; display: grid; gap: var(--pi-space-4); align-content: start; }
       .viewer.info-status p { margin: 0; }
-      .info-row { display: grid; grid-template-columns: minmax(90px, auto) minmax(0, 1fr); gap: 3px 10px; border-bottom: 1px solid var(--pi-border-muted); padding: 6px 0; overflow-wrap: anywhere; }
+      .info-row { display: grid; grid-template-columns: minmax(90px, auto) minmax(0, 1fr); gap: var(--pi-space-2) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); padding: var(--pi-space-3) 0; overflow-wrap: anywhere; }
       .info-row small { grid-column: 1 / -1; color: var(--pi-muted); }
-      .info-component { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 10px; border-bottom: 1px solid var(--pi-border-muted); padding: 6px 0; }
+      .info-component { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--pi-space-2) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); padding: var(--pi-space-3) 0; }
       .info-component small { grid-column: 1 / -1; color: var(--pi-muted); overflow-wrap: anywhere; }
       .info-health-ok { color: var(--pi-success); }
       .info-health-attention { color: var(--pi-warning); }

@@ -727,7 +727,7 @@ export class TerminalPanel extends LitElement {
   static override styles = [xtermStyles, css`
     :host { flex: 1 1 auto; min-height: 0; display: flex; }
     .terminal-shell { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--pi-terminal-bg); }
-    .terminal-tabs { flex: 0 0 auto; display: flex; gap: 6px; align-items: center; padding: 6px; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); overflow: auto; }
+    .terminal-tabs { flex: 0 0 auto; display: flex; gap: var(--pi-space-3); align-items: center; padding: var(--pi-space-3); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); overflow: auto; }
     .terminal-tabs > button { box-sizing: border-box; height: var(--pi-control-height); line-height: 16px; }
     /* Desktop xterm already has mouse selection and hardware keys; keep touch controls to touch/narrow layouts. */
     .copy-mode-toggle, .soft-keys-toggle, terminal-soft-keys { display: none; }
@@ -737,7 +737,7 @@ export class TerminalPanel extends LitElement {
       .copy-mode-toggle, .soft-keys-toggle { display: inline-flex; }
       terminal-soft-keys { display: block; }
     }
-    button { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 180px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 5px 7px; cursor: pointer; }
+    button { display: inline-flex; align-items: center; gap: var(--pi-space-3); min-width: 0; max-width: 180px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-3) var(--pi-space-4); cursor: pointer; }
     button.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     button.new { flex: 0 0 auto; color: var(--pi-muted); }
     .soft-keys-toggle { flex: 0 0 auto; }
@@ -747,25 +747,25 @@ export class TerminalPanel extends LitElement {
     @media (hover: hover) { button small:hover { color: var(--pi-danger); } }
     button.danger { color: var(--pi-danger); }
     button:disabled { opacity: .5; cursor: not-allowed; }
-    .command-run-notice { flex: 0 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-surface); color: var(--pi-text); }
+    .command-run-notice { flex: 0 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--pi-space-5); align-items: center; padding: var(--pi-space-4) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-surface); color: var(--pi-text); }
     .command-run-notice.running { border-color: var(--pi-warning-border); }
     .command-run-notice.succeeded { border-color: var(--pi-success-border); }
     .command-run-notice.failed { border-color: var(--pi-danger); }
-    .command-run-notice p { margin: 3px 0; color: var(--pi-muted); }
+    .command-run-notice p { margin: var(--pi-space-2) 0; color: var(--pi-muted); }
     .command-run-notice code { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-text-secondary); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    .command-run-notice kbd { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-xs); background: var(--pi-bg); padding: 0 4px; font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .command-run-notice kbd { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-xs); background: var(--pi-bg); padding: 0 var(--pi-space-2); font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .command-run-notice button { justify-self: end; max-width: none; }
     .terminal-stage { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; background: var(--pi-terminal-bg); }
-    .terminal-host { position: absolute; inset: 0; padding: 6px; box-sizing: border-box; overflow: hidden; }
+    .terminal-host { position: absolute; inset: 0; padding: var(--pi-space-3); box-sizing: border-box; overflow: hidden; }
     .terminal-host.copying { visibility: hidden; pointer-events: none; }
     .terminal-copy-view { position: absolute; inset: 0; display: flex; flex-direction: column; min-height: 0; background: var(--pi-terminal-bg); color: var(--pi-terminal-text); }
-    .terminal-copy-toolbar { box-sizing: border-box; flex: 0 0 auto; display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 47px; padding: 6px; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); color: var(--pi-muted); font: 12px system-ui, sans-serif; }
+    .terminal-copy-toolbar { box-sizing: border-box; flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; min-height: 47px; padding: var(--pi-space-3); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); color: var(--pi-muted); font: 12px system-ui, sans-serif; }
     .terminal-copy-toolbar > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .terminal-copy-toolbar small { margin-left: auto; white-space: nowrap; color: var(--pi-dim); }
-    .terminal-copy-toolbar button { flex: 0 0 auto; width: auto; min-height: var(--pi-control-height-comfort); padding: 6px 9px; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .terminal-copy-toolbar button { flex: 0 0 auto; width: auto; min-height: var(--pi-control-height-comfort); padding: var(--pi-space-3) var(--pi-space-5); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .terminal-copy-layers { flex: 1 1 auto; min-height: 0; display: grid; overflow: hidden; background: var(--pi-terminal-bg); }
     /* xterm renders the configured 13px terminal font in 17px-high cells. */
-    .terminal-copy-content, .terminal-copy-selector { grid-area: 1 / 1; box-sizing: border-box; min-width: 0; min-height: 0; width: 100%; height: 100%; margin: 0; padding: 6px; border: 0; border-radius: 0; font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; line-height: 17px; letter-spacing: normal; font-variant-ligatures: none; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-all; }
+    .terminal-copy-content, .terminal-copy-selector { grid-area: 1 / 1; box-sizing: border-box; min-width: 0; min-height: 0; width: 100%; height: 100%; margin: 0; padding: var(--pi-space-3); border: 0; border-radius: 0; font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; line-height: 17px; letter-spacing: normal; font-variant-ligatures: none; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-all; }
     .terminal-copy-content { overflow: auto; pointer-events: none; background: var(--pi-terminal-bg); color: var(--pi-terminal-text); -webkit-user-select: none; user-select: none; }
     .terminal-copy-selector { z-index: 1; overflow: auto; resize: none; outline: none; appearance: none; background: transparent; color: transparent; caret-color: var(--pi-accent); -webkit-text-fill-color: transparent; cursor: text; -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; touch-action: auto; }
     .terminal-copy-selector::selection { background: var(--pi-terminal-selection); color: transparent; -webkit-text-fill-color: transparent; }
@@ -792,8 +792,8 @@ export class TerminalPanel extends LitElement {
     .terminal-host .xterm-accessibility-tree { font-family: monospace; user-select: text; white-space: pre; }
     .terminal-host .xterm-accessibility-tree > div { transform-origin: left; width: fit-content; }
     .terminal-host .live-region { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
-    .error { flex: 0 0 auto; margin: 0; padding: 8px; color: var(--pi-danger); border-bottom: 1px solid var(--pi-border); background: var(--pi-surface); }
-    .muted { margin: 10px; color: var(--pi-muted); }
+    .error { flex: 0 0 auto; margin: 0; padding: var(--pi-space-4); color: var(--pi-danger); border-bottom: 1px solid var(--pi-border); background: var(--pi-surface); }
+    .muted { margin: var(--pi-space-5); color: var(--pi-muted); }
     .xterm { height: 100%; }
   `];
 }

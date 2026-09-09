@@ -252,42 +252,42 @@ export class SettingsGeneralPanel extends LitElement {
 
   static override styles = [interactiveSurfaceStyles, css`
     :host { display: block; }
-    .card-heading { display: grid; gap: 6px; min-width: 0; }
+    .card-heading { display: grid; gap: var(--pi-space-3); min-width: 0; }
     h3, p { margin: 0; }
     h3 { font-size: var(--pi-text-sm); line-height: 1.3; }
     p { color: var(--pi-muted); line-height: 1.45; }
     button, input, select, textarea { font: inherit; }
-    button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; }
+    button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
     button:disabled { opacity: .55; cursor: not-allowed; }
-    .settings-sections { display: grid; gap: 14px; }
-    .settings-card, .message, .loading-card, .config-path-card, .effective-card { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); padding: 12px; }
-    .settings-card { display: grid; gap: 14px; }
-    .message { margin-bottom: 12px; }
+    .settings-sections { display: grid; gap: var(--pi-space-7); }
+    .settings-card, .message, .loading-card, .config-path-card, .effective-card { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); padding: var(--pi-space-6); }
+    .settings-card { display: grid; gap: var(--pi-space-7); }
+    .message { margin-bottom: var(--pi-space-6); }
     .settings-card .message { margin-bottom: 0; }
     .error-message { border-color: var(--pi-danger); color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 10%, var(--pi-surface)); }
     .loading-card { color: var(--pi-muted); }
-    .config-path-card { display: grid; gap: 5px; }
+    .config-path-card { display: grid; gap: var(--pi-space-3); }
     .config-path-card span, .field-heading, dt { color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: 600; }
-    code { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-bg); padding: 1px 4px; color: var(--pi-text); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+    code { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-bg); padding: var(--pi-space-1) var(--pi-space-2); color: var(--pi-text); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
     .config-path-card small, .field small { color: var(--pi-muted); }
-    .config-form { display: grid; gap: 14px; }
-    .field { display: grid; gap: 7px; }
-    .field-heading { display: flex; align-items: center; gap: 8px; }
-    input, select, textarea { box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: 9px 10px; outline: none; font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); }
+    .config-form { display: grid; gap: var(--pi-space-7); }
+    .field { display: grid; gap: var(--pi-space-4); }
+    .field-heading { display: flex; align-items: center; gap: var(--pi-space-4); }
+    input, select, textarea { box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: var(--pi-space-5) var(--pi-space-5); outline: none; font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); }
     input:focus, select:focus, textarea:focus { border-color: var(--pi-accent); box-shadow: 0 0 0 1px var(--pi-accent-border); }
     textarea { resize: vertical; min-height: 94px; font-family: var(--pi-control-monospace-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
     textarea:disabled { opacity: .55; }
-    .override-badge { border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); color: var(--pi-warning); background: var(--pi-warning-surface); padding: 2px 7px; font-size: var(--pi-text-2xs); font-weight: 600; text-transform: none; }
-    .effective-card { display: grid; gap: 10px; }
-    .effective-card dl { display: grid; gap: 8px; margin: 0; }
-    .effective-card dl > div { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 12px; align-items: baseline; }
+    .override-badge { border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); color: var(--pi-warning); background: var(--pi-warning-surface); padding: var(--pi-space-1) var(--pi-space-4); font-size: var(--pi-text-2xs); font-weight: 600; text-transform: none; }
+    .effective-card { display: grid; gap: var(--pi-space-5); }
+    .effective-card dl { display: grid; gap: var(--pi-space-4); margin: 0; }
+    .effective-card dl > div { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: var(--pi-space-6); align-items: baseline; }
     dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
     .muted { color: var(--pi-muted); }
-    .form-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 2px; }
+    .form-actions { display: flex; justify-content: flex-end; gap: var(--pi-space-4); padding-top: var(--pi-space-1); }
     .primary { border-color: var(--pi-accent); background: var(--pi-selection-bg); color: var(--pi-text-bright); }
 
     @media (max-width: 760px) {
-      .effective-card dl > div { grid-template-columns: minmax(0, 1fr); gap: 3px; }
+      .effective-card dl > div { grid-template-columns: minmax(0, 1fr); gap: var(--pi-space-2); }
     }
   `];
 }

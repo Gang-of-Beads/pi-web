@@ -527,26 +527,26 @@ export class SessionTreeNavigator extends LitElement {
     /* Full-viewport shell: the surface's centered-card defaults are overridden
        so the dialog keeps covering the whole viewport. */
     modal-surface { --modal-surface-width: 100%; --modal-surface-height: 100dvh; --modal-surface-max-height: 100dvh; --modal-surface-border: 0; --modal-surface-radius: 0; --modal-surface-shadow: none; }
-    header, footer { display: flex; align-items: center; gap: 12px; padding: max(14px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) 14px max(18px, env(safe-area-inset-left)); border-bottom: 1px solid var(--pi-border); }
+    header, footer { display: flex; align-items: center; gap: var(--pi-space-6); padding: max(14px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) 14px max(18px, env(safe-area-inset-left)); border-bottom: 1px solid var(--pi-border); }
     footer { min-height: 64px; justify-content: end; padding: 12px max(18px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left)); border-top: 1px solid var(--pi-border); border-bottom: 0; }
     header > div { min-width: 0; }
     h1, h2, p { margin: 0; }
     h1 { font-size: var(--pi-text-xl); line-height: 1.25; }
-    h2 { margin-top: 2px; font-size: var(--pi-text-lg); }
+    h2 { margin-top: var(--pi-space-1); font-size: var(--pi-text-lg); }
     .eyebrow { display: block; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
     .close-button { width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); margin-inline-start: auto; display: grid; place-items: center; border: 0; background: transparent; color: var(--pi-muted); padding: 0; font-size: var(--pi-text-xl); }
     .close-button:not(:disabled):focus-visible { color: var(--pi-text); background: var(--pi-surface-hover); }
     @media (hover: hover) { .close-button:not(:disabled):hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
     .body { flex: 1 1 auto; min-height: 0; overflow: auto; }
-    .tree-step { display: flex; flex-direction: column; gap: 10px; padding: 14px max(18px, env(safe-area-inset-right)) 16px max(18px, env(safe-area-inset-left)); }
-    .tree-intro { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; color: var(--pi-muted); }
-    .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; font-size: var(--pi-text-xs); }
-    .legend > span { display: inline-flex; align-items: center; gap: 5px; }
+    .tree-step { display: flex; flex-direction: column; gap: var(--pi-space-5); padding: 14px max(18px, env(safe-area-inset-right)) 16px max(18px, env(safe-area-inset-left)); }
+    .tree-intro { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--pi-space-5) var(--pi-space-8); color: var(--pi-muted); }
+    .legend { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pi-space-6); font-size: var(--pi-text-xs); }
+    .legend > span { display: inline-flex; align-items: center; gap: var(--pi-space-3); }
     .marker { width: var(--pi-dot-md); height: var(--pi-dot-md); border-radius: var(--pi-radius-pill); background: var(--pi-border); }
     .active-path-marker { background: var(--pi-accent); }
     .active-leaf-marker { box-shadow: 0 0 0 2px var(--pi-accent); background: var(--pi-bg); }
     .tree { min-height: 0; overflow: auto; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); overscroll-behavior: contain; }
-    .tree-row { min-height: 48px; display: grid; grid-template-columns: 20px minmax(82px, auto) minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 7px 10px 7px calc(10px + var(--tree-indent)); border-bottom: 1px solid var(--pi-border-muted); cursor: pointer; outline: none; content-visibility: auto; contain-intrinsic-block-size: 48px; }
+    .tree-row { min-height: 48px; display: grid; grid-template-columns: 20px minmax(82px, auto) minmax(0, 1fr) auto; align-items: center; gap: var(--pi-space-4); padding: 7px 10px 7px calc(10px + var(--tree-indent)); border-bottom: 1px solid var(--pi-border-muted); cursor: pointer; outline: none; content-visibility: auto; contain-intrinsic-block-size: 48px; }
     .tree-row:last-child { border-bottom: 0; }
     @media (hover: hover) { .tree-row:hover { background: var(--pi-surface-hover); } }
     .tree-row.selected { background: var(--pi-selection-bg); box-shadow: inset 3px 0 var(--pi-accent); }
@@ -562,36 +562,36 @@ export class SessionTreeNavigator extends LitElement {
     .tree-row > .metadata > .kind { grid-column: 2; grid-row: 1; }
     .tree-row > .entry { grid-column: 3; grid-row: 1; }
     .tree-row > .metadata > .badges { grid-column: 4; grid-row: 1; }
-    .kind { --kind-border: var(--pi-border); --kind-background: var(--pi-surface); display: inline-flex; align-items: center; width: fit-content; border: 1px solid var(--kind-border); border-radius: var(--pi-radius-pill); padding: 2px 7px; color: var(--pi-text); background: var(--kind-background); font-size: var(--pi-text-2xs); font-weight: 700; white-space: nowrap; }
+    .kind { --kind-border: var(--pi-border); --kind-background: var(--pi-surface); display: inline-flex; align-items: center; width: fit-content; border: 1px solid var(--kind-border); border-radius: var(--pi-radius-pill); padding: var(--pi-space-1) var(--pi-space-4); color: var(--pi-text); background: var(--kind-background); font-size: var(--pi-text-2xs); font-weight: 700; white-space: nowrap; }
     .kind-tone-user { --kind-border: var(--pi-accent-border); --kind-background: var(--pi-selection-bg); }
     .kind-tone-assistant { --kind-border: var(--pi-border); --kind-background: var(--pi-surface); }
     .kind-tone-tool { --kind-border: var(--pi-warning-border); --kind-background: var(--pi-warning-surface); }
     .kind-tone-shell { --kind-border: var(--pi-success); --kind-background: var(--pi-success-bg); }
     .kind-tone-context { --kind-border: var(--pi-purple-border); --kind-background: var(--pi-purple-surface); }
     .kind-tone-metadata { --kind-border: var(--pi-border-muted); --kind-background: var(--pi-bg-overlay); color: var(--pi-muted); }
-    .entry { min-width: 0; display: flex; align-items: baseline; gap: 8px; }
+    .entry { min-width: 0; display: flex; align-items: baseline; gap: var(--pi-space-4); }
     .summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-text); }
     .bookkeeping .summary { color: var(--pi-muted); }
-    .label { max-width: 180px; overflow: hidden; text-overflow: ellipsis; border-radius: var(--pi-radius-xs); padding: 1px 5px; background: var(--pi-bg-overlay); color: var(--pi-muted); font-size: var(--pi-text-2xs); white-space: nowrap; }
+    .label { max-width: 180px; overflow: hidden; text-overflow: ellipsis; border-radius: var(--pi-radius-xs); padding: var(--pi-space-1) var(--pi-space-3); background: var(--pi-bg-overlay); color: var(--pi-muted); font-size: var(--pi-text-2xs); white-space: nowrap; }
     time { color: var(--pi-muted); font-size: var(--pi-text-2xs); white-space: nowrap; }
-    .badges { display: flex; align-items: center; justify-content: end; gap: 5px; }
-    .badge { border-radius: var(--pi-radius-pill); padding: 2px 7px; font-size: var(--pi-text-2xs); font-weight: 700; white-space: nowrap; }
+    .badges { display: flex; align-items: center; justify-content: end; gap: var(--pi-space-3); }
+    .badge { border-radius: var(--pi-radius-pill); padding: var(--pi-space-1) var(--pi-space-4); font-size: var(--pi-text-2xs); font-weight: 700; white-space: nowrap; }
     .badge.path { background: color-mix(in srgb, var(--pi-accent) 14%, transparent); color: var(--pi-text); }
     .badge.leaf { border: 1px solid var(--pi-accent); color: var(--pi-text); }
     .confirmation-step { padding: 24px max(18px, env(safe-area-inset-right)) 24px max(18px, env(safe-area-inset-left)); }
-    .confirmation-card { width: min(760px, 100%); margin: 0 auto; display: grid; gap: 16px; }
-    .selected-entry, .side-effects-note, .dialog-error, .dialog-status, .empty { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); padding: 12px 14px; }
-    .selected-entry { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 8px 10px; background: var(--pi-surface); }
+    .confirmation-card { width: min(760px, 100%); margin: 0 auto; display: grid; gap: var(--pi-space-7); }
+    .selected-entry, .side-effects-note, .dialog-error, .dialog-status, .empty { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); padding: var(--pi-space-6) var(--pi-space-7); }
+    .selected-entry { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: var(--pi-space-4) var(--pi-space-5); background: var(--pi-surface); }
     .selected-entry p { grid-column: 2; color: var(--pi-muted); font-size: var(--pi-text-xs); }
-    fieldset { min-width: 0; margin: 0; padding: 0; border: 0; display: grid; gap: 9px; }
-    legend { margin-bottom: 8px; font-weight: 700; }
-    .choice-option { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 10px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); padding: 11px 12px; background: var(--pi-surface); cursor: pointer; }
+    fieldset { min-width: 0; margin: 0; padding: 0; border: 0; display: grid; gap: var(--pi-space-5); }
+    legend { margin-bottom: var(--pi-space-4); font-weight: 700; }
+    .choice-option { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); padding: var(--pi-space-6) var(--pi-space-6); background: var(--pi-surface); cursor: pointer; }
     .choice-option.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
-    .choice-option input { margin-top: 3px; accent-color: var(--pi-accent); }
-    .choice-option span { display: grid; gap: 3px; }
+    .choice-option input { margin-top: var(--pi-space-2); accent-color: var(--pi-accent); }
+    .choice-option span { display: grid; gap: var(--pi-space-2); }
     .choice-option small { color: var(--pi-muted); }
-    .custom-focus { display: grid; gap: 6px; margin: 2px 0 0 30px; font-weight: 600; }
-    textarea { width: 100%; resize: vertical; min-height: 94px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: 9px 10px; font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); }
+    .custom-focus { display: grid; gap: var(--pi-space-3); margin: var(--pi-space-1) 0 0 30px; font-weight: 600; }
+    textarea { width: 100%; resize: vertical; min-height: 94px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: var(--pi-space-5) var(--pi-space-5); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); }
     textarea:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }
     .character-count { justify-self: end; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: 400; }
     .validation-error { margin-inline-start: 30px; color: var(--pi-danger); font-size: var(--pi-text-xs); }
@@ -599,7 +599,7 @@ export class SessionTreeNavigator extends LitElement {
     .dialog-error { border-color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 10%, var(--pi-bg)); color: var(--pi-danger); }
     .dialog-status { border-color: var(--pi-success-border); background: var(--pi-success-bg); }
     .empty { color: var(--pi-muted); background: var(--pi-surface); }
-    button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 8px 11px; font: inherit; cursor: pointer; }
+    button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-6); font: inherit; cursor: pointer; }
     @media (hover: hover) { button:not(:disabled):hover { background: var(--pi-surface-hover); } }
     button:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }
     button:disabled { opacity: .52; cursor: not-allowed; }
@@ -611,14 +611,14 @@ export class SessionTreeNavigator extends LitElement {
     @media (max-width: 760px) {
       header { padding-top: max(12px, env(safe-area-inset-top)); }
       .tree-step { padding-inline: max(8px, env(safe-area-inset-left)) max(8px, env(safe-area-inset-right)); }
-      .tree-intro { padding-inline: 4px; }
+      .tree-intro { padding-inline: var(--pi-space-2); }
       .tree-row { grid-template-columns: 20px minmax(0, 1fr); padding-inline-start: calc(7px + min(var(--tree-indent-mobile), 48px)); }
-      .tree-row > .metadata { grid-column: 2; grid-row: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 5px 8px; }
+      .tree-row > .metadata { grid-column: 2; grid-row: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--pi-space-3) var(--pi-space-4); }
       .tree-row > .metadata > .badges { margin-inline-start: auto; flex-wrap: wrap; }
-      .tree-row > .entry { grid-column: 2; grid-row: 2; display: grid; gap: 3px; }
+      .tree-row > .entry { grid-column: 2; grid-row: 2; display: grid; gap: var(--pi-space-2); }
       .tree-row .summary { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
       .tree-row time { display: none; }
-      .confirmation-step { padding: 18px 12px; }
+      .confirmation-step { padding: var(--pi-space-8) var(--pi-space-6); }
       .custom-focus, .validation-error { margin-inline-start: 0; }
       footer { flex-wrap: wrap; }
     }

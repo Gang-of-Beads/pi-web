@@ -94,29 +94,29 @@ export class SettingsPanelFrame extends LitElement {
   static override styles = [interactiveSurfaceStyles, css`
     :host { display: block; }
     .panel { display: block; }
-    .section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
-    .heading-copy { display: grid; gap: 6px; min-width: 0; }
-    .heading-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
+    .section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--pi-space-7); margin-bottom: var(--pi-space-7); }
+    .heading-copy { display: grid; gap: var(--pi-space-3); min-width: 0; }
+    .heading-actions { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-4); }
     h2 { margin: 0; font-size: var(--pi-text-lg); line-height: 1.25; }
     .description { color: var(--pi-muted); line-height: 1.45; }
     .description ::slotted(*) { margin: 0; }
-    button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; font: inherit; cursor: pointer; }
+    button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); font: inherit; cursor: pointer; }
     button:disabled { opacity: .55; cursor: not-allowed; }
     .secondary { flex: 0 0 auto; }
-    .notice-stack { display: grid; gap: 12px; margin-bottom: 14px; }
-    .notice { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); padding: 12px; line-height: 1.45; }
+    .notice-stack { display: grid; gap: var(--pi-space-6); margin-bottom: var(--pi-space-7); }
+    .notice { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); padding: var(--pi-space-6); line-height: 1.45; }
     .notice.error { border-color: var(--pi-danger); color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 10%, var(--pi-surface)); }
     .notice.success { border-color: var(--pi-success-border); color: var(--pi-success); background: var(--pi-success-surface); }
     .notice.warning { border-color: var(--pi-warning-border); color: var(--pi-text); background: var(--pi-warning-surface); }
     .notice.info { color: var(--pi-muted); }
-    .notice-title { display: block; margin-bottom: 4px; color: inherit; }
+    .notice-title { display: block; margin-bottom: var(--pi-space-2); color: inherit; }
     .notice-content { min-width: 0; }
-    code { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-bg); padding: 1px 4px; color: var(--pi-text); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
-    .content { display: grid; gap: 14px; min-width: 0; }
+    code { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-bg); padding: var(--pi-space-1) var(--pi-space-2); color: var(--pi-text); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+    .content { display: grid; gap: var(--pi-space-7); min-width: 0; }
     .content ::slotted(*) { min-width: 0; }
 
     @media (max-width: 760px) {
-      .section-heading { display: grid; gap: 12px; }
+      .section-heading { display: grid; gap: var(--pi-space-6); }
       .heading-actions { justify-self: start; }
     }
   `];

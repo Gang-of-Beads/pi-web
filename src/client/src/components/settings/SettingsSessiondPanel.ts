@@ -132,26 +132,26 @@ export class SettingsSessiondPanel extends LitElement {
   static override styles = [interactiveSurfaceStyles, css`
     :host { display: block; }
     h3 { margin: 0; font-size: var(--pi-text-sm); line-height: 1.3; }
-    .loading-card, .config-path-card, .effective-card { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); padding: 12px; }
+    .loading-card, .config-path-card, .effective-card { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); padding: var(--pi-space-6); }
     .loading-card { color: var(--pi-muted); }
-    .config-path-card { display: grid; gap: 5px; }
+    .config-path-card { display: grid; gap: var(--pi-space-3); }
     .config-path-card span, .field-heading, dt { color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: 600; }
-    code { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-bg); padding: 1px 4px; color: var(--pi-text); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
-    .field { display: grid; gap: 7px; }
+    code { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-bg); padding: var(--pi-space-1) var(--pi-space-2); color: var(--pi-text); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+    .field { display: grid; gap: var(--pi-space-4); }
     .field small { color: var(--pi-muted); line-height: 1.45; }
-    .field-heading { display: flex; align-items: center; gap: 8px; }
-    .toggle { display: flex; align-items: center; gap: 9px; cursor: pointer; }
+    .field-heading { display: flex; align-items: center; gap: var(--pi-space-4); }
+    .toggle { display: flex; align-items: center; gap: var(--pi-space-5); cursor: pointer; }
     .toggle input { width: 16px; height: 16px; }
     .toggle input:disabled { cursor: not-allowed; }
-    .override-badge { border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); color: var(--pi-warning); background: var(--pi-warning-surface); padding: 2px 7px; font-size: var(--pi-text-2xs); font-weight: 600; text-transform: none; }
-    .effective-card { display: grid; gap: 10px; }
-    .effective-card dl { display: grid; gap: 8px; margin: 0; }
-    .effective-card dl > div { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 12px; align-items: baseline; }
+    .override-badge { border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); color: var(--pi-warning); background: var(--pi-warning-surface); padding: var(--pi-space-1) var(--pi-space-4); font-size: var(--pi-text-2xs); font-weight: 600; text-transform: none; }
+    .effective-card { display: grid; gap: var(--pi-space-5); }
+    .effective-card dl { display: grid; gap: var(--pi-space-4); margin: 0; }
+    .effective-card dl > div { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: var(--pi-space-6); align-items: baseline; }
     dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
     .muted { color: var(--pi-muted); }
 
     @media (max-width: 760px) {
-      .effective-card dl > div { grid-template-columns: minmax(0, 1fr); gap: 3px; }
+      .effective-card dl > div { grid-template-columns: minmax(0, 1fr); gap: var(--pi-space-2); }
     }
   `];
 }

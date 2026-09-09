@@ -131,19 +131,19 @@ export class MachineDialog extends LitElement {
     /* The form is the surface's single slotted child: the section's flex column
        constrains it (min-height: 0 so the body can shrink and scroll). */
     form { display: flex; flex-direction: column; min-height: 0; }
-    header, footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border-bottom: 1px solid var(--pi-border); }
+    header, footer { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: var(--pi-space-6); border-bottom: 1px solid var(--pi-border); }
     footer { border-top: 1px solid var(--pi-border); border-bottom: 0; justify-content: end; }
-    .body { display: grid; gap: 8px; padding: 12px; min-height: 0; overflow: auto; }
-    label { display: grid; gap: 6px; color: var(--pi-muted); }
-    input { box-sizing: border-box; width: 100%; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: 9px; font: var(--pi-control-font-size, 16px) var(--pi-control-monospace-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
+    .body { display: grid; gap: var(--pi-space-4); padding: var(--pi-space-6); min-height: 0; overflow: auto; }
+    label { display: grid; gap: var(--pi-space-3); color: var(--pi-muted); }
+    input { box-sizing: border-box; width: 100%; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: var(--pi-space-5); font: var(--pi-control-font-size, 16px) var(--pi-control-monospace-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
     input:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }
     .hint { color: var(--pi-muted); }
-    .intro { margin: 4px 0 0; line-height: 1.4; }
+    .intro { margin: var(--pi-space-2) 0 0; line-height: 1.4; }
     .optional { color: var(--pi-muted); font-weight: 400; }
     .field-error { color: var(--pi-danger); }
-    .dialog-error { border: 1px solid var(--pi-danger); border-radius: var(--pi-radius-md); background: color-mix(in srgb, var(--pi-danger) 10%, transparent); color: var(--pi-danger); padding: 9px; line-height: 1.35; }
-    button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; }
-    header button { border: 0; background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); padding: 0 8px; }
+    .dialog-error { border: 1px solid var(--pi-danger); border-radius: var(--pi-radius-md); background: color-mix(in srgb, var(--pi-danger) 10%, transparent); color: var(--pi-danger); padding: var(--pi-space-5); line-height: 1.35; }
+    button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
+    header button { border: 0; background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); padding: 0 var(--pi-space-4); }
     .primary { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-on-accent, var(--pi-bg)); }
     button:disabled { opacity: .5; cursor: not-allowed; }
     /* Coarse pointers get the comfort floor: this dialog shipped 33px footer

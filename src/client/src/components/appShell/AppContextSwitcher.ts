@@ -104,7 +104,7 @@ export class AppContextSwitcher extends LitElement {
     .seg { box-sizing: border-box; display: flex; align-items: stretch; min-height: var(--pi-control-height-touch); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); }
     .step.open .seg { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     @media (hover: hover) { .seg:hover { border-color: var(--pi-accent); } }
-    .chip { flex: 1 1 auto; min-width: 0; display: grid; gap: 1px; justify-items: start; align-content: center; border: 0; background: none; padding: var(--pi-space-2) var(--pi-space-4); font: inherit; text-align: left; cursor: pointer; }
+    .chip { flex: 1 1 auto; min-width: 0; display: grid; gap: var(--pi-space-1); justify-items: start; align-content: center; border: 0; background: none; padding: var(--pi-space-2) var(--pi-space-4); font: inherit; text-align: left; cursor: pointer; }
     .chip:focus-visible, .add:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -2px; }
     .chip-label { color: var(--pi-muted); font-size: var(--pi-text-2xs); text-transform: uppercase; letter-spacing: .04em; }
     .chip-value { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--pi-text-sm); font-weight: 600; }

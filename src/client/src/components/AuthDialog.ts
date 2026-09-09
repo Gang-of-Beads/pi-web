@@ -263,7 +263,7 @@ export class AuthDialog extends LitElement {
   static override styles = [interactiveSurfaceStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-blocking); color: var(--pi-text); font: 14px system-ui, sans-serif; }
     modal-surface { --modal-surface-width: min(720px, calc(100vw - 40px)); --modal-surface-max-height: min(640px, calc(100vh - 40px)); }
-    header { display: flex; align-items: center; justify-content: space-between; padding: 12px; border-bottom: 1px solid var(--pi-border); }
+    header { display: flex; align-items: center; justify-content: space-between; padding: var(--pi-space-6); border-bottom: 1px solid var(--pi-border); }
     .options { min-height: 0; overflow: auto; outline: none; }
     /* Focusable for arrow-key navigation, so it needs its own ring; and the
        input's border is not enough of a signal on its own. */
@@ -271,29 +271,29 @@ export class AuthDialog extends LitElement {
     input:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: -2px; }
     button { border: 0; background: transparent; color: var(--pi-text); cursor: pointer; }
     header button { font-size: var(--pi-text-xl); color: var(--pi-muted); }
-    input { margin: 10px 12px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); padding: 8px 10px; outline: none; }
+    input { margin: var(--pi-space-5) var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); padding: var(--pi-space-4) var(--pi-space-5); outline: none; }
     input:focus { border-color: var(--pi-accent); }
-    .options button { display: block; width: 100%; padding: 10px 12px; border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
+    .options button { display: block; width: 100%; padding: var(--pi-space-5) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
     .options button.selected { background: var(--pi-selection-bg); }
     @media (hover: hover) { .options button:hover { background: var(--pi-selection-bg); } }
-    small { display: block; margin-top: 4px; color: var(--pi-muted); }
-    .empty { padding: 24px; color: var(--pi-muted); text-align: center; }
+    small { display: block; margin-top: var(--pi-space-2); color: var(--pi-muted); }
+    .empty { padding: var(--pi-space-9); color: var(--pi-muted); text-align: center; }
   `, css`
-    .form { display: grid; gap: 12px; padding: 14px; overflow: auto; }
+    .form { display: grid; gap: var(--pi-space-6); padding: var(--pi-space-7); overflow: auto; }
     .form p { margin: 0; color: var(--pi-text-secondary); overflow-wrap: anywhere; }
     .form a { color: var(--pi-accent); overflow-wrap: anywhere; }
-    .form code { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-xs); background: var(--pi-surface); padding: 1px 4px; }
+    .form code { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-xs); background: var(--pi-surface); padding: var(--pi-space-1) var(--pi-space-2); }
     label { color: var(--pi-muted); }
-    .actions { display: flex; justify-content: flex-end; gap: 8px; }
-    .actions button, .inline-options button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; }
+    .actions { display: flex; justify-content: flex-end; gap: var(--pi-space-4); }
+    .actions button, .inline-options button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); }
     .actions button.primary { border-color: var(--pi-success-border); background: var(--pi-success-surface); color: var(--pi-success); }
     .actions button:disabled { opacity: .6; cursor: wait; }
     .warning { color: var(--pi-warning); }
     .error-text { color: var(--pi-danger); }
-    .progress { margin: 0; padding-left: 18px; color: var(--pi-muted); }
-    .info-links { display: flex; flex-wrap: wrap; gap: 8px 12px; }
-    .inline-options { display: grid; gap: 8px; }
-    .inline-options button { display: grid; gap: 2px; text-align: left; }
+    .progress { margin: 0; padding-left: var(--pi-space-8); color: var(--pi-muted); }
+    .info-links { display: flex; flex-wrap: wrap; gap: var(--pi-space-4) var(--pi-space-6); }
+    .inline-options { display: grid; gap: var(--pi-space-4); }
+    .inline-options button { display: grid; gap: var(--pi-space-1); text-align: left; }
     .inline-options small { color: var(--pi-muted); }
     em { color: var(--pi-success); font-style: normal; font-size: var(--pi-text-xs); }
   `];

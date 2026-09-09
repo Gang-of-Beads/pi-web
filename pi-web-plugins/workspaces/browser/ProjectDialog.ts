@@ -327,21 +327,21 @@ export class ProjectDialog extends LitElement {
 
   static override styles = [css`
     .dialog { display: flex; flex-direction: column; min-height: 0; max-height: 100%; color: var(--pi-text); }
-    header, footer { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border-bottom: 1px solid var(--pi-border); }
+    header, footer { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: var(--pi-space-6); border-bottom: 1px solid var(--pi-border); }
     footer { border-top: 1px solid var(--pi-border); border-bottom: 0; justify-content: end; }
-    .body { flex: 1 1 auto; display: grid; gap: 12px; padding: 12px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-    label { display: grid; gap: 6px; color: var(--pi-muted); }
-    input[type="text"], input:not([type]) { box-sizing: border-box; width: 100%; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: 9px; font: var(--pi-control-font-size, 16px) var(--pi-control-monospace-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
+    .body { flex: 1 1 auto; display: grid; gap: var(--pi-space-6); padding: var(--pi-space-6); min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+    label { display: grid; gap: var(--pi-space-3); color: var(--pi-muted); }
+    input[type="text"], input:not([type]) { box-sizing: border-box; width: 100%; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: var(--pi-space-5); font: var(--pi-control-font-size, 16px) var(--pi-control-monospace-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
     input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
     .check { display: flex; grid-template-columns: auto 1fr; align-items: center; color: var(--pi-text); }
     .suggestions { min-height: 90px; max-height: 320px; overflow: auto; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); }
-    .suggestions button { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 0; border-bottom: 1px solid var(--pi-border); border-radius: 0; background: transparent; color: var(--pi-text); padding: 8px 10px; text-align: left; font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .suggestions button { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 0; border-bottom: 1px solid var(--pi-border); border-radius: 0; background: transparent; color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); text-align: left; font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .suggestions button.selected { background: var(--pi-selection-bg); }
     @media (hover: hover) { .suggestions button:hover { background: var(--pi-selection-bg); } }
-    .hint { padding: 12px; color: var(--pi-muted); }
+    .hint { padding: var(--pi-space-6); color: var(--pi-muted); }
     small.hint { padding: 0; line-height: 1.4; }
     .trust-error { color: var(--pi-danger, #c0392b); }
-    .submit-error { flex: 0 0 auto; margin: 0; padding: 0 12px 12px; color: var(--pi-danger); line-height: 1.35; }
+    .submit-error { flex: 0 0 auto; margin: 0; padding: 0 var(--pi-space-6) var(--pi-space-6); color: var(--pi-danger); line-height: 1.35; }
     .trust-hint { color: var(--pi-muted); line-height: 1.3; }
     .trust-hint a { color: var(--pi-accent); }
     /* Coarse pointers get the comfort floor and the AA floor across the form:
@@ -363,11 +363,11 @@ export class ProjectDialog extends LitElement {
       /* The body scrolls now, so the list does not need to reserve a slice of
          the viewport for itself. */
       .suggestions { max-height: 38dvh; }
-      .suggestions button { min-height: var(--pi-control-height-touch); padding: 10px 12px; }
+      .suggestions button { min-height: var(--pi-control-height-touch); padding: var(--pi-space-5) var(--pi-space-6); }
       footer button { min-height: var(--pi-control-height-touch); }
     }
-    button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; }
-    header button { border: 0; background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); padding: 0 8px; }
+    button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
+    header button { border: 0; background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); padding: 0 var(--pi-space-4); }
     @media (pointer: coarse) { header button { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); } }
     /* The primary action is accent-filled like every other dialog's: the
        green here was a border token pressed into service as a fill and never

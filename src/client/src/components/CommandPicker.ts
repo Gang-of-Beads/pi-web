@@ -97,21 +97,21 @@ export class CommandPicker extends LitElement {
   static override styles = [interactiveSurfaceStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-popover); color: var(--pi-text); font: 14px system-ui, sans-serif; }
     modal-surface { --modal-surface-width: min(720px, calc(100vw - 40px)); --modal-surface-max-height: min(640px, calc(100vh - 40px)); }
-    header { display: flex; align-items: center; justify-content: space-between; padding: 12px; border-bottom: 1px solid var(--pi-border); }
+    header { display: flex; align-items: center; justify-content: space-between; padding: var(--pi-space-6); border-bottom: 1px solid var(--pi-border); }
     .options { min-height: 0; overflow: auto; outline: none; }
     /* The container takes focus (tabindex=0) for arrow-key navigation, so it
        needs a visible ring of its own when reached by keyboard. */
     .options:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: -2px; }
     button { border: 0; background: transparent; color: var(--pi-text); cursor: pointer; }
     header button { font-size: var(--pi-text-xl); color: var(--pi-muted); }
-    input { box-sizing: border-box; margin: 10px 12px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); padding: 8px 10px; outline: none; }
+    input { box-sizing: border-box; margin: var(--pi-space-5) var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); padding: var(--pi-space-4) var(--pi-space-5); outline: none; }
     input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
     input:focus { border-color: var(--pi-accent); }
-    .options button { display: block; width: 100%; font: var(--pi-text-sm)/1.25 var(--pi-font-ui); padding: 10px 12px; border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
+    .options button { display: block; width: 100%; font: var(--pi-text-sm)/1.25 var(--pi-font-ui); padding: var(--pi-space-5) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
     .options button.selected { background: var(--pi-selection-bg); }
     @media (hover: hover) { .options button:hover { background: var(--pi-selection-bg); } }
-    small { display: block; margin-top: 4px; color: var(--pi-muted); }
-    .empty { padding: 24px; color: var(--pi-muted); text-align: center; }
+    small { display: block; margin-top: var(--pi-space-2); color: var(--pi-muted); }
+    .empty { padding: var(--pi-space-9); color: var(--pi-muted); text-align: center; }
     /* Coarse pointers get the comfort floor across the picker chrome: the
        close control, the search field, and every option row are touch targets
        on a phone. Declared after every base rule it raises. */

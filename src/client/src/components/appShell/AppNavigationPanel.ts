@@ -466,7 +466,7 @@ export class AppNavigationPanel extends LitElement {
        box carries the row's tap weight in the phone header. */
     @media (pointer: coarse) { .compact-header-action { min-width: var(--pi-control-height-touch, 44px); min-height: var(--pi-control-height-touch, 44px); } }
     @media (hover: hover) { .compact-header-action:hover { background: var(--pi-surface-hover); } }
-    .tools-section { flex: 0 0 auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 10px var(--pi-space-4) calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--pi-border-muted); }
+    .tools-section { flex: 0 0 auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pi-space-4); padding: 10px var(--pi-space-4) calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--pi-border-muted); }
     .tool-row:last-child:nth-child(odd) { grid-column: 1 / -1; }
     .tool-row { display: flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: 52px; padding: var(--pi-space-2) var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); font: inherit; text-align: start; }
     .tool-row:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 2px; }
@@ -483,7 +483,7 @@ export class AppNavigationPanel extends LitElement {
     header strong { flex: 0 0 auto; }
     machine-switcher { flex: 1 1 auto; min-width: 0; }
     :host([compact]) header { display: none; }
-    .header-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
+    .header-actions { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-4); }
     /* One section owns the body at a time, on every width. The context row
        above names the machine, project and workspace, so those pickers only
        appear while they are being changed - which is what frees the whole panel
@@ -495,7 +495,7 @@ export class AppNavigationPanel extends LitElement {
     session-list[collapsed] { flex: 0 0 auto; min-height: auto; overflow: hidden; }
     /* Goals are workspace context under the session list: capped so a long
        task list cannot push the sessions it belongs to off-screen. */
-    button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; }
+    button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
   `;
 }
 

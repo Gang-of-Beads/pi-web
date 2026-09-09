@@ -133,43 +133,43 @@ export class ToolExecutionView extends LitElement {
 
   static override styles = [interactiveSurfaceStyles, css`
     :host { display: block; width: 100%; max-width: 100%; min-width: 0; color: var(--pi-text); }
-    .tool-card { display: grid; gap: 8px; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; overflow: hidden; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); padding: 9px; color: var(--pi-text); }
+    .tool-card { display: grid; gap: var(--pi-space-4); width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; overflow: hidden; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); padding: var(--pi-space-5); color: var(--pi-text); }
     .tool-card.running, .tool-card.pending { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); }
     .tool-card.interrupted { border-color: var(--pi-border); background: var(--pi-surface); }
     .tool-card.success { border-color: var(--pi-success-border); background: var(--pi-success-bg); }
     .tool-card.error { border-color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 10%, var(--pi-bg)); }
-    .tool-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-width: 0; }
-    .tool-title { flex: 1 1 auto; display: inline-flex; align-items: baseline; gap: 7px; min-width: 0; }
+    .tool-header { display: flex; align-items: baseline; justify-content: space-between; gap: var(--pi-space-6); min-width: 0; }
+    .tool-title { flex: 1 1 auto; display: inline-flex; align-items: baseline; gap: var(--pi-space-4); min-width: 0; }
     .status-icon { flex: 0 0 auto; color: var(--pi-muted); }
     strong { flex: 0 0 auto; color: var(--pi-text); }
     .path, .summary { display: block; flex: 1 1 auto; min-width: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; white-space: pre; color: var(--pi-accent); font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; direction: ltr; text-align: left; unicode-bidi: isolate; }
     .summary { color: var(--pi-muted); font-family: inherit; }
-    .tool-meta { flex: 0 0 auto; display: inline-flex; align-items: baseline; gap: 8px; color: var(--pi-muted); font-size: var(--pi-text-xs); }
-    .diff-stats { display: inline-flex; gap: 3px; }
+    .tool-meta { flex: 0 0 auto; display: inline-flex; align-items: baseline; gap: var(--pi-space-4); color: var(--pi-muted); font-size: var(--pi-text-xs); }
+    .diff-stats { display: inline-flex; gap: var(--pi-space-2); }
     .added, .diff .added { color: var(--pi-success); }
     .removed, .diff .removed { color: var(--pi-danger); }
     .status-label { color: var(--pi-muted); font: var(--pi-text-xs) var(--pi-font-mono); }
     .notice { margin: 0; color: var(--pi-warning); }
     .muted { margin: 0; color: var(--pi-muted); }
-    .error-text { margin: 0; border: 1px solid var(--pi-danger); border-radius: var(--pi-radius-md); background: color-mix(in srgb, var(--pi-danger) 10%, var(--pi-bg)); color: var(--pi-danger); padding: 8px; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    .text-body { border-top: 1px solid var(--pi-border-muted); padding-top: 6px; }
-    .detail-target, .detail-result { display: grid; gap: 4px; margin-top: 8px; min-width: 0; }
+    .error-text { margin: 0; border: 1px solid var(--pi-danger); border-radius: var(--pi-radius-md); background: color-mix(in srgb, var(--pi-danger) 10%, var(--pi-bg)); color: var(--pi-danger); padding: var(--pi-space-4); white-space: pre-wrap; overflow-wrap: anywhere; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .text-body { border-top: 1px solid var(--pi-border-muted); padding-top: var(--pi-space-3); }
+    .detail-target, .detail-result { display: grid; gap: var(--pi-space-2); margin-top: var(--pi-space-4); min-width: 0; }
     .detail-label { color: var(--pi-muted); font: var(--pi-text-xs) var(--pi-font-mono); }
     .text-body pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--pi-text); }
-    .detail-result pre { box-sizing: border-box; max-width: 100%; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-md); background: var(--pi-bg); padding: 8px; white-space: pre; overflow-wrap: normal; direction: ltr; text-align: left; unicode-bidi: isolate; }
+    .detail-result pre { box-sizing: border-box; max-width: 100%; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-md); background: var(--pi-bg); padding: var(--pi-space-4); white-space: pre; overflow-wrap: normal; direction: ltr; text-align: left; unicode-bidi: isolate; }
     .detail-target-value { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--pi-accent); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; direction: ltr; text-align: left; unicode-bidi: isolate; }
-    .diff-details { min-width: 0; max-width: 100%; border-top: 1px solid var(--pi-border-muted); padding-top: 6px; }
-    .diff-details > summary { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; color: var(--pi-muted); cursor: pointer; }
+    .diff-details { min-width: 0; max-width: 100%; border-top: 1px solid var(--pi-border-muted); padding-top: var(--pi-space-3); }
+    .diff-details > summary { display: flex; align-items: baseline; justify-content: space-between; gap: var(--pi-space-4); min-width: 0; color: var(--pi-muted); cursor: pointer; }
     .diff-details > summary span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .diff-details > summary small { flex: 0 0 auto; color: var(--pi-dim); }
-    .diff-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; margin-top: 8px; color: var(--pi-muted); font-size: var(--pi-text-xs); }
+    .diff-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); min-width: 0; margin-top: var(--pi-space-4); color: var(--pi-muted); font-size: var(--pi-text-xs); }
     .diff-toolbar span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-text); padding: 3px 7px; font: 12px system-ui, sans-serif; cursor: pointer; }
+    button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-2) var(--pi-space-4); font: 12px system-ui, sans-serif; cursor: pointer; }
     button:focus { border-color: var(--pi-accent); }
     @media (hover: hover) { button:hover { border-color: var(--pi-accent); } }
-    .diff { box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; margin: 0; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-md); background: var(--pi-bg); padding: 8px 0; color: var(--pi-muted); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; line-height: 1.45; }
+    .diff { box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; margin: 0; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-md); background: var(--pi-bg); padding: var(--pi-space-4) 0; color: var(--pi-muted); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; line-height: 1.45; }
     .diff-content { display: block; width: max-content; min-width: 100%; }
-    .diff span { display: block; min-height: 1.45em; padding: 0 8px; white-space: pre; }
+    .diff span { display: block; min-height: 1.45em; padding: 0 var(--pi-space-4); white-space: pre; }
     .diff .context { color: var(--pi-muted); }
     .diff .hunk { color: var(--pi-accent); }
     .diff .file { color: var(--pi-dim); }

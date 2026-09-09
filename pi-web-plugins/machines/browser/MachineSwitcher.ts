@@ -296,7 +296,7 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     .machine-switcher-button { box-sizing: border-box; width: 100%; min-width: 0; display: flex; align-items: center; gap: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-2) var(--pi-space-4); cursor: pointer; text-align: left; }
     .machine-switcher-button:focus-visible { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     @media (hover: hover) { .machine-switcher-button:hover { border-color: var(--pi-accent); background: var(--pi-selection-bg); } }
-    .machine-switcher-text { flex: 1 1 auto; min-width: 0; display: grid; gap: 1px; }
+    .machine-switcher-text { flex: 1 1 auto; min-width: 0; display: grid; gap: var(--pi-space-1); }
     .machine-switcher-kicker { color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: 1; text-transform: uppercase; letter-spacing: .02em; }
     .machine-switcher-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--pi-text-xs); font-weight: 600; line-height: 1.2; }
     .machine-status { flex: 0 0 auto; color: var(--pi-muted); font-size: var(--pi-text-2xs); }
@@ -311,15 +311,15 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     .unread-ring { flex: 0 0 auto; box-sizing: border-box; display: inline-grid; place-items: center; width: var(--pi-dot-md); height: var(--pi-dot-md); border: 1.5px solid var(--pi-accent); border-radius: 50%; }
     .unread-ring .activity-indicator { width: var(--pi-dot-xs); height: var(--pi-dot-xs); }
     .machine-switcher-menu { position: fixed; z-index: var(--pi-layer-overlay); box-sizing: border-box; width: min(420px, calc(100vw - 16px)); overflow: auto; padding: var(--pi-space-4); border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-lg); background: var(--pi-surface-raised); box-shadow: var(--pi-elevation-3); display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--pi-space-3); }
-    .machine-option { position: relative; display: grid; gap: 4px; box-sizing: border-box; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-lg); background: var(--pi-surface); }
+    .machine-option { position: relative; display: grid; gap: var(--pi-space-2); box-sizing: border-box; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-lg); background: var(--pi-surface); }
     @media (hover: hover) { .machine-option:hover { background: var(--pi-surface-hover); } }
     .machine-option.selected { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
     .machine-option.selected::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 0 var(--pi-radius-xs) var(--pi-radius-xs) 0; background: var(--pi-accent); }
     .machine-option-main, .machine-option-actions-toggle, .machine-option-actions-panel button { border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-text); cursor: pointer; }
-    .machine-option-main { min-width: 0; min-height: 60px; display: grid; gap: 3px; padding: 9px 8px 8px; text-align: left; align-content: start; }
-    .machine-option-name { min-width: 0; display: flex; align-items: center; gap: 6px; }
+    .machine-option-main { min-width: 0; min-height: 60px; display: grid; gap: var(--pi-space-2); padding: var(--pi-space-5) var(--pi-space-4) var(--pi-space-4); text-align: left; align-content: start; }
+    .machine-option-name { min-width: 0; display: flex; align-items: center; gap: var(--pi-space-3); }
     .machine-option-name span:last-child { min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .machine-option-status { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: 500; }
+    .machine-option-status { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: 500; }
     .machine-option-status .dot { width: var(--pi-dot-sm); height: var(--pi-dot-sm); border-radius: 50%; background: var(--pi-dim); }
     .machine-option-status.online { color: var(--pi-success); }
     .machine-option-status.online .dot { background: var(--pi-success); }
@@ -331,7 +331,7 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     .machine-option-actions-toggle { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; color: var(--pi-muted); border-radius: var(--pi-radius-sm); }
     .machine-option.no-actions .machine-option-actions { display: none; }
     .machine-option-actions-panel { position: fixed; z-index: var(--pi-layer-popover); box-sizing: border-box; min-width: min(120px, calc(100vw - 16px)); overflow: auto; padding: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface-raised); box-shadow: var(--pi-elevation-2); }
-    .machine-option-actions-panel button { display: block; width: 100%; padding: 7px 9px; text-align: left; white-space: nowrap; }
+    .machine-option-actions-panel button { display: block; width: 100%; padding: var(--pi-space-4) var(--pi-space-5); text-align: left; white-space: nowrap; }
     .machine-option-actions-panel button.danger { color: var(--pi-danger); }
     /* The row menu is the same verb as every other row menu in the app, so it
        carries the same touch floor: this one shipped a 26px trigger and 28px

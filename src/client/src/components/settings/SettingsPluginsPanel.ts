@@ -198,25 +198,25 @@ export class SettingsPluginsPanel extends LitElement {
     :host { display: block; }
     input { font: inherit; }
     input:disabled { opacity: .55; cursor: not-allowed; }
-    .loading-card, .plugin-note, .plugin-card, .recovery { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); padding: 12px; }
+    .loading-card, .plugin-note, .plugin-card, .recovery { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); padding: var(--pi-space-6); }
     .loading-card, .plugin-note { color: var(--pi-muted); }
-    code { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-bg); padding: 1px 4px; color: var(--pi-text); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
-    .plugin-list { display: grid; gap: 10px; }
-    .plugin-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+    code { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-bg); padding: var(--pi-space-1) var(--pi-space-2); color: var(--pi-text); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+    .plugin-list { display: grid; gap: var(--pi-space-5); }
+    .plugin-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--pi-space-6); align-items: center; }
     .plugin-card.disabled { opacity: .8; }
-    .plugin-main { min-width: 0; display: grid; gap: 5px; }
+    .plugin-main { min-width: 0; display: grid; gap: var(--pi-space-3); }
     .plugin-main > strong, .plugin-main > small:not(.command) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .plugin-main small { color: var(--pi-muted); }
     .diagnostic { color: var(--pi-text) !important; }
     .command { line-height: 1.5; }
-    .status-list { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px; }
-    .status { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-pill); padding: 2px 7px; color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: 1.3; }
+    .status-list { display: flex; flex-wrap: wrap; gap: var(--pi-space-3); margin-top: var(--pi-space-1); }
+    .status { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-pill); padding: var(--pi-space-1) var(--pi-space-4); color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: 1.3; }
     .status.success { border-color: var(--pi-success-border); color: var(--pi-success); background: var(--pi-success-surface); }
     .status.warning { border-color: var(--pi-warning-border); color: var(--pi-text); background: var(--pi-warning-surface); }
     .status.error { border-color: var(--pi-danger); color: var(--pi-danger); }
-    .toggle { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+    .toggle { display: inline-flex; align-items: center; gap: var(--pi-space-4); white-space: nowrap; }
     .toggle input { width: 18px; height: 18px; accent-color: var(--pi-accent); }
-    .recovery { display: grid; gap: 7px; }
+    .recovery { display: grid; gap: var(--pi-space-4); }
     .recovery small { color: var(--pi-muted); line-height: 1.4; }
     .recovery code { display: block; width: fit-content; max-width: 100%; }
 

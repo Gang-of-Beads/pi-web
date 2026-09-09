@@ -26,15 +26,15 @@ export class SessionRenameDialog extends LitElement {
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-dialog); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
     modal-surface { --modal-surface-place-items: start center; --modal-surface-backdrop-padding: min(12vh, 90px) 0 0; --modal-surface-width: min(560px, calc(100vw - 40px)); --modal-surface-max-height: min(640px, calc(100vh - 40px)); }
     form { display: flex; flex-direction: column; min-height: 0; }
-    header, footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border-bottom: 1px solid var(--pi-border); }
+    header, footer { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: var(--pi-space-6); border-bottom: 1px solid var(--pi-border); }
     footer { border-bottom: none; border-top: 1px solid var(--pi-border); }
-    .body { display: flex; flex-direction: column; gap: 8px; padding: 12px; overflow: auto; }
-    label { display: flex; flex-direction: column; gap: 4px; font-size: var(--pi-text-sm); color: var(--pi-muted); }
-    input { font: inherit; color: var(--pi-text); background: var(--pi-bg); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); padding: 8px 10px; }
+    .body { display: flex; flex-direction: column; gap: var(--pi-space-4); padding: var(--pi-space-6); overflow: auto; }
+    label { display: flex; flex-direction: column; gap: var(--pi-space-2); font-size: var(--pi-text-sm); color: var(--pi-muted); }
+    input { font: inherit; color: var(--pi-text); background: var(--pi-bg); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); padding: var(--pi-space-4) var(--pi-space-5); }
     input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
     .hint { color: var(--pi-muted); font-size: var(--pi-text-xs); margin: 0; }
-    button { font: inherit; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; }
-    header button { border: 0; background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); padding: 0 8px; }
+    button { font: inherit; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
+    header button { border: 0; background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); padding: 0 var(--pi-space-4); }
     .primary { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-on-accent, var(--pi-bg)); font-weight: 600; }
     button:disabled { opacity: .5; cursor: not-allowed; }
     footer { justify-content: flex-end; gap: var(--pi-space-4); }

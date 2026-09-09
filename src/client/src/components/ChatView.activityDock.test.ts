@@ -58,7 +58,7 @@ describe("the room the transcript keeps below its last message", () => {
     const chat = /\.chat\s*\{[^}]*\}/u.exec(sheet)?.[0] ?? "";
 
     expect(chat).not.toBe("");
-    expect(chat).toMatch(/padding:\s*26px var\(--pi-chat-gutter\) var\(--pi-space-7\)/u);
+    expect(chat).toMatch(/padding:\s*var\(--pi-space-9\) var\(--pi-chat-gutter\) var\(--pi-space-7\)/u);
     expect(chat).not.toMatch(/64px/u);
   });
 });

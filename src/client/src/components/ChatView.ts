@@ -187,7 +187,7 @@ export const chatStyles = css`
      the text: the message wraps under them, so an absolute button either
      overlapped the text or forced padding that made every row look ragged. */
   @media (max-width: 640px) {
-    .drawer-header { gap: var(--pi-space-2); padding-inline: 8px; }
+    .drawer-header { gap: var(--pi-space-2); padding-inline: var(--pi-space-4); }
     .drawer-tab { padding-inline: var(--pi-space-4); }
   }
   /* A short window is the case the drawer was breaking: keep it to a slice of
@@ -200,7 +200,7 @@ export const chatStyles = css`
      below the scroller now, so the transcript ends with the room it had before
      the dock existed: one space-7 of padding on top of the message rhythm's own
      16px margin, i.e. 32px from the last message to the dock. */
-  .chat { flex: 1 1 auto; --pi-chat-sticky-top: -26px; height: 100%; min-height: 0; overflow: auto; overflow-anchor: none; padding: 26px var(--pi-chat-gutter) var(--pi-space-7); box-sizing: border-box; }
+  .chat { flex: 1 1 auto; --pi-chat-sticky-top: calc(-1 * var(--pi-space-9)); height: 100%; min-height: 0; overflow: auto; overflow-anchor: none; padding: var(--pi-space-9) var(--pi-chat-gutter) var(--pi-space-7); box-sizing: border-box; }
   .scroll-marker { display: block; height: 0; overflow: hidden; pointer-events: none; }
   /* Its own row of the column, so the transcript above can grow all it likes
      without moving a control the reader is aiming at. Tall questions scroll
@@ -219,7 +219,7 @@ export const chatStyles = css`
      their own. Nothing is pinned, so the transcript scrolls at any card
      height and the card covers none of its own rows. */
   .waiting-slot { display: flex; flex-direction: column; gap: var(--pi-space-4); margin: 0 0 var(--pi-space-4); }
-  .activity-dock { flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) 10px; z-index: var(--pi-layer-sticky); display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: 0 8px 28px var(--pi-shadow); backdrop-filter: blur(6px); }
+  .activity-dock { flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) var(--pi-space-5); z-index: var(--pi-layer-sticky); display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: 0 8px 28px var(--pi-shadow); backdrop-filter: blur(6px); }
   /* Idle is the state nobody needs a full-width banner for: keep the signal,
      drop the bar that looked like an empty card above the composer.
 
@@ -292,7 +292,7 @@ export const chatStyles = css`
   .msg.skill { border-color: var(--pi-purple-border); background: var(--pi-purple-surface); }
   .msg.event-group { padding: 0; border-color: var(--pi-border); background: var(--pi-bg); color: var(--pi-muted); }
   .msg.event-group.live { border-color: var(--pi-success-border); background: var(--pi-success-bg); }
-  .msg.event-group > summary { position: sticky; top: -26px; z-index: 5; display: flex; align-items: center; gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); color: var(--pi-muted); }
+  .msg.event-group > summary { position: sticky; top: var(--pi-chat-sticky-top); z-index: 5; display: flex; align-items: center; gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); color: var(--pi-muted); }
   .msg.event-group.live > summary { border-bottom-color: var(--pi-success-border); background: var(--pi-success-bg); color: var(--pi-success); }
   .msg.event-group > summary .label { margin: 0; }
   .group-body { padding: 0 var(--pi-space-6) var(--pi-space-6); }
@@ -314,7 +314,7 @@ export const chatStyles = css`
   .group-msg.tool-execution-shell { color: var(--pi-text); }
   .group-msg.system { color: var(--pi-muted); }
   .group-msg.bash { color: var(--pi-success); }
-  .history-boundary { position: relative; z-index: 5; display: grid; gap: 3px; justify-items: center; margin: 0 auto var(--pi-space-7); color: var(--pi-muted); font-size: var(--pi-text-xs); text-align: center; }
+  .history-boundary { position: relative; z-index: 5; display: grid; gap: var(--pi-space-2); justify-items: center; margin: 0 auto var(--pi-space-7); color: var(--pi-muted); font-size: var(--pi-text-xs); text-align: center; }
   .history-load-button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text-secondary); padding: var(--pi-space-3) var(--pi-space-6); font: var(--pi-text-xs) var(--pi-font-ui); cursor: pointer; }
   .history-load-button:focus { border-color: var(--pi-accent); color: var(--pi-text-bright); }
   @media (hover: hover) { .history-load-button:hover { border-color: var(--pi-accent); color: var(--pi-text-bright); } }
@@ -376,7 +376,7 @@ export const chatStyles = css`
   .msg.tool > .msg-header { border-bottom-color: color-mix(in srgb, var(--pi-warning-border) 35%, transparent); background: var(--pi-warning-surface); }
   .msg.bash > .msg-header { border-bottom-color: color-mix(in srgb, var(--pi-success) 35%, transparent); background: var(--pi-success-bg); }
   .msg.skill > .msg-header { border-bottom-color: color-mix(in srgb, var(--pi-purple-border) 35%, transparent); background: var(--pi-purple-surface); }
-  .group-msg > .msg-header { position: sticky; top: -26px; z-index: 4; margin: -10px 0 var(--pi-space-4); padding: var(--pi-space-4) 0 var(--pi-space-3); border-bottom: 1px solid color-mix(in srgb, var(--pi-border-muted) 35%, transparent); background: var(--pi-bg); }
+  .group-msg > .msg-header { position: sticky; top: var(--pi-chat-sticky-top); z-index: 4; margin: -10px 0 var(--pi-space-4); padding: var(--pi-space-4) 0 var(--pi-space-3); border-bottom: 1px solid color-mix(in srgb, var(--pi-border-muted) 35%, transparent); background: var(--pi-bg); }
   .msg-header-trailing { min-width: 0; flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: flex-end; gap: var(--pi-space-4); }
   .msg-actions { flex: 0 0 auto; display: inline-flex; gap: var(--pi-space-3); opacity: 0; transition: opacity var(--pi-motion-fast) var(--pi-ease); }  .msg-action { position: relative; display: inline-grid; place-items: center; width: 24px; height: 24px; box-sizing: border-box; border: 0; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); padding: 0; font: var(--pi-text-base) var(--pi-font-ui); line-height: 1; cursor: pointer; }
   /* A fingertip is wider than the drawn button, so the reach grows, not the

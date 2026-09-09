@@ -93,23 +93,23 @@ function renderUpdatesPanel(html: HtmlTemplateTag, terminal: WorkspacePanelTermi
   const messages = status.messages;
   return html`
     <style>
-      .viewer.updates-status { flex: 1 1 auto; min-height: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; padding: 12px; overflow-y: auto; overflow-x: hidden; }
-      .viewer.updates-status section { flex: 0 0 auto; min-width: 0; display: grid; gap: 8px; }
-      .updates-message { display: grid; gap: 5px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); padding: 10px; background: var(--pi-surface); }
+      .viewer.updates-status { flex: 1 1 auto; min-height: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: var(--pi-space-7); padding: var(--pi-space-6); overflow-y: auto; overflow-x: hidden; }
+      .viewer.updates-status section { flex: 0 0 auto; min-width: 0; display: grid; gap: var(--pi-space-4); }
+      .updates-message { display: grid; gap: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); padding: var(--pi-space-5); background: var(--pi-surface); }
       .updates-message.warning { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); }
       .updates-message.error { border-color: var(--pi-danger); }
-      .updates-message-title { display: flex; gap: 8px; align-items: baseline; }
+      .updates-message-title { display: flex; gap: var(--pi-space-4); align-items: baseline; }
       .updates-message-title span { color: var(--pi-muted); font-size: var(--pi-text-xs); text-transform: uppercase; }
-      .updates-version-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 10px; border-bottom: 1px solid var(--pi-border-muted); padding: 6px 0; }
+      .updates-version-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--pi-space-2) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); padding: var(--pi-space-3) 0; }
       .updates-version-row small { grid-column: 1 / -1; color: var(--pi-muted); }
-      .updates-command { min-width: 0; display: grid; grid-template-columns: minmax(90px, auto) minmax(0, 1fr) auto; gap: 8px; align-items: center; }
-      .updates-command code { overflow: auto; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-sm); background: var(--pi-bg); padding: 5px 7px; white-space: nowrap; }
+      .updates-command { min-width: 0; display: grid; grid-template-columns: minmax(90px, auto) minmax(0, 1fr) auto; gap: var(--pi-space-4); align-items: center; }
+      .updates-command code { overflow: auto; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-sm); background: var(--pi-bg); padding: var(--pi-space-3) var(--pi-space-4); white-space: nowrap; }
       .updates-command-inline { grid-template-columns: minmax(0, 1fr) auto; }
-      .updates-command-actions { display: inline-flex; gap: 6px; }
+      .updates-command-actions { display: inline-flex; gap: var(--pi-space-3); }
       .updates-command-actions button.primary { border-color: var(--pi-accent-border); color: var(--pi-text-bright); }
-      .updates-recommended { border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); padding: 10px; background: var(--pi-surface); }
+      .updates-recommended { border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); padding: var(--pi-space-5); background: var(--pi-surface); }
       .updates-recommended > strong { color: var(--pi-text-bright); }
-      .updates-meta { display: grid; gap: 2px; color: var(--pi-muted); font-size: var(--pi-text-xs); }
+      .updates-meta { display: grid; gap: var(--pi-space-1); color: var(--pi-muted); font-size: var(--pi-text-xs); }
       @media (max-width: 520px) {
         .updates-command { grid-template-columns: minmax(0, 1fr) auto; }
         .updates-command > span { grid-column: 1 / -1; }

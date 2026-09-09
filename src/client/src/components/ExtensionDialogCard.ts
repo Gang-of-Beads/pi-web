@@ -331,7 +331,7 @@ export class ExtensionDialogCard extends LitElement {
       display: block;
       box-sizing: border-box;
       width: 100%;
-      margin: 0 0 14px;
+      margin: 0 0 var(--pi-space-7);
       color: var(--pi-text);
       font: 14px system-ui, sans-serif;
       container-type: inline-size;
@@ -356,9 +356,9 @@ export class ExtensionDialogCard extends LitElement {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 12px;
+      gap: var(--pi-space-6);
       min-height: 22px;
-      padding: 8px 16px 7px;
+      padding: var(--pi-space-4) var(--pi-space-7) var(--pi-space-4);
       border-bottom: 1px solid var(--pi-border-muted);
       background: var(--pi-surface-raised);
       box-shadow: 0 8px 18px var(--pi-shadow-soft);
@@ -377,7 +377,7 @@ export class ExtensionDialogCard extends LitElement {
     .header-status.timeout, .header-status.aborted, .header-status.session-ended { color: var(--pi-warning); }
     .dialog-message {
       margin: 0;
-      padding: 12px 16px;
+      padding: var(--pi-space-6) var(--pi-space-7);
       line-height: 1.4;
       /* Structured messages arrive with their own line breaks; collapsing them
          turns a formatted plan into an unreadable run-on paragraph. */
@@ -388,7 +388,7 @@ export class ExtensionDialogCard extends LitElement {
     .dialog-message + .dialog-message { border-bottom: 0; }
     .dialog-detail {
       border-bottom: 1px solid var(--pi-border-muted);
-      padding: 12px 16px;
+      padding: var(--pi-space-6) var(--pi-space-7);
       font-size: var(--pi-text-sm);
       line-height: 1.45;
       white-space: pre-wrap;
@@ -404,8 +404,8 @@ export class ExtensionDialogCard extends LitElement {
     .dialog-detail:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: -2px; }
     .dialog-options {
       display: grid;
-      gap: 7px;
-      padding: 12px 16px;
+      gap: var(--pi-space-4);
+      padding: var(--pi-space-6) var(--pi-space-7);
       border-bottom: 1px solid var(--pi-border-muted);
     }
     .option-button {
@@ -424,12 +424,12 @@ export class ExtensionDialogCard extends LitElement {
     .dialog-input {
       box-sizing: border-box;
       width: calc(100% - 32px);
-      margin: 12px 16px 0;
+      margin: var(--pi-space-6) var(--pi-space-7) 0;
       border: 1px solid var(--pi-border);
       border-radius: var(--pi-radius-md);
       background: var(--pi-bg);
       color: var(--pi-text);
-      padding: 8px;
+      padding: var(--pi-space-4);
       font: var(--pi-control-font-size, 16px)/1.4 var(--pi-control-font-family, system-ui, sans-serif);
     }
     .dialog-footer {
@@ -453,10 +453,10 @@ export class ExtensionDialogCard extends LitElement {
       flex-wrap: wrap;
       align-items: center;
       justify-content: flex-end;
-      gap: 8px;
+      gap: var(--pi-space-4);
       border-top: 1px solid var(--pi-border-muted);
       background: var(--pi-surface);
-      padding: 12px 16px;
+      padding: var(--pi-space-6) var(--pi-space-7);
     }
     .dialog-message + .dialog-footer, .dialog-options + .dialog-footer { border-top: 0; }
     /* Buttons ghost on the tinted card: outlined pills stacked four deep read
@@ -467,7 +467,7 @@ export class ExtensionDialogCard extends LitElement {
       border-radius: var(--pi-radius-md);
       background: var(--pi-surface-hover);
       color: var(--pi-text);
-      padding: 7px 12px;
+      padding: var(--pi-space-4) var(--pi-space-6);
       font: inherit;
       cursor: pointer;
     }
@@ -480,7 +480,7 @@ export class ExtensionDialogCard extends LitElement {
     .primary-action:active:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 86%, white); }
     .closed-summary {
       margin: 0;
-      padding: 12px 16px;
+      padding: var(--pi-space-6) var(--pi-space-7);
       color: var(--pi-muted);
       font-size: var(--pi-text-sm);
       line-height: 1.4;
@@ -490,9 +490,9 @@ export class ExtensionDialogCard extends LitElement {
     .answered-row {
       display: flex;
       align-items: baseline;
-      gap: 8px;
+      gap: var(--pi-space-4);
       min-width: 0;
-      padding: 6px 12px;
+      padding: var(--pi-space-3) var(--pi-space-6);
       border: 1px solid var(--pi-border-muted);
       border-radius: var(--pi-radius-md);
       background: var(--pi-surface);

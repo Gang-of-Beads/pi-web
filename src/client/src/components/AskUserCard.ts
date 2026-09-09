@@ -465,7 +465,7 @@ export class AskUserCard extends LitElement {
       display: block;
       box-sizing: border-box;
       width: 100%;
-      margin: 0 0 14px;
+      margin: 0 0 var(--pi-space-7);
       color: var(--pi-text);
       font: 14px system-ui, sans-serif;
       container-type: inline-size;
@@ -490,9 +490,9 @@ export class AskUserCard extends LitElement {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 12px;
+      gap: var(--pi-space-6);
       min-height: 22px;
-      padding: 7px 10px 6px;
+      padding: var(--pi-space-4) var(--pi-space-5) var(--pi-space-3);
       border-bottom: 1px solid color-mix(in srgb, var(--pi-border-muted) 35%, transparent);
       background: var(--pi-surface-raised);
       box-shadow: 0 8px 18px var(--pi-shadow-soft);
@@ -509,7 +509,7 @@ export class AskUserCard extends LitElement {
     .header-status.superseded { color: var(--pi-warning); }
     .questions {
       display: grid;
-      padding-top: 8px;
+      padding-top: var(--pi-space-4);
       align-content: start;
     }
     fieldset.question {
@@ -517,7 +517,7 @@ export class AskUserCard extends LitElement {
       margin: 0;
       border: 0;
       border-top: 1px solid var(--pi-border-muted);
-      padding: 16px;
+      padding: var(--pi-space-7);
       background: transparent;
     }
     fieldset.question:first-child { border-top: 0; }
@@ -528,7 +528,7 @@ export class AskUserCard extends LitElement {
       display: grid;
       grid-template-columns: auto minmax(0, 1fr);
       align-items: start;
-      gap: 5px;
+      gap: var(--pi-space-3);
       color: var(--pi-text);
       padding: 0;
       font-weight: 650;
@@ -537,20 +537,20 @@ export class AskUserCard extends LitElement {
     .question-number { color: var(--pi-muted); }
     fieldset.question.answered .question-number { color: var(--pi-success); }
     .question-detail {
-      margin: 4px 0 10px;
+      margin: var(--pi-space-2) 0 var(--pi-space-5);
       color: var(--pi-muted);
       font-size: var(--pi-text-xs);
       line-height: 1.4;
     }
-    .options { display: grid; gap: 7px; }
+    .options { display: grid; gap: var(--pi-space-4); }
     .option {
       display: grid;
       grid-template-columns: auto minmax(0, 1fr);
       align-items: start;
-      gap: 8px;
+      gap: var(--pi-space-4);
       border: 1px solid transparent;
       border-radius: var(--pi-radius-md);
-      padding: 7px 8px;
+      padding: var(--pi-space-4) var(--pi-space-4);
       cursor: pointer;
       /* The coarse-pointer floor this project already holds everywhere else.
          A thumb drifting a few pixels on a 36px row surrounded by 7px gaps
@@ -559,15 +559,15 @@ export class AskUserCard extends LitElement {
       min-height: var(--pi-control-height-touch);
       box-sizing: border-box;
     }
-    .other-option { border-top: 1px solid var(--pi-border-muted); padding-top: 11px; }
+    .other-option { border-top: 1px solid var(--pi-border-muted); padding-top: var(--pi-space-6); }
     @media (hover: hover) { .option:hover { border-color: var(--pi-border-muted); background: var(--pi-surface-hover); } }
     .option:has(input:checked) { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
-    input { margin: 2px 0 0; accent-color: var(--pi-accent); }
+    input { margin: var(--pi-space-1) 0 0; accent-color: var(--pi-accent); }
     input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 2px; }
-    .option-copy { min-width: 0; display: grid; gap: 2px; }
+    .option-copy { min-width: 0; display: grid; gap: var(--pi-space-1); }
     .option-label { line-height: 1.35; }
     .option-detail { color: var(--pi-muted); font-size: var(--pi-text-xs); line-height: 1.35; }
-    .other-answer { display: grid; gap: 5px; color: var(--pi-muted); font-size: var(--pi-text-xs); padding: 4px 8px 4px 32px; }
+    .other-answer { display: grid; gap: var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); padding: var(--pi-space-2) var(--pi-space-4) var(--pi-space-2) 32px; }
     .other-answer:only-child { padding-left: 0; padding-right: 0; }
     /* Grows with the answer instead of keeping a long reply behind a
        three-line slot: field-sizing handles it natively where it exists and
@@ -585,7 +585,7 @@ export class AskUserCard extends LitElement {
       border-radius: var(--pi-radius-md);
       background: var(--pi-bg);
       color: var(--pi-text);
-      padding: 8px;
+      padding: var(--pi-space-4);
       font: var(--pi-control-font-size, 16px)/1.4 var(--pi-control-font-family, system-ui, sans-serif);
     }
     /* Back sits beside the forward action rather than under it: the pair is
@@ -606,18 +606,18 @@ export class AskUserCard extends LitElement {
       display: flex;
       align-items: center;
       justify-content: flex-end;
-      gap: 12px;
+      gap: var(--pi-space-6);
       border-top: 1px solid var(--pi-border-muted);
       background: var(--pi-surface);
       box-shadow: 0 -8px 18px var(--pi-shadow-soft);
-      padding: 12px 16px;
+      padding: var(--pi-space-6) var(--pi-space-7);
     }
     button {
       border: 1px solid var(--pi-border);
       border-radius: var(--pi-radius-md);
       background: var(--pi-surface);
       color: var(--pi-text);
-      padding: 7px 10px;
+      padding: var(--pi-space-4) var(--pi-space-5);
       font: inherit;
       cursor: pointer;
     }
@@ -627,7 +627,7 @@ export class AskUserCard extends LitElement {
     .primary-action { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-on-accent, var(--pi-bg)); font-weight: 650; }
     @media (hover: hover) { .primary-action:hover:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 86%, white); } }
     .primary-action:active:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 86%, white); }
-    .partial-confirmation { min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+    .partial-confirmation { min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: var(--pi-space-5); }
     .partial-confirmation p { min-width: 0; margin: 0; color: var(--pi-warning); font-size: var(--pi-text-xs); line-height: 1.4; }
     .question-jump {
       display: inline;
@@ -639,25 +639,25 @@ export class AskUserCard extends LitElement {
       text-decoration: underline;
       text-underline-offset: 2px;
     }
-    .confirmation-actions { flex: 0 0 auto; display: flex; gap: 7px; }
-    .record-summary { margin: 0; color: var(--pi-muted); padding: 12px 16px; font-size: var(--pi-text-xs); }
+    .confirmation-actions { flex: 0 0 auto; display: flex; gap: var(--pi-space-4); }
+    .record-summary { margin: 0; color: var(--pi-muted); padding: var(--pi-space-6) var(--pi-space-7); font-size: var(--pi-text-xs); }
     .record-questions { display: grid; }
-    .record-question { min-width: 0; padding: 14px 16px; }
+    .record-question { min-width: 0; padding: var(--pi-space-7) var(--pi-space-7); }
     .record-question + .record-question { border-top: 1px solid var(--pi-border-muted); }
-    .record-question h3 { display: flex; gap: 5px; margin-bottom: 8px; font-size: var(--pi-text-base); line-height: 1.35; }
-    .record-answers { display: grid; gap: 4px; margin: 0; padding-left: 22px; line-height: 1.4; }
+    .record-question h3 { display: flex; gap: var(--pi-space-3); margin-bottom: var(--pi-space-4); font-size: var(--pi-text-base); line-height: 1.35; }
+    .record-answers { display: grid; gap: var(--pi-space-2); margin: 0; padding-left: var(--pi-space-9); line-height: 1.4; }
     .other-record-text { white-space: pre-wrap; overflow-wrap: anywhere; }
     .unanswered-record { margin: 0; color: var(--pi-muted); font-style: italic; }
-    .draft-note { margin: 7px 0 0; color: var(--pi-warning); font-size: var(--pi-text-2xs); }
+    .draft-note { margin: var(--pi-space-4) 0 0; color: var(--pi-warning); font-size: var(--pi-text-2xs); }
     @container (max-width: 580px) {
-      fieldset.question, .record-question { padding: 14px 12px; }
-      .record-summary { padding-inline: 12px; }
+      fieldset.question, .record-question { padding: var(--pi-space-7) var(--pi-space-6); }
+      .record-summary { padding-inline: var(--pi-space-6); }
       /* Stacking made every action its own row, which on a phone with the
          keyboard open is height the question needs. Back and Next are one
          decision and stay on one row. */
-      .form-footer { align-items: stretch; flex-direction: column; padding: var(--pi-space-5) 12px; }
+      .form-footer { align-items: stretch; flex-direction: column; padding: var(--pi-space-5) var(--pi-space-6); }
       .form-footer .step-actions { flex-direction: row; }
-      fieldset.question { padding: 10px 12px; }
+      fieldset.question { padding: var(--pi-space-5) var(--pi-space-6); }
       .partial-confirmation { align-items: stretch; flex-direction: column; }
       .confirmation-actions { justify-content: flex-end; }
     }
