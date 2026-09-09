@@ -131,7 +131,7 @@ export const chatStyles = css`
     .top-drawer:not(.collapsed) .drawer-header { position: sticky; top: 0; z-index: 1; background: var(--pi-bg); }
     .top-drawer:not(.collapsed) .drawer-body { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
   }
-  .drawer-header { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: var(--pi-space-2) var(--pi-space-4); }
+  .drawer-header { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: var(--pi-space-2) var(--pi-chat-gutter); }
   /* The two sections are told apart by colour, not only by label: activity is
      violet (work this chat started), notifications keep the app's warning
      palette (something happened to you). */
@@ -187,7 +187,7 @@ export const chatStyles = css`
      the text: the message wraps under them, so an absolute button either
      overlapped the text or forced padding that made every row look ragged. */
   @media (max-width: 640px) {
-    .drawer-header { gap: var(--pi-space-2); padding-inline: var(--pi-space-4); }
+    .drawer-header { gap: var(--pi-space-2); padding-inline: var(--pi-chat-gutter); }
     .drawer-tab { padding-inline: var(--pi-space-4); }
   }
   /* A short window is the case the drawer was breaking: keep it to a slice of
@@ -317,7 +317,7 @@ export const chatStyles = css`
   .group-msg.system { color: var(--pi-muted); }
   .group-msg.bash { color: var(--pi-success); }
   .history-boundary { position: relative; z-index: 5; display: grid; gap: var(--pi-space-2); justify-items: center; margin: 0 auto var(--pi-space-7); color: var(--pi-muted); font-size: var(--pi-text-xs); text-align: center; }
-  .history-load-button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text-secondary); padding: var(--pi-space-3) var(--pi-space-6); font: var(--pi-text-xs) var(--pi-font-ui); cursor: pointer; }
+  .history-load-button { min-height: var(--pi-control-height); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text-secondary); padding: var(--pi-space-3) var(--pi-space-6); font: var(--pi-text-xs) var(--pi-font-ui); cursor: pointer; }
   .history-load-button:focus { border-color: var(--pi-accent); color: var(--pi-text-bright); }
   @media (hover: hover) { .history-load-button:hover { border-color: var(--pi-accent); color: var(--pi-text-bright); } }
   .history-load-button:disabled { cursor: default; opacity: var(--pi-disabled-opacity); }
@@ -347,7 +347,7 @@ export const chatStyles = css`
      ignore while reading and specific enough to answer "did that send?". */
   .delivery-mark { display: flex; align-items: center; justify-content: flex-end; gap: var(--pi-space-3); margin: var(--pi-space-3) calc(-1 * var(--pi-space-1)) calc(-1 * var(--pi-space-2)) 0; color: var(--pi-dim); font: var(--pi-text-2xs) var(--pi-font-ui); }
   .delivery-mark .delivery-glyph { font-size: var(--pi-text-xs); letter-spacing: -1px; line-height: 1; }
-  .delivery-mark.pending { color: var(--pi-dim); }
+  .delivery-mark.pending { color: var(--pi-muted); }
   .delivery-mark.pending .delivery-glyph { animation: pulse 1.4s ease-in-out infinite; }
   .delivery-mark.received { color: var(--pi-muted); }
   .delivery-mark.delivered { color: var(--pi-success); }
@@ -356,12 +356,12 @@ export const chatStyles = css`
   .session-activity.compacting { border-color: var(--pi-purple-border); background: var(--pi-purple-surface); }
   .session-activity strong { color: var(--pi-purple); }
   .session-activity span, .session-activity small { color: var(--pi-muted); }
-  .history-boundary small { color: var(--pi-dim); }
+  .history-boundary small { color: var(--pi-muted); }
   /* Centred in the room the transcript is not using, so the words land where
      the reader is already looking rather than clinging to the top edge. */
   .empty-session { display: grid; justify-items: center; gap: var(--pi-space-5); margin: var(--pi-space-9) auto; max-width: var(--pi-chat-measure); padding: var(--pi-space-7); color: var(--pi-muted); text-align: center; }
   .empty-session p { margin: 0; }
-  .empty-session button { min-height: var(--pi-control-height); padding: var(--pi-space-3) var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
+  .empty-session button { min-height: var(--pi-control-height-touch); padding: var(--pi-space-3) var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
   .empty-session.transcript-failed .failure-detail { color: var(--pi-muted); font-size: var(--pi-text-sm); white-space: pre-wrap; overflow-wrap: anywhere; }
   .empty-session button:focus-visible { border-color: var(--pi-accent); }
   @media (hover: hover) { .empty-session button:hover { border-color: var(--pi-accent); } }
@@ -399,7 +399,7 @@ export const chatStyles = css`
   .msg-header .label { margin: 0; }
   /* Quiet, but never below the non-text contrast floor: .28 measured 1.37:1
      at rest, and the round-four remedy had only reached the coarse branch. */
-  .msg-meta { min-width: 0; border: 0; background: transparent; color: var(--pi-dim); padding: 0; font: var(--pi-text-2xs) var(--pi-font-ui); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity var(--pi-motion-fast) var(--pi-ease); cursor: pointer; user-select: text; -webkit-user-select: text; }
+  .msg-meta { min-width: 0; border: 0; background: transparent; color: var(--pi-muted); padding: 0; font: var(--pi-text-2xs) var(--pi-font-ui); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity var(--pi-motion-fast) var(--pi-ease); cursor: pointer; user-select: text; -webkit-user-select: text; }
   .msg:focus-within > .msg-header .msg-meta, .group-msg:focus-within > .msg-header .msg-meta, .msg-meta:focus, .msg-meta.expanded { opacity: 1; }
   @media (hover: hover) { .msg:hover > .msg-header .msg-meta, .group-msg:hover > .msg-header .msg-meta { opacity: 1; } }
   .msg-meta.expanded { flex: 1 1 auto; max-width: 100%; white-space: normal; overflow: visible; overflow-wrap: anywhere; text-overflow: clip; }
@@ -407,7 +407,7 @@ export const chatStyles = css`
   @media (hover: none) {
     .msg-actions { opacity: 1; }
     .msg-meta { opacity: 1; color: var(--pi-muted); max-width: var(--pi-space-9); }
-    .msg-meta:not(.expanded) { display: inline-grid; width: 26px; height: 24px; place-items: center; font-size: 0; text-overflow: clip; }
+    .msg-meta:not(.expanded) { display: inline-grid; width: 24px; height: 24px; place-items: center; font-size: 0; text-overflow: clip; }
     .msg-meta::before { content: "ⓘ"; font-size: var(--pi-text-sm); }
     .msg-meta.expanded { opacity: 1; max-width: 100%; }
     .msg-meta.expanded::before { content: ""; }
