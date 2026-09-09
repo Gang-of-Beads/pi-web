@@ -328,7 +328,7 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     .machine-option-status.error .dot { background: var(--pi-danger); }
     .machine-option-main small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: 1.3; }
     .machine-option-actions { position: absolute; top: 4px; right: 4px; }
-    .machine-option-actions-toggle { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; color: var(--pi-muted); border-radius: var(--pi-radius-sm); }
+    .machine-option-actions-toggle { display: grid; place-items: center; width: var(--pi-control-height); height: var(--pi-control-height); padding: 0; color: var(--pi-muted); border-radius: var(--pi-radius-sm); }
     .machine-option.no-actions .machine-option-actions { display: none; }
     .machine-option-actions-panel { position: fixed; z-index: var(--pi-layer-popover); box-sizing: border-box; min-width: min(120px, calc(100vw - 16px)); overflow: auto; padding: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface-raised); box-shadow: var(--pi-elevation-2); }
     .machine-option-actions-panel button { display: block; width: 100%; padding: var(--pi-space-4) var(--pi-space-5); text-align: left; white-space: nowrap; }

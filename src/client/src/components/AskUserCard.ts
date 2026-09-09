@@ -492,7 +492,7 @@ export class AskUserCard extends LitElement {
       justify-content: space-between;
       gap: var(--pi-space-6);
       min-height: 22px;
-      padding: var(--pi-space-4) var(--pi-space-5) var(--pi-space-3);
+      padding: var(--pi-space-4) var(--pi-space-7) var(--pi-space-3);
       border-bottom: 1px solid color-mix(in srgb, var(--pi-border-muted) 35%, transparent);
       background: var(--pi-surface-raised);
       box-shadow: var(--pi-elevation-2);
@@ -562,12 +562,14 @@ export class AskUserCard extends LitElement {
     .other-option { border-top: 1px solid var(--pi-border-muted); padding-top: var(--pi-space-6); }
     @media (hover: hover) { .option:hover { border-color: var(--pi-border-muted); background: var(--pi-surface-hover); } }
     .option:has(input:checked) { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
-    input { margin: var(--pi-space-1) 0 0; accent-color: var(--pi-accent); }
+    /* An unsized native control renders at the UA size (13px here), which put
+       a tick box beside 24px ones in the next card. */
+    input { flex: 0 0 auto; box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); margin: var(--pi-space-1) 0 0; accent-color: var(--pi-accent); }
     input:focus-visible, textarea:focus-visible, button:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
     .option-copy { min-width: 0; display: grid; gap: var(--pi-space-1); }
     .option-label { line-height: 1.35; }
     .option-detail { color: var(--pi-muted); font-size: var(--pi-text-xs); line-height: 1.35; }
-    .other-answer { display: grid; gap: var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); padding: var(--pi-space-2) var(--pi-space-4) var(--pi-space-2) 32px; }
+    .other-answer { display: grid; gap: var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); padding: var(--pi-space-2) var(--pi-space-4) var(--pi-space-2) calc(var(--pi-space-4) + var(--pi-checkbox-size) + var(--pi-space-4)); }
     .other-answer:only-child { padding-left: 0; padding-right: 0; }
     /* Grows with the answer instead of keeping a long reply behind a
        three-line slot: field-sizing handles it natively where it exists and

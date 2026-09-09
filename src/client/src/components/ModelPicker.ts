@@ -302,7 +302,7 @@ export class ModelPicker extends LitElement {
     .catalog-row { display: flex; align-items: center; border-bottom: 1px solid var(--pi-border-muted); }
     .catalog-row.selected { background: var(--pi-selection-bg); }
     @media (hover: hover) { .catalog-row:hover { background: var(--pi-selection-bg); } }
-    .catalog-row input[type="checkbox"] { margin: 0 0 0 var(--pi-space-6); accent-color: var(--pi-accent); }
+    .catalog-row input[type="checkbox"] { box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); margin: 0 0 0 var(--pi-space-6); accent-color: var(--pi-accent); }
     .catalog-row .pick { flex: 1; min-width: 0; display: block; padding: var(--pi-space-5) var(--pi-space-6); text-align: left; }
     .group-header { padding: var(--pi-space-4) var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-xs); text-transform: uppercase; letter-spacing: 0.04em; }
     small { display: block; margin-top: var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-2xs); }

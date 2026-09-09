@@ -429,7 +429,7 @@ export class QuickSwitcher extends LitElement {
        the state opened the menu. */
     .row-flag, .row-state { position: absolute; bottom: var(--pi-space-4); right: var(--pi-space-6); }
     .row-state { display: inline-flex; align-items: center; }
-    .row-flag { width: var(--pi-dot-md); height: var(--pi-dot-md); border-radius: 50%; }
+    .row-flag { box-sizing: border-box; width: var(--pi-dot-md); height: var(--pi-dot-md); border-radius: 50%; }
     .row-flag.unread { background: var(--pi-accent); }
     /* Hollow rather than filled: this one marks work that stopped, so it should
        not read as another kind of activity at a glance. */
