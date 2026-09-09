@@ -476,7 +476,7 @@ export class QuickSwitcher extends LitElement {
     @media (max-width: 430px) {
       .rows { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
     }
-    .row-menu { position: absolute; top: calc(100% - var(--pi-space-2)); right: 0; z-index: 3; display: grid; gap: var(--pi-space-1); min-width: 160px; padding: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); box-shadow: var(--pi-elevation-2); }
+    .row-menu { position: absolute; top: calc(100% - var(--pi-space-2)); right: 0; z-index: 3; display: grid; gap: var(--pi-space-1); min-width: 160px; padding: var(--pi-space-2); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); box-shadow: var(--pi-elevation-2); }
     .row-menu button { box-sizing: border-box; min-height: var(--pi-control-height-comfort); border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-text); padding: 0 var(--pi-space-5); font: inherit; text-align: left; cursor: pointer; }
     /* Coarse pointers get the comfort floor: every target the quick switcher
        ships measures 44px on touch. Placed after every base declaration it

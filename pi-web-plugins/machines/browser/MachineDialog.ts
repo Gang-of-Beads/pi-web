@@ -135,7 +135,7 @@ export class MachineDialog extends LitElement {
     footer { border-top: 1px solid var(--pi-border); border-bottom: 0; justify-content: end; }
     .body { display: grid; gap: var(--pi-space-4); padding: var(--pi-space-6); min-height: 0; overflow: auto; }
     label { display: grid; gap: var(--pi-space-3); color: var(--pi-muted); }
-    input { box-sizing: border-box; width: 100%; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: var(--pi-space-5); font: var(--pi-control-font-size, 16px) var(--pi-control-monospace-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
+    input[type="text"], input[type="url"], input[type="password"], input:not([type]) { box-sizing: border-box; width: 100%; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: var(--pi-space-5); font: var(--pi-control-font-size, 16px) var(--pi-control-monospace-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
     input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     .hint { color: var(--pi-muted); }
     .intro { margin: var(--pi-space-2) 0 0; line-height: 1.4; }
@@ -151,7 +151,7 @@ export class MachineDialog extends LitElement {
     @media (pointer: coarse) {
       footer button { min-height: var(--pi-control-height-touch, 44px); }
       header button { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); padding: 0; }
-      input { min-height: var(--pi-control-height-touch, 44px); }
+      input[type="text"], input[type="url"], input[type="password"], input:not([type]) { min-height: var(--pi-control-height-touch, 44px); }
     }
   `;
 }

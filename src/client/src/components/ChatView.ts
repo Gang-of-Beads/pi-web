@@ -1,5 +1,5 @@
 import { css, LitElement, html, nothing, type TemplateResult, unsafeCSS } from "lit";
-import { renderCheckIcon, renderCopyIcon, renderCrossIcon, renderRecallIcon, renderResendIcon, renderRunIcon, uiIconStyle } from "./uiIcons.js";
+import { renderCheckIcon, renderCopyIcon, renderCrossIcon, renderDoubleCheckIcon, renderPendingRingIcon, renderRecallIcon, renderResendIcon, renderRunIcon, uiIconStyle } from "./uiIcons.js";
 import { scrollbarWidthOf } from "../scrollbarWidth";
 import { showsJumpToBottom } from "../chatScrollPosition";
 import { ScrollFollowGate, TOUCH_SETTLE_MS } from "../scrollFollowGate";
@@ -351,7 +351,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   /* Delivery mark: bottom-right of the sender's own bubble, quiet enough to
      ignore while reading and specific enough to answer "did that send?". */
   .delivery-mark { display: flex; align-items: center; justify-content: flex-end; gap: var(--pi-space-3); margin: var(--pi-space-3) calc(-1 * var(--pi-space-1)) calc(-1 * var(--pi-space-2)) 0; color: var(--pi-dim); font: var(--pi-text-2xs) var(--pi-font-ui); }
-  .delivery-mark .delivery-glyph { font-size: var(--pi-text-xs); letter-spacing: -1px; line-height: 1; }
+  .delivery-mark .delivery-glyph { display: inline-flex; line-height: 1; }
   .delivery-mark.pending { color: var(--pi-muted); }
   .delivery-mark.pending .delivery-glyph { animation: pulse 1.4s ease-in-out infinite; }
   .delivery-mark.received { color: var(--pi-muted); }
@@ -472,8 +472,10 @@ function clampNumber(value: number, min: number, max: number): number {
 }
 
 
+export type DeliveryGlyph = "pending" | "failed" | "single" | "double";
+
 export interface DeliveryPresentation {
-  glyph: string;
+  glyph: DeliveryGlyph;
   text: string;
   label: string;
   tone: "pending" | "received" | "delivered" | "failed";
@@ -494,19 +496,31 @@ export function chatDeliveryMarkerVisible(delivery: MessageDelivery | undefined)
   return delivery !== undefined && !deliveryTaken(delivery.state);
 }
 
+/**
+ * The receipt language stays - one tick sent, two ticks read - but the marks
+ * are drawn. The double tick used to be two characters squeezed with
+ * letter-spacing: -1px, which is a font's opinion pushed around by hand.
+ */
+function renderDeliveryGlyph(kind: DeliveryGlyph): TemplateResult {
+  if (kind === "pending") return renderPendingRingIcon();
+  if (kind === "failed") return renderCrossIcon();
+  if (kind === "double") return renderDoubleCheckIcon();
+  return renderCheckIcon();
+}
+
 export function chatDeliveryPresentation(delivery: MessageDelivery, queuePosition?: number): DeliveryPresentation {
-  if (delivery.state === "sending") return { glyph: "◌", text: "Sending", label: "Sending", tone: "pending" };
-  if (delivery.state === "failed") return { glyph: "!", text: "Not sent", label: "Not sent - the server never received this message", tone: "failed" };
+  if (delivery.state === "sending") return { glyph: "pending", text: "Sending", label: "Sending", tone: "pending" };
+  if (delivery.state === "failed") return { glyph: "failed", text: "Not sent", label: "Not sent - the server never received this message", tone: "failed" };
   if (delivery.state === "queued") {
     const place = queuePosition === undefined ? "" : ` · ${String(queuePosition)}`;
-    return { glyph: "✓", text: `Queued${place}`, label: "Queued - the server has this message and the agent will take it next", tone: "received" };
+    return { glyph: "single", text: `Queued${place}`, label: "Queued - the server has this message and the agent will take it next", tone: "received" };
   }
   // "Sent" is a transport receipt and nothing more: the server's HTTP answer
   // arrived. It is not a promise that anything will happen, and a message can
   // sit here while the session is idle. Saying "Sent" and meaning "queued" is
   // what made a stalled message indistinguishable from a running one.
-  if (delivery.state === "received") return { glyph: "✓", text: "Sent", label: "Sent - the server received this message, and has not yet said what it is doing with it", tone: "received" };
-  return { glyph: "✓✓", text: "Read", label: "Read - the agent took this message into the conversation", tone: "delivered" };
+  if (delivery.state === "received") return { glyph: "single", text: "Sent", label: "Sent - the server received this message, and has not yet said what it is doing with it", tone: "received" };
+  return { glyph: "double", text: "Read", label: "Read - the agent took this message into the conversation", tone: "delivered" };
 }
 
 export type ChatImagePart = Extract<ChatPart, { type: "image" }>;
@@ -1383,7 +1397,7 @@ export class ChatView extends LitElement {
     const presentation = chatDeliveryPresentation(delivery, index === -1 ? undefined : index + 1);
     return html`
       <div class=${`delivery-mark ${presentation.tone}`} role="status" aria-label=${presentation.label}>
-        <span class="delivery-glyph" aria-hidden="true">${presentation.glyph}</span>
+        <span class="delivery-glyph" aria-hidden="true">${renderDeliveryGlyph(presentation.glyph)}</span>
         <span class="delivery-text">${presentation.text}</span>
       </div>
     `;

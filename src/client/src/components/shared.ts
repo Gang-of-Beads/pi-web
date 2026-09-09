@@ -446,7 +446,7 @@ export const listStyles = css`
   @media (pointer: coarse) { .action-menu-panel button { min-height: var(--pi-control-height-touch); } }
   button.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
   button:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
-  small { display: block; white-space: normal; color: var(--pi-muted); font-size: var(--pi-text-2xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  small { display: block; white-space: normal; color: var(--pi-muted); font-size: var(--pi-text-2xs); overflow: hidden; }
   .workspace-label { min-width: 0; display: inline-flex; align-items: baseline; gap: var(--pi-space-3); max-width: 100%; overflow: hidden; white-space: nowrap; }
   .workspace-label-base, .workspace-label-item, .workspace-label-render { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .workspace-label-item, .workspace-label-render, .workspace-label-separator { color: var(--pi-muted); }

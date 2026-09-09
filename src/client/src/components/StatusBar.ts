@@ -8,12 +8,7 @@ const statusBarStyles = css`${unsafeCSS(uiIconStyle)}
   :host { display: block; color: var(--pi-muted); font: var(--pi-text-xs) var(--pi-font-mono); }
   .bar { display: flex; justify-content: flex-end; gap: var(--pi-space-6); align-items: center; min-width: 0; padding: var(--pi-space-4) var(--pi-space-6); border-top: 1px solid var(--pi-border); background: var(--pi-bg); white-space: nowrap; overflow: hidden; }
   span { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .activity { display: inline-flex; align-items: center; gap: var(--pi-space-3); color: var(--pi-muted); }
-  .activity.active { color: var(--pi-success); }
-  .dot { width: var(--pi-dot-sm); height: var(--pi-dot-sm); border-radius: 50%; background: currentColor; opacity: .45; flex: 0 0 auto; }
-  .activity.active .dot { animation: pulse 1s ease-in-out infinite; opacity: 1; }
   .muted { color: var(--pi-muted); }
-  @keyframes pulse { 0%, 100% { transform: scale(.75); opacity: .55; } 50% { transform: scale(1.2); opacity: 1; } }
 `;
 
 @customElement("status-bar")

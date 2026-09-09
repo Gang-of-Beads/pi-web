@@ -66,7 +66,7 @@ export const promptEditorStyles = css`
   @media (hover: hover) { .expand-composer:hover { border-color: var(--pi-accent); color: var(--pi-text-bright); } }
   .expand-composer:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
   .expand-composer-label { flex: 0 0 auto; }
-  .expand-composer-draft { min-width: 0; overflow: hidden; color: var(--pi-dim); font-size: var(--pi-text-xs); text-overflow: ellipsis; white-space: nowrap; }
+  .expand-composer-draft { min-width: 0; overflow: hidden; color: var(--pi-muted); font-size: var(--pi-text-xs); text-overflow: ellipsis; white-space: nowrap; }
   footer.shell-mode { border-top-color: var(--pi-success); background: var(--pi-success-bg); }
   .editor-wrap { position: relative; min-width: 0; }
   .actions { display: flex; gap: var(--pi-space-4); align-items: center; justify-content: flex-end; flex-wrap: nowrap; white-space: nowrap; }
@@ -129,7 +129,7 @@ export const promptEditorStyles = css`
      hint. */
   .composer-placeholder { display: flex; flex: 1 1 auto; align-items: center; justify-content: space-between; gap: var(--pi-space-4); min-width: 0; }
   .composer-placeholder-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .composer-placeholder-hints { flex: 0 0 auto; color: color-mix(in srgb, var(--pi-dim) 70%, transparent); font-size: var(--pi-text-xs); letter-spacing: 0.12em; }
+  .composer-placeholder-hints { flex: 0 0 auto; color: var(--pi-muted); font-size: var(--pi-text-xs); letter-spacing: 0.12em; }
   /* CodeMirror suppresses its own outline, so the focus ring belongs on the
      bordered box the user actually sees. Without this the composer was the one
      control in the app that gave no sign of being focused. */

@@ -1,4 +1,5 @@
-import { LitElement, css, html } from "lit";
+import { LitElement, css, html, unsafeCSS, type TemplateResult } from "lit";
+import { renderCheckIcon, renderCrossIcon, renderFilledDotIcon, renderPendingRingIcon, uiIconStyle } from "./uiIcons.js";
 import { customElement, property, state } from "lit/decorators.js";
 import { writeClipboardText } from "../clipboard";
 import { toolExecutionDisplayStatus, type ToolExecutionDisplayStatus, interactiveSurfaceStyles } from "./shared";
@@ -41,7 +42,7 @@ export class ToolExecutionView extends LitElement {
       <section class=${`tool-card ${displayedStatus}`}>
         <div class="tool-header">
           <div class="tool-title">
-            <span class="status-icon" aria-hidden="true">${STATUS_ICON[displayedStatus]}</span>
+            <span class="status-icon" aria-hidden="true">${STATUS_ICON[displayedStatus]()}</span>
             <strong>${execution.toolName}</strong>
             ${this.renderHeaderTarget(target)}
           </div>
@@ -131,7 +132,7 @@ export class ToolExecutionView extends LitElement {
     window.setTimeout(() => { this.copied = false; }, 1200);
   }
 
-  static override styles = [interactiveSurfaceStyles, css`
+  static override styles = [interactiveSurfaceStyles, css`${unsafeCSS(uiIconStyle)}
     :host { display: block; width: 100%; max-width: 100%; min-width: 0; color: var(--pi-text); }
     .tool-card { display: grid; gap: var(--pi-space-4); width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; overflow: hidden; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); padding: var(--pi-space-5); color: var(--pi-text); }
     .tool-card.running, .tool-card.pending { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); }
@@ -231,12 +232,16 @@ function isRemovedDiffLine(line: string): boolean {
   return line.startsWith("-") && !line.startsWith("---");
 }
 
-const STATUS_ICON: Record<ToolExecutionDisplayStatus, string> = {
-  pending: "○",
-  running: "●",
-  success: "✓",
-  error: "✖",
-  interrupted: "○",
+/**
+ * Drawn, not typed: these were characters whose ink size and weight came from
+ * whichever font resolved them, sitting beside 14px icons in the same card.
+ */
+const STATUS_ICON: Record<ToolExecutionDisplayStatus, () => TemplateResult> = {
+  pending: renderPendingRingIcon,
+  running: renderFilledDotIcon,
+  success: renderCheckIcon,
+  error: renderCrossIcon,
+  interrupted: renderPendingRingIcon,
 };
 
 const STATUS_LABEL: Record<ToolExecutionDisplayStatus, string> = {

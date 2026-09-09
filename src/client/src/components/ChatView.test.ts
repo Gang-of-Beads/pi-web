@@ -17,8 +17,8 @@ import { templateEventHandlerAfterMarker, templateEventHandlerNearMarker, templa
 
 describe("chatDeliveryPresentation", () => {
   it("reads as one mark for received and two for taken into the turn", () => {
-    expect(chatDeliveryPresentation({ clientMessageId: "cm-1", state: "received" })).toMatchObject({ glyph: "✓", text: "Sent", tone: "received" });
-    expect(chatDeliveryPresentation({ clientMessageId: "cm-1", state: "delivered" })).toMatchObject({ glyph: "✓✓", text: "Read", tone: "delivered" });
+    expect(chatDeliveryPresentation({ clientMessageId: "cm-1", state: "received" })).toMatchObject({ glyph: "single", text: "Sent", tone: "received" });
+    expect(chatDeliveryPresentation({ clientMessageId: "cm-1", state: "delivered" })).toMatchObject({ glyph: "double", text: "Read", tone: "delivered" });
   });
 
   it("names the lane a queued message waits in", () => {

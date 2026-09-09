@@ -48,6 +48,18 @@ export function renderDownIcon(): TemplateResult {
   return icon(html`<path d="M12 5v14"></path><path d="m6 13 6 6 6-6"></path>`);
 }
 
+export function renderDoubleCheckIcon(): TemplateResult {
+  return icon(html`<path d="m3 12 4 4 7-8"></path><path d="m11 16 2 2 8-10"></path>`);
+}
+
+export function renderPendingRingIcon(): TemplateResult {
+  return icon(html`<circle cx="12" cy="12" r="8"></circle>`);
+}
+
+export function renderFilledDotIcon(): TemplateResult {
+  return icon(html`<circle cx="12" cy="12" r="6" fill="currentColor" stroke="none"></circle>`);
+}
+
 export const uiIconStyle = `
   .ui-icon { flex: 0 0 auto; width: 14px; height: 14px; vertical-align: -0.15em; pointer-events: none; }
 `;
