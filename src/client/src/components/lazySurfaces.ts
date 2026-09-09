@@ -40,8 +40,8 @@ export function loadSurface(surface: LazySurface): Promise<void> {
 
 /**
  * Warm every lazy surface once the app is past its first paint. A failure here
- * is deliberately silent: the open path awaits the same load and is where a
- * real failure has to be reported.
+ * is deliberately silent: the open path retries the same load, and is where
+ * a real failure has to be reported.
  */
 export function warmLazySurfaces(schedule: (task: () => void) => void = defaultSchedule): void {
   schedule(() => {

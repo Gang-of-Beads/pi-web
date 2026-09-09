@@ -281,6 +281,8 @@ export class PiWebApp extends LitElement {
   @state() private state: AppState = initialAppState();
   /** Whether the tree dialog's first appearance has already fetched its module. */
   private treeDialogAnnounced = false;
+  /** Whether the settings surface's module has been asked for this opening. */
+  private settingsLoadAnnounced = false;
   @state() private workspacePanelFullscreen = false;
   @query("chat-view") private chatView?: ChatView;
   @query("prompt-editor") private promptEditor?: PromptEditor;
@@ -663,6 +665,15 @@ export class PiWebApp extends LitElement {
       this.openLazySurface("session-tree", "Session tree");
     } else if (this.state.treeDialog === undefined) {
       this.treeDialogAnnounced = false;
+    }
+    // A settings route restored from the URL or boot never passes through
+    // openSettings, so its module would never load: the route claims a panel
+    // that is not on screen, with no banner either.
+    if (this.settingsOpen && !this.settingsLoadAnnounced) {
+      this.settingsLoadAnnounced = true;
+      this.openLazySurface("settings", "Settings");
+    } else if (!this.settingsOpen) {
+      this.settingsLoadAnnounced = false;
     }
   }
 
@@ -1733,7 +1744,13 @@ export class PiWebApp extends LitElement {
         if (this.state.error === failure) this.setState({ error: "" });
         this.requestUpdate();
       },
-      () => { this.setState({ error: failure }); },
+      () => {
+        // The retired-by half must travel with the text, or the banner's
+        // lifetime is decided by whatever error was cleared before it. A
+        // module fetch failure is a network-shaped error: reader-retired,
+        // which the success path's text match then retires on retry.
+        this.setState({ ...errorNoticePatch(new Error(failure)) });
+      },
     );
   }
 

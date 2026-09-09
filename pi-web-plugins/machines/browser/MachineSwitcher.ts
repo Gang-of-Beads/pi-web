@@ -317,7 +317,7 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     @media (hover: hover) { .machine-option:hover { background: var(--pi-surface-hover); } }
     .machine-option.selected { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
     .machine-option.selected::before { content: ""; position: absolute; left: 0; top: var(--pi-space-4); bottom: var(--pi-space-4); width: 3px; border-radius: 0 var(--pi-radius-xs) var(--pi-radius-xs) 0; background: var(--pi-accent); }
-    .machine-option-main, .machine-option-actions-toggle, .machine-option-actions-panel button { border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-text); cursor: pointer; }
+    .machine-option-main, .machine-option-actions-toggle, .machine-option-actions-panel button { box-sizing: border-box; border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-text); cursor: pointer; }
     .machine-option-main { min-width: 0; min-height: var(--pi-row-min-height); display: grid; gap: var(--pi-space-2); padding: var(--pi-space-5) var(--pi-space-4) var(--pi-space-4); text-align: left; align-content: start; }
     .machine-option-name { min-width: 0; display: flex; align-items: center; gap: var(--pi-space-3); }
     .machine-option-name span:last-child { min-width: 0; font-weight: var(--pi-weight-semibold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -333,7 +333,7 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     .machine-option-actions-toggle { display: grid; place-items: center; width: var(--pi-control-height); height: var(--pi-control-height); padding: 0; color: var(--pi-muted); border-radius: var(--pi-radius-sm); }
     .machine-option.no-actions .machine-option-actions { display: none; }
     .machine-option-actions-panel { position: fixed; z-index: var(--pi-layer-popover); box-sizing: border-box; min-width: min(120px, calc(100vw - 16px)); overflow: auto; padding: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface-raised); box-shadow: var(--pi-elevation-2); }
-    .machine-option-actions-panel button { display: block; width: 100%; padding: var(--pi-space-4) var(--pi-space-5); text-align: left; white-space: nowrap; }
+    .machine-option-actions-panel button { display: block; box-sizing: border-box; width: 100%; padding: var(--pi-space-4) var(--pi-space-5); text-align: left; white-space: nowrap; }
     .machine-option-actions-panel button.danger { color: var(--pi-danger); }
     /* The row menu is the same verb as every other row menu in the app, so it
        carries the same touch floor: this one shipped a 26px trigger and 28px

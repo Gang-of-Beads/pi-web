@@ -395,6 +395,7 @@ export const listStyles = css`
   .workspace-detail-row dt { color: var(--pi-muted); font-size: var(--pi-text-xs); white-space: normal; }
   .workspace-detail-row dd { min-width: 0; margin: 0; overflow-wrap: anywhere; white-space: normal; }
   .action-menu-panel .detail-copy { box-sizing: border-box; display: inline-grid; place-items: center; width: 18px; height: 18px; margin-left: var(--pi-space-3); padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: 1; cursor: pointer; vertical-align: middle; }
+  @media (pointer: coarse) { .action-menu-panel .detail-copy { width: 24px; height: 24px; } }
   .action-menu-panel .detail-copy:focus { color: var(--pi-text); border-color: var(--pi-accent); background: var(--pi-surface-hover); }
   @media (hover: hover) { .action-menu-panel .detail-copy:hover { color: var(--pi-text); border-color: var(--pi-accent); background: var(--pi-surface-hover); } }
   .tree-marker { color: var(--pi-muted); margin-right: var(--pi-space-3); }
@@ -420,14 +421,19 @@ export const listStyles = css`
    * for the detail; the rail is what the eye follows down the list, and it is
    * the one place this design spends colour on identity.
    */
-  .action-row { border-left: var(--pi-rail-width, 3px) solid transparent; transition: border-left-color var(--pi-motion-fast) var(--pi-ease); }
-  .action-row:has(.activity-indicator.session) { border-left-color: var(--pi-success); }
-  .action-row:has(.activity-indicator.terminal) { border-left-color: var(--pi-accent); }
-  .action-row:has(.activity-indicator.sending) { border-left-color: var(--pi-warning); }
-  .action-row:has(.activity-indicator.unread) .action-main,
-  .action-row:has(.unread-ring) { border-left-color: var(--pi-accent); }
-  /* Rows report unread as their own class rather than a child indicator, so
-     the rail reads it there too; the two paths cover every list. */
+  .action-row { border-left: var(--pi-rail-width) solid transparent; transition: border-left-color var(--pi-motion-fast) var(--pi-ease); }
+  /* :where() inside :has() keeps these rules at class specificity, so the
+     row-state rules below can override them; a bare :has() outranks every
+     single-class rule forever, which is how a selected row kept the work
+     colour no matter what the later rules said. The colour sits on the row -
+     the row owns the border width, and :427's colour on the borderless
+     .action-main painted nothing at all. Session rows speak .session-state,
+     not .activity-indicator, so the rail names both vocabularies or the
+     largest list on screen never gets a rail. */
+  .action-row:has(:where(.activity-indicator.session, .session-state.running, .session-state.asking)) { border-left-color: var(--pi-success); }
+  .action-row:has(:where(.activity-indicator.terminal)) { border-left-color: var(--pi-accent); }
+  .action-row:has(:where(.activity-indicator.unread, .unread-ring, .session-state.unread)) { border-left-color: var(--pi-accent); }
+  .action-row:has(:where(.session-state.error)) { border-left-color: var(--pi-danger); }
   .action-row.unread { border-left-color: var(--pi-accent); }
   .action-row.archived { border-left-color: var(--pi-border); }
   .action-row.selected { border-left-color: var(--pi-accent); }

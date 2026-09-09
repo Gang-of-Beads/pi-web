@@ -7,9 +7,10 @@
  * on exactly the interaction the reader is watching, and on a slow link they
  * queue behind each other.
  *
- * What is shared is the response body, not a parsed value: each caller applies
- * its own parser to the same bytes, so sharing can never hand one caller a
- * value another caller's parser produced. Only reads are shared - two sends
+ * What is shared is the response body, not a parsed value: each caller parses
+ * the same bytes with its own parser. The body is shared read-only by
+ * convention - a parser that mutated it would leak mutations across callers -
+ * so parsers stay constructive. Only reads are shared - two sends
  * that look identical are two messages, and what makes a repeat safe lives in
  * the daemon's operation ledger, not here.
  */

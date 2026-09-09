@@ -22,6 +22,11 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
   @state() private searchQuery = "";
   @property({ attribute: false }) selectedMachineId?: string;
   @property({ attribute: false }) machineFlags: Readonly<Record<string, NavStatusFlagsShape>> = {};
+  /** Hidden sections retire their query: reopening is a new task, and a
+     leftover filter silently hiding rows reads as machines vanishing. The
+     same rule ProjectList and WorkspaceList already run. */
+  @property({ type: Boolean, reflect: true })
+  override hidden = false;
   @property({ type: Boolean, reflect: true }) collapsible = false;
   @property({ type: Boolean, reflect: true }) collapsed = false;
   @property({ attribute: false }) onSelect?: (machineId: string) => void;
@@ -65,6 +70,7 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
   protected override updated(changed: PropertyValues<this>): void {
     if (changed.has("machines") && this.openMenuMachineId !== undefined && !this.machines.some((machine) => machine.id === this.openMenuMachineId)) this.openMenuMachineId = undefined;
     if (changed.has("collapsed") && this.collapsed) this.openMenuMachineId = undefined;
+    if (changed.has("hidden") && this.hidden && this.searchQuery !== "") this.searchQuery = "";
   }
 
   async focusSelectedOrFirst(): Promise<boolean> {

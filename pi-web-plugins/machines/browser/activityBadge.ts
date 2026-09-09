@@ -43,7 +43,9 @@ export function renderActionActivityIndicator(kind: ActivityIndicatorKind | unde
   const description = kind === undefined
     ? (unreadLabel ?? "")
     : (unreadLabel === undefined ? label : `${unreadLabel} · ${label}`);
-  const ringClass = unreadLabel === undefined || kind === undefined ? "activity-ring" : "activity-ring unread-ring";
+  // "activity-ring" was emitted twice and styled nowhere; only the unread
+  // variant carries a class a stylesheet knows.
+  const ringClass = unreadLabel === undefined || kind === undefined ? "" : "unread-ring";
   return html`<span class="action-activity" ?hidden=${!present}><span class=${ringClass} aria-hidden="true"><span
     class=${`activity-indicator ${markKind}`}
     role="img"
