@@ -1,6 +1,6 @@
 import { css, LitElement, html, type TemplateResult, unsafeCSS } from "lit";
 import { uiIconStyle } from "./uiIcons.js";
-import { loadSurface, warmLazySurfaces } from "./lazySurfaces.js";
+import { loadSurface, warmLazySurfaces, type LazySurface } from "./lazySurfaces.js";
 import { sessionStateBadgeStyles } from "./sessionStateBadgeStyles.js";
 import type { ChatLine } from "./shared";
 import { errorNoticePatch } from "../errorNotice";
@@ -1706,11 +1706,24 @@ export class PiWebApp extends LitElement {
     this.updateUrl();
   }
 
+  /**
+   * Bring a lazily loaded surface in, and say so when it cannot come.
+   *
+   * The load fails when the tab has outlived the deploy that named the module.
+   * Silence there is the worst outcome: a control that does nothing, forever.
+   */
+  private openLazySurface(surface: LazySurface, title: string): void {
+    void loadSurface(surface).then(
+      () => { this.requestUpdate(); },
+      () => { this.setState({ error: `${title} could not load. This tab may be running an older version - reload to get it.` }); },
+    );
+  }
+
   private openSettings(section?: SettingsSection): void {
     // The dialog's module is loaded before it is shown. Rendering the element
     // first would put an empty frame on screen, which reads as "settings has
     // nothing in it" rather than "settings is arriving".
-    void loadSurface("settings").then(() => { this.requestUpdate(); });
+    this.openLazySurface("settings", "Settings");
     this.settingsOpen = true;
     if (section === undefined) {
       this.settingsSection = undefined;
@@ -2359,7 +2372,7 @@ export class PiWebApp extends LitElement {
     // The composer usually still holds focus, which leaves the on-screen
     // keyboard covering the list this exists to show.
     dismissKeyboardIfRaised();
-    void loadSurface("quick-switcher").then(() => { this.requestUpdate(); });
+    this.openLazySurface("quick-switcher", "Session search");
     this.quickSwitcherOpen = true;
     this.quickSwitcherBrowseMachineId = selectedMachineId(this.state);
     this.pushModalLayerFrame();
@@ -2624,7 +2637,7 @@ export class PiWebApp extends LitElement {
   }
 
   private renderSessionTreeNavigator(state: AppState) {
-    if (state.treeDialog !== undefined) void loadSurface("session-tree").then(() => { this.requestUpdate(); });
+    if (state.treeDialog !== undefined) this.openLazySurface("session-tree", "Session tree");
     return state.treeDialog === undefined ? null : html`
       <session-tree-navigator
         .tree=${state.treeDialog}

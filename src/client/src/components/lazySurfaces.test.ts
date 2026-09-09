@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { afterEach, describe, expect, it } from "vitest";
-import { lazySurfacesStarted, loadSurface, resetLazySurfaces, warmLazySurfaces } from "./lazySurfaces.js";
+import { lazySurfacesStarted, loadSurface, resetLazySurfaces, trackLoad, warmLazySurfaces } from "./lazySurfaces.js";
 
 afterEach(() => { resetLazySurfaces(); });
 
@@ -26,6 +26,20 @@ describe("surfaces that load when they are opened", () => {
 
     scheduled[0]?.();
     expect([...lazySurfacesStarted()].sort()).toEqual(["quick-switcher", "session-tree", "settings"]);
+  });
+
+  it("forgets a failed load so the next open can retry", async () => {
+    const loads = new Map<string, Promise<void>>();
+    const failed = trackLoad(loads, "settings", Promise.reject(new Error("chunk is gone")));
+    expect(loads.has("settings")).toBe(true);
+    await expect(failed).rejects.toThrow("chunk is gone");
+    expect(loads.has("settings")).toBe(false);
+  });
+
+  it("keeps a load that succeeded", async () => {
+    const loads = new Map<string, Promise<void>>();
+    await trackLoad(loads, "settings", Promise.resolve());
+    expect(loads.has("settings")).toBe(true);
   });
 
   it("resolves each surface to a defined custom element", async () => {

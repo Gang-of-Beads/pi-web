@@ -22,12 +22,24 @@ const loaders: Readonly<Record<LazySurface, () => Promise<unknown>>> = {
 
 const started = new Map<LazySurface, Promise<void>>();
 
+/**
+ * Remember a load while it is unsettled, and keep it only if it succeeded.
+ *
+ * A failed load must not be remembered as an answer. The usual cause is a
+ * deploy while the tab was open, so the module this bundle names is gone:
+ * keeping the rejection would leave the surface permanently unopenable, even
+ * once a reload would fix it. Forgetting means the next open tries again.
+ */
+export function trackLoad<K>(loads: Map<K, Promise<void>>, key: K, pending: Promise<void>): Promise<void> {
+  loads.set(key, pending);
+  void pending.catch(() => { if (loads.get(key) === pending) loads.delete(key); });
+  return pending;
+}
+
 export function loadSurface(surface: LazySurface): Promise<void> {
   const existing = started.get(surface);
   if (existing !== undefined) return existing;
-  const pending = loaders[surface]().then(() => undefined);
-  started.set(surface, pending);
-  return pending;
+  return trackLoad(started, surface, loaders[surface]().then(() => undefined));
 }
 
 /**
