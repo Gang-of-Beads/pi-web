@@ -271,7 +271,7 @@ export const listStyles = css`
     .list-search-clear { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); }
   }
   .search-empty { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); }
-  section { box-sizing: border-box; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: var(--pi-space-5); }
+  section { box-sizing: border-box; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: var(--pi-reading-edge); }
   h2 { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; gap: var(--pi-space-4); margin: 0 0 var(--pi-space-4); color: var(--pi-muted); font-size: var(--pi-text-xs); }
   /* The create control for a section, carried by its heading rather than by a
      bar of its own: a stacked bar cost a fifth of a phone screen before any
