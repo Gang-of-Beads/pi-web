@@ -135,13 +135,7 @@ export const appStyles = css`
   header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: var(--pi-space-6); border-bottom: 1px solid var(--pi-border); }
   .header-actions { display: flex; align-items: center; gap: var(--pi-space-4); }
   main { grid-column: 3; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-  .context-item { flex: 0 0 auto; min-width: 0; display: flex; }
-  .context-actions { position: absolute; top: var(--pi-space-3); right: 0; bottom: var(--pi-space-3); z-index: 3; display: flex; align-items: center; padding: 0 var(--pi-space-4) 0 0; pointer-events: none; }
-  .context-actions::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; z-index: 0; width: 26px; background: var(--pi-bg); pointer-events: none; }
-  .context-chip { flex: 0 0 auto; min-width: 0; display: inline-flex; align-items: baseline; gap: var(--pi-space-3); border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-2) var(--pi-space-4); font: inherit; text-align: left; }
   @media (hover: hover) { .context-chip:hover { background: var(--pi-surface-hover); } }
-  .context-chip:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
-  .context-chip.empty p { margin: 0; }
   .empty { border-style: dashed; color: var(--pi-muted); }
   .context-kind { display: none; }
   .context-value { min-width: 0; overflow: visible; text-overflow: clip; white-space: nowrap; }

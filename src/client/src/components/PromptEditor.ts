@@ -84,7 +84,7 @@ export const promptEditorStyles = css`
   .select-thinking .prompt-thinking-gauge .gauge-bar { fill: currentColor; stroke: none; opacity: .28; }
   .select-thinking .prompt-thinking-gauge .gauge-bar-active { opacity: 1; }
   .editor-attach { position: absolute; right: var(--pi-space-4); bottom: var(--pi-space-4); z-index: 2; width: var(--pi-control-height); height: var(--pi-control-height); }
-  .editor-attach .prompt-action-icon { width: 16px; height: 16px; }
+  .editor-attach .prompt-action-icon { width: 18px; height: 18px; }
   textarea, .markdown-editor .cm-editor { box-sizing: border-box; width: 100%; min-height: 54px; max-height: 220px; resize: none; overflow: hidden; border-radius: var(--pi-radius-md); border: 1px solid var(--pi-border); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px)/1.4 var(--pi-control-font-family, system-ui, sans-serif); }
   textarea { overflow-y: auto; padding: var(--pi-space-4); padding-right: calc(var(--pi-space-4) + 36px); }
   /* A phone with the keyboard open leaves roughly 400px of viewport, and a
@@ -176,7 +176,7 @@ export const promptEditorStyles = css`
   @media (max-width: 760px) {
     footer { gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-chat-gutter); }
     .actions { gap: var(--pi-space-3); }
-    .compact-status { flex: 1 1 220px; gap: var(--pi-space-2); }
+    .compact-status { flex: 1 1 220px; gap: var(--pi-space-3); }
     .select-model { max-width: min(58vw, 260px); }
     button { padding: var(--pi-space-3) var(--pi-space-4); }
   }

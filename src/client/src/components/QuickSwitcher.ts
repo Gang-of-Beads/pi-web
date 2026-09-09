@@ -466,7 +466,7 @@ export class QuickSwitcher extends LitElement {
        the tile's corner instead: it is used occasionally, the name is read
        every time. The tile reserves the button's width once, on the row, so
        the title and the subtitle end at the same right edge. */
-    .row-menu-toggle { box-sizing: border-box; font: var(--pi-text-xs) var(--pi-font-ui); position: absolute; top: 0; right: 0; width: var(--qs-menu-size); min-height: var(--qs-menu-size); border: 1px solid transparent; border-radius: var(--pi-radius-lg); background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xs); line-height: 1; cursor: pointer; }
+    .row-menu-toggle { box-sizing: border-box; padding: 0; font: var(--pi-text-xs) var(--pi-font-ui); position: absolute; top: 0; right: 0; width: var(--qs-menu-size); min-height: var(--qs-menu-size); border: 1px solid transparent; border-radius: var(--pi-radius-lg); background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xs); line-height: 1; cursor: pointer; }
     .row-menu-toggle:focus-visible { color: var(--pi-text); border-color: var(--pi-accent); }
     @media (hover: hover) { .row-menu-toggle:hover { color: var(--pi-text); border-color: var(--pi-accent); } }
     /* A half-width tile on a small phone shows about nine characters per line,

@@ -229,6 +229,7 @@ export class SessionCleanupDialog extends LitElement {
     .selection-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pi-space-4); }
     .selection-controls span { color: var(--pi-muted); }
     .selection-controls button { box-sizing: border-box; min-height: var(--pi-control-height); padding: var(--pi-space-3) var(--pi-space-4); font-size: var(--pi-text-xs); }
+    @media (pointer: coarse) { .selection-controls button { min-height: var(--pi-control-height-touch); } }
     .table-scroll { max-width: 100%; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; -webkit-overflow-scrolling: touch; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); }
     table { width: 100%; min-width: 620px; border-collapse: collapse; }
     th, td { border-bottom: 1px solid var(--pi-border-muted); padding: var(--pi-space-4) var(--pi-space-5); text-align: right; }

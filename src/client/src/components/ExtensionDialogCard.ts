@@ -373,6 +373,10 @@ export class ExtensionDialogCard extends LitElement {
       overflow-wrap: anywhere;
     }
     .header-status { flex: 0 0 auto; color: var(--pi-muted); font-size: var(--pi-text-2xs); text-align: end; }
+    .header-status { color: var(--pi-text); display: inline-flex; align-items: center; gap: var(--pi-space-3); }
+    .header-status::before { content: ""; width: var(--pi-dot-sm); height: var(--pi-dot-sm); border-radius: 50%; background: currentColor; }
+    .header-status.answered::before { background: var(--pi-success); }
+    .header-status.cancelled::before { background: var(--pi-warning); }
     .header-status.answered { color: var(--pi-success); }
     .header-status.timeout, .header-status.aborted, .header-status.session-ended { color: var(--pi-warning); }
     .dialog-message {

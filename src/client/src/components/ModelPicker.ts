@@ -299,6 +299,7 @@ export class ModelPicker extends LitElement {
     }
     .options > button { display: block; width: 100%; font: var(--pi-text-sm)/1.25 var(--pi-font-ui); padding: var(--pi-space-5) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
     .options > button.selected { background: var(--pi-selection-bg); border-color: var(--pi-accent); }
+    .options > button.selected small, .catalog-row.selected small { color: var(--pi-text-secondary, var(--pi-text)); }
     @media (hover: hover) { .options > button:hover { background: var(--pi-surface-hover); } }
     .catalog-row { display: flex; align-items: center; border-bottom: 1px solid var(--pi-border-muted); }
     .catalog-row.selected { background: var(--pi-selection-bg); border-color: var(--pi-accent); }

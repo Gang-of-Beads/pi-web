@@ -681,6 +681,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     :host { --pi-row-gutter-start: var(--pi-space-3); --pi-row-gutter-size: var(--pi-checkbox-size); }
     @media (pointer: coarse) { :host { --pi-row-gutter-size: var(--pi-control-height-comfort); } }
     h2 { min-height: var(--pi-control-height); gap: var(--pi-space-2); }
+    @media (pointer: coarse) { h2 { gap: var(--pi-space-8); } }
     /* The shared heading spreads its children across the full width, which
        floats the checkbox, the unread count, Clean up and the start button
        apart like five unrelated controls. One group, pushed right, reads as
@@ -688,7 +689,8 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     h2 > .bulk-select-entry { margin-left: auto; }
     h2 > .section-count { flex: 0 0 auto; display: inline; color: var(--pi-muted); font-size: inherit; }
     h2 > .section-unread-count { flex: 0 0 auto; display: inline-block; min-width: 14px; border-radius: var(--pi-radius-pill); background: var(--pi-selection-bg); color: var(--pi-text-bright); padding: 0 var(--pi-space-2); font-size: var(--pi-text-2xs); line-height: 16px; text-align: center; text-transform: none; }
-    .bulk-select-entry { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-control-height); height: var(--pi-control-height); padding: 0; font-size: var(--pi-text-sm); line-height: 1; text-transform: none; }
+    .selection-mark { width: 16px; height: 16px; }
+  .bulk-select-entry { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-control-height); height: var(--pi-control-height); padding: 0; font-size: var(--pi-text-sm); line-height: 1; text-transform: none; }
     .start-session-button { box-sizing: border-box; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: var(--pi-space-2); min-width: var(--pi-control-height); height: var(--pi-control-height); padding: 0 var(--pi-space-5); }
     .section-add-label { font-size: var(--pi-text-xs); white-space: nowrap; }
     /* Quiet by default. Three outlined buttons of equal weight said nothing
@@ -776,7 +778,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .list-empty, .list-loading { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-sm); }
     @media (max-width: 760px) {
       /* 16px keeps iOS Safari from zooming the viewport on focus. */
-      .session-search-input { font-size: var(--pi-text-lg); }
+      .session-search-input { font-size: var(--pi-control-font-size, 16px); }
     }
     /* Coarse pointers get the comfort floor at any width - the convention in
        breakpoints.ts is pointer-scoped, not width-scoped, so tablets keep the

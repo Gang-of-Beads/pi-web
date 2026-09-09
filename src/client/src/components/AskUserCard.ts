@@ -505,6 +505,13 @@ export class AskUserCard extends LitElement {
       line-height: 1.3;
     }
     .header-status { flex: 0 1 auto; color: var(--pi-muted); font-size: var(--pi-text-2xs); text-align: end; }
+    /* The hue rides a mark; the word stays body text. Success, warning and
+       accent all measure under 4.5:1 on the raised card at 11px, and the
+       palette is the owner's to change. */
+    .header-status { color: var(--pi-text); display: inline-flex; align-items: center; gap: var(--pi-space-3); }
+    .header-status::before { content: ""; width: var(--pi-dot-sm); height: var(--pi-dot-sm); border-radius: 50%; background: currentColor; }
+    .header-status.submitted::before { background: var(--pi-success); }
+    .header-status.superseded::before { background: var(--pi-warning); }
     .header-status.submitted { color: var(--pi-success); }
     .header-status.superseded { color: var(--pi-warning); }
     .questions {
@@ -614,7 +621,7 @@ export class AskUserCard extends LitElement {
       box-shadow: 0 -8px 18px var(--pi-shadow-soft);
       padding: var(--pi-space-6) var(--pi-space-7);
     }
-    button {
+    button { box-sizing: border-box; min-height: var(--pi-control-height-touch);
       border: 1px solid var(--pi-border);
       border-radius: var(--pi-radius-md);
       background: var(--pi-surface);

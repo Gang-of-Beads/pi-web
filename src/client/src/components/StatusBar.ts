@@ -1,9 +1,10 @@
-import { css, LitElement, html } from "lit";
+import { css, LitElement, html, unsafeCSS } from "lit";
+import { renderDownIcon, renderUpIcon, uiIconStyle } from "./uiIcons.js";
 import { customElement, property } from "lit/decorators.js";
 import type { SessionStatus } from "../api";
 import { formatCost, formatTokenCount } from "../utils/format";
 
-const statusBarStyles = css`
+const statusBarStyles = css`${unsafeCSS(uiIconStyle)}
   :host { display: block; color: var(--pi-muted); font: var(--pi-text-xs) var(--pi-font-mono); }
   .bar { display: flex; justify-content: flex-end; gap: var(--pi-space-6); align-items: center; min-width: 0; padding: var(--pi-space-4) var(--pi-space-6); border-top: 1px solid var(--pi-border); background: var(--pi-bg); white-space: nowrap; overflow: hidden; }
   span { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -31,8 +32,8 @@ export class StatusBar extends LitElement {
     const tokens = status.tokens;
     return html`
       <div class="bar">
-        <span>↑ ${formatTokenCount(tokens.input)} tok</span>
-        <span>↓ ${formatTokenCount(tokens.output)} tok</span>
+        <span>${renderUpIcon()} ${formatTokenCount(tokens.input)} tok</span>
+        <span>${renderDownIcon()} ${formatTokenCount(tokens.output)} tok</span>
         <span class="context">${contextText}</span>
         <span>${formatCost(status.cost)}</span>
       </div>

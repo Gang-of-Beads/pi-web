@@ -1,4 +1,5 @@
-import { css, LitElement, html, nothing, type TemplateResult } from "lit";
+import { css, LitElement, html, nothing, type TemplateResult, unsafeCSS } from "lit";
+import { renderCheckIcon, renderCopyIcon, renderCrossIcon, renderRecallIcon, renderResendIcon, renderRunIcon, uiIconStyle } from "./uiIcons.js";
 import { scrollbarWidthOf } from "../scrollbarWidth";
 import { showsJumpToBottom } from "../chatScrollPosition";
 import { ScrollFollowGate, TOUCH_SETTLE_MS } from "../scrollFollowGate";
@@ -35,7 +36,7 @@ import { readingAnchorDecision, readingScrollCorrection, shouldHoldReadingPositi
 import { imageLoadScrollCorrection } from "../imageLoadScroll";
 import { bottomAnchorAction } from "../bottomAnchor";
 
-export const chatStyles = css`
+export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   ${SessionStateBadgeStyles}
   /* Mobile browsers paint a rectangular highlight on tap, which looks pasted-on
      over a round or rounded control. Suppressed in favour of the app's own
@@ -1830,7 +1831,7 @@ export class ChatView extends LitElement {
     // data-action, not a styling class: the hook has to survive the button
     // being restyled, which is exactly what broke its test once already.
     return html`<button type="button" class="msg-action" data-action="recall" title="Recall: take this message back and put it in the composer" aria-label="Recall this queued message into the composer" @click=${() => { this.onRecallQueuedMessage?.(queued); }}>
-      <span aria-hidden="true">↩</span>
+      ${renderRecallIcon()}
     </button>`;
   }
 
@@ -1844,12 +1845,12 @@ export class ChatView extends LitElement {
         ${recall}
         ${resendable
           ? html`<button type="button" class="msg-action" title="Edit and send again" aria-label="Put this message back in the composer to send again" @click=${(event: MouseEvent) => { this.resendMessage(message, event); }}>
-              <span aria-hidden="true">↻</span>
+              ${renderResendIcon()}
             </button>`
           : null}
         ${this.isCopyableMessage(message)
           ? html`<button type="button" class="msg-action" title=${copied ? "Copied" : "Copy message"} aria-label=${`${copied ? "Copied" : "Copy"} ${message.role} message`} @click=${(event: MouseEvent) => { void this.copyMessage(message, key, event); }}>
-              <span aria-hidden="true">${copied ? "✓" : "⧉"}</span>
+              <span aria-hidden="true">${copied ? renderCheckIcon() : renderCopyIcon()}</span>
             </button>`
           : null}
       </div>
@@ -1938,11 +1939,11 @@ export class ChatView extends LitElement {
       return html`<img class="part chat-image" src=${src} alt=${alt} loading="lazy" role="button" tabindex="0" title="Click to enlarge" @load=${this.onImageLoad} @click=${() => { this.openImageZoom(src, alt); }} @keydown=${(event: KeyboardEvent) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); this.openImageZoom(src, alt); } }} />`;
     }
     if (part.type === "custom") return this.renderCustomPart(part);
-    if (part.type === "toolCall") return html`<div class="part tool-line">▶ ${part.toolName}<span class="summary">${part.summary}</span></div>`;
+    if (part.type === "toolCall") return html`<div class="part tool-line">${renderRunIcon()} ${part.toolName}<span class="summary">${part.summary}</span></div>`;
     if (part.type === "toolExecution") return html`<tool-execution-view class="part" .execution=${part} .streaming=${this.status?.isStreaming === true}></tool-execution-view>`;
     if (part.type === "toolResult") return html`
       <details class="part" ?open=${part.isError}>
-        <summary>${part.isError ? "✖" : "✓"} ${part.toolName} result</summary>
+        <summary>${part.isError ? renderCrossIcon() : renderCheckIcon()} ${part.toolName} result</summary>
         <formatted-text .text=${part.text}></formatted-text>
       </details>
     `;
