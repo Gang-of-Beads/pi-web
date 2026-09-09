@@ -1,4 +1,4 @@
-# Review triage — UI polish convergence, rounds 8 to 13
+# Review triage — UI polish convergence, rounds 8 to 14
 
 Rounds 1–7 are in `review-triage-uiux-round1.md`,
 `review-triage-uiux-rounds-2-3.md`, `review-triage-uiux-rounds-4-5.md` and
@@ -15,11 +15,29 @@ No self-imposed round cap (the round-five audit rejected one).
 | 10 | 8 | 6 | 12 | 26 | `2e5beb47`, `24fe4032`, `843e103e` |
 | 11 | 5 | 9 | 12 | 26 | `964ada31`, `b3ae9c83` |
 | 12 | 7 | 8 | 10 | 25 | `2fc98ecd` |
-| 13 | 6 | 8 | not delivered | 14 so far | `62c33455` |
+| 13 | 6 | 8 | 8 | 22 | `62c33455`, `84038d6a` |
+| 14 | 6 | 6 | not delivered | 12 so far | `6a5221a1` |
 
-Round 13 lane C is **not a zero-finding lane**: it failed twice on anthropic
-429 and once when the extension session reloaded, and was relaunched on the glm
-lane. A lane that did not run is recorded as not run.
+## Lane C ran on a different model, and twice did not run at all
+
+Lane C is specified as the anthropic full-surface lane with live measurement.
+From round 13 onward that account was rate-limited (both the personal and the
+merchant profile; the merchant exclusion is cached until 2026-09-10), so:
+
+- **round 13 lane C** failed twice on 429 and once when the extension session
+  reloaded, then delivered **on the glm lane** — 8 findings, including the one
+  that mattered most this month: a fix committed an hour earlier as "the hint
+  wraps now" was a no-op, because the rule still ended in `white-space: nowrap`.
+- **round 14 lane C** failed on 429 (anthropic) and then on an upstream 503
+  (glm), and is being retried.
+
+Two consequences, recorded so nobody has to infer them later:
+
+1. A lane that did not run is **not** a zero-finding lane. The convergence
+   criterion needs a whole round of three delivered lanes.
+2. A round whose lane C ran on glm is not equivalent to one where it ran on the
+   model the lane was designed around. **The round that finally reports zero
+   must be re-run on the original lane configuration before it is claimed.**
 
 ## What these rounds actually produced: four new guards
 
