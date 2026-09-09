@@ -1,4 +1,5 @@
-import { css, html, LitElement, type PropertyValues, type TemplateResult } from "lit";
+import { css, html, LitElement, unsafeCSS, type PropertyValues, type TemplateResult } from "lit";
+import { disclosureIconStyle, renderDisclosureIcon } from "./disclosureIcon.js";
 import { customElement, property, state } from "lit/decorators.js";
 import type { AppAction } from "../actions";
 import { configApi, piPackagesApi, pluginsApi, type Machine, type MachineHealth, type MachineRuntime, type PiPackageMutationResponse, type PiPackageScope, type PiPackagesResponse, type PiWebConfigResponse, type PiWebConfigValues, type PiWebPluginsResponse } from "../api";
@@ -193,7 +194,7 @@ export class SettingsDialog extends LitElement {
           <strong>${label}</strong>
           <small>${detail}</small>
         </span>
-        <span class="settings-list-chevron" aria-hidden="true">›</span>
+        <span class="settings-list-chevron">${renderDisclosureIcon(true)}</span>
       </button>
     `;
   }
@@ -756,7 +757,7 @@ export class SettingsDialog extends LitElement {
     }, 3000);
   }
 
-  static override styles = [interactiveSurfaceStyles, css`
+  static override styles = [css`${unsafeCSS(disclosureIconStyle)}`, interactiveSurfaceStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-dialog); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui, system-ui, sans-serif); }
     modal-surface { --modal-surface-backdrop-padding: max(var(--pi-space-8), env(safe-area-inset-top)) max(var(--pi-space-8), env(safe-area-inset-right)) max(var(--pi-space-8), env(safe-area-inset-bottom)) max(var(--pi-space-8), env(safe-area-inset-left)); --modal-surface-width: min(980px, 100%); --modal-surface-max-height: min(760px, 100%); --modal-surface-min-height: min(620px, 100%); --modal-surface-radius: var(--pi-radius-lg); }
     .settings-header { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-6); padding: var(--pi-space-7) var(--pi-space-7); border-bottom: 1px solid var(--pi-border); }
@@ -785,7 +786,7 @@ export class SettingsDialog extends LitElement {
       .settings-list-label { display: flex; flex-direction: column; gap: var(--pi-space-1); min-width: 0; }
       .settings-list-label strong { font-size: var(--pi-text-lg); font-weight: var(--pi-weight-semibold); color: var(--pi-text); }
       .settings-list-label small { font-size: var(--pi-text-sm); color: var(--pi-muted); }
-      .settings-list-chevron { font-size: var(--pi-text-xl); color: var(--pi-muted); }
+      .settings-list-chevron { display: inline-flex; color: var(--pi-muted); }
       .settings-detail-heading { display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
       /* A two-line heading has no middle for a centred control to share: the
          close sat 12px below the back row and 21px above the title. It aligns
