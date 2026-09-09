@@ -70,9 +70,30 @@ const METRICS = `(function(){
   return {rows:rows,borders:borders};
 })()`;
 
+/**
+ * The stack answers 200 to its own readiness check and can still refuse the
+ * next connection a second later, because tmux restarts the web process behind
+ * it. Three audit runs died that way and each looked like a UI failure. A
+ * bounded retry keeps "not up yet" separate from "broken", and still fails
+ * loudly when the stack really is not there.
+ */
+async function openBase(page, base) {
+  let lastError;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    try {
+      await page.goto(base, { waitUntil: "domcontentloaded" });
+      return;
+    } catch (error) {
+      lastError = error;
+      await page.waitForTimeout(1000);
+    }
+  }
+  throw new Error(`FAIL: ${base} refused six connection attempts over six seconds: ${String(lastError).slice(0, 160)}`);
+}
+
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 393, height: 850 }, hasTouch: true, isMobile: true });
-await page.goto(BASE, { waitUntil: "domcontentloaded" });
+await openBase(page, BASE);
 await page.waitForTimeout(3000);
 /**
  * What the stack is serving has to be what was built, or a pass means nothing.
@@ -116,7 +137,7 @@ const failures = [];
 
 for (const drill of DRILLS) {
   if (drill.fresh) {
-    await page.goto(BASE, { waitUntil: "domcontentloaded" });
+    await openBase(page, BASE);
     await page.waitForTimeout(2500);
   }
   for (const key of drill.opens ?? []) {

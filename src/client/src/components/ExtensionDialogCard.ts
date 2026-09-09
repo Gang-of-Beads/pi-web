@@ -524,8 +524,6 @@ export class ExtensionDialogCard extends LitElement {
        the ask-user card beside it in the same transcript already states. */
     .primary-action, .secondary-action, .option-button, .dialog-input { min-height: var(--pi-control-height-touch); }
     @container (max-width: 580px) {
-      /* Every actionable control is a touch target on a phone, not just the
-         primary one: the options are the whole point of a select dialog. */
       /* A cap alone contains nothing: overflow is visible by default, so the
          text kept painting past the bottom of its box and straight through the
          option buttons below it. A goal draft showed its wording between and
@@ -533,11 +531,6 @@ export class ExtensionDialogCard extends LitElement {
          does not fit. */
       .dialog-detail { max-height: min(40vh, 320px); overflow-y: auto; overscroll-behavior: contain; }
     }
-  /* Coarse pointers get the comfort floor at any container width: the floor
-     is pointer-scoped by policy, not width-scoped, so it lives outside the
-     container query that holds the 42px desktop rule. */
-  @media (pointer: coarse) {
-  }
   `;
 }
 

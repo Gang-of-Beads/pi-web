@@ -439,10 +439,14 @@ export class QuickSwitcher extends LitElement {
     .row-flag.interrupted { background: transparent; border: 2px solid var(--pi-warning, var(--pi-accent)); }
     /* Filters scroll sideways rather than wrapping into a wall of chips; the
        row keeps one line so it never competes with the list for height. */
-    .machine-tabs { flex: 0 0 auto; display: flex; align-items: stretch; gap: var(--pi-space-2); padding: var(--pi-space-3) var(--pi-space-5) 0; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+    .machine-tabs { flex: 0 0 auto; display: flex; align-items: stretch; gap: var(--pi-space-2); padding: var(--pi-space-3) var(--pi-space-5) 0;
+      border-bottom: 1px solid var(--pi-border); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
     .machine-tabs::-webkit-scrollbar { display: none; }
     .machine-tab { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height-comfort); border: 1px solid var(--pi-border); border-bottom: 0; border-radius: var(--pi-radius-md) var(--pi-radius-md) 0 0; background: var(--pi-surface); color: var(--pi-text-secondary); padding: var(--pi-space-2) var(--pi-space-6); font: inherit; font-size: var(--pi-text-sm); white-space: nowrap; cursor: pointer; }
-    .machine-tab[aria-selected="true"] { border-color: var(--pi-accent); background: var(--pi-selection-bg); color: var(--pi-text-bright); }
+    /* The selected tab merges into the strip rule below it, which is what the
+       border-bottom: 0 idiom is for; without the strip drawing that line the
+       tabs were three-sided boxes floating over nothing. */
+    .machine-tab[aria-selected="true"] { border-color: var(--pi-accent); background: var(--pi-selection-bg); color: var(--pi-text-bright); margin-bottom: -1px; }
     .filters { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-3); padding: var(--pi-space-4) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
     .filters::-webkit-scrollbar { display: none; }
     /* Chips ghost by default and carry their selected state in the tint, not
@@ -495,7 +499,8 @@ export class QuickSwitcher extends LitElement {
     .row-menu button:focus-visible:not(:disabled) { background: var(--pi-selection-bg); }
     @media (hover: hover) { .row-menu button:hover:not(:disabled) { background: var(--pi-selection-bg); } }
     .row-menu button:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
-    .pin-mark svg { width: 12px; height: 12px; vertical-align: -0.1em; }
+    .pin-mark { display: inline-flex; align-items: center; }
+    .pin-mark svg { width: 14px; height: 14px; }
     .pin-mark { color: var(--pi-accent); }
     /* "· main" was prose inside a two-line clamp, so the state it carried was
        the first thing a long workspace name cut off. */
