@@ -172,7 +172,7 @@ export const workspacePanelStyles = css`
   .tabs { flex: 0 0 auto; display: flex; gap: var(--pi-space-3); align-items: center; }
   .tabs button { flex: 0 0 auto; white-space: nowrap; }
   .tabs button.icon-tab { min-width: var(--pi-control-height-comfort); }
-  button { font: var(--pi-text-xs) var(--pi-font-ui); display: inline-flex; align-items: center; gap: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-3) var(--pi-space-4); cursor: pointer; }
+  button { box-sizing: border-box; min-height: var(--pi-control-height); font: var(--pi-text-xs) var(--pi-font-ui); display: inline-flex; align-items: center; gap: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-3) var(--pi-space-4); cursor: pointer; }
   button.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
   .tab-icon { flex: 0 0 auto; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
   .tab-custom-icon { flex: 0 0 auto; width: 16px; height: 16px; display: inline-grid; place-items: center; color: currentColor; pointer-events: none; }
@@ -204,7 +204,7 @@ export const workspacePanelStyles = css`
   .split.list-only { grid-template-rows: minmax(0, 1fr) 0; }
   .split.list-only > :nth-child(2) { display: none; }
   .list { min-height: 0; overflow: auto; border-bottom: 1px solid var(--pi-border); padding: var(--pi-space-3); }
-  .row { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: var(--pi-space-2); width: 100%; border: 0; border-radius: var(--pi-radius-sm); background: transparent; text-align: left; padding: var(--pi-space-2) var(--pi-space-3) var(--pi-space-2) calc(var(--pi-space-3) + var(--depth, 0) * var(--pi-space-6)); }
+  .row { box-sizing: border-box; display: grid; min-height: var(--pi-control-height); align-items: center; grid-template-columns: 18px minmax(0, 1fr); gap: var(--pi-space-2); width: 100%; border: 0; border-radius: var(--pi-radius-sm); background: transparent; text-align: left; padding: var(--pi-space-2) var(--pi-space-3) var(--pi-space-2) calc(var(--pi-space-3) + var(--depth, 0) * var(--pi-space-6)); }
   .row.selected { background: var(--pi-selection-bg); }
   @media (hover: hover) { .row:hover { background: var(--pi-selection-bg); } }
   .row span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

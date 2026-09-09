@@ -357,7 +357,7 @@ export const chatStyles = css`
   .session-activity.compacting { border-color: var(--pi-purple-border); background: var(--pi-purple-surface); }
   .session-activity strong { color: var(--pi-purple); }
   .session-activity span, .session-activity small { color: var(--pi-muted); }
-  .history-boundary small { color: var(--pi-muted); }
+  .history-boundary small { font-size: inherit; color: var(--pi-muted); }
   /* Centred in the room the transcript is not using, so the words land where
      the reader is already looking rather than clinging to the top edge. */
   .empty-session { display: grid; justify-items: center; gap: var(--pi-space-5); margin: var(--pi-space-9) auto; max-width: var(--pi-chat-measure); padding: var(--pi-space-7); color: var(--pi-muted); text-align: center; }
@@ -413,7 +413,9 @@ export const chatStyles = css`
     /* The same reach its siblings get: without it the info control was a 24px
        target beside 44px ones, and a thumb aiming at it landed on copy. */
     .msg-meta:not(.expanded)::after { content: ""; position: absolute; inset: calc(-1 * var(--pi-space-5)) calc(-1 * var(--pi-space-4)); }
-    .msg-meta::before { content: "ⓘ"; font-size: var(--pi-text-sm); }
+    /* Drawn, not typed: the character's ink ran about a third larger than the
+       icons it stands beside, and it took whatever font resolved it. */
+    .msg-meta::before { content: ""; width: 14px; height: 14px; background: currentColor; -webkit-mask: var(--pi-info-mask) center / contain no-repeat; mask: var(--pi-info-mask) center / contain no-repeat; }
     .msg-meta.expanded { opacity: 1; max-width: 100%; }
     .msg-meta.expanded::before { content: ""; }
   }

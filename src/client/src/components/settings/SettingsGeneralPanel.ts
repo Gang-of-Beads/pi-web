@@ -270,7 +270,7 @@ export class SettingsGeneralPanel extends LitElement {
     .config-path-card { display: grid; gap: var(--pi-space-3); }
     .config-path-card span, .field-heading, dt { color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: var(--pi-weight-semibold); }
     code { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-bg); padding: var(--pi-space-1) var(--pi-space-2); color: var(--pi-text); font: var(--pi-text-xs) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); overflow-wrap: anywhere; }
-    .config-path-card small, .field small { color: var(--pi-muted); }
+    .config-path-card small, .field small { font-size: var(--pi-text-2xs); color: var(--pi-muted); }
     .config-form { display: grid; gap: var(--pi-space-7); }
     .field { display: grid; gap: var(--pi-space-4); }
     .field-heading { display: flex; align-items: center; gap: var(--pi-space-4); }

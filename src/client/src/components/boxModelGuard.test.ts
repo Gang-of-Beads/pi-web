@@ -44,6 +44,12 @@ function styleSources(root: string): string[] {
   return found;
 }
 
+function selectorOf(source: string, ruleIndex: number): string {
+  const before = source.slice(0, ruleIndex);
+  const start = Math.max(before.lastIndexOf("}"), before.lastIndexOf("{"), before.lastIndexOf(";"));
+  return before.slice(start + 1).replace(/\s+/gu, " ").trim();
+}
+
 describe("controls that state a size and a border", () => {
   it("state their box model too", () => {
     const offences: string[] = [];
@@ -57,6 +63,32 @@ describe("controls that state a size and a border", () => {
           const floored = CONTROL_FLOOR.test(rule) && PADDED.test(rule);
           if (!boxed && !floored) continue;
           offences.push(`${file}: ${rule.replace(/\s+/gu, " ").slice(0, 90)}`);
+        }
+      }
+    }
+
+    expect(offences).toEqual([]);
+  });
+
+  it("do not split the floor and the padding across two rules either", () => {
+    const offences: string[] = [];
+    for (const root of ROOTS) {
+      for (const file of styleSources(root)) {
+        const source = readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//gu, " ");
+        const floored = new Map<string, boolean>();
+        const padded = new Map<string, boolean>();
+        const boxed = new Set<string>();
+        for (const match of source.matchAll(RULE)) {
+          const rule = match[0];
+          const selector = selectorOf(source, match.index);
+          if (selector === "") continue;
+          if (rule.includes(BOX_SIZED)) boxed.add(selector);
+          if (CONTROL_FLOOR.test(rule)) floored.set(selector, true);
+          if (PADDED.test(rule)) padded.set(selector, true);
+        }
+        for (const selector of floored.keys()) {
+          if (!padded.has(selector) || boxed.has(selector)) continue;
+          offences.push();
         }
       }
     }
