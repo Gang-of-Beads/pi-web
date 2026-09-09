@@ -18,6 +18,17 @@ afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true });
 });
 
+/**
+ * These cases build a real app, write real package and agent trees and read
+ * them back, so their cost is filesystem-bound rather than CPU-bound. Under an
+ * idle machine the whole file runs in under a second; during a full `verify`
+ * that shared the machine with two review workflows it crossed the 5s default
+ * and reported as a failure. A test that only passes on an idle machine is not
+ * telling the truth about the code, so this file states the budget it needs
+ * instead of depending on who else is running.
+ */
+const FILESYSTEM_BOUND_TIMEOUT_MS = 30_000;
+
 describe("buildApp active profile composition", () => {
   it("routes package and package-backed plugin reads through the same refreshable provider", async () => {
     const firstAgentDir = join(tempDir, "first-agent");
@@ -61,7 +72,7 @@ describe("buildApp active profile composition", () => {
     } finally {
       await app.close();
     }
-  });
+  }, FILESYSTEM_BOUND_TIMEOUT_MS);
 
   it("keeps desired plugin config editable when sessiond is unavailable and a desired agent profile is configured", async () => {
     const agentDir = join(tempDir, "desired-agent");
@@ -112,7 +123,7 @@ describe("buildApp active profile composition", () => {
     } finally {
       await app.close();
     }
-  });
+  }, FILESYSTEM_BOUND_TIMEOUT_MS);
 
   it.each(["unavailable", "invalid"] as const)("returns 503 instead of falling back when the active profile is %s", async (status) => {
     const provider: ActiveAgentProfileProvider = {
