@@ -2155,6 +2155,9 @@ export class PiWebApp extends LitElement {
         .canStartSession=${!!this.state.selectedWorkspace}
         .collapsible=${true}
         .compact=${this.appShell.isMobileNavigationLayout}
+        .session=${this.state.selectedSession}
+        .isWorking=${this.state.selectedSession !== undefined && isActive(this.state)}
+        .onQuickSwitch=${() => { this.openQuickSwitcher(); }}
         .toolTabs=${this.shellToolTabs()}
         .onSelectTool=${(id: string) => { this.openShellToolTab(id); }}
         .projectsCollapsed=${this.navigationSections.isCollapsed("projects")}
@@ -3809,7 +3812,7 @@ export class PiWebApp extends LitElement {
         <aside id="navigation-panel">${this.appShell.isMobileNavigationLayout ? null : this.renderNavigationPanel()}</aside>
         ${this.renderNavigationPanelEdgeControl()}
         <main class=${mainViewClass(displayView)}>
-          ${this.renderContextBar()}
+          ${this.appShell.isMobileNavigationLayout && displayView === "navigation" ? null : this.renderContextBar()}
 
           ${this.renderErrorBanner(state.error)}
           ${this.renderStaleClientBanner()}

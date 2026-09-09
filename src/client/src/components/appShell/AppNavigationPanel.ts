@@ -1,7 +1,8 @@
 import { LitElement, css, html, nothing, svg, type TemplateResult } from "lit";
 import { focusedContextName } from "../../contextName";
-import { customElement, property, query } from "lit/decorators.js";
+import { customElement, property, query, state } from "lit/decorators.js";
 import type { Machine, MachineHealth, Project, SessionActivity, SessionInfo, SessionStatus, Workspace } from "../../api";
+import { sessionLabel } from "../../sessionLabels";
 import type { DrawerSectionContext, QualifiedDrawerSectionContribution, MachineSectionContext, QualifiedMachineSectionContribution, NavSectionContext, QualifiedNavSectionContribution } from "../../plugins/types";
 import type { MachineStatusSnapshot } from "../../../../shared/machineStatus";
 import { selectedMachineId } from "../../controllers/types";
@@ -39,6 +40,8 @@ export interface ShellToolTab {
 
 @customElement("app-navigation-panel")
 export class AppNavigationPanel extends LitElement {
+  /** Secondary header actions live behind the fold; the bar itself stays one row. */
+  @state() private compactActionsOpen = false;
   @property({ attribute: false }) machines: Machine[] = [];
   @property({ attribute: false }) selectedMachine?: Machine;
   @property({ attribute: false }) machineStatuses: Record<string, MachineHealth> = {};
@@ -75,6 +78,11 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) onToggleSessions?: () => void;
   @property({ attribute: false }) onStartSession?: () => void | Promise<void>;
   @property({ attribute: false }) onPrefetchSession?: (session: SessionInfo) => void;
+  @property({ attribute: false }) session?: SessionInfo;
+  /** Whether that session has work in progress. */
+  @property({ type: Boolean }) isWorking = false;
+  /** Opens the quick switcher: the one-tap path to another session. */
+  @property({ attribute: false }) onQuickSwitch?: () => void;
   @property({ attribute: false }) onSelectSession?: (session: SessionInfo) => void | Promise<void>;
   @property({ attribute: false }) onArchiveSession?: (session: SessionInfo) => void | Promise<void>;
   @property({ attribute: false }) onArchiveSessionWithDescendants?: (session: SessionInfo) => void | Promise<void>;
@@ -178,10 +186,20 @@ export class AppNavigationPanel extends LitElement {
           <button class="compact-scope" @click=${() => { this.onOpenContextSheet?.(); }} aria-label="Change machine, project or workspace">
             <span class="compact-scope-name" dir="auto">${this.compactScopeLabel()}</span>
           </button>
+          <button class="compact-session${this.selectedSession === undefined ? " empty" : ""}" @click=${() => { this.onQuickSwitch?.(); }} aria-label="Open session selection">
+            <span class="compact-session-name" dir="auto">${this.selectedSession === undefined ? "Sessions" : sessionLabel(this.selectedSession)}</span>
+          </button>
+          <span class="compact-working" role="status" aria-label="Session is working" ?hidden=${!this.isWorking}><span class="compact-working-dot"></span><span class="compact-working-dot"></span><span class="compact-working-dot"></span></span>
           ${this.refreshControl}
-          <button class="compact-header-action header-icon-action" title="Open settings" aria-label="Open settings" @click=${() => { this.onOpenSettings?.(); }}>${renderGearIcon()}</button>
-          <button class="compact-header-action" title="Show Actions" aria-label="Show Actions" @click=${() => { this.onShowActions?.(); }}>Actions</button>
+          <button class="compact-header-action compact-fold" title=${this.compactActionsOpen ? "Fewer actions" : "More actions"} aria-label=${this.compactActionsOpen ? "Fewer actions" : "More actions"} aria-expanded=${this.compactActionsOpen ? "true" : "false"} @click=${() => { this.compactActionsOpen = !this.compactActionsOpen; }}>
+            <svg class="compact-fold-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d=${this.compactActionsOpen ? "m6 15 6-6 6 6" : "m6 9 6 6 6-6"}></path></svg>
+          </button>
         </div>
+        ${this.compactActionsOpen ? html`
+        <div class="compact-actions-row">
+          <button class="compact-header-action" title="Open settings" aria-label="Open settings" @click=${() => { this.onOpenSettings?.(); }}>Settings</button>
+          <button class="compact-header-action" title="Show Actions" aria-label="Show Actions" @click=${() => { this.onShowActions?.(); }}>Actions</button>
+        </div>` : null}
         ${this.renderMachineHeaderSwitcher()}
         <!-- No quick-action bar here. It stacked a third bar above the list -
              a fifth of a phone screen before any content - and duplicated
@@ -467,6 +485,21 @@ export class AppNavigationPanel extends LitElement {
     /* The compact row speaks pills; a control that renders itself follows the
        row it is in rather than carrying the rail's corner into it. */
     .compact-header { --pi-header-control-radius: var(--pi-radius-pill); flex: 0 0 auto; box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; justify-content: flex-start; gap: var(--pi-space-3); padding: 0 var(--pi-chrome-inset); border-bottom: 1px solid var(--pi-border); }
+    .compact-session { flex: 1 1 auto; min-width: 0; min-height: var(--pi-control-height-touch); display: inline-flex; align-items: center; box-sizing: border-box; border: 0; background: none; color: var(--pi-text); font: inherit; font-size: var(--pi-text-sm); text-align: start; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+    .compact-session-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .compact-session.empty { color: var(--pi-muted); font-weight: var(--pi-weight-medium); }
+    .compact-session:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
+    .compact-working { box-sizing: border-box; flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-1); min-height: var(--pi-control-height-touch); padding: 0 var(--pi-space-2); }
+    .compact-working[hidden] { display: none; }
+    .compact-working-dot { width: var(--pi-dot-xs); height: var(--pi-dot-xs); border-radius: 50%; background: var(--pi-accent); animation: compact-working-bounce 1.2s ease-in-out infinite; }
+    .compact-working-dot:nth-child(2) { animation-delay: .2s; }
+    .compact-working-dot:nth-child(3) { animation-delay: .4s; }
+    @keyframes compact-working-bounce { 0%, 60%, 100% { transform: translateY(0); opacity: .55; } 30% { transform: translateY(-3px); opacity: 1; } }
+    @media (prefers-reduced-motion: reduce) { .compact-working-dot { animation: none; opacity: .8; } }
+    .compact-fold { padding: 0; }
+    .compact-fold-icon { width: var(--pi-dot-md); height: var(--pi-dot-md); pointer-events: none; }
+    .compact-actions-row { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-4); box-sizing: border-box; min-height: var(--pi-control-height-touch); padding: var(--pi-space-2) var(--pi-chrome-inset); border-bottom: 1px solid var(--pi-border); background: var(--pi-bg); }
+    .compact-actions-row .compact-header-action { flex: 1 1 auto; }
     .compact-header-action { font-size: var(--pi-text-xs); flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: var(--pi-control-height-touch); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text);  }
     .compact-header-action:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     /* Coarse pointers get the comfort floor: the glyph is small but the hit
