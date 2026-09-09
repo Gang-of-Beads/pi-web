@@ -511,6 +511,12 @@ function renderDeliveryGlyph(kind: DeliveryGlyph): TemplateResult {
 export function chatDeliveryPresentation(delivery: MessageDelivery, queuePosition?: number): DeliveryPresentation {
   if (delivery.state === "sending") return { glyph: "pending", text: "Sending", label: "Sending", tone: "pending" };
   if (delivery.state === "failed") return { glyph: "failed", text: "Not sent", label: "Not sent - the server never received this message", tone: "failed" };
+  // The state a flaky link produces most often, and the one that must not read
+  // as "gone": the message may be running. It stays open until an answer or a
+  // reconnect closes it, and the row offers the check rather than the page.
+  if (delivery.state === "unverifiable") {
+    return { glyph: "pending", text: "No answer yet", label: "Sent, no answer yet - this may already be running; checking again is safe", tone: "pending" };
+  }
   if (delivery.state === "queued") {
     const place = queuePosition === undefined ? "" : ` · ${String(queuePosition)}`;
     return { glyph: "single", text: `Queued${place}`, label: "Queued - the server has this message and the agent will take it next", tone: "received" };

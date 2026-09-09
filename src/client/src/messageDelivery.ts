@@ -154,7 +154,12 @@ function kindChanged(current: "steer" | "followUp" | undefined, next: "steer" | 
   return next !== undefined && next !== current && currentState === "queued" && nextState === "queued";
 }
 
-const DELIVERY_ORDER: Record<MessageDeliveryState, number> = { failed: -1, sending: 0, received: 1, queued: 2, delivered: 3 };
+/**
+ * Unverifiable sits beside sending, not below failed: the message may be
+ * anywhere between "never left" and "already running", so a real answer from
+ * the server - received, queued, delivered - must still be able to overtake it.
+ */
+const DELIVERY_ORDER: Record<MessageDeliveryState, number> = { failed: -1, unverifiable: 0, sending: 0, received: 1, queued: 2, delivered: 3 };
 
 function advancesDelivery(current: MessageDeliveryState, next: MessageDeliveryState): boolean {
   if (current === next) return false;
@@ -162,6 +167,10 @@ function advancesDelivery(current: MessageDeliveryState, next: MessageDeliverySt
   // but a late success event must not resurrect a message the user was told to
   // retry, and nothing recovers from "delivered".
   if (next === "failed") return current !== "delivered";
+  // An answer that arrives late closes an unverifiable row; that is the whole
+  // point of keeping it open rather than calling it failed.
+  if (current === "unverifiable") return next !== "sending";
+  if (next === "unverifiable") return current === "sending";
   // Deliberate retries go through restartDelivery, which takes the bubble back
   // to sending; a late event still cannot resurrect a failed message.
   if (current === "failed") return false;

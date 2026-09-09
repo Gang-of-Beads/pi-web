@@ -58,8 +58,19 @@ export function describeError(error: unknown): string {
   return text === "" || text.startsWith("[object") ? UNDESCRIBED_FAILURE : text;
 }
 
-/** A request that did not get through is retired by one that does. */
-export function noticeFromError(error: unknown): Notice {
+/**
+ * Whether a failed request should raise a page-level notice at all.
+ *
+ * The page banner speaks about the link. An operation that went unanswered is
+ * a fact about that operation, and it now says so on its own row: a red bar
+ * reading "the server did not answer within 30s" over a transcript that was
+ * still receiving output made the app look broken while it was working.
+ *
+ * A deadline miss therefore raises nothing here while the socket is proven
+ * live; only a link that cannot be shown alive still speaks for the page.
+ */
+export function noticeFromError(error: unknown, link: { readonly live: boolean } = { live: false }): Notice {
+  if (error instanceof RequestTimeoutError && link.live) return NO_NOTICE;
   const text = describeError(error);
   if (error instanceof HttpError) return noticeFromTransport(text);
   // A deadline miss asserts "the server did not answer" - the same claim an

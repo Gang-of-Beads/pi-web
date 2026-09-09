@@ -47,12 +47,11 @@ describe("SessionController send failure", () => {
     expect(typeof error.clientMessageId).toBe("string");
     expect(error.cause).toBeInstanceOf(TypeError);
 
-    // The bubble stays where the user put it, now saying "Not sent": the
-    // failed attempt is the same message the outbox will retry, not a mistake
-    // to smooth over, and removing it would make the drop look like nothing
-    // had ever been sent.
+    // The bubble stays where the user put it and says the link dropped before
+    // an answer - not "Not sent", which would claim the daemon never got it.
+    // The outbox owns the same identity, so a retry cannot make a second copy.
     const [bubble] = read().messages.filter((line) => line.role === "user");
-    expect(bubble?.meta?.delivery?.state).toBe("failed");
+    expect(bubble?.meta?.delivery?.state).toBe("unverifiable");
     expect(read().error).toMatch(/Failed to fetch/u);
   });
 

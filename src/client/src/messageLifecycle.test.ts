@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifySubmission, handleOutcome } from "./messageLifecycle.js";
+import { type MessageOutcome, classifySubmission, handleOutcome } from "./messageLifecycle.js";
 
 /**
  * The owner sent a message, refreshed, and it was gone - nobody had processed
@@ -13,18 +13,34 @@ import { classifySubmission, handleOutcome } from "./messageLifecycle.js";
 
 const refusals = (error: unknown): boolean => error instanceof Error && error.message.startsWith("refused:");
 
+/** The three settlements, built once so the tests read as states rather than literals. */
+function accepted(): MessageOutcome {
+  return { settlement: { outcome: "accepted" }, detail: "" };
+}
+
+function refused(): MessageOutcome {
+  return { settlement: { outcome: "refused", reason: "rejected-by-server" }, detail: "no" };
+}
+
+function unverifiable(): MessageOutcome {
+  return { settlement: { outcome: "unverifiable", reason: "no-answer-within-deadline", bytesHandedToTransport: true }, detail: "timeout" };
+}
+
 describe("classifying what came back", () => {
   it("calls a clean return accepted", () => {
-    expect(classifySubmission(undefined, refusals)).toEqual({ state: "accepted" });
+    expect(classifySubmission(undefined, refusals)).toEqual(accepted());
   });
 
   it("calls a definite refusal refused, with its reason", () => {
-    expect(classifySubmission(new Error("refused: no such session"), refusals)).toEqual({ state: "refused", reason: "refused: no such session" });
+    expect(classifySubmission(new Error("refused: no such session"), refusals)).toEqual({
+      settlement: { outcome: "refused", reason: "rejected-by-server" },
+      detail: "refused: no such session",
+    });
   });
 
   /** The case that lost messages: a timeout is not a verdict. */
-  it("calls a timeout unanswered, not refused", () => {
-    expect(classifySubmission(new Error("The server did not answer within 30s."), refusals).state).toBe("unanswered");
+  it("calls a timeout unverifiable, not refused", () => {
+    expect(classifySubmission(new Error("The server did not answer within 30s."), refusals).settlement.outcome).toBe("unverifiable");
   });
 
   /**
@@ -32,18 +48,18 @@ describe("classifying what came back", () => {
    * calling an unanswered request a refusal deletes a message that exists,
    * while the reverse only leaves a row that can be retried or dismissed.
    */
-  it("calls an unrecognised error unanswered rather than guessing", () => {
-    expect(classifySubmission(new Error("something nobody wrote a pattern for"), refusals).state).toBe("unanswered");
+  it("calls an unrecognised error unverifiable rather than guessing", () => {
+    expect(classifySubmission(new Error("something nobody wrote a pattern for"), refusals).settlement.outcome).toBe("unverifiable");
   });
 });
 
 describe("what each outcome permits", () => {
   it("keeps the row and clears the outbox once accepted", () => {
-    expect(handleOutcome({ state: "accepted" })).toEqual({ keepRow: true, restoreComposer: false, keepInOutbox: false, retryable: false });
+    expect(handleOutcome(accepted())).toEqual({ keepRow: true, restoreComposer: false, keepInOutbox: false, retryable: false });
   });
 
   it("takes the row away and hands the words back on a refusal", () => {
-    expect(handleOutcome({ state: "refused", reason: "no" })).toEqual({ keepRow: false, restoreComposer: true, keepInOutbox: false, retryable: false });
+    expect(handleOutcome(refused())).toEqual({ keepRow: false, restoreComposer: true, keepInOutbox: false, retryable: false });
   });
 
   /**
@@ -53,11 +69,11 @@ describe("what each outcome permits", () => {
    * message the daemon may already be running.
    */
   it("keeps everything and stays retryable when nobody answered", () => {
-    expect(handleOutcome({ state: "unanswered", reason: "timeout" })).toEqual({ keepRow: true, restoreComposer: false, keepInOutbox: true, retryable: true });
+    expect(handleOutcome(unverifiable())).toEqual({ keepRow: true, restoreComposer: false, keepInOutbox: true, retryable: true });
   });
 
   it("never both deletes the row and keeps it in the outbox", () => {
-    for (const outcome of [{ state: "accepted" as const }, { state: "refused" as const, reason: "r" }, { state: "unanswered" as const, reason: "u" }]) {
+    for (const outcome of [accepted(), refused(), unverifiable()]) {
       const handling = handleOutcome(outcome);
       expect(handling.keepInOutbox && !handling.keepRow).toBe(false);
     }
@@ -65,7 +81,7 @@ describe("what each outcome permits", () => {
 
   /** Restoring the composer while the message may still be running is how one message became two. */
   it("never restores the composer for a message that might still be live", () => {
-    expect(handleOutcome({ state: "unanswered", reason: "u" }).restoreComposer).toBe(false);
-    expect(handleOutcome({ state: "accepted" }).restoreComposer).toBe(false);
+    expect(handleOutcome(unverifiable()).restoreComposer).toBe(false);
+    expect(handleOutcome(accepted()).restoreComposer).toBe(false);
   });
 });

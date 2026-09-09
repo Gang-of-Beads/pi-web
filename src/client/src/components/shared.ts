@@ -92,7 +92,7 @@ export type ChatPart =
  * Only messages sent from this browser carry one: history loaded from the
  * server is delivered by definition and stays unmarked.
  */
-export type MessageDeliveryState = "sending" | "received" | "queued" | "delivered" | "failed";
+export type MessageDeliveryState = "sending" | "received" | "queued" | "delivered" | "failed" | "unverifiable";
 
 export interface MessageDelivery {
   /** Correlation id minted by this browser and echoed back by the server. */

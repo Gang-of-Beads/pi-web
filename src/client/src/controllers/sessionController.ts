@@ -26,7 +26,7 @@ import { fileCompletionInsertText } from "../promptCompletions";
 import { SessionSocket, parseSessionSocketEvent, type GlobalSessionEvent, type SessionUiEvent } from "../sessionSocket";
 import { isArchivableSessionInfo, isTransientNewSessionInfo } from "../sessionPersistence";
 import { transcriptLoadingAfter } from "../transcriptLoadingOwnership";
-import { classifySubmission, handleOutcome } from "../messageLifecycle";
+import { classifySubmission, handleOutcome, transportFactsFor } from "../messageLifecycle";
 import { isRequestTimeout } from "../api/requestDeadline";
 import { isSessionActive } from "../../../shared/activity";
 import type { PromptAttachmentDelivery, SessionStartupProgressEvent } from "../../../shared/apiTypes";
@@ -587,10 +587,16 @@ export class SessionController {
       //
       // Collapsing unanswered into refused is what deleted a message the daemon
       // had already accepted, and then offered the same words for sending again.
-      const outcome = classifySubmission(error, (value) => !isNetworkFailure(value) && !isRequestTimeout(value));
+      const outcome = classifySubmission(
+        error,
+        (value) => !isNetworkFailure(value) && !isRequestTimeout(value),
+        transportFactsFor(error, { isTimeout: isRequestTimeout(error), linkOffline: !navigator.onLine }),
+      );
       const handling = handleOutcome(outcome);
       if (handling.keepInOutbox) {
-        if (clientMessageId !== undefined) this.markDelivery(session.id, clientMessageId, "failed");
+        // Unverifiable is not failed: the daemon may hold this message. The row says
+        // so, and the outbox keeps it for a retry the identity makes safe.
+        if (clientMessageId !== undefined) this.markDelivery(session.id, clientMessageId, "unverifiable");
         throw new NetworkSendError(String(error), clientMessageId, { cause: error });
       }
       if (!handling.keepRow && clientMessageId !== undefined) this.setState({ messages: removeDeliveryLine(this.getState().messages, clientMessageId) });

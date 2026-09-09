@@ -20,7 +20,10 @@ import { noticeFromError } from "./notice";
  * Returning both fields together makes the pair impossible to set apart, so a
  * call site added later cannot reintroduce either half.
  */
-export function errorNoticePatch(error: unknown): Pick<AppState, "error" | "errorRetiredBy"> {
-  const notice = noticeFromError(error);
+export function errorNoticePatch(
+  error: unknown,
+  link: { readonly live: boolean } = { live: false },
+): Pick<AppState, "error" | "errorRetiredBy"> {
+  const notice = noticeFromError(error, link);
   return { error: notice.text, errorRetiredBy: notice.retiredBy };
 }

@@ -1,3 +1,4 @@
+import { classifySettlement, type AmbiguityReason, type OperationSettlement } from "../../shared/operationSettlement.js";
 /**
  * What happened to a message the user sent, and what may be done about it.
  *
@@ -11,17 +12,18 @@
  * The states below are the whole set. Every outcome of a submission maps to
  * exactly one of them, and each names who is entitled to assert it.
  */
-export type MessageOutcome =
-  /** The daemon answered and owns the message. Only the daemon can say this. */
-  | { state: "accepted" }
-  /** The daemon refused, with a reason. Only a definite refusal reaches here. */
-  | { state: "refused"; reason: string }
-  /**
-   * Nobody answered within the budget, or the link failed. This is not a
-   * refusal: the daemon may hold the message already. The row stays, the words
-   * stay out of the composer, and the entry stays in the outbox for retry.
-   */
-  | { state: "unanswered"; reason: string };
+/**
+ * A message outcome is one settlement plus the sentence a person reads.
+ *
+ * The three states are the repository's fixed vocabulary
+ * (`src/shared/operationSettlement.ts`): accepted, refused, unverifiable. The
+ * third used to be called "unanswered" here and "timed out" in the banner and
+ * "failed" in the command row - three names for the state that matters most.
+ */
+export interface MessageOutcome {
+  readonly settlement: OperationSettlement;
+  readonly detail: string;
+}
 
 /** What the caller may do with the sender's row and their composer. */
 export interface OutcomeHandling {
@@ -45,12 +47,12 @@ export interface OutcomeHandling {
  * daemon may already be running.
  */
 export function handleOutcome(outcome: MessageOutcome): OutcomeHandling {
-  switch (outcome.state) {
+  switch (outcome.settlement.outcome) {
     case "accepted":
       return { keepRow: true, restoreComposer: false, keepInOutbox: false, retryable: false };
     case "refused":
       return { keepRow: false, restoreComposer: true, keepInOutbox: false, retryable: false };
-    case "unanswered":
+    case "unverifiable":
       return { keepRow: true, restoreComposer: false, keepInOutbox: true, retryable: true };
   }
 }
@@ -64,8 +66,37 @@ export function handleOutcome(outcome: MessageOutcome): OutcomeHandling {
  * refusal deletes a message that exists, while calling a refusal unanswered
  * only leaves a row the reader can retry or dismiss.
  */
-export function classifySubmission(error: unknown, isDefiniteRefusal: (error: unknown) => boolean): MessageOutcome {
-  if (error === undefined) return { state: "accepted" };
-  const reason = error instanceof Error ? error.message : JSON.stringify(error);
-  return isDefiniteRefusal(error) ? { state: "refused", reason } : { state: "unanswered", reason };
+export function classifySubmission(
+  error: unknown,
+  isDefiniteRefusal: (error: unknown) => boolean,
+  transport: { readonly bytesHandedToTransport: boolean; readonly ambiguity?: AmbiguityReason } = { bytesHandedToTransport: true },
+): MessageOutcome {
+  if (error === undefined) return { settlement: classifySettlement({ answer: "accepted", bytesHandedToTransport: true }), detail: "" };
+  const detail = error instanceof Error ? error.message : JSON.stringify(error);
+  if (isDefiniteRefusal(error)) {
+    return { settlement: classifySettlement({ answer: "refused", refusalReason: "rejected-by-server", bytesHandedToTransport: true }), detail };
+  }
+  return {
+    settlement: classifySettlement({
+      ambiguity: transport.ambiguity ?? "no-answer-within-deadline",
+      bytesHandedToTransport: transport.bytesHandedToTransport,
+    }),
+    detail,
+  };
+}
+
+/**
+ * What the transport can honestly say about a failed attempt.
+ *
+ * A deadline that expired means the request left and no answer came back; the
+ * work may well be running. A send attempted with the link already down never
+ * left this process, which is the one case where resending is trivially safe.
+ */
+export function transportFactsFor(
+  error: unknown,
+  facts: { readonly isTimeout: boolean; readonly linkOffline: boolean },
+): { readonly bytesHandedToTransport: boolean; readonly ambiguity: AmbiguityReason } {
+  if (facts.linkOffline) return { bytesHandedToTransport: false, ambiguity: "link-offline" };
+  if (facts.isTimeout) return { bytesHandedToTransport: true, ambiguity: "no-answer-within-deadline" };
+  return { bytesHandedToTransport: true, ambiguity: "link-lost-in-flight" };
 }
