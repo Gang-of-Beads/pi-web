@@ -148,6 +148,12 @@ export interface AcceptanceFace {
   record(sessionId: string, clientMessageId: string): void;
   forget(sessionId: string, clientMessageId: string): void;
   forgetSession(sessionId: string): void;
+  /**
+   * What the daemon can say about identities a client could not settle. An
+   * identity it has never seen is absent from the answer rather than reported
+   * as anything: "we have no row" and "it failed" are different facts.
+   */
+  outcomesFor(sessionId: string, operationIds: readonly string[]): Record<string, OperationOutcome>;
 }
 
 export function createDurableAcceptanceLedger(dataDir: string): AcceptanceFace {
@@ -168,6 +174,14 @@ export function createDurableAcceptanceLedger(dataDir: string): AcceptanceFace {
     },
     forgetSession(sessionId) {
       ledger.forgetSession(sessionId);
+    },
+    outcomesFor(sessionId, operationIds) {
+      const answer: Record<string, OperationOutcome> = {};
+      for (const operationId of operationIds) {
+        const row = ledger.rowFor(sessionId, operationId);
+        if (row !== undefined) answer[operationId] = row.outcome;
+      }
+      return answer;
     },
   };
 }

@@ -1266,6 +1266,18 @@ export class PiSessionService implements SessionRouteService {
   private unreadPublicationRetryDelayMs: number;
   private unreadPublicationStopped = false;
 
+  /**
+   * What the daemon knows about identities a client could not settle.
+   *
+   * A reconnecting browser holds rows whose answer was lost. Asking is the
+   * honest way to close them: an identity the daemon never saw is simply absent
+   * from the answer, because "no row" and "it failed" are different facts and
+   * only one of them justifies sending again.
+   */
+  operationOutcomes(sessionId: string, operationIds: readonly string[]): Record<string, string> {
+    return this.acceptanceLedger.outcomesFor(sessionId, operationIds);
+  }
+
   constructor(private readonly events: SessionEventHub, deps: PiSessionServiceDependencies) {
     this.acceptanceLedger = deps.operationLedgerDir === undefined
       ? new AcceptanceLedger()

@@ -123,6 +123,31 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
     }
   });
 
+  /**
+   * Close operations whose answer the client lost. The client sends the
+   * identities it is still holding open; the daemon answers only for the ones
+   * it has rows for, so an absent id keeps meaning "unknown" rather than
+   * quietly becoming a failure.
+   */
+  app.post<{ Params: { sessionId: string }; Body: { operationIds?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/operations`, async (request, reply) => {
+    let sessionId: string;
+    let operationIds: string[];
+    try {
+      const body = requireRecord(request.body);
+      sessionId = requireNonEmptyBoundedString(request.params.sessionId, "sessionId", SESSION_UNREAD_SESSION_ID_MAX_LENGTH);
+      const raw = body["operationIds"];
+      if (!Array.isArray(raw) || raw.length === 0 || raw.length > 200) throw new Error("operationIds must be 1-200 identities");
+      operationIds = raw.map((value, index) => requireNonEmptyBoundedString(value, `operationIds[${String(index)}]`, 128));
+    } catch (error) {
+      return reply.code(400).send({ error: errorMessage(error) });
+    }
+    try {
+      return { outcomes: sessions.operationOutcomes(sessionId, operationIds) };
+    } catch (error) {
+      return reply.code(503).send({ error: errorMessage(error) });
+    }
+  });
+
   app.post<{ Body: SessionCleanupRequest | undefined }>(`${prefix}/sessions/cleanup/preview`, async (request, reply) => {
     try {
       return await sessions.cleanupPreview(normalizeSessionCleanupRequest(optionalRecord(request.body)));

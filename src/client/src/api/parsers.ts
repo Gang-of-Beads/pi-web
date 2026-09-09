@@ -2379,3 +2379,19 @@ function parseSubagentRuns(value: unknown): SessionSubagentRunInfo[] {
   }
   return runs;
 }
+/**
+ * Outcomes keyed by the identity the client asked about. Anything the daemon
+ * did not answer for is simply missing, and the caller must keep treating it as
+ * unverifiable rather than as a failure.
+ */
+export function parseOperationOutcomes(value: unknown): Record<string, string> {
+  if (typeof value !== "object" || value === null) return {};
+  const record: Record<string, unknown> = { ...value };
+  const outcomes: unknown = record["outcomes"];
+  if (typeof outcomes !== "object" || outcomes === null) return {};
+  const answer: Record<string, string> = {};
+  for (const [key, outcome] of Object.entries(outcomes)) {
+    if (typeof outcome === "string") answer[key] = outcome;
+  }
+  return answer;
+}

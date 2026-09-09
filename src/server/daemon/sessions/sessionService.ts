@@ -51,6 +51,8 @@ export type SessionRouteRef = ClientSessionRef;
  * handling and daemon shutdown stay on the concrete service.
  */
 export interface SessionRouteService {
+  /** Outcomes for identities a reconnecting client could not settle; absent means no row. */
+  operationOutcomes(sessionId: string, operationIds: readonly string[]): Record<string, string>;
   list(cwd: string): Promise<ClientSession[]>;
   /**
    * Create a session. `startupToken` is an opaque label the caller supplies so

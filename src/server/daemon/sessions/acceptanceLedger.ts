@@ -55,4 +55,17 @@ export class AcceptanceLedger {
   forgetSession(sessionId: string): void {
     this.acceptedBySession.delete(sessionId);
   }
+
+  /**
+   * What this ledger can say about identities a client could not settle. It
+   * only ever saw acceptances, so it answers "succeeded" for those and stays
+   * silent about the rest: silence means "no row", not "it failed".
+   */
+  outcomesFor(sessionId: string, operationIds: readonly string[]): Record<"succeeded", never> | Record<string, "succeeded"> {
+    const answer: Record<string, "succeeded"> = {};
+    for (const operationId of operationIds) {
+      if (this.has(sessionId, operationId)) answer[operationId] = "succeeded";
+    }
+    return answer;
+  }
 }

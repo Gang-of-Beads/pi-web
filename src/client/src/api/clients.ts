@@ -68,6 +68,7 @@ import {
   parseWorkspaceTrustResponse,
   parseWebServerVersion,
   requireMachineStatusSnapshot,
+  parseOperationOutcomes,
 } from "./parsers";
 import { messagePath } from "./urls";
 
@@ -318,6 +319,16 @@ export const sessionsApi = {
     body: sessionBody(session, { targetId: navigation.targetId, expectedLeafId: navigation.expectedLeafId, summary: navigation.summary }),
   }),
   forkTree: (session: SessionRef, fork: SessionTreeForkRequest, machineId = "local") => requestSessionTreeFork(session, fork, machineId),
+  /**
+   * Ask what became of identities this browser could not settle. Identities the
+   * daemon has no row for are absent from the answer, which keeps "unknown"
+   * distinct from "failed".
+   */
+  operationOutcomes: (session: SessionRef, operationIds: readonly string[], machineId = "local") =>
+    request(sessionPath(session, "operations", machineId), parseOperationOutcomes, {
+      method: "POST",
+      body: sessionBody(session, { operationIds: [...operationIds] }),
+    }),
   abort: (session: SessionRef, machineId = "local") => request(sessionPath(session, "abort", machineId), parseAborted, { method: "POST", body: sessionBody(session) }),
   stop: (session: SessionRef, machineId = "local") => request(sessionPath(session, "stop", machineId), parseStopped, { method: "POST", body: sessionBody(session) }),
   archive: (session: SessionRef, machineId = "local") => request(sessionPath(session, "archive", machineId), parseArchived, { method: "POST", body: sessionBody(session) }),

@@ -375,7 +375,13 @@ export class SessionController {
       });
       this.socket.connect(session, machineId, {
         onEvent: (event) => socketBuffer.push(event),
-        onReconnect: () => { void this.refreshSelectedSession(session.id); },
+        onReconnect: () => {
+          void this.refreshSelectedSession(session.id);
+          // Ask, do not resend. Every row the link left unverifiable is an
+          // identity the daemon can answer for; sending again without asking is
+          // how one message becomes two.
+          void this.closeUnverifiedOperations(session);
+        },
         onMalformed: () => { this.dialogScope.requestResync(); },
         onGap: (lastSeen: number) => { void this.gapRepair?.onGap(lastSeen); },
       });
@@ -1882,6 +1888,34 @@ export class SessionController {
   }
 
   /** Advance one tracked message's delivery mark in the visible transcript. */
+  /**
+   * Close the rows whose answer this browser lost.
+   *
+   * The daemon answers only for identities it holds, so an id missing from the
+   * answer stays unverifiable rather than becoming a failure: "we have no row"
+   * and "it did not happen" are different facts, and only the second would
+   * justify telling the reader the message is gone.
+   */
+  private async closeUnverifiedOperations(session: SessionRef): Promise<void> {
+    const open: string[] = [];
+    for (const line of this.getState().messages) {
+      const delivery = line.meta?.delivery;
+      if (delivery?.state === "unverifiable") open.push(delivery.clientMessageId);
+    }
+    if (open.length === 0) return;
+    let outcomes: Record<string, string>;
+    try {
+      outcomes = await this.api.operationOutcomes(session, open, selectedMachineId(this.getState()));
+    } catch {
+      // Asking failed too; the rows stay open and honest.
+      return;
+    }
+    for (const [clientMessageId, outcome] of Object.entries(outcomes)) {
+      if (outcome === "succeeded") this.markDelivery(session.id, clientMessageId, "received");
+      else if (outcome === "failed") this.markDelivery(session.id, clientMessageId, "failed");
+    }
+  }
+
   private markDelivery(sessionId: string, clientMessageId: string, state: MessageDeliveryState): void {
     const current = this.getState();
     if (current.selectedSession?.id !== sessionId) return;

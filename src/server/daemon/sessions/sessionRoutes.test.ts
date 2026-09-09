@@ -1356,6 +1356,9 @@ describe("session routes", () => {
 
 class CapturingRouteSessionService implements SessionRouteService {
   readonly calls: unknown[] = [];
+  operationOutcomes(_sessionId: string, operationIds: readonly string[]): Record<string, string> {
+    return Object.fromEntries(operationIds.map((operationId) => [operationId, "succeeded"]));
+  }
   readonly reloadCalls: SessionRouteRef[] = [];
   readonly clearQueueCalls: SessionRouteRef[] = [];
   readonly dismissWarningCalls: { lookup: SessionRouteRef; dismissId: string }[] = [];
