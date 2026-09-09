@@ -546,7 +546,7 @@ export class AskUserCard extends LitElement {
     .option {
       display: grid;
       grid-template-columns: auto minmax(0, 1fr);
-      align-items: start;
+      align-items: center;
       gap: var(--pi-space-4);
       border: 1px solid transparent;
       border-radius: var(--pi-radius-md);
@@ -564,7 +564,7 @@ export class AskUserCard extends LitElement {
     .option:has(input:checked) { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     /* An unsized native control renders at the UA size (13px here), which put
        a tick box beside 24px ones in the next card. */
-    input { flex: 0 0 auto; box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); margin: var(--pi-space-1) 0 0; accent-color: var(--pi-accent); }
+    input { flex: 0 0 auto; box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); margin: 0; accent-color: var(--pi-accent); }
     input:focus-visible, textarea:focus-visible, button:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
     .option-copy { min-width: 0; display: grid; gap: var(--pi-space-1); }
     .option-label { line-height: 1.35; }

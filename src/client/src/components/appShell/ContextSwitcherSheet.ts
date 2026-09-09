@@ -80,7 +80,9 @@ export class ContextSwitcherSheet extends LitElement {
   static override styles = [interactiveSurfaceStyles, listStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-overlay); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
     .sheet { display: flex; flex-direction: column; gap: var(--pi-space-4); width: 100%; max-height: 100%; box-sizing: border-box; padding: var(--pi-space-4); overflow-y: auto; }
-    .sheet-header { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); }
+    /* The sheet is one scroll container: its title and close stay put while the
+       stacked lists scroll under them, as the drawer header does. */
+    .sheet-header { position: sticky; top: 0; z-index: 1; background: var(--pi-bg-raised, var(--pi-surface)); display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); }
     .sheet-title { font-weight: var(--pi-weight-semibold); }
     .sheet-close { box-sizing: border-box; display: grid; place-items: center; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); padding: 0; border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); line-height: 1; cursor: pointer; }
     @media (pointer: coarse) { .sheet-close { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); } }
@@ -92,7 +94,6 @@ export class ContextSwitcherSheet extends LitElement {
        scrollable surface into three squeezed ones - a second machine rendered
        as an 8.9px sliver that read as a rendering artefact, not a row. */
     .sheet-body machine-list, .sheet-body project-list, .sheet-body workspace-list { flex: 0 0 auto; min-height: auto; }
-    .sheet-body h2 { margin: 0 0 var(--pi-space-2); font-size: var(--pi-text-sm); font-weight: var(--pi-weight-semibold); color: var(--pi-muted); }
   `];
 }
 

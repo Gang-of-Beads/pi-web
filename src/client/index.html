@@ -78,6 +78,9 @@
            every window size. */
         --pi-chat-measure: 100%;
         --pi-chat-gutter: 16px;
+        /* Where stacked chrome rows start their text. One value, so the bar, the
+           compact header and the conversation below them share a reading edge. */
+        --pi-chrome-inset: var(--pi-space-3);
         --pi-panel-header-height: 44px;
         --pi-panel-header-control-height: 44px;
         /* Touch floor first: a control is 44px on a finger, 32px under a mouse.
@@ -187,7 +190,7 @@
          The conversation and the composer share this gutter, so narrowing it
          widens both together and keeps them lined up. */
       @media (max-width: 640px) {
-        :root { --pi-chat-gutter: 6px; }
+        :root { --pi-chat-gutter: 6px; --pi-chrome-inset: 6px; }
       }
       html, body { margin: 0; height: 100%; overflow: hidden; background: var(--pi-bg); color: var(--pi-text); }
       body { min-height: 100dvh; }

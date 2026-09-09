@@ -37,7 +37,7 @@ export class AppRefreshControl extends LitElement {
   static override styles = [interactiveSurfaceStyles, css`
     :host { position: relative; z-index: 1; display: flex; align-items: center; pointer-events: auto; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
     :host, :host * { -webkit-user-select: none; user-select: none; }
-    .app-refresh-button { box-sizing: border-box; width: var(--pi-panel-header-control-height, 44px); height: var(--pi-panel-header-control-height, 44px); display: grid; place-items: center; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: 0; line-height: 1; cursor: pointer; touch-action: manipulation; -webkit-touch-callout: none; }
+    .app-refresh-button { box-sizing: border-box; width: var(--pi-panel-header-control-height, 44px); height: var(--pi-panel-header-control-height, 44px); display: grid; place-items: center; border: 1px solid var(--pi-border); border-radius: var(--pi-header-control-radius, var(--pi-radius-md)); background: var(--pi-surface); color: var(--pi-text); padding: 0; line-height: 1; cursor: pointer; touch-action: manipulation; -webkit-touch-callout: none; }
     .app-refresh-icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
   `];
 }
