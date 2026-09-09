@@ -1,5 +1,6 @@
 import { css, LitElement, html, type TemplateResult, unsafeCSS } from "lit";
 import { uiIconStyle } from "./uiIcons.js";
+import { loadSurface, warmLazySurfaces } from "./lazySurfaces.js";
 import { sessionStateBadgeStyles } from "./sessionStateBadgeStyles.js";
 import type { ChatLine } from "./shared";
 import { errorNoticePatch } from "../errorNotice";
@@ -66,7 +67,6 @@ import { applyActiveShortcutPreferences } from "../shortcutPreferences";
 import { createTerminalCommandRunsRuntime } from "../runtime/terminalRuntime";
 import { canDeleteWorkspace, isWorkspaceDeletionPending, isWorkspaceDeletionRunPending, latestWorkspaceDeletionRuns, pendingWorkspaceDeletionIds, targetWorkspaceIdForRun, workspaceDeletionRunFilter, workspaceRemovalConfirmation } from "../workspaceDeletion";
 import "./SessionCleanupDialog";
-import "./SessionTreeNavigator";
 import "./ChatView";
 import type { ChatView } from "./ChatView";
 import "./PromptEditor";
@@ -75,10 +75,8 @@ import "./StatusBar";
 import "./CommandPicker";
 import "./ModelPicker";
 import "./ActionPalette";
-import "./QuickSwitcher";
 import "./AuthDialog";
 import { hasRenderedModal } from "./modalLayerRegistry";
-import "./SettingsDialog";
 import "./WorkspacePanel";
 import type { WorkspacePanelEmptyState } from "./WorkspacePanel";
 import "./appShell/AppContextBar";
@@ -945,6 +943,9 @@ export class PiWebApp extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
+    // Past first paint, fetch the dialogs nobody has opened yet, so an open is
+    // instant without the entry bundle carrying them.
+    warmLazySurfaces();
     // Recovery is noticed by whichever channel succeeds next, which is often
     // not the one that failed; the realtime socket alone was leaving a banner
     // on screen until the page was reloaded by hand.
@@ -1706,6 +1707,10 @@ export class PiWebApp extends LitElement {
   }
 
   private openSettings(section?: SettingsSection): void {
+    // The dialog's module is loaded before it is shown. Rendering the element
+    // first would put an empty frame on screen, which reads as "settings has
+    // nothing in it" rather than "settings is arriving".
+    void loadSurface("settings").then(() => { this.requestUpdate(); });
     this.settingsOpen = true;
     if (section === undefined) {
       this.settingsSection = undefined;
@@ -2354,6 +2359,7 @@ export class PiWebApp extends LitElement {
     // The composer usually still holds focus, which leaves the on-screen
     // keyboard covering the list this exists to show.
     dismissKeyboardIfRaised();
+    void loadSurface("quick-switcher").then(() => { this.requestUpdate(); });
     this.quickSwitcherOpen = true;
     this.quickSwitcherBrowseMachineId = selectedMachineId(this.state);
     this.pushModalLayerFrame();
@@ -2618,6 +2624,7 @@ export class PiWebApp extends LitElement {
   }
 
   private renderSessionTreeNavigator(state: AppState) {
+    if (state.treeDialog !== undefined) void loadSurface("session-tree").then(() => { this.requestUpdate(); });
     return state.treeDialog === undefined ? null : html`
       <session-tree-navigator
         .tree=${state.treeDialog}
