@@ -32,7 +32,23 @@ Read from the working tree, not from memory:
 So (1) and (2) are mostly a question of *which renderer* a contribution gets,
 not of moving code between processes.
 
-## The four decisions this needs
+## The owner's answers (2026-09-09)
+
+1. **Two lists.** A contribution says where it appears; the phone quick-access
+   page and the desktop tab strip are separate declarations. No surprises from
+   a shell that decides for you.
+2. **Declarative to the data and UI layer**, with a clean public interface: a
+   plugin declares its surfaces, the data it needs and the operations it
+   offers, not just its metadata.
+3. **A new repository, installed from GitHub**, not published to npm yet. The
+   declaration format must accept an npm package, a GitHub repository, or any
+   file layout that satisfies the format. Which format fits us best is a
+   research question, answered below.
+4. **Core keeps**: the agent capability itself, session management, the network
+   layer, a minimal UI, and the extension machinery. Everything else is a
+   plugin. The exact list is to be walked one item at a time with the owner.
+
+## The four decisions this needed
 
 ### A. One surface list, two presentations — or two lists?
 

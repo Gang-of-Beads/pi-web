@@ -60,6 +60,8 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
   @property({ type: Boolean, reflect: true }) collapsible = false;
   @property({ type: Boolean, reflect: true }) collapsed = false;
   @property({ attribute: false }) onSelect?: (session: SessionInfo) => void;
+  /** Called when a row shows intent - hover or focus - so its transcript can be read ahead. */
+  @property({ attribute: false }) onPrefetch?: (session: SessionInfo) => void;
   @property({ attribute: false }) onStart?: () => void;
   @property({ attribute: false }) onToggleCollapsed?: () => void;
   @property({ attribute: false }) onArchivedCollapsed?: () => void;
@@ -408,6 +410,8 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
           type="button"
           class="action-main ${selectionActive ? "selecting" : ""}"
           aria-current=${this.selected?.id === session.id ? "true" : nothing}
+          @pointerenter=${() => { this.onPrefetch?.(session); }}
+          @focus=${() => { this.onPrefetch?.(session); }}
           @pointerdown=${(event: PointerEvent) => { this.startRowHold(event, session, scope); }}
           @pointermove=${(event: PointerEvent) => { this.longPress.move(event); }}
           @pointerup=${() => { this.longPress.cancel(); }}

@@ -2155,6 +2155,7 @@ export class PiWebApp extends LitElement {
         .onArchivedCollapsed=${() => { this.sessions.clearSelectionAfterArchivedCollapse(); }}
         .onStartSession=${() => this.startSessionFromNavigation()}
         .onSelectSession=${(session: SessionInfo) => this.selectNavigationItem("sessions", "chat", () => this.sessions.selectSession(session).finally(() => { void this.refreshSubagents(); }))}
+        .onPrefetchSession=${(session: SessionInfo) => { this.sessions.prefetchSession(session); }}
         .onMarkSessionRead=${(session: SessionInfo) => { this.markSessionsRead([session]); }}
         .onMarkSessionsRead=${(sessions: SessionInfo[]) => { this.markSessionsRead(sessions); }}
         .onArchiveSession=${(session: SessionInfo) => this.sessions.archiveSession(session)}

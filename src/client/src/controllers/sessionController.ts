@@ -1896,6 +1896,29 @@ export class SessionController {
    * and "it did not happen" are different facts, and only the second would
    * justify telling the reader the message is gone.
    */
+  /**
+   * Read a session's first page because the reader is about to open it.
+   *
+   * Hover and focus are the earliest honest signal of intent, and the cost is
+   * one read the click would have made anyway: concurrent reads for the same
+   * url share a flight, so opening does not repeat this. Failures are dropped
+   * on purpose - a prefetch that fails must never put an error on screen for
+   * something the reader has not asked for yet.
+   */
+  prefetchSession(session: SessionRef): void {
+    const machineId = selectedMachineId(this.getState());
+    const key = `${machineId}:${session.id}`;
+    if (this.prefetched.has(key)) return;
+    this.prefetched.add(key);
+    void this.api.messages(session, { limit: MESSAGE_PAGE_SIZE }, machineId)
+      // Store it where opening the session will look: a prefetch that only warms
+      // an in-flight map saves nothing once it has settled.
+      .then((page) => { this.transcripts.mergeHistory(this.sessionCacheKey(session.id), page); })
+      .catch(() => undefined);
+  }
+
+  private readonly prefetched = new Set<string>();
+
   private async closeUnverifiedOperations(session: SessionRef): Promise<void> {
     const open: string[] = [];
     for (const line of this.getState().messages) {

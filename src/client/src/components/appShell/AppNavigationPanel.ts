@@ -74,6 +74,7 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) onToggleWorkspaces?: () => void;
   @property({ attribute: false }) onToggleSessions?: () => void;
   @property({ attribute: false }) onStartSession?: () => void | Promise<void>;
+  @property({ attribute: false }) onPrefetchSession?: (session: SessionInfo) => void;
   @property({ attribute: false }) onSelectSession?: (session: SessionInfo) => void | Promise<void>;
   @property({ attribute: false }) onArchiveSession?: (session: SessionInfo) => void | Promise<void>;
   @property({ attribute: false }) onArchiveSessionWithDescendants?: (session: SessionInfo) => void | Promise<void>;
@@ -387,6 +388,7 @@ export class AppNavigationPanel extends LitElement {
         .onArchivedCollapsed=${() => this.onArchivedCollapsed?.()}
         .onStart=${() => this.onStartSession?.()}
         .onSelect=${(session: SessionInfo) => this.onSelectSession?.(session)}
+        .onPrefetch=${(session: SessionInfo) => this.onPrefetchSession?.(session)}
         .onArchive=${(session: SessionInfo) => this.onArchiveSession?.(session)}
         .onArchiveWithDescendants=${(session: SessionInfo) => this.onArchiveSessionWithDescendants?.(session)}
         .onArchiveMany=${(sessions: SessionInfo[]) => this.onArchiveSessions?.(sessions)}
