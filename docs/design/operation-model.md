@@ -112,3 +112,36 @@ not impossible.
 3. Should `unknown` be visible as its own state, or presented as "still
    working" until reconciliation proves otherwise?
 4. Does this work pause the visual-convergence rounds, or interleave with them?
+
+
+## Status: what landed (updated 2026-09-09)
+
+The diagnosis above described the branch when the page was written. Most of it
+is now fixed, task by task in the goal, each with its own probe:
+
+- **Three-arm settlement** (`src/shared/operationSettlement.ts`): accepted /
+  refused / unverifiable, with fixed vocabulary and a guard test banning the
+  old ambiguous words. A timeout on a live link no longer claims the server
+  did not answer — the banner stays down while the socket is alive.
+- **A durable operation ledger in the daemon** (`operationLedger.ts`,
+  wired through `sessiond.ts`): append-only, fingerprint-checked, capacity
+  rejects rather than evicts, restart downgrades pending to unknown.
+- **Reconnect asks once** (`POST /sessions/:id/operations`): the client
+  reconciles on reconnect; absence is not failure.
+- **Write-before-send commit rows** stop flickering: markers are persistent
+  elements toggled by class, not swapped templates (measured 17 → 6 DOM
+  removals per turn).
+- **The silky four**: transcript cache eviction with the quota bug fixed,
+  in-flight read sharing, prefetch on intent (first paint 11ms after hover),
+  and lazy dialog surfaces (entry bundle 1,021,012 → 781,205 bytes) with
+  honest load-failure reporting.
+
+Still open, and deliberately so:
+
+- **Deadline does not consult liveness yet.** The settlement vocabulary is in
+  place; wiring `deadlineSignal` to the socket's keepalive facts is the
+  remaining piece of consequence 2.
+- **Commands still have no server-side identity or cancel.** The ledger knows
+  operations, but the command rows predate it and were not migrated.
+- The phone single-bar fold and the plugin-kernel boundary (see
+  `surfaces-as-plugins.md`) are separate tracks with their own documents.
