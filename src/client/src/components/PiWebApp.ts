@@ -1,4 +1,5 @@
-import { css, LitElement, html, type TemplateResult } from "lit";
+import { css, LitElement, html, type TemplateResult, unsafeCSS } from "lit";
+import { uiIconStyle } from "./uiIcons.js";
 import { sessionStateBadgeStyles } from "./sessionStateBadgeStyles.js";
 import type { ChatLine } from "./shared";
 import { errorNoticePatch } from "../errorNotice";
@@ -101,7 +102,7 @@ export interface PluginDialogEntry {
   readonly close: () => void;
 }
 
-export const appStyles = css`
+export const appStyles = css`${unsafeCSS(uiIconStyle)}
   .plugin-dialog { position: fixed; inset: 0; z-index: var(--pi-layer-dialog); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
   /* The fullscreen presentation is the plugin page form: edge-to-edge, no
      card chrome, so content authored against a large canvas survives direct

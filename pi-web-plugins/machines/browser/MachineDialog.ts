@@ -1,7 +1,7 @@
 import { LitElement, css, html } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import type { MachineCreateInput } from "@gang-of-beads/pi-web/plugin-api";
-import { adoptMachinesHostStyles } from "./hostUi";
+import { renderHostCloseIcon, adoptMachinesHostStyles } from "./hostUi";
 
 /**
  * The add-machine form, rendered inside the shell's dialog surface. A submit
@@ -96,7 +96,7 @@ export class MachineDialog extends LitElement {
       <form @submit=${(event: SubmitEvent) => { this.handleSubmit(event); }} @keydown=${(event: KeyboardEvent) => { this.handleKeyDown(event); }}>
         <header>
           <strong>Add machine</strong>
-          <button type="button" @click=${() => { this.onCancel?.(); }} aria-label="Close">×</button>
+          <button type="button" @click=${() => { this.onCancel?.(); }} aria-label="Close">${renderHostCloseIcon()}</button>
         </header>
         <div class="body">
           ${this.submitError === undefined ? null : html`<div class="dialog-error" role="alert">${this.submitError}</div>`}

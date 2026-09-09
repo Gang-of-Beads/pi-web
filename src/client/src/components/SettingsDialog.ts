@@ -1,4 +1,5 @@
 import { css, html, LitElement, unsafeCSS, type PropertyValues, type TemplateResult } from "lit";
+import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { disclosureIconStyle, renderDisclosureIcon } from "./disclosureIcon.js";
 import { customElement, property, state } from "lit/decorators.js";
 import type { AppAction } from "../actions";
@@ -141,7 +142,7 @@ export class SettingsDialog extends LitElement {
             <span class="eyebrow">Settings</span>
             <h1>PI WEB</h1>
           </div>
-          <button class="close-button" title="Close settings" aria-label="Close settings" @click=${() => this.onClose?.()}>×</button>
+          <button class="close-button" title="Close settings" aria-label="Close settings" @click=${() => this.onClose?.()}>${renderCrossIcon()}</button>
         </header>
         <div class="settings-body">
           <nav class="settings-nav" aria-label="Settings sections">
@@ -171,7 +172,7 @@ export class SettingsDialog extends LitElement {
             <span class="eyebrow">Settings</span>
             <h1>PI WEB</h1>
           </div>
-          <button class="close-button" title="Close settings" aria-label="Close settings" @click=${() => this.onClose?.()}>×</button>
+          <button class="close-button" title="Close settings" aria-label="Close settings" @click=${() => this.onClose?.()}>${renderCrossIcon()}</button>
         </header>
         <nav class="settings-list" aria-label="Settings sections">
           ${this.renderListRow("general", "General", "Gateway + selected machine")}
@@ -207,7 +208,7 @@ export class SettingsDialog extends LitElement {
             <button class="settings-back" @click=${() => this.onBackToList?.()}><span class="settings-back-icon">${renderDisclosureIcon(false)}</span> Settings</button>
             <h1>${this.detailTitle()}</h1>
           </div>
-          <button class="close-button" title="Close settings" aria-label="Close settings" @click=${() => this.onClose?.()}>×</button>
+          <button class="close-button" title="Close settings" aria-label="Close settings" @click=${() => this.onClose?.()}>${renderCrossIcon()}</button>
         </header>
         <main class="settings-content">
           ${this.renderActiveSection()}
@@ -757,7 +758,7 @@ export class SettingsDialog extends LitElement {
     }, 3000);
   }
 
-  static override styles = [css`${unsafeCSS(disclosureIconStyle)}`, interactiveSurfaceStyles, css`
+  static override styles = [css`${unsafeCSS(uiIconStyle)}`, css`${unsafeCSS(disclosureIconStyle)}`, interactiveSurfaceStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-dialog); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui, system-ui, sans-serif); }
     modal-surface { --modal-surface-backdrop-padding: max(var(--pi-space-8), env(safe-area-inset-top)) max(var(--pi-space-8), env(safe-area-inset-right)) max(var(--pi-space-8), env(safe-area-inset-bottom)) max(var(--pi-space-8), env(safe-area-inset-left)); --modal-surface-width: min(980px, 100%); --modal-surface-max-height: min(760px, 100%); --modal-surface-min-height: min(620px, 100%); --modal-surface-radius: var(--pi-radius-lg); }
     .settings-header { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-6); padding: var(--pi-space-7) var(--pi-space-7); border-bottom: 1px solid var(--pi-border); }

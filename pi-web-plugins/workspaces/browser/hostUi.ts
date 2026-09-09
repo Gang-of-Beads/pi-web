@@ -7,7 +7,7 @@ import type { CSSResultArray, CSSResultGroup } from "lit";
  * plugin's real dependencies visible and lets tests stand a host in with
  * just these faces.
  */
-type WorkspacesHostUi = Pick<PluginHostUi, "surfaceStyles" | "renderDisclosureIcon" | "listStyles" | "showDialog">;
+type WorkspacesHostUi = Pick<PluginHostUi, "surfaceStyles" | "renderDisclosureIcon" | "renderCloseIcon" | "listStyles" | "showDialog">;
 
 /**
  * The host utilities and context actions this plugin was activated with.
@@ -70,4 +70,10 @@ export function workspacesHostUi(): WorkspacesHostUi | undefined {
 export function renderHostDisclosureIcon(collapsed: boolean): unknown {
   const host = workspacesHostUi();
   return host?.renderDisclosureIcon?.(collapsed);
+}
+
+/** The shell's close mark, so a contributed dialog draws the same × as the
+ * built-in ones instead of typing the character. */
+export function renderHostCloseIcon(): unknown {
+  return workspacesHostUi()?.renderCloseIcon?.();
 }

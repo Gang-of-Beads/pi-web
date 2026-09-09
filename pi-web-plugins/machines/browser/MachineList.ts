@@ -7,7 +7,7 @@ import { actionMenuPanelStyle } from "./actionMenu";
 import { hasStatusUnread, renderActionActivityIndicator, statusActivityKind } from "./activityBadge";
 import type { KeyboardNavigableSection } from "./navigationFocus";
 import { focusSelectedOrFirstSelectableRow, handleSelectableRowKeyboard } from "./selectableRow";
-import { renderHostDisclosureIcon, adoptMachinesHostStyles } from "./hostUi";
+import { renderHostCloseIcon, renderHostDisclosureIcon, adoptMachinesHostStyles } from "./hostUi";
 
 /**
  * The machine fleet as a row list. Every machine the host feeds in is a plain
@@ -95,7 +95,7 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
           @input=${(event: Event) => { if (event.target instanceof HTMLInputElement) this.searchQuery = event.target.value; }}
           @keydown=${(event: KeyboardEvent) => { if (event.key === "Escape") { event.stopPropagation(); this.searchQuery = ""; } }}
         >
-        ${hasQuery ? html`<button class="list-search-clear" title="Clear search" aria-label="Clear search" @click=${() => { this.searchQuery = ""; }}>×</button>` : null}
+        ${hasQuery ? html`<button class="list-search-clear" title="Clear search" aria-label="Clear search" @click=${() => { this.searchQuery = ""; }}>${renderHostCloseIcon()}</button>` : null}
       </div>
     `;
   }

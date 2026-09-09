@@ -1,4 +1,5 @@
-import { LitElement, css, html } from "lit";
+import { LitElement, css, html, unsafeCSS } from "lit";
+import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { customElement, property, state } from "lit/decorators.js";
 import { searchPromptHistory } from "../promptHistory";
 import { switcherInitialFocus, touchPrimaryPointer } from "../keyboardDismissal";
@@ -61,7 +62,7 @@ export class PromptHistoryPanel extends LitElement {
             .value=${this.query}
             @input=${(event: Event) => { this.onQueryInput(event); }}
           >
-          <button class="close" type="button" title="Close" aria-label="Close prompt history" @click=${() => { this.onClose?.(); }}>×</button>
+          <button class="close" type="button" title="Close" aria-label="Close prompt history" @click=${() => { this.onClose?.(); }}>${renderCrossIcon()}</button>
         </header>
         <div class="body">
           ${entries.length === 0
@@ -107,7 +108,7 @@ export class PromptHistoryPanel extends LitElement {
     this.onPick?.(entry);
   }
 
-  static override styles = css`
+  static override styles = css`${unsafeCSS(uiIconStyle)}
     /* The sheet's controls are in their own shadow root, so the composer's
        tap rules do not reach them: without these, every row and the close
        button stay eligible for the browser's double-tap-zoom click delay. */

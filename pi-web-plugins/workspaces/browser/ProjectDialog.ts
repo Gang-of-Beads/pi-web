@@ -3,7 +3,7 @@ import { customElement, property, query, state } from "lit/decorators.js";
 import type { FileSuggestion } from "@gang-of-beads/pi-web/plugin-api";
 import { css } from "lit";
 import { describeError } from "./errors";
-import { adoptWorkspacesHostStyles } from "./hostUi";
+import { renderHostCloseIcon, adoptWorkspacesHostStyles } from "./hostUi";
 
 /** The submitted trust answer; `changed` is false for the pre-filled value. */
 export interface ProjectTrustChoice {
@@ -284,7 +284,7 @@ export class ProjectDialog extends LitElement {
       >
         <header>
           <strong>Add project</strong>
-          <button @click=${() => { this.onCancel?.(); }} aria-label="Close">×</button>
+          <button @click=${() => { this.onCancel?.(); }} aria-label="Close">${renderHostCloseIcon()}</button>
         </header>
         <div class="body">
           <label>

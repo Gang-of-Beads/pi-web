@@ -72,3 +72,9 @@ export function filesQuery(): PluginHostUi["query"] | undefined {
 export function renderHostDisclosureIcon(collapsed: boolean): unknown {
   return hostUi?.renderDisclosureIcon?.(collapsed);
 }
+
+/** The shell's close mark, so a contributed dialog draws the same × as the
+ * built-in ones instead of typing the character. */
+export function renderHostCloseIcon(): unknown {
+  return hostUi?.renderCloseIcon?.();
+}

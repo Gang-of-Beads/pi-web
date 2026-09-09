@@ -56,3 +56,9 @@ export function describeTerminalError(error: unknown): string {
 export function coarseOrMobileQuery(): string | undefined {
   return hostUi?.breakpoints.coarseOrMobile;
 }
+
+/** The shell's close mark, so the terminal panel draws the same × as the
+ * built-in dialogs instead of typing the character. */
+export function renderHostCloseIcon(): unknown {
+  return hostUi?.renderCloseIcon?.();
+}

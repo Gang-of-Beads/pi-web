@@ -1,4 +1,5 @@
-import { LitElement, css, html, nothing } from "lit";
+import { LitElement, css, html, nothing, unsafeCSS } from "lit";
+import { renderCrossIcon, uiIconStyle } from "../uiIcons.js";
 import { customElement, property } from "lit/decorators.js";
 import type { NavSectionContext, MachineSectionContext, QualifiedMachineSectionContribution, QualifiedNavSectionContribution } from "../../plugins/types";
 import { interactiveSurfaceStyles, listStyles } from "../shared";
@@ -31,7 +32,7 @@ export class ContextSwitcherSheet extends LitElement {
         <div class="sheet">
           <div class="sheet-header">
             <span class="sheet-title">Change context</span>
-            <button type="button" class="sheet-close" title="Close" aria-label="Close context sheet" @click=${() => { this.onClose?.(); }}>×</button>
+            <button type="button" class="sheet-close" title="Close" aria-label="Close context sheet" @click=${() => { this.onClose?.(); }}>${renderCrossIcon()}</button>
           </div>
           <div class="sheet-body">
             ${this.renderMachineGroup()}
@@ -77,7 +78,7 @@ export class ContextSwitcherSheet extends LitElement {
     return this.machineSectionContext?.machines.length ?? 0;
   }
 
-  static override styles = [interactiveSurfaceStyles, listStyles, css`
+  static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, listStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-overlay); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
     .sheet { display: flex; flex-direction: column; gap: var(--pi-space-4); width: 100%; max-height: 100%; box-sizing: border-box; padding: var(--pi-space-4); overflow-y: auto; }
     /* The sheet is one scroll container: its title and close stay put while the

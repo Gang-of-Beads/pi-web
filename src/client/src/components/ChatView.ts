@@ -1190,7 +1190,7 @@ export class ChatView extends LitElement {
     return html`
       <dialog class="image-zoom" @click=${this.onImageZoomDialogClick} @close=${this.closeImageZoom} @cancel=${this.closeImageZoom}>
         ${this.zoomedImage === undefined ? null : html`
-          <button type="button" class="image-zoom-close" aria-label="Close image" @click=${this.closeImageZoom}>×</button>
+          <button type="button" class="image-zoom-close" aria-label="Close image" @click=${this.closeImageZoom}>${renderCrossIcon()}</button>
           <img class="image-zoom-full" src=${this.zoomedImage.src} alt=${this.zoomedImage.alt} />
         `}
       </dialog>
@@ -1531,7 +1531,7 @@ export class ChatView extends LitElement {
           <span class="command-text">${entry.text}</span>
           <span class="command-state">${commandStateLabel(entry, streaming)}</span>
           ${entry.state === "pending" || this.onDismissLedgerRow === undefined ? null : html`
-            <button type="button" class="command-dismiss" title="Dismiss this receipt" aria-label="Dismiss receipt for ${entry.text}" @click=${() => { this.onDismissLedgerRow?.(entry.id); }}>×</button>
+            <button type="button" class="command-dismiss" title="Dismiss this receipt" aria-label="Dismiss receipt for ${entry.text}" @click=${() => { this.onDismissLedgerRow?.(entry.id); }}>${renderCrossIcon()}</button>
           `}
         </div>
       `)}

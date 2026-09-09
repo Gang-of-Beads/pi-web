@@ -1,4 +1,5 @@
 import type { EditorView } from "@codemirror/view";
+import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import type { ComposerEditorHandle } from "./composerEditorSetup";
 
 type ComposerEditorModule = typeof import("./composerEditorSetup");
@@ -25,7 +26,7 @@ import { thinkingGauge, thinkingLevelLabel } from "../../../shared/thinkingLevel
 import "./AutocompleteMenu";
 import "./PromptHistoryPanel";
 
-export const promptEditorStyles = css`
+export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
   /* Mobile browsers paint a rectangular highlight on tap, which looks pasted-on
      over a round or rounded control. Suppressed in favour of the app's own
      pressed and focus styling; :focus-visible still shows keyboard focus, so
@@ -549,7 +550,7 @@ export class PromptEditor extends LitElement {
         ${this.attachments.map((attachment) => html`
           <div class=${`attachment-chip ${isInlinePromptAttachment(attachment) ? "attachment-chip-image" : "attachment-chip-file"}`} title=${attachment.name}>
             ${this.renderAttachmentPreview(attachment)}
-            <button type="button" class="attachment-remove" title="Remove attachment" aria-label=${`Remove ${attachment.name}`} @click=${() => { this.removeAttachment(attachment.id); }}>×</button>
+            <button type="button" class="attachment-remove" title="Remove attachment" aria-label=${`Remove ${attachment.name}`} @click=${() => { this.removeAttachment(attachment.id); }}>${renderCrossIcon()}</button>
           </div>
         `)}
         ${this.attachmentError !== undefined ? html`<div class="attachment-error">${this.attachmentError}</div>` : null}
@@ -622,7 +623,7 @@ export class PromptEditor extends LitElement {
     return html`
       <dialog class="attachment-zoom" @click=${this.onAttachmentZoomDialogClick} @close=${this.closeAttachmentZoom} @cancel=${this.closeAttachmentZoom}>
         ${zoomed === undefined ? null : html`
-          <button type="button" class="attachment-zoom-close" aria-label="Close image" @click=${this.closeAttachmentZoom}>×</button>
+          <button type="button" class="attachment-zoom-close" aria-label="Close image" @click=${this.closeAttachmentZoom}>${renderCrossIcon()}</button>
           <img class="attachment-zoom-full" src=${zoomed.src} alt=${zoomed.alt} />
         `}
       </dialog>

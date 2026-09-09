@@ -1,4 +1,5 @@
-import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from "lit";
+import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult, unsafeCSS } from "lit";
+import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { customElement, property, state } from "lit/decorators.js";
 import type { CommandOption, SessionModelCatalogEntry } from "../api";
 import { keyboardEventOriginatesFromNativeActivationControl } from "./keyboardEventTarget";
@@ -87,7 +88,7 @@ export class ModelPicker extends LitElement {
       >
         <header>
           <strong>${this.title}</strong>
-          <button aria-label="Close" @click=${() => this.onCancel?.()}>×</button>
+          <button aria-label="Close" @click=${() => this.onCancel?.()}>${renderCrossIcon()}</button>
         </header>
         <div class="scope-toggle" role="group" aria-label="Model scope">
           ${this.renderScopeToggleButton("enabled", "Enabled")}
@@ -272,7 +273,7 @@ export class ModelPicker extends LitElement {
    *  over a dialog dimmed the backdrop and then rendered underneath it. */
   @property({ type: Boolean, reflect: true }) aboveDialog = false;
 
-  static override styles = [interactiveSurfaceStyles, css`
+  static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-popover); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui, system-ui, sans-serif); }
     :host([abovedialog]) { z-index: calc(var(--pi-layer-dialog) + 1); }
     modal-surface { --modal-surface-width: min(720px, calc(100vw - 40px)); --modal-surface-max-height: min(640px, calc(100vh - 40px)); }

@@ -1,4 +1,5 @@
-import { LitElement, css, html, nothing, type PropertyValues } from "lit";
+import { LitElement, css, html, nothing, type PropertyValues, unsafeCSS } from "lit";
+import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { customElement, property, state } from "lit/decorators.js";
 import type { AppAction } from "../actions";
 import { formatShortcut } from "../keyboardShortcuts";
@@ -36,7 +37,7 @@ export class ActionPalette extends LitElement {
               }
             }}
           >
-          <button title="Close" aria-label="Close" @click=${() => this.onCancel?.()}>×</button>
+          <button title="Close" aria-label="Close" @click=${() => this.onCancel?.()}>${renderCrossIcon()}</button>
         </header>
         <div class="options">
           ${actions.length === 0 ? html`<div class="empty">No actions found.</div>` : actions.map((action, index) => html`
@@ -97,7 +98,7 @@ export class ActionPalette extends LitElement {
     this.onRun?.(action);
   }
 
-  static override styles = [interactiveSurfaceStyles, css`
+  static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-overlay); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui, system-ui, sans-serif); }
     modal-surface { --palette-top: min(12dvh, 90px); --palette-bottom: max(20px, env(safe-area-inset-bottom)); --modal-surface-place-items: start center; --modal-surface-backdrop-padding: var(--palette-top) var(--pi-space-8) var(--palette-bottom); --modal-surface-max-height: min(640px, calc(100dvh - var(--palette-top) - var(--palette-bottom))); }
     header { display: grid; grid-template-columns: 1fr auto; gap: var(--pi-space-4); padding: var(--pi-space-5); border-bottom: 1px solid var(--pi-border); }

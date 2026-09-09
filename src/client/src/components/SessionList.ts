@@ -1,4 +1,5 @@
 import { LitElement, css, html, unsafeCSS, type PropertyValues, type TemplateResult, nothing } from "lit";
+import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { disclosureIconStyle, renderDisclosureIcon } from "./disclosureIcon.js";
 import { customElement, property, state } from "lit/decorators.js";
 import type { SessionActivity, SessionInfo, SessionStatus } from "../api";
@@ -235,7 +236,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
           @input=${(event: Event) => { this.onSearchInput(event); }}
           @keydown=${(event: KeyboardEvent) => { this.onSearchKeydown(event); }}
         >
-        ${hasQuery ? html`<button class="session-search-clear" title="Clear search" aria-label="Clear search" @click=${() => { this.clearSearch(); }}>×</button>` : null}
+        ${hasQuery ? html`<button class="session-search-clear" title="Clear search" aria-label="Clear search" @click=${() => { this.clearSearch(); }}>${renderCrossIcon()}</button>` : null}
       </div>
     `;
   }
@@ -677,7 +678,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     return "";
   }
 
-  static override styles = [css`${unsafeCSS(disclosureIconStyle)}`, interactiveSurfaceStyles, listStyles, sessionStateBadgeStyles, css`
+  static override styles = [css`${unsafeCSS(uiIconStyle)}`, css`${unsafeCSS(disclosureIconStyle)}`, interactiveSurfaceStyles, listStyles, sessionStateBadgeStyles, css`
     :host { --pi-row-gutter-start: var(--pi-space-3); --pi-row-gutter-size: var(--pi-checkbox-size); }
     @media (pointer: coarse) { :host { --pi-row-gutter-size: var(--pi-control-height-comfort); } }
     h2 { min-height: var(--pi-control-height); gap: var(--pi-space-2); }

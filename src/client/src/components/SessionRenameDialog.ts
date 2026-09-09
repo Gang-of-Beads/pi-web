@@ -1,4 +1,5 @@
-import { LitElement, css, html, type PropertyValues, type TemplateResult } from "lit";
+import { LitElement, css, html, type PropertyValues, type TemplateResult, unsafeCSS } from "lit";
+import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { customElement, property, query, state } from "lit/decorators.js";
 import "./ModalSurface";
 import { interactiveSurfaceStyles } from "./shared";
@@ -22,7 +23,7 @@ export class SessionRenameDialog extends LitElement {
   @state() private submitting = false;
   @query("input") private nameInput?: HTMLInputElement;
 
-  static override styles = [interactiveSurfaceStyles, css`
+  static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-dialog); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
     modal-surface { --modal-surface-place-items: start center; --modal-surface-backdrop-padding: min(12vh, 90px) 0 0; --modal-surface-width: min(560px, calc(100vw - 40px)); --modal-surface-max-height: min(640px, calc(100vh - 40px)); }
     form { display: flex; flex-direction: column; min-height: 0; }
@@ -82,7 +83,7 @@ export class SessionRenameDialog extends LitElement {
         <form @submit=${(event: SubmitEvent) => { this.handleSubmit(event); }}>
           <header>
             <strong>Rename session</strong>
-            <button type="button" @click=${() => { this.onCancel?.(); }} aria-label="Close">×</button>
+            <button type="button" @click=${() => { this.onCancel?.(); }} aria-label="Close">${renderCrossIcon()}</button>
           </header>
           <div class="body">
             <label>

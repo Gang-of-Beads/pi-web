@@ -119,6 +119,9 @@ export interface PluginHostUi {
   /** The chevron the built-in lists and the chrome use for "this section opens",
    *  so a contributed list does not spell the same verb with a text arrow. */
   readonly renderDisclosureIcon?: (collapsed: boolean) => TemplateResult;
+  /** The close mark the built-in dialogs draw, so a contributed dialog does not
+   *  type the character and ship a different ink size beside them. */
+  readonly renderCloseIcon?: () => TemplateResult;
   /** The workspace-panel body baseline (toolbar, list, viewer, empty states),
    *  so a contributed panel body matches the built-in panel instead of
    *  inventing its own chrome. Adopt per element instance in createRenderRoot:
