@@ -39,6 +39,12 @@ Two consequences, recorded so nobody has to infer them later:
    model the lane was designed around. **The round that finally reports zero
    must be re-run on the original lane configuration before it is claimed.**
 
+When that becomes possible is not a guess. Probed directly on 2026-09-09:
+`anthropic-personal/claude-opus-5` is excluded until **2026-09-10T00:05Z** and
+`anthropic-merchant/claude-opus-5` until **2026-09-10T09:11Z**. The confirming
+round therefore cannot run before those windows, and any zero-finding result
+reached on glm lanes in the meantime is provisional until it does.
+
 ## What these rounds actually produced: four new guards
 
 Hand-sweeping was already known to be the wrong tool at this scale. Rounds 8–13
