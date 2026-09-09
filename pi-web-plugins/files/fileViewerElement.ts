@@ -336,7 +336,7 @@ export class WorkspaceFileViewer extends LitElement {
 
   static override styles = [
     css`
-    :host { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: auto; color: var(--pi-text); font: 14px system-ui, sans-serif; }
+    :host { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: auto; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui, system-ui, sans-serif); }
     .viewer-header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: var(--pi-space-4); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); }
     .viewer-header strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .viewer-actions { display: flex; align-items: center; gap: var(--pi-space-4); flex: 0 0 auto; }
@@ -348,7 +348,7 @@ export class WorkspaceFileViewer extends LitElement {
     .viewer-mode button, .preview-state button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-2) var(--pi-space-5); cursor: pointer; font: inherit; }
     .viewer-mode button { font-size: var(--pi-text-xs); }
     .viewer-mode button[aria-pressed="true"] { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
-    .viewer-mode button:focus-visible, .preview-state button:focus-visible, a:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }
+    .viewer-mode button:focus-visible, .preview-state button:focus-visible, a:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
     pi-code-viewer { flex: 1 1 auto; min-height: 0; }
     .markdown-preview { flex: 1 1 auto; min-height: 0; box-sizing: border-box; overflow: auto; padding: var(--pi-space-7); }
     .preview-note { flex: 0 0 auto; margin: 0; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-surface); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-5); font-size: var(--pi-text-xs); }

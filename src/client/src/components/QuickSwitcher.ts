@@ -498,7 +498,7 @@ export class QuickSwitcher extends LitElement {
     .rename-actions { display: flex; gap: var(--pi-space-3); }
     .rename-actions button { width: var(--pi-control-height-comfort); min-height: var(--pi-control-height-comfort); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
     .empty { margin: var(--pi-space-7) var(--pi-space-2); color: var(--pi-muted); }
-    footer { flex: 0 0 auto; padding: var(--pi-space-5); padding-bottom: max(10px, env(safe-area-inset-bottom)); border-top: 1px solid var(--pi-border); }
+    footer { flex: 0 0 auto; padding: var(--pi-space-5); padding-bottom: max(var(--pi-space-5), env(safe-area-inset-bottom)); border-top: 1px solid var(--pi-border); }
     footer button { width: 100%; min-height: var(--pi-control-height-touch); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
   `];
 }

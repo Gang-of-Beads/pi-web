@@ -526,9 +526,9 @@ function relaysStyles(): string {
       /* An expanded folder wraps its chip and children in one rounded group so
          nested tabs read as contained by their folder; nested groups stack.
          No inner padding: the wrapper's border lines sit flush on the button
-         row (a continuous edge), and the -1px vertical margins cancel the
+         row (a continuous edge), and the calc(-1 * var(--pi-space-1)) vertical margins cancel the
          border's height so expanding never grows the strip or its neighbors. */
-      .directory-group { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-3); min-width: 0; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-lg); background: var(--pi-bg-overlay-soft); padding: 0; margin: -1px 0; }
+      .directory-group { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-3); min-width: 0; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-lg); background: var(--pi-bg-overlay-soft); padding: 0; margin: calc(-1 * var(--pi-space-1)) 0; }
       /* Folder chips interleave with file tabs; the chevron rotates while expanded. */
       .directory-tab { display: inline-flex; align-items: center; gap: var(--pi-space-3); }
       .directory-tab .chevron { flex: 0 0 auto; width: 9px; height: 9px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform 0.12s ease; }
@@ -537,7 +537,7 @@ function relaysStyles(): string {
          highlights instead, without taking the fill reserved for the open document. */
       .directory-tab.contains-active { border-color: var(--pi-accent-border); color: var(--pi-accent); }
       .directory-tab.contains-active::after { content: ""; width: var(--pi-dot-xs); height: var(--pi-dot-xs); border-radius: 50%; background: var(--pi-accent); }
-      code, pre { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-sm); background: var(--pi-bg); color: var(--pi-text-secondary); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      code, pre { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-sm); background: var(--pi-bg); color: var(--pi-text-secondary); font: var(--pi-text-xs) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
       code { padding: var(--pi-space-1) var(--pi-space-3); }
       pre { margin: 0; overflow: auto; padding: var(--pi-space-4); white-space: pre-wrap; overflow-wrap: anywhere; }
       .document.markdown { line-height: 1.5; overflow-wrap: anywhere; }

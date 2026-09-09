@@ -292,7 +292,7 @@ function taskStyles(): string {
       .task-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--pi-space-6); align-items: center; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); padding: var(--pi-space-6); }
       .task-copy { display: grid; min-width: 0; gap: var(--pi-space-3); }
       .task-copy span, .muted { color: var(--pi-muted); }
-      code, pre { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-sm); background: var(--pi-bg); color: var(--pi-text-secondary); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      code, pre { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-sm); background: var(--pi-bg); color: var(--pi-text-secondary); font: var(--pi-text-xs) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
       code { overflow: auto; padding: var(--pi-space-3) var(--pi-space-4); white-space: nowrap; }
       pre { margin: var(--pi-space-4) 0 0; overflow: auto; padding: var(--pi-space-4); white-space: pre-wrap; }
       button { border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); background: var(--pi-accent); color: var(--pi-on-accent, var(--pi-bg)); cursor: pointer; padding: var(--pi-space-3) var(--pi-space-5); font: inherit; }

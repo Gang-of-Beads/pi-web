@@ -333,7 +333,7 @@ export class ExtensionDialogCard extends LitElement {
       width: 100%;
       margin: 0 0 var(--pi-space-7);
       color: var(--pi-text);
-      font: 14px system-ui, sans-serif;
+      font: var(--pi-text-base) var(--pi-font-ui, system-ui, sans-serif);
       container-type: inline-size;
     }
     /* One corner owner: the card clips, children paint square (the .msg
@@ -401,7 +401,7 @@ export class ExtensionDialogCard extends LitElement {
       overflow-y: auto;
       overscroll-behavior-y: contain;
     }
-    .dialog-detail:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: -2px; }
+    .dialog-detail:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: -2px; }
     .dialog-options {
       display: grid;
       gap: var(--pi-space-4);
@@ -474,7 +474,7 @@ export class ExtensionDialogCard extends LitElement {
     @media (hover: hover) { button:hover:not(:disabled) { background: var(--pi-surface-hover); } }
     button:active:not(:disabled) { background: var(--pi-surface-active); }
     button:disabled { cursor: wait; opacity: .65; }
-    button:focus-visible, .dialog-input:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 2px; }
+    button:focus-visible, .dialog-input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 2px; }
     .primary-action { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-on-accent, var(--pi-bg)); font-weight: 650; }
     @media (hover: hover) { .primary-action:hover:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 86%, white); } }
     .primary-action:active:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 86%, white); }

@@ -757,8 +757,8 @@ export class SettingsDialog extends LitElement {
   }
 
   static override styles = [interactiveSurfaceStyles, css`
-    :host { position: fixed; inset: 0; z-index: var(--pi-layer-dialog); color: var(--pi-text); font: 14px system-ui, sans-serif; }
-    modal-surface { --modal-surface-backdrop-padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); --modal-surface-width: min(980px, 100%); --modal-surface-max-height: min(760px, 100%); --modal-surface-min-height: min(620px, 100%); --modal-surface-radius: var(--pi-radius-lg); }
+    :host { position: fixed; inset: 0; z-index: var(--pi-layer-dialog); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui, system-ui, sans-serif); }
+    modal-surface { --modal-surface-backdrop-padding: max(var(--pi-space-8), env(safe-area-inset-top)) max(var(--pi-space-8), env(safe-area-inset-right)) max(var(--pi-space-8), env(safe-area-inset-bottom)) max(var(--pi-space-8), env(safe-area-inset-left)); --modal-surface-width: min(980px, 100%); --modal-surface-max-height: min(760px, 100%); --modal-surface-min-height: min(620px, 100%); --modal-surface-radius: var(--pi-radius-lg); }
     .settings-header { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-6); padding: var(--pi-space-7) var(--pi-space-7); border-bottom: 1px solid var(--pi-border); }
     .eyebrow { display: block; color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: 600; }
     h1 { margin: 0; font-size: var(--pi-text-xl); line-height: 1.2; }
@@ -777,17 +777,17 @@ export class SettingsDialog extends LitElement {
 
     @media (pointer: coarse), (max-width: 760px) {
       modal-surface { --modal-surface-backdrop-padding: 0; --modal-surface-place-items: stretch; --modal-surface-width: 100%; --modal-surface-max-height: none; --modal-surface-min-height: 0; --modal-surface-border: 0; --modal-surface-radius: 0; }
-      .settings-header { padding: max(12px, env(safe-area-inset-top)) 12px 12px; }
+      .settings-header { padding: max(var(--pi-space-6), env(safe-area-inset-top)) var(--pi-space-6) var(--pi-space-6); }
       .settings-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-      .settings-list { display: flex; flex-direction: column; overflow-y: auto; padding: 6px 0 calc(14px + env(safe-area-inset-bottom)); }
+      .settings-list { display: flex; flex-direction: column; overflow-y: auto; padding: var(--pi-space-3) 0 calc(var(--pi-space-6) + env(safe-area-inset-bottom)); }
       .settings-list button { box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-6); width: 100%; min-height: 56px; margin: 0; border: 0; border-bottom: 1px solid var(--pi-border); border-radius: 0; padding: var(--pi-space-5) var(--pi-space-7); text-align: left; }
       .settings-list-label { display: flex; flex-direction: column; gap: var(--pi-space-1); min-width: 0; }
       .settings-list-label strong { font-size: var(--pi-text-lg); font-weight: 600; color: var(--pi-text); }
       .settings-list-label small { font-size: var(--pi-text-sm); color: var(--pi-muted); }
       .settings-list-chevron { font-size: var(--pi-text-xl); color: var(--pi-muted); }
       .settings-detail-heading { display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
-      .settings-back { display: inline-flex; align-items: center; min-height: var(--pi-control-height-touch); margin-left: -8px; border: 0; padding: 0 var(--pi-space-4) 0 0; font-size: var(--pi-text-base); font-weight: 600; color: var(--pi-accent); }
-      .settings-content { padding: 14px 12px calc(18px + env(safe-area-inset-bottom)); }
+      .settings-back { display: inline-flex; align-items: center; min-height: var(--pi-control-height-touch); margin-left: calc(-1 * var(--pi-space-4)); border: 0; padding: 0 var(--pi-space-4) 0 0; font-size: var(--pi-text-base); font-weight: 600; color: var(--pi-accent); }
+      .settings-content { padding: var(--pi-space-6) var(--pi-space-6) calc(var(--pi-space-7) + env(safe-area-inset-bottom)); }
     }
   `];
 }

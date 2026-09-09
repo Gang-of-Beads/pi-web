@@ -10,18 +10,20 @@ import { join } from "node:path";
  * the scale does not have (3, 5, 7, 9, 14), which is how two sibling rows end
  * up breathing differently for no stated reason.
  *
- * Values that mix spacing with layout maths or device insets (`calc(...)`,
- * `env(safe-area-inset-*)`, `min()`, `max()`, `clamp()`) are exempt: those
- * express a position, not a step on the rhythm, and rewriting them mechanically
- * would change what they compute. A pixel value above the scale's top step
- * (24px) is likewise structural - it reserves room for a control that overlays
- * the box (a 44px menu button, a 58px composer gutter) and belongs to the
- * control's size, not to the rhythm. Both exemptions are narrow and stated
- * here so a plain rhythm literal cannot hide behind them.
+ * Values that mix spacing with layout maths or device insets are inspected
+ * inside the maths rather than skipped: `max(12px, env(safe-area-inset-top))`
+ * still names a rhythm step, and skipping the whole declaration is how a
+ * cluster of bare 12/6/14/18px values sat inside `@media (pointer: coarse)`
+ * untouched. Only the non-literal parts (`env(...)`, viewport units, other
+ * variables) are outside the scale's jurisdiction. Negative offsets count too:
+ * a `-8px` margin is the same step spelled backwards.
+ *
+ * A pixel value above the scale's top step (24px) is structural - it reserves
+ * room for a control that overlays the box (a 44px menu button, a 58px
+ * composer gutter) and belongs to the control's size, not to the rhythm.
  */
 const ROOTS = ["src/client/src", "pi-web-plugins"];
 const SPACING_PROPERTY = /\b(?:padding|margin|gap|row-gap|column-gap|padding-(?:top|right|bottom|left|inline|block)|margin-(?:top|right|bottom|left|inline|block)):\s*([^;{}]+)/gu;
-const COMPUTED_VALUE = /calc\(|env\(|min\(|max\(|clamp\(/u;
 const RHYTHM_TOP = 24;
 
 function styleSources(root: string): string[] {
@@ -45,9 +47,9 @@ describe("the spacing scale", () => {
       for (const file of styleSources(root)) {
         for (const match of readFileSync(file, "utf8").matchAll(SPACING_PROPERTY)) {
           const value = match[1] ?? "";
-          if (COMPUTED_VALUE.test(value)) continue;
-          for (const step of value.matchAll(/(?:^|\s)(\d+)px(?=\s|$)/gu)) {
-            if (Number(step[1]) <= RHYTHM_TOP) offences.push(`${file}: ${match[0].trim()}`);
+          for (const step of value.matchAll(/(-?)(\d+)px/gu)) {
+            if (Number(step[2]) > RHYTHM_TOP) continue;
+            offences.push(`${file}: ${match[0].trim()}`);
           }
         }
       }

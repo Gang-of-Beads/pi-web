@@ -362,10 +362,10 @@ export class SettingsShortcutsPanel extends LitElement {
     .prompt-enter-options { display: grid; gap: var(--pi-space-4); }
     .prompt-enter-option { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--pi-space-4); align-items: start; color: var(--pi-text); }
     .prompt-enter-option input { box-sizing: border-box; width: 14px; min-width: 14px; height: 14px; margin: var(--pi-space-2) 0 0; padding: 0; border: 0; background: transparent; accent-color: var(--pi-accent); font-family: inherit; }
-    .prompt-enter-option input:focus { border-color: transparent; box-shadow: none; outline: 2px solid var(--pi-accent-border); outline-offset: 2px; }
+    .prompt-enter-option input:focus { border-color: transparent; box-shadow: none; outline: var(--pi-focus-ring-width) solid var(--pi-accent-border); outline-offset: 2px; }
     .prompt-enter-option span { display: grid; gap: var(--pi-space-1); }
     .prompt-enter-option small { color: var(--pi-muted); line-height: 1.35; }
-    code { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-bg); padding: var(--pi-space-1) var(--pi-space-2); color: var(--pi-text); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+    code { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-bg); padding: var(--pi-space-1) var(--pi-space-2); color: var(--pi-text); font: var(--pi-text-xs) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); overflow-wrap: anywhere; }
     .shortcut-group { margin: 0; }
     .shortcut-group h3 { margin: 0 0 var(--pi-space-4); color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: 600; }
     .shortcut-list { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); overflow: hidden; }
@@ -390,7 +390,7 @@ export class SettingsShortcutsPanel extends LitElement {
     input { box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); outline: none; font: var(--pi-control-font-size, 16px) var(--pi-control-monospace-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
     input:focus { border-color: var(--pi-accent); box-shadow: 0 0 0 1px var(--pi-accent-border); }
     .shortcut-actions { display: flex; justify-content: flex-end; gap: var(--pi-space-4); flex-wrap: wrap; }
-    kbd { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-bg); color: var(--pi-text-secondary); padding: var(--pi-space-2) var(--pi-space-4); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: nowrap; }
+    kbd { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-bg); color: var(--pi-text-secondary); padding: var(--pi-space-2) var(--pi-space-4); font: var(--pi-text-xs) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); white-space: nowrap; }
     .unassigned { color: var(--pi-muted); font-size: var(--pi-text-xs); }
     .recording-hint { color: var(--pi-accent); font-size: var(--pi-text-xs); }
 

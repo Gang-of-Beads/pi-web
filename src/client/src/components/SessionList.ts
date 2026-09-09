@@ -687,7 +687,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     /* Quiet by default. Three outlined buttons of equal weight said nothing
        about which one starts work and which one deletes it; a secondary action
        states itself with text and earns its outline on hover. */
-    .cleanup-entry { flex: 0 0 auto; padding: var(--pi-space-3) var(--pi-space-4); font-size: var(--pi-text-xs); text-transform: none; border: 0; background: transparent; color: var(--pi-muted); }
+    .cleanup-entry { flex: 0 0 auto; min-height: var(--pi-control-height); padding: var(--pi-space-3) var(--pi-space-4); font-size: var(--pi-text-xs); text-transform: none; border: 0; background: transparent; color: var(--pi-muted); }
     .cleanup-entry:focus-visible { color: var(--pi-danger, var(--pi-text)); background: var(--pi-surface-hover); }
     @media (hover: hover) { .cleanup-entry:hover:not(:disabled) { color: var(--pi-danger, var(--pi-text)); background: var(--pi-surface-hover); } }
     .bulk-select-entry { border: 0; background: transparent; color: var(--pi-muted); }
@@ -723,13 +723,13 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .pending-session-row.starting-session .action-main { border-radius: var(--pi-radius-md); border-style: dashed; color: var(--pi-muted); }
     .pending-session-row.starting-session .action-name { display: flex; align-items: center; gap: var(--pi-space-3); max-height: none; -webkit-line-clamp: 1; }
     .pending-session-row.starting-session .activity-indicator { flex: 0 0 auto; margin: 0; }
-    .action-main.selecting { padding-left: calc(32px + var(--depth, 0) * 16px); }
-.session-checkbox { position: absolute; top: 9px; left: calc(8px + var(--depth, 0) * 16px); z-index: 3; box-sizing: border-box; width: 24px; height: 24px; margin: 0; }
+    .action-main.selecting { padding-left: calc(32px + var(--depth, 0) * var(--pi-space-7)); }
+.session-checkbox { position: absolute; top: var(--pi-space-4); left: calc(var(--pi-space-3) + var(--depth, 0) * 16px); z-index: 3; box-sizing: border-box; width: 24px; height: 24px; margin: 0; }
     .subtree-toggle, .subtree-toggle.inert { position: absolute; top: 8px; left: calc(6px + var(--depth, 0) * 16px); z-index: 2; box-sizing: border-box; width: 24px; height: 24px; padding: 0; display: inline-grid; place-items: center; border: 1px solid transparent; border-radius: var(--pi-radius-sm); background: color-mix(in srgb, var(--pi-muted) 14%, transparent); color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: 1; }
     /* Formerly the toggle floated over the row's leading text and swallowed
        taps aimed at the session name. Reserve the gutter in the padding so
        the toggle sits over empty space. */
-    .action-row.has-subtree-toggle .action-main { padding-left: calc(38px + var(--depth, 0) * 16px); }
+    .action-row.has-subtree-toggle .action-main { padding-left: calc(38px + var(--depth, 0) * var(--pi-space-7)); }
     /* A child is a detail of the row above it, so it is drawn lighter rather
        than smaller: the type size stays on the scale and the hierarchy is
        carried by weight, colour and surface. Indent alone could not do it -
@@ -737,12 +737,12 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
        child's name further left than its parent's. */
     .action-row.is-child .action-name { color: var(--pi-muted); font-weight: 400; }
     .action-row.is-child .action-main { background: transparent; border-color: var(--pi-border-muted); }
-    .action-row.is-child .action-main { padding-left: calc(38px + var(--depth, 0) * 16px); }
+    .action-row.is-child .action-main { padding-left: calc(38px + var(--depth, 0) * var(--pi-space-7)); }
     .subtree-toggle { cursor: pointer; }
     @media (hover: hover) { .subtree-toggle:hover { border-color: var(--pi-border-strong, var(--pi-accent)); color: var(--pi-text); } }
     @media (pointer: coarse) {
       .subtree-toggle { top: 0; width: var(--pi-control-height-comfort); height: var(--pi-control-height-touch); }
-      .action-row.has-subtree-toggle .action-main, .action-row.is-child .action-main { padding-left: calc(44px + var(--depth, 0) * 16px); }
+      .action-row.has-subtree-toggle .action-main, .action-row.is-child .action-main { padding-left: calc(44px + var(--depth, 0) * var(--pi-space-7)); }
     }
     /* While selecting, the inert toggle shares the leading slot with the
        checkbox and, on a coarse pointer, covers it entirely: a tap aimed at

@@ -17,6 +17,10 @@ import { join } from "node:path";
  */
 const ROOTS = ["src/client/src", "pi-web-plugins"];
 const TYPE_LITERAL = /font-size:\s*\d+px/gu;
+/** A `font:` shorthand states a size too; 16px and 10px escaped the scale there. */
+const SHORTHAND_LITERAL = /font:\s*(?:\d+\s+)?\d+px/gu;
+/** The ring width is a token; sixteen rules spelled it 2px and would not follow a change. */
+const FOCUS_RING_LITERAL = /outline:\s*\d+px/gu;
 
 function styleSources(root: string): string[] {
   const found: string[] = [];
@@ -37,7 +41,20 @@ describe("the type scale", () => {
     const offences: string[] = [];
     for (const root of ROOTS) {
       for (const file of styleSources(root)) {
-        for (const match of readFileSync(file, "utf8").matchAll(TYPE_LITERAL)) offences.push(`${file}: ${match[0]}`);
+        const source = readFileSync(file, "utf8");
+        for (const match of source.matchAll(TYPE_LITERAL)) offences.push(`${file}: ${match[0]}`);
+        for (const match of source.matchAll(SHORTHAND_LITERAL)) offences.push(`${file}: ${match[0]}`);
+      }
+    }
+
+    expect(offences).toEqual([]);
+  });
+
+  it("keeps the focus ring on its own token", () => {
+    const offences: string[] = [];
+    for (const root of ROOTS) {
+      for (const file of styleSources(root)) {
+        for (const match of readFileSync(file, "utf8").matchAll(FOCUS_RING_LITERAL)) offences.push(`${file}: ${match[0]}`);
       }
     }
 

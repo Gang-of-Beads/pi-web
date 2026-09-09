@@ -499,7 +499,7 @@ export class PiFilesPanel extends LitElement {
       .files-panel { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
       .toolbar-actions { display: flex; align-items: center; gap: var(--pi-space-4); margin-left: auto; }
       .toolbar .toolbar-actions button { margin-left: 0; }
-      .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+      .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: calc(-1 * var(--pi-space-1)); overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
       .drop-overlay { position: absolute; inset: 52px 10px 10px; z-index: var(--pi-layer-raised); display: grid; place-items: center; border: 2px dashed var(--pi-accent); border-radius: var(--pi-radius-lg); background: color-mix(in srgb, var(--pi-bg-overlay) 90%, var(--pi-accent) 10%); color: var(--pi-text); opacity: 0; pointer-events: none; transition: opacity .12s ease; }
       .files-panel.dragging .drop-overlay { opacity: 1; }
       .drop-overlay div { display: grid; gap: var(--pi-space-2); justify-items: center; padding: var(--pi-space-8); border-radius: var(--pi-radius-lg); background: var(--pi-bg-overlay); box-shadow: 0 8px 24px var(--pi-shadow); }
@@ -522,7 +522,7 @@ export class PiFilesPanel extends LitElement {
       .upload-file-main span, .upload-file-main small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .upload-file-status { font-size: var(--pi-text-xs); white-space: nowrap; }
       .upload-actions { justify-content: end; }
-      .dialog-backdrop { position: fixed; inset: 0; z-index: var(--pi-layer-popover); box-sizing: border-box; display: grid; place-items: center; padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); background: var(--pi-overlay); }
+      .dialog-backdrop { position: fixed; inset: 0; z-index: var(--pi-layer-popover); box-sizing: border-box; display: grid; place-items: center; padding: max(var(--pi-space-8), env(safe-area-inset-top)) max(var(--pi-space-8), env(safe-area-inset-right)) max(var(--pi-space-8), env(safe-area-inset-bottom)) max(var(--pi-space-8), env(safe-area-inset-left)); background: var(--pi-overlay); }
       .upload-dialog { box-sizing: border-box; width: min(560px, 100%); max-height: min(720px, 100%); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-bg); box-shadow: 0 18px 70px var(--pi-shadow-strong); }
       .upload-dialog header { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-6); padding: var(--pi-space-7) var(--pi-space-7); border-bottom: 1px solid var(--pi-border-muted); }
       .upload-dialog h2 { margin: var(--pi-space-1) 0 0; font-size: var(--pi-text-lg); line-height: 1.2; }
@@ -532,7 +532,7 @@ export class PiFilesPanel extends LitElement {
       form > label { display: grid; gap: var(--pi-space-3); }
       form > label > span, .review-files > strong { font-weight: 600; }
       input[type="text"], form > label > input:not([type]) { box-sizing: border-box; width: 100%; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); }
-      input:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }
+      input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 1px; }
       .dialog-options { display: grid; gap: var(--pi-space-4); }
       .dialog-options label { display: flex; align-items: center; gap: var(--pi-space-4); color: var(--pi-text); }
       .review-files { display: grid; gap: var(--pi-space-3); min-height: 0; max-height: 180px; overflow: auto; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-md); padding: var(--pi-space-4); }
