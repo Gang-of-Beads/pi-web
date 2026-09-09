@@ -370,7 +370,7 @@ export const listStyles = css`
   /* Written to work whether the primary region is a div or a real <button>:
      the font and cursor resets are inert on a div and stop a button from
      inheriting the UA's centred, small-font control styling. */
-  .action-main { position: relative; box-sizing: border-box; min-width: 0; width: 100%; display: block; border: 0; background: transparent; color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-9) var(--pi-space-4) calc(var(--pi-space-5) + var(--depth, 0) * var(--pi-space-7)); font: inherit; text-align: left; cursor: pointer; }
+  .action-main { position: relative; box-sizing: border-box; min-height: var(--pi-row-min-height); min-width: 0; width: 100%; display: block; border: 0; background: transparent; color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-9) var(--pi-space-4) calc(var(--pi-space-5) + var(--depth, 0) * var(--pi-space-7)); font: inherit; text-align: left; cursor: pointer; }
   button.action-main:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: calc(var(--pi-focus-ring-offset) * -1); }
   .action-name { display: -webkit-box; max-height: 2.5em; overflow: hidden; overflow-wrap: anywhere; line-height: 1.25; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
   @media (hover: hover) { .action-row:not(.selected):hover { background: var(--pi-surface-hover); } }
@@ -446,7 +446,7 @@ export const listStyles = css`
   @media (pointer: coarse) { .action-menu-panel button { min-height: var(--pi-control-height-touch); } }
   button.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
   button:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
-  small { display: block; color: var(--pi-muted); font-size: var(--pi-text-2xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  small { display: block; white-space: normal; color: var(--pi-muted); font-size: var(--pi-text-2xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .workspace-label { min-width: 0; display: inline-flex; align-items: baseline; gap: var(--pi-space-3); max-width: 100%; overflow: hidden; white-space: nowrap; }
   .workspace-label-base, .workspace-label-item, .workspace-label-render { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .workspace-label-item, .workspace-label-render, .workspace-label-separator { color: var(--pi-muted); }

@@ -256,7 +256,10 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .activity-dock.asking { border-color: var(--pi-warning-border); color: var(--pi-warning); background: var(--pi-warning-surface); }
   .activity-dock.error { border-color: var(--pi-danger); color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 12%, transparent); }
   .activity-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .dot { width: var(--pi-dot-md); height: var(--pi-dot-md); border-radius: 50%; background: currentColor; opacity: .45; flex: 0 0 auto; }
+  /* A state mark carries meaning: it is drawn at full strength and the state's
+     own colour says which state it is. An opacity layer put idle, asking and
+     error under the 3:1 non-text floor while working and background were not. */
+  .dot { width: var(--pi-dot-md); height: var(--pi-dot-md); border-radius: 50%; background: currentColor; flex: 0 0 auto; }
   .activity-dock.working .dot { animation: pulse 1s ease-in-out infinite; opacity: 1; }
   .activity-dock .state-dot { background: currentColor; }
   .activity-dock.working .state-dot { opacity: 1; }

@@ -248,7 +248,7 @@ export class SessionCleanupDialog extends LitElement {
     /* Coarse pointers get the comfort floor, as every sibling dialog does:
        this one shipped ~36px footer actions and ~29px selection controls. */
     @media (pointer: coarse) {
-      button { min-height: var(--pi-control-height-touch); }
+      button, input.days { min-height: var(--pi-control-height-touch); }
       .close-button { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); }
     }
 

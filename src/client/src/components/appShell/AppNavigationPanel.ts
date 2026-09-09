@@ -456,7 +456,7 @@ export class AppNavigationPanel extends LitElement {
     :host([compact]) { flex: 1 1 auto; }
     header { flex: 0 0 auto; box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: 0 var(--pi-chrome-inset); border-bottom: 1px solid var(--pi-border); }
     header button { box-sizing: border-box; height: var(--pi-panel-header-control-height); padding: 0 var(--pi-space-4); font-size: var(--pi-text-xs); }
-    .header-icon-action { display: inline-flex; align-items: center; justify-content: center; }
+    .header-icon-action { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); }
     .header-icon-action svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
     .compact-shell { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
     /* The phone header is a row of 44px controls; its own padding made it 53

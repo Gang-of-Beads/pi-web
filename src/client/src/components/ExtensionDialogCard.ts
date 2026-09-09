@@ -466,7 +466,7 @@ export class ExtensionDialogCard extends LitElement {
     /* Buttons ghost on the tinted card: outlined pills stacked four deep read
        as a wall of boxes inside an already-boxed card. Hover, active, and the
        primary action's fill keep the affordances (C2/C4/C6). */
-    button {
+    button { box-sizing: border-box;
       border: 0;
       border-radius: var(--pi-radius-md);
       background: var(--pi-surface-hover);
@@ -526,7 +526,6 @@ export class ExtensionDialogCard extends LitElement {
     @container (max-width: 580px) {
       /* Every actionable control is a touch target on a phone, not just the
          primary one: the options are the whole point of a select dialog. */
-      .primary-action, .secondary-action, .option-button { min-height: var(--pi-control-height-touch); }
       /* A cap alone contains nothing: overflow is visible by default, so the
          text kept painting past the bottom of its box and straight through the
          option buttons below it. A goal draft showed its wording between and
@@ -538,7 +537,6 @@ export class ExtensionDialogCard extends LitElement {
      is pointer-scoped by policy, not width-scoped, so it lives outside the
      container query that holds the 42px desktop rule. */
   @media (pointer: coarse) {
-    .primary-action, .secondary-action, .option-button { min-height: var(--pi-control-height-touch, 44px); }
   }
   `;
 }

@@ -196,7 +196,7 @@
          The conversation and the composer share this gutter, so narrowing it
          widens both together and keeps them lined up. */
       @media (max-width: 640px) {
-        :root { --pi-chat-gutter: 6px; --pi-chrome-inset: 6px; }
+        :root { --pi-chat-gutter: var(--pi-space-3); --pi-chrome-inset: var(--pi-space-3); }
       }
       html, body { margin: 0; height: 100%; overflow: hidden; background: var(--pi-bg); color: var(--pi-text); }
       body { min-height: 100dvh; }
