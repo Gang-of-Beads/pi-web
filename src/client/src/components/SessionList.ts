@@ -673,6 +673,8 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
   }
 
   static override styles = [interactiveSurfaceStyles, listStyles, sessionStateBadgeStyles, css`
+    :host { --pi-row-gutter-start: var(--pi-space-3); --pi-row-gutter-size: var(--pi-checkbox-size); }
+    @media (pointer: coarse) { :host { --pi-row-gutter-size: var(--pi-control-height-comfort); } }
     h2 { min-height: var(--pi-control-height); gap: var(--pi-space-2); }
     /* The shared heading spreads its children across the full width, which
        floats the checkbox, the unread count, Clean up and the start button
@@ -725,12 +727,15 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .pending-session-row.starting-session .activity-indicator { flex: 0 0 auto; margin: 0; }
     .action-main.selecting { padding-left: calc(var(--pi-space-3) + var(--pi-checkbox-size) + var(--pi-space-3) + var(--depth, 0) * var(--pi-space-7)); }
     @media (pointer: coarse) { .action-main.selecting { padding-left: calc(var(--pi-space-3) + (var(--pi-control-height-comfort) - var(--pi-checkbox-size)) / 2 + var(--pi-checkbox-size) + var(--pi-space-3) + var(--depth, 0) * var(--pi-space-7)); } }
-.session-checkbox { position: absolute; top: var(--pi-space-4); left: calc(var(--pi-space-3) + var(--depth, 0) * 16px); z-index: 3; box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); margin: 0; }
-    .subtree-toggle, .subtree-toggle.inert { position: absolute; top: 8px; left: calc(6px + var(--depth, 0) * 16px); z-index: 2; box-sizing: border-box; width: 24px; height: 24px; padding: 0; display: inline-grid; place-items: center; border: 1px solid transparent; border-radius: var(--pi-radius-sm); background: color-mix(in srgb, var(--pi-muted) 14%, transparent); color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: 1; }
+.session-checkbox { position: absolute; top: var(--pi-space-4); left: calc(var(--pi-row-gutter-start) + var(--depth, 0) * var(--pi-space-7)); z-index: 3; box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); margin: 0; }
+    /* One formula for the leading gutter: the slot starts at --pi-row-gutter-start,
+       is --pi-row-gutter-size wide, and the text clears it by one breathing step.
+       Spelled out, the mouse row breathed 8px here and the touch row 2px. */
+    .subtree-toggle, .subtree-toggle.inert { position: absolute; top: var(--pi-space-4); left: calc(var(--pi-row-gutter-start) + var(--depth, 0) * var(--pi-space-7)); z-index: 2; box-sizing: border-box; width: var(--pi-row-gutter-size); height: var(--pi-row-gutter-size); padding: 0; display: inline-grid; place-items: center; border: 1px solid transparent; border-radius: var(--pi-radius-sm); background: color-mix(in srgb, var(--pi-muted) 14%, transparent); color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: 1; }
     /* Formerly the toggle floated over the row's leading text and swallowed
        taps aimed at the session name. Reserve the gutter in the padding so
        the toggle sits over empty space. */
-    .action-row.has-subtree-toggle .action-main { padding-left: calc(38px + var(--depth, 0) * var(--pi-space-7)); }
+    .action-row.has-subtree-toggle .action-main { padding-left: calc(var(--pi-row-gutter-start) + var(--pi-row-gutter-size) + var(--pi-space-4) + var(--depth, 0) * var(--pi-space-7)); }
     /* A child is a detail of the row above it, so it is drawn lighter rather
        than smaller: the type size stays on the scale and the hierarchy is
        carried by weight, colour and surface. Indent alone could not do it -
@@ -742,11 +747,11 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .subtree-toggle { cursor: pointer; }
     @media (hover: hover) { .subtree-toggle:hover { border-color: var(--pi-border-strong, var(--pi-accent)); color: var(--pi-text); } }
     @media (pointer: coarse) {
-      .subtree-toggle { top: 0; width: var(--pi-control-height-comfort); height: var(--pi-control-height-touch); }
+      .subtree-toggle { top: 0; width: var(--pi-row-gutter-size); height: var(--pi-control-height-touch); }
       /* The checkbox shares that slot: centre it in the toggle box rather than
          leaving two leading controls a few pixels out of true. */
       .session-checkbox { top: calc((var(--pi-control-height-touch) - var(--pi-checkbox-size)) / 2); left: calc(var(--pi-space-3) + (var(--pi-control-height-comfort) - var(--pi-checkbox-size)) / 2 + var(--depth, 0) * var(--pi-space-7)); }
-      .action-row.has-subtree-toggle .action-main, .action-row.is-child .action-main { padding-left: calc(44px + var(--depth, 0) * var(--pi-space-7)); }
+      .action-row.has-subtree-toggle .action-main, .action-row.is-child .action-main { padding-left: calc(var(--pi-row-gutter-start) + var(--pi-row-gutter-size) + var(--pi-space-4) + var(--depth, 0) * var(--pi-space-7)); }
     }
     /* While selecting, the inert toggle shares the leading slot with the
        checkbox and, on a coarse pointer, covers it entirely: a tap aimed at
