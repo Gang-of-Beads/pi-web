@@ -528,7 +528,6 @@ export class AppNavigationPanel extends LitElement {
        title that refuses to shrink pushed the settings and Actions buttons
        out of the panel entirely. */
     header strong { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    machine-switcher { flex: 1 1 auto; min-width: 0; }
     :host([compact]) header { display: none; }
     .header-actions { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-4); }
     /* One section owns the body at a time, on every width. The context row

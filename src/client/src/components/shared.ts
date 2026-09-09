@@ -417,9 +417,11 @@ export const listStyles = css`
    * A list of thirty sessions is read by scanning, not by inspecting, and an
    * 8px dot in the far corner of each row does not survive a scan. Each row
    * carries a coloured edge instead, taking its colour from the state the row
-   * already reports: work in flight, something unread. The dot stays
-   * for the detail; the rail is what the eye follows down the list, and it is
-   * the one place this design spends colour on identity.
+   * already reports - and from no other table: the rail wears the very colour
+   * the row's own dot wears (running accent, asking warning, unread purple),
+   * so a row never reads as one thing up close and another at scanning
+   * distance. The dot keeps the detail; the rail is what the eye follows down
+   * the list, and it is the one place this design spends colour on identity.
    */
   .action-row { border-left: var(--pi-rail-width) solid transparent; transition: border-left-color var(--pi-motion-fast) var(--pi-ease); }
   /* :where() inside :has() keeps these rules at class specificity, so the
@@ -430,11 +432,17 @@ export const listStyles = css`
      .action-main painted nothing at all. Session rows speak .session-state,
      not .activity-indicator, so the rail names both vocabularies or the
      largest list on screen never gets a rail. */
-  .action-row:has(:where(.activity-indicator.session, .session-state.running, .session-state.asking)) { border-left-color: var(--pi-success); }
+  /* Source order is the precedence (equal specificity): unread < running <
+     asking, matching the row indicator's own arbiter. Machine and workspace
+     rows speak activity-indicator.session and stay success, the colour their
+     working dots wear. */
+  .action-row:has(:where(.activity-indicator.unread, .unread-ring, .session-state.unread)) { border-left-color: var(--pi-purple); }
+  .action-row:has(:where(.activity-indicator.session, .session-state.running)) { border-left-color: var(--pi-success); }
+  .action-row:has(:where(.session-state.running)) { border-left-color: var(--pi-accent); }
+  .action-row:has(:where(.session-state.asking)) { border-left-color: var(--pi-warning); }
   .action-row:has(:where(.activity-indicator.terminal)) { border-left-color: var(--pi-accent); }
-  .action-row:has(:where(.activity-indicator.unread, .unread-ring, .session-state.unread)) { border-left-color: var(--pi-accent); }
   .action-row:has(:where(.session-state.error)) { border-left-color: var(--pi-danger); }
-  .action-row.unread { border-left-color: var(--pi-accent); }
+  .action-row.unread { border-left-color: var(--pi-purple); }
   .action-row.archived { border-left-color: var(--pi-border); }
   .action-row.selected { border-left-color: var(--pi-accent); }
   .activity-indicator.session { border-radius: 50%; background: var(--pi-success); }

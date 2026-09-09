@@ -2,7 +2,6 @@ import { html, type TemplateResult } from "lit";
 import { createRef, ref, type Ref } from "lit/directives/ref.js";
 import type { MachineSectionContribution, MachineSectionContext, PiWebPlugin } from "@gang-of-beads/pi-web/plugin-api";
 import { MachineList } from "./MachineList";
-import "./MachineSwitcher";
 import { openAddMachineDialog } from "./addMachineDialog";
 import { rememberMachinesHost } from "./hostUi";
 
@@ -10,7 +9,7 @@ import { rememberMachinesHost } from "./hostUi";
  * The machine fleet as a plugin. The shell keeps the selection engine, the
  * section order, the keyboard machine, and the collapse state, and feeds this
  * module a plain snapshot per machine with the health check folded in; the
- * list and the compact switcher render from that snapshot alone. The add
+ * list renders from that snapshot alone. The add
  * dialog opens through the shell's dialog seam behind the reserved
  * `add-machine` action, the same handoff the add-project dialog uses.
  */
@@ -39,29 +38,11 @@ function renderMachinesList(context: MachineSectionContext): TemplateResult {
   ></machine-list>`;
 }
 
-/**
- * The compact surface's picker: the same fleet through the switcher form. The
- * phone shell mounts it in the header and keeps it hidden for keyboard
- * navigation, which is the switcher element's own `:host([hidden])` contract.
- */
-function renderMachinesSwitcher(context: MachineSectionContext): TemplateResult {
-  return html`<machine-switcher
-    hidden
-    .machines=${[...context.machines]}
-    .selectedMachineId=${context.selectedMachineId}
-    .machineFlags=${context.machineFlags}
-    .onSelect=${(machineId: string) => { context.selectMachine(machineId); }}
-    .onRemove=${context.removeMachine === undefined ? undefined : (machineId: string) => { context.removeMachine?.(machineId); }}
-    .onFocusNextSection=${() => { void context.focusNextSection(); }}
-    .onCancelKeyboardNavigation=${() => { void context.cancelKeyboardNavigation(); }}
-  ></machine-switcher>`;
-}
-
 export function machinesSection(): MachineSectionContribution {
   return {
     id: "machines",
     focus: async () => await listRef.value?.focusSelectedOrFirst() ?? false,
-    render: (context) => (context.display.tiles ? renderMachinesSwitcher(context) : renderMachinesList(context)),
+    render: (context) => renderMachinesList(context),
   };
 }
 

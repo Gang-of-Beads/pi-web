@@ -35,30 +35,25 @@ had let a real dead floor through CI.
 7. **Round-16 accounting** (lane A): the triage page now states its counting
    basis - fourteen items, ten fixed, four deferred.
 
-## Deferred to the owner (product semantics, with the round-17 evidence)
+## The owner's five decisions (2026-09-09, all implemented)
 
-1. **Banner retirement model** (lane C, P1): every HttpError is reply-retired,
-   so any successful poll erases a real failure ~1.5s after it appears. The
-   lane's direction - HttpError means the server was reached, so it should be
-   action- or reader-retired, and reportTransportReachable should vouch for a
-   machine, not the world - is a semantic decision about what a banner owes
-   the reader.
-2. **Rail colour vocabulary** (lane B/C, medium): running renders a blue dot
-   and a green rail, asking an amber dot and a green rail, unread purple in
-   one list and accent in another. Aligning dots and rails is the palette
-   owner's call.
-3. **Machine-switcher mounted permanently invisible** (lane C): delete it or
-   make the phone header actually use it.
-4. **Interrupted-runs failure reads as absence** (lane B): a failed load
-   returns the empty set the daemon's "none" returns; adoption is verbatim.
-   Honesty fix, low severity.
-5. **ScheduleTransientErrorDismissal ignores retired-by** (lane C): expiry by
-   text shape races the retirement model; fold into the same decision as (1).
-
-## Verdict
-
-Round 17 was not clean: the lanes are now reporting almost entirely
-pre-existing debt rather than new-wave defects, which is what a convergence
-loop looks like as it approaches the real floor. Round 18 runs the same
-configuration; the banner-lifecycle decision above is the largest remaining
-owner item inside the reviewed surface.
+1. **Banner retirement model** - HttpError is an answer, not silence: the link
+   worked and the operation failed, so it is reader-retired. Link-level
+   failures (fetch rejection, timeout) keep reply retirement, and the report
+   of recovery now vouches for the machine the URL addressed - a success from
+   machine A no longer erases machine B's complaint.
+2. **Rail follows dot** - the rail wears the very colour the row's dot wears:
+   running accent, asking warning, unread purple. A row no longer reads as one
+   colour up close and another at scanning distance.
+3. **MachineSwitcher** - the owner's rule: plugin if it can stand alone, core
+   if it needs core cooperation. The component is a self-contained plugin
+   element; the permanently hidden mount was core's compact panel keeping it
+   invisible while the context row took over machine picking. Dead mount
+   removed; the plugin keeps delivering switching through its list. (It had
+   also been the UI audit's phantom context trigger - the drill now targets
+   the real context row, with a bounded poll so a late render cannot read as
+   absence.)
+4. **Interrupted-runs** - a failed read returns 'unknown', not the daemon's
+   empty record: the previous markers survive and the banner says so.
+5. **Six-second expiry** - decided by the retirement model, not by matching
+   the wording: only reply-retired claims expire on the timer.

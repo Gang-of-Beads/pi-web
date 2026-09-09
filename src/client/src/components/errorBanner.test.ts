@@ -109,7 +109,7 @@ describe("dropped-connection failures", () => {
   // was back: a phone that slept, a tunnel that blinked, or a web process being
   // restarted all produce it, and all of them heal by themselves.
   it("reads every browser's dropped-fetch wording as self-healing", () => {
-    for (const raw of ["TypeError: Failed to fetch", "TypeError: Load failed", "NetworkError when attempting to fetch resource."]) {
+    for (const raw of ["Failed to fetch", "Load failed", "NetworkError when attempting to fetch resource."]) {
       expect(isTransientError(raw)).toBe(true);
       const { host } = renderBanner(raw);
       expect(host.querySelector(".error")?.getAttribute("role")).toBe("status");

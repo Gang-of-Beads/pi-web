@@ -51,7 +51,7 @@ async function fetchBody(url: string, init?: RequestInit): Promise<unknown> {
   const body: unknown = await response.json();
   // The server answered, so whatever transport complaint is on screen is now
   // describing the past.
-  reportTransportReachable();
+  reportTransportReachable(url);
   return body;
 }
 

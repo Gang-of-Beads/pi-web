@@ -29,7 +29,7 @@ describe("a transport complaint is withdrawn by whatever succeeds next", () => {
     let error = "Failed to fetch";
     observeTransportRecovery(() => { if (isTransientError(error)) error = ""; });
 
-    reportTransportReachable();
+    reportTransportReachable("api/health");
 
     expect(error).toBe("");
   });
@@ -38,7 +38,7 @@ describe("a transport complaint is withdrawn by whatever succeeds next", () => {
     let error = "Workspace is not trusted";
     observeTransportRecovery(() => { if (isTransientError(error)) error = ""; });
 
-    reportTransportReachable();
+    reportTransportReachable("api/health");
 
     expect(error).toBe("Workspace is not trusted");
   });

@@ -12,7 +12,7 @@
  * carries that fact from the request boundary to whoever owns the banner,
  * without the request layer knowing what a banner is.
  */
-type TransportRecoveryListener = () => void;
+type TransportRecoveryListener = (machineId: string) => void;
 
 let listener: TransportRecoveryListener | undefined;
 
@@ -22,15 +22,20 @@ export function observeTransportRecovery(next: TransportRecoveryListener | undef
 }
 
 /**
- * Report that the server answered. Called on every successful request, so it
- * must not throw: a listener that fails is a bug in the listener, not a reason
- * for the request that succeeded to look like it failed.
+ * Report that the server answered. The report vouches for the machine the URL
+ * addressed - a success from machine A says nothing about machine B's link -
+ * and "local" for URLs without a machine segment, which any successful
+ * exchange disproves. Called on every successful request, so it must not
+ * throw: a listener that fails is a bug in the listener, not a reason for the
+ * request that succeeded to look like it failed.
  */
-export function reportTransportReachable(): void {
+export function reportTransportReachable(url: string): void {
   const current = listener;
   if (current === undefined) return;
+  const scoped = /\/machines\/([^/]+)/.exec(url);
+  const machineId = scoped?.[1] === undefined ? "local" : decodeURIComponent(scoped[1]);
   try {
-    current();
+    current(machineId);
   } catch {
     // Deliberately swallowed; see above.
   }

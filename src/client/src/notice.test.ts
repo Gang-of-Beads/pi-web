@@ -35,8 +35,12 @@ describe("a notice made from a thrown error", () => {
    * next request that does get through retires it. Anything else is about the
    * operation, not the connection.
    */
-  it("retires an HttpError on the next reply", () => {
-    expect(retiresOnReply(noticeFromError(new HttpError("Bad Gateway", 502)))).toBe(true);
+  it("leaves an HttpError to the reader: an HTTP status is an answer, not silence", () => {
+    expect(retiresOnReply(noticeFromError(new HttpError("Bad Gateway", 502)))).toBe(false);
+  });
+
+  it("retires a link failure on the next reply", () => {
+    expect(retiresOnReply(noticeFromError(new TypeError("Failed to fetch")))).toBe(true);
   });
 
   /**
@@ -98,7 +102,8 @@ describe("a failure that never said what went wrong", () => {
    * never retire itself. Now that a notice always carries words, a transport
    * failure retires on the next reply whatever the server said.
    */
-  it("still retires on the next reply", () => {
-    expect(retiresOnReply(noticeFromError(new HttpError("", 502)))).toBe(true);
+  it("still hands the undescribed failure to the reader, described by its status", () => {
+    expect(retiresOnReply(noticeFromError(new HttpError("", 502)))).toBe(false);
+    expect(noticeFromError(new HttpError("", 502)).text).toBe("The request failed (502)");
   });
 });

@@ -10,9 +10,9 @@ import { RequestTimeoutError } from "./api/requestDeadline";
  * which is how "HttpError" survived a session that went on replying normally.
  */
 export const RetiredBy = {
-  /** The claim is that the server could not be reached. A reply disproves it. */
+  /** The claim is that the link is down. An answer from that link disproves it. */
   reply: "reply",
-  /** The claim is about one operation. Only the reader can retire it. */
+  /** The claim is about one operation or one reader decision. Only the reader retires it. */
   reader: "reader",
 } as const;
 
@@ -21,12 +21,16 @@ export type RetiredBy = (typeof RetiredBy)[keyof typeof RetiredBy];
 export interface Notice {
   readonly text: string;
   readonly retiredBy: RetiredBy;
+  /** The machine a transport claim is about; "local" when the claim is global. */
+  readonly machineId?: string;
 }
 
 export const NO_NOTICE: Notice = { text: "", retiredBy: RetiredBy.reader };
 
-export function noticeFromTransport(text: string): Notice {
-  return { text, retiredBy: RetiredBy.reply };
+export function noticeFromTransport(text: string, machineId?: string): Notice {
+  return machineId === undefined
+    ? { text, retiredBy: RetiredBy.reply }
+    : { text, retiredBy: RetiredBy.reply, machineId };
 }
 
 export function noticeForReader(text: string): Notice {
@@ -73,7 +77,16 @@ export function describeError(error: unknown): string {
 export function noticeFromError(error: unknown, link: { readonly live: boolean } = { live: false }): Notice {
   if (error instanceof RequestTimeoutError && link.live) return NO_NOTICE;
   const text = describeError(error);
-  if (error instanceof HttpError) return noticeFromTransport(text);
+  // An HTTP status is an answer: the link demonstrably works and the operation
+  // failed. Treating it as a transport claim let the next successful poll
+  // erase a real failure 1.5s after it appeared - a red flash, no explanation.
+  // It is the operation's outcome, so only the reader (or a replacing message)
+  // retires it.
+  if (error instanceof HttpError) return noticeForReader(text);
+  // A link-level failure (fetch rejected, request cancelled) asserts the same
+  // claim a timeout does: the server could not be reached. Any later answer
+  // from the same link disproves it.
+  if (error instanceof TypeError) return noticeFromTransport(text);
   // A deadline miss asserts "the server did not answer" - the same claim an
   // HttpError makes, so later answers disprove it the same way. Measured
   // live: a remote machine answered /status at 30.007s against a 30.000s

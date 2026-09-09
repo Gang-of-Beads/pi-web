@@ -41,8 +41,12 @@ describe("the patch that puts a failure on screen", () => {
    * carry the fact that a reply disproves it, or the code that withdraws it
    * returns early forever.
    */
-  it("lets a reply withdraw a transport failure", () => {
-    expect(errorNoticePatch(new HttpError("", 502)).errorRetiredBy).toBe(RetiredBy.reply);
+  it("leaves an HTTP status to the reader: the link answered, the operation failed", () => {
+    expect(errorNoticePatch(new HttpError("", 502)).errorRetiredBy).toBe(RetiredBy.reader);
+  });
+
+  it("lets a reply withdraw a link failure", () => {
+    expect(errorNoticePatch(new TypeError("Failed to fetch")).errorRetiredBy).toBe(RetiredBy.reply);
   });
 
   /**

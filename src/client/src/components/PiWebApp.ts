@@ -3,11 +3,11 @@ import { uiIconStyle } from "./uiIcons.js";
 import { loadSurface, warmLazySurfaces, type LazySurface } from "./lazySurfaces.js";
 import { sessionStateBadgeStyles } from "./sessionStateBadgeStyles.js";
 import type { ChatLine } from "./shared";
-import { errorNoticePatch } from "../errorNotice";
+import { errorNoticePatch, noticePatch } from "../errorNotice";
 import { request } from "../api/http";
 import { workspaceTerminalSessions } from "../plugins/workspaceTerminalSessions";
 import { createPluginHostUi, type PluginDialogHost } from "../plugins/pluginHostUi";
-import { describeError, RetiredBy } from "../notice";
+import { describeError, noticeForReader, noticeFromTransport, RetiredBy } from "../notice";
 import { clearPlaceholderFrame, notePlaceholderFrame, placeholderFrameOutstanding } from "../historyWrites";
 import { bannerHoldDecision } from "./bannerHold";
 import { routeMatchesUrl } from "../routeMatch";
@@ -89,7 +89,7 @@ import { oneRowPerIdentity } from "../transcriptInvariant";
 import { readPinnedSessionIds, togglePinnedSessionId, writePinnedSessionIds } from "../sessionPins";
 import { observeTransportRecovery } from "../api/transportHealth";
 import { dismissKeyboardIfRaised } from "../keyboardDismissal";
-import { errorBanner, isTransientError, TRANSIENT_ERROR_TIMEOUT_MS } from "./errorBanner";
+import { errorBanner, TRANSIENT_ERROR_TIMEOUT_MS } from "./errorBanner";
 import { deprecatedAgentInputsBanner, deprecatedAgentInputsWarnings } from "./deprecatedAgentInputsBanner";
 import { interactiveSurfaceStyles } from "./shared";
 import { documentTitleFor } from "../contextName";
@@ -761,10 +761,15 @@ export class PiWebApp extends LitElement {
    */
   private refreshInterruptedRuns(machineId: string): void {
     void this.sessions.loadInterruptedRuns(machineId).then((ids) => {
-      // Adopt the record verbatim, empty or not: the daemon clears the file
-      // once it is read, so an empty later read is the retraction of markers
-      // the user has already seen -- keeping the old set would leave a session
-      // stuck with the hollow interrupted ring long after its run continued.
+      // An empty record is the daemon retracting markers the user has already
+      // seen (it clears the file once read), so it is adopted verbatim. A
+      // failed read is not a record: the daemon may still hold markers, so the
+      // previous set survives and the banner says the state is unknown rather
+      // than quietly showing none.
+      if (ids === undefined) {
+        this.setState(noticePatch(noticeForReader("Interrupted-run status is unknown: the read failed. Retrying the connection will resolve it.")));
+        return;
+      }
       this.interruptedSessionIds = ids;
     });
   }
@@ -971,7 +976,7 @@ export class PiWebApp extends LitElement {
     // Recovery is noticed by whichever channel succeeds next, which is often
     // not the one that failed; the realtime socket alone was leaving a banner
     // on screen until the page was reloaded by hand.
-    observeTransportRecovery(() => { this.clearTransientError(); });
+    observeTransportRecovery((machineId) => { this.clearTransientError(machineId); });
     this.unreadConnected = true;
     window.visualViewport?.addEventListener("resize", this.onVisualViewportChange);
     window.visualViewport?.addEventListener("scroll", this.onVisualViewportChange);
@@ -1010,9 +1015,15 @@ export class PiWebApp extends LitElement {
     void this.loadProjectsAndRestoreRoute().finally(() => { this.schedulePiWebStatusRefresh(); });
   }
 
-  /** Withdraw a transport complaint that a successful exchange has disproved. */
-  private clearTransientError(): void {
+  /**
+   * Withdraw a transport complaint that a successful exchange has disproved.
+   * The report vouches for one machine: a claim about machine B survives a
+   * success from machine A, and a page-level ("local") claim is disproved by
+   * any success at all.
+   */
+  private clearTransientError(machineId: string): void {
     if (this.state.error === "" || this.state.errorRetiredBy !== RetiredBy.reply) return;
+    if (this.state.errorMachineId !== "local" && this.state.errorMachineId !== machineId) return;
     if (this.transientErrorTimer !== undefined) {
       window.clearTimeout(this.transientErrorTimer);
       this.transientErrorTimer = undefined;
@@ -1032,11 +1043,15 @@ export class PiWebApp extends LitElement {
       window.clearTimeout(this.transientErrorTimer);
       this.transientErrorTimer = undefined;
     }
-    if (!isTransientError(error)) return;
+    // Expiry is a property of the retirement model, not of the words: only a
+    // reply-retired transport claim heals on its own. Deciding by matching the
+    // text raced the model - a message the model called permanent could still
+    // be expired here because its wording looked transient.
+    if (this.state.errorRetiredBy !== RetiredBy.reply) return;
     this.transientErrorTimer = window.setTimeout(() => {
       this.transientErrorTimer = undefined;
       // Only clear what we scheduled for: a newer message must not be swallowed.
-      if (this.state.error === error) this.setState({ error: "" });
+      if (this.state.error === error && this.state.errorRetiredBy === RetiredBy.reply) this.setState({ error: "" });
     }, TRANSIENT_ERROR_TIMEOUT_MS);
   }
 
@@ -1503,7 +1518,7 @@ export class PiWebApp extends LitElement {
     const prefix = options.exhausted === true
       ? `${machineName} is still unavailable.`
       : `${machineName} is unavailable; reconnecting…`;
-    this.setState({ error: `${prefix}${detail === undefined ? "" : ` ${detail}`}` });
+    this.setState(noticePatch(noticeFromTransport(`${prefix}${detail === undefined ? "" : ` ${detail}`}`, machineId)));
   }
 
   private pendingRemoteRouteRestoreStillCurrent(route: ParsedAppRoute): boolean {
@@ -1885,10 +1900,10 @@ export class PiWebApp extends LitElement {
     this.realtime.connect(
       (event) => { this.handleRealtimeEvent(machineId, event); },
       () => {
-        // The socket being back is proof the transport healed, so a transport
-        // complaint on screen is now describing the past. Only self-healing
-        // messages are withdrawn; a real failure stays until it is read.
-        this.clearTransientError();
+        // The socket being back is proof this machine's transport healed, so a
+        // transport complaint about it is now describing the past. Only
+        // reply-retired claims are withdrawn; a real failure stays until read.
+        this.clearTransientError(machineId);
         void this.sessionUnread.refresh(machineId);
         // Status updates that landed during the gap are gone for good, so this
         // has to overwrite what the browser holds rather than fill gaps: a

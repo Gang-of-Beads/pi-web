@@ -1,7 +1,7 @@
 import { api, type Machine, type MachineHealth, type MachineRuntime } from "../api";
 import { resetWorkspaceScopedState } from "../appState";
 import { errorNoticePatch, noticePatch } from "../errorNotice";
-import { describeError, noticeForReader } from "../notice";
+import { describeError, noticeForReader, noticeFromTransport } from "../notice";
 import type { GetState, SetState, UpdateUrl } from "./types";
 import type { ProjectController } from "./projectController";
 
@@ -148,9 +148,10 @@ export class MachineController {
     const health = await this.safeRemoteHealth(requestedMachine);
     this.setState({
       machineStatuses: { ...this.getState().machineStatuses, [health.machineId]: health },
-      // Reader-retired: the message names a machine, so no other machine's
-      // successful request may speak for it.
-      ...(health.ok ? {} : noticePatch(noticeForReader(`${requestedMachine.name} is unavailable; reconnecting…`))),
+      // Reply-retired and machine-scoped: the claim is that this machine's
+      // link is down, so only a success from that machine disproves it - a
+      // poll from anywhere else may not speak for it.
+      ...(health.ok ? {} : noticePatch(noticeFromTransport(`${requestedMachine.name} is unavailable; reconnecting…`, requestedMachine.id))),
     });
     return requestedMachine;
   }

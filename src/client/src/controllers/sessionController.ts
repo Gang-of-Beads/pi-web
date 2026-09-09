@@ -998,12 +998,18 @@ export class SessionController {
    * Best-effort: no record is the common case, and failing to read one must not
    * disturb reconnecting.
    */
-  async loadInterruptedRuns(machineId = selectedMachineId(this.getState())): Promise<ReadonlySet<string>> {
+  /**
+   * `undefined` means the read failed - deliberately not the empty set, which
+   * is what the daemon returns when it genuinely holds nothing. A caller that
+   * adopted a failure as an empty record would retract interruption markers
+   * the daemon still holds.
+   */
+  async loadInterruptedRuns(machineId = selectedMachineId(this.getState())): Promise<ReadonlySet<string> | undefined> {
     try {
       const snapshot = await this.api.interruptedRuns(machineId);
       return new Set(snapshot.runs.map((run) => run.sessionId));
     } catch {
-      return new Set();
+      return undefined;
     }
   }
 

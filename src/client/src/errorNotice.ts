@@ -29,6 +29,6 @@ export function errorNoticePatch(
 }
 
 /** An AppState patch carrying a Notice with its retirement semantics. */
-export function noticePatch(notice: Notice): Pick<AppState, "error" | "errorRetiredBy"> {
-  return { error: notice.text, errorRetiredBy: notice.retiredBy };
+export function noticePatch(notice: Notice): Pick<AppState, "error" | "errorRetiredBy" | "errorMachineId"> {
+  return { error: notice.text, errorRetiredBy: notice.retiredBy, errorMachineId: notice.machineId ?? "local" };
 }

@@ -20,7 +20,7 @@ describe("transport recovery", () => {
     const onRecovered = vi.fn();
     observeTransportRecovery(onRecovered);
 
-    reportTransportReachable();
+    reportTransportReachable("api/health");
 
     expect(onRecovered).toHaveBeenCalledOnce();
   });
@@ -30,7 +30,7 @@ describe("transport recovery", () => {
     observeTransportRecovery(onRecovered);
     observeTransportRecovery(undefined);
 
-    reportTransportReachable();
+    reportTransportReachable("api/health");
 
     expect(onRecovered).not.toHaveBeenCalled();
   });
@@ -38,7 +38,7 @@ describe("transport recovery", () => {
   it("survives a listener that throws, so one bad observer cannot break requests", () => {
     observeTransportRecovery(() => { throw new Error("listener blew up"); });
 
-    expect(() => { reportTransportReachable(); }).not.toThrow();
+    expect(() => { reportTransportReachable("api/health"); }).not.toThrow();
   });
 });
 

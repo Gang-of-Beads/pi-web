@@ -73,7 +73,10 @@ function normalizeTransientError(error: string): string | undefined {
   // fetch resource". A phone that slept, a tunnel that blinked, or a web
   // process being restarted all land here, and all of them heal by themselves -
   // the raw TypeError text stayed on screen long after the connection was back.
-  if (/failed to fetch|load failed|networkerror when attempting to fetch/i.test(error)) {
+  // The match is anchored to the whole message: this family's phrases also
+  // appear as the detail of a composed message ("X is unavailable; reconnecting…
+  // Failed to fetch"), and rewriting that would erase the machine's name.
+  if (/^(failed to fetch|load failed|networkerror when attempting to fetch resource)[.!]?$/i.test(error)) {
     return "Lost connection to PI WEB. Reconnecting…";
   }
   return undefined;
