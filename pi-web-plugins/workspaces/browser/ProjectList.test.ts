@@ -29,7 +29,7 @@ describe("project status indicator", () => {
     list.statusSnapshot = machineStatusSnapshot({ revision: 2 });
     await list.updateComplete;
 
-    expect(list.shadowRoot?.querySelector(".activity-indicator.unread")).toBeNull();
+    expect(list.shadowRoot?.querySelector(".action-activity:not([hidden]) .activity-indicator.unread")).toBeNull();
   });
 
   it("wraps the work dot in an unread ring when the project is busy and unread", async () => {
@@ -41,8 +41,8 @@ describe("project status indicator", () => {
     const row = rowFor(list, "project-a");
     const ring = row.querySelector(".unread-ring");
     expect(ring?.querySelector(".activity-indicator.session")).not.toBeNull();
-    expect(ring?.getAttribute("title")).toBe("Unread sessions in this project · Project active");
-    expect(row.querySelector(".activity-indicator.unread")).toBeNull();
+    expect(ring?.querySelector(".activity-indicator")?.getAttribute("title")).toBe("Unread sessions in this project · Project active");
+    expect(row.querySelector(".action-activity:not([hidden]) .activity-indicator.unread")).toBeNull();
   });
 
   it("lights a project whose workspaces have never been opened, for work and for unread", async () => {
@@ -62,7 +62,7 @@ describe("project status indicator", () => {
   it("shows no indicator when the machine publishes no snapshot", async () => {
     const list = await mountProjectList([project("project-a")], undefined);
 
-    expect(rowFor(list, "project-a").querySelector(".activity-indicator")).toBeNull();
+    expect(rowFor(list, "project-a").querySelector(".action-activity")?.hasAttribute("hidden")).toBe(true);
   });
 
   it("still lights a row from a flag id this build does not know", async () => {
@@ -89,7 +89,7 @@ function rowFor(list: ProjectList, projectName: string): Element {
 }
 
 function unreadDot(row: Element): Element | null {
-  return row.querySelector(".activity-indicator.unread");
+  return row.querySelector(".action-activity:not([hidden]) .activity-indicator.unread");
 }
 
 function project(id: string): Project {

@@ -53,14 +53,13 @@ export class AppContextBar extends LitElement {
               aria-label=${`Session: ${sessionContextLabel(this.session)}. Open session selection.`}
               @click=${() => { this.onQuickSwitch?.(); }}
             ><span class="session-title-text">${sessionContextLabel(this.session)}</span></button>`}
-        ${this.isWorking
-          ? html`<span
-              class="working"
-              role="status"
-              aria-label="Session is working"
-              title="Session is working"
-            ><span class="working-dot"></span><span class="working-dot"></span><span class="working-dot"></span></span>`
-          : null}
+        <span
+          class="working"
+          role="status"
+          aria-label=${this.isWorking ? "Session is working" : ""}
+          title=${this.isWorking ? "Session is working" : ""}
+          ?hidden=${!this.isWorking}
+        ><span class="working-dot"></span><span class="working-dot"></span><span class="working-dot"></span></span>
       </nav>
     `;
   }

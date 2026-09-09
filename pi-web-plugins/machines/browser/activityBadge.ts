@@ -35,13 +35,17 @@ export function hasStatusUnread(flags: NavStatusFlags | undefined): boolean {
   return flags?.[CORE_STATUS_FLAGS.unread] === true;
 }
 
-export function renderActionActivityIndicator(kind: ActivityIndicatorKind | undefined, label = "Active", unreadLabel?: string): TemplateResult | undefined {
-  if (kind === undefined) {
-    if (unreadLabel === undefined) return undefined;
-    return html`<span class="action-activity"><span class="activity-indicator unread" role="img" aria-label=${unreadLabel} title=${unreadLabel}></span></span>`;
-  }
-  const indicator = unreadLabel === undefined
-    ? html`<span class=${`activity-indicator ${kind}`} role="img" aria-label=${label} title=${label}></span>`
-    : html`<span class="unread-ring" role="img" aria-label=${`${unreadLabel} · ${label}`} title=${`${unreadLabel} · ${label}`}><span class=${`activity-indicator ${kind}`} aria-hidden="true"></span></span>`;
-  return html`<span class="action-activity">${indicator}</span>`;
+export function renderActionActivityIndicator(kind: ActivityIndicatorKind | undefined, label = "Active", unreadLabel?: string): TemplateResult {
+  const present = kind !== undefined || unreadLabel !== undefined;
+  const markKind = kind ?? "unread";
+  const description = kind === undefined
+    ? (unreadLabel ?? "")
+    : (unreadLabel === undefined ? label : `${unreadLabel} · ${label}`);
+  const ringClass = unreadLabel === undefined || kind === undefined ? "activity-ring" : "activity-ring unread-ring";
+  return html`<span class="action-activity" ?hidden=${!present}><span class=${ringClass} aria-hidden="true"><span
+    class=${`activity-indicator ${markKind}`}
+    role="img"
+    aria-label=${description}
+    title=${description}
+  ></span></span></span>`;
 }

@@ -109,7 +109,7 @@ describe("machine status indicator", () => {
     list.machineFlags = { local: machineStatusSnapshot({ revision: 2 }).machine };
     await list.updateComplete;
 
-    expect(list.shadowRoot?.querySelector(".activity-indicator.unread")).toBeNull();
+    expect(list.shadowRoot?.querySelector(".action-activity:not([hidden]) .activity-indicator.unread")).toBeNull();
   });
 
   it("wraps the work dot in an unread ring when a machine is busy and unread", async () => {
@@ -123,14 +123,14 @@ describe("machine status indicator", () => {
 
     const localRing = rowFor(list, "local").querySelector(".unread-ring");
     expect(localRing?.querySelector(".activity-indicator.session")).not.toBeNull();
-    expect(localRing?.getAttribute("title")).toBe("Unread sessions on this machine · Machine active");
+    expect(localRing?.querySelector(".activity-indicator")?.getAttribute("title")).toBe("Unread sessions on this machine · Machine active");
 
     const remoteRing = rowFor(list, "remote-a").querySelector(".unread-ring");
     expect(remoteRing?.querySelector(".activity-indicator.terminal")).not.toBeNull();
-    expect(remoteRing?.getAttribute("title")).toBe("Unread sessions on this machine · Machine terminal active");
+    expect(remoteRing?.querySelector(".activity-indicator")?.getAttribute("title")).toBe("Unread sessions on this machine · Machine terminal active");
 
     // One mark per row: the ring replaces the standalone unread dot.
-    expect(rowFor(list, "local").querySelector(".activity-indicator.unread")).toBeNull();
+    expect(rowFor(list, "local").querySelector(".action-activity:not([hidden]) .activity-indicator.unread")).toBeNull();
   });
 
   it("shows no indicator at all for a machine that publishes no snapshot", async () => {
@@ -139,7 +139,7 @@ describe("machine status indicator", () => {
       { "remote-a": machineStatusSnapshot({ machine: { "core:working": true } }) },
     );
 
-    expect(rowFor(list, "local").querySelector(".activity-indicator")).toBeNull();
+    expect(rowFor(list, "local").querySelector(".action-activity")?.hasAttribute("hidden")).toBe(true);
     expect(rowFor(list, "remote-a").querySelector(".activity-indicator.session")).not.toBeNull();
   });
 
@@ -156,7 +156,7 @@ describe("machine status indicator", () => {
       { "remote-a": "offline" },
     );
 
-    expect(rowFor(list, "remote-a").querySelector(".activity-indicator")).toBeNull();
+    expect(rowFor(list, "remote-a").querySelector(".action-activity")?.hasAttribute("hidden")).toBe(true);
   });
 });
 
@@ -183,8 +183,9 @@ function rowFor(list: MachineList, machineName: string): Element {
   return row;
 }
 
+/** The mark stays mounted and hides; "no dot" means nothing visible, not no node. */
 function unreadDot(row: Element): Element | null {
-  return row.querySelector(".activity-indicator.unread");
+  return row.querySelector(".action-activity:not([hidden]) .activity-indicator.unread");
 }
 
 function machine(id: string, kind: NavMachineSnapshot["kind"]): NavMachineSnapshot {

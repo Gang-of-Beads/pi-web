@@ -20,7 +20,7 @@ describe("machine-switcher status indicator", () => {
     switcher.machineFlags = { local: machineStatusSnapshot({ revision: 2 }).machine };
     await switcher.updateComplete;
 
-    expect(switcherButton(switcher).querySelector(".activity-indicator.unread")).toBeNull();
+    expect(switcherButton(switcher).querySelector(".action-activity:not([hidden]) .activity-indicator.unread")).toBeNull();
   });
 
   it("marks only the unread machines among the dropdown options", async () => {
@@ -43,15 +43,15 @@ describe("machine-switcher status indicator", () => {
     const button = switcherButton(switcher);
     const ring = button.querySelector(".unread-ring");
     expect(ring?.querySelector(".activity-indicator.session")).not.toBeNull();
-    expect(ring?.getAttribute("title")).toBe("Unread sessions on this machine · Machine active");
+    expect(ring?.querySelector(".activity-indicator")?.getAttribute("title")).toBe("Unread sessions on this machine · Machine active");
     // One mark only: the ring replaces the standalone unread dot.
-    expect(button.querySelector(".activity-indicator.unread")).toBeNull();
+    expect(button.querySelector(".action-activity:not([hidden]) .activity-indicator.unread")).toBeNull();
   });
 
   it("shows no indicator for a machine that publishes no snapshot", async () => {
     const switcher = await mountSwitcher([machine("local", "local")], {});
 
-    expect(switcherButton(switcher).querySelector(".activity-indicator")).toBeNull();
+    expect(switcherButton(switcher).querySelector(".action-activity")?.hasAttribute("hidden")).toBe(true);
   });
 });
 
@@ -80,8 +80,9 @@ function optionFor(switcher: MachineSwitcher, machineName: string): Element {
   return option;
 }
 
+/** Hidden means no mark: the element stays mounted so a state change updates rather than rebuilds it. */
 function unreadDot(option: Element): Element | null {
-  return option.querySelector(".activity-indicator.unread");
+  return option.querySelector(".action-activity:not([hidden]) .activity-indicator.unread");
 }
 
 function machine(id: string, kind: NavMachineSnapshot["kind"]): NavMachineSnapshot {

@@ -75,7 +75,7 @@ describe("workspace status indicator", () => {
     list.statusSnapshot = machineStatusSnapshot({ revision: 2 });
     await list.updateComplete;
 
-    expect(list.shadowRoot?.querySelector(".activity-indicator.unread")).toBeNull();
+    expect(list.shadowRoot?.querySelector(".action-activity:not([hidden]) .activity-indicator.unread")).toBeNull();
   });
 
   it("wraps the work dot in an unread ring when the workspace is busy and unread", async () => {
@@ -87,14 +87,14 @@ describe("workspace status indicator", () => {
     const row = rowFor(list, "ws-a");
     const ring = row.querySelector(".unread-ring");
     expect(ring?.querySelector(".activity-indicator.terminal")).not.toBeNull();
-    expect(ring?.getAttribute("title")).toBe("Unread sessions in this workspace · Workspace terminal active");
-    expect(row.querySelector(".activity-indicator.unread")).toBeNull();
+    expect(ring?.querySelector(".activity-indicator")?.getAttribute("title")).toBe("Unread sessions in this workspace · Workspace terminal active");
+    expect(row.querySelector(".action-activity:not([hidden]) .activity-indicator.unread")).toBeNull();
   });
 
   it("shows no indicator when the machine publishes no snapshot", async () => {
     const list = await mountWorkspaceList([workspace("ws-a")]);
 
-    expect(rowFor(list, "ws-a").querySelector(".activity-indicator")).toBeNull();
+    expect(rowFor(list, "ws-a").querySelector(".action-activity")?.hasAttribute("hidden")).toBe(true);
   });
 
   it("still lights a row from a flag id this build does not know", async () => {
@@ -228,7 +228,7 @@ function rowFor(list: WorkspaceList, workspaceLabel: string): Element {
 }
 
 function unreadDot(row: Element): Element | null {
-  return row.querySelector(".activity-indicator.unread");
+  return row.querySelector(".action-activity:not([hidden]) .activity-indicator.unread");
 }
 
 function workspace(id: string, patch: Partial<Workspace> = {}): Workspace {

@@ -71,6 +71,8 @@ describe("the resident row hands off to the panel and the quick switcher", () =>
     bar.isWorking = false;
     await bar.updateComplete;
 
-    expect(bar.renderRoot.querySelector(".working")).toBeNull();
+    // The chip stays mounted and hides, so a session that starts and stops
+    // working updates one element instead of rebuilding it under the reader.
+    expect(bar.renderRoot.querySelector(".working")?.hasAttribute("hidden")).toBe(true);
   });
 });
