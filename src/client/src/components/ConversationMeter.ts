@@ -36,7 +36,7 @@ export class ConversationMeter extends LitElement {
     .meter { height: 100%; }
     .track { position: relative; height: var(--pi-dot-xs); margin-top: var(--pi-space-2); border-radius: var(--pi-radius-pill); background: color-mix(in srgb, var(--pi-border-muted) 34%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--pi-bg) 55%, transparent); }
     .progress { position: absolute; left: 0; width: var(--position); top: 0; bottom: 0; border-radius: var(--pi-radius-pill); background: color-mix(in srgb, var(--pi-accent) 42%, var(--pi-border-muted)); }
-    .marker { position: absolute; left: var(--position); top: 50%; width: var(--pi-dot-md); height: var(--pi-dot-md); box-shadow: 0 0 0 2px var(--pi-bg); border-radius: 50%; background: var(--pi-accent); box-shadow: var(--pi-elevation-1); transform: translate(-50%, -50%); }
+    .marker { position: absolute; left: var(--position); top: 50%; width: var(--pi-dot-md); height: var(--pi-dot-md);  border-radius: 50%; background: var(--pi-accent); box-shadow: 0 0 0 2px var(--pi-bg), var(--pi-elevation-1); transform: translate(-50%, -50%); }
   `;
 }
 

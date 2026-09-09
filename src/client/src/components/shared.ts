@@ -269,7 +269,6 @@ export const listStyles = css`
   @media (pointer: coarse) {
     .list-search-input { height: var(--pi-control-height-touch, 44px); }
     .list-search-clear { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); }
-    .action-menu-panel button { min-height: var(--pi-control-height-touch, 44px); }
   }
   .search-empty { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); }
   section { box-sizing: border-box; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: var(--pi-space-5); }
@@ -440,6 +439,9 @@ export const listStyles = css`
   .action-menu-panel { position: fixed; z-index: var(--pi-layer-popover); box-sizing: border-box; min-width: min(120px, calc(100vw - 16px)); overflow: auto; padding: var(--pi-space-2); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); box-shadow: var(--pi-elevation-2); overflow-wrap: anywhere; }
   .action-menu-panel button { box-sizing: border-box; display: block; min-height: var(--pi-control-height-comfort); width: 100%; text-align: left; white-space: normal; overflow-wrap: anywhere; border: 0; background: transparent; color: var(--pi-text); }
   @media (hover: hover) { .action-menu-panel button:hover { background: var(--pi-selection-bg); } }
+  /* After the base rule it raises: a media query carries no extra specificity,
+     so a coarse floor written earlier loses to a later base declaration. */
+  @media (pointer: coarse) { .action-menu-panel button { min-height: var(--pi-control-height-touch); } }
   button.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
   button:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
   small { display: block; color: var(--pi-muted); font-size: var(--pi-text-2xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

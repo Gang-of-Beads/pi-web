@@ -142,12 +142,12 @@ export class SettingsAppearancePanel extends LitElement {
        padding between them, so the two arcs stay parallel when either token
        moves. Card lg(12) - space-5(10) = 2 for the preview inside the card;
        md(8) - space-4(8) clamps to xs for the surface inside the preview. */
-    .preview { display: grid; gap: var(--pi-space-3); height: 74px; margin-bottom: var(--pi-space-3); padding: var(--pi-space-4); border: 1px solid var(--preview-border, var(--pi-border)); border-radius: max(var(--pi-radius-xs), calc(var(--pi-radius-lg) - var(--pi-space-5))); background: var(--preview-bg, var(--pi-bg)); }
+    .preview { box-sizing: border-box; display: grid; gap: var(--pi-space-3); height: 74px; margin-bottom: var(--pi-space-3); padding: var(--pi-space-4); border: 1px solid var(--preview-border, var(--pi-border)); border-radius: max(var(--pi-radius-xs), calc(var(--pi-radius-lg) - var(--pi-space-5))); background: var(--preview-bg, var(--pi-bg)); }
     .preview-surface { display: grid; align-content: center; gap: var(--pi-space-3); padding: var(--pi-space-3) var(--pi-space-4); border: 1px solid var(--preview-border, var(--pi-border)); border-radius: max(var(--pi-radius-xs), calc(var(--pi-radius-md) - var(--pi-space-4))); background: var(--preview-surface, var(--pi-surface)); }
     .preview-line { display: block; height: var(--pi-dot-xs); border-radius: var(--pi-radius-pill); background: var(--preview-text, var(--pi-text)); }
     .preview-line.long { width: 78%; }
     .preview-line.short { width: 46%; background: var(--preview-muted, var(--pi-muted)); }
-    .preview-dots { display: flex; gap: var(--pi-space-3); }
+    .preview-dots { display: flex; align-items: center; gap: var(--pi-space-3); }
     .preview-dot { width: var(--pi-dot-md); height: var(--pi-dot-md); border-radius: 50%; }
     .preview-dot.accent { background: var(--preview-accent, var(--pi-accent)); }
     .preview-dot.success { background: var(--preview-success, var(--pi-success)); }

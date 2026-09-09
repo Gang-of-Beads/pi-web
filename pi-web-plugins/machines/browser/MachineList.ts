@@ -138,7 +138,7 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
           @pointerup=${() => { this.gestures.cancel(); }}
           @pointercancel=${() => { this.gestures.cancel(); }}
         >
-          <span class="action-name machine-primary"><span class="machine-primary-label">${machine.name}</span></span><small>${machine.kind === "local" ? "Local Pi Web" : machine.baseUrl ?? "Remote Pi Web"} · ${statusLabel}</small>
+          <span class="action-name machine-primary"><span class="machine-primary-label">${machine.name}</span></span><small>${machine.kind === "local" ? "Local Pi Web" : machine.baseUrl ?? "Remote Pi Web"}</small><span class=${`machine-status ${status}`}>${statusLabel}</span>
           ${this.renderActivity(machine)}
         </button>
         ${hasActions ? this.renderMachineMenu(machine) : null}
@@ -252,6 +252,12 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
     :host { display: block; min-width: 0; }
     .machine-row { border-radius: var(--pi-radius-lg); }
     .machine-row.no-actions .action-main { border-radius: var(--pi-radius-lg); }
+    /* The same mark-plus-word the switcher uses: a state a person acts on is not
+       prose welded to an address, and offline must not read like online. */
+    .machine-status { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-2xs); }
+    .machine-status::before { content: ""; width: var(--pi-dot-sm); height: var(--pi-dot-sm); border-radius: 50%; background: currentColor; }
+    .machine-status.online { color: var(--pi-success); }
+    .machine-status.offline, .machine-status.error { color: var(--pi-danger); }
     .machine-row .action-main { min-height: 58px; align-content: center; }
     .machine-primary { display: flex; align-items: baseline; gap: var(--pi-space-3); }
     .machine-primary-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

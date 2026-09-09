@@ -388,8 +388,8 @@ export class SettingsShortcutsPanel extends LitElement {
     .shortcut-status small.conflict.shadowed { color: var(--pi-warning); }
     .shortcut-input-label { min-width: 0; display: grid; gap: var(--pi-space-3); }
     .shortcut-input-label span { color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-semibold); }
-    input { box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); outline: none; font: var(--pi-control-font-size, 16px) var(--pi-control-monospace-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
-    input:focus { border-color: var(--pi-accent); box-shadow: 0 0 0 1px var(--pi-accent-border); }
+    input { box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5);  font: var(--pi-control-font-size, 16px) var(--pi-control-monospace-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
+    input:focus { border-color: var(--pi-accent); outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     .shortcut-actions { display: flex; justify-content: flex-end; gap: var(--pi-space-4); flex-wrap: wrap; }
     kbd { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-bg); color: var(--pi-text-secondary); padding: var(--pi-space-2) var(--pi-space-4); font: var(--pi-text-xs) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); white-space: nowrap; }
     .unassigned { color: var(--pi-muted); font-size: var(--pi-text-xs); }

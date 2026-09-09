@@ -274,8 +274,8 @@ export class SettingsGeneralPanel extends LitElement {
     .config-form { display: grid; gap: var(--pi-space-7); }
     .field { display: grid; gap: var(--pi-space-4); }
     .field-heading { display: flex; align-items: center; gap: var(--pi-space-4); }
-    input, select, textarea { box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: var(--pi-space-5) var(--pi-space-5); outline: none; font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); }
-    input:focus, select:focus, textarea:focus { border-color: var(--pi-accent); box-shadow: 0 0 0 1px var(--pi-accent-border); }
+    input, select, textarea { box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: var(--pi-space-5) var(--pi-space-5);  font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); }
+    input:focus, select:focus, textarea:focus { border-color: var(--pi-accent); outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     textarea { resize: vertical; min-height: 94px; font-family: var(--pi-control-monospace-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
     textarea:disabled { opacity: var(--pi-disabled-opacity); }
     .override-badge { border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); color: var(--pi-warning); background: var(--pi-warning-surface); padding: var(--pi-space-1) var(--pi-space-4); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-semibold); text-transform: none; }

@@ -410,7 +410,7 @@ export const chatStyles = css`
     .msg-meta:not(.expanded) { position: relative; display: inline-grid; width: 24px; height: 24px; place-items: center; font-size: 0; text-overflow: clip; }
     /* The same reach its siblings get: without it the info control was a 24px
        target beside 44px ones, and a thumb aiming at it landed on copy. */
-    .msg-meta:not(.expanded)::after { content: ""; position: absolute; inset: calc(-1 * var(--pi-space-5)) calc(-1 * var(--pi-space-1)); }
+    .msg-meta:not(.expanded)::after { content: ""; position: absolute; inset: calc(-1 * var(--pi-space-5)) calc(-1 * var(--pi-space-4)); }
     .msg-meta::before { content: "ⓘ"; font-size: var(--pi-text-sm); }
     .msg-meta.expanded { opacity: 1; max-width: 100%; }
     .msg-meta.expanded::before { content: ""; }
