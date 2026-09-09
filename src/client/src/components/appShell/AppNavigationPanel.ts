@@ -498,7 +498,7 @@ export class AppNavigationPanel extends LitElement {
     session-list[collapsed] { flex: 0 0 auto; min-height: auto; overflow: hidden; }
     /* Goals are workspace context under the session list: capped so a long
        task list cannot push the sessions it belongs to off-screen. */
-    button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
+    button { font: inherit; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
   `;
 }
 

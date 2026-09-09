@@ -157,7 +157,7 @@ export const chatStyles = css`
      own size, colour and weight and could not be scanned. */
   .drawer-tab-badge { flex: 0 0 auto; display: inline-block; min-width: 14px; border-radius: var(--pi-radius-pill); background: var(--pi-selection-bg); color: var(--pi-text-bright); padding: 0 var(--pi-space-2); font-size: var(--pi-text-2xs); line-height: 16px; text-align: center; }
   .drawer-header-actions { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-1); }
-  .drawer-body { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .drawer-body { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; padding-inline: var(--pi-chat-gutter); }
   .drawer-body[hidden] { display: none; }
   /* Base sizes first, the coarse override after them: a media query carries no
      extra specificity, so a coarse rule written earlier loses to a base rule
@@ -394,7 +394,9 @@ export const chatStyles = css`
   @media (hover: hover) { .msg:hover > .msg-header .msg-actions, .group-msg:hover > .msg-header .msg-actions { opacity: 1; } }
   .label { display: block; color: var(--pi-muted); font: var(--pi-text-xs) var(--pi-font-mono); }
   .msg-header .label { margin: 0; }
-  .msg-meta { min-width: 0; opacity: .28; border: 0; background: transparent; color: var(--pi-dim); padding: 0; font: var(--pi-text-2xs) var(--pi-font-ui); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity var(--pi-motion-fast) var(--pi-ease); cursor: pointer; user-select: text; -webkit-user-select: text; }
+  /* Quiet, but never below the non-text contrast floor: .28 measured 1.37:1
+     at rest, and the round-four remedy had only reached the coarse branch. */
+  .msg-meta { min-width: 0; border: 0; background: transparent; color: var(--pi-dim); padding: 0; font: var(--pi-text-2xs) var(--pi-font-ui); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity var(--pi-motion-fast) var(--pi-ease); cursor: pointer; user-select: text; -webkit-user-select: text; }
   .msg:focus-within > .msg-header .msg-meta, .group-msg:focus-within > .msg-header .msg-meta, .msg-meta:focus, .msg-meta.expanded { opacity: 1; }
   @media (hover: hover) { .msg:hover > .msg-header .msg-meta, .group-msg:hover > .msg-header .msg-meta { opacity: 1; } }
   .msg-meta.expanded { flex: 1 1 auto; max-width: 100%; white-space: normal; overflow: visible; overflow-wrap: anywhere; text-overflow: clip; }

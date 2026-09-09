@@ -94,7 +94,7 @@ export class AppContextSwitcher extends LitElement {
 
   static override styles = css`
     :host { display: block; flex: 0 0 auto; border-bottom: 1px solid var(--pi-border); background: var(--pi-bg); }
-    button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+    button { font: inherit; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
     nav { display: flex; align-items: stretch; gap: var(--pi-space-3); padding: var(--pi-space-4) var(--pi-space-5); overflow-x: auto; scrollbar-width: none; }
     nav::-webkit-scrollbar { display: none; }
     .step { flex: 1 1 0; min-width: 0; container-type: inline-size; }
