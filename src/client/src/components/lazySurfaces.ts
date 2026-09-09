@@ -2,15 +2,11 @@
  * Surfaces that are only defined when they are first opened.
  *
  * The entry bundle carried every dialog the app can show, including ones a
- * session never opens: settings, the quick switcher and the session tree are
- * about 110KB of source that first paint does not need. They are imported when
- * the app has finished booting, and again - awaited this time - at the moment
- * something asks to open them, so a cold open waits for its own module instead
- * of every open paying for it up front.
- *
- * Opening awaits the load rather than rendering an empty frame: a dialog that
- * appears blank is a lie about its contents, while a dialog that appears a
- * moment later is only slow.
+ * session never opens. They are imported when the app has finished booting,
+ * and again at the moment something asks to open them, so a cold open waits
+ * for its own module instead of every open paying for it up front. The open
+ * path is fire-and-forget: the surface renders as soon as its flag is set,
+ * and the arriving module schedules the one update that fills it in.
  */
 export type LazySurface = "settings" | "quick-switcher" | "session-tree";
 
@@ -36,7 +32,7 @@ export function trackLoad<K>(loads: Map<K, Promise<void>>, key: K, pending: Prom
   return pending;
 }
 
-export function loadSurface(surface: LazySurface): Promise<void> | undefined {
+export function loadSurface(surface: LazySurface): Promise<void> {
   const existing = started.get(surface);
   if (existing !== undefined) return existing;
   return trackLoad(started, surface, loaders[surface]().then(() => undefined));
@@ -50,7 +46,7 @@ export function loadSurface(surface: LazySurface): Promise<void> | undefined {
 export function warmLazySurfaces(schedule: (task: () => void) => void = defaultSchedule): void {
   schedule(() => {
     for (const surface of Object.keys(loaders)) {
-      if (isLazySurface(surface)) loadSurface(surface)?.catch(() => undefined);
+      if (isLazySurface(surface)) void loadSurface(surface).catch(() => undefined);
     }
   });
 }

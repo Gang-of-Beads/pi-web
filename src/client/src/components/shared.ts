@@ -321,7 +321,7 @@ export const listStyles = css`
      measured 82 against 95 before this. */
   .list-body.tiles .action-main { min-height: calc(var(--pi-row-min-height) + var(--pi-space-9)); }
   .list-body.tiles .action-name { min-height: 2.5em; }
-  .list-body.tiles small { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-height: 2.6em; max-height: 2.6em; overflow: hidden; text-overflow: ellipsis; overflow-wrap: anywhere;  line-height: 1.3; }
+  .list-body.tiles small { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-height: 2.6em; max-height: 2.6em; overflow: hidden; text-overflow: ellipsis; overflow-wrap: anywhere; line-height: 1.3; }
   .list-body.tiles .action-menu { position: absolute; top: var(--pi-tile-menu-inset); right: var(--pi-tile-menu-inset); align-self: auto; }
   /* One nowrap line cut most tile names to the same prefix; two wrapped lines
      reach the tail that tells worktree-agent-a0… tiles apart. break-all because

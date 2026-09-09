@@ -1724,23 +1724,17 @@ export class PiWebApp extends LitElement {
    * Silence there is the worst outcome: a control that does nothing, forever.
    */
   private openLazySurface(surface: LazySurface, title: string): void {
-    // Ask for one update when the module first arrives. Requesting on every
-    // settle is a render loop when the caller sits in the render path: each
-    // settled promise resolves in a microtask, the microtask re-enters render,
-    // and the macro task that would paint never runs.
-    const first = loadSurface(surface);
-    if (first !== undefined) {
-      void first.then(
-        () => { this.requestUpdate(); },
-        () => { this.setState({ error: `${title} could not load. This tab may be running an older version - reload to get it.` }); },
-      );
-      return;
-    }
-    // A settled success needs no update; a settled failure must retire the
-    // failure message it planted, or a retry that succeeds leaves a banner
+    // One update when the module arrives; the failure message plants itself
+    // and retires itself: a retry that succeeds must not leave a banner
     // claiming the opposite of the screen.
     const failure = `${title} could not load. This tab may be running an older version - reload to get it.`;
-    if (this.state.error === failure) this.setState({ error: "" });
+    void loadSurface(surface).then(
+      () => {
+        if (this.state.error === failure) this.setState({ error: "" });
+        this.requestUpdate();
+      },
+      () => { this.setState({ error: failure }); },
+    );
   }
 
   private openSettings(section?: SettingsSection): void {
