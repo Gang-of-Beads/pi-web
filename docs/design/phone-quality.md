@@ -98,3 +98,26 @@ Still open, the owner's call: whether the two row idioms (management lists
 14/11, settings rows 17/13) merge into one pair of type roles or stay as
 context-scoped tokens. Either way the tokens would be locked against drift;
 the merge changes one of the two appearances.
+
+
+## The owner's direction for the rows (2026-09-09, answering the open call)
+
+Not a merge of two type scales but a different shape: **the second line
+becomes fold-style** - a row's subtext is revealed on demand rather than always
+drawn - and the chat UI keeps only its core, most-used functions, with the rest
+organized as what plugins contribute now that so much has moved out of core.
+
+That reframes the question. It is no longer "17/13 or 14/11" but:
+
+1. **Row anatomy**: title always; subtext behind the fold (existing disclosure
+   affordance per row, or revealed on selection/long-press - to be designed).
+2. **Chat surface inventory**: enumerate what chat renders today, split into
+   core (transcript, composer, delivery state, ask) versus contributed, and
+   move contributed furniture out of the always-on surface.
+3. **Hierarchy pass** across the shell, now that panels, sections and labels
+   are plugin contributions: what is resident, what folds, what lives in the
+   contributing plugin's surface.
+
+Design page to follow before implementation; this is recorded so the direction
+is not lost. The type-role tokens remain worthwhile regardless: whichever
+anatomy wins, the values get locked against drift.
