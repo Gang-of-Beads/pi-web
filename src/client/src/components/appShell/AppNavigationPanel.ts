@@ -456,15 +456,16 @@ export class AppNavigationPanel extends LitElement {
     :host([compact]) { flex: 1 1 auto; }
     header { flex: 0 0 auto; box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: 0 var(--pi-chrome-inset); border-bottom: 1px solid var(--pi-border); }
     header button { box-sizing: border-box; height: var(--pi-panel-header-control-height); padding: 0 var(--pi-space-4); font-size: var(--pi-text-xs); }
+    .header-icon-action:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     .header-icon-action { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); }
     .header-icon-action svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
-    .compact-shell { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+    .compact-shell { --pi-focus-ring-offset: var(--pi-focus-ring-offset-inset); flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
     /* The phone header is a row of 44px controls; its own padding made it 53
        where the desktop rail measures 45. Same rule, same height. */
     /* The compact row speaks pills; a control that renders itself follows the
        row it is in rather than carrying the rail's corner into it. */
     .compact-header { --pi-header-control-radius: var(--pi-radius-pill); flex: 0 0 auto; box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; justify-content: flex-start; gap: var(--pi-space-3); padding: 0 var(--pi-chrome-inset); border-bottom: 1px solid var(--pi-border); }
-    .compact-header-action { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: var(--pi-control-height-touch); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text); font: inherit; }
+    .compact-header-action { font-size: var(--pi-text-xs); flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: var(--pi-control-height-touch); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text);  }
     .compact-header-action:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     /* Coarse pointers get the comfort floor: the glyph is small but the hit
        box carries the row's tap weight in the phone header. */

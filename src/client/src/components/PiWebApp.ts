@@ -136,7 +136,9 @@ export const appStyles = css`
   .header-actions { display: flex; align-items: center; gap: var(--pi-space-4); }
   main { grid-column: 3; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   @media (hover: hover) { .context-chip:hover { background: var(--pi-surface-hover); } }
-  .empty { border-style: dashed; color: var(--pi-muted); }
+  /* A dashed hairline, not the browser's medium default: this rule was
+     generalised from a chip that carried its own border width. */
+  .empty { border: 1px dashed var(--pi-border); border-radius: var(--pi-radius-lg); padding: var(--pi-space-7); color: var(--pi-muted); }
   .context-kind { display: none; }
   .context-value { min-width: 0; overflow: visible; text-overflow: clip; white-space: nowrap; }
   .tab-badge { display: inline-block; min-width: 14px; margin-left: var(--pi-space-2); border: 1px solid var(--pi-success-border); border-radius: var(--pi-radius-pill); background: var(--pi-success-surface); color: var(--pi-success); padding: 0 var(--pi-space-3); font-size: var(--pi-text-2xs); line-height: 16px; text-align: center; }

@@ -101,6 +101,19 @@ report_pids() {
   done
 }
 
+wait_for_session_gone() {
+  local name="$1"
+  local waited=0
+  while tmux has-session -t "$name" 2>/dev/null; do
+    if [ "$waited" -ge 10 ]; then
+      echo "FAIL: tmux session $name still exists after kill-session" >&2
+      exit 1
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+}
+
 stop_stack() {
   local pids doomed pid
   pids="$(stack_pids)"
@@ -145,6 +158,12 @@ stop_stack() {
   # tmux windows are killed by name, and only the two this script owns.
   tmux kill-session -t "$SESSIOND_TMUX" 2>/dev/null || true
   tmux kill-session -t "$WEB_TMUX" 2>/dev/null || true
+  # kill-session returns before the session is gone, and the next start then
+  # died on "duplicate session" while a healthy stack was still answering 200 -
+  # a script that reports failure over a working service teaches you to ignore
+  # its exit code.
+  wait_for_session_gone "$SESSIOND_TMUX"
+  wait_for_session_gone "$WEB_TMUX"
   # A dead daemon leaves its socket file behind, and a stale socket file makes
   # "the socket exists" - which start_stack waits on - true before the new
   # daemon ever binds. Remove it only once nothing holds it.

@@ -1,4 +1,5 @@
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from "lit";
+import { renderHostDisclosureIcon } from "./hostUi";
 import { customElement, property, state } from "lit/decorators.js";
 import type { NavMachineSnapshot } from "@gang-of-beads/pi-web/plugin-api";
 import { actionMenuPanelStyle } from "./actionMenu";
@@ -82,7 +83,7 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
             <span class="machine-switcher-label">${label}</span>
           </span>
           <span class=${`machine-status ${status}`}>${machineStatusLabel(status)}</span>
-          <span class="machine-chevron" aria-hidden="true">▾</span>
+          <span class="machine-chevron" aria-hidden="true">${renderHostDisclosureIcon(false)}</span>
         </button>
         ${this.open ? html`
           <div class="machine-switcher-menu" style=${this.menuStyle} @click=${(event: MouseEvent) => { event.stopPropagation(); }}>

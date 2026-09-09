@@ -18,7 +18,8 @@ export const goalsSectionStyles = `
   .goal-main { flex: 1 1 auto; min-width: 0; }
   .objective { margin: 0; color: var(--pi-text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
   .progress { margin: var(--pi-space-1) 0 0; color: var(--pi-muted); font-size: var(--pi-text-xs); }
-  .refresh { font: inherit; box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-control-height); height: var(--pi-control-height); padding: 0; border: 0; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); font-size: var(--pi-text-md); cursor: pointer; }
+  .goal-refresh-icon { width: 16px; height: 16px; }
+    .refresh { font: inherit; box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-control-height); height: var(--pi-control-height); padding: 0; border: 0; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); font-size: var(--pi-text-md); cursor: pointer; }
   @media (pointer: coarse) { .refresh { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); } }
   @media (hover: hover) { .refresh:hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
   .refresh:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
@@ -90,7 +91,7 @@ export class PiWebGoalsSection extends LitElement {
           title="Re-read goal records from the workspace"
           aria-label="Refresh goals"
           @click=${this.handleRefresh}
-        >↻</button>
+        ><svg class="goal-refresh-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v5h5"></path></svg></button>
       </div>
     `;
   }

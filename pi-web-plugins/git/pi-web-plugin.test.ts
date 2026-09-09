@@ -192,7 +192,7 @@ describe("bundled Git browser plugin", () => {
     expect(container.querySelectorAll(".git-review-section")).toHaveLength(3);
     expect(backend.request).toHaveBeenCalledWith("diff", { path: "first.ts" });
     expect(backend.request).toHaveBeenCalledWith("diff", { path: "third.ts", staged: true });
-    expect([...container.querySelectorAll(".git-review-section > .git-viewer-header .git-review-toggle")].map((element) => element.textContent.trim())).toContain("▾ first.ts");
+    expect([...container.querySelectorAll(".git-review-section > .git-viewer-header .git-review-toggle")].map((element) => element.textContent.trim())).toContain("first.ts");
     expect([...container.querySelectorAll(".git-review-section .git-diff-section > .git-viewer-header strong")].map((element) => element.textContent)).toContain("Unstaged changes");
     expect([...container.querySelectorAll(".git-review-section .git-diff-section > .git-viewer-header")].some((element) => element.textContent.includes("first.ts"))).toBe(false);
     button(container, "Collapse all diffs").click();
@@ -250,12 +250,12 @@ describe("bundled Git browser plugin", () => {
     expect(backend.request).toHaveBeenCalledWith("commit-diff", { id: historyCommit.id });
     expect(new URL(window.location.href).searchParams.get("git.workspace.git--commit")).toBe(historyCommit.id);
     expect(container.textContent).toContain("Ada Lovelace <ada@example.test>");
-    expect([...container.querySelectorAll(".git-commit-file-toggle")].map((element) => element.textContent.trim())).toEqual(["▾ src/first.ts", "▾ src/second.ts"]);
+    expect([...container.querySelectorAll(".git-commit-file-toggle")].map((element) => element.textContent.trim())).toEqual(["src/first.ts", "src/second.ts"]);
     expect(container.querySelectorAll('[role="table"][aria-label^="Commit diff for "]')).toHaveLength(2);
 
-    button(container, "▾ src/first.ts").click();
+    button(container, "src/first.ts").click();
     render(panel.render(context), container);
-    expect(button(container, "▸ src/first.ts").getAttribute("aria-expanded")).toBe("false");
+    expect(button(container, "src/first.ts").getAttribute("aria-expanded")).toBe("false");
     expect(container.querySelectorAll('[role="table"][aria-label^="Commit diff for "]')).toHaveLength(1);
 
     button(container, "Collapse all file diffs").click();

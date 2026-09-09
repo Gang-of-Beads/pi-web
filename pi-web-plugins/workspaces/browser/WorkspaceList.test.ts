@@ -113,7 +113,7 @@ describe("workspace detail copy buttons", () => {
 
     detailCopyButton(list, "Copy path").click();
     await vi.waitFor(() => { expect(writeText).toHaveBeenCalledWith("/repo/ws-a"); });
-    await vi.waitFor(() => { expect(detailCopyButton(list, "Copied").textContent).toContain("✓"); });
+    await vi.waitFor(() => { expect(detailCopyButton(list, "Copied").querySelector("svg")).not.toBeNull(); });
 
     expect(list.shadowRoot?.querySelector(".workspace-menu-panel")).not.toBeNull();
   });

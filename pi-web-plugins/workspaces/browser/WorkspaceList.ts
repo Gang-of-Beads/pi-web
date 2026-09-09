@@ -343,7 +343,9 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
     const label = copied ? "Copied" : action;
     return html`
       <button type="button" class="detail-copy" title=${label} aria-label=${label} @click=${() => { void this.copyDetail(key, value); }}>
-        <span aria-hidden="true">${copied ? "✓" : "⧉"}</span>
+        <span aria-hidden="true">${copied
+          ? html`<svg class="row-mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"></path></svg>`
+          : html`<svg class="row-mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h8"></path></svg>`}</span>
       </button>
     `;
   }

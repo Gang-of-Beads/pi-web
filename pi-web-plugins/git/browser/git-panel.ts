@@ -1016,7 +1016,7 @@ function renderReviewDiffSection(
     >
       <section class=${state.selectedDiffPath === file.path ? "git-review-section is-focused" : "git-review-section"} data-review-path=${file.path}>
         <div class="git-viewer-header">
-          <button type="button" class="git-review-toggle" aria-expanded=${String(!review.collapsed)} @click=${() => { controller.toggleReviewDiff(context, file.path); }}>${review.collapsed ? "▸" : "▾"} ${file.path}</button>
+          <button type="button" class="git-review-toggle" aria-expanded=${String(!review.collapsed)} @click=${() => { controller.toggleReviewDiff(context, file.path); }}>${renderGitDisclosureIcon(review.collapsed)} ${file.path}</button>
           <small>${stateLabel(file.index, file.workingTree)}</small>
         </div>
         ${review.collapsed ? null : review.status === "error"
@@ -1078,7 +1078,7 @@ function renderCommitDiffFiles(
         return html`
           <section class="git-commit-file">
             <div class="git-viewer-header">
-              <button type="button" class="git-commit-file-toggle" aria-expanded=${String(!collapsed)} @click=${() => { controller.toggleCommitDiff(context, file.path); }}>${collapsed ? "▸" : "▾"} ${file.path}</button>
+              <button type="button" class="git-commit-file-toggle" aria-expanded=${String(!collapsed)} @click=${() => { controller.toggleCommitDiff(context, file.path); }}>${renderGitDisclosureIcon(collapsed)} ${file.path}</button>
             </div>
             ${collapsed ? null : renderDiffGrid(html, file.lines, `Commit diff for ${file.path}`)}
           </section>

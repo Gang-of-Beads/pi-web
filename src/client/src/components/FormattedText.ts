@@ -6,6 +6,14 @@ import { toSafeMarkdownHtml } from "../formatting/markdown";
 import { formattedTextStyles } from "./shared";
 
 /**
+ * The code-block copy control is built through the DOM API rather than lit, so
+ * its mark travels as markup. Same geometry as the drawn marks elsewhere: the
+ * character it replaced took its ink from whichever font resolved it.
+ */
+const COPY_MARK = "<svg class=\"ui-icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\" focusable=\"false\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"9\" y=\"9\" width=\"11\" height=\"11\" rx=\"2\"></rect><path d=\"M5 15V5a2 2 0 0 1 2-2h8\"></path></svg>";
+const COPIED_MARK = "<svg class=\"ui-icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\" focusable=\"false\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m5 12 5 5 9-10\"></path></svg>";
+
+/**
  * Fully parse a message's markdown once the stream has been quiet for this
  * long. While deltas keep arriving we render the parsed prefix plus a plain
  * text suffix, so token-by-token streaming costs O(delta) instead of
@@ -78,7 +86,7 @@ export class FormattedText extends LitElement {
       button.setAttribute("aria-label", "Copy code block");
       const icon = document.createElement("span");
       icon.setAttribute("aria-hidden", "true");
-      icon.textContent = "⧉";
+      icon.innerHTML = COPY_MARK;
       button.append(icon);
       element.before(wrapper);
       wrapper.append(element, button);
@@ -104,7 +112,7 @@ export class FormattedText extends LitElement {
 
   private setCopyButtonState(button: HTMLButtonElement, state: "idle" | "copied" | "failed"): void {
     const icon = button.querySelector("span");
-    if (icon !== null) icon.textContent = state === "copied" ? "✓" : "⧉";
+    if (icon !== null) icon.innerHTML = state === "copied" ? COPIED_MARK : COPY_MARK;
     const label = state === "copied" ? "Copied code block" : state === "failed" ? "Failed to copy code block" : "Copy code block";
     button.title = label;
     button.setAttribute("aria-label", label);

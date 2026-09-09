@@ -1,4 +1,5 @@
-import { LitElement, css, html, nothing } from "lit";
+import { LitElement, css, html, nothing, unsafeCSS } from "lit";
+import { renderCheckIcon, renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { quickSwitcherFilterProjects } from "../quickSwitcher";
 import { switcherInitialFocus, touchPrimaryPointer } from "../keyboardDismissal";
 import { customElement, property, state } from "lit/decorators.js";
@@ -100,7 +101,7 @@ export class QuickSwitcher extends LitElement {
             .value=${this.query}
             @input=${(event: Event) => { this.onQueryInput(event); }}
           >
-          <button class="close" title="Close" aria-label="Close" @click=${() => this.onClose?.()}>×</button>
+          <button class="close" title="Close" aria-label="Close" @click=${() => this.onClose?.()}>${renderCrossIcon()}</button>
         </header>
         ${this.renderMachineTabs()}
         ${this.renderFilters()}
@@ -246,8 +247,8 @@ export class QuickSwitcher extends LitElement {
           @keydown=${(event: KeyboardEvent) => { if (event.key === "Escape") { event.stopPropagation(); this.renamingSessionId = undefined; } }}
         >
         <div class="rename-actions">
-          <button type="submit" title="Save name" aria-label="Save name">${"\u2713"}</button>
-          <button type="button" title="Cancel rename" aria-label="Cancel rename" @click=${() => { this.renamingSessionId = undefined; }}>${"\u00d7"}</button>
+          <button type="submit" title="Save name" aria-label="Save name">${renderCheckIcon()}</button>
+          <button type="button" title="Cancel rename" aria-label="Cancel rename" @click=${() => { this.renamingSessionId = undefined; }}>${renderCrossIcon()}</button>
         </div>
       </form>
     `;
@@ -387,7 +388,7 @@ export class QuickSwitcher extends LitElement {
     this.onClose?.();
   }
 
-  static override styles = [interactiveSurfaceStyles, sessionStateBadgeStyles, css`
+  static override styles = [interactiveSurfaceStyles, sessionStateBadgeStyles, css`${unsafeCSS(uiIconStyle)}
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-overlay); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); --qs-menu-size: var(--pi-control-height); }
     @media (pointer: coarse) { :host { --qs-menu-size: var(--pi-control-height-touch, 44px); } }
     modal-surface {
