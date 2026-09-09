@@ -232,3 +232,12 @@ no plugin updates the kernel.
 
 The same rule settles two others for free: the trust reader and the plugin
 catalogue are kernel, so no plugin can widen where plugins load from.
+
+## Open contract item: section focus (2026-09-09)
+
+Round 16 found the section focus contract has two implementations: machine
+sections keep module-level refs whose value dies when the sheet's copy of the
+list unmounts, and no code path calls a machine section's focus at all. The
+repair is a plugin-API decision - per-surface refs, or dropping focus from
+the section contract - recorded here as the owner-track item the round-16
+triage points to.

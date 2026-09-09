@@ -417,7 +417,7 @@ export const listStyles = css`
    * A list of thirty sessions is read by scanning, not by inspecting, and an
    * 8px dot in the far corner of each row does not survive a scan. Each row
    * carries a coloured edge instead, taking its colour from the state the row
-   * already reports: work in flight, an upload, something unread. The dot stays
+   * already reports: work in flight, something unread. The dot stays
    * for the detail; the rail is what the eye follows down the list, and it is
    * the one place this design spends colour on identity.
    */

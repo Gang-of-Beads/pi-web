@@ -1496,7 +1496,10 @@ export class PiWebApp extends LitElement {
     const machineId = route.machineId ?? "local";
     const machineName = this.state.machines.find((machine) => machine.id === machineId)?.name ?? this.state.selectedMachine?.name ?? "Remote machine";
     const health = this.state.machineStatuses[machineId];
-    const detail = health?.error ?? (this.state.error === "" ? undefined : this.state.error);
+    // The detail is what the health read reported - never this banner's own
+    // previous text, which the retry ladder would otherwise paste into itself
+    // once per attempt.
+    const detail = health?.error;
     const prefix = options.exhausted === true
       ? `${machineName} is still unavailable.`
       : `${machineName} is unavailable; reconnecting…`;
@@ -1755,9 +1758,8 @@ export class PiWebApp extends LitElement {
   }
 
   private openSettings(section?: SettingsSection): void {
-    // The dialog's module is loaded before it is shown. Rendering the element
-    // first would put an empty frame on screen, which reads as "settings has
-    // nothing in it" rather than "settings is arriving".
+    // Fire-and-forget like every surface: the element renders with its flag,
+    // and the arriving module schedules the update that fills it in.
     this.openLazySurface("settings", "Settings");
     this.settingsOpen = true;
     if (section === undefined) {

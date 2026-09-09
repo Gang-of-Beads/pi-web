@@ -33,6 +33,7 @@ export function noticeForReader(text: string): Notice {
   return { text, retiredBy: RetiredBy.reader };
 }
 
+
 /** Shown when a failure carried no words of its own; see describeError. */
 const UNDESCRIBED_FAILURE = "The request failed";
 

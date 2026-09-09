@@ -1,10 +1,10 @@
 import { api as defaultApi, type AskUserCloseResponse, type AskUserSubmission, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingAskUser, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Workspace } from "../api";
 import { projectsApi, workspacesApi } from "../api";
-import { errorNoticePatch } from "../errorNotice";
+import { errorNoticePatch, noticePatch } from "../errorNotice";
 import { commandOutcomeFor, dismissCommand, issueCommand, settleCommand, withdrawCommand, type CommandLedgerSource } from "../commandLedger";
 import { RevisionScope } from "../revisionScope";
 import { SessionGapRepair } from "../sessionGapRepair";
-import { describeError } from "../notice";
+import { describeError, noticeForReader } from "../notice";
 import { ancestorsForSession } from "../sessionAncestors";
 import { locateSessionWorkspace } from "../sessionAncestorLookup";
 import { sessionLocationVerdict } from "../sessionLocationVerdict";
@@ -878,7 +878,7 @@ export class SessionController {
       }
       this.applyBulkSessionFailures("Archive", failures);
     } catch (error) {
-      this.setState({ error: `Archive failed: ${describeError(error)}` });
+      this.setState(noticePatch(noticeForReader(`Archive failed: ${describeError(error)}`)));
     }
   }
 
@@ -902,7 +902,7 @@ export class SessionController {
       }
       this.applyBulkSessionFailures("Delete", failures);
     } catch (error) {
-      this.setState({ error: `Delete failed: ${describeError(error)}` });
+      this.setState(noticePatch(noticeForReader(`Delete failed: ${describeError(error)}`)));
     }
   }
 
@@ -1531,7 +1531,7 @@ export class SessionController {
 
   private applyBulkSessionFailures(action: string, failures: readonly string[]): void {
     if (failures.length === 0) return;
-    this.setState({ error: `${action} failed for ${String(failures.length)} session${failures.length === 1 ? "" : "s"}: ${failures.join("; ")}` });
+    this.setState(noticePatch(noticeForReader(`${action} failed for ${String(failures.length)} session${failures.length === 1 ? "" : "s"}: ${failures.join(", ")}`)));
   }
 
   private sessionCacheKey(sessionId: string): string {
@@ -1692,7 +1692,7 @@ export class SessionController {
       // Open cards on the failed row are dead: the create is gone, so no
       // answer could ever reach the daemon. Settled outcomes stay as history.
       ...(state.selectedSession?.id === tempId ? { pendingDialogs: [] } : {}),
-      error: `Failed to start session: ${message}`,
+      ...noticePatch(noticeForReader(`Failed to start session: ${message}`)),
     });
     this.applyReleasedCreatedSessions(releasedCreatedSessions, pending.machineId);
   }

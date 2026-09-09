@@ -1,7 +1,7 @@
 import { api, type Machine, type MachineHealth, type MachineRuntime } from "../api";
 import { resetWorkspaceScopedState } from "../appState";
-import { errorNoticePatch } from "../errorNotice";
-import { describeError } from "../notice";
+import { errorNoticePatch, noticePatch } from "../errorNotice";
+import { describeError, noticeForReader } from "../notice";
 import type { GetState, SetState, UpdateUrl } from "./types";
 import type { ProjectController } from "./projectController";
 
@@ -93,7 +93,8 @@ export class MachineController {
   async deleteMachine(machine: Machine | undefined = this.getState().selectedMachine, options: { selectFallback?: boolean } = {}): Promise<Machine | undefined> {
     if (machine === undefined) return undefined;
     if (machine.kind === "local") {
-      this.setState({ error: "The local machine cannot be removed." });
+      // Reader-retired: nothing will arrive to retire it; the reader acts.
+      this.setState(noticePatch(noticeForReader("The local machine cannot be removed.")));
       return undefined;
     }
     try {
@@ -147,7 +148,9 @@ export class MachineController {
     const health = await this.safeRemoteHealth(requestedMachine);
     this.setState({
       machineStatuses: { ...this.getState().machineStatuses, [health.machineId]: health },
-      ...(health.ok ? {} : { error: `${requestedMachine.name} is unavailable; reconnecting…` }),
+      // Reader-retired: the message names a machine, so no other machine's
+      // successful request may speak for it.
+      ...(health.ok ? {} : noticePatch(noticeForReader(`${requestedMachine.name} is unavailable; reconnecting…`))),
     });
     return requestedMachine;
   }

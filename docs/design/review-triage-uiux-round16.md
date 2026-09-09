@@ -1,4 +1,4 @@
-# Round 16 triage: three lanes, not clean, twelve findings
+# Round 16 triage: three lanes, not clean
 
 Configuration: same three bllm lanes as round 15 (two glm with split focus,
 one qwen full pass) against the fixed HEAD. All three lanes re-verified the
@@ -66,6 +66,10 @@ round-15 fixes first: nine for nine still in place.
 
 ## Verdict
 
-Round 16 was not clean: twelve true findings, ten fixed here, the rest
-deferred with written reasons. The convergence loop continues - round 17 runs
+Round 16 was not clean. The lanes reported fourteen items: ten fixed here
+(one of them, the box-model guard, was silently passing and caught two real
+offenders on its first talkative run), four deferred with written reasons.
+The counting basis: fixed and deferred items are counted individually; a
+correction to an earlier round's evidence is noted inside the item it
+belongs to, not counted again. The convergence loop continues - round 17 runs
 the same configuration against this HEAD.

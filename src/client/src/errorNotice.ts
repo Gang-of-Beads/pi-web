@@ -1,5 +1,5 @@
 import type { AppState } from "./appState";
-import { noticeFromError } from "./notice";
+import { noticeFromError, type Notice } from "./notice";
 
 /**
  * The one way a controller reports a failure to the reader.
@@ -25,5 +25,10 @@ export function errorNoticePatch(
   link: { readonly live: boolean } = { live: false },
 ): Pick<AppState, "error" | "errorRetiredBy"> {
   const notice = noticeFromError(error, link);
+  return { error: notice.text, errorRetiredBy: notice.retiredBy };
+}
+
+/** An AppState patch carrying a Notice with its retirement semantics. */
+export function noticePatch(notice: Notice): Pick<AppState, "error" | "errorRetiredBy"> {
   return { error: notice.text, errorRetiredBy: notice.retiredBy };
 }
