@@ -59,7 +59,7 @@ export const chatStyles = css`
   dialog.attachment-zoom[open] { display: flex; }
   dialog.attachment-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
   .attachment-zoom-full { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: var(--pi-radius-md); object-fit: contain; }
-  .attachment-zoom-close { box-sizing: border-box; position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; font: var(--pi-text-lg)/1 var(--pi-font-ui, system-ui, sans-serif); color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
+  .attachment-zoom-close { box-sizing: border-box; position: absolute; top: max(var(--pi-space-4), env(safe-area-inset-top)); right: max(var(--pi-space-4), env(safe-area-inset-right)); display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; font: var(--pi-text-lg)/1 var(--pi-font-ui, system-ui, sans-serif); color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
   .attachment-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
   @media (hover: hover) { .attachment-zoom-close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
   /* Tap targets should not wait for a double-tap-zoom gesture to be ruled out.
@@ -304,7 +304,7 @@ export const chatStyles = css`
   dialog.image-zoom[open] { display: flex; }
   dialog.image-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
   .image-zoom-full { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: var(--pi-radius-md); object-fit: contain; cursor: zoom-out; }
-  .image-zoom-close { box-sizing: border-box; position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; font: var(--pi-text-lg)/1 var(--pi-font-ui, system-ui, sans-serif); color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
+  .image-zoom-close { box-sizing: border-box; position: absolute; top: max(var(--pi-space-4), env(safe-area-inset-top)); right: max(var(--pi-space-4), env(safe-area-inset-right)); display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; font: var(--pi-text-lg)/1 var(--pi-font-ui, system-ui, sans-serif); color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
   .image-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
   @media (hover: hover) { .image-zoom-close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
   .image-zoom-close:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
@@ -386,11 +386,11 @@ export const chatStyles = css`
   /* A fingertip is wider than the drawn button, so the reach grows, not the
      icon - but only as far as the gap allows: a symmetric 10px expansion over
      a 6px gap made each button's right edge belong to its neighbour. */
-  .msg-action::after { content: ""; position: absolute; inset: -10px -3px; }
+  .msg-action::after { content: ""; position: absolute; inset: calc(-1 * var(--pi-space-5)) calc(-1 * var(--pi-space-1)); }
   /* The row is icons and one text control: the meta button sits at the end of
      the same flex row, so the expansion must clear it too - a symmetric 10px
      bleed put 2px of the info control inside the copy button. */
-  @media (pointer: coarse) { .msg-header-trailing { gap: var(--pi-space-8); } .msg-actions { gap: var(--pi-space-8); } .msg-action::after { inset: -10px -3px; } }
+  @media (pointer: coarse) { .msg-header-trailing { gap: var(--pi-space-8); } .msg-actions { gap: var(--pi-space-8); } .msg-action::after { inset: calc(-1 * var(--pi-space-5)) calc(-1 * var(--pi-space-4)); } }
   .msg-action:focus { color: var(--pi-text); border-color: var(--pi-accent); }
   @media (hover: hover) { .msg-action:hover { color: var(--pi-text); border-color: var(--pi-accent); } }
   .msg:focus-within > .msg-header .msg-actions, .group-msg:focus-within > .msg-header .msg-actions { opacity: 1; }
@@ -410,7 +410,7 @@ export const chatStyles = css`
     .msg-meta:not(.expanded) { position: relative; display: inline-grid; width: 24px; height: 24px; place-items: center; font-size: 0; text-overflow: clip; }
     /* The same reach its siblings get: without it the info control was a 24px
        target beside 44px ones, and a thumb aiming at it landed on copy. */
-    .msg-meta:not(.expanded)::after { content: ""; position: absolute; inset: -10px -3px; }
+    .msg-meta:not(.expanded)::after { content: ""; position: absolute; inset: calc(-1 * var(--pi-space-5)) calc(-1 * var(--pi-space-1)); }
     .msg-meta::before { content: "ⓘ"; font-size: var(--pi-text-sm); }
     .msg-meta.expanded { opacity: 1; max-width: 100%; }
     .msg-meta.expanded::before { content: ""; }

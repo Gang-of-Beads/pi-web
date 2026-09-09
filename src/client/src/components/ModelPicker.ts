@@ -291,6 +291,7 @@ export class ModelPicker extends LitElement {
        close button, scope chips, search field, and catalog checkboxes are all
        touch targets on a phone. Declared after every base rule it raises. */
     @media (pointer: coarse) {
+      .options > button, .catalog-row .pick { min-height: var(--pi-control-height-touch); }
       header button { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); }
       .scope-toggle button { min-height: var(--pi-control-height-touch, 44px); }
       input.search { min-height: var(--pi-control-height-touch, 44px); }
@@ -303,7 +304,7 @@ export class ModelPicker extends LitElement {
     .catalog-row.selected { background: var(--pi-selection-bg); }
     @media (hover: hover) { .catalog-row:hover { background: var(--pi-selection-bg); } }
     .catalog-row input[type="checkbox"] { box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); margin: 0 0 0 var(--pi-space-6); accent-color: var(--pi-accent); }
-    .catalog-row .pick { flex: 1; min-width: 0; display: block; padding: var(--pi-space-5) var(--pi-space-6); text-align: left; }
+    .catalog-row .pick { font: var(--pi-text-sm)/1.25 var(--pi-font-ui); flex: 1; min-width: 0; display: block; padding: var(--pi-space-5) var(--pi-space-6); text-align: left; }
     .group-header { padding: var(--pi-space-4) var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-xs); text-transform: uppercase; letter-spacing: 0.04em; }
     small { display: block; margin-top: var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-2xs); }
     .empty { padding: var(--pi-space-9); color: var(--pi-muted); text-align: center; }

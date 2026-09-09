@@ -16,15 +16,24 @@ import { join } from "node:path";
  * cluster of bare 12/6/14/18px values sat inside `@media (pointer: coarse)`
  * untouched. Only the non-literal parts (`env(...)`, viewport units, other
  * variables) are outside the scale's jurisdiction. Negative offsets count too:
- * a `-8px` margin is the same step spelled backwards.
+ * a `-8px` margin is the same step spelled backwards. Offsets count too: a
+ * badge placed with `top: 6px` is spacing spelled as a position, and round
+ * eight found four such literals living outside the guard's window.
  *
  * A pixel value above the scale's top step (24px) is structural - it reserves
  * room for a control that overlays the box (a 44px menu button, a 58px
  * composer gutter) and belongs to the control's size, not to the rhythm.
  */
 const ROOTS = ["src/client/src", "pi-web-plugins"];
-const SPACING_PROPERTY = /\b(?:padding|margin|gap|row-gap|column-gap|padding-(?:top|right|bottom|left|inline|block)|margin-(?:top|right|bottom|left|inline|block)):\s*([^;{}]+)/gu;
+const SPACING_PROPERTY = /(?<![-\w])(?:padding|margin|gap|row-gap|column-gap|padding-(?:top|right|bottom|left|inline|block)|margin-(?:top|right|bottom|left|inline|block)|top|right|bottom|left|inset|inset-(?:inline|block)):\s*([^;{}]+)/gu;
 const RHYTHM_TOP = 24;
+const HAIRLINE = 1;
+/**
+ * Values that are deliberately between steps: the asymmetric trims that keep a
+ * hit box off its neighbour, and the terminal's own cell padding. They are
+ * named here so a new one has to be argued for rather than typed.
+ */
+const OFF_SCALE_TRIMS = new Set([3, 5]);
 
 function styleSources(root: string): string[] {
   const found: string[] = [];
@@ -48,7 +57,9 @@ describe("the spacing scale", () => {
         for (const match of readFileSync(file, "utf8").matchAll(SPACING_PROPERTY)) {
           const value = match[1] ?? "";
           for (const step of value.matchAll(/(-?)(\d+)px/gu)) {
-            if (Number(step[2]) > RHYTHM_TOP) continue;
+            const size = Number(step[2]);
+            if (size > RHYTHM_TOP || size <= HAIRLINE) continue;
+            if (OFF_SCALE_TRIMS.has(size)) continue;
             offences.push(`${file}: ${match[0].trim()}`);
           }
         }

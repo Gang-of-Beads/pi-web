@@ -14,6 +14,16 @@ import { AppPanelEdgeControl } from "./AppPanelEdgeControl";
  */
 const RENDERED_WIDTH = 14;
 
+/** Read the step the rule names, so tokenising the offset cannot silently shrink the reach. */
+const SPACING_STEPS: Record<string, number> = { "--pi-space-1": 2, "--pi-space-2": 4, "--pi-space-3": 8, "--pi-space-4": 8, "--pi-space-5": 10 };
+
+function horizontalInset(rule: string): number | undefined {
+  const literal = /inset:\s*0\s*(-?\d+)px/u.exec(rule)?.[1];
+  if (literal !== undefined) return Math.abs(Number(literal));
+  const token = /inset:\s*0\s*calc\(-1 \* var\((--pi-space-\d)\)\)/u.exec(rule)?.[1];
+  return token === undefined ? undefined : SPACING_STEPS[token];
+}
+
 describe("the panel edge control", () => {
   it("takes a hit area at least as wide as the minimum target size", () => {
     const rule = ruleFor(".edge-button::after");
@@ -22,14 +32,14 @@ describe("the panel edge control", () => {
     // The declared width is 18px but the flex host shrinks it to 14px, which
     // is what a pointer actually has to hit. Measuring against the declared
     // number would pass while the real control stayed under target size.
-    const inset = /inset:\s*0\s*(-?\d+)px/u.exec(rule)?.[1];
+    const inset = horizontalInset(rule);
     expect(inset, "expected a horizontal inset expressing the hit area").toBeDefined();
-    expect(RENDERED_WIDTH + 2 * Math.abs(Number(inset))).toBeGreaterThanOrEqual(24);
+    expect(RENDERED_WIDTH + 2 * (inset ?? 0)).toBeGreaterThanOrEqual(24);
   });
 
   it("keeps the hit area from covering the panel it sits against", () => {
     const rule = ruleFor(".edge-button::after");
-    const inset = Math.abs(Number(/inset:\s*0\s*(-?\d+)px/u.exec(rule)?.[1] ?? "0"));
+    const inset = horizontalInset(rule) ?? 0;
 
     // A handle that reaches far into the panel steals clicks from the rows
     // behind it, which is the bug the toggle already caused once in the

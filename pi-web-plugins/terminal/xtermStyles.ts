@@ -271,14 +271,14 @@ export const xtermStyles = css`
 .xterm .xterm-scrollable-element > .shadow.top {
 	display: block;
 	top: 0;
-	left: 3px;
+	left: var(--pi-space-1);
 	height: 3px;
 	width: 100%;
 	box-shadow: var(--vscode-scrollbar-shadow, #000) 0 6px 6px -6px inset;
 }
 .xterm .xterm-scrollable-element > .shadow.left {
 	display: block;
-	top: 3px;
+	top: var(--pi-space-1);
 	left: 0;
 	height: 100%;
 	width: 3px;

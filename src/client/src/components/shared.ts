@@ -156,7 +156,7 @@ export const workspacePanelStyles = css`
   dialog.attachment-zoom[open] { display: flex; }
   dialog.attachment-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
   .attachment-zoom-full { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: var(--pi-radius-md); object-fit: contain; }
-  .attachment-zoom-close { box-sizing: border-box; position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; font: var(--pi-text-lg)/1 var(--pi-font-ui, system-ui, sans-serif); color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
+  .attachment-zoom-close { box-sizing: border-box; position: absolute; top: max(var(--pi-space-4), env(safe-area-inset-top)); right: max(var(--pi-space-4), env(safe-area-inset-right)); display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; font: var(--pi-text-lg)/1 var(--pi-font-ui, system-ui, sans-serif); color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
   .attachment-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
   @media (hover: hover) { .attachment-zoom-close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
   :host { display: flex; flex-direction: column; min-height: 0; color: var(--pi-text); background: var(--pi-bg); font: var(--pi-text-sm) var(--pi-font-ui); container-type: inline-size; }
@@ -240,7 +240,7 @@ export const listStyles = css`
   dialog.attachment-zoom[open] { display: flex; }
   dialog.attachment-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
   .attachment-zoom-full { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: var(--pi-radius-md); object-fit: contain; }
-  .attachment-zoom-close { box-sizing: border-box; position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; font: var(--pi-text-lg)/1 var(--pi-font-ui, system-ui, sans-serif); color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
+  .attachment-zoom-close { box-sizing: border-box; position: absolute; top: max(var(--pi-space-4), env(safe-area-inset-top)); right: max(var(--pi-space-4), env(safe-area-inset-right)); display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; font: var(--pi-text-lg)/1 var(--pi-font-ui, system-ui, sans-serif); color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
   .attachment-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
   @media (hover: hover) { .attachment-zoom-close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
   /* Tap targets should not wait for a double-tap-zoom gesture to be ruled out.
@@ -345,12 +345,12 @@ export const listStyles = css`
   @media (pointer: coarse) {
     .list-body.tiles { --pi-tile-menu-size: var(--pi-control-height-comfort); --pi-tile-menu-inset: var(--pi-space-2); }
     .list-body.tiles .action-menu-toggle { height: var(--pi-control-height-comfort); min-width: var(--pi-control-height-comfort); }
-    .list-body.tiles .action-menu { top: 4px; right: 4px; }
+    .list-body.tiles .action-menu { top: var(--pi-tile-menu-inset); right: var(--pi-tile-menu-inset); }
   }
   /* The activity dot shares the menu button's centre line: both corner marks
      are derived from the same inset and size, so they read as one row of
      corner affordances instead of two marks 10px apart. */
-  .list-body.tiles .action-activity { top: calc(var(--pi-tile-menu-inset) + (var(--pi-tile-menu-size) / 2) - (var(--pi-dot-md) / 2)); right: calc(var(--pi-tile-menu-inset) + var(--pi-tile-menu-size) + var(--pi-space-2)); }
+  .list-body.tiles .action-activity { transform: none; top: calc(var(--pi-tile-menu-inset) + (var(--pi-tile-menu-size) / 2) - (var(--pi-dot-md) / 2)); right: calc(var(--pi-tile-menu-inset) + var(--pi-tile-menu-size) + var(--pi-space-2)); }
   button { font: var(--pi-text-xs) var(--pi-font-ui); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
   section > button { display: block; width: 100%; text-align: left; margin: var(--pi-space-3) 0; }
   .subheading { margin-top: var(--pi-space-7); }
@@ -394,7 +394,9 @@ export const listStyles = css`
   @media (hover: hover) { .action-menu-panel .detail-copy:hover { color: var(--pi-text); border-color: var(--pi-accent); background: var(--pi-surface-hover); } }
   .tree-marker { color: var(--pi-muted); margin-right: var(--pi-space-3); }
   .badge { display: inline-block; margin-left: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); color: var(--pi-muted); padding: 0 var(--pi-space-3); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-regular); }
-  .action-activity { position: absolute; top: var(--pi-space-3); right: var(--pi-space-3); z-index: 1; display: grid; place-items: center; width: var(--pi-dot-md); height: var(--pi-dot-md); }
+  /* The mark and the row menu read as one pair: same centre line, as the tile
+     variant states for itself below. */
+  .action-activity { position: absolute; top: 50%; transform: translateY(-50%); right: var(--pi-space-3); z-index: 1; display: grid; place-items: center; width: var(--pi-dot-md); height: var(--pi-dot-md); }
   .action-activity .activity-indicator { margin: 0; vertical-align: 0; }
   .activity-indicator { flex: 0 0 auto; display: inline-block; width: var(--pi-dot-sm); height: var(--pi-dot-sm); margin-right: var(--pi-space-3); background: var(--pi-success); animation: pulse 1s ease-in-out infinite; vertical-align: 1px; }
   /*
@@ -461,10 +463,10 @@ export const formattedTextStyles = css`
   li + li { margin-top: var(--pi-space-2); }
   code { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-xs); background: var(--pi-bg); padding: var(--pi-space-1) var(--pi-space-2); font: var(--pi-text-sm) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); direction: ltr; text-align: left; unicode-bidi: isolate; }
   .code-block-wrapper { position: relative; }
-  .code-block-wrapper pre { margin: 0; padding-right: 40px; }
+  .code-block-wrapper pre { margin: 0; padding-right: calc(var(--pi-space-3) * 2 + var(--pi-control-height-touch) / 2 + var(--pi-space-4)); }
   pre { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); padding: var(--pi-space-5); overflow-x: auto; overflow-y: hidden; direction: ltr; text-align: left; unicode-bidi: isolate; }
   pre code { border: 0; padding: 0; background: transparent; }
-  .code-copy-button { box-sizing: border-box; position: absolute; top: 6px; right: 6px; z-index: 1; display: inline-grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); padding: 0; font: var(--pi-text-base) var(--pi-font-ui); line-height: 1; cursor: pointer; }
+  .code-copy-button { box-sizing: border-box; position: absolute; top: var(--pi-space-3); right: var(--pi-space-3); z-index: 1; display: inline-grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); padding: 0; font: var(--pi-text-base) var(--pi-font-ui); line-height: 1; cursor: pointer; }
   .code-copy-button:focus { color: var(--pi-text); border-color: var(--pi-accent); }
   @media (hover: hover) { .code-copy-button:hover { color: var(--pi-text); border-color: var(--pi-accent); } }
   blockquote { border-left: 3px solid var(--pi-border); padding-left: var(--pi-space-5); color: var(--pi-muted); }

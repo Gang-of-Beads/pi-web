@@ -312,7 +312,7 @@ export class ProjectDialog extends LitElement {
           </div>
           <label class="check">
             <input type="checkbox" .checked=${this.createMissing} @change=${(event: InputEvent) => { this.onCreateMissingChange(event); }} />
-            Create the folder if it does not exist
+            <span>Create the folder if it does not exist</span>
           </label>
           ${this.renderTrustChoice()}
         </div>
@@ -335,7 +335,7 @@ export class ProjectDialog extends LitElement {
     input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     .check input { flex: 0 0 auto; box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); margin: 0; accent-color: var(--pi-accent); }
     footer button { min-height: var(--pi-control-height); }
-    .check { display: flex; align-items: center; color: var(--pi-text); }
+    .check { display: flex; align-items: center; gap: var(--pi-space-3); color: var(--pi-text); }
     .suggestions { min-height: 90px; max-height: 320px; overflow: auto; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); }
     .suggestions button { box-sizing: border-box; display: block; width: 100%; min-height: var(--pi-control-height); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 0; border-bottom: 1px solid var(--pi-border); border-radius: 0; background: transparent; color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); text-align: left; font: var(--pi-text-sm) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
     .suggestions button.selected { background: var(--pi-selection-bg); }
@@ -355,7 +355,9 @@ export class ProjectDialog extends LitElement {
        targets; the inline trust link meets AA through its row's line box plus
        an explicit minimum. Declared after every base rule it raises. */
     @media (pointer: coarse) {
-      .check input { flex: 0 0 auto; box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); margin: 0; accent-color: var(--pi-accent); }
+      /* A touch floor belongs to the pointer, not the viewport: a tablet at
+         desk width reaches this list with a finger too. */
+      .suggestions button, footer button { min-height: var(--pi-control-height-touch); }
       input[type="text"], input:not([type]) { min-height: var(--pi-control-height-touch, 44px); }
       .trust-hint a { display: inline-block; min-height: 24px; }
       /* The footer's floor keyed to viewport width left a tablet-class touch
@@ -369,8 +371,7 @@ export class ProjectDialog extends LitElement {
       /* The body scrolls now, so the list does not need to reserve a slice of
          the viewport for itself. */
       .suggestions { max-height: 38dvh; }
-      .suggestions button { min-height: var(--pi-control-height-touch); padding: var(--pi-space-5) var(--pi-space-6); }
-      footer button { min-height: var(--pi-control-height-touch); }
+      .suggestions button { padding: var(--pi-space-5) var(--pi-space-6); }
     }
     button { font: inherit; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
     header button { display: grid; place-items: center; box-sizing: border-box; width: var(--pi-control-height); height: var(--pi-control-height); padding: 0; line-height: 1; border: 0; background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); padding: 0 var(--pi-space-4); }

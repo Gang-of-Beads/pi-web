@@ -205,7 +205,7 @@ export class AppPanelEdgeControl extends LitElement {
     :host { position: relative; min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: visible; background: var(--pi-border-muted); z-index: 2; }
     :host([side="navigation"]) { grid-column: 2; }
     :host([side="workspace"]) { grid-column: 4; }
-    .resize-handle { position: absolute; inset: 0 -6px; z-index: 0; cursor: col-resize; touch-action: none; outline: none; }
+    .resize-handle { position: absolute; inset: 0 calc(-1 * var(--pi-space-3)); z-index: 0; cursor: col-resize; touch-action: none; outline: none; }
     .resize-handle::after { content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; transform: translateX(-50%); background: transparent; transition: width .12s ease, background .12s ease, opacity .12s ease; }
     .resize-handle:focus-visible::after, :host([resizing]) .resize-handle::after { width: 3px; background: var(--pi-accent); opacity: .72; }
     @media (hover: hover) { .resize-handle:hover::after { width: 3px; background: var(--pi-accent); opacity: .72; } }
@@ -217,7 +217,7 @@ export class AppPanelEdgeControl extends LitElement {
        so the hit area is widened without widening the paint. 5px each side
        reaches 24 from the measured 14, while staying clear of the rows behind
        the edge. */
-    .edge-button::after { content: ""; position: absolute; inset: 0 -5px; }
+    .edge-button::after { content: ""; position: absolute; inset: 0 calc(-1 * var(--pi-space-3)); }
     .edge-button:focus-visible { color: var(--pi-text); background: var(--pi-surface-hover); opacity: 1; }
     @media (hover: hover) { .edge-button:hover { color: var(--pi-text); background: var(--pi-surface-hover); opacity: 1; } }
     :host([side="navigation"][collapsed]) .edge-button { transform: translateX(calc(50% - .5px)); }
