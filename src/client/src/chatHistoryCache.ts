@@ -1,6 +1,48 @@
 const CACHE_PREFIX = "pi-web:chat-history:v2:";
 const CACHE_TTL_MS = 30 * 60 * 1000;
 
+/**
+ * What one session may take of the shared quota.
+ *
+ * sessionStorage is a single ~5MB budget for the whole origin, and this cache
+ * used to swallow the quota failure with no eviction: a transcript big enough
+ * to exceed what was left was simply never cached, and those are exactly the
+ * transcripts where reopening a session is slow. A per-entry ceiling keeps one
+ * enormous session from claiming the budget, and eviction makes room instead of
+ * giving up.
+ */
+const MAX_ENTRY_BYTES = 512 * 1024;
+
+/**
+ * The storage this cache writes to.
+ *
+ * Injected rather than reached for, so eviction can be tested against a store
+ * with a real capacity instead of against whatever the test environment's
+ * Storage stub happens to implement.
+ */
+export interface HistoryStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+  keys(): string[];
+}
+
+function browserStorage(): HistoryStorage {
+  return {
+    getItem: (key) => sessionStorage.getItem(key),
+    setItem: (key, value) => { sessionStorage.setItem(key, value); },
+    removeItem: (key) => { sessionStorage.removeItem(key); },
+    keys: () => {
+      const keys: string[] = [];
+      for (let index = 0; index < sessionStorage.length; index += 1) {
+        const key = sessionStorage.key(index);
+        if (key !== null) keys.push(key);
+      }
+      return keys;
+    },
+  };
+}
+
 export interface RawMessagePage {
   messages: unknown[];
   start: number;
@@ -11,14 +53,14 @@ export interface CachedChatHistory extends RawMessagePage {
   savedAt: number;
 }
 
-export function readChatHistoryCache(sessionId: string): RawMessagePage | undefined {
+export function readChatHistoryCache(sessionId: string, storage: HistoryStorage = browserStorage()): RawMessagePage | undefined {
   try {
-    const raw = sessionStorage.getItem(cacheKey(sessionId));
+    const raw = storage.getItem(cacheKey(sessionId));
     if (raw === null || raw === "") return undefined;
     const parsed: unknown = JSON.parse(raw);
     if (!isCachedHistory(parsed)) return undefined;
     if (Date.now() - parsed.savedAt > CACHE_TTL_MS) {
-      sessionStorage.removeItem(cacheKey(sessionId));
+      storage.removeItem(cacheKey(sessionId));
       return undefined;
     }
     return { messages: parsed.messages, start: parsed.start, total: parsed.total };
@@ -27,17 +69,81 @@ export function readChatHistoryCache(sessionId: string): RawMessagePage | undefi
   }
 }
 
-export function writeChatHistoryCache(sessionId: string, page: RawMessagePage): void {
-  try {
-    sessionStorage.setItem(cacheKey(sessionId), JSON.stringify({ ...page, savedAt: Date.now() }));
-  } catch {
-    // Ignore quota/private-mode failures; history paging still works without cache.
+export function writeChatHistoryCache(sessionId: string, page: RawMessagePage, storage: HistoryStorage = browserStorage()): void {
+  const payload = JSON.stringify({ ...page, savedAt: Date.now() });
+  // A page too large for one entry is trimmed to its tail, which is the part a
+  // reader lands on. Caching nothing was the old answer and it made the biggest
+  // transcripts the slowest ones.
+  const stored = fitToEntry(page, payload);
+  if (stored === undefined) return;
+  if (trySet(storage, sessionId, stored)) return;
+  // Out of room: drop other sessions' pages, oldest first, and try again.
+  for (const key of evictionOrder(storage, cacheKey(sessionId))) {
+    try { storage.removeItem(key); } catch { return; }
+    if (trySet(storage, sessionId, stored)) return;
   }
 }
 
-export function removeChatHistoryCache(sessionId: string): void {
+/**
+ * Trim from the front until the page fits one entry. A transcript is read from
+ * the bottom, so the tail is the part worth keeping; caching nothing was the
+ * old answer and it made the biggest transcripts the slowest ones.
+ */
+function fitToEntry(page: RawMessagePage, payload: string): string | undefined {
+  if (payload.length <= MAX_ENTRY_BYTES) return payload;
+  let candidate = page;
+  while (candidate.messages.length > 1) {
+    candidate = tailOf(candidate);
+    const trimmed = JSON.stringify({ ...candidate, savedAt: Date.now() });
+    if (trimmed.length <= MAX_ENTRY_BYTES) return trimmed;
+  }
+  return undefined;
+}
+
+function trySet(storage: HistoryStorage, sessionId: string, payload: string): boolean {
   try {
-    sessionStorage.removeItem(cacheKey(sessionId));
+    storage.setItem(cacheKey(sessionId), payload);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Other sessions' cached pages, oldest first. Never the one being written. */
+function evictionOrder(storage: HistoryStorage, keepKey: string): string[] {
+  const entries: { key: string; savedAt: number }[] = [];
+  try {
+    for (const key of storage.keys()) {
+      if (!key.startsWith(CACHE_PREFIX) || key === keepKey) continue;
+      let savedAt = 0;
+      try {
+        const parsed: unknown = JSON.parse(storage.getItem(key) ?? "null");
+        if (isCachedHistory(parsed)) savedAt = parsed.savedAt;
+      } catch { savedAt = 0; }
+      entries.push({ key, savedAt });
+    }
+  } catch { return []; }
+  return entries.sort((left, right) => left.savedAt - right.savedAt).map((entry) => entry.key);
+}
+
+/**
+ * Keys, however this storage implementation exposes them. Some environments
+ * answer through the indexed accessor and some only enumerate.
+ */
+
+/**
+ * The tail of a page: a transcript is read from the bottom, so when only part
+ * of one fits, the part worth keeping is the end.
+ */
+function tailOf(page: RawMessagePage): RawMessagePage {
+  const half = Math.max(1, Math.floor(page.messages.length / 2));
+  const messages = page.messages.slice(page.messages.length - half);
+  return { messages, start: page.start + (page.messages.length - half), total: page.total };
+}
+
+export function removeChatHistoryCache(sessionId: string, storage: HistoryStorage = browserStorage()): void {
+  try {
+    storage.removeItem(cacheKey(sessionId));
   } catch {
     // Ignore storage access errors; cache may simply be unavailable.
   }
