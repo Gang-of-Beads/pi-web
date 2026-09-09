@@ -176,3 +176,59 @@ deployment flag out of its own module URL.
 panels leave (files, terminal), fixing the hard-coded action ids. 4. Goals,
 which is where the special-casing is retired. 5. Cleanup, and the final core
 list is written into AGENTS.md.
+
+
+## The owner's second pass (2026-09-09)
+
+1. **No plugin is mandatory.** Every surface must be able to be absent, and the
+   app must remain usable and honest about what is missing. The local-machine
+   fallback in core stays, because it is what makes "machines is not installed"
+   a working state rather than a broken one.
+2. **The activity pill is a plugin.** Subagent and background-task presentation
+   follows the same rule as everything else. Its blocker is that the daemon's
+   surface list hard-codes `goals` and `subagents`; that list has to become a
+   declaration before the pill can leave.
+3. **Updates, restart and fleet need a redesign**, along the line the owner
+   drew: some things are kernel - the part a plugin must not be able to change.
+   Proposal below.
+4. **The phone machine switcher is declared by the machines plugin**, as two
+   contributions, not re-rendered by the shell in a mode the shell chose.
+5. **File routes become namespaced**, with the files-on-workspaces dependency
+   declared rather than implied by a shared path shape. The federated route
+   table follows.
+6. **Official plugins: one repository, several packages, plus a meta package.**
+   One-step install through the meta package; each plugin still pinnable on its
+   own. This requires discovery to read more than the repository root, which is
+   the one real code change the packaging choice implies.
+
+## Kernel, core and plugins (proposal, for the owner's correction)
+
+The owner's distinction is not "core versus plugin" but "what a plugin must not
+be able to change". That is a third category, and naming it resolves the
+updates/restart/fleet question without special cases.
+
+**Kernel** - the machinery a plugin cannot alter, only ask:
+
+- Process and session ownership: who owns a session, the daemon's runtime, the
+  prompt queue, the operation ledger.
+- The trust decision: which project is trusted, which plugin roots may load.
+- Plugin lifecycle itself: discovery, install, enable, disable, update, restart.
+- The transport: sockets, reconnection, request deadlines, machine proxying.
+
+**Core** - what ships without any plugin and can be replaced by one:
+
+- The shell: layout, routing, modal layers, theme application.
+- The conversation: transcript, composer, delivery, activity.
+- Session management: list, select, rename, archive, tree.
+
+**Plugins** - everything else, and nothing is mandatory.
+
+Applied to the open question: **self-update, restart and fleet membership are
+kernel**, because a plugin that could rewrite the mechanism that updates and
+restarts the host could make itself un-removable. The updates *panel* is a
+plugin and stays one; it asks the kernel through a declared operation. The
+bootstrap problem disappears: the kernel updates the host, including plugins;
+no plugin updates the kernel.
+
+The same rule settles two others for free: the trust reader and the plugin
+catalogue are kernel, so no plugin can widen where plugins load from.
