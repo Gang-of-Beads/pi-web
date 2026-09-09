@@ -74,3 +74,27 @@ screen.
 Changing the palette, the radius language, or the touch floors. Those are
 settled and guarded; this is about how much of the screen the product spends on
 itself, and about naming the roles so the answer stops drifting.
+
+
+## What landed (updated 2026-09-09)
+
+The owner's direction: adaptive, minimal, textured; not more than one bar top
+and bottom, with a fold/unfold control. Measured on the 8505 stack at 393x850,
+before and after:
+
+| Measure | Before | After |
+| --- | --- | --- |
+| Nav view chrome above first row | 90px (10.6% of 850) | **45px (5.3%)** folded; +53px transient row only while unfolded |
+| Chat view chrome | 45px | 45px (single bar, unchanged) |
+| Search field | conditional, 44px | conditional, 44px (unchanged) |
+| List text-start distances | 10 / 15 / 16 across lists | one token: `--pi-reading-edge` = 10px on phone (16px desktop) |
+| Distinct type sizes on one screen | 6 (11–17) | 5 (11–16); settings rows keep 17/13 |
+
+Also fixed on the way: the collapsed composer read as a broken rounded input
+box (the owner reported it); it is visibly a control now - solid surface,
+squared corner, chevron - with the collapse behaviour itself unchanged.
+
+Still open, the owner's call: whether the two row idioms (management lists
+14/11, settings rows 17/13) merge into one pair of type roles or stay as
+context-scoped tokens. Either way the tokens would be locked against drift;
+the merge changes one of the two appearances.
