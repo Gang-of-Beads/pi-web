@@ -122,3 +122,27 @@ tree and not only HEAD:
 - Drawer tab height 22px is pinned by `composerRoom.test.ts:134`.
 - Modal layer inversion is resolved by the picker declaring `abovedialog`, not
   by changing the registry's paint order (`ModalSurface.test.ts:461`).
+
+
+## Resuming the convergence rounds (conditions, 2026-09-09)
+
+The rounds are paused at 14, architecture-first, by the owner's call. They
+resume when all of these hold:
+
+1. **The original lanes are back.** Rounds are only comparable when they run
+   the same configuration that produced rounds 1–13: two anonymous glm lanes
+   (`botim-bllm/glm-5.3-flash:max`, split focus) plus one qwen lane
+   (`botim-bllm/qwen3.8-flash-next:max`). The anthropic outage that forced
+   substitute models must be over; a substitute-model round does not count
+   toward zero-discovery, as recorded above.
+2. **The wave of architecture changes has landed**, because a UI round against
+   a moving surface wastes a round: the single-bar fold, lazy dialog surfaces,
+   the reading-edge role and the collapsed-composer control all changed what
+   lanes would see.
+3. **A round reports zero findings on all three lanes**, each lane having
+   actually run — a lane that did not run is not a clean lane.
+
+Until then, the guards carry the regression load: radius, controlHeight, dot,
+type, spacing, tokenReferences, boxModel, pointerQueryOrder, markLanguage,
+operationVocabulary, uiIcons, reading-edge. Any round that runs before all
+three conditions hold is a bonus, not the convergence proof.
