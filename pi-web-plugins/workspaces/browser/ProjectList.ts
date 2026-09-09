@@ -7,7 +7,7 @@ import { actionMenuPanelStyle } from "./actionMenu";
 import { hasStatusUnread, renderActionActivityIndicator, statusActivityKind } from "./activityBadge";
 import type { KeyboardNavigableSection } from "./navigationFocus";
 import { focusSelectedOrFirstSelectableRow, handleSelectableRowKeyboard } from "./selectableRow";
-import { adoptWorkspacesHostStyles } from "./hostUi";
+import { renderHostDisclosureIcon, adoptWorkspacesHostStyles } from "./hostUi";
 
 @customElement("project-list")
 export class ProjectList extends LitElement implements KeyboardNavigableSection {
@@ -226,7 +226,7 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
     if (!this.collapsible) return html`<span>Projects</span>`;
     const selectedSummary = this.selected?.name ?? "No project selected";
     const selectedTitle = this.selected?.path ?? selectedSummary;
-    return html`<button class="section-toggle" aria-expanded=${String(!this.collapsed)} @click=${() => { this.onToggleCollapsed?.(); }}><span class="section-title"><span class="section-name">${this.collapsed ? "▸" : "▾"} Projects</span>${this.collapsed ? html`<small class="section-selected" title=${selectedTitle}>${selectedSummary}</small>` : null}</span><small class="section-count">${this.projects.length}</small></button>`;
+    return html`<button class="section-toggle" aria-expanded=${String(!this.collapsed)} @click=${() => { this.onToggleCollapsed?.(); }}><span class="section-title"><span class="section-name">${renderHostDisclosureIcon(this.collapsed)} Projects</span>${this.collapsed ? html`<small class="section-selected" title=${selectedTitle}>${selectedSummary}</small>` : null}</span><small class="section-count">${this.projects.length}</small></button>`;
   }
 
   private renderActivity(project: NavProjectSnapshot) {

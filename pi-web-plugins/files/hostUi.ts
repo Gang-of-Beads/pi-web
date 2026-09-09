@@ -64,3 +64,11 @@ export function filesRegisterModal(registration: {
 export function filesQuery(): PluginHostUi["query"] | undefined {
   return hostUi?.query;
 }
+
+/**
+ * The shell's disclosure chevron, so the file tree spells "this folder opens"
+ * the way every other list in the app spells it.
+ */
+export function renderHostDisclosureIcon(collapsed: boolean): unknown {
+  return hostUi?.renderDisclosureIcon?.(collapsed);
+}

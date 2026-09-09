@@ -721,7 +721,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .bulk-row.selecting { padding: var(--pi-space-3); border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-md); background: color-mix(in srgb, var(--pi-surface) 65%, transparent); }
     button.danger, .action-menu-panel button.danger { color: var(--pi-danger); }
     @media (hover: hover) { button.danger:hover, .action-menu-panel button.danger:hover { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); } }
-    .action-row.bulk-selected .action-main { border-color: var(--pi-accent); box-shadow: inset 3px 0 0 var(--pi-accent); }
+    .action-row.bulk-selected .action-main { border-color: var(--pi-accent); }
     .pending-session-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); margin: var(--pi-space-3) 0; cursor: default; }
     .pending-session-row.starting-session .action-main { border-radius: var(--pi-radius-md); border-style: dashed; color: var(--pi-muted); }
     .pending-session-row.starting-session .action-name { display: flex; align-items: center; gap: var(--pi-space-3); max-height: none; -webkit-line-clamp: 1; }

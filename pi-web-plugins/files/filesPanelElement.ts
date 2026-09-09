@@ -1,7 +1,7 @@
 import { css, html, LitElement, type PropertyValues, type TemplateResult } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import type { FileTreeEntry, WorkspacePanelContext, WorkspaceUploadBatchProgress } from "@gang-of-beads/pi-web/plugin-api";
-import { adoptFilesHostStyles, describeFilesError, filesQuery, filesRegisterModal } from "./hostUi";
+import { renderHostDisclosureIcon, adoptFilesHostStyles, describeFilesError, filesQuery, filesRegisterModal } from "./hostUi";
 import { createStore } from "./viewMode";
 import { FilesExplorer, explorerIdentityKey } from "./explorer";
 import { createWorkspaceUploadBatchState, cancelWorkspaceUploadBatch, completeWorkspaceUploadBatch, failWorkspaceUploadBatch, updateWorkspaceUploadBatchProgress, type WorkspaceUploadBatchState, type WorkspaceUploadFileState } from "./uploadBatches";
@@ -145,7 +145,7 @@ export class PiFilesPanel extends LitElement {
     const selected = entry.type !== "directory" && explorer.state.selectedFilePath === entry.path;
     return html`
       <button class=${selected ? "row selected" : "row"} style=${`--depth:${String(depth)}`} @click=${() => { this.selectTreeEntry(explorer, entry); }}>
-        <span>${entry.type === "directory" ? (hasChildren ? "▾" : "▸") : "·"}</span>
+        <span>${entry.type === "directory" ? renderHostDisclosureIcon(!hasChildren) : "·"}</span>
         <span>${entry.name}</span>
       </button>
       ${hasChildren ? children.map((child) => this.renderTreeEntry(explorer, child, depth + 1)) : null}

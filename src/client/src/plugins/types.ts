@@ -65,6 +65,7 @@ export interface PluginHostUi {
   readonly surfaceStyles: CSSResultGroup;
   /** The list chrome every built-in list carries, so a contributed list matches them. */
   readonly listStyles: CSSResultGroup;
+  readonly renderDisclosureIcon?: (collapsed: boolean) => TemplateResult;
   /** The workspace-panel body baseline (toolbar, list, viewer, empty states),
    *  so a contributed panel body matches the built-in panel instead of
    *  inventing its own chrome. Adopt per element instance in createRenderRoot:

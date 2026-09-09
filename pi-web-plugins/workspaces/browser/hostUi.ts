@@ -7,7 +7,7 @@ import type { CSSResultArray, CSSResultGroup } from "lit";
  * plugin's real dependencies visible and lets tests stand a host in with
  * just these faces.
  */
-type WorkspacesHostUi = Pick<PluginHostUi, "surfaceStyles" | "listStyles" | "showDialog">;
+type WorkspacesHostUi = Pick<PluginHostUi, "surfaceStyles" | "renderDisclosureIcon" | "listStyles" | "showDialog">;
 
 /**
  * The host utilities and context actions this plugin was activated with.
@@ -61,4 +61,13 @@ function cssResultSheets(groups: CSSResultGroup[]): CSSStyleSheet[] {
 
 export function workspacesHostUi(): WorkspacesHostUi | undefined {
   return hostUi;
+}
+
+/**
+ * The shell's disclosure chevron, so a contributed list spells "this section
+ * opens" the way the built-in lists and the chrome spell it.
+ */
+export function renderHostDisclosureIcon(collapsed: boolean): unknown {
+  const host = workspacesHostUi();
+  return host?.renderDisclosureIcon?.(collapsed);
 }

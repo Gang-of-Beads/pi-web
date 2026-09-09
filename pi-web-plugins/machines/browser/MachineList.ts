@@ -7,7 +7,7 @@ import { actionMenuPanelStyle } from "./actionMenu";
 import { hasStatusUnread, renderActionActivityIndicator, statusActivityKind } from "./activityBadge";
 import type { KeyboardNavigableSection } from "./navigationFocus";
 import { focusSelectedOrFirstSelectableRow, handleSelectableRowKeyboard } from "./selectableRow";
-import { adoptMachinesHostStyles } from "./hostUi";
+import { renderHostDisclosureIcon, adoptMachinesHostStyles } from "./hostUi";
 
 /**
  * The machine fleet as a row list. Every machine the host feeds in is a plain
@@ -197,7 +197,7 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
     const selected = this.selectedMachineId === undefined ? undefined : this.machineById(this.selectedMachineId);
     const selectedSummary = selected?.name ?? "No machine selected";
     const selectedTitle = selected?.baseUrl ?? selectedSummary;
-    return html`<button class="section-toggle" aria-expanded=${String(!this.collapsed)} @click=${() => { this.onToggleCollapsed?.(); }}><span class="section-title"><span class="section-name">${this.collapsed ? "▸" : "▾"} Machines</span>${this.collapsed ? html`<small class="section-selected" title=${selectedTitle}>${selectedSummary}</small>` : null}</span><small class="section-count">${this.machines.length}</small></button>`;
+    return html`<button class="section-toggle" aria-expanded=${String(!this.collapsed)} @click=${() => { this.onToggleCollapsed?.(); }}><span class="section-title"><span class="section-name">${renderHostDisclosureIcon(this.collapsed)} Machines</span>${this.collapsed ? html`<small class="section-selected" title=${selectedTitle}>${selectedSummary}</small>` : null}</span><small class="section-count">${this.machines.length}</small></button>`;
   }
 
   /** Open (never toggle): a hold or right-click always means "show me the menu". */

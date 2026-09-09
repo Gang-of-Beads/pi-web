@@ -1,4 +1,5 @@
-import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from "lit";
+import { LitElement, css, html, nothing, unsafeCSS, type PropertyValues, type TemplateResult } from "lit";
+import { disclosureIconStyle, renderDisclosureIcon } from "./disclosureIcon.js";
 import { customElement, property, state } from "lit/decorators.js";
 import type { SessionTreeForkResult, SessionTreeNavigateResult, SessionTreeNodeKind, SessionTreeSnapshot, SessionTreeSummaryChoice } from "../api";
 import { SESSION_TREE_CUSTOM_INSTRUCTIONS_MAX_LENGTH } from "../../../shared/apiTypes";
@@ -153,7 +154,7 @@ export class SessionTreeNavigator extends LitElement {
           title=${row.childIds.length === 0 ? "No child entries" : expanded ? "Collapse branch" : "Expand branch"}
           aria-hidden="true"
           @click=${(event: MouseEvent) => { this.toggleNode(row.node.id, event); }}
-        >${row.childIds.length === 0 ? "·" : expanded ? "▾" : "▸"}</span>
+        >${row.childIds.length === 0 ? "·" : renderDisclosureIcon(!expanded)}</span>
         <span class="metadata">
           ${this.renderKindBadge(kindPresentation)}
           <span class="badges">
@@ -521,7 +522,7 @@ export class SessionTreeNavigator extends LitElement {
     }
   }
 
-  static override styles = [interactiveSurfaceStyles, css`
+  static override styles = [css`${unsafeCSS(disclosureIconStyle)}`, interactiveSurfaceStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-popover); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui, system-ui, sans-serif); }
     * { box-sizing: border-box; }
     /* Full-viewport shell: the surface's centered-card defaults are overridden

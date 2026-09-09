@@ -1,4 +1,5 @@
 import { gitSplitClass } from "./gitSplitLayout.js";
+import { renderGitDisclosureIcon } from "./hostUi.js";
 import type {
   QualifiedContributionId,
   HtmlTemplateTag,
@@ -908,7 +909,7 @@ function renderSubmoduleGroup(
   const expanded = state.expandedDirectories.has(group.path);
   return html`
     <button type="button" class="git-row" style="--depth:0" aria-expanded=${String(expanded)} @click=${() => { controller.toggleDirectory(context, group.path); }}>
-      <span class="git-twisty">${expanded ? "▾" : "▸"}</span>
+      <span class="git-twisty">${renderGitDisclosureIcon(!expanded)}</span>
       <span>${group.name}${submoduleBadge(html)}</span>
     </button>
     ${expanded ? html`
@@ -940,7 +941,7 @@ function renderTreeNode(
     const expanded = state.expandedDirectories.has(node.path);
     return html`
       <button type="button" class="git-row" style=${`--depth:${String(depth)}`} aria-expanded=${String(expanded)} @click=${() => { controller.toggleDirectory(context, node.path); }}>
-        <span class="git-twisty">${expanded ? "▾" : "▸"}</span>
+        <span class="git-twisty">${renderGitDisclosureIcon(!expanded)}</span>
         <span>${node.name}${node.isSubmodule === true ? submoduleBadge(html) : null}</span>
       </button>
       ${expanded ? node.children.map((child) => renderTreeNode(html, controller, context, state, child, depth + 1)) : null}

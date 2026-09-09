@@ -1,4 +1,5 @@
 import { css, LitElement, html, type TemplateResult } from "lit";
+import { sessionStateBadgeStyles } from "./sessionStateBadgeStyles.js";
 import type { ChatLine } from "./shared";
 import { errorNoticePatch } from "../errorNotice";
 import { request } from "../api/http";
@@ -3858,7 +3859,7 @@ export class PiWebApp extends LitElement {
     `;
   }
 
-  static override styles = [interactiveSurfaceStyles, appStyles];
+  static override styles = [interactiveSurfaceStyles, sessionStateBadgeStyles, appStyles];
 }
 
 function createPluginRegistry(dialogHost: PluginDialogHost): PluginRegistry {

@@ -17,6 +17,6 @@ export function renderDisclosureIcon(collapsed: boolean): TemplateResult {
 }
 
 export const disclosureIconStyle = `
-  .disclosure-icon { flex: 0 0 auto; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; transition: transform 120ms ease; }
+  .disclosure-icon { flex: 0 0 auto; vertical-align: -0.15em; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; transition: transform 120ms ease; }
   .disclosure-icon.expanded { transform: rotate(90deg); }
 `;
