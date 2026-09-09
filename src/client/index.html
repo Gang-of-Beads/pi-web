@@ -81,6 +81,9 @@
         /* Where stacked chrome rows start their text. One value, so the bar, the
            compact header and the conversation below them share a reading edge. */
         --pi-chrome-inset: var(--pi-space-3);
+        /* A list row that carries a title and a second line. One value, so four
+           lists cannot drift to 52, 56, 58 and 60 for the same shape. */
+        --pi-row-min-height: 56px;
         --pi-panel-header-height: 44px;
         --pi-panel-header-control-height: 44px;
         /* Touch floor first: a control is 44px on a finger, 32px under a mouse.

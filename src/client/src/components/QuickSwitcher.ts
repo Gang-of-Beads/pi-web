@@ -408,7 +408,7 @@ export class QuickSwitcher extends LitElement {
        scrolling a list that wasted half its width on every row. auto-fit keeps
        a single column when there is only room for one. */
     .rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--pi-space-3); align-content: start; }
-    .row { box-sizing: border-box; font: inherit; position: relative; display: grid; gap: var(--pi-space-1); width: 100%; min-height: 52px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-5) calc(var(--qs-menu-size) + var(--pi-space-2)) var(--pi-space-5) var(--pi-space-6); text-align: left; cursor: pointer; }
+    .row { box-sizing: border-box; font: inherit; position: relative; display: grid; gap: var(--pi-space-1); width: 100%; min-height: var(--pi-row-min-height); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-5) calc(var(--qs-menu-size) + var(--pi-space-2)) var(--pi-space-5) var(--pi-space-6); text-align: left; cursor: pointer; }
     @media (hover: hover) { .row:hover:not(:disabled) { background: var(--pi-surface-hover); } }
     /* The row dims, but the line that says what to do first must stay readable:
        dimming the remedy with the control took it to 2.14:1. */
@@ -427,7 +427,7 @@ export class QuickSwitcher extends LitElement {
        the toggle spans the tile's top-right corner down to 44px on touch, and
        a badge centred on the tile's midline landed inside that box - tapping
        the state opened the menu. */
-    .row-flag, .row-state { position: absolute; bottom: var(--pi-space-5); right: calc((var(--qs-menu-size) - var(--pi-dot-md)) / 2 + var(--pi-space-3)); }
+    .row-flag, .row-state { position: absolute; bottom: var(--pi-space-5); right: calc((var(--qs-menu-size) - var(--pi-dot-md)) / 2); }
     .row-state { display: inline-flex; align-items: center; }
     .row-flag { box-sizing: border-box; width: var(--pi-dot-md); height: var(--pi-dot-md); border-radius: 50%; }
     .row-flag.unread { background: var(--pi-accent); }

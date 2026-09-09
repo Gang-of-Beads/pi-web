@@ -258,7 +258,7 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
     .machine-status::before { content: ""; width: var(--pi-dot-sm); height: var(--pi-dot-sm); border-radius: 50%; background: currentColor; }
     .machine-status.online { color: var(--pi-success); }
     .machine-status.offline, .machine-status.error { color: var(--pi-danger); }
-    .machine-row .action-main { min-height: 58px; align-content: center; }
+    .machine-row .action-main { min-height: var(--pi-row-min-height); align-content: center; }
     .machine-primary { display: flex; align-items: baseline; gap: var(--pi-space-3); }
     .machine-primary-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
     .machine-menu-panel button.danger { color: var(--pi-danger); }

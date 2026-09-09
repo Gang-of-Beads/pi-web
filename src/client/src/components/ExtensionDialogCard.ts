@@ -518,7 +518,7 @@ export class ExtensionDialogCard extends LitElement {
     .answered-row .header-status { flex: 0 0 auto; }
     /* A control a person taps is a touch target wherever the card is shown, as
        the ask-user card beside it in the same transcript already states. */
-    .primary-action, .secondary-action, .option-button { min-height: var(--pi-control-height-touch); }
+    .primary-action, .secondary-action, .option-button, .dialog-input { min-height: var(--pi-control-height-touch); }
     @container (max-width: 580px) {
       /* Every actionable control is a touch target on a phone, not just the
          primary one: the options are the whole point of a select dialog. */

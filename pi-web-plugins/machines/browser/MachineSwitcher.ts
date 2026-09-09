@@ -299,7 +299,8 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     .machine-switcher-text { flex: 1 1 auto; min-width: 0; display: grid; gap: var(--pi-space-1); }
     .machine-switcher-kicker { color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: 1; text-transform: uppercase; letter-spacing: .02em; }
     .machine-switcher-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--pi-text-xs); font-weight: var(--pi-weight-semibold); line-height: 1.2; }
-    .machine-status { flex: 0 0 auto; color: var(--pi-muted); font-size: var(--pi-text-2xs); }
+    .machine-status { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-2xs); }
+    .machine-status::before { content: ""; width: var(--pi-dot-sm); height: var(--pi-dot-sm); border-radius: 50%; background: currentColor; }
     .machine-status.online { color: var(--pi-success); }
     .machine-status.offline, .machine-status.error { color: var(--pi-danger); }
     .machine-chevron { flex: 0 0 auto; color: var(--pi-muted); font-size: var(--pi-text-2xs); }
@@ -316,14 +317,14 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     .machine-option.selected { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
     .machine-option.selected::before { content: ""; position: absolute; left: 0; top: var(--pi-space-4); bottom: var(--pi-space-4); width: 3px; border-radius: 0 var(--pi-radius-xs) var(--pi-radius-xs) 0; background: var(--pi-accent); }
     .machine-option-main, .machine-option-actions-toggle, .machine-option-actions-panel button { border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-text); cursor: pointer; }
-    .machine-option-main { min-width: 0; min-height: 60px; display: grid; gap: var(--pi-space-2); padding: var(--pi-space-5) var(--pi-space-4) var(--pi-space-4); text-align: left; align-content: start; }
+    .machine-option-main { min-width: 0; min-height: var(--pi-row-min-height); display: grid; gap: var(--pi-space-2); padding: var(--pi-space-5) var(--pi-space-4) var(--pi-space-4); text-align: left; align-content: start; }
     .machine-option-name { min-width: 0; display: flex; align-items: center; gap: var(--pi-space-3); }
     .machine-option-name span:last-child { min-width: 0; font-weight: var(--pi-weight-semibold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .machine-option-status { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-medium); }
     .machine-option-status .dot { width: var(--pi-dot-sm); height: var(--pi-dot-sm); border-radius: 50%; background: var(--pi-dim); }
     .machine-option-status.online { color: var(--pi-success); }
     .machine-option-status.online .dot { background: var(--pi-success); }
-    .machine-option-status.offline .dot { background: var(--pi-dim); }
+    .machine-option-status.offline .dot, .machine-option-status.error .dot { background: var(--pi-danger); }
     .machine-option-status.error { color: var(--pi-danger); }
     .machine-option-status.error .dot { background: var(--pi-danger); }
     .machine-option-main small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: 1.3; }

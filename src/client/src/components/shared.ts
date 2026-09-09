@@ -315,7 +315,7 @@ export const listStyles = css`
      occupies - inset plus size plus a gap. This was a hardcoded 30px while the
      button measured 32px at a 6px inset, and 36px at 4px on coarse pointers, so
      a long name ran underneath the button on every phone. Derive it instead. */
-  .list-body.tiles .action-main { border-radius: var(--pi-radius-lg); padding: var(--pi-space-5) calc(var(--pi-tile-menu-inset) + var(--pi-tile-menu-size) + var(--pi-space-2)) var(--pi-space-5) var(--pi-space-5); min-height: 56px; align-content: center; }
+  .list-body.tiles .action-main { border-radius: var(--pi-radius-lg); padding: var(--pi-space-5) calc(var(--pi-tile-menu-inset) + var(--pi-tile-menu-size) + var(--pi-space-2)) var(--pi-space-5) var(--pi-space-5); min-height: var(--pi-row-min-height); align-content: center; }
   .list-body.tiles .action-menu { position: absolute; top: var(--pi-tile-menu-inset); right: var(--pi-tile-menu-inset); align-self: auto; }
   /* One nowrap line cut most tile names to the same prefix; two wrapped lines
      reach the tail that tells worktree-agent-a0… tiles apart. break-all because
@@ -393,8 +393,10 @@ export const listStyles = css`
   @media (hover: hover) { .action-menu-panel .detail-copy:hover { color: var(--pi-text); border-color: var(--pi-accent); background: var(--pi-surface-hover); } }
   .tree-marker { color: var(--pi-muted); margin-right: var(--pi-space-3); }
   .badge { display: inline-block; margin-left: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); color: var(--pi-muted); padding: 0 var(--pi-space-3); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-regular); }
-  /* The mark and the row menu read as one pair: same centre line, as the tile
-     variant states for itself below. */
+  /* In a row the menu is its own column beside the content, so this mark cannot
+     share its centre line: it is centred vertically in the content and sits at
+     the content edge. The tile variant, where the menu overlays the card, does
+     share the centre line and states that for itself below. */
   .action-activity { position: absolute; top: 50%; transform: translateY(-50%); right: var(--pi-space-3); z-index: 1; display: grid; place-items: center; width: var(--pi-dot-md); height: var(--pi-dot-md); }
   .action-activity .activity-indicator { margin: 0; vertical-align: 0; }
   .activity-indicator { flex: 0 0 auto; display: inline-block; width: var(--pi-dot-sm); height: var(--pi-dot-sm); margin-right: var(--pi-space-3); background: var(--pi-success); animation: pulse 1s ease-in-out infinite; vertical-align: 1px; }
