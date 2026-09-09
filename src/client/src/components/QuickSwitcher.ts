@@ -119,7 +119,7 @@ export class QuickSwitcher extends LitElement {
             <div class="rows">
               ${otherWorkspaces.map((workspace) => html`
                 <button class="row workspace-row" @click=${() => { this.selectWorkspace(workspace); }}>
-                  <span class="row-title">${workspace.label}${workspace.isMain ? " · main" : ""}</span>
+                  <span class="row-title">${workspace.label}${workspace.isMain ? html`<span class="row-tag" title="Main workspace" aria-label="Main workspace">main</span>` : nothing}</span>
                   <span class="row-subtitle">${workspace.path}</span>
                 </button>
               `)}
@@ -495,6 +495,9 @@ export class QuickSwitcher extends LitElement {
     @media (hover: hover) { .row-menu button:hover:not(:disabled) { background: var(--pi-selection-bg); } }
     .row-menu button:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
     .pin-mark { color: var(--pi-accent); }
+    /* "· main" was prose inside a two-line clamp, so the state it carried was
+       the first thing a long workspace name cut off. */
+    .row-tag { display: inline-block; margin-left: var(--pi-space-2); border-radius: var(--pi-radius-pill); background: var(--pi-selection-bg); color: var(--pi-text-bright); padding: 0 var(--pi-space-2); font-size: var(--pi-text-2xs); line-height: 16px; vertical-align: middle; }
     .rename-row { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-space-5); }
     .rename-input { box-sizing: border-box; width: 100%; min-height: var(--pi-control-height-comfort); border: 1px solid var(--pi-accent); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: 0 var(--pi-space-5); font: var(--pi-text-lg) var(--pi-font-ui); }
     .rename-actions { display: flex; gap: var(--pi-space-3); }
