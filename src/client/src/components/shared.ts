@@ -315,7 +315,7 @@ export const listStyles = css`
      button measured 32px at a 6px inset, and 36px at 4px on coarse pointers, so
      a long name ran underneath the button on every phone. Derive it instead. */
   .list-body.tiles .action-main { border-radius: var(--pi-radius-lg); padding: var(--pi-space-5) calc(var(--pi-tile-menu-inset) + var(--pi-tile-menu-size) + var(--pi-space-2)) var(--pi-space-5) var(--pi-space-5); min-height: 56px; align-content: center; }
-  .list-body.tiles .action-menu { position: absolute; top: 6px; right: 6px; align-self: auto; }
+  .list-body.tiles .action-menu { position: absolute; top: var(--pi-tile-menu-inset); right: var(--pi-tile-menu-inset); align-self: auto; }
   /* One nowrap line cut most tile names to the same prefix; two wrapped lines
      reach the tail that tells worktree-agent-a0… tiles apart. break-all because
      branch names have no spaces to wrap at. */

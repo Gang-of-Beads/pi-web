@@ -211,7 +211,7 @@ export class SessionCleanupDialog extends LitElement {
     header, footer { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-6); padding: var(--pi-space-7) var(--pi-space-7); border-bottom: 1px solid var(--pi-border); }
     footer { border-top: 1px solid var(--pi-border); border-bottom: 0; justify-content: end; }
     .body { flex: 1 1 auto; min-height: 0; overflow: auto; display: grid; gap: var(--pi-space-7); padding: var(--pi-space-7); }
-    .eyebrow { display: block; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .eyebrow { display: block; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-bold); letter-spacing: .08em; text-transform: uppercase; }
     h1, h2, p { margin: 0; }
     h1 { font-size: var(--pi-text-xl); line-height: 1.2; }
     h2 { font-size: var(--pi-text-md); }
@@ -236,7 +236,7 @@ export class SessionCleanupDialog extends LitElement {
     th:nth-child(2), td:nth-child(2) { text-align: left; }
     tbody tr.unselected { opacity: .58; }
     tbody th { max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); font-weight: var(--pi-weight-medium); }
-    tfoot th, tfoot td { border-bottom: 0; font-weight: 700; }
+    tfoot th, tfoot td { border-bottom: 0; font-weight: var(--pi-weight-bold); }
     button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); font: inherit; cursor: pointer; }
     button:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
     button.danger { color: var(--pi-danger); }

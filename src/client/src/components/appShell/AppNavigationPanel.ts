@@ -468,7 +468,7 @@ export class AppNavigationPanel extends LitElement {
     @media (hover: hover) { .compact-header-action:hover { background: var(--pi-surface-hover); } }
     .tools-section { flex: 0 0 auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pi-space-4); padding: var(--pi-space-5) var(--pi-space-4) calc(var(--pi-space-5) + env(safe-area-inset-bottom)); border-top: 1px solid var(--pi-border-muted); }
     .tool-row:last-child:nth-child(odd) { grid-column: 1 / -1; }
-    .tool-row { display: flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: 52px; padding: var(--pi-space-2) var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); font: inherit; text-align: start; }
+    .tool-row { display: flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: calc(var(--pi-control-height-touch) + var(--pi-space-4)); padding: var(--pi-space-2) var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); font: inherit; text-align: start; }
     .tool-row:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
     @media (hover: hover) { .tool-row:hover { background: var(--pi-surface-hover); } }
     .tool-row.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); color: var(--pi-accent); font-weight: var(--pi-weight-semibold); }

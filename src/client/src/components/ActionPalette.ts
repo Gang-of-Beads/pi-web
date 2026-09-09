@@ -105,13 +105,13 @@ export class ActionPalette extends LitElement {
     /* The border is removed for the flush look, so focus needs its own ring. */
     input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); border-radius: var(--pi-radius-sm); }
     input::placeholder { color: var(--pi-dim); }
-    button { border: 0; background: transparent; color: var(--pi-text); cursor: pointer; }
+    button { font: inherit; border: 0; background: transparent; color: var(--pi-text); cursor: pointer; }
     header button { color: var(--pi-muted); font-size: var(--pi-text-xl); padding: var(--pi-space-1) var(--pi-space-4); }
     .options { flex: 1 1 auto; min-height: 0; overflow: auto; }
     .options button { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--pi-space-2) var(--pi-space-6); width: 100%; padding: var(--pi-space-5) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
     .options button.selected { background: var(--pi-selection-bg); }
     @media (hover: hover) { .options button:hover:not(:disabled) { background: var(--pi-selection-bg); } }
-    .options button:disabled { cursor: not-allowed; opacity: .68; }
+    .options button:disabled { cursor: not-allowed; opacity: var(--pi-disabled-opacity); }
     .options button.disabled.selected { background: color-mix(in srgb, var(--pi-selection-bg) 55%, transparent); }
     .main { min-width: 0; }
     strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

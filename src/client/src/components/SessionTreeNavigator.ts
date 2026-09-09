@@ -533,7 +533,7 @@ export class SessionTreeNavigator extends LitElement {
     h1, h2, p { margin: 0; }
     h1 { font-size: var(--pi-text-xl); line-height: 1.25; }
     h2 { margin-top: var(--pi-space-1); font-size: var(--pi-text-lg); }
-    .eyebrow { display: block; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .eyebrow { display: block; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-bold); letter-spacing: .08em; text-transform: uppercase; }
     .close-button { width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); margin-inline-start: auto; display: grid; place-items: center; border: 0; background: transparent; color: var(--pi-muted); padding: 0; font-size: var(--pi-text-xl); }
     .close-button:not(:disabled):focus-visible { color: var(--pi-text); background: var(--pi-surface-hover); }
     @media (hover: hover) { .close-button:not(:disabled):hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
@@ -562,7 +562,7 @@ export class SessionTreeNavigator extends LitElement {
     .tree-row > .metadata > .kind { grid-column: 2; grid-row: 1; }
     .tree-row > .entry { grid-column: 3; grid-row: 1; }
     .tree-row > .metadata > .badges { grid-column: 4; grid-row: 1; }
-    .kind { --kind-border: var(--pi-border); --kind-background: var(--pi-surface); display: inline-flex; align-items: center; width: fit-content; border: 1px solid var(--kind-border); border-radius: var(--pi-radius-pill); padding: var(--pi-space-1) var(--pi-space-4); color: var(--pi-text); background: var(--kind-background); font-size: var(--pi-text-2xs); font-weight: 700; white-space: nowrap; }
+    .kind { --kind-border: var(--pi-border); --kind-background: var(--pi-surface); display: inline-flex; align-items: center; width: fit-content; border: 1px solid var(--kind-border); border-radius: var(--pi-radius-pill); padding: var(--pi-space-1) var(--pi-space-4); color: var(--pi-text); background: var(--kind-background); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-bold); white-space: nowrap; }
     .kind-tone-user { --kind-border: var(--pi-accent-border); --kind-background: var(--pi-selection-bg); }
     .kind-tone-assistant { --kind-border: var(--pi-border); --kind-background: var(--pi-surface); }
     .kind-tone-tool { --kind-border: var(--pi-warning-border); --kind-background: var(--pi-warning-surface); }
@@ -575,7 +575,7 @@ export class SessionTreeNavigator extends LitElement {
     .label { max-width: 180px; overflow: hidden; text-overflow: ellipsis; border-radius: var(--pi-radius-xs); padding: var(--pi-space-1) var(--pi-space-3); background: var(--pi-bg-overlay); color: var(--pi-muted); font-size: var(--pi-text-2xs); white-space: nowrap; }
     time { color: var(--pi-muted); font-size: var(--pi-text-2xs); white-space: nowrap; }
     .badges { display: flex; align-items: center; justify-content: end; gap: var(--pi-space-3); }
-    .badge { border-radius: var(--pi-radius-pill); padding: var(--pi-space-1) var(--pi-space-4); font-size: var(--pi-text-2xs); font-weight: 700; white-space: nowrap; }
+    .badge { border-radius: var(--pi-radius-pill); padding: var(--pi-space-1) var(--pi-space-4); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-bold); white-space: nowrap; }
     .badge.path { background: color-mix(in srgb, var(--pi-accent) 14%, transparent); color: var(--pi-text); }
     .badge.leaf { border: 1px solid var(--pi-accent); color: var(--pi-text); }
     .confirmation-step { padding: var(--pi-space-9) max(var(--pi-space-7), env(safe-area-inset-right)) var(--pi-space-9) max(var(--pi-space-7), env(safe-area-inset-left)); }
@@ -584,7 +584,7 @@ export class SessionTreeNavigator extends LitElement {
     .selected-entry { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: var(--pi-space-4) var(--pi-space-5); background: var(--pi-surface); }
     .selected-entry p { grid-column: 2; color: var(--pi-muted); font-size: var(--pi-text-xs); }
     fieldset { min-width: 0; margin: 0; padding: 0; border: 0; display: grid; gap: var(--pi-space-5); }
-    legend { margin-bottom: var(--pi-space-4); font-weight: 700; }
+    legend { margin-bottom: var(--pi-space-4); font-weight: var(--pi-weight-bold); }
     .choice-option { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); padding: var(--pi-space-6) var(--pi-space-6); background: var(--pi-surface); cursor: pointer; }
     .choice-option.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     .choice-option input { margin-top: var(--pi-space-2); accent-color: var(--pi-accent); }
@@ -603,7 +603,7 @@ export class SessionTreeNavigator extends LitElement {
     @media (hover: hover) { button:not(:disabled):hover { background: var(--pi-surface-hover); } }
     button:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     button:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
-    button.primary { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-on-accent, var(--pi-bg)); font-weight: 700; }
+    button.primary { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-on-accent, var(--pi-bg)); font-weight: var(--pi-weight-bold); }
     @media (hover: hover) { button.primary:not(:disabled):hover { filter: brightness(1.08); } }
     button.danger { color: var(--pi-danger); }
     .footer-spacer { flex: 1; }

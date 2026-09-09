@@ -141,7 +141,7 @@ export class SettingsSessiondPanel extends LitElement {
     .field small { color: var(--pi-muted); line-height: 1.45; }
     .field-heading { display: flex; align-items: center; gap: var(--pi-space-4); }
     .toggle { display: flex; align-items: center; gap: var(--pi-space-5); cursor: pointer; }
-    .toggle input { width: 16px; height: 16px; }
+    .toggle input { box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); }
     .toggle input:disabled { cursor: not-allowed; }
     .override-badge { border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); color: var(--pi-warning); background: var(--pi-warning-surface); padding: var(--pi-space-1) var(--pi-space-4); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-semibold); text-transform: none; }
     .effective-card { display: grid; gap: var(--pi-space-5); }

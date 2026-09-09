@@ -473,7 +473,7 @@ export class ExtensionDialogCard extends LitElement {
     }
     @media (hover: hover) { button:hover:not(:disabled) { background: var(--pi-surface-hover); } }
     button:active:not(:disabled) { background: var(--pi-surface-active); }
-    button:disabled { cursor: wait; opacity: .65; }
+    button:disabled { cursor: wait; opacity: var(--pi-disabled-opacity); }
     button:focus-visible, .dialog-input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
     .primary-action { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-on-accent, var(--pi-bg)); font-weight: var(--pi-weight-strong); }
     @media (hover: hover) { .primary-action:hover:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 86%, white); } }

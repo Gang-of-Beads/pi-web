@@ -21,6 +21,14 @@ const TYPE_LITERAL = /font-size:\s*\d+px/gu;
 const SHORTHAND_LITERAL = /font:\s*(?:\d+\s+)?\d+px/gu;
 /** The ring width is a token; sixteen rules spelled it 2px and would not follow a change. */
 const FOCUS_RING_LITERAL = /outline:\s*\d+px/gu;
+/**
+ * Two ramps whose literals kept coming back after each sweep: a weight the
+ * scale names (400/500/600/650/700) and the single "cannot be used now"
+ * opacity. Three rounds fixed the instances a lane happened to read; this
+ * fails on the ones nobody read.
+ */
+const WEIGHT_LITERAL = /font-weight:\s*(?:400|500|600|650|700)\b/gu;
+const DISABLED_OPACITY_LITERAL = /:disabled[^{]*\{[^}]*opacity:\s*\.\d+/gu;
 
 function styleSources(root: string): string[] {
   const found: string[] = [];
@@ -55,6 +63,19 @@ describe("the type scale", () => {
     for (const root of ROOTS) {
       for (const file of styleSources(root)) {
         for (const match of readFileSync(file, "utf8").matchAll(FOCUS_RING_LITERAL)) offences.push(`${file}: ${match[0]}`);
+      }
+    }
+
+    expect(offences).toEqual([]);
+  });
+
+  it("keeps weights and the disabled state on their ramps", () => {
+    const offences: string[] = [];
+    for (const root of ROOTS) {
+      for (const file of styleSources(root)) {
+        const source = readFileSync(file, "utf8");
+        for (const match of source.matchAll(WEIGHT_LITERAL)) offences.push(`${file}: ${match[0]}`);
+        for (const match of source.matchAll(DISABLED_OPACITY_LITERAL)) offences.push(`${file}: ${match[0].slice(0, 60)}`);
       }
     }
 

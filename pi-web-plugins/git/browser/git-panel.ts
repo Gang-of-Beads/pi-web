@@ -1313,7 +1313,7 @@ const gitPanelStyles = `
   .git-panel ${activityElementTag} { display: none; }
   .git-panel ${reviewSectionActivityElementTag} { display: block; min-width: 0; }
   .git-panel button { display: inline-flex; align-items: center; gap: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-3) var(--pi-space-4); cursor: pointer; }
-  .git-panel button:disabled { cursor: wait; opacity: .65; }
+  .git-panel button:disabled { cursor: wait; opacity: var(--pi-disabled-opacity); }
   .git-panel small, .git-panel .git-muted { color: var(--pi-muted); }
   .git-panel p { margin: var(--pi-space-5); }
   .git-panel .git-toolbar { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-4); padding: var(--pi-space-4); border-bottom: 1px solid var(--pi-border-muted); }

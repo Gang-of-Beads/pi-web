@@ -215,7 +215,7 @@ export class SettingsPluginsPanel extends LitElement {
     .status.warning { border-color: var(--pi-warning-border); color: var(--pi-text); background: var(--pi-warning-surface); }
     .status.error { border-color: var(--pi-danger); color: var(--pi-danger); }
     .toggle { display: inline-flex; align-items: center; gap: var(--pi-space-4); white-space: nowrap; }
-    .toggle input { width: 18px; height: 18px; accent-color: var(--pi-accent); }
+    .toggle input { box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); accent-color: var(--pi-accent); }
     .recovery { display: grid; gap: var(--pi-space-4); }
     .recovery small { color: var(--pi-muted); line-height: 1.4; }
     .recovery code { display: block; width: fit-content; max-width: 100%; }
