@@ -128,7 +128,7 @@ export const chatStyles = css`
      always where it was. */
   @media (max-width: 640px) {
     .top-drawer:not(.collapsed) { flex: 0 1 auto; max-height: 60vh; }
-    .top-drawer:not(.collapsed) .drawer-header { position: sticky; top: 0; z-index: 1; background: var(--pi-bg); }
+    .top-drawer:not(.collapsed) .drawer-header { position: sticky; top: 0; z-index: 1; background: var(--pi-purple-surface, var(--pi-bg)); }
     .top-drawer:not(.collapsed) .drawer-body { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
   }
   .drawer-header { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: 0 var(--pi-chat-gutter); }
@@ -317,7 +317,7 @@ export const chatStyles = css`
   .group-msg.system { color: var(--pi-muted); }
   .group-msg.bash { color: var(--pi-success); }
   .history-boundary { position: relative; z-index: 5; display: grid; gap: var(--pi-space-2); justify-items: center; margin: 0 auto var(--pi-space-7); color: var(--pi-muted); font-size: var(--pi-text-xs); text-align: center; }
-  .history-load-button { min-height: var(--pi-control-height); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text-secondary); padding: var(--pi-space-3) var(--pi-space-6); font: var(--pi-text-xs) var(--pi-font-ui); cursor: pointer; }
+  .history-load-button { box-sizing: border-box; min-height: var(--pi-control-height); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text-secondary); padding: var(--pi-space-3) var(--pi-space-6); font: var(--pi-text-xs) var(--pi-font-ui); cursor: pointer; }
   .history-load-button:focus { border-color: var(--pi-accent); color: var(--pi-text-bright); }
   @media (hover: hover) { .history-load-button:hover { border-color: var(--pi-accent); color: var(--pi-text-bright); } }
   .history-load-button:disabled { cursor: default; opacity: var(--pi-disabled-opacity); }
@@ -334,7 +334,7 @@ export const chatStyles = css`
   .command-dismiss { box-sizing: border-box; flex: 0 0 auto; align-self: center; width: 24px; height: 24px; display: grid; place-items: center; padding: 0; border: 1px solid transparent; border-radius: var(--pi-radius-sm); background: transparent; color: inherit; font: inherit; font-size: var(--pi-text-sm); line-height: 1; cursor: pointer; }
   .command-dismiss:focus-visible { outline: var(--pi-focus-ring-width) solid currentColor; outline-offset: var(--pi-focus-ring-offset); }
   @media (hover: hover) { .command-dismiss:hover { border-color: currentColor; } }
-  .queued-clear-button { flex: 0 0 auto; min-height: var(--pi-control-height); border: 0; border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-warning); padding: var(--pi-space-1) var(--pi-space-3); font: inherit; cursor: pointer; }
+  .queued-clear-button { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height); border: 0; border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-warning); padding: var(--pi-space-1) var(--pi-space-3); font: inherit; cursor: pointer; }
   @media (pointer: coarse) {
     .command-dismiss, .image-zoom-close { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); }
     .queued-clear-button { min-height: var(--pi-control-height-touch); }
@@ -361,7 +361,7 @@ export const chatStyles = css`
      the reader is already looking rather than clinging to the top edge. */
   .empty-session { display: grid; justify-items: center; gap: var(--pi-space-5); margin: var(--pi-space-9) auto; max-width: var(--pi-chat-measure); padding: var(--pi-space-7); color: var(--pi-muted); text-align: center; }
   .empty-session p { margin: 0; }
-  .empty-session button { min-height: var(--pi-control-height-touch); padding: var(--pi-space-3) var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
+  .empty-session button { box-sizing: border-box; min-height: var(--pi-control-height-touch); padding: var(--pi-space-3) var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
   .empty-session.transcript-failed .failure-detail { color: var(--pi-muted); font-size: var(--pi-text-sm); white-space: pre-wrap; overflow-wrap: anywhere; }
   .empty-session button:focus-visible { border-color: var(--pi-accent); }
   @media (hover: hover) { .empty-session button:hover { border-color: var(--pi-accent); } }

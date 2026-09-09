@@ -12,6 +12,10 @@ import { join } from "node:path";
  * neighbours - and every scale guard passed each time, because the token in the
  * declaration was correct.
  *
+ * The second shape is a control floor: 
+ * with padding, where content-box adds the padding on top of the token, so a
+ * 44px floor drew 62px on the boot screen's only primary button.
+ *
  * The rule: within one CSS rule, both a width and a height plus a visible
  * `border` shorthand requires
  * `box-sizing`. Percentage and `auto` sizes are not control geometry and are
@@ -22,6 +26,8 @@ const RULE = /\{[^{}]*\}/gu;
 const WIDTH = /(?:^|;|\s)(?:width|min-width):\s*(?!auto|100%|0\b)[^;]+/u;
 const HEIGHT = /(?:^|;|\s)(?:height|min-height):\s*(?!auto|100%|0\b)[^;]+/u;
 const BORDERED = /(?:^|;|\s)border:\s*(?!0\b|none)[^;]+/u;
+const CONTROL_FLOOR = /(?:^|;|\s)min-height:\s*var\(--pi-control-height[^;]*/u;
+const PADDED = /(?:^|;|\s)padding(?:-(?:top|bottom|block))?:\s*(?!0\b)[^;]+/u;
 const BOX_SIZED = "box-sizing:";
 
 function styleSources(root: string): string[] {
@@ -46,8 +52,10 @@ describe("controls that state a size and a border", () => {
         const source = readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//gu, " ");
         for (const match of source.matchAll(RULE)) {
           const rule = match[0];
-          if (!WIDTH.test(rule) || !HEIGHT.test(rule)) continue;
-          if (!BORDERED.test(rule) || rule.includes(BOX_SIZED)) continue;
+          if (rule.includes(BOX_SIZED)) continue;
+          const boxed = WIDTH.test(rule) && HEIGHT.test(rule) && BORDERED.test(rule);
+          const floored = CONTROL_FLOOR.test(rule) && PADDED.test(rule);
+          if (!boxed && !floored) continue;
           offences.push(`${file}: ${rule.replace(/\s+/gu, " ").slice(0, 90)}`);
         }
       }

@@ -278,7 +278,7 @@ export class ModelPicker extends LitElement {
     modal-surface { --modal-surface-width: min(720px, calc(100vw - 40px)); --modal-surface-max-height: min(640px, calc(100vh - 40px)); }
     header { display: flex; align-items: center; justify-content: space-between; padding: var(--pi-space-6); border-bottom: 1px solid var(--pi-border); }
     .scope-toggle { display: flex; gap: var(--pi-space-2); margin: var(--pi-space-5) var(--pi-space-6) 0; padding: var(--pi-space-2); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); }
-    .scope-toggle button { flex: 1; min-height: var(--pi-control-height-comfort); font: inherit; padding: var(--pi-space-3) var(--pi-space-5); border-radius: var(--pi-radius-xs); color: var(--pi-muted); }
+    .scope-toggle button { box-sizing: border-box; flex: 1; min-height: var(--pi-control-height-comfort); font: inherit; padding: var(--pi-space-3) var(--pi-space-5); border-radius: var(--pi-radius-xs); color: var(--pi-muted); }
     .scope-toggle button[aria-pressed="true"] { background: var(--pi-selection-bg); color: var(--pi-text); }
     .options { min-height: 0; overflow: auto; outline: none; }
     .options:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }

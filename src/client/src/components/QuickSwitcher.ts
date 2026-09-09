@@ -438,13 +438,13 @@ export class QuickSwitcher extends LitElement {
        row keeps one line so it never competes with the list for height. */
     .machine-tabs { flex: 0 0 auto; display: flex; align-items: stretch; gap: var(--pi-space-2); padding: var(--pi-space-3) var(--pi-space-5) 0; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
     .machine-tabs::-webkit-scrollbar { display: none; }
-    .machine-tab { flex: 0 0 auto; min-height: var(--pi-control-height-comfort); border: 1px solid var(--pi-border); border-bottom: 0; border-radius: var(--pi-radius-md) var(--pi-radius-md) 0 0; background: var(--pi-surface); color: var(--pi-text-secondary); padding: var(--pi-space-2) var(--pi-space-6); font: inherit; font-size: var(--pi-text-sm); white-space: nowrap; cursor: pointer; }
+    .machine-tab { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height-comfort); border: 1px solid var(--pi-border); border-bottom: 0; border-radius: var(--pi-radius-md) var(--pi-radius-md) 0 0; background: var(--pi-surface); color: var(--pi-text-secondary); padding: var(--pi-space-2) var(--pi-space-6); font: inherit; font-size: var(--pi-text-sm); white-space: nowrap; cursor: pointer; }
     .machine-tab[aria-selected="true"] { border-color: var(--pi-accent); background: var(--pi-selection-bg); color: var(--pi-text-bright); }
     .filters { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-3); padding: var(--pi-space-4) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
     .filters::-webkit-scrollbar { display: none; }
     /* Chips ghost by default and carry their selected state in the tint, not
        in an outline: a row of outlined pills read as a wall of boxes (C4). */
-    .chip { flex: 0 0 auto; min-height: var(--pi-control-height); border: 0; border-radius: var(--pi-radius-pill); background: var(--pi-surface-hover); color: var(--pi-text-secondary); padding: var(--pi-space-2) var(--pi-space-6); font: inherit; font-size: var(--pi-text-sm); white-space: nowrap; cursor: pointer; }
+    .chip { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height); border: 0; border-radius: var(--pi-radius-pill); background: var(--pi-surface-hover); color: var(--pi-text-secondary); padding: var(--pi-space-2) var(--pi-space-6); font: inherit; font-size: var(--pi-text-sm); white-space: nowrap; cursor: pointer; }
     .chip.on { background: var(--pi-selection-bg); color: var(--pi-text-bright); }
     /* Nested chips read as a second level, not as peers of the projects. */
     .chip.nested { font-size: var(--pi-text-xs); }
@@ -475,7 +475,7 @@ export class QuickSwitcher extends LitElement {
       .rows { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
     }
     .row-menu { position: absolute; top: calc(100% - var(--pi-space-2)); right: 0; z-index: 3; display: grid; gap: var(--pi-space-1); min-width: 160px; padding: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface-raised); box-shadow: var(--pi-elevation-2); }
-    .row-menu button { min-height: var(--pi-control-height-comfort); border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-text); padding: 0 var(--pi-space-5); font: inherit; text-align: left; cursor: pointer; }
+    .row-menu button { box-sizing: border-box; min-height: var(--pi-control-height-comfort); border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-text); padding: 0 var(--pi-space-5); font: inherit; text-align: left; cursor: pointer; }
     /* Coarse pointers get the comfort floor: every target the quick switcher
        ships measures 44px on touch. Placed after every base declaration it
        raises - a media query carries no extra specificity, so an earlier

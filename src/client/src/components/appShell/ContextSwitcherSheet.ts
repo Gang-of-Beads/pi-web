@@ -82,7 +82,7 @@ export class ContextSwitcherSheet extends LitElement {
     .sheet { display: flex; flex-direction: column; gap: var(--pi-space-4); width: 100%; max-height: 100%; box-sizing: border-box; padding: var(--pi-space-4); overflow-y: auto; }
     /* The sheet is one scroll container: its title and close stay put while the
        stacked lists scroll under them, as the drawer header does. */
-    .sheet-header { position: sticky; top: 0; z-index: 1; background: var(--pi-bg-raised, var(--pi-surface)); display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); }
+    .sheet-header { position: sticky; top: 0; z-index: 1; background: var(--pi-surface); margin-inline: calc(-1 * var(--pi-space-4)); padding-inline: var(--pi-space-4); display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); }
     .sheet-title { font-weight: var(--pi-weight-semibold); }
     .sheet-close { box-sizing: border-box; display: grid; place-items: center; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); padding: 0; border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); line-height: 1; cursor: pointer; }
     @media (pointer: coarse) { .sheet-close { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); } }

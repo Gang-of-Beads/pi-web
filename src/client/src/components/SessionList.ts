@@ -1,4 +1,5 @@
-import { LitElement, css, html, type PropertyValues, type TemplateResult, nothing } from "lit";
+import { LitElement, css, html, unsafeCSS, type PropertyValues, type TemplateResult, nothing } from "lit";
+import { disclosureIconStyle, renderDisclosureIcon } from "./disclosureIcon.js";
 import { customElement, property, state } from "lit/decorators.js";
 import type { SessionActivity, SessionInfo, SessionStatus } from "../api";
 import { isCachedNewSessionInfo } from "../cachedNewSessions";
@@ -270,7 +271,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     const selectedTitle = this.selected?.path ?? selectedSummary;
     return html`
       <h2>
-        <button class="section-toggle" aria-expanded=${String(!this.collapsed)} @click=${() => { this.onToggleCollapsed?.(); }}><span class="section-title"><span class="section-name">${this.collapsed ? "▸" : "▾"} Sessions</span>${this.collapsed ? html`<small class="section-selected" dir="auto" title=${selectedTitle}>${selectedSummary}</small>` : null}</span></button>
+        <button class="section-toggle" aria-expanded=${String(!this.collapsed)} @click=${() => { this.onToggleCollapsed?.(); }}><span class="section-title"><span class="section-name">${renderDisclosureIcon(this.collapsed)} Sessions</span>${this.collapsed ? html`<small class="section-selected" dir="auto" title=${selectedTitle}>${selectedSummary}</small>` : null}</span></button>
         ${this.renderCurrentSelectionButton(currentSessions)}
         ${this.renderUnreadCount(unreadCount)}
         <small class="section-count">${sessionCount}</small>
@@ -318,7 +319,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     const active = this.selectionScopes.has("archived");
     return html`
       <h2 class="subheading">
-        <button class="section-toggle" aria-expanded=${String(archivedOpen)} @click=${() => { this.toggleArchived(); }}><span>${archivedOpen ? "▾" : "▸"} Archived</span></button>
+        <button class="section-toggle" aria-expanded=${String(archivedOpen)} @click=${() => { this.toggleArchived(); }}><span>${renderDisclosureIcon(!archivedOpen)} Archived</span></button>
         ${archivedOpen ? html`<button class="bulk-select-entry ${active ? "selected" : ""}" title=${active ? "Close archived session selection" : "Select archived sessions"} aria-label=${active ? "Close archived session selection" : "Select archived sessions"} aria-expanded=${String(active)} aria-pressed=${String(active)} @click=${() => { this.toggleSelection("archived", archivedSessions); }}>☑</button>` : null}
         <small class="section-count">${archivedSessions.length}</small>
       </h2>
@@ -464,7 +465,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
         @pointerdown=${(event: PointerEvent) => { event.stopPropagation(); }}
         @click=${(event: MouseEvent) => { event.stopPropagation(); this.toggleSubtreeCollapsed(row.session.path); }}
       >
-        <span class="subtree-chevron ${collapsed ? "collapsed" : ""}" aria-hidden="true">▾</span>
+        ${renderDisclosureIcon(collapsed)}
       </button>
     `;
   }
@@ -672,7 +673,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     return "";
   }
 
-  static override styles = [interactiveSurfaceStyles, listStyles, sessionStateBadgeStyles, css`
+  static override styles = [css`${unsafeCSS(disclosureIconStyle)}`, interactiveSurfaceStyles, listStyles, sessionStateBadgeStyles, css`
     :host { --pi-row-gutter-start: var(--pi-space-3); --pi-row-gutter-size: var(--pi-checkbox-size); }
     @media (pointer: coarse) { :host { --pi-row-gutter-size: var(--pi-control-height-comfort); } }
     h2 { min-height: var(--pi-control-height); gap: var(--pi-space-2); }
@@ -689,7 +690,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     /* Quiet by default. Three outlined buttons of equal weight said nothing
        about which one starts work and which one deletes it; a secondary action
        states itself with text and earns its outline on hover. */
-    .cleanup-entry { flex: 0 0 auto; min-height: var(--pi-control-height); padding: var(--pi-space-3) var(--pi-space-4); font-size: var(--pi-text-xs); text-transform: none; border: 0; background: transparent; color: var(--pi-muted); }
+    .cleanup-entry { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height); padding: var(--pi-space-3) var(--pi-space-4); font-size: var(--pi-text-xs); text-transform: none; border: 0; background: transparent; color: var(--pi-muted); }
     .cleanup-entry:focus-visible { color: var(--pi-danger, var(--pi-text)); background: var(--pi-surface-hover); }
     @media (hover: hover) { .cleanup-entry:hover:not(:disabled) { color: var(--pi-danger, var(--pi-text)); background: var(--pi-surface-hover); } }
     .bulk-select-entry { border: 0; background: transparent; color: var(--pi-muted); }
@@ -701,7 +702,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     @media (hover: hover) { .start-session-button:hover:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 88%, black); } }
     .start-session-button:disabled { border-color: var(--pi-border); background: var(--pi-surface); color: var(--pi-muted); font-weight: var(--pi-weight-regular); }
     .bulk-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pi-space-3); margin: 0 0 var(--pi-space-3); }
-    .bulk-row button { min-height: var(--pi-control-height); padding: var(--pi-space-3) var(--pi-space-4); font-size: var(--pi-text-xs); white-space: nowrap; }
+    .bulk-row button { box-sizing: border-box; min-height: var(--pi-control-height); padding: var(--pi-space-3) var(--pi-space-4); font-size: var(--pi-text-xs); white-space: nowrap; }
     .bulk-actions { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-3); margin-left: auto; }
     .action-name, .section-selected { text-align: start; unicode-bidi: plaintext; }
     .action-row.unread .action-name { color: var(--pi-text-bright); font-weight: var(--pi-weight-strong); }
@@ -781,7 +782,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
       .session-search-clear { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); }
       .bulk-select-entry { width: var(--pi-control-height-touch, 44px); min-width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); }
       .start-session-button { min-width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); }
-      .cleanup-entry { min-height: var(--pi-control-height-touch, 44px); padding: var(--pi-space-3) var(--pi-space-5); }
+      .cleanup-entry { box-sizing: border-box; min-height: var(--pi-control-height-touch, 44px); padding: var(--pi-space-3) var(--pi-space-5); }
       .action-menu-toggle { min-width: var(--pi-control-height-touch, 44px); min-height: var(--pi-control-height-touch, 44px); }
       .bulk-row button { min-height: var(--pi-control-height-touch, 44px); }
     }
