@@ -106,3 +106,73 @@ temptation is to leave "just this one" panel in core.
 - Contributed surfaces answer availability honestly: an unanswered section
   renders no tab rather than an empty one.
 - A plugin's dialogs go through the modal registry, not their own overlays.
+
+
+## What the review found (three read-only lanes, 2026-09-09)
+
+Full reports: `docs/design/research/plugin-core-boundary.md`,
+`plugin-declarative-contract.md`, `plugin-discovery-and-loading.md`.
+
+### Installing from GitHub is mostly already true
+
+The pi package manager parses git sources, clones at a ref and installs, and
+our plugin catalogue never asks whether a package arrived from npm or from git -
+it reads `piWeb.plugins` from whatever path the package landed at. The gaps are
+specific, not architectural:
+
+- **A monorepo is not discovered.** Only the repository root `package.json` is
+  read, so an official-plugins repository must declare every plugin at the root
+  with paths into subdirectories, or ship one package per plugin.
+- **A git install does not build.** Dev dependencies are omitted, so the
+  repository has to commit its built browser modules.
+- **Package size is budgeted** (files and bytes counted over the checkout), so a
+  repository carrying sources, tests and docs can exceed it.
+- **Pinning is the ref in the source string**, stored in the agent's settings.
+- **One-step install does not exist**: a user must type a pi source string.
+
+### Which manifest shape fits us
+
+Surveyed: VS Code (`package.json#contributes`), Obsidian (`manifest.json` plus a
+GitHub release whose tag matches the version - our source check on the exact
+download mechanics came back *unclear*, so treat that detail as unverified),
+HACS (a required directory layout), Zed (`extension.toml` plus a user-visible
+capability list). The common shape is: a static file, read before any plugin
+code runs, declaring contributions into named slots, with the version and the
+release aligned.
+
+Ours should stay `package.json#piWeb` - it is what discovery already reads, it
+carries the npm and git paths for free, and it lets one repository declare
+several plugins. What it must gain is the declaration itself.
+
+### What a declarative contract has to cover
+
+The lane measured our own plugins rather than theorising: the browser side uses
+**56 distinct host context members** and **17 places that reach around the seam**
+into browser or Node APIs. About 40 of the 56 collapse into declarations
+(navigation, refresh, read, invalidate, configure); roughly 16 stay imperative;
+13 named escape hatches cover every reach-around. Of eleven panels, **four**
+could be rendered from a row/field/action vocabulary - so a declarative UI layer
+removes repeated markup, it does not remove rendering.
+
+The contract is also **declared twice** today: the published `src/plugin-api.ts`
+and the internal `src/client/src/plugins/types.ts`, which does not import it.
+The internal one has six extra context members, used only by core's own
+pseudo-plugin. That drift is the first thing a declarative layer must close.
+
+### Debts that block the boundary, with evidence
+
+Eleven reach-arounds, the load-bearing ones being: core actions hard-code plugin
+contribution ids; the drawer's generic `runCommand` seam is implemented as
+`runGoalCommand`; the daemon's surface list hard-codes `goals` and `subagents`;
+a host capability (files) depends on routes another plugin (workspaces) mounts,
+with no way to declare that dependency; and the updates plugin reads a host
+deployment flag out of its own module URL.
+
+### Migration order that keeps the app usable
+
+0. Land the declaration (placement, data, operations) with rendering still a
+   function. 1. Browser-only plugins leave (info, relays, tasks, updates).
+2. Web-process server plugins leave (workspaces, machines). 3. Capability-backed
+panels leave (files, terminal), fixing the hard-coded action ids. 4. Goals,
+which is where the special-casing is retired. 5. Cleanup, and the final core
+list is written into AGENTS.md.
