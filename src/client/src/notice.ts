@@ -91,11 +91,17 @@ export function noticeFromError(error: unknown, link: { readonly live: boolean }
   // pedigree: helper wrappers re-throw plain Errors carrying the same words,
   // and the same text must not get two lifetimes because two HTTP helpers
   // raised it.
+  // An HttpError goes first, because it may carry the machine in its hand:
+  // the gateway names the machine it failed for, and a text-first branch
+  // would classify the message before that name is read - the scope stamp
+  // the producer chose was being dropped by branch order, not by design.
+  // Classification still follows the message's evidence, so a reader-type
+  // failure that happens to carry a machineId keeps reader retirement.
+  if (error instanceof HttpError) {
+    return isTransientError(text) ? noticeFromTransport(text, error.machineId) : noticeForReader(text);
+  }
   if (isTransientError(text) || /failed to fetch|load failed|networkerror when attempting to fetch/i.test(text)) {
     return noticeFromTransport(text, error instanceof RequestTimeoutError ? machineIdFromUrl(error.url) : undefined);
-  }
-  if (error instanceof HttpError) {
-    return error.machineId !== undefined ? noticeFromTransport(text, error.machineId) : noticeForReader(text);
   }
   // A deadline miss asserts "the server did not answer" - the same claim an
   // HttpError makes, so later answers disprove it the same way. Measured

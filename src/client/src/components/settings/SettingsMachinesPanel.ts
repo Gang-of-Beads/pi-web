@@ -98,7 +98,6 @@ export class SettingsMachinesPanel extends LitElement {
 
   static override styles = [interactiveSurfaceStyles, settingsControlStyles, css`
     :host { display: block; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
-    .machines-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--pi-space-6); margin-bottom: var(--pi-space-6); }
     h2 { margin: 0 0 var(--pi-space-2); font-family: var(--pi-font-display); font-size: var(--pi-text-lg); font-weight: var(--pi-weight-semibold); letter-spacing: -0.01em; }
     .muted { margin: 0; color: var(--pi-muted); font-size: var(--pi-text-xs); line-height: 1.4; }
     .add-button { flex: 0 0 auto; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }

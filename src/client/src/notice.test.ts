@@ -39,6 +39,24 @@ describe("a notice made from a thrown error", () => {
     expect(retiresOnReply(noticeFromError(new HttpError("Bad Gateway", 502)))).toBe(false);
   });
 
+  /**
+   * A transport-shaped body that names its machine is a transport claim about
+   * that machine - not a page claim any other machine's success may erase.
+   * The gateway's 502/504 answers are exactly this shape; the scope the
+   * producer chose was once dropped by branch order before the classification
+   * ever read it.
+   */
+  it("scopes a transport-shaped HttpError that names its machine", () => {
+    const notice = noticeFromError(new HttpError("Remote machine unavailable (connect ECONNREFUSED 127.0.0.1:7001)", 502, "remote-a"));
+    expect(retiresOnReply(notice)).toBe(true);
+    expect(notice.machineId).toBe("remote-a");
+  });
+
+  it("keeps reader retirement for an HttpError whose body carries a machineId but speaks of an operation", () => {
+    const notice = noticeFromError(new HttpError("Rename failed", 500, "remote-a"));
+    expect(retiresOnReply(notice)).toBe(false);
+  });
+
   it("retires a link failure on the next reply", () => {
     expect(retiresOnReply(noticeFromError(new TypeError("Failed to fetch")))).toBe(true);
   });

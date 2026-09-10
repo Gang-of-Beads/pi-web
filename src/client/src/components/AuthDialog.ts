@@ -275,7 +275,7 @@ export class AuthDialog extends LitElement {
     @media (pointer: coarse) { header button { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); } .actions button, .inline-options button, input { min-height: var(--pi-control-height-touch); } }
     input { margin: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); padding: var(--pi-space-4) var(--pi-space-5); outline: none; }
     input:focus { border-color: var(--pi-accent); }
-    .options button { display: block; width: 100%; padding: var(--pi-space-5) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
+    .options button { display: block; box-sizing: border-box; width: 100%; padding: var(--pi-space-5) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
     .options button.selected { background: var(--pi-selection-bg); border-color: var(--pi-accent); }
     @media (hover: hover) { .options button:hover { background: var(--pi-surface-hover); } }
     small { display: block; margin-top: var(--pi-space-2); font-size: var(--pi-text-xs); color: var(--pi-muted); }

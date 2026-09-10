@@ -1,5 +1,5 @@
 import { resolveAppUrl } from "../appUrl";
-import { reportTransportReachable } from "./transportHealth";
+import { machineIdFromUrl, reportTransportReachable } from "./transportHealth";
 import { deadlineSignal, RequestTimeoutError, timeoutForBody } from "./requestDeadline";
 import { dedupeKey, shareInFlight } from "./inFlight";
 
@@ -55,7 +55,11 @@ async function fetchBody(url: string, init?: RequestInit): Promise<unknown> {
     const fields = isRecord(body) ? body : {};
     const label = typeof fields["error"] === "string" ? fields["error"] : response.statusText;
     const detail = typeof fields["detail"] === "string" ? fields["detail"] : undefined;
-    const machineId = typeof fields["machineId"] === "string" ? fields["machineId"] : undefined;
+    // A body without a machineId is still a claim about the machine the URL
+    // names: the local proxy's 502 speaks about that machine's daemon, and
+    // without the fallback it lands as a page claim that any other machine's
+    // success would erase.
+    const machineId = typeof fields["machineId"] === "string" ? fields["machineId"] : machineIdFromUrl(url);
     const text = detail === undefined || detail === "" ? label : `${label} (${detail})`;
     throw new HttpError(errorMessage({ error: text }) ?? text, response.status, machineId);
   }

@@ -89,6 +89,12 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
   @state() private archivedExpanded = false;
   /** Parent session paths whose descendant subagent rows are collapsed. */
   @state() private collapsedSubtreeRoots: ReadonlySet<string> = new Set();
+  /* The panel hides this list wholesale (AppNavigationPanel renders it with
+     ?hidden). A filter that survives into the hidden state silently keeps
+     hiding rows when the list returns - the same rule MachineList,
+     ProjectList and WorkspaceList already run. */
+  @property({ type: Boolean, reflect: true })
+  override hidden = false;
   @state() private searchQuery = "";
   @state() private selectionScopes: ReadonlySet<SessionSelectionScope> = new Set();
   /**
@@ -126,6 +132,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
       this.pruneSelectedSessionIds();
     }
     if (changed.has("collapsed") && this.collapsed) this.openMenuSessionId = undefined;
+    if (changed.has("hidden") && this.hidden && this.searchQuery !== "") this.searchQuery = "";
     const previousSelected = changed.get("selected");
     if (changed.has("selected") && this.selected?.archived === true && (previousSelected?.id !== this.selected.id || previousSelected.archived !== true) && !this.archivedExpanded) {
       this.archivedExpanded = true;
@@ -771,8 +778,6 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
        checkbox and, on a coarse pointer, covers it entirely: a tap aimed at
        the checkbox landed on a control that does nothing. Inert means inert. */
     .subtree-toggle.inert { cursor: default; pointer-events: none; }
-    .subtree-chevron { display: inline-block; transition: transform 120ms ease; }
-    .subtree-chevron.collapsed { transform: rotate(-90deg); }
     /* Search sits inside the scrolling body but stays pinned, so filtering a
        long list never scrolls the field out of reach on a phone. */
     .session-search { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: var(--pi-space-3); margin: 0 0 var(--pi-space-3); padding-bottom: var(--pi-space-3); background: var(--pi-bg); }

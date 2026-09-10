@@ -621,7 +621,7 @@ export class SessionTreeNavigator extends LitElement {
       header { padding-top: max(var(--pi-space-6), env(safe-area-inset-top)); }
       .tree-step { padding-inline: max(var(--pi-space-4), env(safe-area-inset-left)) max(var(--pi-space-4), env(safe-area-inset-right)); }
       .tree-intro { padding-inline: var(--pi-space-2); }
-      .tree-row { grid-template-columns: 20px minmax(0, 1fr); padding-inline-start: calc(7px + min(var(--tree-indent-mobile), 48px)); }
+      .tree-row { grid-template-columns: 20px minmax(0, 1fr); padding-inline-start: calc(var(--pi-space-3) + min(var(--tree-indent-mobile), 48px)); }
       .tree-row > .metadata { grid-column: 2; grid-row: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--pi-space-3) var(--pi-space-4); }
       .tree-row > .metadata > .badges { margin-inline-start: auto; flex-wrap: wrap; }
       .tree-row > .entry { grid-column: 2; grid-row: 2; display: grid; gap: var(--pi-space-2); }

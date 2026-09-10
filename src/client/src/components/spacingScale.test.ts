@@ -25,7 +25,7 @@ import { join } from "node:path";
  * composer gutter) and belongs to the control's size, not to the rhythm.
  */
 const ROOTS = ["src/client/src", "pi-web-plugins"];
-const SPACING_PROPERTY = /(?<![-\w])(?:padding|margin|gap|row-gap|column-gap|padding-(?:top|right|bottom|left|inline|block)|margin-(?:top|right|bottom|left|inline|block)|top|right|bottom|left|inset|inset-(?:inline|block)):\s*([^;{}]+)/gu;
+const SPACING_PROPERTY = /(?<![-\w])(?:padding|margin|gap|row-gap|column-gap|padding-(?:top|right|bottom|left|inline|block|inline-start|inline-end|block-start|block-end)|margin-(?:top|right|bottom|left|inline|block|inline-start|inline-end|block-start|block-end)|top|right|bottom|left|inset|inset-(?:inline|block)):\s*([^;{}]+)/gu;
 const RHYTHM_TOP = 24;
 const HAIRLINE = 1;
 /**

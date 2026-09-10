@@ -26,9 +26,11 @@ Consequences, each verifiable in the current code:
    are true and they contradict each other on screen.
 
 2. **The deadline ignores the liveness the app already measures.** (The
-   suppression branch exists in  but no production caller passes
-   the verdict yet - liveness evidence is not yet delivered to the notice
-   layer; the seam decision is recorded in the round-19 triage.) The socket
+   suppression branch exists in `notice.ts` - `RequestTimeoutError` with a
+   live link returns `NO_NOTICE` - but no production caller passes the
+   verdict yet: `errorNoticePatch` defaults its `link` to `{ live: false }`,
+   so the branch is unreachable in production. The seam decision is recorded
+   in the round-19 triage.) The socket
    knows the link answered a keepalive 3 seconds ago. `deadlineSignal()` does
    not consult it, so a slow-but-healthy link produces "the server did not
    answer" while the same server is demonstrably answering.
@@ -142,8 +144,11 @@ is now fixed, task by task in the goal, each with its own probe:
 Still open, and deliberately so:
 
 - **Deadline does not consult liveness yet.** The settlement vocabulary is in
-  place; wiring `deadlineSignal` to the socket's keepalive facts is the
-  remaining piece of consequence 2.
+  place. Round 21 retired the dead proactive half of this item: the wording
+  table rewrites a deadline miss to a transient line that withdraws itself,
+  and the machine's own answers retire the claim. Wiring
+  `errorNoticePatch`'s `link` argument to the socket's keepalive facts
+  remains the open piece of consequence 2.
 - **Commands still have no server-side identity or cancel.** The ledger knows
   operations, but the command rows predate it and were not migrated.
 - The phone single-bar fold and the plugin-kernel boundary (see

@@ -12,7 +12,7 @@ import { join } from "node:path";
  * neighbours - and every scale guard passed each time, because the token in the
  * declaration was correct.
  *
- * The second shape is a control floor: 
+ * The second shape is a control floor: a fixed token height
  * with padding, where content-box adds the padding on top of the token, so a
  * 44px floor drew 62px on the boot screen's only primary button.
  *

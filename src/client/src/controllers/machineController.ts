@@ -2,7 +2,7 @@ import { api, type Machine, type MachineHealth, type MachineRuntime } from "../a
 import { resetWorkspaceScopedState } from "../appState";
 import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
 import { describeError, noticeForReader, noticeFromTransport } from "../notice";
-import type { GetState, SetState, UpdateUrl } from "./types";
+import { selectedMachineId, type GetState, type SetState, type UpdateUrl } from "./types";
 import type { ProjectController } from "./projectController";
 
 export class MachineController {
@@ -128,6 +128,11 @@ export class MachineController {
       // A late failure must not paint its machine's complaint onto the
       // machine the reader has since switched to.
       if (this.healthRefreshSeqByMachine.get(machineId) !== seq) return undefined;
+      // The sequence guard only moves when the same machine is re-polled, so
+      // it cannot see a machine switch; the selection check - the same one
+      // the project and session controllers use - is what stops a late
+      // failure from painting machine A's complaint onto machine B.
+      if (selectedMachineId(this.getState()) !== machineId) return undefined;
       this.setState(errorNoticePatch(error));
       return undefined;
     }

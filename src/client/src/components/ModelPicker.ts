@@ -298,7 +298,7 @@ export class ModelPicker extends LitElement {
       input.search { min-height: var(--pi-control-height-touch, 44px); }
       input[type="checkbox"] { box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); accent-color: var(--pi-accent); }
     }
-    .options > button { display: block; width: 100%; font: var(--pi-text-sm)/1.25 var(--pi-font-ui); padding: var(--pi-space-5) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
+    .options > button { display: block; box-sizing: border-box; width: 100%; font: var(--pi-text-sm)/1.25 var(--pi-font-ui); padding: var(--pi-space-5) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
     .options > button.selected { background: var(--pi-selection-bg); border-color: var(--pi-accent); }
     .options > button.selected small, .catalog-row.selected small { color: var(--pi-text-secondary, var(--pi-text)); }
     @media (hover: hover) { .options > button:hover { background: var(--pi-surface-hover); } }

@@ -162,27 +162,9 @@ export const workspacePanelStyles = css`
   :host { display: flex; flex-direction: column; min-height: 0; color: var(--pi-text); background: var(--pi-bg); font: var(--pi-text-sm) var(--pi-font-ui); container-type: inline-size; }
   header { flex: 0 0 auto; min-width: 0; border-bottom: 1px solid var(--pi-border); }
   .workspace-header-layout { display: flex; align-items: stretch; min-width: 0; }
-  .workspace-header-scroll-frame { position: relative; flex: 1 1 auto; min-width: 0; background: var(--pi-bg); }
   .workspace-fullscreen-toggle { flex: 0 0 auto; align-self: center; max-width: none; margin-right: var(--pi-space-4); white-space: nowrap; }
-  .workspace-header-scroll-frame::before, .workspace-header-scroll-frame::after { content: ""; position: absolute; top: 0; bottom: 0; z-index: 2; width: 18px; opacity: 0; pointer-events: none; transition: opacity var(--pi-motion-fast) var(--pi-ease); }
-  .workspace-header-scroll-frame::before { left: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--pi-shadow-strong) 55%, transparent) 0%, transparent 100%); }
-  .workspace-header-scroll-frame::after { right: 0; background: linear-gradient(270deg, color-mix(in srgb, var(--pi-shadow-strong) 55%, transparent) 0%, transparent 100%); }
-  .workspace-header-scroll-frame.can-scroll-left::before, .workspace-header-scroll-frame.can-scroll-right::after { opacity: 1; }
-  .workspace-header-strip { display: flex; justify-content: space-between; align-items: center; gap: var(--pi-space-4); min-width: 0; padding: var(--pi-space-4); overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; }
-  .tabs { flex: 0 0 auto; display: flex; gap: var(--pi-space-3); align-items: center; }
-  .tabs button { flex: 0 0 auto; white-space: nowrap; }
-  .tabs button.icon-tab { min-width: var(--pi-control-height-comfort); }
   button { box-sizing: border-box; min-height: var(--pi-control-height); font: var(--pi-text-xs) var(--pi-font-ui); display: inline-flex; align-items: center; gap: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-3) var(--pi-space-4); cursor: pointer; }
   button.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
-  .tab-icon { flex: 0 0 auto; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
-  .tab-custom-icon { flex: 0 0 auto; width: 16px; height: 16px; display: inline-grid; place-items: center; color: currentColor; pointer-events: none; }
-  .tab-custom-icon svg { width: 16px; height: 16px; pointer-events: none; }
-  .tab-label { min-width: 0; }
-  .tab-badge { flex: 0 0 auto; display: inline-block; min-width: 14px; border: 1px solid var(--pi-success-border); border-radius: var(--pi-radius-pill); background: var(--pi-success-surface); color: var(--pi-success); padding: 0 var(--pi-space-3); font-size: var(--pi-text-2xs); line-height: 16px; text-align: center; }
-  @container (max-width: 430px) {
-    .tabs button.icon-tab { justify-content: center; padding-inline: var(--pi-space-4); }
-    .tabs button.icon-tab .tab-label { box-sizing: border-box; position: absolute; width: 1px; height: 1px; padding: 0; margin: calc(-1 * var(--pi-space-1)); overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
-  }
   .panel-content { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
   .empty-state { box-sizing: border-box; width: min(100%, 380px); margin: auto; padding: var(--pi-space-9); display: grid; gap: var(--pi-space-4); color: var(--pi-muted); text-align: center; }
   .empty-state h2 { margin: 0; color: var(--pi-text); font-family: var(--pi-font-display); font-size: var(--pi-text-lg); font-weight: var(--pi-weight-semibold); letter-spacing: -0.01em; line-height: 1.3; }
@@ -315,7 +297,7 @@ export const listStyles = css`
      occupies - inset plus size plus a gap. This was a hardcoded 30px while the
      button measured 32px at a 6px inset, and 36px at 4px on coarse pointers, so
      a long name ran underneath the button on every phone. Derive it instead. */
-  .list-body.tiles .action-main { border-radius: var(--pi-radius-lg); padding: var(--pi-space-5) calc(var(--pi-tile-menu-inset) + var(--pi-tile-menu-size) + var(--pi-space-2) + var(--pi-dot-md) + var(--pi-space-2)) var(--pi-space-5) var(--pi-space-5); min-height: var(--pi-row-min-height); align-content: center; }
+  .list-body.tiles .action-main { border-radius: var(--pi-radius-lg); padding: var(--pi-space-5) calc(var(--pi-tile-menu-inset) + var(--pi-tile-menu-size) + var(--pi-space-2) + var(--pi-dot-md) + var(--pi-space-2)) var(--pi-space-5) var(--pi-space-5); align-content: center; }
   /* One height for one shape. The title clamps to two lines and the path to
      two, so a long name cannot make its tile taller than the one beside it -
      measured 82 against 95 before this. */

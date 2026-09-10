@@ -482,15 +482,6 @@ export class ExtensionDialogCard extends LitElement {
     .primary-action { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-on-accent, var(--pi-bg)); font-weight: var(--pi-weight-strong); }
     @media (hover: hover) { .primary-action:hover:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 86%, white); } }
     .primary-action:active:not(:disabled) { background: color-mix(in srgb, var(--pi-accent) 86%, white); }
-    .closed-summary {
-      margin: 0;
-      padding: var(--pi-space-6) var(--pi-space-7);
-      color: var(--pi-muted);
-      font-size: var(--pi-text-sm);
-      line-height: 1.4;
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-    }
     .answered-row {
       display: flex;
       align-items: baseline;

@@ -47,7 +47,7 @@ export function isTransientError(error: string): boolean {
  */
 export const TRANSIENT_ERROR_TIMEOUT_MS = 6000;
 
-function normalizeTransientError(error: string): string | undefined {
+export function normalizeTransientError(error: string): string | undefined {
   // ENOENT when the socket file is gone, ECONNREFUSED while the daemon is
   // restarting and nothing is listening on it yet. The second is the one a user
   // is guaranteed to meet, because it is what an update looks like.
@@ -62,7 +62,10 @@ function normalizeTransientError(error: string): string | undefined {
   // uncomposed claims reach the rewrites below. The composed prefix is the
   // machine controller's own; nothing else produces it.
   const composed = /is unavailable; reconnecting/i.test(error);
-  if (!composed && /unavailable: connect (enoent|econnrefused)/i.test(error) && /sessiond\.sock/i.test(error)) {
+  // A TCP-endpoint deployment has no socket path in the error text, so the
+  // socket-path requirement missed the same outage there; the daemon's own
+  // phrase ("session daemon") carries the identification instead.
+  if (!composed && /unavailable: connect (enoent|econnrefused)/i.test(error) && (/sessiond\.sock/i.test(error) || /session daemon/i.test(error))) {
     return "Reconnecting to the session daemon…";
   }
   // Matches the DOMException text a cancelled fetch stringifies to. The

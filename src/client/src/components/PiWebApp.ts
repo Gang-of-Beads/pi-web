@@ -89,7 +89,7 @@ import { oneRowPerIdentity } from "../transcriptInvariant";
 import { readPinnedSessionIds, togglePinnedSessionId, writePinnedSessionIds } from "../sessionPins";
 import { observeTransportRecovery } from "../api/transportHealth";
 import { dismissKeyboardIfRaised } from "../keyboardDismissal";
-import { errorBanner, TRANSIENT_ERROR_TIMEOUT_MS } from "./errorBanner";
+import { errorBanner, normalizeTransientError, TRANSIENT_ERROR_TIMEOUT_MS } from "./errorBanner";
 import { deprecatedAgentInputsBanner, deprecatedAgentInputsWarnings } from "./deprecatedAgentInputsBanner";
 import { interactiveSurfaceStyles } from "./shared";
 import { documentTitleFor } from "../contextName";
@@ -134,15 +134,9 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
   header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: var(--pi-space-6); border-bottom: 1px solid var(--pi-border); }
   .header-actions { display: flex; align-items: center; gap: var(--pi-space-4); }
   main { grid-column: 3; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-  @media (hover: hover) { .context-chip:hover { background: var(--pi-surface-hover); } }
   /* A dashed hairline, not the browser's medium default: this rule was
      generalised from a chip that carried its own border width. */
   .empty { border: 1px dashed var(--pi-border); border-radius: var(--pi-radius-lg); padding: var(--pi-space-7); color: var(--pi-muted); }
-  .context-kind { display: none; }
-  .context-value { min-width: 0; overflow: visible; text-overflow: clip; white-space: nowrap; }
-  .tab-badge { display: inline-block; min-width: 14px; margin-left: var(--pi-space-2); border: 1px solid var(--pi-success-border); border-radius: var(--pi-radius-pill); background: var(--pi-success-surface); color: var(--pi-success); padding: 0 var(--pi-space-3); font-size: var(--pi-text-2xs); line-height: 16px; text-align: center; }
-  .workspace-panel-edge { grid-column: 4; }
-  .shell.workspace-panel-collapsed .workspace-panel-edge-button { transform: translateX(calc(-50% + .5px)); }
   workspace-panel { grid-column: 5; min-width: 0; min-height: 0; overflow: hidden; }
   @media (min-width: 1181px) {
     /* A workspace tool can request the content area without owning or changing
@@ -167,7 +161,6 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
     .shell.workspace-view main { grid-row: 1; min-height: auto; }
     .shell.workspace-view > workspace-panel { grid-column: 3; grid-row: 2; display: flex; border-left: 0; }
     .shell:not(.workspace-view) > workspace-panel { display: none; }
-    .workspace-panel-edge { display: none; }
     main.workspace-view chat-view, main.workspace-view prompt-editor, main.workspace-view status-bar,
     main.workspace-view .empty { display: none; }
     main.workspace-view { overflow: hidden; }
@@ -253,6 +246,7 @@ function isEventTargetLike(value: unknown): value is FocusEventTargetLike {
   const candidate: { addEventListener?: unknown; removeEventListener?: unknown } = value;
   return typeof candidate.addEventListener === "function" && typeof candidate.removeEventListener === "function";
 }
+const INTERRUPTED_RUNS_UNKNOWN_MESSAGE = "Interrupted-run status is unknown: the read failed. Retrying the connection will resolve it.";
 const PI_WEB_STATUS_DEFER_MS = 750;
 export const REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS = [1_000, 3_000, 8_000, 15_000, 30_000] as const;
 const GLOBAL_SHORTCUT_LISTENER_OPTIONS = { capture: true } as const;
@@ -780,7 +774,7 @@ export class PiWebApp extends LitElement {
         // A poll never replaces a banner the reader may still be acting on;
         // the unknown state is only worth announcing onto a quiet screen.
         this.interruptedRunsUnknown = true;
-        if (this.state.error === "") this.setState(noticePatch(noticeForReader("Interrupted-run status is unknown: the read failed. Retrying the connection will resolve it.")));
+        if (this.state.error === "") this.setState(noticePatch(noticeForReader(INTERRUPTED_RUNS_UNKNOWN_MESSAGE)));
         return;
       }
       this.interruptedSessionIds = ids;
@@ -789,7 +783,7 @@ export class PiWebApp extends LitElement {
       // retraction tracks the flag, not the banner's wording.
       if (this.interruptedRunsUnknown) {
         this.interruptedRunsUnknown = false;
-        if (this.state.error === "Interrupted-run status is unknown: the read failed. Retrying the connection will resolve it.") this.setState(clearErrorPatch());
+        if (this.state.error === INTERRUPTED_RUNS_UNKNOWN_MESSAGE) this.setState(clearErrorPatch());
       }
     });
   }
@@ -897,7 +891,7 @@ export class PiWebApp extends LitElement {
     this.setState({ selfUpdate: undefined });
   }
 
-  /** Render the "Update now / Skip" strip above the session view. */
+  /** Render the "Reload to get the new version" strip above the session view. */
   /**
    * The tab keeps running the bundle it loaded, however many times the server
    * underneath is upgraded; every client-side fix shipped in between is
@@ -1047,6 +1041,10 @@ export class PiWebApp extends LitElement {
     if (!disproved) return;
     // Reset the scope with the text: a stale scope would let the next
     // transport complaint inherit a machine it does not speak about.
+    // lastScheduledError goes too: the hold window keeps showing the banner
+    // after this, and a re-raised identical text must re-arm its own expiry
+    // rather than be silently gated by the previous schedule.
+    this.lastScheduledError = "";
     this.setState(clearErrorPatch());
     if (this.transientErrorTimer !== undefined) {
       window.clearTimeout(this.transientErrorTimer);
@@ -1067,10 +1065,14 @@ export class PiWebApp extends LitElement {
       this.transientErrorTimer = undefined;
     }
     // Expiry is a property of the retirement model, not of the words: only a
-    // reply-retired transport claim heals on its own. Deciding by matching the
-    // text raced the model - a message the model called permanent could still
-    // be expired here because its wording looked transient.
+    // reply-retired transport claim heals on its own. A reply-retired message
+    // the wording layer declines to shorten (a composed "X is unavailable;
+    // reconnecting… <detail>", the retry ladder's terminal sentence) asserts
+    // a state, renders with the permanent style, and stays until its machine's
+    // answers or the reader retire it - expiring it contradicted its own
+    // rendering and deleted the ladder's final word six seconds in.
     if (this.state.errorRetiredBy !== RetiredBy.reply) return;
+    if (normalizeTransientError(error) === undefined) return;
     this.transientErrorTimer = window.setTimeout(() => {
       this.transientErrorTimer = undefined;
       // Only clear what we scheduled for: a newer message must not be swallowed.
@@ -2213,7 +2215,6 @@ export class PiWebApp extends LitElement {
       <app-navigation-panel
         .machines=${this.state.machines}
         .selectedMachine=${this.state.selectedMachine}
-        .machineStatuses=${this.state.machineStatuses}
         .machineStatusSnapshots=${this.state.machineStatusSnapshots}
         .machinesCollapsed=${this.navigationSections.isCollapsed("machines")}
         .onToggleMachines=${() => { this.navigationSections.toggle("machines"); }}

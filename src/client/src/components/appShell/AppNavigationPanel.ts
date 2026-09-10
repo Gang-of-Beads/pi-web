@@ -1,7 +1,7 @@
 import { LitElement, css, html, nothing, svg, type TemplateResult } from "lit";
 import { focusedContextName } from "../../contextName";
 import { customElement, property, query, state } from "lit/decorators.js";
-import type { Machine, MachineHealth, Project, SessionActivity, SessionInfo, SessionStatus, Workspace } from "../../api";
+import type { Machine, Project, SessionActivity, SessionInfo, SessionStatus, Workspace } from "../../api";
 import { sessionLabel } from "../../sessionLabels";
 import type { DrawerSectionContext, QualifiedDrawerSectionContribution, MachineSectionContext, QualifiedMachineSectionContribution, NavSectionContext, QualifiedNavSectionContribution } from "../../plugins/types";
 import type { MachineStatusSnapshot } from "../../../../shared/machineStatus";
@@ -44,7 +44,6 @@ export class AppNavigationPanel extends LitElement {
   @state() private compactActionsOpen = false;
   @property({ attribute: false }) machines: Machine[] = [];
   @property({ attribute: false }) selectedMachine?: Machine;
-  @property({ attribute: false }) machineStatuses: Record<string, MachineHealth> = {};
   @property({ attribute: false }) machineStatusSnapshots: Record<string, MachineStatusSnapshot> = {};
   @property({ attribute: false }) selectedProject?: Project;
   @property({ attribute: false }) selectedWorkspace?: Workspace;
