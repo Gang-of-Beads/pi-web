@@ -1568,6 +1568,20 @@ export class PiSessionService implements SessionRouteService {
   }
 
   private async startSession(cwd: string, options: InternalStartSessionOptions): Promise<ClientSession> {
+    try {
+      return await this.startSessionCreating(cwd, options);
+    } catch (error) {
+      // The SDK materialises the session file first and fails on the missing
+      // cwd after; its multi-line diagnostic is the reader's whole banner.
+      // Translate to one sentence the composer can sit under.
+      if (error instanceof Error && error.message.includes("Stored session working directory does not exist")) {
+        throw new Error(`Workspace folder does not exist: ${cwd}`, { cause: error });
+      }
+      throw error;
+    }
+  }
+
+  private async startSessionCreating(cwd: string, options: InternalStartSessionOptions): Promise<ClientSession> {
     const active = await this.create(
       this.sessionManager.create(cwd, options.parentSession === undefined ? undefined : { parentSession: options.parentSession }),
       cwd,
