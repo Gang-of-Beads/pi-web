@@ -60,4 +60,4 @@ had let a real dead floor through CI.
 4. **Interrupted-runs** - a failed read returns 'unknown', not the daemon's
    empty record: the previous markers survive and the banner says so.
 5. **Six-second expiry** - decided by the retirement model, not by matching
-   the wording: only reply-retired claims expire on the timer.
+   the wording: only reply-retired claims expire on the timer. <!-- ERRATUM (round 31): round 22 added the second gate - the wording verdict must also classify the text as transient; neither condition alone expires the banner. -->

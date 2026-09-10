@@ -1,5 +1,5 @@
 import { api as defaultApi, type AskUserCloseResponse, type AskUserSubmission, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingAskUser, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Workspace } from "../api";
-import { projectsApi, workspacesApi } from "../api";
+import { HttpError, projectsApi, workspacesApi } from "../api";
 import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
 import { commandOutcomeFor, dismissCommand, issueCommand, settleCommand, withdrawCommand, type CommandLedgerSource } from "../commandLedger";
 import { RevisionScope } from "../revisionScope";
@@ -876,9 +876,9 @@ export class SessionController {
         if (selectionChange.type === "select") await this.selectSession(selectionChange.session);
         else if (selectionChange.type === "clear") this.deselectSession({ forgetRememberedSelection: true });
       }
-      this.applyBulkSessionFailures("Archive", failures);
+      this.applyBulkSessionFailures("Archive", failures, machineId);
     } catch (error) {
-      this.setState(noticePatch(noticeForReader(`Archive failed: ${describeError(error)}`)));
+      this.setState(noticePatch(noticeForReader(`Archive failed: ${describeError(error)}`, this.machineIdFromError(error))));
     }
   }
 
@@ -900,9 +900,9 @@ export class SessionController {
           else this.deselectSession({ forgetRememberedSelection: true });
         }
       }
-      this.applyBulkSessionFailures("Delete", failures);
+      this.applyBulkSessionFailures("Delete", failures, machineId);
     } catch (error) {
-      this.setState(noticePatch(noticeForReader(`Delete failed: ${describeError(error)}`)));
+      this.setState(noticePatch(noticeForReader(`Delete failed: ${describeError(error)}`, this.machineIdFromError(error))));
     }
   }
 
@@ -1535,9 +1535,15 @@ export class SessionController {
       && !isClientPendingStartSessionInfo(selected);
   }
 
-  private applyBulkSessionFailures(action: string, failures: readonly string[]): void {
+  /** The machine a composed failure belongs to: the error's own stamp when
+   * the transport named one, else the machine the action ran against. */
+  private machineIdFromError(error: unknown): string | undefined {
+    return error instanceof HttpError ? error.machineId : undefined;
+  }
+
+  private applyBulkSessionFailures(action: string, failures: readonly string[], machineId: string): void {
     if (failures.length === 0) return;
-    this.setState(noticePatch(noticeForReader(`${action} failed for ${String(failures.length)} session${failures.length === 1 ? "" : "s"}: ${failures.join(", ")}`)));
+    this.setState(noticePatch(noticeForReader(`${action} failed for ${String(failures.length)} session${failures.length === 1 ? "" : "s"}: ${failures.join(", ")}`, machineId)));
   }
 
   private sessionCacheKey(sessionId: string): string {
@@ -1698,7 +1704,7 @@ export class SessionController {
       // Open cards on the failed row are dead: the create is gone, so no
       // answer could ever reach the daemon. Settled outcomes stay as history.
       ...(state.selectedSession?.id === tempId ? { pendingDialogs: [] } : {}),
-      ...noticePatch(noticeForReader(`Failed to start session: ${message}`)),
+      ...noticePatch(noticeForReader(`Failed to start session: ${message}`, pending.machineId)),
     });
     this.applyReleasedCreatedSessions(releasedCreatedSessions, pending.machineId);
   }
@@ -1782,6 +1788,13 @@ export class SessionController {
     try {
       const machineId = selectedMachineId(this.getState());
       const replacement = await this.api.startSession(session.cwd, machineId);
+      // The start was in flight across a possible scope switch: a late
+      // answer must not prepend machine A's session into machine B's list,
+      // move the draft under B's key, or yank the selection to A's row.
+      if (selectedMachineId(this.getState()) !== machineId) {
+        rememberCachedNewSession(replacement, machineId);
+        return;
+      }
       rememberCachedNewSession(replacement, machineId);
       moveDraft(this.sessionCacheKey(session.id), this.sessionCacheKey(replacement.id));
       forgetCachedNewSession(session.id, machineId);

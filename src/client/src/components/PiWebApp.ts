@@ -1986,6 +1986,15 @@ export class PiWebApp extends LitElement {
         // as the outage lasted; the reads below fire the reports that are
         // allowed to retire claims.
         void this.sessionUnread.refresh(machineId);
+        // A self-update restart is the one "reconnecting…" that ends with the
+        // socket coming back to the same page: the applying strip's exit is
+        // the reconnect itself, and the restart is exactly when the running
+        // bundle may have gone stale - the check the visibility hook cannot
+        // do, because the reader never left the tab.
+        if (this.state.selfUpdateApplying) {
+          this.setState({ selfUpdateApplying: false });
+          void this.checkClientFreshness();
+        }
         // Status updates that landed during the gap are gone for good, so this
         // has to overwrite what the browser holds rather than fill gaps: a
         // session that finished while disconnected kept its "working" state

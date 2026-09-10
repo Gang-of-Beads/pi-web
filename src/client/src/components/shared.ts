@@ -286,7 +286,7 @@ export const listStyles = css`
   }
   .list-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
   /* Tile/card layout for management lists (workspaces, projects, machines).
-     Rows become compact cards in an auto-fill grid; the row menu moves into
+     Rows become compact cards in an auto-fit grid; the row menu moves into
      the card's corner so the two-column row grid can collapse to one. */
   .list-body.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); grid-auto-rows: min-content; gap: var(--pi-space-4); align-content: start; padding: var(--pi-space-2) var(--pi-space-1); }
   /* Tiles in a row share a height, so the row is a grid of equal boxes rather

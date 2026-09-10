@@ -22,10 +22,13 @@ export function observeTransportRecovery(next: TransportRecoveryListener | undef
 }
 
 /**
- * The machine a request URL speaks about; undefined for web-owned URLs, which
- * prove the web process answered and nothing about any machine's link - not
- * even the local one, whose daemon can be down while the web process serves
- * 200s.
+ * The machine a URL is addressed to, by the /machines/<id>/ segment alone.
+ * Addressed is not answered: several machine-namespaced routes are served by
+ * the web process from its own state (health among them, answering 200 with
+ * ok:false for an offline machine), so a response on such a URL proves the
+ * web process spoke - whether the machine did is the pending vocabulary
+ * decision recorded in the round-24/28/30 triage pages. Web-owned URLs
+ * outside /machines/ come back undefined.
  */
 export function machineIdFromUrl(url: string): string | undefined {
   const scoped = /\/machines\/([^/]+)/.exec(url);
