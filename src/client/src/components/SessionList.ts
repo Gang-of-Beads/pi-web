@@ -705,7 +705,10 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
        floats the checkbox, the unread count, Clean up and the start button
        apart like five unrelated controls. One group, pushed right, reads as
        one toolbar; the title keeps the left edge. */
-    h2 > .bulk-select-entry { margin-left: auto; }
+    /* Distribution is the shared h2's space-between alone: an auto margin on
+       top of it swallowed all free space into one uneven void after the
+       title while the rest stayed at fixed 20px steps. */
+    h2 > .bulk-select-entry { margin-left: 0; }
     h2 > .section-count { flex: 0 0 auto; display: inline; color: var(--pi-muted); font-size: inherit; }
     h2 > .section-unread-count { flex: 0 0 auto; display: inline-block; min-width: 14px; border-radius: var(--pi-radius-pill); background: var(--pi-selection-bg); color: var(--pi-text-bright); padding: 0 var(--pi-space-2); font-size: var(--pi-text-2xs); line-height: 16px; text-align: center; text-transform: none; }
     .selection-mark { width: 16px; height: 16px; }

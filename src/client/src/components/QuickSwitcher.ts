@@ -438,7 +438,10 @@ export class QuickSwitcher extends LitElement {
     .row-title-line .row-title { min-width: 0; }
     .row-title { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-height: calc(2 * 1.3em); font-size: var(--pi-text-md); line-height: 1.3; overflow-wrap: anywhere; }
     .row-subtitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-xs); }
-    .create-row { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
+    /* The create tile is a CTA, not a data row: its title and subtitle center
+       like the app's empty states instead of leaving a tall left-titled box
+       with a 44px void between the two lines. */
+    .create-row { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); place-items: center; text-align: center; }
     .create-row .row-title { font-weight: var(--pi-weight-strong); }
     .session-row.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     .session-row.unread .row-title { color: var(--pi-text-bright); font-weight: var(--pi-weight-strong); }
@@ -466,7 +469,7 @@ export class QuickSwitcher extends LitElement {
     .filters::-webkit-scrollbar { display: none; }
     /* Chips ghost by default and carry their selected state in the tint, not
        in an outline: a row of outlined pills read as a wall of boxes (C4). */
-    .chip { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height); border: 0; border-radius: var(--pi-radius-pill); background: var(--pi-surface-hover); color: var(--pi-text-secondary); padding: var(--pi-space-2) var(--pi-space-6); font: inherit; font-size: var(--pi-text-sm); white-space: nowrap; cursor: pointer; }
+    .chip { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height); border: 0; border-radius: var(--pi-radius-md); background: var(--pi-surface-hover); color: var(--pi-text-secondary); padding: var(--pi-space-2) var(--pi-space-6); font: inherit; font-size: var(--pi-text-sm); white-space: nowrap; cursor: pointer; }
     .chip.on { background: var(--pi-selection-bg); color: var(--pi-text-bright); }
     /* Nested chips read as a second level, not as peers of the projects. */
     .chip.nested { font-size: var(--pi-text-xs); }

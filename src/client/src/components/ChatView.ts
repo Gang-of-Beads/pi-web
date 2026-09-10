@@ -221,7 +221,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      their own. Nothing is pinned, so the transcript scrolls at any card
      height and the card covers none of its own rows. */
   .waiting-slot { display: flex; flex-direction: column; gap: var(--pi-space-4); margin: 0 0 var(--pi-space-4); }
-  .activity-dock { flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) var(--pi-space-5); z-index: var(--pi-layer-sticky); display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: var(--pi-elevation-2); backdrop-filter: blur(6px); }
+  .activity-dock { flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) var(--pi-space-5); z-index: var(--pi-layer-sticky); display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: var(--pi-elevation-2); backdrop-filter: blur(6px); }
   /* Idle is the state nobody needs a full-width banner for: keep the signal,
      drop the bar that looked like an empty card above the composer.
 
@@ -322,13 +322,13 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .group-msg.system { color: var(--pi-muted); }
   .group-msg.bash { color: var(--pi-success); }
   .history-boundary { position: relative; z-index: 5; display: grid; gap: var(--pi-space-2); justify-items: center; margin: 0 auto var(--pi-space-7); color: var(--pi-muted); font-size: var(--pi-text-xs); text-align: center; }
-  .history-load-button { box-sizing: border-box; min-height: var(--pi-control-height); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-surface); color: var(--pi-text-secondary); padding: var(--pi-space-3) var(--pi-space-6); font: var(--pi-text-xs) var(--pi-font-ui); line-height: inherit; cursor: pointer; }
+  .history-load-button { box-sizing: border-box; min-height: var(--pi-control-height); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text-secondary); padding: var(--pi-space-3) var(--pi-space-6); font: var(--pi-text-xs) var(--pi-font-ui); line-height: inherit; cursor: pointer; }
   .history-load-button:focus { border-color: var(--pi-accent); color: var(--pi-text-bright); }
   @media (hover: hover) { .history-load-button:hover { border-color: var(--pi-accent); color: var(--pi-text-bright); } }
   .history-load-button:disabled { cursor: default; opacity: var(--pi-disabled-opacity); }
   /* Queued messages are drawn in the transcript, gold; this slim strip carries
      only the count and the clear action the queue as a whole needs. */
-  .queued-strip { display: flex; align-items: center; gap: var(--pi-space-3); margin: 0 0 var(--pi-space-4); padding: var(--pi-space-2) var(--pi-space-3); color: var(--pi-warning); font-size: var(--pi-text-xs); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); background: var(--pi-warning-surface); }
+  .queued-strip { display: flex; align-items: center; gap: var(--pi-space-3); margin: 0 0 var(--pi-space-4); padding: var(--pi-space-2) var(--pi-space-3); color: var(--pi-warning); font-size: var(--pi-text-xs); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-md); background: var(--pi-warning-surface); }
   /* The command receipts wear the queued-message gold: provisional, the
      browser's own record, not server history. */
   .command-row { display: flex; align-items: baseline; gap: var(--pi-space-3); min-width: 0; margin: 0 0 var(--pi-space-3); padding: var(--pi-space-2) var(--pi-space-3); font-size: var(--pi-text-xs); color: var(--pi-warning); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-md); background: var(--pi-warning-surface); }
@@ -339,7 +339,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .command-dismiss { box-sizing: border-box; flex: 0 0 auto; align-self: center; width: 24px; height: 24px; display: grid; place-items: center; padding: 0; border: 1px solid transparent; border-radius: var(--pi-radius-sm); background: transparent; color: inherit; font: inherit; font-size: var(--pi-text-sm); line-height: 1; cursor: pointer; }
   .command-dismiss:focus-visible { outline: var(--pi-focus-ring-width) solid currentColor; outline-offset: var(--pi-focus-ring-offset); }
   @media (hover: hover) { .command-dismiss:hover { border-color: currentColor; } }
-  .queued-clear-button { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height); border: 0; border-radius: var(--pi-radius-pill); background: transparent; color: var(--pi-warning); padding: var(--pi-space-1) var(--pi-space-3); font: inherit; cursor: pointer; }
+  .queued-clear-button { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height); border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-warning); padding: var(--pi-space-1) var(--pi-space-3); font: inherit; cursor: pointer; }
   @media (pointer: coarse) {
     .command-dismiss, .image-zoom-close { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); }
     .queued-clear-button { min-height: var(--pi-control-height-touch); }
