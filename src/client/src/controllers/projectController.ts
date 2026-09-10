@@ -1,5 +1,5 @@
 import { api as defaultApi, type Project } from "../api";
-import { errorNoticePatch } from "../errorNotice";
+import { clearErrorPatch, errorNoticePatch } from "../errorNotice";
 import { describeError } from "../notice";
 import { selectedMachineId, type GetState, type SetState } from "./types";
 import type { WorkspaceController } from "./workspaceController";
@@ -32,7 +32,7 @@ export class ProjectController {
 
   async loadProjects() {
     const machineId = selectedMachineId(this.getState());
-    this.setState({ error: "", projectsLoad: "loading" });
+    this.setState({ ...clearErrorPatch(), projectsLoad: "loading" });
     try {
       const projects = await this.api.projects(machineId);
       if (selectedMachineId(this.getState()) !== machineId) return undefined;

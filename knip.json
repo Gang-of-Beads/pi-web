@@ -20,6 +20,7 @@
     "tmux"
   ],
   "ignoreDependencies": [
+    "playwright",
     "@earendil-works/pi-server"
   ]
 }

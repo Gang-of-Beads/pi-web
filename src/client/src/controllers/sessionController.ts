@@ -1,6 +1,6 @@
 import { api as defaultApi, type AskUserCloseResponse, type AskUserSubmission, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingAskUser, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Workspace } from "../api";
 import { projectsApi, workspacesApi } from "../api";
-import { errorNoticePatch, noticePatch } from "../errorNotice";
+import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
 import { commandOutcomeFor, dismissCommand, issueCommand, settleCommand, withdrawCommand, type CommandLedgerSource } from "../commandLedger";
 import { RevisionScope } from "../revisionScope";
 import { SessionGapRepair } from "../sessionGapRepair";
@@ -529,7 +529,7 @@ export class SessionController {
   private enqueuePendingSessionSend(session: ClientPendingStartSessionInfo, input: QueuedPendingSessionSendInput): void {
     const pending = this.pendingSessionStarts.get(session.id);
     if (pending === undefined || pending.discarded) {
-      this.setState({ error: "The backend session is not ready for queued sends. Copy your message before discarding this failed start." });
+      this.setState(noticePatch(noticeForReader("The backend session is not ready for queued sends. Copy your message before discarding this failed start.")));
       return;
     }
     const queued: QueuedPendingSessionSend = { ...input, id: `pending-send-${String(++this.pendingQueuedSendSeq)}` };
@@ -652,7 +652,7 @@ export class SessionController {
     try {
       const result = await this.api.runCommand(session, text, machineId);
       if (options.applyResult && this.isSelectedSessionIdentity(session.id, machineId)) this.applyCommandResult(result);
-      else if (result.type === "select" || result.type === "tree") this.setState({ error: `Queued command “${text}” needs input; open the session and run it again.` });
+      else if (result.type === "select" || result.type === "tree") this.setState(noticePatch(noticeForReader(`Queued command “${text}” needs input; open the session and run it again.`)));
       this.markCachedNewSessionPersisted(session);
       if (options.ledgerId !== undefined) {
         // A runtime command accepted while a reply streams is FORWARDED as a
@@ -1786,7 +1786,7 @@ export class SessionController {
       moveDraft(this.sessionCacheKey(session.id), this.sessionCacheKey(replacement.id));
       forgetCachedNewSession(session.id, machineId);
       const cachedReplacement = markCachedNewSessionInfo(replacement, machineId);
-      this.setState({ sessions: [cachedReplacement, ...this.getState().sessions.filter((candidate) => candidate.id !== session.id)], error: "" });
+      this.setState({ sessions: [cachedReplacement, ...this.getState().sessions.filter((candidate) => candidate.id !== session.id)], ...clearErrorPatch() });
       await this.selectSession(cachedReplacement, { updateUrl: false });
       this.updateUrl(options?.updateUrl === false ? { replace: true } : undefined);
     } catch (error) {

@@ -773,17 +773,24 @@ export class PiWebApp extends LitElement {
       // failed read is not a record: the daemon may still hold markers, so the
       // previous set survives and the banner says the state is unknown rather
       // than quietly showing none.
+      // A stale machine's failed read must not announce onto the machine the
+      // reader is now looking at.
+      if (selectedMachineId(this.state) !== machineId) return;
       if (ids === undefined) {
         // A poll never replaces a banner the reader may still be acting on;
         // the unknown state is only worth announcing onto a quiet screen.
+        this.interruptedRunsUnknown = true;
         if (this.state.error === "") this.setState(noticePatch(noticeForReader("Interrupted-run status is unknown: the read failed. Retrying the connection will resolve it.")));
         return;
       }
-      if (selectedMachineId(this.state) !== machineId) return;
       this.interruptedSessionIds = ids;
       this.interruptedSessionIdsMachine = machineId;
-      // The state is known again - do not leave our own promise unmet.
-      if (this.state.error === "Interrupted-run status is unknown: the read failed. Retrying the connection will resolve it.") this.setState(clearErrorPatch());
+      // The state is known again - do not leave our own promise unmet. The
+      // retraction tracks the flag, not the banner's wording.
+      if (this.interruptedRunsUnknown) {
+        this.interruptedRunsUnknown = false;
+        if (this.state.error === "Interrupted-run status is unknown: the read failed. Retrying the connection will resolve it.") this.setState(clearErrorPatch());
+      }
     });
   }
 
@@ -1032,9 +1039,14 @@ export class PiWebApp extends LitElement {
    * success from machine A, and a page-level ("local") claim is disproved by
    * any success at all.
    */
-  private clearTransientError(machineId: string): void {
+  private clearTransientError(machineId: string | undefined): void {
     if (this.state.error === "" || this.state.errorRetiredBy !== RetiredBy.reply) return;
-    if (this.state.errorMachineId !== "local" && this.state.errorMachineId !== machineId) return;
+    // A page-level claim is disproved by any response; a machine-scoped claim
+    // only by a response that was routed to that machine.
+    const disproved = machineId === undefined
+      ? this.state.errorMachineId === "page"
+      : this.state.errorMachineId === machineId;
+    if (!disproved) return;
     // Reset the scope with the text: a stale scope would let the next
     // transport complaint inherit a machine it does not speak about.
     this.setState(clearErrorPatch());

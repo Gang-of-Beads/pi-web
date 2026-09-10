@@ -127,7 +127,7 @@ export interface AppState {
   error: string;
   /** What retires the error notice; see notice.ts. */
   errorRetiredBy: RetiredBy;
-  /** Which machine's link the error speaks about; "local" for page-level claims. */
+  /** Which machine's link the error speaks about; "page" for page-level claims, which any response disproves. */
   errorMachineId: string;
 }
 
@@ -268,6 +268,6 @@ export function initialAppState(): AppState {
     piWebStatus: undefined,
     error: "",
     errorRetiredBy: RetiredBy.reader,
-    errorMachineId: "local",
+    errorMachineId: "page",
   };
 }

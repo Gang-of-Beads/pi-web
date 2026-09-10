@@ -244,7 +244,7 @@ export class QuickSwitcher extends LitElement {
   private renderRowMenu(session: SessionInfo) {
     const pinned = this.pinnedSessionIds.has(session.id);
     return html`
-      <div class="action-menu-panel row-menu" role="menu" style=undefined>
+      <div class="action-menu-panel row-menu" role="menu" style=${this.menuStyle}>
         <button role="menuitem" @click=${() => { this.openSession(session); }}>Open</button>
         <button role="menuitem" @click=${() => { this.togglePin(session); }}>${pinned ? "Unpin" : "Pin to top"}</button>
         <button role="menuitem" ?disabled=${this.onRenameSession === undefined} @click=${() => { this.startRename(session); }}>Rename</button>
@@ -496,7 +496,10 @@ export class QuickSwitcher extends LitElement {
     @media (max-width: 430px) {
       .rows { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
     }
-    .row-menu { display: grid; gap: var(--pi-space-1); min-width: 160px; padding: var(--pi-space-2); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); box-shadow: var(--pi-elevation-2); }
+    /* This component does not adopt the shared listStyles, so the shared
+       .action-menu-panel positioning does not exist here: the fixed placement
+       is declared locally. */
+    .row-menu { position: fixed; z-index: var(--pi-layer-popover); box-sizing: border-box; overflow: auto; display: grid; gap: var(--pi-space-1); min-width: 160px; padding: var(--pi-space-2); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); box-shadow: var(--pi-elevation-2); }
     .row-menu button { box-sizing: border-box; min-height: var(--pi-control-height-comfort); border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-text); padding: 0 var(--pi-space-5); font: inherit; text-align: left; cursor: pointer; }
     /* Coarse pointers get the comfort floor: every target the quick switcher
        ships measures 44px on touch. Placed after every base declaration it

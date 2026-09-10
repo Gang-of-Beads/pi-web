@@ -10,7 +10,7 @@ import { interactiveSurfaceStyles } from "../shared";
  * Dedicated machines management panel: every connected machine (including
  * Local) as a responsive card grid with rename and remove actions, plus an
  * Add machine entry point. Renaming the local machine persists as an alias;
- * health dots mirror the machine switcher.
+ * health dots mirror the machine list's row dots.
  */
 
 @customElement("settings-machines-panel")

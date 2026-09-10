@@ -1,12 +1,5 @@
 import { html, type TemplateResult } from "lit";
-import type { NavStatusFlags } from "@gang-of-beads/pi-web/plugin-api";
-
-/** The flag ids PI WEB itself publishes today; matched against the contract's open flag maps. */
-const CORE_STATUS_FLAGS = {
-  working: "core:working",
-  terminal: "core:terminal",
-  unread: "core:unread",
-} as const;
+import { CORE_STATUS_FLAGS, type NavStatusFlags } from "@gang-of-beads/pi-web/plugin-api";
 
 /**
  * Work signals a row can show. At most one kind renders at a time; call sites

@@ -11,7 +11,7 @@ export class MachineController {
   constructor(private readonly getState: GetState, private readonly setState: SetState, private readonly updateUrl: UpdateUrl, private readonly projects: Pick<ProjectController, "loadProjects">) {}
 
   async loadMachines(routeMachineId?: string): Promise<void> {
-    this.setState({ error: "", isLoadingMachines: true, machinesLoad: "loading" });
+    this.setState({ ...clearErrorPatch(), isLoadingMachines: true, machinesLoad: "loading" });
     try {
       const machines = await api.machines();
       const selectedMachine = await this.selectInitialMachine(machines, routeMachineId);

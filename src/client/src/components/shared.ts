@@ -432,8 +432,9 @@ export const listStyles = css`
      .action-main painted nothing at all. Session rows speak .session-state,
      not .activity-indicator, so the rail names both vocabularies or the
      largest list on screen never gets a rail. */
-  /* The row indicator's arbiter renders exactly one state dot per row, so
-     these rules never compete on one row; their order is belt-and-braces. All
+  /* Within a vocabulary the arbiter renders exactly one state dot per row;
+     the ring wrapper (unread + work on machine rows) is the composite that can
+     make two rules match, which the ring's omission above resolves. All
      :has() rules are (0,1,0) - :where() contributes nothing - and the
      row-class rules below (unread/archived/selected) are (0,2,0), so they win
      on specificity regardless of order. The unread CLASS is unconditional on
@@ -442,7 +443,15 @@ export const listStyles = css`
      amber dot; the dot rules above are the only unread painters. Machine and
      workspace rows speak activity-indicator.session and stay success, the
      colour their working dots wear. */
-  .action-row:has(:where(.activity-indicator.unread, .unread-ring, .session-state.unread, .session-state.background)) { border-left-color: var(--pi-purple); }
+  /* Composites are real: an unread-and-working machine row wears the ring
+     around its work dot, so both the unread and the work rules match one row.
+     The ring entry is therefore NOT listed: the dot the ring wraps decides
+     the rail, which is what "the rail wears the dot's colour" means for a
+     composite. Order among the work rules is the composite's precedence
+     (session > terminal), not an arbiter - the arbiter's one-dot guarantee
+     holds within a vocabulary, not across the ring wrapper. */
+  .action-row:has(:where(.activity-indicator.unread, .session-state.unread, .session-state.background)) { border-left-color: var(--pi-purple); }
+  .action-row:has(:where(.activity-indicator.sending)) { border-left-color: var(--pi-warning); }
   .action-row:has(:where(.activity-indicator.session, .session-state.running)) { border-left-color: var(--pi-success); }
   .action-row:has(:where(.session-state.running)) { border-left-color: var(--pi-accent); }
   .action-row:has(:where(.session-state.asking)) { border-left-color: var(--pi-warning); }

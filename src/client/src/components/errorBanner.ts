@@ -30,9 +30,10 @@ export function errorBanner(error: string, onDismiss: () => void, retiredBy: Ret
 /**
  * Whether a message is one of the self-healing transport failures.
  *
- * Exported so the owner of the banner can let those expire on their own. A
- * permanent failure must never expire: it stays until the user has seen and
- * dismissed it.
+ * The classification seam: notice.ts asks it whether an error's text carries
+ * transport evidence (retirement follows the evidence, not the exception's
+ * class), and the banner asks it how to shorten a reply-retired string for
+ * display. A reader-retired failure is never rewritten.
  */
 export function isTransientError(error: string): boolean {
   return normalizeTransientError(error) !== undefined;

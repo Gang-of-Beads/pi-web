@@ -1,60 +1,71 @@
-/**
- * Round-19 probe: the quick switcher row menu must carry its computed fixed
- * placement. Standalone probe script (knip-ignored); run against 8505.
- */
 import { chromium } from "playwright";
 
-// Round-19 probe: the quick switcher's row menu must receive the computed
-// fixed-position style (round-18 shipped it as a literal style="undefined").
+// Round-20 probe: the QUICK SWITCHER's row menu must carry its computed fixed
+// placement. Round 19's probe verified the machine list's menu instead - this
+// one opens the quick switcher surface itself.
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 393, height: 850 }, hasTouch: true, isMobile: true });
 await page.goto("http://localhost:8505/", { waitUntil: "networkidle" });
 await page.waitForTimeout(3000);
 
-const opened = await page.evaluate(() => {
-  let toggles = [];
-  const walk = (root) => {
-    for (const el of root.querySelectorAll("button")) {
-      const label = el.getAttribute("aria-label") ?? "";
-      if (label.startsWith("Actions for ") && el.getBoundingClientRect().width > 0) toggles.push(el);
-    }
-    for (const kid of root.querySelectorAll("*")) if (kid.shadowRoot) walk(kid.shadowRoot);
-  };
-  walk(document);
-  return toggles.length;
-});
-console.log("menu toggles found:", opened);
-if (opened === 0) { console.log("FAIL: no session rows to open a menu on"); await browser.close(); process.exit(1); }
-
-const style = await page.evaluate(() => {
+const openSwitcher = await page.evaluate(() => {
   let hit = null;
   const walk = (root) => {
-    for (const el of root.querySelectorAll("button")) {
-      const label = el.getAttribute("aria-label") ?? "";
-      if (hit === null && label.startsWith("Actions for ") && el.getClientRects().length > 0 && el.getBoundingClientRect().width > 0) hit = el;
+    for (const el of root.querySelectorAll("button, [role=button]")) {
+      const label = (el.getAttribute("aria-label") ?? "") + " " + (el.textContent ?? "");
+      if (hit === null && label.includes("Open session selection") && el.getBoundingClientRect().width > 0) hit = el;
     }
     for (const kid of root.querySelectorAll("*")) if (kid.shadowRoot) walk(kid.shadowRoot);
   };
   walk(document);
-  hit.dispatchEvent(new MouseEvent("click", { bubbles: true, composed: true }));
+  if (hit === null) return false;
+  hit.click();
   return true;
 });
-await page.waitForTimeout(300);
+console.log("quick switcher opened:", openSwitcher);
+await page.waitForTimeout(1200);
+
+// find the first visible "Actions for" toggle by walking shadow roots, then
+// click it with a real pointer event
+const toggleInfo = await page.evaluate(() => {
+  let path = null;
+  const walk = (root, trail) => {
+    for (const el of root.querySelectorAll("button")) {
+      const label = el.getAttribute("aria-label") ?? "";
+      if (path === null && label.startsWith("Actions for ") && el.getBoundingClientRect().width > 0) {
+        path = [...trail, el];
+      }
+    }
+    for (const kid of root.querySelectorAll("*")) if (kid.shadowRoot) walk(kid.shadowRoot, [...trail, kid]);
+  };
+  walk(document, []);
+  return path === null ? null : path.length;
+});
+console.log("toggle found at shadow depth:", toggleInfo);
+if (toggleInfo === null) { console.log("FAIL: no rows inside the quick switcher"); await browser.close(); process.exit(1); }
+// click through the real input pipeline
+await page.locator('quick-switcher').first().evaluate((el) => el.shadowRoot.querySelector("button[aria-label^='Actions for']")?.click());
 
 const menu = await page.evaluate(() => {
   let menu = null;
   const walk = (root) => {
-    for (const el of root.querySelectorAll(".row-menu, .action-menu-panel")) if (menu === null) menu = el;
+    for (const el of root.querySelectorAll(".row-menu")) if (menu === null) menu = el;
     for (const kid of root.querySelectorAll("*")) if (kid.shadowRoot) walk(kid.shadowRoot);
   };
   walk(document);
-  if (menu === null) return null;
-  const styleAttr = menu.getAttribute("style") ?? "";
-  const computed = getComputedStyle(menu);
-  return { styleAttr: styleAttr.slice(0, 60), position: computed.position };
+  if (menu === null) {
+    const candidates = [];
+    const walk2 = (root) => { for (const el of root.querySelectorAll("[role=menu], [class*=menu]")) candidates.push(el.className); for (const kid of root.querySelectorAll("*")) if (kid.shadowRoot) walk2(kid.shadowRoot); };
+    walk2(document);
+    return { candidates: candidates.slice(0, 8) };
+  }
+  return {
+    styleAttr: (menu.getAttribute("style") ?? "").slice(0, 60),
+    position: getComputedStyle(menu).position,
+  };
 });
 console.log(JSON.stringify(menu));
 const ok = menu !== null && menu.styleAttr !== "undefined" && menu.styleAttr !== "" && menu.position === "fixed";
-console.log(ok ? "PASS: row menu carries computed fixed placement" : "FAIL: row menu placement missing");
+console.log(ok ? "PASS: quick switcher row menu carries computed fixed placement" : "FAIL: placement missing on the quick switcher's own menu");
 await browser.close();
 process.exit(ok ? 0 : 1);

@@ -25,15 +25,15 @@ export function errorNoticePatch(
   link: { readonly live: boolean } = { live: false },
 ): Pick<AppState, "error" | "errorRetiredBy" | "errorMachineId"> {
   const notice = noticeFromError(error, link);
-  return { error: notice.text, errorRetiredBy: notice.retiredBy, errorMachineId: "local" };
+  return { error: notice.text, errorRetiredBy: notice.retiredBy, errorMachineId: notice.machineId ?? "page" };
 }
 
 /** An AppState patch carrying a Notice with its retirement semantics. */
 export function noticePatch(notice: Notice): Pick<AppState, "error" | "errorRetiredBy" | "errorMachineId"> {
-  return { error: notice.text, errorRetiredBy: notice.retiredBy, errorMachineId: notice.machineId ?? "local" };
+  return { error: notice.text, errorRetiredBy: notice.retiredBy, errorMachineId: notice.machineId ?? "page" };
 }
 
 /** The one way to clear: a cleared banner carries no stranger's mark or scope. */
 export function clearErrorPatch(): Pick<AppState, "error" | "errorRetiredBy" | "errorMachineId"> {
-  return { error: "", errorRetiredBy: "reader", errorMachineId: "local" };
+  return { error: "", errorRetiredBy: "reader", errorMachineId: "page" };
 }

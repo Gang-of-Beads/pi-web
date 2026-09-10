@@ -87,14 +87,14 @@ export function noticeFromError(error: unknown, link: { readonly live: boolean }
   // claim - the gateway answered, but only to say the daemon behind it is
   // unreachable, which is the commonest banner an update produces. That claim
   // heals, so it keeps reply retirement and the wording table applies.
-  if (error instanceof HttpError) {
-    return isTransientError(text) ? noticeFromTransport(text) : noticeForReader(text);
+  // Retirement follows the evidence in the message, not the exception's
+  // pedigree: helper wrappers re-throw plain Errors carrying the same words,
+  // and the same text must not get two lifetimes because two HTTP helpers
+  // raised it.
+  if (isTransientError(text) || /failed to fetch|load failed|networkerror when attempting to fetch/i.test(text)) {
+    return noticeFromTransport(text, error instanceof RequestTimeoutError ? machineIdFromUrl(error.url) : undefined);
   }
-  // A link-level failure (fetch rejected, request cancelled) asserts the same
-  // claim a timeout does: the server could not be reached. Any later answer
-  // from the same link disproves it.
-  if (error instanceof TypeError) return noticeFromTransport(text);
-  if (error instanceof RequestTimeoutError) return noticeFromTransport(text, machineIdFromUrl(error.url));
+  if (error instanceof HttpError) return noticeForReader(text);
   // A deadline miss asserts "the server did not answer" - the same claim an
   // HttpError makes, so later answers disprove it the same way. Measured
   // live: a remote machine answered /status at 30.007s against a 30.000s
