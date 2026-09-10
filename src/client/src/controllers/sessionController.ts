@@ -969,6 +969,17 @@ export class SessionController {
       const refreshedSelected = sessions.find((session) => session.id === selectedSession.id);
       if (refreshedSelected !== undefined) {
         if (refreshedSelected !== selectedSession) this.setState({ selectedSession: refreshedSelected });
+        // A remembered selection restored at boot carries no list stamp: the
+        // first listing is where the app learns the folder is gone. Deselect
+        // into the fact instead of leaving a session on screen that can never
+        // load - the red-banner-after-restore is the shape the owner rejected.
+        if (refreshedSelected.cwdMissing === true) {
+          this.deselectSession({ forgetRememberedSelection: true });
+          if (selectedMachineId(this.getState()) === machineId) {
+            this.setState(noticePatch(noticeForReader("This session's folder no longer exists, so it cannot be opened.")));
+          }
+          return;
+        }
         return;
       }
       if (!refreshMayReplaceSelection({ refreshedWorkspacePath: workspace.path, selectedSessionCwd: selectedSession.cwd })) return;
