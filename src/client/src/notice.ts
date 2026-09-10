@@ -34,8 +34,10 @@ export function noticeFromTransport(text: string, machineId?: string): Notice {
     : { text, retiredBy: RetiredBy.reply, machineId };
 }
 
-export function noticeForReader(text: string): Notice {
-  return { text, retiredBy: RetiredBy.reader };
+export function noticeForReader(text: string, machineId?: string): Notice {
+  return machineId === undefined
+    ? { text, retiredBy: RetiredBy.reader }
+    : { text, retiredBy: RetiredBy.reader, machineId };
 }
 
 
@@ -98,7 +100,7 @@ export function noticeFromError(error: unknown): Notice {
   // Classification still follows the message's evidence, so a reader-type
   // failure that happens to carry a machineId keeps reader retirement.
   if (error instanceof HttpError) {
-    return isTransientError(text) ? noticeFromTransport(text, error.machineId) : noticeForReader(text);
+    return isTransientError(text) ? noticeFromTransport(text, error.machineId) : noticeForReader(text, error.machineId);
   }
   // The display side owns the phrase table (isTransientError below reads
   // it); classification asks rather than re-spelling it, so the two cannot

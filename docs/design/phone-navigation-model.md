@@ -33,7 +33,7 @@ fallback-visible section; the applied shape kept toggle semantics and papered
 over it with `compactVisibleSection()`'s fallback. This defect is the residue.
 
 Second-order: the machines level is unreachable from the phone panel entirely
-(machine list gated on an expand nothing sets; `machine-switcher` rendered
+(machine list gated on an expand nothing sets; the machines section rendered (the switcher component itself was removed in b0bce2a0)
 permanently hidden). Machine switching survives via QuickSwitcher tabs,
 management via Settings — report-only.
 

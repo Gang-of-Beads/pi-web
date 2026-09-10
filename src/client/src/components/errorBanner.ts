@@ -3,9 +3,10 @@ import type { RetiredBy } from "../notice.js";
 import { renderCrossIcon } from "./uiIcons.js";
 
 /**
- * The shared error banner. It stays until the user dismisses it, another
- * message replaces it, or the owning action clears it, so a background refresh
- * cannot hide a failure the user has not read yet.
+ * The shared error banner. It leaves when the user dismisses it, another
+ * message replaces it, the owning action clears it, or - for the transport
+ * claims below - the machine's own answers or the expiry retire it, so a
+ * background refresh cannot hide a failure the user has not read yet.
  *
  * A few transport/reconnect failures are noisy but usually self-heal after the
  * next retry or a sessiond restart. Those still deserve visibility, but not a
@@ -62,8 +63,7 @@ export function normalizeTransientError(error: string): string | undefined {
   // uncomposed claims reach the rewrites below. Three producers compose the
   // prefix today - machineDownNotice and the explicit-selection path in the
   // machine controller, and the restore ladder's retry sentence in
-  // PiWebApp - keep that count true when adding a fourth.. The composed prefix is the
-  // machine controller's own; nothing else produces it.
+  // PiWebApp - keep that count true when adding a fourth.
   const composed = /is unavailable; reconnecting/i.test(error);
   // A TCP-endpoint deployment has no socket path in the error text, so the
   // socket-path requirement missed the same outage there; the daemon's own

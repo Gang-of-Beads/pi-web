@@ -621,7 +621,7 @@ export class SessionTreeNavigator extends LitElement {
       header { padding-top: max(var(--pi-space-6), env(safe-area-inset-top)); }
       .tree-step { padding-inline: max(var(--pi-space-4), env(safe-area-inset-left)) max(var(--pi-space-4), env(safe-area-inset-right)); }
       .tree-intro { padding-inline: var(--pi-space-2); }
-      .tree-row { grid-template-columns: 20px minmax(0, 1fr); padding-inline-start: calc(var(--pi-space-3) + min(var(--tree-indent-mobile), 48px)); }
+      .tree-row { grid-template-columns: 24px minmax(0, 1fr); padding-inline-start: calc(var(--pi-space-3) + min(var(--tree-indent-mobile), 48px)); }
       .tree-row > .metadata { grid-column: 2; grid-row: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--pi-space-3) var(--pi-space-4); }
       .tree-row > .metadata > .badges { margin-inline-start: auto; flex-wrap: wrap; }
       .tree-row > .entry { grid-column: 2; grid-row: 2; display: grid; gap: var(--pi-space-2); }
@@ -630,6 +630,12 @@ export class SessionTreeNavigator extends LitElement {
       .confirmation-step { padding: var(--pi-space-8) var(--pi-space-6); }
       .custom-focus, .validation-error { margin-inline-start: 0; }
       footer { flex-wrap: wrap; }
+    }
+    /* Declared after every base .tree-row rule: on a coarse pointer the
+       disclosure draws 24px, so the leading track reserves 24px too - the
+       reservation follows the drawing, the same family as the session list. */
+    @media (pointer: coarse) {
+      .tree-row { grid-template-columns: 24px minmax(82px, auto) minmax(0, 1fr); }
     }
   `];
 }

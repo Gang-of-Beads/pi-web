@@ -297,10 +297,10 @@ export class PiWebApp extends LitElement {
   });
   /** The interrupted markers and the machine they were read from: a late read
    * for a machine the user has already left must not adopt here. */
-  @state() private interruptedSessionIds: ReadonlySet<string> = new Set();
-  private interruptedSessionIdsMachine: string | undefined;
-  /** The machine whose failed read raised the unknown banner; its own successful read retracts it. */
-  private interruptedRunsUnknownMachine: string | undefined;
+  /** Adopted markers per machine: adopting B's must not evict A's, whose
+   * own record was already spent by its boot read. */
+  private interruptedRunsByMachine = new Map<string, ReadonlySet<string>>();
+  private interruptedRunsBootReadByMachine = new Set<string>();
   @state() private unreadSessionIds: ReadonlySet<string> = this.sessionUnread.unreadSessionIds(selectedMachineId(this.state), this.state.sessions);
   private unreadConnected = false;
   private committedChatIdentity: string | undefined;
@@ -775,7 +775,7 @@ export class PiWebApp extends LitElement {
      switch tears the socket down and reconnects, and that re-entry must not
      wear boot semantics - the record the first read spent stays spent, and
      an empty answer on re-entry says nothing about continuance. */
-  private interruptedRunsBootReadDone = false;
+
 
   private refreshInterruptedRuns(machineId: string, options: { adoptEmpty?: boolean } = {}): void {
     void this.sessions.loadInterruptedRuns(machineId).then((ids) => {
@@ -785,21 +785,19 @@ export class PiWebApp extends LitElement {
       // A stale machine's failed read must not announce onto the machine the
       // reader is now looking at.
       if (selectedMachineId(this.state) !== machineId) return;
-      const adoptEmpty = options.adoptEmpty ?? !this.interruptedRunsBootReadDone;
+      const adoptEmpty = options.adoptEmpty ?? !this.interruptedRunsBootReadByMachine.has(machineId);
       const plan = interruptedRunsReadPlan(ids, adoptEmpty);
       if (plan.failed) {
         // A poll never replaces a banner the reader may still be acting on;
         // the unknown state is only worth announcing onto a quiet screen.
         if (this.state.error === "") {
-          this.interruptedRunsUnknownMachine = machineId;
-          this.setState(noticePatch(noticeForReader(INTERRUPTED_RUNS_UNKNOWN_MESSAGE)));
+          this.setState(noticePatch(noticeForReader(INTERRUPTED_RUNS_UNKNOWN_MESSAGE, machineId)));
         }
         return;
       }
-      this.interruptedRunsBootReadDone = true;
+      this.interruptedRunsBootReadByMachine.add(machineId);
       if (plan.adoptMarkers && ids !== undefined) {
-        this.interruptedSessionIds = ids;
-        this.interruptedSessionIdsMachine = machineId;
+        this.interruptedRunsByMachine.set(machineId, ids);
       }
       // A successful read is the answer the banner asked for, whether or not
       // the record had content - after the boot read, emptiness is the only
@@ -809,10 +807,11 @@ export class PiWebApp extends LitElement {
       // sentence promises.
       // The retraction is an identity match on this feature's own private
       // wording (INTERRUPTED_RUNS_UNKNOWN_MESSAGE has a single producer), and
-      // it only answers a banner raised for this machine's read - a success
+      // the banner's machine stamp must be this read's machine - a success
       // from machine B may not clear machine A's unknown banner now that
-      // banners survive scope switches.
-      if (plan.resolveUnknown && this.state.error === INTERRUPTED_RUNS_UNKNOWN_MESSAGE && this.interruptedRunsUnknownMachine === machineId) this.setState(clearErrorPatch());
+      // banners survive scope switches. The stamp lives on the state, so it
+      // travels with the banner instead of a private that cannot follow it.
+      if (plan.resolveUnknown && this.state.error === INTERRUPTED_RUNS_UNKNOWN_MESSAGE && this.state.errorMachineId === machineId) this.setState(clearErrorPatch());
     });
   }
 
@@ -1507,11 +1506,7 @@ export class PiWebApp extends LitElement {
   private deferRemoteRouteRestore(route: ParsedAppRoute): void {
     this.pendingRemoteRouteRestore = route;
     this.remoteRouteRestoreAttempt = 0;
-    // The reconnecting sentence names a machine; a local route's ladder
-    // retries the projects listing, and loadProjects' catch already raises
-    // the honest failure banner - the machine wording would promise a
-    // reconnect the local ladder never performs.
-    if ((route.machineId ?? "local") !== "local") this.setRemoteRouteRestoreMessage(route);
+    this.setRemoteRouteRestoreMessage(route);
     this.schedulePendingRemoteRouteRestore();
   }
 
@@ -1557,7 +1552,10 @@ export class PiWebApp extends LitElement {
       }
       await this.projects.loadProjects();
       if (!this.pendingRemoteRouteRestoreStillCurrent(route)) return;
-      if (this.state.error !== "") {
+      // The load's own status is the probe - a leftover banner from another
+      // machine is not evidence about this listing, and since the owner's
+      // clear-notify call nothing clears state.error at load start.
+      if (this.state.projectsLoad !== "loaded") {
         this.scheduleNextRemoteRouteRestoreAttempt(route);
         return;
       }
@@ -1584,6 +1582,11 @@ export class PiWebApp extends LitElement {
   }
 
   private setRemoteRouteRestoreMessage(route: ParsedAppRoute, options: { exhausted?: boolean } = {}): void {
+    // The reconnecting sentence names a machine; a local route's ladder
+    // retries the projects listing, and loadProjects' catch already raises
+    // the honest failure banner - the machine wording would promise a
+    // reconnect the local ladder never performs.
+    if ((route.machineId ?? "local") === "local") return;
     const machineId = route.machineId ?? "local";
     const machineName = this.state.machines.find((machine) => machine.id === machineId)?.name ?? this.state.selectedMachine?.name ?? "Remote machine";
     const health = this.state.machineStatuses[machineId];
@@ -4030,7 +4033,7 @@ export class PiWebApp extends LitElement {
           .sessionStates=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_STATE_MAP : this.sessionStateKinds()}
           .waitingSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.waitingSessionIds()}
           .unreadSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.unreadSessionIds}
-          .interruptedSessionIds=${this.quickSwitcherBrowsingElsewhere() || this.interruptedSessionIdsMachine !== selectedMachineId(state) ? EMPTY_ID_SET : this.interruptedSessionIds}
+          .interruptedSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.interruptedRunsByMachine.get(selectedMachineId(state)) ?? EMPTY_ID_SET}
           .errorSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.errorSessionIds()}
           .pinnedSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.pinnedSessionIds}
           .projects=${this.quickSwitcherBrowsingElsewhere() ? [] : state.projects}

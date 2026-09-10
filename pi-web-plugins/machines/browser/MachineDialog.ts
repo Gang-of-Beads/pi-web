@@ -142,7 +142,7 @@ export class MachineDialog extends LitElement {
     .optional { color: var(--pi-muted); font-weight: var(--pi-weight-regular); }
     .field-error { color: var(--pi-danger); }
     .dialog-error { border: 1px solid var(--pi-danger); border-radius: var(--pi-radius-md); background: color-mix(in srgb, var(--pi-danger) 10%, transparent); color: var(--pi-danger); padding: var(--pi-space-5); line-height: 1.35; }
-    button { font: inherit; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
+    form button { font: inherit; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
     header button { display: grid; place-items: center; box-sizing: border-box; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort);  line-height: 1; border: 0; background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); padding: 0; }
     .primary { border-color: var(--pi-accent); background: var(--pi-accent); color: var(--pi-on-accent, var(--pi-bg)); }
     button:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }

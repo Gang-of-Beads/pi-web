@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { listStyles, workspacePanelStyles} from "./shared";
 import { appStyles } from "./PiWebApp";
@@ -115,8 +115,8 @@ describe("accessibility floors", () => {
       const defining = files.find((file) => readFileSync(file, "utf8").includes(`customElement("${tag}")`));
       expect(defining, `no component defines <${tag}>`).toBeDefined();
       const source = readFileSync(defining ?? "", "utf8");
-      const sourceDir = defining?.split("/").slice(0, -1).join("/") ?? "";
-      const sibling = files.filter((file) => file.startsWith(sourceDir)).map((file) => readFileSync(file, "utf8")).join("\n");
+      const sourceDir = dirname(defining ?? "");
+      const sibling = files.filter((file) => dirname(file) === sourceDir).map((file) => readFileSync(file, "utf8")).join("\n");
       const usesSharedListSheet = source.includes("listStyles") || sibling.includes("host.listStyles");
       const guardsItself = source.includes(":host([hidden])");
       expect(usesSharedListSheet || guardsItself, `<${tag}> is rendered with hidden but nothing makes hidden win`).toBe(true);
