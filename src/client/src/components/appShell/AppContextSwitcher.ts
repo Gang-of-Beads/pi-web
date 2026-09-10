@@ -111,8 +111,13 @@ export class AppContextSwitcher extends LitElement {
     .chip-value { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--pi-text-sm); font-weight: var(--pi-weight-semibold); }
     /* When a step is too narrow for label and value, the label goes first:
        the value is the half that answers "where am I?". The picker it opens
-       says its own name. */
-    @container (max-width: 140px) { .chip-label { display: none; } }
+       says its own name. The value steps down with it - the fallback words
+       are 7-9 monospace characters and stopped fitting the three-across step
+       the day the UI face went mono. */
+    @container (max-width: 140px) {
+      .chip-label { display: none; }
+      .chip-value { font-size: var(--pi-text-2xs); }
+    }
     .add { flex: 0 0 auto; align-self: stretch; width: var(--pi-control-height-comfort); border: 0; border-left: 1px solid var(--pi-border); background: none; color: var(--pi-muted); font-size: var(--pi-text-lg); line-height: 1; cursor: pointer; }
     .step.open .add { border-left-color: color-mix(in srgb, var(--pi-accent) 40%, var(--pi-border)); }
     @media (pointer: coarse) { .add { width: var(--pi-control-height-touch, 44px); } }
