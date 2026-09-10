@@ -265,8 +265,8 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
     .machine-status.online { color: var(--pi-success); }
     .machine-status.offline, .machine-status.error { color: var(--pi-danger); }
     .machine-row .action-main { min-height: var(--pi-row-min-height); align-content: center; }
-    .machine-primary { display: flex; align-items: baseline; gap: var(--pi-space-3); }
-    .machine-primary-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    /* white-space completes the ellipsis trio its workspace sibling has; without it the adopted -webkit-box clamp wraps long names mid-word. */
+    .machine-primary-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .machine-menu-panel button.danger { color: var(--pi-danger); }
     .machine-menu-panel button.danger:focus { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); }
     @media (hover: hover) { .machine-menu-panel button.danger:hover { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); } }

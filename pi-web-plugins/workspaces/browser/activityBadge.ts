@@ -5,7 +5,7 @@ import { CORE_STATUS_FLAGS, type NavStatusFlags } from "@gang-of-beads/pi-web/pl
  * Work signals a row can show. At most one kind renders at a time; call sites
  * resolve precedence (sending > session > terminal) before rendering.
  */
-export type ActivityIndicatorKind = "session" | "terminal" | "sending";
+export type ActivityIndicatorKind = "session" | "terminal";
 
 /**
  * Map a status node's flags onto the row's work mark.

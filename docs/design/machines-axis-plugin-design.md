@@ -13,7 +13,7 @@ owner 顾虑：machines 本质是管理多个 pi-web 实例的交互；若是插
 3. `/api/machines/local/*` 字面双注册（app.ts:255-287 全部 core 路由已双挂），代理腿对 local 显式 501（machineProxyRoutes.ts:73-75）。
 4. "本机"产品语义：可命名（machineService.ts:43-46）、不可删（machineController.ts:88-91）、runtime/status 归本机。
 
-**插件所有（pi-web-machines，runs:"web"）**：machines.json、`/api/machines` 集合与 `:id/{health,runtime}`、`:id/*` 联邦代理、远端插件清单代理（machinePluginProxyRoutes.ts:40）、MachineList/MachineSwitcher/SettingsMachinesPanel/SettingsFleetSection、9 个服务端文件整体搬运。
+**插件所有（pi-web-machines，runs:"web"）**：machines.json、`/api/machines` 集合与 `:id/{health,runtime}`、`:id/*` 联邦代理、远端插件清单代理（machinePluginProxyRoutes.ts:40）、MachineList/SettingsMachinesPanel/SettingsFleetSection（MachineSwitcher 后随 row-menu 方向移除）、9 个服务端文件整体搬运。
 
 **硬证据（为什么轴不能进插件）**：插件系统自身按机器分发——`PluginRuntimeContext.machineId`（plugins/types.ts:15-18）、`DrawerSectionContext.machineId`（:167）。轴若是插件，"插件发现"就依赖一个插件，契约字段却要求 machineId，实现与契约自相矛盾。
 

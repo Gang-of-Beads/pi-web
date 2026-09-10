@@ -69,7 +69,11 @@ export async function requestPluginBackend(
     });
     reportTransportReachable(pluginBackendRequestUrl(target, operation), { machineId: target.machineId });
   } catch (error) {
-    throw new HttpError(`Plugin backend request unavailable: ${describeError(error)}`, 0, target.machineId);
+    // The raw browser text stays raw: the transport family rules are anchored
+    // whole-message, so a composed prefix converts a link failure into a
+    // reader-retired permanent banner. The healing rewrite ("Lost connection
+    // to PI WEB. Reconnecting…") is what the reader sees anyway.
+    throw new HttpError(describeError(error), 0, target.machineId);
   }
 
   const text = await readBoundedResponseText(response);

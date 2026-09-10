@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { HttpError } from "./api/http";
 import { RequestTimeoutError } from "./api/requestDeadline";
-import { NO_NOTICE, noticeForReader, noticeFromError, noticeFromTransport } from "./notice";
+import { noticeForReader, noticeFromError, noticeFromTransport } from "./notice";
 
 describe("what retires a notice", () => {
   /**
@@ -22,10 +22,6 @@ describe("what retires a notice", () => {
    */
   it("leaves a notice about one operation to the reader", () => {
     expect(retiresOnReply(noticeForReader("Rename failed"))).toBe(false);
-  });
-
-  it("has nothing to retire when nothing is shown", () => {
-    expect(retiresOnReply(NO_NOTICE)).toBe(false);
   });
 });
 

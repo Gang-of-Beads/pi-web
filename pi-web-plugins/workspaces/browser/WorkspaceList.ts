@@ -410,6 +410,7 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
     .workspace-menu-trust { display: flex; flex-direction: column; gap: var(--pi-space-2); padding: var(--pi-space-2) var(--pi-space-1); }
     .workspace-menu-trust-row { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); }
     .workspace-menu-trust label { display: flex; align-items: center; gap: var(--pi-space-3); cursor: pointer; }
+    @media (pointer: coarse) { .workspace-menu-trust label { min-height: var(--pi-control-height-touch); } }
     .workspace-menu-trust input { box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); margin: 0; accent-color: var(--pi-accent); cursor: pointer; }
     .workspace-trust-link { display: inline-flex; align-items: center; min-height: var(--pi-control-height); color: var(--pi-accent); font-size: var(--pi-text-xs); text-align: right; white-space: nowrap; }
     .workspace-trust-error { color: var(--pi-danger, #c0392b); line-height: 1.3; }

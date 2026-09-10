@@ -16,7 +16,7 @@ describe("a banner that keeps appearing and withdrawing", () => {
    * on screen long enough to read.
    */
   it("shows a new message at once", () => {
-    expect(bannerHoldDecision({ shownAt: undefined, now: 1000, next: "boom" })).toEqual({ kind: "show", text: "boom" });
+    expect(bannerHoldDecision({ shownAt: undefined, now: 1000, next: "boom" })).toEqual({ kind: "show" });
   });
 
   it("holds an established banner rather than withdrawing it immediately", () => {
@@ -34,6 +34,6 @@ describe("a banner that keeps appearing and withdrawing", () => {
    * so swapping its words costs no layout.
    */
   it("replaces the text of a banner already on screen", () => {
-    expect(bannerHoldDecision({ shownAt: 1000, now: 1100, next: "worse" })).toEqual({ kind: "show", text: "worse" });
+    expect(bannerHoldDecision({ shownAt: 1000, now: 1100, next: "worse" })).toEqual({ kind: "show" });
   });
 });

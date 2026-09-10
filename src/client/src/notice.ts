@@ -27,7 +27,6 @@ export interface Notice {
   readonly machineId?: string;
 }
 
-export const NO_NOTICE: Notice = { text: "", retiredBy: RetiredBy.reader };
 
 export function noticeFromTransport(text: string, machineId?: string): Notice {
   return machineId === undefined
@@ -73,11 +72,12 @@ export function describeError(error: unknown): string {
  * reading "the server did not answer within 30s" over a transcript that was
  * still receiving output made the app look broken while it was working.
  *
- * A deadline miss therefore raises nothing here while the socket is proven
- * live; only a link that cannot be shown alive still speaks for the page.
+ * A deadline miss is rewritten by the wording table to a line that withdraws
+ * itself. (The live-link suppression branch - raise nothing while the socket
+ * is proven live - is the recorded open seam from the round-19 triage: no
+ * production caller can prove liveness yet, so no such branch ships here.)
  */
-export function noticeFromError(error: unknown, link: { readonly live: boolean } = { live: false }): Notice {
-  if (error instanceof RequestTimeoutError && link.live) return NO_NOTICE;
+export function noticeFromError(error: unknown): Notice {
   const text = describeError(error);
   // An HTTP status is an answer: the link demonstrably works and the operation
   // failed. Treating it as a transport claim let the next successful poll

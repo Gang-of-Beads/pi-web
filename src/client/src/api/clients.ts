@@ -1,5 +1,6 @@
 import type { AskUserSubmission, DeleteWorkspaceFileResponse, ExtensionDialogAnswer, FileSuggestion, MoveWorkspaceFileOptions, PiPackageInstallRequest, PiPackageRemoveRequest, PiPackageScope, PiPackageUpdateRequest, PiWebConfigValues, PromptAttachment, QueuedSessionMessage, RunTerminalCommandInput, SessionBulkMutationRef, SessionCleanupRequest, SessionNotificationDismissThrough, SessionRef, SessionTreeForkRequest, SessionTreeForkResult, SessionTreeNavigateRequest, SessionUnreadAcknowledgeRequest, TerminalCommandRun, TerminalCommandRunFilter, WorkspaceRemovalRequest, WriteWorkspaceFileOptions } from "../../../shared/apiTypes";
 import { resolveAppUrl } from "../appUrl";
+import { describeError } from "../notice";
 import { HttpError, request } from "./http";
 import { machineIdFromUrl, reportTransportReachable } from "./transportHealth";
 import { fetchWithDeadline } from "./requestDeadline";
@@ -376,11 +377,18 @@ export class SessionTreeForkUnavailableError extends Error {
 }
 
 async function requestSessionTreeFork(session: SessionRef, fork: SessionTreeForkRequest, machineId: string): Promise<SessionTreeForkResult> {
-  const response = await fetchWithDeadline(resolveAppUrl(sessionPath(session, "tree/fork", machineId)), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: sessionBody(session, { entryId: fork.entryId, expectedLeafId: fork.expectedLeafId }),
-  });
+  let response: Awaited<ReturnType<typeof fetchWithDeadline>>;
+  try {
+    response = await fetchWithDeadline(resolveAppUrl(sessionPath(session, "tree/fork", machineId)), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: sessionBody(session, { entryId: fork.entryId, expectedLeafId: fork.expectedLeafId }),
+    });
+  } catch (error) {
+    // A bare TypeError is the browser's link-failure shape; unscoped, it
+    // lands page-level and any other machine's success erases it.
+    throw new HttpError(describeError(error), 0, machineId);
+  }
   reportTransportReachable(sessionPath(session, "tree/fork", machineId));
   if (!response.ok) {
     const body: unknown = await response.json().catch((): unknown => ({}));
@@ -398,7 +406,12 @@ function isMissingSessionTreeForkRoute(status: number, value: unknown): boolean 
 }
 
 async function getOptionalTerminalCommandRun(runId: string, machineId: string): Promise<TerminalCommandRun | undefined> {
-  const response = await fetchWithDeadline(resolveAppUrl(`${machinePrefix(machineId)}/terminal-command-runs/${encodeURIComponent(runId)}`));
+  let response: Awaited<ReturnType<typeof fetchWithDeadline>>;
+  try {
+    response = await fetchWithDeadline(resolveAppUrl(`${machinePrefix(machineId)}/terminal-command-runs/${encodeURIComponent(runId)}`));
+  } catch (error) {
+    throw new HttpError(describeError(error), 0, machineId);
+  }
   reportTransportReachable(`${machinePrefix(machineId)}/terminal-command-runs/${encodeURIComponent(runId)}`);
   if (response.status === 404) return undefined;
   if (!response.ok) {

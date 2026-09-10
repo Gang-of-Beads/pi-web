@@ -107,6 +107,11 @@ function renderUpdatesPanel(html: HtmlTemplateTag, terminal: WorkspacePanelTermi
       .updates-command-inline { grid-template-columns: minmax(0, 1fr) auto; }
       .updates-command-actions { display: inline-flex; gap: var(--pi-space-3); }
       .updates-command-actions button.primary { border-color: var(--pi-accent-border); color: var(--pi-text-bright); }
+      /* This panel renders as a bare template in the workspace panel's shadow
+         root, whose button rule pins 32px; these controls take the same
+         floors every custom-element panel got in the touch-floor waves. */
+      button { box-sizing: border-box; min-height: var(--pi-control-height); }
+      @media (pointer: coarse) { button { min-height: var(--pi-control-height-touch); } }
       .updates-recommended { border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); padding: var(--pi-space-5); background: var(--pi-surface); }
       .updates-recommended > strong { color: var(--pi-text-bright); }
       .updates-meta { display: grid; gap: var(--pi-space-1); color: var(--pi-muted); font-size: var(--pi-text-xs); }

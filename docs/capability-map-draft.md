@@ -51,7 +51,7 @@ Legend: **Scope** = what the action operates on. **Derives** = the surface takes
 | Check health / refresh machine | row menu "Check again"; palette machine.refresh | machine | explicit row | menu | C:../../pi-web-plugins/machines/browser/MachineList.ts:160; C:plugins/core/actions.ts:33 |
 | Rename machine (incl. local alias) | row menu Rename… (native prompt); Settings → Machines (inline input) | machine | explicit row | menu | C:../../pi-web-plugins/machines/browser/MachineList.ts:227-234; C:components/settings/SettingsMachinesPanel.ts:70-82 |
 | Open machine's own PI WEB (remote) | row menu "Open PI WEB"; palette machine.open | machine | explicit row | menu | C:../../pi-web-plugins/machines/browser/MachineList.ts:163; C:plugins/core/actions.ts:40 |
-| Remove machine (remote only) | row menu Remove; palette machine.remove; Settings | machine | explicit row | menu | C:../../pi-web-plugins/machines/browser/MachineList.ts:165; C:components/MachineSwitcher.ts:116; C:plugins/core/actions.ts:48 |
+| Remove machine (remote only) | row menu Remove; palette machine.remove; Settings | machine | explicit row | menu | C:../../pi-web-plugins/machines/browser/MachineList.ts:165; C:plugins/core/actions.ts:48 |
 | Machine-wide session **cleanup** (archive idle + delete archived) | "Clean up" in Sessions heading; palette "Clean up sessions" → SessionCleanupDialog | **machine (all projects/cwds)** | **NO — machine-wide despite living in a workspace list** | yes | C:components/SessionList.ts:290; C:components/PiWebApp.ts:2433-2438; SH:apiTypes.ts:785-792 |
 | Status/health per machine | MachineList row meta + activity dot | machine | explicit | read-only | C:../../pi-web-plugins/machines/browser/MachineList.ts:125-127 |
 

@@ -1101,6 +1101,7 @@ export class PiWebApp extends LitElement {
       // re-raise of identical wording re-arms its own expiry instead of
       // inheriting a spent gate.
       this.lastScheduledError = "";
+      this.lastScheduledMachineId = undefined;
       // Only clear what we scheduled for - and "what" is the claim, not the
       // wording: two machines down in a row can produce identical text, and
       // the first machine's timer must not delete the second machine's claim
@@ -1114,6 +1115,7 @@ export class PiWebApp extends LitElement {
   override disconnectedCallback(): void {
     observeTransportRecovery(undefined);
     if (this.transientErrorTimer !== undefined) window.clearTimeout(this.transientErrorTimer);
+    if (this.bannerHoldTimer !== undefined) window.clearTimeout(this.bannerHoldTimer);
     window.removeEventListener("resize", this.onVisualViewportChange);
     window.removeEventListener("orientationchange", this.onVisualViewportChange);
     window.visualViewport?.removeEventListener("resize", this.onVisualViewportChange);
@@ -1957,10 +1959,12 @@ export class PiWebApp extends LitElement {
     this.realtime.connect(
       (event) => { this.handleRealtimeEvent(machineId, event); },
       () => {
-        // The socket being back is proof this machine's transport healed, so a
-        // transport complaint about it is now describing the past. Only
-        // reply-retired claims are withdrawn; a real failure stays until read.
-        this.clearTransientError(machineId);
+        // The proxies accept the upgrade first and bridge upstream second, so
+        // onopen proves the web process is alive - not that this machine's
+        // daemon answered anything. Retiring the claim here retracted a
+        // daemon-down banner half a second after it was raised, for as long
+        // as the outage lasted; the reads below fire the reports that are
+        // allowed to retire claims.
         void this.sessionUnread.refresh(machineId);
         // Status updates that landed during the gap are gone for good, so this
         // has to overwrite what the browser holds rather than fill gaps: a
@@ -3851,6 +3855,16 @@ export class PiWebApp extends LitElement {
     }
     const decision = bannerHoldDecision({ shownAt: this.bannerShownAt, now: Date.now(), next: error });
     if (decision.kind === "hold") {
+      // The claim was cleared under us (a controller's clearErrorPatch cannot
+      // reach these privates); the schedule marker pair resets with it, so a
+      // re-raise inside the hold window re-arms instead of inheriting a spent
+      // gate.
+      this.lastScheduledError = "";
+      this.lastScheduledMachineId = undefined;
+      if (this.transientErrorTimer !== undefined) {
+        window.clearTimeout(this.transientErrorTimer);
+        this.transientErrorTimer = undefined;
+      }
       if (this.bannerHoldTimer !== undefined) window.clearTimeout(this.bannerHoldTimer);
       this.bannerHoldTimer = window.setTimeout(() => { this.bannerHoldTimer = undefined; this.requestUpdate(); }, decision.retryInMs);
       return this.heldErrorBanner;
