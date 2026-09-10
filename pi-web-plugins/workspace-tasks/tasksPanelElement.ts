@@ -74,7 +74,7 @@ class PiWebTasksPanel extends HTMLElement {
     this.root.innerHTML = `
       ${taskStyles()}
       <section class="toolbar">
-        <strong>Workspace Tasks</strong>
+        <strong>Tasks</strong>
         <span class="toolbar-tasks">
           <button class="secondary" data-refresh-config ${state.kind === "loading" ? "disabled" : ""}>Refresh</button>
           <button class="secondary" data-open-terminal>Open Terminal</button>
