@@ -72,7 +72,7 @@ export class SettingsAppearancePanel extends LitElement {
         </span>
         <span class="theme-name">Pro (native)</span>
         <span class="theme-scheme muted">Dark${themeCardSuffix({ selected, active, autoOverriding: this.followSystem })}</span>
-        <span class="theme-description muted">Flat mono terminal look - the app without a theme extension.</span>
+        <span class="theme-description muted">The app's own flat mono look.</span>
       </button>
     `;
   }
@@ -164,8 +164,9 @@ export class SettingsAppearancePanel extends LitElement {
     .theme-description { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-height: calc(2 * 1.4em); overflow: hidden; }
     /* Concentric by construction: an inner corner is the outer one minus the
        padding between them, so the two arcs stay parallel when either token
-       moves. Card lg(12) - space-5(10) = 2 for the preview inside the card;
-       md(8) - space-4(8) clamps to xs for the surface inside the preview. */
+       moves. On the pro scale the card's lg(3) is smaller than the space-5
+       padding, so the concentric clamp bottoms out at xs(0) - flat insides
+       are the correct flat answer, not an accident. */
     .pro-preview { box-sizing: border-box; display: grid; gap: var(--pi-space-3); align-content: center; padding: var(--pi-space-4); height: 100%; background: var(--pi-surface); }
     .pro-line { display: block; height: var(--pi-dot-xs); width: 78%; background: var(--pi-text-bright); }
     .pro-line.dim { width: 62%; background: var(--pi-muted); }

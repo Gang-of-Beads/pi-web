@@ -30,7 +30,7 @@ export class ConversationMeter extends LitElement {
   }
 
   static override styles = css`
-    :host { position: absolute; top: calc(-1 * var(--pi-space-2)); left: var(--pi-chat-gutter, var(--pi-space-7)); right: var(--pi-chat-gutter, var(--pi-space-7)); z-index: 6; display: block; height: 12px; opacity: .58; transition: opacity var(--pi-motion-fast) var(--pi-ease); }
+    :host { position: absolute; top: calc(-1 * var(--pi-space-2)); left: var(--pi-chat-gutter, var(--pi-space-7)); right: var(--pi-chat-gutter, var(--pi-space-7)); z-index: 3; display: block; height: 12px; opacity: .58; transition: opacity var(--pi-motion-fast) var(--pi-ease); }
     :host(:focus-within) { opacity: .92; }
     @media (hover: hover) { :host(:hover) { opacity: .92; } }
     .meter { height: 100%; }

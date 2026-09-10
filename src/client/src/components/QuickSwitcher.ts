@@ -414,7 +414,7 @@ export class QuickSwitcher extends LitElement {
       --modal-surface-max-height: min(88dvh, 760px);
     }
     header { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--pi-space-4); align-items: center; padding: var(--pi-space-5); border-bottom: 1px solid var(--pi-border); }
-    input { box-sizing: border-box; min-width: 0; height: var(--pi-control-height-comfort); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-bg); color: var(--pi-text); padding: 0 var(--pi-space-5); font: var(--pi-text-lg) var(--pi-font-ui); line-height: inherit; }
+    input { box-sizing: border-box; min-width: 0; height: var(--pi-control-height-comfort); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-bg); color: var(--pi-text); padding: 0 var(--pi-space-5); font: var(--pi-control-font-size, var(--pi-text-base)) var(--pi-font-ui); line-height: inherit; }
     input::-webkit-search-cancel-button { display: none; }
     input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     .close { font: inherit; box-sizing: border-box; display: grid; place-items: center; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); padding: 0; line-height: 1; border: 0; background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); cursor: pointer; }
@@ -526,7 +526,7 @@ export class QuickSwitcher extends LitElement {
     /* The row keeps its own inset when it enters edit mode: content that shifts
        under the caret is the one thing a rename must not do. */
     .rename-row { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--pi-space-4); padding: var(--pi-space-5) var(--pi-space-6); }
-    .rename-input { box-sizing: border-box; width: 100%; min-height: var(--pi-control-height-comfort); border: 1px solid var(--pi-accent); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: 0 var(--pi-space-5); font: var(--pi-text-lg) var(--pi-font-ui); line-height: inherit; }
+    .rename-input { box-sizing: border-box; width: 100%; min-height: var(--pi-control-height-comfort); border: 1px solid var(--pi-accent); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: 0 var(--pi-space-5); font: var(--pi-control-font-size, var(--pi-text-base)) var(--pi-font-ui); line-height: inherit; }
     @media (pointer: coarse) { .rename-input { min-height: var(--pi-control-height-touch); } }
     .rename-actions { display: flex; gap: var(--pi-space-3); }
     .rename-actions button { box-sizing: border-box; font: inherit; width: var(--pi-control-height-comfort); min-height: var(--pi-control-height-comfort); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }

@@ -61,13 +61,22 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
     this.openMenuProjectId = undefined;
   };
 
+  private readonly onDocumentKeydown = (event: KeyboardEvent) => {
+    // Every other surface's Escape closes its top layer; the row menu was the
+    // one that ignored it.
+    if (event.key !== "Escape" || this.openMenuProjectId === undefined) return;
+    this.openMenuProjectId = undefined;
+  };
+
   override connectedCallback(): void {
     super.connectedCallback();
     document.addEventListener("click", this.onDocumentClick);
+    document.addEventListener("keydown", this.onDocumentKeydown);
   }
 
   override disconnectedCallback(): void {
     document.removeEventListener("click", this.onDocumentClick);
+    document.removeEventListener("keydown", this.onDocumentKeydown);
     super.disconnectedCallback();
   }
 

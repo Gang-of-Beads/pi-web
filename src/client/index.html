@@ -133,8 +133,9 @@
          *
          * UI prefers the platform's own interface face (SF, Segoe, Roboto);
          * display reaches for a more characterful grotesque when the system has
-         * one and falls back to the UI stack; mono is the terminal's face, so
-         * transcript code and the terminal agree.
+         * one and falls back to the UI stack. Since the pro redesign the UI
+         * face IS the mono stack; the separate terminal token stays so themes
+         * can split them again.
          */
         --pi-font-ui: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
         --pi-font-display: var(--pi-font-ui);
@@ -172,7 +173,7 @@
         --pi-purple: #d2a8ff;
         --pi-purple-border: #a371f7;
         --pi-purple-surface: #21132f;
-        --pi-overlay: #0008;
+        --pi-overlay: #000c;
         --pi-shadow-soft: #0000;
         --pi-shadow: #0000;
         --pi-shadow-strong: #0000;

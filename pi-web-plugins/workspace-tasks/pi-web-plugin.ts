@@ -4,7 +4,7 @@ import { defineTasksPanelElement, tasksPanelBadge } from "./tasksPanelElement.js
 
 const plugin: PiWebPlugin = {
   apiVersion: 2,
-  name: "Workspace Tasks",
+  name: "Tasks",
   activate: ({ runtimePluginId, html, svg }) => {
     defineTasksPanelElement();
 
@@ -13,7 +13,7 @@ const plugin: PiWebPlugin = {
         actions: [
           {
             id: "workspace.open-tasks",
-            title: "Open Workspace Tasks",
+            title: "Open Tasks",
             description: `Open the workspace Tasks tab. Configure tasks in ${TASKS_CONFIG_PATH}.`,
             group: "Workspace",
             enabled: (context) => context.state.selectedWorkspace !== undefined,

@@ -13,10 +13,10 @@ import { css } from "lit";
  */
 export const settingsControlStyles = css`
   button, input, select, textarea { box-sizing: border-box; font: inherit; }
-  button, input:not([type="checkbox"]):not([type="radio"]), select { box-sizing: border-box; min-height: var(--pi-control-height); padding-block: var(--pi-space-2); }
+  button, input:not([type="checkbox"]):not([type="radio"]), select { box-sizing: border-box; height: var(--pi-control-height); min-height: var(--pi-control-height); padding-block: var(--pi-space-2); }
   textarea { min-height: calc(var(--pi-control-height) * 2); }
   input[type="checkbox"], input[type="radio"] { box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); accent-color: var(--pi-accent); }
   @media (pointer: coarse) {
-    button, input:not([type="checkbox"]):not([type="radio"]), select { min-height: var(--pi-control-height-touch); }
+    button, input:not([type="checkbox"]):not([type="radio"]), select { height: var(--pi-control-height-touch); min-height: var(--pi-control-height-touch); }
   }
 `;
