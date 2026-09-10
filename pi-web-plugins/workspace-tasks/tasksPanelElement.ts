@@ -284,7 +284,7 @@ function taskStyles(): string {
       :host { display: contents; }
       .toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: var(--pi-space-5) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); }
       .toolbar-tasks { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--pi-space-4); }
-      .viewer { box-sizing: border-box; min-height: 0; overflow: auto; padding: var(--pi-space-6); }
+      .viewer { flex: 1 1 auto; box-sizing: border-box; min-height: 0; overflow: auto; padding: var(--pi-space-6); display: flex; flex-direction: column; }
       .tasks-viewer { display: grid; align-content: start; gap: var(--pi-space-6); }
       .tasks { display: grid; gap: var(--pi-space-7); }
       .task-group { display: grid; gap: var(--pi-space-5); }

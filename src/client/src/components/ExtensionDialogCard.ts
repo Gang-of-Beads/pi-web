@@ -467,7 +467,7 @@ export class ExtensionDialogCard extends LitElement {
        as a wall of boxes inside an already-boxed card. Hover, active, and the
        primary action's fill keep the affordances (C2/C4/C6). */
     button { box-sizing: border-box;
-      border: 0;
+      border: 1px solid var(--pi-border);
       border-radius: var(--pi-radius-md);
       background: var(--pi-surface-hover);
       color: var(--pi-text);

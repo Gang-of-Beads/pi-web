@@ -364,7 +364,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .history-boundary small { font-size: inherit; color: var(--pi-muted); }
   /* Centred in the room the transcript is not using, so the words land where
      the reader is already looking rather than clinging to the top edge. */
-  .empty-session { display: grid; justify-items: center; align-content: center; gap: var(--pi-space-5); margin: auto; max-width: var(--pi-chat-measure); padding: var(--pi-space-7); color: var(--pi-muted); text-align: center; }
+  .empty-session { display: grid; justify-items: center; align-content: center; gap: var(--pi-space-5); margin: auto; min-height: 100%; max-width: var(--pi-chat-measure); padding: var(--pi-space-7); color: var(--pi-muted); text-align: center; }
   .empty-session p { margin: 0; }
   .empty-session button { box-sizing: border-box; min-height: var(--pi-control-height-touch); padding: var(--pi-space-3) var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
   .empty-session.transcript-failed .failure-detail { color: var(--pi-muted); font-size: var(--pi-text-sm); white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -405,7 +405,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
     .msg-action::after { inset: calc(-1 * var(--pi-space-3)) calc(-1 * var(--pi-space-1)); }
   }
   .msg-action:focus { color: var(--pi-text); border-color: var(--pi-accent); }
-  @media (pointer: coarse) { .msg-action:active, .activity-dock button:active { background: var(--pi-surface-hover); } }
+  @media (pointer: coarse) { .msg-action:active, .activity-dock button:active, .drawer-tab:active { background: var(--pi-surface-hover); } }
   @media (hover: hover) { .msg-action:hover { color: var(--pi-text); border-color: var(--pi-accent); } }
   .msg:focus-within > .msg-header .msg-actions, .group-msg:focus-within > .msg-header .msg-actions { opacity: 1; }
   @media (hover: hover) { .msg:hover > .msg-header .msg-actions, .group-msg:hover > .msg-header .msg-actions { opacity: 1; } }

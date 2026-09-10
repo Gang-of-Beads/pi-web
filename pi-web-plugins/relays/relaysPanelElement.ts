@@ -512,7 +512,7 @@ function relaysStyles(): string {
       /* Bottom padding (not viewer margin) so the gap below the tabs persists
          when the viewer's content scrolls up against its top edge. */
       .document-tabs { flex: 0 0 auto; display: flex; flex-wrap: nowrap; gap: var(--pi-space-3); padding: var(--pi-space-4) var(--pi-space-6); overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; }
-      .viewer { flex: 1 1 auto; box-sizing: border-box; display: grid; align-content: start; gap: var(--pi-space-6); min-height: 0; overflow: auto; padding: var(--pi-space-6); }
+      .viewer { flex: 1 1 auto; box-sizing: border-box; display: grid; align-content: stretch; gap: var(--pi-space-6); min-height: 0; overflow: auto; padding: var(--pi-space-6); }
       /* Grid children default to min-width: auto; without these caps a wide code
          block or table would silently stretch the whole viewer track. */
       .viewer > * { box-sizing: border-box; min-width: 0; max-width: 100%; }

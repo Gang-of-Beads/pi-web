@@ -418,6 +418,7 @@ export class QuickSwitcher extends LitElement {
     input::-webkit-search-cancel-button { display: none; }
     input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     .close { font: inherit; box-sizing: border-box; display: grid; place-items: center; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); padding: 0; line-height: 1; border: 0; background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); cursor: pointer; }
+    @media (pointer: coarse) { .close:active { background: var(--pi-surface-hover); } }
     .body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: var(--pi-space-5); overscroll-behavior: contain; }
     h3 { margin: var(--pi-space-7) 0 var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: var(--pi-weight-semibold); text-transform: uppercase; }
     /* Tiles rather than one session per row. A phone showed four wide,

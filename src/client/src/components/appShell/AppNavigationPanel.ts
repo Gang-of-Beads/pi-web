@@ -458,9 +458,10 @@ export class AppNavigationPanel extends LitElement {
     @media (prefers-reduced-motion: reduce) { .compact-working-dot { animation: none; opacity: .8; } }
     .compact-fold { box-sizing: border-box; width: var(--pi-panel-header-control-height); }
     .compact-fold-icon { width: var(--pi-dot-md); height: var(--pi-dot-md); pointer-events: none; }
-    .compact-actions-row { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-4); box-sizing: border-box; min-height: var(--pi-control-height-touch); padding: var(--pi-space-2) var(--pi-chrome-inset); border-bottom: 1px solid var(--pi-border); background: var(--pi-bg); }
+    .compact-actions-row { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-4); box-sizing: border-box; min-height: var(--pi-control-height-touch); padding: var(--pi-space-2) var(--pi-reading-edge); border-bottom: 1px solid var(--pi-border); background: var(--pi-bg); }
     .compact-actions-row .compact-header-action { flex: 1 1 auto; }
-    .compact-header-action { font-size: var(--pi-text-xs); flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: var(--pi-control-height-touch); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-header-control-radius, var(--pi-radius-md)); background: var(--pi-surface); color: var(--pi-text);  }
+    .compact-header-action { font-size: var(--pi-text-xs); flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: var(--pi-control-height-touch); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-header-control-radius, var(--pi-radius-md)); background: var(--pi-surface); color: var(--pi-text);  
+    @media (pointer: coarse) { .compact-scope:active, .compact-session:active, .compact-header-action:active { background: var(--pi-surface-hover); } }}
     /* Squared, glyph-only: the shared action rule above pads both sides, and
        without this higher-specificity override the fold button rendered as an
        8px glyph in a 24px pill. */
