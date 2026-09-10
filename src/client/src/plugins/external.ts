@@ -4,6 +4,7 @@ import { isPiWebPluginId, isReservedPiWebPluginId } from "../../../shared/plugin
 import { resolveAppUrl, type AppUrlContext } from "../appUrl";
 import type { PiWebPlugin, PiWebPluginRegistration } from "./types";
 import { fetchWithDeadline } from "../api/requestDeadline";
+import { reportTransportReachable } from "../api/transportHealth";
 
 export interface PluginManifestEntry {
   id: string;
@@ -79,6 +80,7 @@ async function importPluginModule(moduleUrl: string): Promise<unknown> {
 
 async function fetchPluginManifest(manifestUrl: string): Promise<PluginManifest | undefined> {
   const response = await fetchWithDeadline(manifestUrl, { cache: "no-store" });
+  reportTransportReachable(manifestUrl);
   if (response.status === 404) return undefined;
   if (!response.ok) throw new Error(await pluginManifestResponseError(response));
   return parseManifest(await response.json());

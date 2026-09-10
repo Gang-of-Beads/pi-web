@@ -1,5 +1,6 @@
 import type { JsonValue } from "../../../shared/apiTypes";
 import { isPiWebPluginId } from "../../../shared/pluginIds";
+import { reportTransportReachable } from "./transportHealth";
 import {
   cloneBoundedPluginBackendJson,
   parseBoundedPluginBackendJson,
@@ -65,6 +66,7 @@ export async function requestPluginBackend(
       headers: { "content-type": "application/json" },
       body,
     });
+    reportTransportReachable(pluginBackendRequestUrl(target, operation));
   } catch (error) {
     throw new Error(`Plugin backend request unavailable: ${describeError(error)}`, { cause: error });
   }

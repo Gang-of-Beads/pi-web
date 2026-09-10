@@ -759,17 +759,24 @@ export class PiWebApp extends LitElement {
    * Runs the daemon's last restart cut off. They will not finish on their own,
    * so they are surfaced above work that is merely idle. Reading the record
    * clears it, so this is only worth doing when a connection is established.
+   *
+   * The daemon's record is read-and-clear: after the boot read has spent it,
+   * every later read answers with an empty file, which cannot distinguish
+   * "the runs have since continued" from "the record was spent earlier". Only
+   * the boot read may adopt an empty record as a retraction; a later read
+   * adopts new markers but never erases the ones already on screen - whether
+   * a run has continued is arbitrated by the live session state, not by a
+   * spent file.
    */
-  private refreshInterruptedRuns(machineId: string): void {
+  private refreshInterruptedRuns(machineId: string, options: { adoptEmpty?: boolean } = {}): void {
     void this.sessions.loadInterruptedRuns(machineId).then((ids) => {
-      // An empty record is the daemon retracting markers the user has already
-      // seen (it clears the file once read), so it is adopted verbatim. A
-      // failed read is not a record: the daemon may still hold markers, so the
-      // previous set survives and the banner says the state is unknown rather
-      // than quietly showing none.
+      // A failed read is not a record: the daemon may still hold markers, so
+      // the previous set survives and the banner says the state is unknown
+      // rather than quietly showing none.
       // A stale machine's failed read must not announce onto the machine the
       // reader is now looking at.
       if (selectedMachineId(this.state) !== machineId) return;
+      if (ids?.size === 0 && options.adoptEmpty === false) return;
       if (ids === undefined) {
         // A poll never replaces a banner the reader may still be acting on;
         // the unknown state is only worth announcing onto a quiet screen.
@@ -1938,7 +1945,7 @@ export class PiWebApp extends LitElement {
         // The list itself can be stale too - sessions created, renamed or
         // archived during the gap were announced on the socket that was down.
         void this.sessions.refreshCurrentWorkspaceSessions(machineId);
-        this.refreshInterruptedRuns(machineId);
+        this.refreshInterruptedRuns(machineId, { adoptEmpty: false });
         const workspace = this.state.selectedWorkspace;
         if (workspace !== undefined) void this.refreshActiveTerminals(workspace);
       },
@@ -2460,8 +2467,9 @@ export class PiWebApp extends LitElement {
     // open -- a rename, a new session, one archived on another device -- stayed
     // invisible until a reload.
     void this.loadQuickSwitcherData();
-    // The interrupted record is read-once on the daemon; re-reading it when
-    // the switcher opens retracts markers whose runs have since continued.
+    // The interrupted record is read-once on the daemon and the boot read has
+    // already spent it; a later empty read is not a retraction, so the
+    // re-read here only picks up markers recorded after the page loaded.
     const machineId = selectedMachineId(this.state);
     if (machineId === "") return;
     // Opening the switcher is also the one moment the user is about to judge
@@ -2470,7 +2478,7 @@ export class PiWebApp extends LitElement {
     // session is still waiting, and the live events that answer it may have
     // been dropped while the socket was down.
     void this.sessions.hydrateSessionStatuses(machineId, { replaceKnown: true });
-    this.refreshInterruptedRuns(machineId);
+    this.refreshInterruptedRuns(machineId, { adoptEmpty: false });
   }
 
   /**
@@ -3816,9 +3824,15 @@ export class PiWebApp extends LitElement {
     }
     this.heldErrorBanner = errorBanner(error, () => {
       // The reader acted; the 1.5s minimum-visibility window exists for
-      // replacement churn, not to outvote a dismissal.
+      // replacement churn, not to outvote a dismissal. The expiry timer goes
+      // with it: an identical re-raise in the same batch is a new claim, not
+      // something the old schedule may erase.
       this.bannerDismissedByReader = true;
       this.bannerShownAt = undefined;
+      if (this.transientErrorTimer !== undefined) {
+        window.clearTimeout(this.transientErrorTimer);
+        this.transientErrorTimer = undefined;
+      }
       this.heldErrorBanner = null;
       this.setState(clearErrorPatch());
     }, retiredBy);
@@ -3964,7 +3978,7 @@ export class PiWebApp extends LitElement {
         ${this.renderSessionTreeNavigator(state)}
         ${this.sessionCleanupDialog !== undefined ? html`<session-cleanup-dialog .preview=${this.sessionCleanupDialog.preview} .previewRequest=${this.sessionCleanupDialog.previewRequest} .result=${this.sessionCleanupDialog.result} .loading=${this.sessionCleanupDialog.loading === true} .running=${this.sessionCleanupDialog.running === true} .error=${this.sessionCleanupDialog.error ?? ""} .onPreview=${(request: SessionCleanupRequest) => { void this.previewSessionCleanup(request); }} .onRun=${(request: SessionCleanupRequest) => { void this.runSessionCleanup(request); }} .onClose=${() => { this.closeSessionCleanupDialog(); }}></session-cleanup-dialog>` : null}
         ${state.themeDialog !== undefined ? html`<command-picker ?abovedialog=${this.settingsOpen} title=${state.themeDialog.title} .options=${state.themeDialog.options} .selectedValue=${state.themeDialog.selectedValue} .onPick=${(value: string) => { this.pickTheme(value); }} .onCancel=${() => { this.setState({ themeDialog: undefined }); }}></command-picker>` : null}
-        ${this.settingsOpen ? html`<settings-dialog .section=${this.settingsSection} .machine=${state.selectedMachine} .machineRuntime=${this.selectedMachineRuntime()} .actions=${this.getDefaultActions()} .onNavigate=${(section: SettingsSection) => { this.navigateSettings(section); }} .onBackToList=${() => { this.backToSettingsList(); }} .pluginSections=${this.plugins.getSettingsSections(selectedMachineId(state))} .pluginRuntimeContext=${this.createPluginRuntimeContext()} .onClose=${() => { this.closeSettings(); }} .onConfigSaved=${(config: PiWebConfigValues) => { this.applyClientConfig(config); }} .onRefreshMachineRuntime=${async (machineId: string) => { await this.machines.refreshMachineRuntime(machineId); }} .machines=${state.machines} .machineStatuses=${state.machineStatuses} .onAddMachine=${() => { this.openMachineDialog(); }} .onRenameMachine=${async (machine: Machine, name: string) => { await this.renameMachine(machine, name); }} .onRemoveMachine=${(machine: Machine) => { void this.removeMachine(machine); }} .fleetReport=${this.fleetReport} ?fleetLoading=${this.fleetLoading} .fleetError=${this.fleetError} .onRefreshFleet=${() => this.refreshFleet()} .onRunFleet=${(operation: "restart" | "update", machineIds?: readonly string[]) => this.runFleetOperation(operation, machineIds)} .themes=${this.plugins.getThemes()} .selectedThemeId=${this.resolveCurrentThemePreference().selectedTheme?.id} .activeThemeId=${this.activeThemeId} ?followSystemTheme=${this.themePreference.auto} .onSelectTheme=${(themeId: QualifiedContributionId) => { this.selectTheme(themeId); }} .onToggleFollowSystem=${(follow: boolean) => { this.setFollowSystemTheme(follow); }}></settings-dialog>` : null}
+        ${this.settingsOpen ? html`<settings-dialog .section=${this.settingsSection} .machine=${state.selectedMachine} .machineRuntime=${this.selectedMachineRuntime()} .actions=${this.getDefaultActions()} .onNavigate=${(section: SettingsSection) => { this.navigateSettings(section); }} .onBackToList=${() => { this.backToSettingsList(); }} .pluginSections=${this.plugins.getSettingsSections(selectedMachineId(state))} .pluginRuntimeContext=${this.createPluginRuntimeContext()} .onClose=${() => { this.closeSettings(); }} .onConfigSaved=${(config: PiWebConfigValues) => { this.applyClientConfig(config); }} .onRefreshMachineRuntime=${async (machineId: string) => { await this.machines.refreshMachineRuntime(machineId, { requireSelected: false }); }} .machines=${state.machines} .machineStatuses=${state.machineStatuses} .onAddMachine=${() => { this.openMachineDialog(); }} .onRenameMachine=${async (machine: Machine, name: string) => { await this.renameMachine(machine, name); }} .onRemoveMachine=${(machine: Machine) => { void this.removeMachine(machine); }} .fleetReport=${this.fleetReport} ?fleetLoading=${this.fleetLoading} .fleetError=${this.fleetError} .onRefreshFleet=${() => this.refreshFleet()} .onRunFleet=${(operation: "restart" | "update", machineIds?: readonly string[]) => this.runFleetOperation(operation, machineIds)} .themes=${this.plugins.getThemes()} .selectedThemeId=${this.resolveCurrentThemePreference().selectedTheme?.id} .activeThemeId=${this.activeThemeId} ?followSystemTheme=${this.themePreference.auto} .onSelectTheme=${(themeId: QualifiedContributionId) => { this.selectTheme(themeId); }} .onToggleFollowSystem=${(follow: boolean) => { this.setFollowSystemTheme(follow); }}></settings-dialog>` : null}
         ${this.pluginDialogs.map((entry) => html`<div class="plugin-dialog${entry.dialog.presentation === "fullscreen" ? " plugin-dialog-fullscreen" : ""}"><modal-surface .label=${entry.dialog.label} .onClose=${entry.close}>${entry.dialog.content}</modal-surface></div>`)}
       </div>
     `;

@@ -1,6 +1,7 @@
 import type { AskUserSubmission, DeleteWorkspaceFileResponse, ExtensionDialogAnswer, FileSuggestion, MoveWorkspaceFileOptions, PiPackageInstallRequest, PiPackageRemoveRequest, PiPackageScope, PiPackageUpdateRequest, PiWebConfigValues, PromptAttachment, QueuedSessionMessage, RunTerminalCommandInput, SessionBulkMutationRef, SessionCleanupRequest, SessionNotificationDismissThrough, SessionRef, SessionTreeForkRequest, SessionTreeForkResult, SessionTreeNavigateRequest, SessionUnreadAcknowledgeRequest, TerminalCommandRun, TerminalCommandRunFilter, WorkspaceRemovalRequest, WriteWorkspaceFileOptions } from "../../../shared/apiTypes";
 import { resolveAppUrl } from "../appUrl";
-import { request } from "./http";
+import { HttpError, request } from "./http";
+import { machineIdFromUrl, reportTransportReachable } from "./transportHealth";
 import { fetchWithDeadline } from "./requestDeadline";
 import {
   arrayOf,
@@ -380,10 +381,11 @@ async function requestSessionTreeFork(session: SessionRef, fork: SessionTreeFork
     headers: { "content-type": "application/json" },
     body: sessionBody(session, { entryId: fork.entryId, expectedLeafId: fork.expectedLeafId }),
   });
+  reportTransportReachable(sessionPath(session, "tree/fork", machineId));
   if (!response.ok) {
     const body: unknown = await response.json().catch((): unknown => ({}));
     if (isMissingSessionTreeForkRoute(response.status, body)) throw new SessionTreeForkUnavailableError();
-    throw new Error(apiErrorMessage(body) ?? response.statusText);
+    throw new HttpError(apiErrorMessage(body) ?? response.statusText, response.status, machineIdFromUrl(sessionPath(session, "tree/fork", machineId)));
   }
   return parseSessionTreeForkResult(await response.json());
 }
@@ -397,10 +399,11 @@ function isMissingSessionTreeForkRoute(status: number, value: unknown): boolean 
 
 async function getOptionalTerminalCommandRun(runId: string, machineId: string): Promise<TerminalCommandRun | undefined> {
   const response = await fetchWithDeadline(resolveAppUrl(`${machinePrefix(machineId)}/terminal-command-runs/${encodeURIComponent(runId)}`));
+  reportTransportReachable(`${machinePrefix(machineId)}/terminal-command-runs/${encodeURIComponent(runId)}`);
   if (response.status === 404) return undefined;
   if (!response.ok) {
     const body: unknown = await response.json().catch((): unknown => ({}));
-    throw new Error(apiErrorMessage(body) ?? response.statusText);
+    throw new HttpError(apiErrorMessage(body) ?? response.statusText, response.status, machineId);
   }
   return parseTerminalCommandRun(await response.json());
 }

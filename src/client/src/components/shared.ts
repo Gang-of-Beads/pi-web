@@ -352,7 +352,7 @@ export const listStyles = css`
      rule and the row read as a table cell. The border and the radius belong to
      the row; what sits inside it is transparent. */
   .action-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; margin: var(--pi-space-3) 0; cursor: pointer; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); overflow: hidden; }
-  .action-row:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); border-radius: var(--pi-radius-md); }
+  .action-row:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
   .action-row.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
   .action-row.archived .action-main { color: var(--pi-muted); }
   /* Written to work whether the primary region is a div or a real <button>:
@@ -410,8 +410,8 @@ export const listStyles = css`
      row-state rules below can override them; a bare :has() outranks every
      single-class rule forever, which is how a selected row kept the work
      colour no matter what the later rules said. The colour sits on the row -
-     the row owns the border width, and :427's colour on the borderless
-     .action-main painted nothing at all. Session rows speak .session-state,
+     the row owns the border width; an earlier draft put it on the borderless
+     .action-main, which painted nothing at all. Session rows speak .session-state,
      not .activity-indicator, so the rail names both vocabularies or the
      largest list on screen never gets a rail. */
   /* Within a vocabulary the arbiter renders exactly one state dot per row;
@@ -424,7 +424,10 @@ export const listStyles = css`
      row-class unread rule would paint those rows purple against a blue or
      amber dot; the dot rules above are the only unread painters. Machine and
      workspace rows speak activity-indicator.session and stay success, the
-     colour their working dots wear. */
+     colour their working dots wear. The row-class override set has one more
+     member living with the rows themselves: SessionList's .bulk-selected
+     (accent), which this sheet cannot see - the override rows are co-owned,
+     not table-exhaustive here. */
   /* A machine row that is unread and working wears the ring around its work
      dot; no node in that row matches an unread selector, so the work rule
      alone paints - the dot the ring wraps decides the rail, which is what
@@ -432,7 +435,13 @@ export const listStyles = css`
      one-dot guarantee holds within each vocabulary; no row renders session
      and terminal dots together today, so their order is unexercised. */
   .action-row:has(:where(.activity-indicator.unread, .session-state.unread, .session-state.background)) { border-left-color: var(--pi-purple); }
-  .action-row:has(:where(.activity-indicator.session, .session-state.running)) { border-left-color: var(--pi-success); }
+  /* The vocabulary split is exact: machine/workspace working rows speak
+     .activity-indicator.session and paint success; session running rows
+     speak .session-state.running and paint accent. A previous draft put
+     .session-state.running in both rules; the later accent rule then
+     overpainted every row the success membership matched, so the membership
+     never decided a colour and the table read as two colours for one state. */
+  .action-row:has(:where(.activity-indicator.session)) { border-left-color: var(--pi-success); }
   .action-row:has(:where(.session-state.running)) { border-left-color: var(--pi-accent); }
   .action-row:has(:where(.session-state.asking)) { border-left-color: var(--pi-warning); }
   .action-row:has(:where(.activity-indicator.terminal)) { border-left-color: var(--pi-accent); }
@@ -445,7 +454,10 @@ export const listStyles = css`
   .activity-indicator.sending { border-radius: 50%; background: var(--pi-warning); }
   /* Unread is a stable state, not ongoing work: keep it static and purple,
      the same turn-ended colour the session dot wears. */
-  .activity-indicator.unread { border-radius: 50%; background: var(--pi-purple); animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--pi-accent) 20%, transparent); }
+  /* The unread halo is the same motif as the session vocabulary's
+     (.session-state.unread): a purple core with a purple 22% halo. The
+     accent mix here was a second colour for one semantic. */
+  .activity-indicator.unread { border-radius: 50%; background: var(--pi-purple); animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--pi-purple) 22%, transparent); }
   /* Unread + ongoing work: a static accent ring wraps the still-pulsing work dot. */
   .unread-ring { flex: 0 0 auto; box-sizing: border-box; display: inline-grid; place-items: center; width: var(--pi-dot-md); height: var(--pi-dot-md); margin-right: var(--pi-space-3); border: 1.5px solid var(--pi-accent); border-radius: 50%; vertical-align: 1px; }
   .unread-ring .activity-indicator { width: var(--pi-dot-xs); height: var(--pi-dot-xs); margin: 0; vertical-align: 0; }

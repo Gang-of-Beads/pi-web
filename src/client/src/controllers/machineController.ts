@@ -101,6 +101,10 @@ export class MachineController {
     try {
       const wasSelected = this.getState().selectedMachine?.id === machine.id;
       await api.deleteMachine(machine.id);
+      // The claim about this machine can never be disproved now - its scope
+      // has no future replies - so it is retired with the machine rather than
+      // left on screen describing something that no longer exists.
+      if (this.getState().errorMachineId === machine.id) this.setState(clearErrorPatch());
       const machines = this.getState().machines.filter((candidate) => candidate.id !== machine.id);
       const local = machines.find((candidate) => candidate.id === "local") ?? machines[0];
       this.setState({ machines, machineStatuses: omitKey(this.getState().machineStatuses, machine.id), machineRuntimes: omitKey(this.getState().machineRuntimes, machine.id), machineStatusSnapshots: omitKey(this.getState().machineStatusSnapshots, machine.id) });
@@ -138,7 +142,16 @@ export class MachineController {
     }
   }
 
-  async refreshMachineRuntime(machineId = this.getState().selectedMachine?.id ?? "local"): Promise<MachineRuntime | undefined> {
+  /**
+   * `requireSelected` is the background-refresh contract: the roster load and
+   * the remote-restore ladder fire this for machines the reader may already
+   * have left, and a late failure must not paint machine A's complaint onto
+   * machine B - the sequence guard cannot see a machine switch, so the
+   * selection check is what does (its twin in refreshMachineHealth has the
+   * same check). The settings path passes false: the reader explicitly asked
+   * for that machine's runtime, and its failure is the answer.
+   */
+  async refreshMachineRuntime(machineId = this.getState().selectedMachine?.id ?? "local", options: { requireSelected?: boolean } = {}): Promise<MachineRuntime | undefined> {
     const seq = (this.runtimeRefreshSeqByMachine.get(machineId) ?? 0) + 1;
     this.runtimeRefreshSeqByMachine.set(machineId, seq);
     try {
@@ -147,7 +160,9 @@ export class MachineController {
       this.setState({ machineRuntimes: { ...this.getState().machineRuntimes, [runtime.machineId]: runtime } });
       return runtime;
     } catch (error) {
-      if (this.runtimeRefreshSeqByMachine.get(machineId) === seq) this.setState(errorNoticePatch(error));
+      if (this.runtimeRefreshSeqByMachine.get(machineId) !== seq) return undefined;
+      if (options.requireSelected !== false && selectedMachineId(this.getState()) !== machineId) return undefined;
+      this.setState(errorNoticePatch(error));
       return undefined;
     }
   }

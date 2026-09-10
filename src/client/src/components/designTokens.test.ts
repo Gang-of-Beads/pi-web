@@ -90,8 +90,9 @@ describe("accessibility floors", () => {
     // A custom element with `display` on :host ignores the HTML hidden
     // attribute unless it says otherwise, and the failure is silent: the markup
     // reads as hidden and the element is on screen. The mobile shell keeps four
-    // lists and the machine switcher mounted-but-hidden, and the switcher shipped
-    // without the guard - so a phone named its machine twice.
+    // lists mounted-but-hidden; the machine switcher that once shared that
+    // hidden mount shipped without the guard, so a phone named its machine
+    // twice - the guard predates its removal.
     const componentsDir = join(process.cwd(), "src/client/src/components");
     const rendered = new Set<string>();
     const walk = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

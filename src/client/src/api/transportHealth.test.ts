@@ -2,7 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HttpError } from "./http";
-import { observeTransportRecovery, reportTransportReachable } from "./transportHealth";
+import { machineIdFromUrl, observeTransportRecovery, reportTransportReachable } from "./transportHealth";
 
 beforeEach(() => { observeTransportRecovery(undefined); });
 
@@ -81,5 +81,21 @@ describe("the request boundary reports reachability", () => {
 
     expect(onRecovered).toHaveBeenCalledOnce();
     vi.unstubAllGlobals();
+  });
+});
+
+describe("machineIdFromUrl", () => {
+  it("names the machine a machine-owned URL speaks about", () => {
+    expect(machineIdFromUrl("api/machines/remote-a/status")).toBe("remote-a");
+    expect(machineIdFromUrl("api/machines/lab%20mac/health")).toBe("lab mac");
+  });
+
+  it("gives no machine for a web-owned URL", () => {
+    expect(machineIdFromUrl("api/status")).toBeUndefined();
+    expect(machineIdFromUrl("api/pi-web/fleet")).toBeUndefined();
+  });
+
+  it("survives a malformed escape: a broken URL is not a thrown report", () => {
+    expect(machineIdFromUrl("api/machines/%ZZ/status")).toBe("%ZZ");
   });
 });

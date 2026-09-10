@@ -29,7 +29,14 @@ export function observeTransportRecovery(next: TransportRecoveryListener | undef
  */
 export function machineIdFromUrl(url: string): string | undefined {
   const scoped = /\/machines\/([^/]+)/.exec(url);
-  return scoped?.[1] === undefined ? undefined : decodeURIComponent(scoped[1]);
+  if (scoped?.[1] === undefined) return undefined;
+  try {
+    return decodeURIComponent(scoped[1]);
+  } catch {
+    // A malformed escape is a broken URL, not a reason for the caller
+    // (reportTransportReachable must not throw) to look like it failed.
+    return scoped[1];
+  }
 }
 
 /**
