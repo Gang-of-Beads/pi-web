@@ -4,8 +4,6 @@ import { customElement, property, query, state } from "lit/decorators.js";
 import type { Machine, Project, SessionActivity, SessionInfo, SessionStatus, Workspace } from "../../api";
 import { sessionLabel } from "../../sessionLabels";
 import type { DrawerSectionContext, QualifiedDrawerSectionContribution, MachineSectionContext, QualifiedMachineSectionContribution, NavSectionContext, QualifiedNavSectionContribution } from "../../plugins/types";
-import type { MachineStatusSnapshot } from "../../../../shared/machineStatus";
-import { selectedMachineId } from "../../controllers/types";
 import type { NavigationSection } from "../../appShell/navigationState";
 import { NAVIGATION_SECTION_ORDER } from "../../appShell/navigationState";
 import type { KeyboardNavigableSection } from "../navigationFocus";
@@ -44,7 +42,6 @@ export class AppNavigationPanel extends LitElement {
   @state() private compactActionsOpen = false;
   @property({ attribute: false }) machines: Machine[] = [];
   @property({ attribute: false }) selectedMachine?: Machine;
-  @property({ attribute: false }) machineStatusSnapshots: Record<string, MachineStatusSnapshot> = {};
   @property({ attribute: false }) selectedProject?: Project;
   @property({ attribute: false }) selectedWorkspace?: Workspace;
   @property({ attribute: false }) sessions: SessionInfo[] = [];
@@ -397,17 +394,6 @@ export class AppNavigationPanel extends LitElement {
         .onCancelKeyboardNavigation=${() => { this.cancelKeyboardNavigation(); }}
       ></session-list>
     `;
-  }
-
-  /**
-   * Project and workspace rows always belong to the selected machine, resolved
-   * exactly as the rest of the app resolves it — including its local-machine
-   * default, which is the key snapshots arrive under before a machine has been
-   * selected. Diverging here would blank every row's indicator while a snapshot
-   * is in fact loaded.
-   */
-  private selectedMachineStatusSnapshot(): MachineStatusSnapshot | undefined {
-    return this.machineStatusSnapshots[selectedMachineId({ selectedMachine: this.selectedMachine })];
   }
 
   private async focusNavigableSection(section: KeyboardNavigableSection | undefined): Promise<boolean> {

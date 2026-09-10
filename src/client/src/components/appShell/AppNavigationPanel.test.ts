@@ -135,7 +135,6 @@ async function mountPanelWithOptions(
   panel.compact = true;
   panel.machines = [machine("local"), machine("remote-a")];
   if (selectedMachine !== undefined) panel.selectedMachine = selectedMachine;
-  panel.machineStatusSnapshots = machineStatusSnapshots;
   wireContributedSections(panel, machineStatusSnapshots, selectedMachine);
   if (options.onOpenContextSheet !== undefined) panel.onOpenContextSheet = options.onOpenContextSheet;
   if (options.onRequestSection !== undefined) panel.onRequestSection = options.onRequestSection;
@@ -166,7 +165,6 @@ async function mountPanel(
   panel.compact = true;
   panel.machines = [machine("local"), machine("remote-a")];
   if (selectedMachine !== undefined) panel.selectedMachine = selectedMachine;
-  panel.machineStatusSnapshots = machineStatusSnapshots;
   wireContributedSections(panel, machineStatusSnapshots, selectedMachine, onMachineSection);
   document.body.append(panel);
   await panel.updateComplete;
