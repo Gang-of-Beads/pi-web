@@ -259,6 +259,6 @@ describe("the size of a target on a touch screen", () => {
 
     expect(rules.some((rule) => /width:\s*24px/u.test(rule))).toBe(true);
     expect(sheets).toMatch(/\.msg-action::after\s*\{[^}]*inset:\s*calc\(-1 \* var\(--pi-space-5\)\) calc\(-1 \* var\(--pi-space-1\)\)/u);
-    expect(sheets).toMatch(/pointer: coarse[\s\S]*?\.msg-action::after \{ inset: calc\(-1 \* var\(--pi-space-5\)\) calc\(-1 \* var\(--pi-space-4\)\)/u);
+        expect(sheets).toMatch(/pointer: coarse[\s\S]*?\.msg-action::after \{ inset: calc\(-1 \* var\(--pi-space-3\)\) calc\(-1 \* var\(--pi-space-1\)\)/u)
   });
 });

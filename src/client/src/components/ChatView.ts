@@ -396,7 +396,14 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   /* The row is icons and one text control: the meta button sits at the end of
      the same flex row, so the expansion must clear it too - a symmetric 10px
      bleed put 2px of the info control inside the copy button. */
-  @media (pointer: coarse) { .msg-header-trailing { gap: var(--pi-space-8); } .msg-actions { gap: var(--pi-space-8); } .msg-action::after { inset: calc(-1 * var(--pi-space-5)) calc(-1 * var(--pi-space-4)); } }
+  /* Touch has no hover: the actions are always visible, which also ends the
+     streaming flicker - a hidden-until-focus cluster on a surface that
+     re-renders every chunk blinked as focus was lost and restored. */
+  @media (pointer: coarse) {
+    .msg-header-trailing { gap: var(--pi-space-4); }
+    .msg-actions { gap: var(--pi-space-4); opacity: 1; }
+    .msg-action::after { inset: calc(-1 * var(--pi-space-3)) calc(-1 * var(--pi-space-1)); }
+  }
   .msg-action:focus { color: var(--pi-text); border-color: var(--pi-accent); }
   @media (hover: hover) { .msg-action:hover { color: var(--pi-text); border-color: var(--pi-accent); } }
   .msg:focus-within > .msg-header .msg-actions, .group-msg:focus-within > .msg-header .msg-actions { opacity: 1; }
