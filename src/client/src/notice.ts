@@ -23,7 +23,7 @@ export type RetiredBy = (typeof RetiredBy)[keyof typeof RetiredBy];
 export interface Notice {
   readonly text: string;
   readonly retiredBy: RetiredBy;
-  /** The machine a transport claim is about; "local" when the claim is global. */
+  /** The machine a transport claim is about; "page" when the claim is global. */
   readonly machineId?: string;
 }
 
@@ -94,7 +94,9 @@ export function noticeFromError(error: unknown, link: { readonly live: boolean }
   if (isTransientError(text) || /failed to fetch|load failed|networkerror when attempting to fetch/i.test(text)) {
     return noticeFromTransport(text, error instanceof RequestTimeoutError ? machineIdFromUrl(error.url) : undefined);
   }
-  if (error instanceof HttpError) return noticeForReader(text);
+  if (error instanceof HttpError) {
+    return error.machineId !== undefined ? noticeFromTransport(text, error.machineId) : noticeForReader(text);
+  }
   // A deadline miss asserts "the server did not answer" - the same claim an
   // HttpError makes, so later answers disprove it the same way. Measured
   // live: a remote machine answered /status at 30.007s against a 30.000s

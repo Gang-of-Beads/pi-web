@@ -57,23 +57,28 @@ function normalizeTransientError(error: string): string | undefined {
   // the session proxy, the plugin backend proxy and workspace deletion say
   // nothing at all. Naming one of them, as this rule first did, left the
   // commonest banner sitting on the screen long after the daemon was back.
-  if (/session daemon\b.*\bunavailable: connect (enoent|econnrefused)/i.test(error) && /sessiond\.sock/i.test(error)) {
+  // A composed message already names its machine ("X is unavailable;
+  // reconnecting… <detail>"): shortening it would erase the machine, so only
+  // uncomposed claims reach the rewrites below. The composed prefix is the
+  // machine controller's own; nothing else produces it.
+  const composed = /is unavailable; reconnecting/i.test(error);
+  if (!composed && /unavailable: connect (enoent|econnrefused)/i.test(error) && /sessiond\.sock/i.test(error)) {
     return "Reconnecting to the session daemon…";
   }
-  // Matches the DOMException text a cancelled fetch stringifies to, with or
-  // without a wrapping prefix. The earlier rule required "model response
-  // failed:", which only ever prefixes a transcript system line, so it never
-  // fired on the banner it was written for.
-  if (/\boperation was aborted\b/i.test(error)) {
+  // Matches the DOMException text a cancelled fetch stringifies to. The
+  // earlier rule required "model response failed:", which only ever prefixes
+  // a transcript system line, so it never fired on the banner it was
+  // written for.
+  if (!composed && /\boperation was aborted\b/i.test(error)) {
     return "Previous request was interrupted. Retry if the message did not finish.";
   }
-  if (/remote machine request cancelled/i.test(error)) {
+  if (!composed && /remote machine request cancelled/i.test(error)) {
     return "Connection changed while the request was in flight. Retrying is usually enough.";
   }
   // A deadline miss says so in its own words (requestDeadline.ts). The polls
   // re-issue themselves and a session that was streaming goes on replying, so
   // this heals like a reconnect, not like a failed action.
-  if (/did not answer within/i.test(error)) {
+  if (!composed && /did not answer within/i.test(error)) {
     return "A request timed out. Polls retry on their own.";
   }
   // What a dropped connection looks like from `fetch`: Chrome says "Failed to
@@ -86,6 +91,12 @@ function normalizeTransientError(error: string): string | undefined {
   // Failed to fetch"), and rewriting that would erase the machine's name.
   if (/^(failed to fetch|load failed|networkerror when attempting to fetch resource)[.!]?$/i.test(error)) {
     return "Lost connection to PI WEB. Reconnecting…";
+  }
+  // The gateway's own two labels, whole-message (its detail arrives inside
+  // parentheses). Same claim as the local daemon's: the hop in between is
+  // down, and it heals.
+  if (/^remote machine (unavailable|timeout)/i.test(error)) {
+    return "Reconnecting to the machine…";
   }
   return undefined;
 }

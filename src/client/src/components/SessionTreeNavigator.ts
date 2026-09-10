@@ -554,7 +554,7 @@ export class SessionTreeNavigator extends LitElement {
     .tree-row.selected { background: var(--pi-selection-bg); box-shadow: inset 3px 0 var(--pi-accent); }
     .tree-row:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     .tree-row.active-path:not(.selected) { background: color-mix(in srgb, var(--pi-accent) 7%, var(--pi-surface)); }
-    .tree-row.active-leaf { box-shadow: inset 3px 0 var(--pi-accent); }
+    .tree-row.active-leaf { box-shadow: inset var(--pi-rail-width) 0 var(--pi-accent); }
     .tree-row.bookkeeping { color: var(--pi-muted); }
     .disclosure { width: 20px; height: var(--pi-control-height); display: grid; place-items: center; border-radius: var(--pi-radius-xs); color: var(--pi-muted); font-size: var(--pi-text-md); user-select: none; }
     /* Real controls under the AA floor the repo cites: the disclosure is the

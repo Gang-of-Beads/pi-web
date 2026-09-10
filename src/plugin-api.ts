@@ -43,12 +43,7 @@ export type {
   MoveWorkspaceFileResponse,
 } from "./shared/pluginApiTypes.js";
 
-/** The flag ids PI WEB itself publishes into the open status-flag maps. */
-export const CORE_STATUS_FLAGS = {
-  working: "core:working",
-  terminal: "core:terminal",
-  unread: "core:unread",
-} as const;
+export { CORE_STATUS_FLAGS } from "./shared/machineStatus.js";
 
 export type PluginId = string;
 export type LocalContributionId = string;

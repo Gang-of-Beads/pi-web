@@ -541,7 +541,7 @@ export class SessionController {
       clientQueuedSessionMessages: { ...state.clientQueuedSessionMessages, [session.id]: [...current, queuedSessionMessagePreview(queued)] },
       sessionActivities: { ...state.sessionActivities, [session.id]: activity },
       activity: state.selectedSession?.id === session.id ? activity : state.activity,
-      error: "",
+      ...clearErrorPatch(),
     });
   }
 
@@ -1620,7 +1620,7 @@ export class SessionController {
       availableThinkingLevels: [],
       treeDialog: undefined,
       ...(activity === undefined ? {} : { sessionActivities: { ...state.sessionActivities, [session.id]: activity } }),
-      error: "",
+      ...clearErrorPatch(),
     });
     // Re-selecting the row mid-startup re-establishes the constructing
     // session's subscription; the close above dropped it with the old selection.
@@ -1661,7 +1661,7 @@ export class SessionController {
       sendingPrompts: moveRecordKey(state.sendingPrompts, tempId, cachedSession.id),
       clientQueuedSessionMessages: moveRecordKey(state.clientQueuedSessionMessages, tempId, cachedSession.id),
       ...(wasSelected ? { selectedSession: cachedSession, status: state.sessionStatuses[cachedSession.id], activity: state.sessionActivities[cachedSession.id], pendingAsk: state.sessionStatuses[cachedSession.id]?.pendingAsk, pendingDialogs: state.sessionStatuses[cachedSession.id]?.pendingDialogs ?? [], closedDialogs: [], dismissedDialogIds: [] } : {}),
-      error: "",
+      ...clearErrorPatch(),
     });
     this.applyReleasedCreatedSessions(releasedCreatedSessions, pending.machineId);
     if (wasSelected) {

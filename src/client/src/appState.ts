@@ -158,6 +158,8 @@ export type SessionsLoadState = "unloaded" | "loading" | "loaded";
  * deliberately sticky until a later load succeeds: a silent recovery is how a
  * missing project list read as "no projects".
  */
+import { clearErrorPatch } from "./errorNotice";
+
 export type ProjectsLoadState = "unloaded" | "loading" | "loaded" | "failed";
 
 /** Four-state load discipline for the machines roster; mirrors ProjectsLoadState. */
@@ -172,6 +174,8 @@ export type WorkspaceScopedStateReset = Pick<AppState,
   | "treeDialog"
   | "selectedTerminalId"
   | "error"
+  | "errorRetiredBy"
+  | "errorMachineId"
 >;
 
 
@@ -188,7 +192,7 @@ export function resetWorkspaceScopedState(): WorkspaceScopedStateReset {
     startingSessionCount: 0,
     treeDialog: undefined,
     selectedTerminalId: undefined,
-    error: "",
+    ...clearErrorPatch(),
   };
 }
 

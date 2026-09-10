@@ -1036,16 +1036,14 @@ export class PiWebApp extends LitElement {
   /**
    * Withdraw a transport complaint that a successful exchange has disproved.
    * The report vouches for one machine: a claim about machine B survives a
-   * success from machine A, and a page-level ("local") claim is disproved by
-   * any success at all.
+   * success from machine A. A page-level ("page") claim is disproved by any
+   * response at all - it speaks about the link this page fetches through.
    */
   private clearTransientError(machineId: string | undefined): void {
     if (this.state.error === "" || this.state.errorRetiredBy !== RetiredBy.reply) return;
-    // A page-level claim is disproved by any response; a machine-scoped claim
-    // only by a response that was routed to that machine.
-    const disproved = machineId === undefined
-      ? this.state.errorMachineId === "page"
-      : this.state.errorMachineId === machineId;
+    // A page-level claim is disproved by any response from the origin; a
+    // machine-scoped claim only by a response that was routed to that machine.
+    const disproved = this.state.errorMachineId === "page" || this.state.errorMachineId === machineId;
     if (!disproved) return;
     // Reset the scope with the text: a stale scope would let the next
     // transport complaint inherit a machine it does not speak about.
@@ -3792,8 +3790,9 @@ export class PiWebApp extends LitElement {
   }
 
   private renderErrorBanner(error: string, retiredBy: RetiredBy) {
-    if (error === "" || this.bannerDismissedByReader) {
-      // An empty next, or a reader dismissal, is decisive: the banner goes now.
+    if (this.bannerDismissedByReader) {
+      // The reader acted; the hold window exists for replacement churn, not to
+      // outvote a dismissal.
       this.bannerShownAt = undefined;
       this.lastScheduledError = "";
       this.bannerDismissedByReader = false;

@@ -4,7 +4,7 @@ import { deadlineSignal, RequestTimeoutError, timeoutForBody } from "./requestDe
 import { dedupeKey, shareInFlight } from "./inFlight";
 
 export class HttpError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(message: string, readonly status: number, readonly machineId?: string) {
     super(message);
     this.name = "HttpError";
   }
@@ -50,7 +50,14 @@ async function fetchBody(url: string, init?: RequestInit): Promise<unknown> {
   reportTransportReachable(url);
   if (!response.ok) {
     const body: unknown = await response.json().catch((): unknown => ({}));
-    throw new HttpError(errorMessage(body) ?? response.statusText, response.status);
+    // The gateway answers with its own label plus the evidence (detail) and
+    // the machine it failed for - a transport claim that names its machine.
+    const fields = isRecord(body) ? body : {};
+    const label = typeof fields["error"] === "string" ? fields["error"] : response.statusText;
+    const detail = typeof fields["detail"] === "string" ? fields["detail"] : undefined;
+    const machineId = typeof fields["machineId"] === "string" ? fields["machineId"] : undefined;
+    const text = detail === undefined || detail === "" ? label : `${label} (${detail})`;
+    throw new HttpError(errorMessage({ error: text }) ?? text, response.status, machineId);
   }
   const body: unknown = await response.json();
   return body;

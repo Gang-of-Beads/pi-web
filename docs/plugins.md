@@ -660,7 +660,7 @@ interface ProviderWorkspace {
 - `prepareRemove()` returns a plan for a visible host-owned terminal run; returning the plan approves the operation but does **not** mean removal has completed. `command` is shell source interpreted by the host's login shell. The host chooses a safe current working directory outside the target, so the provider must use the supplied absolute `workspace.path`, shell-quote it, and keep removal in the foreground. The host records completion when the shell exits, with exit status 0 meaning success.
 - Provider failures and conflicts are diagnostics. A claimant that fails `list()` does not permit fallback takeover for the same resolution.
 
-The only supported plugin type entrypoints are the type-only package exports `@gang-of-beads/pi-web/plugin-api` and `@gang-of-beads/pi-web/server-plugin-api`. Use them with `import type`; there is no runtime JavaScript export. Private `dist/**` deep imports and any other plugin API subpath are not part of the package contract.
+The only supported plugin type entrypoints are the type-only package exports `@gang-of-beads/pi-web/plugin-api` and `@gang-of-beads/pi-web/server-plugin-api`. Use them with `import type`; the one runtime JavaScript export is `CORE_STATUS_FLAGS`, the wire flag ids PI WEB publishes into status-flag maps - import it and match against it instead of hard-coding the strings. Private `dist/**` deep imports and any other plugin API subpath are not part of the package contract.
 
 ## Contributions
 

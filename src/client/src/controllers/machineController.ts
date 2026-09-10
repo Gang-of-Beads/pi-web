@@ -6,6 +6,7 @@ import type { GetState, SetState, UpdateUrl } from "./types";
 import type { ProjectController } from "./projectController";
 
 export class MachineController {
+  private readonly healthRefreshSeqByMachine = new Map<string, number>();
   private readonly runtimeRefreshSeqByMachine = new Map<string, number>();
 
   constructor(private readonly getState: GetState, private readonly setState: SetState, private readonly updateUrl: UpdateUrl, private readonly projects: Pick<ProjectController, "loadProjects">) {}
@@ -116,11 +117,17 @@ export class MachineController {
   }
 
   async refreshMachineHealth(machineId = this.getState().selectedMachine?.id ?? "local"): Promise<MachineHealth | undefined> {
+    const seq = (this.healthRefreshSeqByMachine.get(machineId) ?? 0) + 1;
+    this.healthRefreshSeqByMachine.set(machineId, seq);
     try {
       const health = await api.health(machineId);
+      if (this.healthRefreshSeqByMachine.get(machineId) !== seq) return undefined;
       this.setState({ machineStatuses: { ...this.getState().machineStatuses, [health.machineId]: health } });
       return health;
     } catch (error) {
+      // A late failure must not paint its machine's complaint onto the
+      // machine the reader has since switched to.
+      if (this.healthRefreshSeqByMachine.get(machineId) !== seq) return undefined;
       this.setState(errorNoticePatch(error));
       return undefined;
     }

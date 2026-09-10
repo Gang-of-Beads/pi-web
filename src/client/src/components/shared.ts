@@ -315,7 +315,7 @@ export const listStyles = css`
      occupies - inset plus size plus a gap. This was a hardcoded 30px while the
      button measured 32px at a 6px inset, and 36px at 4px on coarse pointers, so
      a long name ran underneath the button on every phone. Derive it instead. */
-  .list-body.tiles .action-main { border-radius: var(--pi-radius-lg); padding: var(--pi-space-5) calc(var(--pi-tile-menu-inset) + var(--pi-tile-menu-size) + var(--pi-space-2)) var(--pi-space-5) var(--pi-space-5); min-height: var(--pi-row-min-height); align-content: center; }
+  .list-body.tiles .action-main { border-radius: var(--pi-radius-lg); padding: var(--pi-space-5) calc(var(--pi-tile-menu-inset) + var(--pi-tile-menu-size) + var(--pi-space-2) + var(--pi-dot-md) + var(--pi-space-2)) var(--pi-space-5) var(--pi-space-5); min-height: var(--pi-row-min-height); align-content: center; }
   /* One height for one shape. The title clamps to two lines and the path to
      two, so a long name cannot make its tile taller than the one beside it -
      measured 82 against 95 before this. */
@@ -443,15 +443,13 @@ export const listStyles = css`
      amber dot; the dot rules above are the only unread painters. Machine and
      workspace rows speak activity-indicator.session and stay success, the
      colour their working dots wear. */
-  /* Composites are real: an unread-and-working machine row wears the ring
-     around its work dot, so both the unread and the work rules match one row.
-     The ring entry is therefore NOT listed: the dot the ring wraps decides
-     the rail, which is what "the rail wears the dot's colour" means for a
-     composite. Order among the work rules is the composite's precedence
-     (session > terminal), not an arbiter - the arbiter's one-dot guarantee
-     holds within a vocabulary, not across the ring wrapper. */
+  /* A machine row that is unread and working wears the ring around its work
+     dot; no node in that row matches an unread selector, so the work rule
+     alone paints - the dot the ring wraps decides the rail, which is what
+     "the rail wears the dot's colour" means for a composite. The arbiter's
+     one-dot guarantee holds within each vocabulary; no row renders session
+     and terminal dots together today, so their order is unexercised. */
   .action-row:has(:where(.activity-indicator.unread, .session-state.unread, .session-state.background)) { border-left-color: var(--pi-purple); }
-  .action-row:has(:where(.activity-indicator.sending)) { border-left-color: var(--pi-warning); }
   .action-row:has(:where(.activity-indicator.session, .session-state.running)) { border-left-color: var(--pi-success); }
   .action-row:has(:where(.session-state.running)) { border-left-color: var(--pi-accent); }
   .action-row:has(:where(.session-state.asking)) { border-left-color: var(--pi-warning); }
@@ -461,7 +459,7 @@ export const listStyles = css`
   .action-row.selected { border-left-color: var(--pi-accent); }
   .activity-indicator.session { border-radius: 50%; background: var(--pi-success); }
   .activity-indicator.terminal { border-radius: var(--pi-radius-xs); background: var(--pi-accent); }
-  /* Client-side sending (upload in flight); distinct from server activity, which propagates to workspace/machine rows. */
+  /* Client-side sending (a session starting); distinct from server activity, which propagates to workspace/machine rows. Painted on the pending-session row, which has no rail. */
   .activity-indicator.sending { border-radius: 50%; background: var(--pi-warning); }
   /* Unread is a stable state, not ongoing work: keep it static and purple,
      the same turn-ended colour the session dot wears. */
