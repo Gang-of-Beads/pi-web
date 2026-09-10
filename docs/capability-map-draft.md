@@ -46,14 +46,14 @@ Legend: **Scope** = what the action operates on. **Derives** = the surface takes
 ### Scope: MACHINE
 | Action | Surface(s) | Scope | Derives? | Touch | file:line |
 |---|---|---|---|---|---|
-| Switch machine | context-bar machine chip opens machines section | machine | explicit | yes | C:components/MachineSwitcher.ts:63-66,98; C:components/appShell/AppContextBar.ts:218 |
-| Add machine | MachineList heading "+ Add machine", palette, Settings → Machines, MachineDialog | machine | explicit | yes | C:components/MachineList.ts:181-184; C:plugins/core/actions.ts:26; C:components/settings/SettingsMachinesPanel.ts:41; C:components/MachineDialog.ts:93 |
-| Check health / refresh machine | row menu "Check again"; palette machine.refresh | machine | explicit row | menu | C:components/MachineList.ts:160; C:plugins/core/actions.ts:33 |
-| Rename machine (incl. local alias) | row menu Rename… (native prompt); Settings → Machines (inline input) | machine | explicit row | menu | C:components/MachineList.ts:227-234; C:components/settings/SettingsMachinesPanel.ts:70-82 |
-| Open machine's own PI WEB (remote) | row menu "Open PI WEB"; palette machine.open | machine | explicit row | menu | C:components/MachineList.ts:163; C:plugins/core/actions.ts:40 |
-| Remove machine (remote only) | row menu Remove; palette machine.remove; Settings | machine | explicit row | menu | C:components/MachineList.ts:165; C:components/MachineSwitcher.ts:116; C:plugins/core/actions.ts:48 |
+| Switch machine | quick switcher machine tabs (context bar's pointer path) | machine | explicit | yes | C:components/appShell/AppContextBar.ts:22-23,47,54; C:components/QuickSwitcher.ts (machine tabs) |
+| Add machine | MachineList heading "+ Add machine", palette, Settings → Machines, MachineDialog | machine | explicit | yes | C:../../pi-web-plugins/machines/browser/MachineList.ts:181-184; C:plugins/core/actions.ts:26; C:components/settings/SettingsMachinesPanel.ts:41; C:components/MachineDialog.ts:93 |
+| Check health / refresh machine | row menu "Check again"; palette machine.refresh | machine | explicit row | menu | C:../../pi-web-plugins/machines/browser/MachineList.ts:160; C:plugins/core/actions.ts:33 |
+| Rename machine (incl. local alias) | row menu Rename… (native prompt); Settings → Machines (inline input) | machine | explicit row | menu | C:../../pi-web-plugins/machines/browser/MachineList.ts:227-234; C:components/settings/SettingsMachinesPanel.ts:70-82 |
+| Open machine's own PI WEB (remote) | row menu "Open PI WEB"; palette machine.open | machine | explicit row | menu | C:../../pi-web-plugins/machines/browser/MachineList.ts:163; C:plugins/core/actions.ts:40 |
+| Remove machine (remote only) | row menu Remove; palette machine.remove; Settings | machine | explicit row | menu | C:../../pi-web-plugins/machines/browser/MachineList.ts:165; C:components/MachineSwitcher.ts:116; C:plugins/core/actions.ts:48 |
 | Machine-wide session **cleanup** (archive idle + delete archived) | "Clean up" in Sessions heading; palette "Clean up sessions" → SessionCleanupDialog | **machine (all projects/cwds)** | **NO — machine-wide despite living in a workspace list** | yes | C:components/SessionList.ts:290; C:components/PiWebApp.ts:2433-2438; SH:apiTypes.ts:785-792 |
-| Status/health per machine | MachineList row meta + activity dot | machine | explicit | read-only | C:components/MachineList.ts:125-127 |
+| Status/health per machine | MachineList row meta + activity dot | machine | explicit | read-only | C:../../pi-web-plugins/machines/browser/MachineList.ts:125-127 |
 
 ### Scope: PROJECT
 | Action | Surface(s) | Scope | Derives? | Touch | file:line |
@@ -230,7 +230,7 @@ Covered above (TerminalPanel). All workspace-scoped, derived from selected works
 | ProjectList / WorkspaceList tiles | `min-height: 56px` + **`grid-auto-rows: min-content` + `align-self: start`** → rows are each as tall as their tallest tile | **2-line clamp, break-all** | Workspace: only when label items exist; Project: path always | `minmax(150px,1fr)` | menu btn 32px (36px coarse) | C:components/shared.ts:252-266 |
 | Machine list options | `min-height: 60px`, own grid | 1-line (own classes) | status line | **`minmax(140px,1fr)`, 6px gap, 8px padding** | ~60px | C:components/MachineSwitcher.ts:303,309 |
 | SessionList rows | no min-height on `.action-main` (list mode) | 2-line clamp (`max-height: 2.5em`) | `<small>` meta **always** (status · N messages) | rows, not tiles | heading buttons **30px** (36px mobile); menu 32px (36px) | C:components/shared.ts:297-299; C:components/SessionList.ts:665,745-747 |
-| MachineList rows | `min-height: 58px` (own override) | 1-line ellipsis | always | rows | 58px | C:components/MachineList.ts:243 |
+| MachineList rows | `min-height: 58px` (own override) | 1-line ellipsis | always | rows | 58px | C:../../pi-web-plugins/machines/browser/MachineList.ts:243 |
 | GoalPanel cards | `min-height: 40px` header (42px narrow) | 1-line ellipsis objective | meta row optional (collapsed) | cards stacked | 40/42px | C:components/GoalPanel.ts:186-196,271-273 |
 | ChatView activity rows (subagent/run/task) | `min-height: 38px` | 1-line ellipsis per column | optional detail line | single column | 38px | C:components/ChatView.ts:188,227 |
 | Notification rows | **no min-height**; padding only | wraps free | always | single column | controls 32px | C:components/ChatView.ts:263,279 |

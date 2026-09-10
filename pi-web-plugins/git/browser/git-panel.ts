@@ -1350,7 +1350,7 @@ const gitPanelStyles = `
   .git-panel .git-viewer { min-height: 0; overflow: auto; display: flex; flex-direction: column; }
   .git-panel .git-review-diffs { min-width: 0; }
   .git-panel .git-review-section { min-width: 0; min-height: 120px; border-bottom: 1px solid var(--pi-border); scroll-margin-top: var(--pi-space-4); }
-  .git-panel .git-review-section.is-focused { box-shadow: inset 3px 0 0 var(--pi-accent); }
+  .git-panel .git-review-section.is-focused { box-shadow: inset var(--pi-rail-width) 0 0 var(--pi-accent); }
   .git-panel .git-review-toggle { min-width: 0; overflow: hidden; border: 0; background: transparent; padding: var(--pi-space-1); font-weight: var(--pi-weight-semibold); text-overflow: ellipsis; white-space: nowrap; }
   .git-panel .git-review-placeholder { min-height: 96px; display: grid; place-items: center; color: var(--pi-muted); }
   .git-panel .git-review-section > .git-diffs { min-height: 160px; }

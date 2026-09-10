@@ -1,6 +1,7 @@
 import type { JsonValue } from "../../../shared/apiTypes";
 import { isPiWebPluginId } from "../../../shared/pluginIds";
-import { reportTransportReachable } from "./transportHealth";
+import { HttpError } from "./http";
+import { machineIdFromUrl, reportTransportReachable } from "./transportHealth";
 import {
   cloneBoundedPluginBackendJson,
   parseBoundedPluginBackendJson,
@@ -68,12 +69,12 @@ export async function requestPluginBackend(
     });
     reportTransportReachable(pluginBackendRequestUrl(target, operation));
   } catch (error) {
-    throw new Error(`Plugin backend request unavailable: ${describeError(error)}`, { cause: error });
+    throw new HttpError(`Plugin backend request unavailable: ${describeError(error)}`, 0, machineIdFromUrl(pluginBackendRequestUrl(target, operation)));
   }
 
   const text = await readBoundedResponseText(response);
   if (!response.ok) {
-    throw new Error(pluginBackendErrorMessage(text) ?? `Plugin backend request returned HTTP ${String(response.status)}`);
+    throw new HttpError(pluginBackendErrorMessage(text) ?? `Plugin backend request returned HTTP ${String(response.status)}`, response.status, machineIdFromUrl(pluginBackendRequestUrl(target, operation)));
   }
   return parseBoundedPluginBackendJson(text, "Plugin backend response", PLUGIN_BACKEND_RESPONSE_JSON_MAX_BYTES);
 }

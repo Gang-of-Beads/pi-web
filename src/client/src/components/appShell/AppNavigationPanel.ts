@@ -506,10 +506,6 @@ export class AppNavigationPanel extends LitElement {
        appear while they are being changed - which is what frees the whole panel
        for the session list, the one surface that is actually worked in. */
     machine-list, project-list, workspace-list, session-list { flex: 1 1 auto; min-height: 0; overflow: hidden; }
-    machine-list[collapsed],
-    project-list[collapsed],
-    workspace-list[collapsed],
-    session-list[collapsed] { flex: 0 0 auto; min-height: auto; overflow: hidden; }
     button { font: inherit; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
   `;
 }

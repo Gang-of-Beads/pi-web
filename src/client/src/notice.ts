@@ -100,7 +100,10 @@ export function noticeFromError(error: unknown, link: { readonly live: boolean }
   if (error instanceof HttpError) {
     return isTransientError(text) ? noticeFromTransport(text, error.machineId) : noticeForReader(text);
   }
-  if (isTransientError(text) || /failed to fetch|load failed|networkerror when attempting to fetch/i.test(text)) {
+  // Anchored whole-message, like the display side: the family's phrases
+  // also appear as the detail of composed messages, which keep their own
+  // (machine-named) lifetime.
+  if (isTransientError(text) || /^(failed to fetch|load failed|networkerror when attempting to fetch)[.!]?$/i.test(text)) {
     return noticeFromTransport(text, error instanceof RequestTimeoutError ? machineIdFromUrl(error.url) : undefined);
   }
   // A deadline miss reaches the transport branch above: its fixed text

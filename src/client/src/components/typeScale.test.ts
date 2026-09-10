@@ -28,7 +28,7 @@ const FOCUS_RING_LITERAL = /outline:\s*\d+px/gu;
  * fails on the ones nobody read.
  */
 const WEIGHT_LITERAL = /font-weight:\s*(?:400|500|600|650|700)\b/gu;
-const DISABLED_OPACITY_LITERAL = /:disabled[^{]*\{[^}]*opacity:\s*\.\d+/gu;
+const DISABLED_OPACITY_LITERAL = /:disabled[^{]*\{[^}]*opacity:\s*(?:0?\.)\d+/gu;
 
 function styleSources(root: string): string[] {
   const found: string[] = [];

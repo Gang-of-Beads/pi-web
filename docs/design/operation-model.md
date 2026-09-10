@@ -21,7 +21,7 @@ Consequences, each verifiable in the current code:
 
 1. **A timeout is a statement about one fetch, not about the work.**
    `RequestTimeoutError` (`requestDeadline.ts:29`) aborts the request and the
-   notice layer (`notice.ts:70`) raises a page-level banner. The daemon keeps
+   notice layer (`noticeFromError` in `notice.ts`) raises a page-level banner. The daemon keeps
    running the command; the socket keeps delivering its output. Both statements
    are true and they contradict each other on screen.
 

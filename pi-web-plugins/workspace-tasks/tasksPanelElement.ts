@@ -295,9 +295,10 @@ function taskStyles(): string {
       code, pre { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-sm); background: var(--pi-bg); color: var(--pi-text-secondary); font: var(--pi-text-xs) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
       code { overflow: auto; padding: var(--pi-space-3) var(--pi-space-4); white-space: nowrap; }
       pre { margin: var(--pi-space-4) 0 0; overflow: auto; padding: var(--pi-space-4); white-space: pre-wrap; }
-      button { border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); background: var(--pi-accent); color: var(--pi-on-accent, var(--pi-bg)); cursor: pointer; padding: var(--pi-space-3) var(--pi-space-5); font: inherit; }
+      button { border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); box-sizing: border-box; min-height: var(--pi-control-height); background: var(--pi-accent); color: var(--pi-on-accent, var(--pi-bg)); cursor: pointer; padding: var(--pi-space-3) var(--pi-space-5); font: inherit; }
       button.secondary { border-color: var(--pi-border); background: var(--pi-surface); color: var(--pi-text); }
-      button:disabled { cursor: wait; opacity: 0.65; }
+      @media (pointer: coarse) { button { box-sizing: border-box; min-height: var(--pi-control-height-touch); } }
+      button:disabled { cursor: wait; opacity: var(--pi-disabled-opacity); }
       .empty-state { border: 1px dashed var(--pi-border-muted); border-radius: var(--pi-radius-md); color: var(--pi-muted); padding: var(--pi-space-6); }
       .empty-state p { margin: var(--pi-space-3) 0 0; }
       .panel-status { margin: var(--pi-space-6) var(--pi-space-6) 0; }

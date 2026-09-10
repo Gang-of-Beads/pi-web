@@ -393,6 +393,7 @@ export const listStyles = css`
   .action-activity[hidden] { display: none; }
   .action-activity .activity-indicator { margin: 0; vertical-align: 0; }
   .activity-indicator { flex: 0 0 auto; display: inline-block; width: var(--pi-dot-sm); height: var(--pi-dot-sm); margin-right: var(--pi-space-3); background: var(--pi-success); animation: pulse 1s ease-in-out infinite; vertical-align: 1px; }
+  .activity-indicator.idle { background: var(--pi-dim); animation: none; }
   /*
    * The state rail.
    *
@@ -459,8 +460,11 @@ export const listStyles = css`
      (.session-state.unread): a purple core with a purple 22% halo. The
      accent mix here was a second colour for one semantic. */
   .activity-indicator.unread { border-radius: 50%; background: var(--pi-purple); animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--pi-purple) 22%, transparent); }
-  /* Unread + ongoing work: a static accent ring wraps the still-pulsing work dot. */
-  .unread-ring { flex: 0 0 auto; box-sizing: border-box; display: inline-grid; place-items: center; width: var(--pi-dot-md); height: var(--pi-dot-md); margin-right: var(--pi-space-3); border: 1.5px solid var(--pi-accent); border-radius: 50%; vertical-align: 1px; }
+  /* Unread + ongoing work: a static purple ring wraps the still-pulsing
+     work dot. The ring is the composite's unread half, so it wears the
+     unread colour; the accent it wore before is the running colour, which
+     made "unread + terminal" render identically to "terminal". */
+  .unread-ring { flex: 0 0 auto; box-sizing: border-box; display: inline-grid; place-items: center; width: var(--pi-dot-md); height: var(--pi-dot-md); margin-right: var(--pi-space-3); border: 1.5px solid var(--pi-purple); border-radius: 50%; vertical-align: 1px; }
   .unread-ring .activity-indicator { width: var(--pi-dot-xs); height: var(--pi-dot-xs); margin: 0; vertical-align: 0; }
   .action-activity .unread-ring { margin: 0; vertical-align: 0; }
   .action-menu { position: relative; align-self: stretch; }

@@ -784,6 +784,13 @@ export class PiWebApp extends LitElement {
       // reader is now looking at.
       if (selectedMachineId(this.state) !== machineId) return;
       const adoptEmpty = options.adoptEmpty ?? !this.interruptedRunsBootReadDone;
+      // The unknown flag describes the read, not the record: any successful
+      // read answers the question the banner asks, even when the answer is
+      // "empty, because the boot read spent the record". Clearing it here -
+      // before the emptiness decision - is what makes the banner's own
+      // "reconnect to read it again" promise deliverable; after the boot
+      // read, emptiness is the only answer a recovery can ever bring.
+      this.interruptedRunsUnknown = false;
       if (ids?.size === 0 && !adoptEmpty) return;
       if (ids === undefined) {
         // A poll never replaces a banner the reader may still be acting on;
@@ -796,13 +803,9 @@ export class PiWebApp extends LitElement {
       this.interruptedSessionIdsMachine = machineId;
       this.interruptedRunsBootReadDone = true;
       // The state is known again - do not leave our own promise unmet. The
-      // retraction is gated on the flag; the text comparison below is only
-      // message identity - clearing our own banner, not a newer one - not a
-      // reading of the wording.
-      if (this.interruptedRunsUnknown) {
-        this.interruptedRunsUnknown = false;
-        if (this.state.error === INTERRUPTED_RUNS_UNKNOWN_MESSAGE) this.setState(clearErrorPatch());
-      }
+      // retraction is gated on the flag (cleared above); the text comparison
+      // is only message identity - clearing our own banner, not a newer one.
+      if (this.state.error === INTERRUPTED_RUNS_UNKNOWN_MESSAGE) this.setState(clearErrorPatch());
     });
   }
 
@@ -2046,6 +2049,10 @@ export class PiWebApp extends LitElement {
       }
       this.setState({ activeTerminalCount: this.activeTerminalIds.size });
     } catch (error) {
+      // A late background failure must not paint its machine's complaint
+      // onto the machine the reader has since switched to - the same rule
+      // the health, runtime and project refreshes already run.
+      if (selectedMachineId(this.state) !== machineId || this.state.selectedWorkspace?.id !== workspace.id) return;
       this.setState(errorNoticePatch(error));
     }
   }

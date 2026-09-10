@@ -41,10 +41,6 @@ describe("panel body allocation", () => {
     expect(styleText).toContain("machine-list, project-list, workspace-list, session-list { flex: 1 1 auto;");
     expect(styleText).not.toContain("flex: 1 1 0px");
   });
-
-  it("keeps a collapsed section at heading height", () => {
-    expect(styleText).toContain("session-list[collapsed] { flex: 0 0 auto;");
-  });
 });
 
 describe("machine status wiring", () => {

@@ -551,7 +551,7 @@ export class SessionTreeNavigator extends LitElement {
     .tree-row { min-height: 48px; display: grid; grid-template-columns: 20px minmax(82px, auto) minmax(0, 1fr) auto; align-items: center; gap: var(--pi-space-4); padding: var(--pi-space-3) var(--pi-space-5) var(--pi-space-3) calc(var(--pi-space-5) + var(--tree-indent)); border-bottom: 1px solid var(--pi-border-muted); cursor: pointer; outline: none; content-visibility: auto; contain-intrinsic-block-size: 48px; }
     .tree-row:last-child { border-bottom: 0; }
     @media (hover: hover) { .tree-row:hover { background: var(--pi-surface-hover); } }
-    .tree-row.selected { background: var(--pi-selection-bg); box-shadow: inset 3px 0 var(--pi-accent); }
+    .tree-row.selected { background: var(--pi-selection-bg); box-shadow: inset var(--pi-rail-width) 0 var(--pi-accent); }
     .tree-row:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     .tree-row.active-path:not(.selected) { background: color-mix(in srgb, var(--pi-accent) 7%, var(--pi-surface)); }
     .tree-row.active-leaf { box-shadow: inset var(--pi-rail-width) 0 var(--pi-accent); }
