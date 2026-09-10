@@ -25,7 +25,7 @@ var laneB = runs.run('lane-b', {
   task: CONTEXT + '\n\nYOUR FOCUS: desktop (1280) plus the responsive breakpoints (393 / 768 / 1024 / 1280 - resize and compare the same surface across widths). Hunt misalignment, uneven margins/padding between sibling surfaces, centering of titles and empty states, button boundary visibility, and elements that jump size or position between breakpoints. Measure; give numbers and file:line.',
 });
 var laneC = runs.run('lane-c', {
-  agent: 'qwen-parity-reviewer', model: 'botim-bllm/glm-5.3-flash',, timeoutMs: 5400000, label: 'roundA qwen tokens+balance', output: '/tmp/roundb-lane-c.md',
+  agent: 'qwen-parity-reviewer', model: 'botim-bllm/glm-5.3-flash', timeoutMs: 5400000, label: 'roundb glm C tokens+balance', output: '/tmp/roundb-lane-c.md',
   task: CONTEXT + '\n\nYOUR FOCUS: the token and pattern layer. Read the published scales (index.html tokens, spacing/type/radius/token guard tests) and audit ACTUAL usage against them across all components (shared.ts, appShell/*, ChatView, SessionList, the six plugin panels): paddings/gaps that bypass the spacing scale, type sizes outside the scale, radius inconsistencies (square language vs surviving pills/rounds incl. the phone fold button), borders that vanish on the flat theme, and spacing values that repeat with no token. This is where "extremely loose in places" comes from - find the unowned values.',
 });
 var results = await Promise.all([
