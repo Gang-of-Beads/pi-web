@@ -3,8 +3,11 @@ import { css } from "lit";
 /**
  * Shared four-state session badge (working/idle/asking/error).
  *
- * One style block for every surface (list rows, chat dock, quick switcher,
- * context bar) so the same state never reads differently in two places:
+ * One style block for the surfaces that take it (list rows, quick switcher,
+ * shell) so the same state never reads differently in two places. The chat
+ * dock imports the block but recolours the dots with currentColor - the one
+ * sanctioned second voice, because the dock sits on a different surface
+ * colour:
  *
  *   working/running -> three bouncing blue dots (AI generating or tooling right
  *                      now; also the "sending" mark — see sessionRowIndicator)
@@ -19,8 +22,8 @@ import { css } from "lit";
  * that ranking is written down. This file only implements the colors.
  *
  * Works both as an inline dot (slot in flow) and inside absolute-positioned
- * row flags; the dots are sized for a 9px track so rows do not jump when the
- * single dot becomes three.
+ * row flags; the badge box is the dot scale's --pi-dot-md, sized so rows do
+ * not jump when the single dot becomes three.
  */
 export const sessionStateBadgeStyles = css`
   .session-state { box-sizing: border-box; display: inline-grid; place-items: center; width: var(--pi-dot-md); height: var(--pi-dot-md); flex: 0 0 auto; border-radius: 50%; vertical-align: 1px; }

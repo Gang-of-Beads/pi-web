@@ -246,7 +246,7 @@ function isEventTargetLike(value: unknown): value is FocusEventTargetLike {
   const candidate: { addEventListener?: unknown; removeEventListener?: unknown } = value;
   return typeof candidate.addEventListener === "function" && typeof candidate.removeEventListener === "function";
 }
-const INTERRUPTED_RUNS_UNKNOWN_MESSAGE = "Interrupted-run status is unknown: the read failed. Retrying the connection will resolve it.";
+const INTERRUPTED_RUNS_UNKNOWN_MESSAGE = "Interrupted-run status is unknown: the read failed. Reconnect to read it again.";
 const PI_WEB_STATUS_DEFER_MS = 750;
 export const REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS = [1_000, 3_000, 8_000, 15_000, 30_000] as const;
 const GLOBAL_SHORTCUT_LISTENER_OPTIONS = { capture: true } as const;
@@ -413,6 +413,7 @@ export class PiWebApp extends LitElement {
   /** Set when the reader dismisses the banner: the hold window must not resurrect what the reader has already acted on. */
   private bannerDismissedByReader = false;
   private lastScheduledError = "";
+  private lastScheduledMachineId: string | undefined = undefined;
   @state() private quickSwitcherOpen = false;
   @state() private contextSheetOpen = false;
   /** True while a question form or dialog field has focus (see composerCollapse). */
@@ -768,6 +769,12 @@ export class PiWebApp extends LitElement {
    * a run has continued is arbitrated by the live session state, not by a
    * spent file.
    */
+  /* The boot read is once per page, not once per connection: a machine
+     switch tears the socket down and reconnects, and that re-entry must not
+     wear boot semantics - the record the first read spent stays spent, and
+     an empty answer on re-entry says nothing about continuance. */
+  private interruptedRunsBootReadDone = false;
+
   private refreshInterruptedRuns(machineId: string, options: { adoptEmpty?: boolean } = {}): void {
     void this.sessions.loadInterruptedRuns(machineId).then((ids) => {
       // A failed read is not a record: the daemon may still hold markers, so
@@ -776,7 +783,8 @@ export class PiWebApp extends LitElement {
       // A stale machine's failed read must not announce onto the machine the
       // reader is now looking at.
       if (selectedMachineId(this.state) !== machineId) return;
-      if (ids?.size === 0 && options.adoptEmpty === false) return;
+      const adoptEmpty = options.adoptEmpty ?? !this.interruptedRunsBootReadDone;
+      if (ids?.size === 0 && !adoptEmpty) return;
       if (ids === undefined) {
         // A poll never replaces a banner the reader may still be acting on;
         // the unknown state is only worth announcing onto a quiet screen.
@@ -786,8 +794,11 @@ export class PiWebApp extends LitElement {
       }
       this.interruptedSessionIds = ids;
       this.interruptedSessionIdsMachine = machineId;
+      this.interruptedRunsBootReadDone = true;
       // The state is known again - do not leave our own promise unmet. The
-      // retraction tracks the flag, not the banner's wording.
+      // retraction is gated on the flag; the text comparison below is only
+      // message identity - clearing our own banner, not a newer one - not a
+      // reading of the wording.
       if (this.interruptedRunsUnknown) {
         this.interruptedRunsUnknown = false;
         if (this.state.error === INTERRUPTED_RUNS_UNKNOWN_MESSAGE) this.setState(clearErrorPatch());
@@ -1066,7 +1077,7 @@ export class PiWebApp extends LitElement {
    * top of a phone screen. A permanent failure is never expired here: it stays
    * until the user has seen and dismissed it.
    */
-  private scheduleTransientErrorDismissal(error: string): void {
+  private scheduleTransientErrorDismissal(error: string, machineId: string | undefined): void {
     if (this.transientErrorTimer !== undefined) {
       window.clearTimeout(this.transientErrorTimer);
       this.transientErrorTimer = undefined;
@@ -1082,8 +1093,18 @@ export class PiWebApp extends LitElement {
     if (normalizeTransientError(error) === undefined) return;
     this.transientErrorTimer = window.setTimeout(() => {
       this.transientErrorTimer = undefined;
-      // Only clear what we scheduled for: a newer message must not be swallowed.
-      if (this.state.error === error && this.state.errorRetiredBy === RetiredBy.reply) this.setState(clearErrorPatch());
+      // Only clear what we scheduled for: a newer message must not be
+      // swallowed. The schedule marker resets with the text, so a same-batch
+      // re-raise of identical wording re-arms its own expiry instead of
+      // inheriting a spent gate.
+      this.lastScheduledError = "";
+      // Only clear what we scheduled for - and "what" is the claim, not the
+      // wording: two machines down in a row can produce identical text, and
+      // the first machine's timer must not delete the second machine's claim
+      // that never answered once.
+      if (this.state.error === error && this.state.errorMachineId === machineId && this.state.errorRetiredBy === RetiredBy.reply) {
+        this.setState(clearErrorPatch());
+      }
     }, TRANSIENT_ERROR_TIMEOUT_MS);
   }
 
@@ -1927,7 +1948,8 @@ export class PiWebApp extends LitElement {
     const machineId = selectedMachineId(this.state);
     // Read once on the first connect too, not only when re-establishing: a
     // fresh page load is exactly when the user is looking for the work the
-    // last restart cut off.
+    // last restart cut off. Re-entries after a machine switch arrive here
+    // as well and get re-read semantics, not boot semantics.
     this.refreshInterruptedRuns(machineId);
     this.realtime.connect(
       (event) => { this.handleRealtimeEvent(machineId, event); },
@@ -3804,6 +3826,7 @@ export class PiWebApp extends LitElement {
       // outvote a dismissal.
       this.bannerShownAt = undefined;
       this.lastScheduledError = "";
+      this.lastScheduledMachineId = undefined;
       this.bannerDismissedByReader = false;
       this.heldErrorBanner = null;
       return null;
@@ -3817,10 +3840,11 @@ export class PiWebApp extends LitElement {
     // A replacement starts its own hold window and its own expiry: borrowing
     // the previous banner's timestamps gave the new message a shorter life
     // than the model promised.
-    if (error !== this.lastScheduledError) {
+    if (error !== this.lastScheduledError || this.state.errorMachineId !== this.lastScheduledMachineId) {
       this.lastScheduledError = error;
+      this.lastScheduledMachineId = this.state.errorMachineId;
       this.bannerShownAt = Date.now();
-      this.scheduleTransientErrorDismissal(error);
+      this.scheduleTransientErrorDismissal(error, this.state.errorMachineId);
     }
     this.heldErrorBanner = errorBanner(error, () => {
       // The reader acted; the 1.5s minimum-visibility window exists for

@@ -103,12 +103,12 @@ export function noticeFromError(error: unknown, link: { readonly live: boolean }
   if (isTransientError(text) || /failed to fetch|load failed|networkerror when attempting to fetch/i.test(text)) {
     return noticeFromTransport(text, error instanceof RequestTimeoutError ? machineIdFromUrl(error.url) : undefined);
   }
-  // A deadline miss asserts "the server did not answer" - the same claim an
-  // HttpError makes, so later answers disprove it the same way. Measured
-  // live: a remote machine answered /status at 30.007s against a 30.000s
-  // browser deadline, and the timeout banner outlived the working session on
-  // the reader lifetime.
-  if (error instanceof RequestTimeoutError) return noticeFromTransport(text);
+  // A deadline miss reaches the transport branch above: its fixed text
+  // ("The server did not answer within Ns.") is exactly what the wording
+  // table matches, so the deadline claims a reply lifetime and later answers
+  // disprove it the same way. Measured live: a remote machine answered
+  // /status at 30.007s against a 30.000s browser deadline, and the timeout
+  // banner outlived the working session on the reader lifetime.
   return noticeForReader(text);
 }
 

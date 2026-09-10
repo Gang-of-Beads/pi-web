@@ -768,7 +768,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .subtree-toggle { cursor: pointer; }
     @media (hover: hover) { .subtree-toggle:hover { border-color: var(--pi-border-strong, var(--pi-accent)); color: var(--pi-text); } }
     @media (pointer: coarse) {
-      .subtree-toggle { top: 0; width: var(--pi-row-gutter-size); height: var(--pi-control-height-touch); }
+      .subtree-toggle { top: 0; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); }
       /* The checkbox shares that slot: centre it in the toggle box rather than
          leaving two leading controls a few pixels out of true. */
       .session-checkbox { top: calc((var(--pi-control-height-touch) - var(--pi-checkbox-size)) / 2); left: calc(var(--pi-space-3) + (var(--pi-control-height-comfort) - var(--pi-checkbox-size)) / 2 + var(--depth, 0) * var(--pi-space-7)); }

@@ -770,7 +770,7 @@ export class SettingsDialog extends LitElement {
     @media (hover: hover) { .close-button:hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
     .settings-body { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 220px minmax(0, 1fr); }
     .settings-nav { min-height: 0; padding: var(--pi-space-5); border-right: 1px solid var(--pi-border); background: var(--pi-surface); overflow: auto; }
-    .settings-nav button { display: grid; gap: var(--pi-space-1); width: 100%; margin: 0 0 var(--pi-space-3); text-align: left; border-color: transparent; background: transparent; }
+    .settings-nav button { display: grid; gap: var(--pi-space-1); box-sizing: border-box; width: 100%; margin: 0 0 var(--pi-space-3); text-align: left; border-color: transparent; background: transparent; }
     .settings-nav button:focus { background: var(--pi-surface-hover); }
     @media (hover: hover) { .settings-nav button:hover { background: var(--pi-surface-hover); } }
     .settings-nav button.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }

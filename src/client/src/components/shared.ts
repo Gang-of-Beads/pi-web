@@ -418,11 +418,12 @@ export const listStyles = css`
      the ring wrapper (unread + work on machine rows) is the composite that can
      make two rules match, which the ring's omission above resolves. All
      :has() rules are (0,1,0) - :where() contributes nothing - and the
-     row-class rules below (unread/archived/selected) are (0,2,0), so they win
-     on specificity regardless of order. The unread CLASS is unconditional on
-     a session row even when the arbiter's dot shows running or asking, so a
-     row-class unread rule would paint those rows purple against a blue or
-     amber dot; the dot rules above are the only unread painters. Machine and
+     row-class rules below (archived/selected) are (0,2,0), so they win on
+     specificity regardless of order. The unread CLASS is unconditional on
+     a session row even when the arbiter's dot shows running or asking, which
+     is why round-18 removed the (0,2,0) unread rail rule: it would paint
+     those rows purple against a blue or amber dot; the dot rules above are
+     the only unread painters. Machine and
      workspace rows speak activity-indicator.session and stay success, the
      colour their working dots wear. The row-class override set has one more
      member living with the rows themselves: SessionList's .bulk-selected
