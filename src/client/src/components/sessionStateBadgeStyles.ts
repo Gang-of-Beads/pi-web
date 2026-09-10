@@ -28,7 +28,6 @@ export const sessionStateBadgeStyles = css`
   /* Hollow, so "still running" cannot be mistaken for "working": the ring is
      the same purple the chat dock uses for background work. */
   .session-state.background { background: transparent; border: 2px solid var(--pi-purple); animation: none; }
-  .session-state.idle.unread { background: var(--pi-success); }
   .session-state.asking { background: var(--pi-warning); animation: none; }
   .session-state.error { background: var(--pi-danger); animation: none; }
   /* Unread is purple: the filled dot says "a turn ended and you have not seen

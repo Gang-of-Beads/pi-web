@@ -23,9 +23,9 @@ import { noticeFromError, type Notice } from "./notice";
 export function errorNoticePatch(
   error: unknown,
   link: { readonly live: boolean } = { live: false },
-): Pick<AppState, "error" | "errorRetiredBy"> {
+): Pick<AppState, "error" | "errorRetiredBy" | "errorMachineId"> {
   const notice = noticeFromError(error, link);
-  return { error: notice.text, errorRetiredBy: notice.retiredBy };
+  return { error: notice.text, errorRetiredBy: notice.retiredBy, errorMachineId: "local" };
 }
 
 /** An AppState patch carrying a Notice with its retirement semantics. */

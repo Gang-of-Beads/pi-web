@@ -14,12 +14,16 @@ had let a real dead floor through CI.
 ## Fixed in this wave
 
 1. **Self-update banner's coarse floor was dead** (lane A, medium) - the base
-   rule sat after the media block. **Fixed** by ordering, and the guard that
-   should have caught it is fixed too (next item).
+   rule sat after the media block. **Claimed fixed by ordering here; the
+   round-18 lanes proved the edit never landed, and it was actually made in
+   round 18** - see the round-18 triage, which also corrects item 2.
 2. **pointerQueryOrder never checked the first rule of a media block** (lane
    A, low-medium): the extraction anchor required a preceding brace, so the
-   first raised rule in every block was invisible. **Fixed** in the guard, and
-   F1 is its first catch.
+   first raised rule in every block was invisible. **Claimed fixed here; not
+   landed until round 18.** Also corrected here: the round-17 lane A findings
+   for the quick switcher's clipped row menu and the tree dialog's touch
+   floors were true and missing from the fixed list below; both were fixed in
+   round 18.
 3. **The remote-route-restore banner pasted itself into itself**, once per
    retry of the ladder (lane C, P1): the detail read `state.error` back.
    **Fixed** - the detail is what the health read reported, never the banner's

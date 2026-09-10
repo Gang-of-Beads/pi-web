@@ -1,3 +1,5 @@
+import { noticePatch } from "../errorNotice";
+import { noticeForReader } from "../notice";
 import type { GetState, SetState } from "./types";
 
 /**
@@ -16,7 +18,7 @@ export class ReportedError {
   /** Shows `message` in the shared banner and takes ownership of clearing it. */
   report(message: string): void {
     this.reported = message;
-    this.setState({ error: message });
+    this.setState(noticePatch(noticeForReader(message)));
   }
 
   /** Removes this controller's own message; leaves any other message alone. */

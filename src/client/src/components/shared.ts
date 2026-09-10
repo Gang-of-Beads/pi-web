@@ -432,25 +432,29 @@ export const listStyles = css`
      .action-main painted nothing at all. Session rows speak .session-state,
      not .activity-indicator, so the rail names both vocabularies or the
      largest list on screen never gets a rail. */
-  /* Source order is the precedence (equal specificity): unread < running <
-     asking, matching the row indicator's own arbiter. Machine and workspace
-     rows speak activity-indicator.session and stay success, the colour their
-     working dots wear. */
-  .action-row:has(:where(.activity-indicator.unread, .unread-ring, .session-state.unread)) { border-left-color: var(--pi-purple); }
+  /* All :has() rules are (0,1,0) - :where() contributes nothing - and the
+     row-class rules below (unread/archived/selected) are (0,2,0), so they win
+     on specificity regardless of order. The unread CLASS is unconditional on
+     a session row even when the arbiter's dot shows running or asking, so a
+     row-class unread rule would paint those rows purple against a blue or
+     amber dot; the dot rules above are the only unread painters. Machine and
+     workspace rows speak activity-indicator.session and stay success, the
+     colour their working dots wear. */
+  .action-row:has(:where(.activity-indicator.unread, .unread-ring, .session-state.unread, .session-state.background)) { border-left-color: var(--pi-purple); }
   .action-row:has(:where(.activity-indicator.session, .session-state.running)) { border-left-color: var(--pi-success); }
   .action-row:has(:where(.session-state.running)) { border-left-color: var(--pi-accent); }
   .action-row:has(:where(.session-state.asking)) { border-left-color: var(--pi-warning); }
   .action-row:has(:where(.activity-indicator.terminal)) { border-left-color: var(--pi-accent); }
   .action-row:has(:where(.session-state.error)) { border-left-color: var(--pi-danger); }
-  .action-row.unread { border-left-color: var(--pi-purple); }
   .action-row.archived { border-left-color: var(--pi-border); }
   .action-row.selected { border-left-color: var(--pi-accent); }
   .activity-indicator.session { border-radius: 50%; background: var(--pi-success); }
   .activity-indicator.terminal { border-radius: var(--pi-radius-xs); background: var(--pi-accent); }
   /* Client-side sending (upload in flight); distinct from server activity, which propagates to workspace/machine rows. */
   .activity-indicator.sending { border-radius: 50%; background: var(--pi-warning); }
-  /* Unread is a stable state, not ongoing work: keep it static and accent-colored. */
-  .activity-indicator.unread { border-radius: 50%; background: var(--pi-accent); animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--pi-accent) 20%, transparent); }
+  /* Unread is a stable state, not ongoing work: keep it static and purple,
+     the same turn-ended colour the session dot wears. */
+  .activity-indicator.unread { border-radius: 50%; background: var(--pi-purple); animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--pi-accent) 20%, transparent); }
   /* Unread + ongoing work: a static accent ring wraps the still-pulsing work dot. */
   .unread-ring { flex: 0 0 auto; box-sizing: border-box; display: inline-grid; place-items: center; width: var(--pi-dot-md); height: var(--pi-dot-md); margin-right: var(--pi-space-3); border: 1.5px solid var(--pi-accent); border-radius: 50%; vertical-align: 1px; }
   .unread-ring .activity-indicator { width: var(--pi-dot-xs); height: var(--pi-dot-xs); margin: 0; vertical-align: 0; }

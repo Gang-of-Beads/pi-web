@@ -1,7 +1,7 @@
 import { api as defaultApi, type AuthProviderOption, type AuthType, type OAuthFlowState, type SessionStatus } from "../api";
 import type { AuthDialogState } from "../appState";
-import { errorNoticePatch } from "../errorNotice";
-import { describeError } from "../notice";
+import { errorNoticePatch, noticePatch } from "../errorNotice";
+import { describeError, noticeForReader } from "../notice";
 import { selectedMachineId, type GetState, type SetState } from "./types";
 
 type OAuthDialogState = Extract<AuthDialogState, { step: "oauth" }>;
@@ -101,7 +101,7 @@ export class AuthController {
       if (providerId !== undefined && providerId !== "") {
         const provider = providers.find((candidate) => candidate.id === providerId);
         if (provider !== undefined) await this.logoutProviderOnMachine(provider.id, machineId, operationGeneration);
-        else this.setState({ error: `No stored credentials for ${providerId}` });
+        else this.setState(noticePatch(noticeForReader(`No stored credentials for ${providerId}`)));
         return;
       }
       this.noteDialogOpening?.();
@@ -183,7 +183,7 @@ export class AuthController {
       if (!this.isCurrentAuthOperation(operationGeneration)) return;
       const exact = providers.filter((provider) => provider.id === providerId);
       if (exact.length === 0) {
-        this.setState({ error: `Auth provider not found: ${providerId}` });
+        this.setState(noticePatch(noticeForReader(`Auth provider not found: ${providerId}`)));
         return;
       }
       if (exact.length > 1) {

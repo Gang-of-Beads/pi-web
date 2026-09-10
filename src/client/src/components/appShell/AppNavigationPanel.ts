@@ -200,7 +200,6 @@ export class AppNavigationPanel extends LitElement {
           <button class="compact-header-action" title="Open settings" aria-label="Open settings" @click=${() => { this.onOpenSettings?.(); }}>Settings</button>
           <button class="compact-header-action" title="Show Actions" aria-label="Show Actions" @click=${() => { this.onShowActions?.(); }}>Actions</button>
         </div>` : null}
-        ${this.renderMachineHeaderSwitcher()}
         <!-- No quick-action bar here. It stacked a third bar above the list -
              a fifth of a phone screen before any content - and duplicated
              controls that already exist: the resident row opens the panel, the
@@ -270,27 +269,6 @@ export class AppNavigationPanel extends LitElement {
     if (this.selectedWorkspace !== undefined) return "sessions";
     if (this.selectedProject !== undefined) return "workspaces";
     return "projects";
-  }
-
-  /**
-   * The phone header's machine picker, rendered by the machines plugin through
-   * the section's compact form (`tiles`); the element stays mounted but hidden
-   * for keyboard navigation, its own `:host([hidden])` contract. No plugin
-   * means no picker: the context bar still names the machine.
-   */
-  private renderMachineHeaderSwitcher(): unknown {
-    const section = this.machineSections.find((candidate) => candidate.localId === "machines");
-    if (section === undefined || this.machineSectionContext === undefined) return nothing;
-    if (!shouldShowMachinesSection(this.machines)) return nothing;
-    const context: MachineSectionContext = {
-      ...this.machineSectionContext,
-      display: { hidden: false, collapsible: false, collapsed: false, tiles: true, withCreate: false },
-      toggleCollapsed: () => { this.onToggleMachines?.(); },
-      focusPreviousSection: () => { this.focusPreviousFrom("machines"); },
-      focusNextSection: () => { this.focusNextFrom("machines"); },
-      cancelKeyboardNavigation: () => { this.cancelKeyboardNavigation(); },
-    };
-    return section.render(context);
   }
 
   private renderMachineSectionSlot(hidden: boolean): unknown {

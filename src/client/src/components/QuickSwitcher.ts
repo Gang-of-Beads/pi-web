@@ -14,6 +14,7 @@ import { keyboardEventOriginatesFromNativeActivationControl } from "./keyboardEv
 import "./ModalSurface";
 import { scrollWhenSelected } from "./scrollWhenSelected";
 import { interactiveSurfaceStyles } from "./shared";
+import { actionMenuPanelStyle } from "./actionMenu.js";
 
 /**
  * One-surface session switcher for touch layouts.
@@ -67,6 +68,7 @@ export class QuickSwitcher extends LitElement {
   @state() private query = "";
   @state() private filter: QuickSwitcherFilter = {};
   @state() private openMenuSessionId: string | undefined;
+  @state() private menuStyle = "";
   @state() private renamingSessionId: string | undefined;
   private renameDraft = "";
   private heldSession: SessionInfo | undefined;
@@ -202,7 +204,7 @@ export class QuickSwitcher extends LitElement {
           aria-current=${selected ? "true" : nothing}
           ${scrollWhenSelected(selected, session.id)}
           @click=${() => { this.openSession(session); }}
-          @contextmenu=${(event: MouseEvent) => { event.preventDefault(); this.openMenuSessionId = session.id; }}
+          @contextmenu=${(event: MouseEvent) => { event.preventDefault(); this.openRowMenu(session.id, event.currentTarget); }}
           @pointerdown=${(event: PointerEvent) => { this.heldSession = session; this.longPress.start(event); }}
           @pointermove=${(event: PointerEvent) => { this.longPress.move(event); }}
           @pointerup=${() => { this.longPress.cancel(); }}
@@ -218,17 +220,27 @@ export class QuickSwitcher extends LitElement {
           aria-label=${`Actions for ${sessionLabel(session)}`}
           aria-haspopup="menu"
           aria-expanded=${this.openMenuSessionId === session.id ? "true" : "false"}
-          @click=${() => { this.openMenuSessionId = this.openMenuSessionId === session.id ? undefined : session.id; }}
+          @click=${(event: MouseEvent) => { this.openRowMenu(session.id, event.target); }}
         >⋯</button>
         ${this.openMenuSessionId === session.id ? this.renderRowMenu(session) : nothing}
       </div>
     `;
   }
 
+  /**
+   * The row menu is fixed and viewport-constrained like every other row menu:
+   * absolutely positioned under the row, the last row's menu was clipped by
+   * the scrolling body, and scrolling to reach it moved the row away.
+   */
+  private openRowMenu(sessionId: string, target: EventTarget | null): void {
+    this.openMenuSessionId = this.openMenuSessionId === sessionId ? undefined : sessionId;
+    this.menuStyle = this.openMenuSessionId === undefined ? "" : actionMenuPanelStyle(target, { constrainTo: "viewport" });
+  }
+
   private renderRowMenu(session: SessionInfo) {
     const pinned = this.pinnedSessionIds.has(session.id);
     return html`
-      <div class="row-menu" role="menu">
+      <div class="action-menu-panel row-menu" role="menu" style=undefined>
         <button role="menuitem" @click=${() => { this.openSession(session); }}>Open</button>
         <button role="menuitem" @click=${() => { this.togglePin(session); }}>${pinned ? "Unpin" : "Pin to top"}</button>
         <button role="menuitem" ?disabled=${this.onRenameSession === undefined} @click=${() => { this.startRename(session); }}>Rename</button>
@@ -481,7 +493,7 @@ export class QuickSwitcher extends LitElement {
     @media (max-width: 430px) {
       .rows { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
     }
-    .row-menu { position: absolute; top: calc(100% - var(--pi-space-2)); right: 0; z-index: 3; display: grid; gap: var(--pi-space-1); min-width: 160px; padding: var(--pi-space-2); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); box-shadow: var(--pi-elevation-2); }
+    .row-menu { display: grid; gap: var(--pi-space-1); min-width: 160px; padding: var(--pi-space-2); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); box-shadow: var(--pi-elevation-2); }
     .row-menu button { box-sizing: border-box; min-height: var(--pi-control-height-comfort); border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-text); padding: 0 var(--pi-space-5); font: inherit; text-align: left; cursor: pointer; }
     /* Coarse pointers get the comfort floor: every target the quick switcher
        ships measures 44px on touch. Placed after every base declaration it

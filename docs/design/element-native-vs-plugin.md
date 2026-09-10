@@ -42,7 +42,7 @@ re-litigated; only genuinely open items end in the ruling questions.
 
 | Element | Home | Verdict |
 |---|---|---|
-| Machine list / machine switcher | `MachineList.ts`, `MachineSwitcher.ts` | native — ruled core method |
+| Machine list / machine switcher | `MachineList.ts` | native — ruled core method |
 | Project list (search, add, close, trust) | `ProjectList.ts`, `ProjectDialog.ts` | native |
 | Workspace list (+ plugin label items) | `WorkspaceList.ts` | native host; `workspaceLabels` is already the plugin seam |
 | Session list (rows, badges, unread, rename, cleanup, start) | `SessionList.ts`, `SessionRenameDialog.ts`, `SessionCleanupDialog.ts`, `sessionRowIndicator.ts` | native; rich badges move behind `sessionBadges` when step ② lands (ruled) |

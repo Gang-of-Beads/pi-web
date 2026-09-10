@@ -202,8 +202,8 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
   .self-update-banner.applying { border-color: var(--pi-accent-border); background: var(--pi-surface); color: var(--pi-text); }
   /* The banner sits in the same column as the transcript controls, which are
      all 44px on a finger; a 32px row here was a second touch floor. */
-  @media (pointer: coarse) { .self-update-banner button { min-height: var(--pi-control-height-touch); } .error .error-dismiss { min-width: var(--pi-control-height-touch); min-height: var(--pi-control-height-touch); } }
   .self-update-banner button { box-sizing: border-box; min-height: var(--pi-control-height); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; padding: var(--pi-space-2) var(--pi-space-5); }
+  @media (pointer: coarse) { .self-update-banner button { min-height: var(--pi-control-height-touch); } .error .error-dismiss { min-width: var(--pi-control-height-touch); min-height: var(--pi-control-height-touch); } }
   @media (hover: hover) { .self-update-banner button:hover { border-color: var(--pi-accent); } }
   .self-update-banner button.skip { color: var(--pi-muted); background: transparent; }
   .self-update-banner .state-dot { background: currentColor; }
@@ -300,7 +300,10 @@ export class PiWebApp extends LitElement {
       console.warn(`Failed to ${operation} session unread state for ${machineId}`, error);
     },
   });
+  /** The interrupted markers and the machine they were read from: a late read
+   * for a machine the user has already left must not adopt here. */
   @state() private interruptedSessionIds: ReadonlySet<string> = new Set();
+  private interruptedSessionIdsMachine: string | undefined;
   @state() private unreadSessionIds: ReadonlySet<string> = this.sessionUnread.unreadSessionIds(selectedMachineId(this.state), this.state.sessions);
   private unreadConnected = false;
   private committedChatIdentity: string | undefined;
@@ -767,10 +770,16 @@ export class PiWebApp extends LitElement {
       // previous set survives and the banner says the state is unknown rather
       // than quietly showing none.
       if (ids === undefined) {
-        this.setState(noticePatch(noticeForReader("Interrupted-run status is unknown: the read failed. Retrying the connection will resolve it.")));
+        // A poll never replaces a banner the reader may still be acting on;
+        // the unknown state is only worth announcing onto a quiet screen.
+        if (this.state.error === "") this.setState(noticePatch(noticeForReader("Interrupted-run status is unknown: the read failed. Retrying the connection will resolve it.")));
         return;
       }
+      if (selectedMachineId(this.state) !== machineId) return;
       this.interruptedSessionIds = ids;
+      this.interruptedSessionIdsMachine = machineId;
+      // The state is known again - do not leave our own promise unmet.
+      if (this.state.error === "Interrupted-run status is unknown: the read failed. Retrying the connection will resolve it.") this.setState({ error: "", errorMachineId: "local" });
     });
   }
 
@@ -855,16 +864,14 @@ export class PiWebApp extends LitElement {
       if (!result.started) {
         this.setState({ selfUpdateApplying: false });
         if (result.error !== undefined) {
-          this.setState({ error: `Update failed: ${result.error}` });
-          this.scheduleTransientErrorDismissal(`Update failed: ${result.error}`);
+          this.setState(noticePatch(noticeForReader(`Update failed: ${result.error}`)));
         }
       }
       // On success the page keeps saying "reconnecting…"; the socket comes
       // back after the restart. The applying flag stays up until then.
     } catch {
       this.setState({ selfUpdateApplying: false });
-      this.setState({ error: "Update request failed" });
-      this.scheduleTransientErrorDismissal("Update request failed");
+      this.setState(noticePatch(noticeForReader("Update request failed")));
     }
   }
 
@@ -1024,11 +1031,13 @@ export class PiWebApp extends LitElement {
   private clearTransientError(machineId: string): void {
     if (this.state.error === "" || this.state.errorRetiredBy !== RetiredBy.reply) return;
     if (this.state.errorMachineId !== "local" && this.state.errorMachineId !== machineId) return;
+    // Reset the scope with the text: a stale scope would let the next
+    // transport complaint inherit a machine it does not speak about.
+    this.setState({ error: "", errorMachineId: "local" });
     if (this.transientErrorTimer !== undefined) {
       window.clearTimeout(this.transientErrorTimer);
       this.transientErrorTimer = undefined;
     }
-    this.setState({ error: "" });
   }
 
   /**
@@ -1707,7 +1716,7 @@ export class PiWebApp extends LitElement {
         view: "core:workspace.terminal",
       }, false, { selectedTerminalId: options?.terminalId }, "core:workspace.terminal");
       if (selectedMachineId(this.state) !== machineId) {
-        this.setState({ error: "Machine not found for terminal command run" });
+        this.setState(noticePatch(noticeForReader("Machine not found for terminal command run")));
         return;
       }
     }
@@ -2573,7 +2582,7 @@ export class PiWebApp extends LitElement {
     const project = this.state.projects.find((candidate) => candidate.id === workspace.projectId)
       ?? await this.locateRouteProject(workspace.projectId);
     if (project === undefined) {
-      this.setState({ error: "The project this workspace belongs to is not in the project list." });
+      this.setState(noticePatch(noticeForReader("The project this workspace belongs to is not in the project list.")));
       return;
     }
     if (this.state.selectedProject?.id !== project.id) await this.workspaces.selectProject(project);
@@ -2591,7 +2600,7 @@ export class PiWebApp extends LitElement {
     if (browsed === "" || browsed === selectedMachineId(this.state)) return true;
     const target = this.state.machines.find((candidate) => candidate.id === browsed);
     if (target === undefined) {
-      this.setState({ error: `The machine this item lives on (${browsed}) is not in the machine list.` });
+      this.setState(noticePatch(noticeForReader(`The machine this item lives on (${browsed}) is not in the machine list.`)));
       return false;
     }
     await this.machines.selectMachine(target);
@@ -3288,7 +3297,7 @@ export class PiWebApp extends LitElement {
   private async deleteWorkspace(workspace = this.state.selectedWorkspace): Promise<void> {
     if (workspace === undefined) return;
     if (!canDeleteWorkspace(workspace)) {
-      this.setState({ error: "Workspace removal is not available" });
+      this.setState(noticePatch(noticeForReader("Workspace removal is not available")));
       return;
     }
     if (isWorkspaceDeletionPending(this.state, workspace)) return;
@@ -3310,7 +3319,7 @@ export class PiWebApp extends LitElement {
       if (selectedMachineId(this.state) !== machineId) return;
       if (commandWorkspace !== undefined) void this.openRuntimeTerminal(machineId, commandWorkspace, { terminalId: run.terminalId });
     } catch (error) {
-      if (selectedMachineId(this.state) === machineId) this.setState({ error: `Failed to start workspace removal: ${describeError(error)}` });
+      if (selectedMachineId(this.state) === machineId) this.setState(noticePatch(noticeForReader(`Failed to start workspace removal: ${describeError(error)}`)));
     }
   }
 
@@ -3386,7 +3395,7 @@ export class PiWebApp extends LitElement {
     }
 
     if (run.status === "failed") {
-      this.setState({ error: "Workspace removal failed. See terminal output." });
+      this.setState(noticePatch(noticeForReader("Workspace removal failed. See terminal output.")));
       this.updateWorkspaceDeletionPolling();
     }
   }
@@ -3430,7 +3439,7 @@ export class PiWebApp extends LitElement {
       .catch((error: unknown) => {
         const message = describeError(error);
         console.warn(`Action failed: ${action.id}`, error);
-        this.setState({ error: `Action failed: ${message}` });
+        this.setState(noticePatch(noticeForReader(`Action failed: ${message}`)));
       });
   }
 
@@ -3620,7 +3629,7 @@ export class PiWebApp extends LitElement {
       // A goal belongs to the workspace, but a goal command needs a session to
       // run in. The silent form of this guard was the dead button: clicking
       // Resume with no session selected did nothing, said nothing.
-      this.setState({ error: "Open a session in this workspace to run goal commands." });
+      this.setState(noticePatch(noticeForReader("Open a session in this workspace to run goal commands.")));
       return;
     }
     this.goalCommandInFlight = true;
@@ -3766,7 +3775,7 @@ export class PiWebApp extends LitElement {
     `;
   }
 
-  private renderErrorBanner(error: string) {
+  private renderErrorBanner(error: string, retiredBy: RetiredBy) {
     const decision = bannerHoldDecision({ shownAt: this.bannerShownAt, now: Date.now(), next: error });
     if (decision.kind === "hold") {
       if (this.bannerHoldTimer !== undefined) window.clearTimeout(this.bannerHoldTimer);
@@ -3775,15 +3784,19 @@ export class PiWebApp extends LitElement {
     }
     if (decision.kind === "hide") {
       this.bannerShownAt = undefined;
+      this.lastScheduledError = "";
       this.heldErrorBanner = null;
       return null;
     }
-    this.bannerShownAt ??= Date.now();
+    // A replacement starts its own hold window and its own expiry: borrowing
+    // the previous banner's timestamps gave the new message a shorter life
+    // than the model promised.
     if (error !== this.lastScheduledError) {
       this.lastScheduledError = error;
+      this.bannerShownAt = Date.now();
       this.scheduleTransientErrorDismissal(error);
     }
-    this.heldErrorBanner = errorBanner(error, () => { this.setState({ error: "" }); });
+    this.heldErrorBanner = errorBanner(error, () => { this.setState({ error: "", errorMachineId: "local" }); }, retiredBy);
     return this.heldErrorBanner;
   }
 
@@ -3865,7 +3878,7 @@ export class PiWebApp extends LitElement {
         <main class=${mainViewClass(displayView)}>
           ${this.appShell.isMobileNavigationLayout && displayView === "navigation" ? null : this.renderContextBar()}
 
-          ${this.renderErrorBanner(state.error)}
+          ${this.renderErrorBanner(state.error, state.errorRetiredBy)}
           ${this.renderStaleClientBanner()}
           ${this.renderSelfUpdateBanner()}
           ${deprecatedAgentInputsBanner(deprecatedAgentInputsWarnings(state.machines, state.machineRuntimes))}

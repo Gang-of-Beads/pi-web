@@ -1,4 +1,5 @@
 import { html, type TemplateResult } from "lit";
+import type { RetiredBy } from "../notice.js";
 import { renderCrossIcon } from "./uiIcons.js";
 
 /**
@@ -11,9 +12,15 @@ import { renderCrossIcon } from "./uiIcons.js";
  * full red "something is broken forever" treatment that steals the whole top of
  * the phone UI.
  */
-export function errorBanner(error: string, onDismiss: () => void): TemplateResult | null {
+/**
+ * The wording table only rewrites a reply-retired transport claim. A
+ * reader-retired failure keeps its own words: rewriting "Update failed: …"
+ * into "Reconnecting to the session daemon…" presented a permanent failure as
+ * a self-healing one and deleted the operation the reader needs to retry.
+ */
+export function errorBanner(error: string, onDismiss: () => void, retiredBy: RetiredBy = "reply"): TemplateResult | null {
   if (error === "") return null;
-  const transient = normalizeTransientError(error);
+  const transient = retiredBy === "reply" ? normalizeTransientError(error) : undefined;
   return html`<div class=${`error${transient === undefined ? "" : " transient"}`} role=${transient === undefined ? "alert" : "status"}>
     <span class="error-text">${transient ?? error}</span>
     <button type="button" class="error-dismiss" aria-label="Dismiss error" title="Dismiss error" @click=${() => { onDismiss(); }}>${renderCrossIcon()}</button>

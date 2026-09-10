@@ -54,10 +54,9 @@ describe("machine status wiring", () => {
     const seen: MachineSectionContext[] = [];
     const panel = await mountPanel({ local, "remote-a": remote }, machine("local"), (context) => { seen.push(context); });
 
-    expect(seen).toHaveLength(2);
-    expect(seen[0]?.display.tiles).toBe(true);
-    expect(seen[1]?.display.tiles).toBe(false);
-    expect(seen[1]?.machineFlags).toEqual({ local: { "core:working": true }, "remote-a": { "core:unread": true } });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.display.tiles).toBe(false);
+    expect(seen[0]?.machineFlags).toEqual({ local: { "core:working": true }, "remote-a": { "core:unread": true } });
     expect(section(panel, "project-list", ProjectList).statusSnapshot).toEqual(narrowSnapshot(local));
     expect(section(panel, "workspace-list", WorkspaceList).statusSnapshot).toEqual(narrowSnapshot(local));
   });

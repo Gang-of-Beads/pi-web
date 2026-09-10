@@ -176,5 +176,10 @@
       "./extensions"
     ],
     "image": "https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/docs/assets/pi-web-banner.png"
+  },
+  "knip": {
+    "ignore": [
+      "scripts/probe-r18-dup-list.mjs"
+    ]
   }
 }

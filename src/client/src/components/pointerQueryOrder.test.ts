@@ -62,7 +62,7 @@ describe("pointer media queries", () => {
         for (const media of source.matchAll(MEDIA_BLOCK)) {
           const open = media.index + media[0].length - 1;
           const end = blockEnd(source, open);
-          const inside = source.slice(open, end);
+          const inside = source.slice(open + 1, end);
           const after = source.slice(end);
           for (const raised of inside.matchAll(SELECTOR)) {
             const selector = (raised.groups?.["selector"] ?? "").replace(/\s+/gu, " ").trim();

@@ -57,7 +57,7 @@ describe("the patch that puts a failure on screen", () => {
     expect(errorNoticePatch(new Error("Rename failed")).errorRetiredBy).toBe(RetiredBy.reader);
   });
 
-  it("carries both fields so neither can be set without the other", () => {
-    expect(Object.keys(errorNoticePatch(new Error("x"))).sort()).toEqual(["error", "errorRetiredBy"]);
+  it("carries all three fields so none can be set without the others", () => {
+    expect(Object.keys(errorNoticePatch(new Error("x"))).sort()).toEqual(["error", "errorMachineId", "errorRetiredBy"]);
   });
 });

@@ -122,7 +122,7 @@ Design — **keep the fact, pluginize the rendering** (finalized after
   notifications too — and the plugin drives it.
 - **`activityBadge` splits**: its machine `StatusFlags` face
   (`statusActivityKind`/`hasStatusUnread`/`renderActivityIndicator`) is
-  consumed by MachineList/ProjectList/WorkspaceList/MachineSwitcher and
+  consumed by MachineList/ProjectList/WorkspaceList and
   stays core; only the session-state badge vocabulary backs the seam
   contract. `staleActivityReconcile.ts` (cited here before) does not
   exist; the real reconciliation lives in `sessionSocket.ts` and

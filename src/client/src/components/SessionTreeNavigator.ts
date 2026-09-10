@@ -537,6 +537,8 @@ export class SessionTreeNavigator extends LitElement {
     h2 { margin-top: var(--pi-space-1); font-size: var(--pi-text-lg); }
     .eyebrow { display: block; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-bold); letter-spacing: .08em; text-transform: uppercase; }
     .close-button { box-sizing: border-box; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); margin-inline-start: auto; display: grid; place-items: center; border: 0; background: transparent; color: var(--pi-muted); padding: 0; font-size: var(--pi-text-xl); }
+    }
+
     .close-button:not(:disabled):focus-visible { color: var(--pi-text); background: var(--pi-surface-hover); }
     @media (hover: hover) { .close-button:not(:disabled):hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
     .body { flex: 1 1 auto; min-height: 0; overflow: auto; }
@@ -557,6 +559,12 @@ export class SessionTreeNavigator extends LitElement {
     .tree-row.active-leaf { box-shadow: inset 3px 0 var(--pi-accent); }
     .tree-row.bookkeeping { color: var(--pi-muted); }
     .disclosure { width: 20px; height: var(--pi-control-height); display: grid; place-items: center; border-radius: var(--pi-radius-xs); color: var(--pi-muted); font-size: var(--pi-text-md); user-select: none; }
+    /* Real controls under the AA floor the repo cites: the disclosure is the
+       collapse verb itself, and the close button sits beside its 44px sisters
+       in the other dialogs. */
+    @media (pointer: coarse) {
+      .disclosure { width: 24px; }
+      .close-button { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); }
     @media (hover: hover) { .disclosure:not(.leaf):hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
     .disclosure.leaf { opacity: var(--pi-disabled-opacity); }
     .metadata { display: contents; }

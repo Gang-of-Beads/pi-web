@@ -34,7 +34,7 @@ extraction-shape decision.
   UI and CRUD routes over an injected port.
 - Client: `machineController`, `machineStatusController`,
   `machineNavigationMemory`, `MachineDialog`, `MachineList`,
-  `MachineSwitcher`, and the machine management actions.
+  and the machine management actions. The compact switcher was later removed: the context row took over machine picking on the phone.
 
 Stays core, because it is the daemon protocol boundary:
 
