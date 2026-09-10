@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { HttpError } from "./api/http";
 import { RequestTimeoutError } from "./api/requestDeadline";
-import { NO_NOTICE, noticeForReader, noticeFromError, noticeFromTransport, retiresOnReply } from "./notice";
+import { NO_NOTICE, noticeForReader, noticeFromError, noticeFromTransport } from "./notice";
 
 describe("what retires a notice", () => {
   /**
@@ -125,3 +125,7 @@ describe("a failure that never said what went wrong", () => {
     expect(noticeFromError(new HttpError("", 502)).text).toBe("The request failed (502)");
   });
 });
+
+function retiresOnReply(notice: { text: string; retiredBy: string }): boolean {
+  return notice.text !== "" && notice.retiredBy === "reply";
+}

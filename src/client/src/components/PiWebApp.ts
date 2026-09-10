@@ -90,6 +90,7 @@ import { readPinnedSessionIds, togglePinnedSessionId, writePinnedSessionIds } fr
 import { observeTransportRecovery } from "../api/transportHealth";
 import { dismissKeyboardIfRaised } from "../keyboardDismissal";
 import { errorBanner, normalizeTransientError, TRANSIENT_ERROR_TIMEOUT_MS } from "./errorBanner";
+import { interruptedRunsReadPlan } from "../interruptedRunsRead";
 import { deprecatedAgentInputsBanner, deprecatedAgentInputsWarnings } from "./deprecatedAgentInputsBanner";
 import { interactiveSurfaceStyles } from "./shared";
 import { documentTitleFor } from "../contextName";
@@ -299,7 +300,6 @@ export class PiWebApp extends LitElement {
   @state() private interruptedSessionIds: ReadonlySet<string> = new Set();
   private interruptedSessionIdsMachine: string | undefined;
   /** Whether the last interrupted-runs read failed; a flag, not a wording match. */
-  private interruptedRunsUnknown = false;
   @state() private unreadSessionIds: ReadonlySet<string> = this.sessionUnread.unreadSessionIds(selectedMachineId(this.state), this.state.sessions);
   private unreadConnected = false;
   private committedChatIdentity: string | undefined;
@@ -414,6 +414,7 @@ export class PiWebApp extends LitElement {
   private bannerDismissedByReader = false;
   private lastScheduledError = "";
   private lastScheduledMachineId: string | undefined = undefined;
+  private bannerContextKey = "";
   @state() private quickSwitcherOpen = false;
   @state() private contextSheetOpen = false;
   /** True while a question form or dialog field has focus (see composerCollapse). */
@@ -784,27 +785,24 @@ export class PiWebApp extends LitElement {
       // reader is now looking at.
       if (selectedMachineId(this.state) !== machineId) return;
       const adoptEmpty = options.adoptEmpty ?? !this.interruptedRunsBootReadDone;
-      // The unknown flag describes the read, not the record: any successful
-      // read answers the question the banner asks, even when the answer is
-      // "empty, because the boot read spent the record". Clearing it here -
-      // before the emptiness decision - is what makes the banner's own
-      // "reconnect to read it again" promise deliverable; after the boot
-      // read, emptiness is the only answer a recovery can ever bring.
-      this.interruptedRunsUnknown = false;
-      if (ids?.size === 0 && !adoptEmpty) return;
-      if (ids === undefined) {
+      const plan = interruptedRunsReadPlan(ids, adoptEmpty);
+      if (plan.failed) {
         // A poll never replaces a banner the reader may still be acting on;
         // the unknown state is only worth announcing onto a quiet screen.
-        this.interruptedRunsUnknown = true;
         if (this.state.error === "") this.setState(noticePatch(noticeForReader(INTERRUPTED_RUNS_UNKNOWN_MESSAGE)));
         return;
       }
-      this.interruptedSessionIds = ids;
-      this.interruptedSessionIdsMachine = machineId;
       this.interruptedRunsBootReadDone = true;
-      // The state is known again - do not leave our own promise unmet. The
-      // retraction is gated on the flag (cleared above); the text comparison
-      // is only message identity - clearing our own banner, not a newer one.
+      if (plan.adoptMarkers && ids !== undefined) {
+        this.interruptedSessionIds = ids;
+        this.interruptedSessionIdsMachine = machineId;
+      }
+      // A successful read is the answer the banner asked for, whether or not
+      // the record had content - after the boot read, emptiness is the only
+      // answer a recovery can ever bring. This sits after every early
+      // return: the round-25 fix moved a flag write above the emptiness
+      // check and left this retraction unreachable on the very path its
+      // sentence promises.
       if (this.state.error === INTERRUPTED_RUNS_UNKNOWN_MESSAGE) this.setState(clearErrorPatch());
     });
   }
@@ -1062,10 +1060,12 @@ export class PiWebApp extends LitElement {
     if (!disproved) return;
     // Reset the scope with the text: a stale scope would let the next
     // transport complaint inherit a machine it does not speak about.
-    // lastScheduledError goes too: the hold window keeps showing the banner
-    // after this, and a re-raised identical text must re-arm its own expiry
-    // rather than be silently gated by the previous schedule.
+    // The schedule marker pair goes too: the hold window keeps showing the
+    // banner after this, and a re-raised identical text - for the same
+    // machine or for the page - must re-arm its own expiry rather than be
+    // silently gated by the previous schedule.
     this.lastScheduledError = "";
+    this.lastScheduledMachineId = undefined;
     this.setState(clearErrorPatch());
     if (this.transientErrorTimer !== undefined) {
       window.clearTimeout(this.transientErrorTimer);
@@ -2251,7 +2251,6 @@ export class PiWebApp extends LitElement {
       <app-navigation-panel
         .machines=${this.state.machines}
         .selectedMachine=${this.state.selectedMachine}
-        .machineStatusSnapshots=${this.state.machineStatusSnapshots}
         .machinesCollapsed=${this.navigationSections.isCollapsed("machines")}
         .onToggleMachines=${() => { this.navigationSections.toggle("machines"); }}
         .selectedProject=${this.state.selectedProject}
@@ -3828,6 +3827,18 @@ export class PiWebApp extends LitElement {
   }
 
   private renderErrorBanner(error: string, retiredBy: RetiredBy) {
+    // The hold window is an anti-churn device for one context. A machine or
+    // workspace switch clears the banner through the reset; holding the old
+    // context's banner across the switch would replay a complaint about a
+    // place the reader has left, over the place they just arrived at.
+    const contextKey = `${selectedMachineId(this.state)}|${this.state.selectedWorkspace?.id ?? ""}`;
+    if (contextKey !== this.bannerContextKey) {
+      this.bannerContextKey = contextKey;
+      this.bannerShownAt = undefined;
+      this.lastScheduledError = "";
+      this.lastScheduledMachineId = undefined;
+      this.heldErrorBanner = null;
+    }
     if (this.bannerDismissedByReader) {
       // The reader acted; the hold window exists for replacement churn, not to
       // outvote a dismissal.

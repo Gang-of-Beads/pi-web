@@ -126,8 +126,9 @@ is now fixed, task by task in the goal, each with its own probe:
 
 - **Three-arm settlement** (`src/shared/operationSettlement.ts`): accepted /
   refused / unverifiable, with fixed vocabulary and a guard test banning the
-  old ambiguous words. A timeout on a live link no longer claims the server
-  did not answer — the banner stays down while the socket is alive.
+  old ambiguous words. (The live-link timeout itself still claims "the
+  server did not answer" while the socket is alive — consequence 2's seam
+  is the recorded open piece, not yet wired.)
 - **A durable operation ledger in the daemon** (`operationLedger.ts`,
   wired through `sessiond.ts`): append-only, fingerprint-checked, capacity
   rejects rather than evicts, restart downgrades pending to unknown.

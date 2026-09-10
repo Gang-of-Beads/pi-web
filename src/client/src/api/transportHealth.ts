@@ -46,10 +46,10 @@ export function machineIdFromUrl(url: string): string | undefined {
  * listener that fails is a bug in the listener, not a reason for the request
  * that succeeded to look like it failed.
  */
-export function reportTransportReachable(url: string): void {
+export function reportTransportReachable(url: string, scope: { machineId?: string } = {}): void {
   const current = listener;
   if (current === undefined) return;
-  const machineId = machineIdFromUrl(url);
+  const machineId = scope.machineId ?? machineIdFromUrl(url);
   try {
     current(machineId);
   } catch {

@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const clientRoot = fileURLToPath(new URL(".", import.meta.url));
+const pluginRoot = join(clientRoot, "../../../pi-web-plugins");
 
 function* clientSourceFiles(dir: string): Generator<string> {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -30,7 +31,7 @@ function* clientSourceFiles(dir: string): Generator<string> {
 /** Lines carrying a `:hover` that no `(hover: hover)` guard precedes on the same line. */
 function unguardedHoverLines(): string[] {
   const violations: string[] = [];
-  for (const path of clientSourceFiles(clientRoot)) {
+  for (const path of [...clientSourceFiles(clientRoot), ...clientSourceFiles(pluginRoot)]) {
     const lines = readFileSync(path, "utf8").split("\n");
     for (let index = 0; index < lines.length; index += 1) {
       const line = lines[index] ?? "";

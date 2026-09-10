@@ -100,10 +100,11 @@ export function noticeFromError(error: unknown, link: { readonly live: boolean }
   if (error instanceof HttpError) {
     return isTransientError(text) ? noticeFromTransport(text, error.machineId) : noticeForReader(text);
   }
-  // Anchored whole-message, like the display side: the family's phrases
-  // also appear as the detail of composed messages, which keep their own
-  // (machine-named) lifetime.
-  if (isTransientError(text) || /^(failed to fetch|load failed|networkerror when attempting to fetch)[.!]?$/i.test(text)) {
+  // The display side owns the phrase table (isTransientError below reads
+  // it); classification asks rather than re-spelling it, so the two cannot
+  // drift - a text the banner would not shorten must not claim a lifetime
+  // only the shortening would spend.
+  if (isTransientError(text)) {
     return noticeFromTransport(text, error instanceof RequestTimeoutError ? machineIdFromUrl(error.url) : undefined);
   }
   // A deadline miss reaches the transport branch above: its fixed text
@@ -113,8 +114,4 @@ export function noticeFromError(error: unknown, link: { readonly live: boolean }
   // /status at 30.007s against a 30.000s browser deadline, and the timeout
   // banner outlived the working session on the reader lifetime.
   return noticeForReader(text);
-}
-
-export function retiresOnReply(notice: Notice): boolean {
-  return notice.text !== "" && notice.retiredBy === RetiredBy.reply;
 }

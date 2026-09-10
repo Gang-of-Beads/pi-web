@@ -448,6 +448,12 @@ export const listStyles = css`
   .action-row:has(:where(.session-state.asking)) { border-left-color: var(--pi-warning); }
   .action-row:has(:where(.activity-indicator.terminal)) { border-left-color: var(--pi-accent); }
   .action-row:has(:where(.session-state.error)) { border-left-color: var(--pi-danger); }
+  /* The machine rows' own status vocabulary joins here: offline and error
+     wear the danger dot in the plugin, so the rail wears it too - the
+     scanning edge is the sidebar's only peripheral cue, and a down machine
+     must not scan like a healthy idle one. Placed after the unread rule:
+     health outranks unread on a row that is both. */
+  .action-row:has(:where(.machine-status.offline, .machine-status.error)) { border-left-color: var(--pi-danger); }
   .action-row.archived { border-left-color: var(--pi-border); }
   .action-row.selected { border-left-color: var(--pi-accent); }
   .activity-indicator.session { border-radius: 50%; background: var(--pi-success); }

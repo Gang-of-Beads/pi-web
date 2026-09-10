@@ -158,7 +158,7 @@ describe("bundled Git browser plugin", () => {
       .map((line) => line.trim())
       .filter((line) => line.includes("{"));
     expect(styleRules).toContainEqual(expect.stringContaining(".git-panel .git-row"));
-    expect(styleRules.every((rule) => rule.startsWith(".git-panel"))).toBe(true);
+    expect(styleRules.every((rule) => rule.startsWith(".git-panel") || rule.startsWith("@media (hover: hover)"))).toBe(true);
     expect(container.querySelector('[role="table"][aria-label="Unified diff"]')).not.toBeNull();
     expect([...container.querySelectorAll(".inline-change")].map((entry) => entry.textContent)).toContain("new");
 
