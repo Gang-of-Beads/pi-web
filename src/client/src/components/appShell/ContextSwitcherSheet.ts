@@ -83,14 +83,15 @@ export class ContextSwitcherSheet extends LitElement {
     .sheet { display: flex; flex-direction: column; gap: var(--pi-space-4); width: 100%; max-height: 100%; box-sizing: border-box; padding: var(--pi-space-4); overflow-y: auto; }
     /* The sheet is one scroll container: its title and close stay put while the
        stacked lists scroll under them, as the drawer header does. */
-    .sheet-header { position: sticky; top: 0; z-index: 4; background: var(--pi-bg); margin-inline: calc(-1 * var(--pi-space-4)); padding-inline: var(--pi-space-4); display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); }
+    .sheet-header { position: sticky; top: 0; z-index: 4; background: var(--pi-bg); margin-inline: calc(-1 * var(--pi-space-4)); padding-inline: calc(var(--pi-space-4) + var(--pi-reading-edge)); display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); }
     .sheet-title { font-weight: var(--pi-weight-semibold); }
     .sheet-close { box-sizing: border-box; display: grid; place-items: center; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); padding: 0; border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-muted); font-size: var(--pi-text-xl); line-height: 1; cursor: pointer; }
     @media (pointer: coarse) { .sheet-close { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); } }
+    @media (pointer: coarse) { .sheet-close:active { background: var(--pi-surface-hover); } }
     .sheet-close:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     /* Three lists stacked with nothing above naming them: keep their headings,
        which the phone panel drops because its context row says the same word. */
-    .sheet-body { --pi-list-word-heading-display: inline; --pi-list-word-heading-margin: 0 0 var(--pi-space-4); display: flex; flex-direction: column; gap: var(--pi-space-4); min-height: 0; }
+    .sheet-body { --pi-list-word-heading-display: inline; --pi-list-word-heading-margin: 0 0 var(--pi-space-2); display: flex; flex-direction: column; gap: var(--pi-space-4); min-height: 0; }
     /* The sheet itself scrolls. Letting each contributed list shrink turned one
        scrollable surface into three squeezed ones - a second machine rendered
        as an 8.9px sliver that read as a rendering artefact, not a row. */

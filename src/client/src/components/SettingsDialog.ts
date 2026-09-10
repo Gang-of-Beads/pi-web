@@ -766,6 +766,7 @@ export class SettingsDialog extends LitElement {
     h1 { margin: 0; font-size: var(--pi-text-xl); line-height: 1.2; }
     button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); font: inherit; cursor: pointer; }
     .close-button { box-sizing: border-box; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); display: grid; place-items: center; border: 0; background: transparent; color: var(--pi-muted); padding: 0; font-size: var(--pi-text-xl); }
+    @media (pointer: coarse) { .close-button:active { background: var(--pi-surface-hover); } }
     .close-button:focus { color: var(--pi-text); background: var(--pi-surface-hover); }
     @media (hover: hover) { .close-button:hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
     .settings-body { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 220px minmax(0, 1fr); }

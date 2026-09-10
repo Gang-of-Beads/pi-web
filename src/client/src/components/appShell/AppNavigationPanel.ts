@@ -434,7 +434,7 @@ export class AppNavigationPanel extends LitElement {
 
     :host { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
     :host([compact]) { flex: 1 1 auto; }
-    header { flex: 0 0 auto; box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: 0 var(--pi-chrome-inset); border-bottom: 1px solid var(--pi-border); }
+    header { flex: 0 0 auto; box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: 0 var(--pi-reading-edge); border-bottom: 1px solid var(--pi-border); }
     header button { box-sizing: border-box; height: var(--pi-panel-header-control-height); padding: 0 var(--pi-space-4); font-size: var(--pi-text-xs); }
     .header-icon-action:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     .header-icon-action { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); }
@@ -444,7 +444,7 @@ export class AppNavigationPanel extends LitElement {
        where the desktop rail measures 45. Same rule, same height. */
     /* The compact row speaks the header radius token; a control that renders itself follows the
        row it is in rather than carrying the rail's corner into it. */
-    .compact-header { --pi-header-control-radius: var(--pi-radius-md); flex: 0 0 auto; box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; justify-content: flex-start; gap: var(--pi-space-3); padding: 0 var(--pi-chrome-inset); border-bottom: 1px solid var(--pi-border); }
+    .compact-header { --pi-header-control-radius: var(--pi-radius-md); flex: 0 0 auto; box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; justify-content: flex-start; gap: var(--pi-space-3); padding: var(--pi-space-1) var(--pi-reading-edge); border-bottom: 1px solid var(--pi-border); }
     .compact-session { flex: 1 1 auto; min-width: 0; min-height: var(--pi-control-height-touch); display: inline-flex; align-items: center; box-sizing: border-box; border: 0; background: none; color: var(--pi-text); font: inherit; font-size: var(--pi-text-sm); text-align: start; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
     .compact-session-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .compact-session.empty { color: var(--pi-muted); font-weight: var(--pi-weight-medium); }

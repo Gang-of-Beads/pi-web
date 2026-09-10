@@ -299,7 +299,7 @@ function taskStyles(): string {
       button.secondary { border-color: var(--pi-border); background: var(--pi-surface); color: var(--pi-text); }
       @media (pointer: coarse) { button { box-sizing: border-box; min-height: var(--pi-control-height-touch); } }
       button:disabled { cursor: wait; opacity: var(--pi-disabled-opacity); }
-      .empty-state { border: 1px dashed var(--pi-border-muted); border-radius: var(--pi-radius-md); color: var(--pi-muted); padding: var(--pi-space-6); }
+      .empty-state { border: 1px dashed var(--pi-border-muted); border-radius: var(--pi-radius-md); color: var(--pi-muted); padding: var(--pi-space-6); margin: auto; }
       .empty-state p { margin: var(--pi-space-3) 0 0; }
       .panel-status { margin: var(--pi-space-6) var(--pi-space-6) 0; }
       .status { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); padding: var(--pi-space-5); }

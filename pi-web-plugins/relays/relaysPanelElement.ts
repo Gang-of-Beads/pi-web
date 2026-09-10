@@ -568,7 +568,7 @@ function relaysStyles(): string {
       .document.markdown th, .document.markdown td { border: 1px solid var(--pi-border-muted); padding: var(--pi-space-2) var(--pi-space-4); }
       .status pre { margin-top: var(--pi-space-4); }
       .muted { color: var(--pi-muted); }
-      .empty-state { border: 1px dashed var(--pi-border-muted); border-radius: var(--pi-radius-md); color: var(--pi-muted); padding: var(--pi-space-6); }
+      .empty-state { border: 1px dashed var(--pi-border-muted); border-radius: var(--pi-radius-md); color: var(--pi-muted); padding: var(--pi-space-6); margin: auto; }
       .empty-state p { margin: var(--pi-space-3) 0 0; }
       .status { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); padding: var(--pi-space-5); }
       .status.info { border-color: var(--pi-accent-border); background: var(--pi-bg-overlay-soft); }

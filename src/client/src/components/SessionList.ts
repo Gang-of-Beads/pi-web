@@ -700,7 +700,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
        at comfort the text met the toggle's right edge with zero breath. */
     @media (pointer: coarse) { :host { --pi-row-gutter-size: var(--pi-control-height-touch); } }
     h2 { min-height: var(--pi-control-height); gap: var(--pi-space-2); }
-    @media (pointer: coarse) { h2 { gap: var(--pi-space-8); } }
+    @media (pointer: coarse) { h2 { gap: var(--pi-space-6); } }
     /* The shared heading spreads its children across the full width, which
        floats the checkbox, the unread count, Clean up and the start button
        apart like five unrelated controls. One group, pushed right, reads as
@@ -813,6 +813,9 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
       .start-session-button { min-width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); }
       .cleanup-entry { box-sizing: border-box; min-height: var(--pi-control-height-touch, 44px); padding: var(--pi-space-3) var(--pi-space-5); }
       .action-menu-toggle { min-width: var(--pi-control-height-touch, 44px); min-height: var(--pi-control-height-touch, 44px); }
+      /* Touch has no hover: the borderless controls answer a press with the
+         shared surface step, the only pressed state a flat theme can show. */
+      .action-menu-toggle:active, .cleanup-entry:active, .bulk-select-entry:active { background: var(--pi-surface-hover); }
       .bulk-row button { min-height: var(--pi-control-height-touch, 44px); }
     }
   `];

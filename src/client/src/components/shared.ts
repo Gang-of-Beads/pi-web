@@ -254,7 +254,7 @@ export const listStyles = css`
   }
   .search-empty { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); }
   section { box-sizing: border-box; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: var(--pi-reading-edge); }
-  h2 { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; gap: var(--pi-space-4); margin: 0 0 var(--pi-space-4); color: var(--pi-muted); font-size: var(--pi-text-xs); }
+  h2 { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; gap: var(--pi-space-4); margin: 0 0 var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-xs); }
   /* The create control for a section, carried by its heading rather than by a
      bar of its own: a stacked bar cost a fifth of a phone screen before any
      content, and the heading was already a flex row with a free trailing edge.
@@ -292,7 +292,7 @@ export const listStyles = css`
   /* Tile/card layout for management lists (workspaces, projects, machines).
      Rows become compact cards in an auto-fit grid; the row menu moves into
      the card's corner so the two-column row grid can collapse to one. */
-  .list-body.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); grid-auto-rows: min-content; gap: var(--pi-space-4); align-content: start; padding: var(--pi-space-2) var(--pi-space-1); }
+  .list-body.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); grid-auto-rows: min-content; gap: var(--pi-space-4); align-content: start; padding: var(--pi-space-2) 0; }
   /* Tiles in a row share a height, so the row is a grid of equal boxes rather
      than a ragged one. A tile that sizes to its own title makes the row's
      height an accident of which names happen to be long. */
