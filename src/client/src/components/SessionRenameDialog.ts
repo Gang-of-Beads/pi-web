@@ -24,14 +24,14 @@ export class SessionRenameDialog extends LitElement {
   @query("input") private nameInput?: HTMLInputElement;
 
   static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, css`
-    :host { position: fixed; inset: 0; z-index: var(--pi-layer-dialog); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
+    :host { position: fixed; inset: 0; z-index: var(--pi-layer-dialog); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); line-height: inherit; }
     modal-surface { --modal-surface-place-items: start center; --modal-surface-backdrop-padding: min(12vh, 90px) 0 0; --modal-surface-width: min(560px, calc(100vw - 40px)); --modal-surface-max-height: min(640px, calc(100vh - 40px)); }
     form { display: flex; flex-direction: column; min-height: 0; }
     header, footer { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: var(--pi-space-6); border-bottom: 1px solid var(--pi-border); }
     footer { border-bottom: none; border-top: 1px solid var(--pi-border); }
     .body { display: flex; flex-direction: column; gap: var(--pi-space-4); padding: var(--pi-space-6); overflow: auto; }
     label { display: flex; flex-direction: column; gap: var(--pi-space-2); font-size: var(--pi-text-sm); color: var(--pi-muted); }
-    input { box-sizing: border-box; min-height: var(--pi-control-height-comfort); font: var(--pi-control-font-size, 16px) var(--pi-font-ui); color: var(--pi-text); background: var(--pi-bg); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); padding: var(--pi-space-4) var(--pi-space-5); }
+    input { box-sizing: border-box; min-height: var(--pi-control-height-comfort); font: var(--pi-control-font-size, 16px) var(--pi-font-ui); line-height: inherit; color: var(--pi-text); background: var(--pi-bg); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); padding: var(--pi-space-4) var(--pi-space-5); }
     input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     .hint { color: var(--pi-muted); font-size: var(--pi-text-xs); margin: 0; }
     button { font: inherit; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }

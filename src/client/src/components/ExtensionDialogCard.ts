@@ -333,7 +333,7 @@ export class ExtensionDialogCard extends LitElement {
       width: 100%;
       margin: 0 0 var(--pi-space-7);
       color: var(--pi-text);
-      font: var(--pi-text-base) var(--pi-font-ui, system-ui, sans-serif);
+      font: var(--pi-text-base) var(--pi-font-ui, system-ui, sans-serif); line-height: inherit;
       container-type: inline-size;
     }
     /* One corner owner: the card clips, children paint square (the .msg
@@ -434,7 +434,7 @@ export class ExtensionDialogCard extends LitElement {
       background: var(--pi-bg);
       color: var(--pi-text);
       padding: var(--pi-space-4);
-      font: var(--pi-control-font-size, 16px)/1.4 var(--pi-control-font-family, system-ui, sans-serif);
+      font: var(--pi-control-font-size, 16px)/1.4 var(--pi-control-font-family, system-ui, sans-serif); line-height: inherit;
     }
     .dialog-footer {
       /* The card sits in the transcript, which is already the scroller. The

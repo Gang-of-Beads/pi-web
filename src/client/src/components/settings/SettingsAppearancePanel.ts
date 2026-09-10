@@ -136,7 +136,7 @@ export class SettingsAppearancePanel extends LitElement {
   }
 
   static override styles = [interactiveSurfaceStyles, settingsControlStyles, css`
-    :host { display: block; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
+    :host { display: block; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); line-height: inherit; }
     .heading { margin-bottom: var(--pi-space-6); }
     h2 { margin: 0 0 var(--pi-space-2); font-family: var(--pi-font-display); font-size: var(--pi-text-lg); font-weight: var(--pi-weight-semibold); letter-spacing: -0.01em; }
     .muted { margin: 0; color: var(--pi-muted); font-size: var(--pi-text-xs); line-height: 1.4; }

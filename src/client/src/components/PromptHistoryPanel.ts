@@ -112,15 +112,15 @@ export class PromptHistoryPanel extends LitElement {
     /* The sheet's controls are in their own shadow root, so the composer's
        tap rules do not reach them: without these, every row and the close
        button stay eligible for the browser's double-tap-zoom click delay. */
-    button, input { font: var(--pi-text-xs) var(--pi-font-ui); -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
-    :host { position: absolute; left: 0; right: 0; bottom: 100%; height: 100dvh; z-index: 6; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
+    button, input { font: var(--pi-text-xs) var(--pi-font-ui); line-height: inherit; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+    :host { position: absolute; left: 0; right: 0; bottom: 100%; height: 100dvh; z-index: 6; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); line-height: inherit; }
     modal-surface {
       --modal-surface-place-items: end center;
       --modal-surface-width: min(560px, 100%);
       --modal-surface-max-height: min(60dvh, 480px);
     }
     header { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--pi-space-4); align-items: center; padding: var(--pi-space-5); border-bottom: 1px solid var(--pi-border); }
-    .history-search { box-sizing: border-box; min-width: 0; height: var(--pi-control-height-touch); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-bg); color: var(--pi-text); padding: 0 var(--pi-space-5); /* 16px keeps iOS from zooming the field on focus. */ font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); }
+    .history-search { box-sizing: border-box; min-width: 0; height: var(--pi-control-height-touch); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-bg); color: var(--pi-text); padding: 0 var(--pi-space-5); /* 16px keeps iOS from zooming the field on focus. */ font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); line-height: inherit; }
     .history-search::placeholder { color: var(--pi-dim); }
     .history-search::-webkit-search-cancel-button { display: none; }
     .history-search:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
@@ -133,7 +133,7 @@ export class PromptHistoryPanel extends LitElement {
     .entry.selected { background: var(--pi-selection-bg); }
     @media (hover: hover) { .entry:hover { background: var(--pi-selection-bg); } }
     .entry:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
-    .entry-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; font: var(--pi-text-sm) var(--pi-font-ui); line-height: 1.4; }
+    .entry-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; font: var(--pi-text-sm) var(--pi-font-ui); line-height: inherit; line-height: 1.4; }
     .empty { margin: var(--pi-space-7) var(--pi-space-2); color: var(--pi-muted); text-align: center; }
   `;
 }

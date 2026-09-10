@@ -104,7 +104,7 @@ export class SettingsFleetSection extends LitElement {
   }
 
   static override styles = [interactiveSurfaceStyles, settingsControlStyles, css`
-    :host { display: block; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
+    :host { display: block; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); line-height: inherit; }
     .fleet { display: grid; gap: var(--pi-space-5); }
     header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--pi-space-6); }
     h3 { margin: 0 0 var(--pi-space-2); font-size: var(--pi-text-base); }

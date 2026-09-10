@@ -9,7 +9,7 @@ import type { GoalRecordSummary } from "./goalRecords.js";
  *  chrome: grouping is spacing, state is color, and the only accent-sized
  *  control is the refresh action. */
 export const goalsSectionStyles = `
-  :host { display: block; color: var(--pi-text); font: var(--pi-text-sm) var(--pi-font-ui, system-ui, sans-serif); }
+  :host { display: block; color: var(--pi-text); font: var(--pi-text-sm) var(--pi-font-ui, system-ui, sans-serif); line-height: inherit; }
   .goal-row { display: flex; align-items: flex-start; gap: var(--pi-space-4); padding: var(--pi-space-3) 0; }
   .dot { flex: 0 0 auto; width: var(--pi-dot-md); height: var(--pi-dot-md); margin-top: var(--pi-space-3); border-radius: 50%; background: var(--pi-accent); }
   .goal-row[data-status="paused"] .dot, .goal-row[data-status="budget_limited"] .dot { background: var(--pi-muted); }

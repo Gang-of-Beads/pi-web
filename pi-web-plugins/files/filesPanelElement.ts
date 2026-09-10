@@ -531,7 +531,7 @@ export class PiFilesPanel extends LitElement {
       form { min-height: 0; display: flex; flex-direction: column; gap: var(--pi-space-6); overflow: auto; padding: var(--pi-space-7); }
       form > label { display: grid; gap: var(--pi-space-3); }
       form > label > span, .review-files > strong { font-weight: var(--pi-weight-semibold); }
-      input[type="text"], form > label > input:not([type]) { box-sizing: border-box; width: 100%; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); }
+      input[type="text"], form > label > input:not([type]) { box-sizing: border-box; width: 100%; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); line-height: inherit; }
       input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
       .dialog-options { display: grid; gap: var(--pi-space-4); }
       .dialog-options label { display: flex; align-items: center; gap: var(--pi-space-4); color: var(--pi-text); }

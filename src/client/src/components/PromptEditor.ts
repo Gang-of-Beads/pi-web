@@ -31,7 +31,7 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
      over a round or rounded control. Suppressed in favour of the app's own
      pressed and focus styling; :focus-visible still shows keyboard focus, so
      nothing is lost for keyboard users. */
-  button, [role="button"], a, summary, label, input, select { font: var(--pi-text-xs) var(--pi-font-ui); -webkit-tap-highlight-color: transparent; }
+  button, [role="button"], a, summary, label, input, select { font: var(--pi-text-xs) var(--pi-font-ui); line-height: inherit; -webkit-tap-highlight-color: transparent; }
   /* Follows the control's own shape rather than boxing a circle. */
   button:focus-visible, [role="button"]:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); }
   /* Motion is a preference, not a decoration: a user who asks for less of it
@@ -49,15 +49,15 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
   dialog.attachment-zoom[open] { display: flex; }
   dialog.attachment-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
   .attachment-zoom-full { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: var(--pi-radius-md); object-fit: contain; }
-  .attachment-zoom-close { box-sizing: border-box; position: absolute; top: max(var(--pi-space-4), env(safe-area-inset-top)); right: max(var(--pi-space-4), env(safe-area-inset-right)); display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; font: var(--pi-text-lg)/1 var(--pi-font-ui, system-ui, sans-serif); color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
+  .attachment-zoom-close { box-sizing: border-box; position: absolute; top: max(var(--pi-space-4), env(safe-area-inset-top)); right: max(var(--pi-space-4), env(safe-area-inset-right)); display: inline-grid; place-items: center; width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); padding: 0; font: var(--pi-text-lg)/1 var(--pi-font-ui, system-ui, sans-serif); line-height: inherit; color: var(--pi-muted); background: color-mix(in srgb, var(--pi-surface) 88%, transparent); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); cursor: pointer; }
   .attachment-zoom-close:focus-visible { color: var(--pi-text-bright); border-color: var(--pi-accent); }
   @media (hover: hover) { .attachment-zoom-close:hover { color: var(--pi-text-bright); border-color: var(--pi-accent); } }
   /* Tap targets should not wait for a double-tap-zoom gesture to be ruled out.
      Scoped to controls, so scrollable and pannable surfaces keep the gestures
      they set for themselves; and it lives here rather than on the app shell
      because shell styles do not cross a component's shadow boundary. */
-  button, [role="button"], input, select, summary { font: var(--pi-text-xs) var(--pi-font-ui); touch-action: manipulation; }
-  :host { position: relative; z-index: 5; display: block; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
+  button, [role="button"], input, select, summary { font: var(--pi-text-xs) var(--pi-font-ui); line-height: inherit; touch-action: manipulation; }
+  :host { position: relative; z-index: 5; display: block; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); line-height: inherit; }
   footer { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--pi-space-4); padding: var(--pi-space-6) var(--pi-chat-gutter); border-top: 1px solid var(--pi-border); max-width: var(--pi-chat-measure, 100%); margin-inline: auto; }
   /* Collapsed: one line that gives the screen back to whatever input is being
      used, and says what is still in the draft so it does not look lost. */
@@ -91,7 +91,7 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
   .select-thinking .prompt-thinking-gauge .gauge-bar-active { opacity: 1; }
   .editor-attach { position: absolute; right: var(--pi-space-4); bottom: var(--pi-space-4); z-index: 2; width: var(--pi-control-height); height: var(--pi-control-height); }
   .editor-attach .prompt-action-icon { width: 18px; height: 18px; }
-  textarea, .markdown-editor .cm-editor { box-sizing: border-box; width: 100%; min-height: 54px; max-height: 220px; resize: none; overflow: hidden; border-radius: var(--pi-radius-md); border: 1px solid var(--pi-border); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px)/1.4 var(--pi-control-font-family, system-ui, sans-serif); }
+  textarea, .markdown-editor .cm-editor { box-sizing: border-box; width: 100%; min-height: 54px; max-height: 220px; resize: none; overflow: hidden; border-radius: var(--pi-radius-md); border: 1px solid var(--pi-border); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px)/1.4 var(--pi-control-font-family, system-ui, sans-serif); line-height: inherit; }
   textarea { overflow-y: auto; padding: var(--pi-space-4); padding-right: calc(var(--pi-space-4) + 36px); }
   /* A phone with the keyboard open leaves roughly 400px of viewport, and a
      composer sized for a full screen took 119px of it - the transcript was
@@ -135,7 +135,7 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
      hint. */
   .composer-placeholder { display: flex; flex: 1 1 auto; align-items: center; justify-content: space-between; gap: var(--pi-space-4); min-width: 0; }
   .composer-placeholder-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .composer-placeholder-hints { flex: 0 0 auto; color: var(--pi-muted); font-size: var(--pi-text-xs); letter-spacing: 0.12em; }
+  .composer-placeholder-hints { flex: 0 0 auto; color: var(--pi-muted); font-size: var(--pi-text-xs); letter-spacing: normal; }
   /* CodeMirror suppresses its own outline, so the focus ring belongs on the
      bordered box the user actually sees. Without this the composer was the one
      control in the app that gave no sign of being focused. */
@@ -158,7 +158,7 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
   .attachment-chip { box-sizing: border-box; position: relative; width: 56px; height: 56px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); overflow: hidden; background: var(--pi-bg); }
   .attachment-chip img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .attachment-chip-file { display: grid; place-items: center; }
-  .attachment-file-preview { box-sizing: border-box; display: grid; place-items: center; width: var(--pi-control-height-comfort); height: 26px; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-surface); color: var(--pi-muted); font: var(--pi-weight-bold) var(--pi-text-2xs)/1 var(--pi-font-ui, system-ui, sans-serif); letter-spacing: .03em; }
+  .attachment-file-preview { box-sizing: border-box; display: grid; place-items: center; width: var(--pi-control-height-comfort); height: 26px; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); background: var(--pi-surface); color: var(--pi-muted); font: var(--pi-weight-bold) var(--pi-text-2xs)/1 var(--pi-font-ui, system-ui, sans-serif); line-height: inherit; letter-spacing: normal; }
   .attachment-file-name { position: absolute; right: var(--pi-space-2); bottom: var(--pi-space-1); left: var(--pi-space-2); overflow: hidden; color: var(--pi-muted); font-size: var(--pi-text-2xs); line-height: 1.2; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
   .attachment-remove { box-sizing: border-box; position: absolute; top: var(--pi-space-1); right: var(--pi-space-1); width: 18px; height: 18px; padding: 0; line-height: 16px; border-radius: 50%; border: 1px solid var(--pi-border); background: var(--pi-surface); color: var(--pi-text); font-size: var(--pi-text-sm); cursor: pointer; }
   /* A thumb is about 9mm wide. An 18px remove badge on a 56px thumbnail means
@@ -176,7 +176,7 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
      with the send action carrying the only accent. Borders said chip on every
      control and the row read busier than the content it serves; hover, focus,
      and the press states still signal interactivity (C2/C4). */
-  button { font: var(--pi-text-xs) var(--pi-font-ui); border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
+  button { font: var(--pi-text-xs) var(--pi-font-ui); line-height: inherit; border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
   button:not(:disabled):active { background: var(--pi-surface-hover); }
   button:disabled, textarea:disabled, .markdown-editor-disabled .cm-editor { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
   @media (max-width: 760px) {

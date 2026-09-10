@@ -542,7 +542,7 @@ function relaysStyles(): string {
          highlights instead, without taking the fill reserved for the open document. */
       .directory-tab.contains-active { border-color: var(--pi-accent-border); color: var(--pi-accent); }
       .directory-tab.contains-active::after { content: ""; width: var(--pi-dot-xs); height: var(--pi-dot-xs); border-radius: 50%; background: var(--pi-accent); }
-      code, pre { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-sm); background: var(--pi-bg); color: var(--pi-text-secondary); font: var(--pi-text-xs) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
+      code, pre { border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-sm); background: var(--pi-bg); color: var(--pi-text-secondary); font: var(--pi-text-xs) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); line-height: inherit; }
       code { padding: var(--pi-space-1) var(--pi-space-3); }
       pre { margin: 0; overflow: auto; padding: var(--pi-space-4); white-space: pre-wrap; overflow-wrap: anywhere; }
       .document.markdown { line-height: 1.5; overflow-wrap: anywhere; }

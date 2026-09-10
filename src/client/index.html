@@ -215,6 +215,11 @@
          channel the design tokens ride. The per-component sweep missed real
          buttons twice; the root rule cannot miss. */
       html { -webkit-tap-highlight-color: transparent; }
+      /* Leading is stated, not left to the font's "normal": the mono face's
+         normal sits a step taller than the sans one the row rhythm was tuned
+         against, and mixed normal/1 boxes inside centered rows are what made
+         the pro switch read misaligned. Tight is the TUI rhythm. */
+      body { line-height: var(--pi-leading-tight); }
     </style>
   </head>
   <body>

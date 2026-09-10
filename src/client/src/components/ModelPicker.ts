@@ -274,7 +274,7 @@ export class ModelPicker extends LitElement {
   @property({ type: Boolean, reflect: true }) aboveDialog = false;
 
   static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, css`
-    :host { position: fixed; inset: 0; z-index: var(--pi-layer-popover); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui, system-ui, sans-serif); }
+    :host { position: fixed; inset: 0; z-index: var(--pi-layer-popover); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui, system-ui, sans-serif); line-height: inherit; }
     :host([abovedialog]) { z-index: calc(var(--pi-layer-dialog) + 1); }
     modal-surface { --modal-surface-width: min(720px, calc(100vw - 40px)); --modal-surface-max-height: min(640px, calc(100vh - 40px)); }
     header { display: flex; align-items: center; justify-content: space-between; padding: var(--pi-space-6); border-bottom: 1px solid var(--pi-border); }
@@ -285,7 +285,7 @@ export class ModelPicker extends LitElement {
     .options:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     button { font: inherit; border: 0; background: transparent; color: var(--pi-text); cursor: pointer; }
     header button { font: inherit; display: grid; place-items: center; box-sizing: border-box; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); padding: 0; font-size: var(--pi-text-xl); line-height: 1; color: var(--pi-muted); }
-    input.search { box-sizing: border-box; height: var(--pi-control-height-comfort); margin: var(--pi-space-5) var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); padding: var(--pi-space-4) var(--pi-space-5); outline: none; }
+    input.search { box-sizing: border-box; height: var(--pi-control-height-comfort); margin: var(--pi-space-5) var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); line-height: inherit; padding: var(--pi-space-4) var(--pi-space-5); outline: none; }
     input.search:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     input.search:focus { border-color: var(--pi-accent); }
     /* Coarse pointers get the comfort floor across the popover chrome: the
@@ -298,7 +298,7 @@ export class ModelPicker extends LitElement {
       input.search { min-height: var(--pi-control-height-touch, 44px); }
       input[type="checkbox"] { box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); accent-color: var(--pi-accent); }
     }
-    .options > button { display: block; box-sizing: border-box; width: 100%; font: var(--pi-text-sm)/1.25 var(--pi-font-ui); padding: var(--pi-space-5) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
+    .options > button { display: block; box-sizing: border-box; width: 100%; font: var(--pi-text-sm)/1.25 var(--pi-font-ui); line-height: inherit; padding: var(--pi-space-5) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
     .options > button.selected { background: var(--pi-selection-bg); border-color: var(--pi-accent); }
     .options > button.selected small, .catalog-row.selected small { color: var(--pi-text-secondary, var(--pi-text)); }
     @media (hover: hover) { .options > button:hover { background: var(--pi-surface-hover); } }
@@ -306,7 +306,7 @@ export class ModelPicker extends LitElement {
     .catalog-row.selected { background: var(--pi-selection-bg); border-color: var(--pi-accent); }
     @media (hover: hover) { .catalog-row:hover { background: var(--pi-surface-hover); } }
     .catalog-row input[type="checkbox"] { box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); margin: 0 0 0 var(--pi-space-6); accent-color: var(--pi-accent); }
-    .catalog-row .pick { font: var(--pi-text-sm)/1.25 var(--pi-font-ui); flex: 1; min-width: 0; display: block; padding: var(--pi-space-5) var(--pi-space-6); text-align: left; }
+    .catalog-row .pick { font: var(--pi-text-sm)/1.25 var(--pi-font-ui); line-height: inherit; flex: 1; min-width: 0; display: block; padding: var(--pi-space-5) var(--pi-space-6); text-align: left; }
     .group-header { padding: var(--pi-space-4) var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-xs); text-transform: uppercase; letter-spacing: 0.04em; }
     small { display: block; margin-top: var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-2xs); }
     .empty { padding: var(--pi-space-9); color: var(--pi-muted); text-align: center; }

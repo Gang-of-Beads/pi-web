@@ -1310,7 +1310,7 @@ function errorMessage(error: unknown): string {
 }
 
 const gitPanelStyles = `
-  .git-panel { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; color: var(--pi-text); background: var(--pi-bg); font: var(--pi-text-sm) var(--pi-font-ui, system-ui, sans-serif); }
+  .git-panel { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; color: var(--pi-text); background: var(--pi-bg); font: var(--pi-text-sm) var(--pi-font-ui, system-ui, sans-serif); line-height: inherit; }
   .git-panel ${activityElementTag} { display: none; }
   .git-panel ${reviewSectionActivityElementTag} { display: block; min-width: 0; }
   .git-panel button { display: inline-flex; align-items: center; gap: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-3) var(--pi-space-4); cursor: pointer; }
@@ -1372,7 +1372,7 @@ const gitPanelStyles = `
   .git-panel .git-commit-file-toggle { min-width: 0; overflow: hidden; border: 0; background: transparent; padding: var(--pi-space-1); font-weight: var(--pi-weight-semibold); text-overflow: ellipsis; white-space: nowrap; }
   .git-panel .git-commit-file:last-child { border-bottom: 0; }
   .git-panel .git-diff-scroller { flex: 1 1 auto; min-height: 0; overflow: auto; background: var(--pi-bg); }
-  .git-panel .git-diff-grid { display: grid; grid-template-columns: max-content max-content 2ch max-content; width: max-content; min-width: 100%; padding: var(--pi-space-3) 0; font: var(--pi-text-xs) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); line-height: 1.45; }
+  .git-panel .git-diff-grid { display: grid; grid-template-columns: max-content max-content 2ch max-content; width: max-content; min-width: 100%; padding: var(--pi-space-3) 0; font: var(--pi-text-xs) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); line-height: inherit; line-height: 1.45; }
   .git-panel .git-diff-line { display: contents; }
   .git-panel .git-diff-cell { min-height: 1.45em; white-space: pre; }
   .git-panel .git-line-number { min-width: 4ch; padding: 0 var(--pi-space-4); border-right: 1px solid var(--pi-border-muted); color: var(--pi-dim); text-align: right; user-select: none; }

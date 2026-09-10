@@ -467,7 +467,7 @@ export class AskUserCard extends LitElement {
       width: 100%;
       margin: 0 0 var(--pi-space-7);
       color: var(--pi-text);
-      font: var(--pi-text-base) var(--pi-font-ui, system-ui, sans-serif);
+      font: var(--pi-text-base) var(--pi-font-ui, system-ui, sans-serif); line-height: inherit;
       container-type: inline-size;
     }
     /* One corner owner: the card clips, children paint square (the .msg
@@ -501,7 +501,7 @@ export class AskUserCard extends LitElement {
     h2 {
       margin-bottom: 0;
       color: var(--pi-accent);
-      font: var(--pi-text-xs) var(--pi-font-mono);
+      font: var(--pi-text-xs) var(--pi-font-mono); line-height: inherit;
       line-height: 1.3;
     }
     .header-status { flex: 0 1 auto; color: var(--pi-muted); font-size: var(--pi-text-2xs); text-align: end; }
@@ -595,7 +595,7 @@ export class AskUserCard extends LitElement {
       background: var(--pi-bg);
       color: var(--pi-text);
       padding: var(--pi-space-4);
-      font: var(--pi-control-font-size, 16px)/1.4 var(--pi-control-font-family, system-ui, sans-serif);
+      font: var(--pi-control-font-size, 16px)/1.4 var(--pi-control-font-family, system-ui, sans-serif); line-height: inherit;
     }
     /* Back sits beside the forward action rather than under it: the pair is
        one decision, and a phone keyboard leaves little height to spend. */

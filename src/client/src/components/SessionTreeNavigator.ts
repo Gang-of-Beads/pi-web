@@ -524,7 +524,7 @@ export class SessionTreeNavigator extends LitElement {
   }
 
   static override styles = [css`${unsafeCSS(uiIconStyle)}`, css`${unsafeCSS(disclosureIconStyle)}`, interactiveSurfaceStyles, css`
-    :host { position: fixed; inset: 0; z-index: var(--pi-layer-popover); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui, system-ui, sans-serif); }
+    :host { position: fixed; inset: 0; z-index: var(--pi-layer-popover); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui, system-ui, sans-serif); line-height: inherit; }
     * { box-sizing: border-box; }
     /* Full-viewport shell: the surface's centered-card defaults are overridden
        so the dialog keeps covering the whole viewport. */
@@ -535,7 +535,7 @@ export class SessionTreeNavigator extends LitElement {
     h1, h2, p { margin: 0; }
     h1 { font-size: var(--pi-text-xl); line-height: 1.25; }
     h2 { margin-top: var(--pi-space-1); font-size: var(--pi-text-lg); }
-    .eyebrow { display: block; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-bold); letter-spacing: .08em; text-transform: uppercase; }
+    .eyebrow { display: block; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-bold); letter-spacing: normal; text-transform: uppercase; }
     .close-button { box-sizing: border-box; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); margin-inline-start: auto; display: grid; place-items: center; border: 0; background: transparent; color: var(--pi-muted); padding: 0; font-size: var(--pi-text-xl); }
     .close-button:not(:disabled):focus-visible { color: var(--pi-text); background: var(--pi-surface-hover); }
     @media (hover: hover) { .close-button:not(:disabled):hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
@@ -600,7 +600,7 @@ export class SessionTreeNavigator extends LitElement {
     .choice-option span { display: grid; gap: var(--pi-space-2); }
     .choice-option small { color: var(--pi-muted); }
     .custom-focus { display: grid; gap: var(--pi-space-3); margin: var(--pi-space-1) 0 0 var(--pi-space-7); font-weight: var(--pi-weight-semibold); }
-    textarea { box-sizing: border-box; width: 100%; resize: vertical; min-height: 94px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: var(--pi-space-5) var(--pi-space-5); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); }
+    textarea { box-sizing: border-box; width: 100%; resize: vertical; min-height: 94px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: var(--pi-space-5) var(--pi-space-5); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); line-height: inherit; }
     textarea:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     .character-count { justify-self: end; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-regular); }
     .validation-error { margin-inline-start: var(--pi-space-7); color: var(--pi-danger); font-size: var(--pi-text-xs); }

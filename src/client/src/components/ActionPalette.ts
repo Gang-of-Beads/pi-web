@@ -99,10 +99,10 @@ export class ActionPalette extends LitElement {
   }
 
   static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, css`
-    :host { position: fixed; inset: 0; z-index: var(--pi-layer-overlay); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui, system-ui, sans-serif); }
+    :host { position: fixed; inset: 0; z-index: var(--pi-layer-overlay); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui, system-ui, sans-serif); line-height: inherit; }
     modal-surface { --palette-top: min(12dvh, 90px); --palette-bottom: max(20px, env(safe-area-inset-bottom)); --modal-surface-place-items: start center; --modal-surface-backdrop-padding: var(--palette-top) var(--pi-space-8) var(--palette-bottom); --modal-surface-max-height: min(640px, calc(100dvh - var(--palette-top) - var(--palette-bottom))); }
     header { display: grid; grid-template-columns: 1fr auto; gap: var(--pi-space-4); padding: var(--pi-space-5); border-bottom: 1px solid var(--pi-border); }
-    input { min-width: 0; border: 0; outline: none; background: transparent; color: var(--pi-text); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); padding: var(--pi-space-4); }
+    input { min-width: 0; border: 0; outline: none; background: transparent; color: var(--pi-text); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); line-height: inherit; padding: var(--pi-space-4); }
     /* The border is removed for the flush look, so focus needs its own ring. */
     input:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); border-radius: var(--pi-radius-sm); }
     input::placeholder { color: var(--pi-dim); }
@@ -120,7 +120,7 @@ export class ActionPalette extends LitElement {
     small { display: block; color: var(--pi-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .disabled-reason { color: var(--pi-warning); }
     .group { grid-column: 1 / -1; font-size: var(--pi-text-xs); }
-    kbd { align-self: center; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); padding: var(--pi-space-1) var(--pi-space-3); font: var(--pi-text-xs) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); white-space: nowrap; }
+    kbd { align-self: center; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); padding: var(--pi-space-1) var(--pi-space-3); font: var(--pi-text-xs) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); line-height: inherit; white-space: nowrap; }
     .empty { padding: var(--pi-space-9); color: var(--pi-muted); text-align: center; }
     /* A shortcut badge is an affordance for a keyboard. On a touch screen it
        is a label for a key nobody can press, and the column it holds open was
