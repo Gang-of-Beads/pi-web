@@ -618,6 +618,8 @@ export interface SessionInfo extends SessionRef {
   parentSessionPath?: string;
   archived?: boolean;
   archivedAt?: string;
+  /** The stored working directory is gone: the row renders as unopenable. */
+  cwdMissing?: boolean;
 }
 
 export interface ArchiveSessionsResponse {

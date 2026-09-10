@@ -431,7 +431,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
             this.activateSessionRow(session, scope);
           }}
         >
-          <span class="action-name-line"><span class="action-name" dir="auto">${this.renderRowMarker(row)}${sessionLabel(session)}</span>${this.renderRowBadges(row)}</span><small>${this.renderSessionMetaPrefix(session, status, activity)}${this.renderSessionMetaPrefixDetail(session)}${String(session.messageCount)} messages</small>
+          <span class="action-name-line"><span class="action-name" dir="auto">${this.renderRowMarker(row)}${sessionLabel(session)}</span>${session.cwdMissing === true ? html`<span class="cwd-gone" title="This session's folder no longer exists">folder gone</span>` : this.renderRowBadges(row)}</span><small>${this.renderSessionMetaPrefix(session, status, activity)}${this.renderSessionMetaPrefixDetail(session)}${String(session.messageCount)} messages</small>
           ${renderSessionRowIndicator(sessionRowIndicator(stateKind, unread))}
         </button>
         <div class="action-menu">
@@ -529,6 +529,10 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
       this.toggleSelected(session.id);
       return;
     }
+    // A session whose folder is gone cannot open - opening navigates and then
+    // fails with a red banner, the shape the owner rejected. The row stays
+    // for its menu (cleanup, archive); the open affordance goes away.
+    if (session.cwdMissing === true) return;
     this.onSelect?.(session);
   }
 
@@ -734,6 +738,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
        own under the name, adding 18px to every row that had one. */
     .action-main .session-state { position: absolute; top: 50%; right: var(--pi-space-4); transform: translateY(-50%); }
     .action-name-line .action-name { flex: 1 1 auto; min-width: 0; }
+    .cwd-gone { color: var(--pi-muted); font-size: var(--pi-text-2xs); border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); padding: 0 var(--pi-space-2); }
     /* Badges must not sit inside the line-clamped title, or a long name hides them entirely. */
     .row-badges { flex: 0 0 auto; display: flex; align-items: flex-start; gap: var(--pi-space-2); }
     .row-badges .badge { margin-left: 0; white-space: nowrap; }

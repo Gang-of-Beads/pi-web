@@ -274,6 +274,7 @@ export function parseSessionInfo(value: unknown): SessionInfo {
     ...(parentSessionPath === undefined ? {} : { parentSessionPath }),
     ...(record["archived"] === true ? { archived: true } : {}),
     ...(archivedAt === undefined ? {} : { archivedAt }),
+    ...(record["cwdMissing"] === true ? { cwdMissing: true } : {}),
   };
 }
 

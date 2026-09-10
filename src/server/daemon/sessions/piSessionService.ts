@@ -334,6 +334,10 @@ export interface PiSessionListEntry {
   allMessagesText: string;
   name?: string;
   parentSessionPath?: string;
+  /** The stored working directory is gone: the session cannot open, only be
+   * read about (cleanup, archive). Stamped at listing time so the row can
+   * refuse the click instead of navigating into a red banner. */
+  cwdMissing?: boolean;
 }
 
 /** A session file located by id without parsing its transcript. */

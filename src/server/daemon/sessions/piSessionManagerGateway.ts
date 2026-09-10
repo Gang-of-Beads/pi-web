@@ -1,3 +1,4 @@
+import { statSync } from "node:fs";
 import type { Dirent } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -95,7 +96,11 @@ class SettingsAwarePiSessionManagerGateway implements PiSessionManagerGateway {
       ...session,
       cwd: canonicalizeStoredCwd(session.cwd),
     })));
-    return filterSessionsForCwd(sessions, cwd);
+    // The row must know it cannot open before the click: a session whose
+    // working directory is gone fails only at load time, which showed up as
+    // navigate-then-red-banner - the shape the owner rejected. Stat is cheap
+    // and local; the daemon that owns the directory answers for it.
+    return filterSessionsForCwd(sessions.map((session) => ({ ...session, ...(directoryExists(session.cwd) ? {} : { cwdMissing: true }) })), cwd);
   }
 
   resolveSessionFile(cwd: string, sessionId: string): Promise<ResolvedSessionFile | undefined> {
@@ -182,6 +187,16 @@ export async function scanStoreSessionSummaries(
 }
 
 /** The store keeps one directory per working directory; a missing store is empty, not an error. */
+/** True when the path stats as a directory; false covers ENOENT and every
+ * other stat failure - the row only needs to know "can this open". */
+function directoryExists(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 export async function readSessionDirNames(storeRoot: string): Promise<string[]> {
   let entries: Dirent[];
   try {

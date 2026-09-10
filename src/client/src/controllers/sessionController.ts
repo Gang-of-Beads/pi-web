@@ -280,6 +280,14 @@ export class SessionController {
 
   async selectSession(session: SessionInfo, options?: { updateUrl?: boolean | undefined; preserveTreeDialog?: boolean | undefined; propagateRefreshError?: boolean | undefined }) {
     if (this.disposed) return;
+    // The row refuses to open when its folder is gone (the list stamps it);
+    // keyboard and deep-link paths route through here, so the guard lives
+    // where every path converges. The reader gets the fact, not a red
+    // banner after a navigation.
+    if (session.cwdMissing === true) {
+      this.setState(noticePatch(noticeForReader("This session's folder no longer exists, so it cannot be opened.")));
+      return;
+    }
     if (isClientPendingStartSessionInfo(session)) {
       this.selectClientPendingStartSession(session, options);
       return;

@@ -178,6 +178,9 @@ export function quickSwitcherFilterSessions(
   );
   const projectPaths = filter.projectId === undefined || knownPaths.size === 0 ? undefined : knownPaths;
   return sessions.filter((session) => {
+    // A session whose folder is gone is not openable; the switcher offers
+    // openable things.
+    if (session.cwdMissing === true) return false;
     if (filter.workspacePath !== undefined && session.cwd !== filter.workspacePath) return false;
     if (projectPaths !== undefined && !projectPaths.has(session.cwd)) return false;
     return true;
