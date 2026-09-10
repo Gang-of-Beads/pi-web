@@ -1,4 +1,4 @@
-import { noticePatch } from "../errorNotice";
+import { clearErrorPatch, noticePatch } from "../errorNotice";
 import { noticeForReader } from "../notice";
 import type { GetState, SetState } from "./types";
 
@@ -26,6 +26,6 @@ export class ReportedError {
     const reported = this.reported;
     this.reported = undefined;
     if (reported === undefined || this.getState().error !== reported) return;
-    this.setState({ error: "" });
+    this.setState(clearErrorPatch());
   }
 }

@@ -537,8 +537,6 @@ export class SessionTreeNavigator extends LitElement {
     h2 { margin-top: var(--pi-space-1); font-size: var(--pi-text-lg); }
     .eyebrow { display: block; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-bold); letter-spacing: .08em; text-transform: uppercase; }
     .close-button { box-sizing: border-box; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); margin-inline-start: auto; display: grid; place-items: center; border: 0; background: transparent; color: var(--pi-muted); padding: 0; font-size: var(--pi-text-xl); }
-    }
-
     .close-button:not(:disabled):focus-visible { color: var(--pi-text); background: var(--pi-surface-hover); }
     @media (hover: hover) { .close-button:not(:disabled):hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
     .body { flex: 1 1 auto; min-height: 0; overflow: auto; }
@@ -565,6 +563,7 @@ export class SessionTreeNavigator extends LitElement {
     @media (pointer: coarse) {
       .disclosure { width: 24px; }
       .close-button { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); }
+    }
     @media (hover: hover) { .disclosure:not(.leaf):hover { color: var(--pi-text); background: var(--pi-surface-hover); } }
     .disclosure.leaf { opacity: var(--pi-disabled-opacity); }
     .metadata { display: contents; }
@@ -600,11 +599,11 @@ export class SessionTreeNavigator extends LitElement {
     .choice-option input { margin-top: var(--pi-space-2); accent-color: var(--pi-accent); }
     .choice-option span { display: grid; gap: var(--pi-space-2); }
     .choice-option small { color: var(--pi-muted); }
-    .custom-focus { display: grid; gap: var(--pi-space-3); margin: var(--pi-space-1) 0 0 30px; font-weight: var(--pi-weight-semibold); }
+    .custom-focus { display: grid; gap: var(--pi-space-3); margin: var(--pi-space-1) 0 0 var(--pi-space-7); font-weight: var(--pi-weight-semibold); }
     textarea { box-sizing: border-box; width: 100%; resize: vertical; min-height: 94px; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-text); padding: var(--pi-space-5) var(--pi-space-5); font: var(--pi-control-font-size, 16px) var(--pi-control-font-family, system-ui, sans-serif); }
     textarea:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     .character-count { justify-self: end; color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-regular); }
-    .validation-error { margin-inline-start: 30px; color: var(--pi-danger); font-size: var(--pi-text-xs); }
+    .validation-error { margin-inline-start: var(--pi-space-7); color: var(--pi-danger); font-size: var(--pi-text-xs); }
     .side-effects-note { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); }
     .dialog-error { border-color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 10%, var(--pi-bg)); color: var(--pi-danger); }
     .dialog-status { border-color: var(--pi-success-border); background: var(--pi-success-bg); }

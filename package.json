@@ -179,7 +179,8 @@
   },
   "knip": {
     "ignore": [
-      "scripts/probe-r18-dup-list.mjs"
+      "scripts/probe-r18-dup-list.mjs",
+      "scripts/probe-r19-row-menu.mjs"
     ]
   }
 }

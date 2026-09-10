@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { HttpError } from "./http";
 import { observeTransportRecovery, reportTransportReachable } from "./transportHealth";
 
 beforeEach(() => { observeTransportRecovery(undefined); });
@@ -65,7 +66,7 @@ describe("the request boundary reports reachability", () => {
     vi.unstubAllGlobals();
   });
 
-  it("does not report when the server answers with a failure", async () => {
+  it("reports reachability even when the server answers with a failure: a 500 still disproves that the link is down", async () => {
     const onRecovered = vi.fn();
     observeTransportRecovery(onRecovered);
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
@@ -76,9 +77,9 @@ describe("the request boundary reports reachability", () => {
     }));
 
     const { request } = await import("./http");
-    await request("api/probe", (value) => value).catch(() => undefined);
+    await expect(request("api/probe", (value) => value)).rejects.toBeInstanceOf(HttpError);
 
-    expect(onRecovered).not.toHaveBeenCalled();
+    expect(onRecovered).toHaveBeenCalledOnce();
     vi.unstubAllGlobals();
   });
 });

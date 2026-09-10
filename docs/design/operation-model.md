@@ -25,7 +25,10 @@ Consequences, each verifiable in the current code:
    running the command; the socket keeps delivering its output. Both statements
    are true and they contradict each other on screen.
 
-2. **The deadline ignores the liveness the app already measures.** The socket
+2. **The deadline ignores the liveness the app already measures.** (The
+   suppression branch exists in  but no production caller passes
+   the verdict yet - liveness evidence is not yet delivered to the notice
+   layer; the seam decision is recorded in the round-19 triage.) The socket
    knows the link answered a keepalive 3 seconds ago. `deadlineSignal()` does
    not consult it, so a slow-but-healthy link produces "the server did not
    answer" while the same server is demonstrably answering.

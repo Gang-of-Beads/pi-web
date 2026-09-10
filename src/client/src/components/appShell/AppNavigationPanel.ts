@@ -309,12 +309,6 @@ export class AppNavigationPanel extends LitElement {
   }
 
   /**
-   * Goals are workspace context rather than a navigation step: they sit with
-   * the sessions of the workspace they belong to instead of taking an
-   * accordion slot of their own. Omitted entirely until a workspace is
-   * selected and there is something to report.
-   */
-  /**
    * Sections a plugin contributes, drawn here as well as in the chat drawer:
    * the navigation panel is where a workspace's side channels live when the
    * chat is not on screen, and a section that only appeared in one of the two
@@ -517,8 +511,6 @@ export class AppNavigationPanel extends LitElement {
     project-list[collapsed],
     workspace-list[collapsed],
     session-list[collapsed] { flex: 0 0 auto; min-height: auto; overflow: hidden; }
-    /* Goals are workspace context under the session list: capped so a long
-       task list cannot push the sessions it belongs to off-screen. */
     button { font: inherit; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
   `;
 }

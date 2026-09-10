@@ -29,11 +29,16 @@ export function observeTransportRecovery(next: TransportRecoveryListener | undef
  * throw: a listener that fails is a bug in the listener, not a reason for the
  * request that succeeded to look like it failed.
  */
+/** The machine a request URL speaks about; "local" when it names none. */
+export function machineIdFromUrl(url: string): string {
+  const scoped = /\/machines\/([^/]+)/.exec(url);
+  return scoped?.[1] === undefined ? "local" : decodeURIComponent(scoped[1]);
+}
+
 export function reportTransportReachable(url: string): void {
   const current = listener;
   if (current === undefined) return;
-  const scoped = /\/machines\/([^/]+)/.exec(url);
-  const machineId = scoped?.[1] === undefined ? "local" : decodeURIComponent(scoped[1]);
+  const machineId = machineIdFromUrl(url);
   try {
     current(machineId);
   } catch {

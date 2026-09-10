@@ -44,14 +44,15 @@ async function fetchBody(url: string, init?: RequestInit): Promise<unknown> {
   } finally {
     deadline.done();
   }
+  // The server answered - a 500 from it disproves "the link is down" just as
+  // much as a 200 does - so the transport report fires before the status is
+  // judged.
+  reportTransportReachable(url);
   if (!response.ok) {
     const body: unknown = await response.json().catch((): unknown => ({}));
     throw new HttpError(errorMessage(body) ?? response.statusText, response.status);
   }
   const body: unknown = await response.json();
-  // The server answered, so whatever transport complaint is on screen is now
-  // describing the past.
-  reportTransportReachable(url);
   return body;
 }
 

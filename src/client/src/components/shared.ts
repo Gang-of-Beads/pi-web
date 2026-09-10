@@ -432,7 +432,9 @@ export const listStyles = css`
      .action-main painted nothing at all. Session rows speak .session-state,
      not .activity-indicator, so the rail names both vocabularies or the
      largest list on screen never gets a rail. */
-  /* All :has() rules are (0,1,0) - :where() contributes nothing - and the
+  /* The row indicator's arbiter renders exactly one state dot per row, so
+     these rules never compete on one row; their order is belt-and-braces. All
+     :has() rules are (0,1,0) - :where() contributes nothing - and the
      row-class rules below (unread/archived/selected) are (0,2,0), so they win
      on specificity regardless of order. The unread CLASS is unconditional on
      a session row even when the arbiter's dot shows running or asking, so a

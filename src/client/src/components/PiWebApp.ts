@@ -3,7 +3,7 @@ import { uiIconStyle } from "./uiIcons.js";
 import { loadSurface, warmLazySurfaces, type LazySurface } from "./lazySurfaces.js";
 import { sessionStateBadgeStyles } from "./sessionStateBadgeStyles.js";
 import type { ChatLine } from "./shared";
-import { errorNoticePatch, noticePatch } from "../errorNotice";
+import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
 import { request } from "../api/http";
 import { workspaceTerminalSessions } from "../plugins/workspaceTerminalSessions";
 import { createPluginHostUi, type PluginDialogHost } from "../plugins/pluginHostUi";
@@ -304,6 +304,8 @@ export class PiWebApp extends LitElement {
    * for a machine the user has already left must not adopt here. */
   @state() private interruptedSessionIds: ReadonlySet<string> = new Set();
   private interruptedSessionIdsMachine: string | undefined;
+  /** Whether the last interrupted-runs read failed; a flag, not a wording match. */
+  private interruptedRunsUnknown = false;
   @state() private unreadSessionIds: ReadonlySet<string> = this.sessionUnread.unreadSessionIds(selectedMachineId(this.state), this.state.sessions);
   private unreadConnected = false;
   private committedChatIdentity: string | undefined;
@@ -414,6 +416,8 @@ export class PiWebApp extends LitElement {
   private bannerShownAt: number | undefined;
   private bannerHoldTimer: number | undefined;
   private heldErrorBanner: TemplateResult | null = null;
+  /** Set when the reader dismisses the banner: the hold window must not resurrect what the reader has already acted on. */
+  private bannerDismissedByReader = false;
   private lastScheduledError = "";
   @state() private quickSwitcherOpen = false;
   @state() private contextSheetOpen = false;
@@ -779,7 +783,7 @@ export class PiWebApp extends LitElement {
       this.interruptedSessionIds = ids;
       this.interruptedSessionIdsMachine = machineId;
       // The state is known again - do not leave our own promise unmet.
-      if (this.state.error === "Interrupted-run status is unknown: the read failed. Retrying the connection will resolve it.") this.setState({ error: "", errorMachineId: "local" });
+      if (this.state.error === "Interrupted-run status is unknown: the read failed. Retrying the connection will resolve it.") this.setState(clearErrorPatch());
     });
   }
 
@@ -1033,7 +1037,7 @@ export class PiWebApp extends LitElement {
     if (this.state.errorMachineId !== "local" && this.state.errorMachineId !== machineId) return;
     // Reset the scope with the text: a stale scope would let the next
     // transport complaint inherit a machine it does not speak about.
-    this.setState({ error: "", errorMachineId: "local" });
+    this.setState(clearErrorPatch());
     if (this.transientErrorTimer !== undefined) {
       window.clearTimeout(this.transientErrorTimer);
       this.transientErrorTimer = undefined;
@@ -1060,7 +1064,7 @@ export class PiWebApp extends LitElement {
     this.transientErrorTimer = window.setTimeout(() => {
       this.transientErrorTimer = undefined;
       // Only clear what we scheduled for: a newer message must not be swallowed.
-      if (this.state.error === error && this.state.errorRetiredBy === RetiredBy.reply) this.setState({ error: "" });
+      if (this.state.error === error && this.state.errorRetiredBy === RetiredBy.reply) this.setState(clearErrorPatch());
     }, TRANSIENT_ERROR_TIMEOUT_MS);
   }
 
@@ -1768,7 +1772,7 @@ export class PiWebApp extends LitElement {
     const failure = `${title} could not load. This tab may be running an older version - reload to get it.`;
     void loadSurface(surface).then(
       () => {
-        if (this.state.error === failure) this.setState({ error: "" });
+        if (this.state.error === failure) this.setState(clearErrorPatch());
         this.requestUpdate();
       },
       () => {
@@ -3776,17 +3780,19 @@ export class PiWebApp extends LitElement {
   }
 
   private renderErrorBanner(error: string, retiredBy: RetiredBy) {
+    if (error === "" || this.bannerDismissedByReader) {
+      // An empty next, or a reader dismissal, is decisive: the banner goes now.
+      this.bannerShownAt = undefined;
+      this.lastScheduledError = "";
+      this.bannerDismissedByReader = false;
+      this.heldErrorBanner = null;
+      return null;
+    }
     const decision = bannerHoldDecision({ shownAt: this.bannerShownAt, now: Date.now(), next: error });
     if (decision.kind === "hold") {
       if (this.bannerHoldTimer !== undefined) window.clearTimeout(this.bannerHoldTimer);
       this.bannerHoldTimer = window.setTimeout(() => { this.bannerHoldTimer = undefined; this.requestUpdate(); }, decision.retryInMs);
       return this.heldErrorBanner;
-    }
-    if (decision.kind === "hide") {
-      this.bannerShownAt = undefined;
-      this.lastScheduledError = "";
-      this.heldErrorBanner = null;
-      return null;
     }
     // A replacement starts its own hold window and its own expiry: borrowing
     // the previous banner's timestamps gave the new message a shorter life
@@ -3796,7 +3802,14 @@ export class PiWebApp extends LitElement {
       this.bannerShownAt = Date.now();
       this.scheduleTransientErrorDismissal(error);
     }
-    this.heldErrorBanner = errorBanner(error, () => { this.setState({ error: "", errorMachineId: "local" }); }, retiredBy);
+    this.heldErrorBanner = errorBanner(error, () => {
+      // The reader acted; the 1.5s minimum-visibility window exists for
+      // replacement churn, not to outvote a dismissal.
+      this.bannerDismissedByReader = true;
+      this.bannerShownAt = undefined;
+      this.heldErrorBanner = null;
+      this.setState(clearErrorPatch());
+    }, retiredBy);
     return this.heldErrorBanner;
   }
 
@@ -3885,7 +3898,7 @@ export class PiWebApp extends LitElement {
           <div class="mobile-navigation-panel">${this.appShell.isMobileNavigationLayout ? this.renderNavigationPanel() : null}</div>
           ${state.selectedSession ? html`
             ${this.renderChatView(state, state.selectedSession)}
-            <prompt-editor .sessionId=${state.selectedSession.id} .cwd=${composerCwd(state)} .sessionPrompts=${this.sessionPromptsFor(state)} .machineId=${selectedMachineId(state)} .projectId=${state.selectedWorkspace?.projectId} .workspaceId=${state.selectedWorkspace?.id} .disabled=${state.selectedSession.archived === true} .canSteer=${state.status?.isStreaming === true} .isCompacting=${state.status?.isCompacting === true} .canStop=${state.status?.isStreaming === true || state.status?.isBashRunning === true || state.status?.isCompacting === true || (state.status?.pendingMessageCount ?? 0) > 0} .status=${state.status} .availableThinkingLevels=${state.availableThinkingLevels} .sending=${state.sendingPrompts[state.selectedSession.id] === true} ?collapsed=${this.composerCollapsed} .onExpand=${() => { this.composerCollapsed = false; void this.focusPromptEditorSoon(); }} .onSend=${this.handleSendPrompt} .onStop=${this.handleStopActiveWork} .onSelectModel=${this.handleSelectModel} .onSelectThinking=${this.handleSelectThinking} .composerContributions=${this.plugins.getComposerContributions(selectedMachineId(state))} .onPluginNotice=${(message: string) => { this.setState({ error: message, errorRetiredBy: RetiredBy.reader }); }}></prompt-editor>
+            <prompt-editor .sessionId=${state.selectedSession.id} .cwd=${composerCwd(state)} .sessionPrompts=${this.sessionPromptsFor(state)} .machineId=${selectedMachineId(state)} .projectId=${state.selectedWorkspace?.projectId} .workspaceId=${state.selectedWorkspace?.id} .disabled=${state.selectedSession.archived === true} .canSteer=${state.status?.isStreaming === true} .isCompacting=${state.status?.isCompacting === true} .canStop=${state.status?.isStreaming === true || state.status?.isBashRunning === true || state.status?.isCompacting === true || (state.status?.pendingMessageCount ?? 0) > 0} .status=${state.status} .availableThinkingLevels=${state.availableThinkingLevels} .sending=${state.sendingPrompts[state.selectedSession.id] === true} ?collapsed=${this.composerCollapsed} .onExpand=${() => { this.composerCollapsed = false; void this.focusPromptEditorSoon(); }} .onSend=${this.handleSendPrompt} .onStop=${this.handleStopActiveWork} .onSelectModel=${this.handleSelectModel} .onSelectThinking=${this.handleSelectThinking} .composerContributions=${this.plugins.getComposerContributions(selectedMachineId(state))} .onPluginNotice=${(message: string) => { this.setState(noticePatch(noticeForReader(message))); }}></prompt-editor>
             ${this.renderStatusBar(state)}
             ${state.commandDialog !== undefined ? html`<command-picker ?abovedialog=${this.settingsOpen} .title=${state.commandDialog.title} .options=${state.commandDialog.options} .onPick=${(value: string) => this.sessions.respondToCommand(state.commandDialog?.requestId ?? "", value)} .onCancel=${() => { this.sessions.cancelCommand(); }}></command-picker>` : null}
             ${state.modelDialog !== undefined ? html`<model-picker ?abovedialog=${this.settingsOpen} title=${state.modelDialog.title} .options=${state.modelDialog.options} .catalog=${state.modelDialog.catalog} .selectedValue=${state.modelDialog.selectedValue} .onPick=${(value: string) => { void this.pickModel(value); }} .onToggleEnabled=${this.handleToggleModelEnabled} .onCancel=${() => { this.setState({ modelDialog: undefined }); }}></model-picker>` : null}
@@ -3913,7 +3926,7 @@ export class PiWebApp extends LitElement {
           .sessionStates=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_STATE_MAP : this.sessionStateKinds()}
           .waitingSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.waitingSessionIds()}
           .unreadSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.unreadSessionIds}
-          .interruptedSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.interruptedSessionIds}
+          .interruptedSessionIds=${this.quickSwitcherBrowsingElsewhere() || this.interruptedSessionIdsMachine !== selectedMachineId(state) ? EMPTY_ID_SET : this.interruptedSessionIds}
           .errorSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.errorSessionIds()}
           .pinnedSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.pinnedSessionIds}
           .projects=${this.quickSwitcherBrowsingElsewhere() ? [] : state.projects}

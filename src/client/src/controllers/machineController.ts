@@ -1,6 +1,6 @@
 import { api, type Machine, type MachineHealth, type MachineRuntime } from "../api";
 import { resetWorkspaceScopedState } from "../appState";
-import { errorNoticePatch, noticePatch } from "../errorNotice";
+import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
 import { describeError, noticeForReader, noticeFromTransport } from "../notice";
 import type { GetState, SetState, UpdateUrl } from "./types";
 import type { ProjectController } from "./projectController";
@@ -66,7 +66,7 @@ export class MachineController {
   }
 
   async updateMachine(machine: Machine, patch: { name?: string }): Promise<Machine | undefined> {
-    this.setState({ error: "" });
+    this.setState(clearErrorPatch());
     try {
       const updated = await api.updateMachine(machine.id, patch);
       this.setState({ machines: this.getState().machines.map((candidate) => (candidate.id === updated.id ? updated : candidate)) });
@@ -78,7 +78,7 @@ export class MachineController {
   }
 
   async addMachine(input: { name: string; baseUrl: string; token?: string }): Promise<Machine | undefined> {
-    this.setState({ error: "" });
+    this.setState(clearErrorPatch());
     try {
       const machine = await api.addMachine(input);
       this.setState({ machines: [...this.getState().machines.filter((candidate) => candidate.id !== machine.id), machine] });

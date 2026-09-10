@@ -32,3 +32,8 @@ export function errorNoticePatch(
 export function noticePatch(notice: Notice): Pick<AppState, "error" | "errorRetiredBy" | "errorMachineId"> {
   return { error: notice.text, errorRetiredBy: notice.retiredBy, errorMachineId: notice.machineId ?? "local" };
 }
+
+/** The one way to clear: a cleared banner carries no stranger's mark or scope. */
+export function clearErrorPatch(): Pick<AppState, "error" | "errorRetiredBy" | "errorMachineId"> {
+  return { error: "", errorRetiredBy: "reader", errorMachineId: "local" };
+}

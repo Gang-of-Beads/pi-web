@@ -16,7 +16,7 @@ import { join } from "node:path";
  * again at the base level after that query.
  */
 const ROOTS = ["src/client/src", "pi-web-plugins"];
-const MEDIA_BLOCK = /@media\s*\((?:pointer|hover):[^)]*\)\s*\{/gu;
+const MEDIA_BLOCK = /@media\s*\([^)]*(?:pointer|hover)[^)]*\)(?:\s*(?:,|and)\s*\([^)]*\))*\s*\{/gu;
 const SELECTOR = /(?:^|\})\s*(?<selector>[.#][\w-][^{}@]*?)\s*\{/gu;
 
 function styleSources(root: string): string[] {

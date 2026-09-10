@@ -73,7 +73,7 @@ export class QuickSwitcher extends LitElement {
   private renameDraft = "";
   private heldSession: SessionInfo | undefined;
   private readonly longPress = new LongPressTracker({
-    onLongPress: () => { this.openMenuSessionId = this.heldSession?.id; },
+    onLongPress: () => { this.openRowMenu(this.heldSession?.id, this.heldSessionButton()); },
     setTimer: (callback, ms) => window.setTimeout(callback, ms),
     clearTimer: (handle) => { window.clearTimeout(handle); },
   });
@@ -232,7 +232,11 @@ export class QuickSwitcher extends LitElement {
    * absolutely positioned under the row, the last row's menu was clipped by
    * the scrolling body, and scrolling to reach it moved the row away.
    */
-  private openRowMenu(sessionId: string, target: EventTarget | null): void {
+  private heldSessionButton(): HTMLElement | null {
+    return this.renderRoot.querySelector<HTMLElement>(".row-menu-toggle");
+  }
+
+  private openRowMenu(sessionId: string | undefined, target: EventTarget | null): void {
     this.openMenuSessionId = this.openMenuSessionId === sessionId ? undefined : sessionId;
     this.menuStyle = this.openMenuSessionId === undefined ? "" : actionMenuPanelStyle(target, { constrainTo: "viewport" });
   }
@@ -445,7 +449,6 @@ export class QuickSwitcher extends LitElement {
     .row-flag, .row-state { position: absolute; bottom: var(--pi-space-5); right: calc((var(--qs-menu-size) - var(--pi-dot-md)) / 2 - 1px); }
     .row-state { display: inline-flex; align-items: center; }
     .row-flag { box-sizing: border-box; width: var(--pi-dot-md); height: var(--pi-dot-md); border-radius: 50%; }
-    .row-flag.unread { background: var(--pi-accent); }
     /* Hollow rather than filled: this one marks work that stopped, so it should
        not read as another kind of activity at a glance. */
     .row-flag.interrupted { background: transparent; border: 2px solid var(--pi-warning, var(--pi-accent)); }

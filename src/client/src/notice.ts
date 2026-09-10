@@ -1,4 +1,6 @@
+import { isTransientError } from "./components/errorBanner";
 import { HttpError } from "./api/http";
+import { machineIdFromUrl } from "./api/transportHealth";
 import { RequestTimeoutError } from "./api/requestDeadline";
 
 /**
@@ -81,12 +83,18 @@ export function noticeFromError(error: unknown, link: { readonly live: boolean }
   // failed. Treating it as a transport claim let the next successful poll
   // erase a real failure 1.5s after it appeared - a red flash, no explanation.
   // It is the operation's outcome, so only the reader (or a replacing message)
-  // retires it.
-  if (error instanceof HttpError) return noticeForReader(text);
+  // retires it. The exception is a proxy failure whose body is a transport
+  // claim - the gateway answered, but only to say the daemon behind it is
+  // unreachable, which is the commonest banner an update produces. That claim
+  // heals, so it keeps reply retirement and the wording table applies.
+  if (error instanceof HttpError) {
+    return isTransientError(text) ? noticeFromTransport(text) : noticeForReader(text);
+  }
   // A link-level failure (fetch rejected, request cancelled) asserts the same
   // claim a timeout does: the server could not be reached. Any later answer
   // from the same link disproves it.
   if (error instanceof TypeError) return noticeFromTransport(text);
+  if (error instanceof RequestTimeoutError) return noticeFromTransport(text, machineIdFromUrl(error.url));
   // A deadline miss asserts "the server did not answer" - the same claim an
   // HttpError makes, so later answers disprove it the same way. Measured
   // live: a remote machine answered /status at 30.007s against a 30.000s
