@@ -158,7 +158,6 @@ export type SessionsLoadState = "unloaded" | "loading" | "loaded";
  * deliberately sticky until a later load succeeds: a silent recovery is how a
  * missing project list read as "no projects".
  */
-import { clearErrorPatch } from "./errorNotice";
 
 export type ProjectsLoadState = "unloaded" | "loading" | "loaded" | "failed";
 
@@ -173,9 +172,6 @@ export type WorkspaceScopedStateReset = Pick<AppState,
   | "startingSessionCount"
   | "treeDialog"
   | "selectedTerminalId"
-  | "error"
-  | "errorRetiredBy"
-  | "errorMachineId"
 >;
 
 
@@ -192,7 +188,11 @@ export function resetWorkspaceScopedState(): WorkspaceScopedStateReset {
     startingSessionCount: 0,
     treeDialog: undefined,
     selectedTerminalId: undefined,
-    ...clearErrorPatch(),
+    // The error triple stays: a reader-retired failure (a failed delete, an
+    // unknown state) is the record of something the reader acted on, and the
+    // owner's call is that switching scope may not silently eat it - the
+    // banner is the notification, and it is still there when they come back.
+    // A newer claim replaces it through the normal seam.
   };
 }
 

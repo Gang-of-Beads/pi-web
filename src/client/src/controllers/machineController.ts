@@ -1,5 +1,5 @@
-import { api, type Machine, type MachineHealth, type MachineRuntime } from "../api";
-import { resetWorkspaceScopedState } from "../appState";
+import { api, HttpError, type Machine, type MachineHealth, type MachineRuntime } from "../api";
+import { resetWorkspaceScopedState, type AppState } from "../appState";
 import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
 import { describeError, noticeForReader, noticeFromTransport } from "../notice";
 import { selectedMachineId, type GetState, type SetState, type UpdateUrl } from "./types";
@@ -120,6 +120,20 @@ export class MachineController {
     }
   }
 
+  /**
+   * The owner's wording for a machine that is not answering: named, with the
+   * evidence, in the composed form whose prefix the wording table protects -
+   * the anonymous "Reconnecting to the machine…" erased the one fact (which
+   * machine) the reader could not see anywhere else.
+   */
+  private machineDownNotice(machineId: string, error: unknown): Pick<AppState, "error" | "errorRetiredBy" | "errorMachineId"> | undefined {
+    if (!(error instanceof HttpError) || error.machineId === undefined) return undefined;
+    const machine = this.getState().machines.find((candidate) => candidate.id === machineId);
+    const detail = /\((.*)\)/.exec(error.message)?.[1];
+    const text = `${machine?.name ?? machineId} is unavailable; reconnecting…${detail === undefined ? "" : ` ${detail}`}`;
+    return noticePatch(noticeFromTransport(text, machineId));
+  }
+
   async refreshMachineHealth(machineId = this.getState().selectedMachine?.id ?? "local"): Promise<MachineHealth | undefined> {
     const seq = (this.healthRefreshSeqByMachine.get(machineId) ?? 0) + 1;
     this.healthRefreshSeqByMachine.set(machineId, seq);
@@ -137,7 +151,7 @@ export class MachineController {
       // the project and session controllers use - is what stops a late
       // failure from painting machine A's complaint onto machine B.
       if (selectedMachineId(this.getState()) !== machineId) return undefined;
-      this.setState(errorNoticePatch(error));
+      this.setState(this.machineDownNotice(machineId, error) ?? errorNoticePatch(error));
       return undefined;
     }
   }
@@ -162,7 +176,7 @@ export class MachineController {
     } catch (error) {
       if (this.runtimeRefreshSeqByMachine.get(machineId) !== seq) return undefined;
       if (options.requireSelected !== false && selectedMachineId(this.getState()) !== machineId) return undefined;
-      this.setState(errorNoticePatch(error));
+      this.setState(this.machineDownNotice(machineId, error) ?? errorNoticePatch(error));
       return undefined;
     }
   }
