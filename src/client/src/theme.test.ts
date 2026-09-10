@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CLASSIC_THEME_ID, DEFAULT_THEME_PREFERENCE, findThemePairForTheme, resolveThemePreference } from "./theme";
+import { CLASSIC_THEME_ID, DEFAULT_THEME_ID, DEFAULT_THEME_PREFERENCE, findThemePairForTheme, resolveThemePreference } from "./theme";
 import type { QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, ThemeColorScheme, ThemeTokens } from "./plugins/types";
 
 const tokens = {
@@ -68,14 +68,18 @@ const themePairs: QualifiedThemePairContribution[] = [
 ];
 
 describe("resolveThemePreference", () => {
-  it("resolves the default auto preference to the dark member when the system is dark", () => {
-    expect(resolveThemePreference({ themes, themePairs, preference: DEFAULT_THEME_PREFERENCE, prefersLight: false }).activeTheme?.id)
-      .toBe("themes:clay-soft");
+  it("resolves the default preference to the native pro look, whatever the system says", () => {
+    const resolution = resolveThemePreference({ themes, themePairs, preference: DEFAULT_THEME_PREFERENCE, prefersLight: false });
+    expect(resolution.selectedTheme).toBeUndefined();
+    expect(resolution.activeTheme).toBeUndefined();
+    expect(resolution.fallbackTheme?.id).toBe(CLASSIC_THEME_ID);
   });
 
-  it("resolves the default auto preference to the light member when the system is light", () => {
-    expect(resolveThemePreference({ themes, themePairs, preference: DEFAULT_THEME_PREFERENCE, prefersLight: true }).activeTheme?.id)
-      .toBe("themes:clay-paper");
+  it("still pairs a chosen soft theme when auto is on", () => {
+    const dark = resolveThemePreference({ themes, themePairs, preference: { themeId: DEFAULT_THEME_ID, auto: true }, prefersLight: false });
+    expect(dark.activeTheme?.id).toBe("themes:clay-soft");
+    const light = resolveThemePreference({ themes, themePairs, preference: { themeId: DEFAULT_THEME_ID, auto: true }, prefersLight: true });
+    expect(light.activeTheme?.id).toBe("themes:clay-paper");
   });
 
   it("keeps an unpaired theme selected when auto is enabled", () => {

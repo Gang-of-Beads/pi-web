@@ -238,10 +238,28 @@ export interface PiWebStatusResponse extends PiWebVersionResponse {
  * semantic surface half is optional by design - a theme that does not know
  * the ladder gets core-derived stops from its own legacy trio.
  */
+/**
+ * Shape and typography stops a theme may pin. Optional by design: a theme
+ * that omits them inherits the core's current shape - which since the pro
+ * redesign is the flat mono TUI look, so a soft theme MUST set these to keep
+ * its rounded sans rendering. Radii follow the published scale; there is no
+ * density or border-width token yet.
+ */
+export type ShapeTypographyToken =
+  | "--pi-font-ui"
+  | "--pi-font-display"
+  | "--pi-font-mono"
+  | "--pi-radius-xs"
+  | "--pi-radius-sm"
+  | "--pi-radius-md"
+  | "--pi-radius-lg"
+  | "--pi-radius-xl";
+
 export type ThemeToken =
   | LegacyThemeToken
   | SemanticSurfaceToken
-  | ForegroundToken;
+  | ForegroundToken
+  | ShapeTypographyToken;
 
 /**
  * Foregrounds a theme may name for a filled surface it owns. Optional by

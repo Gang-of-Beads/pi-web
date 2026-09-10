@@ -91,7 +91,7 @@ describe("settings-appearance-panel", () => {
       element.themes = [...element.themes, theme("from-a-plugin", { name: "From a plugin" })];
     });
 
-    expect(cards(panel).map((card) => card.querySelector(".theme-name")?.textContent)).toEqual(["pi-web-dark", "paper", "From a plugin"]);
+    expect(cards(panel).map((card) => card.querySelector(".theme-name")?.textContent)).toEqual(["Pro (native)", "pi-web-dark", "paper", "From a plugin"]);
   });
 
   it("previews the colours a theme will apply rather than naming it alone", async () => {
@@ -99,7 +99,7 @@ describe("settings-appearance-panel", () => {
       element.themes = [theme("accented", { tokens: tokens({ "--pi-accent": "#ff0066", "--pi-bg": "#001122" }) })];
     });
 
-    const preview = cards(panel)[0]?.querySelector<HTMLElement>(".preview");
+    const preview = cards(panel)[1]?.querySelector<HTMLElement>(".preview");
     expect(preview?.getAttribute("style")).toContain("--preview-accent: #ff0066");
     expect(preview?.getAttribute("style")).toContain("--preview-bg: #001122");
   });
@@ -110,15 +110,24 @@ describe("settings-appearance-panel", () => {
       element.activeThemeId = themeId("paper");
     });
 
-    expect(cards(panel)[0]?.getAttribute("aria-pressed")).toBe("true");
-    expect(cards(panel)[1]?.textContent).toContain("in use");
+    expect(cards(panel)[1]?.getAttribute("aria-pressed")).toBe("true");
+    expect(cards(panel)[2]?.textContent).toContain("in use");
+  });
+
+  it("lists the native pro look first and selects it like any theme", async () => {
+    const onSelectTheme = vi.fn<(id: QualifiedContributionId) => void>();
+    const panel = await mount((element) => { element.onSelectTheme = onSelectTheme; });
+
+    expect(cards(panel)[0]?.querySelector(".theme-name")?.textContent).toBe("Pro (native)");
+    cards(panel)[0]?.click();
+    expect(onSelectTheme).toHaveBeenCalledWith("core:pro");
   });
 
   it("selects a theme by pressing its card", async () => {
     const onSelectTheme = vi.fn<(id: QualifiedContributionId) => void>();
     const panel = await mount((element) => { element.onSelectTheme = onSelectTheme; });
 
-    cards(panel)[1]?.click();
+    cards(panel)[2]?.click();
 
     expect(onSelectTheme).toHaveBeenCalledWith("themes:paper");
   });
@@ -138,7 +147,7 @@ describe("settings-appearance-panel", () => {
 
   it("says so when no themes are installed", async () => {
     const panel = await mount((element) => { element.themes = []; });
-    expect(panel.shadowRoot?.textContent).toContain("No themes are installed");
+    expect(panel.shadowRoot?.textContent).toContain("No theme extensions are installed");
   });
 
   it("keeps the removed interface-size control out of the panel", async () => {

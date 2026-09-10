@@ -772,10 +772,10 @@ export interface WorkspaceLabelContribution {
 export type ThemeColorScheme = "dark" | "light";
 
 import type { ThemeToken } from "../../../shared/pluginApiTypes";
-import type { ForegroundToken, LegacyThemeToken, SemanticSurfaceToken } from "../../../shared/pluginApiTypes";
-export type { ThemeToken, LegacyThemeToken, SemanticSurfaceToken, ForegroundToken };
+import type { ForegroundToken, LegacyThemeToken, SemanticSurfaceToken, ShapeTypographyToken } from "../../../shared/pluginApiTypes";
+export type { ThemeToken, LegacyThemeToken, SemanticSurfaceToken, ForegroundToken, ShapeTypographyToken };
 
-export type ThemeTokens = Record<LegacyThemeToken, string> & Partial<Record<SemanticSurfaceToken | ForegroundToken, string>>;
+export type ThemeTokens = Record<LegacyThemeToken, string> & Partial<Record<SemanticSurfaceToken | ForegroundToken | ShapeTypographyToken, string>>;
 
 export interface ThemeContribution {
   id: LocalContributionId;

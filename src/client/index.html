@@ -52,14 +52,14 @@
            a bare 650; named so the ramp has no gap between 600 and bold. */
         --pi-weight-strong: 650;
         --pi-weight-bold: 700;
-        --pi-radius-xs: 4px;
-        --pi-radius-sm: 6px;
-        --pi-radius-md: 8px;
-        --pi-radius-lg: 12px;
+        --pi-radius-xs: 0px;
+        --pi-radius-sm: 1px;
+        --pi-radius-md: 2px;
+        --pi-radius-lg: 3px;
       /* Inside a 1px-bordered card the corner is one pixel tighter; a child
          pulled flush with the padding edge must round by this, not by
          --pi-radius-lg, or a sliver of the card shows at each corner. */
-        --pi-radius-xl: 16px;
+        --pi-radius-xl: 4px;
         --pi-radius-pill: 999px;
 
         /* Layers, in the order they interrupt: what is written on a surface,
@@ -136,8 +136,8 @@
          * one and falls back to the UI stack; mono is the terminal's face, so
          * transcript code and the terminal agree.
          */
-        --pi-font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-        --pi-font-display: "SF Pro Display", "Segoe UI Variable Display", Inter, "Helvetica Neue", var(--pi-font-ui);
+        --pi-font-ui: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+        --pi-font-display: var(--pi-font-ui);
         --pi-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
         --pi-control-font-size: 16px;
         --pi-control-font-family: var(--pi-font-ui);
@@ -173,9 +173,9 @@
         --pi-purple-border: #a371f7;
         --pi-purple-surface: #21132f;
         --pi-overlay: #0008;
-        --pi-shadow-soft: #0006;
-        --pi-shadow: #0008;
-        --pi-shadow-strong: #000b;
+        --pi-shadow-soft: #0000;
+        --pi-shadow: #0000;
+        --pi-shadow-strong: #0000;
         --pi-bg-overlay-soft: #0d1117dd;
         --pi-bg-overlay: #0d1117e6;
         --pi-success-bg-overlay: #0f1b12ee;

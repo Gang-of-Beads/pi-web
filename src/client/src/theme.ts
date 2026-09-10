@@ -23,7 +23,11 @@ export interface ThemePreferenceResolution {
 
 export const CLASSIC_THEME_ID: QualifiedContributionId = "themes:classic";
 export const DEFAULT_THEME_ID: QualifiedContributionId = "themes:clay-soft";
-export const DEFAULT_THEME_PREFERENCE: ThemePreference = { themeId: DEFAULT_THEME_ID, auto: true };
+/** The core's own look: no plugin theme applied, the index.html defaults -
+ * since the pro redesign, the flat mono TUI shape. Not a plugin theme; the
+ * id is a sentinel the resolver and the appearance panel both know. */
+export const CORE_PRO_THEME_ID: QualifiedContributionId = "core:pro";
+export const DEFAULT_THEME_PREFERENCE: ThemePreference = { themeId: CORE_PRO_THEME_ID, auto: true };
 export const THEME_STORAGE_KEY = "pi-web-app-theme";
 
 export const THEME_TOKENS: ThemeToken[] = [
@@ -68,6 +72,14 @@ export const THEME_TOKENS: ThemeToken[] = [
   "--pi-surface-card",
   "--pi-surface-raised",
   "--pi-surface-active",
+  "--pi-font-ui",
+  "--pi-font-display",
+  "--pi-font-mono",
+  "--pi-radius-xs",
+  "--pi-radius-sm",
+  "--pi-radius-md",
+  "--pi-radius-lg",
+  "--pi-radius-xl",
 ];
 
 const qualifiedContributionIdPattern = /^[a-z][a-z0-9.-]*:[a-z][a-z0-9.-]*$/u;
@@ -98,6 +110,13 @@ export function writeStoredThemePreference(preference: ThemePreference): void {
   }
 }
 
+export function applyNativeProTheme(): void {
+  const root = document.documentElement;
+  root.dataset["piWebTheme"] = CORE_PRO_THEME_ID;
+  root.style.removeProperty("color-scheme");
+  for (const token of THEME_TOKENS) root.style.removeProperty(token);
+}
+
 export function applyPiWebTheme(theme: QualifiedThemeContribution): void {
   const root = document.documentElement;
   root.dataset["piWebTheme"] = theme.id;
@@ -120,6 +139,9 @@ function collectStringTokens(tokens: QualifiedThemeContribution["tokens"]): Reco
 
 export function resolveThemePreference(options: ResolveThemePreferenceOptions): ThemePreferenceResolution {
   const fallbackTheme = findFallbackTheme(options.themes, options.fallbackThemeId ?? CLASSIC_THEME_ID);
+  if (options.preference.themeId === CORE_PRO_THEME_ID) {
+    return { selectedTheme: undefined, activeTheme: undefined, selectedThemePair: undefined, fallbackTheme };
+  }
   const selectedTheme = options.themes.find((candidate) => candidate.id === options.preference.themeId) ?? fallbackTheme;
   if (selectedTheme === undefined) {
     return { selectedTheme: undefined, activeTheme: undefined, selectedThemePair: undefined, fallbackTheme };

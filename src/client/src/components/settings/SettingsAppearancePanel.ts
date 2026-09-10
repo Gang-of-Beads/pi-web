@@ -3,6 +3,7 @@ import { settingsControlStyles } from "./settingsControlStyles.js";
 import { customElement, property } from "lit/decorators.js";
 import type { QualifiedContributionId, QualifiedThemeContribution, ThemeTokens } from "../../plugins/types";
 import { interactiveSurfaceStyles } from "../shared";
+import { CORE_PRO_THEME_ID } from "../../theme";
 import { themeCardSuffix } from "../../themeCardLabel";
 
 /**
@@ -46,10 +47,33 @@ export class SettingsAppearancePanel extends LitElement {
         </label>
 
         <div class="theme-grid">
+          ${this.renderNativePro()}
           ${this.themes.map((theme) => this.renderTheme(theme))}
-          ${this.themes.length === 0 ? html`<p class="muted">No themes are installed.</p>` : nothing}
+          ${this.themes.length === 0 ? html`<p class="muted">No theme extensions are installed.</p>` : nothing}
         </div>
       </settings-panel-frame>
+    `;
+  }
+
+  /** The core's own look: no plugin theme, the index.html defaults - the flat
+   * mono TUI shape. Listed first so the way back is always the top card. */
+  private renderNativePro() {
+    const selected = this.selectedThemeId === CORE_PRO_THEME_ID;
+    const active = this.activeThemeId === CORE_PRO_THEME_ID;
+    return html`
+      <button
+        type="button"
+        class=${`theme ${selected ? "selected" : ""} ${active ? "active" : ""}`}
+        aria-pressed=${selected ? "true" : "false"}
+        @click=${() => { this.onSelectTheme?.(CORE_PRO_THEME_ID); }}
+      >
+        <span class="theme-preview pro-preview" aria-hidden="true">
+          <span class="pro-line"></span><span class="pro-line dim"></span><span class="pro-line dimmer"></span>
+        </span>
+        <span class="theme-name">Pro (native)</span>
+        <span class="theme-scheme muted">Dark${themeCardSuffix({ selected, active, autoOverriding: this.followSystem })}</span>
+        <span class="theme-description muted">Flat mono terminal look - the app without a theme extension.</span>
+      </button>
     `;
   }
 
@@ -142,6 +166,10 @@ export class SettingsAppearancePanel extends LitElement {
        padding between them, so the two arcs stay parallel when either token
        moves. Card lg(12) - space-5(10) = 2 for the preview inside the card;
        md(8) - space-4(8) clamps to xs for the surface inside the preview. */
+    .pro-preview { box-sizing: border-box; display: grid; gap: var(--pi-space-3); align-content: center; padding: var(--pi-space-4); height: 100%; background: var(--pi-surface); }
+    .pro-line { display: block; height: var(--pi-dot-xs); width: 78%; background: var(--pi-text-bright); }
+    .pro-line.dim { width: 62%; background: var(--pi-muted); }
+    .pro-line.dimmer { width: 45%; background: var(--pi-dim); }
     .preview { box-sizing: border-box; display: grid; gap: var(--pi-space-3); height: 74px; margin-bottom: var(--pi-space-3); padding: var(--pi-space-4); border: 1px solid var(--preview-border, var(--pi-border)); border-radius: max(var(--pi-radius-xs), calc(var(--pi-radius-lg) - var(--pi-space-5))); background: var(--preview-bg, var(--pi-bg)); }
     .preview-surface { display: grid; align-content: center; gap: var(--pi-space-3); padding: var(--pi-space-3) var(--pi-space-4); border: 1px solid var(--preview-border, var(--pi-border)); border-radius: max(var(--pi-radius-xs), calc(var(--pi-radius-md) - var(--pi-space-4))); background: var(--preview-surface, var(--pi-surface)); }
     .preview-line { display: block; height: var(--pi-dot-xs); border-radius: var(--pi-radius-pill); background: var(--preview-text, var(--pi-text)); }

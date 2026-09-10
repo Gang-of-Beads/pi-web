@@ -48,7 +48,7 @@ import { SessionUnreadController } from "../sessionUnread";
 import { workspaceViewTransition } from "../workspaceViewTransition";
 import { RealtimeSocket, type BrowserRealtimeEvent } from "../sessionSocket";
 import type { PluginMachine, PluginPromptEditor, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding, PluginDialog, PluginDialogHandle, NavSectionContext, MachineSectionContext } from "../plugins/types";
-import { CLASSIC_THEME_ID, DEFAULT_THEME_PREFERENCE, applyPiWebTheme, findThemePairForTheme, readStoredThemePreference, resolveThemePreference, writeStoredThemePreference, type ThemePreference, type ThemePreferenceResolution } from "../theme";
+import { CORE_PRO_THEME_ID, CLASSIC_THEME_ID, DEFAULT_THEME_PREFERENCE, applyNativeProTheme, applyPiWebTheme, findThemePairForTheme, readStoredThemePreference, resolveThemePreference, writeStoredThemePreference, type ThemePreference, type ThemePreferenceResolution } from "../theme";
 import { corePlugin } from "../plugins/core";
 import { loadExternalPlugins, type ExternalPluginLoadResult } from "../plugins/external";
 import { PluginRegistry, installPluginRuntimeScope, installWorkspaceLabelScope, installWorkspacePanelScope } from "../plugins/registry";
@@ -3631,8 +3631,13 @@ export class PiWebApp extends LitElement {
 
   private applyPreferredTheme(persist: boolean): void {
     const theme = this.resolveCurrentThemePreference().activeTheme;
-    if (theme === undefined) return;
     if (persist) writeStoredThemePreference(this.themePreference);
+    if (theme === undefined) {
+      if (this.activeThemeId === CORE_PRO_THEME_ID) return;
+      this.activeThemeId = CORE_PRO_THEME_ID;
+      applyNativeProTheme();
+      return;
+    }
     if (theme.id === this.activeThemeId) return;
     this.activeThemeId = theme.id;
     applyPiWebTheme(theme);
