@@ -836,6 +836,37 @@ describe("PiSessionService lifecycle, listing, and reload", () => {
     await service.dispose();
   });
 
+  it("carries the cwdMissing stamp from the list entry to the wire", async () => {
+    // The mapper used to rebuild the row field-by-field and dropped the stamp,
+    // so the client never learned the folder was gone and opened into the
+    // daemon's load error. Regression: the wire carries what the list stamped.
+    const service = new PiSessionService(new CapturingSessionEventHub(), {
+      agentDir: TEST_AGENT_DIR,
+      modelRuntime: testModelRuntime,
+      archiveStore: {
+        list: () => Promise.resolve([]),
+        get: () => Promise.resolve(undefined),
+        archive: () => Promise.reject(new Error("archive should not be called")),
+        restore: () => Promise.resolve(),
+        isArchived: () => Promise.resolve(false),
+      },
+      sessionManager: {
+        create: () => fakeSessionManager(),
+        list: () => Promise.resolve([{ ...sessionRecord("active"), messageCount: 1, firstMessage: "hello", allMessagesText: "hello", cwdMissing: true }]),
+        listAll: () => Promise.resolve([]),
+        invalidateSessionFile: () => undefined,
+        resolveSessionFile: () => Promise.resolve(undefined),
+        open: () => fakeSessionManager(),
+      },
+      heartbeatIntervalMs: 60_000,
+    });
+
+    const sessions = await service.list("/workspace");
+    expect(sessions[0]).toMatchObject({ id: "active", cwdMissing: true });
+
+    await service.dispose();
+  });
+
   it("lists archived records that have been moved out of the active session directory", async () => {
     const service = new PiSessionService(new CapturingSessionEventHub(), {
       agentDir: TEST_AGENT_DIR,

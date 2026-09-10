@@ -277,6 +277,10 @@ export const listStyles = css`
   @media (max-width: 760px) {
     section { padding-top: var(--pi-space-3); }
     h2 { margin-bottom: var(--pi-space-2); }
+    /* The heading packs word + checkbox + badges + buttons; when they exceed
+       the row the only shrinkable item is the title word, and the checkbox
+       slid onto it. Wrapping moves the overflow to a second line instead. */
+    h2 { flex-wrap: wrap; row-gap: var(--pi-space-2); }
     /* A heading that is only a word: the context row already said it. Headings
        carrying controls (count, create, clean up) are untouched. */
     /* Inheritable, so a surface that stacks several of these lists can ask for
