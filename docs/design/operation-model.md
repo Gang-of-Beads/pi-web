@@ -21,19 +21,20 @@ Consequences, each verifiable in the current code:
 
 1. **A timeout is a statement about one fetch, not about the work.**
    `RequestTimeoutError` (`requestDeadline.ts:29`) aborts the request and the
-   notice layer (`noticeFromError` in `notice.ts`) raises a page-level banner. The daemon keeps
+   notice layer (`noticeFromError` in `notice.ts`) raises a machine-scoped
+   banner — the aborted fetch's URL names the machine it was talking to
+   (`machineIdFromUrl`), so the claim belongs to that machine and its own
+   answers retire it. The daemon keeps
    running the command; the socket keeps delivering its output. Both statements
    are true and they contradict each other on screen.
 
 2. **The deadline ignores the liveness the app already measures.** (The
-   suppression branch exists in `notice.ts` - `RequestTimeoutError` with a
-   live link returns `NO_NOTICE` - but no production caller passes the
-   verdict yet: `errorNoticePatch` defaults its `link` to `{ live: false }`,
-   so the branch is unreachable in production. The seam decision is recorded
-   in the round-19 triage.) The socket
-   knows the link answered a keepalive 3 seconds ago. `deadlineSignal()` does
-   not consult it, so a slow-but-healthy link produces "the server did not
-   answer" while the same server is demonstrably answering.
+   suppression branch once sketched in `notice.ts` was removed in round 27:
+   no production caller can prove liveness, so the seam stays open rather
+   than pretending the verdict exists. The socket knows the link answered a
+   keepalive 3 seconds ago; `deadlineSignal()` does not consult it, so a
+   slow-but-healthy link produces "the server did not answer" while the same
+   server is demonstrably answering.)
 
 3. **Commands have no identity.** Messages carry `clientMessageId` end to end
    and have a real delivery state machine (`messageDelivery.ts`:
@@ -147,9 +148,10 @@ Still open, and deliberately so:
 - **Deadline does not consult liveness yet.** The settlement vocabulary is in
   place. Round 21 retired the dead proactive half of this item: the wording
   table rewrites a deadline miss to a transient line that withdraws itself,
-  and the machine's own answers retire the claim. Wiring
-  `errorNoticePatch`'s `link` argument to the socket's keepalive facts
-  remains the open piece of consequence 2.
+  and the machine's own answers retire the claim. Teaching the deadline to
+  consult the socket's keepalive facts remains the open piece of
+  consequence 2 — the `link` argument was removed with its unreachable
+  branch in round 27.
 - **Commands still have no server-side identity or cancel.** The ledger knows
   operations, but the command rows predate it and were not migrated.
 - The phone single-bar fold and the plugin-kernel boundary (see

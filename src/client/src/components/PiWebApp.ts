@@ -803,7 +803,7 @@ export class PiWebApp extends LitElement {
       // return: the round-25 fix moved a flag write above the emptiness
       // check and left this retraction unreachable on the very path its
       // sentence promises.
-      if (this.state.error === INTERRUPTED_RUNS_UNKNOWN_MESSAGE) this.setState(clearErrorPatch());
+      if (plan.resolveUnknown && this.state.error === INTERRUPTED_RUNS_UNKNOWN_MESSAGE) this.setState(clearErrorPatch());
     });
   }
 

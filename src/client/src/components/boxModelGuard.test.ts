@@ -25,7 +25,10 @@ const ROOTS = ["src/client/src", "pi-web-plugins"];
 const RULE = /\{[^{}]*\}/gu;
 const WIDTH = /(?:^|;|\s)(?:width|min-width):\s*(?!auto|100%|0\b)[^;]+/u;
 const HEIGHT = /(?:^|;|\s)(?:height|min-height):\s*(?!auto|100%|0\b)[^;]+/u;
-const BORDERED = /(?:^|;|\s)border:\s*(?!0\b|none)[^;]+/u;
+// The exemption lookahead must sit before any whitespace the match could
+// backtrack into: `\s*(?!0\b)` re-matches the space empty and then accepts
+// "border: 0", so the guard's own exemption never fired.
+const BORDERED = /(?:^|;|\s)border:(?![\s]*(?:0(?![.\d])|none(?:\s|;|\}|$)))[^;]+/u;
 const CONTROL_FLOOR = /(?:^|;|\s)min-height:\s*var\(--pi-control-height[^;]*/u;
 const PADDED = /(?:^|;|\s)padding(?:-(?:top|bottom|block))?:\s*(?!0\b)[^;]+/u;
 const BOX_SIZED = "box-sizing:";

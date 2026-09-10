@@ -635,8 +635,7 @@ export class SessionController {
       this.markCachedNewSessionPersisted(session);
       return true;
     } catch (error) {
-      if (this.getState().selectedSession?.id === session.id) this.setState({ messages: [...this.getState().messages, textMessage("system", describeError(error))] });
-      this.setState(errorNoticePatch(error));
+      if (this.getState().selectedSession?.id === session.id) this.setState({ messages: [...this.getState().messages, textMessage("system", describeError(error))], ...errorNoticePatch(error) });
       return false;
     }
   }
@@ -676,8 +675,7 @@ export class SessionController {
       }
       return true;
     } catch (error) {
-      if (this.getState().selectedSession?.id === session.id) this.setState({ messages: [...this.getState().messages, textMessage("system", describeError(error))] });
-      this.setState(errorNoticePatch(error));
+      if (this.getState().selectedSession?.id === session.id) this.setState({ messages: [...this.getState().messages, textMessage("system", describeError(error))], ...errorNoticePatch(error) });
       if (options.ledgerId !== undefined) this.settleLedgerRow(options.ledgerId, { state: "failed", resultText: describeError(error) });
       return false;
     } finally {
@@ -839,7 +837,9 @@ export class SessionController {
       if (selectionChange.type === "select") await this.selectSession(selectionChange.session);
       else if (selectionChange.type === "clear") this.deselectSession({ forgetRememberedSelection: true });
     } catch (error) {
-      this.setState(errorNoticePatch(error));
+      // A late failure paints its complaint only where the archived session
+      // is still on screen.
+      if (this.getState().selectedSession?.id === session.id) this.setState(errorNoticePatch(error));
     }
   }
 
@@ -856,7 +856,7 @@ export class SessionController {
       if (selectionChange.type === "select") await this.selectSession(selectionChange.session);
       else if (selectionChange.type === "clear") this.deselectSession({ forgetRememberedSelection: true });
     } catch (error) {
-      this.setState(errorNoticePatch(error));
+      if (this.getState().selectedSession?.id === session.id) this.setState(errorNoticePatch(error));
     }
   }
 

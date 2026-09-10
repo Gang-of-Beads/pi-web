@@ -16,3 +16,5 @@ reader is on before painting a late failure, the plugin-backend failures
 keep their machine scope, and the workspace-tasks and relays panels take
 the 44px touch floor, the disabled-opacity token and the box-sizing their
 siblings always had.
+
+<!-- ERRATUM (round 28): the relays floors shipped nested inside .document-tab.active and matched no element; restored in 0ae86be1's successor. -->

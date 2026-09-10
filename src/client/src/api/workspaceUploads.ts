@@ -2,6 +2,7 @@ import type { WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "../.
 import { parseWriteWorkspaceFileResponse } from "./parsers";
 import { workspaceFileWriteUrl } from "./urls";
 import { describeError } from "../notice";
+import { reportTransportReachable } from "./transportHealth";
 
 export const DEFAULT_WORKSPACE_UPLOADS_FOLDER = ".pi-web/uploads";
 
@@ -139,7 +140,8 @@ export function uploadWorkspaceFile(
       resolve(response);
     };
 
-    xhr.open("PUT", workspaceFileWriteUrl(projectId, workspaceId, input.path, uploadWriteUrlOptions(options)), true);
+    const url = workspaceFileWriteUrl(projectId, workspaceId, input.path, uploadWriteUrlOptions(options));
+    xhr.open("PUT", url, true);
     xhr.responseType = "json";
     xhr.setRequestHeader("Content-Type", (input.contentType ?? input.file.type) || "application/octet-stream");
     xhr.upload.onprogress = (event) => {
@@ -147,6 +149,7 @@ export function uploadWorkspaceFile(
     };
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
+        reportTransportReachable(url);
         try {
           options.onProgress?.({ loaded: input.file.size, total: input.file.size, percent: 1, lengthComputable: true });
           succeed(parseWriteWorkspaceFileResponse(readXhrJson(xhr)));
@@ -157,7 +160,7 @@ export function uploadWorkspaceFile(
       }
       fail(new Error(readXhrErrorMessage(xhr)));
     };
-    xhr.onerror = () => { fail(new Error("Workspace upload failed")); };
+    xhr.onerror = () => { fail(new Error("Workspace upload failed: the network request never completed")); };
     xhr.onabort = () => { fail(new WorkspaceUploadCancelledError(cancelled ? undefined : "Workspace upload aborted")); };
     xhr.send(input.file);
   });

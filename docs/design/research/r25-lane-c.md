@@ -319,6 +319,9 @@ correctly keeps its override inside its own coarse block). What the guard cannot
   local machine's own claims are cleared only by machine-routed URLs. `transportHealth.ts`
   documents the first half as intended ("web-owned URLs prove nothing about any machine's
   link - not even the local one"); round 24's owner decision still stands.
+  <!-- ERRATUM (round 28): the second half is wrong - machine-namespaced routes
+  (/machines/<id>/health) are web-process answers, so machineIdFromUrl DOES extract an
+  id there. This blind spot is why the round-28 vocabulary finding survived four rounds. -->
 - **QuickSwitcher has no rail at all** — its `static styles`
   (`QuickSwitcher.ts:407`) are `[interactiveSurfaceStyles, sessionStateBadgeStyles, css…]`;
   `listStyles` is not adopted and its rows are `.row`, not `.action-row`, so the phone's

@@ -108,10 +108,10 @@ function renderUpdatesPanel(html: HtmlTemplateTag, terminal: WorkspacePanelTermi
       .updates-command-actions { display: inline-flex; gap: var(--pi-space-3); }
       .updates-command-actions button.primary { border-color: var(--pi-accent-border); color: var(--pi-text-bright); }
       /* This panel renders as a bare template in the workspace panel's shadow
-         root, whose button rule pins 32px; these controls take the same
-         floors every custom-element panel got in the touch-floor waves. */
-      button { box-sizing: border-box; min-height: var(--pi-control-height); }
-      @media (pointer: coarse) { button { min-height: var(--pi-control-height-touch); } }
+         root, whose adopted sheet pins 32px at the same specificity and wins
+         by order; one class out-ranks it, the fix the dialog buttons took. */
+      .updates-panel button { box-sizing: border-box; min-height: var(--pi-control-height); }
+      @media (pointer: coarse) { .updates-panel button { min-height: var(--pi-control-height-touch); } }
       .updates-recommended { border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); padding: var(--pi-space-5); background: var(--pi-surface); }
       .updates-recommended > strong { color: var(--pi-text-bright); }
       .updates-meta { display: grid; gap: var(--pi-space-1); color: var(--pi-muted); font-size: var(--pi-text-xs); }
@@ -121,7 +121,7 @@ function renderUpdatesPanel(html: HtmlTemplateTag, terminal: WorkspacePanelTermi
       }
     </style>
     <section class="toolbar"><strong>Updates</strong>${messages.length > 0 ? html`<span class="stale">${String(messages.length)}</span>` : null}</section>
-    <section class="viewer updates-status">
+    <section class="viewer updates-status updates-panel">
       <section>
         ${messages.length === 0 ? html`<p class="muted">No PI WEB update or restart messages.</p>` : messages.map((message) => html`
           <article class=${`updates-message ${message.severity}`}>
