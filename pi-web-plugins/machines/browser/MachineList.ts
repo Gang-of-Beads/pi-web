@@ -189,9 +189,12 @@ export class MachineList extends LitElement implements KeyboardNavigableSection 
   /**
    * The create control lives in the heading, like the projects list.
    *
-   * On a phone a heading that is only a word is hidden (the context row
-   * already names the step), so a bare "Machines" heading disappeared and took
-   * the only non-Settings route to adding a machine with it.
+   * Reachability is the host's choice: every machine-section surface passes
+   * withCreate: false today (panel, sheet, both buildMachineSectionContext
+   * calls), so this branch renders nowhere shipped - the live add routes are
+   * the context chip's + and Settings. The wiring is kept because the host
+   * hands over addMachine and may turn the flag on; when it does, this is
+   * the phone's only non-Settings route to adding a machine.
    */
   private renderAdd() {
     if (this.onAdd === undefined) return null;

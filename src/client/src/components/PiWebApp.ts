@@ -299,7 +299,8 @@ export class PiWebApp extends LitElement {
    * for a machine the user has already left must not adopt here. */
   @state() private interruptedSessionIds: ReadonlySet<string> = new Set();
   private interruptedSessionIdsMachine: string | undefined;
-  /** Whether the last interrupted-runs read failed; a flag, not a wording match. */
+  /** The machine whose failed read raised the unknown banner; its own successful read retracts it. */
+  private interruptedRunsUnknownMachine: string | undefined;
   @state() private unreadSessionIds: ReadonlySet<string> = this.sessionUnread.unreadSessionIds(selectedMachineId(this.state), this.state.sessions);
   private unreadConnected = false;
   private committedChatIdentity: string | undefined;
@@ -789,7 +790,10 @@ export class PiWebApp extends LitElement {
       if (plan.failed) {
         // A poll never replaces a banner the reader may still be acting on;
         // the unknown state is only worth announcing onto a quiet screen.
-        if (this.state.error === "") this.setState(noticePatch(noticeForReader(INTERRUPTED_RUNS_UNKNOWN_MESSAGE)));
+        if (this.state.error === "") {
+          this.interruptedRunsUnknownMachine = machineId;
+          this.setState(noticePatch(noticeForReader(INTERRUPTED_RUNS_UNKNOWN_MESSAGE)));
+        }
         return;
       }
       this.interruptedRunsBootReadDone = true;
@@ -803,7 +807,12 @@ export class PiWebApp extends LitElement {
       // return: the round-25 fix moved a flag write above the emptiness
       // check and left this retraction unreachable on the very path its
       // sentence promises.
-      if (plan.resolveUnknown && this.state.error === INTERRUPTED_RUNS_UNKNOWN_MESSAGE) this.setState(clearErrorPatch());
+      // The retraction is an identity match on this feature's own private
+      // wording (INTERRUPTED_RUNS_UNKNOWN_MESSAGE has a single producer), and
+      // it only answers a banner raised for this machine's read - a success
+      // from machine B may not clear machine A's unknown banner now that
+      // banners survive scope switches.
+      if (plan.resolveUnknown && this.state.error === INTERRUPTED_RUNS_UNKNOWN_MESSAGE && this.interruptedRunsUnknownMachine === machineId) this.setState(clearErrorPatch());
     });
   }
 
@@ -1498,7 +1507,11 @@ export class PiWebApp extends LitElement {
   private deferRemoteRouteRestore(route: ParsedAppRoute): void {
     this.pendingRemoteRouteRestore = route;
     this.remoteRouteRestoreAttempt = 0;
-    this.setRemoteRouteRestoreMessage(route);
+    // The reconnecting sentence names a machine; a local route's ladder
+    // retries the projects listing, and loadProjects' catch already raises
+    // the honest failure banner - the machine wording would promise a
+    // reconnect the local ladder never performs.
+    if ((route.machineId ?? "local") !== "local") this.setRemoteRouteRestoreMessage(route);
     this.schedulePendingRemoteRouteRestore();
   }
 
@@ -1528,15 +1541,20 @@ export class PiWebApp extends LitElement {
     this.remoteRouteRestoreInProgress = true;
     try {
       const machineId = route.machineId ?? "local";
-      const health = await this.machines.refreshMachineHealth(machineId);
-      if (!this.pendingRemoteRouteRestoreStillCurrent(route)) return;
-      if (health?.ok !== true) {
-        this.scheduleNextRemoteRouteRestoreAttempt(route);
-        return;
-      }
+      if (machineId !== "local") {
+        // A remote machine's ladder walks its health first; the local
+        // machine's listing IS the probe - the web process answers it or it
+        // fails, and retrying it is the whole recovery.
+        const health = await this.machines.refreshMachineHealth(machineId);
+        if (!this.pendingRemoteRouteRestoreStillCurrent(route)) return;
+        if (health?.ok !== true) {
+          this.scheduleNextRemoteRouteRestoreAttempt(route);
+          return;
+        }
 
-      await this.machines.refreshMachineRuntime(machineId);
-      if (!this.pendingRemoteRouteRestoreStillCurrent(route)) return;
+        await this.machines.refreshMachineRuntime(machineId);
+        if (!this.pendingRemoteRouteRestoreStillCurrent(route)) return;
+      }
       await this.projects.loadProjects();
       if (!this.pendingRemoteRouteRestoreStillCurrent(route)) return;
       if (this.state.error !== "") {
@@ -1581,8 +1599,7 @@ export class PiWebApp extends LitElement {
 
   private pendingRemoteRouteRestoreStillCurrent(route: ParsedAppRoute): boolean {
     const machineId = route.machineId ?? "local";
-    return machineId !== "local"
-      && this.pendingRemoteRouteRestore === route
+    return this.pendingRemoteRouteRestore === route
       && this.state.selectedMachine?.id === machineId
       && this.state.machines.some((machine) => machine.id === machineId);
   }
@@ -3831,10 +3848,11 @@ export class PiWebApp extends LitElement {
   }
 
   private renderErrorBanner(error: string, retiredBy: RetiredBy) {
-    // The hold window is an anti-churn device for one context. A machine or
-    // workspace switch clears the banner through the reset; holding the old
-    // context's banner across the switch would replay a complaint about a
-    // place the reader has left, over the place they just arrived at.
+    // The hold window is an anti-churn device for one context. A scope
+    // switch resets only this hold bookkeeping - the banner itself survives
+    // the switch by the owner's call (see resetWorkspaceScopedState), so a
+    // complaint the reader has not dismissed stays legible in the new
+    // context instead of being silently eaten.
     const contextKey = `${selectedMachineId(this.state)}|${this.state.selectedWorkspace?.id ?? ""}`;
     if (contextKey !== this.bannerContextKey) {
       this.bannerContextKey = contextKey;
@@ -3845,13 +3863,17 @@ export class PiWebApp extends LitElement {
     }
     if (this.bannerDismissedByReader) {
       // The reader acted; the hold window exists for replacement churn, not to
-      // outvote a dismissal.
+      // outvote a dismissal. But a claim that arrived between the dismissal
+      // and this render is a new claim - it shows, and the one-shot stays
+      // armed until the screen is actually quiet.
       this.bannerShownAt = undefined;
       this.lastScheduledError = "";
       this.lastScheduledMachineId = undefined;
-      this.bannerDismissedByReader = false;
       this.heldErrorBanner = null;
-      return null;
+      if (error === "") {
+        this.bannerDismissedByReader = false;
+        return null;
+      }
     }
     const decision = bannerHoldDecision({ shownAt: this.bannerShownAt, now: Date.now(), next: error });
     if (decision.kind === "hold") {

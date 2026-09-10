@@ -19,3 +19,5 @@ blue, asking amber, unread purple - so a row reads as one state at any
 distance. The machines plugin's compact switcher, mounted permanently hidden
 and never displayed since the context row took over, is removed along with
 the phantom it put under the UI audit's context trigger.
+
+<!-- ERRATA (round 29): the six-second expiry gates on BOTH the retirement mark and the wording verdict (round 22); and "the rail wears the row's own colour" holds only for non-healthy rows - an online machine row wears success while its dot reads online, by design. -->

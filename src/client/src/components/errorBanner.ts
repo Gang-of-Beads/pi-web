@@ -59,7 +59,10 @@ export function normalizeTransientError(error: string): string | undefined {
   // commonest banner sitting on the screen long after the daemon was back.
   // A composed message already names its machine ("X is unavailable;
   // reconnecting… <detail>"): shortening it would erase the machine, so only
-  // uncomposed claims reach the rewrites below. The composed prefix is the
+  // uncomposed claims reach the rewrites below. Three producers compose the
+  // prefix today - machineDownNotice and the explicit-selection path in the
+  // machine controller, and the restore ladder's retry sentence in
+  // PiWebApp - keep that count true when adding a fourth.. The composed prefix is the
   // machine controller's own; nothing else produces it.
   const composed = /is unavailable; reconnecting/i.test(error);
   // A TCP-endpoint deployment has no socket path in the error text, so the

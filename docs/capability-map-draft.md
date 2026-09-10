@@ -28,13 +28,13 @@ Legend: **Scope** = what the action operates on. **Derives** = the surface takes
 ### Scope: GLOBAL (this browser / whole app)
 | Action | Surface(s) & how reached | Scope | Derives? | Touch | file:line |
 |---|---|---|---|---|---|
-| Open action palette | `⌘K`, context-bar "Show Actions" button | global | — | yes | C:plugins/core/actions.ts:10; C:components/appShell/AppContextBar.ts:297 |
+| Open action palette | `⌘K`, context-bar "Show Actions" button | global | — | yes | C:plugins/core/actions.ts:10; C:components/appShell/AppContextBar.ts (Show Actions button) |
 | Open Quick Switcher | `⌘P`, context-bar quick-switch button | global (all loaded sessions) | — | yes | C:components/PiWebApp.ts:2415-2424,3196-3201 |
 | Full page reload / hard reload | palette; refresh control | global | — | yes | C:plugins/core/actions.ts:91; C:components/PiWebApp.ts:3266 |
 | Open settings (`⌘,`) | palette; settings route `?settings=` | global | — | yes | C:plugins/core/actions.ts:83; C:settingsRoute.ts:2 |
 | Select theme / follow system / UI scale | Settings → Appearance; palette theme.select | global | — | yes | C:components/settings/SettingsAppearancePanel.ts:48,88,102 |
 | Keyboard shortcut customization | Settings → Shortcuts (record/none/reset) | global | — | yes | C:components/settings/SettingsShortcutsPanel.ts:208-211 |
-| Go to Chat / Files / Terminal (`⌘1/2/3`) | palette; mobile tool sheet | global→current workspace | derives (needs workspace) | yes | C:plugins/core/actions.ts:98-121; C:components/appShell/AppMobileToolSheet.ts:58 |
+| Go to Chat / Files / Terminal (`⌘1/2/3`) | palette; mobile tool sheet | global→current workspace | derives (needs workspace) | yes | C:plugins/core/actions.ts:98-121; C:components/appShell/AppMobileToolSheet.ts (file since removed) |
 | Keyboard focus jumps (`⌘G` m/p/w/s/c) | palette + keyboard | global | — | palette | C:components/PiWebApp.ts:2469-2497; C:plugins/core/actions.ts:18 |
 | Reset panel sizes | palette | global | — | palette | C:components/PiWebApp.ts:2444-2467 |
 | Fleet report / update / restart machines | Settings → fleet section buttons | fleet (gateway's machine list) | explicit per machine + "all" | yes | C:api/clients.ts:97-104 (fleetApi); C:components/settings/SettingsFleetSection.ts:57-69 |
@@ -46,7 +46,7 @@ Legend: **Scope** = what the action operates on. **Derives** = the surface takes
 ### Scope: MACHINE
 | Action | Surface(s) | Scope | Derives? | Touch | file:line |
 |---|---|---|---|---|---|
-| Switch machine | quick switcher machine tabs (context bar's pointer path) | machine | explicit | yes | C:components/appShell/AppContextBar.ts:22-23,47,54; C:components/QuickSwitcher.ts (machine tabs) |
+| Switch machine | quick switcher machine tabs (context bar's pointer path) | machine | explicit | yes | C:components/appShell/AppContextBar.ts (context-bar pointer path); C:components/QuickSwitcher.ts (machine tabs) |
 | Add machine | MachineList heading "+ Add machine", palette, Settings → Machines, MachineDialog | machine | explicit | yes | C:../../pi-web-plugins/machines/browser/MachineList.ts:181-184; C:plugins/core/actions.ts:26; C:components/settings/SettingsMachinesPanel.ts:41; C:components/MachineDialog.ts:93 |
 | Check health / refresh machine | row menu "Check again"; palette machine.refresh | machine | explicit row | menu | C:../../pi-web-plugins/machines/browser/MachineList.ts:160; C:plugins/core/actions.ts:33 |
 | Rename machine (incl. local alias) | row menu Rename… (native prompt); Settings → Machines (inline input) | machine | explicit row | menu | C:../../pi-web-plugins/machines/browser/MachineList.ts:227-234; C:components/settings/SettingsMachinesPanel.ts:70-82 |
@@ -73,14 +73,14 @@ Legend: **Scope** = what the action operates on. **Derives** = the surface takes
 | Workspace trust toggle | row menu → details → "Trusted" checkbox | workspace | explicit row | menu | C:components/WorkspaceList.ts:225-246,289-300 |
 | Remove workspace (provider removal run, tracked as terminal command) | row menu → "Remove workspace" + confirm; palette workspace.delete | workspace | explicit row | menu | C:components/WorkspaceList.ts:218-227; C:plugins/core/actions.ts:131 |
 | Copy workspace label / path | row menu details ⧉ buttons | workspace | explicit row | menu | C:components/WorkspaceList.ts:305-330 |
-| Files: browse tree / view (raw/preview) / open-in-new-window | Files panel (core plugin view) | workspace | derives | yes | C:components/WorkspaceFilesPanel.ts:106; C:components/WorkspaceFileViewer.ts:141,156-161 |
+| Files: browse tree / view (raw/preview) / open-in-new-window | Files panel (core plugin view) | workspace | derives | yes | C:components/WorkspaceFilesPanel.ts:106; C:components/WorkspaceFileViewer.ts (file since moved to the core files plugin) |
 | Files: upload (picker + drag-drop), cancel/dismiss batch, review dialog | Files panel toolbar + upload dialog | workspace | derives | yes | C:components/WorkspaceFilesPanel.ts:69,152,181-210; C:api/workspaceUploads.ts |
 | Files refresh (`⌘⇧F`) | panel toolbar; palette | workspace | derives | yes | C:components/WorkspaceFilesPanel.ts:70; C:plugins/core/actions.ts:123 |
 | Terminals: list/open/close one/close all, soft keys, copy mode, select+copy, continue-in-shell, cancel command run | Terminal panel (core plugin view) | workspace / terminal | derives (selected terminal) | yes | C:components/TerminalPanel.ts:458,471,547-565,631-634,662-667 |
-| Workspace goals read: list, expand, per-task progress | GoalPanel (nav panel, max-height section) | workspace | derives | read-only | C:components/GoalPanel.ts:57-65,104-121,224-241 |
-| Goal refresh | ↻ button | workspace | derives | yes | C:components/GoalPanel.ts:55-65 |
-| Goal Pause/Resume/Abandon | GoalPanel command buttons → sends `/goal-pause|/goal-resume|/goal-clear` **into the selected session** | workspace list, **session execution** | mixed (see 1c) | yes | C:components/GoalPanel.ts:74-90; C:goalProgress.ts:106-128; C:components/PiWebApp.ts:2978-2998 |
-| Archive a goal (workspace record → `archived/`) | two-press "Archive goal" | workspace | explicit goal | yes | C:components/GoalPanel.ts:176-190,211-219; C:api/clients.ts:161-166 (archiveWorkspaceGoal) |
+| Workspace goals read: list, expand, per-task progress | GoalPanel (nav panel, max-height section) | workspace | derives | read-only | C:components/GoalPanel.ts (goal list section)4-121,224-241 |
+| Goal refresh | ↻ button | workspace | derives | yes | C:components/GoalPanel.ts (refresh control) |
+| Goal Pause/Resume/Abandon | GoalPanel command buttons → sends `/goal-pause|/goal-resume|/goal-clear` **into the selected session** | workspace list, **session execution** | mixed (see 1c) | yes | C:components/GoalPanel.ts (command buttons); C:goalProgress.ts:106-128; C:components/PiWebApp.ts:2978-2998 |
+| Archive a goal (workspace record → `archived/`) | two-press "Archive goal" | workspace | explicit goal | yes | C:components/GoalPanel.ts (archive flow); C:api/clients.ts:161-166 (archiveWorkspaceGoal) |
 
 ### Scope: SESSION
 | Action | Surface(s) | Scope | Derives? | Touch | file:line |
@@ -88,7 +88,7 @@ Legend: **Scope** = what the action operates on. **Derives** = the surface takes
 | Start session (`⌘⏎`, `⌘⇧N`) | Sessions heading "+", QuickSwitcher create row, palette | session | derives (selected workspace) | yes | C:components/SessionList.ts:296; C:components/QuickSwitcher.ts:104-120; C:plugins/core/actions.ts:139 |
 | Open session | row/tile click in list or switcher; Enter in switcher opens first match | session | explicit | yes | C:components/SessionList.ts:399-410; C:components/QuickSwitcher.ts:156-160,297-303 |
 | Search sessions | in-list search; QuickSwitcher search + project/workspace filter chips | session | derives | yes | C:components/SessionList.ts:219-229; C:components/QuickSwitcher.ts:96-107,250-272 |
-| Rename session | row menu (native `prompt()`); QuickSwitcher inline form; context-bar inline rename | session | explicit row | menu | C:components/SessionList.ts:602-608; C:components/QuickSwitcher.ts:227-247; C:components/appShell/AppContextBar.ts:126-156 |
+| Rename session | row menu (native `prompt()`); QuickSwitcher inline form; context-bar inline rename | session | explicit row | menu | C:components/SessionList.ts:602-608; C:components/QuickSwitcher.ts:227-247; C:components/appShell/AppContextBar.ts |
 | Pin to top (**client-local, QuickSwitcher only**) | switcher row menu / long-press menu | session | explicit | menu | C:components/QuickSwitcher.ts:197-223 |
 | Mark read | row menu; bulk toolbar | session | explicit row | menu | C:components/SessionList.ts:426,333 |
 | Archive | row menu; bulk toolbar; palette session.archive | session | explicit | menu/yes | C:components/SessionList.ts:428,332; C:plugins/core/actions.ts:163 |
@@ -160,7 +160,7 @@ Covered above (TerminalPanel). All workspace-scoped, derived from selected works
 
 ### 1(c) Scope-bearing surfaces that do NOT derive scope from the current session/project
 1. **"Clean up" sessions** (`SessionList.ts:290` → `sessionsApi.cleanupPreview`, `apiTypes.ts:785-792`): launched from a *workspace's* session list, but the preview covers **every discovered project/workspace path on the machine** (`projectCwds` defaults to all). A surface that says "sessions here" acting machine-wide is exactly the "must resolve against the current project" violation.
-2. **Goal Pause/Resume/Abandon buttons** (`GoalPanel.ts:74-90` → `PiWebApp.ts:2978-2998`): the list is workspace-scoped, but execution is "type this slash command into **whatever session is currently selected**". If that session isn't the one working the goal, the extension must raise a picker. The button never names the session it will run in.
+2. **Goal Pause/Resume/Abandon buttons** (`GoalPanel.ts (command buttons)` → `PiWebApp.ts:2978-2998`): the list is workspace-scoped, but execution is "type this slash command into **whatever session is currently selected**". If that session isn't the one working the goal, the extension must raise a picker. The button never names the session it will run in.
 3. **QuickSwitcher "New session"** (`QuickSwitcher.ts:104-120`): creates in the workspace selected *before* the sheet opened, not the project/workspace currently active as filter chips inside the sheet. The subtitle "In <workspace>" states it, but the filter chips imply otherwise.
 4. **Subagent "Open" silent no-op** (`PiWebApp.ts:711-716`): finds the child in already-loaded session lists; if the child isn't in this workspace's listing the tap does nothing — scope resolution fails silently instead of saying "not in this workspace".
 5. **`machineId = "local"` defaults everywhere** (`C:api/clients.ts:9`, `sessionSocket.ts:44`, and component props `PromptEditor.ts:211`, `TerminalPanel.ts:29`, `ProjectDialog.ts:24`, `WorkspaceList.ts:30`): today's call sites pass `selectedMachineId(state)` (138 references), so it's a structural foot-gun rather than an active bug — one forgotten argument silently targets the local machine.
@@ -228,7 +228,7 @@ Covered above (TerminalPanel). All workspace-scoped, derived from selected works
 |---|---|---|---|---|---|---|
 | QuickSwitcher tiles | `min-height: 52px`, **no fixed height**; rows auto → tiles differ by row | **1-line ellipsis desktop; 2-line ≤420px** | subtitle 1-line ellipsis | `minmax(240px,1fr)` → **`minmax(140px,1fr)` on phones** | 52px row; menu btn 32px | C:components/QuickSwitcher.ts:373-374,417-418 |
 | ProjectList / WorkspaceList tiles | `min-height: 56px` + **`grid-auto-rows: min-content` + `align-self: start`** → rows are each as tall as their tallest tile | **2-line clamp, break-all** | Workspace: only when label items exist; Project: path always | `minmax(150px,1fr)` | menu btn 32px (36px coarse) | C:components/shared.ts:252-266 |
-| Machine list options | `min-height: 60px`, own grid | 1-line (own classes) | status line | **`minmax(140px,1fr)`, 6px gap, 8px padding** | ~60px | C:components/MachineSwitcher.ts:303,309 |
+| Machine list options | `min-height: 60px`, own grid | 1-line (own classes) | status line | **`minmax(140px,1fr)`, 6px gap, 8px padding** | ~60px | C:../../pi-web-plugins/machines/browser/MachineList.ts (heading add control; currently unreachable — every surface passes withCreate:false) |
 | SessionList rows | no min-height on `.action-main` (list mode) | 2-line clamp (`max-height: 2.5em`) | `<small>` meta **always** (status · N messages) | rows, not tiles | heading buttons **30px** (36px mobile); menu 32px (36px) | C:components/shared.ts:297-299; C:components/SessionList.ts:665,745-747 |
 | MachineList rows | `min-height: 58px` (own override) | 1-line ellipsis | always | rows | 58px | C:../../pi-web-plugins/machines/browser/MachineList.ts:243 |
 | GoalPanel cards | `min-height: 40px` header (42px narrow) | 1-line ellipsis objective | meta row optional (collapsed) | cards stacked | 40/42px | C:components/GoalPanel.ts:186-196,271-273 |
@@ -239,12 +239,12 @@ Covered above (TerminalPanel). All workspace-scoped, derived from selected works
 
 **Proposed house rules (short, enforceable):**
 1. **One tile grid.** Grid tiles: fixed row height (`grid-auto-rows: 1fr`, `align-items: stretch`) so every tile in the sheet is identical; title clamped to exactly **2 lines** with ellipsis at every width (no desktop/mobile split); a metadata line **always rendered** (placeholder text when empty, e.g. the workspace path or "—") so single-line tiles can't shrink; one reserved trailing inset for the ⋯ button.
-2. **One column metric.** `repeat(auto-fit, minmax(150px, 1fr))` everywhere a tile grid appears; delete the QuickSwitcher 240/140 pair and the MachineSwitcher 140/6px pair (or move them onto the same token).
+2. **One column metric.** `repeat(auto-fit, minmax(150px, 1fr))` everywhere a tile grid appears; delete the QuickSwitcher 240/140 pair and the MachineSwitcher leftover 140/6px pair (or move them onto the same token).
 3. **One touch floor.** Interactive control minimum 40px (44px on `pointer: coarse`) via a single token. Today's heading buttons are 30px (`SessionList.ts:665`, `GoalPanel.ts:227`), activity rows 38px (`ChatView.ts:188`), drawer controls 32px (`:263`) — all below the floor the codebase itself acknowledges elsewhere (36px mobile bumps in `SessionList.ts:745-747`, 44px on the attachment zoom close `shared.ts` workspacePanelStyles).
 4. **Row lists** (non-tile): `.action-main` min-height 44px, name clamp 2 lines, meta line always — SessionList already matches; MachineList (58px, 1-line) and ChatView rows (38px) should fold in.
 5. **Clamps live in one place.** Extract the `-webkit-line-clamp` pattern (currently re-implemented in QuickSwitcher:379/418, shared.ts:259/299) into one shared style so the line count can't drift again.
 
-**Exact violations to fix against those rules:** `QuickSwitcher.ts:373-374` (grid + height), `:379` + `:417-418` (clamp split), `shared.ts:252-254` (`grid-auto-rows: min-content`, `align-self: start`), `shared.ts:259` (2-line, break-all — keep as the rule), `MachineSwitcher.ts:303,309` (third grid), `MachineList.ts:243` (58px row), `ChatView.ts:188,231` (38px/30px rows), `SessionList.ts:665` + `GoalPanel.ts:227` (30px heading buttons), `ChatView.ts:263` (32px controls).
+**Exact violations to fix against those rules:** `QuickSwitcher.ts:373-374` (grid + height), `:379` + `:417-418` (clamp split), `shared.ts:252-254` (`grid-auto-rows: min-content`, `align-self: start`). (Historical note: the deleted MachineSwitcher's 140/6px pair was part of this list; the component is gone since b0bce2a0.), `shared.ts:259` (2-line, break-all — keep as the rule), `MachineSwitcher.ts:303,309` (third grid), `MachineList.ts:243` (58px row), `ChatView.ts:188,231` (38px/30px rows), `SessionList.ts:665` + `GoalPanel.ts:227` (30px heading buttons), `ChatView.ts:263` (32px controls).
 
 ---
 

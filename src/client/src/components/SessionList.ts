@@ -691,7 +691,10 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
 
   static override styles = [css`${unsafeCSS(uiIconStyle)}`, css`${unsafeCSS(disclosureIconStyle)}`, interactiveSurfaceStyles, listStyles, sessionStateBadgeStyles, css`
     :host { --pi-row-gutter-start: var(--pi-space-3); --pi-row-gutter-size: var(--pi-checkbox-size); }
-    @media (pointer: coarse) { :host { --pi-row-gutter-size: var(--pi-control-height-comfort); } }
+    /* The reservation follows the drawing: coarse draws the subtree toggle
+       at the touch height, so the slot it sits in is the touch height too -
+       at comfort the text met the toggle's right edge with zero breath. */
+    @media (pointer: coarse) { :host { --pi-row-gutter-size: var(--pi-control-height-touch); } }
     h2 { min-height: var(--pi-control-height); gap: var(--pi-space-2); }
     @media (pointer: coarse) { h2 { gap: var(--pi-space-8); } }
     /* The shared heading spreads its children across the full width, which
@@ -747,7 +750,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .pending-session-row.starting-session .action-name { display: flex; align-items: center; gap: var(--pi-space-3); max-height: none; -webkit-line-clamp: 1; }
     .pending-session-row.starting-session .activity-indicator { flex: 0 0 auto; margin: 0; }
     .action-main.selecting { padding-left: calc(var(--pi-space-3) + var(--pi-checkbox-size) + var(--pi-space-3) + var(--depth, 0) * var(--pi-space-7)); }
-    @media (pointer: coarse) { .action-main.selecting { padding-left: calc(var(--pi-space-3) + (var(--pi-control-height-comfort) - var(--pi-checkbox-size)) / 2 + var(--pi-checkbox-size) + var(--pi-space-3) + var(--depth, 0) * var(--pi-space-7)); } }
+    @media (pointer: coarse) { .action-main.selecting { padding-left: calc(var(--pi-space-3) + (var(--pi-control-height-touch) - var(--pi-checkbox-size)) / 2 + var(--pi-checkbox-size) + var(--pi-space-3) + var(--depth, 0) * var(--pi-space-7)); } }
 .session-checkbox { accent-color: var(--pi-accent); position: absolute; top: var(--pi-space-4); left: calc(var(--pi-row-gutter-start) + var(--depth, 0) * var(--pi-space-7)); z-index: 3; box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); margin: 0; }
     /* One formula for the leading gutter: the slot starts at --pi-row-gutter-start,
        is --pi-row-gutter-size wide, and the text clears it by one breathing step.

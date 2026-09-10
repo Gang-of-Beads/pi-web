@@ -31,7 +31,7 @@ seams and found the places where the sweep had stopped one layer short.
    exists for replacement churn and can no longer resurrect a dismissed
    banner; a cleared-then-returned banner re-arms its own expiry.
 8. **Interrupted-run markers carry their machine into the render** and the
-   unknown banner's retraction tracks a flag, not a wording match
+   unknown banner's retraction tracks a flag, not a wording match <!-- ERRATUM (round 29): the flag path died with round 26's cleanup; the retraction is an identity match on INTERRUPTED_RUNS_UNKNOWN_MESSAGE plus the machine whose read raised it. -->
    (lanes B/C).
 9. **Guards extended** (lane A): multi-condition media blocks, and the tree
    dialog's 30px literals became spacing tokens.

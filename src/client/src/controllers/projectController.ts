@@ -1,5 +1,5 @@
 import { api as defaultApi, type Project } from "../api";
-import { clearErrorPatch, errorNoticePatch } from "../errorNotice";
+import { errorNoticePatch } from "../errorNotice";
 import { describeError } from "../notice";
 import { selectedMachineId, type GetState, type SetState } from "./types";
 import type { WorkspaceController } from "./workspaceController";
@@ -32,7 +32,11 @@ export class ProjectController {
 
   async loadProjects() {
     const machineId = selectedMachineId(this.getState());
-    this.setState({ ...clearErrorPatch(), projectsLoad: "loading" });
+    // No clear here: a load start is not a retirement event, and the machine
+    // switch and browser-resume paths both pass through this method - the
+    // owner's call is that a scope switch may not silently eat a
+    // reader-retired banner. A failure replaces it; the reader dismisses it.
+    this.setState({ projectsLoad: "loading" });
     try {
       const projects = await this.api.projects(machineId);
       if (selectedMachineId(this.getState()) !== machineId) return undefined;

@@ -93,19 +93,20 @@ describe("accessibility floors", () => {
     // lists mounted-but-hidden; the machine switcher that once shared that
     // hidden mount shipped without the guard, so a phone named its machine
     // twice - the guard predates its removal.
-    const componentsDir = join(process.cwd(), "src/client/src/components");
+    const roots = [join(process.cwd(), "src/client/src"), join(process.cwd(), "pi-web-plugins")];
     const rendered = new Set<string>();
     const walk = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
       const full = join(dir, entry.name);
       if (entry.isDirectory()) return walk(full);
       return entry.isFile() && entry.name.endsWith(".ts") && !entry.name.includes(".test.") ? [full] : [];
     });
-    const files = walk(componentsDir);
+    const files = roots.flatMap(walk);
     for (const file of files) {
       const source = readFileSync(file, "utf8");
       for (const match of source.matchAll(/<([a-z][a-z0-9-]*-[a-z0-9-]+)([^>]*?)>/gs)) {
         const attrs = match[2] ?? "";
-        if (/(^|\s)\?hidden=|(^|\s)hidden(\s|$)/.test(attrs)) rendered.add(match[1] ?? "");
+        // Property bindings hide too: .hidden= is how the machines plugin hides its list.
+        if (/(^|\s)\?hidden=|(^|\s)\.hidden=|(^|\s)hidden(\s|$)/.test(attrs)) rendered.add(match[1] ?? "");
       }
     }
     expect(rendered.size).toBeGreaterThan(0);
@@ -114,7 +115,9 @@ describe("accessibility floors", () => {
       const defining = files.find((file) => readFileSync(file, "utf8").includes(`customElement("${tag}")`));
       expect(defining, `no component defines <${tag}>`).toBeDefined();
       const source = readFileSync(defining ?? "", "utf8");
-      const usesSharedListSheet = source.includes("listStyles");
+      const sourceDir = defining?.split("/").slice(0, -1).join("/") ?? "";
+      const sibling = files.filter((file) => file.startsWith(sourceDir)).map((file) => readFileSync(file, "utf8")).join("\n");
+      const usesSharedListSheet = source.includes("listStyles") || sibling.includes("host.listStyles");
       const guardsItself = source.includes(":host([hidden])");
       expect(usesSharedListSheet || guardsItself, `<${tag}> is rendered with hidden but nothing makes hidden win`).toBe(true);
     }
