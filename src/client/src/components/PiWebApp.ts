@@ -3596,6 +3596,13 @@ export class PiWebApp extends LitElement {
    * Auto pair-following is its own toggle, re-armed deliberately.
    */
   private selectTheme(themeId: QualifiedContributionId): void {
+    // The native pro look is a sentinel, not a plugin theme: it never appears
+    // in the registry, so it must be handled before the registry lookup.
+    if (themeId === CORE_PRO_THEME_ID) {
+      this.themePreference = { themeId: CORE_PRO_THEME_ID, auto: false };
+      this.applyPreferredTheme(true);
+      return;
+    }
     const theme = this.plugins.getThemes().find((candidate) => candidate.id === themeId);
     if (theme === undefined) return;
     this.themePreference = { themeId: theme.id, auto: false };
