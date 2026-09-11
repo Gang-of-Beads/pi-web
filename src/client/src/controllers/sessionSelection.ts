@@ -45,6 +45,13 @@ export class SessionStorageSessionSelectionMemory implements SessionSelectionMem
   }
 }
 
+/** A session whose folder is gone can never open: no auto-pick may land on it,
+ * or the selection guard turns the pick into a notice while a live sibling
+ * exists. Every producer of a "next session" pick must filter through this. */
+export function isOpenableSession(session: SessionInfo): boolean {
+  return session.cwdMissing !== true;
+}
+
 export function selectPreferredSession(sessions: SessionInfo[], options?: { targetSessionId?: string | undefined; latestSessionId?: string | undefined }): SessionInfo | undefined {
   // A session whose folder is gone can never open, so it is never the
   // preferred pick on any branch: restoring it would only select a dead row
@@ -97,6 +104,6 @@ export function selectionAfterArchivingSessions(sessions: SessionInfo[], selecte
   if (selectedSessionId === undefined || !archivedSessionIds.includes(selectedSessionId)) return { type: "unchanged" };
 
   const archivedIds = new Set(archivedSessionIds);
-  const nextSession = sessions.find((session) => !archivedIds.has(session.id) && session.archived !== true);
+  const nextSession = sessions.find((session) => !archivedIds.has(session.id) && session.archived !== true && isOpenableSession(session));
   return nextSession === undefined ? { type: "clear" } : { type: "select", session: nextSession };
 }

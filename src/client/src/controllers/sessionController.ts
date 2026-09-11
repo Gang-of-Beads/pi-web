@@ -30,7 +30,7 @@ import { classifySubmission, handleOutcome, transportFactsFor } from "../message
 import { isRequestTimeout } from "../api/requestDeadline";
 import { isSessionActive } from "../../../shared/activity";
 import type { PromptAttachmentDelivery, SessionStartupProgressEvent } from "../../../shared/apiTypes";
-import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchived, selectPreferredSession, selectionAfterArchivingSession, selectionAfterArchivingSessions, shouldDeselectAfterArchivedCollapse, type SessionSelectionMemory } from "./sessionSelection";
+import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchived, selectPreferredSession, selectionAfterArchivingSession, selectionAfterArchivingSessions, shouldDeselectAfterArchivedCollapse, type SessionSelectionMemory, isOpenableSession } from "./sessionSelection"
 import { selectedMachineId, type GetState, type SetState, type UpdateUrl } from "./types";
 import { TrailingRefreshCoordinator } from "./trailingRefreshCoordinator";
 import { backgroundRunCountChanged } from "../backgroundRunCountSignal";
@@ -928,7 +928,7 @@ export class SessionController {
         const nextSessions = state.sessions.filter((session) => !deletedIdSet.has(session.id));
         this.setState({ sessions: nextSessions });
         if (state.selectedSession !== undefined && deletedIdSet.has(state.selectedSession.id)) {
-          const next = nextSessions.find((session) => session.archived !== true) ?? nextSessions[0];
+          const next = nextSessions.find((session) => session.archived !== true && isOpenableSession(session)) ?? nextSessions.find(isOpenableSession);
           if (next !== undefined) await this.selectSession(next);
           else this.deselectSession({ forgetRememberedSelection: true });
         }
@@ -967,7 +967,7 @@ export class SessionController {
       });
 
       if (state.selectedSession !== undefined && deletedIdSet.has(state.selectedSession.id)) {
-        const next = nextSessions.find((session) => session.archived !== true) ?? nextSessions[0];
+        const next = nextSessions.find((session) => session.archived !== true && isOpenableSession(session)) ?? nextSessions.find(isOpenableSession);
         if (next !== undefined) await this.selectSession(next);
         else this.deselectSession({ forgetRememberedSelection: true });
       } else {
@@ -1020,7 +1020,7 @@ export class SessionController {
         return;
       }
       if (!refreshMayReplaceSelection({ refreshedWorkspacePath: workspace.path, selectedSessionCwd: selectedSession.cwd })) return;
-      const next = sessions.find((session) => session.archived !== true) ?? sessions[0];
+      const next = sessions.find((session) => session.archived !== true && isOpenableSession(session)) ?? sessions.find(isOpenableSession);
       if (next !== undefined) await this.selectSession(next);
       else this.deselectSession({ forgetRememberedSelection: true });
     } catch (error) {
@@ -1153,7 +1153,7 @@ export class SessionController {
       clientQueuedSessionMessages: omitKey(state.clientQueuedSessionMessages, session.id),
     });
     if (this.getState().selectedSession?.id !== session.id) return;
-    const next = sessions.find((candidate) => candidate.archived !== true) ?? sessions[0];
+    const next = sessions.find((candidate) => candidate.archived !== true && isOpenableSession(candidate)) ?? sessions.find(isOpenableSession);
     if (next !== undefined) await this.selectSession(next);
     else {
       this.clearActiveSession();

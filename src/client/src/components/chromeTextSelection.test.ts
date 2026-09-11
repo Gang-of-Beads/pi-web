@@ -20,6 +20,7 @@ describe("control chrome text selection (T1/T3)", () => {
   it("composer chrome disables selection but keeps its text controls selectable", () => {
     const styles = String(PromptEditor.styles);
     expect(styles).toContain("user-select: none");
-    expect(styles).toMatch(/textarea[^{]*\{[^}]*user-select: text/s);
+    expect(styles).toMatch(/\[contenteditable\][^{]*\{[^}]*user-select: text/s);
+    expect(styles).toMatch(/attachment-error[^{]*\{[^}]*user-select: text/s);
   });
 });

@@ -46,6 +46,13 @@ describe("SessionList dead-folder rows", () => {
     expect(liveButton).toBeDefined();
   });
 
+  it("reserves the bulk-select gutter and keeps the row structure on a dead row", async () => {
+    const list = await mount([session("dead", { cwdMissing: true })]);
+    const deadRow = list.renderRoot.querySelector(".cwd-missing-row");
+    expect(deadRow?.className).toContain("cwd-missing-row");
+    expect(deadRow?.querySelector(".cwd-gone")).toBeDefined();
+  });
+
   it("does not select a dead row on click", async () => {
     let selectedId: string | undefined;
     const list = await mount([session("dead", { cwdMissing: true }), session("live")]);

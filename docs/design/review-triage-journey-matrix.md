@@ -52,18 +52,53 @@ FAIL 项全部经过 triage（判据 J3）。
 2. **J6 appearance themes（desktop）— judged-not-true**：Appearance 点击后的
    主题卡文本校验未命中（innerText 穿透不完整）。Pro 卡选择已在独立探针
    （pro-card-selected）中以 `piWebTheme=core:pro` 实证。
-3. **J6 settings（phone）— owner-pending**：More actions 菜单路径的探针定位
+3. **J6 settings（phone）— not-fixed-with-reason（探针路径未中；机主实机验证）**：More actions 菜单路径的探针定位
    未中；机主在真机上实测设置入口（此前截图证明可达）。
 4. **J9 dead row inert "absent"（双端）— not-fixed-with-reason（探针导航）**：
-   选中项目后 sessions 节折叠，行未渲染在探针的查找范围内；行本身是
-   `DIV.cwd-missing-row` 已由组件测试（SessionList.cwdMissing.test.ts）与
-   单元测试覆盖。**核心结果 J9 dead row click → 无横幅：双端 PASS** ——第四次
-   横幅的根修复在运行时得到验证。
-5. **J2/J3/J4/J7/J8（双端）全 PASS**：boot 干净、导航链、聊天挂载、输入落
-   稿、快速切换器、机器对话框。
+   选中项目后 sessions 节折叠，探针没有先展开节就找行，行未渲染在探针的
+   查找范围内；其后的 click 落进 catch —— **J9 的"点击无横幅"PASS 是空过
+   （vacuous），不得作为运行时验证引用**。死行的形状（`DIV.cwd-missing-row`）
+   由组件测试（SessionList.cwdMissing.test.ts）覆盖；运行时点击验证由机主
+   实机执行（875ccc92 部署后）。
+5. **J2/J3/J4/J7（双端）全 PASS**：boot 干净、导航链、聊天挂载、输入落稿、
+   快速切换器。原文列出的 J8 从未存在于脚本中——已从本档删除。
 
 ## 与修复波的对应
 
 - 第四次横幅根修复 = `selectPreferredSession` 全分支跳过死会话 +
   死行静置化（875ccc92）：J9 click 双端无横幅。
 - 文本可选性（a5ddc8f2）：真实浏览器断言归入下一轮 lane 评审与机主实机验证。
+
+
+## Lane 评审轮（task 6）
+
+三 lane（glm 选羻逻辑 / glm 行 UI / glm 对抗全量；qwen 模型暂不在注册表）。
+
+### 裁决与修复
+
+- **glm-row-ui P1（TRUE，已修）**：bulk-select 模式下死行 checkbox 覆盖标签——
+  DIV 分支缺 `selecting` 类（SessionList.ts:418）。已加 `${selectionActive ?
+  "selecting" : ""}`。
+- **glm-row-ui P2（采纳，已修）**：死行丢 unread 圆点但仍计入徽标——DIV 分支
+  补 `renderSessionRowIndicator`。
+- **glm-selection-logic P2（TRUE，已修）**：dead-row 跳过只修了
+  selectPreferredSession 一个 producer；归档/删除/清理/刷新/删除临时会话五处
+  "下一会话"产生器仍会递死会话给守卫（同一症状多 producer 形状）。统一谓词
+  `isOpenableSession`（sessionSelection.ts）应用于全部五处 + 旗舰场景测试
+  （归档 A → 跳过死 B → 选中活 C；只剩死 → clear 无横幅）。
+- **full-pass P1 chromeTextSelection 环境（judged-not-true）**：lane 判该测试
+  在 node 环境导入崩溃；实测双次绿（独立 + 全量 2415 项），Lit 装饰器在该
+  环境安全。不修。
+- **full-pass P2 attachment-error 不可复制（TRUE，已修）**：违反自家 T2——
+  `.attachment-error` 加入 PromptEditor 恢复选择器。
+- **full-pass P2 子 shadow 树继承 none（TRUE，已修）**：面板 chrome 的
+  none 经扁平树传入 session-list 的搜索输入——SessionList 自带
+  `input, textarea, [contenteditable] { user-select: text }` 防御。
+- **full-pass P2 测试断言错对象（TRUE，已修）**：断言 textarea 子句而组件
+  渲染的是 CodeMirror contenteditable——改断言 `[contenteditable]` 与
+  `.attachment-error` 子句。
+- **full-pass P2 triage 文档空过声明（TRUE，已修）**：本文档原稿声称"J9
+  点击无横幅：双端 PASS（运行时验证）"与同档 FAIL 直接矛盾——按 owner
+  规则（绝不把未验证的腿报成已验证）重写为诚实表述，并删除不存在的 J8。
+- **深链到死会话静默替换 + URL 重写（judged-not-true as defect）**：落地
+  到活的相邻会话比死端横幅诚实；地址名屏上之实。设计取舍记录于此。

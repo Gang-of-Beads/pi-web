@@ -149,6 +149,14 @@ describe("selectionAfterArchivingSession", () => {
   it("clears selection when archiving a selected subtree with no active sessions left", () => {
     expect(selectionAfterArchivingSessions([testSession("s1"), testSession("s2")], "s2", ["s1", "s2"])).toEqual({ type: "clear" });
   });
+
+  it("skips a dead-folder session when picking the next selection after archiving", () => {
+    const dead = { ...testSession("dead"), cwdMissing: true };
+    const live = testSession("live");
+
+    expect(selectionAfterArchivingSessions([dead, live], "gone", ["gone"])).toEqual({ type: "select", session: live });
+    expect(selectionAfterArchivingSessions([dead], "dead", ["dead"])).toEqual({ type: "clear" });
+  });
 });
 
 function testSession(id: string): SessionInfo {
