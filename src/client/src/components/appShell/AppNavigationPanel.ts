@@ -438,7 +438,7 @@ export class AppNavigationPanel extends LitElement {
     :host { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
     :host([compact]) { flex: 1 1 auto; }
     .contributed-sections { padding-inline: var(--pi-reading-edge); }
-    header { flex: 0 0 auto; box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: 0 var(--pi-reading-edge); border-bottom: 1px solid var(--pi-border); }
+    header { flex: 0 0 auto; box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: var(--pi-space-1) var(--pi-reading-edge); border-bottom: 1px solid var(--pi-border); }
     header button { box-sizing: border-box; height: var(--pi-panel-header-control-height); padding: 0 var(--pi-space-4); font-size: var(--pi-text-xs); }
     .header-icon-action:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     .header-icon-action { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); }

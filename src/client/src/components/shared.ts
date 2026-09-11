@@ -250,6 +250,7 @@ export const listStyles = css`
      specificity, so an earlier coarse rule loses to a later base rule. */
   @media (pointer: coarse) {
     .list-search-input { height: var(--pi-control-height-touch, 44px); }
+    .action-row .action-main:active { background: var(--pi-surface-hover); }
     .list-search-clear { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); }
   }
   .search-empty { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); }

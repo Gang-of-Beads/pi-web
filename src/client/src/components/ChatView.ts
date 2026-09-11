@@ -173,8 +173,8 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
     .drawer-tab { min-height: var(--pi-control-height-touch); }
     .drawer-collapse { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); }
   }
-  .drawer-control:focus-visible { background: var(--pi-selection-bg); color: var(--pi-text-bright); 
-  @media (pointer: coarse) { .drawer-control:active { background: var(--pi-surface-hover); } }}
+  .drawer-control:focus-visible { background: var(--pi-selection-bg); color: var(--pi-text-bright); }
+  @media (pointer: coarse) { .drawer-control:active { background: var(--pi-surface-hover); } }
   @media (hover: hover) { .drawer-control:hover { background: var(--pi-selection-bg); color: var(--pi-text-bright); } }
   .drawer-control:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
   .drawer-control:disabled { opacity: var(--pi-disabled-opacity); background: transparent; cursor: default; }
@@ -286,7 +286,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      ordinary user colour the moment the agent takes the message, which is also
      when the recall action disappears - one change of state, said twice. */
   .msg.user.queued { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); }
-  .msg.user.queued > .msg-header { border-bottom-color: color-mix(in srgb, var(--pi-warning-border) 35%, transparent); background: var(--pi-warning-surface); }
+  .msg.user.queued > .msg-header { border-bottom-color: var(--pi-border-muted); background: var(--pi-warning-surface); }
   .msg.user.queued > .msg-header .label { color: var(--pi-warning); }
   .msg.user.queued .msg-action { color: var(--pi-warning); }
   .msg.tool { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); color: var(--pi-warning); }
