@@ -40,10 +40,20 @@ describe("selectPreferredSession", () => {
     expect(selectPreferredSession(sessions, { latestSessionId: "old" })?.id).toBe("s2");
   });
 
-  it("returns undefined for an invalid explicit target", () => {
+  it("falls through to the next preference when the explicit target is missing", () => {
     const sessions = [testSession("s1"), testSession("s2")];
 
-    expect(selectPreferredSession(sessions, { targetSessionId: "old", latestSessionId: "s2" })).toBeUndefined();
+    expect(selectPreferredSession(sessions, { targetSessionId: "old", latestSessionId: "s2" })?.id).toBe("s2");
+  });
+
+  it("never prefers a session whose folder is gone", () => {
+    const dead = { ...testSession("dead"), cwdMissing: true };
+    const live = testSession("live");
+
+    expect(selectPreferredSession([dead, live], { targetSessionId: "dead" })?.id).toBe("live");
+    expect(selectPreferredSession([dead, live], { latestSessionId: "dead" })?.id).toBe("live");
+    expect(selectPreferredSession([dead], {})).toBeUndefined();
+    expect(selectPreferredSession([dead], { targetSessionId: "dead", latestSessionId: "dead" })).toBeUndefined();
   });
 });
 

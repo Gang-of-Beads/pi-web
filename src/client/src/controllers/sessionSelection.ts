@@ -46,13 +46,24 @@ export class SessionStorageSessionSelectionMemory implements SessionSelectionMem
 }
 
 export function selectPreferredSession(sessions: SessionInfo[], options?: { targetSessionId?: string | undefined; latestSessionId?: string | undefined }): SessionInfo | undefined {
+  // A session whose folder is gone can never open, so it is never the
+  // preferred pick on any branch: restoring it would only select a dead row
+  // and raise the same "folder no longer exists" notice on every boot. The
+  // row stays listed (its badge says so); a later branch takes a live one.
+  const alive = sessions.filter((session) => session.cwdMissing !== true);
   const targetSessionId = options?.targetSessionId;
-  if (targetSessionId !== undefined && targetSessionId !== "") return sessionByIdOrPrefix(sessions, targetSessionId);
+  if (targetSessionId !== undefined && targetSessionId !== "") {
+    const targeted = sessionByIdOrPrefix(alive, targetSessionId);
+    if (targeted !== undefined) return targeted;
+  }
 
   const latestSessionId = options?.latestSessionId;
-  if (latestSessionId !== undefined && latestSessionId !== "") return sessions.find((session) => session.id === latestSessionId) ?? sessions.find((session) => session.archived !== true);
+  if (latestSessionId !== undefined && latestSessionId !== "") {
+    const latest = alive.find((session) => session.id === latestSessionId) ?? alive.find((session) => session.archived !== true);
+    if (latest !== undefined) return latest;
+  }
 
-  return sessions.find((session) => session.archived !== true);
+  return alive.find((session) => session.archived !== true);
 }
 
 export function shouldDeselectAfterArchivedCollapse(sessions: SessionInfo[], selectedSession: SessionInfo | undefined): boolean {

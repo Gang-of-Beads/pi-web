@@ -413,6 +413,13 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
              without nesting one control inside another. -->
         ${showsCheckbox ? html`<input class="session-checkbox" type="checkbox" aria-label=${`Select ${sessionLabel(session)}`} .checked=${bulkSelected} @click=${(event: MouseEvent) => { event.stopPropagation(); }} @change=${() => { this.toggleSelected(session.id); }}>` : null}
         ${hasSubagents ? this.renderSubtreeToggle(row, scope) : null}
+        ${session.cwdMissing === true
+          ? html`
+          <div class="action-main cwd-missing-row" title=${session.path}>
+            <span class="action-name-line"><span class="action-name" dir="auto">${this.renderRowMarker(row)}${sessionLabel(session)}</span><span class="cwd-gone" title="This session's folder no longer exists">folder gone</span></span><small>${this.renderSessionMetaPrefix(session, status, activity)}${this.renderSessionMetaPrefixDetail(session)}${String(session.messageCount)} messages</small>
+          </div>
+          `
+          : html`
         <button
           type="button"
           class="action-main ${selectionActive ? "selecting" : ""}"
@@ -431,9 +438,10 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
             this.activateSessionRow(session, scope);
           }}
         >
-          <span class="action-name-line"><span class="action-name" dir="auto">${this.renderRowMarker(row)}${sessionLabel(session)}</span>${session.cwdMissing === true ? html`<span class="cwd-gone" title="This session's folder no longer exists">folder gone</span>` : this.renderRowBadges(row)}</span><small>${this.renderSessionMetaPrefix(session, status, activity)}${this.renderSessionMetaPrefixDetail(session)}${String(session.messageCount)} messages</small>
+          <span class="action-name-line"><span class="action-name" dir="auto">${this.renderRowMarker(row)}${sessionLabel(session)}</span>${this.renderRowBadges(row)}</span><small>${this.renderSessionMetaPrefix(session, status, activity)}${this.renderSessionMetaPrefixDetail(session)}${String(session.messageCount)} messages</small>
           ${renderSessionRowIndicator(sessionRowIndicator(stateKind, unread))}
         </button>
+        `}
         <div class="action-menu">
           <button class="action-menu-toggle" title="Session actions" @click=${(event: MouseEvent) => { event.stopPropagation(); this.toggleMenu(session.id, event.currentTarget); }}>⋯</button>
           ${this.openMenuSessionId === session.id ? html`
@@ -742,6 +750,9 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .action-main .session-state { position: absolute; top: 50%; right: var(--pi-space-4); transform: translateY(-50%); }
     .action-name-line .action-name { flex: 1 1 auto; min-width: 0; }
     .cwd-gone { color: var(--pi-muted); font-size: var(--pi-text-2xs); border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-xs); padding: 0 var(--pi-space-2); }
+    /* A dead row is a resting fact, not a control: no hover/press/focus feedback, no pointer. (E2) */
+    .cwd-missing-row { cursor: default; }
+    @media (hover: hover) { .cwd-missing-row:hover { background: transparent; } }
     /* Badges must not sit inside the line-clamped title, or a long name hides them entirely. */
     .row-badges { flex: 0 0 auto; display: flex; align-items: flex-start; gap: var(--pi-space-2); }
     .row-badges .badge { margin-left: 0; white-space: nowrap; }
