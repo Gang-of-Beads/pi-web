@@ -436,6 +436,9 @@ export class AppNavigationPanel extends LitElement {
     button, [role="button"], input, select, summary { touch-action: manipulation; }
 
     :host { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+    /* Control chrome, not content: buttons and labels here are not copy targets. (T1/T3) */
+    :host, :host * { -webkit-user-select: none; user-select: none; }
+    :host textarea, :host input, :host [contenteditable] { -webkit-user-select: text; user-select: text; }
     :host([compact]) { flex: 1 1 auto; }
     .contributed-sections { padding-inline: var(--pi-reading-edge); }
     header { flex: 0 0 auto; box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: var(--pi-space-1) var(--pi-reading-edge); border-bottom: 1px solid var(--pi-border); }

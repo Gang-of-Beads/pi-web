@@ -58,6 +58,9 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
      because shell styles do not cross a component's shadow boundary. */
   button, [role="button"], input, select, summary { font: var(--pi-text-xs) var(--pi-font-ui); line-height: inherit; touch-action: manipulation; }
   :host { position: relative; z-index: 5; display: block; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); line-height: inherit; }
+    /* Control chrome, not content: buttons and labels here are not copy targets. (T1/T3) */
+    :host, :host * { -webkit-user-select: none; user-select: none; }
+    :host textarea, :host input, :host [contenteditable] { -webkit-user-select: text; user-select: text; }
   footer { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--pi-space-4); padding: var(--pi-space-6) var(--pi-chat-gutter); border-top: 1px solid var(--pi-border); max-width: var(--pi-chat-measure, 100%); margin-inline: auto; }
   /* Collapsed: one line that gives the screen back to whatever input is being
      used, and says what is still in the draft so it does not look lost. */

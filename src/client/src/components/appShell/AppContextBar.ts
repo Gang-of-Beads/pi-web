@@ -66,6 +66,9 @@ export class AppContextBar extends LitElement {
 
   static override styles = css`
     :host { position: relative; z-index: var(--pi-layer-sticky); flex: 0 0 auto; min-width: 0; }
+    /* Control chrome, not content: buttons and labels here are not copy targets. (T1/T3) */
+    :host, :host * { -webkit-user-select: none; user-select: none; }
+    :host textarea, :host input, :host [contenteditable] { -webkit-user-select: text; user-select: text; }
     /* The rail header and this bar sit either side of one vertical divider, so
        they share a height: 44px of control plus the 1px rule, measured 45 on
        the rail and 53 here before the padding was taken out of the equation. */
