@@ -29,6 +29,12 @@ export interface AppState {
   messagePageStart: number;
   messagePageEnd: number;
   messagePageTotal: number;
+  /**
+   * Transcript events parked while the in-memory span is bottom-trimmed
+   * (`messagePageEnd < messagePageTotal`): they extend the known gap instead
+   * of silently appending after it.
+   */
+  newerPendingCount: number;
   isLoadingEarlierMessages: boolean;
   /** True while the selected session's transcript is being read for the first time. */
   isLoadingTranscript: boolean;
@@ -232,6 +238,7 @@ export function initialAppState(): AppState {
     messagePageStart: 0,
     messagePageEnd: 0,
     messagePageTotal: 0,
+    newerPendingCount: 0,
     isLoadingEarlierMessages: false,
     isLoadingTranscript: false,
     sendingPrompts: {},

@@ -611,6 +611,9 @@ export class ChatView extends LitElement {
   @property({ type: Number }) messageEnd = 0;
   @property({ type: Number }) messageTotal = 0;
   @property({ type: Boolean }) hasMore = false;
+  /** True when the in-memory span is trimmed at the bottom: the tail lives beyond it. */
+  @property({ type: Boolean }) hasNewer = false;
+  @property({ type: Number }) newerCount = 0;
   @property({ type: Boolean }) loadingMore = false;
   /** True while this session's transcript is being read for the first time. */
   @property({ type: Boolean }) transcriptLoading = false;
@@ -648,6 +651,8 @@ export class ChatView extends LitElement {
   /** Take one queued message back into the composer, leaving the rest queued. */
   @property({ attribute: false }) onRecallQueuedMessage?: (message: QueuedSessionMessage) => void;
   @property({ attribute: false }) onLoadMore?: () => void;
+  /** Loads the live tail when the span is trimmed at the bottom. */
+  @property({ attribute: false }) onLoadNewer?: () => void;
   /** Puts the cursor in the composer, for the empty session's way forward. */
   @property({ attribute: false }) onFocusComposer?: () => void;
   @query(".chat") private chat?: HTMLDivElement;
@@ -1018,6 +1023,7 @@ export class ChatView extends LitElement {
               return this.renderMessage(group.message, group.index);
             },
           )}
+          ${this.renderNewerBoundary()}
           ${this.renderSessionActivity()}
           ${this.renderPendingMessages()}
           ${this.renderQueuedMessages()}
@@ -1633,6 +1639,15 @@ export class ChatView extends LitElement {
     const fallbackIndex = this.pinnedToBottom ? this.messageStart + this.messages.length - 1 : this.messageStart;
     const index = clampNumber(this.currentConversationIndex ?? fallbackIndex, 0, total - 1);
     return clampPercent((index / (total - 1)) * 100);
+  }
+
+  private renderNewerBoundary() {
+    if (!this.hasNewer || this.newerCount <= 0) return undefined;
+    return html`
+      <div class="history-boundary">
+        <button type="button" class="history-load-button" @click=${() => { this.onLoadNewer?.(); }}>Load ${String(this.newerCount)} newer message${this.newerCount === 1 ? "" : "s"}</button>
+      </div>
+    `;
   }
 
   private renderHistoryBoundary() {

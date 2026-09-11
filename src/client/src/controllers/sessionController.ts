@@ -245,7 +245,7 @@ export class SessionController {
     // session must not cancel the in-flight upload indicator of the session
     // that is still sending; the per-session entry is cleared by send()'s
     // finally block when the request settles.
-    this.setState({ selectedSession: undefined, messages: [], messagePageStart: 0, messagePageEnd: 0, messagePageTotal: 0, isLoadingEarlierMessages: false, isLoadingTranscript: transcriptLoadingAfter({ event: "selectionAbandoned" }), status: undefined, activity: undefined, pendingAsk: undefined, pendingDialogs: [], closedDialogs: [], dismissedDialogIds: [], availableThinkingLevels: [], treeDialog: undefined });
+    this.setState({ selectedSession: undefined, messages: [], messagePageStart: 0, messagePageEnd: 0, messagePageTotal: 0, newerPendingCount: 0, isLoadingEarlierMessages: false, isLoadingTranscript: transcriptLoadingAfter({ event: "selectionAbandoned" }), status: undefined, activity: undefined, pendingAsk: undefined, pendingDialogs: [], closedDialogs: [], dismissedDialogIds: [], availableThinkingLevels: [], treeDialog: undefined });
   }
 
   deselectSession(options?: { forgetRememberedSelection?: boolean | undefined; updateUrl?: boolean | undefined }) {
@@ -344,6 +344,7 @@ export class SessionController {
       closedDialogs: [],
       dismissedDialogIds: [],
       availableThinkingLevels: [],
+      newerPendingCount: 0,
     });
     // The seeded list is the cache's best guess; the workspace's own listing
     // replaces it. Race-guarded inside against a newer selection.
@@ -446,6 +447,27 @@ export class SessionController {
       if (this.getState().selectedSession?.id !== session.id) return;
       const history = this.transcripts.mergeHistory(this.sessionCacheKey(session.id), page);
       this.setState(history);
+    } catch (error) {
+      this.setState(errorNoticePatch(error));
+    } finally {
+      if (this.getState().selectedSession?.id === session.id) this.setState({ isLoadingEarlierMessages: false });
+    }
+  }
+
+  /**
+   * Load the live tail when the reader is parked behind a bottom-trimmed
+   * span: the newest page replaces the window, the top rows the reader had
+   * reload from the persisted cache if they scroll back up.
+   */
+  async loadNewerMessages() {
+    const state = this.getState();
+    const session = state.selectedSession;
+    if (!session || state.isLoadingEarlierMessages || state.messagePageEnd >= state.messagePageTotal) return;
+    this.setState({ isLoadingEarlierMessages: true });
+    try {
+      const page = await this.api.messages(session, { limit: MESSAGE_PAGE_SIZE }, selectedMachineId(this.getState()));
+      if (this.getState().selectedSession?.id !== session.id) return;
+      this.setState({ ...this.transcripts.mergeHistory(this.sessionCacheKey(session.id), page), newerPendingCount: 0 });
     } catch (error) {
       this.setState(errorNoticePatch(error));
     } finally {
@@ -1646,6 +1668,7 @@ export class SessionController {
       messagePageStart: 0,
       messagePageEnd: 0,
       messagePageTotal: 0,
+      newerPendingCount: 0,
       isLoadingEarlierMessages: false,
       // A session this browser has only just asked for has no history to read,
       // and this path advances the selection counter, so a read still in flight
@@ -2227,9 +2250,16 @@ export class SessionController {
       this.dialogScope.observe(event, () => { this.applyClosedDialog(event.dialogId, event.reason, event.answer); });
       return;
     }
-    const transcript = this.transcripts.applyLiveEvent(this.getState().messages, event);
-    if (transcript) {
-      this.setState({ messages: transcript });
+    const view = this.getState();
+    const transcriptEvent = this.transcripts.applyLiveEvent(view.messages, event);
+    if (transcriptEvent) {
+      if (view.messagePageEnd < view.messagePageTotal) {
+        // The tail is trimmed: appending here would land new rows after an
+        // invisible gap. Park the event on the "newer messages" chip instead.
+        this.setState({ newerPendingCount: view.newerPendingCount + 1 });
+      } else {
+        this.setState({ messages: transcriptEvent });
+      }
     } else if (event.type === "session.name") {
       this.applySessionName(event.sessionId, event.name);
     }
