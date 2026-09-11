@@ -173,7 +173,8 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
     .drawer-tab { min-height: var(--pi-control-height-touch); }
     .drawer-collapse { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); }
   }
-  .drawer-control:focus-visible { background: var(--pi-selection-bg); color: var(--pi-text-bright); }
+  .drawer-control:focus-visible { background: var(--pi-selection-bg); color: var(--pi-text-bright); 
+  @media (pointer: coarse) { .drawer-control:active { background: var(--pi-surface-hover); } }}
   @media (hover: hover) { .drawer-control:hover { background: var(--pi-selection-bg); color: var(--pi-text-bright); } }
   .drawer-control:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
   .drawer-control:disabled { opacity: var(--pi-disabled-opacity); background: transparent; cursor: default; }
@@ -364,7 +365,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .history-boundary small { font-size: inherit; color: var(--pi-muted); }
   /* Centred in the room the transcript is not using, so the words land where
      the reader is already looking rather than clinging to the top edge. */
-  .empty-session { display: grid; justify-items: center; align-content: center; gap: var(--pi-space-5); margin: auto; min-height: 100%; max-width: var(--pi-chat-measure); padding: var(--pi-space-7); color: var(--pi-muted); text-align: center; }
+  .empty-session { display: grid; box-sizing: border-box; justify-items: center; align-content: center; gap: var(--pi-space-5); margin: auto; min-height: 100%; max-width: var(--pi-chat-measure); padding: var(--pi-space-7); color: var(--pi-muted); text-align: center; }
   .empty-session p { margin: 0; }
   .empty-session button { box-sizing: border-box; min-height: var(--pi-control-height-touch); padding: var(--pi-space-3) var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; }
   .empty-session.transcript-failed .failure-detail { color: var(--pi-muted); font-size: var(--pi-text-sm); white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -376,16 +377,16 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      arc the border uses, in one rasterization. Every previous fix had this
      element guess the card's inner curve, and the guess broke at the phone's
      fractional device pixel ratio - five reports of the same corners. */
-  .msg > .msg-header { position: sticky; top: var(--pi-chat-sticky-top); z-index: 4; margin: calc(-1 * var(--pi-space-6)) calc(-1 * var(--pi-space-6)) var(--pi-space-3); padding: var(--pi-space-1) var(--pi-space-5); border-bottom: 1px solid color-mix(in srgb, var(--pi-border-muted) 35%, transparent); background: var(--pi-surface-card); box-shadow: var(--pi-elevation-2); }
-  .msg.user > .msg-header { border-bottom-color: color-mix(in srgb, var(--pi-accent-border) 35%, transparent); background: var(--pi-selection-bg); }
+  .msg > .msg-header { position: sticky; top: var(--pi-chat-sticky-top); z-index: 4; margin: calc(-1 * var(--pi-space-6)) calc(-1 * var(--pi-space-6)) var(--pi-space-3); padding: var(--pi-space-1) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-surface-card); box-shadow: var(--pi-elevation-2); }
+  .msg.user > .msg-header { border-bottom-color: var(--pi-border-muted); background: var(--pi-selection-bg); }
   .msg.assistant > .msg-header .label, .msg.tool-image-output > .msg-header .label { color: var(--pi-text-secondary); }
   /* The role label sits on the selection fill; accent-on-selection measured
      3.93:1, the weakest of the three roles, on the one that says "you". */
   .msg.user > .msg-header .label { color: var(--pi-text); font-weight: var(--pi-weight-semibold); }
-  .msg.tool > .msg-header { border-bottom-color: color-mix(in srgb, var(--pi-warning-border) 35%, transparent); background: var(--pi-warning-surface); }
-  .msg.bash > .msg-header { border-bottom-color: color-mix(in srgb, var(--pi-success) 35%, transparent); background: var(--pi-success-bg); }
-  .msg.skill > .msg-header { border-bottom-color: color-mix(in srgb, var(--pi-purple-border) 35%, transparent); background: var(--pi-purple-surface); }
-  .group-msg > .msg-header { position: sticky; top: var(--pi-chat-sticky-top); z-index: 4; margin: calc(-1 * var(--pi-space-5)) 0 var(--pi-space-4); padding: var(--pi-space-4) 0 var(--pi-space-3); border-bottom: 1px solid color-mix(in srgb, var(--pi-border-muted) 35%, transparent); background: var(--pi-bg); }
+  .msg.tool > .msg-header { border-bottom-color: var(--pi-border-muted); background: var(--pi-warning-surface); }
+  .msg.bash > .msg-header { border-bottom-color: var(--pi-border-muted); background: var(--pi-success-bg); }
+  .msg.skill > .msg-header { border-bottom-color: var(--pi-border-muted); background: var(--pi-purple-surface); }
+  .group-msg > .msg-header { position: sticky; top: var(--pi-chat-sticky-top); z-index: 4; margin: calc(-1 * var(--pi-space-5)) 0 var(--pi-space-4); padding: var(--pi-space-4) 0 var(--pi-space-3); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); }
   .msg-header-trailing { min-width: 0; flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: flex-end; gap: var(--pi-space-4); }
   .msg-actions { flex: 0 0 auto; display: inline-flex; gap: var(--pi-space-3); opacity: 0; transition: opacity var(--pi-motion-fast) var(--pi-ease); }  .msg.user .msg-action, .msg.user .msg-meta { color: var(--pi-text-secondary, var(--pi-text)); }
   .msg-action { position: relative; display: inline-grid; place-items: center; width: 24px; height: 24px; box-sizing: border-box; border: 0; border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-muted); padding: 0; font: var(--pi-text-base) var(--pi-font-ui); line-height: inherit; line-height: 1; cursor: pointer; }

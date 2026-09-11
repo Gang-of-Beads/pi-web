@@ -815,7 +815,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
       .action-menu-toggle { min-width: var(--pi-control-height-touch, 44px); min-height: var(--pi-control-height-touch, 44px); }
       /* Touch has no hover: the borderless controls answer a press with the
          shared surface step, the only pressed state a flat theme can show. */
-      .action-menu-toggle:active, .cleanup-entry:active, .bulk-select-entry:active { background: var(--pi-surface-hover); }
+      .action-menu-toggle:active, .cleanup-entry:active, .bulk-select-entry:active, .action-main:active { background: var(--pi-surface-hover); }
       .bulk-row button { min-height: var(--pi-control-height-touch, 44px); }
     }
   `];

@@ -493,7 +493,7 @@ export class AskUserCard extends LitElement {
       gap: var(--pi-space-6);
       min-height: 22px;
       padding: var(--pi-space-4) var(--pi-space-7) var(--pi-space-3);
-      border-bottom: 1px solid color-mix(in srgb, var(--pi-border-muted) 35%, transparent);
+      border-bottom: 1px solid var(--pi-border-muted);
       background: var(--pi-surface-raised);
       box-shadow: var(--pi-elevation-2);
     }
