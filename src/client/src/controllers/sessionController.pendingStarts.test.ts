@@ -125,6 +125,7 @@ describe("SessionController pending starts", () => {
       ...defaultApi,
       startSession: () => startRequest.promise,
       sessions: () => Promise.resolve([oldSession]),
+      sessionsIfChanged: () => Promise.resolve({ revision: "rev-1", sessions: [oldSession] }),
       messages: () => Promise.resolve(emptyPage),
       status: (session) => Promise.resolve(status(sessionLookupId(session))),
     };

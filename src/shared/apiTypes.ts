@@ -439,6 +439,15 @@ export interface SessionUnreadCatalogSnapshot {
 }
 
 /**
+ * The answer to a listing refresh that echoed back a stored revision:
+ * either the payload with its current revision, or a cheap verdict that
+ * nothing changed and the reader's rows already are the truth.
+ */
+export type SessionsRevisionResponse =
+  | { revision: string; unchanged: true }
+  | { revision: string; unchanged?: false; sessions: SessionInfo[] };
+
+/**
  * What the daemon did with an acknowledgement.
  *
  * The snapshot alone cannot say: a refused acknowledgement and an accepted one

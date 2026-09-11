@@ -1305,6 +1305,57 @@ describe("session routes", () => {
     }
   });
 
+  it("answers a revision echo with the envelope or the unchanged verdict", async () => {
+    const routeApp = Fastify({ logger: false });
+    await routeApp.register(fastifyWebsocket);
+    const eventHub = new SessionEventHub();
+    const routeService = new CapturingRouteSessionService();
+    routeService.listResponse = [{
+      id: "session-1", path: "/tmp/session-1.jsonl", cwd: resolve("/repo"), created: "2026-06-25T00:00:00.000Z",
+      modified: "2026-06-25T00:00:00.000Z", messageCount: 0, firstMessage: "",
+    }];
+    registerSessionRoutes(routeApp, routeService, eventHub);
+
+    try {
+      const requestCwd = resolve("/repo");
+      const initial = await routeApp.inject({ method: "GET", url: `/sessions?cwd=${encodeURIComponent(requestCwd)}&revision=init` });
+      expect(initial.statusCode).toBe(200);
+      const initialBody: unknown = initial.json();
+      if (!isRecord(initialBody)) throw new Error("initial listing was not an object");
+      const initialSessions = initialBody["sessions"];
+      if (!Array.isArray(initialSessions)) throw new Error("initial listing had no sessions array");
+      expect(initialSessions).toHaveLength(1);
+      const firstRevision = initialBody["revision"];
+      if (typeof firstRevision !== "string") throw new Error("initial listing had no revision");
+      expect(firstRevision).toMatch(/^[0-9a-f]{8}$/);
+
+      const unchanged = await routeApp.inject({ method: "GET", url: `/sessions?cwd=${encodeURIComponent(requestCwd)}&revision=${firstRevision}` });
+      expect(unchanged.statusCode).toBe(200);
+      expect(unchanged.json()).toEqual({ revision: firstRevision, unchanged: true });
+
+      const base = routeService.listResponse.at(0);
+      if (base === undefined) throw new Error("seed row missing");
+      routeService.listResponse = [...routeService.listResponse, { ...base, id: "session-2", path: "/tmp/session-2.jsonl" }];
+      const changed = await routeApp.inject({ method: "GET", url: `/sessions?cwd=${encodeURIComponent(requestCwd)}&revision=${firstRevision}` });
+      expect(changed.statusCode).toBe(200);
+      const changedBody: unknown = changed.json();
+      if (!isRecord(changedBody)) throw new Error("changed listing was not an object");
+      const changedSessions = changedBody["sessions"];
+      if (!Array.isArray(changedSessions)) throw new Error("changed listing had no sessions array");
+      expect(changedSessions).toHaveLength(2);
+      const changedRevision = changedBody["revision"];
+      if (typeof changedRevision !== "string") throw new Error("changed listing had no revision");
+      expect(changedRevision).not.toBe(firstRevision);
+
+      const bare = await routeApp.inject({ method: "GET", url: `/sessions?cwd=${encodeURIComponent(requestCwd)}` });
+      expect(bare.statusCode).toBe(200);
+      expect(Array.isArray(bare.json())).toBe(true);
+    } finally {
+      await routeService.dispose();
+      await routeApp.close();
+    }
+  });
+
   it("forwards a create's optional correlation token alongside the normalized cwd", async () => {
     const routeApp = Fastify({ logger: false });
     await routeApp.register(fastifyWebsocket);
@@ -1356,6 +1407,7 @@ describe("session routes", () => {
 
 class CapturingRouteSessionService implements SessionRouteService {
   readonly calls: unknown[] = [];
+  listResponse: readonly SessionInfo[] = [];
   operationOutcomes(_sessionId: string, operationIds: readonly string[]): Record<string, string> {
     return Object.fromEntries(operationIds.map((operationId) => [operationId, "succeeded"]));
   }
@@ -1485,7 +1537,7 @@ class CapturingRouteSessionService implements SessionRouteService {
     return notificationSnapshot(ref);
   }
 
-  list(): never { throw unusedRouteMethod("list"); }
+  list(): Promise<ClientSession[]> { return Promise.resolve([...this.listResponse]); }
 
   start(cwd: string, options?: { startupToken?: string }): Promise<ClientSession> {
     this.startCalls.push({ cwd, startupToken: options?.startupToken });
@@ -1728,6 +1780,10 @@ function idleStatus(lookup: SessionRouteRef): SessionStatus {
     tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
     cost: 0,
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function unusedRouteMethod(name: string): Error {

@@ -158,6 +158,9 @@ interface SelectedSessionRefreshTarget {
   selectionSeq: number;
 }
 
+/** Last raw-listing revision per machine|workspace, echoed by background refreshes. */
+const sessionsListRevisionByWorkspace = new Map<string, string>();
+
 export class SessionController {
   private readonly socket: SessionEventSocket;
   private readonly api: typeof defaultApi;
@@ -958,7 +961,19 @@ export class SessionController {
     const workspace = this.getState().selectedWorkspace;
     if (workspace === undefined) return;
     try {
-      const listedSessions = mergeCachedNewSessions(workspace.path, await this.api.sessions(workspace.path, machineId), machineId)
+      const revisionKey = `${machineId}|${workspace.path}`;
+      // "init" never matches a payload hash, so a first load pays one request
+      // and learns the revision alongside the payload; later refreshes echo it.
+      const revisionResponse = await this.api.sessionsIfChanged(workspace.path, sessionsListRevisionByWorkspace.get(revisionKey) ?? "init", machineId);
+      if (revisionResponse.unchanged === true) {
+        // The raw listing behind the stored revision is byte-identical: the
+        // rows already on screen (with their client-side merges and stamps)
+        // remain the truth. Only a dropped load state comes back.
+        if (this.getState().sessionsLoad !== "loaded") this.setState({ sessionsLoad: "loaded" });
+        return;
+      }
+      sessionsListRevisionByWorkspace.set(revisionKey, revisionResponse.revision);
+      const listedSessions = mergeCachedNewSessions(workspace.path, revisionResponse.sessions, machineId)
         .filter((session) => !this.isSuppressedCreatedSession(session, machineId));
       if (selectedMachineId(this.getState()) !== machineId || this.getState().selectedWorkspace?.id !== workspace.id) return;
       const sessions = this.mergePendingStartSessions(workspace.path, listedSessions, machineId);

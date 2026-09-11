@@ -210,9 +210,9 @@ describe("SessionController archive and cleanup", () => {
     };
     const api: typeof defaultApi = {
       ...defaultApi,
-      sessions: (cwd, machineId) => {
+      sessionsIfChanged: (cwd, _revision, machineId) => {
         sessionsCalls.push({ cwd, machineId: machineId ?? "local" });
-        return Promise.resolve([refreshedArchived, nextSession]);
+        return Promise.resolve({ revision: `rev-${String(sessionsCalls.length)}`, sessions: [refreshedArchived, nextSession] });
       },
       messages: () => Promise.resolve(emptyPage),
       status: (session) => Promise.resolve(status(sessionLookupId(session))),

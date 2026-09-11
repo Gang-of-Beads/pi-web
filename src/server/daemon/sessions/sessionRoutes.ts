@@ -6,9 +6,15 @@ import type { SessionEventHub } from "../realtime/sessionEventHub.js";
 import type { SessionRouteRef, SessionRouteService } from "./sessionService.js";
 import { clearInterruptedRuns, readInterruptedRuns } from "./interruptedRunStore.js";
 import { normalizeSessionCleanupRequest } from "./sessionCleanup.js";
+import { payloadRevision } from "./payloadRevision.js";
 
 interface SessionQuery {
   cwd?: string;
+}
+
+interface SessionsListQuery extends SessionQuery {
+  /** A revision the client stored from a previous listing: matching answers unchanged. */
+  revision?: string;
 }
 
 interface StreamSnapshotQuery extends SessionQuery {
@@ -41,10 +47,18 @@ const MAX_NOTIFICATION_DAEMON_ID_LENGTH = 512;
 const MAX_NOTIFICATION_ID_LENGTH = 1024;
 
 export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRouteService, eventHub: SessionEventHub, prefix = ""): void {
-  app.get<{ Querystring: SessionQuery }>(`${prefix}/sessions`, async (request, reply) => {
+  app.get<{ Querystring: SessionsListQuery }>(`${prefix}/sessions`, async (request, reply) => {
     if (request.query.cwd === undefined || request.query.cwd === "") return reply.code(400).send({ error: "cwd query parameter is required" });
     try {
-      return await sessions.list(normalizeRequestCwd(request.query.cwd));
+      const list = await sessions.list(normalizeRequestCwd(request.query.cwd));
+      // The envelope only exists when the client opted in with a revision;
+      // consumers reading the bare array keep today's shape.
+      if (request.query.revision !== undefined && request.query.revision !== "") {
+        const revision = payloadRevision(list);
+        if (request.query.revision === revision) return await reply.send({ revision, unchanged: true });
+        return await reply.send({ revision, sessions: list });
+      }
+      return await reply.send(list);
     } catch (error) {
       return reply.code(400).send({ error: errorMessage(error) });
     }
