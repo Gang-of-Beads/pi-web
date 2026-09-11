@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 import * as pty from "node-pty";
+import { statSync } from "node:fs";
 import { ensureSpawnHelperExecutable, spawnHelperFailureReason } from "./nodePtySpawnHelper.js";
 import type { TerminalCommandRun, TerminalCommandRunFilter, TerminalCommandRunStatus, TerminalUiEvent } from "../../../shared/apiTypes.js";
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
@@ -190,6 +191,13 @@ export class TerminalService {
 
   private createTerminal(options: { id?: string; cwd: string; name?: string; cols?: number; rows?: number; shellArgs: string[]; commandRunId?: string }): TerminalInfo {
     if (options.cwd === "") throw new Error("cwd is required");
+    // Validate before spawning: a pty in a missing directory starts a shell that
+    // chdir-fails and exits code 1 instantly - a dead tab with no explanation.
+    try {
+      if (!statSync(options.cwd).isDirectory()) throw new Error("not a directory");
+    } catch {
+      throw new Error(`Workspace folder does not exist: ${options.cwd}`);
+    }
     const id = options.id ?? randomUUID();
     const createdAt = new Date().toISOString();
     const shell = process.env["SHELL"] ?? "/bin/bash";
