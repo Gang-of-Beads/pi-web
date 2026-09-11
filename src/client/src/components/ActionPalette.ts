@@ -111,14 +111,15 @@ export class ActionPalette extends LitElement {
     header button { box-sizing: border-box; display: grid; place-items: center; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); line-height: 1; color: var(--pi-muted); font-size: var(--pi-text-xl); padding: var(--pi-space-1) var(--pi-space-4); }
     @media (pointer: coarse) { header button { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); } }
     .options { flex: 1 1 auto; min-height: 0; overflow: auto; }
-    .options button { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--pi-space-2) var(--pi-space-6); box-sizing: border-box; width: 100%; padding: var(--pi-space-5) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); text-align: left; }
+    .options button { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--pi-space-2) var(--pi-space-6); box-sizing: border-box; width: 100%; padding: var(--pi-space-5) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); text-align: left; 
+    .options button small { font-size: var(--pi-text-2xs); }
     .options button.selected { background: var(--pi-selection-bg); }
     @media (hover: hover) { .options button:hover:not(:disabled) { background: var(--pi-selection-bg); } }
     .options button:disabled { cursor: not-allowed; opacity: var(--pi-disabled-opacity); }
     .options button.disabled.selected { background: color-mix(in srgb, var(--pi-selection-bg) 55%, transparent); }
     .main { min-width: 0; }
     strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    small { display: block; color: var(--pi-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    small { display: block; color: var(--pi-muted); font-size: var(--pi-text-2xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .disabled-reason { color: var(--pi-warning); }
     .group { grid-column: 1 / -1; font-size: var(--pi-text-xs); }
     kbd { align-self: center; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); padding: var(--pi-space-1) var(--pi-space-3); font: var(--pi-text-xs) var(--pi-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); line-height: inherit; white-space: nowrap; }

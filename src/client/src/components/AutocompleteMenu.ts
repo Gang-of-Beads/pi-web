@@ -11,7 +11,7 @@ const autocompleteStyles = css`
   button.selected { background: var(--pi-selection-bg); }
   @media (hover: hover) { button:hover { background: var(--pi-selection-bg); } }
   span { color: var(--pi-muted); font-size: var(--pi-text-xs); }
-  small { grid-column: 1 / -1; color: var(--pi-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  small { grid-column: 1 / -1; font-size: var(--pi-text-2xs); color: var(--pi-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 `;
 
 @customElement("autocomplete-menu")

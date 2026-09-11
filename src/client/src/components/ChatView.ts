@@ -280,6 +280,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .msg.assistant, .msg.tool-image-output { background: var(--pi-surface); }
   .custom-card { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); padding: var(--pi-space-5); background: var(--pi-surface); overflow: hidden; overflow: clip; display: grid; gap: var(--pi-space-3); }
   .custom-card-unknown { color: var(--pi-muted); }
+  .custom-card-unknown small, .part > small { font-size: var(--pi-text-2xs); }
   .msg.user { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
   /* Held by the server, not yet read: the same warning colour the queue panel
      uses, so "waiting" looks the same wherever it appears. It reverts to the
