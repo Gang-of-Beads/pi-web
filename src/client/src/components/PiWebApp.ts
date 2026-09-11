@@ -788,9 +788,12 @@ export class PiWebApp extends LitElement {
       const adoptEmpty = options.adoptEmpty ?? !this.interruptedRunsBootReadByMachine.has(machineId);
       const plan = interruptedRunsReadPlan(ids, adoptEmpty);
       if (plan.failed) {
-        // A poll never replaces a banner the reader may still be acting on;
-        // the unknown state is only worth announcing onto a quiet screen.
-        if (this.state.error === "") {
+        // A failed read is only worth a banner AFTER a successful read on the
+        // same machine: that is when markers may sit unread on the daemon and
+        // the reader has something to lose. At cold boot the record is simply
+        // not read yet - the next reconnect's read delivers it without a
+        // scary banner over an otherwise empty screen.
+        if (this.interruptedRunsBootReadByMachine.has(machineId) && this.state.error === "") {
           this.setState(noticePatch(noticeForReader(INTERRUPTED_RUNS_UNKNOWN_MESSAGE, machineId)));
         }
         return;
