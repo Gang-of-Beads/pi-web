@@ -1540,11 +1540,64 @@ export class SessionController {
     });
   }
 
+  /**
+   * Reload by replaying committed history from the persisted watermark: the
+   * client cites the seq its cached page is current through and the daemon's
+   * ring answers with just the frames after it. A watermark older than the
+   * ring, a missing cached page, or any replay failure falls back to the full
+   * fetch, which restamps a fresh watermark. Only offered when the cached span
+   * reaches the transcript bottom - a trimmed tail replays into a gap.
+   */
+  private async refreshByDeltaReplay(target: SelectedSessionRefreshTarget, key: string): Promise<boolean> {
+    const watermark = this.transcripts.watermark(key);
+    if (watermark === undefined) return false;
+    const cached = this.transcripts.cachedView(key);
+    if (cached.messagePageEnd < cached.messagePageTotal) return false;
+    try {
+      // Status rides along only once the verdict is replay: a resync or a
+      // failed sync falls through to the full fetch, which reads status
+      // anyway, and an extra read here would double-count against repair
+      // flows that assert exactly one authoritative read.
+      const sync = await this.api.streamSync(target.session, watermark, target.machineId).catch(() => undefined);
+      if (!this.isCurrentRefreshTarget(target)) return true;
+      if (sync?.kind !== "replay") return false;
+      const status = await this.api.status(target.session, target.machineId);
+      if (!this.isCurrentRefreshTarget(target)) return true;
+      let messages = cached.messages;
+      let lastSeq = watermark;
+      for (const raw of sync.frames) {
+        let parsedFrame: unknown;
+        try {
+          parsedFrame = JSON.parse(raw);
+        } catch {
+          continue;
+        }
+        const frame = parseSessionSocketEvent(parsedFrame);
+        if (frame === undefined) continue;
+        const next = this.transcripts.applyLiveEvent(messages, frame);
+        if (next !== undefined) messages = next;
+        if (frame.seq !== undefined) lastSeq = Math.max(lastSeq, frame.seq);
+      }
+      this.streamWatermark = { sessionId: target.session.id, seq: lastSeq };
+      this.setState({
+        messages,
+        status,
+        activity: this.getState().sessionActivities[target.session.id],
+        newerPendingCount: 0,
+      });
+      this.applyStatus(status);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   private requestSelectedSessionRefresh(target: SelectedSessionRefreshTarget): Promise<void> {
     const key = machineSessionKey(target.machineId, target.session.id);
     return this.selectedSessionRefreshes.request(key, async () => {
       if (!this.isCurrentRefreshTarget(target)) return;
       this.flushPendingUpdates();
+      if (this.transcripts.watermark(key) !== undefined && await this.refreshByDeltaReplay(target, key)) return;
       const [page, status, streamSnapshot] = await Promise.all([
         this.api.messages(target.session, { limit: MESSAGE_PAGE_SIZE }, target.machineId),
         this.api.status(target.session, target.machineId),
@@ -1563,6 +1616,9 @@ export class SessionController {
       const carried = carryUnsettledForward(this.getState().messages, history.messages);
       const messages = this.transcripts.seedStreamingPartial(carried, streamSnapshot.partial);
       this.streamWatermark = { sessionId: target.session.id, seq: streamSnapshot.seq };
+      // The page just read is current through this seq: a later reload can
+      // replay frames after it instead of re-fetching the page.
+      this.transcripts.setWatermark(key, streamSnapshot.seq);
       this.setState({
         ...history,
         messages,
@@ -2432,9 +2488,16 @@ export class SessionController {
     if (this.pendingTranscriptEvents.length > 0) {
       const events = this.pendingTranscriptEvents;
       this.pendingTranscriptEvents = [];
-      let messages = this.getState().messages;
-      for (const event of events) messages = this.transcripts.applyLiveEvent(messages, event) ?? messages;
-      if (messages !== this.getState().messages) this.setState({ messages });
+      const view = this.getState();
+      if (view.messagePageEnd < view.messagePageTotal) {
+        // The tail is trimmed: batch-appending would land rows after an
+        // invisible gap. Park the batch on the "load newer" chip instead.
+        this.setState({ newerPendingCount: view.newerPendingCount + events.length });
+      } else {
+        let messages = view.messages;
+        for (const event of events) messages = this.transcripts.applyLiveEvent(messages, event) ?? messages;
+        if (messages !== view.messages) this.setState({ messages });
+      }
     }
     if (this.pendingActivityBySession.size > 0) {
       const activities = Array.from(this.pendingActivityBySession.values());

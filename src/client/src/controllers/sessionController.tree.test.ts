@@ -103,6 +103,7 @@ describe("SessionController session tree navigation", () => {
         return Promise.resolve({ ...status(oldSession.id), messageCount: statusCalls === 1 ? 1 : 2 });
       },
       streamSnapshot: () => Promise.resolve({ seq: 0, partial: null }),
+      streamSync: () => Promise.resolve({ kind: "resync", sinceSeq: 0 }),
       thinkingLevels: () => Promise.resolve({ levels: [] }),
     };
     const transcripts = new ChatTranscriptStore({
@@ -123,7 +124,9 @@ describe("SessionController session tree navigation", () => {
     socket.emit({ type: "message.append", message: { role: "assistant", content: "stale live event" }, seq: 1 });
 
     const oldRefresh = controller.refreshSelectedSession();
-    await Promise.resolve();
+    // The refresh first offers the cached watermark to the delta replay
+    // (answered resync here) before falling back to the full fetch.
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
     expect(messageCalls).toBe(2);
 
     const navigation = controller.navigateTree("root", { mode: "custom", instructions: "focus on the prompt" });

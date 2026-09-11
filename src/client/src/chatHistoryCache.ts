@@ -214,3 +214,42 @@ function isNormalizedChatLine(value: unknown): boolean {
     && typeof value.role === "string"
     && Array.isArray(value.parts);
 }
+
+const WATERMARK_PREFIX = "pi-web:chat-watermark:v1:";
+
+function watermarkKey(sessionId: string): string {
+  return `${WATERMARK_PREFIX}${sessionId}`;
+}
+
+/**
+ * The stream seq of the snapshot a cached page was read against. The delta
+ * replay path replays frames after this seq onto the cached page; the pair
+ * (page, watermark) is only meaningful together, so a missing page makes the
+ * watermark ignorable.
+ */
+export function readChatHistoryWatermark(sessionId: string, storage: HistoryStorage = browserStorage()): number | undefined {
+  try {
+    const raw = storage.getItem(watermarkKey(sessionId));
+    if (raw === null || raw === "") return undefined;
+    const parsed: unknown = JSON.parse(raw);
+    return typeof parsed === "number" && Number.isFinite(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function writeChatHistoryWatermark(sessionId: string, seq: number, storage: HistoryStorage = browserStorage()): void {
+  try {
+    storage.setItem(watermarkKey(sessionId), JSON.stringify(seq));
+  } catch {
+    // A watermark the storage refuses is a lost optimization, not a failure.
+  }
+}
+
+export function removeChatHistoryWatermark(sessionId: string, storage: HistoryStorage = browserStorage()): void {
+  try {
+    storage.removeItem(watermarkKey(sessionId));
+  } catch {
+    // Ignore storage access errors; cache may simply be unavailable.
+  }
+}

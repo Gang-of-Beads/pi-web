@@ -1,6 +1,15 @@
 import { normalizeMessages } from "./chatMessages";
 import { applyTranscriptEvent, seedStreamingPartial } from "./chatTranscript";
-import { mergeChatHistory, readChatHistoryCache, removeChatHistoryCache, writeChatHistoryCache, type RawMessagePage } from "./chatHistoryCache";
+import {
+  mergeChatHistory,
+  readChatHistoryCache,
+  readChatHistoryWatermark,
+  removeChatHistoryCache,
+  removeChatHistoryWatermark,
+  writeChatHistoryCache,
+  writeChatHistoryWatermark,
+  type RawMessagePage,
+} from "./chatHistoryCache";
 import type { ChatLine } from "./components/shared";
 import type { SessionUiEvent } from "./sessionSocket";
 
@@ -26,16 +35,23 @@ export interface ChatHistoryCacheAdapter {
   read(sessionId: string): RawMessagePage | undefined;
   write(sessionId: string, page: RawMessagePage): void;
   remove?(sessionId: string): void;
+  readWatermark?(sessionId: string): number | undefined;
+  writeWatermark?(sessionId: string, seq: number): void;
+  removeWatermark?(sessionId: string): void;
 }
 
 const browserChatHistoryCache: ChatHistoryCacheAdapter = {
   read: readChatHistoryCache,
   write: writeChatHistoryCache,
   remove: removeChatHistoryCache,
+  readWatermark: readChatHistoryWatermark,
+  writeWatermark: writeChatHistoryWatermark,
+  removeWatermark: removeChatHistoryWatermark,
 };
 
 export class ChatTranscriptStore {
   private readonly rawHistoryPages = new Map<string, RawMessagePage>();
+  private readonly watermarkBySession = new Map<string, number>();
   private readonly maxInMemoryTranscripts: number;
 
   constructor(
@@ -79,7 +95,27 @@ export class ChatTranscriptStore {
 
   discard(sessionId: string): void {
     this.rawHistoryPages.delete(sessionId);
+    this.watermarkBySession.delete(sessionId);
     this.cache.remove?.(sessionId);
+    this.cache.removeWatermark?.(sessionId);
+  }
+
+  /**
+   * Record the stream seq the current cached page was read against. The delta
+   * replay path later asks the daemon for frames after this seq instead of
+   * re-fetching the page.
+   */
+  setWatermark(sessionId: string, seq: number): void {
+    this.watermarkBySession.set(sessionId, seq);
+    this.cache.writeWatermark?.(sessionId, seq);
+  }
+
+  watermark(sessionId: string): number | undefined {
+    const inMemory = this.watermarkBySession.get(sessionId);
+    if (inMemory !== undefined) return inMemory;
+    const persisted = this.cache.readWatermark?.(sessionId);
+    if (persisted !== undefined) this.watermarkBySession.set(sessionId, persisted);
+    return persisted;
   }
 
   rawHistoryPage(sessionId: string): RawMessagePage | undefined {
