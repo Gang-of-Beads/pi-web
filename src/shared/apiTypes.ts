@@ -396,6 +396,9 @@ export interface Workspace {
   readonly path: string;
   readonly label: string;
   readonly isMain: boolean;
+  /** True when the workspace's folder is gone: the listing stamped it, and
+   * sessions or terminals can never start inside it. */
+  readonly cwdMissing?: boolean;
   readonly provider?: WorkspaceProviderMetadata;
   readonly removal?: WorkspaceRemovalHostState;
   /** Workspace-effective project/global settings needed by workspace UI features. Always present on current server workspace responses. */

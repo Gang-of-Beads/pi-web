@@ -265,6 +265,13 @@ export class SessionController {
   async startSession() {
     const workspace = this.getState().selectedWorkspace;
     if (!workspace) return;
+    // A dead workspace can never host a session: failing fast keeps the
+    // phantom "New session" row from existing at all, instead of creating a
+    // pending start whose every retry repeats the daemon's folder error.
+    if (workspace.cwdMissing === true) {
+      this.setState(noticePatch(noticeForReader(`This workspace's folder no longer exists, so a new session cannot start here.`)));
+      return;
+    }
     const machineId = selectedMachineId(this.getState());
     const pending = this.createPendingSessionStart(workspace, machineId);
     this.pendingSessionStarts.set(pending.tempId, pending);

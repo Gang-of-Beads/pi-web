@@ -579,6 +579,9 @@ export interface Workspace {
   readonly isMain: boolean;
   readonly provider?: WorkspaceProviderMetadata;
   readonly removal?: WorkspaceRemovalPresentation;
+  /** True when the workspace's folder is gone: sessions and terminals can
+   * never start inside it, so the row renders inert with its badge. */
+  readonly cwdMissing?: boolean;
 }
 
 export interface WorkspaceFiles {

@@ -167,7 +167,9 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
             title=${label}
             @keydown=${(event: KeyboardEvent) => { this.handleWorkspaceKeydown(event, workspace); }}
           >
-            <button
+            ${workspace.cwdMissing === true
+              ? html`<div class="action-main cwd-missing-row" title=${workspace.path}>${this.renderWorkspaceMain(label, items, workspace)}</div>`
+              : html`<button
               type="button"
               class="action-main"
               aria-current=${this.selected?.id === workspace.id ? "true" : nothing}
@@ -179,7 +181,7 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
               @pointercancel=${() => { this.gestures.cancel(); }}
             >
               ${this.renderWorkspaceMain(label, items, workspace)}
-            </button>
+            </button>`}
             ${this.renderWorkspaceMenu(label, items, workspace)}
           </div>
         `;
@@ -209,6 +211,7 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
     return html`
       <span class="workspace-primary">
         <span class="workspace-primary-label">${label}</span>
+        ${workspace.cwdMissing === true ? html`<span class="workspace-status">folder gone</span>` : null}
         ${this.isDeleting(workspace) ? html`<span class="workspace-status">Deleting…</span>` : null}
       </span>
       ${items.length === 0 ? null : html`

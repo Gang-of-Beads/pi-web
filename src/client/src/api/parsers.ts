@@ -142,6 +142,7 @@ export function parseProject(value: unknown): Project {
 
 export function parseWorkspace(value: unknown): Workspace {
   const record = requireRecord(value);
+  const cwdMissing = record["cwdMissing"] === true ? true : undefined;
   return Object.freeze({
     id: requireString(record, "id"),
     projectId: requireString(record, "projectId"),
@@ -150,6 +151,7 @@ export function parseWorkspace(value: unknown): Workspace {
     isMain: requireBoolean(record, "isMain"),
     ...optionalField("provider", optionalWorkspaceProviderMetadata(record["provider"])),
     ...optionalField("removal", optionalWorkspaceRemovalPresentation(record["removal"])),
+    ...(cwdMissing === undefined ? {} : { cwdMissing }),
     effectiveConfig: requireWorkspaceEffectiveConfig(record["effectiveConfig"]),
   });
 }

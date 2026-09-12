@@ -127,7 +127,14 @@ async function resolveWorkspacesWithEffectiveConfig(
   ]);
   return {
     ...resolution,
-    workspaces: resolution.workspaces.map((workspace) => ({ ...workspace, effectiveConfig })),
+    workspaces: resolution.workspaces.map((workspace) => ({
+      ...workspace,
+      effectiveConfig,
+      // The same fact the session listing stamps: a workspace whose folder is
+      // gone can never host a session or a terminal, and the browser must see
+      // that before it offers "+ New session".
+      ...(existsSync(workspace.path) ? {} : { cwdMissing: true }),
+    })),
   };
 }
 
