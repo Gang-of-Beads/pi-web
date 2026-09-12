@@ -28,10 +28,10 @@ export class ContextSwitcherSheet extends LitElement {
 
   override render() {
     return html`
-      <modal-surface .onClose=${() => { this.onClose?.(); }} .label=${"Change context"}>
+      <modal-surface .onClose=${() => { this.onClose?.(); }} .label=${"Where am I working?"}>
         <div class="sheet">
           <div class="sheet-header">
-            <span class="sheet-title">Change context</span>
+            <span class="sheet-title">Where am I working?</span>
             <button type="button" class="sheet-close" title="Close" aria-label="Close context sheet" @click=${() => { this.onClose?.(); }}>${renderCrossIcon()}</button>
           </div>
           <div class="sheet-body">

@@ -12,6 +12,8 @@ import { sessionLabel } from "../../sessionLabels";
 @customElement("app-context-bar")
 export class AppContextBar extends LitElement {
   @property({ attribute: false }) session?: SessionInfo;
+  /** The tool surface the reader is on ("Files", "Terminal", …), empty on the chat. */
+  @property({ type: String }) activeSurface = "";
   /** Whether the session being read has work in progress. */
   @property({ type: Boolean }) isWorking = false;
   /** Whether the collapsible panel is currently presented. */
@@ -52,7 +54,7 @@ export class AppContextBar extends LitElement {
               title=${this.session.path}
               aria-label=${`Session: ${sessionContextLabel(this.session)}. Open session selection.`}
               @click=${() => { this.onQuickSwitch?.(); }}
-            ><span class="session-title-text">${sessionContextLabel(this.session)}</span></button>`}
+            ><span class="session-title-text">${this.activeSurface === "" ? sessionContextLabel(this.session) : `${this.activeSurface} · ${sessionContextLabel(this.session)}`}</span></button>`}
         <span
           class="working"
           role="status"

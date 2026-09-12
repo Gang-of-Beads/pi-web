@@ -3949,6 +3949,7 @@ export class PiWebApp extends LitElement {
     return html`
       <app-context-bar
         .session=${this.state.selectedSession}
+        .activeSurface=${this.displayMainView() !== "chat" && this.displayMainView() !== "navigation" ? this.shellToolTabs().find((tab) => tab.id === this.displayMainView())?.label ?? "" : ""}
         ?isWorking=${this.state.selectedSession !== undefined && isActive(this.state)}
         ?panelOpen=${this.shellPanelOpen()}
         ?panelToggleHidden=${panelToggleHiddenState({ mobileLayout: this.appShell.isMobileNavigationLayout, displayView: this.displayMainView() })}
