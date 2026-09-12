@@ -203,7 +203,12 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      below the scroller now, so the transcript ends with the room it had before
      the dock existed: one space-7 of padding on top of the message rhythm's own
      16px margin, i.e. 32px from the last message to the dock. */
-  .chat { flex: 1 1 auto; --pi-chat-sticky-top: calc(-1 * var(--pi-space-9)); height: 100%; min-height: 0; overflow: auto; overflow-anchor: none; padding: var(--pi-space-9) var(--pi-chat-gutter) var(--pi-space-7); box-sizing: border-box; }
+  .chat { flex: 1 1 auto; --pi-chat-sticky-top: calc(-1 * var(--pi-space-9)); height: 100%; min-height: 0; overflow: auto; overflow-anchor: none; padding: var(--pi-space-9) var(--pi-chat-gutter) var(--pi-space-7); box-sizing: border-box;
+  /* The top edge cuts scrolled lines mid-glyph with no card boundary to the
+     left or right (assistant surfaces are border-less), which read as stray
+     text. A short fade makes the same clip read as intentional depth. */
+  mask-image: linear-gradient(to bottom, transparent 0, #000 14px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px); border-box; }
   .scroll-marker { display: block; height: 0; overflow: hidden; pointer-events: none; }
   /* Its own row of the column, so the transcript above can grow all it likes
      without moving a control the reader is aiming at. Tall questions scroll
