@@ -1907,6 +1907,11 @@ export class SessionController {
   private async recreateCachedNewSession(session: SessionInfo, options?: { updateUrl?: boolean | undefined }): Promise<void> {
     try {
       const machineId = selectedMachineId(this.getState());
+      const deadWorkspace = this.getState().workspaces.some((workspace) => workspace.cwdMissing === true && workspace.path === session.cwd);
+      if (deadWorkspace) {
+        this.setState(noticePatch(noticeForReader("This workspace's folder no longer exists, so a new session cannot start here.")));
+        return;
+      }
       const replacement = await this.api.startSession(session.cwd, machineId);
       // The start was in flight across a possible scope switch: a late
       // answer must not prepend machine A's session into machine B's list,

@@ -70,7 +70,7 @@ export function planSessionCleanup(input: PlanSessionCleanupInput): SessionClean
       if (archivedIds.has(session.id)) continue;
       if (includedCwds !== undefined && !includedCwds.has(session.cwd)) continue;
       const missing = missingFolder(session);
-      if (!missing && archiveCutoff !== undefined && !isBefore(session.modified, archiveCutoff)) continue;
+      if (!missing && (archiveCutoff === undefined || !isBefore(session.modified, archiveCutoff))) continue;
       if (busySessionIds.has(session.id)) {
         skippedBusy.add(session.id);
         continue;

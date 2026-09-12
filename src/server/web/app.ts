@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyServerOptions } from "fastify";
@@ -133,7 +133,7 @@ async function resolveWorkspacesWithEffectiveConfig(
       // The same fact the session listing stamps: a workspace whose folder is
       // gone can never host a session or a terminal, and the browser must see
       // that before it offers "+ New session".
-      ...(existsSync(workspace.path) ? {} : { cwdMissing: true }),
+      ...((() => { try { return statSync(workspace.path).isDirectory() ? {} : { cwdMissing: true }; } catch { return { cwdMissing: true }; } })()),
     })),
   };
 }

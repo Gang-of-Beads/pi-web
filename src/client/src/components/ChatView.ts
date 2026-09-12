@@ -208,7 +208,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      left or right (assistant surfaces are border-less), which read as stray
      text. A short fade makes the same clip read as intentional depth. */
   mask-image: linear-gradient(to bottom, transparent 0, #000 14px);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px); border-box; }
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px); }
   .scroll-marker { display: block; height: 0; overflow: hidden; pointer-events: none; }
   /* Its own row of the column, so the transcript above can grow all it likes
      without moving a control the reader is aiming at. Tall questions scroll
