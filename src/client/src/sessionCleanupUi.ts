@@ -3,6 +3,7 @@ import type { SessionCleanupPreviewResponse, SessionCleanupRequest } from "./api
 export interface SessionCleanupDraft {
   archiveIdleEnabled: boolean;
   archiveIdleDays: string;
+  archiveMissingFolder: boolean;
   deleteArchivedEnabled: boolean;
   deleteArchivedDays: string;
 }
@@ -14,17 +15,20 @@ export type SessionCleanupDraftValidation =
 export const DEFAULT_SESSION_CLEANUP_DRAFT: SessionCleanupDraft = {
   archiveIdleEnabled: true,
   archiveIdleDays: "30",
+  archiveMissingFolder: false,
   deleteArchivedEnabled: false,
   deleteArchivedDays: "90",
 };
 
 export function validateSessionCleanupDraft(draft: SessionCleanupDraft): SessionCleanupDraftValidation {
-  if (!draft.archiveIdleEnabled && !draft.deleteArchivedEnabled) return { ok: false, error: "Enable at least one cleanup action." };
+  if (!draft.archiveIdleEnabled && !draft.archiveMissingFolder && !draft.deleteArchivedEnabled) return { ok: false, error: "Enable at least one cleanup action." };
 
   const request: SessionCleanupRequest = {
     archiveIdleDays: null,
     deleteArchivedDays: null,
   };
+
+  if (draft.archiveMissingFolder) request.archiveMissingFolder = true;
 
   if (draft.archiveIdleEnabled) {
     const archiveIdleDays = parseDayThreshold(draft.archiveIdleDays, "Archive idle sessions after");
@@ -46,6 +50,7 @@ export function sessionCleanupRequestKey(request: SessionCleanupRequest | undefi
   // to the already-previewed project list and sent separately when running.
   return JSON.stringify({
     archiveIdleDays: request?.archiveIdleDays ?? null,
+    archiveMissingFolder: request?.archiveMissingFolder === true,
     deleteArchivedDays: request?.deleteArchivedDays ?? null,
   });
 }

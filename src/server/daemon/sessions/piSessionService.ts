@@ -1,4 +1,4 @@
-import { statSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { sessionActivityLabel } from "./sessionActivityLabel.js";
 import { announceUnsupportedSurface, withUnsupportedSurfaceAnnouncement } from "./unsupportedSurface.js";
 import { EMPTY_HOST_CONTRIBUTIONS, type HostContributions } from "./hostContributions.js";
@@ -3676,6 +3676,7 @@ export class PiSessionService implements SessionRouteService {
       activeSessions: this.cleanupActiveSessionStatuses(),
       thresholds: request.thresholds,
       ...(request.projectCwds === undefined ? {} : { projectCwds: request.projectCwds }),
+      directoryExists: (path) => existsSync(path),
       now: this.now(),
     });
   }

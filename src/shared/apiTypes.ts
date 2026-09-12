@@ -672,6 +672,8 @@ export interface SessionBulkDeleteArchivedResponse {
 export interface SessionCleanupRequest {
   /** Archive non-archived sessions whose modified time is older than this many days. Omit/null to disable. */
   archiveIdleDays?: number | null;
+  /** Also archive every non-archived session whose folder no longer exists. */
+  archiveMissingFolder?: boolean;
   /** Permanently delete archived sessions whose archivedAt time is older than this many days. Omit/null to disable. */
   deleteArchivedDays?: number | null;
   /** Stored cwd paths selected from a preview. Omit/null to include all discovered project/workspace paths. */
@@ -681,6 +683,8 @@ export interface SessionCleanupRequest {
 export interface SessionCleanupThresholds {
   archiveIdleDays?: number;
   deleteArchivedDays?: number;
+  /** Archive every non-archived session whose folder no longer exists. */
+  archiveMissingFolder?: boolean;
 }
 
 export interface SessionCleanupProjectSummary {

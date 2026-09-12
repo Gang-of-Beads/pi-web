@@ -4,6 +4,7 @@ import { canRunSessionCleanup, confirmSessionCleanup, selectedSessionCleanupProj
 
 const draft: SessionCleanupDraft = {
   archiveIdleEnabled: true,
+  archiveMissingFolder: false,
   archiveIdleDays: "30",
   deleteArchivedEnabled: true,
   deleteArchivedDays: "90",

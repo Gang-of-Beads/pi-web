@@ -1,4 +1,5 @@
 import type { SessionCleanupExecuteResponse, SessionCleanupPreviewResponse, SessionCleanupProjectSummary, SessionCleanupThresholds } from "../../../shared/apiTypes.js";
+import { existsSync } from "node:fs";
 import type { PiSessionListEntry } from "./piSessionService.js";
 import type { ArchivedSessionRecord, ArchiveSessionInput } from "./sessionArchiveStore.js";
 
@@ -15,6 +16,8 @@ export interface PlanSessionCleanupInput {
   activeSessions?: readonly CleanupActiveSessionStatus[];
   thresholds: SessionCleanupThresholds;
   projectCwds?: readonly string[];
+  /** Presence probe for the missing-folder criterion; defaults to fs stat. */
+  directoryExists?: (path: string) => boolean;
   now: Date;
 }
 
@@ -44,6 +47,7 @@ export function normalizeSessionCleanupThresholds(record: Record<string, unknown
   const deleteArchivedDays = optionalDayThreshold(record, "deleteArchivedDays");
   if (archiveIdleDays !== undefined) thresholds.archiveIdleDays = archiveIdleDays;
   if (deleteArchivedDays !== undefined) thresholds.deleteArchivedDays = deleteArchivedDays;
+  if (record["archiveMissingFolder"] === true) thresholds.archiveMissingFolder = true;
   return thresholds;
 }
 
@@ -58,11 +62,15 @@ export function planSessionCleanup(input: PlanSessionCleanupInput): SessionClean
   const archiveInputs: ArchiveSessionInput[] = [];
   const deleteRecords: ArchivedSessionRecord[] = [];
 
-  if (archiveCutoff !== undefined) {
+  const directoryExists = input.directoryExists ?? ((path: string) => existsSync(path));
+  const missingFolder = (session: PiSessionListEntry): boolean => thresholds.archiveMissingFolder === true && !directoryExists(session.cwd);
+
+  if (archiveCutoff !== undefined || thresholds.archiveMissingFolder === true) {
     for (const session of uniqueSessionsById(input.sessions)) {
       if (archivedIds.has(session.id)) continue;
       if (includedCwds !== undefined && !includedCwds.has(session.cwd)) continue;
-      if (!isBefore(session.modified, archiveCutoff)) continue;
+      const missing = missingFolder(session);
+      if (!missing && archiveCutoff !== undefined && !isBefore(session.modified, archiveCutoff)) continue;
       if (busySessionIds.has(session.id)) {
         skippedBusy.add(session.id);
         continue;
@@ -199,5 +207,6 @@ function copyThresholds(thresholds: SessionCleanupThresholds): SessionCleanupThr
   const copy: SessionCleanupThresholds = {};
   if (thresholds.archiveIdleDays !== undefined) copy.archiveIdleDays = thresholds.archiveIdleDays;
   if (thresholds.deleteArchivedDays !== undefined) copy.deleteArchivedDays = thresholds.deleteArchivedDays;
+  if (thresholds.archiveMissingFolder === true) copy.archiveMissingFolder = true;
   return copy;
 }

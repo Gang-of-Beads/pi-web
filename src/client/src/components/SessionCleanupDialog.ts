@@ -68,6 +68,10 @@ export class SessionCleanupDialog extends LitElement {
           <input class="days" type="number" min="0" step="1" inputmode="numeric" .value=${this.draft.archiveIdleDays} ?disabled=${disabled || !this.draft.archiveIdleEnabled} @input=${(event: Event) => { this.updateDraft({ archiveIdleDays: inputValue(event) }); }}>
           <span>days</span>
         </label>
+        <label class="toggle-row">
+          <input type="checkbox" .checked=${this.draft.archiveMissingFolder} @change=${(event: Event) => { this.updateDraft({ archiveMissingFolder: checkedValue(event) }); }} ?disabled=${disabled}
+          <span>Archive sessions whose folder no longer exists</span>
+        </label>
         <label class="toggle-row delete-row">
           <input type="checkbox" .checked=${this.draft.deleteArchivedEnabled} @change=${(event: Event) => { this.updateDraft({ deleteArchivedEnabled: checkedValue(event) }); }}>
           <span>Delete archived sessions archived for more than</span>
