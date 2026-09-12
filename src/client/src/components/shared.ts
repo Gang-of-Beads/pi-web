@@ -293,7 +293,7 @@ export const listStyles = css`
   /* Tile/card layout for management lists (workspaces, projects, machines).
      Rows become compact cards in an auto-fit grid; the row menu moves into
      the card's corner so the two-column row grid can collapse to one. */
-  .list-body.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); grid-auto-rows: min-content; gap: var(--pi-space-4); align-content: start; padding: var(--pi-space-2) 0; }
+  .list-body.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); grid-auto-rows: min-content; gap: var(--pi-space-3); align-content: start; padding: var(--pi-space-2) 0; }
   /* Tiles in a row share a height, so the row is a grid of equal boxes rather
      than a ragged one. A tile that sizes to its own title makes the row's
      height an accident of which names happen to be long. */
@@ -308,7 +308,7 @@ export const listStyles = css`
      measured 82 against 95 before this. */
   .list-body.tiles .action-main { min-height: calc(var(--pi-row-min-height) + var(--pi-space-9)); }
   .list-body.tiles .action-name { min-height: 2.5em; }
-  .list-body.tiles small { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-height: 2.6em; max-height: 2.6em; overflow: hidden; text-overflow: ellipsis; overflow-wrap: anywhere; line-height: 1.3; }
+  .list-body.tiles small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: anywhere; line-height: 1.3; }
   .list-body.tiles .action-menu { position: absolute; top: var(--pi-tile-menu-inset); right: var(--pi-tile-menu-inset); align-self: auto; }
   /* One nowrap line cut most tile names to the same prefix; two wrapped lines
      reach the tail that tells worktree-agent-a0… tiles apart. break-all because

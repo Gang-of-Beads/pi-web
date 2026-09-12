@@ -277,6 +277,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      no matter which radius it picks, because two rasterizations of "the same"
      arc need not agree. The parent clips; children paint square. */
   .msg { max-width: var(--pi-chat-measure); min-width: 0; box-sizing: border-box; margin: 0 auto var(--pi-space-7); padding: var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface-card); overflow: hidden; overflow: clip; }
+  @media (max-width: 640px) { .msg { margin-bottom: var(--pi-space-5); padding: var(--pi-space-5); } }
   .msg.assistant, .msg.tool-image-output { background: var(--pi-surface); }
   .custom-card { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); padding: var(--pi-space-5); background: var(--pi-surface); overflow: hidden; overflow: clip; display: grid; gap: var(--pi-space-3); }
   .custom-card-unknown { color: var(--pi-muted); }

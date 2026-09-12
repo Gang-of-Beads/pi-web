@@ -204,7 +204,15 @@
          The conversation and the composer share this gutter, so narrowing it
          widens both together and keeps them lined up. */
       @media (max-width: 640px) {
-        :root { --pi-chat-gutter: var(--pi-space-3); --pi-chrome-inset: var(--pi-space-3); --pi-reading-edge: var(--pi-space-5); }
+        /* Compact tier (owner: content first): rows sit on the 44px touch
+           floor instead of 56px, and message/section rhythm drops one token
+           each - through tokens only, so every surface tightens together. */
+        :root {
+          --pi-chat-gutter: var(--pi-space-3);
+          --pi-chrome-inset: var(--pi-space-3);
+          --pi-reading-edge: var(--pi-space-5);
+          --pi-row-min-height: 44px;
+        }
       }
       html, body { margin: 0; height: 100%; overflow: hidden; background: var(--pi-bg); color: var(--pi-text); }
       body { min-height: 100dvh; }
