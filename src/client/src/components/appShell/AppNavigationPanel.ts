@@ -365,6 +365,7 @@ export class AppNavigationPanel extends LitElement {
     return html`
       <session-list
         ?hidden=${hidden}
+        .workspaceGone=${this.selectedWorkspace?.cwdMissing === true}
         .sessions=${this.sessions}
         .sessionsLoad=${this.sessionsLoad}
         .statuses=${this.sessionStatuses}

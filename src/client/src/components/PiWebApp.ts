@@ -2285,6 +2285,7 @@ export class PiWebApp extends LitElement {
   private renderNavigationPanel() {
     return html`
       <app-navigation-panel
+        .workspaceGone=${this.state.selectedWorkspace?.cwdMissing === true}
         .machines=${this.state.machines}
         .selectedMachine=${this.state.selectedMachine}
         .machinesCollapsed=${this.navigationSections.isCollapsed("machines")}

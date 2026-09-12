@@ -57,6 +57,8 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
   @property({ attribute: false }) selected?: SessionInfo;
   @property({ type: Number }) startingCount = 0;
   @property({ type: Boolean }) canStart = false;
+  /** The selected workspace's folder is gone: starting a session here can never work. */
+  @property({ type: Boolean }) workspaceGone = false;
   @property({ type: Boolean, reflect: true }) collapsible = false;
   @property({ type: Boolean, reflect: true }) collapsed = false;
   @property({ attribute: false }) onSelect?: (session: SessionInfo) => void;
@@ -219,6 +221,9 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
    */
   private renderEmptyListBody() {
     if (this.sessionsLoad === "loaded") {
+      // A dead workspace's honest empty state: the invitation to start a
+      // session would point at an action that can never work. (E1/E3)
+      if (this.workspaceGone) return html`<div class="list-empty" role="status">This workspace's folder no longer exists, so it cannot hold sessions.</div>`;
       return html`<div class="list-empty" role="status">No sessions yet. Start one to begin working here.</div>`;
     }
     if (this.sessionsLoad === "loading") {
@@ -312,9 +317,11 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
   }
 
   private renderStartButton() {
-    const title = this.startingCount > 0 ? "Start another session" : "Start a new session";
+    const title = this.workspaceGone
+      ? "This workspace's folder no longer exists"
+      : this.startingCount > 0 ? "Start another session" : "Start a new session";
     const label = this.startingCount > 0 ? "Another" : "New session";
-    return html`<button class="start-session-button" title=${title} aria-label=${title} ?disabled=${!this.canStart} @click=${(event: MouseEvent) => { event.stopPropagation(); this.onStart?.(); }}><span class="section-add-glyph" aria-hidden="true">+</span><span class="section-add-label">${label}</span></button>`;
+    return html`<button class="start-session-button" title=${title} aria-label=${title} ?disabled=${!this.canStart || this.workspaceGone} @click=${(event: MouseEvent) => { event.stopPropagation(); this.onStart?.(); }}><span class="section-add-glyph" aria-hidden="true">+</span><span class="section-add-label">${label}</span></button>`;
   }
 
   private renderStartingSession() {
