@@ -117,3 +117,22 @@ FAIL 项全部经过 triage（判据 J3）。
 - **运行时验证**（Playwright 穿透，393×850）：死行 count=1、tag=DIV、
   点击后 banner=false、菜单=[Archive, Rename, Reload from disk]、
   historyOffered=false。
+
+
+## UI 协调性 goal 评审轮（mty82jcc task-5）
+
+两 lane（glm 密度+边界 / glm 死工作区守卫+语义）。triage：
+
+- **P1 cleanup 条件组合（TRUE，已修 0c5beb12）**：只勾 missing-folder 时
+  planner 把范围内所有非 busy 会话都归档了——cutoff 守卫与 missing 守卫
+  组合顺序错误，现独立化；补旗舰场景断言。
+- **P2 recreate 路径（TRUE，已修）**：cached-new 会话 recreate 是最后一个
+  绕过死工作区 fail-fast 的 start producer——补同款一句话守卫。
+- **P2 probe 不一致（TRUE，已修）**：workspace 盖章用 existsSync（路径存在≠
+  目录），统一为 statSync().isDirectory() 与会话盖章一致。
+- **P2 mask 规则残渣（TRUE，已修）**：fade 规则尾部残留 border-box 声明
+  片段（手工合并残留）。
+- **P2 meter 带压抽屉边线（TRUE，记录待排期）**：pre-range 问题——meter
+  不透明带的上 4px 会盖住抽屉底边线；涉及 meter/drawer 层级重排，单独排期。
+- **44px 行高/渐隐 mask/语义改名（judged-not-true）**：lane 实证无破坏
+  （触摸下限=control-height-touch、mask 不及 sticky/抽屉、改名测试一致）。
