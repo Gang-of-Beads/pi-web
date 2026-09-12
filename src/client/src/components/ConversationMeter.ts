@@ -30,9 +30,15 @@ export class ConversationMeter extends LitElement {
   }
 
   static override styles = css`
-    :host { position: absolute; top: calc(-1 * var(--pi-space-2)); left: var(--pi-chat-gutter, var(--pi-space-7)); right: var(--pi-chat-gutter, var(--pi-space-7)); z-index: 3; display: block; height: 12px; opacity: .58; transition: opacity var(--pi-motion-fast) var(--pi-ease); }
-    :host(:focus-within) { opacity: .92; }
-    @media (hover: hover) { :host(:hover) { opacity: .92; } }
+    /* The meter floats over the transcript's first visible line; at a bare
+       58% opacity the scrolled text bled through and read as clipped stray
+       lines (the owner's fifth-banner screenshot). The host now carries an
+       opaque chat-background band, and only the indicator itself is
+       translucent. */
+    :host { position: absolute; top: calc(-1 * var(--pi-space-2)); left: var(--pi-chat-gutter, var(--pi-space-7)); right: var(--pi-chat-gutter, var(--pi-space-7)); z-index: 3; display: block; height: 14px; background: var(--pi-bg); border-radius: var(--pi-radius-pill); }
+    .meter { height: 100%; opacity: .58; transition: opacity var(--pi-motion-fast) var(--pi-ease); }
+    :host(:focus-within) .meter { opacity: .92; }
+    @media (hover: hover) { :host(:hover) .meter { opacity: .92; } }
     .meter { height: 100%; }
     .track { position: relative; height: var(--pi-dot-xs); margin-top: var(--pi-space-2); border-radius: var(--pi-radius-pill); background: color-mix(in srgb, var(--pi-border-muted) 34%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--pi-bg) 55%, transparent); }
     .progress { position: absolute; left: 0; width: var(--position); top: 0; bottom: 0; border-radius: var(--pi-radius-pill); background: color-mix(in srgb, var(--pi-accent) 42%, var(--pi-border-muted)); }
