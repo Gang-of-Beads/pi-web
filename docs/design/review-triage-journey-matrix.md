@@ -102,3 +102,18 @@ FAIL 项全部经过 triage（判据 J3）。
   规则（绝不把未验证的腿报成已验证）重写为诚实表述，并删除不存在的 J8。
 - **深链到死会话静默替换 + URL 重写（judged-not-true as defect）**：落地
   到活的相邻会话比死端横幅诚实；地址名屏上之实。设计取舍记录于此。
+
+
+## 第五次横幅收口（goal mty0ytmc-7eq89m）
+
+- **部署 bundle 字节核对**：index-w5I5E8Wq.js 含 cwd-missing-row、folder-gone
+  徽章、attachment-error 修复；index.html `no-store`——刷新即新构建。
+- **横幅产生路径枚举**：仅 selectSession 守卫（sessionController.ts:291）与
+  刷新时选中会话变死（:1016）。
+- **第五次路径**：死行 ⋯ 菜单的 "History and branches" → openSessionTree →
+  selectSession(死) → 守卫（新构建残留）；叠加手机未刷新的旧页面。
+- **修复**：死行菜单不再提供该项（2d708135）——死行菜单只剩
+  Archive / Rename / Reload from disk，全部不触发 selectSession。
+- **运行时验证**（Playwright 穿透，393×850）：死行 count=1、tag=DIV、
+  点击后 banner=false、菜单=[Archive, Rename, Reload from disk]、
+  historyOffered=false。
