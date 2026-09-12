@@ -53,6 +53,15 @@ describe("SessionList dead-folder rows", () => {
     expect(deadRow?.querySelector(".cwd-gone")).toBeDefined();
   });
 
+  it("does not offer History and branches on a dead row", async () => {
+    const list = await mount([session("dead", { cwdMissing: true }), session("live")]);
+    const toggle = [...list.renderRoot.querySelectorAll(".action-menu-toggle")][0];
+    toggle?.dispatchEvent(new MouseEvent("click", { bubbles: true, composed: true }));
+    await list.updateComplete;
+    const menu = [...list.renderRoot.querySelectorAll(".action-menu-panel button")].map((b) => (b.textContent || "").trim());
+    expect(menu).not.toContain("History and branches");
+  });
+
   it("does not select a dead row on click", async () => {
     let selectedId: string | undefined;
     const list = await mount([session("dead", { cwdMissing: true }), session("live")]);
