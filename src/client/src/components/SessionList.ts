@@ -423,7 +423,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
         ${session.cwdMissing === true
           ? html`
           <div class="action-main cwd-missing-row ${selectionActive ? "selecting" : ""}" title=${session.path}>
-            <span class="action-name-line"><span class="action-name" dir="auto">${this.renderRowMarker(row)}${sessionLabel(session)}</span><span class="cwd-gone" title="This session's folder no longer exists">folder gone</span></span><small>${this.renderSessionMetaPrefix(session, status, activity)}${this.renderSessionMetaPrefixDetail(session)}${String(session.messageCount)} messages</small>
+            <span class="action-name-line"><span class="action-name" dir="auto">${this.renderRowMarker(row)}${sessionLabel(session)}</span></span><small><span class="cwd-gone" title="This session's folder no longer exists">folder gone</span> · ${this.renderSessionMetaPrefix(session, status, activity)}${this.renderSessionMetaPrefixDetail(session)}${String(session.messageCount)} messages</small>
             ${renderSessionRowIndicator(sessionRowIndicator(stateKind, unread))}
           </div>
           `
@@ -767,6 +767,11 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     input, textarea, [contenteditable] { -webkit-user-select: text; user-select: text; }
     /* A dead row is a resting fact, not a control: no hover/press/focus feedback, no pointer. (E2) */
     .cwd-missing-row { cursor: default; }
+    /* The badge sits at one fixed spot in every dead row (right, clear of the
+       menu button) instead of flowing after a variable-length name - inline
+       flow put each row's badge at a different offset, which read as
+       misaligned boxes. */
+    .cwd-missing-row .cwd-gone { display: inline; }
     @media (hover: hover) { .cwd-missing-row:hover { background: transparent; } }
     /* Badges must not sit inside the line-clamped title, or a long name hides them entirely. */
     .row-badges { flex: 0 0 auto; display: flex; align-items: flex-start; gap: var(--pi-space-2); }

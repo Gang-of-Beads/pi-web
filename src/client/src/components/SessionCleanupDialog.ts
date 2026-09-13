@@ -26,6 +26,21 @@ export class SessionCleanupDialog extends LitElement {
     if (changedProperties.has("preview")) this.selectedProjectCwds = this.preview?.projects.map((project) => project.cwd);
   }
 
+  override updated(changedProperties: PropertyValues<this>): void {
+    // Auto-preview: the dialog opens previewed and re-previews when the valid
+    // request changes. The manual Preview-first step was invisible - the
+    // reader checked boxes, watched a dead Run button, and concluded cleanup
+    // was broken.
+    if (changedProperties.size > 0) {
+      const validation = validateSessionCleanupDraft(this.draft);
+      if (validation.ok && !this.loading && !this.running) {
+        const requestKey = sessionCleanupRequestKey(validation.request);
+        const previewedKey = sessionCleanupRequestKey(this.previewRequest);
+        if (requestKey !== previewedKey) this.previewCleanup();
+      }
+    }
+  }
+
   override render(): TemplateResult {
     const validation = validateSessionCleanupDraft(this.draft);
     const selectedPreview = this.selectedPreview();
