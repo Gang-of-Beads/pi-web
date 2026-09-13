@@ -35,7 +35,7 @@ export class ConversationMeter extends LitElement {
        lines (the owner's fifth-banner screenshot). The host now carries an
        opaque chat-background band, and only the indicator itself is
        translucent. */
-    :host { position: absolute; top: calc(-1 * var(--pi-space-2)); left: var(--pi-chat-gutter, var(--pi-space-7)); right: var(--pi-chat-gutter, var(--pi-space-7)); z-index: 3; display: block; height: 14px; background: var(--pi-bg); border-radius: var(--pi-radius-pill); }
+    :host { position: absolute; top: 0; left: var(--pi-chat-gutter, var(--pi-space-7)); right: var(--pi-chat-gutter, var(--pi-space-7)); z-index: 3; display: block; height: 14px; background: var(--pi-bg); border-radius: var(--pi-radius-pill); }
     .meter { height: 100%; opacity: .58; transition: opacity var(--pi-motion-fast) var(--pi-ease); }
     :host(:focus-within) .meter { opacity: .92; }
     @media (hover: hover) { :host(:hover) .meter { opacity: .92; } }
