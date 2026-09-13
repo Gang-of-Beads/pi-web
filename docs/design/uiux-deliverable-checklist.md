@@ -42,3 +42,10 @@
 ## 9. Clean up 自动预览（"根本不能 clean up"）
 - `7f94b08e`：打开即预览、改勾选即重预览——Run 在预览落地后立即可用
 - 核对：final-3 截图（未点 Preview，Run 已 enabled）
+
+
+## 复核确认（全部修复部署后重拍原投诉面）
+
+第五次横幅截图的原始投诉面（goal 会话聊天顶部、Goals 抽屉打开、滚动至中部）
+在全部修复部署后重拍：顶部切断行呈渐隐淡出（final-4-goal-session-top-fade.png），
+无裸文字无断字——机主 2:18 截图的 artifact 不再复现。
