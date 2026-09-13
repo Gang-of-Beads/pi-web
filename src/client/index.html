@@ -219,6 +219,11 @@
           --pi-text-md: 14px;
           --pi-text-lg: 15px;
           --pi-text-xl: 17px;
+          /* The bars ride as low as the buttons inside them: a 36px strip
+             keeps 32px controls with breathing room, and the transcript
+             reclaims the difference. */
+          --pi-panel-header-height: 36px;
+          --pi-panel-header-control-height: 36px;
         }
       }
       html, body { margin: 0; height: 100%; overflow: hidden; background: var(--pi-bg); color: var(--pi-text); }

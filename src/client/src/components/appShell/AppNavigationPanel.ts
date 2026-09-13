@@ -453,7 +453,7 @@ export class AppNavigationPanel extends LitElement {
     /* The compact row speaks the header radius token; a control that renders itself follows the
        row it is in rather than carrying the rail's corner into it. */
     .compact-header { --pi-header-control-radius: var(--pi-radius-md); flex: 0 0 auto; box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; justify-content: flex-start; gap: var(--pi-space-3); padding: var(--pi-space-1) var(--pi-reading-edge); border-bottom: 1px solid var(--pi-border); }
-    .compact-session { flex: 1 1 auto; min-width: 0; min-height: var(--pi-control-height-touch); display: inline-flex; align-items: center; box-sizing: border-box; border: 0; background: none; color: var(--pi-text); font: inherit; font-size: var(--pi-text-sm); text-align: start; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+    .compact-session { flex: 1 1 auto; min-width: 0; min-height: var(--pi-panel-header-control-height); display: inline-flex; align-items: center; box-sizing: border-box; border: 0; background: none; color: var(--pi-text); font: inherit; font-size: var(--pi-text-sm); text-align: start; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
     .compact-session-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .compact-session.empty { color: var(--pi-muted); font-weight: var(--pi-weight-medium); }
     .compact-session:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
@@ -466,10 +466,10 @@ export class AppNavigationPanel extends LitElement {
     @media (prefers-reduced-motion: reduce) { .compact-working-dot { animation: none; opacity: .8; } }
     .compact-fold { box-sizing: border-box; width: var(--pi-panel-header-control-height); }
     .compact-fold-icon { width: var(--pi-dot-md); height: var(--pi-dot-md); pointer-events: none; }
-    .compact-actions-row { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-4); box-sizing: border-box; min-height: var(--pi-control-height-touch); padding: var(--pi-space-2) var(--pi-reading-edge); border-bottom: 1px solid var(--pi-border); background: var(--pi-bg); }
+    .compact-actions-row { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-4); box-sizing: border-box; min-height: var(--pi-panel-header-control-height); padding: var(--pi-space-2) var(--pi-reading-edge); border-bottom: 1px solid var(--pi-border); background: var(--pi-bg); }
     @media (pointer: coarse) { .compact-scope:active, .compact-session:active, .compact-header-action:active { background: var(--pi-surface-hover); } }
     .compact-actions-row .compact-header-action { flex: 1 1 auto; }
-    .compact-header-action { font-size: var(--pi-text-xs); flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: var(--pi-control-height-touch); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-header-control-radius, var(--pi-radius-md)); background: var(--pi-surface); color: var(--pi-text); }
+    .compact-header-action { font-size: var(--pi-text-xs); flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: var(--pi-panel-header-control-height); padding: 0 var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-header-control-radius, var(--pi-radius-md)); background: var(--pi-surface); color: var(--pi-text); }
     /* Squared, glyph-only: the shared action rule above pads both sides, and
        without this higher-specificity override the fold button rendered as an
        8px glyph in a 24px pill. */
@@ -477,7 +477,7 @@ export class AppNavigationPanel extends LitElement {
     .compact-header-action:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     /* Coarse pointers get the comfort floor: the glyph is small but the hit
        box carries the row's tap weight in the phone header. */
-    @media (pointer: coarse) { .compact-header-action { min-width: var(--pi-control-height-touch, 44px); min-height: var(--pi-control-height-touch, 44px); } }
+    @media (pointer: coarse) { .compact-header-action { min-width: var(--pi-panel-header-control-height); min-height: var(--pi-panel-header-control-height); } }
     @media (hover: hover) { .compact-header-action:hover { background: var(--pi-surface-hover); } }
     .tools-section { flex: 0 0 auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pi-space-4); padding: var(--pi-reading-edge) var(--pi-reading-edge) calc(var(--pi-reading-edge) + env(safe-area-inset-bottom)); border-top: 1px solid var(--pi-border-muted); }
     .tool-row:last-child:nth-child(odd) { grid-column: 1 / -1; }
@@ -490,7 +490,7 @@ export class AppNavigationPanel extends LitElement {
     .tool-icon svg { width: 100%; height: 100%; }
     .tool-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .tool-badge { flex: 0 0 auto; display: inline-flex; align-items: center; box-sizing: border-box; min-width: 14px; max-width: 45%; line-height: 16px; padding: 0 var(--pi-space-2); border-radius: var(--pi-radius-pill); background: var(--pi-selection-bg); color: var(--pi-text-bright); font-size: var(--pi-text-2xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .compact-scope { box-sizing: border-box; flex: 1 1 auto; min-width: 0; display: flex; align-items: center; min-height: var(--pi-control-height-touch); border: 0; background: none; padding: 0; font: inherit; font-size: var(--pi-text-sm); font-weight: var(--pi-weight-semibold); color: var(--pi-text); text-align: start; cursor: pointer; }
+    .compact-scope { box-sizing: border-box; flex: 1 1 auto; min-width: 0; display: flex; align-items: center; min-height: var(--pi-panel-header-control-height); border: 0; background: none; padding: 0; font: inherit; font-size: var(--pi-text-sm); font-weight: var(--pi-weight-semibold); color: var(--pi-text); text-align: start; cursor: pointer; }
     .compact-scope:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); border-radius: var(--pi-radius-md); }
     .compact-scope-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     /* An unnamed session falls back to its whole first message, so a header
