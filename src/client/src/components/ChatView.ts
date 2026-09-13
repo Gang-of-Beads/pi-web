@@ -2425,7 +2425,10 @@ export function topDrawerStartsOpen(): boolean {
 function sectionBadgeMark(section: QualifiedDrawerSectionContribution, context: DrawerSectionContext): TemplateResult | typeof nothing {
   const badge = section.badge?.(context);
   if (badge === undefined || badge === "") return nothing;
-  return html`<span class="drawer-tab-badge">${String(badge)}</span>`;
+  // A bare number reads as noise (the owner: "what is this 1?"). The badge
+  // says what it counts: "<section> · <n> open".
+  const label = `${section.title}: ${String(badge)} open`;
+  return html`<span class="drawer-tab-badge" title=${label} aria-label=${label}>${String(badge)}</span>`;
 }
 
 interface ActivityPanelState {
