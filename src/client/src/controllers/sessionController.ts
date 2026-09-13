@@ -161,6 +161,16 @@ interface SelectedSessionRefreshTarget {
 /** Last raw-listing revision per machine|workspace, echoed by background refreshes. */
 const sessionsListRevisionByWorkspace = new Map<string, string>();
 
+/** Transient failures retry themselves with backoff; a permanent one stops. */
+const REFRESH_RETRY_BASE_MS = 3000;
+const REFRESH_RETRY_MAX = 4;
+
+/** 5xx and transport-level failures heal themselves; 4xx are the reader's to fix. */
+function isTransientRefreshError(error: unknown): boolean {
+  if (!(error instanceof HttpError)) return true;
+  return error.status >= 500;
+}
+
 export class SessionController {
   private readonly socket: SessionEventSocket;
   private readonly api: typeof defaultApi;
@@ -171,6 +181,8 @@ export class SessionController {
   private readonly onBackgroundRunCountChanged: SessionControllerDependencies["onBackgroundRunCountChanged"];
   private selectionSeq = 0;
   private disposed = false;
+  private refreshRetryCount = 0;
+  private refreshRetryTimer: ReturnType<typeof setTimeout> | undefined;
   // Join-time stream watermark for the selected session. `seq` is the
   // `SessionEventHub` sequence captured together with the seeded partial by the
   // stream snapshot: buffered/live events with `seq <= seq` are already reflected
@@ -1001,6 +1013,7 @@ export class SessionController {
         if (this.getState().sessionsLoad !== "loaded") this.setState({ sessionsLoad: "loaded" });
         return;
       }
+      this.refreshRetryCount = 0;
       sessionsListRevisionByWorkspace.set(revisionKey, revisionResponse.revision);
       const listedSessions = mergeCachedNewSessions(workspace.path, revisionResponse.sessions, machineId)
         .filter((session) => !this.isSuppressedCreatedSession(session, machineId));
@@ -1031,7 +1044,24 @@ export class SessionController {
       if (next !== undefined) await this.selectSession(next);
       else this.deselectSession({ forgetRememberedSelection: true });
     } catch (error) {
-      if (selectedMachineId(this.getState()) === machineId && this.getState().selectedWorkspace?.id === workspace.id) this.setState(errorNoticePatch(error));
+      if (selectedMachineId(this.getState()) === machineId && this.getState().selectedWorkspace?.id === workspace.id) {
+        // A transient failure never sits as a dead banner: the refresh retries
+        // itself with backoff, and the banner says so. Permanent errors
+        // (4xx) keep their message without a retry loop.
+        if (isTransientRefreshError(error) && this.refreshRetryCount < REFRESH_RETRY_MAX) {
+          this.refreshRetryCount += 1;
+          const delay = REFRESH_RETRY_BASE_MS * this.refreshRetryCount;
+          if (this.refreshRetryTimer !== undefined) clearTimeout(this.refreshRetryTimer);
+          this.refreshRetryTimer = setTimeout(() => {
+            this.refreshRetryTimer = undefined;
+            void this.refreshCurrentWorkspaceSessions(machineId);
+          }, delay);
+          this.setState({ ...errorNoticePatch(error), error: `${describeError(error)} — retrying…` });
+        } else {
+          this.refreshRetryCount = 0;
+          this.setState(errorNoticePatch(error));
+        }
+      }
     } finally {
       // Independent of the listing outcome: a listing failure is exactly when a
       // stale work indicator is most misleading.
