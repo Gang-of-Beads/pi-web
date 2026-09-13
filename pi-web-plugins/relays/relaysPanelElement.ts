@@ -505,7 +505,7 @@ function relaysStyles(): string {
          (the app container is a fixed-height flex column; with shrink enabled
          the viewer's huge content basis starves them down to a sliver once a
          tall document renders). The viewer absorbs all shrinking instead. */
-      .toolbar { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: var(--pi-space-5) var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); }
+      .toolbar { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: var(--pi-space-4); border-bottom: 1px solid var(--pi-border-muted); }
       .toolbar[hidden], .document-tabs[hidden] { display: none; }
       .toolbar-actions { display: inline-flex; align-items: center; flex-wrap: nowrap; justify-content: flex-end; gap: var(--pi-space-4); min-width: 0; }
       .relay-name { min-width: 0; color: var(--pi-text-secondary); overflow-wrap: anywhere; }
