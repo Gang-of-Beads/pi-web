@@ -1,7 +1,7 @@
 import { LitElement, css, html, nothing, unsafeCSS } from "lit";
 import { renderCrossIcon, uiIconStyle } from "../uiIcons.js";
 import { customElement, property } from "lit/decorators.js";
-import type { NavSectionContext, MachineSectionContext, QualifiedMachineSectionContribution, QualifiedNavSectionContribution } from "../../plugins/types";
+import type { NavSectionContext, QualifiedNavSectionContribution } from "../../plugins/types";
 import { interactiveSurfaceStyles, listStyles } from "../shared";
 import { panelHeaderStyles } from "./panelHeaderStyles.js";
 import "../ModalSurface";
@@ -19,13 +19,8 @@ export class ContextSwitcherSheet extends LitElement {
   @property({ attribute: false }) navSections: readonly QualifiedNavSectionContribution[] = [];
   /** The host-built snapshot and actions the contributed sections render. */
   @property({ attribute: false }) navSectionContext?: NavSectionContext;
-  /** Contributed machines section bodies; the sheet's machine group renders them. */
-  @property({ attribute: false }) machineSections: readonly QualifiedMachineSectionContribution[] = [];
-  /** The host-built machine snapshot and actions the machine section renders. */
-  @property({ attribute: false }) machineSectionContext?: MachineSectionContext;
   @property({ attribute: false }) onClose?: () => void;
   /** A machine row was picked; the host closes the sheet. */
-  @property({ attribute: false }) onMachineSelected?: () => void;
 
   private debugRefresh?: ReturnType<typeof setInterval> | undefined;
 
@@ -53,7 +48,6 @@ export class ContextSwitcherSheet extends LitElement {
             <button type="button" class="panel-header-action sheet-close" title="Close" aria-label="Close context sheet" @click=${() => { this.onClose?.(); }}>${renderCrossIcon()}</button>
           </div>
           <div class="sheet-body">
-            ${this.renderMachineGroup()}
             ${this.renderNavSection("projects")}
             ${this.renderNavSection("workspaces")}
           </div>
@@ -78,33 +72,7 @@ export class ContextSwitcherSheet extends LitElement {
     return section.render({ ...this.navSectionContext, display: { hidden: false, collapsible: false, collapsed: false, tiles: false, withCreate: true } });
   }
 
-  private renderMachineGroup() {
-    if (this.machineCount() < 2) return null;
-    const section = this.machineSections.find((candidate) => candidate.localId === "machines");
-    if (section === undefined || this.machineSectionContext === undefined) return nothing;
-    const context: MachineSectionContext = {
-      ...this.machineSectionContext,
-      display: { hidden: false, collapsible: false, collapsed: false, tiles: false, withCreate: false },
-      selectMachine: (machineId) => {
-        this.machineSectionContext?.selectMachine(machineId);
-        this.onMachineSelected?.();
-      },
-      toggleCollapsed: () => undefined,
-      focusPreviousSection: () => undefined,
-      focusNextSection: () => undefined,
-      cancelKeyboardNavigation: () => undefined,
-    };
-    /* The contributed machines section renders its own heading; a second one
-       here printed "Machines" twice, in two sizes, one above the other. */
-    /* No wrapper: listStyles gives every <section> flex: 1 1 auto; min-height: 0,
-       which collapsed this one to 16px and let the machine list paint over the
-       projects below it. The contributed section brings its own frame. */
-    return section.render(context);
-  }
 
-  private machineCount(): number {
-    return this.machineSectionContext?.machines.length ?? 0;
-  }
 
   static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, listStyles, panelHeaderStyles, css`
     :host { position: fixed; top: var(--pi-app-viewport-offset-top, 0px); left: 0; right: 0; height: var(--pi-app-visible-height, 100dvh); z-index: var(--pi-layer-overlay); display: block; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); line-height: inherit; }

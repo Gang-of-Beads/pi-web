@@ -4081,11 +4081,8 @@ export class PiWebApp extends LitElement {
         ${this.pluginDialogs.map((entry) => html`<div class="plugin-dialog${entry.dialog.presentation === "fullscreen" ? " plugin-dialog-fullscreen" : ""}"><modal-surface .label=${entry.dialog.label} .onClose=${entry.close}>${entry.dialog.content}</modal-surface></div>`)}
       </div>
       ${this.contextSheetOpen ? html`<context-switcher-sheet
-        .machineSections=${this.plugins.getMachineSections(selectedMachineId(state))}
-        .machineSectionContext=${this.buildMachineSectionContext("sheet")}
         .navSections=${this.plugins.getNavSections(selectedMachineId(state))}
         .navSectionContext=${this.buildNavSectionContext("sheet")}
-        .onMachineSelected=${() => { this.contextSheetOpen = false; }}
         .onClose=${() => { this.contextSheetOpen = false; }}
       ></context-switcher-sheet>` : null}
     `;

@@ -1,10 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Machine } from "../../api";
-import type { NavSectionContext, QualifiedMachineSectionContribution, QualifiedNavSectionContribution } from "../../plugins/types";
-import { MachineList } from "../../../../../pi-web-plugins/machines/browser/MachineList";
-import { machinesSection } from "../../../../../pi-web-plugins/machines/browser/pi-web-plugin";
+import type { NavSectionContext, QualifiedNavSectionContribution } from "../../plugins/types";
 import { workspacesNavSections } from "../../../../../pi-web-plugins/workspaces/browser/pi-web-plugin";
 import { ProjectList } from "../../../../../pi-web-plugins/workspaces/browser/ProjectList";
 import { WorkspaceList } from "../../../../../pi-web-plugins/workspaces/browser/WorkspaceList";
@@ -22,23 +19,15 @@ afterEach(() => {
  * second way to select.
  */
 describe("context-switcher-sheet", () => {
-  it("marks the current machine, project and workspace", async () => {
+  it("marks the current project and workspace", async () => {
     const sheet = await mount();
 
-    const machines = deep(sheet, "machine-list", MachineList);
-    expect(machines?.selectedMachineId).toBe("local");
     const projects = deep(sheet, "project-list", ProjectList);
     if (projects === undefined) throw new Error("project list missing");
     expect(projects.selected?.id).toBe("project-1");
     const workspaces = deep(sheet, "workspace-list", WorkspaceList);
     if (workspaces === undefined) throw new Error("workspace list missing");
     expect(workspaces.selected?.id).toBe("ws-1");
-  });
-
-  it("hides the machine group for a single-machine install", async () => {
-    const sheet = await mount({ machines: [machine("local")] });
-
-    expect(deep(sheet, "machine-list", MachineList)).toBeUndefined();
   });
 
   it("hands a project pick to the shell without closing itself", async () => {
@@ -68,28 +57,12 @@ describe("context-switcher-sheet", () => {
 });
 
 async function mount(options: {
-  machines?: Machine[];
   onSelectProject?: (projectId: string) => void;
   addProject?: () => void;
   onClose?: () => void;
 } = {}): Promise<ContextSwitcherSheet> {
-  const machines = options.machines ?? [machine("local"), machine("remote")];
   const sheet = new ContextSwitcherSheet();
-  const machineSections: QualifiedMachineSectionContribution[] = [{ ...machinesSection(), id: "machines:machines", pluginId: "machines", localId: "machines" }];
-  sheet.machineSections = machineSections;
-  sheet.machineSectionContext = {
-    machines: machines.map((machine) => ({ id: machine.id, name: machine.name, kind: machine.kind, status: "unknown" as const })),
-    selectedMachineId: machines[0]?.id,
-    machineFlags: {},
-    display: { hidden: false, collapsible: false, collapsed: false, tiles: false, withCreate: false },
-    requestUpdate: () => undefined,
-    selectMachine: () => undefined,
-    toggleCollapsed: () => undefined,
-    focusPreviousSection: () => undefined,
-    focusNextSection: () => undefined,
-    cancelKeyboardNavigation: () => undefined,
-  };
-  sheet.navSections = qualifiedSections();
+    sheet.navSections = qualifiedSections();
   sheet.navSectionContext = navContext(options);
   if (options.onClose !== undefined) sheet.onClose = options.onClose;
   document.body.append(sheet);
@@ -143,15 +116,6 @@ function deep<T extends HTMLElement>(sheet: ContextSwitcherSheet, selector: stri
   return undefined;
 }
 
-function machine(id: string): Machine {
-  return {
-    id,
-    name: id,
-    kind: id === "local" ? "local" : "remote",
-    createdAt: "2026-06-04T00:00:00.000Z",
-    updatedAt: "2026-06-04T00:00:00.000Z",
-  };
-}
 
 function project(id: string): NavSectionContext["projects"][number] {
   return { id, name: id, path: `/repo/${id}` };

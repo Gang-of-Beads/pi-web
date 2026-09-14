@@ -842,8 +842,11 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
       .session-search-input { height: var(--pi-control-height-touch, 44px); }
       .session-search-clear { width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); }
       .bulk-select-entry { width: var(--pi-control-height-touch, 44px); min-width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); }
-      .start-session-button { min-width: var(--pi-control-height-touch, 44px); height: var(--pi-control-height-touch, 44px); }
-      .cleanup-entry { box-sizing: border-box; min-height: var(--pi-control-height-touch, 44px); padding: var(--pi-space-3) var(--pi-space-5); }
+      /* The phone toolbar row reads as a banner, not a form: one token
+         height keeps it level with the drawer and sheet headers. */
+      h2 { min-height: var(--pi-panel-header-height); }
+      .start-session-button { min-width: 0; height: var(--pi-panel-header-control-height); }
+      .cleanup-entry { box-sizing: border-box; min-height: var(--pi-panel-header-control-height); padding: 0 var(--pi-space-4); }
       .action-menu-toggle { min-width: var(--pi-control-height-touch, 44px); min-height: var(--pi-control-height-touch, 44px); }
       /* Touch has no hover: the borderless controls answer a press with the
          shared surface step, the only pressed state a flat theme can show. */
