@@ -4020,7 +4020,7 @@ export class PiWebApp extends LitElement {
     return html`
       <div class=${`${this.panelCollapse.shellClass(displayView, state.selectedWorkspace !== undefined)}${this.workspacePanelFullscreen ? " workspace-panel-fullscreen" : ""}`} style=${this.panelResize.shellStyle({ navigation: this.resizablePanelConstraints("navigation"), workspace: this.resizablePanelConstraints("workspace") })}>
         <aside id="navigation-panel">${this.appShell.isMobileNavigationLayout ? null : this.renderNavigationPanel()}</aside>
-        ${this.renderNavigationPanelEdgeControl()}
+        ${this.contextSheetOpen ? null : this.renderNavigationPanelEdgeControl()}
         <main class=${mainViewClass(displayView)}>
           ${this.appShell.isMobileNavigationLayout && displayView === "navigation" ? null : this.renderContextBar()}
 
@@ -4038,7 +4038,7 @@ export class PiWebApp extends LitElement {
             ${state.thinkingDialog !== undefined ? html`<command-picker ?abovedialog=${this.settingsOpen} title=${state.thinkingDialog.title} .options=${state.thinkingDialog.options} .selectedValue=${state.thinkingDialog.selectedValue} .onPick=${(value: string) => { void this.pickThinking(value); }} .onCancel=${() => { this.setState({ thinkingDialog: undefined }); }}></command-picker>` : null}
           ` : html`<div class="empty"><p>${this.sessionEmptyMessage()}</p>${this.renderEmptyStateAction()}</div>`}
         </main>
-        ${this.renderWorkspacePanelEdgeControl()}
+        ${this.contextSheetOpen ? null : this.renderWorkspacePanelEdgeControl()}
         ${this.renderWorkspacePanel()}
         ${this.contextSheetOpen ? html`<context-switcher-sheet
           .machineSections=${this.plugins.getMachineSections(selectedMachineId(state))}
