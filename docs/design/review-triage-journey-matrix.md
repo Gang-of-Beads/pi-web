@@ -151,3 +151,13 @@ FAIL 项全部经过 triage（判据 J3）。
   惰性与可点行一眼可分。
 - **已知残留**：sheet 边缘 2-3px 深色框（元素层级探针未能定位其归属，
   视觉影响极小，待机主裁决是否继续追）。
+
+
+## 移动端 sheet 贴合轮补记
+
+- sheet full-bleed（backdrop padding/border/shadow 清零 + 不透明背景）+
+  标题 Projects + 死行 62% 透明 + 徽章入 meta 行首 x 对齐（5ab743e9）。
+- 面板边缘拖拽条在 sheet 打开时隐藏（d43c47c7）。
+- **已知残留**：sheet 边缘仍余 ~2-3px 蓝线，两轮探针（elementsFromPoint
+  四角命中 + boundingBox 全 0 基）均未定位到绘制源；视觉影响极小，
+  待机主裁决是否立项追查。
