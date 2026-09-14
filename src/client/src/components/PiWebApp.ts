@@ -4040,14 +4040,6 @@ export class PiWebApp extends LitElement {
         </main>
         ${this.contextSheetOpen ? null : this.renderWorkspacePanelEdgeControl()}
         ${this.renderWorkspacePanel()}
-        ${this.contextSheetOpen ? html`<context-switcher-sheet
-          .machineSections=${this.plugins.getMachineSections(selectedMachineId(state))}
-          .machineSectionContext=${this.buildMachineSectionContext("sheet")}
-          .navSections=${this.plugins.getNavSections(selectedMachineId(state))}
-          .navSectionContext=${this.buildNavSectionContext("sheet")}
-          .onMachineSelected=${() => { this.contextSheetOpen = false; }}
-          .onClose=${() => { this.contextSheetOpen = false; }}
-        ></context-switcher-sheet>` : null}
         ${state.authDialog !== undefined ? html`<auth-dialog .state=${state.authDialog} .onChooseMethod=${(authType: "oauth" | "api_key") => { void this.auth.chooseLoginMethod(authType); }} .onSelectProvider=${(providerId: string, authType: "oauth" | "api_key") => { void this.auth.selectLoginProvider(providerId, authType); }} .onLogoutProvider=${(providerId: string) => { void this.auth.logoutProvider(providerId); }} .onOAuthInput=${(value: string) => { this.auth.updateOAuthInput(value); }} .onOAuthRespond=${(value?: string) => { void this.auth.respondOAuth(value); }} .onOAuthCancel=${() => { void this.auth.cancelOAuth(); }} .onCancel=${() => { this.auth.closeDialog(); }}></auth-dialog>` : null}
         ${this.quickSwitcherOpen ? html`<quick-switcher
           .loading=${this.quickSwitcherLoading}
@@ -4087,6 +4079,14 @@ export class PiWebApp extends LitElement {
         ${state.themeDialog !== undefined ? html`<command-picker ?abovedialog=${this.settingsOpen} title=${state.themeDialog.title} .options=${state.themeDialog.options} .selectedValue=${state.themeDialog.selectedValue} .onPick=${(value: string) => { this.pickTheme(value); }} .onCancel=${() => { this.setState({ themeDialog: undefined }); }}></command-picker>` : null}
         ${this.settingsOpen ? html`<settings-dialog .section=${this.settingsSection} .machine=${state.selectedMachine} .machineRuntime=${this.selectedMachineRuntime()} .actions=${this.getDefaultActions()} .onNavigate=${(section: SettingsSection) => { this.navigateSettings(section); }} .onBackToList=${() => { this.backToSettingsList(); }} .pluginSections=${this.plugins.getSettingsSections(selectedMachineId(state))} .pluginRuntimeContext=${this.createPluginRuntimeContext()} .onClose=${() => { this.closeSettings(); }} .onConfigSaved=${(config: PiWebConfigValues) => { this.applyClientConfig(config); }} .onRefreshMachineRuntime=${async (machineId: string) => { await this.machines.refreshMachineRuntime(machineId, { requireSelected: false }); }} .machines=${state.machines} .machineStatuses=${state.machineStatuses} .onAddMachine=${() => { this.openMachineDialog(); }} .onRenameMachine=${async (machine: Machine, name: string) => { await this.renameMachine(machine, name); }} .onRemoveMachine=${(machine: Machine) => { void this.removeMachine(machine); }} .fleetReport=${this.fleetReport} ?fleetLoading=${this.fleetLoading} .fleetError=${this.fleetError} .onRefreshFleet=${() => this.refreshFleet()} .onRunFleet=${(operation: "restart" | "update", machineIds?: readonly string[]) => this.runFleetOperation(operation, machineIds)} .themes=${this.plugins.getThemes()} .selectedThemeId=${this.resolveCurrentThemePreference().selectedTheme?.id} .activeThemeId=${this.activeThemeId} ?followSystemTheme=${this.themePreference.auto} .onSelectTheme=${(themeId: QualifiedContributionId) => { this.selectTheme(themeId); }} .onToggleFollowSystem=${(follow: boolean) => { this.setFollowSystemTheme(follow); }}></settings-dialog>` : null}
         ${this.pluginDialogs.map((entry) => html`<div class="plugin-dialog${entry.dialog.presentation === "fullscreen" ? " plugin-dialog-fullscreen" : ""}"><modal-surface .label=${entry.dialog.label} .onClose=${entry.close}>${entry.dialog.content}</modal-surface></div>`)}
+        ${this.contextSheetOpen ? html`<context-switcher-sheet
+          .machineSections=${this.plugins.getMachineSections(selectedMachineId(state))}
+          .machineSectionContext=${this.buildMachineSectionContext("sheet")}
+          .navSections=${this.plugins.getNavSections(selectedMachineId(state))}
+          .navSectionContext=${this.buildNavSectionContext("sheet")}
+          .onMachineSelected=${() => { this.contextSheetOpen = false; }}
+          .onClose=${() => { this.contextSheetOpen = false; }}
+        ></context-switcher-sheet>` : null}
       </div>
     `;
   }

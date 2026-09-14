@@ -79,7 +79,7 @@ export class ContextSwitcherSheet extends LitElement {
   }
 
   static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, listStyles, css`
-    :host { position: fixed; inset: 0; z-index: var(--pi-layer-overlay); display: block; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); line-height: inherit; }
+    :host { position: fixed; top: calc(-1 * var(--pi-app-viewport-offset-top, 0px)); left: 0; right: 0; height: 100dvh; z-index: var(--pi-layer-overlay); display: block; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); line-height: inherit; }
     /* Full-bleed: the backdrop's centering padding left a blue frame of the
        page visible around the sheet on every edge, which read as a broken
        layer stack. The sheet IS the screen while open. */
