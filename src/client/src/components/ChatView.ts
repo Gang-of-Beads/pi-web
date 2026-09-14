@@ -546,7 +546,10 @@ export function chatDeliveryPresentation(delivery: MessageDelivery, queuePositio
   // arrived. It is not a promise that anything will happen, and a message can
   // sit here while the session is idle. Saying "Sent" and meaning "queued" is
   // what made a stalled message indistinguishable from a running one.
-  if (delivery.state === "received") return { glyph: "single", text: "Sent", label: "Sent - the server received this message, and has not yet said what it is doing with it", tone: "received" };
+  // An accepted message is a queued message: the daemon owns it the moment
+  // the HTTP answer lands, so the transport receipt earns no mark of its own
+  // and reads exactly like the queue state it becomes.
+  if (delivery.state === "received") return { glyph: "single", text: "Queued", label: "Queued - the server has this message and the agent will take it next", tone: "received" };
   return { glyph: "double", text: "Read", label: "Read - the agent took this message into the conversation", tone: "delivered" };
 }
 
