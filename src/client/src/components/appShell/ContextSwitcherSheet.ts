@@ -107,7 +107,7 @@ export class ContextSwitcherSheet extends LitElement {
   }
 
   static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, listStyles, panelHeaderStyles, css`
-    :host { position: fixed; top: calc(-1 * var(--pi-app-viewport-offset-top, 0px)); left: 0; right: 0; height: 100dvh; z-index: var(--pi-layer-overlay); display: block; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); line-height: inherit; }
+    :host { position: fixed; top: var(--pi-app-viewport-offset-top, 0px); left: 0; right: 0; height: var(--pi-app-visible-height, 100dvh); z-index: var(--pi-layer-overlay); display: block; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); line-height: inherit; }
     /* Full-bleed: the backdrop's centering padding left a blue frame of the
        page visible around the sheet on every edge, which read as a broken
        layer stack. The sheet IS the screen while open. */
@@ -115,9 +115,7 @@ export class ContextSwitcherSheet extends LitElement {
     .sheet { display: flex; flex-direction: column; gap: var(--pi-space-4); width: 100%; height: 100%; box-sizing: border-box; padding: 0 var(--pi-space-3) var(--pi-space-3); overflow-y: auto; background: var(--pi-bg); border: none; box-shadow: none; }
     /* The sheet is one scroll container: its title and close stay put while the
        stacked lists scroll under them, as the drawer header does. */
-    .sheet-header { position: sticky; top: 0; z-index: 4; margin-inline: calc(-1 * var(--pi-space-3)); padding-inline: calc(var(--pi-space-3) + var(--pi-reading-edge)); }
-    .sheet-title { font-size: var(--pi-text-sm); }
-    .sheet-close { width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); }
+    .sheet-header { position: sticky; top: 0; z-index: 4; margin-inline: calc(-1 * var(--pi-space-3)); padding-inline: calc(var(--pi-space-3) + var(--pi-reading-edge)); padding-top: max(0px, env(safe-area-inset-top)); }
     .debug-chip { position: fixed; bottom: 8px; left: 8px; max-width: calc(100% - 16px); box-sizing: border-box; padding: 4px 8px; border-radius: 6px; background: #b91c1c; color: #fff; font: 600 11px/1.4 ui-monospace, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     /* Three lists stacked with nothing above naming them: keep their headings,
        which the phone panel drops because its context row says the same word. */

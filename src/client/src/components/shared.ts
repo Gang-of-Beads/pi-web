@@ -177,7 +177,7 @@ export const workspacePanelStyles = css`
   .workspace-label-link { color: var(--pi-accent); text-decoration: none; }
   .workspace-label-link:focus { text-decoration: underline; }
   @media (hover: hover) { .workspace-label-link:hover { text-decoration: underline; } }
-  .toolbar { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-4); min-height: var(--pi-panel-header-height); padding: var(--pi-space-4); border-bottom: 1px solid var(--pi-border-muted); }
+  .toolbar { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-4); box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: 0 var(--pi-space-4); border-bottom: 1px solid var(--pi-border-muted); }
   .toolbar button { margin-left: auto; }
   .stale { border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-pill); color: var(--pi-warning); padding: var(--pi-space-1) var(--pi-space-3); font-size: var(--pi-text-xs); }
   .split { flex: 1 1 auto; min-height: 0; display: grid; grid-template-rows: minmax(160px, 34%) minmax(0, 1fr); }

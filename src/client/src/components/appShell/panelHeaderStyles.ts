@@ -24,7 +24,7 @@ export const panelHeaderStyles = css`
   .panel-header-title {
     font-size: var(--pi-text-sm);
     font-weight: var(--pi-weight-semibold);
-    color: var(--pi-fg);
+    color: var(--pi-text);
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;

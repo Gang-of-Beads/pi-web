@@ -456,8 +456,8 @@ export class AppNavigationPanel extends LitElement {
     .compact-session { flex: 1 1 auto; min-width: 0; min-height: var(--pi-panel-header-control-height); display: inline-flex; align-items: center; box-sizing: border-box; border: 0; background: none; color: var(--pi-text); font: inherit; font-size: var(--pi-text-sm); text-align: start; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
     .compact-session-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .compact-session.empty { color: var(--pi-muted); font-weight: var(--pi-weight-medium); }
-    .compact-session:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
-    .compact-working { box-sizing: border-box; flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-1); min-height: var(--pi-control-height-touch); padding: 0 var(--pi-space-2); }
+    .compact-session:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
+    .compact-working { box-sizing: border-box; flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--pi-space-1); min-height: var(--pi-panel-header-control-height); padding: 0 var(--pi-space-2); }
     .compact-working[hidden] { display: none; }
     .compact-working-dot { width: var(--pi-dot-xs); height: var(--pi-dot-xs); border-radius: 50%; background: var(--pi-accent); animation: compact-working-bounce 1.2s ease-in-out infinite; }
     .compact-working-dot:nth-child(2) { animation-delay: .2s; }
@@ -474,7 +474,7 @@ export class AppNavigationPanel extends LitElement {
        without this higher-specificity override the fold button rendered as an
        8px glyph in a 24px pill. */
     .compact-header-action.compact-fold { padding: 0; }
-    .compact-header-action:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
+    .compact-header-action:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     /* Coarse pointers get the comfort floor: the glyph is small but the hit
        box carries the row's tap weight in the phone header. */
     @media (pointer: coarse) { .compact-header-action { min-width: var(--pi-panel-header-control-height); min-height: var(--pi-panel-header-control-height); } }
@@ -491,7 +491,7 @@ export class AppNavigationPanel extends LitElement {
     .tool-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .tool-badge { flex: 0 0 auto; display: inline-flex; align-items: center; box-sizing: border-box; min-width: 14px; max-width: 45%; line-height: 16px; padding: 0 var(--pi-space-2); border-radius: var(--pi-radius-pill); background: var(--pi-selection-bg); color: var(--pi-text-bright); font-size: var(--pi-text-2xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .compact-scope { box-sizing: border-box; flex: 1 1 auto; min-width: 0; display: flex; align-items: center; min-height: var(--pi-panel-header-control-height); border: 0; background: none; padding: 0; font: inherit; font-size: var(--pi-text-sm); font-weight: var(--pi-weight-semibold); color: var(--pi-text); text-align: start; cursor: pointer; }
-    .compact-scope:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset); border-radius: var(--pi-radius-md); }
+    .compact-scope:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); border-radius: var(--pi-radius-md); }
     .compact-scope-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     /* An unnamed session falls back to its whole first message, so a header
        title that refuses to shrink pushed the settings and Actions buttons

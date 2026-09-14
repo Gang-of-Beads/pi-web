@@ -778,7 +778,7 @@ export class SettingsDialog extends LitElement {
     .settings-nav small { font-size: var(--pi-text-xs); color: var(--pi-muted); }
     .settings-content { min-width: 0; min-height: 0; overflow: auto; padding: var(--pi-space-8); }
 
-    @media (pointer: coarse) { .close-button { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); } }
+    @media (pointer: coarse) { .close-button { width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); } }
     @media (pointer: coarse), (max-width: 760px) {
       modal-surface { --modal-surface-backdrop-padding: 0; --modal-surface-place-items: stretch; --modal-surface-width: 100%; --modal-surface-max-height: none; --modal-surface-min-height: 0; --modal-surface-border: 0; --modal-surface-radius: 0; }
       .settings-header { min-height: var(--pi-panel-header-height); padding: 0 max(var(--pi-space-6), env(safe-area-inset-right)) 0 max(var(--pi-space-6), env(safe-area-inset-left)); padding-top: max(0px, env(safe-area-inset-top)); }
