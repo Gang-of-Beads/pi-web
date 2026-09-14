@@ -766,7 +766,8 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
        none through the flattened tree (WebKit bite). */
     input, textarea, [contenteditable] { -webkit-user-select: text; user-select: text; }
     /* A dead row is a resting fact, not a control: no hover/press/focus feedback, no pointer. (E2) */
-    .cwd-missing-row { cursor: default; }
+    .cwd-missing-row { cursor: default; opacity: .62; }
+    .cwd-missing-row .cwd-gone { color: var(--pi-warning); border-color: var(--pi-warning-border); }
     /* The badge sits at one fixed spot in every dead row (right, clear of the
        menu button) instead of flowing after a variable-length name - inline
        flow put each row's badge at a different offset, which read as

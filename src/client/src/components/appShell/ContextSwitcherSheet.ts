@@ -28,10 +28,10 @@ export class ContextSwitcherSheet extends LitElement {
 
   override render() {
     return html`
-      <modal-surface .onClose=${() => { this.onClose?.(); }} .label=${"Where am I working?"}>
+      <modal-surface .onClose=${() => { this.onClose?.(); }} .label=${"Projects"}>
         <div class="sheet">
           <div class="sheet-header">
-            <span class="sheet-title">Where am I working?</span>
+            <span class="sheet-title">Projects</span>
             <button type="button" class="sheet-close" title="Close" aria-label="Close context sheet" @click=${() => { this.onClose?.(); }}>${renderCrossIcon()}</button>
           </div>
           <div class="sheet-body">
@@ -79,8 +79,12 @@ export class ContextSwitcherSheet extends LitElement {
   }
 
   static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, listStyles, css`
-    :host { position: fixed; inset: 0; z-index: var(--pi-layer-overlay); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); line-height: inherit; }
-    .sheet { display: flex; flex-direction: column; gap: var(--pi-space-4); width: 100%; max-height: 100%; box-sizing: border-box; padding: var(--pi-space-4); overflow-y: auto; }
+    :host { position: fixed; inset: 0; z-index: var(--pi-layer-overlay); display: block; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); line-height: inherit; }
+    /* Full-bleed: the backdrop's centering padding left a blue frame of the
+       page visible around the sheet on every edge, which read as a broken
+       layer stack. The sheet IS the screen while open. */
+    modal-surface { --modal-surface-place-items: stretch; --modal-surface-padding: 0px; --modal-surface-width: 100%; --modal-surface-height: 100%; --modal-surface-radius: 0px; --modal-surface-border: none; --modal-surface-shadow: none; }
+    .sheet { display: flex; flex-direction: column; gap: var(--pi-space-4); width: 100%; height: 100%; box-sizing: border-box; padding: var(--pi-space-3); overflow-y: auto; background: var(--pi-bg); border: none; box-shadow: none; }
     /* The sheet is one scroll container: its title and close stay put while the
        stacked lists scroll under them, as the drawer header does. */
     .sheet-header { position: sticky; top: 0; z-index: 4; background: var(--pi-bg); margin-inline: calc(-1 * var(--pi-space-4)); padding-inline: calc(var(--pi-space-4) + var(--pi-reading-edge)); display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); }

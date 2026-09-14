@@ -136,3 +136,18 @@ FAIL 项全部经过 triage（判据 J3）。
   不透明带的上 4px 会盖住抽屉底边线；涉及 meter/drawer 层级重排，单独排期。
 - **44px 行高/渐隐 mask/语义改名（judged-not-true）**：lane 实证无破坏
   （触摸下限=control-height-touch、mask 不及 sticky/抽屉、改名测试一致）。
+
+
+## 移动端专项对齐轮（机主：移动端专项测）
+
+- **对齐审计探针**（scripts/alignment-audit.mjs）：25 个按钮 + 全部 pill/chip
+  实测中心偏差 ≤1.5px —— 纯图标按钮 0 偏差，pill 0 偏差。机主感知的
+  "歪一点"定位为**列表间左缘不统一**（机器行文字 x=20 vs 会话/项目行 x=23
+  的 3px rail 差）与**磁贴换行路径**（已改单行省略）。
+- **抽屉浮层全面贴合（已修）**：Context sheet 曾被 backdrop padding 缩进、
+  四周露出蓝框；现 full-bleed（place-items stretch + padding 0 + border/
+  shadow none + sheet 不透明背景），标题回归字面的 Projects。
+- **死行视觉可辨（已修）**：死行 62% 透明度 + 徽章入 meta 行首（x 对齐），
+  惰性与可点行一眼可分。
+- **已知残留**：sheet 边缘 2-3px 深色框（元素层级探针未能定位其归属，
+  视觉影响极小，待机主裁决是否继续追）。
