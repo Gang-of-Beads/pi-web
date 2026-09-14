@@ -161,3 +161,26 @@ FAIL 项全部经过 triage（判据 J3）。
 - **已知残留**：sheet 边缘仍余 ~2-3px 蓝线，两轮探针（elementsFromPoint
   四角命中 + boundingBox 全 0 基）均未定位到绘制源；视觉影响极小，
   待机主裁决是否立项追查。
+
+
+## Banner 统一轮（三路 lanes 实测评审）
+
+机主判定各页标题 banner 高度不一（"时大时小"），实测手机档：
+抽屉 compact-header 41px vs Projects sheet 36px（同 token 不同结果）。
+
+**根因与修复**（全部 lanes 独立裁定后落地，12bd82d6..5088da0c）：
+- compact-header 垂直 padding 多出 5px → 去除并钉死 token 高度（12bd82d6）
+- sheet 顶部 padding 让滚动行从 sticky 标题上方钻出（机主截图里的
+  "opus-b"）→ 去顶部 padding，标题钉死屏顶（438edcd0）
+- sheet 曾嵌在 mobile-navigation-panel 内被顶部裁剪（"缝隙"真因）→
+  真正移到 app 模板根层（9dd841ab）
+- 新共享 panelHeaderStyles（高度/标题/动作 token 契约），sheet 与
+  settings 手机档接入（438edcd0）
+- lanes 残余：sheet 视口配对镜像 shell（top +offset + visible-height，
+  三 lane 一致裁定）；--pi-fg 死 token；settings 手机档 close 按钮
+  44→36；compact-working 44→36；compact 聚焦环内收；插件 toolbar
+  box-sizing（AppContextBar 先例）；banner 契约测试
+  bannerContract.test.ts 固定（5088da0c）
+
+**实测结果**（393×850，8505 真实构建）：三个表面 header 全部
+36px、top=0。契约测试 5/5。真机待机主确认。
