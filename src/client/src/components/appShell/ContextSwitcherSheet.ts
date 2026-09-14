@@ -26,6 +26,23 @@ export class ContextSwitcherSheet extends LitElement {
   /** A machine row was picked; the host closes the sheet. */
   @property({ attribute: false }) onMachineSelected?: () => void;
 
+  private debugRefresh?: ReturnType<typeof setInterval> | undefined;
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    if (new URLSearchParams(window.location.search).has("sheetdebug")) {
+      this.debugRefresh = setInterval(() => { this.requestUpdate(); }, 500);
+    }
+  }
+
+  override disconnectedCallback(): void {
+    if (this.debugRefresh !== undefined) {
+      clearInterval(this.debugRefresh);
+      this.debugRefresh = undefined;
+    }
+    super.disconnectedCallback();
+  }
+
   override render() {
     return html`
       <modal-surface .onClose=${() => { this.onClose?.(); }} .label=${"Projects"}>
@@ -39,9 +56,19 @@ export class ContextSwitcherSheet extends LitElement {
             ${this.renderNavSection("projects")}
             ${this.renderNavSection("workspaces")}
           </div>
+          ${this.renderDebugChip()}
         </div>
       </modal-surface>
     `;
+  }
+
+  private renderDebugChip(): unknown {
+    if (!new URLSearchParams(window.location.search).has("sheetdebug")) return nothing;
+    const vv = window.visualViewport;
+    const rect = this.getBoundingClientRect();
+    const shellTop = getComputedStyle(this).top;
+    const text = `sheet.top=${String(Math.round(rect.top))} shell.top=${shellTop} vv.top=${String(Math.round(vv?.offsetTop ?? 0))} vv.h=${String(Math.round(vv?.height ?? 0))} ivh=${String(window.innerHeight)} dvh=${String(document.documentElement.clientHeight)}`;
+    return html`<div class="debug-chip">${text}</div>`;
   }
 
   private renderNavSection(localId: "projects" | "workspaces"): unknown {
@@ -93,6 +120,7 @@ export class ContextSwitcherSheet extends LitElement {
     @media (pointer: coarse) { .sheet-close { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); } }
     @media (pointer: coarse) { .sheet-close:active { background: var(--pi-surface-hover); } }
     .sheet-close:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
+    .debug-chip { position: fixed; bottom: 8px; left: 8px; max-width: calc(100% - 16px); box-sizing: border-box; padding: 4px 8px; border-radius: 6px; background: #b91c1c; color: #fff; font: 600 11px/1.4 ui-monospace, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     /* Three lists stacked with nothing above naming them: keep their headings,
        which the phone panel drops because its context row says the same word. */
     .sheet-body { --pi-list-word-heading-display: inline; --pi-list-word-heading-margin: 0 0 var(--pi-space-2); display: flex; flex-direction: column; gap: var(--pi-space-4); min-height: 0; }
