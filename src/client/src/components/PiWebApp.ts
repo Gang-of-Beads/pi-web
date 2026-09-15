@@ -47,6 +47,7 @@ import { sessionCleanupRequestKey } from "../sessionCleanupUi";
 import { SessionUnreadController } from "../sessionUnread";
 import { workspaceViewTransition } from "../workspaceViewTransition";
 import { RealtimeSocket, type BrowserRealtimeEvent } from "../sessionSocket";
+import { workspaceChangeVerdict } from "../workspaceChange";
 import type { PluginMachine, PluginPromptEditor, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding, PluginDialog, PluginDialogHandle, NavSectionContext, MachineSectionContext } from "../plugins/types";
 import { CORE_PRO_THEME_ID, CLASSIC_THEME_ID, DEFAULT_THEME_PREFERENCE, applyNativeProTheme, applyPiWebTheme, findThemePairForTheme, readStoredThemePreference, resolveThemePreference, writeStoredThemePreference, type ThemePreference, type ThemePreferenceResolution } from "../theme";
 import { corePlugin } from "../plugins/core";
@@ -2046,6 +2047,16 @@ export class PiWebApp extends LitElement {
       .map((machine) => machine.id));
   }
 
+  private applyWorkspaceChanged(machineId: string, cwd: string): void {
+    const verdict = workspaceChangeVerdict({
+      eventMachineId: machineId,
+      eventCwd: cwd,
+      selectedMachineId: selectedMachineId(this.state),
+      selectedWorkspacePath: this.state.selectedWorkspace?.path,
+    });
+    if (verdict.kind === "refresh") void this.invalidateWorkspacePanels();
+  }
+
   private handleMachineActivityEvent(machineId: string, event: BrowserRealtimeEvent): void {
     if (event.type === "sessions.unread") this.sessionUnread.applyEvent(machineId, event);
     else if (event.type === "machine.status") this.machineStatus.apply(machineId, event.status);
@@ -2054,6 +2065,7 @@ export class PiWebApp extends LitElement {
   private handleRealtimeEvent(machineId: string, event: BrowserRealtimeEvent): void {
     if (event.type === "sessions.unread") this.sessionUnread.applyEvent(machineId, event);
     else if (event.type === "machine.status") this.machineStatus.apply(machineId, event.status);
+    else if (event.type === "workspace.changed") this.applyWorkspaceChanged(machineId, event.cwd);
     else if (isTerminalEvent(event)) {
       this.applyTerminalEvent(event);
       if (event.type === "terminal.exited") void this.refreshWorkspaceDeletionRuns();

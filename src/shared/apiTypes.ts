@@ -1488,7 +1488,17 @@ export type GlobalSessionEvent =
   | SessionNotificationSummaryEvent
   | SessionUnreadEvent
   | SessionStartupProgressEvent;
-export type RealtimeEvent = GlobalSessionEvent | TerminalUiEvent | MachineStatusUiEvent;
+/**
+ * A watched working directory changed on disk. The daemon names the directory
+ * only; the browser decides whether it is the workspace it shows and refreshes
+ * its panels through the invalidation they already implement.
+ */
+export interface WorkspaceChangedUiEvent {
+  readonly type: "workspace.changed";
+  readonly cwd: string;
+}
+
+export type RealtimeEvent = GlobalSessionEvent | TerminalUiEvent | MachineStatusUiEvent | WorkspaceChangedUiEvent;
 
 /** A run a restart cut off, as reported once by the daemon and then cleared. */
 export interface InterruptedRunInfo {

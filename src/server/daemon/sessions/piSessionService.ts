@@ -92,6 +92,7 @@ import { DEFAULT_EXTENSION_DIALOGS_TIMEOUT_MS } from "../../../config.js";
 import { createSpawnSessionToolDefinition, type SpawnSessionInvocation, type SpawnSessionResult } from "./spawnSessionTool.js";
 import { createBackgroundRunCountCycle } from "./backgroundRunCount.js";
 import { BackgroundWorkWatcher } from "./backgroundWorkWatcher.js";
+import { WorkspaceWatcher } from "../workspaces/workspaceWatcher.js";
 import { listBackgroundTasks, readTaskOutput } from "./backgroundTasks.js";
 import { promptDeliveryBehavior, type QueuedPromptKind } from "./promptDelivery.js";
 import { AcceptanceLedger } from "./acceptanceLedger.js";
@@ -1175,6 +1176,7 @@ export class PiSessionService implements SessionRouteService {
   private backgroundRunScanInFlight = false;
   private backgroundRunRefreshRequested = true;
   private readonly backgroundWorkWatcher: BackgroundWorkWatcher;
+  private readonly workspaceWatcher: WorkspaceWatcher;
   private readonly heartbeat: NodeJS.Timeout;
   private readonly commandService: SessionCommandService<PiAgentSession>;
   /** Runtime-identity gate held while Pi may await abandoned-branch summarization. */
@@ -1329,6 +1331,7 @@ export class PiSessionService implements SessionRouteService {
       this.backgroundRunRefreshRequested = true;
       void this.refreshBackgroundRunCounts();
     });
+    this.workspaceWatcher = new WorkspaceWatcher((event) => { this.events.publishRealtime(event); });
     this.heartbeat = setInterval(() => { this.publishHeartbeats(); }, deps.heartbeatIntervalMs ?? 2000);
     this.commandService = new SessionCommandService(
       (sessionId) => this.getActive(this.activeSessionRef(sessionId)),
@@ -1509,6 +1512,7 @@ export class PiSessionService implements SessionRouteService {
     clearInterval(this.heartbeat);
     this.clearCompactionDrainTimers();
     this.backgroundWorkWatcher.dispose();
+    this.workspaceWatcher.dispose();
     // Same startup-park hazard as closeActive(): settle `session_start` dialogs
     // of sessions still binding extensions before awaiting their pending opens.
     for (const sessionId of this.startupSessions.keys()) this.endSessionExtensionDialogs(sessionId);
@@ -3854,6 +3858,7 @@ export class PiSessionService implements SessionRouteService {
     this.endSessionExtensionDialogs(sessionId);
     this.active.delete(sessionId);
     this.backgroundWorkWatcher.forget(sessionId);
+    this.workspaceWatcher.release(sessionId, active.runtime.session.sessionManager.getCwd());
     this.activities.delete(sessionId);
     this.workspaceActivity?.removeSession(sessionId, active.runtime.session.sessionManager.getCwd());
     this.clearAuthLossWarningsForSession(sessionId);
@@ -4139,6 +4144,7 @@ export class PiSessionService implements SessionRouteService {
       });
       this.active.set(runtime.session.sessionId, active);
       this.watchBackgroundWork(runtime.session);
+      this.workspaceWatcher.hold(runtime.session.sessionId, runtime.session.sessionManager.getCwd());
       this.backgroundRunRefreshRequested = true;
       void this.refreshBackgroundRunCounts();
       if (notificationOwnership === "replacement" && notificationGeneration !== undefined) {
