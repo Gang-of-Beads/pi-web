@@ -16,7 +16,9 @@ export interface GoToDestination {
 
 /**
  * The extension page on the phone: every destination by name in two columns
- * of tiles (the owner's shape), opened from one control in the bar. The owner ruled it back in from the 8504 build:
+ * of tiles (the owner's shape), opened from one control in the bar and
+ * dropping from the top, under the finger that opened it, so nothing has
+ * to travel down the screen to pick. The owner ruled it back in from the 8504 build:
  * the tool tiles stacked under the session list made the list page carry
  * two things, and a tool page had no way to another tool but back through
  * the list. Being a modal layer, the system back gesture closes it.
@@ -59,7 +61,7 @@ export class AppGoToSheet extends LitElement {
   static override styles = [interactiveSurfaceStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-overlay); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
     modal-surface {
-      --modal-surface-place-items: end center;
+      --modal-surface-place-items: start center;
       --modal-surface-backdrop-padding: 0;
       --modal-surface-width: min(560px, 100vw);
       --modal-surface-max-height: min(70dvh, 560px);

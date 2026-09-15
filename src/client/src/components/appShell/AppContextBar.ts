@@ -3,6 +3,7 @@ import { customElement, property } from "lit/decorators.js";
 import type { SessionInfo } from "../../api";
 import { sessionLabel } from "../../sessionLabels";
 import { renderGridIcon } from "../uiIcons";
+import { LongPressTracker } from "../../longPress";
 
 /**
  * The single resident row of the shell: the panel toggle, the session name,
@@ -26,6 +27,13 @@ export class AppContextBar extends LitElement {
   @property({ attribute: false }) onQuickSwitch?: () => void;
   /** Opens the Go to sheet; absent on layouts where the navigation panel lists the views itself. */
   @property({ attribute: false }) onOpenGoTo?: () => void;
+  /** Holding the session name asks to rename it; absent where the shell offers no rename. */
+  @property({ attribute: false }) onRenameRequest?: (session: SessionInfo) => void;
+  private readonly titleHold = new LongPressTracker({
+    onLongPress: () => { if (this.session !== undefined) this.onRenameRequest?.(this.session); },
+    setTimer: (callback, ms) => window.setTimeout(callback, ms),
+    clearTimer: (handle) => { window.clearTimeout(handle); },
+  });
 
   override render() {
     return html`
@@ -55,8 +63,13 @@ export class AppContextBar extends LitElement {
               type="button"
               class="session-title"
               title=${this.session.path}
-              aria-label=${`Session: ${sessionContextLabel(this.session)}. Open session selection.`}
-              @click=${() => { this.onQuickSwitch?.(); }}
+              aria-label=${`Session: ${sessionContextLabel(this.session)}. Open session selection.${this.onRenameRequest === undefined ? "" : " Hold to rename."}`}
+              @click=${() => { if (this.titleHold.consumeSuppressedClick()) return; this.onQuickSwitch?.(); }}
+              @pointerdown=${(event: PointerEvent) => { if (event.pointerType !== "mouse" && this.onRenameRequest !== undefined) this.titleHold.start(event); }}
+              @pointermove=${(event: PointerEvent) => { this.titleHold.move(event); }}
+              @pointerup=${() => { this.titleHold.cancel(); }}
+              @pointercancel=${() => { this.titleHold.cancel(); }}
+              @contextmenu=${(event: Event) => { if (this.onRenameRequest !== undefined) event.preventDefault(); }}
             ><span class="session-title-text">${this.activeSurface === "" ? sessionContextLabel(this.session) : `${this.activeSurface} · ${sessionContextLabel(this.session)}`}</span></button>`}
         <span
           class="working"

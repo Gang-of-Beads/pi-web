@@ -61,6 +61,7 @@ import { BrowserResumeController } from "../appShell/browserResumeController";
 import { NavigationSectionsController, type NavigationSection } from "../appShell/navigationState";
 import "./appShell/ContextSwitcherSheet";
 import "./appShell/AppGoToSheet";
+import "./SessionRenameDialog";
 import type { GoToDestination } from "./appShell/AppGoToSheet";
 import { PanelCollapseController, mainViewClass, panelToggleHiddenState } from "../appShell/panelCollapseController";
 import { PanelResizeController, type PanelResizeConstraints, type ResizablePanelSide } from "../appShell/panelResizeController";
@@ -422,6 +423,8 @@ export class PiWebApp extends LitElement {
   @state() private quickSwitcherOpen = false;
   @state() private contextSheetOpen = false;
   @state() private goToSheetOpen = false;
+  /** The session whose name the bar title hold asked to change. */
+  @state() private renameFromBar: SessionInfo | undefined;
   /** True while a question form or dialog field has focus (see composerCollapse). */
   @state() private composerCollapsed = false;
   @state() private quickSwitcherLoading = false;
@@ -4001,6 +4004,7 @@ export class PiWebApp extends LitElement {
         .session=${this.state.selectedSession}
         .activeSurface=${this.activeSurfaceLabel()}
         .onOpenGoTo=${this.appShell.isMobileNavigationLayout ? () => { this.openGoToSheet(); } : undefined}
+        .onRenameRequest=${(session: SessionInfo) => { this.renameFromBar = session; }}
         ?isWorking=${this.state.selectedSession !== undefined && isActive(this.state)}
         ?panelOpen=${this.shellPanelOpen()}
         ?panelToggleHidden=${panelToggleHiddenState({ mobileLayout: this.appShell.isMobileNavigationLayout, displayView: this.displayMainView() })}
@@ -4142,6 +4146,11 @@ export class PiWebApp extends LitElement {
         .navSectionContext=${this.buildNavSectionContext("sheet")}
         .onClose=${() => { this.contextSheetOpen = false; }}
       ></context-switcher-sheet>` : null}
+      ${this.renameFromBar === undefined ? null : html`<session-rename-dialog
+        .sessionName=${this.renameFromBar.name ?? ""}
+        .onSubmit=${(name: string) => { const target = this.renameFromBar; this.renameFromBar = undefined; if (target !== undefined) void this.sessions.renameSession(target, name); }}
+        .onCancel=${() => { this.renameFromBar = undefined; }}
+      ></session-rename-dialog>`}
       ${this.goToSheetOpen ? html`<app-go-to-sheet
         .destinations=${this.goToDestinations()}
         .onSelect=${(id: string) => { this.goTo(id); }}

@@ -4,6 +4,8 @@ import { customElement, property, query, state } from "lit/decorators.js";
 import type { Machine, Project, SessionActivity, SessionInfo, SessionStatus, Workspace } from "../../api";
 import { sessionLabel } from "../../sessionLabels";
 import { renderGridIcon } from "../uiIcons";
+import { LongPressTracker } from "../../longPress";
+import "../SessionRenameDialog";
 import type { DrawerSectionContext, QualifiedDrawerSectionContribution, MachineSectionContext, QualifiedMachineSectionContribution, NavSectionContext, QualifiedNavSectionContribution } from "../../plugins/types";
 import type { NavigationSection } from "../../appShell/navigationState";
 import { NAVIGATION_SECTION_ORDER } from "../../appShell/navigationState";
@@ -41,6 +43,15 @@ export interface ShellToolTab {
 export class AppNavigationPanel extends LitElement {
   /** Secondary header actions live behind the fold; the bar itself stays one row. */
   @state() private compactActionsOpen = false;
+  /** The session the title hold asked to rename; the dialog shows while set. */
+  @state() private renameTarget: SessionInfo | undefined;
+  /** Holding the session title opens rename: the name is right there, and the
+   *  row menu's Rename is two taps and a scroll away on the phone. */
+  private readonly titleHold = new LongPressTracker({
+    onLongPress: () => { this.renameTarget = this.selectedSession; },
+    setTimer: (callback, ms) => window.setTimeout(callback, ms),
+    clearTimer: (handle) => { window.clearTimeout(handle); },
+  });
   @property({ attribute: false }) machines: Machine[] = [];
   @property({ attribute: false }) selectedMachine?: Machine;
   @property({ attribute: false }) selectedProject?: Project;
@@ -187,7 +198,16 @@ export class AppNavigationPanel extends LitElement {
           <button class="compact-scope" @click=${() => { this.onOpenContextSheet?.(); }} aria-label="Change machine, project or workspace">
             <span class="compact-scope-name" dir="auto">${this.compactScopeLabel()}</span>
           </button>
-          <button class="compact-session${this.selectedSession === undefined ? " empty" : ""}" @click=${() => { this.onQuickSwitch?.(); }} aria-label="Open session selection">
+          <button
+            class="compact-session${this.selectedSession === undefined ? " empty" : ""}"
+            aria-label=${this.selectedSession === undefined ? "Open session selection" : "Open session selection. Hold to rename."}
+            @click=${() => { if (this.titleHold.consumeSuppressedClick()) return; this.onQuickSwitch?.(); }}
+            @pointerdown=${(event: PointerEvent) => { if (event.pointerType !== "mouse" && this.selectedSession !== undefined) this.titleHold.start(event); }}
+            @pointermove=${(event: PointerEvent) => { this.titleHold.move(event); }}
+            @pointerup=${() => { this.titleHold.cancel(); }}
+            @pointercancel=${() => { this.titleHold.cancel(); }}
+            @contextmenu=${(event: Event) => { if (this.selectedSession !== undefined) event.preventDefault(); }}
+          >
             <span class="compact-session-name" dir="auto">${compactTitle(this.activeSurface, this.selectedSession)}</span>
           </button>
           <span class="compact-working" role="status" aria-label="Session is working" ?hidden=${!this.isWorking}><span class="compact-working-dot"></span><span class="compact-working-dot"></span><span class="compact-working-dot"></span></span>
@@ -197,6 +217,11 @@ export class AppNavigationPanel extends LitElement {
             <svg class="compact-fold-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d=${this.compactActionsOpen ? "m6 15 6-6 6 6" : "m6 9 6 6 6-6"}></path></svg>
           </button>
         </div>
+        ${this.renameTarget === undefined ? null : html`<session-rename-dialog
+          .sessionName=${this.renameTarget.name ?? ""}
+          .onSubmit=${(name: string) => { const target = this.renameTarget; this.renameTarget = undefined; if (target !== undefined) void this.onRenameSession?.(target, name); }}
+          .onCancel=${() => { this.renameTarget = undefined; }}
+        ></session-rename-dialog>`}
         ${this.compactActionsOpen ? html`
         <div class="compact-actions-row">
           <button class="compact-header-action" title="Open settings" aria-label="Open settings" @click=${() => { this.onOpenSettings?.(); }}>Settings</button>

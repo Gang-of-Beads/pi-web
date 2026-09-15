@@ -273,7 +273,9 @@ export const listStyles = css`
   /* The glyph is the mark and the label is the word: sized apart on purpose,
      and sized here so every "+ something" control in the app agrees. */
   .section-add-label { font-size: var(--pi-text-xs); white-space: nowrap; }
-  .section-add-glyph { font-size: var(--pi-text-lg); line-height: 1; }
+  /* The glyph decorates the label without moving it: absolutely placed, so
+     the text alone is centred and the button's weight is where it reads. */
+  .section-add-glyph { position: absolute; left: var(--pi-space-4); top: 50%; transform: translateY(-50%); font-size: var(--pi-text-lg); line-height: 1; }
   .section-add { box-sizing: border-box; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: var(--pi-space-2); min-width: var(--pi-control-height); min-height: var(--pi-control-height); padding: 0 var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); line-height: 1; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   .section-add:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
   @media (hover: hover) { .section-add:hover { border-color: var(--pi-accent); } }

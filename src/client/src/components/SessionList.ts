@@ -732,7 +732,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     h2 > .section-unread-count { flex: 0 0 auto; display: inline-block; min-width: 14px; border-radius: var(--pi-radius-pill); background: var(--pi-selection-bg); color: var(--pi-text-bright); padding: 0 var(--pi-space-2); font-size: var(--pi-text-2xs); line-height: 16px; text-align: center; text-transform: none; }
     .selection-mark { width: 16px; height: 16px; }
   .bulk-select-entry { box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-control-height); height: var(--pi-control-height); padding: 0; font-size: var(--pi-text-sm); line-height: 1; text-transform: none; }
-    .start-session-button { box-sizing: border-box; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: var(--pi-space-2); min-width: var(--pi-control-height); height: var(--pi-control-height); padding: 0 var(--pi-space-5); }
+    .start-session-button { position: relative; box-sizing: border-box; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; min-width: var(--pi-control-height); height: var(--pi-control-height); padding: 0 calc(var(--pi-space-4) + 1em); }
     .section-add-label { font-size: var(--pi-text-xs); white-space: nowrap; }
     /* Quiet by default. Three outlined buttons of equal weight said nothing
        about which one starts work and which one deletes it; a secondary action
