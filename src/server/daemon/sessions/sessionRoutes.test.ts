@@ -1625,6 +1625,12 @@ class CapturingRouteSessionService implements SessionRouteService {
     return Promise.resolve(this.messagesResponse);
   }
 
+  toolResultImageResponse: { mimeType: string; data: string } | undefined = undefined;
+  readonly toolResultImageCalls: { lookup: SessionRouteRef; toolCallId: string; index: number }[] = [];
+  toolResultImage(lookup: SessionRouteRef, toolCallId: string, index: number) {
+    this.toolResultImageCalls.push({ lookup, toolCallId, index });
+    return Promise.resolve(this.toolResultImageResponse);
+  }
   status(lookup: SessionRouteRef) {
     this.calls.push(lookup);
     return Promise.resolve({
@@ -1789,3 +1795,41 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function unusedRouteMethod(name: string): Error {
   return new Error(`Route test did not expect ${name} to be called`);
 }
+
+describe("tool-result image route", () => {
+  async function routeAppFor(routeService: CapturingRouteSessionService) {
+    const routeApp = Fastify({ logger: false });
+    await routeApp.register(fastifyWebsocket);
+    registerSessionRoutes(routeApp, routeService, new SessionEventHub());
+    return routeApp;
+  }
+
+  it("serves the addressed image block as the session file holds it", async () => {
+    const routeService = new CapturingRouteSessionService();
+    routeService.toolResultImageResponse = { mimeType: "image/png", data: Buffer.from("png-bytes").toString("base64") };
+    const routeApp = await routeAppFor(routeService);
+    const requestCwd = resolve("/repo");
+    try {
+      const response = await routeApp.inject({ method: "GET", url: `/sessions/session-1/tool-results/call-1/images/2?cwd=${encodeURIComponent(requestCwd)}` });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ mimeType: "image/png", data: Buffer.from("png-bytes").toString("base64") });
+      expect(routeService.toolResultImageCalls).toEqual([{ lookup: { id: "session-1", cwd: requestCwd }, toolCallId: "call-1", index: 2 }]);
+    } finally {
+      await routeApp.close();
+    }
+  });
+
+  it("answers 404 when the session has no such block and 400 for a bad index", async () => {
+    const routeService = new CapturingRouteSessionService();
+    const routeApp = await routeAppFor(routeService);
+    const requestCwd = resolve("/repo");
+    try {
+      const missing = await routeApp.inject({ method: "GET", url: `/sessions/session-1/tool-results/call-1/images/0?cwd=${encodeURIComponent(requestCwd)}` });
+      expect(missing.statusCode).toBe(404);
+      const bad = await routeApp.inject({ method: "GET", url: `/sessions/session-1/tool-results/call-1/images/-1?cwd=${encodeURIComponent(requestCwd)}` });
+      expect(bad.statusCode).toBe(400);
+    } finally {
+      await routeApp.close();
+    }
+  });
+});

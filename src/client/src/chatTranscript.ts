@@ -429,7 +429,9 @@ export function messageContentKey(message: ChatLine): string | undefined {
   const text = messageText(message);
   const images = message.parts
     .filter((part): part is Extract<ChatLine["parts"][number], { type: "image" }> => part.type === "image")
-    .map((part) => `${part.mimeType}:${String(part.data.length)}:${part.data.slice(0, 24)}:${part.data.slice(-24)}`);
+    .map((part) => "data" in part
+      ? `${part.mimeType}:${String(part.data.length)}:${part.data.slice(0, 24)}:${part.data.slice(-24)}`
+      : `${part.mimeType}:ref:${part.ref.toolCallId}:${String(part.ref.index)}`);
   if (text === "" && images.length === 0) return undefined;
   return `${text}\u0000${images.join("|")}`;
 }

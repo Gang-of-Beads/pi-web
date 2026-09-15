@@ -1,7 +1,7 @@
 import { ASK_USER_ANSWERS_CUSTOM_TYPE } from "../../shared/apiTypes";
 import { deliverySettled } from "./messageDelivery";
 import { parseAskUserOutcome } from "./api/parsers";
-import type { ChatLine, ChatPart, ToolExecutionPart, ToolPreview } from "./components/shared";
+import type { ChatLine, ChatPart, ToolExecutionPart, ToolPreview, ToolResultImageRef } from "./components/shared";
 
 export function normalizeMessages(messages: unknown[]): ChatLine[] {
   return coalesceToolExecutions(messages.flatMap(normalizeMessage)).filter((message) => message.parts.length > 0);
@@ -269,6 +269,8 @@ function normalizeContent(content: unknown, message: unknown): ChatPart[] {
       const data = getString(part, "data");
       const mimeType = getString(part, "mimeType");
       if (data !== undefined && data !== "" && mimeType !== undefined && mimeType !== "") return [{ type: "image", mimeType, data }];
+      const ref = toolResultImageRef(getProperty(part, "ref"));
+      if (ref !== undefined && mimeType !== undefined && mimeType !== "") return [{ type: "image", mimeType, ref }];
       return [{ type: "text", text: "[image]" }];
     }
     return objectFallback(part);
@@ -480,4 +482,11 @@ function formatByteSize(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   if (bytes >= 1024) return `${String(Math.round(bytes / 1024))} KB`;
   return `${String(bytes)} bytes`;
+}
+
+function toolResultImageRef(value: unknown): ToolResultImageRef | undefined {
+  const toolCallId = getString(value, "toolCallId");
+  const index = getProperty(value, "index");
+  if (toolCallId === undefined || toolCallId === "" || typeof index !== "number" || !Number.isInteger(index) || index < 0) return undefined;
+  return { toolCallId, index };
 }

@@ -18,7 +18,19 @@ describe("ChatView image content derivation", () => {
     expect(chatImagePartSource({ type: "image", mimeType: "image/png", data: "QUJD" })).toEqual({
       src: "data:image/png;base64,QUJD",
       alt: "attached image",
+      appPath: false,
     });
+  });
+
+  it("addresses a deferred tool-result image through the session's own scope", () => {
+    const part = { type: "image" as const, mimeType: "image/png", ref: { toolCallId: "call 1", index: 2 } };
+    const source = chatImagePartSource(part, { session: { id: "s1", cwd: "/repo" }, machineId: "remote-a" });
+    expect(source).toEqual({ src: "api/machines/remote-a/sessions/s1/tool-results/call%201/images/2?cwd=%2Frepo", alt: "tool result image", appPath: true });
+  });
+
+  it("refuses to guess an address when the session scope is missing", () => {
+    const part = { type: "image" as const, mimeType: "image/png", ref: { toolCallId: "call-1", index: 0 } };
+    expect(chatImagePartSource(part)).toEqual({ src: "", alt: "tool result image (session scope missing)", appPath: false });
   });
 
   it("labels tool image output by tool name and falls back to a generic label", () => {
@@ -61,7 +73,7 @@ describe("ChatView image event wiring", () => {
 
     expect(zoomedImage(view)).toBeUndefined();
     onClick(new Event("click"));
-    expect(zoomedImage(view)).toEqual(chatImagePartSource(part));
+    expect(zoomedImage(view)).toEqual({ src: "data:image/png;base64,QUJD", alt: "attached image" });
 
     const close: unknown = Reflect.get(view, "closeImageZoom");
     if (typeof close !== "function") throw new Error("ChatView.closeImageZoom is not callable");

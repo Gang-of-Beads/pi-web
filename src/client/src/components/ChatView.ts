@@ -1,6 +1,9 @@
 import { css, LitElement, html, nothing, type TemplateResult, unsafeCSS } from "lit";
 import { renderCheckIcon, renderCopyIcon, renderCrossIcon, renderDoubleCheckIcon, renderPendingRingIcon, renderRecallIcon, renderResendIcon, renderRunIcon, uiIconStyle } from "./uiIcons.js";
 import { scrollbarWidthOf } from "../scrollbarWidth";
+import { toolResultImagePath } from "../api/urls";
+import { resolveAppUrl } from "../appUrl";
+import type { SessionRef } from "../../../shared/apiTypes";
 import { showsJumpToBottom } from "../chatScrollPosition";
 import { ScrollFollowGate, TOUCH_SETTLE_MS } from "../scrollFollowGate";
 import { customElement, property, query, state } from "lit/decorators.js";
@@ -312,6 +315,11 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .msg.event-group > summary .label { margin: 0; }
   .group-body { padding: 0 var(--pi-space-6) var(--pi-space-6); }
   .chat-image { display: block; max-width: 100%; max-height: 320px; margin: var(--pi-space-4) 0 0; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-md); object-fit: contain; cursor: zoom-in; }
+  /* A deferred image has no bytes until it scrolls into view, and an image
+     with no bytes has no box - which is exactly what keeps it from ever
+     scrolling into view. The placeholder box breaks that deadlock and holds
+     the transcript's layout while the bytes arrive. */
+  .chat-image.deferred { min-width: 120px; min-height: 90px; background: var(--pi-surface); }
   .chat-image:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent, var(--pi-success-border)); outline-offset: var(--pi-focus-ring-offset); }
   dialog.image-zoom { box-sizing: border-box; position: fixed; inset: 0; margin: auto; max-width: calc(96vw - env(safe-area-inset-left) - env(safe-area-inset-right)); max-height: calc(96vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); width: fit-content; height: fit-content; padding: 0; border: none; background: transparent; overflow: visible; }
   dialog.image-zoom[open] { display: flex; }
@@ -556,8 +564,15 @@ export function chatDeliveryPresentation(delivery: MessageDelivery, queuePositio
 export type ChatImagePart = Extract<ChatPart, { type: "image" }>;
 
 /** Derive the `<img>` source URL and alt text for a rendered image part. */
-export function chatImagePartSource(part: ChatImagePart): { src: string; alt: string } {
-  return { src: `data:${part.mimeType};base64,${part.data}`, alt: "attached image" };
+/**
+ * The image source as an app reference: a data URI for inline bytes, or the
+ * app-relative fetch path for a deferred tool-result image. The render site
+ * resolves the path once at the browser boundary.
+ */
+export function chatImagePartSource(part: ChatImagePart, scope?: { session: SessionRef; machineId: string }): { src: string; alt: string; appPath: boolean } {
+  if ("data" in part) return { src: `data:${part.mimeType};base64,${part.data}`, alt: "attached image", appPath: false };
+  if (scope === undefined) return { src: "", alt: "tool result image (session scope missing)", appPath: false };
+  return { src: toolResultImagePath(scope.session, part.ref.toolCallId, part.ref.index, scope.machineId), alt: "tool result image", appPath: true };
 }
 
 /** The message-header label used when a tool message renders as an image output. */
@@ -1741,6 +1756,11 @@ export class ChatView extends LitElement {
    * A tag nobody claims renders as unknown rather than as nothing: absence of
    * a renderer is not evidence that the message is empty.
    */
+  private imageScope(): { session: SessionRef; machineId: string } | undefined {
+    if (this.sessionId === "" || this.sessionCwd === undefined || this.sessionCwd === "") return undefined;
+    return { session: { id: this.sessionId, cwd: this.sessionCwd }, machineId: this.drawerMachineId };
+  }
+
   private renderCustomPart(part: Extract<ChatPart, { type: "custom" }>) {
     const renderer = this.findMessageRenderer?.(part.tag);
     if (renderer === undefined) {
@@ -1997,8 +2017,10 @@ export class ChatView extends LitElement {
       ></ask-user-card>
     `;
     if (part.type === "image") {
-      const { src, alt } = chatImagePartSource(part);
-      return html`<img class="part chat-image" src=${src} alt=${alt} loading="lazy" role="button" tabindex="0" title="Click to enlarge" @load=${this.onImageLoad} @click=${() => { this.openImageZoom(src, alt); }} @keydown=${(event: KeyboardEvent) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); this.openImageZoom(src, alt); } }} />`;
+      const source = chatImagePartSource(part, this.imageScope());
+      const src = source.appPath ? resolveAppUrl(source.src) : source.src;
+      const alt = source.alt;
+      return html`<img class=${source.appPath ? "part chat-image deferred" : "part chat-image"} src=${src} alt=${alt} loading="lazy" decoding="async" role="button" tabindex="0" title="Click to enlarge" @load=${this.onImageLoad} @click=${() => { this.openImageZoom(src, alt); }} @keydown=${(event: KeyboardEvent) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); this.openImageZoom(src, alt); } }} />`;
     }
     if (part.type === "custom") return this.renderCustomPart(part);
     if (part.type === "toolCall") return html`<div class="part tool-line">${renderRunIcon()} ${part.toolName}<span class="summary">${part.summary}</span></div>`;

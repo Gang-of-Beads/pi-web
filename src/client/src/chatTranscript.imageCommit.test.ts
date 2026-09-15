@@ -40,7 +40,7 @@ function committedEnd(data: string, options: { clientMessageId?: string; text?: 
 }
 
 function photoCount(lines: readonly ChatLine[], data: string): number {
-  return lines.filter((line) => line.parts.some((part) => part.type === "image" && part.data === data)).length;
+  return lines.filter((line) => line.parts.some((part) => part.type === "image" && "data" in part && part.data === data)).length;
 }
 
 describe("a committed photo claims its bubble", () => {

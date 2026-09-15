@@ -62,6 +62,8 @@ export interface SessionRouteService {
   start(cwd: string, options?: { startupToken?: string }): Promise<ClientSession>;
   messages(ref: SessionRouteRef, page?: { before?: number; limit?: number }): Promise<ClientMessagePage>;
   status(ref: SessionRouteRef): Promise<ClientSessionStatus>;
+  /** A deferred tool-result image's bytes; undefined when the session has no such block. */
+  toolResultImage(ref: SessionRouteRef, toolCallId: string, index: number): Promise<{ mimeType: string; data: string } | undefined>;
   streamSnapshot(ref: SessionRouteRef): Promise<SessionStreamSnapshot>;
   /** Gap repair: replay the frames after the client's last seen seq, or resync. */
   streamSync(ref: SessionRouteRef, sinceSeq: number): Promise<SessionStreamSync>;

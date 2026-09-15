@@ -44,7 +44,7 @@ export function recoverPromptFromLine(line: Pick<ChatLine, "role" | "parts">): R
       if (part.text !== "") textParts.push(part.text);
       continue;
     }
-    if (part.type === "image" && part.data !== "" && part.mimeType !== "") {
+    if (part.type === "image" && "data" in part && part.data !== "" && part.mimeType !== "") {
       attachments.push({ kind: "image", mimeType: part.mimeType, data: part.data });
     }
   }

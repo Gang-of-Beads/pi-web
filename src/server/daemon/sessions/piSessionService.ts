@@ -111,6 +111,7 @@ import {
 import { plainTextTheme } from "./plainTextTheme.js";
 import { SessionUnreadStore, type SessionUnreadMutation } from "./sessionUnreadStore.js";
 import { applyEnabledModelToggle, catalogWithEnabledFirst, liveScopedModelIds, modelScopeId, persistedEnabledModelPatterns, resolveEnabledModelIds, resolveSessionModelOptions, type EnabledModelCatalogEntry } from "./sessionModelScope.js";
+import { deferToolResultImages, findToolResultImage } from "./toolResultImages.js";
 import { boundToolResultText } from "./toolResultBounds.js";
 import { correlateQueuedPromptIds } from "./queuedPromptIdentity.js";
 
@@ -2412,6 +2413,13 @@ export class PiSessionService implements SessionRouteService {
 
   async status(ref: PiSessionRef): Promise<ClientSessionStatus> {
     return this.statusFromSession(await this.sessionForStatusOrDialogClose(ref));
+  }
+
+  /** The bytes behind a deferred tool-result image, read from the session file on demand. */
+  async toolResultImage(ref: PiSessionRef, toolCallId: string, index: number): Promise<{ mimeType: string; data: string } | undefined> {
+    const session = await this.getOrOpen(ref);
+    const entries = session.sessionManager.getEntries?.() ?? session.sessionManager.getBranch();
+    return findToolResultImage(entries, toolCallId, index);
   }
 
   /**
@@ -5680,7 +5688,7 @@ function boundToolResultMessage(message: unknown): unknown {
     return limited.truncated ? { ...message, content: [{ type: "text", text: limited.text, truncatedBytes: limited.totalBytes }] } : message;
   }
   if (!isUnknownArray(content)) return message;
-  const bounded = boundToolResultContent(content);
+  const bounded = deferToolResultImages(boundToolResultContent(content), getString(message, "toolCallId"));
   return bounded === content ? message : { ...message, content: bounded };
 }
 
@@ -5751,7 +5759,7 @@ function toClientEvent(event: unknown, thinkingLevel?: string): SessionUiEvent {
   }
   if (eventType === "tool_execution_end") {
     const result = getProperty(event, "result");
-    return { type: "tool.end", toolName: getString(event, "toolName") ?? "", toolCallId: getString(event, "toolCallId") ?? "", text: boundToolResultText(stringifyToolResult(result)).text, content: toolResultContent(result), details: toolResultDetails(result), isError: getBoolean(event, "isError") === true };
+    return { type: "tool.end", toolName: getString(event, "toolName") ?? "", toolCallId: getString(event, "toolCallId") ?? "", text: boundToolResultText(stringifyToolResult(result)).text, content: deferToolResultImages(toolResultContent(result), getString(event, "toolCallId")), details: toolResultDetails(result), isError: getBoolean(event, "isError") === true };
   }
   if (eventType === "agent_start") return { type: "agent.start" };
   if (eventType === "agent_end") return { type: "agent.end" };

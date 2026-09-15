@@ -241,6 +241,20 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
     }
   });
 
+  app.get<{ Params: { sessionId: string; toolCallId: string; index: string }; Querystring: SessionQuery }>(`${prefix}/sessions/:sessionId/tool-results/:toolCallId/images/:index`, async (request, reply) => {
+    const ref = sessionRefFromQueryOr400(request.params.sessionId, request.query, reply);
+    if (ref === undefined) return reply;
+    const index = Number(request.params.index);
+    if (!Number.isInteger(index) || index < 0) return reply.code(400).send({ error: "image index must be a non-negative integer" });
+    try {
+      const image = await sessions.toolResultImage(ref, request.params.toolCallId, index);
+      if (image === undefined) return await reply.code(404).send({ error: "No such tool-result image" });
+      return image;
+    } catch (error) {
+      return reply.code(404).send({ error: errorMessage(error) });
+    }
+  });
+
   app.get<{ Params: { sessionId: string }; Querystring: SessionQuery }>(`${prefix}/sessions/:sessionId/status`, async (request, reply) => {
     const ref = sessionRefFromQueryOr400(request.params.sessionId, request.query, reply);
     if (ref === undefined) return reply;

@@ -74,9 +74,16 @@ export interface ToolExecutionPart {
   preview?: ToolPreview;
 }
 
+/** A deferred tool-result image: fetched by address when it scrolls into view. */
+export interface ToolResultImageRef {
+  toolCallId: string;
+  index: number;
+}
+
 export type ChatPart =
   | { type: "text"; text: string }
   | { type: "image"; mimeType: string; data: string }
+  | { type: "image"; mimeType: string; ref: ToolResultImageRef }
   | { type: "thinking"; text: string }
   | { type: "skillInvocation"; name: string; location: string; content: string }
   | { type: "skillRead"; name: string; path: string; toolCallId?: string }

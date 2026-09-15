@@ -85,6 +85,9 @@ const SEED_MARKER = "pi-web-8505-seed";
 const SESSION_A = { id: "01a05000-5eed-7a00-8000-0000000000a1", stem: "2026-08-28T09-00-00-000Z_01a05000-5eed-7a00-8000-0000000000a1" };
 const SESSION_B = { id: "01a05000-5eed-7b00-8000-0000000000b1", stem: "2026-08-28T09-05-00-000Z_01a05000-5eed-7b00-8000-0000000000b1" };
 const SESSION_LONG = { id: "01a05000-5eed-7c00-8000-0000000000c1", stem: "2026-08-28T09-10-00-000Z_01a05000-5eed-7c00-8000-0000000000c1" };
+const SESSION_SHOTS = { id: "01a05000-5eed-7c00-8000-0000000000d1", stem: "2026-08-28T09-20-00-000Z_01a05000-5eed-7c00-8000-0000000000d1" };
+const SCREENSHOT_TOOL_RESULTS = 6;
+const SCREENSHOT_BYTES = 200 * 1024;
 const RUN_A_DONE = "a11d0000-5eed-4a01-9000-000000000001";
 const RUN_B_DONE = "b22d0000-5eed-4b01-9000-000000000002";
 const RUN_C_NAMED = "c33c0000-5eed-4c01-9000-000000000003";
@@ -111,6 +114,7 @@ await writeFile(join(SEED_WORKSPACE, "README.md"), seedWorkspaceReadme(), "utf8"
 await writeSessionA();
 await writeSessionB();
 await writeLongSession();
+await writeScreenshotSession();
 
 await writeDirectoryLinkedRun(SESSION_A.stem, RUN_A_DONE, "worker", 180);
 await writeDirectoryLinkedRun(SESSION_B.stem, RUN_B_DONE, "worker", 175);
@@ -147,6 +151,13 @@ const manifest = {
       messageCount: LONG_TRANSCRIPT_MESSAGES,
       proves: "a transcript long enough for scroll and paging checks",
     },
+    screenshots: {
+      id: SESSION_SHOTS.id,
+      file: join(SESSION_DIR, `${SESSION_SHOTS.stem}.jsonl`),
+      toolResults: SCREENSHOT_TOOL_RESULTS,
+      bytesPerImage: SCREENSHOT_BYTES,
+      proves: "tool results carrying screenshots travel as references, not inline base64, and the session still caches",
+    },
   },
   unattributableRun: {
     runId: RUN_U_ORPHAN,
@@ -160,6 +171,7 @@ console.log(`seeded store dir : ${SESSION_DIR}`);
 console.log(`session A ${SESSION_A.id}  runs: ${manifest.sessions.a.runs.map((run) => `${run.runId.slice(0, 8)}=${run.status}`).join(" ")}`);
 console.log(`session B ${SESSION_B.id}  runs: ${manifest.sessions.b.runs.map((run) => `${run.runId.slice(0, 8)}=${run.status}`).join(" ")}`);
 console.log(`long session ${SESSION_LONG.id}  messages: ${String(LONG_TRANSCRIPT_MESSAGES)}`);
+console.log(`screenshot session ${SESSION_SHOTS.id}  tool results: ${String(SCREENSHOT_TOOL_RESULTS)} x ${String(SCREENSHOT_BYTES)} bytes`);
 console.log(`unattributable run ${RUN_U_ORPHAN} (must appear in neither session)`);
 console.log(`manifest         : ${MANIFEST_PATH}`);
 
@@ -234,6 +246,35 @@ async function writeLongSession() {
       : chain.message(assistantText(`Reply ${String(index)} of the long seeded transcript, kept short so the file stays readable.`)));
   }
   await writeSessionFile(SESSION_LONG.stem, lines);
+}
+
+/**
+ * A session whose tool results carry screenshots. Six results of 200 KiB
+ * each is 1.2 MB of base64 in one page: past the browser cache's per-entry
+ * ceiling, and the shape that made screenshot sessions the slowest to reopen.
+ */
+async function writeScreenshotSession() {
+  const start = minutesAgo(300);
+  const chain = entryChain(start);
+  const lines = [
+    sessionHeader(SESSION_SHOTS.id, start),
+    chain.next("model_change", { provider: "anthropic-work", modelId: "claude-opus-5" }),
+    chain.message(userMessage("Take screenshots of every surface and show me each one.")),
+  ];
+  for (let index = 0; index < SCREENSHOT_TOOL_RESULTS; index += 1) {
+    const callId = `toolu_01seedShot${String(index)}`;
+    lines.push(chain.message(assistantMessage([{ type: "toolCall", id: callId, name: "agent_browser", arguments: { args: ["screenshot", `/tmp/shot-${String(index)}.png`] } }], "toolUse", "tool_use")));
+    lines.push(chain.message({ role: "toolResult", toolCallId: callId, toolName: "agent_browser", content: [{ type: "text", text: `Screenshot ${String(index)} captured.` }, { type: "image", mimeType: "image/png", data: fakePngBase64(SCREENSHOT_BYTES, index) }], isError: false, timestamp: now }));
+  }
+  lines.push(chain.message(assistantText("All six surfaces captured above.")));
+  await writeSessionFile(SESSION_SHOTS.stem, lines);
+}
+
+/** A PNG-shaped payload of the requested size: a real signature, then filler the seed can tell apart per image. */
+function fakePngBase64(bytes, salt) {
+  const buffer = Buffer.alloc(bytes, (salt + 1) & 0xff);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(buffer, 0);
+  return buffer.toString("base64");
 }
 
 async function writeSessionFile(stem, lines) {

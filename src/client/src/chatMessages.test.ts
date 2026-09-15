@@ -108,6 +108,18 @@ describe("chat message normalization", () => {
     ]);
   });
 
+  it("keeps a deferred tool-result image as a reference the transcript can fetch", () => {
+    expect(normalizeMessage({ role: "toolResult", toolCallId: "call-1", content: [{ type: "image", mimeType: "image/png", ref: { toolCallId: "call-1", index: 0 } }] })).toEqual([
+      { role: "tool", parts: [{ type: "image", mimeType: "image/png", ref: { toolCallId: "call-1", index: 0 } }] },
+    ]);
+  });
+
+  it("treats a malformed reference as an absent image, not a guess", () => {
+    expect(normalizeMessage({ role: "user", content: [{ type: "image", mimeType: "image/png", ref: { toolCallId: "", index: -1 } }] })).toEqual([
+      { role: "user", parts: [{ type: "text", text: "[image]" }] },
+    ]);
+  });
+
   it("falls back to a placeholder for image content without data", () => {
     expect(normalizeMessage({ role: "user", content: [{ type: "image", mimeType: "image/png" }] })).toEqual([
       { role: "user", parts: [{ type: "text", text: "[image]" }] },

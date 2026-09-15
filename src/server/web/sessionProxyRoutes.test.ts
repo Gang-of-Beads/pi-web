@@ -20,6 +20,25 @@ afterEach(async () => {
 });
 
 describe("machine-scoped session proxy routes", () => {
+  it("decodes a deferred tool-result image block into image bytes at the browser edge", async () => {
+    daemon.respondWith({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify({ mimeType: "image/png", data: Buffer.from("png-bytes").toString("base64") }) });
+    const response = await app.inject({ method: "GET", url: "/api/machines/local/sessions/s1/tool-results/call-1/images/1?cwd=/repo" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-type"]).toContain("image/png");
+    expect(response.headers["cache-control"]).toContain("immutable");
+    expect(response.body).toBe("png-bytes");
+    expect(daemon.requests).toEqual([{ method: "GET", path: "/sessions/s1/tool-results/call-1/images/1?cwd=/repo", body: undefined }]);
+  });
+
+  it("passes a daemon miss through as its own status", async () => {
+    daemon.respondWith({ statusCode: 404, headers: { "content-type": "application/json" }, body: JSON.stringify({ error: "No such tool-result image" }) });
+    const response = await app.inject({ method: "GET", url: "/api/machines/local/sessions/s1/tool-results/call-1/images/9?cwd=/repo" });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({ error: "No such tool-result image" });
+  });
+
   it("strips the machine prefix before forwarding session requests", async () => {
     const response = await app.inject({ method: "GET", url: "/api/machines/local/sessions?cwd=/repo" });
 

@@ -47,3 +47,11 @@ export function workspaceFilePreviewPath(projectId: string, workspaceId: string,
 export function workspaceFilePreviewUrl(projectId: string, workspaceId: string, path: string, options?: WorkspaceFilePreviewUrlOptions): string {
   return resolveAppUrl(workspaceFilePreviewPath(projectId, workspaceId, path, options));
 }
+
+export function toolResultImagePath(session: SessionLookup, toolCallId: string, index: number, machineId = "local"): string {
+  const params = new URLSearchParams();
+  const cwd = sessionCwd(session);
+  if (cwd !== undefined && cwd !== "") params.set("cwd", cwd);
+  const query = params.toString();
+  return `api/machines/${encodeURIComponent(machineId)}/sessions/${encodeURIComponent(sessionId(session))}/tool-results/${encodeURIComponent(toolCallId)}/images/${String(index)}${query === "" ? "" : `?${query}`}`;
+}
