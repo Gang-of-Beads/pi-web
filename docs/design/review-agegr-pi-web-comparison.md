@@ -60,3 +60,26 @@ triage：**已判定不借**、**建议借（按价值排序，落点在我们�
 3. 方案 B（用 `sendCustomMessage`）
 4. #5+#6 分支动作与选区追问（共用 entryId 管道）
 5. #7 Mermaid、#9 休眠 skill、#12 worktree 创建、#13 mention（S 级，随手）
+
+
+## 六、机主 reflect 的对抗裁定（两路 glm max：对抗 + 插件可行性）
+
+| 项 | 机主判断 | 裁定 | 依据（源码） |
+| --- | --- | --- | --- |
+| #1 推送 | 回来会增量同步，不需要 | **SPLIT** | 同步确实完备（browserResumeController + 42s 静默预算）；但锁屏期间"跑完/ask_user 阻塞"无从得知——attentionInbox 已把 waiting/unread 排第一，只是仅在 app 内渲染。是"被告知"能力不是同步。**代价要诚实计价**：不可插件化（ServerPluginHostPorts 无会话事件端口），需核心接缝 + sw.js；跨机器还要 remote daemon→gateway→push，比 M 大。产品决定权在机主 |
+| #2 URL 深链 | 至少刷新回原页 | **OVERTURN（已实现）** | `route.ts:25-74` 读写 machine/project/workspace/session；boot 全量恢复（PiWebApp.ts:1188-1394）。借鉴清单该行过时，删除 |
+| #3 图片延迟 | 不懂 | **HOLD（修缺陷）** | daemon 只封顶 text 部分（piSessionService.ts:5796-5815），截图 base64 内联；`fitToEntry` 单条超 512KiB 即放弃缓存 → 截图会话恰是最慢的 |
+| #5 气泡分支动作 | /tree 够，极简 | **SPLIT** | /tree 是 slash-only 全屏导航：手机上≥4 步 + 在截断摘要里重新找消息；"能力覆盖"成立，"最短路径"不成立。且**无法插件化**（无气泡动作接缝），navigate/fork 绑死在 tree 对话框快照。推迟是合法产品决定，"已覆盖"表述不准 |
+| #6 选区追问 | 做 | **HOLD** | 无需 daemon 改动即可"在此追问"；"新会话追问"需要 #5 同一条 entryId 管道 |
+| #7 Mermaid | 插件 or 原生？ | **原生一个小接缝 → 之后插件化** | transcript 渲染无 fence 钩子；在 FormattedText 既有的 post-parse enhance 步加"按语言认领 fence 渲染器"（S），Mermaid 插件即可认领 |
+| #8 全文搜索 | 已插件化 | **OVERTURN（回忆有误）** | 无 search 插件；只搜 name/firstMessage。插件化需两接缝：daemon 只读 transcript 端口 + QuickSwitcher 结果贡献（M–L） |
+| #10 扩展 status/widget | 插件 | **HOLD + 接缝** | daemon 代理丢弃 setStatus/setWidget（:4177-4244）；一条附加 SessionUiEvent + 现成 DrawerSection（各 S） |
+| #11 文件监听 | 文件插件 | **SPLIT** | 归属对；但推送无插件通道——最小：核心发 `workspace.changed` 全局实时事件 + host 翻译为 invalidate，插件契约不动（S–M） |
+| #12 建 worktree | 插件能做？ | **HOLD（今天就能）** | git 插件已管 list/remove；create = provider 操作 + 从 git 工作区面板触发（`WorkspaceContext.backend`）。借鉴清单写的 nav `withCreate` 是错接缝（无 addWorkspace 回调） |
+| #13 @file mention | 加 | **SPLIT（半已实现）** | `@` 补全已在（promptCompletions.ts）；缺的只是查看器"行区间 mention" |
+| #14 HTML 导出 | 插件 | **SPLIT** | 服务端插件无 transcript 端口；web 侧重建渲染 = 第二生产者。干净路径与 #8 共用同一"只读 transcript 端口"接缝（S） |
+| 网关登录 | 不懂 | **SPLIT** | = 给 web 入口加密码。tailscale 替代了传输加密与可达性；**不保护**：同 tailnet 其他设备（按设备不按人）、Funnel 公开、host 上第二绑定、无按人审计。单人 tailnet ⇒ 多余 |
+| 工具预设 | 插件 | **接缝 M** | daemon 无按会话工具白名单；可搭 `delegationToolsEnabled` 同路径读预设 + 插件附带 pi 扩展执行过滤 |
+| i18n | 插件 + 原生词表 | **接缝 S，抽取 L** | 照抄他们 LocalePlugin 形状；词表模块经 PluginHostUi 暴露，语言包=数据贡献（同 themes）；700–1200 条硬编码串抽取是真正成本 |
+
+**跨项事实**：#8 与 #14 需要**同一个**缺失接缝（插件只读 transcript 端口）——一接缝两用。
