@@ -1,16 +1,17 @@
 /**
  * The browser's own record of the commands it has issued.
  *
- * A slash command takes a route that never touches the transcript: no message,
- * no pending row, no receipt. The daemon runs it behind whatever turn is in
- * flight, and until it answers, the screen holds no evidence the press
- * happened - which is why the owner pressed goal Resume four times against a
- * command that had been accepted every time.
+ * This mirrors pi's own TUI: a slash command is not a message and writes no
+ * transcript entry (the model never sees it); the result is shown inline
+ * where the command was issued and stays there for the life of the page.
+ * The daemon runs it behind whatever turn is in flight, and until it
+ * answers, a row is the only evidence the press happened - the owner once
+ * pressed goal Resume four times against a command accepted every time.
  *
- * The ledger is a client-side projection, not server truth: rows are labelled
- * as the browser's record, retired once settled and acknowledged, and scoped
- * to the session key they were issued under - a row must never render beneath
- * another session's transcript.
+ * The ledger is a client-side projection, not server truth: rows are scoped
+ * to the session key they were issued under - a row must never render
+ * beneath another session's transcript - and read with the same delivery
+ * vocabulary as a sent message, so one bubble grammar covers both.
  */
 
 import type { CommandResult } from "../../shared/apiTypes";
@@ -90,11 +91,6 @@ export function settleCommand(
 }
 
 /**
- * Close one settled receipt. The reader decided they have seen it; only the
- * capacity cap evicts besides this. A pending row is live work, not a
- * receipt, and refusing to dismiss it keeps the run's record honest.
- */
-/**
  * Remove a row whose command answered with a dialog.
  *
  * Dismissal deliberately refuses a pending row, so that a receipt still
@@ -106,28 +102,41 @@ export function withdrawCommand(entries: readonly CommandLedgerEntry[], id: stri
   return entries.filter((candidate) => candidate.id !== id);
 }
 
-export function dismissCommand(entries: readonly CommandLedgerEntry[], id: string): CommandLedgerEntry[] {
-  const row = entries.find((candidate) => candidate.id === id);
-  if (row === undefined || row.state === "pending") return [...entries];
-  return entries.filter((candidate) => candidate.id !== id);
-}
-
 /**
  * The rows this session may render; a key mismatch renders nothing of them.
- * Settled rows persist for the session's record (the owner's no-auto-leave
- * ruling): the only eviction is the capacity cap above.
+ * Settled rows persist for the page's life (the owner's no-auto-leave ruling
+ * and pi's own inline behavior): the only eviction is the capacity cap above.
  */
 export function commandsForSession(entries: readonly CommandLedgerEntry[], sessionKey: string): CommandLedgerEntry[] {
   return entries.filter((row) => row.sessionKey === sessionKey);
 }
 
+export interface CommandDeliveryPresentation {
+  readonly glyph: "pending" | "failed" | "single" | "double";
+  readonly text: string;
+  readonly label: string;
+  readonly tone: "pending" | "received" | "delivered" | "failed";
+}
+
 /**
- * What a ledger row says about its command. A pending row waits while the
- * session is streaming - the command proceeds when the reply finishes - and
- * runs immediately otherwise; a settled row tells the outcome.
+ * How a command row reads, in the vocabulary of a sent message: a pending
+ * command is queued behind the reply in flight or running now; a settled one
+ * was read by the daemon, or was not taken at all. The result text, when the
+ * command produced one, is shown beneath the bubble rather than in the mark.
  */
-export function commandStateLabel(entry: Pick<CommandLedgerEntry, "state" | "resultText">, streaming: boolean): string {
-  if (entry.state === "pending") return streaming ? "waiting for the current reply to finish" : "running…";
-  if (entry.state === "ok") return entry.resultText ?? "done";
-  return `failed — ${entry.resultText ?? "see the error above"}`;
+export function commandDeliveryPresentation(entry: Pick<CommandLedgerEntry, "state">, streaming: boolean): CommandDeliveryPresentation {
+  if (entry.state === "pending") {
+    return streaming
+      ? { glyph: "single", text: "Queued", label: "Queued - the daemon runs this command after the current reply", tone: "received" }
+      : { glyph: "pending", text: "Running", label: "Running - the daemon is executing this command", tone: "pending" };
+  }
+  if (entry.state === "ok") return { glyph: "double", text: "Read", label: "Read - the daemon ran this command", tone: "delivered" };
+  return { glyph: "failed", text: "Not sent", label: "Not sent - the daemon did not take this command", tone: "failed" };
+}
+
+/** The line under a settled command bubble; a failure with no text still says it failed. */
+export function commandResultLine(entry: Pick<CommandLedgerEntry, "state" | "resultText">): string | undefined {
+  if (entry.state === "pending") return undefined;
+  if (entry.resultText !== undefined && entry.resultText !== "") return entry.resultText;
+  return entry.state === "failed" ? "The command failed; see the error above." : undefined;
 }

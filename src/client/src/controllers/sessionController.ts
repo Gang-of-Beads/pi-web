@@ -1,7 +1,7 @@
 import { api as defaultApi, type AskUserCloseResponse, type AskUserSubmission, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingAskUser, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Workspace } from "../api";
 import { HttpError, projectsApi, workspacesApi } from "../api";
 import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
-import { commandOutcomeFor, dismissCommand, issueCommand, settleCommand, withdrawCommand, type CommandLedgerSource } from "../commandLedger";
+import { commandOutcomeFor, issueCommand, settleCommand, withdrawCommand, type CommandLedgerSource } from "../commandLedger";
 import { RevisionScope } from "../revisionScope";
 import { SessionGapRepair } from "../sessionGapRepair";
 import { describeError, noticeForReader } from "../notice";
@@ -574,9 +574,6 @@ export class SessionController {
   }
 
   /** The reader closed a settled receipt; pending rows are live work and stay. */
-  dismissLedgerRow(id: string): void {
-    this.setState({ commandLedger: dismissCommand(this.getState().commandLedger, id) });
-  }
 
   private enqueuePendingSessionSend(session: ClientPendingStartSessionInfo, input: QueuedPendingSessionSendInput): void {
     const pending = this.pendingSessionStarts.get(session.id);
@@ -1968,6 +1965,12 @@ export class SessionController {
     this.replaceSession(stripCachedNewSessionMarker(latest));
   }
 
+  /**
+   * A command's text result lives on its own bubble in the command ledger,
+   * once; injecting it into the transcript as well drew the same line twice
+   * (a system row above, the bubble below) and the injected row vanished on
+   * reload while the bubble did not.
+   */
   private applyCommandResult(result: CommandResult) {
     if (result.type === "select") {
       this.setState({ commandDialog: result });
@@ -1977,8 +1980,6 @@ export class SessionController {
       this.setState({ treeDialog: result.tree });
       return;
     }
-    const message = result.type === "unsupported" ? result.message : result.message;
-    if (message !== undefined && message !== "") this.setState({ messages: [...this.getState().messages, textMessage(result.type === "unsupported" ? "system" : "tool", message)] });
     if (result.type === "done" && result.session) {
       if (result.promptDraft !== undefined) saveDraft(this.sessionCacheKey(result.session.id), result.promptDraft);
       const current = this.getState().selectedSession;

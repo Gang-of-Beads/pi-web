@@ -16,7 +16,7 @@ import { shouldRequestEarlierMessages } from "../chatHistoryLoading";
 import { ChatScrollController, distanceFromScrollBottom, findFirstVisibleArticle, isNearScrollBottom, type ChatAnchorScrollPosition, type ChatScrollRestoreResult } from "../chatScrollPosition";
 import { scrollEdgeClasses, ScrollEdgeTracker } from "../scrollEdges";
 import type { AskUserSubmission, PendingAskUser, PendingExtensionDialog, QueuedSessionMessage, SessionActivity, SessionStatus } from "../api";
-import { commandStateLabel, type CommandLedgerEntry } from "../commandLedger";
+import { commandDeliveryPresentation, commandResultLine, type CommandLedgerEntry } from "../commandLedger";
 import type { ClosedExtensionDialog } from "../appState";
 import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
 import { isWaitingForUser } from "../sessionWaiting";
@@ -320,7 +320,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      scrolling into view. The placeholder box breaks that deadlock and holds
      the transcript's layout while the bytes arrive. */
   .chat-image.deferred { min-width: 120px; min-height: 90px; background: var(--pi-surface); }
-  .chat-image-retry { display: inline-flex; align-items: center; min-height: var(--pi-control-height); margin: var(--pi-space-4) 0 0; padding: 0 var(--pi-space-4); border: 1px dashed var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-muted); font: inherit; font-size: var(--pi-text-xs); cursor: pointer; }
+  .chat-image-retry { box-sizing: border-box; display: inline-flex; align-items: center; min-height: var(--pi-control-height); margin: var(--pi-space-4) 0 0; padding: 0 var(--pi-space-4); border: 1px dashed var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-muted); font: inherit; font-size: var(--pi-text-xs); cursor: pointer; }
   .chat-image:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent, var(--pi-success-border)); outline-offset: var(--pi-focus-ring-offset); }
   dialog.image-zoom { box-sizing: border-box; position: fixed; inset: 0; margin: auto; max-width: calc(96vw - env(safe-area-inset-left) - env(safe-area-inset-right)); max-height: calc(96vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); width: fit-content; height: fit-content; padding: 0; border: none; background: transparent; overflow: visible; }
   dialog.image-zoom[open] { display: flex; }
@@ -348,17 +348,13 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .queued-strip { display: flex; align-items: center; gap: var(--pi-space-3); margin: 0 0 var(--pi-space-4); padding: var(--pi-space-2) var(--pi-space-3); color: var(--pi-warning); font-size: var(--pi-text-xs); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-md); background: var(--pi-warning-surface); }
   /* The command receipts wear the queued-message gold: provisional, the
      browser's own record, not server history. */
-  .command-row { display: flex; align-items: baseline; gap: var(--pi-space-3); min-width: 0; margin: 0 0 var(--pi-space-3); padding: var(--pi-space-2) var(--pi-space-3); font-size: var(--pi-text-xs); color: var(--pi-warning); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-md); background: var(--pi-warning-surface); }
-  .command-row.failed { color: var(--pi-danger); border-color: var(--pi-danger); background: color-mix(in srgb, var(--pi-danger) 12%, transparent); }
-  .command-row.ok { color: var(--pi-success); border-color: var(--pi-success-border); background: var(--pi-success-surface); }
-  .command-row .command-text { font-family: var(--pi-font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .command-row .command-state { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .85; }
-  .command-dismiss { box-sizing: border-box; flex: 0 0 auto; align-self: center; width: 24px; height: 24px; display: grid; place-items: center; padding: 0; border: 1px solid transparent; border-radius: var(--pi-radius-sm); background: transparent; color: inherit; font: inherit; font-size: var(--pi-text-sm); line-height: 1; cursor: pointer; }
-  .command-dismiss:focus-visible { outline: var(--pi-focus-ring-width) solid currentColor; outline-offset: var(--pi-focus-ring-offset); }
-  @media (hover: hover) { .command-dismiss:hover { border-color: currentColor; } }
+  .msg.command { font-family: var(--pi-font-mono); }
+  .msg.command .command-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg.command .command-result { margin: var(--pi-space-3) 0 0; font-family: var(--pi-font-ui); font-size: var(--pi-text-sm); color: var(--pi-muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg.command.failed .command-result { color: var(--pi-danger); }
   .queued-clear-button { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height); border: 0; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-warning); padding: var(--pi-space-1) var(--pi-space-3); font: inherit; cursor: pointer; }
   @media (pointer: coarse) {
-    .command-dismiss, .image-zoom-close { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); }
+    .image-zoom-close { width: var(--pi-control-height-touch); height: var(--pi-control-height-touch); }
     .queued-clear-button { min-height: var(--pi-control-height-touch); }
     .history-load-button { min-height: var(--pi-control-height-touch); }
   }
@@ -688,7 +684,6 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) backgroundTasks?: readonly SessionBackgroundTaskInfo[];
   @property({ attribute: false }) onClearServerQueue?: (queued: QueuedSessionMessage[]) => void;
   /** Close one settled receipt; a pending row is live work and refuses. */
-  @property({ attribute: false }) onDismissLedgerRow?: (id: string) => void;
   /** Take one queued message back into the composer, leaving the rest queued. */
   @property({ attribute: false }) onRecallQueuedMessage?: (message: QueuedSessionMessage) => void;
   @property({ attribute: false }) onLoadMore?: () => void;
@@ -1613,15 +1608,20 @@ export class ChatView extends LitElement {
     if (this.commandLedger.length === 0) return null;
     const streaming = this.status?.isStreaming === true;
     return html`
-      ${this.commandLedger.map((entry) => html`
-        <div class=${`command-row ${entry.state}`} role="status">
-          <span class="command-text">${entry.text}</span>
-          <span class="command-state">${commandStateLabel(entry, streaming)}</span>
-          ${entry.state === "pending" || this.onDismissLedgerRow === undefined ? null : html`
-            <button type="button" class="command-dismiss" title="Dismiss this receipt" aria-label="Dismiss receipt for ${entry.text}" @click=${() => { this.onDismissLedgerRow?.(entry.id); }}>${renderCrossIcon()}</button>
-          `}
-        </div>
-      `)}
+      ${this.commandLedger.map((entry) => {
+        const presentation = commandDeliveryPresentation(entry, streaming);
+        const result = commandResultLine(entry);
+        return html`
+          <article class=${`msg user command ${entry.state}`} data-command-id=${entry.id}>
+            <p class="command-text">${entry.text}</p>
+            ${result === undefined ? null : html`<p class="command-result">${result}</p>`}
+            <div class=${`delivery-mark ${presentation.tone}`} role="status" aria-label=${presentation.label}>
+              <span class="delivery-glyph" aria-hidden="true">${renderDeliveryGlyph(presentation.glyph)}</span>
+              <span class="delivery-text">${presentation.text}</span>
+            </div>
+          </article>
+        `;
+      })}
     `;
   }
 

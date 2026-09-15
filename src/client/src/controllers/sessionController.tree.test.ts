@@ -64,10 +64,8 @@ describe("SessionController session tree navigation", () => {
     await controller.send("/tree");
 
     expect(state.treeDialog).toBeUndefined();
-    expect(state.messages).toEqual([{
-      role: "system",
-      parts: [{ type: "text", text: "Session tree navigation is unavailable on this server" }],
-    }]);
+    expect(state.messages).toEqual([]);
+    expect(state.commandLedger.at(-1)).toMatchObject({ text: "/tree", state: "failed", resultText: "Session tree navigation is unavailable on this server" });
     expect(navigateTree).not.toHaveBeenCalled();
   });
 

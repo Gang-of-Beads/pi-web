@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { commandOutcomeFor, dismissCommand, issueCommand, withdrawCommand } from "./commandLedger.js";
+import { commandOutcomeFor, issueCommand, withdrawCommand } from "./commandLedger.js";
 
 /**
  * A command that opens a dialog leaves no receipt behind.
@@ -41,10 +41,4 @@ describe("a command whose answer is a dialog", () => {
     expect(withdrawCommand(issued.entries, "absent")).toHaveLength(1);
   });
 
-  /** The stuck state this replaces: dismissal refuses a pending row. */
-  it("could not be removed by dismissal, which is why withdrawal exists", () => {
-    const issued = issueCommand([], { sessionKey: "m:s", text: "/model", source: "typed", now: 1 });
-
-    expect(dismissCommand(issued.entries, issued.id)).toHaveLength(1);
-  });
 });

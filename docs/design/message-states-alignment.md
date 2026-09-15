@@ -60,28 +60,22 @@ sending ──HTTP 200──> received ──服务器事件──> queued ─�
 
 **影响面**：daemon 代码路径变更；只动 refactor（8505），8505 daemon 由我重启。8504 不碰。
 
-### 3.1 实施前必须裁定：命令记录进不进模型上下文
+### 3.1 机主裁定：对齐 pi agent 原生实现（已落地）
 
-读 pi 源码确认（`session-manager.d.ts`）：`custom_message` 条目
-"在 buildSessionContext() 中转换为 user message"——即 **进入模型上下文**；
-`display: true` 时 TUI "以区别于用户消息的样式渲染"。pi 自己的
-`/session` `/name` 等内置命令并不写这种条目（它们是 TUI 本地动作）。
+读 `interactive-mode.js`：pi TUI 的 `/session` `/name` 等内置命令**不写任何
+会话条目**（`handleSessionCommand`/`handleNameCommand` 只往 chat 容器里加
+一段本地文本），模型看不到，重开会话也不在。所以"命令即消息"在 pi 原生
+语义里是：**命令原文当作用户气泡在本地呈现，结果贴在下面，不进 transcript
+也不进模型上下文**。方案 B 的 daemon 写条目一步据此撤回；`commandLedger`
+保留为本地投影，但改用消息的呈现语法：
 
-两条路：
-
-- **B1 · `sendCustomMessage`（进上下文）**：命令原文 + 结果成为模型可见的
-  一条 user-ish 消息。优点：刷新/多端/分支全收敛、实时推送现成、与
-  pi TUI 对 custom_message 的渲染语义一致。代价：每条 `/session` 都会占
-  一点上下文，模型能"看见"你跑过什么命令（对 `/compact` `/reload` 而言
-  这是信息，对 `/name` 是噪音）。
-- **B2 · `appendCustomEntry`（不进上下文）+ 我们自己的实时推送**：写 pi 的
-  opaque `custom` 条目（模型不可见，TUI 不渲染），daemon 额外向在线客户端
-  发一条会话事件，transcript 用 `messageRenderers` 认领的 tag 渲染为
-  命令气泡。优点：上下文零污染。代价：pi TUI 打开同一会话看不到这些
-  气泡（仅 PI WEB 可见），需要新增一条会话事件类型。
-
-建议 **B2**：命令是 UI 动作不是对话内容，不该喂给模型；"多端一致"在
-PI WEB 各客户端之间成立即可。若机主更看重"pi TUI 也看得到"，选 B1。
+- 命令行 = `.msg.user.command` 用户气泡（等宽命令原文）+ 下方结果行；
+- 交付标记走同一套词汇：流式中 **Queued**、空闲 **Running**、成功 **Read**、
+  拒绝/失败 **Not sent**；
+- 结果只出现一次：原先 `applyCommandResult` 另外注入 transcript 的
+  system/tool 行删除（刷新即消失、与气泡重复）；
+- 收条的 Dismiss 按钮退役（pi 原生也不可关闭，页面生命期内留存，容量上限
+  20 条淘汰最旧已结算行）。
 
 ## 4. 加载策略盘点（已有 vs 缺口）
 
