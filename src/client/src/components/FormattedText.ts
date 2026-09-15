@@ -35,6 +35,8 @@ export class FormattedText extends LitElement {
    * default, and every non-transcript use) means every block stays plain.
    */
   @property({ attribute: false }) findCodeFenceRenderer?: (language: string) => CodeFenceRenderer | undefined;
+  /** True while the session turn streams: fences are not claimed until the text has settled. */
+  @property({ type: Boolean }) streaming = false;
 
   /** Text that has a full markdown render committed to `parsedHtml`. */
   private parsedText = "";
@@ -64,10 +66,14 @@ export class FormattedText extends LitElement {
 
   private streamingSuffix = "";
 
-  override updated(): void {
-    if (this.enhancedForHtml === this.parsedHtml) return;
-    this.enhancedForHtml = this.parsedHtml;
-    this.enhanceCodeBlocks();
+  override updated(changed: Map<PropertyKey, unknown>): void {
+    const claimsChanged = changed.has("findCodeFenceRenderer") || (changed.has("streaming") && !this.streaming);
+    if (this.enhancedForHtml !== this.parsedHtml) {
+      this.enhancedForHtml = this.parsedHtml;
+      this.enhanceCodeBlocks();
+      return;
+    }
+    if (claimsChanged) this.reconcileClaimedFences();
   }
 
   private scheduleSettleParse(): void {
@@ -106,12 +112,17 @@ export class FormattedText extends LitElement {
 
   /**
    * A claimed fence draws the plugin's node above the source block, which
-   * stays for copy and as the fallback: a renderer that throws or rejects
-   * leaves a readable code block, never a hole. The parse that produced this
-   * DOM is checked after the await so a re-parse in flight cannot receive a
-   * stale drawing.
+   * stays for copy and as the fallback: a renderer that throws, rejects or
+   * answers with something that is not a Node leaves a readable code block,
+   * never a hole. Claims are only taken on a settled parse - marked closes
+   * an unterminated fence at end of input, so a streaming message would
+   * otherwise hand the claimant a growing partial source several times a
+   * second. Before mounting, the parse and the claimant are re-checked so a
+   * re-parse in flight or a claim released mid-render cannot land a stale
+   * drawing.
    */
   private renderClaimedFence(wrapper: HTMLElement, code: HTMLElement): void {
+    if (this.streaming || this.streamingSuffix !== "") return;
     const lookup = this.findCodeFenceRenderer;
     if (lookup === undefined) return;
     const verdict = codeFenceVerdict(code.className, (language) => lookup(language) !== undefined);
@@ -120,10 +131,14 @@ export class FormattedText extends LitElement {
     if (renderer === undefined) return;
     const parsedHtml = this.parsedHtml;
     const source = code.textContent;
+    wrapper.dataset["fenceLanguage"] = verdict.language;
     void Promise.resolve()
       .then(() => renderer.render(source))
       .then((node) => {
         if (this.parsedHtml !== parsedHtml || !wrapper.isConnected) return;
+        if (this.findCodeFenceRenderer?.(verdict.language) === undefined) return;
+        if (!(node instanceof Node)) throw new Error(`code fence renderer for ${verdict.language} returned ${typeof node}, not a Node`);
+        wrapper.querySelector(":scope > .code-fence-render")?.remove();
         const drawing = document.createElement("div");
         drawing.className = "code-fence-render";
         drawing.dataset["language"] = verdict.language;
@@ -131,14 +146,41 @@ export class FormattedText extends LitElement {
         wrapper.classList.add("code-fence-claimed");
         wrapper.prepend(drawing);
       })
-      .catch(() => undefined);
-  }  private readonly onFormattedClick = (event: MouseEvent): void => {
+      .catch((error: unknown) => {
+        console.warn(`code fence renderer for ${verdict.language} failed; the source block stays`, error);
+      });
+  }
+
+  /**
+   * The claim set moved under a settled transcript: a plugin registered after
+   * the message drew, or was disposed while its drawing was on screen. Every
+   * wrapped block is re-judged - a drawing with no claimant behind it comes
+   * down, a newly claimable block goes up - so what is on screen never says
+   * more than the registry does.
+   */
+  private reconcileClaimedFences(): void {
+    this.renderRoot.querySelectorAll(".code-block-wrapper").forEach((wrapper) => {
+      if (!(wrapper instanceof HTMLElement)) return;
+      const code = wrapper.querySelector(":scope > pre > code");
+      if (!(code instanceof HTMLElement)) return;
+      const language = wrapper.dataset["fenceLanguage"];
+      const stillClaimed = language !== undefined && this.findCodeFenceRenderer?.(language) !== undefined;
+      if (!stillClaimed) {
+        wrapper.querySelector(":scope > .code-fence-render")?.remove();
+        wrapper.classList.remove("code-fence-claimed");
+        delete wrapper.dataset["fenceLanguage"];
+      }
+      if (!wrapper.classList.contains("code-fence-claimed")) this.renderClaimedFence(wrapper, code);
+    });
+  }
+
+  private readonly onFormattedClick = (event: MouseEvent): void => {
     if (!(event.target instanceof Element)) return;
     const button = event.target.closest(".code-copy-button");
     if (!(button instanceof HTMLButtonElement)) return;
     const wrapper = button.closest(".code-block-wrapper");
     if (!(wrapper instanceof HTMLElement)) return;
-    const code = wrapper.querySelector("pre code");
+    const code = wrapper.querySelector(":scope > pre > code");
     if (!(code instanceof HTMLElement)) return;
     void this.copyCode(code.textContent, button);
   };

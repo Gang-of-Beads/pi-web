@@ -27,6 +27,8 @@ Ctrl+P are core commands and extensions only observe `model_select`.
 | 5 | commands/actions/panels | pre-existing, unchanged |
 | 6 | daemon services | built: named JSON operations, per-plugin durable storage, scoped settings |
 | 7 | route contributions | built: `api/plugins/<plugin>/<operation>`, the host owns the path |
+| 8 | code-fence renderers | built: one claimant per language per machine, claims taken on settled text only, unclaimed or failing fences stay plain code; no consumer yet (Mermaid lands here) |
+| 9 | daemon transcript port | built: `ports.sessionTranscripts` lists a cwd's sessions and pages one transcript read-only, refuses with a named error until the session service exists; no consumer yet (search, export) |
 
 Host utilities handed to plugins rather than copied by them: clipboard, error
 wording, interactive-surface styles, breakpoints, and a JSON fetch that keeps

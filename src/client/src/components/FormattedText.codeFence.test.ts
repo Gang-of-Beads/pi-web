@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { FormattedText } from "./FormattedText";
 
 const MERMAID = "```mermaid\ngraph TD; A-->B\n```";
@@ -64,5 +64,87 @@ describe("FormattedText code fence claims", () => {
     const el = await renderText("```mermaid\n<img src=x onerror=alert(1)>\n```", () => ({ render: () => document.createElement("div") }));
     expect(el.shadowRoot?.querySelector("pre code img")).toBeNull();
     expect(el.shadowRoot?.querySelector("pre code")?.textContent).toContain("<img src=x onerror=alert(1)>");
+  });
+});
+
+describe("FormattedText code fence claims follow the registry and the stream", () => {
+  const svgRenderer = { render: () => document.createElementNS("http://www.w3.org/2000/svg", "svg") };
+
+  it("takes no claim while the message is still streaming, then claims on the settled parse", async () => {
+    vi.useFakeTimers();
+    try {
+      const calls: string[] = [];
+      const el = new FormattedText();
+      el.streaming = true;
+      el.text = "```mermaid\ngraph TD; A";
+      el.findCodeFenceRenderer = () => ({ render: (source) => { calls.push(source); return document.createElement("div"); } });
+      document.body.append(el);
+      await el.updateComplete;
+      el.text = "```mermaid\ngraph TD; A-->B";
+      await el.updateComplete;
+      el.text = MERMAID;
+      await el.updateComplete;
+      await vi.advanceTimersByTimeAsync(400);
+      await el.updateComplete;
+      await vi.advanceTimersByTimeAsync(0);
+      expect(calls).toEqual([]);
+      el.streaming = false;
+      await el.updateComplete;
+      await vi.advanceTimersByTimeAsync(0);
+      expect(calls).toEqual(["graph TD; A-->B\n"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("claims a settled fence when its plugin registers after the message drew", async () => {
+    const el = await renderText(MERMAID, () => undefined);
+    expect(el.shadowRoot?.querySelector(".code-fence-render")).toBeNull();
+    el.findCodeFenceRenderer = () => svgRenderer;
+    await el.updateComplete;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(el.shadowRoot?.querySelector(".code-fence-render svg")).not.toBeNull();
+  });
+
+  it("takes a drawing down when its plugin is disposed, leaving the plain block", async () => {
+    const el = await renderText(MERMAID, () => svgRenderer);
+    expect(el.shadowRoot?.querySelector(".code-fence-render")).not.toBeNull();
+    el.findCodeFenceRenderer = () => undefined;
+    await el.updateComplete;
+    expect(el.shadowRoot?.querySelector(".code-fence-render")).toBeNull();
+    expect(el.shadowRoot?.querySelector(".code-block-wrapper")?.classList.contains("code-fence-claimed")).toBe(false);
+    expect(el.shadowRoot?.querySelector("pre code")?.textContent.trim()).toBe("graph TD; A-->B");
+  });
+
+  it("does not mount a drawing that resolves after its plugin was replaced", async () => {
+    let release: (node: Node) => void = () => undefined;
+    const slow = { render: () => new Promise<Node>((resolve) => { release = resolve; }) };
+    const el = await renderText(MERMAID, () => slow);
+    el.findCodeFenceRenderer = () => undefined;
+    await el.updateComplete;
+    release(document.createElement("div"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(el.shadowRoot?.querySelector(".code-fence-render")).toBeNull();
+  });
+
+  it("treats a renderer answering with a non-Node as a failure, never as content", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const renderer: { render: (source: string) => Node | Promise<Node> } = { render: () => document.createElement("div") };
+      Reflect.set(renderer, "render", async () => { await Promise.resolve(); });
+      const el = await renderText(MERMAID, () => renderer);
+      expect(el.shadowRoot?.querySelector(".code-fence-render")).toBeNull();
+      expect(el.shadowRoot?.textContent).not.toContain("undefined");
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("copies the fence source, not code the drawing happens to contain", async () => {
+    const el = await renderText(MERMAID, () => ({ render: () => { const pre = document.createElement("pre"); const code = document.createElement("code"); code.textContent = "NOT THE SOURCE"; pre.append(code); return pre; } }));
+    const wrapper = el.shadowRoot?.querySelector(".code-block-wrapper");
+    expect(wrapper?.querySelector(":scope > pre > code")?.textContent.trim()).toBe("graph TD; A-->B");
+    expect(wrapper?.querySelector(".code-fence-render code")?.textContent).toBe("NOT THE SOURCE");
   });
 });

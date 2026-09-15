@@ -523,7 +523,6 @@ export const formattedTextStyles = css`
   .code-block-wrapper { position: relative; }
   .code-fence-render { margin: 0 0 var(--pi-space-3); overflow-x: auto; }
   .code-fence-render > svg { display: block; max-width: 100%; height: auto; }
-  .code-block-wrapper.code-fence-claimed > pre { max-height: var(--pi-space-9); overflow: hidden; opacity: .55; }
   .code-block-wrapper pre { margin: 0; padding-right: calc(var(--pi-space-3) * 2 + var(--pi-control-height-touch) / 2 + var(--pi-space-4)); }
   pre { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg); padding: var(--pi-space-5); overflow-x: auto; overflow-y: hidden; direction: ltr; text-align: left; unicode-bidi: isolate; }
   pre code { border: 0; padding: 0; background: transparent; }
